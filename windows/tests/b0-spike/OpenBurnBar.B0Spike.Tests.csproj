@@ -28,8 +28,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="../../../AgentLensTests/Fixtures/DBByteCompat/openburnbar-db-compat-v61.sqlcipher">
-      <Link>Fixtures/openburnbar-db-compat-v61.sqlcipher</Link>
+    <Content Include="../../../AgentLensTests/Fixtures/DBByteCompat/openburnbar-db-compat-v64.sqlcipher">
+      <Link>Fixtures/openburnbar-db-compat-v64.sqlcipher</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="../../../AgentLensTests/Fixtures/ParserContract/pc-claude-basic-session.jsonl">

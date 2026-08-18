@@ -89,7 +89,7 @@ final class HermesBodyDirectory {
     @ObservationIgnored private var listener: ListenerRegistration?
     @ObservationIgnored private var listenerUID: String?
 
-    init(accountManager: AccountManaging = AccountManager.shared) {
+    init(accountManager: AccountManaging) {
         self.accountManager = accountManager
     }
 
@@ -132,9 +132,7 @@ final class HermesBodyDirectory {
         guard listenerUID != uid else { return }
         listener?.remove()
         listenerUID = uid
-        listener = Firestore.firestore()
-            .collection("users").document(uid)
-            .collection("hermes_bodies")
+        listener = WarRoomFirestoreGateway.bodies(uid: uid)
             .addSnapshotListener { [weak self] snapshot, error in
                 Task { @MainActor [weak self] in
                     guard let self else { return }
@@ -170,9 +168,7 @@ final class HermesBodyDirectory {
               let uid = accountManager.currentUID else { return }
         let now = ISO8601DateFormatter().string(from: Date())
         do {
-            try await Firestore.firestore()
-                .collection("users").document(uid)
-                .collection("hermes_bodies").document(bodyID)
+            try await WarRoomFirestoreGateway.body(uid: uid, bodyID: bodyID)
                 .setData(["displayName": trimmed, "updatedAt": now], merge: true)
         } catch {
             AppLogger.network.silentFailure("hermes_body_rename_failed", error: error)
@@ -186,9 +182,7 @@ final class HermesBodyDirectory {
         guard accountManager.isFirebaseAvailable,
               let uid = accountManager.currentUID else { return }
         do {
-            try await Firestore.firestore()
-                .collection("users").document(uid)
-                .collection("hermes_bodies").document(bodyID)
+            try await WarRoomFirestoreGateway.body(uid: uid, bodyID: bodyID)
                 .delete()
         } catch {
             AppLogger.network.silentFailure("hermes_body_remove_failed", error: error)

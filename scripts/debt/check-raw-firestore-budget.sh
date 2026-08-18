@@ -15,6 +15,7 @@
 # The sanctioned gateways are exempt — they are *meant* to own the handle:
 #   AgentLens/Services/CloudSync/CloudSyncFirestoreGateway.swift
 #   AgentLens/Services/ComputerUse/ComputerUseFirestoreGateway.swift
+#   AgentLens/Services/WarRoom/WarRoomFirestoreGateway.swift
 #   OpenBurnBarMobile/Services/FirestoreRepository.swift
 #   android/app/src/main/java/com/openburnbar/data/firebase/FirestoreRepository.kt
 #
@@ -43,6 +44,10 @@ mode = sys.argv[3] if len(sys.argv) > 3 else ""
 allowlist = {
     "AgentLens/Services/CloudSync/CloudSyncFirestoreGateway.swift",
     "AgentLens/Services/ComputerUse/ComputerUseFirestoreGateway.swift",
+    # reason: feature-scoped gateway in the same shape as the two above — it owns
+    # the handle for users/{uid}/hermes_bodies and war_wire_grants so the War
+    # Room's stores, publisher, and faces never resolve Firestore themselves.
+    "AgentLens/Services/WarRoom/WarRoomFirestoreGateway.swift",
     "OpenBurnBarMobile/Services/FirestoreRepository.swift",
     "android/app/src/main/java/com/openburnbar/data/firebase/FirestoreRepository.kt",
 }

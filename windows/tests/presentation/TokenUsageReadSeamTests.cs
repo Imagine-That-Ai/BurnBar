@@ -30,7 +30,7 @@ public sealed class TokenUsageReadSeamTests
             string candidate = Path.Combine(dir.FullName, "AgentLensTests", "Fixtures", "DBByteCompat");
             if (File.Exists(Path.Combine(candidate, "openburnbar-db-compat-vector.json")))
             {
-                string pinned = Path.Combine(candidate, "openburnbar-db-compat-v61.sqlcipher");
+                string pinned = Path.Combine(candidate, "openburnbar-db-compat-v64.sqlcipher");
                 if (File.Exists(pinned))
                 {
                     return pinned;

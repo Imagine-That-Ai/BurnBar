@@ -40,7 +40,7 @@ final class WarWireHost {
     init(
         directory: HermesBodyDirectory,
         grantStore: WarWireGrantStore,
-        accountManager: AccountManaging = AccountManager.shared,
+        accountManager: AccountManaging,
         tierProvider: @escaping @MainActor () -> CloudTier,
         killSwitchProvider: @escaping @MainActor () -> Bool,
         transportProvider: @escaping @MainActor () -> (any IrohRelayTransport)?
@@ -59,7 +59,7 @@ final class WarWireHost {
         loop = Task { [weak self] in
             while !Task.isCancelled {
                 await self?.refresh()
-                try? await Task.sleep(for: .seconds(Self.refreshInterval))
+                try? await Task.sleep(for: .seconds(Self.refreshInterval)) // try?-ok(cancellation only; the loop condition handles it)
             }
         }
     }

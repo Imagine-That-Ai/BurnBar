@@ -7,7 +7,9 @@ import SwiftUI
 /// presence. Renames here are what the swap control and the Command Board
 /// display everywhere — a Hermes is a name bound to a machine.
 struct HermesBodiesDetailView: View {
-    @State private var directory = HermesBodyDirectory()
+    /// The runtime context's one fleet listener, not a second one: two listeners
+    /// on the same collection double the reads and can disagree for a beat.
+    let directory: HermesBodyDirectory
     @State private var renameTarget: HermesBodyRecord?
     @State private var renameText = ""
     @State private var removalTarget: HermesBodyRecord?
@@ -30,8 +32,9 @@ struct HermesBodiesDetailView: View {
                 }
             }
         }
+        // Owned by the runtime context; `start()` is idempotent and closing this
+        // face must not stop the listener the Wire is still reading.
         .task { directory.start() }
-        .onDisappear { directory.stop() }
         .alert(
             "Rename Hermes",
             isPresented: Binding(

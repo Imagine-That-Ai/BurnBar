@@ -121,7 +121,7 @@ public final class OpenBurnBarDataLinuxTests: XCTestCase {
 
         let migrations = try database.migrationRows()
         XCTAssertEqual(migrations, OpenBurnBarLocalDatabase.migrationIdentifiers)
-        XCTAssertEqual(migrations.last, "v61_usage_memory")
+        XCTAssertEqual(migrations.last, "v64_token_usage_start_time_index")
         XCTAssertTrue(migrations.contains("v35_provider_accounts"))
         XCTAssertTrue(migrations.contains("v50_project_code_memory_schema"))
 

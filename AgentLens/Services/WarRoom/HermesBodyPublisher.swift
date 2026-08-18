@@ -52,7 +52,7 @@ final class HermesBodyPublisher {
     nonisolated static let presenceFreshnessSeconds: TimeInterval = 180
 
     private static let cadenceID = "hermes-body-heartbeat"
-    private static let fallbackGatewayURL = URL(string: "http://127.0.0.1:8642")!
+    private static let fallbackGatewayURL = "http://127.0.0.1:8642"
 
     private let accountManager: AccountManaging
     private let settingsManager: SettingsManager
@@ -66,7 +66,7 @@ final class HermesBodyPublisher {
     private var knownCreated = false
 
     init(
-        accountManager: AccountManaging = AccountManager.shared,
+        accountManager: AccountManaging,
         settingsManager: SettingsManager = .shared,
         bodyIDProvider: @escaping @MainActor () -> String,
         hermesStateProvider: (@MainActor () async -> HermesState)? = nil,
@@ -122,9 +122,7 @@ final class HermesBodyPublisher {
             irohNodeID: irohNodeIDProvider(),
             now: ISO8601DateFormatter().string(from: Date())
         )
-        let ref = Firestore.firestore()
-            .collection("users").document(uid)
-            .collection("hermes_bodies").document(bodyID)
+        let ref = WarRoomFirestoreGateway.body(uid: uid, bodyID: bodyID)
         do {
             if !knownCreated {
                 let snapshot = try await ref.getDocument()
@@ -142,8 +140,13 @@ final class HermesBodyPublisher {
         if let hermesStateProvider { return await hermesStateProvider() }
         let rawURL = settingsManager.hermesGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         let token = settingsManager.hermesBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        // No parseable address means no probe, and no probe means the body
+        // reports its gateway as unreachable rather than inventing a result.
+        guard let baseURL = URL(string: rawURL) ?? URL(string: Self.fallbackGatewayURL) else {
+            return HermesState(installed: false, gatewayReachable: false, version: nil)
+        }
         return await HermesState.probeLive(
-            baseURL: URL(string: rawURL) ?? Self.fallbackGatewayURL,
+            baseURL: baseURL,
             bearerToken: token.isEmpty ? nil : token
         )
     }

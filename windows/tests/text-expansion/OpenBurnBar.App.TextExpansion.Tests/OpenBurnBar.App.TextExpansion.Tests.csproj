@@ -50,8 +50,8 @@
       opens. The test copies it to a temp working file before writing, so the
       committed file is never mutated.
     -->
-    <Content Include="../../../../AgentLensTests/Fixtures/DBByteCompat/openburnbar-db-compat-v61.sqlcipher">
-      <Link>Fixtures/openburnbar-db-compat-v61.sqlcipher</Link>
+    <Content Include="../../../../AgentLensTests/Fixtures/DBByteCompat/openburnbar-db-compat-v64.sqlcipher">
+      <Link>Fixtures/openburnbar-db-compat-v64.sqlcipher</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

@@ -101,9 +101,9 @@ final class PlasmaPersonaTests: XCTestCase {
 
     // MARK: Seat persistence
 
-    func testSeatMapSurvivesAJSONRoundTrip() {
+    func testSeatMapSurvivesAJSONRoundTrip() throws {
         let original = ["codex": "seat-a", "hermes": "seat-b"]
-        let json = String(data: try! JSONEncoder().encode(original), encoding: .utf8)
+        let json = String(data: try JSONEncoder().encode(original), encoding: .utf8)
         XCTAssertEqual(ChatSessionController.decodeSeatMap(json), original)
     }
 
@@ -112,22 +112,22 @@ final class PlasmaPersonaTests: XCTestCase {
         XCTAssertEqual(ChatSessionController.decodeSeatMap(nil), [:])
     }
 
-    func testRosterDropsSeatsNamingPersonasThisBuildNoLongerShips() {
+    func testRosterDropsSeatsNamingPersonasThisBuildNoLongerShips() throws {
         // A seat pointing at a removed persona would render as a blank orb.
         let seats = [
             PlasmaSeat(id: "seat-1", label: "Keep", personaID: PlasmaPersona.all[0].id, isBuiltIn: false),
             PlasmaSeat(id: "seat-2", label: "Drop", personaID: "retired-persona", isBuiltIn: false)
         ]
-        let json = String(data: try! JSONEncoder().encode(seats), encoding: .utf8)
+        let json = String(data: try JSONEncoder().encode(seats), encoding: .utf8)
         let decoded = ChatSessionController.decodeRoster(json)
         XCTAssertEqual(decoded.map(\.id), ["seat-1"])
     }
 
-    func testRosterDropsPersistedBuiltInsSoTheyCannotBeDuplicated() {
+    func testRosterDropsPersistedBuiltInsSoTheyCannotBeDuplicated() throws {
         // Built-ins come from code, not from the store; a stale persisted copy
         // would show the same seat twice.
         let seats = [PlasmaSeat(id: "b", label: "Built in", personaID: PlasmaPersona.all[0].id, isBuiltIn: true)]
-        let json = String(data: try! JSONEncoder().encode(seats), encoding: .utf8)
+        let json = String(data: try JSONEncoder().encode(seats), encoding: .utf8)
         XCTAssertTrue(ChatSessionController.decodeRoster(json).isEmpty)
     }
 }

@@ -48,8 +48,8 @@
       (VAL-P0-DB-010) locates the same fixture in-place via RepoFixtures (repo-root
       walk), so this Content link is additive and harms neither path.
     -->
-    <Content Include="../../../AgentLensTests/Fixtures/DBByteCompat/openburnbar-db-compat-v61.sqlcipher">
-      <Link>Fixtures/openburnbar-db-compat-v61.sqlcipher</Link>
+    <Content Include="../../../AgentLensTests/Fixtures/DBByteCompat/openburnbar-db-compat-v64.sqlcipher">
+      <Link>Fixtures/openburnbar-db-compat-v64.sqlcipher</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

@@ -211,6 +211,10 @@ final class OpenBurnBarRuntimeContext {
     /// same collection would double the Firestore reads and could disagree about
     /// the fleet for a beat.
     var hermesBodyDirectory: HermesBodyDirectory?
+    /// Shared for the same reason as the directory: the Hermes Room reads the
+    /// grants the Wire is acting on, so a second listener could show a lane as
+    /// open that the Wire had already closed.
+    var warWireGrantStore: WarWireGrantStore?
     var routedClientWiringSentry: RoutedClientWiringSentry?
     #if canImport(AppKit) && !DISTRIBUTION_MAS
     var computerUseRuntimeController: ComputerUseRuntimeController?
@@ -673,16 +677,24 @@ final class OpenBurnBarRuntimeContext {
         }
         standingOrders.start()
 
+        let grants: WarWireGrantStore
+        if let existing = warWireGrantStore {
+            grants = existing
+        } else {
+            grants = WarWireGrantStore(
+                accountManager: accountManager,
+                settingsManager: settingsManager
+            )
+            warWireGrantStore = grants
+        }
+
         let wire: WarWireHost
         if let existing = warWireHost {
             wire = existing
         } else {
             wire = WarWireHost(
                 directory: fleetDirectory,
-                grantStore: WarWireGrantStore(
-                    accountManager: accountManager,
-                    settingsManager: settingsManager
-                ),
+                grantStore: grants,
                 accountManager: accountManager,
                 tierProvider: { MacCloudEntitlementStore.shared.cloudTier },
                 killSwitchProvider: { [settingsManager] in settingsManager.warRoomKillSwitch },

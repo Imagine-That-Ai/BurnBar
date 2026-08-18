@@ -109,6 +109,9 @@ No current migration is classified as independently reversible. SQL snippets pri
 | 60 | `v59_founder_lens` | atomic | unapplied-only | backup-restore | Founder Lens reply threads, plan ledger, and memory export |
 | 61 | `v60_billing_kind` | atomic | unapplied-only | backup-restore | Billing provenance column (api vs subscription spend) with deterministic backfill |
 | 62 | `v61_usage_memory` | atomic | unapplied-only | backup-restore | Usage-memory substrate: candidate spool, salience sidecar, memory links, extraction-job source_kind |
+| 63 | `v62_war_room_originator` | atomic | unapplied-only | backup-restore | War Room STARTED BY attribution columns on token_usage plus the originator lookup index |
+| 64 | `v63_standing_orders` | atomic | unapplied-only | backup-restore | Standing orders table backing the War Room rhythm (cadence, target machine, last fired) |
+| 65 | `v64_token_usage_start_time_index` | atomic | unapplied-only | backup-restore | Index on token_usage.startTime so the Command Board window scan stops walking the table |
 <!-- END GENERATED MIGRATION CATALOG -->
 
 Regenerate and verify the table with:

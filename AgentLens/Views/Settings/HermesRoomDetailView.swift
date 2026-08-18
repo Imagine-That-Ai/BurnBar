@@ -12,12 +12,14 @@ import OpenBurnBarKernel
 /// Wire would refuse is shown here as unavailable, with the same reason and no
 /// second opinion, so the room can never promise a swap the Wire will deny.
 struct HermesRoomDetailView: View {
-    @State private var directory = HermesBodyDirectory()
-    @State private var grants = WarWireGrantStore()
+    /// Both come from the runtime context so this face reads exactly the fleet
+    /// and the grants the Wire is acting on. A private listener could show a
+    /// lane as open after the Wire had already closed it.
+    let directory: HermesBodyDirectory
+    let grants: WarWireGrantStore
+    let settingsManager: SettingsManager
     @StateObject private var entitlements = MacCloudEntitlementStore.shared
     @State private var linkTarget: HermesRoomRow?
-
-    private let settingsManager = SettingsManager.shared
 
     private var room: HermesRoomState {
         HermesRoom.state(
@@ -52,13 +54,12 @@ struct HermesRoomDetailView: View {
                 }
             }
         }
+        // Both are owned by the runtime context and started at boot; `start()`
+        // is idempotent and only matters if this face is opened first. Closing
+        // it must not stop them — the Wire is still using both.
         .task {
             directory.start()
             grants.start()
-        }
-        .onDisappear {
-            directory.stop()
-            grants.stop()
         }
         .confirmationDialog(
             "Link \(linkTarget?.body.displayName ?? "this Mac")?",

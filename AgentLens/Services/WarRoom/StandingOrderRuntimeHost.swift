@@ -43,7 +43,7 @@ final class StandingOrderRuntimeHost {
         loop = Task { [weak self] in
             while !Task.isCancelled {
                 await self?.tick()
-                try? await Task.sleep(for: .seconds(Self.tickInterval))
+                try? await Task.sleep(for: .seconds(Self.tickInterval)) // try?-ok(cancellation only; the loop condition handles it)
             }
         }
     }

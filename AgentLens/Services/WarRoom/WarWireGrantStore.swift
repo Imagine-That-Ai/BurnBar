@@ -23,7 +23,7 @@ final class WarWireGrantStore {
     @ObservationIgnored private var listenerUID: String?
 
     init(
-        accountManager: AccountManaging = AccountManager.shared,
+        accountManager: AccountManaging,
         settingsManager: SettingsManager = .shared
     ) {
         self.accountManager = accountManager
@@ -134,9 +134,7 @@ final class WarWireGrantStore {
     }
 
     private func collection(uid: String) -> CollectionReference {
-        Firestore.firestore()
-            .collection("users").document(uid)
-            .collection("war_wire_grants")
+        WarRoomFirestoreGateway.grants(uid: uid)
     }
 
     /// Canonical endpoint ordering + document id, or nil when the pair is not

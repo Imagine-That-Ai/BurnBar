@@ -162,29 +162,37 @@ struct DevicesAndSyncSettingsView: View {
                     }
                     .settingsAnchor(SettingsAnchor.smartDisplays)
 
-                    NavigationLink {
-                        HermesBodiesDetailView()
-                    } label: {
-                        SettingsDrillRow(
-                            icon: "desktopcomputer",
-                            iconTint: DesignSystem.Colors.hermesAureate,
-                            title: "Hermes Bodies",
-                            subtitle: "Each Mac's Hermes identity — name, hardware, and presence"
-                        )
-                    }
-                    .settingsAnchor(SettingsAnchor.hermesBodies)
+                    if let fleet = runtimeContext?.hermesBodyDirectory {
+                        NavigationLink {
+                            HermesBodiesDetailView(directory: fleet)
+                        } label: {
+                            SettingsDrillRow(
+                                icon: "desktopcomputer",
+                                iconTint: DesignSystem.Colors.hermesAureate,
+                                title: "Hermes Bodies",
+                                subtitle: "Each Mac's Hermes identity — name, hardware, and presence"
+                            )
+                        }
+                        .settingsAnchor(SettingsAnchor.hermesBodies)
 
-                    NavigationLink {
-                        HermesRoomDetailView()
-                    } label: {
-                        SettingsDrillRow(
-                            icon: "person.2.badge.gearshape",
-                            iconTint: DesignSystem.Colors.hermesAureate,
-                            title: "Hermes Room",
-                            subtitle: "Pick which Mac serves Hermes — the others stay linked and ready"
-                        )
+                        if let grants = runtimeContext?.warWireGrantStore {
+                            NavigationLink {
+                                HermesRoomDetailView(
+                                    directory: fleet,
+                                    grants: grants,
+                                    settingsManager: settingsManager
+                                )
+                            } label: {
+                                SettingsDrillRow(
+                                    icon: "person.2.badge.gearshape",
+                                    iconTint: DesignSystem.Colors.hermesAureate,
+                                    title: "Hermes Room",
+                                    subtitle: "Pick which Mac serves Hermes — the others stay linked and ready"
+                                )
+                            }
+                            .settingsAnchor(SettingsAnchor.hermesRoom)
+                        }
                     }
-                    .settingsAnchor(SettingsAnchor.hermesRoom)
 
                     if let dataStore = runtimeContext?.dataStore {
                         NavigationLink {
