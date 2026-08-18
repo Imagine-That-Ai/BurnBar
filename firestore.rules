@@ -2437,7 +2437,12 @@ service cloud.firestore {
           // War Room — STARTED BY attribution (Command Board). Advisory,
           // owner-written, non-secret.
           "originatorKind",
-          "originatorRef"
+          "originatorRef",
+          // War Room — the Flame's routing target: which of the account's Macs
+          // should run this mission. Advisory and owner-written; the executing
+          // Mac decides whether to claim it, so a forged value cannot make a
+          // machine run work it would otherwise refuse.
+          "targetBodyID"
         ]);
       }
 
@@ -2485,6 +2490,7 @@ service cloud.firestore {
         && (!("resumeAction" in d) || validCliMissionResumeAction(d.resumeAction))
         && (!("originatorKind" in d) || validCliMissionMetadataToken(d.originatorKind, 24))
         && (!("originatorRef" in d) || validCliMissionMetadataToken(d.originatorRef, 160))
+        && (!("targetBodyID" in d) || validCliMissionMetadataToken(d.targetBodyID, 160))
         // The exact hasOnly([...]) allowlist above contains neither plaintext
         // content fields nor signalEnvelope. Repeating either deny check here
         // pushes the full fan-out child payload past Firestore's 1000-expression

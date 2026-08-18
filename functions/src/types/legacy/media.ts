@@ -450,6 +450,11 @@ export interface CLIAgentMissionRequestDoc {
     | "external"
     | "unknown";
   originatorRef?: string;
+  /**
+   * War Room: which of the account's Macs the Flame routed this mission to.
+   * Advisory — the executing Mac still decides whether to claim it.
+   */
+  targetBodyID?: string;
   deliveryMode?: SkillRunDeliveryModeDoc;
   parentHermesThreadID?: string;
   status: string;
