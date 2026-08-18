@@ -123,16 +123,37 @@ extension ProjectionPipelineService {
         )
     }
 
-    internal func processReembed(_ job: ProjectionJobRecord) async throws {
-        let chunks = try await chunksForReembed(job: job)
-        let indexedCount = try await indexChunks(
-            chunks: chunks,
-            strict: true,
+    @discardableResult
+    internal func processReembed(_ job: ProjectionJobRecord) async throws -> ReembedSliceResult {
+        // Read one bounded slice plus one look-ahead row. The look-ahead tells
+        // the queue whether to defer this same durable job without a corpus
+        // COUNT or a second scan.
+        let reembedSliceSize = min(
+            paginationPageSize,
+            max(1, ProjectionPipelineRuntimeTuning.reembedSliceSize)
+        )
+        try Task.checkCancellation()
+        let page = try await dataStore.fetchSearchChunkEmbeddingInputs(
+            afterID: nil,
+            limit: reembedSliceSize + 1,
+            embeddingVersionID: embeddingVersionID,
             sourceKind: job.sourceKind,
             sourceID: job.sourceID
         )
-            try await upsertSemanticProjectionHealth(
-                status: .healthy,
+        let slice = Array(page.prefix(reembedSliceSize))
+        let indexedCount = try await indexChunkEmbeddingInputs(
+            chunks: slice,
+            strict: true,
+            sourceKind: job.sourceKind,
+            sourceID: job.sourceID,
+            markSnapshotStale: false
+        )
+
+        if indexedCount > 0 {
+            try await markVectorIndexSnapshotStale(now: nowProvider())
+        }
+        try await upsertSemanticProjectionHealth(
+            status: .healthy,
             errorCode: nil,
             errorMessage: nil,
             chunkCount: indexedCount,
@@ -140,31 +161,10 @@ extension ProjectionPipelineService {
             sourceID: job.sourceID,
             strict: true
         )
-    }
-
-    internal func chunksForReembed(job: ProjectionJobRecord) async throws -> [SearchChunkRecord] {
-        if let sourceKind = job.sourceKind, let sourceID = job.sourceID {
-            let chunks = try await dataStore.fetchSearchChunks(sourceKind: sourceKind, sourceID: sourceID)
-            return chunks.filter(\.isEligibleForSemanticReembed)
-        }
-
-        // Paginate through ALL documents to avoid truncation for large corpora.
-        let reembedPageSize = paginationPageSize
-        var chunks: [SearchChunkRecord] = []
-        var offset = 0
-        while true {
-            let documents = try await dataStore.fetchSearchDocuments(limit: reembedPageSize, offset: offset)
-            guard documents.isEmpty == false else { break }
-
-            for document in documents {
-                let documentChunks = try await dataStore.fetchSearchChunks(documentID: document.id)
-                chunks.append(contentsOf: documentChunks.filter(\.isEligibleForSemanticReembed))
-            }
-
-            offset += documents.count
-            if documents.count < reembedPageSize { break }
-        }
-        return chunks
+        return ReembedSliceResult(
+            indexedChunks: indexedCount,
+            hasMore: page.count > reembedSliceSize
+        )
     }
 
     @discardableResult
@@ -174,9 +174,34 @@ extension ProjectionPipelineService {
         sourceKind: SearchSourceKind?,
         sourceID: String?
     ) async throws -> Int {
-        guard chunks.isEmpty == false else { return 0 }
+        try await indexChunkEmbeddingInputs(
+            chunks: chunks.map { SearchChunkEmbeddingInput(id: $0.id, text: $0.text) },
+            strict: strict,
+            sourceKind: sourceKind,
+            sourceID: sourceID
+        )
+    }
+
+    @discardableResult
+    internal func indexChunkEmbeddingInputs(
+        chunks: [SearchChunkEmbeddingInput],
+        strict: Bool,
+        sourceKind: SearchSourceKind?,
+        sourceID: String?,
+        ensureLineage: Bool = true,
+        markSnapshotStale: Bool = true
+    ) async throws -> Int {
         let now = nowProvider()
-        try await ensureEmbeddingLineage(now: now)
+        // Activate the lineage BEFORE the empty-corpus exit. A drift re-embed with
+        // no eligible chunks (every conversation deleted while the old embedding
+        // metadata survives) would otherwise return here, leave the configured
+        // version unrecorded, and complete the job with the drift still present —
+        // so the next sweep detects the same drift and enqueues another full
+        // re-embed, forever.
+        if ensureLineage {
+            try await ensureEmbeddingLineage(now: now)
+        }
+        guard chunks.isEmpty == false else { return 0 }
 
         do {
             let expectedDimensions = chunkEmbedder.descriptor.dimensions
@@ -184,16 +209,18 @@ extension ProjectionPipelineService {
             var indexedCount = 0
 
             for batchStart in stride(from: 0, to: chunks.count, by: batchSize) {
-                if Task.isCancelled { break }
+                try Task.checkCancellation()
 
                 let batchEnd = min(chunks.count, batchStart + batchSize)
                 let batch = Array(chunks[batchStart..<batchEnd])
                 let vectors = try await chunkEmbedder.embeddings(for: batch.map(\.text))
+                try Task.checkCancellation()
                 guard vectors.count == batch.count else {
                     throw ProjectionPipelineError.embeddingFailure("Embedding provider returned a mismatched vector count.")
                 }
 
-                for pair in zip(batch, vectors) {
+                for (writeIndex, pair) in zip(batch, vectors).enumerated() {
+                    try Task.checkCancellation()
                     let chunk = pair.0
                     let vector = pair.1
                     guard vector.count == expectedDimensions else {
@@ -211,19 +238,27 @@ extension ProjectionPipelineService {
                             updatedAt: now
                         )
                     )
+                    if (writeIndex + 1) % ProjectionPipelineRuntimeTuning.embeddingWriteYieldInterval == 0 {
+                        await Task.yield()
+                    }
                 }
 
                 indexedCount += batch.count
                 if batchEnd < chunks.count {
-                    try? await Task.sleep(nanoseconds: ProjectionPipelineRuntimeTuning.interEmbeddingBatchPauseNanoseconds) // try?-ok(inter-batch pause, cancellation only)
+                    try await Task.sleep(
+                        nanoseconds: ProjectionPipelineRuntimeTuning.interEmbeddingBatchPauseNanoseconds
+                    )
                 }
             }
 
-            if indexedCount > 0 {
+            if markSnapshotStale, indexedCount > 0 {
                 try await markVectorIndexSnapshotStale(now: now)
             }
             return indexedCount
         } catch {
+            if error is CancellationError || Task.isCancelled {
+                throw CancellationError()
+            }
             try await upsertSemanticProjectionHealth(
                 status: strict ? .failed : .degraded,
                 errorCode: "SEMANTIC_EMBEDDING_INDEXING_FAILED",
@@ -274,7 +309,13 @@ extension ProjectionPipelineService {
             embeddingVersionID: embeddingVersionID,
             backendID: snapshotBackend.backendID
         )
-        let vectorCount = try await dataStore.countChunkEmbeddings(embeddingVersionID: embeddingVersionID)
+        // A stale record describes the last persisted snapshot file, not the
+        // current embedding table. Preserve that snapshot's known count here.
+        // Recounting every embedding after each projection job is O(n) and, on
+        // a multi-gigabyte SQLCipher database, repeatedly decrypts the full
+        // version index. The semantic search path computes authoritative live
+        // stats when it next refreshes or rebuilds the snapshot.
+        let snapshotVectorCount = existing?.vectorCount ?? 0
         try await dataStore.upsertVectorIndexSnapshot(
             VectorIndexSnapshotRecord(
                 embeddingVersionID: embeddingVersionID,
@@ -283,7 +324,7 @@ extension ProjectionPipelineService {
                 fingerprint: existing?.fingerprint ?? "\(embeddingVersionID)|stale|\(Int(now.timeIntervalSince1970))",
                 dimensions: chunkEmbedder.descriptor.dimensions,
                 distanceMetric: chunkEmbedder.descriptor.distanceMetric,
-                vectorCount: vectorCount,
+                vectorCount: snapshotVectorCount,
                 storageRelativePath: existing?.storageRelativePath,
                 fileBytes: existing?.fileBytes ?? 0,
                 backendVersion: snapshotBackend.backendVersion,
@@ -296,10 +337,4 @@ extension ProjectionPipelineService {
         )
     }
 
-}
-
-private extension SearchChunkRecord {
-    var isEligibleForSemanticReembed: Bool {
-        sourceKind != .code
-    }
 }

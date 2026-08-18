@@ -27,10 +27,12 @@ import { EventEmitter } from "node:events";
 import {
   chmodSync,
   copyFileSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   utimesSync,
   writeFileSync,
 } from "node:fs";
@@ -515,7 +517,11 @@ test("launchFreshProcess stops the owned child once and rethrows registration fa
             spawnCalls += 1;
             assert.equal(executablePath, buildIdentity.executablePath);
             assert.strictEqual(launchArguments, realGateConfig.app.launchArguments);
-            assert.equal(options.env.HOME, workDirectory);
+            const isolatedHomeDirectory = path.join(workDirectory, "home");
+            assert.equal(options.env.HOME, isolatedHomeDirectory);
+            assert.equal(options.env.CFFIXED_USER_HOME, isolatedHomeDirectory);
+            assert.equal(existsSync(isolatedHomeDirectory), false);
+            assert.equal(statSync(workDirectory).mode & 0o777, 0o755);
             queueMicrotask(() => child.emit("spawn"));
             return child;
           },

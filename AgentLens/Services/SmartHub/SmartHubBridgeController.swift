@@ -14,6 +14,48 @@ import OpenBurnBarCore
 // Owned by `OpenBurnBarRuntimeContext`. Stays alive for the app lifetime.
 
 @MainActor
+final class SmartHubRunCostTotalsCache {
+    // Match the provider refresh cadence. Usage-table writes still invalidate
+    // immediately, while an unchanged seven-day window avoids a second
+    // SQLCipher aggregate halfway through every refresh interval.
+    static let bucketDurationSeconds: TimeInterval = 60
+
+    private var activeWriteMarker: Int?
+    private var activeTimeBucket: Int64?
+    private var totalsByPeriod: [String: [AgentProvider: ProviderRunCostTotals]] = [:]
+
+    func values(
+        for periods: [SmartHubTimePeriod],
+        writeMarker: Int,
+        now: Date,
+        load: ([SmartHubTimePeriod]) async -> [String: [AgentProvider: ProviderRunCostTotals]]
+    ) async -> [String: [AgentProvider: ProviderRunCostTotals]] {
+        let timeBucket = Int64(
+            floor(now.timeIntervalSince1970 / Self.bucketDurationSeconds)
+        )
+        if activeWriteMarker != writeMarker || activeTimeBucket != timeBucket {
+            totalsByPeriod.removeAll(keepingCapacity: true)
+            activeWriteMarker = writeMarker
+            activeTimeBucket = timeBucket
+        }
+
+        var uniquePeriods: [SmartHubTimePeriod] = []
+        for period in periods where !uniquePeriods.contains(period) {
+            uniquePeriods.append(period)
+        }
+
+        let missingPeriods = uniquePeriods.filter { totalsByPeriod[$0.rawValue] == nil }
+        if !missingPeriods.isEmpty {
+            let loadedTotals = await load(missingPeriods)
+            for period in missingPeriods {
+                totalsByPeriod[period.rawValue] = loadedTotals[period.rawValue] ?? [:]
+            }
+        }
+        return totalsByPeriod
+    }
+}
+
+@MainActor
 final class SmartHubBridgeController {
 
     private static let log = Logger(subsystem: "com.openburnbar.app", category: "SmartHubBridge")
@@ -33,6 +75,7 @@ final class SmartHubBridgeController {
     private var lastCastReassertedAt: Date = .distantPast
     private var wakeRecoveryObserver: NSObjectProtocol?
     private var activateRecoveryObserver: NSObjectProtocol?
+    private var runCostTotalsCache = SmartHubRunCostTotalsCache()
 
     /// Auto-refresh cadence for provider quota while the bridge is running.
     /// 60 s keeps Claude (and other providers) fresh on the Nest Hub
@@ -544,10 +587,28 @@ final class SmartHubBridgeController {
     private func buildSnapshot() async -> SmartHubBridgeSnapshot {
         let period = settingsManager.smartHubQuotaTimePeriod
         let now = Date()
-        let runCostTotals = await runCostTotalsForPeriod(period, now: now)
+        let writeMarker = await dataStore?.usageTableWriteMarker() ?? 0
+        let totalsByPeriod = await runCostTotalsCache.values(
+            for: [period, .rolling5h, .rolling7d],
+            writeMarker: writeMarker,
+            now: now
+        ) { [dataStore] requestedPeriods in
+            guard let dataStore else { return [:] }
+            let ranges = requestedPeriods.map { Self.dateRange(for: $0, now: now) }
+            // try?-ok(cost totals are best-effort display data; failure shows empty rail)
+            guard let loadedTotals = try? await dataStore.providerRunCostTotals(in: ranges) else {
+                return [:]
+            }
+            return Dictionary(
+                uniqueKeysWithValues: zip(requestedPeriods, loadedTotals).map { period, totals in
+                    (period.rawValue, totals)
+                }
+            )
+        }
+        let runCostTotals = totalsByPeriod[period.rawValue] ?? [:]
         let quotaProviders = quotaProviders(period: period, runCostTotals: runCostTotals, now: now)
-        let runCostTotals5h = await runCostTotalsForPeriod(.rolling5h, now: now)
-        let runCostTotals7d = await runCostTotalsForPeriod(.rolling7d, now: now)
+        let runCostTotals5h = totalsByPeriod[SmartHubTimePeriod.rolling5h.rawValue] ?? [:]
+        let runCostTotals7d = totalsByPeriod[SmartHubTimePeriod.rolling7d.rawValue] ?? [:]
         let burnProviders = burnProviders(
             period: period,
             runCostTotals: runCostTotals,
@@ -591,19 +652,6 @@ final class SmartHubBridgeController {
             headerTimestamp: headerTimestamp,
             headerStatus: providers.isEmpty ? "" : "live provider pressure"
         )
-    }
-
-    /// Pulls per-provider run/cost totals for the dashboard's active time
-    /// period. Wrapped in a try? — the bridge can render without footer
-    /// metrics if the DB read fails, so we don't take the whole pipeline
-    /// down on a transient SQLite blip.
-    private func runCostTotalsForPeriod(
-        _ period: SmartHubTimePeriod,
-        now: Date
-    ) async -> [AgentProvider: ProviderRunCostTotals] {
-        guard let dataStore else { return [:] }
-        let range = Self.dateRange(for: period, now: now)
-        return (try? await dataStore.providerRunCostTotals(in: range)) ?? [:] // try?-ok(display metric, empty fallback)
     }
 
     /// Iterate the providers OpenBurnBar tracks; for each, populate a

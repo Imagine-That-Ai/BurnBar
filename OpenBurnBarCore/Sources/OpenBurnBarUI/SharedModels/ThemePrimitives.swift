@@ -113,6 +113,59 @@ public enum DashboardLayout: String, CaseIterable, Codable, Sendable {
     }
 }
 
+// MARK: - Dashboard Launch Surface
+
+/// Which screen the dashboard window opens on.
+///
+/// The route itself is deliberately **not** persisted — `DashboardMainRoute`
+/// carries associated values so it is not `RawRepresentable`, the dashboard is
+/// an AppKit `NSWindow` (so `@SceneStorage` is unavailable), and "restore last
+/// route" would mean a user who ended yesterday in Session Logs never sees the
+/// home again. This is the honest opt-out instead: a two-value preference.
+///
+/// Read through ``current`` from `UserDefaults.standard` rather than through
+/// `SettingsManager`, mirroring ``DashboardLayout/current``, so a `@State`
+/// initializer can consult it without depending on singleton init ordering.
+public enum DashboardLaunchSurface: String, CaseIterable, Codable, Sendable {
+    /// The AI Inbox with the live fleet + quota rail. The default.
+    case home
+    /// The legacy spend-first overview, rendered through the active
+    /// ``DashboardLayout`` concept.
+    case overview
+
+    /// `UserDefaults` / `@AppStorage` key.
+    public static let storageKey = "dashboardLaunchSurface"
+
+    /// The currently-selected launch surface, read live from
+    /// `UserDefaults.standard`. Defaults to ``home`` when unset.
+    public static var current: DashboardLaunchSurface {
+        guard let raw = UserDefaults.standard.string(forKey: storageKey),
+              let surface = DashboardLaunchSurface(rawValue: raw) else { return .home }
+        return surface
+    }
+
+    public var displayName: String {
+        switch self {
+        case .home:     return "Home"
+        case .overview: return "Overview"
+        }
+    }
+
+    public var symbolName: String {
+        switch self {
+        case .home:     return "house"
+        case .overview: return "chart.bar.xaxis"
+        }
+    }
+
+    public var explanation: String {
+        switch self {
+        case .home:     return "Opens on the inbox, with your fleet and quota beside it."
+        case .overview: return "Opens on the spend overview in your chosen layout."
+        }
+    }
+}
+
 // MARK: - Hex Color Helpers
 
 public extension Color {

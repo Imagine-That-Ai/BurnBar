@@ -2,6 +2,24 @@ import XCTest
 @testable import OpenBurnBarCore
 
 final class BurnBarContractsToolBridgeTests: XCTestCase {
+    func testRunPollRequestDecodesLegacyPayloadWithoutLimit() throws {
+        let payload = Data(
+            """
+            {
+              "clientID": "client-1",
+              "sessionID": "session-1"
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(BurnBarRunPollRequest.self, from: payload)
+
+        XCTAssertEqual(decoded.clientID, BurnBarClientID(rawValue: "client-1"))
+        XCTAssertEqual(decoded.sessionID, BurnBarSessionID(rawValue: "session-1"))
+        XCTAssertNil(decoded.runID)
+        XCTAssertEqual(decoded.limit, 50)
+    }
+
     func testToolExecutionRequestRoundTripCodable() throws {
         let original = BurnBarToolExecutionRequest(
             clientID: BurnBarClientID(rawValue: "client-1"),

@@ -2,6 +2,7 @@ import XCTest
 import SwiftUI
 import ViewInspector
 import GRDB
+import OpenBurnBarCore
 @testable import OpenBurnBar
 
 // MARK: - DashboardViewIntegrationTests
@@ -38,7 +39,21 @@ final class DashboardViewIntegrationTests: XCTestCase {
         return DashboardView(context: context)
     }
 
-    func test_initialRouteIsOverview() throws {
+    /// The window opens on Home: the inbox is the only surface that turns the
+    /// fleet/quota signals into a next move, so it is the launch destination.
+    /// Users who prefer the spend-first landing flip
+    /// `AppearanceSettings.dashboardLaunchSurface`.
+    func test_initialRouteIsHome() throws {
+        UserDefaults.standard.removeObject(forKey: DashboardLaunchSurface.storageKey)
+        let view = try makeDashboardView()
+        XCTAssertEqual(view.mainRoute, .home)
+    }
+
+    func test_launchSurfacePreferenceSelectsTheRoute() throws {
+        UserDefaults.standard.set(DashboardLaunchSurface.overview.rawValue,
+                                  forKey: DashboardLaunchSurface.storageKey)
+        defer { UserDefaults.standard.removeObject(forKey: DashboardLaunchSurface.storageKey) }
+
         let view = try makeDashboardView()
         XCTAssertEqual(view.mainRoute, .overview)
     }
@@ -48,14 +63,15 @@ final class DashboardViewIntegrationTests: XCTestCase {
         XCTAssertEqual(view.routeHistory, [])
     }
 
-    func test_canGoBackIsFalseOnOverview() throws {
+    func test_canGoBackIsFalseOnHome() throws {
+        UserDefaults.standard.removeObject(forKey: DashboardLaunchSurface.storageKey)
         let view = try makeDashboardView()
-        XCTAssertFalse(view.canGoBack)
+        XCTAssertFalse(view.canGoBack, "Home is the root, so the back button must be inert there")
     }
 
-    func test_backButtonHelpTextOnOverview() throws {
+    func test_backButtonHelpTextOnHome() throws {
         let view = try makeDashboardView()
-        XCTAssertEqual(view.backButtonHelpText, "Back to Overview")
+        XCTAssertEqual(view.backButtonHelpText, "Back to Home")
     }
 
     func test_settingsSheetStartsClosed() throws {
@@ -79,6 +95,7 @@ final class DashboardViewIntegrationTests: XCTestCase {
 
     func test_routeTitleMapping() throws {
         let view = try makeDashboardView()
+        XCTAssertEqual(view.routeTitle(.home), "Home")
         XCTAssertEqual(view.routeTitle(.overview), "Overview")
         XCTAssertEqual(view.routeTitle(.chat), "Chat")
         XCTAssertEqual(view.routeTitle(.database), "Database")

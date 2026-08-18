@@ -1,4 +1,7 @@
+import { realpathSync } from 'node:fs';
 import * as path from 'node:path';
+import { tmpdir } from 'node:os';
+import { fileURLToPath } from 'node:url';
 
 import * as vscode from 'vscode';
 
@@ -64,6 +67,12 @@ export interface BurnBarWorkspaceApi {
   joinPath(base: BurnBarWorkspaceUri, ...paths: string[]): BurnBarWorkspaceUri;
 }
 
+interface CursorSmokeWorkspaceEditConfiguration {
+  autoConfirm?: boolean;
+  outputPath?: string;
+  filePath?: string;
+}
+
 export function createBurnBarWorkspaceApi(hostKind: BurnBarWorkspaceHostKind): BurnBarWorkspaceApi {
   return {
     hostKind,
@@ -80,6 +89,22 @@ export function createBurnBarWorkspaceApi(hostKind: BurnBarWorkspaceHostKind): B
     createRange: (startLine, startCharacter, endLine, endCharacter) =>
       new vscode.Range(startLine, startCharacter, endLine, endCharacter),
     confirmWorkspaceEdit: async (changes, changedFiles) => {
+      const smokeConfig =
+        typeof vscode.workspace.getConfiguration === 'function' ? vscode.workspace.getConfiguration() : undefined;
+      const smokeConfiguration = {
+        autoConfirm: smokeConfig?.get<boolean>('openburnbar.cursorSmoke.autoConfirm'),
+        outputPath: smokeConfig?.get<string>('openburnbar.cursorSmoke.outputPath'),
+        filePath: smokeConfig?.get<string>('openburnbar.cursorSmoke.filePath')
+      };
+      const autoConfirmAllowed = isCursorSmokeWorkspaceEditAutoConfirmAllowed(
+        changes,
+        changedFiles,
+        process.env,
+        smokeConfiguration
+      );
+      if (autoConfirmAllowed) {
+        return true;
+      }
       const selection = await vscode.window.showWarningMessage(
         'OpenBurnBar wants to edit workspace files.',
         {
@@ -106,6 +131,89 @@ export function createBurnBarWorkspaceApi(hostKind: BurnBarWorkspaceHostKind): B
     fileUri: (value) => vscode.Uri.file(value),
     joinPath: (base, ...segments) => vscode.Uri.joinPath(toVSCodeUri(base), ...segments)
   };
+}
+
+export function isCursorSmokeWorkspaceEditAutoConfirmAllowed(
+  changes: readonly OpenBurnBarApplyPatchChange[],
+  changedFiles: readonly string[],
+  env: Record<string, string | undefined> = process.env,
+  config: CursorSmokeWorkspaceEditConfiguration = {},
+  approvedTempRoots: readonly string[] = cursorSmokeTempRoots()
+): boolean {
+  const autoConfirm = env.BURNBAR_CURSOR_SMOKE_AUTO_CONFIRM;
+  const isAutoConfirmEnabled = autoConfirm === undefined ? config.autoConfirm === true : autoConfirm === '1';
+  if (!isAutoConfirmEnabled || changes.length !== 1 || changedFiles.length !== 1) {
+    return false;
+  }
+
+  const outputPath = env.BURNBAR_CURSOR_SMOKE_OUTPUT?.trim() || config.outputPath?.trim();
+  const targetPath = env.BURNBAR_CURSOR_SMOKE_FILE_PATH?.trim() || config.filePath?.trim();
+  const changePath = changes[0]?.path;
+  const changedFile = changedFiles[0];
+  if (
+    !outputPath ||
+    !targetPath ||
+    !changePath ||
+    !changedFile ||
+    !path.isAbsolute(outputPath) ||
+    !path.isAbsolute(targetPath)
+  ) {
+    return false;
+  }
+
+  const resolvedOutputRoot = path.dirname(path.resolve(outputPath));
+  const outputRootIsApproved = approvedTempRoots.some((root) =>
+    isStrictPathDescendant(canonicalizePath(resolvedOutputRoot), canonicalizePath(root))
+  );
+  const resolvedTarget = path.resolve(targetPath);
+  const targetRelativeToOutput = path.relative(resolvedOutputRoot, resolvedTarget);
+  if (
+    !outputRootIsApproved ||
+    targetRelativeToOutput === '' ||
+    targetRelativeToOutput.startsWith('..') ||
+    path.isAbsolute(targetRelativeToOutput) ||
+    path.resolve(changePath) !== resolvedTarget
+  ) {
+    return false;
+  }
+
+  try {
+    const resolvedChangedFile = changedFile.startsWith('file:')
+      ? path.resolve(fileURLToPath(changedFile))
+      : path.resolve(changedFile);
+    return resolvedChangedFile === resolvedTarget;
+  } catch {
+    return false;
+  }
+}
+
+function cursorSmokeTempRoots(): readonly string[] {
+  if (process.platform === 'win32') {
+    return [tmpdir()];
+  }
+  return process.platform === 'darwin' ? [tmpdir(), '/tmp', '/private/tmp'] : [tmpdir(), '/tmp'];
+}
+
+function canonicalizePath(value: string): string {
+  const resolved = path.resolve(value);
+  try {
+    return realpathSync(resolved);
+  } catch {
+    const parent = path.dirname(resolved);
+    if (parent === resolved) {
+      return resolved;
+    }
+    try {
+      return path.join(realpathSync(parent), path.basename(resolved));
+    } catch {
+      return resolved;
+    }
+  }
+}
+
+function isStrictPathDescendant(candidate: string, root: string): boolean {
+  const relative = path.relative(root, candidate);
+  return relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative);
 }
 
 function summarizeWorkspaceEdit(

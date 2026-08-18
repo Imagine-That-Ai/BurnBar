@@ -4,8 +4,49 @@ import OpenBurnBarCore
 
 // MARK: - ConversationStore
 
+/// Lightweight conversation projection for the daemon's controller-activity
+/// snapshot. The snapshot needs project/session identity, recency, and summary
+/// metadata, but never transcript bodies, assistant-message bodies, key-file
+/// arrays, or sync state.
+///
+/// Keeping this separate from `ConversationRecord` makes it impossible for the
+/// background health path to accidentally materialize multi-gigabyte transcript
+/// payloads just to refresh project activity.
+struct ConversationActivitySummary: Equatable, Sendable {
+    let id: String
+    let sessionId: String
+    let projectName: String
+    let startTime: Date?
+    let endTime: Date?
+    let indexedAt: Date
+    let inferredTaskTitle: String
+    let summary: String?
+    let summaryTitle: String?
+}
+
+/// Small revision marker used by projection gap repair.
+///
+/// Gap repair runs whenever the projection queue is quiet. Loading full
+/// `ConversationRecord` rows there decrypts transcript overflow pages even
+/// when the search document is already current. The cached hash handles normal
+/// writes exactly; the dates are the compatibility fallback for legacy rows.
+struct ConversationProjectionRevision: Equatable, Sendable {
+    let id: String
+    let startTime: Date?
+    let endTime: Date?
+    let indexedAt: Date
+    let fileModifiedAt: Date?
+    let contentHash: String?
+
+    var sourceUpdatedAt: Date {
+        endTime ?? startTime ?? fileModifiedAt ?? indexedAt
+    }
+}
+
 /// Conversations, chat messages, FTS search, session logs, and CLI conversation helpers.
 final class ConversationStore: Sendable {
+    static let projectionHashCacheKeyPrefix = "projection.conversation.content-hash:"
+
     let dbQueue: any DatabaseWriter
 
     init(dbQueue: any DatabaseWriter) {
@@ -19,6 +60,53 @@ final class ConversationStore: Sendable {
             return nil
         }
         return conversation(from: row)
+    }
+
+    static func projectionHashCacheKey(conversationID: String) -> String {
+        projectionHashCacheKeyPrefix + conversationID
+    }
+
+    static func encodeProjectionContentHash(_ contentHash: String) throws -> String {
+        let data = try JSONEncoder().encode(contentHash)
+        guard let payload = String(data: data, encoding: .utf8) else {
+            throw NSError(
+                domain: "OpenBurnBar.ConversationProjectionRevision",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Projection content hash could not be encoded as UTF-8."]
+            )
+        }
+        return payload
+    }
+
+    static func decodeProjectionContentHash(_ payload: String?) -> String? {
+        guard let payload,
+              let data = payload.data(using: .utf8) else {
+            return nil
+        }
+        // try?-ok(legacy/foreign payloads decode to nil; callers treat nil as "no hash")
+        return try? JSONDecoder().decode(String.self, from: data)
+    }
+
+    static func upsertProjectionContentHash(
+        conversationID: String,
+        contentHash: String,
+        updatedAt: Date,
+        db: Database
+    ) throws {
+        try db.execute(
+            sql: """
+            INSERT INTO controller_runtime_cache (cacheKey, payloadJSON, updatedAt)
+            VALUES (?, ?, ?)
+            ON CONFLICT(cacheKey) DO UPDATE SET
+                payloadJSON = excluded.payloadJSON,
+                updatedAt = excluded.updatedAt
+            """,
+            arguments: [
+                projectionHashCacheKey(conversationID: conversationID),
+                try encodeProjectionContentHash(contentHash),
+                updatedAt
+            ]
+        )
     }
 
     static func conversation(from row: Row) -> OpenBurnBarCore.ConversationRecord? {

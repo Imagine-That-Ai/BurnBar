@@ -333,6 +333,7 @@ export interface BurnBarRunPollRequest {
   clientID: string;
   sessionID: string;
   runID?: string;
+  limit: number;
 }
 
 export interface BurnBarRunEventBatch {

@@ -224,6 +224,40 @@ extension BurnBarMissionControlServiceTests {
         )
     }
 
+    func project(slug: String, revision: Int) -> BurnBarReviewProjectSnapshot {
+        BurnBarReviewProjectSnapshot(
+            id: "project-\(slug)",
+            projectSlug: slug,
+            displayName: "\(slug.capitalized) revision \(revision)",
+            summary: "Native OpenBurnBar mission-control test project revision \(revision).",
+            status: .healthy,
+            preferredCadence: .daily,
+            freshness: .provisional,
+            pendingQuestionCount: 0,
+            openFollowupCount: 0,
+            activeMissionCount: 0,
+            needsOperatorAttention: false
+        )
+    }
+
+    func projectUpsertEvent(
+        id: String,
+        sequence: Int,
+        recordedAt: Date,
+        project: BurnBarReviewProjectSnapshot
+    ) throws -> BurnBarControllerEvent {
+        BurnBarControllerEvent(
+            id: BurnBarControllerEventID(rawValue: id),
+            family: .controller,
+            eventType: "project_upserted",
+            projectSlug: project.projectSlug,
+            recordedAt: recordedAt,
+            sequence: sequence,
+            summary: project.displayName,
+            metadata: ["payload": try BurnBarJSONValue.fromEncodable(project)]
+        )
+    }
+
     func boolValue(_ value: BurnBarJSONValue?) -> Bool? {
         guard case .bool(let rawValue)? = value else { return nil }
         return rawValue

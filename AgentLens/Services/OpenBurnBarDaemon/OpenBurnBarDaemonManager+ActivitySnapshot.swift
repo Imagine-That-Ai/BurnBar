@@ -11,6 +11,21 @@ extension OpenBurnBarDaemonManager {
     private static let controllerActivityConversationLimit = 10_000
 
     func exportControllerActivitySnapshot() async {
+        if let existingTask = controllerActivitySnapshotExportTask {
+            await existingTask.value
+            return
+        }
+
+        let task = Task<Void, Never> { @MainActor [weak self] in
+            guard let self else { return }
+            await self.performControllerActivitySnapshotExport()
+        }
+        controllerActivitySnapshotExportTask = task
+        await task.value
+        controllerActivitySnapshotExportTask = nil
+    }
+
+    private func performControllerActivitySnapshotExport() async {
         guard let dataStore else { return }
 
         do {
@@ -45,13 +60,19 @@ extension OpenBurnBarDaemonManager {
         // nested filter × slug implementation was O(projects × conversations)
         // and froze the UI when refreshHealth ran during dashboard open with a
         // large history (up to 10k conversations).
-        let conversations = try await dataStore.fetchConversations(limit: Self.controllerActivityConversationLimit)
-        let start = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date().addingTimeInterval(-7 * 24 * 60 * 60)
-        // Yield so a concurrent Settings navigation can paint before we filter
-        // the in-memory usage cache on the main actor.
-        await Task.yield()
-        let recentUsages = dataStore.usages(in: start...Date())
         let generatedAt = Date()
+        let conversations = try await dataStore.fetchConversationActivitySummaries(
+            limit: Self.controllerActivityConversationLimit
+        )
+        let start = Calendar.current.date(byAdding: .day, value: -7, to: generatedAt)
+            ?? generatedAt.addingTimeInterval(-7 * 24 * 60 * 60)
+        // Controller activity is background state, so read its exact bounded
+        // window directly from the indexed ledger instead of depending on the
+        // dashboard's demand-loaded presentation cache.
+        let recentUsages = try await dataStore.fetchUsage(
+            startingIn: start..<generatedAt,
+            limit: Int.max
+        )
 
         return await Task.detached(priority: .utility) {
             Self.buildControllerActivitySnapshot(
@@ -64,13 +85,13 @@ extension OpenBurnBarDaemonManager {
 
     /// Pure O(n) assembly: slug each row once, group once, emit projects.
     nonisolated static func buildControllerActivitySnapshot(
-        conversations: [OpenBurnBarCore.ConversationRecord],
+        conversations: [ConversationActivitySummary],
         recentUsages: [TokenUsage],
         generatedAt: Date = Date()
     ) -> BurnBarControllerActivitySnapshot {
         struct ConversationBucket {
             var displayName: String
-            var conversations: [OpenBurnBarCore.ConversationRecord] = []
+            var conversations: [ConversationActivitySummary] = []
         }
         struct UsageBucket {
             var usages: [TokenUsage] = []
@@ -155,37 +176,40 @@ extension OpenBurnBarDaemonManager {
         return "\(token.prefix(4))…\(token.suffix(4))"
     }
 
-    /// Single-pass slug: alphanumeric kept, everything else collapses to `-`.
-    /// Avoids the previous `map` + `replacingOccurrences("--")` allocation path
-    /// that dominated CPU when called millions of times from the nested filter.
+    /// Single-pass daemon-safe slug: ASCII alphanumerics are kept, every other
+    /// run collapses to `-`, and the result stays within Mission Control's
+    /// 96-byte identifier limit. Punctuation-only and non-ASCII-only names are
+    /// not projects; returning an empty slug keeps them out of the derived
+    /// activity snapshot instead of making every controller RPC reject it.
     nonisolated static func slug(for projectName: String) -> String {
         let trimmed = projectName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return "" }
 
+        let maxSlugBytes = 96
         var result = String()
-        result.reserveCapacity(trimmed.utf8.count)
+        result.reserveCapacity(min(trimmed.utf8.count, maxSlugBytes))
         var pendingHyphen = false
-        var didWrite = false
         for scalar in trimmed.lowercased().unicodeScalars {
-            if CharacterSet.alphanumerics.contains(scalar) {
-                if pendingHyphen && didWrite {
+            let value = scalar.value
+            let isASCIIDigit = value >= 48 && value <= 57
+            let isASCIILowercaseLetter = value >= 97 && value <= 122
+            if isASCIIDigit || isASCIILowercaseLetter {
+                if pendingHyphen && !result.isEmpty {
+                    guard result.utf8.count + 2 <= maxSlugBytes else { break }
                     result.append("-")
                 }
+                guard result.utf8.count < maxSlugBytes else { break }
                 result.unicodeScalars.append(scalar)
                 pendingHyphen = false
-                didWrite = true
-            } else {
+            } else if !result.isEmpty {
                 pendingHyphen = true
             }
         }
 
-        if result.isEmpty {
-            return trimmed.lowercased().replacingOccurrences(of: " ", with: "-")
-        }
         return result
     }
 
-    nonisolated static func activityDate(for conversation: OpenBurnBarCore.ConversationRecord) -> Date {
+    nonisolated static func activityDate(for conversation: ConversationActivitySummary) -> Date {
         conversation.endTime ?? conversation.startTime ?? conversation.indexedAt
     }
 }

@@ -104,7 +104,7 @@ for (const collection of ["pi_agent_pairings", "pi_agent_audit_events"]) {
   assert.notEqual(start, -1, "pi_agent_connections rules block must exist");
   const block = rules.slice(start, rules.indexOf("\n    }\n", start) + 7);
   assert.match(block, /allow create: if piRelayConnectionWrite\(userId, connectionId\);/);
-  assert.match(block, /allow update: if piRelayConnectionWrite\(userId, connectionId\) && resource\.data\.mode == "relayLink";/);
+  assert.match(block, /allow update: if piRelayConnectionWrite\(userId, connectionId\)\s+&& request\.resource\.data\.mode == "relayLink"\s+&& resource\.data\.mode == "relayLink";/);
   const relayConnection = firestoreFunctionBlock(rules, "piRelayConnectionWrite");
   assert.match(relayConnection, /let d = request\.resource\.data;/);
   assert.match(relayConnection, /d\.mode == "relayLink"/);

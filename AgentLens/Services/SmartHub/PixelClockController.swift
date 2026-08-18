@@ -358,11 +358,9 @@ final class PixelClockController {
             }
         }
 
-        // Input poll runs at 400 ms cadence when /api/stats returns an AWTRIX
-        // app name, so hardware-button sentinels are consumed immediately even
-        // if a stale probe status still says unreachable. Nil app names back
-        // off to one second, which keeps stock Ulanzi firmware and offline
-        // clocks from pegging the network.
+        // A one-second healthy poll keeps hardware-button sentinels responsive
+        // without maintaining the former 400 ms HTTP hot loop. Nil app names
+        // back off further so stock firmware and offline clocks stay quiet.
         inputTask = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
@@ -383,8 +381,10 @@ final class PixelClockController {
                     self.updateProbeStatus(.awtrixReady)
                 }
                 await self.inputController?.ingest(currentAppName: appName, config: config)
-                let sleep = appName == nil ? 1_000_000_000 : 400_000_000
-                try? await Task.sleep(nanoseconds: UInt64(sleep)) // try?-ok(sleep cancellation)
+                // try?-ok(sleep cancellation)
+                try? await Task.sleep(
+                    nanoseconds: Self.inputPollNanoseconds(hasAppName: appName != nil)
+                )
             }
         }
 
@@ -886,6 +886,10 @@ final class PixelClockController {
         }
     }
 
+    static func inputPollNanoseconds(hasAppName: Bool) -> UInt64 {
+        hasAppName ? 1_000_000_000 : 2_000_000_000
+    }
+
     private func offlineInputPollNanoseconds() -> UInt64 {
         let exponent = Double(min(max(consecutivePushFailures - 1, 0), 4))
         let seconds = max(5.0, min(pow(2.0, exponent) * 5.0, 60.0))
@@ -929,8 +933,13 @@ final class PixelClockController {
         return false
     }
 
-    private func resolveReachablePixelClockConfig() async -> AWTRIXClient.DiscoveryResult {
-        let discovery = await client.discover(config: settingsManager.pixelClockConfig)
+    private func resolveReachablePixelClockConfig(
+        scope: AWTRIXClient.DiscoveryScope = .fullSubnet
+    ) async -> AWTRIXClient.DiscoveryResult {
+        let discovery = await client.discover(
+            config: settingsManager.pixelClockConfig,
+            scope: scope
+        )
         var config = discovery.config
         config.lastProbeStatus = discovery.probe.status
         config.updatedAt = Date()
@@ -943,7 +952,7 @@ final class PixelClockController {
         let discoveryCooldown: TimeInterval = 90
         if forceFullDiscovery || now.timeIntervalSince(lastBackgroundDiscoverySweepAt) >= discoveryCooldown {
             lastBackgroundDiscoverySweepAt = now
-            return await resolveReachablePixelClockConfig()
+            return await resolveReachablePixelClockConfig(scope: .configuredAndBonjour)
         }
         return await resolveConfiguredPixelClockConfig()
     }

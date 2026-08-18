@@ -20,6 +20,19 @@ final class AWTRIXClientTests: XCTestCase {
         try await super.tearDown()
     }
 
+    func testDefaultLocalDeviceSessionDoesNotUseSharedDiskCacheOrCookies() {
+        let localSession = AWTRIXClient.makeLocalDeviceSession()
+        defer { localSession.invalidateAndCancel() }
+
+        XCTAssertNil(localSession.configuration.urlCache)
+        XCTAssertNil(localSession.configuration.httpCookieStorage)
+        XCTAssertFalse(localSession.configuration.httpShouldSetCookies)
+        XCTAssertEqual(
+            localSession.configuration.requestCachePolicy,
+            .reloadIgnoringLocalAndRemoteCacheData
+        )
+    }
+
     func testProbeReturnsAWTRIXReadyWhenStatsEndpointReturnsAWTRIXJSON() async {
         AWTRIXStubURLProtocol.handler = { request in
             XCTAssertEqual(request.url?.absoluteString, "http://192.168.68.92/api/stats")
@@ -166,6 +179,39 @@ final class AWTRIXClientTests: XCTestCase {
 
         XCTAssertEqual(result.config.host, "192.168.68.92")
         XCTAssertEqual(result.probe.status, .awtrixReady)
+    }
+
+    func testConfiguredAndBonjourDiscoveryDoesNotScanExplicitSubnetCandidates() async {
+        var requestedHosts = Set<String>()
+        AWTRIXStubURLProtocol.handler = { request in
+            if let host = request.url?.host {
+                requestedHosts.insert(host)
+            }
+            throw URLError(.cannotConnectToHost)
+        }
+
+        let config = PixelClockConfig(enabled: true, host: "192.168.68.40", port: 80)
+        let result = await AWTRIXClient(session: session).discover(
+            config: config,
+            candidateHosts: ["192.168.68.41", "192.168.68.42"],
+            candidatePorts: [80],
+            scope: .configuredAndBonjour
+        )
+
+        XCTAssertEqual(requestedHosts, [config.host])
+        XCTAssertEqual(result.config.host, config.host)
+        XCTAssertEqual(result.probe.status, .unreachable)
+    }
+
+    func testPixelClockInputPollingUsesBoundedOneSecondHealthyCadence() {
+        XCTAssertEqual(
+            PixelClockController.inputPollNanoseconds(hasAppName: true),
+            1_000_000_000
+        )
+        XCTAssertEqual(
+            PixelClockController.inputPollNanoseconds(hasAppName: false),
+            2_000_000_000
+        )
     }
 
     func testProbeIdentifiesStockUlanziFirmwareWhenStatsFailsAndRootLooksStock() async {

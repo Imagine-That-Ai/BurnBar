@@ -1,0 +1,145 @@
+/**
+ * Do not edit directly, this file was auto-generated.
+ */
+
+:root {
+  --color-macos-bg: #0d1117; /** Aurora dark canvas — GitHub/Xcode cool slate */
+  --color-macos-surface: #161b22;
+  --color-macos-surface-elevated: #1f2630;
+  --color-macos-surface-muted: #1b202a;
+  --color-macos-border: #30363d;
+  --color-macos-border-subtle: #21262d;
+  --color-macos-text: #e6edf3;
+  --color-macos-text-secondary: #8b949e;
+  --color-macos-text-muted: #6e7681;
+  --color-macos-ember: #fa5053; /** primary accent (dark) — macOS DesignSystem.Colors.ember */
+  --color-macos-amber: #ffa800;
+  --color-macos-blaze: #e86100;
+  --color-macos-whimsy: #8b7fe8; /** violet contrast accent */
+  --color-macos-success: #38d898;
+  --color-macos-warning: #ffa800;
+  --color-macos-error: #fa5053;
+  --color-macos-hermes-mercury: #c8bfb5;
+  --color-macos-hermes-aureate: #d4aa3c;
+  --color-macos-chat-user-stroke: #8b7fe8;
+  --color-macos-chat-assistant-stroke: #fa5053;
+  --color-macos-frost: #6fc2ff; /** cooling/Quit spectrum (dark) */
+  --color-macos-glacier: #4d9bf5;
+  --color-macos-abyss: #12294d;
+  --color-aurora-light-bg: #f3e8e6; /** Aurora light canvas — coral dust */
+  --color-aurora-light-surface: #faf5f2;
+  --color-aurora-light-surface-elevated: #fdf8f5;
+  --color-aurora-light-surface-muted: #f2e0da;
+  --color-aurora-light-border: #e8bfb5;
+  --color-aurora-light-border-subtle: #f2e0da;
+  --color-aurora-light-text: #2a1816;
+  --color-aurora-light-text-secondary: #6e4e48;
+  --color-aurora-light-text-muted: #9a756d;
+  --color-aurora-light-ember: #f45b69; /** primary accent (light) */
+  --color-aurora-light-amber: #f28c38;
+  --color-aurora-light-blaze: #e86100;
+  --color-aurora-light-whimsy: #6a5acd;
+  --color-aurora-light-success: #3a7835;
+  --color-aurora-light-warning: #c47800;
+  --color-aurora-light-error: #d43030;
+  --color-aurora-light-hermes-mercury: #aea69c;
+  --color-aurora-light-hermes-aureate: #b8942e;
+  --color-ink-void: #050508; /** absolute canvas base */
+  --color-ink-base: #0a0a0e;
+  --color-ink-elevated: #12121a;
+  --color-ink-furnace: #180805; /** deep molten red-black, brand furnace core */
+  --color-mercury-bright: #f4f6fb; /** the basin substance — cool silver, the only true bright */
+  --color-mercury-core: #c7cfdd;
+  --color-mercury-deep: #8b94a8;
+  --color-mercury-wash: rgba(199, 207, 221, 0.06);
+  --color-brass-core: #fa6b06; /** brand ember/fire — owned/keys/CTA warmth */
+  --color-brass-bright: #fdc42c; /** brand gold highlight */
+  --color-brass-deep: #ee1803; /** brand deep red */
+  --color-brass-glow: rgba(250, 107, 6, 0.4);
+  --color-frost-veil: rgba(199, 207, 221, 0.1); /** sealed/etched-glass overlay — what the server sees */
+  --color-frost-line: rgba(255, 255, 255, 0.1);
+  --color-seal-crimson: #c5221f; /** DESTRUCTIVE ONLY — breaking a wax seal (delete/siphon) */
+  --color-glass-bg: rgba(10, 10, 15, 0.5);
+  --color-glass-bg-elevated: rgba(18, 18, 26, 0.62);
+  --color-glass-line: rgba(255, 255, 255, 0.08);
+  --color-glass-line-bright: rgba(255, 255, 255, 0.15);
+  --color-text-bright: #ffffff;
+  --color-text-base: rgba(255, 255, 255, 0.85);
+  --color-text-mute: rgba(255, 255, 255, 0.55);
+  --color-text-dim: rgba(255, 255, 255, 0.35);
+  --color-tier-server-readable: #fdc42c; /** amber — server can read (operational telemetry) */
+  --color-tier-zero-access: #8b94a8; /** steel — encrypted at rest, key under your device trust */
+  --color-tier-end-to-end: #3cd6c0; /** teal-silver — only your devices can read; the hero tier */
+  --glass-tint-base: rgba(22, 27, 34, 0.48); /** surface @48% — toolbar/panel plate */
+  --glass-tint-elevated: rgba(31, 38, 48, 0.55); /** surfaceElevated @55% — card plate */
+  --glass-tint-sunken: rgba(13, 17, 23, 0.42); /** bg @42% — input/inset plate */
+  --glass-tint-clear: rgba(22, 27, 34, 0.28); /** surface @28% — pill plate */
+  --glass-tint-interactive: rgba(31, 38, 48, 0.38); /** surfaceElevated @38% — clickable glass */
+  --glass-light-tint-base: rgba(250, 245, 242, 0.72); /** Aurora light surface plate */
+  --glass-light-tint-elevated: rgba(253, 248, 245, 0.8); /** Aurora light elevated card plate */
+  --glass-stroke-base: rgba(48, 54, 61, 0.65); /** border @65% */
+  --glass-stroke-bright: rgba(255, 255, 255, 0.18);
+  --glass-stroke-frost: rgba(255, 255, 255, 0.12);
+  --glass-stroke-light-base: rgba(232, 191, 181, 0.65); /** Aurora light border @65% */
+  --glass-stroke-light-frost: rgba(255, 255, 255, 0.5);
+  --glass-inner-light: rgba(255, 255, 255, 0.12); /** inset 0 1px 0 top hairline highlight on every plate */
+  --glass-inner-glow: rgba(200, 191, 181, 0.14); /** hermes-mercury top glow */
+  --glass-specular-white: rgba(255, 255, 255, 0.1); /** 155deg specular sweep start */
+  --glass-specular-ember: rgba(250, 80, 83, 0.03); /** 155deg specular sweep end */
+  --glass-sheen-dark-from: rgba(255, 255, 255, 0.08); /** GlassCard sheen (dark): white@8% */
+  --glass-sheen-dark-to: rgba(250, 80, 83, 0.02); /** GlassCard sheen (dark): ember@2% */
+  --glass-sheen-light-from: rgba(244, 91, 105, 0.07); /** GlassCard sheen (light): ember@7% */
+  --glass-sheen-light-to: rgba(232, 97, 0, 0.05); /** GlassCard sheen (light): blaze@4.5% */
+  --glass-edge-light: rgba(255, 255, 255, 0.18); /** luminous edge start: white@18% */
+  --glass-edge-dark-border: rgba(48, 54, 61, 0.45); /** luminous edge end (dark): border@45% */
+  --glass-edge-light-border: rgba(232, 191, 181, 0.45); /** luminous edge end (light): border@45% */
+  --glass-shadow-sm: rgba(0, 0, 0, 0.32);
+  --glass-shadow-md: rgba(0, 0, 0, 0.38);
+  --glass-shadow-lg: rgba(0, 0, 0, 0.44);
+  --glass-scrim: #0d1117; /** LiquidGlassWindowBlend scrim base color */
+  --glass-input-focus-ring: rgba(250, 80, 83, 0.45); /** ember @45% focus border */
+  --glass-input-focus-glow: rgba(250, 80, 83, 0.22); /** ember @22% outer focus glow */
+  --glass-alert-info: rgba(56, 216, 152, 0.1); /** success @10% over elevated */
+  --glass-alert-warning: rgba(255, 168, 0, 0.1); /** amber @10% over elevated */
+  --glass-alert-error: rgba(250, 80, 83, 0.1); /** ember @10% over elevated */
+  --glass-selection-fill: rgba(250, 80, 83, 0.08); /** sidebar/nav selected: ember @8% */
+  --glass-selection-stroke: rgba(250, 80, 83, 0.3); /** sidebar/nav selected: ember @30% */
+  --glass-blur-sm: 12px;
+  --glass-blur-md: 22px;
+  --glass-blur-lg: 32px;
+  --glass-blur-xl: 40px;
+  --glass-saturate-standard: 1.65;
+  --glass-saturate-high: 1.85;
+  --radius-xs: 6px; /** segmented-picker selected segment */
+  --radius-xl: 22px; /** popover window / dashboard top corners */
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-pill: 999px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+  --space-xxs: 2px;
+  --type-size-display-large: 36px; /** bold */
+  --type-size-display: 28px; /** bold */
+  --type-size-title: 20px; /** semibold */
+  --type-size-headline: 16px; /** semibold */
+  --type-size-body: 14px; /** regular */
+  --type-size-caption: 12px; /** medium */
+  --type-size-tiny: 11px; /** medium */
+  --type-size-mono-large: 28px; /** bold */
+  --type-size-mono: 14px; /** medium */
+  --type-size-mono-small: 12px;
+  --type-size-mono-tiny: 11px;
+  --font-display: Outfit, 'Geist Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-body: 'Geist Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+  --font-arcane: 'Fraunces Variable', Georgia, serif; /** optional arcane accent for the basin hero label only */
+  --motion-swirl-seconds: 18; /** basin swirl loop period (still render under reduced-motion) */
+  --motion-frost-flip-ms: 520; /** yours <-> server view-flip frost sweep */
+  --motion-ease-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
+}

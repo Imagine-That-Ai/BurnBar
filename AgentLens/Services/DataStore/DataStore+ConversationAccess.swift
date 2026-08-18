@@ -40,6 +40,10 @@ extension DataStore {
         try await actor.conversationStore.fetchConversations(limit: limit)
     }
 
+    func fetchConversationActivitySummaries(limit: Int) async throws -> [ConversationActivitySummary] {
+        try await actor.conversationStore.fetchConversationActivitySummaries(limit: limit)
+    }
+
     nonisolated func fetchConversationsSynchronously(limit: Int = 500) throws -> [OpenBurnBarCore.ConversationRecord] {
         try actor.conversationStore.fetchConversationsSynchronously(limit: limit)
     }
@@ -53,6 +57,24 @@ extension DataStore {
     /// Used by gap repair to check if indexed content is stale.
     func fetchConversations(ids: [String]) async throws -> [OpenBurnBarCore.ConversationRecord] {
         try await actor.conversationStore.fetchConversations(ids: ids)
+    }
+
+    /// Lightweight first stage for projection gap repair. Full transcript rows
+    /// are fetched only for revisions that may be newer than their document.
+    func fetchConversationProjectionRevisions(
+        ids: [String]
+    ) async throws -> [ConversationProjectionRevision] {
+        try await actor.conversationStore.fetchConversationProjectionRevisions(ids: ids)
+    }
+
+    func cacheConversationProjectionHashesIfMissing(
+        _ contentHashesByID: [String: String],
+        updatedAt: Date
+    ) async throws {
+        try await actor.conversationStore.cacheConversationProjectionHashesIfMissing(
+            contentHashesByID,
+            updatedAt: updatedAt
+        )
     }
 
     /// Returns the set of IDs (from `ids`) that already exist in the

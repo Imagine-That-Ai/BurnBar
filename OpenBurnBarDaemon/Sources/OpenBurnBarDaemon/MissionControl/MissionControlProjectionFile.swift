@@ -14,6 +14,9 @@ struct BurnBarMissionControlProjectionFile: Codable, Sendable {
     var telegramUpdateOffset: Int?
     var transportErrors: [String: String]
     var notificationSecretMigrationVersion: Int?
+    /// Permanent project-identity tombstones. `nil` identifies a legacy
+    /// projection that must be rebuilt once from the journal.
+    var projectDeletionTombstones: [String: String]?
     var rebuiltAt: Date
 
     static func empty(now: Date = Date()) -> BurnBarMissionControlProjectionFile {
@@ -34,6 +37,7 @@ struct BurnBarMissionControlProjectionFile: Codable, Sendable {
             telegramUpdateOffset: nil,
             transportErrors: [:],
             notificationSecretMigrationVersion: BurnBarMissionControlStore.currentNotificationSecretMigrationVersion,
+            projectDeletionTombstones: [:],
             rebuiltAt: now
         )
     }

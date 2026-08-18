@@ -1,6 +1,10 @@
 import OpenBurnBarEngine
 import Foundation
 
+private enum MissionControlJournalReplayControl: Error {
+    case outOfOrder
+}
+
 struct MissionControlJournalRepository {
     let eventsFileURL: URL
     let projectionFileURL: URL
@@ -15,25 +19,69 @@ struct MissionControlJournalRepository {
     }
 
     func readEventsFromDisk(decoder: JSONDecoder) throws -> [BurnBarControllerEvent] {
+        var events: [BurnBarControllerEvent] = []
+        try forEachEventFromDisk(decoder: decoder) { event in
+            events.append(event)
+        }
+        return events
+    }
+
+    /// Replays directly from the journal when it is already in canonical
+    /// event order. Returns `false` at the first ordering violation so the
+    /// caller can reset its reducer and use the deterministic sorted fallback.
+    func replayEventsFromDiskIfOrdered(
+        decoder: JSONDecoder,
+        apply: (BurnBarControllerEvent) throws -> Void
+    ) throws -> Bool {
+        var previous: BurnBarControllerEvent?
+        do {
+            try forEachEventFromDisk(decoder: decoder) { event in
+                if let previous,
+                   MissionControlMissionStateMerger.eventSort(lhs: event, rhs: previous) {
+                    throw MissionControlJournalReplayControl.outOfOrder
+                }
+                try apply(event)
+                previous = event
+            }
+            return true
+        } catch MissionControlJournalReplayControl.outOfOrder {
+            return false
+        }
+    }
+
+    private func forEachEventFromDisk(
+        decoder: JSONDecoder,
+        body: (BurnBarControllerEvent) throws -> Void
+    ) throws {
         guard FileManager.default.fileExists(atPath: eventsFileURL.path) else {
-            return []
+            return
         }
 
-        let content = try String(contentsOf: eventsFileURL, encoding: .utf8)
-        var events: [BurnBarControllerEvent] = []
-        for line in content.split(whereSeparator: \.isNewline) {
-            guard line.isEmpty == false else { continue }
-            try Task.checkCancellation()
+        let handle = try FileHandle(forReadingFrom: eventsFileURL)
+        defer { try? handle.close() }
+        let reader = BufferedLineReader(fileHandle: handle)
+        var lineCount = 0
+        while let line = reader.nextLine() {
+            lineCount += 1
+            if lineCount % 1_024 == 0 {
+                try Task.checkCancellation()
+            }
+            let event: BurnBarControllerEvent
             do {
-                events.append(try decoder.decode(BurnBarControllerEvent.self, from: Data(line.utf8)))
+                event = try decoder.decode(
+                    BurnBarControllerEvent.self,
+                    from: Data(line.text.utf8)
+                )
             } catch {
                 logger.error(
                     "controller_event_skipped",
                     metadata: ["error": error.localizedDescription]
                 )
+                continue
             }
+            try body(event)
         }
-        return events
+        try Task.checkCancellation()
     }
 
     func readRecentEventsFromDisk(limit: Int, decoder: JSONDecoder) throws -> [BurnBarControllerEvent] {

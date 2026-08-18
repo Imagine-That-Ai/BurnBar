@@ -83,12 +83,14 @@ final class PrimeAgentMuseProviderSurfaceTests: XCTestCase {
 
     func test_primeAgentTrustedSearchIncludesPrimeManagedBin() {
         let home = "/tmp/openburnbar-prime-home"
-        let trustedDirectories = CLILaunchAdapter.trustedExecutableSearchDirectories(
+        let explicitPaths = SwitcherCLIProfileType.primeAgent.trustedExecutablePaths.map {
+            CLILaunchAdapter.expandPath($0, homeDirectory: home)
+        }
+        XCTAssertTrue(explicitPaths.contains("\(home)/.prime/bin/prime-agent"))
+        XCTAssertTrue(explicitPaths.contains("\(home)/.local/bin/prime-agent"))
+        XCTAssertTrue(CLILaunchAdapter.ambientFallbackExecutableSearchDirectories(
             for: .primeAgent,
-            environment: [:],
             homeDirectory: home
-        )
-        XCTAssertTrue(trustedDirectories.contains("\(home)/.prime/bin"))
-        XCTAssertTrue(trustedDirectories.contains("\(home)/.local/bin"))
+        ).contains("\(home)/.local/bin"))
     }
 }

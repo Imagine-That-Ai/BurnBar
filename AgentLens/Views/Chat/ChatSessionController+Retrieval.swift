@@ -132,7 +132,7 @@ extension ChatSessionController {
 
         do {
             try await dataStore.insert(usage)
-            await dataStore.refresh()
+            await dataStore.reloadUsagesIfChanged()
         } catch {
             AppLogger.chat.silentFailure("insert in-app chat usage", error: error)
         }

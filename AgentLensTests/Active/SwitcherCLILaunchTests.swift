@@ -625,14 +625,45 @@ final class SwitcherCLILaunchTests: XCTestCase {
         }
     }
 
-    func test_resolveExecutable_acceptsValidPaths() {
-        // Test that resolution works for real executables via filesystem
+    func test_resolveExecutable_missingCLI_doesNotLaunchLoginShell() throws {
+        let tempHome = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: tempHome,
+            withIntermediateDirectories: true,
+            attributes: nil
+        )
+        defer { try? FileManager.default.removeItem(at: tempHome) }
+
+        let shellMarker = tempHome.appendingPathComponent("login-shell-ran")
+        let fakeShell = tempHome.appendingPathComponent("fake-shell")
+        let cleanup = makeTempExecutable(
+            at: fakeShell.path,
+            content: "#!/bin/sh\n/usr/bin/touch '\(shellMarker.path)'\nexit 1\n"
+        )
+        defer { cleanup() }
+
         CLILaunchAdapter.executableResolver = nil
-        for cliType: SwitcherCLIProfileType in [.codex, .claude, .opencode] {
-            let available = CLILaunchAdapter.isExecutableAvailable(cliType)
-            XCTAssertTrue(available == true || available == false,
-                "isExecutableAvailable should return a boolean for \(cliType.displayName)")
+        CLILaunchAdapter.homeDirectoryProvider = { tempHome.path }
+        CLILaunchAdapter.environmentProvider = {
+            [
+                "HOME": tempHome.path,
+                "PATH": "",
+                "SHELL": fakeShell.path
+            ]
         }
+
+        guard let missingCLI = SwitcherCLIProfileType.allCases.first(where: {
+            CLILaunchAdapter.resolvePinnedExecutable(for: $0) == nil
+        }) else {
+            throw XCTSkip("All supported CLIs are installed in a pinned executable directory.")
+        }
+
+        XCTAssertNil(CLILaunchAdapter.resolveExecutable(for: missingCLI))
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: shellMarker.path),
+            "Executable discovery must not run an interactive login shell."
+        )
     }
 
     func test_resolveExecutable_expandsDollarHOMETrustedPaths() throws {

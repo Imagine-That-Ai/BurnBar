@@ -21,6 +21,16 @@ extension UsageStore {
         }
     }
 
+    /// Index-backed start-time window for bounded background work.
+    ///
+    /// Daily digest and daemon activity export need recent sessions, not the
+    /// dashboard's overlap semantics or multi-window aggregate snapshot.
+    func fetchUsage(startingIn dateRange: Range<Date>, limit: Int) async throws -> [TokenUsage] {
+        try await dbQueue.read { db -> [TokenUsage] in
+            try Self.fetchUsageRows(db: db, startingIn: dateRange, limit: limit)
+        }
+    }
+
     /// Per-credential all-time cost totals for billing drift detection.
     ///
     /// Replaces the previous approach of materializing EVERY `token_usage`
@@ -82,9 +92,11 @@ extension UsageStore {
         }
     }
 
-    func fetchDashboardUsageSnapshot(loadedUsageLimit: Int) async throws -> DashboardUsageSnapshot {
+    func fetchDashboardUsageSnapshot(
+        loadedUsageLimit: Int,
+        now: Date = Date()
+    ) async throws -> DashboardUsageSnapshot {
         let calendar = Calendar.current
-        let now = Date()
         let todayStart = calendar.startOfDay(for: now)
 
         return try await dbQueue.read { db in
@@ -190,6 +202,88 @@ extension UsageStore {
                 )
             }
             return result
+        }
+    }
+
+    /// Lightweight per-provider totals for several overlapping time windows.
+    ///
+    /// Smart Hub needs the selected period plus rolling 5-hour and 7-day
+    /// burn-rate windows. Running the single-window query once per period
+    /// caused three encrypted table reads every 30 seconds on large databases.
+    /// This variant bounds one scan to the widest requested window and fans
+    /// each row into every matching window inside that same SQL statement.
+    ///
+    /// Results preserve the input order. An empty input performs no database
+    /// work and returns an empty array.
+    func providerRunCostTotals(
+        in dateRanges: [ClosedRange<Date>]
+    ) async throws -> [[AgentProvider: ProviderRunCostTotals]] {
+        guard !dateRanges.isEmpty else { return [] }
+
+        return try await dbQueue.read { db in
+            let widestRange = dateRanges.dropFirst().reduce(dateRanges[0]) { widest, range in
+                min(widest.lowerBound, range.lowerBound)...max(widest.upperBound, range.upperBound)
+            }
+            let widestPredicate = Self.dateRangePredicate(widestRange)
+
+            var innerSelectParts = [
+                "provider",
+                "totalTokens",
+                "cost"
+            ]
+            var outerSelectParts = ["provider"]
+            var arguments = StatementArguments()
+
+            for (index, dateRange) in dateRanges.enumerated() {
+                let membershipColumn = "in_window_\(index)"
+                innerSelectParts.append(
+                    "CASE WHEN \(Self.intersectionSQL) THEN 1 ELSE 0 END AS \(membershipColumn)"
+                )
+                arguments += Self.intersectionArguments(dateRange)
+                outerSelectParts.append(
+                    "COALESCE(SUM(\(membershipColumn)), 0) AS sessionCount_\(index)"
+                )
+                outerSelectParts.append(
+                    "COALESCE(SUM(\(membershipColumn) * totalTokens), 0) AS totalTokens_\(index)"
+                )
+                outerSelectParts.append(
+                    "COALESCE(SUM(\(membershipColumn) * cost), 0) AS cost_\(index)"
+                )
+            }
+            arguments += widestPredicate.arguments
+
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                    SELECT \(outerSelectParts.joined(separator: ",\n                           "))
+                    FROM (
+                        SELECT \(innerSelectParts.joined(separator: ",\n                               "))
+                        FROM token_usage
+                        \(widestPredicate.whereSQL)
+                    ) AS bounded_usage
+                    GROUP BY provider
+                    """,
+                arguments: arguments
+            )
+
+            var results = Array(
+                repeating: [AgentProvider: ProviderRunCostTotals](),
+                count: dateRanges.count
+            )
+            for row in rows {
+                guard let rawProvider = row["provider"] as? String,
+                      let provider = AgentProvider(rawValue: rawProvider) else { continue }
+                for index in dateRanges.indices {
+                    let sessionCount = Self.intValue(row["sessionCount_\(index)"])
+                    guard sessionCount > 0 else { continue }
+                    results[index][provider] = ProviderRunCostTotals(
+                        sessionCount: sessionCount,
+                        totalTokens: Self.intValue(row["totalTokens_\(index)"]),
+                        totalCost: Self.doubleValue(row["cost_\(index)"])
+                    )
+                }
+            }
+            return results
         }
     }
 }

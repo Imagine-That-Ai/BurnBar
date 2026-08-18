@@ -1,6 +1,7 @@
 import Foundation
 import XCTest
 @testable import OpenBurnBarLogParsers
+import OpenBurnBarKernel
 import OpenBurnBarSQLiteReader
 
 final class AdditionalLocalUsageParsersTests: XCTestCase {
@@ -74,6 +75,218 @@ final class AdditionalLocalUsageParsersTests: XCTestCase {
         XCTAssertEqual(result.usages.first?.projectName, "omp-demo")
         XCTAssertEqual(result.conversations.first?.provider, .omp)
         XCTAssertEqual(result.conversations.first?.lastAssistantMessage, "done")
+    }
+
+    func testOMPUsageOnlyStreamsLargeMalformedCorpusWithoutExtractingTranscriptBodies() async throws {
+        let root = try makeDirectory("omp-large-stream")
+        defer { remove(root) }
+        let file = root.appendingPathComponent("large-session.jsonl")
+        let payload = String(repeating: "x", count: 1_024)
+        var data = Data()
+        for index in 0..<4_096 {
+            if index.isMultiple(of: 257) {
+                data.append(Data("not-json-\(index)\n".utf8))
+            } else {
+                data.append(
+                    Data(
+                        #"{"type":"message","message":{"role":"user","content":[{"type":"text","text":"\#(payload)"}]},"timestamp":"2026-07-01T00:00:00Z"}\#n"#
+                            .utf8
+                    )
+                )
+            }
+        }
+        data.append(
+            Data(
+                #"{"type":"message","message":{"role":"assistant","model":"gpt-5","content":[{"type":"text","text":"done"}],"usage":{"input":123,"output":45},"timestamp":"2026-07-01T00:00:01Z"}}\#n"#
+                    .utf8
+            )
+        )
+        try data.write(to: file, options: .atomic)
+
+        let parser = OMPParser(sessionsOverride: root)
+        let result = try await parser.parse(
+            options: LogParseOptions(includeConversationBodies: false)
+        )
+
+        XCTAssertEqual(result.usages.first?.inputTokens, 123)
+        XCTAssertEqual(result.usages.first?.outputTokens, 45)
+        XCTAssertTrue(result.conversations.isEmpty)
+        XCTAssertEqual(
+            parser.lastContentExtractionLineCount,
+            0,
+            "usage-only explicit accounting must never flatten multi-megabyte transcript bodies"
+        )
+    }
+
+    func testPiUsageOnlyFallbackMatchesConversationPassAndCachesMalformedInput() async throws {
+        let root = try makeDirectory("pi-fallback-parity")
+        defer { remove(root) }
+        try write(
+            """
+            {"timestamp":"2026-07-01T00:00:00Z","model":"gpt-4o","role":"user","content":"Please inspect the parser."}
+            malformed-json
+            {"timestamp":"2026-07-01T00:00:01Z","model":"gpt-4o","role":"assistant","content":"The parser is sound."}
+            """,
+            to: root.appendingPathComponent("pi-session.jsonl")
+        )
+
+        let parser = PiAgentParser(sessionsOverride: root)
+        let usageOnly = try await parser.parse(
+            options: LogParseOptions(includeConversationBodies: false)
+        )
+        let usageOnlyRecord = try XCTUnwrap(usageOnly.usages.first)
+        XCTAssertEqual(parser.lastContentExtractionLineCount, 2)
+        XCTAssertTrue(usageOnly.conversations.isEmpty)
+        XCTAssertEqual(usageOnlyRecord.provenanceConfidence, .lowConfidenceEstimate)
+
+        let indexed = try await parser.parse(
+            options: LogParseOptions(includeConversationBodies: true)
+        )
+        let indexedRecord = try XCTUnwrap(indexed.usages.first)
+        XCTAssertEqual(indexedRecord.inputTokens, usageOnlyRecord.inputTokens)
+        XCTAssertEqual(indexedRecord.outputTokens, usageOnlyRecord.outputTokens)
+        XCTAssertEqual(indexedRecord.costUSD, usageOnlyRecord.costUSD)
+        XCTAssertEqual(indexed.conversations.count, 1)
+        XCTAssertTrue(
+            try XCTUnwrap(indexed.conversations.first?.fullText)
+                .contains("Please inspect the parser.")
+        )
+
+        let cached = try await parser.parse(
+            options: LogParseOptions(includeConversationBodies: false)
+        )
+        XCTAssertEqual(cached.usages.first?.inputTokens, usageOnlyRecord.inputTokens)
+        XCTAssertEqual(parser.lastSessionScanCount, 0)
+        XCTAssertEqual(parser.lastSessionCacheHitCount, 1)
+        XCTAssertEqual(parser.lastContentExtractionLineCount, 0)
+    }
+
+    func testOMPCancellationStopsLargeLineScan() async throws {
+        let root = try makeDirectory("omp-cancellation")
+        defer { remove(root) }
+        let file = root.appendingPathComponent("cancel-session.jsonl")
+        var data = Data()
+        for index in 0..<8_192 {
+            data.append(
+                Data(
+                    #"{"type":"message","message":{"role":"user","content":"line-\#(index)"},"timestamp":"2026-07-01T00:00:00Z"}\#n"#
+                        .utf8
+                )
+            )
+        }
+        try data.write(to: file, options: .atomic)
+
+        let parser = OMPParser(sessionsOverride: root)
+        let task = Task {
+            try await parser.parse(options: LogParseOptions(includeConversationBodies: false))
+        }
+        task.cancel()
+
+        do {
+            _ = try await task.value
+            XCTFail("Expected the cancelled OMP scan to stop at a line checkpoint")
+        } catch is CancellationError {
+            // Expected.
+        }
+    }
+
+    func testPiMalformedLinesCheckpointBothUsagePassesBeforeEOF() async throws {
+        let root = try makeDirectory("pi-malformed-checkpoints")
+        defer { remove(root) }
+        let file = root.appendingPathComponent("malformed-session.jsonl")
+        var data = Data()
+        for index in 0..<70_000 {
+            data.append(Data("not-json-\(index)\n".utf8))
+        }
+        data.append(
+            Data(
+                #"{"role":"user","content":"fallback usage","timestamp":"2026-07-01T00:00:00Z"}\#n"#
+                    .utf8
+            )
+        )
+        try data.write(to: file, options: .atomic)
+
+        let footprintCalls = Locked(0)
+        let governor = ParserResourceGovernor(
+            limits: ParserResourceLimits(memoryCeilingBytes: 500),
+            footprintProvider: {
+                footprintCalls.withLock { calls in
+                    calls += 1
+                    return calls <= 3 ? 100 : 1_000
+                }
+            }
+        )
+
+        do {
+            _ = try await PiAgentParser(sessionsOverride: root).parse(
+                options: LogParseOptions(
+                    includeConversationBodies: false,
+                    resourceGovernor: governor
+                )
+            )
+            XCTFail("Expected malformed physical lines to trigger the fallback-pass resource checkpoint")
+        } catch let error as ParserResourceExceeded {
+            XCTAssertEqual(
+                error,
+                .memoryCeiling(footprintBytes: 1_000, ceilingBytes: 500)
+            )
+        }
+        XCTAssertEqual(
+            footprintCalls.read(),
+            4,
+            "the fourth sampled checkpoint is reachable only when both passes count malformed physical lines"
+        )
+    }
+
+    func testOMPCacheCheckpointSurvivesMidCorpusResourceAbort() async throws {
+        let root = try makeDirectory("omp-checkpoint")
+        defer { remove(root) }
+        for index in 0..<40 {
+            try write(
+                #"{"type":"message","message":{"role":"assistant","model":"gpt-5","usage":{"input":1,"output":1},"timestamp":"2026-07-01T00:00:00Z"}}"#,
+                to: root.appendingPathComponent(
+                    String(format: "session-%03d.jsonl", index)
+                )
+            )
+        }
+
+        let footprintCalls = Locked(0)
+        let governor = ParserResourceGovernor(
+            limits: ParserResourceLimits(memoryCeilingBytes: 500),
+            footprintProvider: {
+                footprintCalls.withLock { calls in
+                    calls += 1
+                    return calls <= 2 ? 100 : 1_000
+                }
+            }
+        )
+        let interrupted = OMPParser(sessionsOverride: root)
+        do {
+            _ = try await interrupted.parse(
+                options: LogParseOptions(
+                    includeConversationBodies: false,
+                    resourceGovernor: governor
+                )
+            )
+            XCTFail("Expected the synthetic footprint ceiling to abort the scan")
+        } catch let error as ParserResourceExceeded {
+            XCTAssertEqual(
+                error,
+                .memoryCeiling(footprintBytes: 1_000, ceilingBytes: 500)
+            )
+        }
+
+        let resumed = OMPParser(sessionsOverride: root)
+        let result = try await resumed.parse(
+            options: LogParseOptions(includeConversationBodies: false)
+        )
+        XCTAssertEqual(result.usages.count, 40)
+        XCTAssertEqual(
+            resumed.lastSessionCacheHitCount,
+            32,
+            "two 16-file checkpoints must survive an abort on file 33"
+        )
+        XCTAssertEqual(resumed.lastSessionScanCount, 8)
     }
 
     func testOpenClaudeReadsClaudeCompatibleProjectTranscriptAndPreservesProviderIdentity() async throws {

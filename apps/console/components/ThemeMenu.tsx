@@ -4,13 +4,18 @@ import * as React from "react";
 import { Check, ChevronDown, Palette } from "lucide-react";
 
 import { THEMES, useTheme } from "@/lib/useTheme";
+import { cn } from "@/lib/utils";
 
 /**
  * Header theme switcher: a button showing the current theme, opening a popover
  * of all themes (preview chip + name). Picking one reskins the whole console
  * instantly and persists. Closes on outside-click or Escape.
+ *
+ * `direction="up"` flips the popover above the trigger and left-aligns it —
+ * required in the Command Rail footer, where a downward popover opens past the
+ * viewport's bottom edge and becomes unreachable.
  */
-export function ThemeMenu() {
+export function ThemeMenu({ direction = "down" }: { direction?: "up" | "down" }) {
   const { theme, setTheme } = useTheme();
   const [open, setOpen] = React.useState(false);
   const ref = React.useRef<HTMLDivElement>(null);
@@ -53,7 +58,10 @@ export function ThemeMenu() {
         <div
           role="menu"
           aria-label="Themes"
-          className="glass-pane glass-pane--elevated absolute right-0 z-50 mt-2 w-52 p-1.5"
+          className={cn(
+            "glass-pane glass-pane--elevated absolute z-50 w-52 p-1.5",
+            direction === "up" ? "bottom-full left-0 mb-2" : "right-0 mt-2",
+          )}
         >
           <p className="eyebrow px-2 pb-1 pt-1.5">Theme</p>
           {THEMES.map((t) => {

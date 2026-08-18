@@ -51,10 +51,20 @@ extension BurnBarDaemonServer {
             let limit = min(max(typedRequest.params.limit, 1), 500)
             let result: BurnBarActivityHistoryResponse
             if let resumeService {
-                result = try resumeService.activityHistory(
-                    limit: limit,
-                    usage: try await usageRecorder.records()
-                )
+                let history = try resumeService.activityHistory(limit: limit)
+                if history.historyComplete {
+                    result = BurnBarActivityHistoryResponse(
+                        sessions: try await usageRecorder.enrichingActivityHistory(
+                            history.sessions
+                        ),
+                        nextCursor: history.nextCursor,
+                        historyComplete: history.historyComplete,
+                        historyLimit: history.historyLimit,
+                        totalCount: history.totalCount
+                    )
+                } else {
+                    result = history
+                }
             } else {
                 result = BurnBarActivityHistoryResponse(
                     sessions: [],
@@ -129,10 +139,7 @@ extension BurnBarDaemonServer {
         let end = Date()
         let start = end.addingTimeInterval(-seconds)
         let window = DateInterval(start: start, end: end)
-        let records = try await usageRecorder.records()
-            .filter { window.contains($0.event.recordedAt) }
-            .sorted { $0.event.recordedAt < $1.event.recordedAt }
-            .suffix(limit)
+        let records = try await usageRecorder.records(in: window, limit: limit)
 
         var usages: [InsightUsageRow] = []
         var sessionsByID: [String: InsightSessionRow] = [:]

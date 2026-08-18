@@ -1,130 +1,63 @@
 "use client";
 
-import Link from "next/link";
+import * as React from "react";
 import { usePathname } from "next/navigation";
-import { useAuth } from "@/lib/useAuth";
-import { Button } from "@/components/ui/button";
-import { PanicButton } from "@/components/PanicButton";
-import { ThemeMenu } from "@/components/ThemeMenu";
 import { GlobalBackdrop } from "@/components/GlobalBackdrop";
 import { ConsentBanner } from "@/components/analytics/ConsentBanner";
+import { CommandRail } from "@/components/nav/CommandRail";
+import { CommandPalette } from "@/components/nav/CommandPalette";
 import { cn } from "@/lib/utils";
 
-const NAV = [
-  { href: "/", label: "Basin" },
-  { href: "/dashboard", label: "Studio" },
-  { href: "/inventory", label: "Inventory" },
-  { href: "/pensieve", label: "Pensieve" },
-  { href: "/escrow", label: "Trust" },
-  { href: "/experimental", label: "Experimental" },
-  { href: "/settings", label: "Settings" },
-];
-
+/**
+ * Shell layout: the Command Rail owns navigation (left rail on desktop,
+ * top bar + drawer on mobile); ⌘K / Ctrl+K toggles the CommandPalette from
+ * anywhere. The Studio dashboard stays full-bleed; every other route keeps
+ * the left-aligned reading column, shifted right of the rail on desktop.
+ */
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const { user, signOut } = useAuth();
   const pathname = usePathname();
+  const [paletteOpen, setPaletteOpen] = React.useState(false);
+
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteOpen((v) => !v);
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
 
   return (
     <div className="min-h-dvh">
       <GlobalBackdrop />
-      <header className="rule-double sticky top-0 z-40 bg-[color:var(--color-ink-void)]/90 backdrop-blur-sm">
-        <div className="border-b border-glass-line">
-          <div className="mx-auto flex max-w-5xl items-center justify-between px-token-6 py-1.5">
-            <span className="folio">Private — not indexed</span>
-            <span className="folio">Your data · your keys</span>
-          </div>
-        </div>
+      <CommandRail onOpenPalette={() => setPaletteOpen(true)} />
 
-        <div className="mx-auto flex max-w-5xl items-center justify-between gap-token-4 px-token-6 py-token-3">
-          <Link href="/" className="flex items-baseline gap-token-2">
-            <span
-              className="size-2 translate-y-[-1px] rounded-[2px]"
-              style={{ background: "var(--accent)" }}
-              aria-hidden
-            />
-            <span className="nameplate text-lg text-content-bright">
-              BurnBar <span className="text-base font-normal text-content-mute">Console</span>
-            </span>
-          </Link>
+      <div className="flex min-h-dvh flex-col md:pl-60">
+        <main
+          className={cn(
+            "w-full flex-1",
+            // The Studio dashboard is a full-bleed glass surface; every other
+            // route keeps a left-aligned reading column (console convention —
+            // Linear/Vercel/Codex — not a centered editorial page).
+            pathname === "/dashboard"
+              ? "max-w-none px-token-6 py-token-6"
+              : "max-w-5xl px-token-6 py-token-12 md:px-token-12 2xl:max-w-6xl",
+          )}
+        >
+          {children}
+        </main>
 
-          <nav className="hidden items-center gap-token-6 md:flex">
-            {NAV.map((item, i) => {
-              const active = pathname === item.href;
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={cn(
-                    "relative flex items-baseline gap-1.5 py-1 text-sm transition-colors duration-150",
-                    active
-                      ? "text-content-bright"
-                      : "text-content-mute hover:text-content-bright",
-                  )}
-                >
-                  <span className="font-mono text-[0.62rem] text-content-dim">
-                    {String(i + 1).padStart(2, "0")}
-                  </span>
-                  {item.label}
-                  {active && (
-                    <span
-                      className="absolute inset-x-0 -bottom-px h-px"
-                      style={{ background: "var(--accent)" }}
-                      aria-hidden
-                    />
-                  )}
-                </Link>
-              );
-            })}
-          </nav>
+        <footer className="w-full max-w-5xl px-token-6 pb-token-8 md:px-token-12 2xl:max-w-6xl">
+          <hr className="rule mb-token-4" />
+          <p className="font-mono text-xs tracking-[0.04em] text-content-dim">
+            Your data, your keys. The server never sees your sealed content.
+          </p>
+        </footer>
+      </div>
 
-          <div className="flex items-center gap-token-3">
-            <ThemeMenu />
-            {user && <PanicButton />}
-            {user && (
-              <Button variant="ghost" size="sm" onClick={() => signOut()}>
-                Sign out
-              </Button>
-            )}
-          </div>
-        </div>
-
-        <nav className="flex items-center gap-token-4 overflow-x-auto border-t border-glass-line px-token-6 py-token-2 md:hidden">
-          {NAV.map((item) => {
-            const active = pathname === item.href;
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "folio whitespace-nowrap",
-                  active && "text-[color:var(--accent-deep)]",
-                )}
-              >
-                {item.label}
-              </Link>
-            );
-          })}
-        </nav>
-      </header>
-
-      <main
-        className={cn(
-          "mx-auto px-token-6",
-          // The Studio dashboard is a full-bleed glass surface; every other
-          // route keeps the centered reading column.
-          pathname === "/dashboard" ? "max-w-none py-token-6" : "max-w-5xl py-token-12",
-        )}
-      >
-        {children}
-      </main>
-
-      <footer className="mx-auto max-w-5xl px-token-6 pb-token-8">
-        <hr className="rule mb-token-4" />
-        <p className="font-mono text-xs tracking-[0.04em] text-content-dim">
-          Your data, your keys. The server never sees your sealed content.
-        </p>
-      </footer>
-
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
       <ConsentBanner />
     </div>
   );
