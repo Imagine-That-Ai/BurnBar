@@ -464,7 +464,10 @@ extension ChatSessionController {
         // that one send, because it is a deliberate momentary act at the pet
         // bubble, and stacking two contradictory voice instructions reads worse
         // than either alone.
-        let seatVoice = petPersonaSection.isEmpty ? activePersona(for: chatBackend) : nil
+        let seatVoice = PlasmaPersonaPrompt.resolveVoice(
+            seat: activePersona(for: chatBackend),
+            hasActivePetVoice: !petPersonaSection.isEmpty
+        )
         let corePrompt = PlasmaPersonaPrompt.compose(voice: seatVoice, base: promptSections.core)
         let assembledPrompt = promptArbiter.assemble([
             PromptTokenSection(id: .core, content: corePrompt),

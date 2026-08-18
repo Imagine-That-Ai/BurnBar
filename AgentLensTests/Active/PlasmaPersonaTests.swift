@@ -18,7 +18,8 @@ final class PlasmaPersonaTests: XCTestCase {
             XCTAssertFalse(persona.tagline.isEmpty, "\(persona.id) has no tagline")
             XCTAssertFalse(persona.voicePrompt.isEmpty, "\(persona.id) has no voice")
             XCTAssertFalse(persona.skills.isEmpty, "\(persona.id) has no skills")
-            XCTAssertEqual(persona.gradient.stops.count, 3, "\(persona.id) gradient")
+            // lit -> body -> deep -> transparent, per the asset.
+            XCTAssertEqual(persona.gradient.stops.count, 4, "\(persona.id) gradient")
         }
     }
 
@@ -79,6 +80,23 @@ final class PlasmaPersonaTests: XCTestCase {
                 XCTAssertFalse(voice.contains(phrase), "\(persona.id) voice contains '\(phrase)'")
             }
         }
+    }
+
+    func testDesktopPetVoiceWinsOverTheSeatPersona() {
+        // Both are "the voice"; only one can be. The pet is the deliberate,
+        // momentary act, so it takes the turn.
+        let seat = PlasmaPersona.all[0]
+        XCTAssertNil(PlasmaPersonaPrompt.resolveVoice(seat: seat, hasActivePetVoice: true))
+        XCTAssertEqual(PlasmaPersonaPrompt.resolveVoice(seat: seat, hasActivePetVoice: false)?.id, seat.id)
+    }
+
+    func testNoVoiceAtAllWhenNeitherIsSet() {
+        XCTAssertNil(PlasmaPersonaPrompt.resolveVoice(seat: nil, hasActivePetVoice: false))
+    }
+
+    func testEmptyBasePromptYieldsTheVoiceWithoutTrailingWhitespace() {
+        let composed = PlasmaPersonaPrompt.compose(voice: PlasmaPersona.all[2], base: "   \n  ")
+        XCTAssertEqual(composed, PlasmaPersona.all[2].voicePrompt)
     }
 
     // MARK: Seat persistence
