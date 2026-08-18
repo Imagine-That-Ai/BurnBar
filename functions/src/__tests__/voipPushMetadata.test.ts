@@ -66,12 +66,16 @@ describe("VoIP/FCM push metadata minimization", () => {
       callId: "call-123",
       isVideo: true,
       correlationId,
+      uid: "user-123",
+      expiresAtMillis: 1_700_000_100_000,
     });
 
     const fcmPayload = buildFcmCallPayload({
       callId: "call-123",
       isVideo: true,
       correlationId,
+      uid: "user-123",
+      expiresAtMillis: 1_700_000_100_000,
     });
 
     // Verify APNs payload shape and omissions
@@ -96,6 +100,10 @@ describe("VoIP/FCM push metadata minimization", () => {
     expect(fcmPayload).not.toHaveProperty("paired_device_id");
     expect(fcmPayload).not.toHaveProperty("displayName");
     expect(fcmPayload).not.toHaveProperty("display_name");
+    expect(apnsPayload).toHaveProperty("uid", "user-123");
+    expect(apnsPayload).toHaveProperty("expires_at_millis", "1700000100000");
+    expect(fcmPayload).toHaveProperty("uid", "user-123");
+    expect(fcmPayload).toHaveProperty("expires_at_millis", "1700000100000");
   });
 
   it("ephemeralCallCorrelationId returns a fresh UUID on every invocation", () => {

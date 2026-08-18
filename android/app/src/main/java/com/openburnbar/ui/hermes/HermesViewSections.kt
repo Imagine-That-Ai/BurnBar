@@ -26,6 +26,7 @@ data class HermesChatActions(
     val onTilePreferencesChange: (ChatTilePreferences) -> Unit,
     val onBack: () -> Unit,
     val onSend: (String, String) -> Unit,
+    val onStop: () -> Unit,
     val onAgentPermissions: () -> Unit,
     val onDisconnect: () -> Unit,
 )

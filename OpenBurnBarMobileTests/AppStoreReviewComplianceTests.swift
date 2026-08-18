@@ -62,10 +62,20 @@ final class AppStoreReviewComplianceTests: XCTestCase {
 
         XCTAssertTrue(source.contains("import GoogleSignIn"))
         XCTAssertTrue(source.contains("GIDSignIn.sharedInstance.handle(url)"))
-        XCTAssertTrue(source.contains("guard url.scheme == \"burnbar\" else { return }"))
+        XCTAssertTrue(source.contains("HermesGatewayPairingDeepLink"))
+        XCTAssertTrue(source.contains("LivingThemeDeepLink"))
+        XCTAssertTrue(source.contains("MobileOsIntegrationPolicy.route"))
         XCTAssertLessThan(
             try XCTUnwrap(source.range(of: "GIDSignIn.sharedInstance.handle(url)")?.lowerBound),
-            try XCTUnwrap(source.range(of: "guard url.scheme == \"burnbar\" else { return }")?.lowerBound)
+            try XCTUnwrap(source.range(of: "HermesGatewayPairingDeepLink")?.lowerBound)
+        )
+        XCTAssertLessThan(
+            try XCTUnwrap(source.range(of: "HermesGatewayPairingDeepLink")?.lowerBound),
+            try XCTUnwrap(source.range(of: "LivingThemeDeepLink")?.lowerBound)
+        )
+        XCTAssertLessThan(
+            try XCTUnwrap(source.range(of: "LivingThemeDeepLink")?.lowerBound),
+            try XCTUnwrap(source.range(of: "MobileOsIntegrationPolicy.route")?.lowerBound)
         )
     }
 

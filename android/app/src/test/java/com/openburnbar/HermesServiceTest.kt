@@ -4,6 +4,7 @@ package com.openburnbar
 import com.openburnbar.data.hermes.ChatTilePreferences
 import com.openburnbar.data.hermes.HermesService
 import com.openburnbar.data.hermes.clearMessages
+import com.openburnbar.data.hermes.setChatTilePreferences
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse

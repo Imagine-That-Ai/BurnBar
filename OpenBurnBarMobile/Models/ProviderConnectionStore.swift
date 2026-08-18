@@ -12,6 +12,7 @@ final class ProviderConnectionStore {
     private(set) var deletingAccountID: String?
     private(set) var refreshingAccountID: String?
     private(set) var error: String?
+    private(set) var lastErrorClass: MobileProviderErrorClass?
     private(set) var accounts: [ProviderAccountDoc] = []
     private(set) var connections: [ProviderConnectionDoc] = []
     private(set) var quotaSnapshots: [ProviderQuotaSnapshot] = []
@@ -83,7 +84,7 @@ final class ProviderConnectionStore {
             // connections list.
             quotaSnapshots = (try? await snapshotsTask).map(normalizeQuotaSnapshots) ?? quotaSnapshots
         } catch {
-            self.error = error.localizedDescription
+            recordProviderError(error)
         }
     }
 
@@ -115,7 +116,7 @@ final class ProviderConnectionStore {
             await load()
             return doc
         } catch {
-            self.error = error.localizedDescription
+            recordProviderError(error)
             return nil
         }
     }
@@ -133,7 +134,7 @@ final class ProviderConnectionStore {
             )
             await load()
         } catch {
-            self.error = error.localizedDescription
+            recordProviderError(error)
         }
     }
 
@@ -151,7 +152,7 @@ final class ProviderConnectionStore {
             await load()
             return doc
         } catch {
-            self.error = error.localizedDescription
+            recordProviderError(error)
             return nil
         }
     }
@@ -169,7 +170,7 @@ final class ProviderConnectionStore {
             await load()
             return doc
         } catch {
-            self.error = error.localizedDescription
+            recordProviderError(error)
             return nil
         }
     }
@@ -177,14 +178,15 @@ final class ProviderConnectionStore {
     func delete(account: ProviderAccountDoc) async {
         deletingAccountID = account.id
         error = nil
+        lastErrorClass = nil
         defer { deletingAccountID = nil }
 
         do {
             try await functions.deleteProviderAccount(accountID: account.id)
             var localCleanupError: Error?
-            if account.storageScope == .localOnly,
+            if !MobileProviderAccountPolicy.isCloudConnected(storageScope: account.storageScope.rawValue),
                account.providerID == .claudeCode || account.providerID == .codex {
-                // Clean up locally-stored runner config when deleting a self-hosted account.
+                // Local-only accounts never pretend they are cloud-connected.
                 do {
                     try SelfHostedQuotaRunnerStore.shared.delete(accountID: account.id)
                 } catch {
@@ -196,30 +198,32 @@ final class ProviderConnectionStore {
                 self.error = localCleanupError.localizedDescription
             }
         } catch {
-            self.error = error.localizedDescription
+            recordProviderError(error)
         }
     }
 
     func deleteLegacy(provider: String) async {
         deletingAccountID = provider
         error = nil
+        lastErrorClass = nil
         defer { deletingAccountID = nil }
 
         do {
             try await functions.deleteProviderCredential(provider: provider)
             await load()
         } catch {
-            self.error = error.localizedDescription
+            recordProviderError(error)
         }
     }
 
     func refresh(account: ProviderAccountDoc) async {
         refreshingAccountID = account.id
         error = nil
+        lastErrorClass = nil
         defer { refreshingAccountID = nil }
 
         do {
-            if account.storageScope == .localOnly,
+            if !MobileProviderAccountPolicy.isCloudConnected(storageScope: account.storageScope.rawValue),
                account.providerID == .claudeCode || account.providerID == .codex {
                 _ = try await SelfHostedQuotaRunnerStore.shared.refresh(account: account)
             } else {
@@ -227,20 +231,21 @@ final class ProviderConnectionStore {
             }
             await load()
         } catch {
-            self.error = error.localizedDescription
+            recordProviderError(error)
         }
     }
 
     func refreshLegacy(provider: String) async {
         refreshingAccountID = provider
         error = nil
+        lastErrorClass = nil
         defer { refreshingAccountID = nil }
 
         do {
             _ = try await functions.refreshProviderQuota(provider: provider)
             await load()
         } catch {
-            self.error = error.localizedDescription
+            recordProviderError(error)
         }
     }
 
@@ -251,8 +256,17 @@ final class ProviderConnectionStore {
             // rebuild from raw usage history.
             try await functions.rebuildUsageRollups(force: true)
         } catch {
-            self.error = error.localizedDescription
+            recordProviderError(error)
         }
+    }
+
+    private func recordProviderError(_ error: Error) {
+        let classified = MobileProviderAccountPolicy.classifyError(
+            code: String(describing: error),
+            message: error.localizedDescription
+        )
+        lastErrorClass = classified
+        self.error = classified.userVisibleLabel
     }
 
     private func applyAccounts(_ newAccounts: [ProviderAccountDoc]) {

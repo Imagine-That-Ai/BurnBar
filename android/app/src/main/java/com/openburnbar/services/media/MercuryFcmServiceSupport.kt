@@ -8,9 +8,11 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.RemoteInput
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
-import com.openburnbar.BurnBarApplication
 import com.openburnbar.MainActivity
+import com.openburnbar.MobileOsIntentNavigation
+import com.openburnbar.data.firebase.FirestoreRepository
+import com.openburnbar.data.policy.MobileOsDestination
+import com.openburnbar.data.policy.MobileOsIntegrationPolicy
 import kotlinx.coroutines.tasks.await
 
 private const val INCOMING_CALL_CONTEXT_COLLECTION = "incoming_call_contexts"
@@ -22,6 +24,22 @@ internal data class IncomingCallRouting(
     val callerName: String,
     val callerInitial: String,
 )
+
+internal object IncomingCallPayloadPolicy {
+    fun correlationId(data: Map<String, String>): String? = data["correlation_id"]?.trim()?.takeIf { it.isNotBlank() }
+
+    fun connectionIdFromPush(data: Map<String, String>): String? {
+        // Connection ids stay in owner-scoped Firestore context, never FCM.
+        if (data["connection_id"] != null || data["connectionId"] != null) return null
+        return null
+    }
+
+    suspend fun resolveConnectionId(data: Map<String, String>, lookup: suspend (correlationId: String) -> String?): String? {
+        connectionIdFromPush(data)?.let { return it }
+        val correlation = correlationId(data) ?: return null
+        return lookup(correlation)
+    }
+}
 
 internal suspend fun MercuryFcmService.buildAgentReplyNotification(data: Map<String, String>): Notification? {
     ensureAgentReplyChannel()
@@ -37,6 +55,8 @@ internal suspend fun MercuryFcmService.buildAgentReplyNotification(data: Map<Str
         Intent(this, MainActivity::class.java).apply {
             action = Intent.ACTION_VIEW
             this.data = Uri.parse(deepLink)
+            MobileOsIntentNavigation.putEnvelopeExtras(this, data)
+            putExtra(MainActivity.EXTRA_EVENT_ID, eventId)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         }
     openIntent.setPackage(packageName)
@@ -105,10 +125,56 @@ internal suspend fun MercuryFcmService.postAgentReplyNotification(data: Map<Stri
     }
 }
 
+internal fun MercuryFcmService.postRoutedOsNotification(data: Map<String, String>) {
+    ensureAgentReplyChannel()
+    val routed = MobileOsIntegrationPolicy.route(data)
+    val deepLink = routed.deepLink ?: return
+    val eventId = data["event_id"] ?: deepLink
+    val title = when (routed.destination) {
+        MobileOsDestination.BURN -> "Quota update"
+        MobileOsDestination.MISSION -> "Mission update"
+        else -> "OpenBurnBar"
+    }
+    val openIntent =
+        Intent(this, MainActivity::class.java).apply {
+            action = Intent.ACTION_VIEW
+            this.data = Uri.parse(deepLink)
+            MobileOsIntentNavigation.putEnvelopeExtras(this, data)
+            putExtra(MainActivity.EXTRA_EVENT_ID, eventId)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        }
+    openIntent.setPackage(packageName)
+    val openPending =
+        PendingIntent.getActivity(
+            this,
+            eventId.hashCode(),
+            openIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+    val notification =
+        NotificationCompat.Builder(this, MercuryFcmService.AGENT_REPLY_CHANNEL_ID)
+            .setSmallIcon(com.openburnbar.R.drawable.ic_mercury_call)
+            .setContentTitle(title)
+            .setContentText("Open OpenBurnBar to continue.")
+            .setContentIntent(openPending)
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .build()
+    try {
+        NotificationManagerCompat.from(this).notify(eventId.hashCode(), notification)
+    } catch (error: SecurityException) {
+        android.util.Log.w(
+            "BurnBar",
+            "routed_notification_post_denied event=$eventId reason=${error.message}",
+        )
+        AgentReplyNotificationState.recordPermissionResult(applicationContext, granted = false)
+    }
+}
+
 private suspend fun resolveThreadId(eventId: String): String? {
     val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return null
     return try {
-        val snapshot = FirebaseFirestore.getInstance()
+        val snapshot = FirestoreRepository.database()
             .collection("users").document(uid)
             .collection("agent_notification_events").document(eventId)
             .get()
@@ -125,10 +191,9 @@ internal suspend fun MercuryFcmService.resolveIncomingCallRouting(data: Map<Stri
     val callerInitial = data["caller_initial"]?.trim()?.takeIf { it.isNotBlank() }
         ?: callerName.firstOrNull()?.toString()
         ?: "I"
-    val connectionId = normalizedRoutingId(data["connection_id"])
-        ?: resolveIncomingCallContextConnectionId(data["correlation_id"])
-        ?: normalizedRoutingId(BurnBarApplication.mediaControlCoordinator?.activePair?.value?.connectionID)
-        ?: return null
+    val connectionId = IncomingCallPayloadPolicy.resolveConnectionId(data) { correlationId ->
+        resolveIncomingCallContextConnectionId(correlationId)
+    } ?: return null
     return IncomingCallRouting(
         connectionId = connectionId,
         callerName = callerName,
@@ -140,7 +205,7 @@ private suspend fun resolveIncomingCallContextConnectionId(rawCorrelationId: Str
     val correlationId = normalizedCorrelationId(rawCorrelationId) ?: return null
     val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return null
     return try {
-        val snapshot = FirebaseFirestore.getInstance()
+        val snapshot = FirestoreRepository.database()
             .collection("users").document(uid)
             .collection(INCOMING_CALL_CONTEXT_COLLECTION).document(correlationId)
             .get()

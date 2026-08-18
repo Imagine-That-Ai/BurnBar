@@ -216,7 +216,10 @@ final class MercuryPeerSource: ObservableObject {
             return Self.fallbackCapabilities(for: relayConnectionProvider())
         }
         let parsed = Set(heartbeat.capabilities.compactMap { MercuryPeer.Feature(rawValue: $0) })
-        return parsed.isEmpty ? MercuryPeer.macFallbackCapabilities : parsed
+        if parsed.isEmpty && heartbeat.capabilities.isEmpty {
+            return MercuryPeer.macFallbackCapabilities
+        }
+        return parsed
     }
 
     /// Pre-heartbeat capability guess for an online Mac.

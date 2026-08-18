@@ -1,7 +1,59 @@
 import SwiftUI
+import UIKit
 import OpenBurnBarCore
 
-/// Mobile theme — now delegates to `UnifiedDesignSystem` for visual parity.
+/// Brand-sized system fonts that still follow Dynamic Type.
+enum MobileScaledFont {
+    static func system(
+        size: CGFloat,
+        weight: Font.Weight = .regular,
+        design: Font.Design = .default,
+        relativeTo textStyle: Font.TextStyle = .body
+    ) -> Font {
+        let uiWeight: UIFont.Weight
+        switch weight {
+        case .ultraLight: uiWeight = .ultraLight
+        case .thin: uiWeight = .thin
+        case .light: uiWeight = .light
+        case .medium: uiWeight = .medium
+        case .semibold: uiWeight = .semibold
+        case .bold: uiWeight = .bold
+        case .heavy: uiWeight = .heavy
+        case .black: uiWeight = .black
+        default: uiWeight = .regular
+        }
+        let uiDesign: UIFontDescriptor.SystemDesign
+        switch design {
+        case .rounded: uiDesign = .rounded
+        case .monospaced: uiDesign = .monospaced
+        case .serif: uiDesign = .serif
+        default: uiDesign = .default
+        }
+        let uiStyle: UIFont.TextStyle
+        switch textStyle {
+        case .largeTitle: uiStyle = .largeTitle
+        case .title: uiStyle = .title1
+        case .title2: uiStyle = .title2
+        case .title3: uiStyle = .title3
+        case .headline: uiStyle = .headline
+        case .body: uiStyle = .body
+        case .callout: uiStyle = .callout
+        case .subheadline: uiStyle = .subheadline
+        case .footnote: uiStyle = .footnote
+        case .caption: uiStyle = .caption1
+        case .caption2: uiStyle = .caption2
+        default: uiStyle = .body
+        }
+        let base = UIFont.systemFont(ofSize: size, weight: uiWeight)
+        let descriptor = base.fontDescriptor.withDesign(uiDesign) ?? base.fontDescriptor
+        let designed = UIFont(descriptor: descriptor, size: size)
+        return Font(UIFontMetrics(forTextStyle: uiStyle).scaledFont(for: designed))
+    }
+}
+
+/// Mobile theme — colors/spacing delegate to `UnifiedDesignSystem` for visual
+/// parity; typography is restated through `MobileScaledFont` so the same brand
+/// sizes still follow Dynamic Type.
 enum MobileTheme {
     // MARK: - Delegated Tokens
     static let ember   = UnifiedDesignSystem.Colors.ember
@@ -81,19 +133,19 @@ enum MobileTheme {
     }
 
     enum Typography {
-        static let displayLarge = UnifiedDesignSystem.Typography.displayLarge
-        static let display    = UnifiedDesignSystem.Typography.display
-        static let title      = UnifiedDesignSystem.Typography.title
-        static let headline   = UnifiedDesignSystem.Typography.headline
-        static let body       = UnifiedDesignSystem.Typography.body
-        static let footnote   = UnifiedDesignSystem.Typography.caption
-        static let caption    = UnifiedDesignSystem.Typography.caption
-        static let tiny       = UnifiedDesignSystem.Typography.tiny
+        static let displayLarge = MobileScaledFont.system(size: 36, weight: .bold, design: .rounded, relativeTo: .largeTitle)
+        static let display    = MobileScaledFont.system(size: 28, weight: .bold, design: .rounded, relativeTo: .title)
+        static let title      = MobileScaledFont.system(size: 20, weight: .semibold, design: .rounded, relativeTo: .title3)
+        static let headline   = MobileScaledFont.system(size: 18, weight: .semibold, design: .rounded, relativeTo: .headline)
+        static let body       = MobileScaledFont.system(size: 17, weight: .regular, design: .rounded, relativeTo: .body)
+        static let footnote   = MobileScaledFont.system(size: 15, weight: .medium, design: .rounded, relativeTo: .callout)
+        static let caption    = MobileScaledFont.system(size: 15, weight: .medium, design: .rounded, relativeTo: .callout)
+        static let tiny       = MobileScaledFont.system(size: 14, weight: .medium, design: .rounded, relativeTo: .caption)
 
-        static let monoLarge = UnifiedDesignSystem.Typography.monoLarge
-        static let mono       = UnifiedDesignSystem.Typography.mono
-        static let monoSmall  = UnifiedDesignSystem.Typography.monoSmall
-        static let monoTiny   = UnifiedDesignSystem.Typography.monoTiny
+        static let monoLarge = MobileScaledFont.system(size: 28, weight: .bold, design: .monospaced, relativeTo: .title)
+        static let mono       = MobileScaledFont.system(size: 16, weight: .medium, design: .monospaced, relativeTo: .callout)
+        static let monoSmall  = MobileScaledFont.system(size: 14, weight: .medium, design: .monospaced, relativeTo: .caption)
+        static let monoTiny   = MobileScaledFont.system(size: 13, weight: .medium, design: .monospaced, relativeTo: .caption2)
     }
 
     enum Animation {

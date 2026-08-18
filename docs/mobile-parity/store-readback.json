@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "openburnbar-mobile-store-readback-v1",
+  "status": "blocked",
+  "freshness": "blocked",
+  "missingPrerequisite": "authorized App Store Connect / TestFlight and Play closed-test readback on a clean candidate; not collected in M8",
+  "candidateSha": null,
+  "apple": {
+    "platform": "app-store-connect",
+    "version": null,
+    "build": null,
+    "artifactDigest": null,
+    "track": null,
+    "reviewState": null,
+    "testerAvailability": null,
+    "status": "blocked"
+  },
+  "google": {
+    "platform": "play-closed-test",
+    "version": null,
+    "build": null,
+    "artifactDigest": null,
+    "track": null,
+    "reviewState": null,
+    "testerAvailability": null,
+    "status": "blocked"
+  }
+}

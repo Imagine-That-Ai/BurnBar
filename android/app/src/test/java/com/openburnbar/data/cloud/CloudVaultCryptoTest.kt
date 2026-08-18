@@ -416,6 +416,19 @@ class CloudVaultCryptoTest {
     }
 
     @Test
+    fun openEscrowPayloadOpensWrappedVaultKeyAndRejectsNonEcKey() {
+        val recipient = p256KeyPair()
+        val vaultKey = ByteArray(SHA256_DIGEST_BYTES) { it.toByte() }
+        val wrapped = CloudVaultCrypto.wrapVaultKey(vaultKey, CloudVaultCrypto.publicKeyX963(recipient.public))
+
+        assertArrayEquals(vaultKey, CloudVaultCrypto.openEscrowPayload(wrapped, recipient.private))
+        val rsa = KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair()
+        assertThrows(IllegalStateException::class.java) {
+            CloudVaultCrypto.openEscrowPayload(wrapped, rsa.private)
+        }
+    }
+
+    @Test
     fun unwrapVaultKeyAcceptsSwiftStyleEmptySaltHkdf() {
         val recipient = p256KeyPair()
         val ephemeral = p256KeyPair()

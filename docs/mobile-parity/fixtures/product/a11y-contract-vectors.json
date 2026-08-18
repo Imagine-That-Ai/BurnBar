@@ -1,0 +1,100 @@
+{
+  "schemaVersion": 1,
+  "id": "openburnbar-mobile-a11y-contract-vectors-v1",
+  "sourceOracle": "MobileAccessibilityLabelPolicy",
+  "note": "Required spoken labels for Pulse/Burn/Hermes/Inbox. Manual VoiceOver/TalkBack remains blocked.",
+  "vectors": [
+    {
+      "id": "a11y.hero-burn.currency",
+      "kind": "heroBurn",
+      "displayMode": "currency",
+      "heroText": "$12.40",
+      "liveRate": null,
+      "expected": { "label": "Hero burn, currency, $12.40" }
+    },
+    {
+      "id": "a11y.hero-burn.tokens",
+      "kind": "heroBurn",
+      "displayMode": "tokens",
+      "heroText": "12.4k",
+      "liveRate": null,
+      "expected": { "label": "Hero burn, tokens, 12.4k" }
+    },
+    {
+      "id": "a11y.hero-burn.live-rate",
+      "kind": "heroBurn",
+      "displayMode": "currency",
+      "heroText": "$12.40",
+      "liveRate": "$0.12/min",
+      "expected": { "label": "Hero burn, currency, $12.40, live rate $0.12/min" }
+    },
+    {
+      "id": "a11y.quota-ring",
+      "kind": "quotaRing",
+      "label": "Claude",
+      "percentRemaining": 42,
+      "expected": { "label": "Claude, 42 percent remaining" }
+    },
+    {
+      "id": "a11y.stop-streaming",
+      "kind": "stopButton",
+      "isStreaming": true,
+      "expected": { "label": "Stop generating" }
+    },
+    {
+      "id": "a11y.stop-idle",
+      "kind": "stopButton",
+      "isStreaming": false,
+      "expected": { "label": "Send" }
+    },
+    {
+      "id": "a11y.inbox-row-unread",
+      "kind": "inboxRow",
+      "unread": true,
+      "kindLabel": "CI waste",
+      "priorityLabel": "Urgent",
+      "title": "Overnight Opus spend",
+      "expected": { "label": "Unread, CI waste, Urgent, Overnight Opus spend" }
+    },
+    {
+      "id": "a11y.inbox-row-read",
+      "kind": "inboxRow",
+      "unread": false,
+      "kindLabel": "Spend anomaly",
+      "priorityLabel": null,
+      "title": "Quiet day",
+      "expected": { "label": "Spend anomaly, Quiet day" }
+    },
+    {
+      "id": "a11y.chart.live-cost",
+      "kind": "chart",
+      "label": "Live cost curve",
+      "summary": "$1.20 over the last day",
+      "expected": { "label": "Live cost curve, $1.20 over the last day" }
+    },
+    {
+      "id": "a11y.icon-only.stop",
+      "kind": "iconOnly",
+      "action": "Stop generating",
+      "expected": { "label": "Stop generating" }
+    },
+    {
+      "id": "a11y.loading.pulse",
+      "kind": "loading",
+      "surface": "Pulse",
+      "expected": { "label": "Pulse loading" }
+    },
+    {
+      "id": "a11y.error.pulse",
+      "kind": "error",
+      "surface": "Pulse",
+      "expected": { "label": "Pulse failed to load" }
+    },
+    {
+      "id": "a11y.live-stream.mercury",
+      "kind": "liveStream",
+      "surface": "Mercury",
+      "expected": { "label": "Mercury live" }
+    }
+  ]
+}

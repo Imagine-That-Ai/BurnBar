@@ -1,0 +1,26 @@
+{
+  "generatedType": "InsightCanvasDoc",
+  "pass": [
+    {
+      "id": "happy",
+      "document": {
+        "id": "canvas-1",
+        "title": "Weekly burn",
+        "theme": "aurora",
+        "origin": "userCreated",
+        "updatedAt": "2026-08-17T12:00:00.000Z"
+      }
+    }
+  ],
+  "fail": [
+    {
+      "id": "missing-title",
+      "document": {
+        "id": "canvas-1",
+        "theme": "aurora",
+        "origin": "userCreated",
+        "updatedAt": "2026-08-17T12:00:00.000Z"
+      }
+    }
+  ]
+}

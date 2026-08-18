@@ -10,6 +10,7 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import com.openburnbar.data.policy.MobileOsIntegrationPolicy
 import java.util.concurrent.TimeUnit
 
 class TextExpansionSyncWorker(
@@ -21,8 +22,14 @@ class TextExpansionSyncWorker(
         val result = syncManager.sync()
         return if (result.isSuccess) {
             Result.success()
-        } else {
+        } else if (MobileOsIntegrationPolicy.shouldRetryBackground(
+                attempt = runAttemptCount,
+                cancelled = isStopped,
+            )
+        ) {
             Result.retry()
+        } else {
+            Result.failure()
         }
     }
 

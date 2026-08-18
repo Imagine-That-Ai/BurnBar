@@ -1,0 +1,5805 @@
+{
+  "schemaVersion": 1,
+  "id": "openburnbar-mobile-capability-registry-v1",
+  "programStatus": "mobile parity remediation in progress",
+  "baselineSha": "3f127f7da28f590441c46e0674dac7f27a04b7aa",
+  "baselineTag": "v1.0.35",
+  "inventoriedAt": "2026-08-17",
+  "routeMap": "docs/mobile-parity/mobile-route-map.json",
+  "ownershipMap": "docs/mobile-parity/mobile-ownership-map.json",
+  "evidenceSchema": "docs/mobile-parity/mobile-evidence-schema.json",
+  "nonGoals": "docs/mobile-parity/accepted-non-goals.json",
+  "ledger": "docs/mobile-parity/mobile-parity-ledger.json",
+  "plan": "docs/mobile-parity/FULL_MOBILE_PARITY_REMEDIATION_PLAN.md",
+  "schemaCanon": {
+    "typespecRoot": "tools/schema-sync/typespec/",
+    "manifest": "tools/schema-sync/manifest.json",
+    "note": "Domains recorded as mobile-consumed. M0 does not migrate TypeSpec or regenerate models.",
+    "mobileConsumedDomains": [
+      {
+        "id": "usage-quota",
+        "typespec": "tools/schema-sync/typespec/domains/usage-quota.tsp",
+        "ios": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/UsageQuotaModels.swift",
+        "android": "android/app/src/main/java/com/openburnbar/data/models/generated/UsageQuotaModels.kt",
+        "consumedBy": [
+          "pulse",
+          "burn"
+        ]
+      },
+      {
+        "id": "provider-account",
+        "typespec": "tools/schema-sync/typespec/domains/provider-account.tsp",
+        "ios": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/ProviderAccountModels.swift",
+        "android": "android/app/src/main/java/com/openburnbar/data/models/generated/ProviderAccountModels.kt",
+        "consumedBy": [
+          "providers"
+        ]
+      },
+      {
+        "id": "hermes-relay",
+        "typespec": "tools/schema-sync/typespec/domains/hermes-relay.tsp",
+        "ios": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/HermesRelayModels.swift",
+        "android": "android/app/src/main/java/com/openburnbar/data/models/generated/HermesRelayModels.kt",
+        "consumedBy": [
+          "hermes"
+        ]
+      },
+      {
+        "id": "hermes-gateway",
+        "typespec": "tools/schema-sync/typespec/domains/hermes-gateway.tsp",
+        "ios": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/HermesGatewayModels.swift",
+        "android": "android/app/src/main/java/com/openburnbar/data/models/generated/HermesGatewayModels.kt",
+        "consumedBy": [
+          "hermes"
+        ]
+      },
+      {
+        "id": "iroh-pairing",
+        "typespec": "tools/schema-sync/typespec/domains/iroh-pairing.tsp",
+        "ios": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/IrohPairingModels.swift",
+        "android": "android/app/src/main/java/com/openburnbar/data/models/generated/IrohPairingModels.kt",
+        "consumedBy": [
+          "devices",
+          "mercury"
+        ]
+      },
+      {
+        "id": "pi-agent-relay",
+        "typespec": "tools/schema-sync/typespec/domains/pi-agent-relay.tsp",
+        "ios": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/PiAgentRelayModels.swift",
+        "android": "android/app/src/main/java/com/openburnbar/data/models/generated/PiAgentRelayModels.kt",
+        "consumedBy": [
+          "hermes"
+        ]
+      },
+      {
+        "id": "computer-use",
+        "typespec": "tools/schema-sync/typespec/domains/computer-use.tsp",
+        "ios": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/ComputerUseModels.swift",
+        "android": "android/app/src/main/java/com/openburnbar/data/models/generated/ComputerUseModels.kt",
+        "consumedBy": [
+          "computer-use"
+        ]
+      },
+      {
+        "id": "hosted-quota",
+        "typespec": "tools/schema-sync/typespec/domains/hosted-quota.tsp",
+        "ios": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/HostedQuotaModels.swift",
+        "android": "android/app/src/main/java/com/openburnbar/data/models/generated/HostedQuotaModels.kt",
+        "consumedBy": [
+          "store"
+        ]
+      },
+      {
+        "id": "entitlements",
+        "typespec": "tools/schema-sync/typespec/domains/entitlements.tsp",
+        "ios": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/EntitlementModels.swift",
+        "android": "android/app/src/main/java/com/openburnbar/data/models/generated/EntitlementModels.kt",
+        "consumedBy": [
+          "store",
+          "devices"
+        ]
+      },
+      {
+        "id": "insights",
+        "typespec": "tools/schema-sync/typespec/domains/insights.tsp",
+        "ios": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/InsightModels.swift",
+        "android": "android/app/src/main/java/com/openburnbar/data/models/generated/InsightModels.kt",
+        "consumedBy": [
+          "insights-budget"
+        ]
+      },
+      {
+        "id": "missions",
+        "typespec": "tools/schema-sync/typespec/domains/missions.tsp",
+        "ios": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/MissionModels.swift",
+        "android": "android/app/src/main/java/com/openburnbar/data/models/generated/MissionModels.kt",
+        "consumedBy": [
+          "insights-budget"
+        ]
+      },
+      {
+        "id": "media-analytics",
+        "typespec": "tools/schema-sync/typespec/domains/media-analytics.tsp",
+        "ios": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/MediaAnalyticsModels.swift",
+        "android": "android/app/src/main/java/com/openburnbar/data/models/generated/MediaAnalyticsModels.kt",
+        "consumedBy": [
+          "mercury"
+        ]
+      },
+      {
+        "id": "device-links",
+        "typespec": "tools/schema-sync/typespec/domains/device-links.tsp",
+        "ios": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/DeviceLinkModels.swift",
+        "android": "android/app/src/main/java/com/openburnbar/data/models/generated/DeviceLinkModels.kt",
+        "consumedBy": [
+          "devices"
+        ]
+      },
+      {
+        "id": "model-benchmarks",
+        "typespec": "tools/schema-sync/typespec/domains/model-benchmarks.tsp",
+        "ios": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/ModelBenchmarkModels.swift",
+        "android": "android/app/src/main/java/com/openburnbar/data/models/generated/ModelBenchmarkModels.kt",
+        "consumedBy": [
+          "hermes"
+        ]
+      }
+    ]
+  },
+  "inventorySources": [
+    "OpenBurnBarMobile/Views/Navigation/AuroraNavigationIcons.swift",
+    "OpenBurnBarMobile/Views/RootTabView.swift",
+    "OpenBurnBarMobile/Views/RootNavigationView.swift",
+    "OpenBurnBarMobile/Models/AppCustomization.swift",
+    "OpenBurnBarMobile/App/OpenBurnBarMobileApp.swift",
+    "android/app/src/main/java/com/openburnbar/ui/components/AuroraNavDestination.kt",
+    "android/app/src/main/java/com/openburnbar/ui/navigation/BurnBarNavHost.kt",
+    "android/app/src/main/java/com/openburnbar/ui/navigation/BurnBarNavHostSections.kt",
+    "tools/schema-sync/manifest.json"
+  ],
+  "capabilities": [
+    {
+      "capabilityId": "auth.sign-in",
+      "title": "Account sign-in",
+      "family": "auth",
+      "kind": "capability",
+      "actor": "signed-out user",
+      "sourceSurface": "Firebase Auth + Apple/Google identity; Mac account session is the source product contract",
+      "iosSurface": {
+        "ipad": [],
+        "services": [
+          "OpenBurnBarMobile/Services/AuthRepository.swift"
+        ],
+        "stores": [
+          "OpenBurnBarMobile/Models/AuthStore.swift"
+        ],
+        "tests": [
+          "OpenBurnBarMobileTests/AuthStoreTests.swift",
+          "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileParityPolicyTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/Views/Auth/SignInScene.swift",
+          "OpenBurnBarMobile/App/AuthGateView.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [
+          "android/app/src/main/java/com/openburnbar/MainActivity.kt"
+        ],
+        "stores": [
+          "android/app/src/main/java/com/openburnbar/data/stores/AuthStore.kt"
+        ],
+        "tests": [
+          "android/app/src/test/java/com/openburnbar/AuthStoreTest.kt",
+          "android/app/src/test/java/com/openburnbar/data/policy/MobileParityPolicyTest.kt"
+        ],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/auth/LoginScreen.kt",
+          "android/app/src/main/java/com/openburnbar/ui/auth/AuthGateView.kt"
+        ]
+      },
+      "sharedContract": "none",
+      "states": [
+        "loading",
+        "ready",
+        "denied",
+        "retry",
+        "recovery"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "auth",
+      "evidenceFloor": [
+        "unit",
+        "physical device",
+        "store/provider"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "gated",
+        "deepLinkable": false,
+        "gated": true,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": false
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.auth.sign-in"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "auth.sign-out",
+      "title": "Account sign-out",
+      "family": "auth",
+      "kind": "capability",
+      "actor": "signed-in user",
+      "sourceSurface": "Firebase Auth sign-out and local cache/listener teardown",
+      "iosSurface": {
+        "ipad": [],
+        "services": [
+          "OpenBurnBarMobile/Services/AuthRepository.swift"
+        ],
+        "stores": [
+          "OpenBurnBarMobile/Models/AuthStore.swift"
+        ],
+        "tests": [
+          "OpenBurnBarMobileTests/AuthStoreTests.swift",
+          "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileParityPolicyTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/Views/You/AccountSettingsView.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [
+          "android/app/src/main/java/com/openburnbar/data/stores/AuthStore.kt"
+        ],
+        "tests": [
+          "android/app/src/test/java/com/openburnbar/AuthStoreTest.kt",
+          "android/app/src/test/java/com/openburnbar/data/policy/MobileParityPolicyTest.kt"
+        ],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/you/YouView.kt"
+        ]
+      },
+      "sharedContract": "none",
+      "states": [
+        "ready",
+        "denied",
+        "recovery"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "auth",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "secondary",
+        "deepLinkable": false,
+        "gated": false,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": true
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.settings.hub"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "auth.session-expiry",
+      "title": "Session expiry and revoked account",
+      "family": "auth",
+      "kind": "capability",
+      "actor": "signed-in user",
+      "sourceSurface": "Firebase ID token expiry / revoked user; mobile must fail closed and re-auth",
+      "iosSurface": {
+        "ipad": [],
+        "services": [
+          "OpenBurnBarMobile/Services/AuthRepository.swift"
+        ],
+        "stores": [
+          "OpenBurnBarMobile/Models/AuthStore.swift"
+        ],
+        "tests": [
+          "OpenBurnBarMobileTests/AuthStoreTests.swift",
+          "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileParityPolicyTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/App/AuthGateView.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [
+          "android/app/src/main/java/com/openburnbar/data/stores/AuthStore.kt"
+        ],
+        "tests": [
+          "android/app/src/test/java/com/openburnbar/AuthStoreTest.kt",
+          "android/app/src/test/java/com/openburnbar/data/policy/MobileParityPolicyTest.kt"
+        ],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/auth/AuthGateView.kt"
+        ]
+      },
+      "sharedContract": "none",
+      "states": [
+        "expired",
+        "denied",
+        "retry",
+        "recovery"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "auth",
+      "evidenceFloor": [
+        "integration",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "gated",
+        "deepLinkable": false,
+        "gated": true,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": false
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [],
+      "notes": ""
+    },
+    {
+      "capabilityId": "auth.app-check",
+      "title": "Firebase App Check",
+      "family": "auth",
+      "kind": "capability",
+      "actor": "system",
+      "sourceSurface": "Firebase App Check attestation on callables and Firestore",
+      "iosSurface": {
+        "ipad": [],
+        "services": [
+          "OpenBurnBarMobile/Services/AppCheckAttestationMonitor.swift",
+          "OpenBurnBarMobile/Services/ComputerUse/MobileAppCheckAttestationReader.swift"
+        ],
+        "stores": [],
+        "tests": [],
+        "views": []
+      },
+      "androidSurface": {
+        "services": [
+          "android/app/src/main/java/com/openburnbar/MainActivity.kt"
+        ],
+        "stores": [],
+        "tests": [],
+        "views": []
+      },
+      "sharedContract": "none",
+      "states": [
+        "loading",
+        "ready",
+        "denied",
+        "retry"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "App Check",
+      "evidenceFloor": [
+        "integration",
+        "physical device",
+        "store/provider"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "none",
+        "deepLinkable": false,
+        "gated": false,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": false
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [],
+      "notes": "Surfaces exist; no live App Check denial evidence is claimed."
+    },
+    {
+      "capabilityId": "auth.onboarding",
+      "title": "First-run onboarding and provider setup",
+      "family": "auth",
+      "kind": "capability",
+      "actor": "signed-out user",
+      "sourceSurface": "Mac first-run / provider connect flow",
+      "iosSurface": {
+        "ipad": [],
+        "services": [],
+        "stores": [
+          "OpenBurnBarMobile/Models/MobileProviderWizardModel.swift"
+        ],
+        "tests": [
+          "OpenBurnBarMobileTests/AuthStoreTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/Views/Onboarding/OnboardingWizardView.swift",
+          "OpenBurnBarMobile/Views/Onboarding/OnboardingProviderConnectStep.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [],
+        "tests": [
+          "android/app/src/test/java/com/openburnbar/AuthStoreTest.kt"
+        ],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/auth/LaunchSplashGate.kt",
+          "android/app/src/main/java/com/openburnbar/ui/providers/AddProviderConnectionView.kt"
+        ]
+      },
+      "sharedContract": "none",
+      "states": [
+        "loading",
+        "ready",
+        "empty",
+        "denied",
+        "retry",
+        "cancel"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "auth",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "gated",
+        "deepLinkable": false,
+        "gated": true,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": true
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.auth.onboarding"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "auth.account-mismatch",
+      "title": "Account switch and UID-scoped cache isolation",
+      "family": "auth",
+      "kind": "capability",
+      "actor": "signed-in user",
+      "sourceSurface": "Cloud listeners and caches must follow the active UID",
+      "iosSurface": {
+        "ipad": [],
+        "services": [
+          "OpenBurnBarMobile/Services/LiveCloudReader.swift"
+        ],
+        "stores": [
+          "OpenBurnBarMobile/Models/AuthStore.swift"
+        ],
+        "tests": [
+          "OpenBurnBarMobileTests/ConversationCockpitAuthTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/App/AuthGateView.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [
+          "android/app/src/main/java/com/openburnbar/data/firebase/FirestoreRepository.kt"
+        ],
+        "stores": [
+          "android/app/src/main/java/com/openburnbar/data/stores/AuthStore.kt"
+        ],
+        "tests": [
+          "android/app/src/test/java/com/openburnbar/AuthStoreTest.kt",
+          "android/app/src/test/java/com/openburnbar/data/policy/MobileParityPolicyTest.kt"
+        ],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/auth/AuthGateView.kt"
+        ]
+      },
+      "sharedContract": "none",
+      "states": [
+        "ready",
+        "denied",
+        "recovery"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "auth",
+      "evidenceFloor": [
+        "integration",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "none",
+        "deepLinkable": false,
+        "gated": false,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": false
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [],
+      "notes": ""
+    },
+    {
+      "capabilityId": "shell.primary-tabs",
+      "title": "Primary shell destinations",
+      "family": "shell",
+      "kind": "capability",
+      "actor": "signed-in user",
+      "sourceSurface": "Mac sidebar / command destinations are not the mobile contract; mobile shells are native",
+      "iosSurface": {
+        "ipad": [
+          "OpenBurnBarMobile/Views/RootNavigationView.swift"
+        ],
+        "services": [],
+        "stores": [
+          "OpenBurnBarMobile/Models/AppCustomization.swift"
+        ],
+        "tests": [
+          "OpenBurnBarMobileTests/AuroraNavigationTrayTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/Views/RootTabView.swift",
+          "OpenBurnBarMobile/Views/Navigation/AuroraNavigationIcons.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [],
+        "tests": [
+          "android/app/src/test/java/com/openburnbar/BurnBarDeepLinkTest.kt"
+        ],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/navigation/BurnBarNavHost.kt",
+          "android/app/src/main/java/com/openburnbar/ui/components/AuroraNavDestination.kt"
+        ]
+      },
+      "sharedContract": "none",
+      "states": [
+        "ready"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "none",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "primary",
+        "deepLinkable": true,
+        "gated": false,
+        "platformSpecific": false,
+        "primary": true,
+        "secondary": false
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.shell.pulse",
+        "route.shell.burn",
+        "route.shell.insights",
+        "route.shell.streams",
+        "route.shell.hermes",
+        "route.shell.you"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "shell.ipad-split",
+      "title": "iPadOS split-view sidebar shell",
+      "family": "shell",
+      "kind": "capability",
+      "actor": "signed-in user",
+      "sourceSurface": "iPad AppDestination sidebar in AppCustomization / RootNavigationView",
+      "iosSurface": {
+        "ipad": [
+          "OpenBurnBarMobile/Views/RootNavigationView.swift"
+        ],
+        "services": [],
+        "stores": [
+          "OpenBurnBarMobile/Models/AppCustomization.swift"
+        ],
+        "tests": [
+          "OpenBurnBarMobileTests/iPadNavigationUITests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/Views/RootNavigationView.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [],
+        "tests": [],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/navigation/BurnBarNavHostSections.kt"
+        ]
+      },
+      "sharedContract": "none",
+      "states": [
+        "ready"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "none",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "platform-specific",
+        "deepLinkable": true,
+        "gated": false,
+        "platformSpecific": true,
+        "primary": true,
+        "secondary": true
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.shell.pulse",
+        "route.shell.settings",
+        "route.shell.devices",
+        "route.shell.providers"
+      ],
+      "notes": "Android large-screen uses a navigation rail in the same NavHost, not an iPad sidebar."
+    },
+    {
+      "capabilityId": "shell.android-nav-host",
+      "title": "Android NavHost graph",
+      "family": "shell",
+      "kind": "capability",
+      "actor": "signed-in user",
+      "sourceSurface": "BurnBarTab + BurnBarNavHostSections composable graph",
+      "iosSurface": {
+        "ipad": [],
+        "services": [],
+        "stores": [],
+        "tests": [],
+        "views": [
+          "OpenBurnBarMobile/Views/RootTabView.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [],
+        "tests": [
+          "android/app/src/test/java/com/openburnbar/BurnBarDeepLinkTest.kt"
+        ],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/navigation/BurnBarNavHost.kt",
+          "android/app/src/main/java/com/openburnbar/ui/navigation/BurnBarNavHostSections.kt"
+        ]
+      },
+      "sharedContract": "none",
+      "states": [
+        "ready"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "none",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "primary",
+        "deepLinkable": true,
+        "gated": false,
+        "platformSpecific": true,
+        "primary": true,
+        "secondary": true
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.shell.inbox",
+        "route.shell.pulse"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "shell.auth-gate",
+      "title": "Signed-out vs signed-in root gate",
+      "family": "shell",
+      "kind": "capability",
+      "actor": "signed-out user",
+      "sourceSurface": "Auth gate before the product shell",
+      "iosSurface": {
+        "ipad": [],
+        "services": [],
+        "stores": [
+          "OpenBurnBarMobile/Models/AuthStore.swift"
+        ],
+        "tests": [
+          "OpenBurnBarMobileTests/AppStoreReviewComplianceTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/App/AuthGateView.swift",
+          "OpenBurnBarMobile/App/OpenBurnBarMobileApp.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [
+          "android/app/src/main/java/com/openburnbar/data/stores/UserStore.kt"
+        ],
+        "tests": [
+          "android/app/src/test/java/com/openburnbar/data/policy/MobileParityPolicyTest.kt"
+        ],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/auth/AuthGateView.kt",
+          "android/app/src/main/java/com/openburnbar/ui/navigation/BurnBarNavHost.kt"
+        ]
+      },
+      "sharedContract": "none",
+      "states": [
+        "loading",
+        "ready",
+        "denied"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "auth",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "gated",
+        "deepLinkable": false,
+        "gated": true,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": true
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.auth.sign-in"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "shell.deep-link-router",
+      "title": "Cold and warm deep-link router",
+      "family": "shell",
+      "kind": "capability",
+      "actor": "system",
+      "sourceSurface": "burnbar:// URL handlers on each mobile app",
+      "iosSurface": {
+        "ipad": [],
+        "services": [
+          "OpenBurnBarMobile/Services/AIInboxNotificationRouting.swift"
+        ],
+        "stores": [],
+        "tests": [
+          "OpenBurnBarMobileTests/AIInboxNotificationRoutingTests.swift",
+          "OpenBurnBarMobileTests/iPadNavigationUITests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/App/OpenBurnBarMobileApp.swift",
+          "OpenBurnBarMobile/Views/RootTabView.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [],
+        "tests": [
+          "android/app/src/test/java/com/openburnbar/BurnBarDeepLinkTest.kt"
+        ],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/MainActivity.kt",
+          "android/app/src/main/java/com/openburnbar/ui/navigation/BurnBarNavHostSections.kt"
+        ]
+      },
+      "sharedContract": "none",
+      "states": [
+        "ready",
+        "denied",
+        "retry"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "auth",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "deep-linkable",
+        "deepLinkable": true,
+        "gated": false,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": false
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [
+        "burnbar://inbox/{itemId}",
+        "burnbar://assistants/{runtime}"
+      ],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.dashboard.alias",
+        "route.inbox.item",
+        "route.hermes.assistants-thread"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "pulse.overview",
+      "title": "Pulse dashboard",
+      "family": "pulse",
+      "kind": "capability",
+      "actor": "signed-in user",
+      "sourceSurface": "Mac dashboard / usage rollups",
+      "iosSurface": {
+        "ipad": [
+          "OpenBurnBarMobile/Views/RootNavigationView.swift"
+        ],
+        "services": [],
+        "stores": [
+          "OpenBurnBarMobile/Models/DashboardStore.swift"
+        ],
+        "tests": [
+          "OpenBurnBarMobileTests/DashboardStoreToggleTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/Views/Pulse/PulseView.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [
+          "android/app/src/main/java/com/openburnbar/data/stores/DashboardStore.kt"
+        ],
+        "tests": [],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/pulse/PulseView.kt"
+        ]
+      },
+      "sharedContract": "usage-quota",
+      "states": [
+        "loading",
+        "ready",
+        "empty",
+        "offline",
+        "retry"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "auth",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "primary",
+        "deepLinkable": true,
+        "gated": false,
+        "platformSpecific": false,
+        "primary": true,
+        "secondary": true
+      },
+      "widgets": [
+        "com.openburnbar.app.widget"
+      ],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.shell.pulse",
+        "route.dashboard.alias"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "pulse.live-usage",
+      "title": "Pulse live usage accumulator",
+      "family": "pulse",
+      "kind": "capability",
+      "actor": "signed-in user",
+      "sourceSurface": "Live usage events published by the Mac / functions",
+      "iosSurface": {
+        "ipad": [],
+        "services": [
+          "OpenBurnBarMobile/Services/LiveUsageAccumulator.swift"
+        ],
+        "stores": [
+          "OpenBurnBarMobile/Models/DashboardStore.swift"
+        ],
+        "tests": [
+          "OpenBurnBarMobileTests/PulseWindowMetricsTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/Views/Pulse/PulseLiveCostCurve.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [
+          "android/app/src/main/java/com/openburnbar/data/firebase/LiveUsageAccumulator.kt"
+        ],
+        "stores": [
+          "android/app/src/main/java/com/openburnbar/ui/pulse/PulseLiveMetricsStore.kt"
+        ],
+        "tests": [],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/pulse/PulseLiveCostCurve.kt"
+        ]
+      },
+      "sharedContract": "usage-quota",
+      "states": [
+        "loading",
+        "ready",
+        "empty",
+        "offline",
+        "retry"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "auth",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "primary",
+        "deepLinkable": false,
+        "gated": false,
+        "platformSpecific": false,
+        "primary": true,
+        "secondary": true
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [
+        "live-usage-listeners"
+      ],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.shell.pulse"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "pulse.quota-card",
+      "title": "Pulse quota pressure card",
+      "family": "pulse",
+      "kind": "capability",
+      "actor": "signed-in user",
+      "sourceSurface": "Quota snapshots / hosted quota bindings",
+      "iosSurface": {
+        "ipad": [],
+        "services": [],
+        "stores": [
+          "OpenBurnBarMobile/Models/QuotaStore.swift"
+        ],
+        "tests": [
+          "OpenBurnBarMobileTests/PulseBurnProductVectorTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/Views/Pulse/QuotaPulseCard.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [
+          "android/app/src/main/java/com/openburnbar/data/firebase/FirestoreQuotaBucketParser.kt"
+        ],
+        "stores": [
+          "android/app/src/main/java/com/openburnbar/data/stores/QuotaStore.kt"
+        ],
+        "tests": [
+          "android/app/src/test/java/com/openburnbar/data/policy/MobileProductParityTest.kt"
+        ],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/pulse/QuotaPulseCard.kt"
+        ]
+      },
+      "sharedContract": "usage-quota",
+      "states": [
+        "loading",
+        "ready",
+        "empty",
+        "offline",
+        "retry"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "auth",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "primary",
+        "deepLinkable": false,
+        "gated": false,
+        "platformSpecific": false,
+        "primary": true,
+        "secondary": true
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.shell.pulse"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "pulse.forecast",
+      "title": "Pulse velocity forecast",
+      "family": "pulse",
+      "kind": "capability",
+      "actor": "signed-in user",
+      "sourceSurface": "Mac forecast / velocity model",
+      "iosSurface": {
+        "ipad": [],
+        "services": [],
+        "stores": [
+          "OpenBurnBarMobile/Models/VelocityForecastStore.swift"
+        ],
+        "tests": [
+          "OpenBurnBarMobileTests/PulseBurnProductVectorTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/Views/Pulse/VelocityForecastCard.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [
+          "android/app/src/main/java/com/openburnbar/data/stores/VelocityForecastStore.kt"
+        ],
+        "tests": [
+          "android/app/src/test/java/com/openburnbar/data/policy/MobileProductParityTest.kt"
+        ],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/pulse/VelocityForecastCard.kt"
+        ]
+      },
+      "sharedContract": "usage-quota",
+      "states": [
+        "loading",
+        "ready",
+        "empty",
+        "retry"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "auth",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "secondary",
+        "deepLinkable": false,
+        "gated": false,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": true
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.shell.pulse"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "pulse.recent-sessions",
+      "title": "Pulse recent sessions strip",
+      "family": "pulse",
+      "kind": "capability",
+      "actor": "signed-in user",
+      "sourceSurface": "Activity / usage event list",
+      "iosSurface": {
+        "ipad": [],
+        "services": [],
+        "stores": [
+          "OpenBurnBarMobile/Models/ActivityStore.swift"
+        ],
+        "tests": [],
+        "views": [
+          "OpenBurnBarMobile/Views/Pulse/RecentSessionsStripCard.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [
+          "android/app/src/main/java/com/openburnbar/data/stores/ActivityStore.kt"
+        ],
+        "tests": [
+          "android/app/src/test/java/com/openburnbar/ActivityStoreTest.kt"
+        ],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/pulse/RecentSessionsStripCard.kt"
+        ]
+      },
+      "sharedContract": "usage-quota",
+      "states": [
+        "loading",
+        "ready",
+        "empty",
+        "offline"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "auth",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "secondary",
+        "deepLinkable": false,
+        "gated": false,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": true
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.shell.pulse"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "burn.overview",
+      "title": "Burn overview",
+      "family": "burn",
+      "kind": "capability",
+      "actor": "signed-in user",
+      "sourceSurface": "Mac burn / quota leaderboard",
+      "iosSurface": {
+        "ipad": [],
+        "services": [],
+        "stores": [
+          "OpenBurnBarMobile/Models/QuotaStore.swift",
+          "OpenBurnBarMobile/Models/DashboardStore.swift"
+        ],
+        "tests": [
+          "OpenBurnBarMobileTests/BurnLayoutStyleTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/Views/Burn/BurnView.swift",
+          "OpenBurnBarMobile/Views/QuotaView.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [
+          "android/app/src/main/java/com/openburnbar/data/stores/QuotaStore.kt"
+        ],
+        "tests": [
+          "android/app/src/test/java/com/openburnbar/BurnViewStyleTest.kt"
+        ],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/burn/BurnView.kt"
+        ]
+      },
+      "sharedContract": "usage-quota",
+      "states": [
+        "loading",
+        "ready",
+        "empty",
+        "offline",
+        "retry"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "auth",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "primary",
+        "deepLinkable": true,
+        "gated": false,
+        "platformSpecific": false,
+        "primary": true,
+        "secondary": true
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.shell.burn"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "burn.quota-detail",
+      "title": "Quota detail sheet",
+      "family": "burn",
+      "kind": "capability",
+      "actor": "signed-in user",
+      "sourceSurface": "Quota snapshot buckets and account rows",
+      "iosSurface": {
+        "ipad": [],
+        "services": [],
+        "stores": [
+          "OpenBurnBarMobile/Models/QuotaStore.swift"
+        ],
+        "tests": [
+          "OpenBurnBarMobileTests/PulseBurnProductVectorTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/Views/QuotaDetailSheet.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [
+          "android/app/src/main/java/com/openburnbar/data/stores/QuotaStore.kt"
+        ],
+        "tests": [
+          "android/app/src/test/java/com/openburnbar/data/policy/MobileProductParityTest.kt"
+        ],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/burn/QuotaDetailSheet.kt"
+        ]
+      },
+      "sharedContract": "usage-quota",
+      "states": [
+        "loading",
+        "ready",
+        "empty",
+        "offline",
+        "retry"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "auth",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "secondary",
+        "deepLinkable": false,
+        "gated": false,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": true
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.shell.burn"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "burn.grouping-sort",
+      "title": "Burn grouping, sorting, and rounding",
+      "family": "burn",
+      "kind": "capability",
+      "actor": "signed-in user",
+      "sourceSurface": "Source burn oracle grouping/sort/rounding",
+      "iosSurface": {
+        "ipad": [],
+        "services": [],
+        "stores": [
+          "OpenBurnBarMobile/Models/QuotaStore.swift"
+        ],
+        "tests": [
+          "OpenBurnBarMobileTests/BurnLayoutStyleTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/Views/Burn/BurnView.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [
+          "android/app/src/main/java/com/openburnbar/data/stores/QuotaStore.kt"
+        ],
+        "tests": [],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/burn/BurnView.kt",
+          "android/app/src/main/java/com/openburnbar/ui/burn/QuotaSortMode.kt"
+        ]
+      },
+      "sharedContract": "usage-quota",
+      "states": [
+        "ready",
+        "empty"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "auth",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "secondary",
+        "deepLinkable": false,
+        "gated": false,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": true
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.shell.burn"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "streams.activity",
+      "title": "Streams activity list",
+      "family": "streams",
+      "kind": "capability",
+      "actor": "signed-in user",
+      "sourceSurface": "Mac activity / session catalog",
+      "iosSurface": {
+        "ipad": [],
+        "services": [],
+        "stores": [
+          "OpenBurnBarMobile/Models/ActivityStore.swift"
+        ],
+        "tests": [
+          "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileProductParityTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/Views/Streams/StreamsView.swift",
+          "OpenBurnBarMobile/Views/ActivityView.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [
+          "android/app/src/main/java/com/openburnbar/data/stores/ActivityStore.kt"
+        ],
+        "tests": [
+          "android/app/src/test/java/com/openburnbar/data/policy/MobileProductParityTest.kt"
+        ],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/streams/StreamsView.kt"
+        ]
+      },
+      "sharedContract": "usage-quota",
+      "states": [
+        "loading",
+        "ready",
+        "empty",
+        "offline",
+        "retry"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "auth",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "primary",
+        "deepLinkable": true,
+        "gated": false,
+        "platformSpecific": false,
+        "primary": true,
+        "secondary": true
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.shell.streams"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "streams.session-detail",
+      "title": "Session detail",
+      "family": "streams",
+      "kind": "capability",
+      "actor": "signed-in user",
+      "sourceSurface": "Usage event / session detail",
+      "iosSurface": {
+        "ipad": [],
+        "services": [],
+        "stores": [
+          "OpenBurnBarMobile/Models/ActivityStore.swift"
+        ],
+        "tests": [
+          "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileProductParityTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/Views/SessionDetailView.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [
+          "android/app/src/main/java/com/openburnbar/data/stores/ActivityStore.kt"
+        ],
+        "tests": [
+          "android/app/src/test/java/com/openburnbar/data/policy/MobileProductParityTest.kt"
+        ],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/streams/StreamsView.kt"
+        ]
+      },
+      "sharedContract": "usage-quota",
+      "states": [
+        "loading",
+        "ready",
+        "empty",
+        "denied"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "auth",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "secondary",
+        "deepLinkable": true,
+        "gated": false,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": true
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.shell.streams"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "streams.projects",
+      "title": "Projects and project detail",
+      "family": "streams",
+      "kind": "capability",
+      "actor": "signed-in user",
+      "sourceSurface": "Mac projects / memory wiki",
+      "iosSurface": {
+        "ipad": [],
+        "services": [],
+        "stores": [
+          "OpenBurnBarMobile/Models/ProjectsStore.swift"
+        ],
+        "tests": [
+          "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileProductParityTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/Views/Streams/ProjectDetailView.swift",
+          "OpenBurnBarMobile/Views/Streams/MobileProjectMemoryWikiView.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [
+          "android/app/src/main/java/com/openburnbar/data/stores/ProjectsStore.kt"
+        ],
+        "tests": [
+          "android/app/src/test/java/com/openburnbar/data/policy/MobileProductParityTest.kt"
+        ],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/streams/StreamsView.kt"
+        ]
+      },
+      "sharedContract": "none",
+      "states": [
+        "loading",
+        "ready",
+        "empty",
+        "offline",
+        "denied"
+      ],
+      "entitlement": "Cloud",
+      "securityBoundary": "auth",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "secondary",
+        "deepLinkable": false,
+        "gated": true,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": true
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.shell.streams"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "streams.encrypted-search",
+      "title": "Encrypted conversation search",
+      "family": "streams",
+      "kind": "capability",
+      "actor": "signed-in user",
+      "sourceSurface": "Hosted encrypted index + local transcript cache",
+      "iosSurface": {
+        "ipad": [],
+        "services": [
+          "OpenBurnBarMobile/Services/ConversationSearchAPI.swift"
+        ],
+        "stores": [],
+        "tests": [
+          "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileProductParityTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/Views/Streams/StreamsView.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [
+          "android/app/src/main/java/com/openburnbar/data/stores/ConversationCockpitStore.kt"
+        ],
+        "tests": [
+          "android/app/src/test/java/com/openburnbar/data/policy/MobileProductParityTest.kt"
+        ],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/streams/StreamsView.kt"
+        ]
+      },
+      "sharedContract": "none",
+      "states": [
+        "loading",
+        "ready",
+        "empty",
+        "denied",
+        "retry"
+      ],
+      "entitlement": "Cloud",
+      "securityBoundary": "encryption",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "gated",
+        "deepLinkable": true,
+        "gated": true,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": true
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.shell.streams"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "hermes.assistants-landing",
+      "title": "Assistants / Agents landing",
+      "family": "hermes",
+      "kind": "capability",
+      "actor": "signed-in user",
+      "sourceSurface": "Mac Hermes / Agents workspace",
+      "iosSurface": {
+        "ipad": [],
+        "services": [
+          "OpenBurnBarMobile/Services/HermesService.swift"
+        ],
+        "stores": [
+          "OpenBurnBarMobile/Services/HermesRuntimeStore.swift"
+        ],
+        "tests": [
+          "OpenBurnBarMobileTests/HermesRuntimeStoreTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/Views/Hermes/Square/HermesSquareRoot.swift",
+          "OpenBurnBarMobile/Views/Hermes/HermesTabView.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [],
+        "tests": [],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/square/HermesSquareSplitLayout.kt",
+          "android/app/src/main/java/com/openburnbar/ui/hermes/AssistantsScreen.kt"
+        ]
+      },
+      "sharedContract": "hermes-relay",
+      "states": [
+        "loading",
+        "ready",
+        "empty",
+        "offline",
+        "retry"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "auth",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "primary",
+        "deepLinkable": true,
+        "gated": false,
+        "platformSpecific": false,
+        "primary": true,
+        "secondary": true
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.shell.hermes"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "hermes.conversation-list",
+      "title": "Hermes conversation list",
+      "family": "hermes",
+      "kind": "capability",
+      "actor": "signed-in user",
+      "sourceSurface": "Hermes conversation catalog",
+      "iosSurface": {
+        "ipad": [],
+        "services": [
+          "OpenBurnBarMobile/Services/HermesService.swift"
+        ],
+        "stores": [
+          "OpenBurnBarMobile/Services/Hermes/HermesConversationStateStore.swift"
+        ],
+        "tests": [
+          "OpenBurnBarMobileTests/HermesConversationListViewTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/Views/Hermes/HermesTabView+ConversationList.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [],
+        "tests": [],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/hermes/HermesSessionsScreen.kt"
+        ]
+      },
+      "sharedContract": "hermes-relay",
+      "states": [
+        "loading",
+        "ready",
+        "empty",
+        "offline"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "auth",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "primary",
+        "deepLinkable": false,
+        "gated": false,
+        "platformSpecific": false,
+        "primary": true,
+        "secondary": true
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.shell.hermes"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "hermes.streaming-chat",
+      "title": "Streaming chat",
+      "family": "hermes",
+      "kind": "capability",
+      "actor": "signed-in user",
+      "sourceSurface": "Hermes streaming engine / relay",
+      "iosSurface": {
+        "ipad": [],
+        "services": [
+          "OpenBurnBarMobile/Services/Hermes/HermesStreamingEngine.swift",
+          "OpenBurnBarMobile/Services/HermesService.swift"
+        ],
+        "stores": [],
+        "tests": [
+          "OpenBurnBarMobileTests/HermesServiceTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/Views/Hermes/HermesTabView.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [],
+        "tests": [],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/hermes/HermesView.kt"
+        ]
+      },
+      "sharedContract": "hermes-relay",
+      "states": [
+        "loading",
+        "ready",
+        "empty",
+        "offline",
+        "retry",
+        "cancel"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "auth",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "primary",
+        "deepLinkable": true,
+        "gated": false,
+        "platformSpecific": false,
+        "primary": true,
+        "secondary": true
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.hermes.assistants-thread"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "hermes.runtime-selection",
+      "title": "Runtime and model selection",
+      "family": "hermes",
+      "kind": "capability",
+      "actor": "signed-in user",
+      "sourceSurface": "Hermes / Pi runtime catalog",
+      "iosSurface": {
+        "ipad": [],
+        "services": [
+          "OpenBurnBarMobile/Services/AssistantModelCatalog.swift"
+        ],
+        "stores": [
+          "OpenBurnBarMobile/Services/HermesRuntimeStore.swift"
+        ],
+        "tests": [
+          "OpenBurnBarMobileTests/AssistantModelCatalogTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/Views/Hermes/HermesModelPicker.swift",
+          "OpenBurnBarMobile/Views/Hermes/AssistantModelPickerSheet.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [
+          "android/app/src/main/java/com/openburnbar/data/hermes/CLIRuntimeModelCatalog.kt"
+        ],
+        "stores": [],
+        "tests": [],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/hermes/AssistantsScreen.kt"
+        ]
+      },
+      "sharedContract": "hermes-relay",
+      "states": [
+        "ready",
+        "empty",
+        "denied"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "auth",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "secondary",
+        "deepLinkable": false,
+        "gated": false,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": true
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.shell.hermes"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "hermes.pi-assistant",
+      "title": "Pi assistant",
+      "family": "hermes",
+      "kind": "capability",
+      "actor": "signed-in user",
+      "sourceSurface": "Pi agent relay",
+      "iosSurface": {
+        "ipad": [],
+        "services": [
+          "OpenBurnBarMobile/Services/PiService.swift",
+          "OpenBurnBarMobile/Services/PiPairingAPI.swift"
+        ],
+        "stores": [],
+        "tests": [
+          "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileHermesMercuryComputerUseParityTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/Views/Hermes/PiConversationListView.swift",
+          "OpenBurnBarMobile/Views/Hermes/PiSettingsView.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [
+          "android/app/src/main/java/com/openburnbar/data/firebase/FunctionsPiAgentRepository.kt"
+        ],
+        "stores": [],
+        "tests": [
+          "android/app/src/test/java/com/openburnbar/data/policy/MobileHermesMercuryComputerUseParityTest.kt"
+        ],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/hermes/PiAssistantView.kt"
+        ]
+      },
+      "sharedContract": "pi-agent-relay",
+      "states": [
+        "loading",
+        "ready",
+        "empty",
+        "offline",
+        "retry"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "auth",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "deep-linkable",
+        "deepLinkable": true,
+        "gated": false,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": true
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.hermes.assistants-thread"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "hermes.attachments",
+      "title": "Chat attachments",
+      "family": "hermes",
+      "kind": "capability",
+      "actor": "signed-in user",
+      "sourceSurface": "Hermes attachment workspace",
+      "iosSurface": {
+        "ipad": [],
+        "services": [
+          "OpenBurnBarMobile/Services/HermesAttachmentLoader.swift",
+          "OpenBurnBarMobile/Services/HermesAttachmentWorkspace.swift"
+        ],
+        "stores": [],
+        "tests": [
+          "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileHermesMercuryComputerUseParityTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/Views/ChatAttachmentTray.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [
+          "android/app/src/main/java/com/openburnbar/data/hermes/HermesAttachmentEncoder.kt"
+        ],
+        "stores": [],
+        "tests": [
+          "android/app/src/test/java/com/openburnbar/data/policy/MobileHermesMercuryComputerUseParityTest.kt"
+        ],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/hermes/HermesAttachmentTray.kt"
+        ]
+      },
+      "sharedContract": "hermes-gateway",
+      "states": [
+        "loading",
+        "ready",
+        "empty",
+        "denied",
+        "retry"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "auth",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "secondary",
+        "deepLinkable": false,
+        "gated": false,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": true
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.hermes.assistants-thread"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "hermes.stop-cancel",
+      "title": "Stop, cancel, and partial response",
+      "family": "hermes",
+      "kind": "capability",
+      "actor": "signed-in user",
+      "sourceSurface": "Hermes stream cancellation",
+      "iosSurface": {
+        "ipad": [],
+        "services": [
+          "OpenBurnBarMobile/Services/Hermes/HermesStreamingEngine.swift"
+        ],
+        "stores": [],
+        "tests": [
+          "OpenBurnBarMobileTests/HermesServiceTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/Views/Hermes/HermesTabView.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [],
+        "tests": [
+          "android/app/src/test/java/com/openburnbar/CancellationRethrowTest.kt"
+        ],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/hermes/HermesView.kt"
+        ]
+      },
+      "sharedContract": "hermes-relay",
+      "states": [
+        "ready",
+        "cancel",
+        "retry",
+        "recovery"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "auth",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "secondary",
+        "deepLinkable": false,
+        "gated": false,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": true
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.hermes.assistants-thread"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "hermes.tools",
+      "title": "Tool-call rendering",
+      "family": "hermes",
+      "kind": "capability",
+      "actor": "signed-in user",
+      "sourceSurface": "Hermes tool catalog / atom tools",
+      "iosSurface": {
+        "ipad": [],
+        "services": [
+          "OpenBurnBarMobile/Services/Tools/MobileToolCatalog.swift"
+        ],
+        "stores": [],
+        "tests": [
+          "OpenBurnBarMobileTests/Tools/BurnBarAtomOpenToolTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/Views/Components/HermesAtomChip.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [
+          "android/app/src/main/java/com/openburnbar/data/hermes/HermesAtomParser.kt"
+        ],
+        "stores": [],
+        "tests": [],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/hermes/HermesToolCard.kt"
+        ]
+      },
+      "sharedContract": "hermes-relay",
+      "states": [
+        "ready",
+        "denied",
+        "retry"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "auth",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "secondary",
+        "deepLinkable": false,
+        "gated": false,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": true
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.hermes.assistants-thread"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "hermes.square",
+      "title": "Hermes Square multi-agent surface",
+      "family": "hermes",
+      "kind": "capability",
+      "actor": "signed-in user",
+      "sourceSurface": "Mac Hermes Square / agent brand zone",
+      "iosSurface": {
+        "ipad": [],
+        "services": [],
+        "stores": [
+          "OpenBurnBarMobile/Services/AgentIdentityRegistry.swift"
+        ],
+        "tests": [
+          "OpenBurnBarMobileTests/AgentIdentityRegistryMacURITests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/Views/Hermes/Square/HermesSquareRoot.swift",
+          "OpenBurnBarMobile/Views/Hermes/Square/HermesSquareSplitLayout.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [],
+        "tests": [],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/square/HermesSquareSplitLayout.kt",
+          "android/app/src/main/java/com/openburnbar/ui/square/AgentBrandZoneScreen.kt"
+        ]
+      },
+      "sharedContract": "hermes-gateway",
+      "states": [
+        "loading",
+        "ready",
+        "empty"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "auth",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "primary",
+        "deepLinkable": true,
+        "gated": false,
+        "platformSpecific": false,
+        "primary": true,
+        "secondary": true
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.shell.hermes",
+        "route.hermes.agent-brand"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "hermes.gateway-pairing",
+      "title": "Hermes gateway pairing deep link",
+      "family": "hermes",
+      "kind": "capability",
+      "actor": "signed-in user",
+      "sourceSurface": "Hermes gateway pairing codes",
+      "iosSurface": {
+        "ipad": [],
+        "services": [
+          "OpenBurnBarMobile/Services/HermesGatewayAPI.swift"
+        ],
+        "stores": [],
+        "tests": [
+          "OpenBurnBarMobileTests/OpenBurnBarMobileTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/Views/Hermes/HermesSettingsView.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [],
+        "tests": [],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/hermes/HermesSettingsView.kt"
+        ]
+      },
+      "sharedContract": "hermes-gateway",
+      "states": [
+        "loading",
+        "ready",
+        "denied",
+        "expired",
+        "retry"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "device trust",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "deep-linkable",
+        "deepLinkable": true,
+        "gated": true,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": false
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.shell.hermes"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "insights.canvas",
+      "title": "Insights canvas",
+      "family": "insights-budget",
+      "kind": "capability",
+      "actor": "signed-in user",
+      "sourceSurface": "Mac insights canvas / widgets",
+      "iosSurface": {
+        "ipad": [],
+        "services": [
+          "OpenBurnBarMobile/Services/Insights/MobileInsightDataSource.swift"
+        ],
+        "stores": [
+          "OpenBurnBarMobile/Models/InsightsStore.swift"
+        ],
+        "tests": [
+          "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileProductParityTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/Views/Insights/InsightsRootView.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [
+          "android/app/src/main/java/com/openburnbar/ui/insights/InsightsViewModel.kt"
+        ],
+        "tests": [
+          "android/app/src/test/java/com/openburnbar/data/policy/MobileProductParityTest.kt"
+        ],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/insights/InsightsScreen.kt"
+        ]
+      },
+      "sharedContract": "insights",
+      "states": [
+        "loading",
+        "ready",
+        "empty",
+        "denied"
+      ],
+      "entitlement": "Cloud",
+      "securityBoundary": "auth",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "gated",
+        "deepLinkable": true,
+        "gated": true,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": true
+      },
+      "widgets": [
+        "com.openburnbar.app.insightstoday"
+      ],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.insights.workspace",
+        "route.shell.insights"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "insights.agent-insights",
+      "title": "Per-agent insights",
+      "family": "insights-budget",
+      "kind": "capability",
+      "actor": "signed-in user",
+      "sourceSurface": "Agent insights / intelligence brief",
+      "iosSurface": {
+        "ipad": [],
+        "services": [
+          "OpenBurnBarMobile/Services/Insights/MobileAgentInsightsProducer.swift"
+        ],
+        "stores": [
+          "OpenBurnBarMobile/Models/InsightsStore.swift"
+        ],
+        "tests": [
+          "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileProductParityTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/Views/Insights/AgentInsightsTabScreen.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [],
+        "tests": [
+          "android/app/src/test/java/com/openburnbar/data/policy/MobileProductParityTest.kt"
+        ],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/insights/BifurcatedInsightsScreen.kt",
+          "android/app/src/main/java/com/openburnbar/ui/insights/AgentInsightsHost.kt"
+        ]
+      },
+      "sharedContract": "insights",
+      "states": [
+        "loading",
+        "ready",
+        "empty"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "auth",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "primary",
+        "deepLinkable": true,
+        "gated": false,
+        "platformSpecific": false,
+        "primary": true,
+        "secondary": true
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.shell.insights",
+        "route.insights.agent"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "insights.missions",
+      "title": "Mission activity from Insights",
+      "family": "insights-budget",
+      "kind": "capability",
+      "actor": "signed-in user",
+      "sourceSurface": "Mission dispatches",
+      "iosSurface": {
+        "ipad": [],
+        "services": [
+          "OpenBurnBarMobile/Views/MissionControl/MobileMissionConsoleHost.swift"
+        ],
+        "stores": [],
+        "tests": [
+          "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileProductParityTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/Views/Insights/MissionLiveDetailSharedViews.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [
+          "android/app/src/main/java/com/openburnbar/ui/insights/MissionActivityViewModel.kt"
+        ],
+        "tests": [
+          "android/app/src/test/java/com/openburnbar/data/policy/MobileProductParityTest.kt"
+        ],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/insights/InsightsScreenMissionSections.kt"
+        ]
+      },
+      "sharedContract": "missions",
+      "states": [
+        "loading",
+        "ready",
+        "empty",
+        "denied"
+      ],
+      "entitlement": "Cloud",
+      "securityBoundary": "auth",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "secondary",
+        "deepLinkable": false,
+        "gated": true,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": true
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.shell.insights"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "budget.center",
+      "title": "Budget center",
+      "family": "insights-budget",
+      "kind": "capability",
+      "actor": "signed-in user",
+      "sourceSurface": "Mac budget rules UI",
+      "iosSurface": {
+        "ipad": [],
+        "services": [],
+        "stores": [
+          "OpenBurnBarMobile/Models/BudgetRulesStore.swift"
+        ],
+        "tests": [
+          "OpenBurnBarMobileTests/BudgetSettingsTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/Views/Budget/BudgetCenterView.swift",
+          "OpenBurnBarMobile/Settings/BudgetSettingsView.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [
+          "android/app/src/main/java/com/openburnbar/data/firebase/FirestoreBudgetRepository.kt"
+        ],
+        "stores": [],
+        "tests": [],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/insights/BudgetCenterView.kt",
+          "android/app/src/main/java/com/openburnbar/ui/settings/BudgetSettingsScreen.kt"
+        ]
+      },
+      "sharedContract": "none",
+      "states": [
+        "loading",
+        "ready",
+        "empty",
+        "denied",
+        "retry"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "auth",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "secondary",
+        "deepLinkable": false,
+        "gated": false,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": true
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.shell.insights"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "budget.enforcement",
+      "title": "Budget enforcement",
+      "family": "insights-budget",
+      "kind": "capability",
+      "actor": "signed-in user",
+      "sourceSurface": "Shared budget gate / enforcement policy",
+      "iosSurface": {
+        "ipad": [],
+        "services": [
+          "OpenBurnBarMobile/Models/BudgetGate+Mobile.swift"
+        ],
+        "stores": [
+          "OpenBurnBarMobile/Models/BudgetEnforcement.swift"
+        ],
+        "tests": [
+          "OpenBurnBarMobileTests/BudgetGateTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/Views/Chat/BudgetBlockedCard.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [],
+        "tests": [],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/components/BudgetBlockedCard.kt"
+        ]
+      },
+      "sharedContract": "none",
+      "states": [
+        "ready",
+        "denied",
+        "expired"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "none",
+      "evidenceFloor": [
+        "unit",
+        "integration"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "none",
+        "deepLinkable": false,
+        "gated": false,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": false
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [],
+      "notes": ""
+    },
+    {
+      "capabilityId": "inbox.list",
+      "title": "AI Inbox list",
+      "family": "inbox",
+      "kind": "capability",
+      "actor": "signed-in user",
+      "sourceSurface": "Mac AI Inbox",
+      "iosSurface": {
+        "ipad": [],
+        "services": [],
+        "stores": [
+          "OpenBurnBarMobile/Services/AIInboxStore.swift"
+        ],
+        "tests": [
+          "OpenBurnBarMobileTests/AIInboxStoreTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/Views/Inbox/AIInboxView.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [],
+        "tests": [],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/inbox/InboxScreen.kt"
+        ]
+      },
+      "sharedContract": "none",
+      "states": [
+        "loading",
+        "ready",
+        "empty",
+        "offline",
+        "retry"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "auth",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "secondary",
+        "deepLinkable": true,
+        "gated": false,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": true
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [
+        "burnbar://inbox",
+        "burnbar://inbox/{itemId}"
+      ],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.inbox.item",
+        "route.shell.inbox"
+      ],
+      "notes": "iOS hosts Inbox inside Streams; Android hosts it as a primary tab. See divergence.inbox-primary-android."
+    },
+    {
+      "capabilityId": "inbox.detail",
+      "title": "AI Inbox detail and row actions",
+      "family": "inbox",
+      "kind": "capability",
+      "actor": "signed-in user",
+      "sourceSurface": "Inbox item decrypt / actions",
+      "iosSurface": {
+        "ipad": [],
+        "services": [],
+        "stores": [
+          "OpenBurnBarMobile/Services/AIInboxStore.swift"
+        ],
+        "tests": [
+          "OpenBurnBarMobileTests/AIInboxStoreTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/Views/Inbox/AIInboxDetailView.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [],
+        "tests": [],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/inbox/InboxDetail.kt"
+        ]
+      },
+      "sharedContract": "none",
+      "states": [
+        "loading",
+        "ready",
+        "empty",
+        "denied",
+        "retry"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "encryption",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "deep-linkable",
+        "deepLinkable": true,
+        "gated": false,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": true
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.inbox.item"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "inbox.push-routing",
+      "title": "AI Inbox push tap routing",
+      "family": "inbox",
+      "kind": "capability",
+      "actor": "system",
+      "sourceSurface": "P1 inbox notification payload",
+      "iosSurface": {
+        "ipad": [],
+        "services": [
+          "OpenBurnBarMobile/Services/AIInboxNotificationRouting.swift"
+        ],
+        "stores": [
+          "OpenBurnBarMobile/Services/AIInboxStore.swift"
+        ],
+        "tests": [
+          "OpenBurnBarMobileTests/AIInboxNotificationRoutingTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/Views/RootTabView.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [
+          "android/app/src/main/java/com/openburnbar/services/media/MercuryFcmService.kt"
+        ],
+        "stores": [],
+        "tests": [
+          "android/app/src/test/java/com/openburnbar/BurnBarDeepLinkTest.kt"
+        ],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/MainActivity.kt"
+        ]
+      },
+      "sharedContract": "none",
+      "states": [
+        "ready",
+        "empty",
+        "denied"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "auth",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "deep-linkable",
+        "deepLinkable": true,
+        "gated": false,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": false
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [
+        "burnbar://inbox/{itemId}"
+      ],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.inbox.item"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "providers.connections",
+      "title": "Provider connections list",
+      "family": "providers",
+      "kind": "capability",
+      "actor": "signed-in user",
+      "sourceSurface": "Provider account documents",
+      "iosSurface": {
+        "ipad": [],
+        "services": [
+          "OpenBurnBarMobile/Services/ProviderAccountsAPI.swift"
+        ],
+        "stores": [
+          "OpenBurnBarMobile/Models/ProviderConnectionStore.swift",
+          "OpenBurnBarMobile/Models/ProviderSummaryStore.swift"
+        ],
+        "tests": [
+          "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileParityPolicyTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/Views/ProviderConnectionsView.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [
+          "android/app/src/main/java/com/openburnbar/data/stores/ProviderSummaryStore.kt"
+        ],
+        "tests": [
+          "android/app/src/test/java/com/openburnbar/data/policy/MobileParityPolicyTest.kt"
+        ],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/providers/ProviderConnectionsView.kt"
+        ]
+      },
+      "sharedContract": "provider-account",
+      "states": [
+        "loading",
+        "ready",
+        "empty",
+        "offline",
+        "retry"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "auth",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "secondary",
+        "deepLinkable": false,
+        "gated": false,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": true
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.shell.providers"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "providers.wizard",
+      "title": "Provider connect wizard",
+      "family": "providers",
+      "kind": "capability",
+      "actor": "signed-in user",
+      "sourceSurface": "Mac provider setup / connect context",
+      "iosSurface": {
+        "ipad": [],
+        "services": [],
+        "stores": [
+          "OpenBurnBarMobile/Models/MobileProviderWizardModel.swift"
+        ],
+        "tests": [
+          "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileParityPolicyTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/Views/MobileProviderWizardView.swift",
+          "OpenBurnBarMobile/Views/AddProviderConnectionView.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [],
+        "tests": [
+          "android/app/src/test/java/com/openburnbar/data/policy/MobileParityPolicyTest.kt"
+        ],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/providers/AddProviderConnectionView.kt"
+        ]
+      },
+      "sharedContract": "provider-account",
+      "states": [
+        "loading",
+        "ready",
+        "denied",
+        "retry",
+        "cancel"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "encryption",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "gated",
+        "deepLinkable": false,
+        "gated": true,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": true
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.shell.providers"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "devices.list",
+      "title": "Connected devices list",
+      "family": "devices",
+      "kind": "capability",
+      "actor": "signed-in user",
+      "sourceSurface": "Device links / paired devices",
+      "iosSurface": {
+        "ipad": [
+          "OpenBurnBarMobile/Views/iPadDevicesSettingsView.swift"
+        ],
+        "services": [],
+        "stores": [
+          "OpenBurnBarMobile/Models/DevicesStore.swift"
+        ],
+        "tests": [
+          "OpenBurnBarMobileTests/DevicesStoreTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/Views/You/ConnectedDevicesRow.swift",
+          "OpenBurnBarMobile/Views/iPadDevicesSettingsView.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [
+          "android/app/src/main/java/com/openburnbar/data/stores/DevicesStore.kt"
+        ],
+        "tests": [],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/you/ConnectedDevicesScreen.kt"
+        ]
+      },
+      "sharedContract": "iroh-pairing",
+      "states": [
+        "loading",
+        "ready",
+        "empty",
+        "offline",
+        "retry"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "device trust",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "secondary",
+        "deepLinkable": false,
+        "gated": false,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": true
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [
+        "paired-Mac presence"
+      ],
+      "routeIds": [
+        "route.shell.devices"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "devices.trust-revoke",
+      "title": "Device trust, rename, and revoke",
+      "family": "devices",
+      "kind": "capability",
+      "actor": "signed-in user",
+      "sourceSurface": "Device trust / escrow device docs",
+      "iosSurface": {
+        "ipad": [],
+        "services": [
+          "OpenBurnBarMobile/Services/MobileCloudVaultTrustedDeviceChainVerifier.swift"
+        ],
+        "stores": [
+          "OpenBurnBarMobile/Models/DevicesStore.swift"
+        ],
+        "tests": [
+          "OpenBurnBarMobileTests/MobileCloudVaultTrustedDeviceSetTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/Views/iPadDevicesSettingsView.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [
+          "android/app/src/main/java/com/openburnbar/data/stores/DevicesStore.kt"
+        ],
+        "tests": [],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/you/ConnectedDevicesScreen.kt"
+        ]
+      },
+      "sharedContract": "entitlements",
+      "states": [
+        "ready",
+        "denied",
+        "expired",
+        "retry"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "device trust",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "gated",
+        "deepLinkable": false,
+        "gated": true,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": true
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.shell.devices"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "devices.credential-transfer",
+      "title": "Encrypted credential transfer",
+      "family": "devices",
+      "kind": "capability",
+      "actor": "paired phone",
+      "sourceSurface": "Escrow envelope import / provider readback",
+      "iosSurface": {
+        "ipad": [],
+        "services": [],
+        "stores": [
+          "OpenBurnBarMobile/Models/CredentialTransferStore.swift"
+        ],
+        "tests": [
+          "OpenBurnBarMobileTests/EscrowCryptoRoundTripTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/Views/You/YouView.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [
+          "android/app/src/main/java/com/openburnbar/data/stores/CredentialTransferStore.kt"
+        ],
+        "tests": [],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/you/YouView.kt"
+        ]
+      },
+      "sharedContract": "entitlements",
+      "states": [
+        "loading",
+        "ready",
+        "denied",
+        "expired",
+        "retry",
+        "recovery"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "encryption",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "gated",
+        "deepLinkable": false,
+        "gated": true,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": true
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [
+        "provider secret import to phone Keychain/Keystore"
+      ],
+      "routeIds": [
+        "route.shell.devices"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "mercury.paired-mac",
+      "title": "Paired Mac controls",
+      "family": "mercury",
+      "kind": "capability",
+      "actor": "paired phone",
+      "sourceSurface": "media.control / Iroh pairing",
+      "iosSurface": {
+        "ipad": [],
+        "services": [
+          "OpenBurnBarMobile/Services/Media/MercuryPeerSource.swift"
+        ],
+        "stores": [
+          "OpenBurnBarMobile/Features/Mercury/Stores"
+        ],
+        "tests": [
+          "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileHermesMercuryComputerUseParityTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/Views/Media/MercuryLiveSheet.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [],
+        "tests": [
+          "android/app/src/test/java/com/openburnbar/data/policy/MobileHermesMercuryComputerUseParityTest.kt"
+        ],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/media/PairedMacControlsScreen.kt"
+        ]
+      },
+      "sharedContract": "iroh-pairing",
+      "states": [
+        "loading",
+        "ready",
+        "empty",
+        "offline",
+        "denied"
+      ],
+      "entitlement": "Pro",
+      "securityBoundary": "device trust",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "gated",
+        "deepLinkable": true,
+        "gated": true,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": true
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [
+        "Ask to Mirror",
+        "file transfer",
+        "call invite"
+      ],
+      "routeIds": [
+        "route.mercury.paired-mac"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "mercury.mirror",
+      "title": "Ask to Mirror / screen share",
+      "family": "mercury",
+      "kind": "capability",
+      "actor": "paired phone",
+      "sourceSurface": "Shared media.control frames",
+      "iosSurface": {
+        "ipad": [],
+        "services": [
+          "OpenBurnBarMobile/Services/Media/ScreenSharePiPController.swift"
+        ],
+        "stores": [],
+        "tests": [],
+        "views": [
+          "OpenBurnBarMobile/Views/Media/ScreenShareViewerView.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [],
+        "tests": [],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/media/ScreenShareViewerScreen.kt"
+        ]
+      },
+      "sharedContract": "media-analytics",
+      "states": [
+        "loading",
+        "ready",
+        "denied",
+        "retry",
+        "cancel"
+      ],
+      "entitlement": "Pro",
+      "securityBoundary": "approval",
+      "evidenceFloor": [
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "gated",
+        "deepLinkable": false,
+        "gated": true,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": true
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.mercury.paired-mac"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "mercury.call",
+      "title": "Mercury call HUD",
+      "family": "mercury",
+      "kind": "capability",
+      "actor": "paired phone",
+      "sourceSurface": "media.control call invite/ack",
+      "iosSurface": {
+        "ipad": [],
+        "services": [
+          "OpenBurnBarMobile/Services/Media/VoIPCallService.swift"
+        ],
+        "stores": [],
+        "tests": [
+          "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileHermesMercuryComputerUseParityTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/Views/Media/CallHUDView.swift",
+          "OpenBurnBarMobile/Views/Media/MercuryIncomingSheet.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [],
+        "tests": [
+          "android/app/src/test/java/com/openburnbar/data/policy/MobileHermesMercuryComputerUseParityTest.kt"
+        ],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/media/CallHUDView.kt",
+          "android/app/src/main/java/com/openburnbar/ui/media/MercuryIncomingSheet.kt"
+        ]
+      },
+      "sharedContract": "media-analytics",
+      "states": [
+        "loading",
+        "ready",
+        "denied",
+        "retry",
+        "cancel"
+      ],
+      "entitlement": "Pro",
+      "securityBoundary": "auth",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "deep-linkable",
+        "deepLinkable": true,
+        "gated": true,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": true
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.mercury.call"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "mercury.file-transfer",
+      "title": "Mercury file transfer",
+      "family": "mercury",
+      "kind": "capability",
+      "actor": "paired phone",
+      "sourceSurface": "Iroh blob / file transfer",
+      "iosSurface": {
+        "ipad": [],
+        "services": [
+          "OpenBurnBarMobile/Services/Media/iOSFileTransferService.swift"
+        ],
+        "stores": [],
+        "tests": [
+          "OpenBurnBarMobileTests/MediaInboxFileProtectionTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/Views/Media/AttachmentBubble.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [],
+        "tests": [],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/media/AttachmentBubble.kt"
+        ]
+      },
+      "sharedContract": "media-analytics",
+      "states": [
+        "loading",
+        "ready",
+        "denied",
+        "retry",
+        "cancel"
+      ],
+      "entitlement": "Pro",
+      "securityBoundary": "encryption",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "secondary",
+        "deepLinkable": false,
+        "gated": true,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": true
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.mercury.paired-mac"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "mercury.presence",
+      "title": "Paired-Mac presence heartbeat",
+      "family": "mercury",
+      "kind": "capability",
+      "actor": "system",
+      "sourceSurface": "Mercury peer heartbeat",
+      "iosSurface": {
+        "ipad": [],
+        "services": [
+          "OpenBurnBarMobile/Services/Media/MercuryPeerSource.swift"
+        ],
+        "stores": [
+          "OpenBurnBarMobile/Features/Mercury/Stores"
+        ],
+        "tests": [
+          "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileHermesMercuryComputerUseParityTests.swift"
+        ],
+        "views": []
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [],
+        "tests": [
+          "android/app/src/test/java/com/openburnbar/data/policy/MobileHermesMercuryComputerUseParityTest.kt"
+        ],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/media/PairedMacControlsScreen.kt"
+        ]
+      },
+      "sharedContract": "iroh-pairing",
+      "states": [
+        "ready",
+        "offline",
+        "expired"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "auth",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "none",
+        "deepLinkable": false,
+        "gated": false,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": false
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [
+        "mercury-presence-heartbeat"
+      ],
+      "crossDeviceSideEffects": [],
+      "routeIds": [],
+      "notes": ""
+    },
+    {
+      "capabilityId": "computer-use.watch",
+      "title": "Computer Use agent watch",
+      "family": "computer-use",
+      "kind": "capability",
+      "actor": "paired phone",
+      "sourceSurface": "Mac Computer Use session + phone authority",
+      "iosSurface": {
+        "ipad": [],
+        "services": [
+          "OpenBurnBarMobile/Services/ComputerUse/AgentWatchOverlaySingleton.swift"
+        ],
+        "stores": [],
+        "tests": [
+          "OpenBurnBarMobileTests/AgentLiveStagePresenterTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/Views/ComputerUse/AgentWatchScreen.swift",
+          "OpenBurnBarMobile/Views/ComputerUse/AgentWatchView.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [],
+        "tests": [],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/computeruse/ComputerUseAgentWatchScreen.kt"
+        ]
+      },
+      "sharedContract": "computer-use",
+      "states": [
+        "loading",
+        "ready",
+        "empty",
+        "offline",
+        "denied",
+        "retry"
+      ],
+      "entitlement": "Pro",
+      "securityBoundary": "approval",
+      "evidenceFloor": [
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "gated",
+        "deepLinkable": true,
+        "gated": true,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": true
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.computer-use.watch"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "computer-use.approval",
+      "title": "Computer Use approval and grants",
+      "family": "computer-use",
+      "kind": "capability",
+      "actor": "paired phone",
+      "sourceSurface": "Phone-rooted authority + approval policy",
+      "iosSurface": {
+        "ipad": [],
+        "services": [
+          "OpenBurnBarMobile/Services/ComputerUse/PhoneControlAuthorityIssuer.swift"
+        ],
+        "stores": [
+          "OpenBurnBarMobile/Services/ApprovalPolicyStore.swift"
+        ],
+        "tests": [],
+        "views": [
+          "OpenBurnBarMobile/Views/ComputerUse/AgentPermissionGrantSheet.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [],
+        "tests": [],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/computeruse/AgentPermissionGrantSheet.kt"
+        ]
+      },
+      "sharedContract": "computer-use",
+      "states": [
+        "ready",
+        "denied",
+        "expired",
+        "cancel"
+      ],
+      "entitlement": "Pro",
+      "securityBoundary": "approval",
+      "evidenceFloor": [
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "gated",
+        "deepLinkable": false,
+        "gated": true,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": true
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.computer-use.watch"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "computer-use.safety",
+      "title": "Computer Use panic, replay, and deny-region safety",
+      "family": "computer-use",
+      "kind": "capability",
+      "actor": "paired phone",
+      "sourceSurface": "Computer Use safety matrix",
+      "iosSurface": {
+        "ipad": [],
+        "services": [
+          "OpenBurnBarMobile/Services/ComputerUse/PhoneControlSender.swift"
+        ],
+        "stores": [],
+        "tests": [],
+        "views": [
+          "OpenBurnBarMobile/Views/ComputerUse/ScreenPrivacyGuard.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [
+          "android/app/src/main/java/com/openburnbar/MainActivityE2EComputerUseChaosActions.kt"
+        ],
+        "stores": [],
+        "tests": [],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/computeruse/ComputerUseAgentWatchScreen.kt"
+        ]
+      },
+      "sharedContract": "computer-use",
+      "states": [
+        "ready",
+        "denied",
+        "cancel",
+        "recovery"
+      ],
+      "entitlement": "Pro",
+      "securityBoundary": "approval",
+      "evidenceFloor": [
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "gated",
+        "deepLinkable": false,
+        "gated": true,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": false
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.computer-use.watch"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "store.cloud-store",
+      "title": "Cloud Store",
+      "family": "store",
+      "kind": "capability",
+      "actor": "signed-in user",
+      "sourceSurface": "StoreKit / Play product catalog",
+      "iosSurface": {
+        "ipad": [],
+        "services": [],
+        "stores": [
+          "OpenBurnBarMobile/Models/HostedQuotaSubscriptionStore.swift"
+        ],
+        "tests": [],
+        "views": [
+          "OpenBurnBarMobile/Views/Store/CloudStoreView.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [
+          "android/app/src/main/java/com/openburnbar/data/stores/HostedQuotaSubscriptionStore.kt"
+        ],
+        "tests": [],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/store/CloudStoreView.kt"
+        ]
+      },
+      "sharedContract": "hosted-quota",
+      "states": [
+        "loading",
+        "ready",
+        "empty",
+        "denied",
+        "retry"
+      ],
+      "entitlement": "Free",
+      "securityBoundary": "auth",
+      "evidenceFloor": [
+        "physical device",
+        "store/provider"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "gated",
+        "deepLinkable": true,
+        "gated": true,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": true
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.store.cloud"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "store.purchase-restore",
+      "title": "Purchase, restore, and expiry",
+      "family": "store",
+      "kind": "capability",
+      "actor": "signed-in user",
+      "sourceSurface": "StoreKit 2 / Google Play Billing",
+      "iosSurface": {
+        "ipad": [],
+        "services": [
+          "OpenBurnBarMobile/Services/EntitlementsAPI.swift"
+        ],
+        "stores": [
+          "OpenBurnBarMobile/Models/HostedQuotaSubscriptionStore.swift"
+        ],
+        "tests": [],
+        "views": [
+          "OpenBurnBarMobile/Views/Store/CloudStoreView.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [
+          "android/app/src/main/java/com/openburnbar/data/stores/HostedQuotaBillingSupport.kt"
+        ],
+        "stores": [
+          "android/app/src/main/java/com/openburnbar/data/stores/HostedQuotaSubscriptionStore.kt"
+        ],
+        "tests": [],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/store/CloudStoreView.kt"
+        ]
+      },
+      "sharedContract": "hosted-quota",
+      "states": [
+        "loading",
+        "ready",
+        "denied",
+        "expired",
+        "retry"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "auth",
+      "evidenceFloor": [
+        "physical device",
+        "store/provider"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "gated",
+        "deepLinkable": false,
+        "gated": true,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": true
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.store.cloud"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "store.entitlement-gating",
+      "title": "Entitlement gating and locked veils",
+      "family": "store",
+      "kind": "capability",
+      "actor": "signed-in user",
+      "sourceSurface": "Hosted quota / entitlement bindings",
+      "iosSurface": {
+        "ipad": [],
+        "services": [
+          "OpenBurnBarMobile/Services/EntitlementsAPI.swift"
+        ],
+        "stores": [
+          "OpenBurnBarMobile/Models/HostedQuotaSubscriptionStore.swift"
+        ],
+        "tests": [
+          "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileProductParityTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/Views/Components/Pro/LockedFeatureVeil.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [],
+        "tests": [
+          "android/app/src/test/java/com/openburnbar/data/policy/MobileProductParityTest.kt"
+        ],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/pro/LockedFeatureVeil.kt",
+          "android/app/src/main/java/com/openburnbar/ui/pro/GatedFeature.kt"
+        ]
+      },
+      "sharedContract": "hosted-quota",
+      "states": [
+        "ready",
+        "denied",
+        "expired"
+      ],
+      "entitlement": "Cloud",
+      "securityBoundary": "auth",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "gated",
+        "deepLinkable": false,
+        "gated": true,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": false
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [],
+      "notes": ""
+    },
+    {
+      "capabilityId": "os.widgets",
+      "title": "Home-screen widgets",
+      "family": "os",
+      "kind": "capability",
+      "actor": "system",
+      "sourceSurface": "WidgetKit / Glance widgets over privacy-safe snapshots",
+      "iosSurface": {
+        "ipad": [],
+        "services": [],
+        "stores": [
+          "OpenBurnBarMobile/Models/DashboardStore.swift"
+        ],
+        "tests": [
+          "OpenBurnBarWidget/WidgetSnapshotTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarWidget/BurnBarWidget.swift",
+          "OpenBurnBarWidget/InsightTodayWidgetView.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [],
+        "tests": [],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/widget/BurnBarSmallWidget.kt",
+          "android/app/src/main/java/com/openburnbar/ui/widget/BurnBarWidgetReceiver.kt"
+        ]
+      },
+      "sharedContract": "usage-quota",
+      "states": [
+        "ready",
+        "empty",
+        "offline",
+        "denied"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "none",
+      "evidenceFloor": [
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "platform-specific",
+        "deepLinkable": true,
+        "gated": false,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": false
+      },
+      "widgets": [
+        "com.openburnbar.app.widget",
+        "com.openburnbar.app.insightstoday"
+      ],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.dashboard.alias"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "os.live-activity",
+      "title": "Live Activities",
+      "family": "os",
+      "kind": "capability",
+      "actor": "system",
+      "sourceSurface": "ActivityKit burn / agent-watch live activities",
+      "iosSurface": {
+        "ipad": [],
+        "services": [],
+        "stores": [
+          "OpenBurnBarMobile/Models/LiveActivityManager.swift",
+          "OpenBurnBarMobile/Models/AgentWatchLiveActivityManager.swift"
+        ],
+        "tests": [
+          "OpenBurnBarMobileTests/AgentWatchLiveActivityManagerTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarWidget/BurnBarLiveActivityWidget.swift",
+          "OpenBurnBarWidget/AgentWatchLiveActivity.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [],
+        "tests": [],
+        "views": []
+      },
+      "sharedContract": "none",
+      "states": [
+        "ready",
+        "empty",
+        "expired"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "none",
+      "evidenceFloor": [
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "platform-specific",
+        "deepLinkable": false,
+        "gated": false,
+        "platformSpecific": true,
+        "primary": false,
+        "secondary": false
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [],
+      "notes": "iOS/iPadOS only. Android has no Live Activity equivalent in this tree."
+    },
+    {
+      "capabilityId": "os.intents",
+      "title": "App Intents / Ask Hermes chips",
+      "family": "os",
+      "kind": "capability",
+      "actor": "system",
+      "sourceSurface": "BurnBarStatusIntent and widget chips",
+      "iosSurface": {
+        "ipad": [],
+        "services": [
+          "OpenBurnBarMobile/Intents/BurnBarStatusIntent.swift"
+        ],
+        "stores": [],
+        "tests": [
+          "OpenBurnBarMobileTests/BurnBarStatusIntentTests.swift"
+        ],
+        "views": []
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [],
+        "tests": [],
+        "views": []
+      },
+      "sharedContract": "none",
+      "states": [
+        "ready",
+        "denied"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "auth",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "platform-specific",
+        "deepLinkable": true,
+        "gated": false,
+        "platformSpecific": true,
+        "primary": false,
+        "secondary": false
+      },
+      "widgets": [],
+      "intents": [
+        "BurnBarStatusIntent"
+      ],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.shell.hermes"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "os.push-routing",
+      "title": "Push notification routing",
+      "family": "os",
+      "kind": "capability",
+      "actor": "system",
+      "sourceSurface": "FCM / APNs agent-reply and inbox payloads",
+      "iosSurface": {
+        "ipad": [],
+        "services": [
+          "OpenBurnBarMobile/Services/AgentReplyNotificationService.swift",
+          "OpenBurnBarMobile/Services/AIInboxNotificationRouting.swift"
+        ],
+        "stores": [],
+        "tests": [
+          "OpenBurnBarMobileTests/AIInboxNotificationRoutingTests.swift",
+          "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileOsIntegrationParityTests.swift"
+        ],
+        "views": []
+      },
+      "androidSurface": {
+        "services": [
+          "android/app/src/main/java/com/openburnbar/services/media/MercuryFcmService.kt"
+        ],
+        "stores": [],
+        "tests": [
+          "android/app/src/test/java/com/openburnbar/data/policy/MobileOsIntegrationParityTest.kt"
+        ],
+        "views": []
+      },
+      "sharedContract": "none",
+      "states": [
+        "ready",
+        "denied"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "auth",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "deep-linkable",
+        "deepLinkable": true,
+        "gated": false,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": false
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [
+        "burnbar://inbox/{itemId}",
+        "burnbar://assistants/{runtime}"
+      ],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.inbox.item",
+        "route.hermes.assistants-thread"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "os.background-jobs",
+      "title": "Background refresh and listeners",
+      "family": "os",
+      "kind": "capability",
+      "actor": "system",
+      "sourceSurface": "Foreground refresh, widget reload, inbox listeners",
+      "iosSurface": {
+        "ipad": [],
+        "services": [
+          "OpenBurnBarMobile/Services/AIInboxStore.swift"
+        ],
+        "stores": [
+          "OpenBurnBarMobile/Models/DashboardStore.swift"
+        ],
+        "tests": [
+          "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileOsIntegrationParityTests.swift"
+        ],
+        "views": []
+      },
+      "androidSurface": {
+        "services": [
+          "android/app/src/main/java/com/openburnbar/ui/widget/BurnBarWidgetReceiver.kt"
+        ],
+        "stores": [
+          "android/app/src/main/java/com/openburnbar/data/stores/DashboardStore.kt"
+        ],
+        "tests": [
+          "android/app/src/test/java/com/openburnbar/data/policy/MobileOsIntegrationParityTest.kt"
+        ],
+        "views": []
+      },
+      "sharedContract": "none",
+      "states": [
+        "ready",
+        "offline",
+        "expired"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "auth",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "none",
+        "deepLinkable": false,
+        "gated": false,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": false
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [
+        "widget-snapshot-reload",
+        "inbox-listeners",
+        "mission-activity-center"
+      ],
+      "crossDeviceSideEffects": [],
+      "routeIds": [],
+      "notes": ""
+    },
+    {
+      "capabilityId": "os.smart-display",
+      "title": "Android Smart Display",
+      "family": "os",
+      "kind": "capability",
+      "actor": "signed-in user",
+      "sourceSurface": "Nest Hub / Pixel Clock companion surface",
+      "iosSurface": {
+        "ipad": [],
+        "services": [
+          "OpenBurnBarMobile/Services/SmartHubDisplaySettingsAdapter.swift"
+        ],
+        "stores": [
+          "OpenBurnBarMobile/Models/SmartHubStore.swift"
+        ],
+        "tests": [
+          "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileOsIntegrationParityTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/Views/SmartHub/SmartHubSetupWizardView.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [
+          "android/app/src/main/java/com/openburnbar/ui/smartdisplay/SmartHubBridgeClient.kt"
+        ],
+        "stores": [],
+        "tests": [
+          "android/app/src/test/java/com/openburnbar/data/policy/MobileOsIntegrationParityTest.kt"
+        ],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/smartdisplay/SmartDisplayView.kt"
+        ]
+      },
+      "sharedContract": "none",
+      "states": [
+        "loading",
+        "ready",
+        "empty",
+        "offline"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "auth",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "platform-specific",
+        "deepLinkable": false,
+        "gated": false,
+        "platformSpecific": true,
+        "primary": false,
+        "secondary": false
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [],
+      "notes": "iOS Smart Hub setup and Android Smart Display are companion surfaces, not pixel clones."
+    },
+    {
+      "capabilityId": "os.smart-hub",
+      "title": "iOS Smart Hub setup",
+      "family": "os",
+      "kind": "capability",
+      "actor": "signed-in user",
+      "sourceSurface": "Mac Smart Hub / Pixel Clock settings",
+      "iosSurface": {
+        "ipad": [],
+        "services": [
+          "OpenBurnBarMobile/Services/PixelClockSettingsAdapter.swift"
+        ],
+        "stores": [
+          "OpenBurnBarMobile/Models/SmartHubStore.swift"
+        ],
+        "tests": [
+          "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileOsIntegrationParityTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/Views/SmartHub/SmartHubSetupWizardView.swift",
+          "OpenBurnBarMobile/Views/SmartHub/PixelClockSettingsCard.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [],
+        "tests": [
+          "android/app/src/test/java/com/openburnbar/data/policy/MobileOsIntegrationParityTest.kt"
+        ],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/smartdisplay/SmartDisplayView.kt"
+        ]
+      },
+      "sharedContract": "none",
+      "states": [
+        "loading",
+        "ready",
+        "empty",
+        "denied"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "auth",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "platform-specific",
+        "deepLinkable": false,
+        "gated": false,
+        "platformSpecific": true,
+        "primary": false,
+        "secondary": true
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.settings.hub"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "a11y.dynamic-type",
+      "title": "Dynamic Type / scalable type",
+      "family": "a11y",
+      "kind": "capability",
+      "actor": "signed-in user",
+      "sourceSurface": "Aurora type system",
+      "iosSurface": {
+        "ipad": [],
+        "services": [],
+        "stores": [],
+        "tests": [
+          "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileAccessibilityParityTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/Theme/MobileTheme.swift",
+          "OpenBurnBarMobile/Theme/AuroraDesign.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [],
+        "tests": [
+          "android/app/src/test/java/com/openburnbar/data/policy/MobileAccessibilityParityTest.kt"
+        ],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/theme/AuroraTheme.kt"
+        ]
+      },
+      "sharedContract": "none",
+      "states": [
+        "ready"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "none",
+      "evidenceFloor": [
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "none",
+        "deepLinkable": false,
+        "gated": false,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": false
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [],
+      "notes": ""
+    },
+    {
+      "capabilityId": "a11y.voiceover-talkback",
+      "title": "VoiceOver / TalkBack labels",
+      "family": "a11y",
+      "kind": "capability",
+      "actor": "signed-in user",
+      "sourceSurface": "Aurora navigation and chart labels",
+      "iosSurface": {
+        "ipad": [],
+        "services": [
+          "OpenBurnBarMobile/Services/ChartStudio/ChartSpecAccessibility.swift"
+        ],
+        "stores": [],
+        "tests": [
+          "OpenBurnBarMobileTests/ChartSpecAccessibilityTests.swift",
+          "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileAccessibilityParityTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/Views/Navigation/AuroraNavigationIcons.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [],
+        "tests": [
+          "android/app/src/test/java/com/openburnbar/data/policy/MobileAccessibilityParityTest.kt"
+        ],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/components/AuroraNavDestination.kt"
+        ]
+      },
+      "sharedContract": "none",
+      "states": [
+        "ready"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "none",
+      "evidenceFloor": [
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "none",
+        "deepLinkable": false,
+        "gated": false,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": false
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [],
+      "notes": ""
+    },
+    {
+      "capabilityId": "a11y.reduced-motion",
+      "title": "Reduced motion / transparency",
+      "family": "a11y",
+      "kind": "capability",
+      "actor": "signed-in user",
+      "sourceSurface": "accessibilityReduceMotion gates on Aurora icons",
+      "iosSurface": {
+        "ipad": [],
+        "services": [],
+        "stores": [],
+        "tests": [],
+        "views": [
+          "OpenBurnBarMobile/Views/Navigation/AuroraNavigationIcons.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [],
+        "tests": [],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/components/AuroraNavDestination.kt"
+        ]
+      },
+      "sharedContract": "none",
+      "states": [
+        "ready"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "none",
+      "evidenceFloor": [
+        "simulator",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "none",
+        "deepLinkable": false,
+        "gated": false,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": false
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [],
+      "notes": ""
+    },
+    {
+      "capabilityId": "a11y.privacy-screen",
+      "title": "Privacy screen / sensitive overlay",
+      "family": "a11y",
+      "kind": "capability",
+      "actor": "signed-in user",
+      "sourceSurface": "Computer Use / media privacy guard",
+      "iosSurface": {
+        "ipad": [],
+        "services": [],
+        "stores": [],
+        "tests": [],
+        "views": [
+          "OpenBurnBarMobile/Views/ComputerUse/ScreenPrivacyGuard.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [],
+        "tests": [],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/computeruse/ComputerUseAgentWatchScreen.kt"
+        ]
+      },
+      "sharedContract": "none",
+      "states": [
+        "ready",
+        "denied"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "none",
+      "evidenceFloor": [
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "none",
+        "deepLinkable": false,
+        "gated": false,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": false
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [],
+      "notes": ""
+    },
+    {
+      "capabilityId": "a11y.performance-floor",
+      "title": "Scroll, stream, and memory performance floor",
+      "family": "a11y",
+      "kind": "capability",
+      "actor": "signed-in user",
+      "sourceSurface": "Mobile performance budgets",
+      "iosSurface": {
+        "ipad": [],
+        "services": [],
+        "stores": [
+          "OpenBurnBarMobile/Services/MotionStore.swift"
+        ],
+        "tests": [
+          "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileOsIntegrationParityTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/Views/RootTabView.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [],
+        "tests": [
+          "android/app/src/test/java/com/openburnbar/data/policy/MobileOsIntegrationParityTest.kt"
+        ],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/navigation/BurnBarNavHost.kt"
+        ]
+      },
+      "sharedContract": "none",
+      "states": [
+        "ready"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "none",
+      "evidenceFloor": [
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "none",
+        "deepLinkable": false,
+        "gated": false,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": false
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [],
+      "notes": ""
+    },
+    {
+      "capabilityId": "chart-studio.canvas",
+      "title": "Chart Studio",
+      "family": "insights-budget",
+      "kind": "capability",
+      "actor": "signed-in user",
+      "sourceSurface": "Mac Chart Studio",
+      "iosSurface": {
+        "ipad": [],
+        "services": [
+          "OpenBurnBarMobile/Services/ChartStudio/ChartStudioPromptEngine.swift"
+        ],
+        "stores": [
+          "OpenBurnBarMobile/Models/ChartStudioStore.swift"
+        ],
+        "tests": [
+          "OpenBurnBarMobileTests/ChartStudioPromptEngineTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/Views/ChartStudio/ChartStudioView.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [
+          "android/app/src/main/java/com/openburnbar/ui/chartstudio/ChartStudioCanvasStore.kt"
+        ],
+        "tests": [],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/chartstudio/ChartStudioScreen.kt"
+        ]
+      },
+      "sharedContract": "insights",
+      "states": [
+        "loading",
+        "ready",
+        "empty",
+        "retry",
+        "cancel"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "auth",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "secondary",
+        "deepLinkable": false,
+        "gated": false,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": true
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.shell.pulse"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "control-center.data-vault",
+      "title": "Data vault / control center",
+      "family": "devices",
+      "kind": "capability",
+      "actor": "signed-in user",
+      "sourceSurface": "Mac data vault / Pensieve control",
+      "iosSurface": {
+        "ipad": [],
+        "services": [],
+        "stores": [
+          "OpenBurnBarMobile/Models/DataVaultStore.swift"
+        ],
+        "tests": [
+          "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileParityPolicyTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/Views/Control/DataVaultControlView.swift",
+          "OpenBurnBarMobile/Views/Control/DataVaultControlSplitView.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [
+          "android/app/src/main/java/com/openburnbar/ui/control/ControlCenterStore.kt"
+        ],
+        "tests": [
+          "android/app/src/test/java/com/openburnbar/data/policy/MobileParityPolicyTest.kt"
+        ],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/control/ControlCenterScreen.kt"
+        ]
+      },
+      "sharedContract": "none",
+      "states": [
+        "loading",
+        "ready",
+        "empty",
+        "denied"
+      ],
+      "entitlement": "Pro",
+      "securityBoundary": "encryption",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "gated",
+        "deepLinkable": true,
+        "gated": true,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": true
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.control.center"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "settings.hub",
+      "title": "Settings hub",
+      "family": "shell",
+      "kind": "capability",
+      "actor": "signed-in user",
+      "sourceSurface": "Settings search / hub",
+      "iosSurface": {
+        "ipad": [],
+        "services": [
+          "OpenBurnBarMobile/Settings/Search/SettingsItem.swift"
+        ],
+        "stores": [],
+        "tests": [
+          "OpenBurnBarMobileTests/AppStoreReviewComplianceTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/Views/You/SettingsHubView.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [
+          "android/app/src/main/java/com/openburnbar/ui/settings/SettingsRouter.kt"
+        ],
+        "stores": [],
+        "tests": [
+          "android/app/src/test/java/com/openburnbar/data/policy/MobileParityPolicyTest.kt"
+        ],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/settings/SettingsRootScreen.kt"
+        ]
+      },
+      "sharedContract": "none",
+      "states": [
+        "ready",
+        "empty"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "none",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "secondary",
+        "deepLinkable": true,
+        "gated": false,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": true
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.settings.hub",
+        "route.shell.you",
+        "route.shell.settings"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "settings.theme",
+      "title": "Theme and appearance",
+      "family": "os",
+      "kind": "capability",
+      "actor": "signed-in user",
+      "sourceSurface": "Aurora theme / living themes",
+      "iosSurface": {
+        "ipad": [],
+        "services": [],
+        "stores": [],
+        "tests": [
+          "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileOsIntegrationParityTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/Views/You/ThemeSettingsView.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [],
+        "tests": [
+          "android/app/src/test/java/com/openburnbar/data/policy/MobileOsIntegrationParityTest.kt"
+        ],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/settings/GlobalVisualSettings.kt"
+        ]
+      },
+      "sharedContract": "none",
+      "states": [
+        "ready"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "none",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "secondary",
+        "deepLinkable": false,
+        "gated": false,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": true
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.settings.hub"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "settings.text-expansion",
+      "title": "Mobile text expansion snippets",
+      "family": "os",
+      "kind": "capability",
+      "actor": "signed-in user",
+      "sourceSurface": "Mobile snippet store; not the desktop IME",
+      "iosSurface": {
+        "ipad": [],
+        "services": [],
+        "stores": [
+          "OpenBurnBarMobile/Models/MobileTextExpansionStore.swift"
+        ],
+        "tests": [
+          "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileOsIntegrationParityTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/Views/You/TextExpansionSettingsView.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [],
+        "tests": [
+          "android/app/src/test/java/com/openburnbar/data/policy/MobileOsIntegrationParityTest.kt"
+        ],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/settings/TextExpansionSettingsScreen.kt"
+        ]
+      },
+      "sharedContract": "none",
+      "states": [
+        "ready",
+        "empty"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "none",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "secondary",
+        "deepLinkable": false,
+        "gated": false,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": true
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.settings.hub"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "missions.console",
+      "title": "Mobile mission console",
+      "family": "insights-budget",
+      "kind": "capability",
+      "actor": "signed-in user",
+      "sourceSurface": "Mission dispatches / console host",
+      "iosSurface": {
+        "ipad": [],
+        "services": [
+          "OpenBurnBarMobile/Views/MissionControl/MobileMissionConsoleHost.swift"
+        ],
+        "stores": [],
+        "tests": [
+          "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileProductParityTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/Views/MissionControl/MobileMissionConsoleSheet.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [
+          "android/app/src/main/java/com/openburnbar/ui/insights/MissionActivityViewModel.kt"
+        ],
+        "tests": [
+          "android/app/src/test/java/com/openburnbar/data/policy/MobileProductParityTest.kt"
+        ],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/insights/MissionActivityOverlaySections.kt"
+        ]
+      },
+      "sharedContract": "missions",
+      "states": [
+        "loading",
+        "ready",
+        "empty",
+        "denied",
+        "retry"
+      ],
+      "entitlement": "Cloud",
+      "securityBoundary": "auth",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "secondary",
+        "deepLinkable": false,
+        "gated": true,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": true
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.shell.insights"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "analytics.consent",
+      "title": "Analytics consent prompt",
+      "family": "os",
+      "kind": "capability",
+      "actor": "signed-in user",
+      "sourceSurface": "First-run analytics consent",
+      "iosSurface": {
+        "ipad": [],
+        "services": [
+          "OpenBurnBarMobile/Services/Analytics/AnalyticsShared.swift"
+        ],
+        "stores": [],
+        "tests": [
+          "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileOsIntegrationParityTests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/Services/Analytics/AnalyticsConsentPrompt.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [],
+        "tests": [
+          "android/app/src/test/java/com/openburnbar/data/policy/MobileOsIntegrationParityTest.kt"
+        ],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/analytics/AnalyticsConsentPrompt.kt"
+        ]
+      },
+      "sharedContract": "none",
+      "states": [
+        "ready",
+        "denied"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "none",
+      "evidenceFloor": [
+        "unit"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "gated",
+        "deepLinkable": false,
+        "gated": true,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": false
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [],
+      "notes": ""
+    },
+    {
+      "capabilityId": "divergence.inbox-primary-android",
+      "title": "Android Inbox is a primary tab; iOS Inbox is secondary in Streams",
+      "family": "divergence",
+      "kind": "accepted-divergence",
+      "actor": "signed-in user",
+      "sourceSurface": "BurnBarTab.INBOX vs Streams-hosted AIInboxView",
+      "iosSurface": {
+        "ipad": [],
+        "services": [],
+        "stores": [
+          "OpenBurnBarMobile/Services/AIInboxStore.swift"
+        ],
+        "tests": [],
+        "views": [
+          "OpenBurnBarMobile/Views/Streams/StreamsView.swift",
+          "OpenBurnBarMobile/Views/Inbox/AIInboxView.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [],
+        "tests": [],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/navigation/BurnBarNavHost.kt"
+        ]
+      },
+      "sharedContract": "none",
+      "states": [
+        "ready"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "none",
+      "evidenceFloor": [
+        "unit"
+      ],
+      "status": "accepted-divergence",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "primary",
+        "deepLinkable": false,
+        "gated": false,
+        "platformSpecific": true,
+        "primary": true,
+        "secondary": false
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.shell.inbox"
+      ],
+      "notes": "Accepted route divergence. Do not treat iOS missing a primary Inbox tab as an unregistered gap."
+    },
+    {
+      "capabilityId": "divergence.you-store-label",
+      "title": "You destination tray-labelled Store",
+      "family": "divergence",
+      "kind": "accepted-divergence",
+      "actor": "signed-in user",
+      "sourceSurface": "AuroraNavDestination.you trayLabel Store",
+      "iosSurface": {
+        "ipad": [],
+        "services": [],
+        "stores": [],
+        "tests": [],
+        "views": [
+          "OpenBurnBarMobile/Views/Navigation/AuroraNavigationIcons.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [],
+        "tests": [],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/components/AuroraNavDestination.kt"
+        ]
+      },
+      "sharedContract": "none",
+      "states": [
+        "ready"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "none",
+      "evidenceFloor": [
+        "unit"
+      ],
+      "status": "accepted-divergence",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "primary",
+        "deepLinkable": false,
+        "gated": false,
+        "platformSpecific": false,
+        "primary": true,
+        "secondary": true
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.shell.you"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "divergence.hermes-label",
+      "title": "Hermes label Agents vs Assistants",
+      "family": "divergence",
+      "kind": "accepted-divergence",
+      "actor": "signed-in user",
+      "sourceSurface": "Stable hermes/HERMES destination id; surfaced labels differ",
+      "iosSurface": {
+        "ipad": [],
+        "services": [],
+        "stores": [],
+        "tests": [],
+        "views": [
+          "OpenBurnBarMobile/Views/Navigation/AuroraNavigationIcons.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [],
+        "tests": [],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/components/AuroraNavDestination.kt"
+        ]
+      },
+      "sharedContract": "none",
+      "states": [
+        "ready"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "none",
+      "evidenceFloor": [
+        "unit"
+      ],
+      "status": "accepted-divergence",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "primary",
+        "deepLinkable": false,
+        "gated": false,
+        "platformSpecific": false,
+        "primary": true,
+        "secondary": true
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.shell.hermes"
+      ],
+      "notes": "iOS label Agents; Android label Assistants / tray Agents. Destination id remains hermes."
+    },
+    {
+      "capabilityId": "divergence.insights-tab-label",
+      "title": "Android Insights tab labelled Budget & Insights",
+      "family": "divergence",
+      "kind": "accepted-divergence",
+      "actor": "signed-in user",
+      "sourceSurface": "BurnBarTab.INSIGHTS label",
+      "iosSurface": {
+        "ipad": [],
+        "services": [],
+        "stores": [],
+        "tests": [],
+        "views": [
+          "OpenBurnBarMobile/Views/Navigation/AuroraNavigationIcons.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [],
+        "tests": [],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/navigation/BurnBarNavHost.kt"
+        ]
+      },
+      "sharedContract": "none",
+      "states": [
+        "ready"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "none",
+      "evidenceFloor": [
+        "unit"
+      ],
+      "status": "accepted-divergence",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "primary",
+        "deepLinkable": false,
+        "gated": false,
+        "platformSpecific": false,
+        "primary": true,
+        "secondary": true
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.shell.insights"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "divergence.ipad-sidebar-secondary",
+      "title": "iPad first-class Settings/Devices/Providers sidebar",
+      "family": "divergence",
+      "kind": "accepted-divergence",
+      "actor": "signed-in user",
+      "sourceSurface": "AppDestination secondaryDestinations",
+      "iosSurface": {
+        "ipad": [
+          "OpenBurnBarMobile/Views/RootNavigationView.swift"
+        ],
+        "services": [],
+        "stores": [
+          "OpenBurnBarMobile/Models/AppCustomization.swift"
+        ],
+        "tests": [
+          "OpenBurnBarMobileTests/iPadNavigationUITests.swift"
+        ],
+        "views": [
+          "OpenBurnBarMobile/Views/RootNavigationView.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [],
+        "tests": [],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/you/YouView.kt"
+        ]
+      },
+      "sharedContract": "none",
+      "states": [
+        "ready"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "none",
+      "evidenceFloor": [
+        "unit"
+      ],
+      "status": "accepted-divergence",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "secondary",
+        "deepLinkable": false,
+        "gated": false,
+        "platformSpecific": true,
+        "primary": false,
+        "secondary": true
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [
+        "route.shell.settings",
+        "route.shell.devices",
+        "route.shell.providers"
+      ],
+      "notes": ""
+    },
+    {
+      "capabilityId": "nongoal.pixel-identical-ui",
+      "title": "Pixel-identical iOS/Android UI",
+      "family": "nongoal",
+      "kind": "non-goal",
+      "actor": "system",
+      "sourceSurface": "Plan §2 explicit non-goal",
+      "iosSurface": {
+        "ipad": [],
+        "services": [],
+        "stores": [],
+        "tests": [],
+        "views": []
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [],
+        "tests": [],
+        "views": []
+      },
+      "sharedContract": "none",
+      "states": [
+        "ready"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "none",
+      "evidenceFloor": [
+        "unit"
+      ],
+      "status": "accepted-divergence",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "none",
+        "deepLinkable": false,
+        "gated": false,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": false
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [],
+      "notes": "Native controls, navigation idioms, Dynamic Type, Material, and Apple a11y may differ."
+    },
+    {
+      "capabilityId": "nongoal.desktop-only-daemon",
+      "title": "Desktop daemon, tray, and host-only surfaces",
+      "family": "nongoal",
+      "kind": "non-goal",
+      "actor": "Mac operator",
+      "sourceSurface": "OpenBurnBarDaemon / AgentLens host surfaces",
+      "iosSurface": {
+        "ipad": [],
+        "services": [],
+        "stores": [],
+        "tests": [],
+        "views": []
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [],
+        "tests": [],
+        "views": []
+      },
+      "sharedContract": "none",
+      "states": [
+        "ready"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "none",
+      "evidenceFloor": [
+        "unit"
+      ],
+      "status": "accepted-divergence",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "none",
+        "deepLinkable": false,
+        "gated": false,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": false
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [],
+      "notes": "Daemon, menu-bar tray, and Mac-only host chrome are out of mobile scope except accepted companion/read-only behavior."
+    },
+    {
+      "capabilityId": "nongoal.linux-windows-ports",
+      "title": "Linux and Windows port programs",
+      "family": "nongoal",
+      "kind": "non-goal",
+      "actor": "system",
+      "sourceSurface": "docs/linux-port and docs/windows-port",
+      "iosSurface": {
+        "ipad": [],
+        "services": [],
+        "stores": [],
+        "tests": [],
+        "views": []
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [],
+        "tests": [],
+        "views": []
+      },
+      "sharedContract": "none",
+      "states": [
+        "ready"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "none",
+      "evidenceFloor": [
+        "unit"
+      ],
+      "status": "accepted-divergence",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "none",
+        "deepLinkable": false,
+        "gated": false,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": false
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [],
+      "notes": ""
+    },
+    {
+      "capabilityId": "nongoal.store-submission-m0",
+      "title": "Store submission and provider mutation in M0",
+      "family": "nongoal",
+      "kind": "non-goal",
+      "actor": "system",
+      "sourceSurface": "Plan §2 / M8",
+      "iosSurface": {
+        "ipad": [],
+        "services": [],
+        "stores": [],
+        "tests": [],
+        "views": []
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [],
+        "tests": [],
+        "views": []
+      },
+      "sharedContract": "none",
+      "states": [
+        "ready"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "none",
+      "evidenceFloor": [
+        "unit"
+      ],
+      "status": "accepted-divergence",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "none",
+        "deepLinkable": false,
+        "gated": false,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": false
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [],
+      "notes": ""
+    },
+    {
+      "capabilityId": "nongoal.schema-migration-m0",
+      "title": "TypeSpec migration in M0",
+      "family": "nongoal",
+      "kind": "non-goal",
+      "actor": "system",
+      "sourceSurface": "tools/schema-sync — recorded, not migrated",
+      "iosSurface": {
+        "ipad": [],
+        "services": [],
+        "stores": [],
+        "tests": [],
+        "views": []
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [],
+        "tests": [],
+        "views": []
+      },
+      "sharedContract": "none",
+      "states": [
+        "ready"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "none",
+      "evidenceFloor": [
+        "unit"
+      ],
+      "status": "accepted-divergence",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "none",
+        "deepLinkable": false,
+        "gated": false,
+        "platformSpecific": false,
+        "primary": false,
+        "secondary": false
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [],
+      "notes": ""
+    }
+  ]
+}

@@ -99,7 +99,7 @@ Human-oriented Cursor and product context (onboarding, architecture, threat mode
 
 ### Build & run
 
-The Android app reaches **full iOS parity** as of 2026-05-16 — Hermes Square, messaging, iroh transport, and Mercury Media (file transfer, screen-share viewer, 1:1 calls) all ship in the same release. Read-only Firestore consumption is still the default Firestore pattern; the new outbound write paths (iroh pairing, media analytics, FCM tokens, mission dispatch, approval policy) follow the schemas in `functions/src/types.ts`.
+The Android app reached **source-complete iOS feature coverage** on 2026-05-16 (Hermes Square, messaging, iroh, Mercury). That is a historical milestone, **not** a current product-parity claim. The live bar is [`docs/mobile-parity/mobile-parity-ledger.md`](docs/mobile-parity/mobile-parity-ledger.md) (`productParityClaim` is false; physical/store/VoiceOver rows stay blocked). Read-only Firestore consumption is still the default Firestore pattern; the new outbound write paths (iroh pairing, media analytics, FCM tokens, mission dispatch, approval policy) follow the schemas in `functions/src/types.ts`.
 
 | Command | What it does |
 |---|---|

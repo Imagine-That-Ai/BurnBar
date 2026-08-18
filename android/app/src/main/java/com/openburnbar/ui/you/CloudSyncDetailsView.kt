@@ -92,7 +92,8 @@ private fun StatusCard(health: CloudSyncHealth, isLoading: Boolean, onRefresh: (
             CloudSyncHealth.OFFLINE -> "✕" to AuroraColors.warning
             CloudSyncHealth.FIREBASE_UNAVAILABLE, CloudSyncHealth.APP_CHECK_BLOCKED -> "!" to AuroraColors.error
             CloudSyncHealth.PERMISSION_DENIED -> "🔒" to AuroraColors.error
-            CloudSyncHealth.DEGRADED -> "~" to AuroraColors.warning
+            CloudSyncHealth.DEGRADED, CloudSyncHealth.MAC_NOT_SYNCING -> "~" to AuroraColors.warning
+            CloudSyncHealth.EMPTY, CloudSyncHealth.FAILED -> "!" to AuroraColors.error
             CloudSyncHealth.UNKNOWN -> "?" to MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
         }
 
@@ -106,6 +107,9 @@ private fun StatusCard(health: CloudSyncHealth, isLoading: Boolean, onRefresh: (
             CloudSyncHealth.APP_CHECK_BLOCKED -> "App Check verification failed."
             CloudSyncHealth.FIREBASE_UNAVAILABLE -> "Firebase service is temporarily unavailable."
             CloudSyncHealth.DEGRADED -> "Sync is slower than usual."
+            CloudSyncHealth.MAC_NOT_SYNCING -> "OpenBurnBar on your Mac has not published recently."
+            CloudSyncHealth.EMPTY -> "No Mac has published data to this account yet."
+            CloudSyncHealth.FAILED -> "Cloud load failed. This is not a live zero."
         }
 
     AuroraGlassCard {

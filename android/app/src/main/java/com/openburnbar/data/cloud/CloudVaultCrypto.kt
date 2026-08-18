@@ -868,6 +868,28 @@ object CloudVaultCrypto {
         else -> error("Invalid CloudVault AAD context")
     }
 
+    fun openEscrowPayload(ciphertext: ByteArray, privateKey: PrivateKey, aad: ByteArray = ByteArray(0)): ByteArray {
+        val ecPrivateKey =
+            privateKey as? ECPrivateKey
+                ?: error("Escrow open requires an EC private key")
+        val parts = CloudVaultRecoveryDomainCore.escrowSplitWire(ciphertext) {
+            CloudVaultLegacyCrypto.escrowSplitWire(ciphertext, ecPrivateKey.params)
+        }
+        val ephemeralPublic =
+            CloudVaultCryptoSupport.publicKeyFromX963(parts.ephemeralPublicKey, ecPrivateKey.params)
+        val sharedSecret =
+            KeyAgreement.getInstance("ECDH").run {
+                init(privateKey)
+                doPhase(ephemeralPublic, true)
+                generateSecret()
+            }
+        return try {
+            CloudVaultLegacyCrypto.escrowOpen(parts.aesGcmCombined, sharedSecret, aad)
+        } finally {
+            sharedSecret.fill(0)
+        }
+    }
+
     fun unwrapVaultKey(ciphertext: ByteArray, privateKey: PrivateKey): ByteArray {
         val ecPrivateKey =
             privateKey as? ECPrivateKey
@@ -1031,6 +1053,9 @@ class AndroidCloudVaultDeviceKeypair private constructor(
     val deviceId: String = "android-${CloudVaultCrypto.sha256Hex(publicKeyData).take(32)}"
 
     fun decryptWrappedVaultKey(base64: String): ByteArray = CloudVaultCrypto.unwrapVaultKey(CloudVaultCryptoSupport.decodeBase64(base64), privateKey)
+
+    fun decryptEscrowPayload(base64: String, aad: ByteArray): ByteArray =
+        CloudVaultCrypto.openEscrowPayload(CloudVaultCryptoSupport.decodeBase64(base64), privateKey, aad)
 
     companion object {
         private const val PREFS = "openburnbar_cloud_vault_device"

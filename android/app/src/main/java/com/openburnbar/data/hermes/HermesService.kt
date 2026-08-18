@@ -13,12 +13,14 @@ import com.openburnbar.data.hermes.relay.HermesRelayClient
 import com.openburnbar.data.hermes.relay.HermesRelayException
 import com.openburnbar.data.hermes.relay.HermesRelayKeyStore
 import com.openburnbar.data.hermes.relay.HermesRelayTransporting
+import com.openburnbar.data.policy.MobileHermesConversationPolicy
 import com.openburnbar.irohrelay.OpenBurnBarIrohFfiBackend
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -209,6 +211,10 @@ class HermesService(
     val sessionsErrorText: StateFlow<String?> = _sessionsErrorText
 
     private var historyStore: AssistantChatHistoryStore? = null
+    internal var streamJob: Job? = null
+    internal var streamGeneration: Int = 0
+    internal var applyGeneration: Int = 0
+    internal var applyThreadId: String? = null
 
     internal val messagesInternal get() = _messages
     internal val isConnectedInternal get() = _isConnected
@@ -228,7 +234,22 @@ class HermesService(
     internal val sessionsErrorTextInternal get() = _sessionsErrorText
     internal val relayClientInternal get() = relayClient
     internal val httpClientInternal get() = client
-    internal val historyStoreInternal get() = historyStore
+    internal var historyStoreInternal
+        get() = historyStore
+        set(value) {
+            historyStore = value
+        }
+    internal var chatTilePreferencesInternal
+        get() = chatTilePreferences
+        set(value) {
+            chatTilePreferences = value
+        }
+    internal var atomNavigatorInternal
+        get() = atomNavigator
+        set(value) {
+            atomNavigator = value
+        }
+    internal val favoriteModelIDsInternal get() = _favoriteModelIDs
 
     private val runtimeSupport =
         HermesServiceRuntimeSupport(
@@ -266,17 +287,10 @@ class HermesService(
             scope = scope,
         )
     internal val relayActions = HermesServiceRelayActions(this)
+    internal val preferenceActions = HermesServicePreferenceActions(this)
 
     internal fun launchRuntimeProbe(endpointOverride: String? = null) {
         scope.launch { runtimeSupport.probeSelectedRuntime(endpointOverride) }
-    }
-
-    fun bindHistoryStore(store: AssistantChatHistoryStore) {
-        historyStore = store
-    }
-
-    fun setChatTilePreferences(preferences: ChatTilePreferences) {
-        chatTilePreferences = preferences.sanitized()
     }
 
     fun connect(connection: HermesConnection = HermesConnection()) {
@@ -314,6 +328,50 @@ class HermesService(
         sendMessage(content, modelName, attachments, conversationId = _currentConversationID.value)
     }
 
+    fun cancelGeneration() {
+        if (!_isStreaming.value && streamJob == null) return
+        supersedeCurrentStream()
+        finalizeMessagesAfterCancelledStream()
+        _isStreaming.value = false
+        threadActions.persistCurrentThread()
+    }
+
+    internal fun supersedeCurrentStream() {
+        streamJob?.cancel()
+        streamJob = null
+        streamGeneration += 1
+    }
+
+    internal fun isCurrentStream(generation: Int, threadId: String?): Boolean = MobileHermesConversationPolicy.shouldApplyChunk(
+        chunkThreadId = threadId,
+        activeThreadId = applyThreadId,
+        chunkGeneration = generation,
+        activeGeneration = applyGeneration,
+    ) && streamGeneration == generation
+
+    private fun finalizeMessagesAfterCancelledStream() {
+        val terminal = MobileHermesConversationPolicy.terminal("stop")
+        val finalized =
+            _messages.value.map { msg ->
+                if (msg.isStreaming) msg.copy(isStreaming = false) else msg
+            }
+        val last = finalized.lastOrNull()
+        _messages.value =
+            if (last != null &&
+                last.role == "assistant" &&
+                MobileHermesConversationPolicy.shouldDropEmptyAssistant(
+                    text = last.content,
+                    toolCallCount = last.toolCalls.size,
+                    isError = last.isError,
+                    terminal = terminal,
+                )
+            ) {
+                finalized.dropLast(1)
+            } else {
+                finalized
+            }
+    }
+
     private fun sendMessage(content: String, modelName: String, attachments: List<HermesAttachment>, conversationId: String?) {
         messageActions.sendMessage(content, modelName, attachments, conversationId)
     }
@@ -330,10 +388,6 @@ class HermesService(
     }
 
     suspend fun refreshRuntime() = runtimeSupport.probeSelectedRuntime()
-
-    fun setToolAtomNavigator(navigator: HermesAtomNavigator?) {
-        atomNavigator = navigator
-    }
 
     fun outcome(message: HermesMessage): HermesChatMessageOutcome {
         if (message.outcome != HermesChatMessageOutcome.NORMAL) return message.outcome
@@ -358,20 +412,6 @@ class HermesService(
             scope.launch { refreshRuntime() }
         }
         return true
-    }
-
-    fun selectModel(option: HermesRuntimeModelOption) {
-        _selectedModelID.value = option.modelID
-    }
-
-    fun toggleFavoriteModel(option: HermesRuntimeModelOption) {
-        val current = _favoriteModelIDs.value.toMutableSet()
-        if (current.contains(option.modelID)) {
-            current.remove(option.modelID)
-        } else {
-            current.add(option.modelID)
-        }
-        _favoriteModelIDs.value = current
     }
 
     fun destroy() {
@@ -446,11 +486,21 @@ private fun buildHermesRelayTransport(context: Context?, client: HermesRelayClie
     )
 }
 
+fun HermesService.bindHistoryStore(store: AssistantChatHistoryStore) = preferenceActions.bindHistoryStore(store)
+
+fun HermesService.setChatTilePreferences(preferences: ChatTilePreferences) = preferenceActions.setChatTilePreferences(preferences)
+
+fun HermesService.setToolAtomNavigator(navigator: HermesAtomNavigator?) = preferenceActions.setToolAtomNavigator(navigator)
+
+fun HermesService.selectModel(option: HermesRuntimeModelOption) = preferenceActions.selectModel(option)
+
+fun HermesService.toggleFavoriteModel(option: HermesRuntimeModelOption) = preferenceActions.toggleFavoriteModel(option)
+
 fun HermesService.clearMessages() = threadActions.clearMessages()
 
 fun HermesService.startNewThread() = threadActions.startNewThread()
 
-fun HermesService.loadThread(id: String) = threadActions.loadThread(id)
+fun HermesService.loadThread(id: String): String = threadActions.loadThread(id)
 
 fun HermesService.deleteThread(id: String) = threadActions.deleteThread(id)
 

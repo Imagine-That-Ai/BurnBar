@@ -1,0 +1,36 @@
+{
+  "generatedType": "ProviderAccountDeviceLinkDoc",
+  "pass": [
+    {
+      "id": "happy",
+      "document": {
+        "id": "link-1",
+        "accountID": "acct-1",
+        "deviceID": "phone-1",
+        "deviceDisplayName": "iPhone",
+        "capability": "use",
+        "status": "active",
+        "lastObservedAt": "2026-08-17T12:00:00.000Z",
+        "createdAt": "2026-08-17T12:00:00.000Z",
+        "updatedAt": "2026-08-17T12:00:00.000Z",
+        "schemaVersion": 1
+      }
+    }
+  ],
+  "fail": [
+    {
+      "id": "missing-capability",
+      "document": {
+        "id": "link-1",
+        "accountID": "acct-1",
+        "deviceID": "phone-1",
+        "deviceDisplayName": "iPhone",
+        "status": "active",
+        "lastObservedAt": "2026-08-17T12:00:00.000Z",
+        "createdAt": "2026-08-17T12:00:00.000Z",
+        "updatedAt": "2026-08-17T12:00:00.000Z",
+        "schemaVersion": 1
+      }
+    }
+  ]
+}

@@ -32,12 +32,15 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.openburnbar.data.models.AgentProvider
 import com.openburnbar.data.models.ProviderQuotaSnapshot
 import com.openburnbar.data.models.displayRemainingFraction
+import com.openburnbar.data.policy.MobileAccessibilityLabelPolicy
 import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraSpacing
 import com.openburnbar.ui.theme.AuroraTypography
@@ -100,7 +103,14 @@ fun ProviderQuotaChip(item: QuotaRingItem, onClick: () -> Unit, modifier: Modifi
         modifier =
         modifier
             .width(64.dp)
-            .clickable { onClick() },
+            .clickable { onClick() }
+            .semantics {
+                contentDescription =
+                    MobileAccessibilityLabelPolicy.quotaRing(
+                        label = item.label,
+                        remainingFraction = item.pressureRemaining,
+                    )
+            },
     ) {
         QuotaChipRing(item = item, primary = primary)
         Spacer(modifier = Modifier.height(4.dp))

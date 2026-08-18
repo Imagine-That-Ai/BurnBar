@@ -20,7 +20,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.filled.HourglassEmpty
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
@@ -37,6 +37,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.openburnbar.data.policy.MobileAccessibilityLabelPolicy
 import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraGradients
 
@@ -87,7 +88,8 @@ private fun RowScope.HermesChatComposerTextField(content: HermesChatContent, loc
     androidx.compose.foundation.text.BasicTextField(
         value = local.inputText,
         onValueChange = { local.setInputText(expandChatDraft(it, content)) },
-        enabled = !content.isStreaming,
+        // Stays editable while streaming — the send button becomes Stop.
+        enabled = true,
         textStyle =
         LocalTextStyle.current.copy(
             color = MaterialTheme.colorScheme.onSurface,
@@ -118,28 +120,25 @@ private fun RowScope.HermesChatComposerTextField(content: HermesChatContent, loc
 @Composable
 private fun HermesChatSendButton(content: HermesChatContent, local: HermesChatViewLocalState) {
     val canSend = local.inputText.isNotBlank() && !content.isStreaming
-    val sendBg =
-        when {
-            canSend -> AuroraColors.hermesMercury
-            content.isStreaming -> AuroraColors.hermesMercury.copy(alpha = 0.35f)
-            else -> Color.Transparent
-        }
+    // Streaming turns the button into Stop, so it stays lit either way.
+    val isActionable = canSend || content.isStreaming
+    val sendBg = if (isActionable) AuroraColors.hermesMercury else Color.Transparent
     val sendTint =
-        when {
-            canSend -> Color.White
-            content.isStreaming -> Color.White.copy(alpha = 0.7f)
-            else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
+        if (isActionable) {
+            Color.White
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
         }
     val outline =
-        if (!canSend && !content.isStreaming) {
-            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
-        } else {
+        if (isActionable) {
             Color.Transparent
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
         }
     Box(
         modifier =
         Modifier
-            .size(40.dp)
+            .size(48.dp)
             .clip(CircleShape)
             .background(
                 if (canSend) {
@@ -151,21 +150,21 @@ private fun HermesChatSendButton(content: HermesChatContent, local: HermesChatVi
         contentAlignment = Alignment.Center,
     ) {
         IconButton(
-            onClick = local.sendMessage,
-            enabled = canSend,
+            onClick = if (content.isStreaming) local.stopGeneration else local.sendMessage,
+            enabled = isActionable,
             modifier =
             Modifier
-                .size(36.dp)
+                .size(48.dp)
                 .clip(CircleShape)
                 .background(sendBg)
                 .border(1.dp, outline, CircleShape),
         ) {
             Icon(
-                imageVector = if (content.isStreaming) Icons.Filled.HourglassEmpty else Icons.AutoMirrored.Filled.Send,
+                imageVector = if (content.isStreaming) Icons.Filled.Stop else Icons.AutoMirrored.Filled.Send,
                 contentDescription =
                 when {
-                    canSend -> "Send message"
-                    content.isStreaming -> "Waiting for response — send disabled"
+                    content.isStreaming -> MobileAccessibilityLabelPolicy.stopButton(true)
+                    canSend -> MobileAccessibilityLabelPolicy.stopButton(false)
                     else -> "Type a message to enable send"
                 },
                 tint = sendTint,

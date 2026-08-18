@@ -1000,7 +1000,9 @@ final class HostedQuotaSubscriptionStore {
     }
 
     func displayPrice(for catalogProduct: OpenBurnBarStoreProduct) -> String {
-        storeProduct(for: catalogProduct.id)?.displayPrice ?? catalogProduct.fallbackDisplayPrice
+        MobileStoreEntitlementPolicy.displayPrice(
+            livePrice: storeProduct(for: catalogProduct.id)?.displayPrice
+        ).customerFacingText
     }
 
     /// Per-month equivalent of an annual plan's price ("$20.75"), derived from
@@ -1168,7 +1170,7 @@ final class HostedQuotaSubscriptionStore {
         for catalogProduct in OpenBurnBarProductCatalog.visibleProducts where productsByID[catalogProduct.id] == nil {
             productsByID[catalogProduct.id] = HostedQuotaStoreProduct(
                 id: catalogProduct.id,
-                displayPrice: catalogProduct.fallbackDisplayPrice
+                displayPrice: MobileStoreEntitlementPolicy.unavailablePriceLabel
             )
         }
     }

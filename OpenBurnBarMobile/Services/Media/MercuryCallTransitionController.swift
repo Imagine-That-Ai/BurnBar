@@ -75,12 +75,18 @@ final class MercuryCallTransitionController: ObservableObject {
 
     func acceptFromSheet() {
         guard case .mercurySheet(let call) = surface else { return }
-        callService.answerInFlightCall()
+        callService.answerInFlightCall(connectionId: call.connectionID)
         surface = .callHUD(call)
     }
 
     func decline() {
-        callService.declineInFlightCall()
+        if case .mercurySheet(let call) = surface {
+            callService.declineInFlightCall(connectionId: call.connectionID)
+        } else if case .callHUD(let call) = surface {
+            callService.declineInFlightCall(connectionId: call.connectionID)
+        } else {
+            callService.declineInFlightCall()
+        }
         surface = .none
     }
 

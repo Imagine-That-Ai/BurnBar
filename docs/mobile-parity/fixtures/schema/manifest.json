@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "openburnbar-mobile-cross-language-fixtures-v1",
+  "suites": [
+    { "id": "usage-quota.UsageEventDoc", "domainId": "usage-quota", "generatedType": "UsageEventDoc", "fixture": "docs/mobile-parity/fixtures/schema/usage-event.json" },
+    { "id": "usage-quota.QuotaSnapshotDoc", "domainId": "usage-quota", "generatedType": "QuotaSnapshotDoc", "fixture": "docs/mobile-parity/fixtures/schema/quota-snapshot.json" },
+    { "id": "provider-account.ProviderAccountDoc", "domainId": "provider-account", "generatedType": "ProviderAccountDoc", "fixture": "docs/mobile-parity/fixtures/schema/provider-account.json" },
+    { "id": "hosted-quota.EntitlementBindingDoc", "domainId": "hosted-quota", "generatedType": "EntitlementBindingDoc", "fixture": "docs/mobile-parity/fixtures/schema/entitlement-binding.json" },
+    { "id": "insights.InsightCanvasDoc", "domainId": "insights", "generatedType": "InsightCanvasDoc", "fixture": "docs/mobile-parity/fixtures/schema/insight-canvas.json" },
+    { "id": "hermes-relay.HermesRelayRequestDoc", "domainId": "hermes-relay", "generatedType": "HermesRelayRequestDoc", "fixture": "docs/mobile-parity/fixtures/schema/hermes-relay-request.json" },
+    { "id": "computer-use.ComputerUsePhoneAuthorityDoc", "domainId": "computer-use", "generatedType": "ComputerUsePhoneAuthorityDoc", "fixture": "docs/mobile-parity/fixtures/schema/computer-use-authority.json" },
+    { "id": "iroh-pairing.IrohPairingDoc", "domainId": "iroh-pairing", "generatedType": "IrohPairingDoc", "fixture": "docs/mobile-parity/fixtures/schema/iroh-pairing.json" },
+    { "id": "device-links.ProviderAccountDeviceLinkDoc", "domainId": "device-links", "generatedType": "ProviderAccountDeviceLinkDoc", "fixture": "docs/mobile-parity/fixtures/schema/device-link.json" }
+  ]
+}

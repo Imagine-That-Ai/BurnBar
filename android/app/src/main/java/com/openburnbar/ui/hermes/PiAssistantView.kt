@@ -55,6 +55,7 @@ fun PiAssistantView(piService: PiService) {
                     input = ""
                 }
             },
+            onStop = { piService.cancel() },
             onShowPermissions = { permissionThreadID = piService.ensureDesktopGrantThreadID() },
         ),
     )

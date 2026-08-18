@@ -78,7 +78,7 @@ struct BurnView: View {
                     }
                     HapticBus.toggle()
                 }
-                .font(.system(size: 15, weight: .bold))
+                .font(MobileTheme.Typography.headline)
                 .foregroundStyle(MobileTheme.primaryGradient)
             }
         }
@@ -145,10 +145,12 @@ struct BurnView: View {
         AuroraGlassCard(variant: heroVariant, cornerRadius: AuroraDesign.Shape.heroCorner, padding: AuroraDesign.Layout.heroPadding) {
             if quotaItems.isEmpty {
                 AuroraStatePane(
-                    kind: quotaStore.error == nil ? .empty : .error,
-                    icon: quotaStore.error == nil ? "gauge.with.dots.needle.bottom.50percent" : "exclamationmark.icloud.fill",
-                    title: quotaStore.error == nil ? "No quota signal yet" : "Quota sync error",
-                    message: quotaEmptyMessage
+                    kind: burnLoadPresentation == .failed ? .error : (burnLoadPresentation == .loading ? .loading : .empty),
+                    icon: burnLoadPresentation == .failed ? "exclamationmark.icloud.fill" : "gauge.with.dots.needle.bottom.50percent",
+                    title: burnLoadPresentation == .failed ? "Quota sync error" : "No quota signal yet",
+                    message: quotaEmptyMessage,
+                    ctaLabel: burnLoadPresentation == .failed && mayRetryBurn ? "Try Again" : nil,
+                    onCTA: burnLoadPresentation == .failed && mayRetryBurn ? { Task { await refresh() } } : nil
                 )
                 .frame(height: 220)
             } else {
@@ -185,7 +187,7 @@ struct BurnView: View {
                     .foregroundStyle(MobileTheme.Colors.textMuted)
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text("\(pct)%")
-                        .font(.system(size: 36, weight: .bold, design: .rounded))
+                        .font(MobileTheme.Typography.displayLarge)
                         .foregroundStyle(MobileTheme.primaryGradient)
                         .contentTransition(.numericText())
                     Text(healthLabel)
@@ -226,7 +228,12 @@ struct BurnView: View {
                             ProviderQuotaChip(item: item)
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel("\(item.label), \(Int(item.pressureRemaining * 100)) percent remaining")
+                        .accessibilityLabel(
+                            MobileAccessibilityLabelPolicy.quotaRing(
+                                label: item.label,
+                                remainingFraction: item.pressureRemaining
+                            )
+                        )
                     }
                 }
                 .padding(.vertical, 4)
@@ -244,7 +251,7 @@ struct BurnView: View {
                         .fill(MobileTheme.warning.opacity(0.18))
                         .frame(width: 36, height: 36)
                     Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 16, weight: .bold))
+                        .font(MobileTheme.Typography.headline)
                         .foregroundStyle(MobileTheme.warning)
                         .symbolEffect(.pulse, options: .repeating)
                 }
@@ -269,7 +276,7 @@ struct BurnView: View {
                                 .font(MobileTheme.Typography.caption)
                                 .fontWeight(.semibold)
                             Image(systemName: "arrow.right")
-                                .font(.system(size: 12, weight: .bold))
+                                .font(MobileScaledFont.system(size: 12, weight: .bold))
                         }
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
@@ -320,7 +327,7 @@ struct BurnView: View {
                 Circle()
                     .stroke(MobileTheme.ember.opacity(0.45), lineWidth: 0.5)
                 Image(systemName: displayMode == .currency ? "dollarsign" : "number")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(MobileTheme.Typography.caption)
                     .foregroundStyle(MobileTheme.ember)
                     .symbolEffect(.bounce, value: displayMode)
             }
@@ -472,7 +479,7 @@ struct BurnView: View {
                             HapticBus.destructive()
                         } label: {
                             Image(systemName: "minus.circle.fill")
-                                .font(.system(size: 22))
+                                .font(MobileScaledFont.system(size: 22))
                                 .foregroundStyle(Color.red)
                                 .background(Circle().fill(Color.white).frame(width: 16, height: 16))
                                 .shadow(color: .black.opacity(0.2), radius: 2)
@@ -680,6 +687,18 @@ struct BurnView: View {
         }
         return "Open the Mac app and link a provider to start tracking burn here. Make sure this iPhone is signed into the same OpenBurnBar account as your Mac.\n\(accountHint)"
     }
+
+    private var burnLoadPresentation: MobilePulseLoadPresentation {
+        MobilePulseWindowPolicy.loadPresentation(
+            isLoading: quotaStore.isLoading,
+            failed: quotaStore.error != nil,
+            hasCachedData: !quotaItems.isEmpty
+        )
+    }
+
+    private var mayRetryBurn: Bool {
+        MobileProductSurfacePolicy.disposition(actionId: "pulse.retry") == .real
+    }
 }
 
 // MARK: - Fleet Health Ring
@@ -716,7 +735,7 @@ private struct FleetHealthRing: View {
 
             // Center glyph
             Image(systemName: "flame.fill")
-                .font(.system(size: 26, weight: .semibold))
+                .font(MobileTheme.Typography.display)
                 .foregroundStyle(
                     LinearGradient(
                         colors: [accent, accent.opacity(0.7)],
@@ -878,7 +897,7 @@ private struct BurnProviderRow: View {
             }
             Spacer()
             Image(systemName: isExpanded ? "chevron.up.circle.fill" : "chevron.down.circle.fill")
-                .font(.system(size: 20))
+                .font(MobileScaledFont.system(size: 20))
                 .foregroundStyle(MobileTheme.Colors.textMuted)
                 .symbolEffect(.bounce, value: isExpanded)
         }

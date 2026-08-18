@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.google.firebase.FirebaseException
 import com.openburnbar.data.firebase.FirestoreRepository
 import com.openburnbar.data.models.UsageRollups
+import com.openburnbar.data.policy.UidScopedCacheRegistry
 import java.time.Duration
 import java.time.Instant
 import kotlinx.coroutines.Job
@@ -17,6 +18,7 @@ private const val SECONDS = 60
 
 class DashboardStore(
     private val repo: FirestoreRepository = FirestoreRepository(),
+    scopedCaches: UidScopedCacheRegistry = UidScopedCacheRegistry.shared,
 ) : ViewModel() {
     private val _rollups = MutableStateFlow<UsageRollups?>(null)
     val rollups = _rollups.asStateFlow()
@@ -29,6 +31,19 @@ class DashboardStore(
 
     private var listenJob: Job? = null
     private var lastRebuildAttempt: Instant = Instant.EPOCH
+
+    init {
+        scopedCaches.register { clearCache() }
+    }
+
+    fun clearCache() {
+        listenJob?.cancel()
+        listenJob = null
+        lastRebuildAttempt = Instant.EPOCH
+        _rollups.value = null
+        _isLoading.value = false
+        _error.value = null
+    }
 
     fun load() {
         viewModelScope.launch {

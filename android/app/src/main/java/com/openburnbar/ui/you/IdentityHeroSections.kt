@@ -187,7 +187,9 @@ internal fun IdentityHeroStatusPill(syncHealth: CloudSyncHealth, connectionsCoun
             CloudSyncHealth.OFFLINE -> "Offline" to warningColor
             CloudSyncHealth.FIREBASE_UNAVAILABLE, CloudSyncHealth.APP_CHECK_BLOCKED -> "Cloud unreachable" to errorColor
             CloudSyncHealth.PERMISSION_DENIED -> "Access denied" to errorColor
-            CloudSyncHealth.DEGRADED -> "Degraded" to warningColor
+            CloudSyncHealth.DEGRADED, CloudSyncHealth.MAC_NOT_SYNCING -> "Degraded" to warningColor
+            CloudSyncHealth.EMPTY -> "No Mac data" to warningColor
+            CloudSyncHealth.FAILED -> "Load failed" to errorColor
             CloudSyncHealth.UNKNOWN -> "Checking…" to MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
         }
 

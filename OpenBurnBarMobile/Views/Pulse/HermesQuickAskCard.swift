@@ -113,7 +113,7 @@ struct HermesQuickAskCard: View {
                 .accessibilityIdentifier("hermes.quickAsk.input")
             Button(action: send) {
                 Image(systemName: "arrow.up.circle.fill")
-                    .font(.system(size: 28))
+                    .font(MobileScaledFont.system(size: 28))
                     .foregroundStyle(input.isEmpty ? MobileTheme.Colors.textMuted : MobileTheme.hermesAureate)
                     .symbolEffect(.bounce, value: input.isEmpty ? 0 : 1)
             }

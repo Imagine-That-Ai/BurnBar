@@ -103,6 +103,7 @@ private fun HermesViewActiveChatRoute(
                 hermesService.sendMessage(msg, model, ui.stagedAttachments)
                 ui.setStagedAttachments(emptyList())
             },
+            onStop = { hermesService.cancelGeneration() },
             onAgentPermissions = {
                 ui.setPermissionThreadID(hermesService.ensureDesktopGrantThreadID())
             },

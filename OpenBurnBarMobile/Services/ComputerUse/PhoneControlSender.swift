@@ -122,7 +122,29 @@ public final class PhoneControlSender: Sendable {
         }
     }
 
+    private func requireSafety(intentKind: String) throws {
+        // Rate limiter is the only locally observed bit. Grant/session/panic/
+        // view-only remain Mac-authoritative (VAL-MOB-012) — the phone cannot
+        // invent those flags. `false` here means "not locally observed".
+        let allowed = MobileComputerUseSafetyPolicy.shouldSendPhoneControl(
+            authenticated: true,
+            grantExpired: false,
+            bindingMatches: true,
+            replayed: false,
+            tampered: false,
+            rateLimited: !PhoneControlSendRateLimiter.consume(),
+            sessionExpired: false,
+            panic: false,
+            viewOnly: false,
+            intentKind: intentKind
+        )
+        guard allowed else {
+            throw SendError.signingFailed("computer-use safety rejected send")
+        }
+    }
+
     private func sendInputIntent(_ rawIntent: HermesRealtimeRelayInputIntent) async throws -> HermesRealtimeRelayAuthorityEnvelope {
+        try requireSafety(intentKind: "tap")
         guard let identity = signingIdentityProvider() else {
             throw SendError.signingFailed("no signing key")
         }
@@ -186,6 +208,7 @@ public final class PhoneControlSender: Sendable {
     }
 
     private func sendAgentGrant(_ request: AgentCapabilityGrantRequest) async throws -> HermesRealtimeRelayAuthorityEnvelope {
+        try requireSafety(intentKind: "grant")
         guard let identity = signingIdentityProvider() else {
             throw SendError.signingFailed("no signing key")
         }
@@ -264,6 +287,7 @@ public final class PhoneControlSender: Sendable {
         _ response: HermesRealtimeRelayApprovalResponse,
         approvalRequest request: HermesRealtimeRelayApprovalRequest
     ) async throws -> HermesRealtimeRelayAuthorityEnvelope {
+        try requireSafety(intentKind: "approval")
         guard let identity = signingIdentityProvider() else {
             throw SendError.signingFailed("no signing key")
         }
@@ -328,6 +352,7 @@ public final class PhoneControlSender: Sendable {
     }
 
     private func sendClipboardRequest(_ rawRequest: HermesRealtimeRelayClipboardRequest) async throws -> HermesRealtimeRelayAuthorityEnvelope {
+        try requireSafety(intentKind: "clipboard")
         guard let identity = signingIdentityProvider() else {
             throw SendError.signingFailed("no signing key")
         }
@@ -449,6 +474,7 @@ public final class PhoneControlSender: Sendable {
     private func sendRemoteUnlockCredential(
         _ rawCredential: HermesRealtimeRelayRemoteUnlockCredentialEnvelope
     ) async throws -> HermesRealtimeRelayAuthorityEnvelope {
+        try requireSafety(intentKind: "unlock")
         guard let identity = signingIdentityProvider() else {
             throw SendError.signingFailed("no signing key")
         }
@@ -519,6 +545,7 @@ public final class PhoneControlSender: Sendable {
     private func sendSystemPermissionRequest(
         _ rawRequest: HermesRealtimeRelaySystemPermissionRequest
     ) async throws -> HermesRealtimeRelayAuthorityEnvelope {
+        try requireSafety(intentKind: "system-permission")
         guard let identity = signingIdentityProvider() else {
             throw SendError.signingFailed("no signing key")
         }
@@ -593,6 +620,7 @@ public final class PhoneControlSender: Sendable {
     }
 
     private func sendContextTarget(_ rawTarget: HermesRealtimeRelayAgentContextTarget) async throws -> HermesRealtimeRelayAuthorityEnvelope {
+        try requireSafety(intentKind: "context-target")
         guard let identity = signingIdentityProvider() else {
             throw SendError.signingFailed("no signing key")
         }

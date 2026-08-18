@@ -16,6 +16,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.openburnbar.data.firebase.FirestoreRepository
 import com.openburnbar.data.models.AgentProvider
 import com.openburnbar.data.models.UsageRollups
+import com.openburnbar.data.policy.MobileOsIntegrationPolicy
 import com.openburnbar.ui.widget.BurnBarLargeWidget
 import com.openburnbar.ui.widget.BurnBarLockCircularWidget
 import com.openburnbar.ui.widget.BurnBarLockRectangularWidget
@@ -52,6 +53,14 @@ class BurnBarWidgetSyncWorker(
         val repo = FirestoreRepository()
         val rollups = runCatching { repo.fetchRollups() }.getOrNull() ?: UsageRollups()
         val snap = buildSnapshot(rollups)
+        if (!MobileOsIntegrationPolicy.widgetSnapshotIsPrivacySafe(
+                heroTotalCost = snap.heroTotalCost,
+                heroTotalTokens = snap.heroTotalTokens.toInt(),
+                topProviders = snap.topProviders,
+            )
+        ) {
+            return Result.success()
+        }
 
         BurnBarWidgetSnapshotStore.writeNow(applicationContext, snap)
         refreshAllReceivers(applicationContext)

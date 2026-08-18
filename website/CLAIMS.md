@@ -219,7 +219,7 @@ treats Kimi as exact, which matches the running code.
 | macOS Sonoma min                             | `README.md:272`, `homebrew/burnbar.rb:22`                                                                                                                                                                                                                                                                                        |
 | iOS on the App Store (v1.0, 2026-05-26)      | iTunes Lookup API for `com.openburnbar.app` (checked 2026-07-11); store page https://apps.apple.com/us/app/openburnbar/id6766366964                                                                                                                                                                                              |
 | Editor extension source-only                 | `extensions/openburnbar/README.md:7-10`                                                                                                                                                                                                                                                                                          |
-| Android feature-complete, Play Store pending | `mem:reference_android_skills` / Android parity work — Android reached full iOS parity (Hermes, Floo media, messaging, missions) ~2026-05-16. Surfaces matrix status is now `beta` / "Feature-complete · Play Store pending". **[verify]** confirm device-matrix soak before claiming parity publicly; no Play Store listing yet |
+| Android feature-complete, Play Store pending | Historical 2026-05-16 source-complete milestone (Hermes, Floo media, messaging, missions). **Not a current product-parity claim** — `docs/mobile-parity/mobile-parity-ledger.md` has `productParityClaim=false` and physical/store rows stay blocked. **[verify]** device-matrix soak; no Play listing yet |
 | Homebrew tap not yet published               | `QUICKSTART.md:46`. Site doesn't list a brew command — intentional                                                                                                                                                                                                                                                               |
 
 Before website deployment, `npm run test:download-provenance --prefix website` must prove the
@@ -253,7 +253,7 @@ These are the recurring **[verify]** flags above, collected:
 7. **Team plan copy** — kept off the page until built.
 8. **Floo activation state.** The `/floo` page and the surfaces matrix say "Built · rolling out." Confirm which Floo capabilities (screen view, control, file transfer, calls, remote unlock) are flag-live in the shipping build before any "available now" framing. Activation gates: `docs/runbooks/media-rollout-status.md`.
 9. **Agent Control submission state.** The `/control` page says "Direct download · behind your grant" and states the Mac App Store build ships without it. Confirm the App Store Connect submission / usage-description posture matches before launch.
-10. **Android parity claim.** Site now says "Feature-complete · Play Store pending." Confirm the device-matrix soak has passed before publishing the parity claim; there is still no Play Store listing.
+10. **Android parity claim.** Site now says "Remediation in progress · Play Store pending." Do not publish a full-parity claim; `productParityClaim` stays false and physical/store/VoiceOver rows stay blocked. There is still no Play Store listing.
 
 ---
 

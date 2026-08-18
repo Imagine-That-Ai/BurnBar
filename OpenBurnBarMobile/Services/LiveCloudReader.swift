@@ -547,23 +547,10 @@ final class LiveDeviceTrustGateway: DeviceTrustGateway {
 final class LiveEscrowGateway: EscrowGateway {
     private var db: Firestore { Firestore.firestore() }
     private let keypair: iOSDeviceKeypair?
-    private let keypairInitializationError: Error?
     private var listener: ListenerRegistration?
 
     init(keypair: iOSDeviceKeypair? = nil) {
-        if let keypair {
-            self.keypair = keypair
-            self.keypairInitializationError = nil
-            return
-        }
-
-        do {
-            self.keypair = try iOSDeviceKeypair()
-            self.keypairInitializationError = nil
-        } catch {
-            self.keypair = nil
-            self.keypairInitializationError = error
-        }
+        self.keypair = keypair ?? (try? iOSDeviceKeypair())
     }
 
     private var uid: String? {
@@ -584,10 +571,17 @@ final class LiveEscrowGateway: EscrowGateway {
 
     func runImport(envelope: AvailableEnvelope, onStage: @escaping @MainActor (ImportStage) -> Void) async {
         guard let uid else { onStage(.failed(.permissionDenied)); return }
+        // Device and grant binding need the stored document, so preflight only
+        // what is knowable here: a referencable envelope and a usable device key.
+        guard !envelope.id.isEmpty else {
+            let failure = MobileEscrowImportFailure.malformedEnvelope
+            onStage(.failed(CredentialImportFailure(failure)))
+            await writeAudit(uid: uid, type: "import_\(failure.rawValue)", envelopeId: envelope.id, providerId: envelope.provider.persistedToken, error: failure.userVisibleLabel)
+            return
+        }
         guard let keypair else {
-            let message = keypairInitializationError?.localizedDescription ?? "This device's escrow key is unavailable."
-            onStage(.failed(.other(message: message)))
-            await writeAudit(uid: uid, type: "import_device_key_unavailable", envelopeId: envelope.id, providerId: envelope.provider.persistedToken, error: message)
+            onStage(.failed(.missingPrivateKey))
+            await writeAudit(uid: uid, type: "import_device_key_unavailable", envelopeId: envelope.id, providerId: envelope.provider.persistedToken, error: MobileEscrowImportFailure.missingKey.userVisibleLabel)
             return
         }
         let pid = envelope.provider.persistedToken
@@ -606,8 +600,35 @@ final class LiveEscrowGateway: EscrowGateway {
         guard let data = doc.data(),
               let ctB64 = data["ciphertext"] as? String,
               let ct = Data(base64Encoded: ctB64) else {
-            onStage(.failed(.decryptionFailed))
+            onStage(.failed(.malformedEnvelope))
             await writeAudit(uid: uid, type: "import_ciphertext_missing", envelopeId: envelope.id, providerId: pid, error: "ciphertext field missing or invalid")
+            return
+        }
+        let targetDeviceId = data["targetDeviceId"] as? String
+        var grantStatus: String?
+        var grantExpiresAtMs: Int64?
+        let grantId = data["grantId"] as? String
+        let envelopeVersion = Self.intValue(data["envelopeVersion"]) ?? 1
+        if let gid = grantId, !gid.isEmpty {
+            let gd = try? await db.collection("users").document(uid).collection("escrow_grants").document(gid).getDocument()
+            grantStatus = gd?.data()?["status"] as? String
+            grantExpiresAtMs = Self.intValue(gd?.data()?["expiresAtMillis"]).map(Int64.init)
+        }
+        // `ct` above already proves the ciphertext decodes.
+        let wellFormed = !ctB64.isEmpty
+            && !(grantId ?? "").isEmpty
+            && envelopeVersion >= EscrowCredentialMetadataBinding.envelopeVersion
+        if let failure = MobileEscrowEnvelopePolicy.classify(
+            targetDeviceId: targetDeviceId,
+            currentDeviceId: deviceId,
+            grantStatus: grantStatus,
+            grantExpiresAtMs: grantExpiresAtMs,
+            nowMs: Int64(Date().timeIntervalSince1970 * 1000),
+            hasPrivateKey: true,
+            envelopeWellFormed: wellFormed
+        ) {
+            onStage(.failed(CredentialImportFailure(failure)))
+            await writeAudit(uid: uid, type: "import_\(failure.rawValue)", envelopeId: envelope.id, providerId: pid, error: failure.userVisibleLabel)
             return
         }
         guard let metadataBinding = Self.metadataBinding(
@@ -615,19 +636,9 @@ final class LiveEscrowGateway: EscrowGateway {
             expectedEnvelope: envelope,
             currentDeviceId: deviceId
         ) else {
-            onStage(.failed(.decryptionFailed))
+            onStage(.failed(.malformedEnvelope))
             await writeAudit(uid: uid, type: "import_metadata_binding_failed", envelopeId: envelope.id, providerId: pid)
             return
-        }
-
-        // Check grant
-        if let gid = data["grantId"] as? String {
-            let gd = try? await db.collection("users").document(uid).collection("escrow_grants").document(gid).getDocument()
-            if let s = gd?.data()?["status"] as? String, s == EscrowGrantStatus.revoked.rawValue {
-                onStage(.failed(.grantRevoked))
-                await writeAudit(uid: uid, type: "import_grant_revoked", envelopeId: envelope.id, providerId: pid, grantId: gid)
-                return
-            }
         }
 
         // Decrypt
@@ -679,7 +690,7 @@ final class LiveEscrowGateway: EscrowGateway {
     ) -> Data? {
         let envelopeVersion = intValue(data["envelopeVersion"]) ?? 1
         guard envelopeVersion >= EscrowCredentialMetadataBinding.envelopeVersion else {
-            return Data()
+            return nil
         }
         guard (data["metadataBinding"] as? String) == EscrowCredentialMetadataBinding.metadataBinding,
               let grantId = data["grantId"] as? String,

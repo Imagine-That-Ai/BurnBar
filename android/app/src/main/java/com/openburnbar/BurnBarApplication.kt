@@ -357,9 +357,11 @@ class BurnBarApplication : Application() {
 
                 if (!controllerAuthStateIsCurrent(uid = uid, epoch = epoch)) return@withLock
                 IrohControllerRouteRegistrarProvider.releaseAuthTransitionGate(gate)
+                if (uid == null || (previousUid != null && previousUid != uid)) {
+                    BurnBarWidgetSyncWorker.clearAndRefresh(applicationContext)
+                }
                 if (uid == null) {
                     _mercuryDeviceRegistrationState.value = MercuryDeviceRegistrationState.Idle
-                    BurnBarWidgetSyncWorker.clearAndRefresh(applicationContext)
                     return@withLock
                 }
                 val registration = registerMercuryDeviceBeforePairing(uid = uid, epoch = epoch)

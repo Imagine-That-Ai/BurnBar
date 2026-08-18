@@ -37,34 +37,39 @@ struct PulseView: View {
             )
             PulseDepthBackdrop()
             ScrollView {
-                if let dashboardError = dashboard.error, !hasDashboardData {
-                    // Blocking error state — the load failed and there is no
-                    // cached rollup data worth painting. Mirrors BurnView's
-                    // AuroraStatePane error treatment.
+                if pulseLoadPresentation == .loading {
+                    ProgressView()
+                        .padding(.top, MobileTheme.Spacing.xxl)
+                } else if pulseLoadPresentation == .failed {
                     AuroraStatePane(
                         kind: .error,
                         icon: "exclamationmark.icloud.fill",
                         title: "Pulse couldn't load",
-                        message: dashboardError,
-                        ctaLabel: "Try Again",
-                        onCTA: {
-                            Task { await dashboard.refresh() }
-                        }
+                        message: dashboard.error ?? "Usage failed to load.",
+                        ctaLabel: mayRetryPulse ? "Try Again" : nil,
+                        onCTA: mayRetryPulse ? { Task { await dashboard.refresh() } } : nil
+                    )
+                    .padding(.top, MobileTheme.Spacing.xxl)
+                    .padding(.horizontal, AuroraDesign.Layout.cardInset)
+                } else if pulseLoadPresentation == .empty {
+                    AuroraStatePane(
+                        kind: .empty,
+                        icon: "chart.line.uptrend.xyaxis",
+                        title: "No usage yet",
+                        message: "Start a session to see burn here."
                     )
                     .padding(.top, MobileTheme.Spacing.xxl)
                     .padding(.horizontal, AuroraDesign.Layout.cardInset)
                 } else {
                     VStack(spacing: MobileTheme.Spacing.lg) {
-                        if let dashboardError = dashboard.error {
-                            // Non-blocking: cached data is still on screen but
-                            // the latest refresh failed — say so instead of
-                            // silently showing stale numbers.
+                        if pulseLoadPresentation == .staleRefreshFailed, let dashboardError = dashboard.error {
                             dashboardErrorBanner(dashboardError)
                                 .padding(.horizontal, AuroraDesign.Layout.cardInset)
                                 .transition(.opacity.combined(with: .move(edge: .top)))
                         }
 
-                        if shouldShowCloudBanner {
+                        if shouldShowCloudBanner,
+                           MobileProductSurfacePolicy.disposition(actionId: "store.open") == .real {
                             CloudUpsellBanner(
                                 priceText: cloudStore?.product?.displayPrice,
                                 onTap: { showCloudStore = true },
@@ -301,12 +306,24 @@ struct PulseView: View {
         !dashboard.rollupsByWindow.isEmpty
     }
 
+    private var pulseLoadPresentation: MobilePulseLoadPresentation {
+        MobilePulseWindowPolicy.loadPresentation(
+            isLoading: dashboard.isLoading,
+            failed: dashboard.error != nil,
+            hasCachedData: hasDashboardData
+        )
+    }
+
+    private var mayRetryPulse: Bool {
+        MobileProductSurfacePolicy.disposition(actionId: "pulse.retry") == .real
+    }
+
     /// Compact, non-blocking refresh-failure banner shown above the feed
     /// while cached dashboard data is still visible.
     private func dashboardErrorBanner(_ message: String) -> some View {
         HStack(spacing: MobileTheme.Spacing.sm) {
             Image(systemName: "exclamationmark.icloud.fill")
-                .font(.system(size: 16, weight: .semibold))
+                .font(MobileTheme.Typography.headline)
                 .foregroundStyle(MobileTheme.Colors.warning)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Couldn't refresh usage")
@@ -318,12 +335,14 @@ struct PulseView: View {
                     .lineLimit(2)
             }
             Spacer(minLength: MobileTheme.Spacing.sm)
-            Button("Retry") {
-                Task { await dashboard.refresh() }
+            if mayRetryPulse {
+                Button("Retry") {
+                    Task { await dashboard.refresh() }
+                }
+                .font(MobileTheme.Typography.caption.bold())
+                .foregroundStyle(MobileTheme.Colors.accent)
+                .buttonStyle(.plain)
             }
-            .font(MobileTheme.Typography.caption.bold())
-            .foregroundStyle(MobileTheme.Colors.accent)
-            .buttonStyle(.plain)
         }
         .padding(MobileTheme.Spacing.md)
         .background(

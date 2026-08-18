@@ -13,11 +13,11 @@ enum AuroraDesign {
     // MARK: - Hero Typography
     enum Typography {
         /// 44pt rounded bold — used by `RollingMetric` for headline numbers.
-        static let displayHero = Font.system(size: 44, weight: .bold, design: .rounded)
+        static let displayHero = MobileScaledFont.system(size: 44, weight: .bold, design: .rounded, relativeTo: .largeTitle)
         /// 32pt monospaced — used by inline cost/tokens that need digit-grid stability.
-        static let monoDisplay = Font.system(size: 32, weight: .bold, design: .monospaced)
+        static let monoDisplay = MobileScaledFont.system(size: 32, weight: .bold, design: .monospaced, relativeTo: .title)
         /// 56pt rounded heavy — splash/onboarding only.
-        static let titanic    = Font.system(size: 56, weight: .heavy, design: .rounded)
+        static let titanic    = MobileScaledFont.system(size: 56, weight: .heavy, design: .rounded, relativeTo: .largeTitle)
     }
 
     // MARK: - Aurora Gradients

@@ -8,6 +8,11 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
+import com.openburnbar.data.policy.MobileAuthSessionEpoch
+import com.openburnbar.data.policy.MobileAuthSessionPolicy
+import com.openburnbar.data.policy.MobileSyncFreshness
+import com.openburnbar.data.policy.MobileSyncOwnershipPolicy
+import com.openburnbar.data.policy.UidScopedCacheRegistry
 import java.util.Date
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -27,10 +32,20 @@ enum class CloudSyncHealth(val label: String) {
     PERMISSION_DENIED("Permission denied"),
     APP_CHECK_BLOCKED("App Check blocked"),
     FIREBASE_UNAVAILABLE("Firebase unavailable"),
+    MAC_NOT_SYNCING("Mac not syncing"),
+    EMPTY("No Mac-published data"),
+    FAILED("Cloud load failed"),
     ;
 
     val isHealthy: Boolean get() = this == HEALTHY
-    val isDegraded: Boolean get() = this in listOf(DEGRADED, OFFLINE, PERMISSION_DENIED, APP_CHECK_BLOCKED, FIREBASE_UNAVAILABLE)
+    val isDegraded: Boolean get() = this in listOf(
+        DEGRADED,
+        OFFLINE,
+        PERMISSION_DENIED,
+        APP_CHECK_BLOCKED,
+        FIREBASE_UNAVAILABLE,
+        FAILED,
+    )
 }
 
 data class CloudPublisherDevice(
@@ -45,7 +60,7 @@ object CloudSyncErrorClassifier {
             return when (error.code) {
                 FirebaseFirestoreException.Code.PERMISSION_DENIED -> permissionDeniedHealth(error.localizedMessage.orEmpty())
                 FirebaseFirestoreException.Code.UNAVAILABLE -> CloudSyncHealth.FIREBASE_UNAVAILABLE
-                FirebaseFirestoreException.Code.UNAUTHENTICATED -> CloudSyncHealth.OFFLINE
+                FirebaseFirestoreException.Code.UNAUTHENTICATED -> CloudSyncHealth.UNKNOWN
                 else -> CloudSyncHealth.DEGRADED
             }
         }
@@ -71,15 +86,22 @@ object CloudSyncErrorClassifier {
     }
 }
 
-class CloudSyncHealthStore : ViewModel() {
+class CloudSyncHealthStore(
+    private val currentEpoch: () -> MobileAuthSessionEpoch = { MobileAuthSessionEpoch(uid = null, generation = 0) },
+    scopedCaches: UidScopedCacheRegistry = UidScopedCacheRegistry.shared,
+) : ViewModel() {
     companion object {
         private const val STALENESS_THRESHOLD_MS = 30 * 60 * 1000L // 30 minutes
     }
 
     private val db: FirebaseFirestore = Firebase.firestore
+    private var refreshGeneration = 0
 
     private val _health = MutableStateFlow(CloudSyncHealth.UNKNOWN)
     val health: StateFlow<CloudSyncHealth> = _health.asStateFlow()
+
+    private val _freshness = MutableStateFlow(MobileSyncFreshness.EMPTY)
+    val freshness: StateFlow<MobileSyncFreshness> = _freshness.asStateFlow()
 
     private val _lastPublishedAt = MutableStateFlow<Date?>(null)
     val lastPublishedAt: StateFlow<Date?> = _lastPublishedAt.asStateFlow()
@@ -93,14 +115,37 @@ class CloudSyncHealthStore : ViewModel() {
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
+    init {
+        scopedCaches.register { clearCache() }
+    }
+
+    fun cancelRefresh() {
+        refreshGeneration = MobileSyncOwnershipPolicy.nextGeneration(refreshGeneration)
+    }
+
+    fun clearCache() {
+        cancelRefresh()
+        _lastPublishedAt.value = null
+        _lastReadAt.value = null
+        _publisher.value = null
+        _health.value = CloudSyncHealth.UNKNOWN
+        _freshness.value = MobileSyncFreshness.EMPTY
+        _isLoading.value = false
+    }
+
     fun refresh() {
         viewModelScope.launch {
+            refreshGeneration = MobileSyncOwnershipPolicy.nextGeneration(refreshGeneration)
+            val generation = refreshGeneration
+            val epoch = currentEpoch()
             _isLoading.value = true
             _health.value = CloudSyncHealth.SYNCING
             try {
                 val uid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid
                 if (uid == null) {
-                    _health.value = CloudSyncHealth.OFFLINE
+                    if (!shouldApply(generation, epoch)) return@launch
+                    _health.value = CloudSyncHealth.UNKNOWN
+                    _freshness.value = MobileSyncFreshness.EMPTY
                     return@launch
                 }
 
@@ -123,6 +168,7 @@ class CloudSyncHealthStore : ViewModel() {
 
                 val macContext = resolveMacSyncDeviceContext(macDevice)
                 if (macContext == null) {
+                    if (!shouldApply(generation, epoch)) return@launch
                     applyUsageFallback(latestUsage?.data)
                     return@launch
                 }
@@ -132,6 +178,7 @@ class CloudSyncHealthStore : ViewModel() {
                         .collection("sync_status").document(macContext.macDeviceId)
                         .get().await()
 
+                if (!shouldApply(generation, epoch)) return@launch
                 val data = doc.data
                 if (data != null) {
                     applySyncSnapshot(applySyncStatusDocument(data, macContext.macName, STALENESS_THRESHOLD_MS))
@@ -139,13 +186,21 @@ class CloudSyncHealthStore : ViewModel() {
                     applyUsageFallback(latestUsage?.data)
                 }
             } catch (e: FirebaseException) {
+                if (!shouldApply(generation, epoch)) return@launch
                 Log.e("BurnBar", "Sync health refresh failed", e)
                 _health.value = CloudSyncErrorClassifier.classify(e)
+                _freshness.value = MobileSyncFreshness.FAILED
             } finally {
-                _isLoading.value = false
+                if (generation == refreshGeneration) {
+                    _isLoading.value = false
+                }
             }
         }
     }
+
+    private fun shouldApply(generation: Int, epoch: MobileAuthSessionEpoch): Boolean =
+        MobileSyncOwnershipPolicy.shouldApply(generation, refreshGeneration, cancelled = false) &&
+            MobileAuthSessionPolicy.isCurrent(epoch, currentEpoch())
 
     fun isStale(now: Date = Date()): Boolean {
         val published = _lastPublishedAt.value ?: return true
@@ -157,6 +212,14 @@ class CloudSyncHealthStore : ViewModel() {
         _lastReadAt.value = snapshot.lastReadAt
         _publisher.value = snapshot.publisher
         _health.value = snapshot.health
+        _freshness.value = MobileSyncOwnershipPolicy.freshness(
+            hasData = snapshot.lastPublishedAt != null || snapshot.publisher != null,
+            failed = snapshot.health == CloudSyncHealth.FAILED || snapshot.health == CloudSyncHealth.FIREBASE_UNAVAILABLE ||
+                snapshot.health == CloudSyncHealth.PERMISSION_DENIED || snapshot.health == CloudSyncHealth.APP_CHECK_BLOCKED,
+            offline = snapshot.health == CloudSyncHealth.OFFLINE,
+            stale = snapshot.health == CloudSyncHealth.MAC_NOT_SYNCING || snapshot.health == CloudSyncHealth.DEGRADED,
+            partial = false,
+        )
     }
 
     private fun applyUsageFallback(data: Map<String, Any>?) {

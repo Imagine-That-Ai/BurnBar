@@ -1,6 +1,7 @@
 package com.openburnbar.data.computeruse
 
 import com.openburnbar.data.media.MediaStreamClass
+import com.openburnbar.data.policy.MobileComputerUseSafetyPolicy
 import com.openburnbar.irohrelay.HermesRealtimeRelayAgentContextTarget
 import com.openburnbar.irohrelay.HermesRealtimeRelayAgentGrantRequest
 import com.openburnbar.irohrelay.HermesRealtimeRelayApprovalRequest
@@ -57,6 +58,7 @@ class PhoneControlSender(
 ) {
     sealed class SendError(message: String) : RuntimeException(message) {
         object SigningKeyMissing : SendError("phone-control signing key missing")
+        object SafetyRejected : SendError("computer-use safety rejected send")
     }
 
     private suspend fun PhoneControlAuthorityEnvelope.withAttestationDigest(): PhoneControlAuthorityEnvelope {
@@ -77,7 +79,26 @@ class PhoneControlSender(
         return copy(attestationHashBlake3 = enforced)
     }
 
+    private fun requireSafety(intentKind: String) {
+        // Rate limiter is the only locally observed bit. Grant/session/panic/
+        // view-only remain Mac-authoritative (VAL-MOB-012).
+        val allowed = MobileComputerUseSafetyPolicy.shouldSendPhoneControl(
+            authenticated = true,
+            grantExpired = false,
+            bindingMatches = true,
+            replayed = false,
+            tampered = false,
+            rateLimited = !PhoneControlSendRateLimiter.consume(),
+            sessionExpired = false,
+            panic = false,
+            viewOnly = false,
+            intentKind = intentKind,
+        )
+        if (!allowed) throw SendError.SafetyRejected
+    }
+
     suspend fun send(intent: PhoneControlIntent): PhoneControlAuthorityEnvelope = PhoneControlSendSequencer.withPeer(peerNodeId) {
+        requireSafety("tap")
         val identity = signingIdentityProvider() ?: throw SendError.SigningKeyMissing
         val outboundIntent =
             if (intent.clientIntentId.isNullOrBlank()) {
@@ -112,6 +133,7 @@ class PhoneControlSender(
     }
 
     suspend fun send(agentGrant: AgentCapabilityGrantRequest): HermesRealtimeRelayAgentGrantRequest = PhoneControlSendSequencer.withPeer(peerNodeId) {
+        requireSafety("grant")
         val identity = signingIdentityProvider() ?: throw SendError.SigningKeyMissing
         val counter = counterStore.nextCounter(peerNodeId)
         val timestampMillis = nowMillis()
@@ -167,6 +189,7 @@ class PhoneControlSender(
         approvalResponse: HermesRealtimeRelayApprovalResponse,
         approvalRequest: HermesRealtimeRelayApprovalRequest,
     ): HermesRealtimeRelayApprovalResponse = PhoneControlSendSequencer.withPeer(peerNodeId) {
+        requireSafety("approval")
         val identity = signingIdentityProvider() ?: throw SendError.SigningKeyMissing
         val responseWithRequestHash =
             approvalResponse.copy(
@@ -203,6 +226,7 @@ class PhoneControlSender(
     }
 
     suspend fun send(clipboardRequest: PhoneControlClipboardRequest): HermesRealtimeRelayClipboardRequest = PhoneControlSendSequencer.withPeer(peerNodeId) {
+        requireSafety("clipboard")
         val identity = signingIdentityProvider() ?: throw SendError.SigningKeyMissing
         val request =
             if (clipboardRequest.clientIntentId.isNullOrBlank()) {
@@ -248,6 +272,7 @@ class PhoneControlSender(
 
     suspend fun send(remoteUnlockCredential: HermesRealtimeRelayRemoteUnlockCredentialEnvelope): HermesRealtimeRelayRemoteUnlockCredentialEnvelope =
         PhoneControlSendSequencer.withPeer(peerNodeId) {
+            requireSafety("unlock")
             val identity = signingIdentityProvider() ?: throw SendError.SigningKeyMissing
             val placeholder =
                 HermesRealtimeRelayAuthorityEnvelope(
@@ -288,6 +313,7 @@ class PhoneControlSender(
 
     suspend fun send(agentContextTarget: PhoneControlAgentContextTarget): HermesRealtimeRelayAgentContextTarget =
         PhoneControlSendSequencer.withPeer(peerNodeId) {
+            requireSafety("context-target")
             val identity = signingIdentityProvider() ?: throw SendError.SigningKeyMissing
             val target =
                 if (agentContextTarget.clientIntentId.isNullOrBlank()) {
@@ -338,6 +364,7 @@ class PhoneControlSender(
 
     suspend fun send(systemPermissionRequest: PhoneControlSystemPermissionRequest): HermesRealtimeRelaySystemPermissionRequest =
         PhoneControlSendSequencer.withPeer(peerNodeId) {
+            requireSafety("system-permission")
             val identity = signingIdentityProvider() ?: throw SendError.SigningKeyMissing
             val request =
                 if (systemPermissionRequest.clientIntentId.isNullOrBlank()) {
