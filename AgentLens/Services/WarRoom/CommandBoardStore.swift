@@ -21,7 +21,7 @@ final class CommandBoardStore {
     /// A run is "running" while usage kept arriving up to this recently. There
     /// is no end-of-run marker in `token_usage`, so the board infers liveness
     /// from recency and says so rather than claiming a status it cannot know.
-    static let livenessWindow: TimeInterval = 120
+    nonisolated static let livenessWindow: TimeInterval = 120
 
     private let dbQueue: any DatabaseWriter
     private let localMachineName: String
@@ -52,7 +52,7 @@ final class CommandBoardStore {
 
     // MARK: - Projection
 
-    private static let sql = """
+    nonisolated private static let sql = """
         SELECT
           sessionId,
           MAX(sourceDeviceId) AS bodyID,
@@ -74,7 +74,7 @@ final class CommandBoardStore {
         LIMIT ?
         """
 
-    private static func run(
+    nonisolated private static func run(
         from row: Row,
         localMachineName: String,
         now: Date
@@ -118,7 +118,7 @@ final class CommandBoardStore {
         )
     }
 
-    private static func title(row: Row) -> String {
+    nonisolated private static func title(row: Row) -> String {
         let project: String? = row["projectName"]
         if let project, !project.isEmpty { return project }
         let model: String? = row["model"]
