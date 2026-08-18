@@ -58,6 +58,7 @@ class PhoneControlSender(
 ) {
     sealed class SendError(message: String) : RuntimeException(message) {
         object SigningKeyMissing : SendError("phone-control signing key missing")
+        object SafetyRejected : SendError("computer-use safety rejected send")
     }
 
     private suspend fun PhoneControlAuthorityEnvelope.withAttestationDigest(): PhoneControlAuthorityEnvelope {
@@ -93,7 +94,7 @@ class PhoneControlSender(
             viewOnly = false,
             intentKind = intentKind,
         )
-        if (!allowed) throw SendError.SigningKeyMissing
+        if (!allowed) throw SendError.SafetyRejected
     }
 
     suspend fun send(intent: PhoneControlIntent): PhoneControlAuthorityEnvelope = PhoneControlSendSequencer.withPeer(peerNodeId) {

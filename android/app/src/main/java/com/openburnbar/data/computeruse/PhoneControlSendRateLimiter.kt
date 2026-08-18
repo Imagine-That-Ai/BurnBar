@@ -14,4 +14,9 @@ object PhoneControlSendRateLimiter {
         stamps.addLast(nowMs)
         return true
     }
+
+    @Synchronized
+    fun reset() {
+        stamps.clear()
+    }
 }

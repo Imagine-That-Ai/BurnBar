@@ -257,7 +257,7 @@ class MobileProductParityTest {
             val want = expected.getJSONObject(scopeName)
             val policy = MobilePulseWindowPolicy.metrics(scopeName.toScope(), rollups.toPolicyMap(), usages, nowMs)
             assertEquals(scopeName, want.getInt("requests"), policy.total.requests)
-            assertEquals(scopeName, want.getInt("tokens"), policy.total.tokens)
+            assertEquals(scopeName, want.getLong("tokens"), policy.total.tokens)
             assertEquals(want.getDouble("costUsd"), policy.total.costUsd, 0.001)
             val android = pulseWindowMetrics(scopeName.toTimeline(), rollups, usages.toTokenUsages(), nowMs)
             assertEquals(want.getDouble("costUsd"), android.value, 0.001)

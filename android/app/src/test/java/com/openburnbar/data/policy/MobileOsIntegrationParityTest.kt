@@ -62,7 +62,7 @@ class MobileOsIntegrationParityTest {
             nowMs = 3_999,
         )
         assertEquals(count, result.total.requests)
-        assertEquals(count, result.total.tokens)
+        assertEquals(count.toLong(), result.total.tokens)
     }
 
     private fun assertDelivery(vector: JSONObject) {

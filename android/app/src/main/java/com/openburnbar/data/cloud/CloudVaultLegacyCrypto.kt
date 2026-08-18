@@ -18,17 +18,8 @@ internal object CloudVaultLegacyCrypto {
     private const val HMAC_INFO_PREFIX = "OpenBurnBar-CloudVault-HMAC-v1"
     private const val ESCROW_HKDF_INFO = "OpenBurnBar-Escrow-v1"
     private const val ESCROW_PUBLIC_KEY_BYTES = 65
-
-    fun aadV1(uid: String, collection: String, docId: String, field: String): String {
-        listOf(uid, collection, docId, field).forEach(::requireValidAadPart)
-        return "${CloudVaultCrypto.LEGACY_AAD_CONTEXT_PREFIX}|$uid|$collection|$docId|$field"
-    }
-
-    fun aadV2(uid: String, collection: String, docId: String, field: String, schemaVersion: Int, purpose: String): String {
-        require(schemaVersion >= 2) { "Invalid CloudVault AAD context" }
-        listOf(uid, collection, docId, field, purpose).forEach(::requireValidAadPart)
-        return "${CloudVaultCrypto.AAD_CONTEXT_PREFIX}|$uid|$collection|$docId|$field|$schemaVersion|$purpose"
-    }
+    private const val RECOVERY_SALT = "OpenBurnBar-Recovery-Salt-v1"
+    private const val RECOVERY_WRAP_INFO = "OpenBurnBar-Recovery-Wrap-v1"
 
     fun sha256Hex(data: ByteArray): String = MessageDigest.getInstance("SHA-256").digest(data).toHex()
 
@@ -91,6 +82,52 @@ internal object CloudVaultLegacyCrypto {
         }
     }
 
+    fun recoveryWrappingKey(recoveryKey: String): ByteArray {
+        val normalized = recoveryKey.uppercase().filter { it.isLetterOrDigit() }
+        require(normalized.length >= 20) { "Recovery key is too short" }
+        return CloudVaultLegacySearch.hkdfSha256(
+            normalized.toByteArray(Charsets.UTF_8),
+            RECOVERY_SALT.toByteArray(Charsets.UTF_8),
+            RECOVERY_WRAP_INFO.toByteArray(Charsets.UTF_8),
+            KEY_BYTES,
+        )
+    }
+
+    fun recoveryWrapVaultKey(
+        vaultKey: ByteArray,
+        recoveryKey: String,
+        nonce: ByteArray,
+        sha256Hex: (ByteArray) -> String,
+    ): CloudVaultRecoveryBox {
+        val wrappingKey = recoveryWrappingKey(recoveryKey)
+        return try {
+            CloudVaultRecoveryBox(
+                combined = aesSealCombined(vaultKey, wrappingKey, nonce),
+                verificationHash = sha256Hex(wrappingKey),
+            )
+        } finally {
+            wrappingKey.fill(0)
+        }
+    }
+
+    fun recoveryOpenVaultKey(combined: ByteArray, recoveryKey: String): ByteArray {
+        val wrappingKey = recoveryWrappingKey(recoveryKey)
+        return try {
+            aesOpenCombined(combined, wrappingKey)
+        } finally {
+            wrappingKey.fill(0)
+        }
+    }
+
+    fun recoveryVerificationHash(recoveryKey: String, sha256Hex: (ByteArray) -> String): String {
+        val wrappingKey = recoveryWrappingKey(recoveryKey)
+        return try {
+            sha256Hex(wrappingKey)
+        } finally {
+            wrappingKey.fill(0)
+        }
+    }
+
     fun aesSealDetached(plaintext: ByteArray, key: ByteArray, nonce: ByteArray, aad: ByteArray): CloudVaultAesDetachedBox {
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(GCM_AUTH_TAG_BITS, nonce))
@@ -123,13 +160,13 @@ internal object CloudVaultLegacyCrypto {
         KEY_BYTES,
     )
 
-    internal fun aesSealCombined(plaintext: ByteArray, key: ByteArray, nonce: ByteArray): ByteArray {
+    private fun aesSealCombined(plaintext: ByteArray, key: ByteArray, nonce: ByteArray): ByteArray {
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(GCM_AUTH_TAG_BITS, nonce))
         return nonce + cipher.doFinal(plaintext)
     }
 
-    internal fun aesOpenCombined(combined: ByteArray, key: ByteArray): ByteArray {
+    private fun aesOpenCombined(combined: ByteArray, key: ByteArray): ByteArray {
         require(combined.size > GCM_NONCE_BYTES + GCM_TAG_BYTES) { "Invalid wrapped vault key" }
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(
@@ -138,12 +175,6 @@ internal object CloudVaultLegacyCrypto {
             GCMParameterSpec(GCM_AUTH_TAG_BITS, combined.copyOfRange(0, GCM_NONCE_BYTES)),
         )
         return cipher.doFinal(combined.copyOfRange(GCM_NONCE_BYTES, combined.size))
-    }
-
-    private fun requireValidAadPart(value: String) {
-        require(value.isNotEmpty() && value.none { it == '|' || it.code < 0x20 || it.code == 0x7f }) {
-            "Invalid CloudVault AAD context"
-        }
     }
 
     private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it.toInt() and BYTE_MASK) }

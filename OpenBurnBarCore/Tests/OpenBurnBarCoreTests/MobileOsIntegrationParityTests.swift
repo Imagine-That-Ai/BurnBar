@@ -63,7 +63,7 @@ final class MobileOsIntegrationParityTests: XCTestCase {
             nowMs: 3_999
         )
         XCTAssertEqual(result.total.requests, count)
-        XCTAssertEqual(result.total.tokens, count)
+        XCTAssertEqual(result.total.tokens, Int64(count))
     }
 
     private func assertDelivery(_ vector: [String: Any]) {
