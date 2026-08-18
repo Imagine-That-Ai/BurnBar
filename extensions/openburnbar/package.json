@@ -2,7 +2,7 @@
   "name": "openburnbar",
   "displayName": "OpenBurnBar",
   "description": "OpenBurnBar sidebar shell for Cursor and VS Code.",
-  "version": "1.0.39",
+  "version": "1.0.37",
   "private": true,
   "publisher": "openburnbar",
   "icon": "media/app-icon-128.png",
