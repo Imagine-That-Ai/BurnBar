@@ -2746,6 +2746,7 @@ jobs:
     name: Domain Core iOS release evidence
     needs:
       - release-preflight
+      - domain-core-native-release-gate
       - build-and-release
     uses: ./.github/workflows/domain-core-ios-release-evidence.yml
     with:
@@ -2754,6 +2755,13 @@ jobs:
       release_commit: ${{ needs.release-preflight.outputs.release_commit }}
       archive_artifact_name: OpenBurnBar-${{ needs.release-preflight.outputs.version }}-iOS-archive
       domain_core_profile: ${{ needs.release-preflight.outputs.domain_core_profile }}
+      # build-and-release bakes the gate's candidate identity into the iOS app.
+      # Forward the same verdict so iOS evidence verifies against it rather than
+      # re-deriving an activation authority commit that the artifacts never saw.
+      gate_artifact_name: ${{ needs.domain-core-native-release-gate.outputs.artifact_name }}
+      gate_candidate_commit: ${{ needs.domain-core-native-release-gate.outputs.candidate_commit }}
+      gate_profile_name: ${{ needs.domain-core-native-release-gate.outputs.profile_name }}
+      gate_rust_active: ${{ needs.domain-core-native-release-gate.outputs.rust_active }}
     secrets: inherit
 
   smoke-test:

@@ -101,16 +101,31 @@ function extractInvocations(body, scriptName) {
   return invocations;
 }
 
+// The reusable-call block and the workflow_call input shape are asserted by
+// several tests below; keep one reader for each so a shape change lands once.
+function iosEvidenceReusableCallBlock() {
+  const callMatch = releaseBody.match(
+    /  domain-core-ios-release-evidence:[\s\S]*?secrets: inherit/u,
+  );
+  assert.ok(callMatch, "domain-core-ios-release-evidence reusable call exists");
+  return callMatch[0];
+}
+
+function requiredStringInputDeclaration(name) {
+  return [
+    `      ${name}:`,
+    "        required: true",
+    "        type: string",
+    "",
+  ].join("\n");
+}
+
 test("release.yml forwards the selected domain-core profile to the iOS evidence reusable workflow", () => {
   // The reusable call `domain-core-ios-release-evidence` in release.yml must
   // pass `domain_core_profile: ${{ needs.release-preflight.outputs.domain_core_profile }}`.
   // The pre-fix code omits this input entirely, so the reusable workflow's
   // hard-coded `public-production` is used even for rollback dispatches.
-  const callMatch = releaseBody.match(
-    /  domain-core-ios-release-evidence:[\s\S]*?secrets: inherit/u,
-  );
-  assert.ok(callMatch, "domain-core-ios-release-evidence reusable call exists");
-  const callBlock = callMatch[0];
+  const callBlock = iosEvidenceReusableCallBlock();
   assert.match(
     callBlock,
     /domain_core_profile:\s*\$\{\{ needs\.release-preflight\.outputs\.domain_core_profile \}\}/u,
@@ -131,12 +146,7 @@ test("release.yml forwards the selected domain-core profile to the iOS evidence 
 });
 
 test("domain-core-ios-release-evidence.yml declares a required domain_core_profile workflow_call input", () => {
-  const declaration = [
-    "      domain_core_profile:",
-    "        required: true",
-    "        type: string",
-    "",
-  ].join("\n");
+  const declaration = requiredStringInputDeclaration("domain_core_profile");
   assert.ok(
     iosEvidenceBody.includes(declaration),
     "domain_core_profile must be a required string workflow_call input",
@@ -264,6 +274,178 @@ test("iOS resolve-domain-core-build-profile invocation uses the forwarded profil
       `resolve-domain-core-build-profile invocation at line ${inv.line} must not hard-code public-production`,
     );
   }
+});
+
+test("iOS evidence never re-resolves the activation on its own runner", () => {
+  // The gate resolves the activation once and uploads the selector it proved.
+  // Re-resolving here re-derives the activation authority commit P, which on
+  // the legacy `active: false` lane is NOT the candidate the artifacts were
+  // built against (the gate rebinds C = P = R), so the exact identity compare
+  // fails a stable cut.
+  assert.doesNotMatch(
+    iosEvidenceBody,
+    /node\s+scripts\/ci\/resolve-domain-core-activation\.mjs/u,
+    "iOS evidence must consume the gate's activation selector, not re-resolve one",
+  );
+
+  const preFix = iosEvidenceBody.replace(
+    /activation="\$\(cat "\$RUNNER_TEMP\/ios-release\/domain-core-activation\.json"\)"/gu,
+    'activation="$(node scripts/ci/resolve-domain-core-activation.mjs --release-commit "$RELEASE_COMMIT" --format json)"',
+  );
+  assert.match(
+    preFix,
+    /node\s+scripts\/ci\/resolve-domain-core-activation\.mjs/u,
+    "negative control: restoring the re-resolve must be detectable",
+  );
+});
+
+test("every iOS activation consumer reads the gate's downloaded selector", () => {
+  const assignments = iosEvidenceBody.match(/^\s*activation="[^\n]*$/gmu) ?? [];
+  assert.equal(
+    assignments.length,
+    3,
+    `expected the three iOS activation consumers, found ${assignments.length}`,
+  );
+  for (const assignment of assignments) {
+    assert.match(
+      assignment,
+      /activation="\$\(cat "\$RUNNER_TEMP\/ios-release\/domain-core-activation\.json"\)"/u,
+      `activation must come from the bound gate selector: ${assignment.trim()}`,
+    );
+  }
+
+  // The candidate fed to every verifier is the gate's, not a jq re-read of a
+  // locally resolved document.
+  assert.match(
+    iosEvidenceBody,
+    /candidate="\$GATE_CANDIDATE_COMMIT"/u,
+    "the verifier step must bind $candidate to the gate's candidate commit",
+  );
+  assert.doesNotMatch(
+    iosEvidenceBody,
+    /candidate="\$\(jq -er '\.candidateCommit'/u,
+    "the candidate must not be re-derived from a locally resolved activation",
+  );
+});
+
+test("iOS evidence downloads and fail-closed binds the gate selector before verifying", () => {
+  const download = iosEvidenceBody.indexOf(
+    "name: Download verified native release gate inputs",
+  );
+  const bind = iosEvidenceBody.indexOf(
+    "name: Bind iOS verification to the gate's release-bound activation",
+  );
+  const verify = iosEvidenceBody.indexOf(
+    "name: Verify canonical iOS archive and candidate-bound build profile",
+  );
+  assert.ok(download >= 0, "gate artifact download step is missing");
+  assert.ok(bind >= 0, "gate binding step is missing");
+  assert.ok(verify >= 0, "archive verification step is missing");
+  assert.ok(
+    download < bind && bind < verify,
+    "the gate artifact must be downloaded and bound before verification",
+  );
+
+  assert.match(
+    iosEvidenceBody,
+    /name: \$\{\{ inputs\.gate_artifact_name \}\}/u,
+    "the download must name the gate's own artifact",
+  );
+  for (const [pattern, why] of [
+    [
+      /test "\$\(jq -er '\.candidateCommit' "\$gate_activation"\)" = "\$GATE_CANDIDATE_COMMIT"/u,
+      "the selector's candidate must equal the gate's candidate_commit output",
+    ],
+    [
+      /test "\$\(jq -er '\.activationCommit' "\$gate_activation"\)" = "\$RELEASE_COMMIT"/u,
+      "the selector must be bound to the release commit",
+    ],
+    [
+      /test "\$\(jq -er '\.active \| tostring' "\$gate_activation"\)" = "\$GATE_RUST_ACTIVE"/u,
+      "the selector's active flag must equal the gate's rust_active output",
+    ],
+    [
+      /test "\$GATE_PROFILE_NAME" = "\$DOMAIN_CORE_PROFILE"/u,
+      "the forwarded profile must equal the gate's validated profile_name",
+    ],
+  ]) {
+    assert.match(iosEvidenceBody, pattern, why);
+  }
+
+  const preFix = iosEvidenceBody.replace(
+    /\n\s*test "\$\(jq -er '\.candidateCommit' "\$gate_activation"\)" = "\$GATE_CANDIDATE_COMMIT"/u,
+    "",
+  );
+  assert.doesNotMatch(
+    preFix,
+    /jq -er '\.candidateCommit' "\$gate_activation"/u,
+    "negative control: dropping the candidate binding must be detectable",
+  );
+});
+
+test("release.yml forwards the native release gate verdict to the iOS evidence reusable workflow", () => {
+  const callBlock = iosEvidenceReusableCallBlock();
+  assert.match(
+    callBlock,
+    /^      - domain-core-native-release-gate$/mu,
+    "the iOS evidence job must depend on the native release gate",
+  );
+  for (const input of [
+    "gate_artifact_name: ${{ needs.domain-core-native-release-gate.outputs.artifact_name }}",
+    "gate_candidate_commit: ${{ needs.domain-core-native-release-gate.outputs.candidate_commit }}",
+    "gate_profile_name: ${{ needs.domain-core-native-release-gate.outputs.profile_name }}",
+    "gate_rust_active: ${{ needs.domain-core-native-release-gate.outputs.rust_active }}",
+  ]) {
+    assert.ok(
+      callBlock.includes(input),
+      `reusable call must forward ${input.split(":")[0]} from the gate`,
+    );
+  }
+
+  // build-and-release bakes the gate's candidate into the iOS app; iOS evidence
+  // must verify against that same commit.
+  assert.match(
+    releaseBody,
+    /--expected-candidate-commit "\$\{\{ needs\.domain-core-native-release-gate\.outputs\.candidate_commit \}\}"/u,
+    "the packaging lane must bind the artifacts to the gate candidate",
+  );
+
+  const preFix = callBlock.replace(
+    /\s*gate_candidate_commit: \$\{\{ needs\.domain-core-native-release-gate\.outputs\.candidate_commit \}\}/u,
+    "",
+  );
+  assert.doesNotMatch(
+    preFix,
+    /gate_candidate_commit:/u,
+    "negative control: removing the forwarded candidate must drop the assertion",
+  );
+});
+
+test("domain-core-ios-release-evidence.yml declares the gate-bound workflow_call inputs", () => {
+  for (const name of [
+    "gate_artifact_name",
+    "gate_candidate_commit",
+    "gate_profile_name",
+    "gate_rust_active",
+  ]) {
+    const declaration = requiredStringInputDeclaration(name);
+    assert.ok(
+      iosEvidenceBody.includes(declaration),
+      `${name} must be a required string workflow_call input`,
+    );
+  }
+
+  const preFix = iosEvidenceBody.replace(
+    requiredStringInputDeclaration("gate_candidate_commit"),
+    "",
+  );
+  const preOn = preFix.match(/^on:[\s\S]*?^permissions:/mu);
+  assert.ok(preOn, "negative-control workflow on: block remains parseable");
+  assert.doesNotMatch(
+    preOn[0],
+    /gate_candidate_commit:/u,
+    "negative control: dropping the input declaration must drop the assertion",
+  );
 });
 
 // ---------------------------------------------------------------------------
