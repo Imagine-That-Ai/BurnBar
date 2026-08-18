@@ -66,3 +66,20 @@ export function assertConsolidatedNoClientUpsert(rules, collection) {
     );
   }
 }
+
+export function firestoreFunctionBlock(rules, functionName) {
+  const signature = `function ${functionName}(`;
+  const start = rules.indexOf(signature);
+  assert.notEqual(start, -1, `${functionName} rules helper must exist`);
+
+  const nextFunction = rules.indexOf(
+    "\n    function ",
+    start + signature.length,
+  );
+  const nextMatch = rules.indexOf("\n    match /", start + signature.length);
+  const boundaries = [nextFunction, nextMatch].filter((index) => index >= 0);
+  return rules.slice(
+    start,
+    boundaries.length > 0 ? Math.min(...boundaries) : rules.length,
+  );
+}

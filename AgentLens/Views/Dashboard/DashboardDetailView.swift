@@ -109,6 +109,13 @@ struct DashboardDetailView: View {
                         description: Text("Open Memory from the main dashboard to review extracted memories.")
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                case .fleet:
+                    ContentUnavailableView(
+                        "Fleet is unavailable",
+                        systemImage: "rectangle.3.group",
+                        description: Text("Open Fleet from the main dashboard.")
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 case .controlDeck:
                     // Parallel/legacy detail surface. The Control Deck needs the
                     // daemon manager and the deck model, which this context does

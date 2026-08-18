@@ -11,7 +11,10 @@ import {
   sanitizePiAgentModels,
   validatePiAgentEndpointURL,
 } from "../lib/piAgent.js";
-import { assertConsolidatedServerOnlyCollection } from "../../scripts/lib/firestore-rules-contract.mjs";
+import {
+  assertConsolidatedServerOnlyCollection,
+  firestoreFunctionBlock,
+} from "../../scripts/lib/firestore-rules-contract.mjs";
 
 function assertHttpsError(fn, code) {
   assert.throws(fn, (err) => err?.code === code);
@@ -102,7 +105,10 @@ for (const collection of ["pi_agent_pairings", "pi_agent_audit_events"]) {
   const block = rules.slice(start, rules.indexOf("\n    }\n", start) + 7);
   assert.match(block, /allow create: if piRelayConnectionWrite\(userId, connectionId\);/);
   assert.match(block, /allow update: if piRelayConnectionWrite\(userId, connectionId\) && resource\.data\.mode == "relayLink";/);
-  assert.match(rules, /function piRelayConnectionWrite\(userId, connectionId\)/);
+  const relayConnection = firestoreFunctionBlock(rules, "piRelayConnectionWrite");
+  assert.match(relayConnection, /let d = request\.resource\.data;/);
+  assert.match(relayConnection, /d\.mode == "relayLink"/);
+  assert.match(relayConnection, /d\.id == connectionId/);
   assert.doesNotMatch(rules, /"redisURL"/, "Pi relay connection docs must not allow Redis registry URLs");
   assert.doesNotMatch(rules, /request\.resource\.data\.redisURL/, "Pi relay rules must not validate a public Redis URL field");
 }
@@ -111,9 +117,11 @@ for (const collection of ["pi_agent_pairings", "pi_agent_audit_events"]) {
   assert.notEqual(start, -1, "pi_agent_relay_requests rules block must exist");
   const block = rules.slice(start, rules.indexOf("\n    }\n", start) + 7);
   assert.match(block, /allow create, update: if piRelayRequestWrite\(userId, requestId\);/);
-  assert.match(rules, /function piRelayRequestWrite\(userId, requestId\)[\s\S]*request\.resource\.data\.schemaVersion >= 2/);
-  assert.match(rules, /function piRelayRequestWrite\(userId, requestId\)[\s\S]*request\.resource\.data\.payloadCiphertext is string/);
-  assert.match(rules, /function piRelayChunkWrite\(userId, requestId, chunkId\)[\s\S]*request\.resource\.data\.ciphertext is string/);
+  const relayRequest = firestoreFunctionBlock(rules, "piRelayRequestWrite");
+  assert.match(relayRequest, /d\.schemaVersion >= 2/);
+  assert.match(relayRequest, /d\.payloadCiphertext is string/);
+  const relayChunk = firestoreFunctionBlock(rules, "piRelayChunkWrite");
+  assert.match(relayChunk, /d\.ciphertext is string/);
   assert.doesNotMatch(rules, /match \/users\/\{userId\}\/pi_agent_relay_requests\/\{requestId\}[\s\S]*relayRequestWrite\(userId, requestId\)/);
 }
 {

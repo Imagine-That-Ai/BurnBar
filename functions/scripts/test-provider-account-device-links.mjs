@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { deviceLinkId, deviceLinkPath, isDeviceLinkCapability } from "../lib/domains/device-links/index.js";
-import { assertConsolidatedServerOnlyCollection } from "../../scripts/lib/firestore-rules-contract.mjs";
+import {
+  assertConsolidatedServerOnlyCollection,
+  firestoreFunctionBlock,
+} from "../../scripts/lib/firestore-rules-contract.mjs";
 
 assert.equal(isDeviceLinkCapability("owner"), true);
 assert.equal(isDeviceLinkCapability("use"), true);
@@ -28,11 +31,10 @@ assertConsolidatedServerOnlyCollection(rules, "provider_account_device_links");
   assert.notEqual(start, -1, "runtime_connection_preferences rules block must exist");
   const block = rules.slice(start, rules.indexOf("\n    }\n", start) + 7);
   assert.match(block, /allow create, update: if runtimeConnectionPreferenceWrite\(userId, preferenceId\);/);
-  assert.match(rules, /request\.resource\.data\.runtimeKind in \["hermes", "piAgent"\]/);
-  assert.match(
-    rules,
-    /preferenceId == request\.resource\.data\.deviceID \+ "_" \+ request\.resource\.data\.runtimeKind/,
-  );
+  const preferenceWrite = firestoreFunctionBlock(rules, "runtimeConnectionPreferenceWrite");
+  assert.match(preferenceWrite, /let d = request\.resource\.data;/);
+  assert.match(preferenceWrite, /d\.runtimeKind in \["hermes", "piAgent"\]/);
+  assert.match(preferenceWrite, /preferenceId == d\.deviceID \+ "_" \+ d\.runtimeKind/);
 }
 
 const indexSource = readFileSync(new URL("../src/index.ts", import.meta.url), "utf8");
