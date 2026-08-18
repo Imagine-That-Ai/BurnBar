@@ -184,7 +184,8 @@ enum BurnBarDaemonSocketRPCCoverage {
     ]
 
     static let search: Set<BurnBarRPCMethod> = [
-        .searchQuery
+        .searchQuery,
+        .searchSQL
     ]
 
     static let memory: Set<BurnBarRPCMethod> = [

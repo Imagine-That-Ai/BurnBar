@@ -66,6 +66,58 @@ final class DailyDigestManager {
         notificationCenter.add(request)
     }
 
+    /// Bind the digest's lifecycle to live settings.
+    ///
+    /// The call site registers this once at launch, WHETHER OR NOT the digest is
+    /// currently on, and expects it to arm, re-arm and clear itself as the
+    /// settings change — without waiting for the next launch.
+    ///
+    /// The inputs are stored rather than captured by the observation closure:
+    /// `withObservationTracking`'s `onChange` is `@Sendable`, the settings
+    /// getters are not, and this type is already `@MainActor` — so keeping them
+    /// as properties lets the closure capture nothing but `self`.
+    private var digestDataStore: DataStore?
+    private var digestIsEnabled: (() -> Bool)?
+    private var digestHour: (() -> Int)?
+
+    func activate(
+        from dataStore: DataStore,
+        isEnabled: @escaping () -> Bool,
+        hour: @escaping () -> Int
+    ) {
+        digestDataStore = dataStore
+        digestIsEnabled = isEnabled
+        digestHour = hour
+        applyDigestState()
+    }
+
+    private func applyDigestState() {
+        guard let dataStore = digestDataStore,
+              let isEnabled = digestIsEnabled,
+              let hour = digestHour
+        else { return }
+
+        let enabled = withObservationTracking {
+            let enabled = isEnabled()
+            // Read the hour INSIDE the tracked block too, so a changed hour
+            // re-arms at the new time rather than waiting for a toggle.
+            _ = hour()
+            return enabled
+        } onChange: { [weak self] in
+            // `onChange` fires exactly once, so re-register on every change or
+            // the digest would follow the settings a single time and go silent.
+            Task { @MainActor in
+                self?.applyDigestState()
+            }
+        }
+
+        if enabled {
+            scheduleDigest(from: dataStore, at: hour())
+        } else {
+            cancelDigest()
+        }
+    }
+
     func cancelDigest() {
         notificationCenter.removePendingNotificationRequests(
             withIdentifiers: [OpenBurnBarCore.OpenBurnBarIdentity.dailyDigestNotificationIdentifier] + OpenBurnBarCore.OpenBurnBarIdentity.legacyDailyDigestNotificationIdentifiers

@@ -241,6 +241,22 @@ final class MemoryExtractionEngine {
         lastError = nil
         defer { isExtracting = false }
 
+        // Harvest the agent corpus before draining: quiet indexed conversations
+        // become extraction jobs here. The enqueue is idempotency-keyed on the
+        // conversation's content state, so an unchanged session never re-runs
+        // and a grown one re-extracts exactly once — the jobs table is its own
+        // watermark. A harvest fault is non-fatal: the chat backlog still drains
+        // and the next pump retries the sweep.
+        do {
+            _ = try await chatMemoryStore.harvestAgentConversationExtractions(now: Date())
+        } catch {
+            AppLogger.dataStore.silentFailure(
+                "memory_extraction_conversation_harvest_failed",
+                error: error,
+                context: [:]
+            )
+        }
+
         let deadline = Date().addingTimeInterval(MemoryExtractionPolicy.maxPumpDuration)
         let worker = self.worker
         var report = MemoryExtractionPumpReport()

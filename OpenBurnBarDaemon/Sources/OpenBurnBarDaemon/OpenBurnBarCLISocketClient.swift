@@ -17,6 +17,9 @@ public protocol BurnBarCLIClient: Sendable {
     func simulatorRuns(projectSlug: String?) throws -> [BurnBarSimulatorRunSnapshot]
     func simulatorReplay(runID: BurnBarSimulatorRunID) throws -> BurnBarSimulatorRunSnapshot
     func memoryRecall(query: String, projectPath: String?, limit: Int) throws -> BurnBarProjectMemoryRecallResponse
+    /// Read-only SQL over the daemon's keyed store, for the signed-CLI courier
+    /// the local MCP server routes through on production installs.
+    func searchSQL(_ request: BurnBarSearchSQLRequest) throws -> BurnBarSearchSQLResult
     func codeIndex(projectPath: String?, maxFiles: Int, maxFileBytes: Int, storageBudgetBytes: Int?) throws -> BurnBarProjectCodeIndexProjectResponse
     func codeWatch(projectPath: String?, maxFiles: Int, maxFileBytes: Int, storageBudgetBytes: Int?, pollIntervalSeconds: Double) throws -> BurnBarProjectCodeWatchProjectResponse
     func codeSearch(query: String, projectPath: String?, limit: Int) throws -> BurnBarProjectCodeSearchResponse
@@ -416,6 +419,19 @@ public struct BurnBarCLISocketClient: BurnBarCLIClient, Sendable {
                 resultLimit: limit,
                 skipSemanticSearch: true
             )
+        ))
+    }
+
+    /// Read-only SQL against the daemon's keyed store, for the SIGNED CLI route.
+    /// The MCP server cannot dial the control socket itself: production enforces
+    /// the first-party code-signature gate and a virtualenv `python` can never
+    /// satisfy it, so the encrypted-store fallback has to travel through a peer
+    /// the daemon already admits.
+    public func searchSQL(_ request: BurnBarSearchSQLRequest) throws -> BurnBarSearchSQLResult {
+        try requestResult(BurnBarRPCRequestEnvelopeWithParams(
+            method: .searchSQL,
+            authToken: authToken,
+            params: request
         ))
     }
 
