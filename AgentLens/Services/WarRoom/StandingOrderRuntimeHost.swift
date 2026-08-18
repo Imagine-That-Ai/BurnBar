@@ -35,9 +35,11 @@ final class StandingOrderRuntimeHost {
         self.dispatcher = dispatcher
     }
 
+    /// The fleet directory is shared with the other War Room hosts, so its
+    /// listener is started and stopped by whoever owns it — stopping it here
+    /// would starve every other reader.
     func start() {
         guard loop == nil else { return }
-        directory.start()
         loop = Task { [weak self] in
             while !Task.isCancelled {
                 await self?.tick()
@@ -49,7 +51,6 @@ final class StandingOrderRuntimeHost {
     func stop() {
         loop?.cancel()
         loop = nil
-        directory.stop()
     }
 
     deinit {

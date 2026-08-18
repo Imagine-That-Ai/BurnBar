@@ -11,6 +11,7 @@ with a voice).
 
 - [x] W0 machine identity + originator (schema, rules, migration v62, publisher)
 - [x] W1 the Wire: war frame codec, fleet snapshot exchange, outbound dial, Firestore fallback on deny
+- [x] W1 host: `WarWirePlanner` + `WarWireHost` keep lanes open, and close them when consent is withdrawn
 - [x] W2 Face B Hermes Room: roster + swap control reading `HermesBodyDirectory`
 - [x] W3 Face C Command Board: run grid, STARTED BY column, cost rollups
 - [x] W4 the Flame: `DistillRecord`, daemon service, RPC methods + socket coverage entry
@@ -61,13 +62,11 @@ Deliberate scope calls, each recorded in the commit that made them:
 - The Command Board reads `token_usage` via a `GROUP BY sessionId` projection
   rather than widening the `TokenUsage` value type, which has hundreds of call
   sites and does not carry the v62 attribution columns.
-- **The Wire's app-side auto-dialer was deliberately not shipped.** `WarWireDialer`
-  and `WarWireLink` are complete and tested over a real transport, but nothing in
-  the app dials peers yet: that host needs the app target to compile, and it is
-  blocked by the other session. Shipping unexercised networking that reaches out
-  to other machines on its own would be the one thing this branch spent its
-  review pass removing — code asserting something nobody checked. Named here
-  rather than hidden behind a green checkbox.
+- **The Wire's app-side host now ships.** It was held back while the app target
+  could not compile; once `plasma/liquid-selectors-grok-bot-d` merged and the
+  build went green, the host landed with its decisions in a Kernel-tested
+  planner (16 tests). It is safe by construction — the gate denies on every
+  unknown, so a fresh install opens no lanes.
 
 ## Validation
 

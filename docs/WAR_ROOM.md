@@ -221,6 +221,24 @@ Four layers, each testable without the one below it:
    session is never driven from two tasks at once.
 4. **Admission** (`WarWireGate`) — the one evaluation both peers run, checked
    before any of the above.
+5. **The host** (`WarWirePlanner` + `WarWireHost`) — who to dial, who to hang up
+   on, who to leave alone. The planner is pure and lives in the Kernel; the host
+   owns only sockets and a 45 s clock.
+
+Two properties of the host are worth stating plainly. First, **it is safe by
+construction**: the planner runs the gate, the gate denies on every unknown, and
+a fresh install has no grants, no Pro tier, and a kill switch that defaults to
+engaged — so the host opens nothing until a user deliberately grants a pair.
+Second, **revocation reaches lanes that are already open**. Every pass re-checks
+existing links against the gate and closes the ones it now refuses; without that,
+"revoke" would quietly mean "do not dial again" and the lane would outlive the
+permission that justified it.
+
+The planner also separates *permission* from *reachability*. A peer that is
+granted but publishes no iroh endpoint is `noEndpoint`, not a denial — reporting
+it as a consent problem would send the user hunting for a grant they already
+have. Every known peer lands in exactly one bucket (dial, drop, or a reasoned
+skip), so a machine can never vanish from the Hermes Room without an explanation.
 
 ## The Flame
 

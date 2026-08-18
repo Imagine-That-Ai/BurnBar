@@ -21,11 +21,16 @@ final class StandingOrderSchedulerTests: XCTestCase {
         return parsed
     }
 
+    /// `createdAt` is pinned rather than left to default to `Date()`. A
+    /// never-fired wall-clock order counts from when it was written, so a real
+    /// clock here would make these cases pass or fail depending on the time of
+    /// day the suite happened to run.
     private func order(
         id: String = "order-1",
         cadence: StandingOrder.Cadence,
         enabled: Bool = true,
-        lastFiredAt: Date? = nil
+        lastFiredAt: Date? = nil,
+        createdAt: Date? = nil
     ) -> StandingOrder {
         StandingOrder(
             id: id,
@@ -33,7 +38,8 @@ final class StandingOrderSchedulerTests: XCTestCase {
             instruction: "run the test suite",
             cadence: cadence,
             isEnabled: enabled,
-            lastFiredAt: lastFiredAt
+            lastFiredAt: lastFiredAt,
+            createdAt: createdAt ?? date("2026-08-17T12:00:00Z")
         )
     }
 

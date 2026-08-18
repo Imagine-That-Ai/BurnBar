@@ -4,6 +4,7 @@ import FirebaseFirestore
 import FirebaseFunctions
 import Foundation
 import OpenBurnBarCore
+import OpenBurnBarIrohRelay
 import OpenBurnBarMedia
 
 // MARK: - Hermes Remote Relay Host
@@ -21,6 +22,14 @@ final class HermesRelayHostService {
     private let relayKeyStore: HermesRelayKeyStore
     private let authenticatedRequestOpener: HermesRelayAuthenticatedRequestOpener
     private let realtimeRelayClient: HermesRealtimeRelayHosting
+
+    /// The live iroh endpoint, for callers that open their own lanes over it
+    /// (the War Wire). `nil` whenever the active relay client is not the iroh
+    /// host or has not started — either way there is nothing to dial from.
+    var activeIrohTransport: (any IrohRelayTransport)? {
+        (realtimeRelayClient as? HermesIrohRelayHostClient)?.activeTransport
+    }
+
     private let cliChatDispatcher: CLIAgentRelayChatDispatcher?
     private let cliModelCatalogDispatcher: CLIRuntimeModelCatalogDispatcher?
     private let cliSessionActionDispatcher: CLIAgentSessionActionDispatcher?
