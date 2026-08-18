@@ -109,6 +109,34 @@ final class DashboardStore {
             // completed load (previews, tests, screenshot fixtures).
             hasLoadedOnce = true
         }
+        MobileUIDScopedCacheRegistry.shared.register { [weak self] in
+            self?.clearAccountBoundSurfaces()
+        }
+    }
+
+    private func clearAccountBoundSurfaces() {
+        rollupsByWindow = [:]
+        heroTotal = 0
+        topProviders = []
+        topModels = []
+        topDevices = []
+        dailyPoints = []
+        hasLoadedOnce = false
+        try? BurnBarWidgetShared.writeSnapshot(BurnBarWidgetSnapshot(
+            heroTotalCost: 0,
+            heroTotalTokens: 0,
+            heroTotalRequests: 0,
+            topProviders: [],
+            topProviderTokens: [],
+            topModels: [],
+            dailyPoints: [],
+            windowKey: "unavailable",
+            lastSync: Date(timeIntervalSince1970: 0)
+        ))
+        WidgetCenter.shared.reloadTimelines(ofKind: "com.openburnbar.app.widget")
+        if #available(iOS 16.1, *) {
+            LiveActivityManager.shared.endActivity()
+        }
     }
 
     /// Initial load called on first view appear.
@@ -313,6 +341,11 @@ final class DashboardStore {
             windowKey: selectedWindow.rawValue,
             lastSync: Date()
         )
+        guard MobileOsIntegrationPolicy.widgetSnapshotIsPrivacySafe(
+            heroTotalCost: snapshot.heroTotalCost,
+            heroTotalTokens: snapshot.heroTotalTokens,
+            topProviders: snapshot.topProviders
+        ) else { return }
 
         do {
             // Only reload timelines when the snapshot content actually changed
@@ -335,6 +368,11 @@ final class DashboardStore {
 
         let topProvider = today.providerSummaries.first?.provider ?? "—"
         let isActive = today.totals.requests > 0
+        guard MobileOsIntegrationPolicy.widgetSnapshotIsPrivacySafe(
+            heroTotalCost: today.totals.costUsd,
+            heroTotalTokens: today.totals.tokens,
+            topProviders: [topProvider]
+        ) else { return }
 
         if LiveActivityManager.shared.hasActiveActivity {
             LiveActivityManager.shared.updateActivity(

@@ -1,5 +1,6 @@
 package com.openburnbar.data.media
 
+import com.openburnbar.data.policy.MobileMercuryMediaPolicy
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrame
 import com.openburnbar.irohrelay.HermesRealtimeRelayFrameType
 import com.openburnbar.irohrelay.HermesRealtimeRelayMediaPayload
@@ -46,13 +47,7 @@ internal object MediaControlPresence {
                     peerDeviceId = peerDeviceIdProvider().ifBlank { "android" },
                     displayName = displayNameProvider().ifBlank { "Android" },
                     deviceDisplayName = displayNameProvider().ifBlank { "Android" },
-                    capabilities =
-                    listOf(
-                        "media.control",
-                        "media.mirror.request",
-                        "media.call.invite",
-                        "media.blob.transfer",
-                    ),
+                    capabilities = MobileMercuryMediaPolicy.phoneHeartbeatCapabilities,
                     streamingCapabilities =
                     AndroidMediaCodecCapabilityProbe.snapshot(
                         mediaFrameVersions = MercuryMediaFrameVersionSupport.V1_AND_V2,

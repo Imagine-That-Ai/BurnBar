@@ -48,6 +48,9 @@ struct RootTabView: View {
     @State private var missionConsoleHost = MobileMissionConsoleHost()
     @State private var isHermesKeyboardVisible = false
     @State private var isCloudStoreChromeHidden = false
+    @State private var showMissionConsole = false
+    @State private var showMercuryCall = false
+    @State private var pendingMercuryConnectionId: String?
     /// Shared OpenBurnBar Cloud / Hosted Quota Sync store, hoisted here so a
     /// single StoreKit observer feeds the Settings row, the Pulse upsell
     /// banner, and the dedicated `CloudStoreView`.
@@ -218,6 +221,26 @@ struct RootTabView: View {
         .onReceive(NotificationCenter.default.publisher(for: .init("ShowSettings"))) { _ in
             openSettingsRoute()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .init("NavigateToDashboard"))) { _ in
+            selection = .pulse
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .init("ShowBurnTab"))) { _ in
+            selection = .burn
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .init("ShowMercuryCall"))) { notification in
+            pendingMercuryConnectionId = notification.userInfo?["connectionId"] as? String
+            showMercuryCall = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .init("ShowMissionConsole"))) { notification in
+            if let missionId = notification.userInfo?["missionId"] as? String {
+                missionConsoleHost.focusMission(id: missionId)
+            }
+            selection = .hermes
+            showMissionConsole = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .init("ShowStreamsTab"))) { _ in
+            selection = .streams
+        }
         .onReceive(NotificationCenter.default.publisher(for: HermesGatewayPairingDeepLink.notificationName)) { notification in
             openHermesGatewayPairingRoute(notification)
         }
@@ -229,6 +252,16 @@ struct RootTabView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .cloudStoreChromeVisibilityChanged)) { notification in
             isCloudStoreChromeHidden = notification.object as? Bool ?? false
+        }
+        .sheet(isPresented: $showMissionConsole) {
+            MobileMissionConsoleSheet(host: missionConsoleHost) {
+                showMissionConsole = false
+            }
+        }
+        .sheet(isPresented: $showMercuryCall) {
+            MercuryRoutedIncomingSheet(connectionId: pendingMercuryConnectionId) {
+                showMercuryCall = false
+            }
         }
     }
 

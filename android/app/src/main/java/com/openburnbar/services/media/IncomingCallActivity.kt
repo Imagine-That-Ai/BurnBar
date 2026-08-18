@@ -9,6 +9,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import com.openburnbar.security.enableOpenBurnBarScreenPrivacy
 import com.openburnbar.ui.media.MercuryIncomingSheet
+import kotlinx.coroutines.launch
 
 /**
  * Full-screen Mercury incoming-call sheet. Android equivalent of the
@@ -82,22 +83,11 @@ class IncomingCallActivity : ComponentActivity() {
     }
 
     private fun acceptCall(connectionId: String) {
-        MediaSessionForegroundService.start(this)
-        val accept =
-            Intent(ACTION_BROADCAST_ACCEPT).apply {
-                setPackage(packageName)
-                putExtra(EXTRA_CONNECTION_ID, connectionId)
-            }
-        sendBroadcast(accept)
+        acceptRoutedCall(this, connectionId)
     }
 
     private fun declineCall(connectionId: String) {
-        val decline =
-            Intent(ACTION_BROADCAST_DECLINE).apply {
-                setPackage(packageName)
-                putExtra(EXTRA_CONNECTION_ID, connectionId)
-            }
-        sendBroadcast(decline)
+        declineRoutedCall(this, connectionId)
     }
 
     companion object {
@@ -108,5 +98,30 @@ class IncomingCallActivity : ComponentActivity() {
         const val EXTRA_CONNECTION_ID = "connection_id"
         const val EXTRA_CALLER_NAME = "caller_name"
         const val EXTRA_CALLER_INITIAL = "caller_initial"
+
+        fun acceptRoutedCall(context: android.content.Context, connectionId: String) {
+            MediaSessionForegroundService.start(context)
+            val app = context.applicationContext as? com.openburnbar.BurnBarApplication
+            if (app != null) {
+                com.openburnbar.BurnBarApplication.applicationScope.launch {
+                    runCatching { app.ensureMediaControlStream(connectionID = connectionId) }
+                }
+            }
+            val accept =
+                Intent(ACTION_BROADCAST_ACCEPT).apply {
+                    setPackage(context.packageName)
+                    putExtra(EXTRA_CONNECTION_ID, connectionId)
+                }
+            context.sendBroadcast(accept)
+        }
+
+        fun declineRoutedCall(context: android.content.Context, connectionId: String) {
+            val decline =
+                Intent(ACTION_BROADCAST_DECLINE).apply {
+                    setPackage(context.packageName)
+                    putExtra(EXTRA_CONNECTION_ID, connectionId)
+                }
+            context.sendBroadcast(decline)
+        }
     }
 }

@@ -147,12 +147,12 @@ struct TrendAtlasCard: View {
             } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "wand.and.stars")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(MobileScaledFont.system(size: 13, weight: .bold))
                     Text("Studio")
                         .font(MobileTheme.Typography.tiny)
                         .fontWeight(.semibold)
                     Image(systemName: "arrow.up.right")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(MobileScaledFont.system(size: 12, weight: .bold))
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
@@ -194,7 +194,7 @@ struct TrendAtlasCard: View {
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: s.icon)
-                            .font(.system(size: 12, weight: .bold))
+                            .font(MobileScaledFont.system(size: 12, weight: .bold))
                         Text(s.label)
                             .font(MobileTheme.Typography.tiny)
                             .fontWeight(.semibold)

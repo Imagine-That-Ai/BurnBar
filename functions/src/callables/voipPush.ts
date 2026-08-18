@@ -64,6 +64,9 @@ export const triggerVoIPCall = onCall(
     // T-PRV-02 / F-RR09-001: stamp a TTL so undelivered push documents
     // self-expire from Firestore (matched by a ttl:true index on `expireAt`).
     const queueTimestamps = pushQueueTimestamps(now.toMillis());
+    // Same instant the queue document self-expires, so the client-side replay
+    // window can never outlive the push it came from.
+    const pushExpiresAtMillis = queueTimestamps.expireAt.toMillis();
 
     const writes: Array<Promise<unknown>> = [];
 
@@ -71,7 +74,13 @@ export const triggerVoIPCall = onCall(
       writes.push(
         firestore.collection("voip_outbound").add({
           uid: request.auth.uid,
-          payload: buildVoipApnsPayload({ callId: data.callId, isVideo: data.isVideo, correlationId }),
+          payload: buildVoipApnsPayload({
+            callId: data.callId,
+            isVideo: data.isVideo,
+            correlationId,
+            uid: request.auth.uid,
+            expiresAtMillis: pushExpiresAtMillis,
+          }),
           voipDeviceToken: fanOut.apnsToken,
           createdAt: queueTimestamps.createdAt,
           expireAt: queueTimestamps.expireAt,
@@ -103,6 +112,8 @@ export const triggerVoIPCall = onCall(
             callId: data.callId,
             isVideo: data.isVideo,
             correlationId,
+            uid: request.auth.uid,
+            expiresAtMillis: pushExpiresAtMillis,
           }),
           fcmToken: fanOut.fcmToken,
           androidDeviceId: fanOut.androidDeviceId ?? null,

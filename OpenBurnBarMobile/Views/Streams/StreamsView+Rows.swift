@@ -397,11 +397,13 @@ struct StreamsSearchResultState: Equatable {
     let isSearching: Bool
     let cloudConversationHitCount: Int
     let streamHitCount: Int
+    var searchFailed: Bool = false
 
     var mode: StreamsSearchResultMode {
         guard query.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2 else {
             return .inactive
         }
+        if searchFailed { return .empty }
         if cloudConversationHitCount > 0 { return .cloudConversationHits }
         if streamHitCount > 0 { return .streamHits }
         if isSearching { return .searching }

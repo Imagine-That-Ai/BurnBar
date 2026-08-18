@@ -21,6 +21,8 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.openburnbar.InboxPendingNavigation
+import com.openburnbar.OsPendingNavigation
+import com.openburnbar.data.policy.MobileOsDestination
 import com.openburnbar.data.stores.HostedQuotaProductDetails
 import com.openburnbar.data.stores.HostedQuotaSubscriptionStore
 import com.openburnbar.data.stores.UserStore
@@ -200,6 +202,7 @@ fun BurnBarNavHost(
     val navigateTo: (BurnBarTab) -> Unit = { tab -> navigateToTab(navController, tab) }
 
     InboxWarmDeepLinkNavigator(navController = navController, isSignedIn = currentUser.isSignedIn)
+    OsWarmDeepLinkNavigator(navController = navController, isSignedIn = currentUser.isSignedIn)
 
     Box(modifier = modifier.fillMaxSize().nestedScroll(easterEggController.nestedScrollConnection)) {
         AuroraBackdrop()
@@ -253,6 +256,26 @@ private fun InboxWarmDeepLinkNavigator(navController: NavHostController, isSigne
     LaunchedEffect(requested, isSignedIn) {
         if (requested && isSignedIn && InboxPendingNavigation.claim()) {
             navigateToTab(navController, BurnBarTab.INBOX)
+        }
+    }
+}
+
+@Composable
+private fun OsWarmDeepLinkNavigator(navController: NavHostController, isSignedIn: Boolean) {
+    val pending by OsPendingNavigation.pending.collectAsState()
+    LaunchedEffect(pending, isSignedIn) {
+        if (!isSignedIn || pending == null) return@LaunchedEffect
+        val request = OsPendingNavigation.claim() ?: return@LaunchedEffect
+        when (request.destination) {
+            MobileOsDestination.BURN ->
+                navigateToTab(navController, BurnBarTab.BURN)
+            MobileOsDestination.INBOX ->
+                navigateToTab(navController, BurnBarTab.INBOX)
+            MobileOsDestination.MISSION,
+            MobileOsDestination.MERCURY_CALL,
+            ->
+                navController.navigate(request.route) { launchSingleTop = true }
+            else -> Unit
         }
     }
 }

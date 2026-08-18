@@ -9,6 +9,8 @@ import com.openburnbar.data.computeruse.SystemPermissionTextClassifier
 import com.openburnbar.data.hermes.relay.HermesRelayConnectionDescriptor
 import com.openburnbar.data.hermes.relay.HermesRelayOperationName
 import com.openburnbar.data.hermes.relay.HermesRelayPayload
+import com.openburnbar.data.policy.MobileHermesAttachmentDisposition
+import com.openburnbar.data.policy.MobileHermesConversationPolicy
 import com.openburnbar.irohrelay.HermesChatMessageOutcome as RelayHermesChatMessageOutcome
 import com.openburnbar.irohrelay.HermesStreamEvent
 import java.io.IOException
@@ -27,6 +29,8 @@ private data class HermesStreamEventContext(
     val toolDispatch: HermesServiceToolDispatch,
     val assistantID: String,
     val modelName: String,
+    val streamGeneration: Int,
+    val streamThreadId: String?,
 )
 
 private fun hasDesktopAgentRelayGrant(threadId: String?): Boolean {
@@ -60,7 +64,14 @@ private fun reduceHermesStreamEvent(
     return when (event) {
         is HermesStreamEvent.MessageChunk -> {
             val next = accumulated + event.text
-            context.service.upsertStreamingAssistant(context.assistantID, next, context.modelName, isStreaming = true)
+            context.service.upsertStreamingAssistant(
+                context.assistantID,
+                next,
+                context.modelName,
+                isStreaming = true,
+                streamGeneration = context.streamGeneration,
+                streamThreadId = context.streamThreadId,
+            )
             next to toolUseIterations
         }
         is HermesStreamEvent.ReasoningChunk,
@@ -73,6 +84,8 @@ private fun reduceHermesStreamEvent(
                 index = event.index,
                 nameFragment = event.name,
                 argumentsDelta = event.argumentsDelta,
+                streamGeneration = context.streamGeneration,
+                streamThreadId = context.streamThreadId,
             )
             accumulated to toolUseIterations
         }
@@ -111,6 +124,8 @@ private fun HermesStreamEventContext.applyMessageStop(event: HermesStreamEvent.M
             isStreaming = true,
             outcome = outcome,
             isError = existing?.isError == true,
+            streamGeneration = streamGeneration,
+            streamThreadId = streamThreadId,
         )
     }
     return accumulated to toolUseIterations
@@ -125,6 +140,8 @@ private fun HermesStreamEventContext.applyNotice(event: HermesStreamEvent.Notice
         isStreaming = true,
         outcome = HermesChatMessageOutcome.EMPTY,
         isError = true,
+        streamGeneration = streamGeneration,
+        streamThreadId = streamThreadId,
     )
     return event.text to toolUseIterations
 }
@@ -155,10 +172,35 @@ internal class HermesServiceMessageActions(
         if (service.isStreamingInternal.value) return
 
         val resolvedModelName = service.resolvedModelNameForSend(modelName)
+        val rejected =
+            attachments.firstOrNull { attachment ->
+                MobileHermesConversationPolicy.attachmentDisposition(
+                    id = attachment.id,
+                    mimeType = attachment.mimeType,
+                    byteSize = (attachment.sizeBytes ?: 0L).toInt(),
+                    path = attachment.absolutePath ?: attachment.uriString.orEmpty(),
+                ) == MobileHermesAttachmentDisposition.REJECTED
+            }
+        if (rejected != null) {
+            appendAssistantError("Attachment rejected: ${rejected.fileName.ifBlank { "file" }} is malformed.", resolvedModelName)
+            return
+        }
         ensureThreadIDs(conversationIdHint)
 
         val conversationId = service.currentConversationIDInternal.value
-        appendUserMessage(content, resolvedModelName, attachments)
+        val last = service.messagesInternal.value.lastOrNull()
+        // "reconnect" lets the policy drop a replayed turn; it re-checks the
+        // role/text match itself, so there is nothing to pre-compute here.
+        if (MobileHermesConversationPolicy.shouldAppendUserMessage(
+                lastRole = last?.role,
+                lastText = last?.content,
+                incomingText = content,
+                reason = "reconnect",
+                hasAttachments = attachments.isNotEmpty(),
+            )
+        ) {
+            appendUserMessage(content, resolvedModelName, attachments)
+        }
         threadActions.persistCurrentThread()
 
         if (hasDesktopAgentRelayGrant(conversationId)) {
@@ -188,7 +230,15 @@ internal class HermesServiceMessageActions(
 
     internal fun dispatchLocalToolCalls(json: JSONObject): Int = toolDispatch.dispatchLocalToolCalls(json)
 
-    fun streamHttpChatCompletion(endpoint: String, content: String, resolvedModelName: String, attachments: List<HermesAttachment>, conversationId: String?) {
+    fun streamHttpChatCompletion(
+        endpoint: String,
+        content: String,
+        resolvedModelName: String,
+        attachments: List<HermesAttachment>,
+        conversationId: String?,
+        streamGeneration: Int,
+        streamThreadId: String?,
+    ) {
         val userContent =
             if (attachments.isEmpty()) {
                 content
@@ -204,6 +254,8 @@ internal class HermesServiceMessageActions(
             modelName = resolvedModelName,
             conversationId = conversationId,
             userContent = userContent,
+            streamGeneration = streamGeneration,
+            streamThreadId = streamThreadId,
         )
     }
 
@@ -213,6 +265,8 @@ internal class HermesServiceMessageActions(
         modelName: String,
         attachments: List<HermesAttachment>,
         conversationId: String?,
+        streamGeneration: Int,
+        streamThreadId: String?,
     ) {
         val relay = service.relayTransportOrThrow()
         val assistantID = UUID.randomUUID().toString()
@@ -258,13 +312,16 @@ internal class HermesServiceMessageActions(
                             accumulated = accumulated,
                             rescue = rescue,
                             toolUseIterations = toolUseIterations,
+                            streamGeneration = streamGeneration,
+                            streamThreadId = streamThreadId,
                         )
                     accumulated = result.first
                     toolUseIterations = result.second
                 }
             }
-            finalizeAssistantStream(assistantID, accumulated, modelName, rescue)
+            finalizeAssistantStream(assistantID, accumulated, modelName, rescue, streamGeneration, streamThreadId)
         } catch (e: IOException) {
+            if (!service.isCurrentStream(streamGeneration, streamThreadId)) return
             // Publish runtimeErrorText BEFORE the message append: observers wake
             // on the message and must already see the error state (same ordering
             // fix as sendFailureHandler in HermesServiceMessageLaunch).
@@ -273,7 +330,7 @@ internal class HermesServiceMessageActions(
         }
     }
 
-    suspend fun streamDesktopAgentRelayCompletion(prompt: String, modelName: String, conversationId: String) {
+    suspend fun streamDesktopAgentRelayCompletion(prompt: String, modelName: String, conversationId: String, streamGeneration: Int, streamThreadId: String?) {
         AgentCapabilityGrantState.optimisticGrant(AssistantRuntimeID.HERMES.token, conversationId)
             ?: error("Hermes desktop permissions are not active.")
         val assistantID = UUID.randomUUID().toString()
@@ -282,6 +339,8 @@ internal class HermesServiceMessageActions(
             content = "",
             modelName = modelName,
             isStreaming = true,
+            streamGeneration = streamGeneration,
+            streamThreadId = streamThreadId,
         )
         CLIAgentRelayChatTransport(service).stream(
             request =
@@ -306,6 +365,8 @@ internal class HermesServiceMessageActions(
                 modelName = event.modelID ?: modelName,
                 isStreaming = !event.isTerminal,
                 isError = event.isError,
+                streamGeneration = streamGeneration,
+                streamThreadId = streamThreadId,
             )
             if (text.isNotEmpty()) {
                 SystemPermissionTextClassifier.classifyAssistantText(text)?.let { match ->
@@ -319,7 +380,7 @@ internal class HermesServiceMessageActions(
                 }
             }
         }
-        finalizeDesktopRelayAssistant(assistantID, modelName)
+        finalizeDesktopRelayAssistant(assistantID, modelName, streamGeneration, streamThreadId)
         threadActions.persistCurrentThread()
     }
 
@@ -357,7 +418,14 @@ internal class HermesServiceMessageActions(
             )
     }
 
-    private fun executeHttpChatStream(endpoint: String, modelName: String, conversationId: String?, userContent: Any) {
+    private fun executeHttpChatStream(
+        endpoint: String,
+        modelName: String,
+        conversationId: String?,
+        userContent: Any,
+        streamGeneration: Int,
+        streamThreadId: String?,
+    ) {
         val assistantID = UUID.randomUUID().toString()
         var accumulated = ""
         var toolUseIterations = 0
@@ -392,14 +460,17 @@ internal class HermesServiceMessageActions(
                             accumulated = accumulated,
                             rescue = rescue,
                             toolUseIterations = toolUseIterations,
+                            streamGeneration = streamGeneration,
+                            streamThreadId = streamThreadId,
                         )
                     accumulated = result.first
                     toolUseIterations = result.second
                 }
             }
-            finalizeAssistantStream(assistantID, accumulated, modelName, rescue)
+            finalizeAssistantStream(assistantID, accumulated, modelName, rescue, streamGeneration, streamThreadId)
             markRuntimeHealthy()
         } catch (e: IOException) {
+            if (!service.isCurrentStream(streamGeneration, streamThreadId)) return
             val error = e.message ?: e.javaClass.simpleName
             // Error state first, then the message observers synchronize on.
             service.runtimeErrorTextInternal.value = error
@@ -416,6 +487,8 @@ internal class HermesServiceMessageActions(
         accumulated: String,
         rescue: HermesEmptyResponseRescue,
         toolUseIterations: Int,
+        streamGeneration: Int,
+        streamThreadId: String?,
     ): Pair<String, Int> {
         val json = runCatching { JSONObject(payload) }.getOrNull()
         json?.let { rescue.absorb(it) }
@@ -430,6 +503,8 @@ internal class HermesServiceMessageActions(
                     modelName = modelName,
                     accumulated = nextAccumulated,
                     toolUseIterations = iterations,
+                    streamGeneration = streamGeneration,
+                    streamThreadId = streamThreadId,
                 )
             nextAccumulated = result.first
             iterations = result.second
@@ -443,16 +518,32 @@ internal class HermesServiceMessageActions(
         modelName: String,
         accumulated: String,
         toolUseIterations: Int,
+        streamGeneration: Int,
+        streamThreadId: String?,
     ): Pair<String, Int> {
         return reduceHermesStreamEvent(
-            context = HermesStreamEventContext(service, toolDispatch, assistantID, modelName),
+            context = HermesStreamEventContext(
+                service,
+                toolDispatch,
+                assistantID,
+                modelName,
+                streamGeneration,
+                streamThreadId,
+            ),
             event = event,
             accumulated = accumulated,
             toolUseIterations = toolUseIterations,
         )
     }
 
-    private fun finalizeAssistantStream(assistantID: String, accumulated: String, modelName: String, rescue: HermesEmptyResponseRescue) {
+    private fun finalizeAssistantStream(
+        assistantID: String,
+        accumulated: String,
+        modelName: String,
+        rescue: HermesEmptyResponseRescue,
+        streamGeneration: Int,
+        streamThreadId: String?,
+    ) {
         val existing = service.messagesInternal.value.firstOrNull { it.id == assistantID }
         var finalText = accumulated.ifBlank { existing?.content.orEmpty() }
         var finalOutcome = existing?.outcome ?: HermesChatMessageOutcome.NORMAL
@@ -470,11 +561,13 @@ internal class HermesServiceMessageActions(
             isStreaming = false,
             outcome = finalOutcome,
             isError = finalIsError,
+            streamGeneration = streamGeneration,
+            streamThreadId = streamThreadId,
         )
         threadActions.persistCurrentThread()
     }
 
-    private fun finalizeDesktopRelayAssistant(assistantID: String, modelName: String) {
+    private fun finalizeDesktopRelayAssistant(assistantID: String, modelName: String, streamGeneration: Int, streamThreadId: String?) {
         val finalMessage = service.messagesInternal.value.firstOrNull { it.id == assistantID }
         if (finalMessage != null && finalMessage.content.isBlank()) {
             service.upsertStreamingAssistant(
@@ -482,6 +575,8 @@ internal class HermesServiceMessageActions(
                 content = "The Mac relay completed without returning text.",
                 modelName = modelName,
                 isStreaming = false,
+                streamGeneration = streamGeneration,
+                streamThreadId = streamThreadId,
             )
         } else if (finalMessage != null && finalMessage.isStreaming) {
             service.upsertStreamingAssistant(
@@ -490,6 +585,8 @@ internal class HermesServiceMessageActions(
                 modelName = finalMessage.modelName,
                 isStreaming = false,
                 isError = finalMessage.isError,
+                streamGeneration = streamGeneration,
+                streamThreadId = streamThreadId,
             )
         }
     }
@@ -513,7 +610,10 @@ private fun HermesService.upsertStreamingAssistant(
     isStreaming: Boolean,
     outcome: HermesChatMessageOutcome = HermesChatMessageOutcome.NORMAL,
     isError: Boolean = false,
+    streamGeneration: Int,
+    streamThreadId: String?,
 ) {
+    if (!isCurrentStream(streamGeneration, streamThreadId)) return
     val existing = messagesInternal.value.firstOrNull { it.id == id }
     val message =
         HermesMessage(
@@ -531,7 +631,16 @@ private fun HermesService.upsertStreamingAssistant(
     streamingTickInternal.value = streamingTickInternal.value + 1
 }
 
-private fun HermesService.mergeToolCallForAssistant(assistantID: String, id: String, index: Int, nameFragment: String?, argumentsDelta: String) {
+private fun HermesService.mergeToolCallForAssistant(
+    assistantID: String,
+    id: String,
+    index: Int,
+    nameFragment: String?,
+    argumentsDelta: String,
+    streamGeneration: Int,
+    streamThreadId: String?,
+) {
+    if (!isCurrentStream(streamGeneration, streamThreadId)) return
     messagesInternal.value =
         messagesInternal.value.map { existing ->
             if (existing.id != assistantID) return@map existing

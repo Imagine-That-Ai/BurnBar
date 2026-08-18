@@ -182,37 +182,11 @@ export const IROH_PAIRING_KEY_HOST_ROLE = "host";
  * pairing record and `deviceId` to refer to a trusted escrow device in the
  * same user namespace.
  */
-export interface ComputerUsePhoneAuthorityDoc {
-  /** Document id; equals `peerNodeId`. */
-  id: string;
-
-  /** Active iroh pairing document this controller key is scoped to. */
-  connectionId: string;
-
-  /** Stable phone-control peer id derived from the public key. */
-  peerNodeId: string;
-
-  /** Trusted escrow device publishing the key. */
-  deviceId: string;
-
-  /** Base64 of the 32-byte Ed25519 public key used for phone-control intents. */
-  publicKeyBase64: string;
-
-  /** Milliseconds since epoch when the phone wrote/refreshed the doc. */
-  publishedAtMillis: number;
-
-  /** Frame schema version the key is bound to. Default 1. */
-  protocolVersion: number;
-
-  /** Document schema version for forward compatibility. */
-  schemaVersion: number;
-
-  /** ISO 8601 creation timestamp (schema-sync canon). */
-  createdAt: string;
-
-  /** ISO 8601 last-update timestamp (schema-sync canon). */
-  updatedAt: string;
-}
+export type ComputerUsePhoneAuthorityDoc =
+  import("../generated/computer-use.js").ComputerUsePhoneAuthorityDoc & {
+    /** Document id; equals `peerNodeId`. */
+    id: string;
+  };
 
 /**
  * Relay sender key used by authenticated relay request envelopes. Published by
@@ -452,7 +426,10 @@ export type HermesRelayRequestStatus =
   | "cancelled"
   | "expired";
 
-export interface HermesRelayRequestDoc {
+export type HermesRelayRequestDoc = Omit<
+  import("../generated/hermes-relay.js").HermesRelayRequestDoc,
+  "operation" | "status"
+> & {
   id: string;
   connectionId: string;
   operation: HermesRelayOperation;
@@ -481,15 +458,10 @@ export interface HermesRelayRequestDoc {
   expiresAt: string;
   expireAt?: import("firebase-admin/firestore").Timestamp;
   schemaVersion: number;
-}
+};
 
-export interface HermesRelayChunkDoc {
+export type HermesRelayChunkDoc = import("../generated/hermes-relay.js").HermesRelayChunkDoc & {
   id: string;
-  requestId: string;
-  /** Schema-sync canon chunk index. */
-  chunkIndex: number;
-  /** Schema-sync canon base64 payload. */
-  payloadBase64: string;
   sequence: number;
   kind: "sse" | "data" | "error";
   data?: string;
@@ -499,7 +471,7 @@ export interface HermesRelayChunkDoc {
   createdAt: string;
   updatedAt?: string;
   schemaVersion: number;
-}
+};
 
 // ---------------------------------------------------------------------------
 // Firestore: hermes_gateway_* platform adapter collections

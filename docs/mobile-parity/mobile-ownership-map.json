@@ -1,0 +1,279 @@
+{
+  "schemaVersion": 1,
+  "id": "openburnbar-mobile-ownership-map-v1",
+  "baselineSha": "3f127f7da28f590441c46e0674dac7f27a04b7aa",
+  "schemaBoundary": "docs/mobile-parity/mobile-schema-boundary.json",
+  "syncOwnership": "docs/mobile-parity/mobile-sync-ownership.json",
+  "syncRoles": {
+    "mac": "mac-publishes",
+    "ios": "mobile-mirrors-read-only",
+    "ipados": "mobile-mirrors-read-only",
+    "android": "mobile-mirrors-read-only"
+  },
+  "domains": [
+    {
+      "domainId": "usage-quota",
+      "source": "tools/schema-sync/typespec/domains/usage-quota.tsp",
+      "ios": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/UsageQuotaModels.swift",
+      "ipados": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/UsageQuotaModels.swift",
+      "android": "android/app/src/main/java/com/openburnbar/data/models/generated/UsageQuotaModels.kt",
+      "mobileConsumes": true,
+      "consumedBy": [
+        "pulse",
+        "burn"
+      ]
+    },
+    {
+      "domainId": "provider-account",
+      "source": "tools/schema-sync/typespec/domains/provider-account.tsp",
+      "ios": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/ProviderAccountModels.swift",
+      "ipados": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/ProviderAccountModels.swift",
+      "android": "android/app/src/main/java/com/openburnbar/data/models/generated/ProviderAccountModels.kt",
+      "mobileConsumes": true,
+      "consumedBy": [
+        "providers"
+      ]
+    },
+    {
+      "domainId": "hermes-relay",
+      "source": "tools/schema-sync/typespec/domains/hermes-relay.tsp",
+      "ios": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/HermesRelayModels.swift",
+      "ipados": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/HermesRelayModels.swift",
+      "android": "android/app/src/main/java/com/openburnbar/data/models/generated/HermesRelayModels.kt",
+      "mobileConsumes": true,
+      "consumedBy": [
+        "hermes"
+      ]
+    },
+    {
+      "domainId": "hermes-gateway",
+      "source": "tools/schema-sync/typespec/domains/hermes-gateway.tsp",
+      "ios": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/HermesGatewayModels.swift",
+      "ipados": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/HermesGatewayModels.swift",
+      "android": "android/app/src/main/java/com/openburnbar/data/models/generated/HermesGatewayModels.kt",
+      "mobileConsumes": true,
+      "consumedBy": [
+        "hermes"
+      ]
+    },
+    {
+      "domainId": "iroh-pairing",
+      "source": "tools/schema-sync/typespec/domains/iroh-pairing.tsp",
+      "ios": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/IrohPairingModels.swift",
+      "ipados": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/IrohPairingModels.swift",
+      "android": "android/app/src/main/java/com/openburnbar/data/models/generated/IrohPairingModels.kt",
+      "mobileConsumes": true,
+      "consumedBy": [
+        "devices",
+        "mercury"
+      ]
+    },
+    {
+      "domainId": "pi-agent-relay",
+      "source": "tools/schema-sync/typespec/domains/pi-agent-relay.tsp",
+      "ios": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/PiAgentRelayModels.swift",
+      "ipados": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/PiAgentRelayModels.swift",
+      "android": "android/app/src/main/java/com/openburnbar/data/models/generated/PiAgentRelayModels.kt",
+      "mobileConsumes": true,
+      "consumedBy": [
+        "hermes"
+      ]
+    },
+    {
+      "domainId": "computer-use",
+      "source": "tools/schema-sync/typespec/domains/computer-use.tsp",
+      "ios": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/ComputerUseModels.swift",
+      "ipados": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/ComputerUseModels.swift",
+      "android": "android/app/src/main/java/com/openburnbar/data/models/generated/ComputerUseModels.kt",
+      "mobileConsumes": true,
+      "consumedBy": [
+        "computer-use"
+      ]
+    },
+    {
+      "domainId": "hosted-quota",
+      "source": "tools/schema-sync/typespec/domains/hosted-quota.tsp",
+      "ios": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/HostedQuotaModels.swift",
+      "ipados": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/HostedQuotaModels.swift",
+      "android": "android/app/src/main/java/com/openburnbar/data/models/generated/HostedQuotaModels.kt",
+      "mobileConsumes": true,
+      "consumedBy": [
+        "store"
+      ]
+    },
+    {
+      "domainId": "entitlements",
+      "source": "tools/schema-sync/typespec/domains/entitlements.tsp",
+      "ios": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/EntitlementModels.swift",
+      "ipados": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/EntitlementModels.swift",
+      "android": "android/app/src/main/java/com/openburnbar/data/models/generated/EntitlementModels.kt",
+      "mobileConsumes": true,
+      "consumedBy": [
+        "store",
+        "devices"
+      ]
+    },
+    {
+      "domainId": "insights",
+      "source": "tools/schema-sync/typespec/domains/insights.tsp",
+      "ios": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/InsightModels.swift",
+      "ipados": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/InsightModels.swift",
+      "android": "android/app/src/main/java/com/openburnbar/data/models/generated/InsightModels.kt",
+      "mobileConsumes": true,
+      "consumedBy": [
+        "insights-budget"
+      ]
+    },
+    {
+      "domainId": "missions",
+      "source": "tools/schema-sync/typespec/domains/missions.tsp",
+      "ios": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/MissionModels.swift",
+      "ipados": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/MissionModels.swift",
+      "android": "android/app/src/main/java/com/openburnbar/data/models/generated/MissionModels.kt",
+      "mobileConsumes": true,
+      "consumedBy": [
+        "insights-budget"
+      ]
+    },
+    {
+      "domainId": "media-analytics",
+      "source": "tools/schema-sync/typespec/domains/media-analytics.tsp",
+      "ios": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/MediaAnalyticsModels.swift",
+      "ipados": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/MediaAnalyticsModels.swift",
+      "android": "android/app/src/main/java/com/openburnbar/data/models/generated/MediaAnalyticsModels.kt",
+      "mobileConsumes": true,
+      "consumedBy": [
+        "mercury"
+      ]
+    },
+    {
+      "domainId": "device-links",
+      "source": "tools/schema-sync/typespec/domains/device-links.tsp",
+      "ios": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/DeviceLinkModels.swift",
+      "ipados": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/DeviceLinkModels.swift",
+      "android": "android/app/src/main/java/com/openburnbar/data/models/generated/DeviceLinkModels.kt",
+      "mobileConsumes": true,
+      "consumedBy": [
+        "devices"
+      ]
+    },
+    {
+      "domainId": "model-benchmarks",
+      "source": "tools/schema-sync/typespec/domains/model-benchmarks.tsp",
+      "ios": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/ModelBenchmarkModels.swift",
+      "ipados": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/ModelBenchmarkModels.swift",
+      "android": "android/app/src/main/java/com/openburnbar/data/models/generated/ModelBenchmarkModels.kt",
+      "mobileConsumes": true,
+      "consumedBy": [
+        "hermes"
+      ]
+    }
+  ],
+  "families": [
+    {
+      "family": "auth",
+      "source": "Firebase Auth + OpenBurnBarMobile/Services/AuthRepository.swift",
+      "ios": "OpenBurnBarMobile/Views/Auth",
+      "ipados": "OpenBurnBarMobile/App/AuthGateView.swift",
+      "android": "android/app/src/main/java/com/openburnbar/ui/auth"
+    },
+    {
+      "family": "shell",
+      "source": "AuroraNavDestination / BurnBarTab",
+      "ios": "OpenBurnBarMobile/Views/RootTabView.swift",
+      "ipados": "OpenBurnBarMobile/Views/RootNavigationView.swift",
+      "android": "android/app/src/main/java/com/openburnbar/ui/navigation"
+    },
+    {
+      "family": "pulse",
+      "source": "usage-quota + DashboardStore",
+      "ios": "OpenBurnBarMobile/Views/Pulse",
+      "ipados": "OpenBurnBarMobile/Views/Pulse",
+      "android": "android/app/src/main/java/com/openburnbar/ui/pulse"
+    },
+    {
+      "family": "burn",
+      "source": "usage-quota + QuotaStore",
+      "ios": "OpenBurnBarMobile/Views/Burn",
+      "ipados": "OpenBurnBarMobile/Views/Burn",
+      "android": "android/app/src/main/java/com/openburnbar/ui/burn"
+    },
+    {
+      "family": "streams",
+      "source": "ActivityStore / ProjectsStore",
+      "ios": "OpenBurnBarMobile/Views/Streams",
+      "ipados": "OpenBurnBarMobile/Views/Streams",
+      "android": "android/app/src/main/java/com/openburnbar/ui/streams"
+    },
+    {
+      "family": "hermes",
+      "source": "hermes-relay / hermes-gateway / pi-agent-relay",
+      "ios": "OpenBurnBarMobile/Views/Hermes",
+      "ipados": "OpenBurnBarMobile/Views/Hermes/Square",
+      "android": "android/app/src/main/java/com/openburnbar/ui/hermes"
+    },
+    {
+      "family": "insights-budget",
+      "source": "insights / missions TypeSpec",
+      "ios": "OpenBurnBarMobile/Views/Insights",
+      "ipados": "OpenBurnBarMobile/Views/Insights",
+      "android": "android/app/src/main/java/com/openburnbar/ui/insights"
+    },
+    {
+      "family": "inbox",
+      "source": "AIInboxStore sealed mirror",
+      "ios": "OpenBurnBarMobile/Views/Inbox",
+      "ipados": "OpenBurnBarMobile/Views/Inbox",
+      "android": "android/app/src/main/java/com/openburnbar/ui/inbox"
+    },
+    {
+      "family": "providers",
+      "source": "provider-account TypeSpec",
+      "ios": "OpenBurnBarMobile/Views/ProviderConnectionsView.swift",
+      "ipados": "OpenBurnBarMobile/Views/ProviderConnectionsView.swift",
+      "android": "android/app/src/main/java/com/openburnbar/ui/providers"
+    },
+    {
+      "family": "devices",
+      "source": "iroh-pairing / entitlements",
+      "ios": "OpenBurnBarMobile/Models/DevicesStore.swift",
+      "ipados": "OpenBurnBarMobile/Views/iPadDevicesSettingsView.swift",
+      "android": "android/app/src/main/java/com/openburnbar/ui/you"
+    },
+    {
+      "family": "mercury",
+      "source": "media.control + iroh-pairing",
+      "ios": "OpenBurnBarMobile/Views/Media",
+      "ipados": "OpenBurnBarMobile/Views/Media",
+      "android": "android/app/src/main/java/com/openburnbar/ui/media"
+    },
+    {
+      "family": "computer-use",
+      "source": "computer-use TypeSpec",
+      "ios": "OpenBurnBarMobile/Views/ComputerUse",
+      "ipados": "OpenBurnBarMobile/Views/ComputerUse",
+      "android": "android/app/src/main/java/com/openburnbar/ui/computeruse"
+    },
+    {
+      "family": "store",
+      "source": "hosted-quota TypeSpec + StoreKit/Play",
+      "ios": "OpenBurnBarMobile/Views/Store",
+      "ipados": "OpenBurnBarMobile/Views/Store",
+      "android": "android/app/src/main/java/com/openburnbar/ui/store"
+    },
+    {
+      "family": "os",
+      "source": "WidgetKit / Glance / FCM / Smart Display",
+      "ios": "OpenBurnBarWidget",
+      "ipados": "OpenBurnBarWidget",
+      "android": "android/app/src/main/java/com/openburnbar/ui/widget"
+    },
+    {
+      "family": "a11y",
+      "source": "Aurora theme + a11y modifiers",
+      "ios": "OpenBurnBarMobile/Theme",
+      "ipados": "OpenBurnBarMobile/Theme",
+      "android": "android/app/src/main/java/com/openburnbar/ui/theme"
+    }
+  ]
+}

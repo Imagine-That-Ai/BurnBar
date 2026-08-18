@@ -8,10 +8,11 @@ import {
 
 test("all production Android PendingIntents have explicit components and package pins", () => {
   const result = verifyAndroidPendingIntents();
-  // 10 after the AI Inbox push tap-target. This literal is the tripwire:
-  // a new PendingIntent must be registered in pendingIntentContracts and
+  // 11 after the OS-routed quota/mission notification tap in
+  // MercuryFcmServiceSupport. This literal is the tripwire: a new
+  // PendingIntent must be registered in pendingIntentContracts and
   // counted here deliberately, never absorbed silently.
-  assert.equal(result.callCount, 10);
+  assert.equal(result.callCount, 11);
 });
 
 test("the contract rejects a zero-argument implicit Intent", () => {

@@ -109,13 +109,13 @@ internal object CloudVaultDomainCore {
 
     fun aadV1(uid: String, collection: String, docId: String, field: String): String = dispatch(
         operation = "aad_v1",
-        legacy = { CloudVaultLegacyCrypto.aadV1(uid, collection, docId, field) },
+        legacy = { CloudVaultLegacyAad.aadV1(uid, collection, docId, field) },
         rust = { cloudVaultAadV1(uid, collection, docId, field) },
     )
 
     fun aadV2(uid: String, collection: String, docId: String, field: String, schemaVersion: Int, purpose: String): String = dispatch(
         operation = "aad_v2",
-        legacy = { CloudVaultLegacyCrypto.aadV2(uid, collection, docId, field, schemaVersion, purpose) },
+        legacy = { CloudVaultLegacyAad.aadV2(uid, collection, docId, field, schemaVersion, purpose) },
         rust = { cloudVaultAadV2(uid, collection, docId, field, checkedSchemaVersion(schemaVersion), purpose) },
     )
 

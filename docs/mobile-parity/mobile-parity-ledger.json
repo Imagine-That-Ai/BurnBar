@@ -1,0 +1,2014 @@
+{
+  "schemaVersion": 1,
+  "id": "openburnbar-mobile-parity-ledger-v1",
+  "registry": "docs/mobile-parity/mobile-capability-registry.json",
+  "routeMap": "docs/mobile-parity/mobile-route-map.json",
+  "ownershipMap": "docs/mobile-parity/mobile-ownership-map.json",
+  "evidenceSchema": "docs/mobile-parity/mobile-evidence-schema.json",
+  "nonGoals": "docs/mobile-parity/accepted-non-goals.json",
+  "semantics": {
+    "kind": "mobile-parity",
+    "productParityClaim": false,
+    "programStatus": "mobile parity remediation in progress",
+    "goldStandard": "accepted product contract + source-platform behavior",
+    "baselineSha": "3f127f7da28f590441c46e0674dac7f27a04b7aa",
+    "baselineTag": "v1.0.35",
+    "plan": "docs/mobile-parity/FULL_MOBILE_PARITY_REMEDIATION_PLAN.md",
+    "note": "Structural validity is not promotion. No capability is validated. Historical evidence is not PASS."
+  },
+  "rows": [
+    {
+      "id": "VAL-MOB-001",
+      "kind": "val-contract",
+      "status": "blocked",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Bind every implementation, artifact, installed package, screenshot, and store readback to one exact commit and version/build. Dirty, stale, or unattributed evidence cannot close a row.",
+      "notes": "Inventory, registry, ledger schema, candidate fingerprint helper, and record-candidate-fingerprint.mjs are present. Dirty trees cannot close. No installed candidate artifact is bound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact digest"
+    },
+    {
+      "id": "VAL-MOB-002",
+      "kind": "val-contract",
+      "status": "blocked",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove every accepted capability is reachable from the intended iOS, iPadOS, and Android route, including cold/warm deep links and auth gates.",
+      "notes": "M4 wired iOS burn/streams/pulse hosts. M6 added the shared push/URL routing table (agent reply, inbox, quota, mercury/call, mission) plus warm/cold unit coverage. Physical navigation transcripts remain blocked.",
+      "missingPrerequisite": "named-device navigation transcripts and screenshots for the installed candidate"
+    },
+    {
+      "id": "VAL-MOB-003",
+      "kind": "val-contract",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "integration"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Every mobile-consumed Firestore/callable document is TypeSpec-defined or an explicit legacy boundary; generated Swift/Kotlin/TS agree.",
+      "notes": "M1 automated contract checks exist: schema boundary scan, generated-consumer import check, cross-language fixtures, and check-drift.sh. Not validated: no live Firestore decode evidence.",
+      "missingPrerequisite": "live Firestore/callable decode evidence bound to a clean candidate"
+    },
+    {
+      "id": "VAL-MOB-004",
+      "kind": "val-contract",
+      "status": "blocked",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "physical device",
+        "store/provider"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Apple/Google sign-in, sign-out, expiry, App Check failure, and account switch produce honest UI with no stale UID leakage.",
+      "notes": "M3 unit/scrutiny portion implemented (auth session states, UID epoch isolation, App Check class). Live App Check and physical sign-in remain blocked.",
+      "missingPrerequisite": "staging accounts and live App Check traces on named devices"
+    },
+    {
+      "id": "VAL-MOB-005",
+      "kind": "val-contract",
+      "status": "blocked",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Mac-published summaries converge on both mobile targets; stale/offline/partial data is labeled; refresh/retry/cancel are idempotent.",
+      "notes": "M3 unit/scrutiny portion implemented (Mac-publish / mobile-mirror ownership, freshness labels, cancel/generation). Offline/online device runs remain blocked.",
+      "missingPrerequisite": "offline/online device runs bound to the candidate"
+    },
+    {
+      "id": "VAL-MOB-006",
+      "kind": "val-contract",
+      "status": "blocked",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Burn totals, windows, grouping, sorting, and rounding match the source oracle for the same fixture.",
+      "notes": "M4 unit/scrutiny portion implemented (shared pulse-burn golden vectors, failed≠live $0, rolling 24h). Physical-device screenshots stay blocked.",
+      "missingPrerequisite": "named-device Pulse/Burn captures bound to the candidate"
+    },
+    {
+      "id": "VAL-MOB-007",
+      "kind": "val-contract",
+      "status": "blocked",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Activity/project navigation, encrypted search, pagination, and cache policy match across targets.",
+      "notes": "M4 unit/scrutiny portion implemented (pagination boundary, empty vs error vs lock, search-error ≠ empty). Encrypted search still uses the existing Cloud Vault path. Physical corpus replay stays blocked.",
+      "missingPrerequisite": "deterministic corpus replay on named devices"
+    },
+    {
+      "id": "VAL-MOB-008",
+      "kind": "val-contract",
+      "status": "blocked",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Hermes/Pi conversation, streaming, stop, tools, and attachments behave the same semantically on iOS/iPadOS/Android.",
+      "notes": "M5 unit/scrutiny portion implemented (stop/cancel, thread isolation, partial keep, reconnect no-dup, attachment reject, missing deep link). Physical-device chat transcripts stay blocked.",
+      "missingPrerequisite": "physical-device chat transcripts bound to the candidate"
+    },
+    {
+      "id": "VAL-MOB-009",
+      "kind": "val-contract",
+      "status": "blocked",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "physical device",
+        "store/provider"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Insights, Budget, Missions, Inbox, and provider flows are equivalent or explicit accepted differences.",
+      "notes": "M3 provider/error KATs plus M4 unit/scrutiny for inbox selection persistence, card-action real-or-removed, and budget entitlement gates. Physical flows remain blocked.",
+      "missingPrerequisite": "named-device Insights/Budget/Inbox receipts"
+    },
+    {
+      "id": "VAL-MOB-010",
+      "kind": "val-contract",
+      "status": "blocked",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Device trust and encrypted credential transfer fail closed on wrong-device, expired, revoked, and malformed envelopes.",
+      "notes": "Vector/KAT portion implemented (device-trust + envelope AAD + escrow import fail-closed). Physical-device transfer remains blocked; no fabricated receipt.",
+      "missingPrerequisite": "physical-device transfer receipt with provider readback"
+    },
+    {
+      "id": "VAL-MOB-011",
+      "kind": "val-contract",
+      "status": "blocked",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Mercury mirror/call/file/presence use shared media.control without a parallel protocol.",
+      "notes": "M5 unit/scrutiny implemented (MercuryPeer Feature filter, 60s heartbeat, invite/ack, denial≠connected, reconnect). Live paired-Mac traces stay blocked; no fabricated device receipt.",
+      "missingPrerequisite": "live paired-Mac traces on iPhone, iPad, and Android"
+    },
+    {
+      "id": "VAL-MOB-012",
+      "kind": "val-contract",
+      "status": "blocked",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Computer Use authority, approval, panic, replay/tamper, and audit are equivalent on every mobile family.",
+      "notes": "M5 unit/scrutiny implemented (replay/tamper/expired/unauthenticated/binding-mismatch fail-closed). Historical Android-only rows cannot close iPhone/iPad. Physical 100-intent latency / live panic stay blocked.",
+      "missingPrerequisite": "physical-device safety matrix; historical Android-only rows cannot close iPhone/iPad"
+    },
+    {
+      "id": "VAL-MOB-004-KAT",
+      "kind": "val-contract",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": ["unit"],
+      "owner": { "implementation": "mobile-apps", "validation": "mobile-parity" },
+      "promotionCriterion": "Auth session states, UID-scoped cache isolation, App Check class, and firebase-unavailable ≠ signed-out are unit-pinned.",
+      "notes": "Scrutiny portion only. Does not close VAL-MOB-004. Live App Check remains blocked.",
+      "missingPrerequisite": "staging accounts and live App Check traces on named devices"
+    },
+    {
+      "id": "VAL-MOB-005-KAT",
+      "kind": "val-contract",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": ["unit"],
+      "owner": { "implementation": "mobile-apps", "validation": "mobile-parity" },
+      "promotionCriterion": "Mac-publish / mobile-mirror ownership, freshness labels, and canceled refresh are unit-pinned.",
+      "notes": "Scrutiny portion only. Does not close VAL-MOB-005.",
+      "missingPrerequisite": "offline/online device runs bound to the candidate"
+    },
+    {
+      "id": "VAL-MOB-006-KAT",
+      "kind": "val-contract",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": ["unit"],
+      "owner": { "implementation": "mobile-apps", "validation": "mobile-parity" },
+      "promotionCriterion": "Shared pulse-burn vectors pin 1M/1H/1D/7D/30D totals, rolling 24h, hour-floored liveQueryStart, grouping/sort, and failed≠live $0.",
+      "notes": "Scrutiny portion only. Does not close VAL-MOB-006. Physical-device screenshots stay blocked.",
+      "missingPrerequisite": "named-device Pulse/Burn captures"
+    },
+    {
+      "id": "VAL-MOB-007-KAT",
+      "kind": "val-contract",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": ["unit"],
+      "owner": { "implementation": "mobile-apps", "validation": "mobile-parity" },
+      "promotionCriterion": "Streams pagination boundary, empty vs error vs lock, and search-error ≠ empty are unit-pinned.",
+      "notes": "Scrutiny portion only. Does not close VAL-MOB-007. Encrypted search uses the existing Cloud Vault path.",
+      "missingPrerequisite": "deterministic corpus replay on named devices"
+    },
+    {
+      "id": "VAL-MOB-009-KAT",
+      "kind": "val-contract",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": ["unit"],
+      "owner": { "implementation": "mobile-apps", "validation": "mobile-parity" },
+      "promotionCriterion": "Provider local-only vs cloud-connected, inbox cold/warm selection, card-action real-or-removed, and budget entitlement gates are unit-pinned.",
+      "notes": "Scrutiny portion only. Does not close VAL-MOB-009.",
+      "missingPrerequisite": "named-device Insights/Budget/Inbox receipts"
+    },
+    {
+      "id": "VAL-MOB-015-KAT",
+      "kind": "val-contract",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": ["unit"],
+      "owner": { "implementation": "mobile-apps", "validation": "mobile-parity" },
+      "promotionCriterion": "StoreKit/Play product IDs align semantically; missing catalog is labeled Price unavailable, not a price.",
+      "notes": "Scrutiny portion only. Does not close VAL-MOB-015. Live StoreKit/Play readback remains blocked.",
+      "missingPrerequisite": "authorized TestFlight/Play closed-test readback"
+    },
+    {
+      "id": "VAL-MOB-008-KAT",
+      "kind": "val-contract",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": ["unit"],
+      "owner": { "implementation": "mobile-apps", "validation": "mobile-parity" },
+      "promotionCriterion": "Stop/cancel are real, partial is kept, cancel≠error, reconnect does not duplicate the user row, tool-calls render after stop, malformed attachments reject, missing deep links are honest, and late chunks cannot cross threads.",
+      "notes": "Scrutiny portion only. Does not close VAL-MOB-008. Physical-device chat transcripts stay blocked.",
+      "missingPrerequisite": "physical-device chat transcripts bound to the candidate"
+    },
+    {
+      "id": "VAL-MOB-010-KAT",
+      "kind": "val-contract",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": ["unit"],
+      "owner": { "implementation": "mobile-apps", "validation": "mobile-parity" },
+      "promotionCriterion": "Device-trust and envelope-AAD vectors fail closed on empty device, unknown state, and AAD mismatch.",
+      "notes": "Scrutiny portion only. Does not close VAL-MOB-010.",
+      "missingPrerequisite": "physical-device transfer receipt"
+    },
+    {
+      "id": "VAL-MOB-011-KAT",
+      "kind": "val-contract",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": ["unit"],
+      "owner": { "implementation": "mobile-apps", "validation": "mobile-parity" },
+      "promotionCriterion": "Relay chunk reassembly fails closed; MercuryPeer unknown capabilities are filtered; heartbeat is 60s; invite/ack pairing and denial≠connected are unit-pinned.",
+      "notes": "Scrutiny portion only. Does not close VAL-MOB-011. Live paired-Mac traces stay blocked.",
+      "missingPrerequisite": "live paired-Mac traces"
+    },
+    {
+      "id": "VAL-MOB-012-KAT",
+      "kind": "val-contract",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": ["unit"],
+      "owner": { "implementation": "mobile-apps", "validation": "mobile-parity" },
+      "promotionCriterion": "Shared error classes, cancellation vs legacy-fallback, and negative KATs (replay, tamper, expired grant, unauthenticated sender, binding mismatch) fail closed on every mobile family.",
+      "notes": "Scrutiny portion only. Does not close VAL-MOB-012. Historical Android-only rows cannot close iPhone/iPad. Physical 100-intent latency / live panic stay blocked. Phone `requireSafety` only observes the local rate limiter; grant expiry, session expiry, panic, and view-only remain Mac-authoritative and are not invented on the client.",
+      "missingPrerequisite": "physical-device Computer Use matrix; historical Android-only rows cannot close iPhone/iPad"
+    },
+    {
+      "id": "VAL-MOB-013",
+      "kind": "val-contract",
+      "status": "blocked",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Notifications, widgets, Live Activities, and background work deep-link correctly and degrade honestly when denied.",
+      "notes": "M6 unit/scrutiny implemented (OS matrix, push routing, denied≠delivered, stale/account/duplicate, widget privacy). Physical notification and widget receipts stay blocked.",
+      "missingPrerequisite": "installed candidate notification and widget receipts"
+    },
+    {
+      "id": "VAL-MOB-014",
+      "kind": "val-contract",
+      "status": "blocked",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Dynamic Type, VoiceOver/TalkBack, reduced motion, privacy, and performance floors have fresh named-device evidence.",
+      "notes": "M7 unit/scrutiny implemented (shared a11y label contract, Dynamic Type tokens, contrast/touch/reduced-motion policy, O(n) Pulse budget). Manual VoiceOver/TalkBack and profiler captures stay blocked.",
+      "missingPrerequisite": "manual a11y and profiler evidence on representative hardware"
+    },
+    {
+      "id": "VAL-MOB-015",
+      "kind": "val-contract",
+      "status": "blocked",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "store/provider"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Release builds use the intended Firebase/App Check config, signing, version/build, and store readback of the tested artifact.",
+      "notes": "M3 product-ID KATs plus M8 evidence scaffolding (fingerprint recorder, empty evidence bundle, store-readback schema, check-release-evidence). Live TestFlight/Play readback remains blocked. Cannot mark validated without store fields.",
+      "missingPrerequisite": "authorized TestFlight/Play closed-test readback; not collected in M8"
+    },
+    {
+      "id": "VAL-MOB-013-KAT",
+      "kind": "val-contract",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": ["unit"],
+      "owner": { "implementation": "mobile-apps", "validation": "mobile-parity" },
+      "promotionCriterion": "Push payload types, denied≠delivered, stale/account mismatch, duplicate tap, and widget privacy are unit-pinned.",
+      "notes": "Scrutiny portion only. Does not close VAL-MOB-013. Physical notification/widget receipts stay blocked.",
+      "missingPrerequisite": "installed candidate notification and widget receipts"
+    },
+    {
+      "id": "VAL-MOB-014-KAT",
+      "kind": "val-contract",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": ["unit"],
+      "owner": { "implementation": "mobile-apps", "validation": "mobile-parity" },
+      "promotionCriterion": "Shared a11y labels for hero burn, quota ring, stop, and inbox row match Pulse/Burn fixtures; Pulse window metrics stay O(n); retry is bounded.",
+      "notes": "Scrutiny portion only. Does not close VAL-MOB-014. Manual VoiceOver/TalkBack and profiler captures stay blocked.",
+      "missingPrerequisite": "manual a11y and profiler evidence on representative hardware"
+    },
+    {
+      "id": "VAL-MOB-015-EVIDENCE",
+      "kind": "val-contract",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": ["unit"],
+      "owner": { "implementation": "mobile-apps", "validation": "mobile-parity" },
+      "promotionCriterion": "Candidate fingerprint refuses dirty close; empty/placeholder evidence is rejected; VAL-MOB-015 cannot be validated without store readback fields.",
+      "notes": "Scaffolding only. Does not close VAL-MOB-015. No TestFlight/Play submission was performed.",
+      "missingPrerequisite": "authorized TestFlight/Play closed-test readback on a clean candidate"
+    },
+    {
+      "id": "CAP-auth.sign-in",
+      "kind": "capability",
+      "capabilityId": "auth.sign-in",
+      "family": "auth",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device",
+        "store/provider"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove auth.sign-in on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device, store/provider.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-auth.sign-out",
+      "kind": "capability",
+      "capabilityId": "auth.sign-out",
+      "family": "auth",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove auth.sign-out on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-auth.session-expiry",
+      "kind": "capability",
+      "capabilityId": "auth.session-expiry",
+      "family": "auth",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "integration",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove auth.session-expiry on iOS, iPadOS, and Android with candidate-bound evidence meeting integration, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-auth.app-check",
+      "kind": "capability",
+      "capabilityId": "auth.app-check",
+      "family": "auth",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "integration",
+        "physical device",
+        "store/provider"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove auth.app-check on iOS, iPadOS, and Android with candidate-bound evidence meeting integration, physical device, store/provider.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-auth.onboarding",
+      "kind": "capability",
+      "capabilityId": "auth.onboarding",
+      "family": "auth",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove auth.onboarding on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-auth.account-mismatch",
+      "kind": "capability",
+      "capabilityId": "auth.account-mismatch",
+      "family": "auth",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "integration",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove auth.account-mismatch on iOS, iPadOS, and Android with candidate-bound evidence meeting integration, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-shell.primary-tabs",
+      "kind": "capability",
+      "capabilityId": "shell.primary-tabs",
+      "family": "shell",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove shell.primary-tabs on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-shell.ipad-split",
+      "kind": "capability",
+      "capabilityId": "shell.ipad-split",
+      "family": "shell",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove shell.ipad-split on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-shell.android-nav-host",
+      "kind": "capability",
+      "capabilityId": "shell.android-nav-host",
+      "family": "shell",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove shell.android-nav-host on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-shell.auth-gate",
+      "kind": "capability",
+      "capabilityId": "shell.auth-gate",
+      "family": "shell",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove shell.auth-gate on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-shell.deep-link-router",
+      "kind": "capability",
+      "capabilityId": "shell.deep-link-router",
+      "family": "shell",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove shell.deep-link-router on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-pulse.overview",
+      "kind": "capability",
+      "capabilityId": "pulse.overview",
+      "family": "pulse",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove pulse.overview on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-pulse.live-usage",
+      "kind": "capability",
+      "capabilityId": "pulse.live-usage",
+      "family": "pulse",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove pulse.live-usage on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-pulse.quota-card",
+      "kind": "capability",
+      "capabilityId": "pulse.quota-card",
+      "family": "pulse",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove pulse.quota-card on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-pulse.forecast",
+      "kind": "capability",
+      "capabilityId": "pulse.forecast",
+      "family": "pulse",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove pulse.forecast on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-pulse.recent-sessions",
+      "kind": "capability",
+      "capabilityId": "pulse.recent-sessions",
+      "family": "pulse",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove pulse.recent-sessions on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-burn.overview",
+      "kind": "capability",
+      "capabilityId": "burn.overview",
+      "family": "burn",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove burn.overview on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-burn.quota-detail",
+      "kind": "capability",
+      "capabilityId": "burn.quota-detail",
+      "family": "burn",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove burn.quota-detail on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-burn.grouping-sort",
+      "kind": "capability",
+      "capabilityId": "burn.grouping-sort",
+      "family": "burn",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove burn.grouping-sort on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-streams.activity",
+      "kind": "capability",
+      "capabilityId": "streams.activity",
+      "family": "streams",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove streams.activity on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-streams.session-detail",
+      "kind": "capability",
+      "capabilityId": "streams.session-detail",
+      "family": "streams",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove streams.session-detail on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-streams.projects",
+      "kind": "capability",
+      "capabilityId": "streams.projects",
+      "family": "streams",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove streams.projects on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-streams.encrypted-search",
+      "kind": "capability",
+      "capabilityId": "streams.encrypted-search",
+      "family": "streams",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove streams.encrypted-search on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-hermes.assistants-landing",
+      "kind": "capability",
+      "capabilityId": "hermes.assistants-landing",
+      "family": "hermes",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove hermes.assistants-landing on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-hermes.conversation-list",
+      "kind": "capability",
+      "capabilityId": "hermes.conversation-list",
+      "family": "hermes",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove hermes.conversation-list on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-hermes.streaming-chat",
+      "kind": "capability",
+      "capabilityId": "hermes.streaming-chat",
+      "family": "hermes",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove hermes.streaming-chat on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-hermes.runtime-selection",
+      "kind": "capability",
+      "capabilityId": "hermes.runtime-selection",
+      "family": "hermes",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove hermes.runtime-selection on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-hermes.pi-assistant",
+      "kind": "capability",
+      "capabilityId": "hermes.pi-assistant",
+      "family": "hermes",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove hermes.pi-assistant on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-hermes.attachments",
+      "kind": "capability",
+      "capabilityId": "hermes.attachments",
+      "family": "hermes",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove hermes.attachments on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-hermes.stop-cancel",
+      "kind": "capability",
+      "capabilityId": "hermes.stop-cancel",
+      "family": "hermes",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove hermes.stop-cancel on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-hermes.tools",
+      "kind": "capability",
+      "capabilityId": "hermes.tools",
+      "family": "hermes",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove hermes.tools on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-hermes.square",
+      "kind": "capability",
+      "capabilityId": "hermes.square",
+      "family": "hermes",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove hermes.square on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-hermes.gateway-pairing",
+      "kind": "capability",
+      "capabilityId": "hermes.gateway-pairing",
+      "family": "hermes",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove hermes.gateway-pairing on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-insights.canvas",
+      "kind": "capability",
+      "capabilityId": "insights.canvas",
+      "family": "insights-budget",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove insights.canvas on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-insights.agent-insights",
+      "kind": "capability",
+      "capabilityId": "insights.agent-insights",
+      "family": "insights-budget",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove insights.agent-insights on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-insights.missions",
+      "kind": "capability",
+      "capabilityId": "insights.missions",
+      "family": "insights-budget",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove insights.missions on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-budget.center",
+      "kind": "capability",
+      "capabilityId": "budget.center",
+      "family": "insights-budget",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove budget.center on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-budget.enforcement",
+      "kind": "capability",
+      "capabilityId": "budget.enforcement",
+      "family": "insights-budget",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "integration"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove budget.enforcement on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, integration.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-inbox.list",
+      "kind": "capability",
+      "capabilityId": "inbox.list",
+      "family": "inbox",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove inbox.list on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-inbox.detail",
+      "kind": "capability",
+      "capabilityId": "inbox.detail",
+      "family": "inbox",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove inbox.detail on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-inbox.push-routing",
+      "kind": "capability",
+      "capabilityId": "inbox.push-routing",
+      "family": "inbox",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove inbox.push-routing on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-providers.connections",
+      "kind": "capability",
+      "capabilityId": "providers.connections",
+      "family": "providers",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove providers.connections on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-providers.wizard",
+      "kind": "capability",
+      "capabilityId": "providers.wizard",
+      "family": "providers",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove providers.wizard on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-devices.list",
+      "kind": "capability",
+      "capabilityId": "devices.list",
+      "family": "devices",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove devices.list on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-devices.trust-revoke",
+      "kind": "capability",
+      "capabilityId": "devices.trust-revoke",
+      "family": "devices",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove devices.trust-revoke on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-devices.credential-transfer",
+      "kind": "capability",
+      "capabilityId": "devices.credential-transfer",
+      "family": "devices",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove devices.credential-transfer on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-mercury.paired-mac",
+      "kind": "capability",
+      "capabilityId": "mercury.paired-mac",
+      "family": "mercury",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove mercury.paired-mac on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-mercury.mirror",
+      "kind": "capability",
+      "capabilityId": "mercury.mirror",
+      "family": "mercury",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove mercury.mirror on iOS, iPadOS, and Android with candidate-bound evidence meeting physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-mercury.call",
+      "kind": "capability",
+      "capabilityId": "mercury.call",
+      "family": "mercury",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove mercury.call on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-mercury.file-transfer",
+      "kind": "capability",
+      "capabilityId": "mercury.file-transfer",
+      "family": "mercury",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove mercury.file-transfer on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-mercury.presence",
+      "kind": "capability",
+      "capabilityId": "mercury.presence",
+      "family": "mercury",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove mercury.presence on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-computer-use.watch",
+      "kind": "capability",
+      "capabilityId": "computer-use.watch",
+      "family": "computer-use",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove computer-use.watch on iOS, iPadOS, and Android with candidate-bound evidence meeting physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-computer-use.approval",
+      "kind": "capability",
+      "capabilityId": "computer-use.approval",
+      "family": "computer-use",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove computer-use.approval on iOS, iPadOS, and Android with candidate-bound evidence meeting physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-computer-use.safety",
+      "kind": "capability",
+      "capabilityId": "computer-use.safety",
+      "family": "computer-use",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove computer-use.safety on iOS, iPadOS, and Android with candidate-bound evidence meeting physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-store.cloud-store",
+      "kind": "capability",
+      "capabilityId": "store.cloud-store",
+      "family": "store",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "physical device",
+        "store/provider"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove store.cloud-store on iOS, iPadOS, and Android with candidate-bound evidence meeting physical device, store/provider.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-store.purchase-restore",
+      "kind": "capability",
+      "capabilityId": "store.purchase-restore",
+      "family": "store",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "physical device",
+        "store/provider"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove store.purchase-restore on iOS, iPadOS, and Android with candidate-bound evidence meeting physical device, store/provider.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-store.entitlement-gating",
+      "kind": "capability",
+      "capabilityId": "store.entitlement-gating",
+      "family": "store",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove store.entitlement-gating on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-os.widgets",
+      "kind": "capability",
+      "capabilityId": "os.widgets",
+      "family": "os",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove os.widgets on iOS, iPadOS, and Android with candidate-bound evidence meeting physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-os.live-activity",
+      "kind": "capability",
+      "capabilityId": "os.live-activity",
+      "family": "os",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove os.live-activity on iOS, iPadOS, and Android with candidate-bound evidence meeting physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-os.intents",
+      "kind": "capability",
+      "capabilityId": "os.intents",
+      "family": "os",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove os.intents on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-os.push-routing",
+      "kind": "capability",
+      "capabilityId": "os.push-routing",
+      "family": "os",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove os.push-routing on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-os.background-jobs",
+      "kind": "capability",
+      "capabilityId": "os.background-jobs",
+      "family": "os",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove os.background-jobs on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-os.smart-display",
+      "kind": "capability",
+      "capabilityId": "os.smart-display",
+      "family": "os",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove os.smart-display on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-os.smart-hub",
+      "kind": "capability",
+      "capabilityId": "os.smart-hub",
+      "family": "os",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove os.smart-hub on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-a11y.dynamic-type",
+      "kind": "capability",
+      "capabilityId": "a11y.dynamic-type",
+      "family": "a11y",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove a11y.dynamic-type on iOS, iPadOS, and Android with candidate-bound evidence meeting physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-a11y.voiceover-talkback",
+      "kind": "capability",
+      "capabilityId": "a11y.voiceover-talkback",
+      "family": "a11y",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove a11y.voiceover-talkback on iOS, iPadOS, and Android with candidate-bound evidence meeting physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-a11y.reduced-motion",
+      "kind": "capability",
+      "capabilityId": "a11y.reduced-motion",
+      "family": "a11y",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "simulator",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove a11y.reduced-motion on iOS, iPadOS, and Android with candidate-bound evidence meeting simulator, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-a11y.privacy-screen",
+      "kind": "capability",
+      "capabilityId": "a11y.privacy-screen",
+      "family": "a11y",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove a11y.privacy-screen on iOS, iPadOS, and Android with candidate-bound evidence meeting physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-a11y.performance-floor",
+      "kind": "capability",
+      "capabilityId": "a11y.performance-floor",
+      "family": "a11y",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove a11y.performance-floor on iOS, iPadOS, and Android with candidate-bound evidence meeting physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-chart-studio.canvas",
+      "kind": "capability",
+      "capabilityId": "chart-studio.canvas",
+      "family": "insights-budget",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove chart-studio.canvas on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-control-center.data-vault",
+      "kind": "capability",
+      "capabilityId": "control-center.data-vault",
+      "family": "devices",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove control-center.data-vault on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-settings.hub",
+      "kind": "capability",
+      "capabilityId": "settings.hub",
+      "family": "shell",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove settings.hub on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-settings.theme",
+      "kind": "capability",
+      "capabilityId": "settings.theme",
+      "family": "os",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove settings.theme on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-settings.text-expansion",
+      "kind": "capability",
+      "capabilityId": "settings.text-expansion",
+      "family": "os",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove settings.text-expansion on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-missions.console",
+      "kind": "capability",
+      "capabilityId": "missions.console",
+      "family": "insights-budget",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove missions.console on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-analytics.consent",
+      "kind": "capability",
+      "capabilityId": "analytics.consent",
+      "family": "os",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove analytics.consent on iOS, iPadOS, and Android with candidate-bound evidence meeting unit.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
+      "id": "CAP-divergence.inbox-primary-android",
+      "kind": "capability",
+      "capabilityId": "divergence.inbox-primary-android",
+      "family": "divergence",
+      "status": "accepted-divergence",
+      "evidenceFreshness": "accepted-divergence",
+      "evidenceFloor": [
+        "unit"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Keep divergence.inbox-primary-android as an explicit accepted-divergence; do not treat absence as an implicit non-goal.",
+      "notes": "Accepted route divergence. Do not treat iOS missing a primary Inbox tab as an unregistered gap."
+    },
+    {
+      "id": "CAP-divergence.you-store-label",
+      "kind": "capability",
+      "capabilityId": "divergence.you-store-label",
+      "family": "divergence",
+      "status": "accepted-divergence",
+      "evidenceFreshness": "accepted-divergence",
+      "evidenceFloor": [
+        "unit"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Keep divergence.you-store-label as an explicit accepted-divergence; do not treat absence as an implicit non-goal.",
+      "notes": ""
+    },
+    {
+      "id": "CAP-divergence.hermes-label",
+      "kind": "capability",
+      "capabilityId": "divergence.hermes-label",
+      "family": "divergence",
+      "status": "accepted-divergence",
+      "evidenceFreshness": "accepted-divergence",
+      "evidenceFloor": [
+        "unit"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Keep divergence.hermes-label as an explicit accepted-divergence; do not treat absence as an implicit non-goal.",
+      "notes": "iOS label Agents; Android label Assistants / tray Agents. Destination id remains hermes."
+    },
+    {
+      "id": "CAP-divergence.insights-tab-label",
+      "kind": "capability",
+      "capabilityId": "divergence.insights-tab-label",
+      "family": "divergence",
+      "status": "accepted-divergence",
+      "evidenceFreshness": "accepted-divergence",
+      "evidenceFloor": [
+        "unit"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Keep divergence.insights-tab-label as an explicit accepted-divergence; do not treat absence as an implicit non-goal.",
+      "notes": ""
+    },
+    {
+      "id": "CAP-divergence.ipad-sidebar-secondary",
+      "kind": "capability",
+      "capabilityId": "divergence.ipad-sidebar-secondary",
+      "family": "divergence",
+      "status": "accepted-divergence",
+      "evidenceFreshness": "accepted-divergence",
+      "evidenceFloor": [
+        "unit"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Keep divergence.ipad-sidebar-secondary as an explicit accepted-divergence; do not treat absence as an implicit non-goal.",
+      "notes": ""
+    },
+    {
+      "id": "CAP-nongoal.pixel-identical-ui",
+      "kind": "capability",
+      "capabilityId": "nongoal.pixel-identical-ui",
+      "family": "nongoal",
+      "status": "accepted-divergence",
+      "evidenceFreshness": "accepted-divergence",
+      "evidenceFloor": [
+        "unit"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Keep nongoal.pixel-identical-ui as an explicit non-goal; do not treat absence as an implicit non-goal.",
+      "notes": "Native controls, navigation idioms, Dynamic Type, Material, and Apple a11y may differ."
+    },
+    {
+      "id": "CAP-nongoal.desktop-only-daemon",
+      "kind": "capability",
+      "capabilityId": "nongoal.desktop-only-daemon",
+      "family": "nongoal",
+      "status": "accepted-divergence",
+      "evidenceFreshness": "accepted-divergence",
+      "evidenceFloor": [
+        "unit"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Keep nongoal.desktop-only-daemon as an explicit non-goal; do not treat absence as an implicit non-goal.",
+      "notes": "Daemon, menu-bar tray, and Mac-only host chrome are out of mobile scope except accepted companion/read-only behavior."
+    },
+    {
+      "id": "CAP-nongoal.linux-windows-ports",
+      "kind": "capability",
+      "capabilityId": "nongoal.linux-windows-ports",
+      "family": "nongoal",
+      "status": "accepted-divergence",
+      "evidenceFreshness": "accepted-divergence",
+      "evidenceFloor": [
+        "unit"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Keep nongoal.linux-windows-ports as an explicit non-goal; do not treat absence as an implicit non-goal.",
+      "notes": ""
+    },
+    {
+      "id": "CAP-nongoal.store-submission-m0",
+      "kind": "capability",
+      "capabilityId": "nongoal.store-submission-m0",
+      "family": "nongoal",
+      "status": "accepted-divergence",
+      "evidenceFreshness": "accepted-divergence",
+      "evidenceFloor": [
+        "unit"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Keep nongoal.store-submission-m0 as an explicit non-goal; do not treat absence as an implicit non-goal.",
+      "notes": ""
+    },
+    {
+      "id": "CAP-nongoal.schema-migration-m0",
+      "kind": "capability",
+      "capabilityId": "nongoal.schema-migration-m0",
+      "family": "nongoal",
+      "status": "accepted-divergence",
+      "evidenceFreshness": "accepted-divergence",
+      "evidenceFloor": [
+        "unit"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Keep nongoal.schema-migration-m0 as an explicit non-goal; do not treat absence as an implicit non-goal.",
+      "notes": ""
+    }
+  ]
+}

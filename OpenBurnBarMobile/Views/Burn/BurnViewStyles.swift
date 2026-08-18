@@ -65,7 +65,7 @@ struct BurnLayoutSwitcher: View {
                     } label: {
                         HStack(spacing: 6) {
                             Image(systemName: style.systemImage)
-                                .font(.system(size: 12, weight: .bold))
+                                .font(MobileScaledFont.system(size: 12, weight: .bold))
                             Text(style.label)
                                 .font(MobileTheme.Typography.caption)
                                 .fontWeight(.semibold)

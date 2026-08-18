@@ -1,6 +1,6 @@
 # Android app
 
-The Android companion app reaches full iOS parity as of 2026-05-16. It is built with Kotlin and Jetpack Compose, connects to the same iroh P2P transport as the iOS app, and shares the same Firestore schema canonicalized in `functions/src/types.ts`.
+The Android companion app reached source-complete iOS feature coverage on 2026-05-16. That date is historical/`rebind-required` — current product parity is tracked in `docs/mobile-parity/mobile-parity-ledger.md` (`productParityClaim` is false). It is built with Kotlin and Jetpack Compose, connects to the same iroh P2P transport as the iOS app, and shares the same Firestore schema canonicalized in `functions/src/types.ts`.
 
 ## Purpose
 

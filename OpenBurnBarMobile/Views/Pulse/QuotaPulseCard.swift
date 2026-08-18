@@ -69,7 +69,7 @@ struct QuotaPulseCard: View {
                 HStack(spacing: 3) {
                     Text("Open")
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(MobileScaledFont.system(size: 12, weight: .bold))
                 }
                 .font(MobileTheme.Typography.tiny)
                 .fontWeight(.semibold)
@@ -91,7 +91,7 @@ struct QuotaPulseCard: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("\(pct)% remaining")
-                    .font(.system(size: 22, weight: .bold, design: .rounded))
+                    .font(MobileScaledFont.system(size: 22, weight: .bold, design: .rounded, relativeTo: .title2))
                     .foregroundStyle(MobileTheme.Colors.textPrimary)
                     .contentTransition(.numericText())
                 Text(fleetSubtitle)
@@ -116,7 +116,12 @@ struct QuotaPulseCard: View {
                     QuotaProviderRow(item: item)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("\(item.label), \(Int((item.pressureRemaining * 100).rounded())) percent remaining")
+                .accessibilityLabel(
+                    MobileAccessibilityLabelPolicy.quotaRing(
+                        label: item.label,
+                        percentRemaining: Int((item.pressureRemaining * 100).rounded())
+                    )
+                )
             }
             if items.count > 5 {
                 Button(action: onOpenBurn) {
@@ -219,7 +224,7 @@ private struct FleetGauge: View {
                 .animation(.spring(response: 0.6, dampingFraction: 0.85), value: progress)
 
             Image(systemName: "flame.fill")
-                .font(.system(size: 22, weight: .semibold))
+                .font(MobileScaledFont.system(size: 22, weight: .semibold, relativeTo: .title2))
                 .foregroundStyle(
                     LinearGradient(
                         colors: [accent, accent.opacity(0.7)],
@@ -286,7 +291,7 @@ private struct QuotaProviderRow: View {
                 .frame(minWidth: 38, alignment: .trailing)
 
             Image(systemName: "chevron.right")
-                .font(.system(size: 12, weight: .bold))
+                .font(MobileScaledFont.system(size: 12, weight: .bold))
                 .foregroundStyle(MobileTheme.Colors.textMuted.opacity(0.6))
         }
         .padding(.vertical, 6)

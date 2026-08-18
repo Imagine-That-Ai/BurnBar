@@ -35,9 +35,9 @@ struct BudgetStatusChip: View {
         if pct >= 0.5 {
             HStack(spacing: 4) {
                 Image(systemName: iconName(for: pct))
-                    .font(.system(size: 9, weight: .bold))
+                    .font(MobileTheme.Typography.tiny)
                 Text("$\(String(format: "%.0f", used))/$\(String(format: "%.0f", rule.amountUSD))")
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .font(MobileTheme.Typography.monoTiny)
             }
             .foregroundStyle(tintFor(pct))
             .padding(.horizontal, 7)

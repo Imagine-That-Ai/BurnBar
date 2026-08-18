@@ -60,6 +60,21 @@ const GENERIC_CALLER_DISPLAY_NAME = "Incoming call";
 export const VOIP_OUTBOUND_TTL_MS = 15 * 60 * 1000;
 
 /**
+ * Stamp the fields the receiver checks before it acts on a push, identically on
+ * both transports: the uid the call was minted for, and when the replay window
+ * closes. Both are omitted rather than invented when the caller has neither.
+ */
+function stampPushRecipient(
+  payload: Record<string, unknown>,
+  args: { uid?: string; expiresAtMillis?: number },
+): void {
+  if (args.uid) payload.uid = args.uid;
+  if (typeof args.expiresAtMillis === "number") {
+    payload.expires_at_millis = String(args.expiresAtMillis);
+  }
+}
+
+/**
  * Build the APNs VoIP push payload (T-PRV-01 / T-PRV-07). It deliberately carries
  * NO cleartext displayName and NO stable correlators (connectionId /
  * pairedDeviceId) — those previously rode to APNs (a third-party push processor)
@@ -71,14 +86,18 @@ export function buildVoipApnsPayload(args: {
   callId: string;
   isVideo: boolean;
   correlationId: string;
+  uid?: string;
+  expiresAtMillis?: number;
 }): Record<string, unknown> {
-  return {
+  const payload: Record<string, unknown> = {
     aps: { "content-available": 1 },
     type: "media_incoming_call",
     callId: args.callId,
     correlationId: args.correlationId,
     isVideo: args.isVideo,
   };
+  stampPushRecipient(payload, args);
+  return payload;
 }
 
 /**
@@ -91,8 +110,10 @@ export function buildFcmCallPayload(args: {
   callId: string;
   isVideo: boolean;
   correlationId: string;
+  uid?: string;
+  expiresAtMillis?: number;
 }): Record<string, string> {
-  return {
+  const payload: Record<string, string> = {
     type: "media_incoming_call",
     caller_name: GENERIC_CALLER_DISPLAY_NAME,
     caller_initial: pushCallerInitial(GENERIC_CALLER_DISPLAY_NAME),
@@ -100,6 +121,8 @@ export function buildFcmCallPayload(args: {
     call_id: args.callId,
     correlation_id: args.correlationId,
   };
+  stampPushRecipient(payload, args);
+  return payload;
 }
 
 export const PUSH_DISPLAY_NAME_MAX_CHARS = 40;

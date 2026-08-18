@@ -8,10 +8,16 @@ import java.time.Instant
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Before
 import org.junit.Test
 
 class SystemPermissionSenderTest {
     private val privateSeed = ByteArray(32) { index -> (index + 1).toByte() }
+
+    @Before
+    fun resetRateLimiter() {
+        PhoneControlSendRateLimiter.reset()
+    }
 
     @Test
     fun sendWritesSignedSystemPermissionFrame() = runBlocking {

@@ -5,6 +5,8 @@ import com.openburnbar.data.assistants.AssistantChatMessage
 import com.openburnbar.data.assistants.AssistantChatThread
 import com.openburnbar.data.assistants.AssistantChatTokenUsage
 import com.openburnbar.data.assistants.AssistantChatToolCall
+import com.openburnbar.data.policy.MobileHermesConversationDeepLink
+import com.openburnbar.data.policy.MobileHermesConversationPolicy
 import java.util.UUID
 
 private const val THREAD_TITLE_MAX = 64
@@ -15,6 +17,8 @@ internal class HermesServiceThreadActions(
     private val service: HermesService,
 ) {
     fun clearMessages() {
+        service.supersedeCurrentStream()
+        service.isStreamingInternal.value = false
         service.messagesInternal.value = emptyList()
         service.currentThreadIDInternal.value = null
         service.currentConversationIDInternal.value = null
@@ -22,13 +26,23 @@ internal class HermesServiceThreadActions(
 
     fun startNewThread() {
         clearMessages()
+        service.runtimeErrorTextInternal.value = null
     }
 
-    fun loadThread(id: String) {
+    fun loadThread(id: String): String {
         val cleanId = id.removePrefix("hermes:")
-        val store = service.historyStoreInternal ?: return
-        val thread = store.thread(cleanId) ?: return
-        if (thread.runtime != "hermes") return
+        val store = service.historyStoreInternal
+        val thread = store?.thread(cleanId)?.takeIf { it.runtime == "hermes" }
+        val outcome = MobileHermesConversationPolicy.conversationDeepLink(cleanId, thread != null)
+        if (outcome != MobileHermesConversationDeepLink.LOADED || thread == null) {
+            clearMessages()
+            service.runtimeErrorTextInternal.value =
+                MobileHermesConversationPolicy.missingConversationMessage(outcome)
+            return outcome.wire
+        }
+        service.supersedeCurrentStream()
+        service.isStreamingInternal.value = false
+        service.runtimeErrorTextInternal.value = null
         service.currentThreadIDInternal.value = thread.id
         service.messagesInternal.value =
             thread.messages.map { stored ->
@@ -52,6 +66,8 @@ internal class HermesServiceThreadActions(
                     timestamp = stored.timestampMillis,
                 )
             }
+        service.currentConversationIDInternal.value = thread.id
+        return outcome.wire
     }
 
     fun deleteThread(id: String) {

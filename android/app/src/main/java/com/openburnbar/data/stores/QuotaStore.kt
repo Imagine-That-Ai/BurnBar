@@ -11,6 +11,7 @@ import com.openburnbar.data.models.ProviderAccount
 import com.openburnbar.data.models.ProviderQuotaSnapshot
 import com.openburnbar.data.models.isExplicitlyStale
 import com.openburnbar.data.models.isStale
+import com.openburnbar.data.policy.UidScopedCacheRegistry
 import java.time.Instant
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
@@ -38,6 +39,7 @@ class QuotaStore(
     private val repo: FirestoreRepository = FirestoreRepository(),
     functions: FunctionsRepository? = null,
     private val httpClient: OkHttpClient = defaultClient(),
+    scopedCaches: UidScopedCacheRegistry = UidScopedCacheRegistry.shared,
 ) : AndroidViewModel(application) {
     constructor(application: Application) : this(application, FirestoreRepository(), null, defaultClient())
 
@@ -63,6 +65,22 @@ class QuotaStore(
     private var listenJob: Job? = null
     private var automaticRefreshJob: Job? = null
     private val staleRefreshInFlight = mutableSetOf<String>()
+
+    init {
+        scopedCaches.register { clearCache() }
+    }
+
+    fun clearCache() {
+        listenJob?.cancel()
+        automaticRefreshJob?.cancel()
+        listenJob = null
+        automaticRefreshJob = null
+        staleRefreshInFlight.clear()
+        _snapshots.value = emptyList()
+        _accounts.value = emptyList()
+        _isLoading.value = false
+        _error.value = null
+    }
 
     fun load() {
         viewModelScope.launch {
@@ -342,11 +360,10 @@ internal fun List<ProviderQuotaSnapshot>.dedupeFresh(): List<ProviderQuotaSnapsh
         }
     }
 
-    val providerOrder = AgentProvider.entries.withIndex().associate { (i, p) -> p.key to i }
     return freshest.values.sortedWith(
         compareBy(
-            { providerOrder[AgentProvider.fromKey(it.provider)?.key] ?: Int.MAX_VALUE },
-            { it.accountLabel.orEmpty().lowercase() },
+            { (AgentProvider.fromKey(it.provider)?.key ?: it.provider).lowercase() },
+            { (it.accountId ?: it.accountLabel.orEmpty()).lowercase() },
         ),
     )
 }

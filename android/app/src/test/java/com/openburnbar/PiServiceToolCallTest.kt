@@ -7,6 +7,7 @@ import com.openburnbar.data.hermes.PiService
 import com.openburnbar.data.hermes.PiServiceChatStreamSupport
 import com.openburnbar.data.hermes.PiServiceRuntimeSupport
 import com.openburnbar.data.hermes.ToolCall
+import com.openburnbar.data.hermes.summarizeToolArguments
 import com.openburnbar.ui.hermes.summarizeHermesToolDetail
 import kotlinx.coroutines.flow.MutableStateFlow
 import okhttp3.OkHttpClient

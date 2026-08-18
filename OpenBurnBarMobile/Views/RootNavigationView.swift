@@ -56,6 +56,9 @@ struct RootNavigationView: View {
     @State private var subscriptionStore = HostedQuotaSubscriptionStore()
     @State private var detailPath = NavigationPath()
     @State private var isCloudStoreChromeHidden = false
+    @State private var showMissionConsole = false
+    @State private var showMercuryCall = false
+    @State private var pendingMercuryConnectionId: String?
     /// App-scope Agent Watch overlay singleton. The iPad split shell needs the
     /// same always-on control stream as iPhone so Mac-initiated screen sharing
     /// can surface without first navigating to You -> Agent Watch.
@@ -139,6 +142,26 @@ struct RootNavigationView: View {
         .onReceive(NotificationCenter.default.publisher(for: .init("ShowSettings"))) { _ in
             openSettingsRoute()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .init("NavigateToDashboard"))) { _ in
+            selection = .pulse
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .init("ShowBurnTab"))) { _ in
+            selection = .burn
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .init("ShowMercuryCall"))) { notification in
+            pendingMercuryConnectionId = notification.userInfo?["connectionId"] as? String
+            showMercuryCall = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .init("ShowMissionConsole"))) { notification in
+            if let missionId = notification.userInfo?["missionId"] as? String {
+                missionConsoleHost.focusMission(id: missionId)
+            }
+            selection = .agents
+            showMissionConsole = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .init("ShowStreamsTab"))) { _ in
+            selection = .streams
+        }
         .onReceive(NotificationCenter.default.publisher(for: HermesGatewayPairingDeepLink.notificationName)) { notification in
             openHermesGatewayPairingRoute(notification)
         }
@@ -147,6 +170,16 @@ struct RootNavigationView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .cloudStoreChromeVisibilityChanged)) { notification in
             isCloudStoreChromeHidden = notification.object as? Bool ?? false
+        }
+        .sheet(isPresented: $showMissionConsole) {
+            MobileMissionConsoleSheet(host: missionConsoleHost) {
+                showMissionConsole = false
+            }
+        }
+        .sheet(isPresented: $showMercuryCall) {
+            MercuryRoutedIncomingSheet(connectionId: pendingMercuryConnectionId) {
+                showMercuryCall = false
+            }
         }
     }
 

@@ -10,8 +10,12 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.Person
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
+import com.openburnbar.data.policy.MobileNavigationDecision
+import com.openburnbar.data.policy.MobileOsDestination
+import com.openburnbar.data.policy.MobileOsIntegrationPolicy
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -51,6 +55,24 @@ class MercuryFcmService : FirebaseMessagingService() {
     override fun onMessageReceived(message: RemoteMessage) {
         val data = message.data
         val type = data["type"]
+        val envelope = MobileOsIntegrationPolicy.envelope(data)
+        val routed = MobileOsIntegrationPolicy.route(envelope)
+        val granted = AgentReplyNotificationState.notificationsEnabled(this)
+        val isIncomingCall = type == "media_incoming_call"
+        if (!MobileOsIntegrationPolicy.mayDeliver(granted)) {
+            AgentReplyNotificationState.recordPermissionResult(this, granted = false)
+            return
+        }
+        val decision = MobileOsIntegrationPolicy.navigation(
+            envelope = envelope,
+            activeUid = FirebaseAuth.getInstance().currentUser?.uid,
+            nowMs = System.currentTimeMillis(),
+            lastConsumedEventId = AgentReplyNotificationState.lastConsumedEventId,
+            permissionGranted = granted,
+        )
+        if (decision != MobileNavigationDecision.NAVIGATE) {
+            return
+        }
         if (type == "agent_reply") {
             serviceScope.launch { postAgentReplyNotification(data) }
             return
@@ -59,7 +81,13 @@ class MercuryFcmService : FirebaseMessagingService() {
             postAIInboxNotification(data)
             return
         }
-        if (type != "media_incoming_call") return
+        // Quota and mission pushes have no bespoke surface — the policy's
+        // destination is the whole routing decision.
+        if (routed.destination == MobileOsDestination.BURN || routed.destination == MobileOsDestination.MISSION) {
+            postRoutedOsNotification(data)
+            return
+        }
+        if (!isIncomingCall) return
         serviceScope.launch {
             val routing = resolveIncomingCallRouting(data) ?: return@launch
             postIncomingCall(

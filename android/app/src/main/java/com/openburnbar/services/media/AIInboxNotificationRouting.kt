@@ -33,6 +33,10 @@ internal data class AIInboxNotificationRouting(
     val title: String,
     val body: String,
     val deepLink: String,
+    val eventId: String? = null,
+    val uid: String? = null,
+    val expiresAtMillis: String? = null,
+    val type: String? = null,
 )
 
 /** `BurnBarInboxItemKind` raw values, mirrored from the Kernel contract. */
@@ -82,6 +86,10 @@ internal fun aiInboxNotificationRouting(data: Map<String, String>): AIInboxNotif
         title = INBOX_KIND_TITLES.getValue(kind),
         body = GENERIC_BODY,
         deepLink = BurnBarDeepLink.inboxURL(itemId),
+        eventId = data["event_id"]?.trim()?.takeIf { it.isNotBlank() },
+        uid = data["uid"]?.trim()?.takeIf { it.isNotBlank() },
+        expiresAtMillis = data["expires_at_millis"]?.trim()?.takeIf { it.isNotBlank() },
+        type = data["type"]?.trim()?.takeIf { it.isNotBlank() },
     )
 }
 
@@ -98,6 +106,10 @@ internal fun MercuryFcmService.buildAIInboxNotification(routing: AIInboxNotifica
         Intent(this, MainActivity::class.java).apply {
             action = Intent.ACTION_VIEW
             data = Uri.parse(routing.deepLink)
+            routing.eventId?.let { putExtra(MainActivity.EXTRA_EVENT_ID, it) }
+            routing.uid?.let { putExtra(MainActivity.EXTRA_UID, it) }
+            routing.expiresAtMillis?.let { putExtra(MainActivity.EXTRA_EXPIRES_AT_MILLIS, it) }
+            routing.type?.let { putExtra(MainActivity.EXTRA_PUSH_TYPE, it) }
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         }
     // Pinned on its own line, outside the `apply` block, matching

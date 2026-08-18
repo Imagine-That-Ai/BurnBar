@@ -26,6 +26,7 @@ import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.QuerySnapshot
 import com.openburnbar.MainDispatcherRule
 import com.openburnbar.data.firebase.FunctionsRepository
+import com.openburnbar.data.policy.MobileStoreEntitlementPolicy
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -259,7 +260,7 @@ class HostedQuotaSubscriptionStoreTest {
         assertFalse(store.isActive.value)
         assertTrue(store.error.value?.contains("Billing service unavailable") == true)
         assertEquals(
-            "$7.99",
+            MobileStoreEntitlementPolicy.UNAVAILABLE_PRICE_LABEL,
             store.productDetailsByID.value[HostedQuotaSubscriptionStore.PRODUCT_ID]?.formattedPrice,
         )
     }

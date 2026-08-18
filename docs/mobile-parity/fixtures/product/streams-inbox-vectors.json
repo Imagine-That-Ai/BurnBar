@@ -1,0 +1,169 @@
+{
+  "schemaVersion": 1,
+  "id": "openburnbar-mobile-streams-inbox-vectors-v1",
+  "sourceOracle": "OpenBurnBarMobile/Models/ActivityStore.swift pagination + AIInboxStore.focus / reconcileSelection",
+  "vectors": [
+    {
+      "id": "streams.pagination-boundary",
+      "kind": "pagination",
+      "pageSize": 25,
+      "pages": [
+        { "count": 25, "lastCursorPresent": true },
+        { "count": 0, "lastCursorPresent": false }
+      ],
+      "expected": {
+        "afterFirst": { "rowCount": 25, "hasMore": true, "canLoadNext": true },
+        "afterSecond": { "rowCount": 25, "hasMore": false, "canLoadNext": false }
+      }
+    },
+    {
+      "id": "streams.empty-results",
+      "kind": "listPresentation",
+      "isLoading": false,
+      "failed": false,
+      "isEmpty": true,
+      "entitled": true,
+      "hasMore": false,
+      "isPaginating": false,
+      "searchFailed": false,
+      "expected": { "presentation": "empty" }
+    },
+    {
+      "id": "streams.load-error",
+      "kind": "listPresentation",
+      "isLoading": false,
+      "failed": true,
+      "isEmpty": true,
+      "entitled": true,
+      "hasMore": false,
+      "isPaginating": false,
+      "searchFailed": false,
+      "expected": { "presentation": "failed" }
+    },
+    {
+      "id": "streams.entitlement-lock",
+      "kind": "listPresentation",
+      "isLoading": false,
+      "failed": false,
+      "isEmpty": true,
+      "entitled": false,
+      "hasMore": false,
+      "isPaginating": false,
+      "searchFailed": false,
+      "expected": { "presentation": "locked" }
+    },
+    {
+      "id": "streams.search-error-not-empty",
+      "kind": "listPresentation",
+      "isLoading": false,
+      "failed": false,
+      "isEmpty": true,
+      "entitled": true,
+      "hasMore": false,
+      "isPaginating": false,
+      "searchFailed": true,
+      "expected": { "presentation": "failed" }
+    },
+    {
+      "id": "streams.retry-after-error",
+      "kind": "pagination",
+      "pageSize": 25,
+      "pages": [
+        { "count": 0, "failed": true, "lastCursorPresent": false },
+        { "count": 3, "failed": false, "lastCursorPresent": false }
+      ],
+      "expected": {
+        "afterFirst": { "rowCount": 0, "hasMore": false, "presentation": "failed" },
+        "afterSecond": { "rowCount": 3, "hasMore": false, "presentation": "ready" }
+      }
+    },
+    {
+      "id": "inbox.cold-focus-hold",
+      "kind": "inboxSelection",
+      "visibleIds": ["already-here"],
+      "recordIds": ["already-here"],
+      "selectedId": "already-here",
+      "pendingFocusId": null,
+      "filter": "archived",
+      "searchQuery": "stale",
+      "focusItemId": "not-yet-synced",
+      "expectedAfterFocus": {
+        "selectedId": "not-yet-synced",
+        "pendingFocusId": "not-yet-synced",
+        "filter": "active",
+        "searchQuery": "",
+        "focusTokenDelta": 1
+      },
+      "interveningVisibleIds": ["already-here"],
+      "interveningRecordIds": ["already-here"],
+      "expectedAfterIntervening": {
+        "selectedId": "not-yet-synced",
+        "pendingFocusId": "not-yet-synced"
+      },
+      "landedVisibleIds": ["already-here", "not-yet-synced"],
+      "landedRecordIds": ["already-here", "not-yet-synced"],
+      "expectedAfterLanded": {
+        "selectedId": "not-yet-synced",
+        "pendingFocusId": null
+      }
+    },
+    {
+      "id": "inbox.warm-focus-repeat",
+      "kind": "inboxSelection",
+      "visibleIds": ["inb_1"],
+      "recordIds": ["inb_1"],
+      "selectedId": null,
+      "pendingFocusId": null,
+      "filter": "active",
+      "searchQuery": "",
+      "focusItemId": "inb_1",
+      "repeatFocus": true,
+      "expectedAfterFocus": {
+        "selectedId": "inb_1",
+        "pendingFocusId": null,
+        "filter": "active",
+        "searchQuery": "",
+        "focusTokenDelta": 2
+      }
+    },
+    {
+      "id": "surface.card-actions-real-or-removed",
+      "kind": "cardAction",
+      "actions": [
+        { "id": "inbox.archive", "expected": "real" },
+        { "id": "inbox.snooze", "expected": "real" },
+        { "id": "inbox.feedback", "expected": "real" },
+        { "id": "inbox.open-route", "expected": "real" },
+        { "id": "store.open", "expected": "real" },
+        { "id": "store.purchase", "catalogPresent": true, "expected": "real" },
+        { "id": "store.purchase", "catalogPresent": false, "expected": "removed" },
+        { "id": "pulse.retry", "expected": "real" },
+        { "id": "decorative.stop", "expected": "removed" },
+        { "id": "fake.cancel", "expected": "removed" },
+        { "id": "silent.discard", "expected": "removed" }
+      ]
+    },
+    {
+      "id": "surface.budget-entitlement-gate",
+      "kind": "entitlementGate",
+      "catalogPresent": true,
+      "restoring": false,
+      "revoked": false,
+      "refunded": false,
+      "expired": false,
+      "active": true,
+      "expected": { "state": "active", "mayEnforceBudget": true }
+    },
+    {
+      "id": "surface.budget-expired-blocks",
+      "kind": "entitlementGate",
+      "catalogPresent": true,
+      "restoring": false,
+      "revoked": false,
+      "refunded": false,
+      "expired": true,
+      "active": false,
+      "expected": { "state": "expired", "mayEnforceBudget": false }
+    }
+  ]
+}

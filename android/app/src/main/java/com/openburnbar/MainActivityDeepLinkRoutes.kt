@@ -1,6 +1,10 @@
 package com.openburnbar
 
 import android.content.Intent
+import com.openburnbar.data.policy.MobileNavigationDecision
+import com.openburnbar.data.policy.MobileOsDestination
+import com.openburnbar.data.policy.MobileOsIntegrationPolicy
+import com.openburnbar.data.policy.MobileOsRouteDecision
 import java.net.URI
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -162,5 +166,100 @@ object InboxPendingNavigation {
     /** Test seam: the process-wide request must not leak between test cases. */
     internal fun reset() {
         _requested.value = false
+    }
+}
+
+/**
+ * Warm-start navigation for policy destinations that Navigation-Compose cannot
+ * rematch after [android.app.Activity.onNewIntent]. Inbox stays on its own
+ * stash; quota / mission / mercury land here.
+ */
+object OsPendingNavigation {
+    data class Request(
+        val destination: MobileOsDestination,
+        val route: String,
+        val itemId: String? = null,
+        val missionId: String? = null,
+        val connectionId: String? = null,
+        val eventId: String? = null,
+    )
+
+    private val _pending = MutableStateFlow<Request?>(null)
+    val pending: StateFlow<Request?> = _pending.asStateFlow()
+
+    fun request(routed: MobileOsRouteDecision, eventId: String? = null) {
+        val route = when (routed.destination) {
+            MobileOsDestination.BURN -> "burn"
+            MobileOsDestination.INBOX -> "inbox"
+            MobileOsDestination.MISSION ->
+                routed.missionId?.takeIf { it.isNotBlank() }?.let { "mission/$it" } ?: "mission"
+            MobileOsDestination.MERCURY_CALL ->
+                routed.connectionId?.takeIf { it.isNotBlank() }?.let { "mercury/call/$it" } ?: "mercury/call"
+            else -> return
+        }
+        _pending.value = Request(
+            destination = routed.destination,
+            route = route,
+            itemId = routed.itemId,
+            missionId = routed.missionId,
+            connectionId = routed.connectionId,
+            eventId = eventId,
+        )
+    }
+
+    fun claim(): Request? {
+        val value = _pending.value
+        _pending.value = null
+        return value
+    }
+
+    internal fun reset() {
+        _pending.value = null
+    }
+}
+
+/** Tray-tap / warm-start envelope extras. Run navigation() with original uid/expiry. */
+object MobileOsIntentNavigation {
+    /** Envelope payload key ↔ Intent extra name; [payloadFrom] and [putEnvelopeExtras] are inverses. */
+    private val ENVELOPE_EXTRAS = mapOf(
+        "event_id" to MainActivity.EXTRA_EVENT_ID,
+        "uid" to MainActivity.EXTRA_UID,
+        "expires_at_millis" to MainActivity.EXTRA_EXPIRES_AT_MILLIS,
+        "type" to MainActivity.EXTRA_PUSH_TYPE,
+    )
+
+    fun payloadFrom(intent: Intent?): Map<String, String> {
+        if (intent == null) return emptyMap()
+        val payload = mutableMapOf<String, String>()
+        intent.dataString?.takeIf { it.isNotBlank() }?.let { payload["deep_link"] = it }
+        for ((key, extra) in ENVELOPE_EXTRAS) {
+            intent.getStringExtra(extra)?.takeIf { it.isNotBlank() }?.let { payload[key] = it }
+        }
+        return payload
+    }
+
+    fun hasPushEnvelope(payload: Map<String, String>): Boolean = !payload["event_id"].isNullOrBlank() ||
+        !payload["uid"].isNullOrBlank() ||
+        !payload["expires_at_millis"].isNullOrBlank()
+
+    fun navigation(
+        payload: Map<String, String>,
+        activeUid: String?,
+        lastConsumedEventId: String?,
+        nowMs: Long = System.currentTimeMillis(),
+        permissionGranted: Boolean = true,
+    ): MobileNavigationDecision = MobileOsIntegrationPolicy.navigation(
+        envelope = MobileOsIntegrationPolicy.envelope(payload),
+        activeUid = activeUid,
+        nowMs = nowMs,
+        lastConsumedEventId = lastConsumedEventId,
+        permissionGranted = permissionGranted,
+    )
+
+    fun putEnvelopeExtras(intent: Intent, data: Map<String, String>): Intent {
+        for ((key, extra) in ENVELOPE_EXTRAS) {
+            data[key]?.takeIf { it.isNotBlank() }?.let { intent.putExtra(extra, it) }
+        }
+        return intent
     }
 }

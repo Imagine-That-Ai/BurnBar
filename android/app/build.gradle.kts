@@ -743,6 +743,7 @@ dependencies {
     // Real org.json on the JVM test classpath so parsers can run without an
     // emulator (Android's bundled JSONObject is stubbed in unit tests).
     testImplementation("org.json:json:20240303")
+    testImplementation("com.google.code.gson:gson:2.11.0")
     // Ed25519 signer for the Hermes iroh transport tests only — production
     // code is verify-only via Tink. Same lib + version the relay module's
     // test classpath uses.

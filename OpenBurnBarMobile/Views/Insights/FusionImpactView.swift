@@ -893,7 +893,7 @@ private struct FusionTopUpSection: View {
 
     @ViewBuilder
     private func topUpRow(_ topUp: OpenBurnBarStoreProduct) -> some View {
-        let price = store?.displayPrice(for: topUp) ?? topUp.fallbackDisplayPrice
+        let price = store?.displayPrice(for: topUp) ?? MobileStoreEntitlementPolicy.unavailablePriceLabel
         let isPurchasing = store?.isPurchasing ?? false
         Button {
             guard let store else { return }

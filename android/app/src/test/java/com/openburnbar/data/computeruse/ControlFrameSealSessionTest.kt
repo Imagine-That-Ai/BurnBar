@@ -54,6 +54,7 @@ class ControlFrameSealSessionTest {
             java.util.Base64.getDecoder().decode(firstArg<String>())
         }
         ControlSealSessionEstablisher.clearForTests()
+        PhoneControlSendRateLimiter.reset()
     }
 
     @After

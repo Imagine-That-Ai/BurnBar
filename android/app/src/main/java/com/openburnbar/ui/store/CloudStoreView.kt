@@ -13,6 +13,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.openburnbar.data.policy.MobileStoreEntitlementPolicy
 import com.openburnbar.data.stores.HostedQuotaSubscriptionStore
 import com.openburnbar.data.stores.RemoteMcpClientStore
 import com.openburnbar.ui.components.AuroraBackdrop
@@ -53,7 +54,7 @@ fun CloudStoreView(
         onDispose { remoteMcpClientStore.stopListening() }
     }
 
-    val priceText = productDetails?.formattedPrice ?: "$7.99"
+    val priceText = productDetails?.formattedPrice ?: MobileStoreEntitlementPolicy.UNAVAILABLE_PRICE_LABEL
     val activity = context as? android.app.Activity
 
     Box(modifier = Modifier.fillMaxSize()) {

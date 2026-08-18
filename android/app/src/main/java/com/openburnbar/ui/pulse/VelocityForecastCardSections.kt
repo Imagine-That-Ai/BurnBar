@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.openburnbar.data.models.TokenUsage
 import com.openburnbar.data.models.UsageRollups
+import com.openburnbar.data.policy.MobileAccessibilityLabelPolicy
 import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraSpacing
 import com.openburnbar.ui.theme.AuroraType
@@ -86,7 +87,9 @@ internal fun RowScope.VelocityForecastProjectedColumn(projected: Double, aheadOf
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
                 imageVector = Icons.Filled.LocalFireDepartment,
-                contentDescription = null,
+                contentDescription = MobileAccessibilityLabelPolicy.iconOnly(
+                    if (aheadOfPace) "Ahead of pace" else "On pace",
+                ),
                 tint = AuroraColors.amber,
                 modifier = Modifier.size(14.dp),
             )
