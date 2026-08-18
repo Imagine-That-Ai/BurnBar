@@ -330,13 +330,7 @@ internal class HermesServiceMessageActions(
         }
     }
 
-    suspend fun streamDesktopAgentRelayCompletion(
-        prompt: String,
-        modelName: String,
-        conversationId: String,
-        streamGeneration: Int,
-        streamThreadId: String?,
-    ) {
+    suspend fun streamDesktopAgentRelayCompletion(prompt: String, modelName: String, conversationId: String, streamGeneration: Int, streamThreadId: String?) {
         AgentCapabilityGrantState.optimisticGrant(AssistantRuntimeID.HERMES.token, conversationId)
             ?: error("Hermes desktop permissions are not active.")
         val assistantID = UUID.randomUUID().toString()
@@ -573,12 +567,7 @@ internal class HermesServiceMessageActions(
         threadActions.persistCurrentThread()
     }
 
-    private fun finalizeDesktopRelayAssistant(
-        assistantID: String,
-        modelName: String,
-        streamGeneration: Int,
-        streamThreadId: String?,
-    ) {
+    private fun finalizeDesktopRelayAssistant(assistantID: String, modelName: String, streamGeneration: Int, streamThreadId: String?) {
         val finalMessage = service.messagesInternal.value.firstOrNull { it.id == assistantID }
         if (finalMessage != null && finalMessage.content.isBlank()) {
             service.upsertStreamingAssistant(

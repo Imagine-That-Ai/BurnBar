@@ -126,14 +126,7 @@ object MobilePulseWindowPolicy {
         return max(0.0, raw)
     }
 
-    fun pulseTokens(
-        totalTokens: Int,
-        inputTokens: Int,
-        outputTokens: Int,
-        cacheCreationTokens: Int,
-        cacheReadTokens: Int,
-        reasoningTokens: Int,
-    ): Long {
+    fun pulseTokens(totalTokens: Int, inputTokens: Int, outputTokens: Int, cacheCreationTokens: Int, cacheReadTokens: Int, reasoningTokens: Int): Long {
         val billed =
             max(0, inputTokens).toLong() + max(0, outputTokens) + max(0, cacheCreationTokens) +
                 max(0, cacheReadTokens) + max(0, reasoningTokens)

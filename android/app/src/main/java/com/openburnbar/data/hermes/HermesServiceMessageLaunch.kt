@@ -117,11 +117,7 @@ internal class HermesServiceMessageLaunch(
             }
     }
 
-    private fun sendFailureHandler(
-        modelName: String,
-        generation: Int,
-        threadId: String?,
-    ): CoroutineExceptionHandler = CoroutineExceptionHandler { _, error ->
+    private fun sendFailureHandler(modelName: String, generation: Int, threadId: String?): CoroutineExceptionHandler = CoroutineExceptionHandler { _, error ->
         if (!service.isCurrentStream(generation, threadId)) return@CoroutineExceptionHandler
         val message = error.hermesSendFailureMessage()
         runCatching { Log.e(TAG, "Hermes send failed: $message", error) }

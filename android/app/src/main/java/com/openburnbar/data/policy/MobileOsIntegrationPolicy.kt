@@ -310,8 +310,7 @@ object MobileOsIntegrationPolicy {
     private const val SECRET_HEX_MIN_LENGTH = 40
     private const val CONVERSATION_MIN_LENGTH = 40
 
-    private fun looksLikeFirebaseUid(value: String): Boolean =
-        value.matches(Regex("^[A-Za-z0-9]{$FIREBASE_UID_LENGTH}$"))
+    private fun looksLikeFirebaseUid(value: String): Boolean = value.matches(Regex("^[A-Za-z0-9]{$FIREBASE_UID_LENGTH}$"))
 
     private fun looksLikeSecret(value: String): Boolean = value.startsWith("sk-") ||
         value.startsWith("AIza") ||
@@ -320,8 +319,7 @@ object MobileOsIntegrationPolicy {
                 value.all { it.isDigit() || it in 'a'..'f' || it in 'A'..'F' }
             )
 
-    private fun looksLikeConversation(value: String): Boolean =
-        value.contains(' ') && value.length > CONVERSATION_MIN_LENGTH
+    private fun looksLikeConversation(value: String): Boolean = value.contains(' ') && value.length > CONVERSATION_MIN_LENGTH
 
     private fun decodeQueryComponent(raw: String): String = runCatching { java.net.URLDecoder.decode(raw.replace("+", "%20"), Charsets.UTF_8.name()) }
         .getOrDefault(raw)
