@@ -20,6 +20,8 @@ import com.openburnbar.data.policy.MobileOsDestination
 import com.openburnbar.data.policy.MobileOsIntegrationPolicy
 import com.openburnbar.security.enableOpenBurnBarScreenPrivacy
 import com.openburnbar.services.media.AgentReplyNotificationState
+import com.openburnbar.services.media.bindConsumedEvents
+import com.openburnbar.services.media.persistConsumed
 import com.openburnbar.ui.auth.LaunchSplashGate
 import com.openburnbar.ui.navigation.BurnBarNavHost
 import com.openburnbar.ui.theme.AuroraTheme

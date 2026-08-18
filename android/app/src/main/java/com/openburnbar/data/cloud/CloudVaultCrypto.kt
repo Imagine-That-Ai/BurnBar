@@ -935,7 +935,7 @@ object CloudVaultCrypto {
 
     fun deriveRecoveryWrappingKey(recoveryKey: String): ByteArray {
         return CloudVaultRecoveryDomainCore.recoveryWrappingKey(recoveryKey) {
-            CloudVaultLegacyCrypto.recoveryWrappingKey(recoveryKey)
+            CloudVaultLegacyRecovery.recoveryWrappingKey(recoveryKey)
         }
     }
 
@@ -943,7 +943,7 @@ object CloudVaultCrypto {
         require(vaultKey.size == SHA256_DIGEST_BYTES) { "Invalid vault key length" }
         val nonce = ByteArray(GCM_NONCE_BYTES).apply { java.security.SecureRandom().nextBytes(this) }
         val wrapped = CloudVaultRecoveryDomainCore.recoveryWrapVaultKey(vaultKey, recoveryKey, nonce) {
-            CloudVaultLegacyCrypto.recoveryWrapVaultKey(vaultKey, recoveryKey, nonce, ::sha256Hex)
+            CloudVaultLegacyRecovery.recoveryWrapVaultKey(vaultKey, recoveryKey, nonce, ::sha256Hex)
         }
         return RecoveryWrappedVaultKey(
             wrappedVaultKeyBase64 = CloudVaultCryptoSupport.encodeBase64(wrapped.combined),
@@ -954,14 +954,14 @@ object CloudVaultCrypto {
     fun unwrapVaultKeyWithRecovery(wrappedVaultKeyBase64: String, recoveryKey: String): ByteArray {
         val combined = CloudVaultCryptoSupport.decodeBase64(wrappedVaultKeyBase64)
         val plaintext = CloudVaultRecoveryDomainCore.recoveryOpenVaultKey(combined, recoveryKey) {
-            CloudVaultLegacyCrypto.recoveryOpenVaultKey(combined, recoveryKey)
+            CloudVaultLegacyRecovery.recoveryOpenVaultKey(combined, recoveryKey)
         }
         require(plaintext.size == SHA256_DIGEST_BYTES) { "Invalid vault key length" }
         return plaintext
     }
 
     fun recoveryVerificationHash(recoveryKey: String): String = CloudVaultRecoveryDomainCore.recoveryVerificationHash(recoveryKey) {
-        CloudVaultLegacyCrypto.recoveryVerificationHash(recoveryKey, ::sha256Hex)
+        CloudVaultLegacyRecovery.recoveryVerificationHash(recoveryKey, ::sha256Hex)
     }
 
     /**

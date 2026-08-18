@@ -91,7 +91,7 @@ class MobileProductParityTest {
         val vector = pulseVector("pulse.currency-vs-tokens")
         val expected = vector.getJSONObject("expected")
         assertEquals(expected.getString("currencyHero"), MobilePulseWindowPolicy.currencyHero(vector.getDouble("costUsd")))
-        assertEquals(expected.getString("tokensHero"), MobilePulseWindowPolicy.tokensHero(vector.getInt("tokens")))
+        assertEquals(expected.getString("tokensHero"), MobilePulseWindowPolicy.tokensHero(vector.getLong("tokens")))
     }
 
     @Test
@@ -295,7 +295,7 @@ class MobileProductParityTest {
         MobilePulseUsageEvent(
             startMs = row.getLong("startMs"),
             endMs = row.getLong("endMs"),
-            tokens = row.getInt("tokens"),
+            tokens = row.getLong("tokens"),
             costUsd = row.getDouble("costUsd"),
         )
     }
@@ -337,7 +337,7 @@ class MobileProductParityTest {
         TokenUsage(
             id = "row-$index",
             costUsd = event.costUsd,
-            totalTokens = event.tokens,
+            totalTokens = event.tokens.toInt(),
             startTime = event.startMs,
             endTime = event.endMs,
         )

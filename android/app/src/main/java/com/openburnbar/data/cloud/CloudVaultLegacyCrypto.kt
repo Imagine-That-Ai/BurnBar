@@ -17,8 +17,6 @@ internal object CloudVaultLegacyCrypto {
     private const val HMAC_SALT = "OpenBurnBar-CloudVault-HMAC-Salt-v1"
     private const val HMAC_INFO_PREFIX = "OpenBurnBar-CloudVault-HMAC-v1"
     private const val ESCROW_HKDF_INFO = "OpenBurnBar-Escrow-v1"
-    private const val RECOVERY_SALT = "OpenBurnBar-Recovery-Salt-v1"
-    private const val RECOVERY_WRAP_INFO = "OpenBurnBar-Recovery-Wrap-v1"
     private const val ESCROW_PUBLIC_KEY_BYTES = 65
 
     fun aadV1(uid: String, collection: String, docId: String, field: String): String {
@@ -60,47 +58,6 @@ internal object CloudVaultLegacyCrypto {
         CloudVaultCrypto.SESSION_BODY_HASH_VERSION -> keyedHashHex(data, key, CloudVaultHashPurpose.SESSION_BODY)
         0, 1 -> sha256Hex(data)
         else -> error("Unsupported session body hash version")
-    }
-
-    fun recoveryWrappingKey(recoveryKey: String): ByteArray {
-        val normalized = recoveryKey.uppercase().filter { it.isLetterOrDigit() }
-        require(normalized.length >= 20) { "Recovery key is too short" }
-        return CloudVaultLegacySearch.hkdfSha256(
-            normalized.toByteArray(Charsets.UTF_8),
-            RECOVERY_SALT.toByteArray(Charsets.UTF_8),
-            RECOVERY_WRAP_INFO.toByteArray(Charsets.UTF_8),
-            KEY_BYTES,
-        )
-    }
-
-    fun recoveryWrapVaultKey(vaultKey: ByteArray, recoveryKey: String, nonce: ByteArray, sha256Hex: (ByteArray) -> String): CloudVaultRecoveryBox {
-        val wrappingKey = recoveryWrappingKey(recoveryKey)
-        return try {
-            CloudVaultRecoveryBox(
-                combined = aesSealCombined(vaultKey, wrappingKey, nonce),
-                verificationHash = sha256Hex(wrappingKey),
-            )
-        } finally {
-            wrappingKey.fill(0)
-        }
-    }
-
-    fun recoveryOpenVaultKey(combined: ByteArray, recoveryKey: String): ByteArray {
-        val wrappingKey = recoveryWrappingKey(recoveryKey)
-        return try {
-            aesOpenCombined(combined, wrappingKey)
-        } finally {
-            wrappingKey.fill(0)
-        }
-    }
-
-    fun recoveryVerificationHash(recoveryKey: String, sha256Hex: (ByteArray) -> String): String {
-        val wrappingKey = recoveryWrappingKey(recoveryKey)
-        return try {
-            sha256Hex(wrappingKey)
-        } finally {
-            wrappingKey.fill(0)
-        }
     }
 
     fun escrowSplitWire(ciphertext: ByteArray, ecParameters: ECParameterSpec): CloudVaultEscrowParts {
@@ -166,13 +123,13 @@ internal object CloudVaultLegacyCrypto {
         KEY_BYTES,
     )
 
-    private fun aesSealCombined(plaintext: ByteArray, key: ByteArray, nonce: ByteArray): ByteArray {
+    internal fun aesSealCombined(plaintext: ByteArray, key: ByteArray, nonce: ByteArray): ByteArray {
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(GCM_AUTH_TAG_BITS, nonce))
         return nonce + cipher.doFinal(plaintext)
     }
 
-    private fun aesOpenCombined(combined: ByteArray, key: ByteArray): ByteArray {
+    internal fun aesOpenCombined(combined: ByteArray, key: ByteArray): ByteArray {
         require(combined.size > GCM_NONCE_BYTES + GCM_TAG_BYTES) { "Invalid wrapped vault key" }
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(

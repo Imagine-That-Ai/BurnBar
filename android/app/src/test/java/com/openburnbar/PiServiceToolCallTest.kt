@@ -5,6 +5,7 @@ import com.openburnbar.data.hermes.PiChatMessage
 import com.openburnbar.data.hermes.PiConnectionRecord
 import com.openburnbar.data.hermes.PiService
 import com.openburnbar.data.hermes.PiServiceChatStreamSupport
+import com.openburnbar.data.hermes.summarizeToolArguments
 import com.openburnbar.data.hermes.PiServiceRuntimeSupport
 import com.openburnbar.data.hermes.ToolCall
 import com.openburnbar.ui.hermes.summarizeHermesToolDetail

@@ -52,7 +52,7 @@ data class EscrowCredentialMetadataBinding(
             val provider = providerId?.trim().orEmpty()
             val kind = credentialKind?.trim().orEmpty()
             val label = accountLabel?.trim().orEmpty()
-            if (grant.isEmpty() || source.isEmpty() || target.isEmpty() || provider.isEmpty() || kind.isEmpty()) {
+            if (!hasRequiredIdentity(grant, source, target, provider, kind)) {
                 return null
             }
             if (target != currentDeviceId.trim()) return null
@@ -68,5 +68,11 @@ data class EscrowCredentialMetadataBinding(
                 envelopeVersion = version,
             )
         }
+
+        private fun hasRequiredIdentity(grant: String, source: String, target: String, provider: String, kind: String): Boolean = grant.isNotEmpty() &&
+            source.isNotEmpty() &&
+            target.isNotEmpty() &&
+            provider.isNotEmpty() &&
+            kind.isNotEmpty()
     }
 }

@@ -234,7 +234,22 @@ class HermesService(
     internal val sessionsErrorTextInternal get() = _sessionsErrorText
     internal val relayClientInternal get() = relayClient
     internal val httpClientInternal get() = client
-    internal val historyStoreInternal get() = historyStore
+    internal var historyStoreInternal
+        get() = historyStore
+        set(value) {
+            historyStore = value
+        }
+    internal var chatTilePreferencesInternal
+        get() = chatTilePreferences
+        set(value) {
+            chatTilePreferences = value
+        }
+    internal var atomNavigatorInternal
+        get() = atomNavigator
+        set(value) {
+            atomNavigator = value
+        }
+    internal val favoriteModelIDsInternal get() = _favoriteModelIDs
 
     private val runtimeSupport =
         HermesServiceRuntimeSupport(
@@ -272,17 +287,10 @@ class HermesService(
             scope = scope,
         )
     internal val relayActions = HermesServiceRelayActions(this)
+    internal val preferenceActions = HermesServicePreferenceActions(this)
 
     internal fun launchRuntimeProbe(endpointOverride: String? = null) {
         scope.launch { runtimeSupport.probeSelectedRuntime(endpointOverride) }
-    }
-
-    fun bindHistoryStore(store: AssistantChatHistoryStore) {
-        historyStore = store
-    }
-
-    fun setChatTilePreferences(preferences: ChatTilePreferences) {
-        chatTilePreferences = preferences.sanitized()
     }
 
     fun connect(connection: HermesConnection = HermesConnection()) {
@@ -381,10 +389,6 @@ class HermesService(
 
     suspend fun refreshRuntime() = runtimeSupport.probeSelectedRuntime()
 
-    fun setToolAtomNavigator(navigator: HermesAtomNavigator?) {
-        atomNavigator = navigator
-    }
-
     fun outcome(message: HermesMessage): HermesChatMessageOutcome {
         if (message.outcome != HermesChatMessageOutcome.NORMAL) return message.outcome
         val trimmed = message.content.trim()
@@ -408,20 +412,6 @@ class HermesService(
             scope.launch { refreshRuntime() }
         }
         return true
-    }
-
-    fun selectModel(option: HermesRuntimeModelOption) {
-        _selectedModelID.value = option.modelID
-    }
-
-    fun toggleFavoriteModel(option: HermesRuntimeModelOption) {
-        val current = _favoriteModelIDs.value.toMutableSet()
-        if (current.contains(option.modelID)) {
-            current.remove(option.modelID)
-        } else {
-            current.add(option.modelID)
-        }
-        _favoriteModelIDs.value = current
     }
 
     fun destroy() {
@@ -495,6 +485,16 @@ private fun buildHermesRelayTransport(context: Context?, client: HermesRelayClie
         auditLogger = auditLogger,
     )
 }
+
+fun HermesService.bindHistoryStore(store: AssistantChatHistoryStore) = preferenceActions.bindHistoryStore(store)
+
+fun HermesService.setChatTilePreferences(preferences: ChatTilePreferences) = preferenceActions.setChatTilePreferences(preferences)
+
+fun HermesService.setToolAtomNavigator(navigator: HermesAtomNavigator?) = preferenceActions.setToolAtomNavigator(navigator)
+
+fun HermesService.selectModel(option: HermesRuntimeModelOption) = preferenceActions.selectModel(option)
+
+fun HermesService.toggleFavoriteModel(option: HermesRuntimeModelOption) = preferenceActions.toggleFavoriteModel(option)
 
 fun HermesService.clearMessages() = threadActions.clearMessages()
 

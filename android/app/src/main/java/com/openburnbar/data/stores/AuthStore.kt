@@ -11,6 +11,7 @@ import com.openburnbar.data.policy.MobileAuthSessionState
 import com.openburnbar.data.policy.UidScopedCacheRegistry
 import com.openburnbar.data.widget.BurnBarWidgetSyncWorker
 import com.openburnbar.services.media.AgentReplyNotificationState
+import com.openburnbar.services.media.bindConsumedEvents
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow

@@ -9,7 +9,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import com.openburnbar.data.hermes.HermesAttachment
 import com.openburnbar.data.hermes.HermesService
+import com.openburnbar.data.hermes.bindHistoryStore
 import com.openburnbar.data.hermes.loadThread
+import com.openburnbar.data.hermes.setChatTilePreferences
 import com.openburnbar.data.policy.MobileHermesConversationDeepLink
 import com.openburnbar.ui.navigation.HermesPendingPrompt
 

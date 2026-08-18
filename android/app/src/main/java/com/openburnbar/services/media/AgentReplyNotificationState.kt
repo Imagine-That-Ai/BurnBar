@@ -54,38 +54,13 @@ object AgentReplyNotificationState {
 
     @Volatile private var lifecycleTrackingInstalled = false
 
-    @Volatile var lastConsumedEventId: String? = null
-        private set
+    var lastConsumedEventId: String?
+        get() = AgentReplyConsumedStore.lastConsumedEventId
+        internal set(value) {
+            AgentReplyConsumedStore.lastConsumedEventId = value
+        }
 
     @Volatile private var tombstonedUid: String? = null
-
-    private fun consumedKey(uid: String) = "last_consumed_$uid"
-
-    fun bindConsumedEvents(uid: String?, context: Context) {
-        bindConsumedFrom(prefsMap(context), uid)
-    }
-
-    fun persistConsumed(eventId: String, uid: String?, context: Context) {
-        lastConsumedEventId = eventId
-        if (uid == null) return
-        context.getSharedPreferences(PERMISSION_PREF_NAME, Context.MODE_PRIVATE)
-            .edit()
-            .putString(consumedKey(uid), eventId)
-            .apply()
-    }
-
-    fun persistConsumedTo(store: MutableMap<String, String>, eventId: String, uid: String?) {
-        lastConsumedEventId = eventId
-        if (uid == null) return
-        store[consumedKey(uid)] = eventId
-    }
-
-    fun shouldClearLastConsumed(tombstonedUid: String, boundUid: String?): Boolean = boundUid == tombstonedUid
-
-    fun bindConsumedFrom(store: Map<String, String>, uid: String?): String? {
-        lastConsumedEventId = uid?.let { store[consumedKey(it)] }
-        return lastConsumedEventId
-    }
 
     suspend fun tombstoneCurrentDevice(context: Context) {
         val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return
@@ -115,7 +90,7 @@ object AgentReplyNotificationState {
                 )
                 .await()
         }
-        if (shouldClearLastConsumed(tombstonedUid = uid, boundUid = boundUid)) {
+        if (AgentReplyConsumedStore.shouldClearLastConsumed(tombstonedUid = uid, boundUid = boundUid)) {
             lastConsumedEventId = null
         }
     }
@@ -126,13 +101,6 @@ object AgentReplyNotificationState {
             tombstonedUid = null
         }
         persistAwaiting(context.applicationContext, clearInvalidation = true)
-    }
-
-    private fun prefsMap(context: Context): Map<String, String> {
-        val prefs = context.getSharedPreferences(PERMISSION_PREF_NAME, Context.MODE_PRIVATE)
-        return prefs.all.mapNotNull { (key, value) ->
-            (value as? String)?.let { key to it }
-        }.toMap()
     }
 
     fun installLifecycleTracking(application: Application) {

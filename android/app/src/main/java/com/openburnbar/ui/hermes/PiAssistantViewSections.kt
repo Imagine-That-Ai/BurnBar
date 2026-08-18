@@ -60,6 +60,7 @@ import com.openburnbar.data.hermes.AssistantRuntimeID
 import com.openburnbar.data.hermes.PiChatMessage
 import com.openburnbar.data.hermes.PiService
 import com.openburnbar.data.hermes.PiToolCall
+import com.openburnbar.data.hermes.refreshRuntime
 import com.openburnbar.data.policy.MobileAccessibilityLabelPolicy
 import com.openburnbar.services.media.AgentReplyNotificationState
 import com.openburnbar.ui.computeruse.AgentPermissionGrantSheet

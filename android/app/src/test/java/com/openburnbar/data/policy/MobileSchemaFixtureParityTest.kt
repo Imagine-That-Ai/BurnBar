@@ -108,14 +108,17 @@ class MobileSchemaFixtureParityTest {
         val failing = fixture.getJSONArray("fail")
         for (index in 0 until failing.length()) {
             val item = failing.getJSONObject(index)
-            val id = item.optString("id")
-            if (id == "malformed-timestamp" || id.contains("enum")) continue
-            val document = item.opt("document")
-            if (document !is JSONObject) continue
+            val document = failFixtureDocument(item) ?: continue
             assertThrows(item.optString("id"), IllegalArgumentException::class.java) {
                 decode(document)
             }
         }
+    }
+
+    private fun failFixtureDocument(item: JSONObject): JSONObject? {
+        val id = item.optString("id")
+        if (id == "malformed-timestamp" || id.contains("enum")) return null
+        return item.opt("document") as? JSONObject
     }
 
     private fun decodeUsageEvent(document: JSONObject): FirestoreUsageEventDoc =
