@@ -2,22 +2,6 @@ import Foundation
 import GRDB
 
 extension OpenBurnBarDatabase {
-    /// Migrations in this allowlist are additive, execute in GRDB's per-migration
-    /// transaction, and do not rewrite or delete pre-existing user rows. They can
-    /// therefore rely on transactional rollback instead of forcing a full
-    /// `PRAGMA integrity_check` plus a multi-gigabyte online backup before the app
-    /// can render its first frame.
-    ///
-    /// This is deliberately fail-closed: every unlisted future migration takes
-    /// the full integrity-check + encrypted-backup lane until its data-loss risk
-    /// is reviewed explicitly.
-    static let additiveTransactionalMigrationIdentifiers: Set<String> = [
-        "v61_usage_memory",
-        "v62_war_room_originator",
-        "v63_standing_orders",
-        "v64_token_usage_start_time_index"
-    ]
-
     enum OpenBurnBarDatabaseError: Error {
         case integrityCheckFailed(details: String)
         case backupFailed(underlying: Error)

@@ -91,12 +91,4 @@ final class OpenBurnBarDataStandingOrderMigrationTests: XCTestCase {
         XCTAssertTrue(after.usage)
         XCTAssertTrue(after.orders)
     }
-
-    /// The migration is additive, so it must be on the allowlist that skips the
-    /// multi-gigabyte backup lane before first paint.
-    func test_migrationIsMarkedAdditiveAndTransactional() {
-        XCTAssertTrue(
-            OpenBurnBarDatabase.additiveTransactionalMigrationIdentifiers.contains("v63_standing_orders")
-        )
-    }
 }
