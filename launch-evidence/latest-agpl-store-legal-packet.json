@@ -6,21 +6,21 @@
   "repo": {
     "remote": "origin",
     "ownerRepo": "Imagine-That-Ai/BurnBar",
-    "branch": "codex/release-v1.0.36-functions-gate",
-    "originMain": "3f127f7da28f590441c46e0674dac7f27a04b7aa",
-    "releaseTag": "v1.0.36"
+    "branch": "fix/rust-gate-pin-fix-v1.0.37",
+    "originMain": "5a7740730ff94fc0f1155c5d59d7bd6b901fb19b",
+    "releaseTag": "v1.0.37"
   },
-  "purpose": "Owner-attested emergency release evidence for the v1.0.36 public release boundary. This cut supersedes the unpublished immutable v1.0.35 candidate after its strict Functions gate exposed a stale Firestore rules assertion, keeps the npm installer bound to the live signed feed, and restores an honest current macOS public download. The release must be cut from protected main only.",
+  "purpose": "Owner-attested emergency release evidence for the v1.0.37 public release boundary. This cut supersedes the unpublished immutable v1.0.36 candidate after its native release gate hydrated unpromoted Actions artifacts instead of the committed attested candidate bundle, keeps the npm installer bound to the live signed feed, and restores an honest current macOS public download. The release must be cut from protected main only.",
   "ownerAttestation": {
     "ownerName": "Alberto Nunez",
     "ownerGitHub": "Ajnunezg",
     "ownerRole": "release_owner",
-    "attestedAt": "2026-08-17T17:02:34Z",
+    "attestedAt": "2026-08-17T23:50:00Z",
     "counselName": "Heather Meeker",
     "approvalType": "soft_approval",
-    "emergencyReason": "Publish the v1.0.36 protected-main release after the immutable v1.0.35 candidate failed before packaging on a stale release-only Functions assertion, so the website and npm app installer stop resolving to the stale v1.0.29 macOS artifact while signed, notarized, and protected release requirements remain intact.",
-    "approvalBoundary": "Emergency owner-attested soft approval for the v1.0.36 public macOS direct-download, app-store/TestFlight, Google Play, hosted gateway, and commercial distribution release train while the signed counsel packet is collected.",
-    "ownerStatement": "As release owner, Alberto Nunez attests that Heather Meeker's existing soft approval applies to this v1.0.36 release boundary and authorizes the emergency owner-approved public release lane.",
+    "emergencyReason": "Publish the v1.0.37 protected-main release after the immutable v1.0.36 candidate failed before packaging on native gate candidate materialization, so the website and npm app installer stop resolving to the stale v1.0.29 macOS artifact while signed, notarized, and protected release requirements remain intact.",
+    "approvalBoundary": "Emergency owner-attested soft approval for the v1.0.37 public macOS direct-download, app-store/TestFlight, Google Play, hosted gateway, and commercial distribution release train while the signed counsel packet is collected.",
+    "ownerStatement": "As release owner, Alberto Nunez attests that Heather Meeker's existing soft approval applies to this v1.0.37 release boundary and authorizes the emergency owner-approved public release lane.",
     "followUpRequired": true
   },
   "scope": [

@@ -114,6 +114,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Console: analytics consent banner on mobile** — the flex-wrap row squeezed
   the copy into a ~150px column at phone widths; the banner now stacks
   (text full-width, buttons on their own row) below sm.
+## [1.0.37] - 2026-08-17
+
+### Fixed
+- Prioritize committed promotion bundles in `prepare-domain-core-native-release-gate.mjs`
+  so the native release candidate gate hydrates the exact attested `a46c7234` bundle
+  and cryptographic provenance against Sigstore attestation `38437922`.
+- Supersede the unpublished `v1.0.36` candidate without moving its immutable tag.
+  This release includes the full `1.0.36` and `1.0.35` feature sets.
 
 ## [1.0.36] - 2026-08-17
 
