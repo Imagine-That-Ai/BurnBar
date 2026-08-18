@@ -212,6 +212,79 @@ final class MobileHermesMercuryComputerUseParityTests: XCTestCase {
         )
     }
 
+    func testSafetyRejectsPanicSessionExpiryRateLimitAndViewOnly() {
+        XCTAssertEqual(
+            MobileComputerUseSafetyPolicy.decision(kind: "valid-control", panic: true),
+            .reject
+        )
+        XCTAssertEqual(
+            MobileComputerUseSafetyPolicy.reason(kind: "valid-control", panic: true),
+            "panic"
+        )
+        XCTAssertEqual(
+            MobileComputerUseSafetyPolicy.decision(kind: "valid-control", sessionExpired: true),
+            .reject
+        )
+        XCTAssertEqual(
+            MobileComputerUseSafetyPolicy.reason(kind: "valid-control", sessionExpired: true),
+            "session-expiry"
+        )
+        XCTAssertEqual(
+            MobileComputerUseSafetyPolicy.decision(kind: "valid-control", rateLimited: true),
+            .reject
+        )
+        XCTAssertEqual(
+            MobileComputerUseSafetyPolicy.reason(kind: "valid-control", rateLimited: true),
+            "rate-limit"
+        )
+        XCTAssertEqual(
+            MobileComputerUseSafetyPolicy.decision(kind: "valid-control", viewOnly: true, intentKind: "tap"),
+            .reject
+        )
+        XCTAssertEqual(
+            MobileComputerUseSafetyPolicy.reason(kind: "valid-control", viewOnly: true, intentKind: "tap"),
+            "view-only"
+        )
+        XCTAssertEqual(
+            MobileComputerUseSafetyPolicy.decision(kind: "valid-control", viewOnly: true, intentKind: "panic"),
+            .allow
+        )
+        XCTAssertEqual(
+            MobileComputerUseSafetyPolicy.reason(kind: "valid-control", viewOnly: true, intentKind: "panic"),
+            "ok"
+        )
+        XCTAssertEqual(MobileComputerUseSafetyPolicy.decision(kind: "unknown-kind"), .reject)
+        XCTAssertEqual(MobileComputerUseSafetyPolicy.reason(kind: "unknown-kind"), "unknown-kind")
+        XCTAssertTrue(
+            MobileComputerUseSafetyPolicy.shouldSendPhoneControl(
+                authenticated: true,
+                grantExpired: false,
+                bindingMatches: true,
+                replayed: false,
+                tampered: false,
+                rateLimited: false,
+                sessionExpired: false,
+                panic: false,
+                viewOnly: false,
+                intentKind: "tap"
+            )
+        )
+        XCTAssertFalse(
+            MobileComputerUseSafetyPolicy.shouldSendPhoneControl(
+                authenticated: true,
+                grantExpired: false,
+                bindingMatches: true,
+                replayed: false,
+                tampered: false,
+                rateLimited: true,
+                sessionExpired: false,
+                panic: false,
+                viewOnly: false,
+                intentKind: "tap"
+            )
+        )
+    }
+
     private func hermesVector(_ id: String) throws -> [String: Any] {
         try vector(id, in: "docs/mobile-parity/fixtures/product/hermes-mercury-computer-use-vectors.json")
     }
