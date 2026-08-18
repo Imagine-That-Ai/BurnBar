@@ -1,5 +1,5 @@
 {
-  "note": "OpenBurnBarCore main-target membership snapshot (per-file line counts) + per-sibling {files, LOC} ceilings (docs/CORE_DECOMPOSITION_PROGRAM.md). Deny-gate: no NEW .swift file may be added to OpenBurnBarCore/Sources/OpenBurnBarCore/ (new code lands in a sibling target); main-target totals may only shrink AND no individual baselined main-target file may grow (per-file check \u2014 a removed big file cannot mask regrowth in another file); no sibling may exceed its ceiling (decomposition-destination siblings use a PLANNED end-state ceiling that --update never ratchets down, others use 1.25x measured). Shrink is non-fatal (run --update to ratchet down). Regenerate via scripts/debt/check-core-target-membership-budget.sh --update. reason: Fleet snapshot/RPC contracts are shared wire types in OpenBurnBarKernel (daemon + Mac app); Kernel planned ceiling 48000 -> 50000 to hold BurnBarFleetContracts.swift + BurnBarFleetRPCContracts.swift without splitting the wire module mid-port.",
+  "note": "OpenBurnBarCore main-target membership snapshot (per-file line counts) + per-sibling {files, LOC} ceilings (docs/CORE_DECOMPOSITION_PROGRAM.md). Deny-gate: no NEW .swift file may be added to OpenBurnBarCore/Sources/OpenBurnBarCore/ (new code lands in a sibling target); main-target totals may only shrink AND no individual baselined main-target file may grow (per-file check \u2014 a removed big file cannot mask regrowth in another file); no sibling may exceed its ceiling (decomposition-destination siblings use a PLANNED end-state ceiling that --update never ratchets down, others use 1.25x measured). Shrink is non-fatal (run --update to ratchet down). Regenerate via scripts/debt/check-core-target-membership-budget.sh --update. reason: Fleet snapshot/RPC contracts are shared wire types in OpenBurnBarKernel (daemon + Mac app); Kernel planned ceiling 48000 -> 50000 to hold BurnBarFleetContracts.swift + BurnBarFleetRPCContracts.swift without splitting the wire module mid-port. Mobile Swift/Kotlin policy twins (auth, escrow, pulse, Hermes, OS integration) also live in Kernel SharedModels so iOS and Android compile the same classifier; planned ceiling 50000 -> 52000 to hold those files without a mid-parity target split.",
   "main": {
     "target": "OpenBurnBarCore",
     "totalLines": 127,
@@ -49,7 +49,7 @@
     },
     "OpenBurnBarKernel": {
       "maxFiles": 185,
-      "maxLines": 50000,
+      "maxLines": 52000,
       "planned": true
     },
     "OpenBurnBarParserSupport": {
