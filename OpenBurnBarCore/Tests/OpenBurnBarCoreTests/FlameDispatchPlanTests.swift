@@ -108,3 +108,86 @@ final class FlameDispatchPlanTests: XCTestCase {
         XCTAssertEqual(fromDecision, try planned.plan.get())
     }
 }
+
+/// The receiving half: every Mac sees every mission document, so the executor
+/// decides which ones are none of its business.
+final class MissionClaimGateTests: XCTestCase {
+
+    func test_anUntargetedMissionIsClaimableByAnyMac() {
+        XCTAssertNil(MissionClaimGate.ignoreReason([:], localBodyID: "body-a"))
+        XCTAssertNil(MissionClaimGate.ignoreReason(["targetBodyID": "  "], localBodyID: "body-a"))
+        XCTAssertNil(MissionClaimGate.ignoreReason(["targetBodyID": 42], localBodyID: "body-a"))
+    }
+
+    func test_aTargetedMissionIsClaimedOnlyByTheTargetedMac() {
+        let mission: [String: Any] = ["targetBodyID": "body-b"]
+        XCTAssertNil(MissionClaimGate.ignoreReason(mission, localBodyID: "body-b"))
+        XCTAssertEqual(
+            MissionClaimGate.ignoreReason(mission, localBodyID: "body-a"),
+            "is routed to another Mac"
+        )
+    }
+
+    /// Fail-closed: a Mac that cannot resolve its own body id must not race the
+    /// targeted machine for the claim.
+    func test_aTargetedMissionIsDeclinedWhenThisMacHasNoBodyID() {
+        XCTAssertEqual(
+            MissionClaimGate.ignoreReason(["targetBodyID": "body-b"], localBodyID: nil),
+            "is routed to another Mac"
+        )
+    }
+
+    /// Routing outranks approval state: a mission for another Mac is not this
+    /// machine's to park, approve, or execute.
+    func test_routingIsAnsweredBeforeApproval() {
+        let mission: [String: Any] = [
+            "targetBodyID": "body-b",
+            "status": "waiting_for_approval",
+            "approvalStatus": "pending",
+            "approvalRequestId": "approval-1"
+        ]
+        XCTAssertEqual(
+            MissionClaimGate.ignoreReason(mission, localBodyID: "body-a"),
+            "is routed to another Mac"
+        )
+        XCTAssertEqual(
+            MissionClaimGate.ignoreReason(mission, localBodyID: "body-b"),
+            "remains parked for mobile approval"
+        )
+    }
+
+    func test_aParkedMissionWaitsForItsApprover() {
+        XCTAssertEqual(
+            MissionClaimGate.ignoreReason(
+                [
+                    "status": " Waiting_For_Approval ",
+                    "approvalStatus": "PENDING",
+                    "approvalRequestId": "approval-1"
+                ],
+                localBodyID: "body-a"
+            ),
+            "remains parked for mobile approval"
+        )
+    }
+
+    /// A parked marker missing its request id is malformed, and a malformed
+    /// park must not strand the mission forever.
+    func test_aMalformedParkIsNotHonoured() {
+        XCTAssertNil(
+            MissionClaimGate.ignoreReason(
+                ["status": "waiting_for_approval", "approvalStatus": "pending"],
+                localBodyID: "body-a"
+            )
+        )
+        XCTAssertNil(
+            MissionClaimGate.ignoreReason(
+                [
+                    "status": "waiting_for_approval",
+                    "approvalStatus": "pending",
+                    "approvalRequestId": "   "
+                ],
+                localBodyID: "body-a"
+            )
+        )
+    }
+}

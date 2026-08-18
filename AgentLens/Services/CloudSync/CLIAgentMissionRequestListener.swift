@@ -8,9 +8,8 @@ final class CLIAgentMissionRequestListener {
     let settingsManager: SettingsManager
     let chatController: ChatSessionController
     let deviceTrustChecker: CLIAgentMissionDeviceTrustChecking
-    /// This Mac's HermesBody id (the relay host connection id), used to honour
-    /// the War Room Flame's routing target. `nil` before the relay host has an
-    /// identity, which reads as "cannot prove I am the target".
+    /// This Mac's HermesBody id — the relay host's connection id, `nil` before
+    /// it has one, which `MissionClaimGate` reads as "cannot prove I am the target".
     let localBodyIDProvider: @MainActor () -> String?
     let logger = Logger(subsystem: "com.openburnbar.app", category: "CLIAgentMissionRequestListener")
     var listener: ListenerRegistration?
@@ -32,20 +31,6 @@ final class CLIAgentMissionRequestListener {
         self.chatController = chatController
         self.deviceTrustChecker = deviceTrustChecker
         self.localBodyIDProvider = localBodyIDProvider
-    }
-
-    /// The Flame stamps `targetBodyID` on every mission it routes to a specific
-    /// Mac. A machine that is not the target leaves the document alone so the
-    /// chosen machine can claim it; the field is advisory to Firestore (any
-    /// signed-in device could forge it) but binding on the executor, which is
-    /// where the decision belongs.
-    ///
-    /// Fail-closed: an unresolved local body id means this Mac cannot prove it
-    /// is the target, so it declines rather than racing for the claim.
-    static func isRoutedElsewhere(_ data: [String: Any], localBodyID: String?) -> Bool {
-        guard let target = (data["targetBodyID"] as? String)?
-            .trimmingCharacters(in: .whitespacesAndNewlines), !target.isEmpty else { return false }
-        return target != localBodyID
     }
     func start() {
         logger.info("mission listener start requested")
@@ -109,12 +94,6 @@ final class CLIAgentMissionRequestListener {
             }
     }
     static func processingIdentity(documentID: String, data: [String: Any]) -> String { "\(documentID)\u{0}\(data["status"] as? String ?? "pending")\u{0}\(data["approvalStatus"] as? String ?? "none")" }
-    static func isParkedPendingApproval(_ data: [String: Any]) -> Bool {
-        let status = (data["status"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let approval = (data["approvalStatus"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let requestID = (data["approvalRequestId"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-        return status == "waiting_for_approval" && approval == "pending" && requestID?.isEmpty == false
-    }
     func processDocs(_ docs: [QueryDocumentSnapshot]) {
         guard isStarted else { return }
         processingQueue.enqueue(docs)

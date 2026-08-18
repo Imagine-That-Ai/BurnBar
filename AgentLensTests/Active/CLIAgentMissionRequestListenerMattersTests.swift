@@ -41,43 +41,23 @@ final class CLIAgentMissionRequestListenerMattersTests: XCTestCase {
         )
 
         XCTAssertNotEqual(pendingIdentity, approvedIdentity)
-        XCTAssertTrue(CLIAgentMissionRequestListener.isParkedPendingApproval(pending))
-        XCTAssertFalse(CLIAgentMissionRequestListener.isParkedPendingApproval(approved))
+        XCTAssertEqual(
+            MissionClaimGate.ignoreReason(pending, localBodyID: "body-a"),
+            "remains parked for mobile approval"
+        )
+        XCTAssertNil(MissionClaimGate.ignoreReason(approved, localBodyID: "body-a"))
     }
 
     @MainActor
     func testMalformedPendingApprovalIsNotSilentlyParked() {
-        XCTAssertFalse(
-            CLIAgentMissionRequestListener.isParkedPendingApproval([
-                "status": "waiting_for_approval",
-                "approvalStatus": "pending"
-            ])
-        )
-    }
-
-    // MARK: - War Room routing target
-
-    @MainActor
-    func testUntargetedMissionIsClaimableByAnyMac() {
-        XCTAssertFalse(CLIAgentMissionRequestListener.isRoutedElsewhere([:], localBodyID: "body-a"))
-        XCTAssertFalse(
-            CLIAgentMissionRequestListener.isRoutedElsewhere(["targetBodyID": "  "], localBodyID: "body-a")
-        )
-    }
-
-    @MainActor
-    func testTargetedMissionIsClaimedOnlyByTheTargetedMac() {
-        let mission: [String: Any] = ["targetBodyID": "body-b"]
-        XCTAssertFalse(CLIAgentMissionRequestListener.isRoutedElsewhere(mission, localBodyID: "body-b"))
-        XCTAssertTrue(CLIAgentMissionRequestListener.isRoutedElsewhere(mission, localBodyID: "body-a"))
-    }
-
-    /// Fail-closed: a Mac that cannot resolve its own body id must not race the
-    /// targeted machine for the claim.
-    @MainActor
-    func testTargetedMissionIsDeclinedWhenThisMacHasNoBodyID() {
-        XCTAssertTrue(
-            CLIAgentMissionRequestListener.isRoutedElsewhere(["targetBodyID": "body-b"], localBodyID: nil)
+        XCTAssertNil(
+            MissionClaimGate.ignoreReason(
+                [
+                    "status": "waiting_for_approval",
+                    "approvalStatus": "pending"
+                ],
+                localBodyID: "body-a"
+            )
         )
     }
 

@@ -83,3 +83,43 @@ public enum FlameDispatchPlanner {
         return (decision, plan(for: decision))
     }
 }
+
+/// The receiving half of a dispatch: given one mission document, should this
+/// machine leave it alone?
+///
+/// Every Mac on the account sees every mission document, so the decision to
+/// skip one is made by the executor, not by the query. Keeping it here — pure,
+/// shared, and out of the GUI listener — means the daemon and the app answer
+/// the question identically, and the answer stays testable without a live
+/// Firestore.
+public enum MissionClaimGate {
+
+    /// A short, log-ready phrase when this machine should ignore the mission,
+    /// `nil` when it should proceed.
+    ///
+    /// Routing is checked first: a mission the Flame addressed to another Mac
+    /// is none of this machine's business, whatever its approval state.
+    /// `targetBodyID` is advisory to Firestore (any signed-in device could
+    /// write one) and binding on the executor, which is where the decision
+    /// belongs. Fail-closed: an unresolved local body id means this Mac cannot
+    /// prove it is the target, so it declines rather than racing for the claim.
+    public static func ignoreReason(_ data: [String: Any], localBodyID: String?) -> String? {
+        let target = trimmed(data["targetBodyID"])
+        if let target, !target.isEmpty, target != localBodyID {
+            return "is routed to another Mac"
+        }
+        // A mission parked for phone approval is left untouched until the
+        // approver answers; claiming it here would execute unapproved work.
+        let status = trimmed(data["status"])?.lowercased()
+        let approval = trimmed(data["approvalStatus"])?.lowercased()
+        let requestID = trimmed(data["approvalRequestId"])
+        guard status == "waiting_for_approval", approval == "pending", requestID?.isEmpty == false else {
+            return nil
+        }
+        return "remains parked for mobile approval"
+    }
+
+    private static func trimmed(_ value: Any?) -> String? {
+        (value as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
