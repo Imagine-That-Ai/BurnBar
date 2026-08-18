@@ -201,6 +201,9 @@ final class OpenBurnBarRuntimeContext {
     var castActionsListener: CastActionsListener?
     var cliAgentMissionRequestListener: CLIAgentMissionRequestListener?
     var agentHarnessImportJobListener: AgentHarnessImportJobListener?
+    /// The War Room rhythm (W6). Fires due standing orders at the machine the
+    /// Flame picks; without it the `standing_orders` table is a table nobody reads.
+    var standingOrderRuntimeHost: StandingOrderRuntimeHost?
     var routedClientWiringSentry: RoutedClientWiringSentry?
     #if canImport(AppKit) && !DISTRIBUTION_MAS
     var computerUseRuntimeController: ComputerUseRuntimeController?
@@ -569,6 +572,7 @@ final class OpenBurnBarRuntimeContext {
             castActionsListener?.stop()
             cliAgentMissionRequestListener?.stop()
             agentHarnessImportJobListener?.stop()
+            standingOrderRuntimeHost?.stop()
             return
         }
 
@@ -637,6 +641,19 @@ final class OpenBurnBarRuntimeContext {
             agentHarnessImportJobListener = importListener
         }
         importListener.start()
+
+        let standingOrders: StandingOrderRuntimeHost
+        if let existing = standingOrderRuntimeHost {
+            standingOrders = existing
+        } else {
+            standingOrders = StandingOrderRuntimeHost(
+                store: StandingOrderStore(dbQueue: dataStore.actor.dbQueue),
+                directory: HermesBodyDirectory(accountManager: accountManager),
+                dispatcher: MacWandMissionDispatcher(accountManager: accountManager)
+            )
+            standingOrderRuntimeHost = standingOrders
+        }
+        standingOrders.start()
     }
 
     /// Boot the durability sentry that keeps Codex / Forge / OpenCode / Droid
