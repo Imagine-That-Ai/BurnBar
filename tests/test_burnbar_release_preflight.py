@@ -4,6 +4,8 @@ import re
 import subprocess
 from pathlib import Path
 
+import scripts.ci.check_agpl_legal_release_review as agpl_review
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -18,10 +20,7 @@ def load_release_preflight_module():
 
 
 def current_release_tag() -> str:
-    project_yml = (ROOT / "project.yml").read_text(encoding="utf-8")
-    match = re.search(r'MARKETING_VERSION:\s*"?([0-9]+(?:\.[0-9]+)+)"?', project_yml)
-    assert match is not None, "project.yml must declare MARKETING_VERSION"
-    return f"v{match.group(1)}"
+    return agpl_review.marketing_version_release_tag(ROOT)
 
 
 def test_release_preflight_holds_until_signed_legal_evidence_is_approved():
@@ -58,20 +57,32 @@ def test_release_preflight_rejects_pending_legal_template_as_release_approval():
     assert "legal release review is not approved: 'pending'" in result.stderr
 
 
-def test_current_owner_emergency_packet_is_bound_to_current_release_tag():
+def test_owner_emergency_packet_is_honestly_bound_for_release():
     evidence = ROOT / "launch-evidence/latest-agpl-store-legal-packet.json"
     data = json.loads(evidence.read_text(encoding="utf-8"))
-    expected_release_tag = current_release_tag()
+    packet_tag = data["repo"]["releaseTag"]
 
-    assert data["repo"]["releaseTag"] == expected_release_tag
+    binding_errors = agpl_review.validate_owner_emergency_packet_release_binding(
+        data,
+        repo_root=ROOT,
+    )
+    assert binding_errors == [], binding_errors
+
+    attestation_errors = agpl_review.validate_owner_attested_soft_approval(
+        data,
+        repo_root=ROOT,
+        expected_release_tag=packet_tag,
+    )
+    assert attestation_errors == [], attestation_errors
 
     result = subprocess.run(
         [
             "python3",
             "scripts/ci/check_burnbar_release_preflight.py",
             "--allow-owner-emergency-approval",
+            "--allow-owner-emergency-runtime-hold",
             "--expected-release-tag",
-            expected_release_tag,
+            packet_tag,
         ],
         cwd=ROOT,
         text=True,

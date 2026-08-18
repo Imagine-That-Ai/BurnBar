@@ -382,6 +382,8 @@ def check_source_provenance_process() -> list[Check]:
         ],
         "scripts/ci/check_agpl_legal_release_review.py": [
             "validate_legal_release_review",
+            "validate_owner_emergency_packet_release_binding",
+            "marketing_version_release_tag",
             "app store and commercial distribution terms",
             "external_counsel",
             "distributionChannels",
@@ -660,6 +662,41 @@ def check_ios_libsignal_free() -> Check:
     )
 
 
+def check_owner_emergency_packet_release_binding() -> Check:
+    evidence_path = ROOT / "launch-evidence/latest-agpl-store-legal-packet.json"
+    if not evidence_path.is_file():
+        return Check(
+            "owner emergency packet release binding",
+            False,
+            f"legal packet is missing: {evidence_path}",
+        )
+    try:
+        data = json.loads(evidence_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        return Check(
+            "owner emergency packet release binding",
+            False,
+            f"legal packet is unreadable: {exc}",
+        )
+
+    from scripts.ci.check_agpl_legal_release_review import (
+        marketing_version_release_tag,
+        validate_owner_emergency_packet_release_binding,
+    )
+
+    errors = validate_owner_emergency_packet_release_binding(data, repo_root=ROOT)
+    if errors:
+        return Check("owner emergency packet release binding", False, "; ".join(errors))
+
+    packet_tag = data.get("repo", {}).get("releaseTag", "")
+    source_tag = marketing_version_release_tag(ROOT)
+    if packet_tag == source_tag:
+        detail = f"packet bound to committed marketing version {source_tag}"
+    else:
+        detail = f"packet names forward successor {packet_tag} ahead of committed marketing version {source_tag}"
+    return Check("owner emergency packet release binding", True, detail)
+
+
 def check_claim_hygiene() -> Check:
     scanned_roots = ["README.md", "apps/desktop/README.md", "docs", "plugins/platforms/burnbar"]
     excluded = {
@@ -706,6 +743,7 @@ def all_checks() -> list[Check]:
         *check_mit_upstream_boundary_process(),
         check_license_workflow_product_detection(),
         check_ios_libsignal_free(),
+        check_owner_emergency_packet_release_binding(),
         check_claim_hygiene(),
     ]
 
