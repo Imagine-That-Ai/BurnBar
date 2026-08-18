@@ -80,7 +80,7 @@ final class TokenUsageGeneratedTests: XCTestCase {
         XCTAssertEqual(usage.inputTokens, 0)
         XCTAssertEqual(usage.outputTokens, 0)
         XCTAssertEqual(usage.costUSD, 0, accuracy: 0.0)
-        XCTAssertFalse(usage.recordedAt.isEmpty)
+        XCTAssertEqual(usage.recordedAt, "2026-08-17T12:00:00.000Z")
     }
 
     private func decode(_ json: String) throws -> FirestoreUsageEventDoc {
