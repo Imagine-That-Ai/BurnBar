@@ -94,16 +94,24 @@ internal class HermesServiceMessageLaunch(
     }
 
     private fun launchStreamingSend(modelName: String, block: suspend () -> Unit) {
-        scope.launch(sendFailureHandler(modelName)) {
-            try {
-                block()
-            } finally {
-                service.isStreamingInternal.value = false
+        service.supersedeCurrentStream()
+        val generation = service.streamGeneration
+        service.applyGeneration = generation
+        service.applyThreadId = service.currentConversationIDInternal.value ?: service.currentThreadIDInternal.value
+        service.streamJob =
+            scope.launch(sendFailureHandler(modelName, generation)) {
+                try {
+                    block()
+                } finally {
+                    if (service.isCurrentStream(generation, service.applyThreadId)) {
+                        service.isStreamingInternal.value = false
+                    }
+                }
             }
-        }
     }
 
-    private fun sendFailureHandler(modelName: String): CoroutineExceptionHandler = CoroutineExceptionHandler { _, error ->
+    private fun sendFailureHandler(modelName: String, generation: Int): CoroutineExceptionHandler = CoroutineExceptionHandler { _, error ->
+        if (!service.isCurrentStream(generation, service.applyThreadId)) return@CoroutineExceptionHandler
         val message = error.hermesSendFailureMessage()
         runCatching { Log.e(TAG, "Hermes send failed: $message", error) }
         service.runtimeErrorTextInternal.value = message

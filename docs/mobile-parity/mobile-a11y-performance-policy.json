@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "id": "openburnbar-mobile-a11y-performance-policy-v1",
+  "programStatus": "mobile parity remediation in progress",
+  "productParityClaim": false,
+  "note": "Unit-checkable floor only. Manual VoiceOver/TalkBack and profiler captures stay blocked.",
+  "typography": {
+    "ios": "UIFontMetrics-scaled system fonts via MobileScaledFont / MobileTheme.Typography. Font.system(size:) on user-facing Text is forbidden on Pulse/Burn/Hermes/Inbox/Store primary surfaces.",
+    "android": "Compose `sp` plus AuroraType / AuroraTypography tokens. fontSize in `dp` is forbidden on those surfaces."
+  },
+  "labels": {
+    "required": ["heroBurn", "quotaRing", "stopButton", "inboxRow", "chart", "iconOnly", "loading", "error", "liveStream"],
+    "fixture": "docs/mobile-parity/fixtures/product/a11y-contract-vectors.json",
+    "swiftPolicy": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/MobileAccessibilityLabelPolicy.swift",
+    "kotlinPolicy": "android/app/src/main/java/com/openburnbar/data/policy/MobileAccessibilityLabelPolicy.kt"
+  },
+  "contrast": {
+    "minimumNormalText": 4.5,
+    "minimumLargeText": 3.0,
+    "note": "Ratio floor for future named-device captures. Not a VoiceOver PASS."
+  },
+  "touchTarget": {
+    "minimumPt": 44,
+    "minimumDp": 48
+  },
+  "focusOrder": "Primary content, then status, then icon-only actions.",
+  "reducedMotion": "Repeating decorative animation must honor accessibilityReduceMotion / Compose reduced-motion.",
+  "performance": {
+    "pulseWindowMetrics": {
+      "complexity": "O(n)",
+      "n": "usage event count",
+      "maxPasses": 1,
+      "budgetEvents": 4000
+    },
+    "backgroundRetry": {
+      "maxAttempts": 3,
+      "unbounded": false
+    }
+  },
+  "manualEvidence": {
+    "voiceOver": "blocked",
+    "talkBack": "blocked",
+    "profiler": "blocked",
+    "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate"
+  }
+}

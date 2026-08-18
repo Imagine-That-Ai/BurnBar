@@ -20,6 +20,8 @@ struct AgentReplyNotificationBanner: Identifiable, Equatable {
     let threadID: String
     let provider: AgentProvider?
     let deepLink: URL?
+    let uid: String?
+    let expiresAtMs: Int64?
 }
 
 private struct AgentReplyNotificationPayload: Sendable {
@@ -31,6 +33,8 @@ private struct AgentReplyNotificationPayload: Sendable {
     let preview: String
     let provider: AgentProvider?
     let deepLink: String?
+    let uid: String?
+    let expiresAtMs: Int64?
 
     init(
         type: String,
@@ -40,7 +44,9 @@ private struct AgentReplyNotificationPayload: Sendable {
         title: String,
         preview: String,
         provider: AgentProvider?,
-        deepLink: String?
+        deepLink: String?,
+        uid: String? = nil,
+        expiresAtMs: Int64? = nil
     ) {
         self.type = type
         self.eventID = eventID
@@ -50,6 +56,8 @@ private struct AgentReplyNotificationPayload: Sendable {
         self.preview = preview
         self.provider = provider
         self.deepLink = deepLink
+        self.uid = uid
+        self.expiresAtMs = expiresAtMs
     }
 
     init?(userInfo: [AnyHashable: Any]) {
@@ -65,6 +73,8 @@ private struct AgentReplyNotificationPayload: Sendable {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         provider = Self.string(userInfo["provider"]).flatMap(AgentProvider.init(rawValue:))
         deepLink = Self.string(userInfo["deep_link"])
+        uid = Self.string(userInfo["uid"]) ?? Self.string(userInfo["account_uid"])
+        expiresAtMs = Self.string(userInfo["expires_at_millis"]).flatMap { Int64($0) }
     }
 
     var url: URL? {
@@ -80,7 +90,9 @@ private struct AgentReplyNotificationPayload: Sendable {
             title: title,
             preview: preview,
             provider: provider,
-            deepLink: nil
+            deepLink: nil,
+            uid: uid,
+            expiresAtMs: expiresAtMs
         )
     }
 
@@ -143,6 +155,11 @@ final class AgentReplyNotificationService: NSObject, ObservableObject {
     private var activeRuntime: String?
     private var activeSurface: String?
     private var appLifecycle = "unknown"
+    private var lastConsumedEventID: String?
+    private let lastConsumedDefaultsPrefix = "agentReplyNotifications.lastConsumed."
+    /// Set while this install's device doc for `uid` is tombstoned. Heartbeats
+    /// must not clear the flag or write `fcm_token` back onto that doc.
+    private var tombstonedUid: String?
 
     var deviceID: String {
         let defaults = UserDefaults.standard
@@ -171,6 +188,100 @@ final class AgentReplyNotificationService: NSObject, ObservableObject {
         Messaging.messaging().apnsToken = deviceToken
     }
 
+    func clearBanners() {
+        banner = nil
+    }
+
+    func tombstoneCurrentDevice() async {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        await tombstoneDevice(uid: uid)
+    }
+
+    /// Invalidate this install's token for the current uid immediately before
+    /// Firebase Auth is about to leave that uid. Never call this on cancel.
+    func tombstoneIfSwitchingAwayFromCurrentUid() async {
+        await tombstoneCurrentDevice()
+    }
+
+    func restoreDeviceAfterFailedSwitch() async {
+        if tombstonedUid == Auth.auth().currentUser?.uid {
+            tombstonedUid = nil
+        }
+        await persistDeviceState(clearInvalidation: true)
+    }
+
+    func tombstoneDevice(uid: String) async {
+        guard FirebaseAppAvailable.isConfigured, !uid.isEmpty else { return }
+        let boundUid = Auth.auth().currentUser?.uid
+        if boundUid == uid {
+            tombstonedUid = uid
+        }
+        let tombstonedAtMs = Int64(Date().timeIntervalSince1970 * 1000)
+        do {
+            try await Firestore.firestore()
+                .collection("users").document(uid)
+                .collection("devices").document(deviceID)
+                .setData([
+                    "pushTokenInvalidatedAtMillis": tombstonedAtMs,
+                    "fcm_token": FieldValue.delete(),
+                    "agentNotificationsEnabled": false,
+                    "updated_at_millis": tombstonedAtMs
+                ], merge: true)
+        } catch {
+            #if DEBUG
+            agentReplyNotificationLogger.error("device tombstone failed: \(error.localizedDescription, privacy: .public)")
+            #endif
+        }
+        if AgentReplyConsumedScope.shouldClearLastConsumed(tombstonedUid: uid, boundUid: boundUid) {
+            lastConsumedEventID = nil
+            banner = nil
+        }
+    }
+
+    func bindConsumedEvents(to uid: String?) {
+        if let uid {
+            lastConsumedEventID = UserDefaults.standard.string(forKey: lastConsumedDefaultsPrefix + uid)
+        } else {
+            lastConsumedEventID = nil
+        }
+    }
+
+    private func rememberConsumed(eventId: String, uid: String?) {
+        lastConsumedEventID = eventId
+        if let uid {
+            UserDefaults.standard.set(eventId, forKey: lastConsumedDefaultsPrefix + uid)
+        }
+    }
+
+    @discardableResult
+    private func presentBannerIfNavigable(_ candidate: AgentReplyNotificationBanner) -> Bool {
+        let envelope = MobileOsIntegrationPolicy.envelope(
+            from: AgentReplyBannerNavigation.openFields(from: candidate)
+        )
+        let decision = MobileOsIntegrationPolicy.navigation(
+            envelope: envelope,
+            activeUid: Auth.auth().currentUser?.uid,
+            nowMs: Int64(Date().timeIntervalSince1970 * 1000),
+            lastConsumedEventId: lastConsumedEventID,
+            permissionGranted: true
+        )
+        guard decision == .navigate else { return false }
+        banner = candidate
+        return true
+    }
+
+    /// Route an already-flattened push payload in-process and, when it actually
+    /// navigated, record its event id so the same open is never replayed.
+    private func applyConsumingDeepLink(_ fields: [String: String]) {
+        let uid = Auth.auth().currentUser?.uid
+        guard let consumed = MobileOsDeepLinkApplier.applyIfNavigable(
+            payload: fields,
+            activeUid: uid,
+            lastConsumedEventId: lastConsumedEventID
+        ) else { return }
+        rememberConsumed(eventId: consumed, uid: uid)
+    }
+
     func updateLifecycle(_ lifecycle: String) {
         appLifecycle = lifecycle
         Task { await persistDeviceState() }
@@ -185,20 +296,11 @@ final class AgentReplyNotificationService: NSObject, ObservableObject {
 
     func open(_ banner: AgentReplyNotificationBanner) {
         self.banner = nil
-        // An inbox banner routes in-process. `UIApplication.open` on a
-        // `burnbar://` URL from inside the app is a needless round trip through
-        // the system, and on an in-app tap the app is by definition frontmost.
-        if banner.runtime == AIInboxDeepLink.pushType {
-            AIInboxDeepLink.open(itemID: banner.threadID)
-            return
-        }
-        if let runtime = AssistantRuntimeID(rawValue: banner.runtime) {
-            AssistantPendingThread.shared.stash(assistant: runtime, threadID: banner.threadID)
-        }
-        guard let deepLink = banner.deepLink else { return }
-        UIApplication.shared.open(deepLink)
+        applyConsumingDeepLink(AgentReplyBannerNavigation.openFields(from: banner))
     }
 
+    /// Dismiss is not an open: it never navigates and never consumes the event,
+    /// so the same reply can still be opened from the tray.
     func dismissBanner() {
         banner = nil
     }
@@ -220,14 +322,20 @@ final class AgentReplyNotificationService: NSObject, ObservableObject {
         // before it reaches either of them.
         let preview = HermesAtomParser.plainText(preview)
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        banner = AgentReplyNotificationBanner(
-            id: id,
-            title: title,
-            preview: preview,
-            runtime: runtime,
-            threadID: threadID,
-            provider: provider,
-            deepLink: resolvedDeepLink
+        let uid = Auth.auth().currentUser?.uid
+        let expiresAtMs = Int64(Date().timeIntervalSince1970 * 1000) + 10 * 60 * 1000
+        presentBannerIfNavigable(
+            AgentReplyNotificationBanner(
+                id: id,
+                title: title,
+                preview: preview,
+                runtime: runtime,
+                threadID: threadID,
+                provider: provider,
+                deepLink: resolvedDeepLink,
+                uid: uid,
+                expiresAtMs: expiresAtMs
+            )
         )
 
         let content = UNMutableNotificationContent()
@@ -241,8 +349,10 @@ final class AgentReplyNotificationService: NSObject, ObservableObject {
             "runtime": runtime,
             "thread_id": threadID,
             "title": title,
-            "preview": preview
+            "preview": preview,
+            "expires_at_millis": String(expiresAtMs)
         ]
+        if let uid { userInfo["uid"] = uid }
         if let provider {
             userInfo["provider"] = provider.rawValue
         }
@@ -250,12 +360,17 @@ final class AgentReplyNotificationService: NSObject, ObservableObject {
             userInfo["deep_link"] = deepLink
         }
         content.userInfo = userInfo
-        let request = UNNotificationRequest(
-            identifier: "burnbar.agent.local.\(id)",
-            content: content,
-            trigger: UNTimeIntervalNotificationTrigger(timeInterval: 0.1, repeats: false)
-        )
-        UNUserNotificationCenter.current().add(request) { _ in }
+        Task {
+            let granted = await Self.notificationsAuthorized()
+            guard MobileOsIntegrationPolicy.mayDeliver(permissionGranted: granted) else { return }
+            UNUserNotificationCenter.current().add(
+                UNNotificationRequest(
+                    identifier: "burnbar.agent.local.\(id)",
+                    content: content,
+                    trigger: UNTimeIntervalNotificationTrigger(timeInterval: 0.1, repeats: false)
+                )
+            ) { _ in }
+        }
     }
 
     private func requestAuthorizationAndRegister(application: UIApplication) {
@@ -286,7 +401,7 @@ final class AgentReplyNotificationService: NSObject, ObservableObject {
         }
     }
 
-    private func persistDeviceState() async {
+    private func persistDeviceState(clearInvalidation: Bool = false) async {
         guard FirebaseAppAvailable.isConfigured,
               let uid = Auth.auth().currentUser?.uid else { return }
         // Report the REAL notification-permission state — never a hardcoded
@@ -295,6 +410,7 @@ final class AgentReplyNotificationService: NSObject, ObservableObject {
         // instead of marking a silently-dropped push "sent". `.authorized` and
         // `.provisional` both deliver banners; anything else means no UI lands.
         let notificationsEnabled = await Self.notificationsAuthorized()
+        let tombstoned = tombstonedUid == uid
         var payload: [String: Any] = [
             "deviceId": deviceID,
             "platform": "ios",
@@ -303,7 +419,15 @@ final class AgentReplyNotificationService: NSObject, ObservableObject {
             "lastSeenAtMillis": Int64(Date().timeIntervalSince1970 * 1000),
             "updated_at_millis": Int64(Date().timeIntervalSince1970 * 1000)
         ]
-        if let fcmToken { payload["fcm_token"] = fcmToken }
+        // Heartbeats must not un-tombstone this uid or write the token back.
+        // Only an explicit restore (failed switch / failed delete) may clear
+        // the flag, and only on this uid's device doc.
+        if clearInvalidation && !tombstoned {
+            payload["pushTokenInvalidatedAtMillis"] = FieldValue.delete()
+        }
+        if !tombstoned, let fcmToken {
+            payload["fcm_token"] = fcmToken
+        }
         if let activeThreadID { payload["activeThreadId"] = activeThreadID }
         if let activeRuntime { payload["activeRuntime"] = activeRuntime }
         if let activeSurface { payload["activeSurface"] = activeSurface }
@@ -323,17 +447,27 @@ final class AgentReplyNotificationService: NSObject, ObservableObject {
         guard let payload else {
             return [.banner, .sound]
         }
-        if foreground, activeThreadID == payload.threadID, activeRuntime == payload.runtime {
+        if MobileOsIntegrationPolicy.shouldSuppressForegroundSameThread(
+            foreground: foreground,
+            activeRuntime: activeRuntime,
+            activeThreadId: activeThreadID,
+            payloadRuntime: payload.runtime,
+            payloadThreadId: payload.threadID
+        ) {
             return []
         }
-        banner = AgentReplyNotificationBanner(
-            id: payload.eventID,
-            title: payload.title,
-            preview: payload.preview,
-            runtime: payload.runtime,
-            threadID: payload.threadID,
-            provider: payload.provider,
-            deepLink: payload.url
+        presentBannerIfNavigable(
+            AgentReplyNotificationBanner(
+                id: payload.eventID,
+                title: payload.title,
+                preview: payload.preview,
+                runtime: payload.runtime,
+                threadID: payload.threadID,
+                provider: payload.provider,
+                deepLink: payload.url,
+                uid: payload.uid,
+                expiresAtMs: payload.expiresAtMs
+            )
         )
         return foreground ? [] : [.banner, .sound]
     }
@@ -353,12 +487,24 @@ final class AgentReplyNotificationService: NSObject, ObservableObject {
             return
         }
 
-        if let runtime = AssistantRuntimeID(rawValue: payload.runtime) {
-            AssistantPendingThread.shared.stash(assistant: runtime, threadID: payload.threadID)
+        guard actionIdentifier == UNNotificationDefaultActionIdentifier
+            || actionIdentifier == Self.openActionID else {
+            return
         }
-        if let deepLink = payload.url {
-            await UIApplication.shared.open(deepLink)
-        }
+
+        applyConsumingDeepLink(
+            AgentReplyBannerNavigation.scoped(
+                [
+                    "type": payload.type,
+                    "event_id": payload.eventID,
+                    "runtime": payload.runtime,
+                    "thread_id": payload.threadID
+                ],
+                uid: payload.uid,
+                expiresAtMs: payload.expiresAtMs,
+                deepLink: payload.deepLink
+            )
+        )
     }
 
     private func submitReply(eventID: String, replyText: String) async {
@@ -448,23 +594,34 @@ final class AgentReplyNotificationService: NSObject, ObservableObject {
     /// the app open is exactly the moment worth surfacing. It reuses the same
     /// banner so the two push families look identical in-app.
     private func handleInboxPayload(_ payload: AIInboxNotificationPayload, foreground: Bool) -> UNNotificationPresentationOptions {
-        banner = AgentReplyNotificationBanner(
-            id: payload.eventID,
-            title: payload.title,
-            preview: payload.body,
-            runtime: AIInboxDeepLink.pushType,
-            threadID: payload.itemID,
-            provider: nil,
-            deepLink: payload.deepLink
+        presentBannerIfNavigable(
+            AgentReplyNotificationBanner(
+                id: payload.eventID,
+                title: payload.title,
+                preview: payload.body,
+                runtime: AIInboxDeepLink.pushType,
+                threadID: payload.itemID,
+                provider: nil,
+                deepLink: payload.deepLink,
+                uid: payload.uid,
+                expiresAtMs: payload.expiresAtMs
+            )
         )
         return foreground ? [] : [.banner, .sound]
     }
 
     private func openInboxItem(_ payload: AIInboxNotificationPayload) {
-        // Post directly rather than routing through `UIApplication.open`: the
-        // app is already frontmost when a notification response is delivered, so
-        // an external open would round-trip through the URL handler for nothing.
-        AIInboxDeepLink.open(itemID: payload.itemID)
+        applyConsumingDeepLink(
+            AgentReplyBannerNavigation.scoped(
+                [
+                    "type": AIInboxDeepLink.pushType,
+                    "event_id": payload.eventID,
+                    "item_id": payload.itemID
+                ],
+                uid: payload.uid,
+                expiresAtMs: payload.expiresAtMs
+            )
+        )
     }
 
     private nonisolated static let inboxOpenActionID = "AI_INBOX_OPEN"
@@ -533,6 +690,19 @@ extension AgentReplyNotificationService: UNUserNotificationCenterDelegate {
             return
         }
         let payload = AgentReplyNotificationPayload(userInfo: userInfo)
+        if payload == nil {
+            let actionIdentifier = response.actionIdentifier
+            guard actionIdentifier == UNNotificationDefaultActionIdentifier
+                || actionIdentifier == Self.openActionID else { return }
+            var fields: [String: String] = [:]
+            for (key, value) in userInfo {
+                if let name = key as? String, let string = value as? String {
+                    fields[name] = string
+                }
+            }
+            await MainActor.run { applyConsumingDeepLink(fields) }
+            return
+        }
         let resolved = await resolvedPayloadForPush(payload)
         let actionIdentifier = response.actionIdentifier
         let replyText = (response as? UNTextInputNotificationResponse)?.userText
@@ -652,6 +822,46 @@ private extension AgentReplyNotificationBanner {
 private enum FirebaseAppAvailable {
     static var isConfigured: Bool {
         FirebaseApp.app() != nil
+    }
+}
+
+enum AgentReplyConsumedScope {
+    /// Only drop in-memory lastConsumed when it still belongs to the tombstoned uid.
+    static func shouldClearLastConsumed(tombstonedUid: String, boundUid: String?) -> Bool {
+        boundUid == tombstonedUid
+    }
+}
+
+enum AgentReplyBannerNavigation {
+    /// Adds the envelope keys every open path shares — the uid the event was
+    /// minted for, its expiry, and the routed link — without inventing any of
+    /// them when the source payload had none.
+    static func scoped(
+        _ fields: [String: String],
+        uid: String?,
+        expiresAtMs: Int64?,
+        deepLink: String? = nil
+    ) -> [String: String] {
+        var payload = fields
+        if let uid { payload["uid"] = uid }
+        if let expiresAtMs { payload["expires_at_millis"] = String(expiresAtMs) }
+        if let deepLink { payload["deep_link"] = deepLink }
+        return payload
+    }
+
+    static func openFields(from banner: AgentReplyNotificationBanner) -> [String: String] {
+        scoped(
+            [
+                "type": banner.runtime == AIInboxDeepLink.pushType ? AIInboxDeepLink.pushType : "agent_reply",
+                "event_id": banner.id,
+                "runtime": banner.runtime,
+                "thread_id": banner.threadID,
+                "item_id": banner.threadID
+            ],
+            uid: banner.uid,
+            expiresAtMs: banner.expiresAtMs,
+            deepLink: banner.deepLink?.absoluteString
+        )
     }
 }
 

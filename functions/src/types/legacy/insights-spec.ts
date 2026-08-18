@@ -20,9 +20,10 @@
 // skill to keep Kotlin data classes aligned.
 // ---------------------------------------------------------------------------
 
-export interface InsightCanvasDoc {
-  id: string;
-  title: string;
+export type InsightCanvasDoc = Omit<
+  import("../generated/insights.js").InsightCanvasDoc,
+  "theme" | "origin"
+> & {
   summary?: string;
   symbolName: string;
   theme: InsightTheme;
@@ -32,11 +33,10 @@ export interface InsightCanvasDoc {
   modelTag?: InsightModelTagDoc;
   schemaVersion: number;
   createdAt: string;
-  updatedAt: string;
   lastRefreshedAt?: string;
   origin: InsightCanvasOrigin;
   sortIndex: number;
-}
+};
 
 export type InsightCanvasOrigin =
   | "userCreated"

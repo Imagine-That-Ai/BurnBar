@@ -7,81 +7,81 @@ struct PulseWindowMetrics: Equatable {
 }
 
 enum PulseWindowMetricBuilder {
+    /// Authority for window math is `MobilePulseWindowPolicy` (iOS oracle). The
+    /// windows are pure millisecond arithmetic, so no calendar is involved —
+    /// `liveQueryStart` is the only place a time zone matters.
     static func metrics(
         scope: PulseTimelineScope,
         rollupTotals: [RollupWindowKey: RollupTotals],
         liveUsages: [TokenUsage],
-        now: Date = Date(),
-        calendar: Calendar = .current
+        now: Date = Date()
     ) -> PulseWindowMetrics {
-        switch scope {
-        case .minute:
-            return liveMetrics(
-                from: liveUsages,
-                since: now.addingTimeInterval(-60),
-                through: now,
-                trailingTotal: rollupTotals[.sevenDays]
-            )
-        case .hour:
-            return liveMetrics(
-                from: liveUsages,
-                since: now.addingTimeInterval(-3_600),
-                through: now,
-                trailingTotal: rollupTotals[.sevenDays]
-            )
-        case .day:
-            return liveMetrics(
-                from: liveUsages,
-                since: now.addingTimeInterval(-Self.dayWindowInterval),
-                through: now,
-                trailingTotal: rollupTotals[.sevenDays]
-            )
-        case .week:
-            return PulseWindowMetrics(
-                total: rollupTotals[.sevenDays] ?? .zero,
-                trailingTotal: rollupTotals[.thirtyDays]
-            )
-        case .month:
-            return PulseWindowMetrics(
-                total: rollupTotals[.thirtyDays] ?? .zero,
-                trailingTotal: rollupTotals[.ninetyDays]
-            )
-        }
-    }
-
-    static func liveQueryStart(now: Date = Date(), calendar: Calendar = .current) -> Date {
-        let rollingStart = now.addingTimeInterval(-dayWindowInterval)
-        let components = calendar.dateComponents([.year, .month, .day, .hour], from: rollingStart)
-        return calendar.date(from: components) ?? rollingStart
-    }
-
-    private static let dayWindowInterval: TimeInterval = 24 * 60 * 60
-
-    private static func liveMetrics(
-        from usages: [TokenUsage],
-        since start: Date,
-        through end: Date,
-        trailingTotal: RollupTotals?
-    ) -> PulseWindowMetrics {
-        let rows = usages.filter { usage in
-            let attributedAt = eventDate(for: usage)
-            return attributedAt >= start && attributedAt <= end
-        }
+        let result = MobilePulseWindowPolicy.metrics(
+            scope: scope.policyScope,
+            rollups: Dictionary(uniqueKeysWithValues: rollupTotals.map { key, value in
+                (key.rawValue, MobilePulseRollupTotals(
+                    requests: value.requests,
+                    tokens: value.tokens,
+                    costUsd: value.costUsd
+                ))
+            }),
+            usages: liveUsages.map { usage in
+                MobilePulseUsageEvent(
+                    startMs: usage.startTime.pulseEpochMs,
+                    endMs: usage.endTime.pulseEpochMs,
+                    tokens: MobilePulseWindowPolicy.pulseTokens(
+                        totalTokens: usage.totalTokens,
+                        inputTokens: usage.inputTokens,
+                        outputTokens: usage.outputTokens,
+                        cacheCreationTokens: usage.cacheCreationTokens,
+                        cacheReadTokens: usage.cacheReadTokens,
+                        reasoningTokens: usage.reasoningTokens
+                    ),
+                    // The three-spelling coalesce is for Android's raw document
+                    // parse; iOS has already decoded them into `costUSD`, so this
+                    // call only applies the shared clamp.
+                    costUsd: MobilePulseWindowPolicy.pulseCost(
+                        costUsd: usage.costUSD,
+                        costUSD: usage.costUSD,
+                        cost: usage.costUSD
+                    )
+                )
+            },
+            nowMs: now.pulseEpochMs
+        )
         return PulseWindowMetrics(
             total: RollupTotals(
-                requests: rows.count,
-                tokens: rows.reduce(0) { $0 + max(0, $1.totalTokens) },
-                costUsd: rows.reduce(0) { $0 + max(0, $1.costUSD) }
+                requests: result.total.requests,
+                tokens: result.total.tokens,
+                costUsd: result.total.costUsd
             ),
-            trailingTotal: trailingTotal
+            trailingTotal: result.trailing.map {
+                RollupTotals(requests: $0.requests, tokens: $0.tokens, costUsd: $0.costUsd)
+            }
         )
     }
 
-    private static func eventDate(for usage: TokenUsage) -> Date {
-        max(usage.startTime, usage.endTime)
+    static func liveQueryStart(now: Date = Date(), calendar: Calendar = .current) -> Date {
+        let ms = MobilePulseWindowPolicy.liveQueryStartMs(
+            nowMs: now.pulseEpochMs,
+            timeZoneIdentifier: calendar.timeZone.identifier
+        )
+        return Date(timeIntervalSince1970: Double(ms) / 1_000)
     }
 }
 
-private extension RollupTotals {
-    static let zero = RollupTotals(requests: 0, tokens: 0, costUsd: 0)
+private extension PulseTimelineScope {
+    var policyScope: MobilePulseTimelineScope {
+        switch self {
+        case .minute: return .minute
+        case .hour: return .hour
+        case .day: return .day
+        case .week: return .week
+        case .month: return .month
+        }
+    }
+}
+
+private extension Date {
+    var pulseEpochMs: Int64 { Int64((timeIntervalSince1970 * 1_000).rounded()) }
 }

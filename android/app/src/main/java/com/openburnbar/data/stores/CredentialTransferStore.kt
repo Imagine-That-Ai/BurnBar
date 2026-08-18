@@ -4,8 +4,10 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.firebase.FirebaseException
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.functions.ktx.functions
 import com.google.firebase.ktx.Firebase
+import com.openburnbar.data.cloud.AndroidEscrowCredentialImporter
 import java.security.GeneralSecurityException
 import java.security.SecureRandom
 import java.util.Base64
@@ -176,7 +178,9 @@ internal object CredentialTransferCrypto {
 
 enum class TransferStatus { IDLE, EXPORTING, IMPORTING, SUCCESS, ERROR }
 
-class CredentialTransferStore : ViewModel() {
+class CredentialTransferStore(
+    private val escrowImporter: AndroidEscrowCredentialImporter = AndroidEscrowCredentialImporter(),
+) : ViewModel() {
     private val functions = Firebase.functions("us-central1")
 
     private val _status = MutableStateFlow(TransferStatus.IDLE)
@@ -193,7 +197,7 @@ class CredentialTransferStore : ViewModel() {
             _status.value = TransferStatus.EXPORTING
             _lastError.value = null
             try {
-                val uid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid
+                val uid = FirebaseAuth.getInstance().currentUser?.uid
                 if (uid == null) {
                     _lastError.value = "Not signed in"
                     _status.value = TransferStatus.ERROR
@@ -234,6 +238,38 @@ class CredentialTransferStore : ViewModel() {
         }
     }
 
+    fun importEscrowEnvelope(envelopeId: String) {
+        viewModelScope.launch {
+            _status.value = TransferStatus.IMPORTING
+            _lastError.value = null
+            try {
+                val uid = FirebaseAuth.getInstance().currentUser?.uid
+                if (uid == null) {
+                    _lastError.value = "Not signed in"
+                    _status.value = TransferStatus.ERROR
+                    return@launch
+                }
+                when (val result = escrowImporter.importFromFirestore(uid, envelopeId)) {
+                    is AndroidEscrowCredentialImporter.Result.Rejected -> {
+                        _lastError.value = result.failure.userVisibleLabel
+                        _status.value = TransferStatus.ERROR
+                    }
+                    is AndroidEscrowCredentialImporter.Result.PersistFailed -> {
+                        _lastError.value = result.message
+                        _status.value = TransferStatus.ERROR
+                    }
+                    is AndroidEscrowCredentialImporter.Result.Imported -> {
+                        _status.value = TransferStatus.SUCCESS
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("BurnBar", "Escrow envelope import failed", e)
+                _lastError.value = e.message ?: "Escrow import failed"
+                _status.value = TransferStatus.ERROR
+            }
+        }
+    }
+
     fun importCredentials(token: String) {
         viewModelScope.launch {
             _status.value = TransferStatus.IMPORTING
@@ -241,7 +277,7 @@ class CredentialTransferStore : ViewModel() {
             var claimedTransferId: String? = null
             var claimId: String? = null
             try {
-                val uid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid
+                val uid = FirebaseAuth.getInstance().currentUser?.uid
                 if (uid == null) {
                     _lastError.value = "Not signed in"
                     _status.value = TransferStatus.ERROR

@@ -39,6 +39,9 @@ class ActivityStore(
     private val _error = MutableStateFlow<String?>(null)
     val error = _error.asStateFlow()
 
+    private val _searchFailed = MutableStateFlow(false)
+    val searchFailed = _searchFailed.asStateFlow()
+
     private val _hasMore = MutableStateFlow(false)
     val hasMore = _hasMore.asStateFlow()
 
@@ -63,6 +66,7 @@ class ActivityStore(
                 }
                 lastDoc = last
                 _hasMore.value = last != null
+                _error.value = null
             } catch (e: FirebaseException) {
                 _error.value = e.message
             } finally {
@@ -80,6 +84,7 @@ class ActivityStore(
                 _usages.value = _usages.value + page
                 lastDoc = last
                 _hasMore.value = last != null
+                _error.value = null
             } catch (e: FirebaseException) {
                 _error.value = e.message
             } finally {
@@ -96,6 +101,7 @@ class ActivityStore(
                 _usages.value = page
                 lastDoc = last
                 _hasMore.value = last != null
+                _error.value = null
             } catch (e: FirebaseException) {
                 _error.value = e.message
             } finally {
@@ -110,6 +116,7 @@ class ActivityStore(
         searchJob?.cancel()
         if (trimmed.length < 2) {
             _cloudSearchHits.value = emptyList()
+            _searchFailed.value = false
             return
         }
         searchJob =
@@ -118,10 +125,12 @@ class ActivityStore(
                     kotlinx.coroutines.delay(SEARCH_DEBOUNCE_MS.toLong())
                     if (lastSearchQuery != trimmed) return@launch
                     _cloudSearchHits.value = cloudSearchService().search(trimmed)
+                    _searchFailed.value = false
                 } catch (e: CancellationException) {
                     throw e
-                } catch (_: Exception) {
-                    _cloudSearchHits.value = emptyList()
+                } catch (e: Exception) {
+                    _searchFailed.value = true
+                    _error.value = e.message ?: e::class.simpleName
                 }
             }
     }

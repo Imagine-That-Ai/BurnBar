@@ -162,6 +162,8 @@ final class InsightsMobileVerdictModel {
     }
 
     private func writeWidgetSnapshot(_ verdict: InsightVerdict, isStale: Bool) {
+        let headlineScan = MobileOsIntegrationPolicy.scanWidgetFields(["headline": verdict.headline])
+        guard headlineScan.isPrivacySafe else { return }
         let spend = verdict.rings.first { $0.identity == .spend }
         let cache = verdict.rings.first { $0.identity == .cache }
         let sessions = verdict.rings.first { $0.identity == .sessions }

@@ -1,0 +1,48 @@
+{
+  "generatedType": "ComputerUsePhoneAuthorityDoc",
+  "pass": [
+    {
+      "id": "happy",
+      "document": {
+        "deviceId": "phone-1",
+        "connectionId": "conn-1",
+        "peerNodeId": "peer-1",
+        "publicKeyBase64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        "publishedAtMillis": 1755446400000,
+        "protocolVersion": 1,
+        "schemaVersion": 1,
+        "createdAt": "2026-08-17T12:00:00.000Z",
+        "updatedAt": "2026-08-17T12:00:00.000Z"
+      }
+    }
+  ],
+  "fail": [
+    {
+      "id": "missing-deviceId",
+      "document": {
+        "connectionId": "conn-1",
+        "peerNodeId": "peer-1",
+        "publicKeyBase64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        "publishedAtMillis": 1755446400000,
+        "protocolVersion": 1,
+        "schemaVersion": 1,
+        "createdAt": "2026-08-17T12:00:00.000Z",
+        "updatedAt": "2026-08-17T12:00:00.000Z"
+      }
+    },
+    {
+      "id": "wrong-type-millis",
+      "document": {
+        "deviceId": "phone-1",
+        "connectionId": "conn-1",
+        "peerNodeId": "peer-1",
+        "publicKeyBase64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        "publishedAtMillis": "now",
+        "protocolVersion": 1,
+        "schemaVersion": 1,
+        "createdAt": "2026-08-17T12:00:00.000Z",
+        "updatedAt": "2026-08-17T12:00:00.000Z"
+      }
+    }
+  ]
+}

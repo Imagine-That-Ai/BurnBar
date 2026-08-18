@@ -141,6 +141,11 @@ class MobileMissionConsoleHost private constructor(
         rebuildSnapshot()
     }
 
+    fun focusMission(id: String) {
+        if (id.isBlank()) return
+        beginObservingIfNeeded(id)
+    }
+
     fun clearInlineError() {
         _inlineError.value = null
     }

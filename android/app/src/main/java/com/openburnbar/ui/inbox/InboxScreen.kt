@@ -94,11 +94,10 @@ fun InboxScreen(store: AIInboxStore = viewModel(), onOpenRoute: (String) -> Unit
     // always in the default ACTIVE slice, so the visible rows are the right
     // place to look.
     val pendingItemID by InboxPendingItem.pending.collectAsState()
-    LaunchedEffect(pendingItemID, parts.rows) {
+    LaunchedEffect(pendingItemID) {
         val pending = pendingItemID ?: return@LaunchedEffect
-        if (parts.rows.none { it.id == pending }) return@LaunchedEffect
+        store.focus(pending)
         InboxPendingItem.claim()
-        store.select(pending)
     }
 
     val isWide = LocalConfiguration.current.screenWidthDp >= SPLIT_WIDTH_THRESHOLD_DP

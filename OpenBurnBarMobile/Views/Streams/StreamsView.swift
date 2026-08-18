@@ -287,6 +287,16 @@ struct StreamsView: View {
                         .tint(MobileTheme.ember)
                         .frame(maxWidth: .infinity, minHeight: 220)
                         .padding(.vertical, 28)
+                } else if let loadError = activity.error, activity.usages.isEmpty {
+                    AuroraStatePane(
+                        kind: .error,
+                        icon: "exclamationmark.icloud.fill",
+                        title: activity.searchFailed ? "Search failed" : "Couldn't load streams",
+                        message: loadError,
+                        ctaLabel: "Try Again",
+                        onCTA: { Task { await activity.refresh() } }
+                    )
+                    .frame(minHeight: 320)
                 } else if searchResultMode == .empty || filteredUsages.isEmpty {
                     let hasSearch = !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                     AuroraStatePane(
@@ -361,7 +371,8 @@ struct StreamsView: View {
             query: searchText,
             isSearching: activity.isSearching,
             cloudConversationHitCount: activity.cloudSearchHits.count,
-            streamHitCount: activity.searchHits.count
+            streamHitCount: activity.searchHits.count,
+            searchFailed: activity.searchFailed
         ).mode
     }
 

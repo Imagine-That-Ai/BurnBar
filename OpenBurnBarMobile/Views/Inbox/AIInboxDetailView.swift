@@ -109,7 +109,7 @@ struct AIInboxDetailView: View {
         VStack(alignment: .leading, spacing: MobileTheme.Spacing.sm) {
             HStack(spacing: MobileTheme.Spacing.xs) {
                 Image(systemName: AIInboxPresentation.icon(for: item.record.kind))
-                    .font(.system(size: 13, weight: .medium))
+                    .font(MobileTheme.Typography.caption)
                     .foregroundStyle(AIInboxPresentation.tint(for: item.record.kind))
 
                 Text(AIInboxPresentation.kindLabel(item.record.kind).uppercased())
@@ -241,7 +241,7 @@ struct AIInboxDetailView: View {
         } label: {
             HStack(alignment: .top, spacing: MobileTheme.Spacing.sm) {
                 Image(systemName: AIInboxPresentation.evidenceIcon(for: evidence.kind))
-                    .font(.system(size: 12))
+                    .font(MobileTheme.Typography.caption)
                     .foregroundStyle(MobileTheme.Colors.textMuted)
                     .frame(width: 18)
 
@@ -281,11 +281,11 @@ struct AIInboxDetailView: View {
         switch target {
         case .web:
             Image(systemName: "arrow.up.forward.square")
-                .font(.system(size: 11, weight: .semibold))
+                .font(MobileScaledFont.system(size: 11, weight: .semibold))
                 .foregroundStyle(MobileTheme.Colors.textMuted)
         case .macReference:
             Image(systemName: copiedReferenceID == referenceID ? "checkmark" : "doc.on.doc")
-                .font(.system(size: 11, weight: .semibold))
+                .font(MobileScaledFont.system(size: 11, weight: .semibold))
                 .foregroundStyle(copiedReferenceID == referenceID ? MobileTheme.success : MobileTheme.Colors.textMuted)
         case .unavailable:
             EmptyView()
@@ -334,7 +334,7 @@ struct AIInboxDetailView: View {
                         Spacer(minLength: 0)
 
                         Image(systemName: "gauge.with.dots.needle.67percent")
-                            .font(.system(size: 10))
+                            .font(MobileScaledFont.system(size: 10))
                         Text("\(Int((candidate.confidence * 100).rounded()))%")
                             .font(MobileTheme.Typography.monoTiny)
                     }
@@ -386,7 +386,7 @@ struct AIInboxDetailView: View {
                 Image(systemName: target.isMacReference && copiedReferenceID == action.id
                       ? "checkmark"
                       : AIInboxPresentation.actionIcon(for: action.kind))
-                    .font(.system(size: 11, weight: .medium))
+                    .font(MobileScaledFont.system(size: 11, weight: .medium))
                 Text(action.title)
                     .font(MobileTheme.Typography.caption)
             }
@@ -421,7 +421,7 @@ struct AIInboxDetailView: View {
 
             HStack(alignment: .top, spacing: MobileTheme.Spacing.sm) {
                 Image(systemName: provenanceIcon)
-                    .font(.system(size: 11))
+                    .font(MobileScaledFont.system(size: 11))
                 Text(provenanceText)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)

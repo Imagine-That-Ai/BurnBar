@@ -1,0 +1,291 @@
+{
+  "schemaVersion": 1,
+  "id": "openburnbar-mobile-os-integration-vectors-v1",
+  "sourceOracle": "MobileOsIntegrationPolicy",
+  "note": "Unit-automatable OS integration decisions. Physical notification/widget traces stay blocked.",
+  "vectors": [
+    {
+      "id": "os.notification.denied-not-delivered",
+      "kind": "notificationDelivery",
+      "permissionGranted": false,
+      "expected": { "delivery": "suppressed", "mayDeliver": false }
+    },
+    {
+      "id": "os.notification.granted-may-deliver",
+      "kind": "notificationDelivery",
+      "permissionGranted": true,
+      "expected": { "delivery": "delivered", "mayDeliver": true }
+    },
+    {
+      "id": "os.push.agent-reply-route",
+      "kind": "pushRoute",
+      "payload": {
+        "type": "agent_reply",
+        "event_id": "evt_1",
+        "runtime": "hermes",
+        "thread_id": "thr_1"
+      },
+      "expected": {
+        "destination": "assistants",
+        "deepLink": "burnbar://assistants/hermes?threadId=thr_1"
+      }
+    },
+    {
+      "id": "os.push.inbox-route",
+      "kind": "pushRoute",
+      "payload": {
+        "type": "ai_inbox_item",
+        "event_id": "evt_inb",
+        "item_id": "inb_abc"
+      },
+      "expected": {
+        "destination": "inbox",
+        "deepLink": "burnbar://inbox/inb_abc"
+      }
+    },
+    {
+      "id": "os.push.quota-route",
+      "kind": "pushRoute",
+      "payload": { "type": "quota", "event_id": "evt_q" },
+      "expected": { "destination": "burn", "deepLink": "burnbar://quota" }
+    },
+    {
+      "id": "os.push.mercury-call-route",
+      "kind": "pushRoute",
+      "payload": {
+        "type": "media_incoming_call",
+        "event_id": "evt_call",
+        "connection_id": "mac_1"
+      },
+      "expected": {
+        "destination": "mercury-call",
+        "deepLink": "burnbar://mercury/call/mac_1"
+      }
+    },
+    {
+      "id": "os.push.mission-route",
+      "kind": "pushRoute",
+      "payload": {
+        "type": "mission",
+        "event_id": "evt_m",
+        "mission_id": "mis_1"
+      },
+      "expected": {
+        "destination": "mission",
+        "deepLink": "burnbar://mission/mis_1"
+      }
+    },
+    {
+      "id": "os.push.unknown-type-no-route",
+      "kind": "pushRoute",
+      "payload": { "type": "not_a_real_type", "event_id": "evt_x" },
+      "expected": { "destination": "unknown" }
+    },
+    {
+      "id": "os.push.omit-uid-expiry-no-navigate",
+      "kind": "navigation",
+      "payload": {
+        "type": "agent_reply",
+        "event_id": "evt_bare",
+        "runtime": "hermes",
+        "thread_id": "thr_1"
+      },
+      "activeUid": "uid-current",
+      "nowMs": 5000,
+      "permissionGranted": true,
+      "expected": { "decision": "ignoreStale", "navigates": false }
+    },
+    {
+      "id": "os.push.evil-https-deep-link-ignored",
+      "kind": "pushRoute",
+      "payload": {
+        "type": "agent_reply",
+        "event_id": "evt_evil",
+        "runtime": "hermes",
+        "thread_id": "thr_1",
+        "deep_link": "https://evil.example/phish"
+      },
+      "expected": {
+        "destination": "assistants",
+        "deepLink": "burnbar://assistants/hermes?threadId=thr_1"
+      }
+    },
+    {
+      "id": "os.push.navigate-happy-path",
+      "kind": "navigation",
+      "payload": {
+        "type": "agent_reply",
+        "event_id": "evt_ok",
+        "uid": "uid-current",
+        "runtime": "hermes",
+        "thread_id": "thr_1",
+        "expires_at_millis": "9000"
+      },
+      "activeUid": "uid-current",
+      "nowMs": 5000,
+      "permissionGranted": true,
+      "expected": { "decision": "navigate", "navigates": true }
+    },
+    {
+      "id": "os.push.stale-expired-no-navigate",
+      "kind": "navigation",
+      "payload": {
+        "type": "agent_reply",
+        "event_id": "evt_old",
+        "uid": "uid-current",
+        "runtime": "hermes",
+        "thread_id": "thr_1",
+        "expires_at_millis": "1000"
+      },
+      "activeUid": "uid-current",
+      "nowMs": 2000,
+      "permissionGranted": true,
+      "expected": { "decision": "ignoreExpired", "navigates": false }
+    },
+    {
+      "id": "os.push.account-mismatch-no-navigate",
+      "kind": "navigation",
+      "payload": {
+        "type": "ai_inbox_item",
+        "event_id": "evt_other",
+        "uid": "uid-previous",
+        "item_id": "inb_abc"
+      },
+      "activeUid": "uid-current",
+      "nowMs": 5000,
+      "permissionGranted": true,
+      "expected": { "decision": "ignoreAccountMismatch", "navigates": false }
+    },
+    {
+      "id": "os.push.duplicate-tap-idempotent",
+      "kind": "navigation",
+      "payload": {
+        "type": "agent_reply",
+        "event_id": "evt_dup",
+        "uid": "uid-current",
+        "runtime": "hermes",
+        "thread_id": "thr_1",
+        "expires_at_millis": "9000"
+      },
+      "activeUid": "uid-current",
+      "nowMs": 5000,
+      "lastConsumedEventId": "evt_dup",
+      "permissionGranted": true,
+      "expected": { "decision": "ignoreDuplicate", "navigates": false }
+    },
+    {
+      "id": "os.deeplink.cold-inbox",
+      "kind": "urlRoute",
+      "url": "burnbar://inbox/inb_cold",
+      "expected": { "destination": "inbox", "itemId": "inb_cold" }
+    },
+    {
+      "id": "os.deeplink.warm-assistants",
+      "kind": "urlRoute",
+      "url": "burnbar://assistants/hermes?threadId=thr_warm",
+      "expected": { "destination": "assistants", "threadId": "thr_warm", "runtime": "hermes" }
+    },
+    {
+      "id": "os.deeplink.mixed-case-inbox-id",
+      "kind": "urlRoute",
+      "url": "burnbar://inbox/Inb_MixedCase",
+      "expected": { "destination": "inbox", "itemId": "Inb_MixedCase" }
+    },
+    {
+      "id": "os.deeplink.encoded-thread-id",
+      "kind": "urlRoute",
+      "url": "burnbar://assistants/hermes?threadId=thr%2Fwarm",
+      "expected": { "destination": "assistants", "threadId": "thr/warm", "runtime": "hermes" }
+    },
+    {
+      "id": "os.widget.no-raw-uid",
+      "kind": "widgetPrivacy",
+      "fields": { "uid": "AbCdEfGhIjKlMnOpQrStUvWxYz12" },
+      "expected": { "hasRawUid": true, "isPrivacySafe": false }
+    },
+    {
+      "id": "os.widget.no-secret",
+      "kind": "widgetPrivacy",
+      "fields": { "apiKey": "sk-live-not-for-widgets" },
+      "expected": { "hasSecret": true, "isPrivacySafe": false }
+    },
+    {
+      "id": "os.widget.no-conversation-text",
+      "kind": "widgetPrivacy",
+      "fields": {
+        "preview": "Here is the exact live assistant reply the user should not see on the widget."
+      },
+      "expected": { "hasConversationText": true, "isPrivacySafe": false }
+    },
+    {
+      "id": "os.widget.aggregate-snapshot-safe",
+      "kind": "widgetSnapshot",
+      "heroTotalCost": 3.42,
+      "heroTotalTokens": 12400,
+      "topProviders": ["Claude"],
+      "expected": { "isPrivacySafe": true, "refreshCadenceSeconds": 900 }
+    },
+    {
+      "id": "os.background.retry-attempt-0",
+      "kind": "backgroundRetry",
+      "attempt": 0,
+      "cancelled": false,
+      "expected": { "shouldRetry": true, "maxAttempts": 3 }
+    },
+    {
+      "id": "os.background.retry-attempt-1",
+      "kind": "backgroundRetry",
+      "attempt": 1,
+      "cancelled": false,
+      "expected": { "shouldRetry": true, "maxAttempts": 3 }
+    },
+    {
+      "id": "os.background.retry-attempt-2",
+      "kind": "backgroundRetry",
+      "attempt": 2,
+      "cancelled": false,
+      "expected": { "shouldRetry": true, "maxAttempts": 3 }
+    },
+    {
+      "id": "os.background.retry-bounded",
+      "kind": "backgroundRetry",
+      "attempt": 3,
+      "cancelled": false,
+      "expected": { "shouldRetry": false, "maxAttempts": 3 }
+    },
+    {
+      "id": "os.background.cancel-stops-retry",
+      "kind": "backgroundRetry",
+      "attempt": 0,
+      "cancelled": true,
+      "expected": { "shouldRetry": false, "maxAttempts": 3 }
+    },
+    {
+      "id": "os.state.pending-claim-once",
+      "kind": "duplicateTap",
+      "eventId": "evt_once",
+      "lastConsumedEventId": null,
+      "expected": { "shouldConsume": true }
+    },
+    {
+      "id": "os.lifecycle.foreground-same-thread-suppress",
+      "kind": "foregroundSuppress",
+      "foreground": true,
+      "activeRuntime": "hermes",
+      "activeThreadId": "thr_1",
+      "payloadRuntime": "hermes",
+      "payloadThreadId": "thr_1",
+      "expected": { "suppress": true }
+    },
+    {
+      "id": "os.lifecycle.foreground-other-thread-delivers",
+      "kind": "foregroundSuppress",
+      "foreground": true,
+      "activeRuntime": "hermes",
+      "activeThreadId": "thr_1",
+      "payloadRuntime": "hermes",
+      "payloadThreadId": "thr_other",
+      "expected": { "suppress": false }
+    }
+  ]
+}

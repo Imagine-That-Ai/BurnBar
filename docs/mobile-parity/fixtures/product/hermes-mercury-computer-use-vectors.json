@@ -1,0 +1,201 @@
+{
+  "schemaVersion": 1,
+  "id": "openburnbar-mobile-hermes-mercury-computer-use-vectors-v1",
+  "sourceOracle": "iOS PiService.cancelStreaming / HermesService.cancelGeneration / MercuryPeer / Computer Use fail-closed",
+  "vectors": [
+    {
+      "id": "hermes.stop-mid-stream",
+      "kind": "streamTerminal",
+      "event": "stop",
+      "text": "Partial reply",
+      "toolCallCount": 0,
+      "isError": false,
+      "expected": {
+        "terminal": "stopped",
+        "keepPartial": true,
+        "isError": false,
+        "dropEmptyAssistant": false
+      }
+    },
+    {
+      "id": "hermes.cancel-vs-error",
+      "kind": "streamTerminal",
+      "event": "cancel",
+      "compareEvent": "error",
+      "text": "Partial reply",
+      "toolCallCount": 0,
+      "isError": false,
+      "expected": {
+        "terminal": "cancelled",
+        "keepPartial": true,
+        "isError": false,
+        "compareTerminal": "error",
+        "compareIsError": true,
+        "compareKeepPartial": false
+      }
+    },
+    {
+      "id": "hermes.partial-result-kept",
+      "kind": "streamTerminal",
+      "event": "stop",
+      "text": "Hello from the model",
+      "toolCallCount": 0,
+      "isError": false,
+      "expected": {
+        "terminal": "stopped",
+        "keepPartial": true,
+        "isError": false,
+        "dropEmptyAssistant": false
+      }
+    },
+    {
+      "id": "hermes.reconnect-no-duplicate-user",
+      "kind": "reconnectUser",
+      "lastRole": "user",
+      "lastText": "Continue the draft",
+      "incomingText": "Continue the draft",
+      "reason": "reconnect",
+      "expected": {
+        "appendUser": false
+      }
+    },
+    {
+      "id": "hermes.tool-call-after-stop",
+      "kind": "toolCallAfterStop",
+      "event": "stop",
+      "text": "",
+      "toolCallCount": 1,
+      "isError": false,
+      "expected": {
+        "terminal": "stopped",
+        "renderToolCalls": true,
+        "dropEmptyAssistant": false
+      }
+    },
+    {
+      "id": "hermes.attachment-malformed-rejected",
+      "kind": "attachment",
+      "attachmentId": "",
+      "mimeType": "image/png",
+      "byteSize": 12,
+      "path": "",
+      "expected": {
+        "disposition": "rejected"
+      }
+    },
+    {
+      "id": "hermes.deep-link-missing-conversation",
+      "kind": "deepLink",
+      "threadId": "thread-missing",
+      "exists": false,
+      "expected": {
+        "outcome": "missing",
+        "message": "This conversation is no longer on this device."
+      }
+    },
+    {
+      "id": "hermes.thread-isolation-late-chunk",
+      "kind": "threadIsolation",
+      "chunkThreadId": "thread-a",
+      "activeThreadId": "thread-b",
+      "chunkGeneration": 4,
+      "activeGeneration": 5,
+      "expected": {
+        "apply": false
+      }
+    },
+    {
+      "id": "mercury.heartbeat-interval-60s",
+      "kind": "heartbeat",
+      "expected": {
+        "intervalMs": 60000
+      }
+    },
+    {
+      "id": "mercury.unknown-capability-filtered",
+      "kind": "capability",
+      "raw": ["mirror.host", "future.teleport", "call.receive", "not-a-capability"],
+      "expected": {
+        "capabilities": ["call.receive", "mirror.host"]
+      }
+    },
+    {
+      "id": "mercury.invite-ack-pairing",
+      "kind": "inviteAck",
+      "inviteId": "invite-1",
+      "ackId": "invite-1",
+      "accepted": true,
+      "expected": {
+        "pair": "paired"
+      }
+    },
+    {
+      "id": "mercury.denial-not-connected",
+      "kind": "sessionPresentation",
+      "phase": "live",
+      "denied": true,
+      "expected": {
+        "presentation": "denied"
+      }
+    },
+    {
+      "id": "mercury.reconnect",
+      "kind": "sessionPresentation",
+      "phase": "reconnecting",
+      "denied": false,
+      "expected": {
+        "presentation": "reconnecting"
+      }
+    },
+    {
+      "id": "computeruse.replay-rejected",
+      "kind": "safetyDecision",
+      "decisionKind": "replay",
+      "replayed": true,
+      "expected": {
+        "decision": "reject",
+        "reason": "replay"
+      }
+    },
+    {
+      "id": "computeruse.tamper-rejected",
+      "kind": "safetyDecision",
+      "decisionKind": "tamper",
+      "tampered": true,
+      "expected": {
+        "decision": "reject",
+        "reason": "tamper"
+      }
+    },
+    {
+      "id": "computeruse.expired-grant-rejected",
+      "kind": "safetyDecision",
+      "decisionKind": "expired-grant",
+      "grantExpired": true,
+      "expected": {
+        "decision": "reject",
+        "reason": "expired-grant"
+      }
+    },
+    {
+      "id": "computeruse.unauthenticated-sender-rejected",
+      "kind": "safetyDecision",
+      "decisionKind": "unauthenticated",
+      "authenticated": false,
+      "expected": {
+        "decision": "reject",
+        "reason": "unauthenticated"
+      }
+    },
+    {
+      "id": "computeruse.binding-mismatch-rejected",
+      "kind": "safetyDecision",
+      "decisionKind": "binding-mismatch",
+      "bindingMatches": false,
+      "expected": {
+        "decision": "reject",
+        "reason": "binding-mismatch"
+      }
+    }
+  ]
+}

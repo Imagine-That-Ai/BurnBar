@@ -180,15 +180,28 @@ public struct ImportHistoryEntry: Sendable, Equatable, Identifiable {
 }
 
 public enum CredentialImportFailure: Sendable, Equatable {
-    case grantRevoked, wrongDevice, missingPrivateKey, decryptionFailed
+    case grantRevoked, expiredGrant, wrongDevice, missingPrivateKey, decryptionFailed
+    case malformedEnvelope
     case providerValidationFailed(providerLabel: String)
     case permissionDenied, appCheckBlocked
     case other(message: String)
 
     public var isRetryable: Bool {
         switch self {
-        case .grantRevoked, .wrongDevice, .missingPrivateKey: return false
-        default: return true
+        case .grantRevoked, .expiredGrant, .wrongDevice, .missingPrivateKey, .malformedEnvelope:
+            return false
+        default:
+            return true
+        }
+    }
+
+    public init(_ failure: MobileEscrowImportFailure) {
+        switch failure {
+        case .wrongDevice: self = .wrongDevice
+        case .expiredGrant: self = .expiredGrant
+        case .revokedGrant: self = .grantRevoked
+        case .missingKey: self = .missingPrivateKey
+        case .malformedEnvelope: self = .malformedEnvelope
         }
     }
 }

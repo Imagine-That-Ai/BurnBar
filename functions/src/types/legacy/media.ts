@@ -81,10 +81,7 @@ export interface MediaSessionEventDoc {
  *
  * Path: `users/{uid}/media_quota_usage/{YYYY-MM-DD}`
  */
-export interface MediaQuotaUsageDoc {
-  id: string; // YYYY-MM-DD
-  bytesUploadedFile: number;
-  bytesDownloadedFile: number;
+export type MediaQuotaUsageDoc = import("../generated/media-analytics.js").MediaQuotaUsageDoc & {
   fileTransfersInitiated: number;
   fileTransfersFailed: number;
   screenShareSecondsUsed: number;
@@ -93,7 +90,7 @@ export interface MediaQuotaUsageDoc {
   videoCallSessions: number;
   updatedAt: import("firebase-admin/firestore").Timestamp;
   schemaVersion: number;
-}
+};
 
 /**
  * Per-attachment manifest. Bytes themselves never live in Firestore — they

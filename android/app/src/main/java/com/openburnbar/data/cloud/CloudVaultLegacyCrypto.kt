@@ -119,10 +119,17 @@ internal object CloudVaultLegacyCrypto {
         }
     }
 
-    fun escrowOpen(combined: ByteArray, sharedSecret: ByteArray): ByteArray {
+    fun escrowOpen(combined: ByteArray, sharedSecret: ByteArray): ByteArray =
+        escrowOpen(combined, sharedSecret, ByteArray(0))
+
+    fun escrowOpen(combined: ByteArray, sharedSecret: ByteArray, aad: ByteArray): ByteArray {
         val wrappingKey = escrowWrappingKey(sharedSecret)
         return try {
-            aesOpenCombined(combined, wrappingKey)
+            if (aad.isEmpty()) {
+                aesOpenCombined(combined, wrappingKey)
+            } else {
+                aesOpenCombined(combined, wrappingKey, aad)
+            }
         } finally {
             wrappingKey.fill(0)
         }

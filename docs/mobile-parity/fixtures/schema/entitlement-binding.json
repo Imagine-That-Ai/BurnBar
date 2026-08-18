@@ -1,0 +1,30 @@
+{
+  "generatedType": "EntitlementBindingDoc",
+  "pass": [
+    {
+      "id": "happy",
+      "document": {
+        "appAccountToken": "11111111-1111-1111-1111-111111111111",
+        "uid": "uid-1",
+        "createdAt": "2026-08-17T12:00:00.000Z"
+      }
+    }
+  ],
+  "fail": [
+    {
+      "id": "missing-uid",
+      "document": {
+        "appAccountToken": "11111111-1111-1111-1111-111111111111",
+        "createdAt": "2026-08-17T12:00:00.000Z"
+      }
+    },
+    {
+      "id": "null-token",
+      "document": {
+        "appAccountToken": null,
+        "uid": "uid-1",
+        "createdAt": "2026-08-17T12:00:00.000Z"
+      }
+    }
+  ]
+}

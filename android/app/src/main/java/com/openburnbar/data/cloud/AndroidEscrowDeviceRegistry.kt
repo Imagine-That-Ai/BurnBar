@@ -133,6 +133,28 @@ class AndroidEscrowDeviceRegistry(
         )
     }
 
+    fun rejectUnimportableEnvelope(
+        targetDeviceId: String?,
+        currentDeviceId: String?,
+        grantStatus: String?,
+        grantExpiresAtMs: Long?,
+        nowMs: Long,
+        hasPrivateKey: Boolean,
+        ciphertextBase64: String?,
+        grantId: String?,
+        envelopeVersion: Int?,
+    ) = AndroidEscrowEnvelopeImport.rejectIfUnimportable(
+        targetDeviceId = targetDeviceId,
+        currentDeviceId = currentDeviceId,
+        grantStatus = grantStatus,
+        grantExpiresAtMs = grantExpiresAtMs,
+        nowMs = nowMs,
+        hasPrivateKey = hasPrivateKey,
+        ciphertextBase64 = ciphertextBase64,
+        grantId = grantId,
+        envelopeVersion = envelopeVersion,
+    )
+
     companion object {
         const val PENDING = "pending"
         const val TRUSTED = "trusted"

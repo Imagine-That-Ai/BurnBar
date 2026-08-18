@@ -156,11 +156,23 @@ final class DevicesStore {
     init(
         reader: CloudReader = LiveCloudReader(),
         trustGateway: DeviceTrustGateway = LiveDeviceTrustGateway(),
-        linuxAppCheckManager: any LinuxAppCheckDeviceManaging = LiveLinuxAppCheckDeviceManager()
+        linuxAppCheckManager: any LinuxAppCheckDeviceManaging = LiveLinuxAppCheckDeviceManager(),
+        scopedCaches: MobileUIDScopedCacheRegistry = .shared
     ) {
         self.reader = reader
         self.trustGateway = trustGateway
         self.linuxAppCheckManager = linuxAppCheckManager
+        scopedCaches.register { [weak self] in self?.clearCache() }
+    }
+
+    func clearCache() {
+        rawDevices = []
+        linuxAppCheckDevices = []
+        lastError = nil
+        linuxAppCheckError = nil
+        actionInFlightFor = nil
+        linuxAppCheckActionInFlightFor = nil
+        linuxAppCheckLoadGeneration += 1
     }
 
     /// Display-ready registrations keyed only by their durable Firestore device identity.

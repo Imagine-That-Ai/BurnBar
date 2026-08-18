@@ -31,7 +31,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.filled.HourglassEmpty
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -60,6 +60,7 @@ import com.openburnbar.data.hermes.AssistantRuntimeID
 import com.openburnbar.data.hermes.PiChatMessage
 import com.openburnbar.data.hermes.PiService
 import com.openburnbar.data.hermes.PiToolCall
+import com.openburnbar.data.policy.MobileAccessibilityLabelPolicy
 import com.openburnbar.services.media.AgentReplyNotificationState
 import com.openburnbar.ui.computeruse.AgentPermissionGrantSheet
 import com.openburnbar.ui.theme.AuroraColors
@@ -115,6 +116,7 @@ internal data class PiAssistantScreenState(
 internal data class PiAssistantScreenCallbacks(
     val onInputChange: (String) -> Unit,
     val onSend: () -> Unit,
+    val onStop: () -> Unit,
     val onShowPermissions: () -> Unit,
 )
 
@@ -131,6 +133,7 @@ internal fun PiAssistantScreen(state: PiAssistantScreenState, callbacks: PiAssis
             isStreaming = state.isStreaming,
             onChange = callbacks.onInputChange,
             onSend = callbacks.onSend,
+            onStop = callbacks.onStop,
         )
     }
 }
@@ -419,7 +422,7 @@ private fun RowScope.PiToolCallPillLabels(tool: PiToolCall, isDone: Boolean, sta
 // MARK: - Composer
 
 @Composable
-internal fun PiComposer(value: String, isStreaming: Boolean, onChange: (String) -> Unit, onSend: () -> Unit) {
+internal fun PiComposer(value: String, isStreaming: Boolean, onChange: (String) -> Unit, onSend: () -> Unit, onStop: () -> Unit) {
     val glassStrokeBrush = Brush.linearGradient(AuroraGradients.glassStroke)
     val accent = AuroraColors.whimsy
     Surface(
@@ -438,7 +441,6 @@ internal fun PiComposer(value: String, isStreaming: Boolean, onChange: (String) 
         ) {
             PiComposerInputField(
                 value = value,
-                isStreaming = isStreaming,
                 accent = accent,
                 onChange = onChange,
                 onSend = onSend,
@@ -449,17 +451,19 @@ internal fun PiComposer(value: String, isStreaming: Boolean, onChange: (String) 
                 isStreaming = isStreaming,
                 accent = accent,
                 onSend = onSend,
+                onStop = onStop,
             )
         }
     }
 }
 
 @Composable
-private fun RowScope.PiComposerInputField(value: String, isStreaming: Boolean, accent: Color, onChange: (String) -> Unit, onSend: () -> Unit) {
+private fun RowScope.PiComposerInputField(value: String, accent: Color, onChange: (String) -> Unit, onSend: () -> Unit) {
     androidx.compose.foundation.text.BasicTextField(
         value = value,
         onValueChange = onChange,
-        enabled = !isStreaming,
+        // Stays editable while streaming — the send button becomes Stop.
+        enabled = true,
         textStyle =
         LocalTextStyle.current.copy(
             color = MaterialTheme.colorScheme.onSurface,
@@ -488,18 +492,16 @@ private fun RowScope.PiComposerInputField(value: String, isStreaming: Boolean, a
 }
 
 @Composable
-private fun PiComposerSendButton(value: String, isStreaming: Boolean, accent: Color, onSend: () -> Unit) {
+private fun PiComposerSendButton(value: String, isStreaming: Boolean, accent: Color, onSend: () -> Unit, onStop: () -> Unit) {
     val canSend = value.isNotBlank() && !isStreaming
     val sendBg =
         when {
-            canSend -> accent
-            isStreaming -> accent.copy(alpha = 0.35f)
+            canSend || isStreaming -> accent
             else -> Color.Transparent
         }
     val sendTint =
         when {
-            canSend -> Color.White
-            isStreaming -> Color.White.copy(alpha = 0.7f)
+            canSend || isStreaming -> Color.White
             else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
         }
     val outline =
@@ -523,8 +525,8 @@ private fun PiComposerSendButton(value: String, isStreaming: Boolean, accent: Co
         contentAlignment = Alignment.Center,
     ) {
         IconButton(
-            onClick = onSend,
-            enabled = canSend,
+            onClick = if (isStreaming) onStop else onSend,
+            enabled = canSend || isStreaming,
             modifier =
             Modifier
                 .size(36.dp)
@@ -533,11 +535,11 @@ private fun PiComposerSendButton(value: String, isStreaming: Boolean, accent: Co
                 .border(1.dp, outline, CircleShape),
         ) {
             Icon(
-                imageVector = if (isStreaming) Icons.Filled.HourglassEmpty else Icons.AutoMirrored.Filled.Send,
+                imageVector = if (isStreaming) Icons.Filled.Stop else Icons.AutoMirrored.Filled.Send,
                 contentDescription =
                 when {
-                    canSend -> "Send message"
-                    isStreaming -> "Waiting for response — send disabled"
+                    isStreaming -> MobileAccessibilityLabelPolicy.stopButton(true)
+                    canSend -> MobileAccessibilityLabelPolicy.stopButton(false)
                     else -> "Type a message to enable send"
                 },
                 tint = sendTint,

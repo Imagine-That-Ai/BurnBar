@@ -54,6 +54,7 @@ internal fun rememberHermesChatViewLocalState(content: HermesChatContent, action
             focusManager.clearFocus()
         }
     }
+    val stopGeneration = { actions.onStop() }
 
     return HermesChatViewLocalState(
         inputText = inputText,
@@ -74,6 +75,7 @@ internal fun rememberHermesChatViewLocalState(content: HermesChatContent, action
             context.getSharedPreferences("chat", 0).edit().putString("viewMode", mode.key).apply()
         },
         sendMessage = sendMessage,
+        stopGeneration = stopGeneration,
     )
 }
 

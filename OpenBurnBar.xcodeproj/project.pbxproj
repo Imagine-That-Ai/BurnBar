@@ -1994,6 +1994,8 @@
 		BB2C6CAD3B6C64FB36753498 /* FoilCTAButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47A5678F769CE3CFF0C57435 /* FoilCTAButton.swift */; };
 		BB466B0D386753818494BD0C /* SmartDisplayOrderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FC96924A9E2F2A9AAD47B3C /* SmartDisplayOrderTests.swift */; };
 		BB4ECB342291373FFD844557 /* AgentLiveStageWiringTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E6E4CA88585AA6DB92A04DA /* AgentLiveStageWiringTests.swift */; };
+		B92D5F30A7C158D2B3E4F506 /* AgentReplyNotificationBannerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A81C4E29F6B047C1A2D3E4F5 /* AgentReplyNotificationBannerTests.swift */; };
+		D14F7162C9E37AF4D5061728 /* VoIPCallServiceIncomingCallTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03E6051B8D269E3C4F50617 /* VoIPCallServiceIncomingCallTests.swift */; };
 		BB7FDFFBF51B44FD6DD0EB4F /* OpenBurnBarHTTPGatewayServer+CrossVendorDegrade.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2D3214FD1F820CCD0261121 /* OpenBurnBarHTTPGatewayServer+CrossVendorDegrade.swift */; };
 		BB9711F597E7E11A5C73ADBC /* ProviderQuotaServiceCumulativeAndContextTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 853B0E0A43E3B6BC22214035 /* ProviderQuotaServiceCumulativeAndContextTests.swift */; };
 		BBC93B8C6927C62ACE6C691B /* ConceptMoreDrawer.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBE248BDCE974C5705BCD5C7 /* ConceptMoreDrawer.swift */; };
@@ -3940,6 +3942,8 @@
 		6E23A6141044AAB29DCBF4E7 /* ChatSessionController+SearchMemoryContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ChatSessionController+SearchMemoryContext.swift"; sourceTree = "<group>"; };
 		6E583BD74E55836C6219EB0A /* IncrementalConversationIndexingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IncrementalConversationIndexingTests.swift; sourceTree = "<group>"; };
 		6E6E4CA88585AA6DB92A04DA /* AgentLiveStageWiringTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentLiveStageWiringTests.swift; sourceTree = "<group>"; };
+		A81C4E29F6B047C1A2D3E4F5 /* AgentReplyNotificationBannerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentReplyNotificationBannerTests.swift; sourceTree = "<group>"; };
+		C03E6051B8D269E3C4F50617 /* VoIPCallServiceIncomingCallTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoIPCallServiceIncomingCallTests.swift; sourceTree = "<group>"; };
 		6E905F3058073CB90E2AA7D2 /* VideoEncoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoEncoder.swift; sourceTree = "<group>"; };
 		6ED0C396BBC637B6A99F5DC7 /* ProviderQuotaAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderQuotaAdapter.swift; sourceTree = "<group>"; };
 		6EF9BBD8DF1B4C4B84CEFB41 /* SerialAsyncWorkQueueTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SerialAsyncWorkQueueTests.swift; sourceTree = "<group>"; };
@@ -8779,6 +8783,7 @@
 				F8BB74277CD7B9338A1FB1C9 /* AgentIdentityRegistryMacURITests.swift */,
 				8CB569E61444A77447D17072 /* AgentLiveStagePresenterTests.swift */,
 				6E6E4CA88585AA6DB92A04DA /* AgentLiveStageWiringTests.swift */,
+				A81C4E29F6B047C1A2D3E4F5 /* AgentReplyNotificationBannerTests.swift */,
 				C8A9E020A879DB2F04B06224 /* AgentSubscriptionTopicSealTests.swift */,
 				E450A4B13503653151EABADB /* AgentWatchLiveActivityManagerTests.swift */,
 				5BBA7F4EAA34FFF4B37F8CDB /* AIInboxNotificationRoutingTests.swift */,
@@ -8865,6 +8870,7 @@
 				0FDD406231DA5368ABD325D5 /* TrendDataDigestTests.swift */,
 				238C58165DE55FDA4B576D62 /* TrendInsightEngineTests.swift */,
 				6882EF66E2E1AEFEAD12A38B /* UIModeTests.swift */,
+				C03E6051B8D269E3C4F50617 /* VoIPCallServiceIncomingCallTests.swift */,
 			);
 			path = OpenBurnBarMobileTests;
 			sourceTree = "<group>";
@@ -11321,6 +11327,7 @@
 				E77BEA01ECBDEF9EA11132BC /* AgentIdentityRegistryMacURITests.swift in Sources */,
 				32A0E04101CD6BB197317B34 /* AgentLiveStagePresenterTests.swift in Sources */,
 				BB4ECB342291373FFD844557 /* AgentLiveStageWiringTests.swift in Sources */,
+				B92D5F30A7C158D2B3E4F506 /* AgentReplyNotificationBannerTests.swift in Sources */,
 				F7569B8B31670231DB4BEAC0 /* AgentSubscriptionTopicSealTests.swift in Sources */,
 				D8CE458C33C5945164D91049 /* AgentWatchLiveActivityManagerTests.swift in Sources */,
 				D7EB2E3191425287A9A2A565 /* AppStoreReviewComplianceTests.swift in Sources */,
@@ -11422,6 +11429,7 @@
 				DE4D09378D59664A1E49DFB2 /* TrendDataDigestTests.swift in Sources */,
 				C47BCCECD2F74554B9C8205F /* TrendInsightEngineTests.swift in Sources */,
 				36DA9A8F89C8DD0CC96CB259 /* UIModeTests.swift in Sources */,
+				D14F7162C9E37AF4D5061728 /* VoIPCallServiceIncomingCallTests.swift in Sources */,
 				0EA5E6F7B706DBA8F1F10E9E /* iPadNavigationUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

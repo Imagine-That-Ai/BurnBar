@@ -26,45 +26,75 @@ final class AuthStore {
     private let gateway: AuthGateway
     private let trustGateway: DeviceTrustGateway
     private let controllerRouteLifecycle: any IrohControllerRouteAuthLifecycleManaging
+    private let scopedCaches: MobileUIDScopedCacheRegistry
     private(set) var state: AuthState
     private(set) var lastError: CloudErrorClassification?
+    private(set) var lastErrorClass: MobileAuthErrorClass = .none
+    private(set) var sessionEpoch = MobileAuthSessionEpoch(uid: nil, generation: 0)
 
     init(
         gateway: AuthGateway = LiveAuthGateway(),
         trustGateway: DeviceTrustGateway = LiveDeviceTrustGateway(),
-        controllerRouteLifecycle: any IrohControllerRouteAuthLifecycleManaging = IrohControllerRouteAuthLifecycleCoordinator.shared
+        controllerRouteLifecycle: any IrohControllerRouteAuthLifecycleManaging = IrohControllerRouteAuthLifecycleCoordinator.shared,
+        scopedCaches: MobileUIDScopedCacheRegistry = .shared
     ) {
         self.gateway = gateway
         self.trustGateway = trustGateway
         self.controllerRouteLifecycle = controllerRouteLifecycle
+        self.scopedCaches = scopedCaches
         if !gateway.isFirebaseAvailable {
             self.state = .firebaseUnavailable
         } else if let identity = gateway.currentIdentity {
             self.state = .signedIn(identity: identity)
+            self.sessionEpoch = MobileAuthSessionEpoch(uid: identity.uid, generation: 1)
         } else {
             self.state = .signedOut
         }
         gateway.observe { [weak self] identity in
             guard let self else { return }
-            if !gateway.isFirebaseAvailable {
-                self.state = .firebaseUnavailable
-            } else if let identity {
-                self.state = .signedIn(identity: identity)
-                // Identify the signed-in user with a STABLE HASH of the account
-                // uid — never the raw uid. No-op unless analytics consent is
-                // granted. Set only after verified sign-in, per the taxonomy.
-                MobileAnalytics.shared.setUserId(
-                    AnalyticsUserIdentity.amplitudeUserId(forAccountUID: identity.uid)
-                )
-                // Register this device in Firestore on sign-in
-                Task { await (self.trustGateway as? LiveDeviceTrustGateway)?.registerSelfIfNeeded() }
-            } else {
-                self.state = .signedOut
-                // Clear the identity so a later anonymous session is not tied to
-                // the prior account. No-op unless consent is granted.
-                MobileAnalytics.shared.setUserId(nil)
-            }
+            self.applyObservedIdentity(identity)
         }
+    }
+
+    /// Fail-closed on UID change: bump the epoch and drop every registered cache
+    /// so a late listener cannot paint the previous account.
+    private func applyObservedIdentity(_ identity: MobileAuthIdentity?) {
+        guard gateway.isFirebaseAvailable else {
+            applyFirebaseUnavailable()
+            MobileAnalytics.shared.setUserId(nil)
+            return
+        }
+        // Cleared before reconciling so an observed account switch keeps the
+        // class `reconcileEpoch` records.
+        lastErrorClass = .none
+        reconcileEpoch(nextUid: identity?.uid)
+        if let identity {
+            state = .signedIn(identity: identity)
+            MobileAnalytics.shared.setUserId(
+                AnalyticsUserIdentity.amplitudeUserId(forAccountUID: identity.uid)
+            )
+            Task { await (self.trustGateway as? LiveDeviceTrustGateway)?.registerSelfIfNeeded() }
+        } else {
+            state = .signedOut
+            MobileAnalytics.shared.setUserId(nil)
+        }
+    }
+
+    private func reconcileEpoch(nextUid: String?) {
+        guard MobileAuthSessionPolicy.shouldReconcile(previousUid: sessionEpoch.uid, nextUid: nextUid) else {
+            return
+        }
+        // uid → other uid is a real account switch; uid → nil is an ordinary sign-out.
+        if sessionEpoch.uid != nil, nextUid != nil {
+            lastErrorClass = .accountSwitch
+            lastError = .accountMismatch
+        }
+        // Never write users/{previousUid} after Firebase Auth has switched.
+        // Tombstone A while still authenticated as A (signIn / signOut / delete).
+        sessionEpoch = sessionEpoch.advanced(for: nextUid)
+        scopedCaches.clearAll()
+        AgentReplyNotificationService.shared.clearBanners()
+        AgentReplyNotificationService.shared.bindConsumedEvents(to: nextUid)
     }
 
     /// The taxonomy `method` enum value for an auth provider (`google` | `apple` |
@@ -85,82 +115,150 @@ final class AuthStore {
     }
 
     func signIn(_ provider: MobileAuthProviderID) async {
-        guard gateway.isFirebaseAvailable else { state = .firebaseUnavailable; return }
-        state = .signingIn(provider: provider); lastError = nil
-        do {
+        await attemptSignIn(provider: provider) { success, error in
+            trackSignIn(provider, success: success, error: error)
+        } perform: {
             try await gateway.signIn(provider: provider)
-            trackSignIn(provider, success: true, error: nil)
-        } catch let CloudGatewayError.classified(c) {
-            lastError = c; state = .signedOut
-            trackSignIn(provider, success: false, error: c)
-        } catch {
-            lastError = .other(message: error.localizedDescription); state = .signedOut
-            trackSignIn(provider, success: false, error: lastError)
         }
     }
 
     func createEmailAccount(email: String, password: String) async {
-        guard gateway.isFirebaseAvailable else { state = .firebaseUnavailable; return }
-        state = .signingIn(provider: .email); lastError = nil
-        do {
+        await attemptSignIn(provider: .email) { success, error in
+            trackSignUp(.email, success: success, error: error)
+        } perform: {
             try await gateway.createEmailAccount(email: email, password: password)
-            trackSignUp(.email, success: true, error: nil)
-        } catch let CloudGatewayError.classified(c) {
-            lastError = c; state = .signedOut
-            trackSignUp(.email, success: false, error: c)
-        } catch {
-            lastError = .other(message: error.localizedDescription); state = .signedOut
-            trackSignUp(.email, success: false, error: lastError)
         }
     }
 
     func signInWithEmail(email: String, password: String) async {
-        guard gateway.isFirebaseAvailable else { state = .firebaseUnavailable; return }
-        state = .signingIn(provider: .email); lastError = nil
-        do {
+        await attemptSignIn(provider: .email) { success, error in
+            trackSignIn(.email, success: success, error: error)
+        } perform: {
             try await gateway.signInWithEmail(email: email, password: password)
-            trackSignIn(.email, success: true, error: nil)
+        }
+    }
+
+    /// Shared shape for every credential entry point: refuse when Firebase is
+    /// unavailable, land in `.signingIn`, then classify whatever comes back.
+    /// `track` runs on both outcomes so the taxonomy sees one event per attempt.
+    private func attemptSignIn(
+        provider: MobileAuthProviderID,
+        track: (Bool, CloudErrorClassification?) -> Void,
+        perform: () async throws -> Void
+    ) async {
+        guard gateway.isFirebaseAvailable else {
+            applyFirebaseUnavailable()
+            return
+        }
+        state = .signingIn(provider: provider)
+        lastError = nil
+        lastErrorClass = .none
+        do {
+            try await perform()
+            track(true, nil)
         } catch let CloudGatewayError.classified(c) {
-            lastError = c; state = .signedOut
-            trackSignIn(.email, success: false, error: c)
+            applySignInFailure(c)
+            track(false, c)
         } catch {
-            lastError = .other(message: error.localizedDescription); state = .signedOut
-            trackSignIn(.email, success: false, error: lastError)
+            applyUnclassifiedSignInFailure(error)
+            track(false, lastError)
         }
     }
 
     func signOut() async {
         await controllerRouteLifecycle.tearDownAndRevoke()
+        await tombstoneCurrentDeviceBeforeAuthSwitch()
         do {
-            try gateway.signOut(); state = .signedOut; lastError = nil
+            try gateway.signOut()
+            reconcileEpoch(nextUid: nil)
+            let signedOut = MobileAuthSessionPolicy.stateAfterSignOut(firebaseAvailable: gateway.isFirebaseAvailable)
+            state = signedOut == .firebaseUnavailable ? .firebaseUnavailable : .signedOut
+            lastError = nil
+            lastErrorClass = .none
             MobileAnalytics.shared.track(.authSignedOut, ["outcome": "success"])
         } catch let CloudGatewayError.classified(c) {
             lastError = c
+            lastErrorClass = classify(c)
             MobileAnalytics.shared.track(.authSignedOut, ["outcome": "failure", "error_code": .string(c.analyticsCode)])
         } catch {
             lastError = .other(message: error.localizedDescription)
+            lastErrorClass = .malformed
             MobileAnalytics.shared.track(.authSignedOut, ["outcome": "failure", "error_code": "other"])
         }
     }
 
     func deleteAccount() async {
-        guard gateway.isFirebaseAvailable else { state = .firebaseUnavailable; return }
+        guard gateway.isFirebaseAvailable else {
+            applyFirebaseUnavailable()
+            return
+        }
         guard let identity = currentIdentity else { return }
         state = .deletingAccount(identity: identity)
         lastError = nil
+        lastErrorClass = .none
         do {
             await controllerRouteLifecycle.tearDownAndRevoke()
+            await tombstoneCurrentDeviceBeforeAuthSwitch()
             try await gateway.deleteAccount()
+            reconcileEpoch(nextUid: nil)
             state = .signedOut
             MobileAnalytics.shared.track(.authAccountDeleted, ["outcome": "success"])
         } catch let CloudGatewayError.classified(c) {
             lastError = c
+            lastErrorClass = classify(c)
             state = .signedIn(identity: identity)
+            await AgentReplyNotificationService.shared.restoreDeviceAfterFailedSwitch()
             MobileAnalytics.shared.track(.authAccountDeleted, ["outcome": "failure", "error_code": .string(c.analyticsCode)])
         } catch {
             lastError = .other(message: error.localizedDescription)
+            lastErrorClass = .malformed
             state = .signedIn(identity: identity)
+            await AgentReplyNotificationService.shared.restoreDeviceAfterFailedSwitch()
             MobileAnalytics.shared.track(.authAccountDeleted, ["outcome": "failure", "error_code": "other"])
+        }
+    }
+
+    /// Invalidate this device's FCM token while Firebase Auth is still A.
+    /// Post-switch writes to `users/{oldUid}` are denied by `ownsUserNamespace`.
+    private func tombstoneCurrentDeviceBeforeAuthSwitch() async {
+        await AgentReplyNotificationService.shared.tombstoneCurrentDevice()
+    }
+
+    private func applyFirebaseUnavailable() {
+        reconcileEpoch(nextUid: nil)
+        state = .firebaseUnavailable
+        lastError = .firebaseUnavailable
+        lastErrorClass = .firebaseUnavailable
+    }
+
+    /// A sign-in/sign-up failure the gateway did not classify. Always lands
+    /// signed-out, but still records the sharpest class the message supports.
+    private func applyUnclassifiedSignInFailure(_ error: Error) {
+        lastError = .other(message: error.localizedDescription)
+        lastErrorClass = MobileAuthSessionPolicy.classify(code: "other", message: error.localizedDescription)
+        state = .signedOut
+    }
+
+    private func applySignInFailure(_ classification: CloudErrorClassification) {
+        lastError = classification
+        lastErrorClass = classify(classification)
+        if lastErrorClass == .firebaseUnavailable {
+            state = .firebaseUnavailable
+        } else {
+            state = .signedOut
+        }
+    }
+
+    private func classify(_ classification: CloudErrorClassification) -> MobileAuthErrorClass {
+        switch classification {
+        case .appCheckBlocked: return .appCheck
+        case .accountMismatch: return .accountSwitch
+        case .permissionDenied: return .permissionDenied
+        case .firebaseUnavailable: return .firebaseUnavailable
+        case .firestoreUnavailable: return .firestoreUnavailable
+        case .networkUnavailable: return .network
+        case .notAuthenticated: return .none
+        default: return MobileAuthSessionPolicy.classify(code: classification.analyticsCode, message: classification.label)
         }
     }
 
@@ -182,7 +280,12 @@ final class AuthStore {
         MobileAnalytics.shared.track(.authSignUpCompleted, props)
     }
 
-    func clearError() { lastError = nil }
+    func clearError() {
+        lastError = nil
+        if lastErrorClass != .firebaseUnavailable {
+            lastErrorClass = .none
+        }
+    }
 
     /// Patch the in-memory identity with a newly uploaded photoURL so views
     /// refresh immediately without waiting for the next Firebase observer event.

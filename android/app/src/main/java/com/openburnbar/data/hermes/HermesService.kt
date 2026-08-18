@@ -13,12 +13,14 @@ import com.openburnbar.data.hermes.relay.HermesRelayClient
 import com.openburnbar.data.hermes.relay.HermesRelayException
 import com.openburnbar.data.hermes.relay.HermesRelayKeyStore
 import com.openburnbar.data.hermes.relay.HermesRelayTransporting
+import com.openburnbar.data.policy.MobileHermesConversationPolicy
 import com.openburnbar.irohrelay.OpenBurnBarIrohFfiBackend
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -209,6 +211,10 @@ class HermesService(
     val sessionsErrorText: StateFlow<String?> = _sessionsErrorText
 
     private var historyStore: AssistantChatHistoryStore? = null
+    internal var streamJob: Job? = null
+    internal var streamGeneration: Int = 0
+    internal var applyGeneration: Int = 0
+    internal var applyThreadId: String? = null
 
     internal val messagesInternal get() = _messages
     internal val isConnectedInternal get() = _isConnected
@@ -312,6 +318,51 @@ class HermesService(
 
     fun sendMessage(content: String, modelName: String, attachments: List<HermesAttachment>) {
         sendMessage(content, modelName, attachments, conversationId = _currentConversationID.value)
+    }
+
+    fun cancelGeneration() {
+        if (!_isStreaming.value && streamJob == null) return
+        supersedeCurrentStream()
+        finalizeMessagesAfterCancelledStream()
+        _isStreaming.value = false
+        threadActions.persistCurrentThread()
+    }
+
+    internal fun supersedeCurrentStream() {
+        streamJob?.cancel()
+        streamJob = null
+        streamGeneration += 1
+    }
+
+    internal fun isCurrentStream(generation: Int, threadId: String?): Boolean =
+        MobileHermesConversationPolicy.shouldApplyChunk(
+            chunkThreadId = threadId,
+            activeThreadId = applyThreadId,
+            chunkGeneration = generation,
+            activeGeneration = applyGeneration,
+        ) && streamGeneration == generation
+
+    private fun finalizeMessagesAfterCancelledStream() {
+        val terminal = MobileHermesConversationPolicy.terminal("stop")
+        val finalized =
+            _messages.value.map { msg ->
+                if (msg.isStreaming) msg.copy(isStreaming = false) else msg
+            }
+        val last = finalized.lastOrNull()
+        _messages.value =
+            if (last != null &&
+                last.role == "assistant" &&
+                MobileHermesConversationPolicy.shouldDropEmptyAssistant(
+                    text = last.content,
+                    toolCallCount = last.toolCalls.size,
+                    isError = last.isError,
+                    terminal = terminal,
+                )
+            ) {
+                finalized.dropLast(1)
+            } else {
+                finalized
+            }
     }
 
     private fun sendMessage(content: String, modelName: String, attachments: List<HermesAttachment>, conversationId: String?) {
@@ -450,7 +501,7 @@ fun HermesService.clearMessages() = threadActions.clearMessages()
 
 fun HermesService.startNewThread() = threadActions.startNewThread()
 
-fun HermesService.loadThread(id: String) = threadActions.loadThread(id)
+fun HermesService.loadThread(id: String): String = threadActions.loadThread(id)
 
 fun HermesService.deleteThread(id: String) = threadActions.deleteThread(id)
 

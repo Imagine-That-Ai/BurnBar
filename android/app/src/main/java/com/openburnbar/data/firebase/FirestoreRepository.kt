@@ -469,6 +469,8 @@ private fun DocumentSnapshot.toModelBenchmarkSummary(): InsightDigest.ModelBench
 
 internal fun DocumentSnapshot.toTokenUsage(vaultKey: ByteArray? = null, projectNameCache: SealedProjectNameCache? = null): TokenUsage? {
     val data = data ?: return null
+    val provider = data["provider"] as? String
+    if (provider.isNullOrBlank()) return null
     val startMillis = FirestoreValueParsers.millis(data["startTime"])
     val endMillis = FirestoreValueParsers.millis(data["endTime"])
     val createdMillis = FirestoreValueParsers.millis(data["createdAt"])
@@ -479,7 +481,7 @@ internal fun DocumentSnapshot.toTokenUsage(vaultKey: ByteArray? = null, projectN
             ?: updatedMillis
     return TokenUsage(
         id = id,
-        provider = data["provider"] as? String ?: "",
+        provider = provider,
         providerId = data["providerID"] as? String,
         providerAccountId = data["providerAccountID"] as? String,
         providerAccountLabel = data["providerAccountLabel"] as? String,

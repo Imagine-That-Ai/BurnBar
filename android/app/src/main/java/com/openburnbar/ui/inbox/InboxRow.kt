@@ -30,6 +30,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.openburnbar.data.inbox.AIInboxRow
+import com.openburnbar.data.policy.MobileAccessibilityLabelPolicy
 import com.openburnbar.ui.components.AuroraBadge
 import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraRadius
@@ -69,7 +70,7 @@ internal fun InboxRow(row: AIInboxRow, isSelected: Boolean, nowEpoch: Long, onCl
             )
             .clickable(onClick = onClick)
             .padding(horizontal = AuroraSpacing.MD.dp, vertical = AuroraSpacing.SM.dp)
-            .semantics { contentDescription = inboxRowAccessibilityLabel(row, nowEpoch) },
+            .semantics { contentDescription = inboxRowAccessibilityLabel(row) },
     ) {
         InboxRowLeading(row = row, accent = accent, unread = unread)
         Spacer(modifier = Modifier.width(AuroraSpacing.SM.dp))
@@ -142,10 +143,13 @@ internal fun inboxRowSubtitle(row: AIInboxRow, nowEpoch: Long): String {
 }
 
 /** Spoken form of a row, so the list is navigable without reading the chrome. */
-internal fun inboxRowAccessibilityLabel(row: AIInboxRow, nowEpoch: Long): String {
-    val prefix = if (row.isUnread()) "Unread. " else ""
-    return "$prefix${InboxPresentation.priorityLabel(row.item.priority)}. ${row.item.title}. ${inboxRowSubtitle(row, nowEpoch)}"
-}
+internal fun inboxRowAccessibilityLabel(row: AIInboxRow): String =
+    MobileAccessibilityLabelPolicy.inboxRow(
+        unread = row.isUnread(),
+        kindLabel = InboxPresentation.kindLabel(row.item.kind),
+        priorityLabel = InboxPresentation.priorityLabel(row.item.priority).takeIf { row.item.priority.rank <= 2 },
+        title = row.item.title,
+    )
 
 /**
  * Coarse relative time. Deliberately vague past a week: "3 weeks ago" is a more

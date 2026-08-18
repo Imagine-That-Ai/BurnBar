@@ -624,6 +624,7 @@ final class HermesService {
         guard isStreaming || currentTask != nil else { return }
         currentTask?.cancel()
         currentTask = nil
+        let terminal = MobileHermesConversationPolicy.terminal(forEvent: "stop")
         for index in messages.indices where messages[index].isStreaming {
             var message = messages[index]
             message.isStreaming = false
@@ -632,9 +633,12 @@ final class HermesService {
         }
         if let last = messages.last,
            last.role == .assistant,
-           last.text.isEmpty,
-           last.toolCalls.isEmpty,
-           !last.isError {
+           MobileHermesConversationPolicy.shouldDropEmptyAssistant(
+            text: last.text,
+            toolCallCount: last.toolCalls.count,
+            isError: last.isError,
+            terminal: terminal
+           ) {
             messages.removeLast()
         }
         isStreaming = false
@@ -764,6 +768,17 @@ final class HermesService {
         // Allow attachment-only messages (no text) so users can send a photo
         // and let the model describe / OCR it.
         guard !trimmed.isEmpty || !attachments.isEmpty, !isStreaming else { return }
+        if let rejected = attachments.first(where: { attachment in
+            MobileHermesConversationPolicy.attachmentDisposition(
+                id: attachment.id,
+                mimeType: attachment.mimeType,
+                byteSize: attachment.byteSize,
+                path: attachment.workspaceRelativePath
+            ) == .rejected
+        }) {
+            lastError = "Attachment rejected: \(rejected.displayName) is malformed."
+            return
+        }
         // Clear any prior run's itemized spend so a new fusion run's receipt never
         // shows stale line items before its own SSE frame lands.
         capturedFusionSpend = nil
@@ -797,7 +812,17 @@ final class HermesService {
         // sendMessage, so there is no active streaming tail to trim. Mirrors the
         // placement in beginBurnBarGatewayTurn / beginVisibleCLITurn.
         conversation.capRetainedMessages()
-        messages.append(userMessage)
+        let last = messages.last
+        // "reconnect" lets the policy drop a replayed turn; it re-checks the
+        // role/text match itself, so there is nothing to pre-compute here.
+        if MobileHermesConversationPolicy.shouldAppendUserMessage(
+            lastRole: last?.role.rawValue,
+            lastText: last?.text,
+            incomingText: trimmed,
+            reason: "reconnect"
+        ) {
+            messages.append(userMessage)
+        }
         isStreaming = true
         lastError = nil
         persistCurrentThread()

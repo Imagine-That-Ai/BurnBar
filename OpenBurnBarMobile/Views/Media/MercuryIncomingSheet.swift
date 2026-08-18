@@ -6,6 +6,7 @@ import SwiftUI
 struct MercuryIncomingSheet: View {
     let pairedDeviceName: String
     let initial: String
+    var connectionId: String? = nil
     let onAccept: () -> Void
     let onDecline: () -> Void
 
@@ -79,6 +80,32 @@ struct MercuryIncomingSheet: View {
             colors: [Color(red: 0.78, green: 0.74, blue: 0.69), Color(red: 0.63, green: 0.67, blue: 0.73)],
             startPoint: .topLeading,
             endPoint: .bottomTrailing
+        )
+    }
+}
+
+/// The routed presentation of `MercuryIncomingSheet` — both root shells raise
+/// the same sheet from a `ShowMercuryCall` deep link, so the derived labels and
+/// the accept/decline wiring live here rather than in each shell.
+@MainActor
+struct MercuryRoutedIncomingSheet: View {
+    let connectionId: String?
+    /// Runs before the call is answered or declined so the shell can dismiss.
+    let onDismiss: () -> Void
+
+    var body: some View {
+        MercuryIncomingSheet(
+            pairedDeviceName: connectionId ?? "Paired Mac",
+            initial: String((connectionId ?? "M").prefix(1)).uppercased(),
+            connectionId: connectionId,
+            onAccept: {
+                onDismiss()
+                VoIPCallService.shared.answerInFlightCall(connectionId: connectionId)
+            },
+            onDecline: {
+                onDismiss()
+                VoIPCallService.shared.declineInFlightCall(connectionId: connectionId)
+            }
         )
     }
 }

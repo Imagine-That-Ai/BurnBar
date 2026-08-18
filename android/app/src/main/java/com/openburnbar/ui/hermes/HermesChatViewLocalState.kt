@@ -20,4 +20,5 @@ internal data class HermesChatViewLocalState(
     val setShowConnectionSettings: (Boolean) -> Unit,
     val setChatViewMode: (ChatViewMode) -> Unit,
     val sendMessage: () -> Unit,
+    val stopGeneration: () -> Unit,
 )

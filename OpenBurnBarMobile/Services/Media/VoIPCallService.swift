@@ -21,6 +21,8 @@ import OpenBurnBarMedia
 /// (Decision 1 in `plans/2026-05-15-mercury-media-master-plan.md`).
 @MainActor
 final class VoIPCallService: NSObject {
+    static let shared = VoIPCallService()
+
     private static let log = Logger(subsystem: "com.openburnbar.mobile", category: "VoIPCallService")
 
     static let incomingCallNotification = Notification.Name("MediaCallIncomingNotification")
@@ -65,22 +67,59 @@ final class VoIPCallService: NSObject {
     /// Phase 5: invoked by `MercuryIncomingSheet` Accept tap when the
     /// app is already foregrounded. Fulfills the CallKit answer action
     /// internally so CallKit + Mercury sheet stay coherent.
-    func answerInFlightCall() {
+    func answerInFlightCall(connectionId: String? = nil) {
         #if canImport(CallKit)
-        guard let call = inFlightIncoming else { return }
-        let action = CXAnswerCallAction(call: call.callID)
-        let transaction = CXTransaction(action: action)
-        controller.request(transaction) { _ in }
+        if let call = incomingCall(matching: connectionId) {
+            let action = CXAnswerCallAction(call: call.callID)
+            let transaction = CXTransaction(action: action)
+            controller.request(transaction) { _ in }
+        }
         #endif
+        startRoutedCall(connectionId: connectionId)
     }
 
-    func declineInFlightCall() {
+    func declineInFlightCall(connectionId: String? = nil) {
         #if canImport(CallKit)
-        guard let call = inFlightIncoming else { return }
-        let action = CXEndCallAction(call: call.callID)
-        let transaction = CXTransaction(action: action)
-        controller.request(transaction) { _ in }
+        if let call = incomingCall(matching: connectionId) {
+            let action = CXEndCallAction(call: call.callID)
+            let transaction = CXTransaction(action: action)
+            controller.request(transaction) { _ in }
+        }
         #endif
+        if incomingCall(matching: connectionId) != nil || (connectionId?.isEmpty == false) {
+            inFlightIncoming = nil
+            NotificationCenter.default.post(name: Self.endedCallNotification, object: nil)
+        }
+    }
+
+    /// Prefer the routed Mercury `connectionId`. Never answer a different in-flight call.
+    func incomingCall(matching connectionId: String?) -> IncomingCall? {
+        Self.incomingCall(inFlightIncoming, matching: connectionId)
+    }
+
+    static func incomingCall(_ inFlight: IncomingCall?, matching connectionId: String?) -> IncomingCall? {
+        guard let call = inFlight else { return nil }
+        if let connectionId, !connectionId.isEmpty, call.connectionID != connectionId {
+            return nil
+        }
+        return call
+    }
+
+    /// Start the media session for a routed connection even when CallKit has no in-flight call.
+    func startRoutedCall(connectionId: String?) {
+        guard let connectionId, !connectionId.isEmpty else { return }
+        if inFlightIncoming == nil {
+            inFlightIncoming = IncomingCall(
+                callID: UUID(),
+                connectionID: connectionId,
+                pairedDeviceID: "unknown",
+                displayName: "Mac call",
+                isVideo: true
+            )
+        }
+        Task {
+            try? await HermesIrohRelayTransport.shared.ensureMediaControlStream(connectionID: connectionId)
+        }
     }
 }
 

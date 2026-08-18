@@ -17,6 +17,15 @@ import OpenBurnBarCore
 // pausable `TimelineView` here so it only re-evaluates this subtree, never
 // the rest of the Pulse feed (docs/architecture/macos-performance.md §5).
 
+/// 13pt rounded bold — the numeric voice shared by the call count and the
+/// burn-rate pill. Scales with Dynamic Type like the rest of the hero.
+private let heroPillNumeral = MobileScaledFont.system(
+    size: 13,
+    weight: .bold,
+    design: .rounded,
+    relativeTo: .caption
+)
+
 struct PulseHeroBurnCard: View {
     let rollupTotals: [RollupWindowKey: RollupTotals]
     let dailyPoints: [RollupDailyPoint]
@@ -92,6 +101,14 @@ private struct PulseHeroBurnCardContent: View {
         }
         .shadow(color: accentColor.opacity(colorScheme == .dark ? 0.20 : 0.14),
                 radius: 28, x: 0, y: 14)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            MobileAccessibilityLabelPolicy.heroBurn(
+                displayMode: displayMode == .currency ? "currency" : "tokens",
+                heroText: heroValueText,
+                liveRate: heroLiveRateText
+            )
+        )
     }
 
     // MARK: - Top Row
@@ -149,7 +166,7 @@ private struct PulseHeroBurnCardContent: View {
             let isAhead = pct >= 0
             HStack(spacing: 6) {
                 Image(systemName: isAhead ? "arrow.up.right" : "arrow.down.right")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(MobileScaledFont.system(size: 13, weight: .bold))
                 Text(String(format: "%@ %.0f%%", isAhead ? "Ahead of" : "Below", abs(pct)) + " your \(trailingLabel) average")
                     .font(MobileTheme.Typography.tiny)
                     .fontWeight(.semibold)
@@ -203,7 +220,7 @@ private struct PulseHeroBurnCardContent: View {
         HStack(spacing: 10) {
             Image(systemName: "flame.fill")
                 .foregroundStyle(liveFeedIsActive ? MobileTheme.amber : MobileTheme.Colors.textMuted)
-                .font(.system(size: 12, weight: .bold))
+                .font(MobileScaledFont.system(size: 12, weight: .bold))
                 .symbolEffect(.pulse, options: .repeating, isActive: liveFeedIsActive)
             Text(footerStatusText)
                 .font(MobileTheme.Typography.tiny)
@@ -212,9 +229,9 @@ private struct PulseHeroBurnCardContent: View {
             if let total, total.requests > 0 {
                 HStack(spacing: 4) {
                     Image(systemName: "waveform.path.ecg")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(MobileScaledFont.system(size: 12, weight: .semibold))
                     Text("\(total.requests)")
-                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .font(heroPillNumeral)
                         .contentTransition(.numericText())
                     Text("calls")
                         .font(MobileTheme.Typography.tiny)
@@ -233,25 +250,13 @@ private struct PulseHeroBurnCardContent: View {
 
     @ViewBuilder
     private var burnRatePill: some View {
-        switch displayMode {
-        case .currency:
-            if let rate = PulseBurnRate.dollarsPerMinute(usages: liveUsages, now: now) {
-                BurnVelocityPill(
-                    icon: "dollarsign",
-                    text: rate < 0.01 ? "<$0.01/min" : String(format: "$%.2f/min", rate),
-                    accent: accentColor
-                )
-                .transition(.scale.combined(with: .opacity))
-            }
-        case .tokens:
-            if let rate = PulseBurnRate.tokensPerMinute(usages: liveUsages, now: now) {
-                BurnVelocityPill(
-                    icon: "number",
-                    text: "\(rate.formatAsTokenVolume())/min",
-                    accent: accentColor
-                )
-                .transition(.scale.combined(with: .opacity))
-            }
+        if let text = heroLiveRateText {
+            BurnVelocityPill(
+                icon: displayMode == .currency ? "dollarsign" : "number",
+                text: text,
+                accent: accentColor
+            )
+            .transition(.scale.combined(with: .opacity))
         }
     }
 
@@ -305,6 +310,17 @@ private struct PulseHeroBurnCardContent: View {
         case .minute, .hour, .day: return "7-day"
         case .week:                return "30-day"
         case .month:               return "90-day"
+        }
+    }
+
+    private var heroLiveRateText: String? {
+        switch displayMode {
+        case .currency:
+            guard let rate = PulseBurnRate.dollarsPerMinute(usages: liveUsages, now: now) else { return nil }
+            return rate < 0.01 ? "<$0.01/min" : String(format: "$%.2f/min", rate)
+        case .tokens:
+            guard let rate = PulseBurnRate.tokensPerMinute(usages: liveUsages, now: now) else { return nil }
+            return "\(rate.formatAsTokenVolume())/min"
         }
     }
 
@@ -426,9 +442,9 @@ private struct BurnVelocityPill: View {
     var body: some View {
         HStack(spacing: 4) {
             Image(systemName: icon)
-                .font(.system(size: 12, weight: .heavy))
+                .font(MobileScaledFont.system(size: 12, weight: .heavy))
             Text(text)
-                .font(.system(size: 13, weight: .bold, design: .rounded))
+                .font(heroPillNumeral)
                 .contentTransition(.numericText())
         }
         .padding(.horizontal, 9)

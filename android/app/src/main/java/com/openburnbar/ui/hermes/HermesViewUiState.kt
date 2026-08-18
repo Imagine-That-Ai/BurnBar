@@ -10,6 +10,7 @@ import androidx.compose.ui.platform.LocalContext
 import com.openburnbar.data.hermes.HermesAttachment
 import com.openburnbar.data.hermes.HermesService
 import com.openburnbar.data.hermes.loadThread
+import com.openburnbar.data.policy.MobileHermesConversationDeepLink
 import com.openburnbar.ui.navigation.HermesPendingPrompt
 
 internal data class HermesViewUiState(
@@ -112,8 +113,13 @@ private fun HermesViewInitialThreadEffects(hermesService: HermesService, initial
             val cleanThreadId = initialThreadId.removePrefix("hermes:")
             hermesService.bindHistoryStore(historyStore)
             historyStore.bootstrap()
-            hermesService.loadThread(cleanThreadId)
-            val title = historyStore.thread(cleanThreadId)?.title ?: "New Chat"
+            val outcome = hermesService.loadThread(cleanThreadId)
+            val title =
+                if (outcome == MobileHermesConversationDeepLink.LOADED.wire) {
+                    historyStore.thread(cleanThreadId)?.title ?: "Conversation"
+                } else {
+                    "Conversation unavailable"
+                }
             onOpenThread(title)
         }
     }

@@ -13,6 +13,11 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.fragment.app.FragmentActivity
+import com.google.firebase.auth.FirebaseAuth
+import com.openburnbar.data.missions.MobileMissionConsoleHost
+import com.openburnbar.data.policy.MobileNavigationDecision
+import com.openburnbar.data.policy.MobileOsDestination
+import com.openburnbar.data.policy.MobileOsIntegrationPolicy
 import com.openburnbar.security.enableOpenBurnBarScreenPrivacy
 import com.openburnbar.services.media.AgentReplyNotificationState
 import com.openburnbar.ui.auth.LaunchSplashGate
@@ -44,6 +49,7 @@ class MainActivity : FragmentActivity() {
         )
         WindowCompat.setDecorFitsSystemWindows(window, false)
         requestNotificationPermissionIfNeeded()
+        AgentReplyNotificationState.bindConsumedEvents(currentUid(), applicationContext)
         handleIntent(intent)
         setContent {
             AuroraTheme {
@@ -127,13 +133,42 @@ class MainActivity : FragmentActivity() {
      * move to the Inbox tab itself.
      */
     private fun routeDeepLink(intent: Intent?, warmStart: Boolean) {
-        when (val route = BurnBarDeepLink.parseIntent(intent)) {
-            is BurnBarDeepLinkRoute.Inbox -> {
-                InboxPendingItem.stash(route.itemId)
+        val routed = MobileOsIntegrationPolicy.route(intent?.dataString)
+        val eventId = intent?.getStringExtra(EXTRA_EVENT_ID)?.takeIf { it.isNotBlank() }
+        val envelopePayload = MobileOsIntentNavigation.payloadFrom(intent)
+        if (MobileOsIntentNavigation.hasPushEnvelope(envelopePayload)) {
+            val decision = MobileOsIntentNavigation.navigation(
+                payload = envelopePayload,
+                activeUid = currentUid(),
+                lastConsumedEventId = AgentReplyNotificationState.lastConsumedEventId,
+            )
+            if (decision != MobileNavigationDecision.NAVIGATE) return
+        }
+        persistConsumedIfPresent(eventId)
+        when (routed.destination) {
+            MobileOsDestination.INBOX -> {
+                // The policy hands back a raw path segment; [BurnBarDeepLink] is
+                // the parser that bounds and sanitizes it before it becomes a
+                // lookup key or an Intent extra.
+                InboxPendingItem.stash((BurnBarDeepLink.parseIntent(intent) as? BurnBarDeepLinkRoute.Inbox)?.itemId)
                 if (warmStart) InboxPendingNavigation.request()
             }
-            null -> Unit
+            MobileOsDestination.MISSION -> {
+                routed.missionId?.let { MobileMissionConsoleHost.shared().focusMission(it) }
+                if (warmStart) OsPendingNavigation.request(routed, eventId)
+            }
+            MobileOsDestination.BURN,
+            MobileOsDestination.MERCURY_CALL,
+            -> if (warmStart) OsPendingNavigation.request(routed, eventId)
+            else -> Unit
         }
+    }
+
+    private fun currentUid(): String? = FirebaseAuth.getInstance().currentUser?.uid
+
+    private fun persistConsumedIfPresent(eventId: String?) {
+        if (eventId.isNullOrBlank()) return
+        AgentReplyNotificationState.persistConsumed(eventId, currentUid(), applicationContext)
     }
 
     companion object {
@@ -161,5 +196,9 @@ class MainActivity : FragmentActivity() {
         const val EXTRA_E2E_COMPUTER_USE_TAMPER_COUNT = "openburnbar.e2e.computerUseTamperCount"
         const val EXTRA_E2E_COMPUTER_USE_TAMPER_TIMESTAMP_STEP_MILLIS = "openburnbar.e2e.computerUseTamperTimestampStepMillis"
         const val EXTRA_E2E_COMPUTER_USE_APPROVAL_PROOF = "openburnbar.e2e.computerUseApprovalProof"
+        const val EXTRA_EVENT_ID = "event_id"
+        const val EXTRA_UID = "uid"
+        const val EXTRA_EXPIRES_AT_MILLIS = "expires_at_millis"
+        const val EXTRA_PUSH_TYPE = "type"
     }
 }

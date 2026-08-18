@@ -1,6 +1,7 @@
 
 package com.openburnbar
 
+import com.google.firebase.FirebaseException
 import com.google.firebase.firestore.DocumentSnapshot
 import com.openburnbar.data.firebase.FirestoreRepository
 import com.openburnbar.data.models.ProjectSummary
@@ -87,5 +88,50 @@ class ActivityStoreTest {
         assertFalse(store.hasMore.value)
 
         store.stopListening()
+    }
+
+    @Test
+    fun `successful load clears a previous error`() = runTest {
+        val mockRepo = mockk<FirestoreRepository>()
+        val usages = listOf(TokenUsage(id = "1", provider = "openai"))
+        coEvery { mockRepo.fetchUsagePage(any(), any(), any(), any(), any(), any(), any()) } throws firestoreUnavailable() andThen (usages to null)
+        every { mockRepo.listenToUsagePage() } returns flowOf(usages)
+
+        val store = ActivityStore(mockRepo)
+        store.loadInitial()
+        advanceUntilIdle()
+        assertEquals("unavailable", store.error.value)
+        assertTrue(store.usages.value.isEmpty())
+
+        store.loadInitial()
+        advanceUntilIdle()
+        assertEquals(null, store.error.value)
+        assertEquals(1, store.usages.value.size)
+        store.stopListening()
+    }
+
+    @Test
+    fun `search failure is not an empty result`() = runTest {
+        val mockRepo = mockk<FirestoreRepository>()
+        coEvery { mockRepo.fetchUsagePage(any(), any(), any(), any(), any(), any(), any()) } returns (emptyList<TokenUsage>() to null)
+        every { mockRepo.listenToUsagePage() } returns flowOf(emptyList())
+
+        val store = ActivityStore(
+            mockRepo,
+            cloudSearchFactory = {
+                mockk {
+                    coEvery { search(any()) } throws IllegalStateException("index unavailable")
+                }
+            },
+        )
+        store.updateSearch("codex")
+        advanceUntilIdle()
+        assertTrue(store.searchFailed.value)
+        assertEquals("index unavailable", store.error.value)
+        store.stopListening()
+    }
+
+    private fun firestoreUnavailable(): FirebaseException = mockk {
+        every { message } returns "unavailable"
     }
 }

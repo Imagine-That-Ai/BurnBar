@@ -168,6 +168,8 @@ describe("buildFcmMessage — AI Inbox payload boundary", () => {
     expect(data.kind).toBe("ci_waste");
     expect(data.priority).toBe("1");
     expect(data.deep_link).toBe("burnbar://inbox/inb_abc");
+    expect(data.uid).toBe("user-123");
+    expect(String(data.expires_at_millis)).toMatch(/^\d+$/);
     // The sealed half must never appear, under any key.
     expect(data).not.toHaveProperty("summary");
     expect(data).not.toHaveProperty("summaryMarkdown");

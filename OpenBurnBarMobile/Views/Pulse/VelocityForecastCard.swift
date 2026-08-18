@@ -160,7 +160,7 @@ struct VelocityForecastCard: View {
                 .shadow(color: MobileTheme.amber.opacity(0.55), radius: 12)
             VStack(spacing: 2) {
                 Text("\(Int(progress * 100))%")
-                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                    .font(MobileTheme.Typography.headline)
                     .foregroundStyle(MobileTheme.Colors.textPrimary)
                 Text("of day")
                     .font(MobileTheme.Typography.tiny)

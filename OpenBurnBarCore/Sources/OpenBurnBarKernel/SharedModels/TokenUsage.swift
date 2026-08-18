@@ -370,6 +370,60 @@ public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
         parentRequestID?.hasPrefix(FusionUsageRow.fusionParentPrefix) ?? false
     }
 
+    /// Narrow generated-consumer entry point so the Firestore bridge does not
+    /// type-check the full defaulted memberwise initializer.
+    public static func fromGeneratedEvent(
+        provider: AgentProvider,
+        sessionId: String,
+        model: String,
+        inputTokens: Int,
+        outputTokens: Int,
+        cacheCreationTokens: Int,
+        cacheReadTokens: Int,
+        costUSD: Double,
+        recordedDate: Date,
+        providerID: ProviderID?,
+        providerAccountID: String?,
+        providerAccountLabel: String?,
+        currency: String?,
+        recordedAt: String,
+        eventKind: String?,
+        idempotencyKey: String?,
+        deviceId: String?,
+        sourceDeviceId: String?,
+        executionSourceID: String?,
+        executionSourceName: String?,
+        executionSourceKind: UsageExecutionSourceKind?,
+        executionSourceConfidence: UsageProvenanceConfidence?
+    ) -> TokenUsage {
+        TokenUsage(
+            provider: provider,
+            sessionId: sessionId,
+            projectName: "",
+            model: model,
+            inputTokens: inputTokens,
+            outputTokens: outputTokens,
+            cacheCreationTokens: cacheCreationTokens,
+            cacheReadTokens: cacheReadTokens,
+            costUSD: costUSD,
+            startTime: recordedDate,
+            endTime: recordedDate,
+            executionSourceID: executionSourceID,
+            executionSourceName: executionSourceName,
+            executionSourceKind: executionSourceKind,
+            executionSourceConfidence: executionSourceConfidence,
+            deviceId: deviceId,
+            sourceDeviceId: sourceDeviceId,
+            providerID: providerID,
+            providerAccountID: providerAccountID,
+            providerAccountLabel: providerAccountLabel,
+            currency: currency,
+            recordedAt: recordedAt,
+            eventKind: eventKind,
+            idempotencyKey: idempotencyKey
+        )
+    }
+
     public init(
         id: UUID? = nil,
         provider: AgentProvider,

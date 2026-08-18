@@ -342,11 +342,10 @@ internal fun List<ProviderQuotaSnapshot>.dedupeFresh(): List<ProviderQuotaSnapsh
         }
     }
 
-    val providerOrder = AgentProvider.entries.withIndex().associate { (i, p) -> p.key to i }
     return freshest.values.sortedWith(
         compareBy(
-            { providerOrder[AgentProvider.fromKey(it.provider)?.key] ?: Int.MAX_VALUE },
-            { it.accountLabel.orEmpty().lowercase() },
+            { (AgentProvider.fromKey(it.provider)?.key ?: it.provider).lowercase() },
+            { (it.accountId ?: it.accountLabel.orEmpty()).lowercase() },
         ),
     )
 }

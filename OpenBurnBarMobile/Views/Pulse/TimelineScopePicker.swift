@@ -129,7 +129,7 @@ struct PulseDisplayModeToggle: View {
         } label: {
             HStack(spacing: 4) {
                 Image(systemName: displayMode == .currency ? "dollarsign" : "number")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(MobileScaledFont.system(size: 12, weight: .bold))
                 Text(displayMode.label)
                     .font(MobileTheme.Typography.tiny)
                     .fontWeight(.semibold)

@@ -9,6 +9,8 @@ import com.openburnbar.data.computeruse.SystemPermissionTextClassifier
 import com.openburnbar.data.hermes.relay.HermesRelayConnectionDescriptor
 import com.openburnbar.data.hermes.relay.HermesRelayOperationName
 import com.openburnbar.data.hermes.relay.HermesRelayPayload
+import com.openburnbar.data.policy.MobileHermesAttachmentDisposition
+import com.openburnbar.data.policy.MobileHermesConversationPolicy
 import com.openburnbar.irohrelay.HermesChatMessageOutcome as RelayHermesChatMessageOutcome
 import com.openburnbar.irohrelay.HermesStreamEvent
 import java.io.IOException
@@ -155,10 +157,34 @@ internal class HermesServiceMessageActions(
         if (service.isStreamingInternal.value) return
 
         val resolvedModelName = service.resolvedModelNameForSend(modelName)
+        val rejected =
+            attachments.firstOrNull { attachment ->
+                MobileHermesConversationPolicy.attachmentDisposition(
+                    id = attachment.id,
+                    mimeType = attachment.mimeType,
+                    byteSize = (attachment.sizeBytes ?: 0L).toInt(),
+                    path = attachment.absolutePath ?: attachment.uriString.orEmpty(),
+                ) == MobileHermesAttachmentDisposition.REJECTED
+            }
+        if (rejected != null) {
+            appendAssistantError("Attachment rejected: ${rejected.fileName.ifBlank { "file" }} is malformed.", resolvedModelName)
+            return
+        }
         ensureThreadIDs(conversationIdHint)
 
         val conversationId = service.currentConversationIDInternal.value
-        appendUserMessage(content, resolvedModelName, attachments)
+        val last = service.messagesInternal.value.lastOrNull()
+        // "reconnect" lets the policy drop a replayed turn; it re-checks the
+        // role/text match itself, so there is nothing to pre-compute here.
+        if (MobileHermesConversationPolicy.shouldAppendUserMessage(
+                lastRole = last?.role,
+                lastText = last?.content,
+                incomingText = content,
+                reason = "reconnect",
+            )
+        ) {
+            appendUserMessage(content, resolvedModelName, attachments)
+        }
         threadActions.persistCurrentThread()
 
         if (hasDesktopAgentRelayGrant(conversationId)) {
@@ -265,6 +291,7 @@ internal class HermesServiceMessageActions(
             }
             finalizeAssistantStream(assistantID, accumulated, modelName, rescue)
         } catch (e: IOException) {
+            if (!service.isCurrentStream(service.applyGeneration, conversationId ?: service.applyThreadId)) return
             // Publish runtimeErrorText BEFORE the message append: observers wake
             // on the message and must already see the error state (same ordering
             // fix as sendFailureHandler in HermesServiceMessageLaunch).
@@ -400,6 +427,7 @@ internal class HermesServiceMessageActions(
             finalizeAssistantStream(assistantID, accumulated, modelName, rescue)
             markRuntimeHealthy()
         } catch (e: IOException) {
+            if (!service.isCurrentStream(service.applyGeneration, conversationId ?: service.applyThreadId)) return
             val error = e.message ?: e.javaClass.simpleName
             // Error state first, then the message observers synchronize on.
             service.runtimeErrorTextInternal.value = error
@@ -514,6 +542,7 @@ private fun HermesService.upsertStreamingAssistant(
     outcome: HermesChatMessageOutcome = HermesChatMessageOutcome.NORMAL,
     isError: Boolean = false,
 ) {
+    if (!isCurrentStream(applyGeneration, applyThreadId)) return
     val existing = messagesInternal.value.firstOrNull { it.id == id }
     val message =
         HermesMessage(
@@ -532,6 +561,7 @@ private fun HermesService.upsertStreamingAssistant(
 }
 
 private fun HermesService.mergeToolCallForAssistant(assistantID: String, id: String, index: Int, nameFragment: String?, argumentsDelta: String) {
+    if (!isCurrentStream(applyGeneration, applyThreadId)) return
     messagesInternal.value =
         messagesInternal.value.map { existing ->
             if (existing.id != assistantID) return@map existing

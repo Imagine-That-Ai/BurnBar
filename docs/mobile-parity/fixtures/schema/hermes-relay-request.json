@@ -1,0 +1,31 @@
+{
+  "generatedType": "HermesRelayRequestDoc",
+  "pass": [
+    {
+      "id": "happy",
+      "document": {
+        "operation": "chatCompletions",
+        "status": "pending",
+        "sessionId": "sess-1",
+        "createdAt": "2026-08-17T12:00:00.000Z"
+      }
+    },
+    {
+      "id": "optional-absent",
+      "document": {
+        "operation": "models",
+        "status": "completed",
+        "createdAt": "2026-08-17T12:00:00.000Z"
+      }
+    }
+  ],
+  "fail": [
+    {
+      "id": "missing-operation",
+      "document": {
+        "status": "pending",
+        "createdAt": "2026-08-17T12:00:00.000Z"
+      }
+    }
+  ]
+}

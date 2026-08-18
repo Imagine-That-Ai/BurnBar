@@ -23,6 +23,8 @@ struct AIInboxNotificationPayload: Equatable, Sendable {
     let priority: BurnBarInboxPriority
     /// The durable `agent_notification_events` id, for delivery correlation.
     let eventID: String
+    let uid: String?
+    let expiresAtMs: Int64?
 
     /// Kind label shown as the notification title. Local, never server text.
     var title: String { Self.title(forKind: kind) }
@@ -53,6 +55,8 @@ struct AIInboxNotificationPayload: Equatable, Sendable {
         }
         priority = BurnBarInboxPriority(clamping: Int(Self.string(userInfo["priority"]) ?? "") ?? 1)
         eventID = Self.string(userInfo["event_id"]) ?? itemID
+        uid = Self.string(userInfo["uid"]) ?? Self.string(userInfo["account_uid"])
+        expiresAtMs = Self.string(userInfo["expires_at_millis"]).flatMap { Int64($0) }
     }
 
     static func title(forKind kind: BurnBarInboxItemKind) -> String {

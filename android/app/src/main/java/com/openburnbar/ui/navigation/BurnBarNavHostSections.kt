@@ -23,9 +23,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -43,6 +48,7 @@ import androidx.navigation.navDeepLink
 import com.openburnbar.data.hermes.AssistantRuntimeID
 import com.openburnbar.data.missions.MobileMissionConsoleHost
 import com.openburnbar.data.square.AgentIdentityRegistry
+import com.openburnbar.services.media.IncomingCallActivity
 import com.openburnbar.ui.burn.BurnView
 import com.openburnbar.ui.components.AuroraNavIcon
 import com.openburnbar.ui.components.BurnBarLogo
@@ -52,7 +58,9 @@ import com.openburnbar.ui.hermes.AssistantsScreen
 import com.openburnbar.ui.hermes.rememberAccountScopedHermesService
 import com.openburnbar.ui.inbox.InboxScreen
 import com.openburnbar.ui.insights.InsightsScreen
+import com.openburnbar.ui.media.CallHUDState
 import com.openburnbar.ui.media.CallHUDView
+import com.openburnbar.ui.media.MercuryIncomingSheet
 import com.openburnbar.ui.media.PairedMacControlsScreen
 import com.openburnbar.ui.pulse.PulseView
 import com.openburnbar.ui.square.AgentBrandZoneScreen
@@ -139,7 +147,10 @@ private fun androidx.navigation.NavGraphBuilder.burnBarPulseRoute(navigateToBurn
 private fun androidx.navigation.NavGraphBuilder.burnBarBurnRoute() {
     composable(
         BurnBarTab.BURN.route,
-        deepLinks = listOf(navDeepLink { uriPattern = "burnbar://burn" }),
+        deepLinks = listOf(
+            navDeepLink { uriPattern = "burnbar://burn" },
+            navDeepLink { uriPattern = "burnbar://quota" },
+        ),
     ) { BurnView() }
 }
 
@@ -334,17 +345,89 @@ private fun androidx.navigation.NavGraphBuilder.burnBarMercuryCallRoute(navContr
         arguments = listOf(navArgument("connectionId") { type = NavType.StringType }),
         deepLinks = listOf(navDeepLink { uriPattern = "burnbar://mercury/call/{connectionId}" }),
     ) { entry ->
-        val connectionId = entry.arguments?.getString("connectionId").orEmpty()
-        val hudState = remember(connectionId) { com.openburnbar.ui.media.CallHUDState() }
-        CallHUDView(
-            state = hudState,
-            onMuteMic = { hudState.setMicMuted(!hudState.isMicMuted.value) },
-            onMuteCamera = { hudState.setCameraMuted(!hudState.isCameraMuted.value) },
-            onShareScreen = { hudState.setSharingScreen(!hudState.isSharingScreen.value) },
-            onEnd = { navController.popBackStack() },
-            modifier = Modifier.fillMaxSize(),
+        MercuryCallDestination(navController, entry)
+    }
+    composable(
+        "mission/{missionId}",
+        arguments = listOf(navArgument("missionId") { type = NavType.StringType }),
+        deepLinks = listOf(navDeepLink { uriPattern = "burnbar://mission/{missionId}" }),
+    ) { entry ->
+        val missionId = entry.arguments?.getString("missionId")
+        MissionConsoleDestination(missionId = missionId, onClose = { navController.popBackStack() })
+    }
+}
+
+@Composable
+private fun MissionConsoleDestination(missionId: String?, onClose: () -> Unit) {
+    val host = remember { MobileMissionConsoleHost.shared() }
+    LaunchedEffect(Unit) { host.start() }
+    LaunchedEffect(missionId) {
+        if (!missionId.isNullOrBlank()) host.focusMission(missionId)
+    }
+    val snapshot by host.snapshot.collectAsState()
+    val focused = snapshot.activeMissions.firstOrNull { it.id == missionId }
+        ?: snapshot.activeMissions.firstOrNull()
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .statusBarsPadding()
+            .padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text("Mission console", style = MaterialTheme.typography.headlineSmall)
+        Text(
+            focused?.title ?: missionId ?: "No mission selected",
+            style = MaterialTheme.typography.titleMedium,
+        )
+        if (focused != null) {
+            Text(focused.phase.displayLabel, style = MaterialTheme.typography.bodyMedium)
+            focused.phaseDetail?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+        }
+        Text(
+            "Open ${snapshot.openMissions} · queued ${snapshot.queuedMissions} · blocked ${snapshot.blockedMissions}",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Text(
+            "Close",
+            modifier = Modifier.clickable(onClick = onClose),
+            color = MaterialTheme.colorScheme.primary,
         )
     }
+}
+
+@Composable
+private fun MercuryCallDestination(
+    navController: NavHostController,
+    entry: androidx.navigation.NavBackStackEntry,
+) {
+    val connectionId = entry.arguments?.getString("connectionId").orEmpty()
+    val context = LocalContext.current
+    var accepted by remember(connectionId) { mutableStateOf(false) }
+    if (!accepted) {
+        val callerName = connectionId.ifBlank { "Paired Mac" }
+        MercuryIncomingSheet(
+            pairedDeviceName = callerName,
+            callerInitial = callerName.firstOrNull()?.uppercaseChar()?.toString() ?: "M",
+            onAccept = {
+                IncomingCallActivity.acceptRoutedCall(context, connectionId)
+                accepted = true
+            },
+            onDecline = {
+                IncomingCallActivity.declineRoutedCall(context, connectionId)
+                navController.popBackStack()
+            },
+        )
+        return
+    }
+    val hudState = remember(connectionId) { CallHUDState() }
+    CallHUDView(
+        state = hudState,
+        onMuteMic = { hudState.setMicMuted(!hudState.isMicMuted.value) },
+        onMuteCamera = { hudState.setCameraMuted(!hudState.isCameraMuted.value) },
+        onShareScreen = { hudState.setSharingScreen(!hudState.isSharingScreen.value) },
+        onEnd = { navController.popBackStack() },
+        modifier = Modifier.fillMaxSize(),
+    )
 }
 
 private fun androidx.navigation.NavGraphBuilder.burnBarYouRoute() {

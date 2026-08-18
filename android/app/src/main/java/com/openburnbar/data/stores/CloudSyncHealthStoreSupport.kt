@@ -48,8 +48,8 @@ internal fun applySyncStatusDocument(data: Map<String, Any?>, macName: String, s
     val lastError = data["lastError"] as? String
     val health =
         when {
-            lastError != null -> CloudSyncHealth.DEGRADED
-            stale -> CloudSyncHealth.DEGRADED
+            lastError != null -> CloudSyncHealth.FAILED
+            stale -> CloudSyncHealth.MAC_NOT_SYNCING
             else -> CloudSyncHealth.HEALTHY
         }
     return CloudSyncHealthSnapshot(
@@ -77,8 +77,8 @@ internal fun applyUsageFallbackSnapshot(data: Map<String, Any>?, staleThresholdM
         }
     val health =
         when {
-            usageAt == null -> CloudSyncHealth.UNKNOWN
-            Date().time - usageAt.time > staleThresholdMs -> CloudSyncHealth.DEGRADED
+            usageAt == null -> CloudSyncHealth.EMPTY
+            Date().time - usageAt.time > staleThresholdMs -> CloudSyncHealth.MAC_NOT_SYNCING
             else -> CloudSyncHealth.HEALTHY
         }
     return CloudSyncHealthSnapshot(
