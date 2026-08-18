@@ -1285,6 +1285,31 @@ test("Wand dispatch accepts established presentation modes and platform group so
     )
   );
 
+  // War Room — the Flame's routing target. Advisory and owner-written; the
+  // executing Mac still decides whether to claim the mission.
+  await assertSucceeds(
+    setDoc(
+      doc(db, `users/${uid}/cli_agent_mission_requests/mission-flame-routed`),
+      sealedMissionBase(uid, "mission-flame-routed", {
+        originatorKind: "flame",
+        originatorRef: "d-a3f2c9",
+        targetBodyID: "mac-mini-abc123",
+      })
+    )
+  );
+  await assertFails(
+    setDoc(
+      doc(db, `users/${uid}/cli_agent_mission_requests/mission-flame-long-target`),
+      sealedMissionBase(uid, "mission-flame-long-target", { targetBodyID: "b".repeat(161) })
+    )
+  );
+  await assertFails(
+    setDoc(
+      doc(db, `users/${uid}/cli_agent_mission_requests/mission-flame-bad-target`),
+      sealedMissionBase(uid, "mission-flame-bad-target", { targetBodyID: 42 })
+    )
+  );
+
   for (const source of ["ios-hermes-square", "android-hermes-square", "mac-wand"]) {
     const id = `group-${source}`;
     await assertSucceeds(
