@@ -118,7 +118,7 @@ public enum MobileAuthSessionPolicy {
             return .revokedAccount
         }
         if haystack.contains("id-token-expired") || haystack.contains("tokenexpired")
-            || haystack.contains("sessionexpired") || haystack.contains("deadline-exceeded") {
+            || haystack.contains("sessionexpired") {
             return .expired
         }
         if haystack.contains("accountmismatch") || haystack.contains("account-switch")
@@ -136,7 +136,8 @@ public enum MobileAuthSessionPolicy {
         if haystack.contains("firestoreunavailable") || haystack.contains("firestore-unavailable") {
             return .firestoreUnavailable
         }
-        if haystack.contains("unavailable") || haystack.contains("network") || haystack.contains("offline") {
+        if haystack.contains("unavailable") || haystack.contains("network") || haystack.contains("offline")
+            || haystack.contains("deadline-exceeded") {
             return .network
         }
         if haystack.contains("unauthenticated") || haystack.contains("notauthenticated") {

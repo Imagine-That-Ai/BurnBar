@@ -88,10 +88,11 @@ public enum MobileHermesConversationPolicy {
         lastRole: String?,
         lastText: String?,
         incomingText: String,
-        reason: String
+        reason: String,
+        hasAttachments: Bool = false
     ) -> Bool {
         let incoming = incomingText.trimmingCharacters(in: .whitespacesAndNewlines)
-        if incoming.isEmpty { return false }
+        if incoming.isEmpty && !hasAttachments { return false }
         if reason == "reconnect",
            lastRole == "user",
            (lastText ?? "").trimmingCharacters(in: .whitespacesAndNewlines) == incoming {

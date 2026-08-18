@@ -55,9 +55,15 @@ object MobileHermesConversationPolicy {
         return chunk == active
     }
 
-    fun shouldAppendUserMessage(lastRole: String?, lastText: String?, incomingText: String, reason: String): Boolean {
+    fun shouldAppendUserMessage(
+        lastRole: String?,
+        lastText: String?,
+        incomingText: String,
+        reason: String,
+        hasAttachments: Boolean = false,
+    ): Boolean {
         val incoming = incomingText.trim()
-        if (incoming.isEmpty()) return false
+        if (incoming.isEmpty() && !hasAttachments) return false
         if (reason == "reconnect" &&
             lastRole == "user" &&
             lastText?.trim() == incoming

@@ -32,8 +32,8 @@ fun pulseWindowMetrics(
     return PulseWindowMetrics(
         value = result.total.costUsd,
         trailingValue = result.trailing?.costUsd ?: 0.0,
-        tokenValue = result.total.tokens.toLong(),
-        trailingTokenValue = result.trailing?.tokens?.toLong() ?: 0L,
+        tokenValue = result.total.tokens,
+        trailingTokenValue = result.trailing?.tokens ?: 0L,
         requestValue = result.total.requests,
     )
 }
@@ -57,10 +57,10 @@ private fun PulseTimelineScope.toPolicyScope(): MobilePulseTimelineScope = when 
 }
 
 private fun UsageRollups.toPolicyMap(): Map<String, MobilePulseRollupTotals> = mapOf(
-    "today" to MobilePulseRollupTotals(todayRequests, todayTokens.toInt(), today),
-    "7d" to MobilePulseRollupTotals(sevenDayRequests, sevenDayTokens.toInt(), sevenDays),
-    "30d" to MobilePulseRollupTotals(thirtyDayRequests, thirtyDayTokens.toInt(), thirtyDays),
-    "90d" to MobilePulseRollupTotals(ninetyDayRequests, ninetyDayTokens.toInt(), ninetyDays),
+    "today" to MobilePulseRollupTotals(todayRequests, todayTokens, today),
+    "7d" to MobilePulseRollupTotals(sevenDayRequests, sevenDayTokens, sevenDays),
+    "30d" to MobilePulseRollupTotals(thirtyDayRequests, thirtyDayTokens, thirtyDays),
+    "90d" to MobilePulseRollupTotals(ninetyDayRequests, ninetyDayTokens, ninetyDays),
 )
 
 private fun TokenUsage.toPulseEvent(): MobilePulseUsageEvent = MobilePulseUsageEvent(

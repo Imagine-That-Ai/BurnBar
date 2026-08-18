@@ -212,7 +212,7 @@ final class MobileParityPolicyTests: XCTestCase {
             ),
             .malformedEnvelope
         )
-        XCTAssertEqual(
+        XCTAssertNil(
             MobileEscrowEnvelopePolicy.classify(
                 targetDeviceId: "phone-a",
                 currentDeviceId: "phone-a",
@@ -221,8 +221,7 @@ final class MobileParityPolicyTests: XCTestCase {
                 nowMs: now,
                 hasPrivateKey: true,
                 envelopeWellFormed: true
-            ),
-            .expiredGrant
+            )
         )
         XCTAssertNil(
             MobileEscrowEnvelopePolicy.classify(

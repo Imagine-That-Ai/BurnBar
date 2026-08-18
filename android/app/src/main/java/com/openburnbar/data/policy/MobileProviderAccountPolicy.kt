@@ -25,9 +25,10 @@ object MobileProviderAccountPolicy {
         return when {
             "permission-denied" in haystack || "permissiondenied" in haystack || "denied" in haystack ->
                 MobileProviderErrorClass.DENIED
-            "unavailable" in haystack || "network" in haystack || "offline" in haystack ->
+            "unavailable" in haystack || "network" in haystack || "offline" in haystack ||
+                "deadline-exceeded" in haystack ->
                 MobileProviderErrorClass.OFFLINE
-            "expired" in haystack || "deadline-exceeded" in haystack ->
+            "expired" in haystack ->
                 MobileProviderErrorClass.EXPIRED
             else -> MobileProviderErrorClass.MALFORMED
         }

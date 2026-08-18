@@ -120,10 +120,7 @@ class MobileParityPolicyTest {
             MobileEscrowImportFailure.MALFORMED_ENVELOPE,
             MobileEscrowEnvelopePolicy.classify("phone-a", "phone-a", "granted", now + 1, now, true, false),
         )
-        assertEquals(
-            MobileEscrowImportFailure.EXPIRED_GRANT,
-            MobileEscrowEnvelopePolicy.classify("phone-a", "phone-a", "granted", null, now, true, true),
-        )
+        assertNull(MobileEscrowEnvelopePolicy.classify("phone-a", "phone-a", "granted", null, now, true, true))
         assertNull(MobileEscrowEnvelopePolicy.classify("phone-a", "phone-a", "granted", now + 1, now, true, true))
     }
 

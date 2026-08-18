@@ -21,11 +21,13 @@ internal class HermesServiceMessageLaunch(
         }
         val resolvedConversationId = conversationId ?: return
         service.isStreamingInternal.value = true
-        launchStreamingSend(resolvedModelName) {
+        launchStreamingSend(resolvedModelName) { generation, threadId ->
             messageActions.streamDesktopAgentRelayCompletion(
                 prompt = content,
                 modelName = resolvedModelName,
                 conversationId = resolvedConversationId,
+                streamGeneration = generation,
+                streamThreadId = threadId,
             )
         }
     }
@@ -62,13 +64,15 @@ internal class HermesServiceMessageLaunch(
             return
         }
         service.isStreamingInternal.value = true
-        launchStreamingSend(resolvedModelName) {
+        launchStreamingSend(resolvedModelName) { generation, threadId ->
             messageActions.streamChatCompletionViaRelay(
                 descriptor = descriptor,
                 prompt = content,
                 modelName = resolvedModelName,
                 attachments = attachments,
                 conversationId = conversationId,
+                streamGeneration = generation,
+                streamThreadId = threadId,
             )
         }
     }
@@ -82,36 +86,43 @@ internal class HermesServiceMessageLaunch(
             return
         }
         service.isStreamingInternal.value = true
-        launchStreamingSend(resolvedModelName) {
+        launchStreamingSend(resolvedModelName) { generation, threadId ->
             messageActions.streamHttpChatCompletion(
                 endpoint = endpoint,
                 content = content,
                 resolvedModelName = resolvedModelName,
                 attachments = attachments,
                 conversationId = conversationId,
+                streamGeneration = generation,
+                streamThreadId = threadId,
             )
         }
     }
 
-    private fun launchStreamingSend(modelName: String, block: suspend () -> Unit) {
+    private fun launchStreamingSend(modelName: String, block: suspend (generation: Int, threadId: String?) -> Unit) {
         service.supersedeCurrentStream()
         val generation = service.streamGeneration
+        val threadId = service.currentConversationIDInternal.value ?: service.currentThreadIDInternal.value
         service.applyGeneration = generation
-        service.applyThreadId = service.currentConversationIDInternal.value ?: service.currentThreadIDInternal.value
+        service.applyThreadId = threadId
         service.streamJob =
-            scope.launch(sendFailureHandler(modelName, generation)) {
+            scope.launch(sendFailureHandler(modelName, generation, threadId)) {
                 try {
-                    block()
+                    block(generation, threadId)
                 } finally {
-                    if (service.isCurrentStream(generation, service.applyThreadId)) {
+                    if (service.isCurrentStream(generation, threadId)) {
                         service.isStreamingInternal.value = false
                     }
                 }
             }
     }
 
-    private fun sendFailureHandler(modelName: String, generation: Int): CoroutineExceptionHandler = CoroutineExceptionHandler { _, error ->
-        if (!service.isCurrentStream(generation, service.applyThreadId)) return@CoroutineExceptionHandler
+    private fun sendFailureHandler(
+        modelName: String,
+        generation: Int,
+        threadId: String?,
+    ): CoroutineExceptionHandler = CoroutineExceptionHandler { _, error ->
+        if (!service.isCurrentStream(generation, threadId)) return@CoroutineExceptionHandler
         val message = error.hermesSendFailureMessage()
         runCatching { Log.e(TAG, "Hermes send failed: $message", error) }
         service.runtimeErrorTextInternal.value = message

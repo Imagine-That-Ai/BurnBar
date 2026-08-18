@@ -482,6 +482,25 @@ final class AgentReplyNotificationService: NSObject, ObservableObject {
         if actionIdentifier == Self.replyActionID {
             let reply = (replyText ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             guard !reply.isEmpty else { return }
+            let fields = AgentReplyBannerNavigation.scoped(
+                [
+                    "type": payload.type,
+                    "event_id": payload.eventID,
+                    "runtime": payload.runtime,
+                    "thread_id": payload.threadID
+                ],
+                uid: payload.uid,
+                expiresAtMs: payload.expiresAtMs,
+                deepLink: payload.deepLink
+            )
+            let decision = MobileOsIntegrationPolicy.navigation(
+                envelope: MobileOsIntegrationPolicy.envelope(from: fields),
+                activeUid: Auth.auth().currentUser?.uid,
+                nowMs: Int64(Date().timeIntervalSince1970 * 1000),
+                lastConsumedEventId: lastConsumedEventID,
+                permissionGranted: true
+            )
+            guard decision == .navigate else { return }
             await submitReply(eventID: payload.eventID, replyText: reply)
             await sendInlineReply(runtime: payload.runtime, threadID: payload.threadID, replyText: reply)
             return

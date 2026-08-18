@@ -39,10 +39,9 @@ public enum MobileEscrowEnvelopePolicy {
         }
         let status = (grantStatus ?? "").lowercased()
         if status == "revoked" { return .revokedGrant }
-        guard let expiry = grantExpiresAtMs, expiry > 0 else {
-            return .expiredGrant
-        }
-        if expiry <= nowMs {
+        // Grants are allowed to omit expiry — firestore.rules does not persist
+        // expiresAtMillis today. Only a present, elapsed timestamp expires.
+        if let expiry = grantExpiresAtMs, expiry > 0, expiry <= nowMs {
             return .expiredGrant
         }
         return nil

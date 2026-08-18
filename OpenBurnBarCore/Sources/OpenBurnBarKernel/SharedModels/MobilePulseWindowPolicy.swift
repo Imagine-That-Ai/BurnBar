@@ -13,10 +13,10 @@ public enum MobilePulseTimelineScope: String, Sendable, CaseIterable {
 public struct MobilePulseUsageEvent: Sendable, Equatable {
     public let startMs: Int64
     public let endMs: Int64
-    public let tokens: Int
+    public let tokens: Int64
     public let costUsd: Double
 
-    public init(startMs: Int64, endMs: Int64, tokens: Int, costUsd: Double) {
+    public init(startMs: Int64, endMs: Int64, tokens: Int64, costUsd: Double) {
         self.startMs = startMs
         self.endMs = endMs
         self.tokens = tokens
@@ -29,12 +29,12 @@ public struct MobilePulseUsageEvent: Sendable, Equatable {
 
 public struct MobilePulseRollupTotals: Sendable, Equatable {
     public let requests: Int
-    public let tokens: Int
+    public let tokens: Int64
     public let costUsd: Double
 
     public static let zero = MobilePulseRollupTotals(requests: 0, tokens: 0, costUsd: 0)
 
-    public init(requests: Int, tokens: Int, costUsd: Double) {
+    public init(requests: Int, tokens: Int64, costUsd: Double) {
         self.requests = requests
         self.tokens = tokens
         self.costUsd = costUsd
@@ -113,7 +113,7 @@ public enum MobilePulseWindowPolicy {
         max(0, costUsd).formatAsCost()
     }
 
-    public static func tokensHero(tokens: Int) -> String {
+    public static func tokensHero(tokens: Int64) -> String {
         max(0, tokens).formatAsTokenVolume()
     }
 
@@ -143,10 +143,10 @@ public enum MobilePulseWindowPolicy {
         cacheCreationTokens: Int,
         cacheReadTokens: Int,
         reasoningTokens: Int
-    ) -> Int {
-        let billed = max(0, inputTokens) + max(0, outputTokens) + max(0, cacheCreationTokens)
-            + max(0, cacheReadTokens) + max(0, reasoningTokens)
-        let raw = totalTokens != 0 ? totalTokens : billed
+    ) -> Int64 {
+        let billed = Int64(max(0, inputTokens) + max(0, outputTokens) + max(0, cacheCreationTokens)
+            + max(0, cacheReadTokens) + max(0, reasoningTokens))
+        let raw = totalTokens != 0 ? Int64(totalTokens) : billed
         return max(0, raw)
     }
 

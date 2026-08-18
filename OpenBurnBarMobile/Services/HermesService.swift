@@ -819,7 +819,8 @@ final class HermesService {
             lastRole: last?.role.rawValue,
             lastText: last?.text,
             incomingText: trimmed,
-            reason: "reconnect"
+            reason: "reconnect",
+            hasAttachments: !attachments.isEmpty
         ) {
             messages.append(userMessage)
         }

@@ -47,6 +47,7 @@ final class AuthStore {
         } else if let identity = gateway.currentIdentity {
             self.state = .signedIn(identity: identity)
             self.sessionEpoch = MobileAuthSessionEpoch(uid: identity.uid, generation: 1)
+            AgentReplyNotificationService.shared.bindConsumedEvents(to: identity.uid)
         } else {
             self.state = .signedOut
         }
@@ -177,10 +178,12 @@ final class AuthStore {
             lastErrorClass = .none
             MobileAnalytics.shared.track(.authSignedOut, ["outcome": "success"])
         } catch let CloudGatewayError.classified(c) {
+            await AgentReplyNotificationService.shared.restoreDeviceAfterFailedSwitch()
             lastError = c
             lastErrorClass = classify(c)
             MobileAnalytics.shared.track(.authSignedOut, ["outcome": "failure", "error_code": .string(c.analyticsCode)])
         } catch {
+            await AgentReplyNotificationService.shared.restoreDeviceAfterFailedSwitch()
             lastError = .other(message: error.localizedDescription)
             lastErrorClass = .malformed
             MobileAnalytics.shared.track(.authSignedOut, ["outcome": "failure", "error_code": "other"])

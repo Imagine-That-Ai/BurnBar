@@ -7,10 +7,9 @@ import org.junit.Test
 
 class AndroidEscrowEnvelopeImportTest {
     @Test
-    fun missingGrantExpiryIsExpired() {
+    fun missingGrantExpiryIsAllowed() {
         val now = 1_700_000_000_000L
-        assertEquals(
-            MobileEscrowImportFailure.EXPIRED_GRANT,
+        assertNull(
             AndroidEscrowEnvelopeImport.rejectIfUnimportable(
                 targetDeviceId = "phone-a",
                 currentDeviceId = "phone-a",

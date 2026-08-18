@@ -65,7 +65,7 @@ final class MobileProductParityTests: XCTestCase {
         let vector = try pulseVector("pulse.currency-vs-tokens")
         let expected = dict(vector["expected"])
         XCTAssertEqual(MobilePulseWindowPolicy.currencyHero(costUsd: double(vector["costUsd"])), string(expected["currencyHero"]))
-        XCTAssertEqual(MobilePulseWindowPolicy.tokensHero(tokens: int(vector["tokens"])), string(expected["tokensHero"]))
+        XCTAssertEqual(MobilePulseWindowPolicy.tokensHero(tokens: int64(vector["tokens"])), string(expected["tokensHero"]))
     }
 
     func testBurnQuotaGroupSort() throws {
@@ -245,7 +245,7 @@ final class MobileProductParityTests: XCTestCase {
             return MobilePulseUsageEvent(
                 startMs: int64(item["startMs"]),
                 endMs: int64(item["endMs"]),
-                tokens: int(item["tokens"]),
+                tokens: int64(item["tokens"]),
                 costUsd: double(item["costUsd"])
             )
         }
@@ -255,7 +255,7 @@ final class MobileProductParityTests: XCTestCase {
             let totals = dict(value)
             rollups[key] = MobilePulseRollupTotals(
                 requests: int(totals["requests"]),
-                tokens: int(totals["tokens"]),
+                tokens: int64(totals["tokens"]),
                 costUsd: double(totals["costUsd"])
             )
         }
@@ -273,7 +273,7 @@ final class MobileProductParityTests: XCTestCase {
                 nowMs: nowMs
             )
             XCTAssertEqual(got.total.requests, int(want["requests"]), scopeName)
-            XCTAssertEqual(got.total.tokens, int(want["tokens"]), scopeName)
+            XCTAssertEqual(got.total.tokens, int64(want["tokens"]), scopeName)
             XCTAssertEqual(got.total.costUsd, double(want["costUsd"]), accuracy: 0.001, scopeName)
             if let trailing = want["trailingCostUsd"] as? Double {
                 XCTAssertEqual(got.trailing?.costUsd ?? -1, trailing, accuracy: 0.001, scopeName)

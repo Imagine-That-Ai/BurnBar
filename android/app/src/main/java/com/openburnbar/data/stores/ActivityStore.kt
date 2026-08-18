@@ -7,6 +7,7 @@ import com.openburnbar.data.cloud.CloudConversationSearchRow
 import com.openburnbar.data.cloud.CloudConversationSearchService
 import com.openburnbar.data.firebase.FirestoreRepository
 import com.openburnbar.data.models.ProjectSummary
+import com.openburnbar.data.policy.UidScopedCacheRegistry
 import com.openburnbar.data.models.TokenUsage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -20,6 +21,7 @@ private const val SEARCH_DEBOUNCE_MS = 250
 class ActivityStore(
     private val repo: FirestoreRepository = FirestoreRepository(),
     private val cloudSearchFactory: () -> CloudConversationSearchService = { CloudConversationSearchService() },
+    scopedCaches: UidScopedCacheRegistry = UidScopedCacheRegistry.shared,
 ) : ViewModel() {
     private val _usages = MutableStateFlow<List<TokenUsage>>(emptyList())
     val usages = _usages.asStateFlow()
@@ -54,6 +56,30 @@ class ActivityStore(
     private var searchJob: Job? = null
     private var lastSearchQuery: String = ""
     private var cloudSearch: CloudConversationSearchService? = null
+
+    init {
+        scopedCaches.register { clearCache() }
+    }
+
+    fun clearCache() {
+        listenJob?.cancel()
+        liveListenJob?.cancel()
+        searchJob?.cancel()
+        listenJob = null
+        liveListenJob = null
+        searchJob = null
+        lastDoc = null
+        lastSearchQuery = ""
+        cloudSearch = null
+        _usages.value = emptyList()
+        _liveUsages.value = emptyList()
+        _projects.value = emptyList()
+        _cloudSearchHits.value = emptyList()
+        _isLoading.value = false
+        _error.value = null
+        _searchFailed.value = false
+        _hasMore.value = false
+    }
 
     fun loadInitial(pageSize: Int = 25) {
         viewModelScope.launch {

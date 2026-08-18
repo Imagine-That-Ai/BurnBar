@@ -27,7 +27,7 @@ object MobileEscrowEnvelopePolicy {
         }
         if ((grantStatus ?: "").lowercase() == "revoked") return MobileEscrowImportFailure.REVOKED_GRANT
         val expiry = grantExpiresAtMs
-        if (expiry == null || expiry <= 0L || expiry <= nowMs) {
+        if (expiry != null && expiry > 0L && expiry <= nowMs) {
             return MobileEscrowImportFailure.EXPIRED_GRANT
         }
         return null

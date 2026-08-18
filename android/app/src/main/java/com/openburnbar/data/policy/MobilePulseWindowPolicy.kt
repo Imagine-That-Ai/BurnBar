@@ -21,7 +21,7 @@ enum class MobilePulseTimelineScope {
 data class MobilePulseUsageEvent(
     val startMs: Long,
     val endMs: Long,
-    val tokens: Int,
+    val tokens: Long,
     val costUsd: Double,
 ) {
     /** iOS oracle: `max(startTime, endTime)`. Sync `updatedAt` is not an event time. */
@@ -30,7 +30,7 @@ data class MobilePulseUsageEvent(
 
 data class MobilePulseRollupTotals(
     val requests: Int,
-    val tokens: Int,
+    val tokens: Long,
     val costUsd: Double,
 ) {
     companion object {
@@ -108,7 +108,7 @@ object MobilePulseWindowPolicy {
 
     fun currencyHero(costUsd: Double): String = formatAsCost(max(0.0, costUsd))
 
-    fun tokensHero(tokens: Int): String = formatAsTokenVolume(max(0, tokens))
+    fun tokensHero(tokens: Long): String = formatAsTokenVolume(max(0L, tokens))
 
     fun quotaDedupKey(provider: String, accountId: String?, accountLabel: String?): String {
         val providerKey = provider.lowercase()
@@ -126,12 +126,19 @@ object MobilePulseWindowPolicy {
         return max(0.0, raw)
     }
 
-    fun pulseTokens(totalTokens: Int, inputTokens: Int, outputTokens: Int, cacheCreationTokens: Int, cacheReadTokens: Int, reasoningTokens: Int): Int {
+    fun pulseTokens(
+        totalTokens: Int,
+        inputTokens: Int,
+        outputTokens: Int,
+        cacheCreationTokens: Int,
+        cacheReadTokens: Int,
+        reasoningTokens: Int,
+    ): Long {
         val billed =
-            max(0, inputTokens) + max(0, outputTokens) + max(0, cacheCreationTokens) +
+            max(0, inputTokens).toLong() + max(0, outputTokens) + max(0, cacheCreationTokens) +
                 max(0, cacheReadTokens) + max(0, reasoningTokens)
-        val raw = if (totalTokens != 0) totalTokens else billed
-        return max(0, raw)
+        val raw = if (totalTokens != 0) totalTokens.toLong() else billed
+        return max(0L, raw)
     }
 
     private fun liveMetrics(usages: List<MobilePulseUsageEvent>, startMs: Long, endMs: Long, trailing: MobilePulseRollupTotals?): MobilePulseWindowResult {
@@ -139,7 +146,7 @@ object MobilePulseWindowPolicy {
         return MobilePulseWindowResult(
             total = MobilePulseRollupTotals(
                 requests = rows.size,
-                tokens = rows.sumOf { max(0, it.tokens) },
+                tokens = rows.sumOf { max(0L, it.tokens) },
                 costUsd = rows.sumOf { max(0.0, it.costUsd) },
             ),
             trailing = trailing,
@@ -155,7 +162,7 @@ object MobilePulseWindowPolicy {
         }
     }
 
-    private fun formatAsTokenVolume(tokens: Int): String {
+    private fun formatAsTokenVolume(tokens: Long): String {
         val magnitude = tokens.toDouble()
         return when {
             tokens >= TOKEN_BILLION -> "%.2fB".format(Locale.US, magnitude / TOKEN_BILLION)

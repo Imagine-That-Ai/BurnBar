@@ -45,10 +45,11 @@ public enum MobileProviderAccountPolicy {
             || haystack.contains("denied") {
             return .denied
         }
-        if haystack.contains("unavailable") || haystack.contains("network") || haystack.contains("offline") {
+        if haystack.contains("unavailable") || haystack.contains("network") || haystack.contains("offline")
+            || haystack.contains("deadline-exceeded") {
             return .offline
         }
-        if haystack.contains("expired") || haystack.contains("deadline-exceeded") {
+        if haystack.contains("expired") && !haystack.contains("deadline-exceeded") {
             return .expired
         }
         return .malformed

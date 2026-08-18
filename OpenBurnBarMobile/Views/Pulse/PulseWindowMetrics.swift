@@ -52,11 +52,11 @@ enum PulseWindowMetricBuilder {
         return PulseWindowMetrics(
             total: RollupTotals(
                 requests: result.total.requests,
-                tokens: result.total.tokens,
+                tokens: Int(clamping: result.total.tokens),
                 costUsd: result.total.costUsd
             ),
             trailingTotal: result.trailing.map {
-                RollupTotals(requests: $0.requests, tokens: $0.tokens, costUsd: $0.costUsd)
+                RollupTotals(requests: $0.requests, tokens: Int(clamping: $0.tokens), costUsd: $0.costUsd)
             }
         )
     }

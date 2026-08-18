@@ -23,7 +23,7 @@ class TextExpansionSyncWorker(
         return if (result.isSuccess) {
             Result.success()
         } else if (MobileOsIntegrationPolicy.shouldRetryBackground(
-                attempt = runAttemptCount - 1,
+                attempt = runAttemptCount,
                 cancelled = isStopped,
             )
         ) {

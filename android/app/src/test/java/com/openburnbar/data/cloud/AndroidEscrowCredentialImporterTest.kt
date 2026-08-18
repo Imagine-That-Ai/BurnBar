@@ -20,7 +20,7 @@ class AndroidEscrowCredentialImporterTest {
                     envelopeVersion = 2,
                     targetDeviceId = "android-a",
                     grantStatus = "active",
-                    grantExpiresAtMs = null,
+                    grantExpiresAtMs = 1L,
                 ),
                 currentDeviceId = "android-a",
                 nowMs = 1_700_000_000_000,

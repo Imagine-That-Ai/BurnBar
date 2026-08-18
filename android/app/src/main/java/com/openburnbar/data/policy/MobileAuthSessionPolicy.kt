@@ -63,7 +63,7 @@ object MobileAuthSessionPolicy {
             "user-disabled" in haystack || "userdisabled" in haystack || "revoked" in haystack ->
                 MobileAuthErrorClass.REVOKED_ACCOUNT
             "id-token-expired" in haystack || "tokenexpired" in haystack ||
-                "sessionexpired" in haystack || "deadline-exceeded" in haystack ->
+                "sessionexpired" in haystack ->
                 MobileAuthErrorClass.EXPIRED
             "accountmismatch" in haystack || "account-switch" in haystack || "uid-changed" in haystack ->
                 MobileAuthErrorClass.ACCOUNT_SWITCH
@@ -75,7 +75,8 @@ object MobileAuthSessionPolicy {
                 MobileAuthErrorClass.FIREBASE_UNAVAILABLE
             "firestoreunavailable" in haystack || "firestore-unavailable" in haystack ->
                 MobileAuthErrorClass.FIRESTORE_UNAVAILABLE
-            "unavailable" in haystack || "network" in haystack || "offline" in haystack ->
+            "unavailable" in haystack || "network" in haystack || "offline" in haystack ||
+                "deadline-exceeded" in haystack ->
                 MobileAuthErrorClass.NETWORK
             "unauthenticated" in haystack || "notauthenticated" in haystack -> MobileAuthErrorClass.NONE
             else -> MobileAuthErrorClass.MALFORMED
