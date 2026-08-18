@@ -51,6 +51,7 @@ const event = {
   title: "Claude replied",
   preview: "OpenBurnBar has a new agent reply.",
   createdAt: {},
+  expireAt: Timestamp.fromMillis(Date.now() + 60_000),
   createdAtMillis: Date.now(),
   updatedAt: {},
   updatedAtMillis: Date.now(),
