@@ -13,7 +13,8 @@ extension OpenBurnBarDatabase {
     /// is reviewed explicitly.
     static let additiveTransactionalMigrationIdentifiers: Set<String> = [
         "v61_usage_memory",
-        "v62_war_room_originator"
+        "v62_war_room_originator",
+        "v63_standing_orders"
     ]
 
     enum OpenBurnBarDatabaseError: Error {

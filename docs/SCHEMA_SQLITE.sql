@@ -825,3 +825,27 @@ CREATE TABLE IF NOT EXISTS ai_inbox_memory_export (
     approved_at TEXT NOT NULL,
     exported_at TEXT NOT NULL
 );
+
+-- War Room W6 (the rhythm): recurring work the fleet performs without being
+-- asked each time. The cadence is decomposed rather than stored as a blob so a
+-- row stays readable in a SQL client and a partial cadence is detectable.
+-- targetBodyId NULL means "let the Flame choose at fire time".
+CREATE TABLE IF NOT EXISTS standing_orders (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    instruction TEXT NOT NULL,
+    cadenceKind TEXT NOT NULL,
+    cadenceMinutes INTEGER,
+    cadenceHour INTEGER,
+    cadenceMinute INTEGER,
+    cadenceWeekday INTEGER,
+    targetBodyId TEXT,
+    requiredCapabilities TEXT NOT NULL DEFAULT '',
+    isEnabled BOOLEAN NOT NULL DEFAULT 1,
+    lastFiredAt DATETIME,
+    createdAt DATETIME NOT NULL,
+    updatedAt DATETIME NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS standing_orders_enabled_fired_idx
+    ON standing_orders(isEnabled, lastFiredAt);
