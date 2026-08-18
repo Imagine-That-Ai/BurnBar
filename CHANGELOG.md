@@ -114,6 +114,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Console: analytics consent banner on mobile** — the flex-wrap row squeezed
   the copy into a ~150px column at phone widths; the banner now stacks
   (text full-width, buttons on their own row) below sm.
+## [openburnbar 0.1.2] - 2026-08-18
+
+### Changed
+- Bump the separately versioned `openburnbar` Node CLI from `0.1.1` to
+  `0.1.2`; the CLI continues to follow the signed public macOS feed instead of
+  embedding or downloading a DMG during npm installation.
+
 ## [1.0.37] - 2026-08-17
 
 ### Fixed
