@@ -44,7 +44,7 @@
     },
     {
       "path": "android/app/build.gradle.kts",
-      "sha256": "78d572b88a4204af7f0ff0e20be7d2c3e8dc9e78b12c1cd00c2459cde1fac44a"
+      "sha256": "b97a2737d4d6c4a0aeae297b60e405282606ade81b9afd4a5cff331585aa0249"
     },
     {
       "path": "android/app/src/test/java/com/openburnbar/data/cloud/AndroidCloudVaultSignalPayloadsTest.kt",
