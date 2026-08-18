@@ -204,6 +204,13 @@ final class OpenBurnBarRuntimeContext {
     /// The War Room rhythm (W6). Fires due standing orders at the machine the
     /// Flame picks; without it the `standing_orders` table is a table nobody reads.
     var standingOrderRuntimeHost: StandingOrderRuntimeHost?
+    /// The War Room Wire (W1). Keeps Mac-to-Mac lanes open where consent and
+    /// entitlement allow, and closes them when either is withdrawn.
+    var warWireHost: WarWireHost?
+    /// One fleet listener shared by every War Room surface. Two listeners on the
+    /// same collection would double the Firestore reads and could disagree about
+    /// the fleet for a beat.
+    var hermesBodyDirectory: HermesBodyDirectory?
     var routedClientWiringSentry: RoutedClientWiringSentry?
     #if canImport(AppKit) && !DISTRIBUTION_MAS
     var computerUseRuntimeController: ComputerUseRuntimeController?
@@ -573,6 +580,8 @@ final class OpenBurnBarRuntimeContext {
             cliAgentMissionRequestListener?.stop()
             agentHarnessImportJobListener?.stop()
             standingOrderRuntimeHost?.stop()
+            warWireHost?.stop()
+            hermesBodyDirectory?.stop()
             return
         }
 
@@ -642,18 +651,46 @@ final class OpenBurnBarRuntimeContext {
         }
         importListener.start()
 
+        let fleetDirectory: HermesBodyDirectory
+        if let existing = hermesBodyDirectory {
+            fleetDirectory = existing
+        } else {
+            fleetDirectory = HermesBodyDirectory(accountManager: accountManager)
+            hermesBodyDirectory = fleetDirectory
+        }
+        fleetDirectory.start()
+
         let standingOrders: StandingOrderRuntimeHost
         if let existing = standingOrderRuntimeHost {
             standingOrders = existing
         } else {
             standingOrders = StandingOrderRuntimeHost(
                 store: StandingOrderStore(dbQueue: dataStore.actor.dbQueue),
-                directory: HermesBodyDirectory(accountManager: accountManager),
+                directory: fleetDirectory,
                 dispatcher: MacWandMissionDispatcher(accountManager: accountManager)
             )
             standingOrderRuntimeHost = standingOrders
         }
         standingOrders.start()
+
+        let wire: WarWireHost
+        if let existing = warWireHost {
+            wire = existing
+        } else {
+            wire = WarWireHost(
+                directory: fleetDirectory,
+                grantStore: WarWireGrantStore(
+                    accountManager: accountManager,
+                    settingsManager: settingsManager
+                ),
+                accountManager: accountManager,
+                tierProvider: { MacCloudEntitlementStore.shared.cloudTier },
+                killSwitchProvider: { [settingsManager] in settingsManager.warRoomKillSwitch },
+                transportProvider: { [weak self] in self?.hermesRelayHostService?.activeIrohTransport }
+            )
+            warWireHost = wire
+        }
+        wire.start()
     }
 
     /// Boot the durability sentry that keeps Codex / Forge / OpenCode / Droid

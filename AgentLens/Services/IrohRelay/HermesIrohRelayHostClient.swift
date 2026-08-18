@@ -60,6 +60,12 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
     private let urlSession: URLSession
     private let auditLogger: any IrohTransportAuditLogging
     private var transport: (any IrohRelayTransport)?
+
+    /// The live endpoint, for callers that dial their own lanes over it (the
+    /// War Wire). `nil` until the host has started, which is the honest answer:
+    /// there is no endpoint to dial from yet.
+    var activeTransport: (any IrohRelayTransport)? { transport }
+
     private var acceptTask: Task<Void, Never>?
     private var heartbeatTask: Task<Void, Never>?
     private var recoveryTask: Task<Void, Never>?
