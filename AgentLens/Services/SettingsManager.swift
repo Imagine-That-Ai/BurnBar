@@ -1113,6 +1113,12 @@ final class SettingsManager {
         set { chatBackend.warRoomKillSwitch = newValue }
     }
 
+    /// Which machine the Hermes Room points at. Nil means this Mac.
+    var activeHermesBodyID: String? {
+        get { chatBackend.activeHermesBodyID.isEmpty ? nil : chatBackend.activeHermesBodyID }
+        set { chatBackend.activeHermesBodyID = newValue ?? "" }
+    }
+
     var launchHermesWithOpenBurnBar: Bool {
         get { chatBackend.launchHermesWithOpenBurnBar }
         set { chatBackend.launchHermesWithOpenBurnBar = newValue }
