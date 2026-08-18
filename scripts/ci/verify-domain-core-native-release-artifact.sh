@@ -41,7 +41,10 @@ if [[ "$consumer" == "android" && ( -z "$observed_identity" || ! -f "$observed_i
   echo "observed Rust identity must be a nonempty regular non-symlink file: $observed_identity" >&2
   exit 1
 fi
-if [[ "$consumer" == "android" ]]; then
+# A legacy release has no attested candidate bundle, so there is nothing to
+# bind the packaged domain-core library back to and no ABI manifest to emit.
+# Callers omit both arguments in that case; supplying one still requires both.
+if [[ "$consumer" == "android" && ( -n "$candidate_bundle" || -n "$android_abi_manifest" ) ]]; then
   if [[ -z "$candidate_bundle" || ! -f "$candidate_bundle" || -L "$candidate_bundle" || ! -s "$candidate_bundle" ]]; then
     echo "protected candidate bundle must be a nonempty regular non-symlink file: $candidate_bundle" >&2
     exit 1
@@ -65,7 +68,7 @@ fi
 artifact="$(cd "$(dirname "$artifact")" && pwd)/$(basename "$artifact")"
 selected_profile="$(cd "$(dirname "$selected_profile")" && pwd)/$(basename "$selected_profile")"
 observed_identity="$(cd "$(dirname "$observed_identity")" && pwd)/$(basename "$observed_identity")"
-if [[ "$consumer" == "android" ]]; then
+if [[ -n "$candidate_bundle" ]]; then
   candidate_bundle="$(cd "$(dirname "$candidate_bundle")" && pwd)/$(basename "$candidate_bundle")"
 fi
 apple_mount_point=""
@@ -232,11 +235,13 @@ verify_android() {
     --expected-candidate-commit "$candidate_commit" \
     --android-aab "$artifact"
 
-  node "$repo_root/scripts/ci/verify-domain-core-android-universal-artifact.mjs" \
-    --aab "$artifact" \
-    --candidate-aar "$repo_root/Vendor/openburnbar-domain-core.aar" \
-    --candidate-bundle "$candidate_bundle" \
-    --output "$android_abi_manifest"
+  if [[ -n "$candidate_bundle" ]]; then
+    node "$repo_root/scripts/ci/verify-domain-core-android-universal-artifact.mjs" \
+      --aab "$artifact" \
+      --candidate-aar "$repo_root/Vendor/openburnbar-domain-core.aar" \
+      --candidate-bundle "$candidate_bundle" \
+      --output "$android_abi_manifest"
+  fi
 
   local packaged_library="$bundletool_directory/libopenburnbar_domain_ffi.so"
   unzip -p "$artifact" base/lib/arm64-v8a/libopenburnbar_domain_ffi.so > "$packaged_library"
