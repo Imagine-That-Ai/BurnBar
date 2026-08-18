@@ -14,23 +14,6 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 @Serializable
-data class HermesRealtimeRelayFrame(
-    val type: HermesRealtimeRelayFrameType,
-    val uid: String,
-    val connectionId: String,
-    val requestId: String? = null,
-    @OptIn(ExperimentalSerializationApi::class)
-    @EncodeDefault
-    val protocolVersion: Int = HermesRealtimeRelayProtocol.VERSION,
-    val runtime: String? = null,
-    val payload: HermesRealtimeRelayPayload? = null,
-    val media: HermesRealtimeRelayMediaPayload? = null,
-    val control: HermesRealtimeRelayControlPayload? = null,
-    val signalSessionCiphertextB64: String? = null,
-    val signalMessageType: Int? = null,
-)
-
-@Serializable
 data class HermesRealtimeRelayControlSealKeyEnvelope(
     val encBase64: String,
     val wrappedKeyBase64: String,
