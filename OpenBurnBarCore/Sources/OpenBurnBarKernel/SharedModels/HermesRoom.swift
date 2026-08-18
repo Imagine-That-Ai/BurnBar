@@ -43,13 +43,14 @@ public struct HermesRoomRow: Sendable, Equatable, Identifiable {
 
 public struct HermesRoomState: Sendable, Equatable {
     public var rows: [HermesRoomRow]
-    /// The machine currently serving, if it is still in the fleet.
-    public var activeRow: HermesRoomRow?
 
-    public init(rows: [HermesRoomRow], activeRow: HermesRoomRow?) {
+    public init(rows: [HermesRoomRow]) {
         self.rows = rows
-        self.activeRow = activeRow
     }
+
+    /// The machine currently serving, if it is still in the fleet. Derived
+    /// rather than stored so it cannot drift out of step with `rows`.
+    public var activeRow: HermesRoomRow? { rows.first { $0.isActive } }
 
     public var isEmpty: Bool { rows.isEmpty }
 }
@@ -88,7 +89,7 @@ public enum HermesRoom {
                 )
             }
 
-        return HermesRoomState(rows: rows, activeRow: rows.first { $0.isActive })
+        return HermesRoomState(rows: rows)
     }
 
     private static func blockedReason(

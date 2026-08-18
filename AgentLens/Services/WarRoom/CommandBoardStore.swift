@@ -9,9 +9,10 @@ import OpenBurnBarKernel
 ///
 /// The board wants one row per *run*, not per usage event, so this is a single
 /// `GROUP BY sessionId` projection rather than a fetch of `TokenUsage` values.
-/// That keeps the query index-backed and, more importantly, lets the board read
-/// the v62 attribution columns (`originatorKind` / `originatorRef`) that the
-/// `TokenUsage` value type does not carry.
+/// That lets the board read the v62 attribution columns (`originatorKind` /
+/// `originatorRef`) that the `TokenUsage` value type does not carry, and keeps
+/// the window scan on `token_usage_start_time_idx` (migration v64) instead of
+/// walking the whole table.
 @MainActor
 @Observable
 final class CommandBoardStore {
@@ -19,9 +20,11 @@ final class CommandBoardStore {
     private(set) var hasLoaded = false
 
     /// A run is "running" while usage kept arriving up to this recently. There
-    /// is no end-of-run marker in `token_usage`, so the board infers liveness
-    /// from recency and says so rather than claiming a status it cannot know.
-    static let livenessWindow: TimeInterval = 120
+    /// is no end-of-run marker in `token_usage`, so liveness is inferred from
+    /// recency — reusing `FleetWindow.active` rather than picking a second
+    /// threshold, so the board and the fleet surfaces never disagree about
+    /// whether the same machine is working.
+    nonisolated static var livenessWindow: TimeInterval { FleetWindow.active }
 
     private let dbQueue: any DatabaseWriter
     private let localMachineName: String
@@ -52,7 +55,7 @@ final class CommandBoardStore {
 
     // MARK: - Projection
 
-    private static let sql = """
+    nonisolated private static let sql = """
         SELECT
           sessionId,
           MAX(sourceDeviceId) AS bodyID,
@@ -74,7 +77,7 @@ final class CommandBoardStore {
         LIMIT ?
         """
 
-    private static func run(
+    nonisolated private static func run(
         from row: Row,
         localMachineName: String,
         now: Date
@@ -108,7 +111,9 @@ final class CommandBoardStore {
             title: title(row: row),
             originator: BurnBarOriginator(flatKind: originatorKind, flatRef: originatorRef)
                 ?? fallbackOriginator,
-            status: isRunning ? .running : .succeeded,
+            // Never `.succeeded`: silence is not evidence of success, and
+            // `token_usage` carries no outcome marker to read.
+            status: isRunning ? .running : .ended,
             startedAt: startedAt,
             // A run the board still calls running has no end yet, so the grid
             // measures it against the clock instead of freezing at its last row.
@@ -118,7 +123,7 @@ final class CommandBoardStore {
         )
     }
 
-    private static func title(row: Row) -> String {
+    nonisolated private static func title(row: Row) -> String {
         let project: String? = row["projectName"]
         if let project, !project.isEmpty { return project }
         let model: String? = row["model"]

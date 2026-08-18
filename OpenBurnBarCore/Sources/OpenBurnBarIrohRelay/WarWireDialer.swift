@@ -62,6 +62,10 @@ public enum WarWireDialOutcome: Sendable {
 public actor WarWireLink {
     public enum Inbound: Sendable, Equatable {
         case event(WarWireEvent)
+        /// The session consumed the frame without producing anything for the
+        /// caller — a handshake step, or a frame arriving on a lane that is not
+        /// ready. Callers loop; they never see the frame.
+        case handled
         case closed(WarWireSession.Closure)
         /// The peer hung up cleanly.
         case finished
@@ -70,6 +74,7 @@ public actor WarWireLink {
     public let remoteBodyID: String
     private let stream: any IrohRelayStream
     private var session: WarWireSession
+    private var isReading = false
 
     init(stream: any IrohRelayStream, session: WarWireSession) {
         self.stream = stream
@@ -85,6 +90,13 @@ public actor WarWireLink {
     /// the peer closed cleanly, `.closed` when the session terminated (and the
     /// caller should fall back), or the delivered event.
     public func next() async -> Inbound {
+        // `next` suspends on the transport, so two concurrent readers would fold
+        // frames through the session in completion order rather than arrival
+        // order — and arrival order is the entire contract of a handshake.
+        guard !isReading else { return .closed(.protocolViolation) }
+        isReading = true
+        defer { isReading = false }
+
         let frame: HermesRealtimeRelayFrame?
         do {
             frame = try await stream.receive()
@@ -102,9 +114,11 @@ public actor WarWireLink {
             event = try WarWireFrameCodec.event(from: frame)
         } catch {
             // A frame we cannot fully understand is a protocol violation, and
-            // the session's own rule is that those close the Wire.
-            _ = session.receive(.denied(.unidentified, message: nil))
-            return await terminate([.fallBackToFirestore(.protocolViolation)])
+            // the session's own rule is that those close the Wire. Drive the
+            // session through its own violation path rather than synthesizing a
+            // denial that never arrived, so `state` and the returned closure
+            // tell the same story.
+            return await terminate(session.protocolViolated())
         }
 
         let actions = session.receive(event)
@@ -117,7 +131,10 @@ public actor WarWireLink {
         for case let .deliver(delivered) in actions {
             return .event(delivered)
         }
-        return .event(event)
+        // The session produced no delivery. Handing the frame over anyway would
+        // route around the one rule this type exists to enforce — that nothing
+        // flows before the handshake completes, and nothing flows after close.
+        return .handled
     }
 
     @discardableResult

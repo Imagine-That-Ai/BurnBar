@@ -17,6 +17,25 @@ public struct StandingOrder: Sendable, Equatable, Hashable, Codable, Identifiabl
         case daily(hour: Int, minute: Int)
         /// `weekday` follows `Calendar` conventions: 1 = Sunday … 7 = Saturday.
         case weekly(weekday: Int, hour: Int, minute: Int)
+
+        /// The single judgement of whether a cadence describes a real moment.
+        /// Both the scheduler and the row decoder ask here — this is what
+        /// decides whether somebody's nightly job silently never runs, so it
+        /// does not get two implementations that can drift.
+        public var isWellFormed: Bool {
+            switch self {
+            case let .everyMinutes(minutes):
+                return minutes > 0
+            case let .daily(hour, minute):
+                return Self.isValidTime(hour: hour, minute: minute)
+            case let .weekly(weekday, hour, minute):
+                return (1...7).contains(weekday) && Self.isValidTime(hour: hour, minute: minute)
+            }
+        }
+
+        private static func isValidTime(hour: Int, minute: Int) -> Bool {
+            (0...23).contains(hour) && (0...59).contains(minute)
+        }
     }
 
     public var id: String
@@ -28,6 +47,10 @@ public struct StandingOrder: Sendable, Equatable, Hashable, Codable, Identifiabl
     public var requiredCapabilities: Set<String>
     public var isEnabled: Bool
     public var lastFiredAt: Date?
+    /// When the order was written. A wall-clock order that has never fired
+    /// counts from here, so "every day at 09:00" saved at noon first runs at
+    /// the next 09:00 instead of the instant it was saved.
+    public var createdAt: Date
 
     public init(
         id: String,
@@ -37,7 +60,8 @@ public struct StandingOrder: Sendable, Equatable, Hashable, Codable, Identifiabl
         targetBodyID: String? = nil,
         requiredCapabilities: Set<String> = [],
         isEnabled: Bool = true,
-        lastFiredAt: Date? = nil
+        lastFiredAt: Date? = nil,
+        createdAt: Date = Date()
     ) {
         self.id = id
         self.title = title
@@ -47,6 +71,7 @@ public struct StandingOrder: Sendable, Equatable, Hashable, Codable, Identifiabl
         self.requiredCapabilities = requiredCapabilities
         self.isEnabled = isEnabled
         self.lastFiredAt = lastFiredAt
+        self.createdAt = createdAt
     }
 
     /// Attribution for work this order starts. A standing order is a mission in
@@ -68,10 +93,9 @@ public enum StandingOrderScheduler {
         after date: Date,
         calendar: Calendar = .current
     ) -> Date? {
-        guard order.isEnabled else { return nil }
+        guard order.isEnabled, order.cadence.isWellFormed else { return nil }
         switch order.cadence {
         case let .everyMinutes(minutes):
-            guard minutes > 0 else { return nil }
             // Interval cadences run from the last fire, so a machine that was
             // asleep resumes the rhythm instead of stampeding to catch up.
             let anchor = order.lastFiredAt ?? date
@@ -79,7 +103,6 @@ public enum StandingOrderScheduler {
             return next > date ? next : date.addingTimeInterval(TimeInterval(minutes * 60))
 
         case let .daily(hour, minute):
-            guard isValidTime(hour: hour, minute: minute) else { return nil }
             return nextOccurrence(
                 of: DateComponents(hour: hour, minute: minute),
                 after: date,
@@ -87,7 +110,6 @@ public enum StandingOrderScheduler {
             )
 
         case let .weekly(weekday, hour, minute):
-            guard (1...7).contains(weekday), isValidTime(hour: hour, minute: minute) else { return nil }
             return nextOccurrence(
                 of: DateComponents(hour: hour, minute: minute, weekday: weekday),
                 after: date,
@@ -103,11 +125,27 @@ public enum StandingOrderScheduler {
         calendar: Calendar = .current
     ) -> Bool {
         guard order.isEnabled else { return false }
-        let reference = order.lastFiredAt ?? .distantPast
-        guard let next = nextFireDate(for: order, after: reference, calendar: calendar) else {
+        guard let next = nextFireDate(
+            for: order,
+            after: order.lastFiredAt ?? unfiredAnchor(for: order),
+            calendar: calendar
+        ) else {
             return false
         }
         return next <= now
+    }
+
+    /// Where an order that has never fired starts counting from.
+    ///
+    /// An interval order means "from now on, every N minutes", so it starts
+    /// promptly. A wall-clock order names a time of day and counts from when it
+    /// was written — anchoring it in the distant past would make "every day at
+    /// 09:00" fire the instant it was saved at noon.
+    private static func unfiredAnchor(for order: StandingOrder) -> Date {
+        switch order.cadence {
+        case .everyMinutes: return .distantPast
+        case .daily, .weekly: return order.createdAt
+        }
     }
 
     /// Every order that has come due, in the order they should be dispatched:
@@ -125,10 +163,6 @@ public enum StandingOrderScheduler {
                 if lhsFired != rhsFired { return lhsFired < rhsFired }
                 return lhs.id < rhs.id
             }
-    }
-
-    private static func isValidTime(hour: Int, minute: Int) -> Bool {
-        (0...23).contains(hour) && (0...59).contains(minute)
     }
 
     private static func nextOccurrence(

@@ -42,7 +42,12 @@ extension BurnBarDaemonServer {
             BurnBarRPCRequestEnvelopeWithParams<BurnBarWarFlameDistillListParams>.self,
             from: requestData
         )
-        let records = await flameService.recentRecords(limit: typedRequest.params.limit ?? 50)
+        // Clamp deliberately rather than relying on the log's capacity to
+        // happen to bound the response.
+        let requested = typedRequest.params.limit ?? 50
+        let records = await flameService.recentRecords(
+            limit: min(requested, DistillLog.defaultCapacity)
+        )
         let rate = await flameService.successRate()
         return encode(
             BurnBarRPCResponseEnvelope(

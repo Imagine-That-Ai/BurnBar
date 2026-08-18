@@ -111,6 +111,27 @@ final class CommandBoardTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(board.byMachine.first).runCount, 2)
     }
 
+    /// Two different machines that both lack an id must not have their spend
+    /// summed under whichever name happened to sort first.
+    func test_unidentifiedMachinesStaySeparateByName() throws {
+        let board = CommandBoard.summarize(runs: [
+            run("1", body: nil, bodyName: "This Mac", cost: 1.00),
+            run("2", body: nil, bodyName: "Another Mac", cost: 5.00)
+        ])
+        XCTAssertEqual(board.byMachine.count, 2)
+        XCTAssertEqual(try XCTUnwrap(board.byMachine.first).label, "Another Mac")
+        XCTAssertEqual(try XCTUnwrap(board.byMachine.first).costUSD, 5.00, accuracy: 0.0001)
+    }
+
+    /// A source that infers "finished" from silence has an outcome-free status
+    /// to report, so it never has to claim a success it did not observe.
+    func test_endedIsDistinctFromSucceeded() {
+        let board = CommandBoard.summarize(runs: [run("1", status: .ended, cost: 1.0)])
+        XCTAssertEqual(board.runs.first?.status, .ended)
+        XCTAssertTrue(try XCTUnwrap(board.runs.first).isFinished)
+        XCTAssertEqual(board.runningCount, 0)
+    }
+
     func test_runningCountsAreTrackedPerMachineAndOverall() throws {
         let board = CommandBoard.summarize(runs: [
             run("1", body: "mac-a", status: .running, endedOffset: nil),

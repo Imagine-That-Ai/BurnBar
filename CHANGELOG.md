@@ -8,6 +8,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **War Room: the Wire dials, the Flame routes, and the fleet gets two faces**
+  (`docs/WAR_ROOM.md`) — the multi-machine plan lands end to end on top of the
+  identity spine below. The **Wire** grows its remaining three layers: a frame
+  codec for the eight `war` frames, a fail-closed handshake state machine whose
+  fleet and dispatch frames return nothing until the lane is admitted (and whose
+  refusal yields *fall back to Firestore*, not an error), and a dialer that
+  drives both over a real iroh transport. The **Flame** becomes a router with a
+  hand — `FlameDispatchPlanner` turns a routing decision into a dispatch,
+  refusing rather than aiming a mission at nothing, and missions carry an
+  advisory `targetBodyID` that steers work without letting anyone force a
+  machine to run it. The daemon exposes the Flame over three RPC methods
+  (`war.flame.route`, `war.flame.distill.list`, `war.flame.distill.settle`) and
+  archives every decision — including the ones that routed nowhere — into a
+  bounded distill log, because a router that only remembers its successes cannot
+  be audited. Two new surfaces in Settings → Devices & Sync: the **Hermes Room**,
+  whose "can I move Hermes there?" answer *is* the Wire's admission decision so
+  it can never promise a swap the Wire will deny, and the **Command Board**,
+  which folds every run across every machine into one grid with a STARTED BY
+  column and per-machine / per-originator cost rollups. Standing orders persist
+  in `standing_orders` (migration **v63**), with `StandingOrderScheduler` as the
+  single answer to "what should run now" for the app, the daemon, and tests.
 - **War Room: machine-bound Hermes identity and the Wire's fail-closed spine**
   (`docs/WAR_ROOM.md`) — a Hermes is now a name bound to a *machine*, not a bot.
   Every Mac publishes one **HermesBody** (`users/{uid}/hermes_bodies/{bodyId}`):

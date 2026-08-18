@@ -174,9 +174,19 @@ final class StandingOrderSchedulerTests: XCTestCase {
         XCTAssertTrue(StandingOrderScheduler.isDue(daily, now: date("2026-08-17T09:00:00Z"), calendar: calendar))
     }
 
-    func test_neverFiredOrderBecomesDue() {
+    /// A wall-clock order names a time of day. Saving "every day at 09:00" at
+    /// noon must not fire it at noon — its first run belongs at the next 09:00.
+    func test_aNeverFiredWallClockOrderWaitsForItsTime() {
         let daily = order(cadence: .daily(hour: 9, minute: 0))
-        XCTAssertTrue(StandingOrderScheduler.isDue(daily, now: date("2026-08-17T12:00:00Z"), calendar: calendar))
+        XCTAssertFalse(StandingOrderScheduler.isDue(daily, now: date("2026-08-17T12:00:00Z"), calendar: calendar))
+        XCTAssertTrue(StandingOrderScheduler.isDue(daily, now: date("2026-08-18T09:00:00Z"), calendar: calendar))
+    }
+
+    /// An interval order means "from now on, every N minutes", so it starts
+    /// promptly rather than waiting out a first interval.
+    func test_aNeverFiredIntervalOrderIsDueImmediately() {
+        let interval = order(cadence: .everyMinutes(30))
+        XCTAssertTrue(StandingOrderScheduler.isDue(interval, now: date("2026-08-17T12:00:00Z"), calendar: calendar))
     }
 
     func test_dueReturnsLongestOverdueFirst() {

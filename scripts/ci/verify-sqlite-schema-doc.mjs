@@ -32,6 +32,9 @@ const sourceSpecs = [
     path: "AgentLens/Services/DataStore/OpenBurnBarDatabase+StandingOrderMigrations.swift",
   },
   {
+    path: "AgentLens/Services/DataStore/OpenBurnBarDatabase+CommandBoardIndexMigration.swift",
+  },
+  {
     path: "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ProjectCodeMemory/BurnBarProjectCodeMemoryStore+Database.swift",
   },
   {
@@ -54,6 +57,10 @@ const mirrorPairs = [
   [
     "AgentLens/Services/DataStore/OpenBurnBarDatabase+StandingOrderMigrations.swift",
     "OpenBurnBarCore/Sources/OpenBurnBarData/OpenBurnBarDatabase+StandingOrderMigrations.swift",
+  ],
+  [
+    "AgentLens/Services/DataStore/OpenBurnBarDatabase+CommandBoardIndexMigration.swift",
+    "OpenBurnBarCore/Sources/OpenBurnBarData/OpenBurnBarDatabase+CommandBoardIndexMigration.swift",
   ],
 ];
 

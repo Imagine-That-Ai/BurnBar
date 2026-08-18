@@ -18,9 +18,12 @@ struct HermesBodiesDetailView: View {
             subtitle: "Each Mac running OpenBurnBar publishes one Hermes identity — its name, hardware, and presence. Rename a machine here and every surface follows."
         ) {
             if !directory.hasLoaded {
-                loadingCard
+                SettingsLoadingCard(message: "Loading Hermes bodies…")
             } else if directory.bodies.isEmpty {
-                emptyCard
+                SettingsEmptyCard(
+                    title: "No Hermes bodies yet",
+                    message: "This Mac publishes its body automatically while Cloud sync is on and you are signed in."
+                )
             } else {
                 ForEach(directory.bodies) { body in
                     bodyCard(body)
@@ -67,35 +70,6 @@ struct HermesBodiesDetailView: View {
         }
     }
 
-    private var loadingCard: some View {
-        GlassCard {
-            HStack(spacing: DesignSystem.Spacing.sm) {
-                ProgressView()
-                    .controlSize(.small)
-                Text("Loading Hermes bodies…")
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
-            }
-            .padding(DesignSystem.Spacing.md)
-        }
-    }
-
-    private var emptyCard: some View {
-        GlassCard {
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-                Text("No Hermes bodies yet")
-                    .font(DesignSystem.Typography.body)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(DesignSystem.Colors.textPrimary)
-                Text("This Mac publishes its body automatically while Cloud sync is on and you are signed in.")
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(DesignSystem.Spacing.md)
-        }
-    }
-
     private func bodyCard(_ body: HermesBodyRecord) -> some View {
         let presence = body.presence()
         let isLocal = directory.isLocal(body)
@@ -113,14 +87,7 @@ struct HermesBodiesDetailView: View {
                             .fontWeight(.semibold)
                             .foregroundStyle(DesignSystem.Colors.textPrimary)
                         if isLocal {
-                            Text("This Mac")
-                                .font(DesignSystem.Typography.tiny)
-                                .foregroundStyle(DesignSystem.Colors.hermesAureate)
-                                .padding(.horizontal, DesignSystem.Spacing.xs)
-                                .padding(.vertical, 1)
-                                .background(
-                                    Capsule().stroke(DesignSystem.Colors.hermesAureate.opacity(0.6), lineWidth: 1)
-                                )
+                            HermesPill(text: "This Mac")
                         }
                     }
 

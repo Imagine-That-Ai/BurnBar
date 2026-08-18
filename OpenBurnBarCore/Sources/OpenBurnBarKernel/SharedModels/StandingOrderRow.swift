@@ -70,7 +70,10 @@ public struct StandingOrderRow: Sendable, Equatable, Codable {
 
     // MARK: - From domain
 
-    public init(order: StandingOrder, createdAt: Date, updatedAt: Date) {
+    /// `createdAt` comes from the order itself — the scheduler reads it to
+    /// decide a wall-clock order's first fire, so the row must not be able to
+    /// disagree with it.
+    public init(order: StandingOrder, updatedAt: Date) {
         var kind: CadenceKind
         var minutes: Int?
         var hour: Int?
@@ -105,7 +108,7 @@ public struct StandingOrderRow: Sendable, Equatable, Codable {
             requiredCapabilities: Self.encode(order.requiredCapabilities),
             isEnabled: order.isEnabled,
             lastFiredAt: order.lastFiredAt,
-            createdAt: createdAt,
+            createdAt: order.createdAt,
             updatedAt: updatedAt
         )
     }
@@ -123,17 +126,21 @@ public struct StandingOrderRow: Sendable, Equatable, Codable {
         let cadence: StandingOrder.Cadence
         switch kind {
         case .interval:
-            guard let minutes = cadenceMinutes, minutes > 0 else { return nil }
+            guard let minutes = cadenceMinutes else { return nil }
             cadence = .everyMinutes(minutes)
         case .daily:
-            guard let hour = cadenceHour, let minute = cadenceMinute,
-                  Self.isValidTime(hour: hour, minute: minute) else { return nil }
+            guard let hour = cadenceHour, let minute = cadenceMinute else { return nil }
             cadence = .daily(hour: hour, minute: minute)
         case .weekly:
-            guard let weekday = cadenceWeekday, let hour = cadenceHour, let minute = cadenceMinute,
-                  (1...7).contains(weekday), Self.isValidTime(hour: hour, minute: minute) else { return nil }
+            guard let weekday = cadenceWeekday, let hour = cadenceHour, let minute = cadenceMinute else {
+                return nil
+            }
             cadence = .weekly(weekday: weekday, hour: hour, minute: minute)
         }
+
+        // The scheduler's own judgement, so a row the scheduler would never
+        // fire never becomes an order that merely looks scheduled.
+        guard cadence.isWellFormed else { return nil }
 
         return StandingOrder(
             id: id,
@@ -143,7 +150,8 @@ public struct StandingOrderRow: Sendable, Equatable, Codable {
             targetBodyID: targetBodyId,
             requiredCapabilities: Self.decode(requiredCapabilities),
             isEnabled: isEnabled,
-            lastFiredAt: lastFiredAt
+            lastFiredAt: lastFiredAt,
+            createdAt: createdAt
         )
     }
 
@@ -161,7 +169,4 @@ public struct StandingOrderRow: Sendable, Equatable, Codable {
         )
     }
 
-    private static func isValidTime(hour: Int, minute: Int) -> Bool {
-        (0...23).contains(hour) && (0...59).contains(minute)
-    }
 }

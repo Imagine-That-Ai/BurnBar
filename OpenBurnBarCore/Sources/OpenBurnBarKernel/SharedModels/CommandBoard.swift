@@ -9,6 +9,10 @@ import Foundation
 public struct CommandBoardRun: Sendable, Equatable, Identifiable {
     public enum Status: String, Sendable, Equatable, CaseIterable {
         case running
+        /// No longer producing work, outcome unknown. Usage rows carry no
+        /// end-of-run marker, so a source that infers "finished" from silence
+        /// reports this rather than claiming a success it never observed.
+        case ended
         case succeeded
         case failed
         case cancelled
@@ -132,7 +136,10 @@ public enum CommandBoard {
             runs: ordered,
             byMachine: rollups(
                 ordered,
-                key: { $0.bodyID ?? "" },
+                // Falling back to the display name keeps an unidentified remote
+                // machine out of the local machine's bucket, which would
+                // otherwise sum two machines' spend under one name.
+                key: { $0.bodyID ?? "name:\($0.bodyDisplayName)" },
                 label: { $0.bodyDisplayName }
             ),
             byOriginator: rollups(
