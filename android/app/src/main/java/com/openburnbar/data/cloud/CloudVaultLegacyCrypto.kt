@@ -93,12 +93,7 @@ internal object CloudVaultLegacyCrypto {
         )
     }
 
-    fun recoveryWrapVaultKey(
-        vaultKey: ByteArray,
-        recoveryKey: String,
-        nonce: ByteArray,
-        sha256Hex: (ByteArray) -> String,
-    ): CloudVaultRecoveryBox {
+    fun recoveryWrapVaultKey(vaultKey: ByteArray, recoveryKey: String, nonce: ByteArray, sha256Hex: (ByteArray) -> String): CloudVaultRecoveryBox {
         val wrappingKey = recoveryWrappingKey(recoveryKey)
         return try {
             CloudVaultRecoveryBox(
