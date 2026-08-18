@@ -21,24 +21,9 @@ export function registeredRateLimitBuckets(): string[] {
   return Object.keys(LIMITS).sort();
 }
 
-/** Injectable proof clock for deterministic local adversarial harnesses only. */
-let proofNowMs: number | undefined;
-
-export function freezeRateLimitClockForProof(nowMs: number): void {
-  proofNowMs = nowMs;
-}
-
-export function restoreRateLimitClockFromProof(): void {
-  proofNowMs = undefined;
-}
-
-function rateLimitNowMs(): number {
-  return proofNowMs ?? Date.now();
-}
-
 export async function enforceRateLimit(db: HostedMcpFirestore, uid: string, clientId: string, bucket: string): Promise<void> {
   const spec = LIMITS[bucket] ?? LIMITS["metadata:standard"];
-  const windowStart = Math.floor(rateLimitNowMs() / spec.windowMs) * spec.windowMs;
+  const windowStart = Math.floor(Date.now() / spec.windowMs) * spec.windowMs;
   const id = `${clientId}_${bucket}_${windowStart}`.replace(/[^A-Za-z0-9_.:-]/g, "_");
   const ref = db.doc(`users/${uid}/remote_mcp_rate_limits/${id}`);
   await db.runTransaction(async (tx) => {

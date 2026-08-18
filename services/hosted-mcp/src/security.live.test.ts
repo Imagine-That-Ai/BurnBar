@@ -215,9 +215,10 @@ test("scope gate: a token without knowledge:read is denied burnbar_search_knowle
 
 // Case 4/5 — Caps/rate-limits trigger: hammering past the body:standard bucket
 // (30/min) must surface a 429 rate-limit error, not silently overflow.
+// CI flake (run 32070460144): loop straddled 21:27:59.949→21:28:00.066 CT;
+// production window is Math.floor(Date.now()/60_000) so split counters never hit 30.
 test("case4/5 caps: hammering the body bucket past its cap surfaces rate_limited (429)", async () => {
-  // Fixture-injected proof clock: enforceRateLimit() must stay in one 60s window
-  // so request 31 trips the real 30/min body:standard cap (not a split-window flake).
+  // Fixture freezes Date.now only for this case; production enforceRateLimit() unchanged.
   const proofClock = freezeProofRateLimitClock();
   try {
     // Use the dedicated rate-limit tenant so exhausting its body:standard bucket

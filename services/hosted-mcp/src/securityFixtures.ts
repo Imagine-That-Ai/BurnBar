@@ -19,7 +19,6 @@
 import { generateKeyPairSync } from "node:crypto";
 import { MCP_RESOURCE } from "./config.js";
 import { mintEd25519Token, type AccessTokenClaims } from "./auth.js";
-import { freezeRateLimitClockForProof, restoreRateLimitClockFromProof } from "./rateLimits.js";
 import type { HostedMcpFirestore, McpCollectionRef, McpDocRef, McpTransaction } from "./firestoreTypes.js";
 import { cosineSimilarity, KNOWLEDGE_VECTOR_DIM } from "./knowledgeVector.js";
 import type { StorageBodyDownloader } from "./resources.js";
@@ -231,10 +230,16 @@ export interface ProofRateLimitClockHandle {
   restore(): void;
 }
 
-/** Freeze enforceRateLimit() to one wall-clock window for deterministic in-process proofs. */
+/** Freeze Date.now mid-window for deterministic in-process proofs only. */
 export function freezeProofRateLimitClock(referenceMs = Date.now()): ProofRateLimitClockHandle {
-  freezeRateLimitClockForProof(midWindowProofMillis(referenceMs));
-  return { restore: restoreRateLimitClockFromProof };
+  const stableNow = midWindowProofMillis(referenceMs);
+  const realDateNow = Date.now;
+  Date.now = () => stableNow;
+  return {
+    restore: () => {
+      Date.now = realDateNow;
+    },
+  };
 }
 
 export interface SeededTenant {
