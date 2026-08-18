@@ -1565,3 +1565,693 @@ Validation:
   (on-disk pool EQP + pool tuning)
 - `AgentLensTests/Active/MacIdleUsageParserCacheTests`
   (Mac JSON-only `part`)
+
+## 32. Real-dataset bounded-work repair (August 16, 2026)
+
+This round was driven by the installed macOS app and daemon on the real
+multi-gigabyte OpenBurnBar dataset, rather than a synthetic fixture. The
+protected baseline was captured at `2026-08-16T02:50:22Z` (August 15 local
+time in Chicago) from source candidate
+`27cfd061df1c6f8aaa5171aee1c12d799fbc4772`.
+
+The local, ignored evidence roots are:
+
+- `.derived-data/performance/openburnbar-mission-20260816-baseline.b08BQv/`
+- `.derived-data/performance/openburnbar-mission-20260816-snapshot.m1AFEj/`
+- `~/Library/Application Support/OpenBurnBar/backups/openburnbar-rollback-20260815-220554.bundle`
+
+The protected database was approximately 5.49 GB (`1,340,658` pages at
+4,096 bytes), with 44,581 usage rows, 9,059 conversations, 556,973 search
+chunks, and 556,973 embeddings. The OMP corpus contained 1,477 JSONL files
+and approximately 1.577 GiB of source logs. Aggregate sizes and cardinalities
+live in `protected-db-storage-summary.txt` and
+`protected-db-cardinality-plans.txt`; private row contents remain local.
+
+### Observed causes
+
+Profiles and controlled isolation tied the material costs to five bounded-work
+violations:
+
+1. Mac and Core Pi/OMP parsing eagerly materialized whole JSONL bodies.
+   Foundation objects accumulated across the 1.577 GiB scan, driving the app
+   from roughly 2.0 GB toward 2.4 GB of physical footprint while consuming
+   roughly 55–63% CPU.
+2. The daemon usage recorder retained and repeatedly decoded the full usage
+   ledger, then sorted, filtered, fingerprinted, and projected it for bounded
+   reads.
+3. Mission Control loaded its approximately 163 MB controller journal into
+   one array. Replay, fallback ordering, and tombstone lookup multiplied that
+   retention and rescanned old history.
+4. Smart Hub requested overlapping period totals independently, producing as
+   many as three aggregate SQL scans on each five-second pump.
+5. Gateway projection changes reused the provider-discovery path, so health,
+   quota, or selection updates could repeat expensive provider discovery on
+   the former 45-second cadence.
+
+### Repair contracts
+
+Pi and OMP parsers now stream JSONL through `BufferedLineReader` with
+per-line autorelease pools. The first pass extracts explicit usage and cheap
+metadata only. A second streamed transcript pass runs only when explicit
+usage is absent and a heuristic estimate is required. Conversation indexing
+still receives complete bodies when requested. Cancellation and resource
+governor checkpoints run during long files, and parser caches persist every
+16 changed files so interrupted corpus scans retain bounded progress.
+
+The usage recorder now stores a key-to-byte-offset index and streams records
+for cost, signature, projection, and fingerprint work. Newest-window queries
+use a bounded 10,000-record cap. This preserves append-only ledger semantics
+without retaining every decoded record in daemon memory.
+
+Mission Control now streams ordered replay. Out-of-order input takes a
+deterministic sorted fallback, malformed lines are skipped, deletion
+tombstones are persisted, and the live projection retains only the newest
+100 controller events.
+
+Smart Hub caches run-cost totals by the usage-table write marker and a
+60-second time bucket aligned with the provider refresh cadence. Identical
+requested periods are deduplicated, and all missing periods are loaded through
+one batched aggregate query; a write-marker advance still invalidates the
+cached totals immediately.
+
+Gateway provider discovery and catalog projection now have separate
+lifecycles. macOS discovery uses a non-sliding 10-minute TTL keyed by the
+explicit configuration and credential revision. A configuration or credential
+revision invalidates discovery immediately. Health, quota, and selection
+changes reproject the cached catalog without rediscovery. Linux retains its
+45-second discovery default.
+
+The installed-candidate profile then exposed one remaining five-minute daemon
+spike in the AI Inbox change gate. That gate only needs recent workspace paths
+to compute its `stat`-only fingerprint, but it was loading complete
+conversation metadata, message-key arrays, summaries, and transcript lengths.
+It now executes a metadata-only `SELECT workingDirectory` query. A
+minimal-schema regression test proves that the always-on gate cannot silently
+start depending on the heavy evidence-pack columns again.
+
+### Release budgets
+
+The real-dataset Release candidate must satisfy all of these gates on the same
+protected workload:
+
+- settled within 30 seconds after a warm launch with unchanged input;
+- app-plus-daemon closed or occluded idle CPU median at or below 2% and p95
+  at or below 5% over five minutes;
+- combined steady physical footprint at or below 500 MB;
+- combined 30-minute physical-footprint growth at or below 25 MB;
+- combined active-work peak physical footprint below 1 GB;
+- post-workload footprint within 10% of its pre-workload value after five
+  refresh/search/navigation cycles;
+- occluded app CPU at or below the existing 5% ceiling and the
+  occluded-to-visible ratio at or below 0.35;
+- bounded descriptors, tasks, database size, WAL growth, and settled writes.
+
+Three consecutive installed Release measurements provide the completion
+verdict. The built app hash, installed app hash, embedded daemon hash, launched
+daemon hash, source HEAD, database snapshot, and measurement run belong in the
+same evidence manifest.
+
+### Focused regression coverage
+
+These focused gates exercise the repaired contracts:
+
+```bash
+OPENBURNBAR_SKIP_DAEMON_SWIFT_TESTS=1 \
+OPENBURNBAR_CORE_SWIFT_FILTER=AdditionalLocalUsageParsersTests \
+./scripts/test-openburnbar-swift.sh
+
+OPENBURNBAR_APP_TEST_ATTEMPTS=1 \
+./scripts/test-openburnbar-app.sh \
+-only-testing:OpenBurnBarTests/MacIdleUsageParserCacheTests
+```
+
+The Core parser suite passes 14 tests and the Mac parser cache suite passes
+11 tests. Additional focused suites cover Smart Hub serialization (28 tests),
+the usage recorder (17 tests), Mission Control (4 tests), and gateway
+discovery/projection (10 tests). Full repository, Release smoke, real-process
+occlusion, installed-candidate, and soak evidence remains candidate-bound
+rather than inferred from these unit totals.
+
+The local Release smoke launches its temporary daemon with a private
+`OPENBURNBAR_DAEMON_SUPPORT_DIR`. This keeps the executable health probe away
+from the installed app's production database, configuration, ledgers, and
+controller journals.
+
+The implementation consulted Context7 library IDs
+`/groue/grdb.swift/v7.11.1` and `/sqlcipher/sqlcipher`.
+
+### Integrity evidence
+
+`PRAGMA integrity_check` on the protected snapshot returned `ok`.
+`PRAGMA cipher_integrity_check` under SQLCipher 4.16.0 reported HMAC failures
+beginning at page 1,048,577 and continuing through the end of the 1,340,658
+page database. That boundary is exactly 4 GiB at the database's 4,096-byte
+page size and was traced to an integer-overflow defect in the 4.16.0
+diagnostic verifier:
+
+```c
+i64 offset = (page - 1) * ctx->page_sz;
+```
+
+The multiplication occurred before assignment to the 64-bit destination.
+SQLCipher 4.17.0 performs the page-size conversion before multiplication:
+
+```c
+i64 offset = (page - 1) * (i64) ctx->page_sz;
+```
+
+An official SQLCipher 4.17.0 CLI built from source revision
+`810db22f575ee7cf94ea96a3e91622b5fcece3dc` with CommonCrypto then checked
+all 1,340,658 pages of the same protected bundle and returned zero
+`cipher_integrity_check` error rows. The CLI SHA-256 was
+`f6ec9f1e0dd74b58dcca3ffa70c723de4112aea506f7b2e7e7a05cd107576ee9`;
+the resulting evidence file SHA-256 was
+`423ea3e76af6dd872ac81419c700e31f917bccf2612d5d71f14e5464645370ba`.
+
+The protected database therefore has clean logical and cipher-integrity
+evidence. The 4.16.0 result is retained as diagnostic evidence of the
+verifier defect, not database corruption. The app does not invoke
+`cipher_integrity_check`, so this investigation does not by itself justify a
+runtime dependency upgrade.
+
+Preserve the raw artifacts:
+`protected-db-logical-integrity.txt` and
+`protected-db-cipher-integrity.txt`, plus the clean 4.17.0 result in
+`protected-db-cipher-integrity-sqlcipher-4.17.0.txt`. Keep the rollback bundle
+and protected snapshot intact.
+
+## 33. Mercury heartbeat capability caching and host-safe UI tests
+
+The August 16 app-suite profile exposed a process-lifetime cost outside the
+search benchmark itself. Each `MercuryControlStreamMediaSink` heartbeat
+re-ran the local VideoToolbox encoder capability probe every 2.5 seconds.
+Sinks retained by earlier tests therefore continued creating encoder probe
+sessions while the projection throughput guardrail ran. The contaminated test
+host reached approximately 87% CPU and 1.8 GB RSS, and the projection workload
+missed its 15-second ceiling by 589 ms.
+
+Local VideoToolbox streaming support is stable for the lifetime of the app
+process. `MercuryControlStreamMediaSink` now reads one process-cached
+`MercuryStreamingCapabilitySnapshot`, converts it to the wire representation
+once when the heartbeat task starts, and reuses that immutable value for later
+heartbeats. `close()` and `deinit` both cancel the heartbeat task. Tests that
+exercise only frame encoding, chunking, or sealing construct sinks with
+heartbeats disabled; the heartbeat-specific test injects a deterministic
+capability provider and proves that multiple beats perform exactly one probe.
+
+The same full-suite run found an Xcode 26 arm64e test-host crash while
+ViewInspector recursively traversed the Pixel Clock card's
+`ViewThatFits`/`DisclosureGroup` tree. The card now exposes a small semantic
+contract whose labels share the exact copy constants used by the rendered
+controls. The regression test asserts that contract and uses SwiftUI's native
+`ImageRenderer` for a fixed-size layout pass. This preserves coverage of the
+enabled setup path without relying on ViewInspector's private reflection for
+that crash-prone tree.
+
+Focused validation:
+
+```bash
+OPENBURNBAR_APP_TEST_ATTEMPTS=1 \
+./scripts/test-openburnbar-app.sh \
+  -only-testing:OpenBurnBarTests/MediaFrameSealLaneTests \
+  -only-testing:OpenBurnBarTests/MercuryRouterTests \
+  -only-testing:OpenBurnBarTests/OpenBurnBarSearchIntegrationHarnessTests/test_projectionPerf_queueLatencyAndThroughput_guardrails \
+  -only-testing:OpenBurnBarTests/PixelClockSettingsCardTests
+```
+
+## 34. Release-smoke isolation and launch-critical gateway readiness
+
+The final August 16 Release smoke exposed two failures that did not reproduce
+as product-data defects. Both appeared only while the host was concurrently
+building the large macOS app target.
+
+Cursor does not reliably propagate launch environment variables into every
+extension-host process. The smoke's `apply_patch` confirmation could therefore
+fall back to an interactive modal even though the outer Cursor process had the
+expected variables. The smoke now writes the same isolated output path, exact
+target path, and auto-confirm flag into its temporary workspace settings. The
+extension accepts those settings only when the edit contains exactly one file,
+the target exactly matches the declared file, and the output root is below an
+approved system temporary directory. The launcher and Cursor extension host can
+observe different `TMPDIR` values on macOS; in the reproduced failure the
+launcher used `/private/tmp` while the extension host used `/var/folders/...`.
+The guard now canonicalizes the runtime temp directory plus the macOS
+`/tmp`/`/private/tmp` aliases before applying the same strict descendant check.
+An explicit environment value still overrides the setting. The polling budget
+is 480 attempts at 250 milliseconds, and the outer smoke runner allows 180
+seconds, so a valid run is not abandoned at the former 60-second boundary under
+Release-build load.
+
+The focused extension suite passes 43 tests, including the cross-process
+temp-root regression. A real Cursor run completed the read-file and apply-patch
+workflow with run ID `F93490AD-CFC8-4F0D-B8D0-891F6BC389C9`.
+
+The daemon HTTP gateway formerly started its `NWListener` on the process-wide
+global utility queue. Under heavy unrelated host work, listener readiness could
+miss the launch probe even though the same test completed in 90 milliseconds
+when isolated. The listener now owns the dedicated serial queue
+`com.openburnbar.daemon.http-gateway.listener` at `userInitiated` quality of
+service because binding is launch-critical. Accepted connection work still
+immediately enters structured Swift tasks, so the queue adds no idle polling
+or connection fan-out.
+
+The dedicated-queue contract passes its focused two-test slice. The complete
+gateway suite passes 112 tests in 15.6 seconds under the same loaded host, and
+the complete daemon suite passes 1,550 tests with 10 skips and zero failures
+in 88.6 seconds.
+
+## 35. Signed Release identity, peer authentication, and SQLCipher linkage
+
+The final performance candidate must be measured through the same trust
+boundaries as the installed product. Two earlier Release-smoke probes did not:
+an ad-hoc-signed daemon failed the daemon's self-signature requirement, and a
+raw Python socket client failed the daemon's peer-signature authentication.
+Neither failure represented an unhealthy daemon. The smoke now builds the app,
+embedded daemon, and embedded CLI with Apple Development signing; verifies
+their identifiers, team, signing authority, hardened runtime, library
+validation, designated requirements, and executable launch; boots the daemon
+from a private installed-layout support directory through launchd; and probes
+it with the signed `OpenBurnBarCLI health` command.
+
+The signed build then exposed a separate hardened-runtime failure. The
+Apple-platform `GRDB-SQLCipher` package manifest requested Homebrew SQLCipher
+through pkg-config while also linking the repository's
+`SQLCipher.framework`. That produced dual linkage to the embedded framework
+and an absolute Homebrew `libsqlcipher.dylib`. The latter had a foreign signing
+team, so hardened-runtime library validation correctly rejected it. The
+manifest now requests the `sqlcipher` pkg-config product only for the explicit
+system-SQLCipher lane when no explicit SQLCipher library has been supplied.
+The macOS build, codec, and static-link-boundary gates also reject external
+`libsqlcipher*.dylib` dependencies.
+
+These changes were checked against Context7 library IDs
+`/sqlcipher/sqlcipher` and `/groue/grdb.swift/v7.11.1`.
+
+The authoritative signed Release smoke on August 16, 2026 completed with exit
+status 0:
+
+- OpenBurnBarCore: 2,543 tests, 35 skipped, zero failures.
+- OpenBurnBarDaemon: 1,550 tests, 10 skipped, zero failures.
+- Release-critical app slice: 136 of 136 tests passed.
+- Retrieval/replay slice: 7 tests, 1 skipped, zero failures.
+- Real Cursor read/apply workflow:
+  `46A87E11-D284-46AA-B418-CE8AD6E31AC3`.
+- Signed private installed-layout CLI health:
+  `ok=true`.
+
+The candidate-bound log is
+`.derived-data/performance/openburnbar-mission-20260816-postfix/`
+`test-openburnbar-release-smoke-signed-cli-rerun.log`. An earlier log with the
+same prefix but without `-rerun` was externally interrupted during the test
+suite and is retained as incomplete evidence, not counted as a product
+failure.
+
+## 36. Additive migration startup fast lane
+
+Installing and launching the first signed candidate exposed a second-round
+hotspot that synthetic and already-current database tests could not reveal.
+The production database was still at `v60_billing_kind`, so the app performed
+its full pre-migration protection sequence before applying the additive
+`v61_usage_memory` migration. On the 5,491,335,168-byte SQLCipher database,
+that meant a synchronous `PRAGMA integrity_check` followed by a complete
+encrypted online backup before SwiftUI could render the first frame.
+
+The canonical installed app launched at `2026-08-16 13:13:49.933 -0500`.
+A live `sample` beginning at `13:15:45` captured 5,883 of 5,885 main-thread
+samples (99.97%) in
+`OpenBurnBarDatabase.runIntegrityCheck()` -> `PRAGMA integrity_check`.
+Startup and migration work did not complete until approximately `13:17:12`,
+an observed first-launch stall of about 3 minutes 23 seconds. The protection
+sequence also created
+`openburnbar.sqlite.backup.20260816-131603`, another 5,491,335,168-byte
+encrypted copy. That backup is retained as recovery evidence; the runtime fix
+does not delete or prune it.
+
+The raw profile is:
+
+`.derived-data/performance/openburnbar-mission-20260816-postfix/`
+`installed-candidate-startup-pid86376.sample.txt`
+
+Pre-migration protection now has two explicit lanes:
+
+- Reviewed migrations whose identifiers appear in
+  `additiveTransactionalMigrationIdentifiers` rely on GRDB's per-migration
+  transaction and rollback behavior. The initial allowlist contains only
+  `v61_usage_memory`, which creates additive usage-memory schema without
+  rewriting or deleting existing user rows.
+- Every unknown, future, or non-additive pending migration fails closed into
+  the existing full integrity-check plus encrypted-backup path until it is
+  reviewed deliberately.
+
+The gate derives the complete pending set from
+`DatabaseMigrator.appliedIdentifiers`, rather than inferring currency from
+only the latest migration identifier. This preserves protection when a
+database has a non-contiguous migration history. The app and
+`OpenBurnBarCore` implementations are kept identical.
+
+Focused regression coverage proves that an on-disk v60 database reaches v61
+without executing `integrity_check` or creating a backup, while mixed or
+unknown pending identifiers still require full protection. Existing tests
+continue to cover encrypted backup readability, corruption rejection,
+rollback recovery, current-schema startup, and backup pruning. The Core
+fast-lane slice passes 6 of 6 tests in:
+
+`.derived-data/performance/openburnbar-mission-20260816-postfix/`
+`test-core-additive-migration-fast-lane-rerun.log`
+
+The transaction contract was checked against Context7 library ID
+`/groue/grdb.swift/v7.11.1`: each registered migration runs inside its own
+transaction by default and is rolled back when its body throws. SQLCipher
+behavior remains covered by `/sqlcipher/sqlcipher`; the fast lane does not
+change the key, cipher configuration, page format, or backup implementation.
+
+## 37. Timestamp-stable Mission Control ingestion and cheap remote-unlock polling
+
+The corrected installed Release candidate exposed two more settled-process
+hot paths after the additive migration completed. These profiles came from the
+real installed app and daemon, not the test host:
+
+- `.derived-data/performance/openburnbar-mission-20260816-postfix/`
+  `installed-corrected-candidate-daemon-hotspot-pid48788.sample.txt`
+- `.derived-data/performance/openburnbar-mission-20260816-postfix/`
+  `installed-corrected-candidate-app-hotspot-pid48340.sample.txt`
+
+The controller activity export contained 2,189 projects in approximately
+1.49 MB. The loaded Mission Control projection contained 2,323 projects,
+344 missions, two questions, and three followups. The daemon sample attributed
+12,992 of 13,035 captured samples to `BurnBarMissionControlStore.project`
+while the notification loop synchronized the export. Each project lookup
+rebuilt and sorted all enriched projects, and enrichment independently scanned
+questions, followups, missions, and review runs for every project. The activity
+file was also rewritten every minute with a fresh `generatedAt`; the daemon's
+raw-string change detector therefore repeated the complete ingest even when
+the actual project content had not changed.
+
+Activity change detection now compares a decoded semantic value containing
+only `activeProjectSlug` and `projects`; export time is deliberately excluded.
+Timestamp-only rewrites perform no project synchronization and append no
+controller events. Ingestion uses an internal registry lookup that returns the
+persisted project directly instead of requesting public derived enrichment.
+Public single-project reads enrich only the requested project, while list and
+summary enrichment build per-project question, followup, active-mission, and
+review aggregates in one pass over each projection collection. The public
+snapshot contract remains unchanged.
+
+The app sample traced a separate loop through
+`scheduleRemoteUnlockResumePoll` →
+`shouldKeepMirrorAliveForRemoteUnlock` → the complete remote-unlock readiness
+snapshot. A locked host is polled every 350 milliseconds so normal capture can
+resume promptly after unlock. The complete snapshot performs Keychain,
+LocalAuthentication, launch-daemon, certification-report, and agent-socket
+work; 109 captured samples were blocked in
+`RemoteAccessAgentHealthProbe.isHealthy`.
+
+Remote-unlock acceptance still performs the complete capability and signed
+session validation. Once that locked mirror is active, each resume tick now
+checks only that the same bound, unexpired viewer session remains present and
+reads the host lock state through `currentLockState()`. When unlock is actually
+observed, the complete readiness snapshot is evaluated once more before
+credentials are revoked and normal capture resumes. This preserves the
+security boundary while removing heavyweight security and process probes from
+the hot poll.
+
+Regression coverage:
+
+- `BurnBarMissionControlServiceTests`
+  `testControllerActivityIngestionIgnoresTimestampOnlySnapshotRefreshes`
+  proves a `generatedAt`-only rewrite appends zero events.
+- `BurnBarMissionControlServiceTests`
+  `testRegistryProjectLookupBypassesDerivedEnrichment` proves ingestion's raw
+  registry view remains distinct from the public enriched view.
+- Existing activity-ingestion question-deduplication and invalid-derived-slug
+  tests continue to cover semantic changes and malformed non-authoritative
+  input.
+- `MercuryRouterTests`
+  `testRemoteUnlockResumePollingDoesNotReprobeReadinessWhileHostStaysLocked`
+  proves four locked poll ticks perform one complete readiness probe, rather
+  than one probe per tick.
+- Existing credential-result and mirror-resume tests continue to prove that
+  unlock is observed, full readiness is revalidated, normal capture resumes,
+  and the accepted acknowledgement reports the unlocked state.
+
+## 38. Demand-loaded dashboard state and memory-only Firestore cache
+
+A true warm relaunch of the installed signed candidate still reproduced the
+original complaint with no visible windows: the app averaged approximately
+86% CPU over 90 seconds, reached a combined 1.75 GiB physical footprint, and
+did not settle until 48 seconds. The profile split the remaining work between
+two independent startup costs:
+
+- `DataStoreCoordinator` automatically fetched the complete dashboard snapshot
+  at construction. On the 5.49 GB SQLCipher database this ran the multi-window
+  usage aggregation and daily-summary queries even when the app was only a
+  background menu-bar host.
+- Firestore opened its persistent local cache during normal production
+  startup. Its remote-event replay and LevelDB reads/compaction consumed the
+  largest sampled CPU lane while startup services attached their live
+  listeners.
+
+Dashboard aggregates are now presentation state. The production data-store
+initializer leaves them cold; the actual status-item click and dashboard-open
+paths request one exhaustive hydration. Simultaneous first-open requests share
+one single-flight task, so tray, dashboard, deep-link, wallpaper, and automation
+entry points cannot fan out duplicate aggregate queries. Background ingestion
+records the usage-table write marker but does not force a dashboard query
+before any usage UI exists. Once presentation has been loaded, the existing
+marker and time-window gates preserve immediate, exact updates.
+
+Background features no longer depend on that presentation cache. Daily digest
+reads only the two calendar days required for its closed-day narrative, plus at
+most one newest-row sentinel when that window is quiet. Controller activity
+reads its seven-day start-time window directly from SQLite. Both use the v1
+`token_usage.startTime` index with a half-open
+`startTime >= lower AND startTime < upper` range and leave dashboard state
+cold. The desktop wallpaper is itself a visible presentation surface, so it
+explicitly requests the single-flight dashboard hydration only while enabled.
+
+Firestore now uses `MemoryCacheSettings` in every production launch, matching
+the local-first architecture: encrypted SQLite remains the durable canonical
+store, while Firestore remains the live replication and command plane.
+Existing Firestore data is not deleted; the app simply stops opening and
+replaying a second persistent database during each launch. This follows the
+Firebase Apple SDK cache configuration documented by Context7 library ID
+`/firebase/firebase-ios-sdk`.
+
+Regression coverage locks both boundaries:
+
+- `ReloadUsagesIfChangedTests` proves a background tick records its marker
+  without hydrating dashboard state, explicit presentation demand hydrates the
+  complete snapshot, repeated and concurrent demand is idempotent/single-flight,
+  and bounded start-time reads remain half-open and index-backed.
+- `DailyDigestManagerTests` proves persisted two-day digest reads retain
+  prior-day comparison while dashboard presentation stays cold.
+- `OpenBurnBarDaemonManagerTests` proves controller activity includes persisted
+  seven-day usage without hydrating dashboard presentation.
+- `OpenBurnBarRuntimeTests` locks the production Firestore cache policy to
+  memory-only.
+
+The full SwiftPM Core gate also has an explicit native-library boundary.
+SwiftPM combines the package's test targets into one test executable, while
+the vendored iroh and BurnBarRemote XCFrameworks are Rust static archives that
+both contain the Rust runtime symbol `_rust_eh_personality`. The aggregate
+Core suite therefore runs with BurnBarRemote scoped out and retains the real
+iroh transport. `scripts/test-burnbar-remote-swift-smoke.sh` immediately runs
+the BurnBarRemote engine tests in a dedicated one-archive package, so both
+native implementations remain tested without creating an invalid two-runtime
+link unit. The split and its concurrency-safe scratch behavior are locked by
+`scripts/ci/test-openburnbar-swift-linkage.test.mjs`.
+
+That package-graph behavior was checked against Context7 library ID
+`/swiftlang/swift-package-manager`.
+
+## 39. Facts-only Claude quota cache and bounded JSONL scanning
+
+The first five-minute installed run after the startup and projection repairs
+exposed the remaining material app hot path:
+
+`QuotaRefreshActor.fetchProviderSnapshots()` →
+`ClaudeQuotaAdapter.fetch(context:)` →
+the Claude transcript JSONL scanner.
+
+The production Claude corpus contained 634 files and approximately 433 MiB of
+JSONL modified inside the seven-day quota window. Provider, account, and
+switcher-profile quota refreshes could each rediscover, reread, JSON-decode,
+and date-parse that corpus. A local benchmark of the original whole-file scan
+retained approximately 481 MiB of additional physical footprint after one
+cold pass. Repeating that work on refresh explained both the periodic CPU
+spike and the app's avoidable memory high-water mark.
+
+Claude quota extraction now uses one process-serialized, facts-only cache. Each
+file entry stores:
+
+- modification time and captured byte size;
+- assistant-turn timestamp and total-token facts;
+- whether the captured prefix ended on a newline;
+- the length and SHA-256 digest of at most the first 64 bytes.
+
+No prompt, response, message body, model output, raw JSON object, or transcript
+byte is persisted. The cache lives under
+`ProviderQuotaScratch/claude_jsonl_quota_cache.plist`, and its schema is
+versioned through the shared parser-disk-cache infrastructure.
+
+The scanner loads that disk cache once per process and keeps the decoded facts
+in memory for later refreshes. An unchanged file requires no transcript read.
+An append-only file resumes from the prior captured byte boundary only when
+the prior scan ended on a newline and the head digest still matches. A likely
+replacement, truncation, partial final line, incompatible cache, or changed
+head fails closed to a complete reparse. Reads are pinned to the file size
+captured during discovery so a concurrent Claude append cannot be cached under
+an older signature.
+
+Window membership is applied while summing cached facts, rather than while
+parsing them. This keeps five-hour and seven-day windows correct as time moves
+without requiring a file write, including the case where a future-dated turn
+becomes current. Claude's canonical UTC timestamps use a fixed-layout ASCII
+parser that matches Foundation's millisecond precision; uncommon valid
+ISO-8601 variants retain the shared Foundation fallback. Per-line, per-chunk,
+cache-load, and cache-persist autorelease pools bound temporary Foundation
+objects during a cold corpus scan.
+
+The final real-corpus benchmark on August 17, 2026 produced:
+
+| Pass | Transcript bytes read | Duration | Process physical footprint |
+| --- | ---: | ---: | ---: |
+| Cold, 634 files | 454,024,286 | 5.559 s | 9.33 → 37.45 MiB |
+| Simulated process restart | 0 | 153.976 ms | 41.66 MiB |
+| Same-process warm refresh | 0 | 64.741 ms | 44.30 MiB |
+
+The facts cache was 2,006,834 bytes. The benchmark writes only aggregate file
+counts, timings, byte totals, cache size, and process footprint. Its redacted
+evidence is:
+
+`.derived-data/performance/openburnbar-mission-20260816-postfix/`
+`claude-quota-real-final.XEZb2z/benchmark.json`
+
+Regression coverage proves append resume, persisted restart reuse, transcript
+privacy, same-process memory reuse, replacement detection, canonical timestamp
+parity, and future-turn/window movement. The focused Core slice passes seven
+tests. The existing app integration slice passes all 14
+`ClaudeQuotaAdapterMattersTests` and `ClaudeQuotaJSONLScannerTests`. The full
+OpenBurnBarCore run passes 2,551 tests with 36 skips and zero failures.
+
+The exact signed Release candidate installed for the final live gates has:
+
+- app SHA-256:
+  `faf869cc7035a1215a57815a6903c2fe7174b1104d3fd05e89ddc85d27532de2`;
+- daemon SHA-256:
+  `496fdb9c263352fb56245b59717f2c9d732188291bdf3e8eeb9e2f16bcf1fae5`.
+
+Its first settled 90-second characterization against the
+5,514,285,056-byte production SQLCipher database measured 1.249% combined
+median CPU, 385.24 MiB combined median physical footprint, zero main-database
+growth, zero WAL growth, stable process paths, and stable binary hashes.
+
+## 40. Resumable, paced semantic re-embedding
+
+A later installed Release characterization exposed one final unbounded
+background lane after an embedding-version change. The app had no visible
+windows, but the projection worker continuously re-embedded the full semantic
+corpus:
+
+- app CPU median: 128.658%;
+- app CPU p95: 163.205%;
+- app CPU maximum: 173.898%;
+- daemon CPU median: 0%;
+- combined peak physical footprint: 403.53 MiB;
+- main-database growth: 0 bytes;
+- maximum WAL size: 5.12 MiB;
+- settled within 30 seconds: no.
+
+The measured app binary was SHA-256
+`4f33615005c8c108a8ae6ddbd1725c90d052430606099b92c1853179f2c5ddb9`;
+the installed daemon was
+`069539569d55bee40616842e34385f7c93f75c129fa52be56e0e23df61444814`.
+The redacted characterization and app sample are under:
+
+`.derived-data/performance/openburnbar-mission-20260816-postfix/`
+`resumable-reembed-release-characterization-20260817T065631Z/`
+
+The profile and query trace identified four compounding costs:
+
+1. a single re-embed lease materialized every eligible `SearchChunkRecord`,
+   including fields the embedder did not need;
+2. completion was all-or-nothing, so interruption or relaunch restarted the
+   corpus rather than resuming from committed target-version embeddings;
+3. every completed batch recounted the entire embedding-version index before
+   marking its snapshot stale;
+4. a future-dated queued row was treated as immediately runnable backlog,
+   creating a 20 ms projection-worker poll loop.
+
+Re-embedding is now a durable, bounded background lease:
+
+- SQL selects only `id` and `text`, excludes code chunks, skips rows that
+  already have the target embedding version, and uses keyset pagination;
+- one lease reads 25 eligible rows, embeds at most 24, and uses the extra row
+  only as a look-ahead signal;
+- when more rows remain, the same queue row returns to `queued` with its
+  original identity and retry count, delayed by 30 seconds;
+- the worker schedules one wake for the next lease opportunity instead of
+  polling while a delayed row exists;
+- snapshot invalidation preserves the last persisted vector count instead of
+  performing an O(n) recount after every slice;
+- cancellation checks run before and after the embedding provider and before
+  writes, long write loops yield periodically, and inter-batch sleep propagates
+  cancellation;
+- a canceled lease is immediately requeued without consuming a retry and
+  throws `CancellationError` through the worker boundary;
+- failed rows remain visible to queue-depth and wake logic so they cannot be
+  stranded.
+
+The gap-repair sweep was also made lightweight. It first reads only
+conversation revision metadata, fetches transcript bodies only for ambiguous
+legacy rows, and caches authoritative content hashes for later passes. The
+regression fixture now inserts the matching source conversation and its real
+source version/hash; the prior fixture accidentally described an orphaned
+search document, so the production purge behavior was correct.
+
+Focused regression coverage proves:
+
+- bounded `id,text` reads and code-chunk exclusion;
+- target-version skip and interruption/relaunch resume;
+- same-row deferral without repeated embedding recounts;
+- delayed single-wake behavior rather than polling;
+- final-slice cancellation requeues immediately without consuming a retry;
+- gap repair avoids full conversation materialization after the hash cache is
+  established.
+
+The final focused command was:
+
+```sh
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
+FIREBASE_SOURCE_FIRESTORE=1 \
+xcodebuild test \
+  -project OpenBurnBar.xcodeproj \
+  -scheme OpenBurnBar \
+  -destination 'platform=macOS,arch=arm64' \
+  -clonedSourcePackagesDirPath .spm-cache-new \
+  -derivedDataPath /tmp/openburnbar-app-tests/openburnbar-app-tests.UnO1Fq \
+  -resultBundlePath /tmp/openburnbar-app-tests/openburnbar-app-tests.UnO1Fq/OpenBurnBarTests-projection-usage-focused-green-20260817.xcresult \
+  -test-timeouts-enabled YES \
+  -default-test-execution-time-allowance 600 \
+  -maximum-test-execution-time-allowance 1200 \
+  SWIFT_ENABLE_EXPLICIT_MODULES=NO \
+  SWIFT_COMPILATION_MODE=singlefile \
+  SWIFT_ENABLE_BATCH_MODE=NO \
+  CODE_SIGNING_ALLOWED=NO \
+  CODE_SIGNING_REQUIRED=NO \
+  -only-testing:OpenBurnBarTests/ProjectionPipelineServiceTests \
+  -only-testing:OpenBurnBarTests/UsageAggregatorTests \
+  TEST_RUNNER_OPENBURNBAR_SKIP_SNAPSHOTS=true
+```
+
+It passed 88 tests with zero failures: all 60
+`ProjectionPipelineServiceTests` and all 28 selected `UsageAggregatorTests`.
+The preserved result bundle is:
+
+`.derived-data/performance/openburnbar-mission-20260816-postfix/`
+`projection-reembed-focused-tests-20260817T080253Z/OpenBurnBarTests.xcresult`
+
+The SQL selection, keyset, and transaction behavior was checked against
+Context7 library ID `/groue/grdb.swift/v7.5.0`. This section records source and
+focused-test evidence only; the installed-candidate gates below must be rerun
+after building and installing the exact tree that contains this repair.

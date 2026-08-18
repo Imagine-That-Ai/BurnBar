@@ -5,10 +5,37 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const swiftHarness = readFileSync("scripts/test-openburnbar-swift.sh", "utf8");
+const remoteSmokeHarness = readFileSync(
+  "scripts/test-burnbar-remote-swift-smoke.sh",
+  "utf8",
+);
 const signalBuilder = readFileSync(
   "scripts/build-signal-ffi-xcframework.sh",
   "utf8",
 );
+
+test("aggregate Core tests split colliding Rust static archives without losing native remote coverage", () => {
+  assert.match(
+    swiftHarness,
+    /Vendor\/OpenBurnBarIroh\.xcframework[\s\S]*Vendor\/BurnBarRemote\.xcframework[\s\S]*OPENBURNBAR_DISABLE_BURNBAR_REMOTE_XCFRAMEWORK=1/u,
+    "the aggregate package-test executable must contain only one Rust static runtime",
+  );
+  assert.match(
+    swiftHarness,
+    /scripts\/test-burnbar-remote-swift-smoke\.sh/u,
+    "the real BurnBarRemote archive must still receive its dedicated native smoke coverage",
+  );
+  assert.match(
+    swiftHarness,
+    /OPENBURNBAR_SKIP_BURNBAR_REMOTE_SWIFT_SMOKE/u,
+    "focused callers need an explicit way to skip the additional native smoke",
+  );
+  assert.match(
+    remoteSmokeHarness,
+    /OPENBURNBAR_SWIFT_SCRATCH_ROOT/u,
+    "the dedicated native smoke must share the caller's concurrency-safe scratch root",
+  );
+});
 
 test("macOS Swift tests build dynamic Signal FFI before linking domain-core Rust", () => {
   assert.match(

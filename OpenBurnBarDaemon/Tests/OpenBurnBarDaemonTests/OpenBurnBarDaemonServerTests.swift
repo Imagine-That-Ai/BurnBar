@@ -921,12 +921,29 @@ final class BurnBarDaemonServerTests: XCTestCase {
 
     func testServerExposesMissionControlRPCs() async throws {
         let socketPath = makeSocketPath(name: "mission-control")
+        let rootURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-mission-control-rpc-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: rootURL) }
+
+        let missionControlService = BurnBarMissionControlService(
+            store: BurnBarMissionControlStore(
+                eventsFileURL: rootURL.appendingPathComponent("controller-events.jsonl"),
+                projectionFileURL: rootURL.appendingPathComponent("controller-projection.json"),
+                logger: BurnBarDaemonLogger(category: "server-tests"),
+                notificationSecretStore: BurnBarInMemoryNotificationSecretStore()
+            ),
+            logger: BurnBarDaemonLogger(category: "server-tests"),
+            transport: .live(),
+            usageLedgerURL: rootURL.appendingPathComponent("usage-events.jsonl")
+        )
         let server = BurnBarDaemonServer(
             configuration: BurnBarDaemonConfiguration(
                 socketPath: socketPath,
                 socketAuthToken: "test-token",
                 startsMissionControlBackgroundLoops: false
-            )
+            ),
+            missionControlService: missionControlService
         )
 
         try await server.start()
@@ -1307,6 +1324,21 @@ final class BurnBarDaemonServerTests: XCTestCase {
             fileURL: rootURL.appendingPathComponent("usage-events.jsonl"),
             logger: BurnBarDaemonLogger(category: "usage-history-tests")
         )
+        _ = try await usageRecorder.record(
+            BurnBarUsageEvent(
+                runID: BurnBarRunID(rawValue: "Codex:rpc-history"),
+                providerID: "codex",
+                modelID: "gpt-5",
+                inputTokens: 120,
+                outputTokens: 30,
+                cacheReadTokens: 20,
+                reasoningTokens: 10,
+                cost: 0.42,
+                recordedAt: Date(timeIntervalSince1970: 1_752_408_060),
+                sessionID: "rpc-history"
+            ),
+            idempotencyKey: "usage-history-record"
+        )
         let server = BurnBarDaemonServer(
             configuration: BurnBarDaemonConfiguration(
                 socketPath: socketPath,
@@ -1335,8 +1367,117 @@ final class BurnBarDaemonServerTests: XCTestCase {
         XCTAssertEqual(response.result?.historyComplete, true)
         XCTAssertNil(response.result?.nextCursor)
         XCTAssertEqual(response.result?.totalCount, 1)
-        XCTAssertEqual(response.result?.sessions.first?.sourceID, "Codex:rpc-history")
-        XCTAssertEqual(response.result?.sessions.first?.bodyMD.contains("Persisted summary"), true)
+        let session = try XCTUnwrap(response.result?.sessions.first)
+        XCTAssertEqual(session.sourceID, "Codex:rpc-history")
+        XCTAssertTrue(session.bodyMD.contains("Persisted summary"))
+        XCTAssertEqual(session.tokens, 160)
+        XCTAssertEqual(session.costUsd, 0.42, accuracy: 0.000_001)
+        XCTAssertEqual(session.model, "gpt-5")
+    }
+
+    func testUsageHistoryRPCSkipsTheUsageLedgerWhenHistoryIsIncomplete() async throws {
+        let socketPath = makeSocketPath(name: "usage-history-incomplete")
+        let rootURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-usage-history-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: rootURL) }
+
+        let databaseURL = rootURL.appendingPathComponent("openburnbar.sqlite")
+        var database: OpaquePointer?
+        XCTAssertEqual(sqlite3_open(databaseURL.path, &database), SQLITE_OK)
+        guard let database else { throw XCTSkip("SQLite is unavailable") }
+        defer { sqlite3_close(database) }
+        let schema = """
+        CREATE TABLE conversations (
+            id TEXT PRIMARY KEY,
+            provider TEXT NOT NULL,
+            sessionId TEXT NOT NULL,
+            projectName TEXT NOT NULL,
+            startTime TEXT,
+            endTime TEXT,
+            keyFiles TEXT,
+            keyCommands TEXT,
+            keyTools TEXT,
+            inferredTaskTitle TEXT,
+            summaryTitle TEXT,
+            summaryModel TEXT,
+            summary TEXT,
+            lastAssistantMessage TEXT,
+            fullText TEXT,
+            indexedAt TEXT,
+            workingDirectory TEXT
+        );
+        """
+        var sqliteError: UnsafeMutablePointer<CChar>?
+        XCTAssertEqual(sqlite3_exec(database, schema, nil, nil, &sqliteError), SQLITE_OK)
+        if let errorPointer = sqliteError {
+            sqlite3_free(errorPointer)
+            sqliteError = nil
+        }
+        XCTAssertEqual(sqlite3_exec(database, "BEGIN", nil, nil, &sqliteError), SQLITE_OK)
+        if let errorPointer = sqliteError {
+            sqlite3_free(errorPointer)
+            sqliteError = nil
+        }
+        for index in 0...500 {
+            let insert = """
+            INSERT INTO conversations (
+                id, provider, sessionId, projectName, startTime, endTime,
+                keyFiles, keyCommands, keyTools, inferredTaskTitle, summaryTitle,
+                summaryModel, summary, lastAssistantMessage, fullText, indexedAt,
+                workingDirectory
+            ) VALUES (
+                'Codex:history-\(index)', 'Codex', 'history-\(index)', 'BurnBar',
+                '2026-07-13 12:00:00.000', '2026-07-13 12:01:00.000',
+                '[]', '[]', '[]', 'History \(index)', 'History \(index)', 'gpt-5',
+                'Summary', 'Continue.', 'User asked.', '2026-07-13 12:02:00.000',
+                '/tmp/burnbar-history'
+            );
+            """
+            XCTAssertEqual(sqlite3_exec(database, insert, nil, nil, &sqliteError), SQLITE_OK)
+            if let errorPointer = sqliteError {
+                sqlite3_free(errorPointer)
+                sqliteError = nil
+            }
+        }
+        XCTAssertEqual(sqlite3_exec(database, "COMMIT", nil, nil, &sqliteError), SQLITE_OK)
+        if let errorPointer = sqliteError { sqlite3_free(errorPointer) }
+
+        let ledgerURL = rootURL.appendingPathComponent("usage-events.jsonl")
+        try Data("{definitely-not-valid-json}\n".utf8).write(to: ledgerURL, options: .atomic)
+        let server = BurnBarDaemonServer(
+            configuration: BurnBarDaemonConfiguration(
+                socketPath: socketPath,
+                socketAuthToken: "test-token",
+                indexDatabasePath: databaseURL.path,
+                startsMissionControlBackgroundLoops: false
+            ),
+            logger: BurnBarDaemonLogger(category: "usage-history-tests"),
+            usageRecorder: BurnBarUsageRecorder(
+                fileURL: ledgerURL,
+                logger: BurnBarDaemonLogger(category: "usage-history-tests")
+            )
+        )
+
+        try await server.start()
+        addTeardownBlock { await server.stop() }
+
+        let response: BurnBarRPCResponseEnvelope<BurnBarActivityHistoryResponse> = try sendEnvelope(
+            BurnBarRPCRequestEnvelopeWithParams(
+                id: "usage-history-incomplete-1",
+                method: .usageHistory,
+                authToken: "test-token",
+                params: BurnBarActivityHistoryRequest(limit: 500)
+            ),
+            socketPath: socketPath
+        )
+
+        XCTAssertNil(response.error)
+        XCTAssertFalse(response.result?.historyComplete ?? true)
+        XCTAssertEqual(response.result?.nextCursor, "more")
+        XCTAssertEqual(response.result?.historyLimit, 500)
+        XCTAssertEqual(response.result?.totalCount, 501)
+        XCTAssertTrue(response.result?.sessions.isEmpty ?? false)
     }
 
     private func makeSocketPath(name: String) -> String {

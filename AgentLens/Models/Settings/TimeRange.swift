@@ -30,8 +30,7 @@ enum TimeRange: String, CaseIterable, Identifiable {
         switch self {
         case .today:
             let start = calendar.startOfDay(for: now)
-            let end = calendar.date(byAdding: .day, value: 1, to: start) ?? now
-            return start...end
+            return start...now
 
         case .last7Days:
             let start = calendar.date(byAdding: .day, value: -7, to: now) ?? now

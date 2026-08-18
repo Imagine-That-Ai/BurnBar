@@ -435,6 +435,12 @@ final class SettingsManager {
         set { appearance.dashboardLayout = newValue }
     }
 
+    /// Which screen the dashboard window opens on. See `DashboardLaunchSurface`.
+    var dashboardLaunchSurface: DashboardLaunchSurface {
+        get { _ = appearanceMutationVersion; return appearance.dashboardLaunchSurface }
+        set { appearance.dashboardLaunchSurface = newValue }
+    }
+
     var showInMenuBar: Bool {
         get { _ = appearanceMutationVersion; return appearance.showInMenuBar }
         set { appearance.showInMenuBar = newValue }

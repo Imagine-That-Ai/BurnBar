@@ -408,6 +408,9 @@ async function maybeRunCursorSmoke(
       approveRun: async (runID) => {
         await controller.respondToApproval(runID, 'approve', 'Approved by OpenBurnBar Cursor smoke test.');
       },
+      refreshRunState: async () => {
+        await controller.refresh();
+      },
       getRunPhase: async (runID) => {
         const detail = await controller.getRunDetail(runID);
         return detail?.run?.phase;
@@ -503,6 +506,7 @@ async function runCursorSmoke({
   getRunDetail,
   createRun,
   approveRun,
+  refreshRunState,
   getRunPhase
 }: {
   outputPath: string;
@@ -513,6 +517,7 @@ async function runCursorSmoke({
   getRunDetail?: (runID: string) => Promise<BurnBarRunDetailResponse | undefined>;
   createRun: (resolvedModelID: string, prompt: string, metadata: Record<string, BurnBarJSONValue>) => Promise<string>;
   approveRun?: (runID: string, approvalID: string) => Promise<void>;
+  refreshRunState?: () => Promise<void>;
   getRunPhase: (runID: string) => Promise<string | undefined>;
 }): Promise<void> {
   const fs = await import('node:fs/promises');
@@ -552,24 +557,13 @@ async function runCursorSmoke({
       }
     );
 
-    let phase = 'unknown';
-    const autoApprovedApprovalIDs = new Set<string>();
-    for (let attempt = 0; attempt < 240; attempt += 1) {
-      phase = (await getRunPhase(runID)) ?? phase;
-      if (phase === 'awaiting_approval' && getRunDetail && approveRun) {
-        const runDetail = await getRunDetail(runID);
-        const approvalID = runDetail?.approvalRequest?.approvalID;
-        if (approvalID && !autoApprovedApprovalIDs.has(approvalID)) {
-          autoApprovedApprovalIDs.add(approvalID);
-          await approveRun(runID, approvalID);
-          continue;
-        }
-      }
-      if (phase === 'completed' || phase === 'failed' || phase === 'cancelled') {
-        break;
-      }
-      await new Promise((resolve) => setTimeout(resolve, 250));
-    }
+    const phase = await _waitForCursorSmokeRun({
+      runID,
+      getRunDetail,
+      approveRun,
+      refreshRunState,
+      getRunPhase
+    });
 
     if (phase !== 'completed') {
       const runDetail = getRunDetail ? await getRunDetail(runID) : undefined;
@@ -622,6 +616,47 @@ async function runCursorSmoke({
     );
     throw error;
   }
+}
+
+export async function _waitForCursorSmokeRun({
+  runID,
+  getRunDetail,
+  approveRun,
+  refreshRunState,
+  getRunPhase,
+  maxAttempts = 480,
+  pollDelayMs = 250
+}: {
+  runID: string;
+  getRunDetail?: (runID: string) => Promise<BurnBarRunDetailResponse | undefined>;
+  approveRun?: (runID: string, approvalID: string) => Promise<void>;
+  refreshRunState?: () => Promise<void>;
+  getRunPhase: (runID: string) => Promise<string | undefined>;
+  maxAttempts?: number;
+  pollDelayMs?: number;
+}): Promise<string> {
+  let phase = 'unknown';
+  const autoApprovedApprovalIDs = new Set<string>();
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    await refreshRunState?.();
+    phase = (await getRunPhase(runID)) ?? phase;
+    if (phase === 'awaiting_approval' && getRunDetail && approveRun) {
+      const runDetail = await getRunDetail(runID);
+      const approvalID = runDetail?.approvalRequest?.approvalID;
+      if (approvalID && !autoApprovedApprovalIDs.has(approvalID)) {
+        autoApprovedApprovalIDs.add(approvalID);
+        await approveRun(runID, approvalID);
+        continue;
+      }
+    }
+    if (phase === 'completed' || phase === 'failed' || phase === 'cancelled') {
+      break;
+    }
+    await new Promise((resolve) => setTimeout(resolve, pollDelayMs));
+  }
+
+  return phase;
 }
 
 function smokeFailureDetails(error: unknown): {

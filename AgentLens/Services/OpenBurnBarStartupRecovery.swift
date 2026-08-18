@@ -488,11 +488,15 @@ final class OpenBurnBarRuntimeContext {
             await sync.syncTextExpansionSnippets()
             if self.settingsManager.dailyDigestEnabled {
                 await DailyDigestManager.shared.requestAuthorization()
-                DailyDigestManager.shared.scheduleDigest(
-                    from: self.dataStore,
-                    at: self.settingsManager.dailyDigestHour
-                )
             }
+            // Registered whether or not the digest is on: the cadence reads
+            // both settings live, so it arms, re-arms and clears itself
+            // without waiting for the next launch.
+            DailyDigestManager.shared.activate(
+                from: self.dataStore,
+                isEnabled: { self.settingsManager.dailyDigestEnabled },
+                hour: { self.settingsManager.dailyDigestHour }
+            )
         }
 
         periodicRefreshTask?.cancel()

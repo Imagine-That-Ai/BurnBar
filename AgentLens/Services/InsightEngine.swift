@@ -571,6 +571,118 @@ enum InsightEngine {
         )
     }
 
+    // MARK: - Daily Digest
+
+    /// The calendar day a digest delivered at `deliveryDate` describes: the
+    /// whole day before it.
+    ///
+    /// The window is anchored to the *delivery* date rather than to "now" on
+    /// purpose. `DailyDigestManager` re-arms the pending notification on a
+    /// background cadence, so a body is often built hours before it is shown —
+    /// sometimes on the previous calendar day. Resolving the window from the
+    /// date the digest will actually fire keeps "yesterday" pointing at the
+    /// same day regardless of when the text was computed.
+    static func digestWindow(
+        forDeliveryAt deliveryDate: Date,
+        calendar: Calendar = .current
+    ) -> Range<Date> {
+        let deliveryDayStart = calendar.startOfDay(for: deliveryDate)
+        let windowStart = calendar.date(byAdding: .day, value: -1, to: deliveryDayStart)
+            ?? deliveryDayStart.addingTimeInterval(-86_400)
+        return windowStart..<deliveryDayStart
+    }
+
+    /// Name of the day a digest delivered at `deliveryDate` describes.
+    ///
+    /// The digest names its own day rather than saying "yesterday" because it
+    /// cannot control when it is shown: a Mac asleep through the delivery hour
+    /// gets the notification on wake, possibly a day or more later, and
+    /// "yesterday" would by then point at the wrong day. A weekday name is
+    /// still true whenever it arrives.
+    static func digestDayName(
+        forDeliveryAt deliveryDate: Date,
+        calendar: Calendar = .current
+    ) -> String {
+        let covered = digestWindow(forDeliveryAt: deliveryDate, calendar: calendar).lowerBound
+        let symbols = calendar.weekdaySymbols
+        let index = calendar.component(.weekday, from: covered) - 1
+        guard symbols.indices.contains(index) else { return "Yesterday" }
+        return symbols[index]
+    }
+
+    /// Builds the daily digest body: a closed-out summary of the day before
+    /// `deliveryDate`.
+    ///
+    /// `generateNarrative` narrates the day *in progress* for the dashboard,
+    /// which is the wrong window for a notification — it renders "Quiet
+    /// morning" for anyone whose delivery hour lands before they start work.
+    /// This summarises a day that has already ended, which is both what the
+    /// Settings copy promises and what keeps the text stable between the
+    /// moment it is armed and the moment it is delivered.
+    static func generateDigestNarrative(
+        from usages: [TokenUsage],
+        deliveredAt deliveryDate: Date,
+        calendar: Calendar = .current
+    ) -> Insight {
+        let window = digestWindow(forDeliveryAt: deliveryDate, calendar: calendar)
+        let dayUsages = usages.filter { window.contains($0.startTime) }
+        let dayName = digestDayName(forDeliveryAt: deliveryDate, calendar: calendar)
+
+        guard !dayUsages.isEmpty else {
+            return Insight(
+                type: .narrative,
+                icon: "moon.zzz.fill",
+                sentiment: .neutral,
+                headline: "No burn \(dayName)",
+                detail: usages.isEmpty
+                    ? "Run a scan to import sessions from your AI coding agents."
+                    : "No agent sessions were recorded.",
+                metric: 0,
+                delta: nil
+            )
+        }
+
+        let sessions = distinctSessionCount(in: dayUsages)
+        let cost = dayUsages.reduce(0.0) { $0 + $1.cost }
+        let providerList = Set(dayUsages.map { $0.provider.displayName })
+            .sorted()
+            .joined(separator: " & ")
+
+        // The day before the digest window, so the body can answer "is that a
+        // lot?" instead of just stating a number. The notification renders
+        // headline + detail only, so the cost has to live in the text —
+        // `metric` never reaches the user here.
+        let priorStart = calendar.date(byAdding: .day, value: -1, to: window.lowerBound)
+            ?? window.lowerBound.addingTimeInterval(-86_400)
+        let priorCost = usages
+            .filter { $0.startTime >= priorStart && $0.startTime < window.lowerBound }
+            .reduce(0.0) { $0 + $1.cost }
+        let delta: Double? = priorCost > 0 ? (cost - priorCost) / priorCost : nil
+
+        var detail = "\(providerList)."
+        if let delta, abs(delta) >= 0.05 {
+            let direction = delta > 0 ? "Up" : "Down"
+            detail += " \(direction) \(Int((abs(delta) * 100).rounded()))% on the day before."
+        }
+
+        let sentiment: Sentiment
+        switch delta {
+        case .some(let d) where d >= 0.25:  sentiment = .negative
+        case .some(let d) where d <= -0.25: sentiment = .positive
+        default:                            sentiment = .neutral
+        }
+
+        return Insight(
+            type: .narrative,
+            icon: "text.quote",
+            sentiment: sentiment,
+            headline: "\(dayName): \(cost.formatAsCost()) across \(sessions) session\(sessions == 1 ? "" : "s")",
+            detail: detail,
+            metric: cost,
+            delta: delta
+        )
+    }
+
     private nonisolated static func distinctSessionCount(in usages: [TokenUsage]) -> Int {
         Set(usages.map { usage in
             "\(usage.provider.rawValue)|\(canonicalSessionID(for: usage))"

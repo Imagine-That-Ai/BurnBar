@@ -224,6 +224,143 @@ final class BillingReconcileBoundedBaselineTests: XCTestCase {
     }
 }
 
+// MARK: - Smart Hub multi-window run totals
+
+@MainActor
+final class ProviderRunCostTotalsTests: XCTestCase {
+
+    func test_multiWindowTotals_matchOverlapSemanticsAndUseOneBoundedQuery() async throws {
+        let queue = try DatabaseQueue(configuration: .withQueryTracing())
+        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let usageStore = UsageStore(dbQueue: queue)
+        let tracer = OpenBurnBarQueryTracer.shared
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+
+        let rows = [
+            TokenUsage(
+                provider: .codex,
+                sessionId: "recent",
+                projectName: "project",
+                model: "model",
+                inputTokens: 10,
+                outputTokens: 5,
+                costUSD: 1,
+                startTime: now.addingTimeInterval(-3_600),
+                endTime: now.addingTimeInterval(-3_540)
+            ),
+            TokenUsage(
+                provider: .factory,
+                sessionId: "six-hours",
+                projectName: "project",
+                model: "model",
+                inputTokens: 20,
+                outputTokens: 10,
+                costUSD: 2,
+                startTime: now.addingTimeInterval(-6 * 3_600),
+                endTime: now.addingTimeInterval(-6 * 3_600 + 60)
+            ),
+            TokenUsage(
+                provider: .factory,
+                sessionId: "long-runner",
+                projectName: "project",
+                model: "model",
+                inputTokens: 30,
+                outputTokens: 15,
+                costUSD: 3,
+                startTime: now.addingTimeInterval(-8 * 86_400),
+                endTime: now.addingTimeInterval(-86_400)
+            ),
+            TokenUsage(
+                provider: .cursor,
+                sessionId: "reversed-timestamps",
+                projectName: "project",
+                model: "model",
+                inputTokens: 40,
+                outputTokens: 20,
+                costUSD: 4,
+                startTime: now.addingTimeInterval(-2 * 3_600),
+                endTime: now.addingTimeInterval(-3 * 3_600)
+            ),
+            TokenUsage(
+                provider: .claudeCode,
+                sessionId: "outside",
+                projectName: "project",
+                model: "model",
+                inputTokens: 50,
+                outputTokens: 25,
+                costUSD: 5,
+                startTime: now.addingTimeInterval(-9 * 86_400),
+                endTime: now.addingTimeInterval(-9 * 86_400 + 60)
+            )
+        ]
+        try await usageStore.insertChunked(rows)
+
+        let fiveHours = now.addingTimeInterval(-5 * 3_600)...now
+        let sevenDays = now.addingTimeInterval(-7 * 86_400)...now
+
+        tracer.resetLog()
+        let totals = try await usageStore.providerRunCostTotals(in: [fiveHours, sevenDays])
+
+        XCTAssertEqual(totals.count, 2)
+        XCTAssertEqual(
+            totals[0][.codex],
+            ProviderRunCostTotals(sessionCount: 1, totalTokens: 15, totalCost: 1)
+        )
+        XCTAssertEqual(
+            totals[0][.cursor],
+            ProviderRunCostTotals(sessionCount: 1, totalTokens: 60, totalCost: 4)
+        )
+        XCTAssertNil(totals[0][.factory])
+        XCTAssertEqual(
+            totals[1][.codex],
+            ProviderRunCostTotals(sessionCount: 1, totalTokens: 15, totalCost: 1)
+        )
+        XCTAssertEqual(
+            totals[1][.cursor],
+            ProviderRunCostTotals(sessionCount: 1, totalTokens: 60, totalCost: 4)
+        )
+        XCTAssertEqual(
+            totals[1][.factory],
+            ProviderRunCostTotals(sessionCount: 2, totalTokens: 75, totalCost: 5)
+        )
+        XCTAssertNil(totals[1][.claudeCode])
+
+        let aggregateQueries = tracer.queryLog.filter { event in
+            let sql = event.sql
+                .lowercased()
+                .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            return sql.contains("from token_usage")
+                && sql.contains("group by provider")
+        }
+        XCTAssertEqual(
+            aggregateQueries.count,
+            1,
+            "All Smart Hub windows must share one token_usage aggregate query"
+        )
+        let aggregateSQL = try XCTUnwrap(aggregateQueries.first?.sql.lowercased())
+        XCTAssertTrue(aggregateSQL.contains("as bounded_usage"))
+        XCTAssertTrue(aggregateSQL.contains("where ((starttime <="))
+        XCTAssertEqual(
+            aggregateSQL.components(separatedBy: "from token_usage").count - 1,
+            1,
+            "The multi-window query must perform one bounded token_usage scan"
+        )
+    }
+
+    func test_multiWindowTotals_emptyInputPerformsNoQuery() async throws {
+        let queue = try DatabaseQueue(configuration: .withQueryTracing())
+        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let usageStore = UsageStore(dbQueue: queue)
+        let tracer = OpenBurnBarQueryTracer.shared
+
+        tracer.resetLog()
+        let totals = try await usageStore.providerRunCostTotals(in: [])
+
+        XCTAssertTrue(totals.isEmpty)
+        XCTAssertEqual(tracer.queryCount, 0)
+    }
+}
+
 // MARK: - Usage table write marker
 
 @MainActor
@@ -364,7 +501,7 @@ final class ReloadUsagesIfChangedTests: XCTestCase {
         )
     }
 
-    func test_firstTickAlwaysReloads() async throws {
+    func test_backgroundTickDoesNotHydrateBeforePresentationDemand() async throws {
         let store = try makeStore()
         store.nowProvider = { [noon] in noon }
         try await store.insert([sampleUsage(seed: 1), sampleUsage(seed: 2)])
@@ -373,9 +510,152 @@ final class ReloadUsagesIfChangedTests: XCTestCase {
         let v0 = store.usagesVersion
         await store.reloadUsagesIfChanged()
 
+        XCTAssertTrue(store.usages.isEmpty)
+        XCTAssertEqual(store.usagesVersion, v0)
+        XCTAssertNil(store.lastRefresh)
+        XCTAssertFalse(store.debugHasLoadedUsagePresentationForTesting)
+        XCTAssertNotNil(store.debugLastReloadedUsageWriteMarkerForTesting)
+
+        await store.loadUsagePresentationIfNeeded()
+
         XCTAssertEqual(store.usages.count, 2)
         XCTAssertEqual(store.usagesVersion, v0 &+ 1)
-        XCTAssertNotNil(store.debugLastReloadedUsageWriteMarkerForTesting)
+        XCTAssertTrue(store.debugHasLoadedUsagePresentationForTesting)
+    }
+
+    func test_repeatedPresentationLoadIsIdempotent() async throws {
+        let store = try makeStore()
+        store.nowProvider = { [noon] in noon }
+        try await store.insert([sampleUsage(seed: 1)])
+
+        await store.loadUsagePresentationIfNeeded()
+        let version = store.usagesVersion
+        let generation = store.debugRefreshGenerationForTesting
+
+        await store.loadUsagePresentationIfNeeded()
+
+        XCTAssertEqual(store.usagesVersion, version)
+        XCTAssertEqual(store.debugRefreshGenerationForTesting, generation)
+    }
+
+    func test_concurrentPresentationLoadsAreSingleFlight() async throws {
+        let store = try makeStore()
+        store.nowProvider = { [noon] in noon }
+        try await store.insert([sampleUsage(seed: 1)])
+
+        let requests = (0..<8).map { _ in
+            Task { @MainActor in
+                await store.loadUsagePresentationIfNeeded()
+            }
+        }
+        for request in requests {
+            await request.value
+        }
+
+        XCTAssertEqual(store.usages.count, 1)
+        XCTAssertEqual(store.usagesVersion, 1)
+        XCTAssertEqual(
+            store.debugRefreshGenerationForTesting,
+            1,
+            "Concurrent first-open requests must share one dashboard aggregate query"
+        )
+    }
+
+    func test_startTimeWindowFetch_isHalfOpenAndKeepsPresentationCold() async throws {
+        let store = try makeStore()
+        let lower = noon.addingTimeInterval(-3_600)
+        let upper = noon
+        let usages = [
+            TokenUsage(
+                provider: .factory,
+                sessionId: "before-window",
+                projectName: "project",
+                model: "model",
+                inputTokens: 1,
+                outputTokens: 1,
+                costUSD: 1,
+                startTime: lower.addingTimeInterval(-1),
+                endTime: lower
+            ),
+            TokenUsage(
+                provider: .factory,
+                sessionId: "at-lower-bound",
+                projectName: "project",
+                model: "model",
+                inputTokens: 1,
+                outputTokens: 1,
+                costUSD: 2,
+                startTime: lower,
+                endTime: lower.addingTimeInterval(1)
+            ),
+            TokenUsage(
+                provider: .factory,
+                sessionId: "inside-window",
+                projectName: "project",
+                model: "model",
+                inputTokens: 1,
+                outputTokens: 1,
+                costUSD: 3,
+                startTime: upper.addingTimeInterval(-1),
+                endTime: upper
+            ),
+            TokenUsage(
+                provider: .factory,
+                sessionId: "at-upper-bound",
+                projectName: "project",
+                model: "model",
+                inputTokens: 1,
+                outputTokens: 1,
+                costUSD: 4,
+                startTime: upper,
+                endTime: upper.addingTimeInterval(1)
+            )
+        ]
+        try await store.insert(usages)
+
+        let fetched = try await store.fetchUsage(startingIn: lower..<upper, limit: Int.max)
+
+        XCTAssertEqual(fetched.map(\.sessionId), ["inside-window", "at-lower-bound"])
+        XCTAssertFalse(store.debugHasLoadedUsagePresentationForTesting)
+    }
+
+    func test_startTimeWindowQuery_usesTheV1StartTimeIndex() async throws {
+        let queue = try DatabaseQueue(path: ":memory:")
+        let store = try DataStoreCoordinator(
+            databaseQueue: queue,
+            runMigrations: true,
+            refreshOnInit: false
+        )
+        try await store.insert((0..<100).map { sampleUsage(seed: $0 + 1) })
+        try await queue.write { db in
+            try db.execute(sql: "ANALYZE")
+        }
+
+        let lower = noon.addingTimeInterval(-3_600)
+        let upper = noon
+        let plan = try await queue.read { db -> String in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                    EXPLAIN QUERY PLAN
+                    SELECT \(UsageStore.usageDecodeSelectColumns.joined(separator: ", "))
+                    FROM token_usage
+                    \(UsageStore.startTimeRangeWhereSQL)
+                    ORDER BY startTime DESC
+                    LIMIT ?
+                    """,
+                arguments: [
+                    OpenBurnBarDatabase.sqliteDateString(lower),
+                    OpenBurnBarDatabase.sqliteDateString(upper),
+                    Int.max
+                ]
+            )
+            return rows.compactMap { $0["detail"] as String? }.joined(separator: "\n")
+        }
+
+        XCTAssertTrue(plan.localizedCaseInsensitiveContains("USING INDEX"), plan)
+        XCTAssertTrue(plan.localizedCaseInsensitiveContains("startTime"), plan)
+        XCTAssertFalse(plan.localizedCaseInsensitiveContains("SCAN token_usage"), plan)
     }
 
     func test_idleTickSkipsReload_butKeepsLastRefreshFresh() async throws {
@@ -383,7 +663,7 @@ final class ReloadUsagesIfChangedTests: XCTestCase {
         let t0 = noon
         store.nowProvider = { t0 }
         try await store.insert([sampleUsage(seed: 1)])
-        await store.reloadUsagesIfChanged()
+        await store.loadUsagePresentationIfNeeded()
         let v1 = store.usagesVersion
         let marker1 = store.debugLastReloadedUsageWriteMarkerForTesting
 
@@ -401,7 +681,7 @@ final class ReloadUsagesIfChangedTests: XCTestCase {
         let store = try makeStore()
         store.nowProvider = { [noon] in noon }
         try await store.insert([sampleUsage(seed: 1)])
-        await store.reloadUsagesIfChanged()
+        await store.loadUsagePresentationIfNeeded()
         let v1 = store.usagesVersion
 
         try await store.insert([sampleUsage(seed: 2)])
@@ -416,7 +696,7 @@ final class ReloadUsagesIfChangedTests: XCTestCase {
         let t0 = noon
         store.nowProvider = { t0 }
         try await store.insert([sampleUsage(seed: 1)])
-        await store.reloadUsagesIfChanged()
+        await store.loadUsagePresentationIfNeeded()
         let v1 = store.usagesVersion
 
         // Cross the next local midnight without any content change: "Today"
@@ -435,7 +715,7 @@ final class ReloadUsagesIfChangedTests: XCTestCase {
         store.nowProvider = { [noon] in noon }
         try await store.insertChunked(makeRealisticUsageHistory(), chunkSize: 500)
 
-        await store.reloadUsagesIfChanged()
+        await store.loadUsagePresentationIfNeeded()
 
         let snapshot = try await store.fetchDashboardUsageSnapshot(loadedUsageLimit: 5_000)
         let expected = DashboardUsageViewModel()

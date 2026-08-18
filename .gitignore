@@ -228,6 +228,7 @@ appcheck-token.json
 **/.env.production
 .env.*.local
 .firebase/
+.wrangler/
 assets/generated/
 
 # Claude Code local worktrees (transient)

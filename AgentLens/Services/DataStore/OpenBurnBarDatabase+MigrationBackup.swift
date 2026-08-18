@@ -2,22 +2,20 @@ import Foundation
 import GRDB
 
 extension OpenBurnBarDatabase {
-    /// Migrations that only add tables, columns, or indexes. They execute inside
-    /// GRDB's per-migration transaction and never rewrite or delete existing user
-    /// rows, so a failure rolls back on its own.
+    /// Migrations in this allowlist are additive, execute in GRDB's per-migration
+    /// transaction, and do not rewrite or delete pre-existing user rows. They can
+    /// therefore rely on transactional rollback instead of forcing a full
+    /// `PRAGMA integrity_check` plus a multi-gigabyte online backup before the app
+    /// can render its first frame.
     ///
-    /// Anything on this list skips the pre-migration `PRAGMA integrity_check` plus
-    /// full-file backup. That lane copies the entire database before the app can
-    /// render its first frame, which on a real install is multiple gigabytes and
-    /// minutes of a frozen launch — a steep price to protect a migration that
-    /// cannot lose data in the first place.
-    ///
-    /// Deliberately fail-closed: every migration not named here keeps the full
-    /// integrity-check + backup lane until someone reviews its data-loss risk.
+    /// This is deliberately fail-closed: every unlisted future migration takes
+    /// the full integrity-check + encrypted-backup lane until its data-loss risk
+    /// is reviewed explicitly.
     static let additiveTransactionalMigrationIdentifiers: Set<String> = [
+        "v61_usage_memory",
         "v62_war_room_originator",
         "v63_standing_orders",
-        "v64_token_usage_start_time_index"
+        "v64_token_usage_start_time_index",
     ]
 
     enum OpenBurnBarDatabaseError: Error {
@@ -50,21 +48,15 @@ extension OpenBurnBarDatabase {
             ) ?? 0
             guard userTableCount > 0 else { return false }
 
-            let hasMigrationTable = try Int.fetchOne(
-                db,
-                sql: "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'grdb_migrations'"
-            ) ?? 0
-            guard hasMigrationTable > 0 else { return true }
-
             let migrator = Self.migrator
             let applied = try migrator.appliedIdentifiers(db)
             let pending = migrator.migrations.filter { !applied.contains($0) }
-            return Self.requiresFullPreMigrationProtection(pendingMigrationIdentifiers: pending)
+            return Self.requiresFullPreMigrationProtection(
+                pendingMigrationIdentifiers: pending
+            )
         }
     }
 
-    /// The full backup lane is required when *any* pending migration is not
-    /// provably additive. One risky migration in the batch protects the batch.
     static func requiresFullPreMigrationProtection(
         pendingMigrationIdentifiers: [String]
     ) -> Bool {

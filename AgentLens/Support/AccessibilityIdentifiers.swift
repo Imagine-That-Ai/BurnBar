@@ -33,6 +33,18 @@ enum OBBAccessibilityID {
         "controlDeck.tile.toggle.\(normalized(kind))"
     }
 
+    // Dashboard Home
+    static let dashboardHomeRoot = "dashboardHome.root"
+    static let dashboardHomeRail = "dashboardHome.rail"
+    static let dashboardHomeRailToggle = "dashboardHome.railToggle"
+    static let dashboardHomeInboxSwitcher = "dashboardHome.inboxSwitcher"
+    static let dashboardHomeQuotaSwitcher = "dashboardHome.quotaSwitcher"
+    static let dashboardHomeFleetSwitcher = "dashboardHome.fleetSwitcher"
+
+    static func dashboardHomeRailPanel(_ panel: String) -> String {
+        "dashboardHome.rail.panel.\(normalized(panel))"
+    }
+
     static let inboxRoot = "inbox.root"
     static let inboxDetail = "inbox.detail"
     static let dashboardDeckInboxButton = "dashboard.deckInboxButton"

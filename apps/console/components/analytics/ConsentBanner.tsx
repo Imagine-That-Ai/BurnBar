@@ -24,7 +24,7 @@ export function ConsentBanner() {
       aria-label="Usage analytics consent"
       className="fixed inset-x-token-4 bottom-token-4 z-50 mx-auto max-w-2xl glass-pane p-token-4 shadow-[0_18px_48px_-24px_rgba(0,0,0,0.7)] backdrop-blur-md"
     >
-      <div className="flex flex-wrap items-center justify-between gap-token-4">
+      <div className="flex flex-col gap-token-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-token-4">
         <div className="flex min-w-0 flex-1 items-start gap-token-3">
           <span
             className="mt-0.5 grid size-8 shrink-0 place-items-center border border-glass-line bg-mercury-wash text-[color:var(--accent-deep)]"
@@ -39,7 +39,7 @@ export function ConsentBanner() {
             until you choose to opt in.
           </p>
         </div>
-        <div className="flex shrink-0 gap-token-2">
+        <div className="flex shrink-0 justify-end gap-token-2">
           <Button variant="ghost" size="sm" onClick={decline} data-analytics-decline>
             Not now
           </Button>

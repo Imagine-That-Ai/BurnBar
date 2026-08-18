@@ -65,6 +65,112 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   BurnBar's *real* routes, not a catalog of endpoints that cannot serve a request
   here, and reports five status states rather than two so an unprobed gateway says
   "not probed" instead of claiming a server is down that nobody contacted.
+- **Swarm Ember rebuilt around the BurnBar flame mark** (`apps/console` +
+  `packages/gl-engine`): the old token-glyph / provider-slideshow field is
+  gone. Embers murmurate on a curl-noise wind, then lock onto a color-accurate
+  sampling of the official flame + bar-chart mark, hold with heat and tip
+  sparks, and dissolve. Console default is `logoHero` (mark ↔ swarm only);
+  the Linux/macOS dashboard cycle via `buildDashboardCycle` is unchanged.
+- **Usage rollups: per-day provider split** (`functions/`, `COUNTER_SCHEMA_VERSION`
+  3): the all_time rollup gains `dailyProviderTokens` — a sparse
+  `day → provider → tokens` map alongside `dailyPoints`, with
+  `sum(split[day]) === dailyPoints[day]` per day. Legacy counters (schema < 3)
+  fall back to the reference path once, backfill, and persist with an
+  updatedAt guard. The console normalizes it defensively (positive entries
+  only) and fails soft until functions are deployed and backfilled.
+- **Console profile: hover detail, metric toggle, self-healing first sync** —
+  hovering a heatmap day (Daily mode) now floats a day card with the exact
+  token count and, when the rollup carries schema-v3 data, the per-provider
+  split with brand marks (top 3 + "other"); the hovered cell rings in
+  accent-deep. The insights rail gains a "Break down by" Tokens / Runs / Spend
+  toggle that re-bases provider mix, models, harnesses, and combos on the
+  chosen metric. First visit with no rollup auto-fires `rebuildUsageRollups`
+  (once per session) with a syncing banner instead of showing silent zeros,
+  and the empty state gains a manual "Re-sync now".
+- **Console: Experimental gallery selects in place** — picking a kernel tile on
+  /experimental now takes over the page's own background instantly (the global
+  backdrop renders behind the gallery, like every other route), so the preview
+  IS the real thing. The "Your backdrop" hero strip is retired — the horizontal
+  preview box is gone; the active tile keeps its ring + badge and the toast
+  confirms the switch.
+- **Usage rollups: execution-source + combo aggregation** (`functions/`): the
+  counter pipeline gains an `executionSources` dimension and a harness × model
+  `combos` dimension per counter bucket (`COUNTER_SCHEMA_VERSION` 2), aggregated
+  into `executionSourceSummaries` / `comboSummaries` on every rollup window —
+  the data behind the console profile's new sections. Both the reference path
+  and the pending-delta queue drain carry the fields (`test-rollups.mjs`
+  two-path equivalence still passes byte-identical). Legacy events without
+  execution-source attribution are skipped, never zero-filled. History
+  backfills via `rebuildUserRollupCounters` after deploy; until then the
+  fields are absent and the console hides the sections.
+- **Console command rail + ⌘K palette** (`apps/console/components/nav`): the
+  numbered folio top bar is replaced by a slim left rail that groups
+  destinations by intent (Observe · Vault · System), with the member identity,
+  theme switcher, and a quarantined Panic control in the rail footer. The same
+  rail content powers the mobile slide-over drawer (one nav component, no
+  duplicated mobile strip). `⌘K`/`Ctrl+K` opens a command palette — every
+  destination, every theme, and sign out — with ranked substring filtering.
+  The destination model (`components/nav/navModel.ts`) is the single source of
+  truth for rail, drawer, and palette. The "Private — not indexed" folio strip
+  is retired; the footer's privacy line carries the message. Content routes are
+  now left-aligned in a `max-w-5xl` column beside the rail (console convention)
+  instead of floating centered, and the Pensieve membership pill becomes an
+  icon-forward `PlanBadge` lockup (cloud crest in an accent tile + stacked
+  tier name). `ThemeMenu` gained a `direction="up"` popover mode so the rail
+  footer's switcher never opens past the viewport's bottom edge. The rail
+  brand lockup is the bare BurnBar flame mark, enlarged — no tile, no
+  hairline; the full-colour mark reads on every theme as-is.
+- **Profile: agent harnesses + combos** (`apps/console`): the usage profile
+  gains "Agent harnesses" (Claude Code, Codex, Cursor, … with brand logos via
+  `lib/brandLogos.ts` + `components/BrandLogo.tsx`) and harness × model
+  "Combos" sections, driven by the new `executionSourceSummaries` /
+  `comboSummaries` rollup fields in `lib/usage.ts`. Both sections fail soft —
+  they stay hidden until the server-side execution-source counters ship and
+  backfill. On xl+ screens the insights become a right rail beside the main
+  column (harness/combo blocks render from md up, where there's room);
+  narrower layouts keep the single-column stack. The rail leads with an
+  accent-led "Provider mix" share bar whose legend rows carry the providers'
+  own brand marks, and the model rows are logo-led too; before the first sync,
+  dimmed ghost shapes preview the layout without inventing numbers.
+- **Console usage profile** (`apps/console/app/profile`): a Codex/Cursor-style
+  activity page — identity header, lifetime stat row (lifetime/peak tokens,
+  total requests, current and longest streaks), a GitHub-style contribution
+  heatmap of daily token activity with Daily / Weekly / Cumulative modes, a
+  90-day token trend, and most-used provider/model insights. All figures come
+  from the owner-readable `usage_rollups/all_time` doc; untracked dimensions
+  (fast mode, reasoning mix, skills) are stated as untracked, never mocked.
+
+### Fixed
+- **Console: experimental gallery tiles stay alive** — `LiveKernelCanvas`
+  unmounts the canvas on scroll-away instead of calling `loseContext()` on a
+  reused element. A lost WebGL context stays counted against the browser cap
+  and `getContext` returns the same dead context forever, which is why retro
+  plasma / blobs mesh / plasma orbs / flow imaging showed blank tiles.
+- **Blobs mesh: cold-start wash** — blob centres are quadrant-anchored and
+  the colour blend is keyed by the strongest single-blob weight so t=0 is a
+  field of distinct bodies, not a featureless slate gradient.
+- **Firestore: Hermes/Pi relay updates cannot change `mode`** — connection
+  updates now require both the stored and incoming docs to stay `relayLink`.
+- **Backdrop engine: leaked GL contexts on fast kernel switches** — a lazy
+  kernel disposed before its chunk resolved never constructed the real kernel,
+  so its `dispose()` was a no-op and the WebGL context the engine created for
+  the slot leaked until GC. Rapid switching piled these toward the browser's
+  per-page context budget until the compositor killed the LIVE context — the
+  next kernel then compiled on a dead context and logged a spurious
+  `shader compile failed: unknown`. The engine now force-releases the slot's
+  context in `disposeSlot`, `lazyKernel` skips a deferred init whose context
+  died in flight, and `compile()` treats a lost context as the lifecycle
+  condition it is instead of logging a shader error. A kernel that throws on
+  init now degrades to the 2D default instead of risking a black backdrop.
+  (Both engine copies — `apps/console/lib/gl/engine` and
+  `packages/gl-engine` — stay byte-identical per the parity gate.)
+- **Console: passkey hydration mismatch** — `passkeySupported` was computed
+  with `typeof window` during render, so the statically prerendered HTML and
+  the client's first render disagreed (React hydration error on /settings and
+  the Basin). WebAuthn support is now detected after mount.
+- **Console: analytics consent banner on mobile** — the flex-wrap row squeezed
+  the copy into a ~150px column at phone widths; the banner now stacks
+  (text full-width, buttons on their own row) below sm.
 
 ## [1.0.37] - 2026-08-17
 

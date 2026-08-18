@@ -220,6 +220,23 @@ function verifiers(paths) {
   };
 }
 
+const RUST_ONLY_FLAGS = [
+  "--candidate-bundle",
+  "--promotion-attestation",
+  "--protected-signer-run-id",
+  "--protected-signer-run-attempt",
+  "--rollback-artifact",
+];
+
+function withoutRustOnlyArguments(args) {
+  const kept = [];
+  for (let index = 0; index < args.length; index += 2) {
+    if (RUST_ONLY_FLAGS.includes(args[index])) continue;
+    kept.push(args[index], args[index + 1]);
+  }
+  return kept;
+}
+
 function replaceArgument(args, flag, value) {
   const index = args.indexOf(flag);
   assert.notEqual(index, -1, flag);
@@ -273,6 +290,44 @@ test("all-legacy public release produces no misleading Rust evidence", () => {
     assert.deepEqual(plan.domains, []);
   } finally {
     rmSync(paths.directory, { recursive: true, force: true });
+  }
+});
+
+test("all-legacy release needs no attested candidate, signer run, or rollback", () => {
+  const paths = fixture({ rust: [] });
+  try {
+    rmSync(paths.candidate);
+    rmSync(paths.promotion);
+    rmSync(paths.rollback);
+    const plan = run(
+      withoutRustOnlyArguments(argumentsFor(paths)),
+      verifiers(paths),
+    );
+    assert.deepEqual(plan.domains, []);
+    assert.equal(plan.activation.candidateCommit, paths.releaseCommit);
+    assert.deepEqual(
+      readdirSync(paths.output).filter((name) =>
+        name.endsWith(".predicate.json"),
+      ),
+      [],
+    );
+  } finally {
+    rmSync(paths.directory, { recursive: true, force: true });
+  }
+});
+
+test("Rust release still demands the attested candidate and signer run", () => {
+  for (const flag of RUST_ONLY_FLAGS) {
+    const paths = fixture({ rust: ["quota"] });
+    try {
+      const args = argumentsFor(paths);
+      const index = args.indexOf(flag);
+      assert.notEqual(index, -1, flag);
+      args.splice(index, 2);
+      assert.throws(() => run(args, verifiers(paths)), new RegExp(flag));
+    } finally {
+      rmSync(paths.directory, { recursive: true, force: true });
+    }
   }
 });
 

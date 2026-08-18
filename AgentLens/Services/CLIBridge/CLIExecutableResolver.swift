@@ -1,7 +1,11 @@
+import Darwin
 import Foundation
 import OpenBurnBarCore
 
 struct CLIExecutableResolver: Sendable {
+    private static let loginShellResolutionTimeout: TimeInterval = 2
+    private static let loginShellTerminationGrace: TimeInterval = 0.25
+
     fileprivate struct CacheKey: Hashable, Sendable {
         let name: String
         let homeDirectory: String
@@ -147,7 +151,8 @@ struct CLIExecutableResolver: Sendable {
     static func resolveExecutableFromLoginShell(
         named name: String,
         environment: [String: String],
-        fileManager: FileManager = .default
+        fileManager: FileManager = .default,
+        timeout: TimeInterval = loginShellResolutionTimeout
     ) -> String? {
         let shellPath = environment["SHELL"].flatMap { $0.isEmpty ? nil : $0 } ?? "/bin/zsh"
         guard fileManager.isExecutableFile(atPath: shellPath) else {
@@ -163,11 +168,26 @@ struct CLIExecutableResolver: Sendable {
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = Pipe()
+        let completion = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in
+            completion.signal()
+        }
 
         do {
             try process.run()
-            process.waitUntilExit()
         } catch {
+            return nil
+        }
+
+        if completion.wait(timeout: .now() + timeout) == .timedOut {
+            if process.isRunning {
+                process.terminate()
+            }
+            if completion.wait(timeout: .now() + loginShellTerminationGrace) == .timedOut,
+               process.isRunning {
+                kill(process.processIdentifier, SIGKILL)
+                _ = completion.wait(timeout: .now() + loginShellTerminationGrace)
+            }
             return nil
         }
 

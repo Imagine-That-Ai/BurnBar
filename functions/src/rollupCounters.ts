@@ -15,7 +15,7 @@ import { coerceFirestoreDate, isRecord, recordOrUndefined, stripUndefinedObject 
 import { flushDomainCorePricingShadowEvidence, priceLegacyKimiEvent } from "./pricing.js";
 
 export const ROLLUP_SCHEMA_VERSION = 3;
-export const COUNTER_SCHEMA_VERSION = 1;
+export const COUNTER_SCHEMA_VERSION = 3;
 
 /** Window keys in ascending granularity order. */
 export const WINDOW_KEYS = ["today", "7d", "30d", "90d", "all_time"] as const;
@@ -32,6 +32,8 @@ export type UsageCounterContribution = {
   storageScope?: string;
   model?: string;
   deviceId?: string;
+  executionSourceId?: string;
+  executionSourceName?: string;
   requests: number;
   tokens: number;
   costUsd: number;
@@ -273,6 +275,9 @@ export function usageContribution(ev: UsageEventDoc | undefined, candidateKey = 
   const providerID = eventProviderID(ev);
   const accountKey = accountSummaryKey(ev);
   const model = metrics.model;
+  const executionSourceId =
+    ev.executionSourceID ?? (ev.executionSourceName ? safeCounterSegment(ev.executionSourceName) : undefined);
+  const executionSourceName = ev.executionSourceName ?? ev.executionSourceID;
   return {
     logicalKey: logicalUsageKey(ev, date, metrics),
     candidateKey,
@@ -285,6 +290,8 @@ export function usageContribution(ev: UsageEventDoc | undefined, candidateKey = 
     storageScope: ev.providerAccountSource,
     model,
     deviceId: ev.deviceId ?? ev.sourceDeviceId,
+    executionSourceId,
+    executionSourceName,
     requests: 1,
     tokens: metrics.tokens,
     costUsd: metrics.cost ?? 0,
@@ -383,6 +390,46 @@ function addContributionToBucket(
       { merge: true },
     );
   }
+
+  if (contribution.executionSourceId) {
+    const executionSourceRef = bucketRef
+      .collection("executionSources")
+      .doc(counterDocID(contribution.executionSourceId));
+    writer.set(
+      executionSourceRef,
+      stripUndefinedDocument({
+        executionSourceId: contribution.executionSourceId,
+        executionSourceName: contribution.executionSourceName,
+        requests: FieldValue.increment(deltaRequests),
+        tokens: FieldValue.increment(deltaTokens),
+        costUsd: FieldValue.increment(deltaCost),
+        updatedAt: now,
+        schemaVersion: COUNTER_SCHEMA_VERSION,
+      }),
+      { merge: true },
+    );
+  }
+
+  if (contribution.executionSourceId && contribution.model) {
+    const comboRef = bucketRef
+      .collection("combos")
+      .doc(counterDocID(`${contribution.executionSourceId}:${contribution.provider}:${contribution.model}`));
+    writer.set(
+      comboRef,
+      stripUndefinedDocument({
+        executionSourceId: contribution.executionSourceId,
+        executionSourceName: contribution.executionSourceName,
+        provider: contribution.provider,
+        model: contribution.model,
+        requests: FieldValue.increment(deltaRequests),
+        tokens: FieldValue.increment(deltaTokens),
+        costUsd: FieldValue.increment(deltaCost),
+        updatedAt: now,
+        schemaVersion: COUNTER_SCHEMA_VERSION,
+      }),
+      { merge: true },
+    );
+  }
 }
 
 export function addContribution(
@@ -404,6 +451,11 @@ export function addContribution(
     // Rolling per-day token series: lets rollup reads derive the all_time
     // dailyPoints map without scanning every usage_counter_days doc.
     dailyTokens: { [contribution.day]: FieldValue.increment(direction * contribution.tokens) },
+    // Rolling per-day per-provider token map: same trick as dailyTokens, one
+    // level deeper, backing the all_time dailyProviderTokens heatmap split.
+    dailyProviderTokens: {
+      [contribution.day]: { [contribution.providerID]: FieldValue.increment(direction * contribution.tokens) },
+    },
   });
 }
 
@@ -455,6 +507,8 @@ function counterCandidateComparable(candidate: UsageCounterCandidate | undefined
     candidate?.storageScope,
     candidate?.model,
     candidate?.deviceId,
+    candidate?.executionSourceId,
+    candidate?.executionSourceName,
     candidate?.requests,
     candidate?.tokens,
     candidate?.costUsd,

@@ -11,13 +11,31 @@ import OpenBurnBarEngine
 final class BurnBarDaemonControllerRuntimeSnapshotTests: XCTestCase {
 
     func testAggregatedSnapshotMatchesPerListRPCs_andMutationsEmbedIt() async throws {
+        let rootURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-runtime-snapshot-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+        addTeardownBlock {
+            try? FileManager.default.removeItem(at: rootURL)
+        }
+        let missionControlService = BurnBarMissionControlService(
+            store: BurnBarMissionControlStore(
+                eventsFileURL: rootURL.appendingPathComponent("controller-events.jsonl"),
+                projectionFileURL: rootURL.appendingPathComponent("controller-projection.json"),
+                logger: BurnBarDaemonLogger(category: "runtime-snapshot-tests"),
+                notificationSecretStore: BurnBarInMemoryNotificationSecretStore()
+            ),
+            logger: BurnBarDaemonLogger(category: "runtime-snapshot-tests"),
+            activitySnapshotURL: nil,
+            usageLedgerURL: rootURL.appendingPathComponent("usage-events.jsonl")
+        )
         let socketPath = makeSocketPath(name: "runtime-snapshot")
         let server = BurnBarDaemonServer(
             configuration: BurnBarDaemonConfiguration(
                 socketPath: socketPath,
                 socketAuthToken: "test-token",
                 startsMissionControlBackgroundLoops: false
-            )
+            ),
+            missionControlService: missionControlService
         )
 
         try await server.start()
@@ -80,7 +98,10 @@ final class BurnBarDaemonControllerRuntimeSnapshotTests: XCTestCase {
             ),
             socketPath: socketPath
         )
-        let snapshot = try XCTUnwrap(aggregated.result?.snapshot)
+        let snapshot = try XCTUnwrap(
+            aggregated.result?.snapshot,
+            "aggregated runtime snapshot RPC failed: \(String(describing: aggregated.error))"
+        )
 
         let perListQuestions: BurnBarRPCResponseEnvelope<BurnBarQuestionsListResponse> = try sendEnvelope(
             BurnBarRPCRequestEnvelopeWithParams(

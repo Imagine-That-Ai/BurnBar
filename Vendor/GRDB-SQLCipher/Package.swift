@@ -72,10 +72,14 @@ let package = Package(
     targets: [
         .systemLibrary(
             name: "CSQLite",
-            // An explicitly staged runtime is linked by the GRDB target below;
-            // omitting pkg-config prevents a distro libsqlcipher.so.1 from
-            // being added alongside the packaged FTS5-enabled .so.0.
-            pkgConfig: explicitSQLCipherLibrary == nil ? "sqlcipher" : nil,
+            // The SQLCipher.swift binary target supplies the Apple-platform
+            // framework and link directive. Asking pkg-config for SQLCipher at
+            // the same time silently adds a second, machine-local Homebrew
+            // libsqlcipher.dylib to every SwiftPM executable; hardened runtime
+            // then rejects that foreign-team library. Only system-runtime
+            // builds (Linux or an explicit local override) may consult
+            // pkg-config. An explicitly staged Linux .so is linked below.
+            pkgConfig: useSystemSQLCipher && explicitSQLCipherLibrary == nil ? "sqlcipher" : nil,
             providers: [
                 .apt(["libsqlcipher-dev"]),
                 .brew(["sqlcipher"])

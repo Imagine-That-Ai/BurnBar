@@ -21,6 +21,13 @@ enum ProjectionPipelineRuntimeTuning {
     static let gapRepairQueueDepthThreshold = 120
     /// Batch chunk embedding/upsert to avoid large CPU and memory spikes.
     static let embeddingBatchSize = 24
+    /// A full-corpus re-embed performs at most one embedding batch per lease.
+    /// The same durable queue row is then rescheduled, which keeps launch and
+    /// idle CPU bounded without losing progress across relaunches.
+    static let reembedSliceSize = embeddingBatchSize
+    /// Space expensive local embedding slices far enough apart that one-second
+    /// idle samples stay quiet while the historical backlog still converges.
+    static let reembedContinuationDelaySeconds: TimeInterval = 30
     /// Yield periodically while persisting embeddings.
     static let embeddingWriteYieldInterval = 8
     /// Brief pause between embedding batches to reduce contention.
@@ -120,4 +127,14 @@ struct ProjectionSweepReport: Equatable, Sendable, Codable {
     var completedJobs: Int = 0
     var retriedJobs: Int = 0
     var canceledJobs: Int = 0
+}
+
+enum ProjectionJobProcessingOutcome: Equatable, Sendable {
+    case completed
+    case deferred(until: Date)
+}
+
+struct ReembedSliceResult: Equatable, Sendable {
+    let indexedChunks: Int
+    let hasMore: Bool
 }

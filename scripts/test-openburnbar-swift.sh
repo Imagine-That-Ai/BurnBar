@@ -4,6 +4,26 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 
+# Optional concurrency-safe SwiftPM build isolation. When set, Core and daemon
+# use distinct package-named scratch directories below this root instead of
+# sharing each checkout's `.build` cache with other local agents or CI jobs.
+# Example: OPENBURNBAR_SWIFT_SCRATCH_ROOT=/tmp/openburnbar-swift ./scripts/test-openburnbar-swift.sh
+swift_scratch_root="${OPENBURNBAR_SWIFT_SCRATCH_ROOT:-}"
+
+# SwiftPM links every test target in OpenBurnBarCore into one package-test
+# executable. On macOS that aggregate would otherwise contain both
+# OpenBurnBarIroh.xcframework and BurnBarRemote.xcframework, which are Rust
+# static archives that each export `_rust_eh_personality`. Keep the aggregate
+# suite on the iroh-native graph and exercise the real BurnBarRemote archive in
+# its dedicated one-archive smoke package below. Xcode app builds explicitly
+# clear this seam and continue to resolve their normal production graph.
+if [[ "$(uname -s)" == "Darwin" \
+      && -d "${repo_root}/Vendor/OpenBurnBarIroh.xcframework" \
+      && -d "${repo_root}/Vendor/BurnBarRemote.xcframework" \
+      && -z "${OPENBURNBAR_DISABLE_BURNBAR_REMOTE_XCFRAMEWORK+x}" ]]; then
+  export OPENBURNBAR_DISABLE_BURNBAR_REMOTE_XCFRAMEWORK=1
+fi
+
 # When the focused domain-core consumer job requires the native Rust domain-core
 # artifact but does NOT need libsignal, skip building libsignal-ffi entirely and
 # gate the local LibSignalClient Swift package out of the package graph. This
@@ -64,6 +84,13 @@ run_swift_tests() {
   local package_path="$1"
   local filter="${2:-}"
   local args=(--package-path "$package_path")
+  local package_scratch_path="${package_path}/.build"
+
+  if [[ -n "$swift_scratch_root" ]]; then
+    package_scratch_path="${swift_scratch_root}/$(basename "$package_path")"
+    mkdir -p "$package_scratch_path"
+    args+=(--scratch-path "$package_scratch_path")
+  fi
 
   if ((${#coverage_flags[@]})); then
     args+=("${coverage_flags[@]}")
@@ -74,6 +101,9 @@ run_swift_tests() {
 
   if [[ "$package_path" == "$repo_root/OpenBurnBarDaemon" ]]; then
     local build_args=(--package-path "$package_path" --build-tests)
+    if [[ -n "$swift_scratch_root" ]]; then
+      build_args+=(--scratch-path "$package_scratch_path")
+    fi
     if ((${#coverage_flags[@]})); then
       build_args+=("${coverage_flags[@]}")
     fi
@@ -81,9 +111,13 @@ run_swift_tests() {
     swift build "${build_args[@]}"
 
     local bin_path
-    bin_path="$(swift build --package-path "$package_path" --show-bin-path)"
+    local show_bin_path_args=(--package-path "$package_path" --show-bin-path)
+    if [[ -n "$swift_scratch_root" ]]; then
+      show_bin_path_args+=(--scratch-path "$package_scratch_path")
+    fi
+    bin_path="$(swift build "${show_bin_path_args[@]}")"
 
-    local sqlcipher_framework_src="${package_path}/.build/artifacts/sqlcipher.swift/SQLCipher/SQLCipher.xcframework/macos-arm64_x86_64/SQLCipher.framework"
+    local sqlcipher_framework_src="${package_scratch_path}/artifacts/sqlcipher.swift/SQLCipher/SQLCipher.xcframework/macos-arm64_x86_64/SQLCipher.framework"
     local sqlcipher_framework_dst="${bin_path}/PackageFrameworks/SQLCipher.framework"
     if [[ ! -d "$sqlcipher_framework_src" ]]; then
       echo "Missing SQLCipher.framework at ${sqlcipher_framework_src}; SwiftPM did not resolve the SQLCipher binary artifact." >&2
@@ -107,6 +141,19 @@ run_swift_tests() {
 # the full Core suite on every PR.
 if [[ "${OPENBURNBAR_SKIP_CORE_SWIFT_TESTS:-}" != "1" ]]; then
   run_swift_tests "$repo_root/OpenBurnBarCore" "${OPENBURNBAR_CORE_SWIFT_FILTER:-}"
+
+  # Preserve native BurnBarRemote coverage even though the aggregate Core test
+  # graph scopes out its static archive. Focused non-remote Core filters keep
+  # their cheap behavior; the full gate and remote-focused runs execute this.
+  case "${OPENBURNBAR_CORE_SWIFT_FILTER:-}" in
+    ""|*BurnBarRemoteEngine*)
+      if [[ "$(uname -s)" == "Darwin" \
+            && -d "${repo_root}/Vendor/BurnBarRemote.xcframework" \
+            && "${OPENBURNBAR_SKIP_BURNBAR_REMOTE_SWIFT_SMOKE:-}" != "1" ]]; then
+        "${repo_root}/scripts/test-burnbar-remote-swift-smoke.sh"
+      fi
+      ;;
+  esac
 fi
 if [[ "${OPENBURNBAR_SKIP_DAEMON_SWIFT_TESTS:-}" != "1" ]]; then
   run_swift_tests "$repo_root/OpenBurnBarDaemon" "${OPENBURNBAR_DAEMON_SWIFT_FILTER:-}"

@@ -9,6 +9,7 @@ trap 'rm -rf "$tmpdir"' EXIT
 app="$tmpdir/OpenBurnBar.app"
 app_executable="$app/Contents/MacOS/OpenBurnBar"
 daemon="$app/Contents/Helpers/OpenBurnBarDaemon"
+cli="$app/Contents/Helpers/OpenBurnBarCLI"
 watchdog="$app/Contents/Helpers/OpenBurnBarPrivilegedInputKillSwitchWatchdog"
 mkdir -p "$(dirname "$app_executable")" "$(dirname "$daemon")"
 
@@ -21,6 +22,17 @@ cat > "$tmpdir/daemon.c" <<'C'
 int main(int argc, char **argv) {
   if (argc == 2 && strcmp(argv[1], "--help") == 0) {
     puts("Usage: OpenBurnBarDaemon [OPTIONS]");
+    return 0;
+  }
+  return 2;
+}
+C
+cat > "$tmpdir/cli.c" <<'C'
+#include <stdio.h>
+#include <string.h>
+int main(int argc, char **argv) {
+  if (argc == 2 && strcmp(argv[1], "--help") == 0) {
+    puts("openburnbar-cli <command> [args]");
     return 0;
   }
   return 2;
@@ -53,6 +65,7 @@ PLIST
 
 clang "$tmpdir/app.c" -o "$app_executable"
 clang "$tmpdir/daemon.c" -o "$daemon"
+clang "$tmpdir/cli.c" -o "$cli"
 clang "$tmpdir/app.c" -o "$watchdog"
 
 sign_pair() {
@@ -63,6 +76,12 @@ sign_pair() {
     args+=(--entitlements "$entitlements")
   fi
   codesign "${args[@]}" "$daemon" >/dev/null
+  codesign \
+    --force \
+    --sign - \
+    --options runtime,library \
+    --identifier com.openburnbar.cli \
+    "$cli" >/dev/null
   codesign \
     --force \
     --sign - \
@@ -103,7 +122,11 @@ if [[ "$*" == *"--entitlements"* ]]; then
   exit 0
 fi
 if [[ "$*" == *"-dr"* ]]; then
-  printf '%s\n' 'designated => identifier "com.openburnbar.app" and anchor apple generic'
+  if [[ "$name" == "OpenBurnBarCLI" ]]; then
+    printf '%s\n' 'designated => identifier "com.openburnbar.cli" and anchor apple generic'
+  else
+    printf '%s\n' 'designated => identifier "com.openburnbar.app" and anchor apple generic'
+  fi
   exit 0
 fi
 if [[ "$*" != *"-d"* ]]; then
@@ -120,6 +143,10 @@ case "$name" in
     identifier="com.openburnbar.app"
     team="$([[ "$scenario" == "mismatched_team" ]] && printf TEAMDAEM01 || printf TEAMAPP001)"
     ;;
+  OpenBurnBarCLI)
+    identifier="com.openburnbar.cli"
+    team="$([[ "$scenario" == "mismatched_cli_team" ]] && printf TEAMCLI0001 || printf TEAMAPP001)"
+    ;;
   OpenBurnBarPrivilegedInputKillSwitchWatchdog)
     identifier="com.openburnbar.privileged-input-killswitch-watchdog"
     team="TEAMAPP001"
@@ -135,7 +162,8 @@ if [[ "$scenario" != "missing_team" ]]; then
   printf 'TeamIdentifier=%s\n' "$team"
 fi
 printf '%s\n' 'Format=Mach-O thin (arm64)' 'CodeDirectory v=20500 size=1 flags=0x12000(runtime,library-validation)'
-if [[ "$name" == "OpenBurnBarDaemon" && "$scenario" == "mismatched_authority" ]]; then
+if [[ "$name" == "OpenBurnBarDaemon" && "$scenario" == "mismatched_authority" ]] \
+  || [[ "$name" == "OpenBurnBarCLI" && "$scenario" == "mismatched_cli_authority" ]]; then
   printf '%s\n' \
     'Authority=Developer ID Application: Different Signer (TEAMAPP001)' \
     'Authority=Developer ID Certification Authority' \
@@ -169,6 +197,18 @@ expect_mocked_failure() {
 sign_pair com.openburnbar.app
 "$verifier" "$app" >/dev/null
 
+codesign --force --sign - --options runtime,library --identifier wrong.cli.identifier "$cli" >/dev/null
+codesign --force --sign - --options runtime,library --identifier com.openburnbar.app "$app" >/dev/null
+expect_failure \
+  "an incorrect daemon CLI signing identifier" \
+  "ERROR: Daemon CLI must use the com.openburnbar.cli signing identifier; found 'wrong.cli.identifier'."
+
+sign_pair com.openburnbar.app
+codesign --force --sign - --identifier com.openburnbar.cli "$cli" >/dev/null
+codesign --force --sign - --options runtime,library --identifier com.openburnbar.app "$app" >/dev/null
+expect_failure "a daemon CLI without hardened runtime and library validation"
+
+sign_pair com.openburnbar.app
 codesign --force --sign - --options runtime,library --identifier wrong.app.identifier "$app" >/dev/null
 expect_failure \
   "an incorrect app signing identifier" \
@@ -203,16 +243,24 @@ expect_failure "an ad-hoc or incorrectly identified kill-switch watchdog"
 sign_pair com.openburnbar.app
 expect_mocked_failure \
   mismatched_team \
-  "ERROR: App and daemon are signed by different teams; app='TEAMAPP001' daemon='TEAMDAEM01'." \
+  "ERROR: App, daemon, and CLI are not signed by the same team; app='TEAMAPP001' daemon='TEAMDAEM01' cli='TEAMAPP001'." \
   "different app and daemon Team IDs"
 expect_mocked_failure \
+  mismatched_cli_team \
+  "ERROR: App, daemon, and CLI are not signed by the same team; app='TEAMAPP001' daemon='TEAMAPP001' cli='TEAMCLI0001'." \
+  "different app and daemon CLI Team IDs"
+expect_mocked_failure \
   missing_team \
-  "ERROR: App and daemon are signed by different teams; app='missing' daemon='missing'." \
-  "missing app and daemon Team IDs"
+  "ERROR: App, daemon, and CLI are not signed by the same team; app='missing' daemon='missing' cli='missing'." \
+  "missing app, daemon, and CLI Team IDs"
 expect_mocked_failure \
   mismatched_authority \
-  "ERROR: App and daemon must have the same ordered signing-certificate authority chain." \
+  "ERROR: App, daemon, and CLI must have the same ordered signing-certificate authority chain." \
   "different app and daemon certificate authority chains"
+expect_mocked_failure \
+  mismatched_cli_authority \
+  "ERROR: App, daemon, and CLI must have the same ordered signing-certificate authority chain." \
+  "different app and daemon CLI certificate authority chains"
 
 cat > "$tmpdir/daemon.c" <<'C'
 int main(void) { return 7; }
@@ -221,4 +269,23 @@ clang "$tmpdir/daemon.c" -o "$daemon"
 sign_pair com.openburnbar.app
 expect_failure "a signed daemon that cannot execute its --help contract"
 
-echo "PASS: daemon release signing verifier rejects identity, entitlement, and launch regressions"
+cat > "$tmpdir/cli.c" <<'C'
+int main(void) { return 9; }
+C
+clang "$tmpdir/cli.c" -o "$cli"
+cat > "$tmpdir/daemon.c" <<'C'
+#include <stdio.h>
+#include <string.h>
+int main(int argc, char **argv) {
+  if (argc == 2 && strcmp(argv[1], "--help") == 0) {
+    puts("Usage: OpenBurnBarDaemon [OPTIONS]");
+    return 0;
+  }
+  return 2;
+}
+C
+clang "$tmpdir/daemon.c" -o "$daemon"
+sign_pair com.openburnbar.app
+expect_failure "a signed daemon CLI that cannot execute its --help contract"
+
+echo "PASS: daemon release signing verifier rejects daemon/CLI identity, entitlement, and launch regressions"

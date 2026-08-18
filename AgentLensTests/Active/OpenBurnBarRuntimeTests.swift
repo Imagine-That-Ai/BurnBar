@@ -185,6 +185,10 @@ final class OpenBurnBarRuntimeTests: XCTestCase {
         ))
     }
 
+    func test_firestoreBootstrapUsesMemoryOnlyCacheInProduction() {
+        XCTAssertEqual(OpenBurnBarApp.firestoreCacheMode, .memoryOnly)
+    }
+
     func test_statusItemClickPolicy_opensOnMouseDownAndIgnoresMouseUp() {
         XCTAssertEqual(OpenBurnBarStatusItemClick.primaryActionMask, [.leftMouseDown])
         XCTAssertEqual(OpenBurnBarStatusItemClick.fallbackActionMask, [.leftMouseDown, .rightMouseDown])

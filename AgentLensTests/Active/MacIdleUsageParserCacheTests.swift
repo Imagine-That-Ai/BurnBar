@@ -265,6 +265,42 @@ final class MacIdleUsageParserCacheTests: XCTestCase {
         XCTAssertEqual(second.usages.first?.outputTokens, 7)
     }
 
+    func test_macPi_usageOnlyDoesNotExtractBodiesBeforeLateExplicitUsage() async throws {
+        let root = try makeTemporaryDirectory("mac-pi-streaming")
+        let file = root.appendingPathComponent("pi-large-session.jsonl")
+        let payload = String(repeating: "x", count: 1_024)
+        var data = Data()
+        for index in 0..<2_048 {
+            if index.isMultiple(of: 257) {
+                data.append(Data("malformed-\(index)\n".utf8))
+            } else {
+                data.append(
+                    Data(
+                        #"{"timestamp":"2026-07-01T00:00:00Z","model":"gpt-5","role":"user","content":"\#(payload)"}\#n"#
+                            .utf8
+                    )
+                )
+            }
+        }
+        data.append(
+            Data(
+                #"{"timestamp":"2026-07-01T00:00:01Z","model":"gpt-5","role":"assistant","content":"done","usage":{"input_tokens":77,"output_tokens":19}}\#n"#
+                    .utf8
+            )
+        )
+        try data.write(to: file, options: .atomic)
+
+        let parser = PiAgentParser(sessionsDirectoryOverride: root)
+        let result = try await parser.parse(
+            options: LogParseOptions(includeConversationBodies: false)
+        )
+
+        XCTAssertEqual(result.usages.first?.inputTokens, 77)
+        XCTAssertEqual(result.usages.first?.outputTokens, 19)
+        XCTAssertTrue(result.conversations.isEmpty)
+        XCTAssertEqual(parser.lastContentExtractionLineCount, 0)
+    }
+
     func test_macOpenClaw_skipsUnchangedNestedWrapperOnUsageOnlySecondPass() async throws {
         let root = try makeTemporaryDirectory("mac-openclaw")
         try write(

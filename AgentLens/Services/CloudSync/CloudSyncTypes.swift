@@ -363,7 +363,7 @@ extension CloudSyncContext {
 
     @MainActor
     private static func refreshDataStoreOnMainActor(_ dataStore: DataStore) async {
-        await dataStore.refresh()
+        await dataStore.reloadUsagesIfChanged()
     }
 
     /// Records permission-denied backoff on the main actor.

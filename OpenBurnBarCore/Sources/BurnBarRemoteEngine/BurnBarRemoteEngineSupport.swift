@@ -1,6 +1,6 @@
 import Foundation
 
-#if canImport(BurnBarRemoteFFI)
+#if OPENBURNBAR_HAS_BURNBAR_REMOTE_FFI
 @preconcurrency import BurnBarRemoteFFI
 #endif
 
@@ -45,7 +45,7 @@ public enum BurnBarRemoteEngineError: Error, Equatable, Sendable {
 
 public enum BurnBarRemoteEngineSupport {
     public static var isNativeBridgeAvailable: Bool {
-        #if canImport(BurnBarRemoteFFI)
+        #if OPENBURNBAR_HAS_BURNBAR_REMOTE_FFI
         true
         #else
         false
@@ -53,7 +53,7 @@ public enum BurnBarRemoteEngineSupport {
     }
 
     public static func readiness() -> BurnBarRemoteEngineReadiness {
-        #if canImport(BurnBarRemoteFFI)
+        #if OPENBURNBAR_HAS_BURNBAR_REMOTE_FFI
         let readiness = BurnBarRemoteFFI.burnbarRemoteReadiness()
         return BurnBarRemoteEngineReadiness(
             protocolVersion: readiness.protocolVersion,
@@ -78,7 +78,7 @@ public enum BurnBarRemoteEngineSupport {
         numerator: UInt32,
         denominator: UInt32
     ) throws -> BurnBarRemoteEngineDimensions {
-        #if canImport(BurnBarRemoteFFI)
+        #if OPENBURNBAR_HAS_BURNBAR_REMOTE_FFI
         let scaled = try BurnBarRemoteFFI.remoteScaledDimensions(
             dimensions: BurnBarRemoteFFI.RemoteDimensions(width: dimensions.width, height: dimensions.height),
             numerator: numerator,
@@ -100,7 +100,7 @@ public enum BurnBarRemoteEngineSupport {
     }
 
     public static func modeRequiresInputPermission() -> Bool {
-        #if canImport(BurnBarRemoteFFI)
+        #if OPENBURNBAR_HAS_BURNBAR_REMOTE_FFI
         return BurnBarRemoteFFI.remoteModeRequiresPermission(mode: .control, permission: .injectInput)
         #else
         return true

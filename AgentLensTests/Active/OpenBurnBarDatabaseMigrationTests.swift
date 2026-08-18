@@ -88,6 +88,74 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         )
     }
 
+    func test_runMigrationsSafely_usesTransactionalFastLane_forAdditiveV61Upgrade() async throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let lock = NSLock()
+        var tracedSQL: [String] = []
+        var config = Configuration()
+        config.prepareDatabase { db in
+            db.trace { event in
+                guard case let .statement(statement) = event else { return }
+                lock.lock()
+                tracedSQL.append(statement.sql.lowercased())
+                lock.unlock()
+            }
+        }
+
+        let dbPath = tempDir.appendingPathComponent("test.sqlite").path
+        let queue = try DatabaseQueue(path: dbPath, configuration: config)
+        try OpenBurnBarDatabase.migrator.migrate(queue, upTo: "v60_billing_kind")
+
+        lock.lock()
+        tracedSQL.removeAll()
+        lock.unlock()
+
+        let database = OpenBurnBarDatabase(databaseQueue: queue)
+        try database.runMigrationsSafely()
+
+        let backups = try FileManager.default.contentsOfDirectory(atPath: tempDir.path)
+            .filter { $0.contains(".backup.") }
+        XCTAssertTrue(
+            backups.isEmpty,
+            "The reviewed additive v61 migration must not copy the entire database: \(backups)"
+        )
+
+        lock.lock()
+        let migrationSQL = tracedSQL
+        lock.unlock()
+        XCTAssertFalse(
+            migrationSQL.contains { $0.contains("integrity_check") },
+            "The reviewed additive v61 migration must not scan the entire database before first paint."
+        )
+
+        let applied = try await queue.read { db in
+            try OpenBurnBarDatabase.migrator.appliedIdentifiers(db)
+        }
+        XCTAssertTrue(applied.contains("v61_usage_memory"))
+    }
+
+    func test_preMigrationProtection_failsClosed_forUnreviewedMigrations() {
+        XCTAssertFalse(
+            OpenBurnBarDatabase.requiresFullPreMigrationProtection(
+                pendingMigrationIdentifiers: ["v61_usage_memory"]
+            )
+        )
+        XCTAssertTrue(
+            OpenBurnBarDatabase.requiresFullPreMigrationProtection(
+                pendingMigrationIdentifiers: ["v61_usage_memory", "v62_unreviewed"]
+            )
+        )
+        XCTAssertTrue(
+            OpenBurnBarDatabase.requiresFullPreMigrationProtection(
+                pendingMigrationIdentifiers: ["v62_unreviewed"]
+            )
+        )
+    }
+
     func test_v57ExecutionSourceAttribution_backfillsDedicatedParserRowsWithoutGuessingCodex() throws {
         let queue = try DatabaseQueue()
         try OpenBurnBarDatabase.migrator.migrate(queue, upTo: "v56_parser_checkpoint_file_manifest")

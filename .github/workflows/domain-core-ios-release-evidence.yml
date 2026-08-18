@@ -18,6 +18,22 @@ on:
       domain_core_profile:
         required: true
         type: string
+      # The native release gate is the single authority for which candidate
+      # commit a release ships. These four inputs carry its verdict here so
+      # iOS verification binds to the exact candidate the artifacts were built
+      # against instead of re-deriving one.
+      gate_artifact_name:
+        required: true
+        type: string
+      gate_candidate_commit:
+        required: true
+        type: string
+      gate_profile_name:
+        required: true
+        type: string
+      gate_rust_active:
+        required: true
+        type: string
 
 permissions:
   attestations: write
@@ -67,6 +83,42 @@ jobs:
           name: OpenBurnBar-${{ inputs.version }}-legacy-rollback.zip
           path: ${{ runner.temp }}/ios-release
 
+      - name: Download verified native release gate inputs
+        if: inputs.enabled
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          name: ${{ inputs.gate_artifact_name }}
+          path: ${{ runner.temp }}/domain-core-native-release-gate
+
+      - name: Bind iOS verification to the gate's release-bound activation
+        if: inputs.enabled
+        env:
+          RELEASE_COMMIT: ${{ inputs.release_commit }}
+          DOMAIN_CORE_PROFILE: ${{ inputs.domain_core_profile }}
+          GATE_CANDIDATE_COMMIT: ${{ inputs.gate_candidate_commit }}
+          GATE_PROFILE_NAME: ${{ inputs.gate_profile_name }}
+          GATE_RUST_ACTIVE: ${{ inputs.gate_rust_active }}
+        run: |
+          set -euo pipefail
+          # Never re-resolve the activation on this runner. The resolver
+          # re-derives the *authority* commit P (the newest commit touching the
+          # activation paths). On the legacy `active: false` lane the gate
+          # rebinds C = P = R and the artifacts are built against R, so a fresh
+          # resolve returns an older P and the exact identity compare against
+          # the shipped build profile fails a stable cut. Consume the selector
+          # the gate proved and uploaded, and fail closed if it disagrees with
+          # the gate's own outputs.
+          gate_activation="$RUNNER_TEMP/domain-core-native-release-gate/domain-core-activation.json"
+          test -s "$gate_activation"
+          [[ "$GATE_CANDIDATE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          test "$GATE_PROFILE_NAME" = "$DOMAIN_CORE_PROFILE"
+          case "$GATE_RUST_ACTIVE" in true | false) ;; *) exit 1 ;; esac
+          test "$(jq -er '.candidateCommit' "$gate_activation")" = "$GATE_CANDIDATE_COMMIT"
+          test "$(jq -er '.activationCommit' "$gate_activation")" = "$RELEASE_COMMIT"
+          test "$(jq -er '.active | tostring' "$gate_activation")" = "$GATE_RUST_ACTIVE"
+          mkdir -p "$RUNNER_TEMP/ios-release"
+          cp "$gate_activation" "$RUNNER_TEMP/ios-release/domain-core-activation.json"
+
       - name: Verify canonical iOS archive and candidate-bound build profile
         if: inputs.enabled
         id: activation
@@ -75,6 +127,7 @@ jobs:
           VERSION: ${{ inputs.version }}
           RELEASE_COMMIT: ${{ inputs.release_commit }}
           DOMAIN_CORE_PROFILE: ${{ inputs.domain_core_profile }}
+          GATE_CANDIDATE_COMMIT: ${{ inputs.gate_candidate_commit }}
         run: |
           set -euo pipefail
           archive="$RUNNER_TEMP/ios-release/OpenBurnBar-${VERSION}-iOS.xcarchive.zip"
@@ -98,8 +151,8 @@ jobs:
           test -d "$exported_app"
           codesign --verify --deep --strict --verbose=2 "$exported_app"
           test -s "$exported_app/embedded.mobileprovision"
-          activation="$(node scripts/ci/resolve-domain-core-activation.mjs --release-commit "$RELEASE_COMMIT" --format json)"
-          candidate="$(jq -er '.candidateCommit' <<<"$activation")"
+          activation="$(cat "$RUNNER_TEMP/ios-release/domain-core-activation.json")"
+          candidate="$GATE_CANDIDATE_COMMIT"
           jq '{candidateCommit, coreVersion, abiVersion, sourceSha256}' <<<"$activation" \
             > "$RUNNER_TEMP/ios-release/domain-core-candidate.json"
           applicable_count="$(jq '[.domains[] | select(.domain == "cloudVault" or .domain == "cloudVaultRewrap" or .domain == "cloudVaultSearch" or .domain == "hermes")] | length' <<<"$activation")"
@@ -192,7 +245,7 @@ jobs:
           python3 scripts/ci/verify-domain-core-app-store-connect-status.py \
             --status "$status" \
             --output "$RUNNER_TEMP/ios-release/app-store-connect-status-verification.json"
-          activation="$(node scripts/ci/resolve-domain-core-activation.mjs --release-commit "$RELEASE_COMMIT" --format json)"
+          activation="$(cat "$RUNNER_TEMP/ios-release/domain-core-activation.json")"
           jq -n \
             --arg deliveryId "$delivery_id" \
             --arg archiveSha256 "$(shasum -a 256 "$archive" | awk '{print $1}')" \
@@ -217,7 +270,7 @@ jobs:
         run: |
           set -euo pipefail
           archive="$RUNNER_TEMP/ios-release/OpenBurnBar-${VERSION}-iOS.xcarchive.zip"
-          activation="$(node scripts/ci/resolve-domain-core-activation.mjs --release-commit "$RELEASE_COMMIT" --format json)"
+          activation="$(cat "$RUNNER_TEMP/ios-release/domain-core-activation.json")"
           activation_path="$RUNNER_TEMP/ios-release/domain-core-release-activation.json"
           jq '{candidateCommit, activationCommit, coreVersion, abiVersion, sourceSha256, changedPathsSha256}' \
             <<<"$activation" > "$activation_path"

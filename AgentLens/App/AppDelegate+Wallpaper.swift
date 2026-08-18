@@ -184,6 +184,7 @@ extension AppDelegate {
     private func setupWallpaperPanels() {
         teardownWallpaperPanels(restoreSystemWallpaper: false)
         guard let settingsManager else { return }
+        loadWallpaperUsagePresentationIfNeeded()
         sharedWallpaperViewModel.apply(appearance: settingsManager.appearance)
         syncSystemDesktopFallback()
         let screens = NSScreen.screens
@@ -524,11 +525,29 @@ extension AppDelegate {
     }
 
     func setupWallpaperObservers() {
+        loadWallpaperUsagePresentationIfNeeded()
         observeDataStoreChanges()
         observeDaemonChanges()
         observeWallpaperAgentStatuses()
         configureWallpaperActivityPolling()
         syncWallpaperColorDriver()
+    }
+
+    /// The wallpaper is a visible usage surface even when no app window is
+    /// open. Hydrate dashboard presentation only when that surface is enabled,
+    /// then rebuild its color driver from the real totals.
+    private func loadWallpaperUsagePresentationIfNeeded() {
+        guard settingsManager?.appearance.enableDesktopWallpaper == true,
+              let dataStore else {
+            return
+        }
+        Task { @MainActor [weak self] in
+            await dataStore.loadUsagePresentationIfNeeded()
+            guard self?.settingsManager?.appearance.enableDesktopWallpaper == true else {
+                return
+            }
+            self?.syncWallpaperColorDriver()
+        }
     }
 
     private func observeDataStoreChanges() {

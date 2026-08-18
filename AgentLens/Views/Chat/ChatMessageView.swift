@@ -171,6 +171,30 @@ struct ChatMessageView: View {
 
     @ViewBuilder
     private var agentView: some View {
+        agentRowContent
+            .background(
+                // Background GeometryReader reports the row's available width
+                // without affecting the HStack's own sizing (it fills the
+                // background frame). Drives `agentGutter` so the gutter eases
+                // down on narrow panels. macOS 14-safe (avoids macOS 15
+                // `onGeometryChange`).
+                GeometryReader { proxy in
+                    Color.clear
+                        .preference(key: AgentRowWidthKey.self, value: proxy.size.width)
+                }
+            )
+            .onPreferenceChange(AgentRowWidthKey.self) { width in
+                if abs(width - agentRowWidth) > 0.5 {
+                    agentRowWidth = width
+                }
+            }
+    }
+
+    /// The semantic agent-row tree, separated from the GeometryReader wrapper
+    /// so tests can inspect message content without asking ViewInspector to
+    /// synthesize a private GeometryProxy representation.
+    @ViewBuilder
+    var agentRowContent: some View {
         HStack(alignment: .bottom, spacing: DesignSystem.Spacing.sm) {
             if message.role == .user {
                 Spacer(minLength: agentGutter)
@@ -188,22 +212,6 @@ struct ChatMessageView: View {
                     assistantTranscriptColumn
                 }
                 Spacer(minLength: agentGutter)
-            }
-        }
-        .background(
-            // Background GeometryReader reports the row's available width
-            // without affecting the HStack's own sizing (it fills the
-            // background frame). Drives `agentGutter` so the gutter eases
-            // down on narrow panels. macOS 14-safe (avoids macOS 15
-            // `onGeometryChange`).
-            GeometryReader { proxy in
-                Color.clear
-                    .preference(key: AgentRowWidthKey.self, value: proxy.size.width)
-            }
-        )
-        .onPreferenceChange(AgentRowWidthKey.self) { width in
-            if abs(width - agentRowWidth) > 0.5 {
-                agentRowWidth = width
             }
         }
     }

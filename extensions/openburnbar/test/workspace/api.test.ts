@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { BurnBarWorkspaceHostKind } from '../../src/workspace/types';
 import {
   createBurnBarWorkspaceApi,
+  isCursorSmokeWorkspaceEditAutoConfirmAllowed,
   resolveWorkspaceUri,
   type BurnBarWorkspaceApi,
   type BurnBarWorkspaceUri
@@ -187,6 +188,95 @@ describe('createBurnBarWorkspaceApi', () => {
     const api = createBurnBarWorkspaceApi('ui');
 
     expect(typeof api.joinPath).toBe('function');
+  });
+});
+
+describe('isCursorSmokeWorkspaceEditAutoConfirmAllowed', () => {
+  const outputPath = '/private/tmp/openburnbar-cursor-smoke-abc123/smoke-output.json';
+  const targetPath = '/private/tmp/openburnbar-cursor-smoke-abc123/workspace/src/example.ts';
+  // The fixtures live under the macOS smoke root, so pass it explicitly: the
+  // default approved roots are platform-dependent and CI runs on Linux.
+  const approvedTempRoots = ['/private/tmp'];
+  const env = {
+    BURNBAR_CURSOR_SMOKE_AUTO_CONFIRM: '1',
+    BURNBAR_CURSOR_SMOKE_OUTPUT: outputPath,
+    BURNBAR_CURSOR_SMOKE_FILE_PATH: targetPath
+  };
+
+  it('allows one exact smoke-owned file beneath the isolated output root', () => {
+    expect(
+      isCursorSmokeWorkspaceEditAutoConfirmAllowed(
+        [{ path: targetPath, text: 'export const value = 43;\n' }],
+        [`file://${targetPath}`],
+        env,
+        {},
+        approvedTempRoots
+      )
+    ).toBe(true);
+  });
+
+  it('uses the isolated workspace settings when Cursor drops launch environment variables', () => {
+    expect(
+      isCursorSmokeWorkspaceEditAutoConfirmAllowed(
+        [{ path: targetPath, text: 'export const value = 43;\n' }],
+        [`file://${targetPath}`],
+        {},
+        {
+          autoConfirm: true,
+          outputPath,
+          filePath: targetPath
+        },
+        approvedTempRoots
+      )
+    ).toBe(true);
+  });
+
+  it('accepts the launcher temp root when the Cursor extension host reports a different temp root', () => {
+    const launcherTempRoot = '/alternate-system-temp';
+    const alternateOutputPath = `${launcherTempRoot}/openburnbar-cursor-smoke-def456/smoke-output.json`;
+    const alternateTargetPath = `${launcherTempRoot}/openburnbar-cursor-smoke-def456/workspace/src/example.ts`;
+
+    expect(
+      isCursorSmokeWorkspaceEditAutoConfirmAllowed(
+        [{ path: alternateTargetPath, text: 'export const value = 43;\n' }],
+        [alternateTargetPath],
+        {},
+        {
+          autoConfirm: true,
+          outputPath: alternateOutputPath,
+          filePath: alternateTargetPath
+        },
+        ['/different-extension-host-temp', launcherTempRoot]
+      )
+    ).toBe(true);
+  });
+
+  it('keeps confirmation enabled for mismatched or non-isolated edit targets', () => {
+    expect(
+      isCursorSmokeWorkspaceEditAutoConfirmAllowed(
+        [{ path: '/private/tmp/other.ts', text: 'changed\n' }],
+        ['file:///private/tmp/other.ts'],
+        env
+      )
+    ).toBe(false);
+    expect(
+      isCursorSmokeWorkspaceEditAutoConfirmAllowed(
+        [{ path: targetPath, text: 'changed\n' }],
+        [`file://${targetPath}`],
+        { ...env, BURNBAR_CURSOR_SMOKE_AUTO_CONFIRM: '0' }
+      )
+    ).toBe(false);
+    expect(
+      isCursorSmokeWorkspaceEditAutoConfirmAllowed(
+        [{ path: '/Users/test/project/example.ts', text: 'changed\n' }],
+        ['file:///Users/test/project/example.ts'],
+        {
+          ...env,
+          BURNBAR_CURSOR_SMOKE_OUTPUT: '/Users/test/project/smoke-output.json',
+          BURNBAR_CURSOR_SMOKE_FILE_PATH: '/Users/test/project/example.ts'
+        }
+      )
+    ).toBe(false);
   });
 });
 

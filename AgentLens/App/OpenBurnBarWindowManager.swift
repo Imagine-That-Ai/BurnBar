@@ -82,6 +82,9 @@ final class WindowManager: ObservableObject {
         runtimeContext: OpenBurnBarRuntimeContext? = nil
     ) {
         promoteToRegularActivation()
+        Task { @MainActor in
+            await dataStore.loadUsagePresentationIfNeeded()
+        }
 
         if let window = dashboardWindow {
             if window.isMiniaturized {

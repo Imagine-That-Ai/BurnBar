@@ -107,10 +107,22 @@ enum MissionControlProjectionReducer {
         switch (event.family, event.eventType) {
         case (.controller, "project_upserted"):
             let project = try decodePayload(BurnBarReviewProjectSnapshot.self, from: event)
-            state.projects[project.projectSlug] = project
+            let identities = [project.projectSlug, project.id] + project.aliases
+            let tombstones = state.projectDeletionTombstones ?? [:]
+            if identities.allSatisfy({ tombstones[$0] == nil }) {
+                state.projects[project.projectSlug] = project
+            }
         case (.controller, "project_deleted"):
             let payload = try decodePayload(BurnBarProjectDeletionPayload.self, from: event)
             state.projects.removeValue(forKey: payload.projectSlug)
+            var tombstones = state.projectDeletionTombstones ?? [:]
+            let identities = [payload.projectSlug]
+                + (payload.projectID.map { [$0] } ?? [])
+                + payload.aliases
+            for identity in identities where !identity.isEmpty {
+                tombstones[identity] = payload.projectSlug
+            }
+            state.projectDeletionTombstones = tombstones
         case (.controller, "project_reassigned"):
             let payload = try decodePayload(BurnBarProjectReassignmentPayload.self, from: event)
             state.reviewRuns = Dictionary(uniqueKeysWithValues: state.reviewRuns.map { id, run in

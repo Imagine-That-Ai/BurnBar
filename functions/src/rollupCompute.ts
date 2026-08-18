@@ -9,7 +9,15 @@
  */
 
 import { FieldPath, type DocumentData, type Firestore } from "firebase-admin/firestore";
-import type { UsageRollupDoc, ProviderSummary, ProviderAccountSummary, ModelSummary, DeviceSummary } from "./types.js";
+import type {
+  UsageRollupDoc,
+  ProviderSummary,
+  ProviderAccountSummary,
+  ModelSummary,
+  DeviceSummary,
+  ExecutionSourceSummary,
+  ComboSummary,
+} from "./types.js";
 import { isProviderAccountStorageScope, parseProvider, parseUsageEventDoc, recordOrUndefined } from "./guards.js";
 import { flushDomainCorePricingShadowEvidence } from "./pricing.js";
 import {
@@ -66,16 +74,20 @@ type CounterBucketDocs = {
   accounts: DocumentData[];
   models: DocumentData[];
   devices: DocumentData[];
+  executionSources: DocumentData[];
+  combos: DocumentData[];
 };
 
 async function fetchCounterBucketDocs(db: Firestore, bucketPaths: string[]): Promise<CounterBucketDocs> {
-  const [providers, accounts, models, devices] = await Promise.all([
+  const [providers, accounts, models, devices, executionSources, combos] = await Promise.all([
     queryCounterDocs(db, "providers", bucketPaths),
     queryCounterDocs(db, "accounts", bucketPaths),
     queryCounterDocs(db, "models", bucketPaths),
     queryCounterDocs(db, "devices", bucketPaths),
+    queryCounterDocs(db, "executionSources", bucketPaths),
+    queryCounterDocs(db, "combos", bucketPaths),
   ]);
-  return { providers, accounts, models, devices };
+  return { providers, accounts, models, devices, executionSources, combos };
 }
 
 /**
@@ -122,10 +134,93 @@ async function allTimeDailyTokenEntries(
   return entries;
 }
 
+/**
+ * Returns the `day -> providerID -> tokens` map backing the all_time
+ * `dailyProviderTokens` field.
+ *
+ * `addContribution` maintains the rolling nested map on the all_time totals
+ * doc right beside `dailyTokens` (same merge-write increment semantics, one
+ * level deeper). Totals docs written before the map existed fall back to one
+ * legacy scan of each day doc's `providers` subcollection, and the derived
+ * map is persisted under the same updatedAt-moved guard `dailyTokens` uses —
+ * an in-flight counter increment is never overwritten by the scan's absolute
+ * values; the next worker pass retries the backfill.
+ */
+async function allTimeDailyProviderTokenEntries(
+  db: Firestore,
+  uid: string,
+  allTimeData: DocumentData | undefined,
+): Promise<Record<string, Record<string, number>>> {
+  const dailyProviderTokens = recordOrUndefined(allTimeData?.dailyProviderTokens);
+  if (dailyProviderTokens) {
+    return Object.fromEntries(
+      Object.entries(dailyProviderTokens).map(([day, providers]) => [
+        day,
+        Object.fromEntries(
+          Object.entries(recordOrUndefined(providers) ?? {}).map(([providerID, tokens]) => [
+            providerID,
+            sumNumber(tokens),
+          ]),
+        ),
+      ]),
+    );
+  }
+
+  const dayDocs = (await db.collection(`users/${uid}/usage_counter_days`).get()).docs;
+  // Bound the fan-out. One provider-subcollection query per lifetime day, all
+  // launched at once, means a multi-year account issues thousands of concurrent
+  // Firestore reads during a routine compute — exhausting the function's
+  // sockets/memory or timing out the rebuild on exactly the long-lived accounts
+  // this backfill exists to migrate.
+  const BACKFILL_QUERY_CONCURRENCY = 25;
+  const providerDocsByDay: { day: string; providers: FirebaseFirestore.DocumentData[] }[] = [];
+  for (let offset = 0; offset < dayDocs.length; offset += BACKFILL_QUERY_CONCURRENCY) {
+    const page = dayDocs.slice(offset, offset + BACKFILL_QUERY_CONCURRENCY);
+    const resolved = await Promise.all(
+      page.map(async (doc) => ({
+        day: doc.id,
+        providers: (await db.collection(`users/${uid}/usage_counter_days/${doc.id}/providers`).get()).docs.map(
+          (providerDoc) => providerDoc.data() ?? {},
+        ),
+      })),
+    );
+    providerDocsByDay.push(...resolved);
+  }
+  const entries: Record<string, Record<string, number>> = {};
+  for (const { day, providers } of providerDocsByDay) {
+    const dayProviders: Record<string, number> = {};
+    for (const providerDoc of providers) {
+      const providerID =
+        typeof providerDoc.providerID === "string"
+          ? providerDoc.providerID
+          : typeof providerDoc.provider === "string"
+            ? providerDoc.provider
+            : undefined;
+      if (!providerID) continue;
+      dayProviders[providerID] = (dayProviders[providerID] ?? 0) + sumNumber(providerDoc.tokens);
+    }
+    entries[day] = dayProviders;
+  }
+
+  if (allTimeData) {
+    const observedUpdatedAt = allTimeData.updatedAt;
+    const allTimeRef = db.doc(`users/${uid}/usage_counter_totals/all_time`);
+    await db.runTransaction(async (transaction) => {
+      const snap = await transaction.get(allTimeRef);
+      const data = snap.exists ? (snap.data() ?? {}) : undefined;
+      if (!data || recordOrUndefined(data.dailyProviderTokens) || data.updatedAt !== observedUpdatedAt) return;
+      transaction.set(allTimeRef, { dailyProviderTokens: entries }, { merge: true });
+    });
+  }
+
+  return entries;
+}
+
 type WindowCounterSlice = {
   bucketDocs: DocumentData[];
   counterDocs: CounterBucketDocs;
   dailyPointEntries: (readonly [string, number])[];
+  dailyProviderTokens?: Record<string, Record<string, number>>;
 };
 
 type DayBucket = { id: string; data: DocumentData } & CounterBucketDocs;
@@ -134,6 +229,7 @@ type AllTimeSlice = {
   data: DocumentData | undefined;
   docs: CounterBucketDocs;
   dailyEntries: (readonly [string, number])[];
+  dailyProviderTokens: Record<string, Record<string, number>>;
 };
 
 /**
@@ -152,6 +248,7 @@ function selectWindowCounters(
       bucketDocs: allTime.data ? [allTime.data] : [],
       counterDocs: allTime.docs,
       dailyPointEntries: allTime.dailyEntries,
+      dailyProviderTokens: allTime.dailyProviderTokens,
     };
   }
 
@@ -165,6 +262,8 @@ function selectWindowCounters(
       accounts: windowBuckets.flatMap((bucket) => bucket.accounts),
       models: windowBuckets.flatMap((bucket) => bucket.models),
       devices: windowBuckets.flatMap((bucket) => bucket.devices),
+      executionSources: windowBuckets.flatMap((bucket) => bucket.executionSources),
+      combos: windowBuckets.flatMap((bucket) => bucket.combos),
     },
     dailyPointEntries: bucketDocs.map((doc) => [String(doc.day), sumNumber(doc.tokens)] as const),
   };
@@ -291,11 +390,85 @@ function aggregateDeviceSummaries(devices: DocumentData[]): DeviceSummary[] {
   return Array.from(deviceMap.values()).filter((entry) => entry.requests !== 0 || entry.tokens !== 0);
 }
 
+export function aggregateExecutionSourceSummaries(executionSources: DocumentData[]): ExecutionSourceSummary[] {
+  const sourceMap = new Map<string, ExecutionSourceSummary>();
+  for (const doc of executionSources) {
+    const sourceId = typeof doc.executionSourceId === "string" ? doc.executionSourceId : "";
+    if (!sourceId) continue;
+    const sourceName = typeof doc.executionSourceName === "string" ? doc.executionSourceName : "";
+    const existing = sourceMap.get(sourceId);
+    if (existing) {
+      if (!existing.sourceName && sourceName) existing.sourceName = sourceName;
+      existing.totalRequests += sumNumber(doc.requests);
+      existing.totalTokens += sumNumber(doc.tokens);
+      existing.totalCost += sumNumber(doc.costUsd);
+    } else {
+      sourceMap.set(sourceId, {
+        sourceId,
+        sourceName,
+        totalRequests: sumNumber(doc.requests),
+        totalTokens: sumNumber(doc.tokens),
+        totalCost: sumNumber(doc.costUsd),
+      });
+    }
+  }
+  return Array.from(sourceMap.values())
+    .filter((entry) => entry.totalRequests !== 0 || entry.totalTokens !== 0 || entry.totalCost !== 0)
+    .sort((a, b) => b.totalTokens - a.totalTokens || b.totalRequests - a.totalRequests);
+}
+
+export function aggregateComboSummaries(combos: DocumentData[]): ComboSummary[] {
+  const comboMap = new Map<string, ComboSummary>();
+  for (const doc of combos) {
+    const sourceId = typeof doc.executionSourceId === "string" ? doc.executionSourceId : "";
+    if (!sourceId) continue;
+    const providerName = typeof doc.provider === "string" ? doc.provider : "unknown";
+    const provider = parseProvider(providerName);
+    if (!provider) continue;
+    const model = typeof doc.model === "string" ? doc.model : "";
+    if (!model) continue;
+    const sourceName = typeof doc.executionSourceName === "string" ? doc.executionSourceName : "";
+    const id = `${sourceId}:${provider}:${model}`;
+    const existing = comboMap.get(id);
+    if (existing) {
+      if (!existing.sourceName && sourceName) existing.sourceName = sourceName;
+      existing.requests += sumNumber(doc.requests);
+      existing.tokens += sumNumber(doc.tokens);
+      existing.cost += sumNumber(doc.costUsd);
+    } else {
+      comboMap.set(id, {
+        sourceId,
+        sourceName,
+        provider,
+        model,
+        requests: sumNumber(doc.requests),
+        tokens: sumNumber(doc.tokens),
+        cost: sumNumber(doc.costUsd),
+      });
+    }
+  }
+  return Array.from(comboMap.values())
+    .filter((entry) => entry.requests !== 0 || entry.tokens !== 0 || entry.cost !== 0)
+    .sort((a, b) => b.tokens - a.tokens || b.requests - a.requests);
+}
+
 /** Builds one window's rollup doc from its selected counter slice. */
 function buildWindowRollupDoc(key: WindowKey, slice: WindowCounterSlice, now: Date): UsageRollupDoc {
-  const { providers, accounts, models, devices } = slice.counterDocs;
+  const { providers, accounts, models, devices, executionSources, combos } = slice.counterDocs;
   const totals = sumBucketTotals(slice.bucketDocs);
   const dailyPoints = Object.fromEntries(slice.dailyPointEntries.filter(([day, tokens]) => day && tokens !== 0));
+
+  // Zero-token provider entries (and days left empty by them) are omitted,
+  // mirroring the dailyPoints zero filter; the field itself is omitted when
+  // nothing remains.
+  const dailyProviderTokens = Object.fromEntries(
+    Object.entries(slice.dailyProviderTokens ?? {})
+      .map(
+        ([day, providers]) =>
+          [day, Object.fromEntries(Object.entries(providers).filter(([, tokens]) => tokens !== 0))] as const,
+      )
+      .filter(([day, providers]) => day && Object.keys(providers).length > 0),
+  );
 
   return {
     today: key === "today" ? totals.tokens : 0,
@@ -312,7 +485,10 @@ function buildWindowRollupDoc(key: WindowKey, slice: WindowCounterSlice, now: Da
     accountSummaries: aggregateAccountSummaries(accounts),
     modelSummaries: aggregateModelSummaries(models),
     deviceSummaries: aggregateDeviceSummaries(devices),
+    executionSourceSummaries: aggregateExecutionSourceSummaries(executionSources),
+    comboSummaries: aggregateComboSummaries(combos),
     dailyPoints,
+    ...(Object.keys(dailyProviderTokens).length > 0 ? { dailyProviderTokens } : {}),
     computedAt: now.toISOString(),
     schemaVersion: ROLLUP_SCHEMA_VERSION,
   };
@@ -361,7 +537,13 @@ export async function computeUserRollupsFromCounters(
   const allTimeData = allTimeSnap.exists ? (allTimeSnap.data() ?? {}) : undefined;
   const allTimeDocs = await fetchCounterBucketDocs(db, allTimeData ? [allTimePath] : []);
   const allTimeDailyEntries = await allTimeDailyTokenEntries(db, uid, allTimeData);
-  const allTime: AllTimeSlice = { data: allTimeData, docs: allTimeDocs, dailyEntries: allTimeDailyEntries };
+  const allTimeDailyProviderTokens = await allTimeDailyProviderTokenEntries(db, uid, allTimeData);
+  const allTime: AllTimeSlice = {
+    data: allTimeData,
+    docs: allTimeDocs,
+    dailyEntries: allTimeDailyEntries,
+    dailyProviderTokens: allTimeDailyProviderTokens,
+  };
 
   for (const key of WINDOW_KEYS) {
     const slice = selectWindowCounters(key, now, dayBuckets, allTime);

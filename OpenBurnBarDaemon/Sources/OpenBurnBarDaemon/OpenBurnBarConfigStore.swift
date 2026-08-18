@@ -121,6 +121,15 @@ public enum BurnBarConfigStoreError: Error, LocalizedError {
 }
 
 public actor BurnBarConfigStore {
+    private struct CachedCredentialMaterial {
+        let secret: String?
+    }
+
+    private struct InFlightCredentialRead {
+        let token: UUID
+        let task: Task<String?, Error>
+    }
+
     private let fileURL: URL
     private let secretStore: any BurnBarProviderSecretStoring
     let catalogSupport: BurnBarProviderCatalogSupport
@@ -129,6 +138,10 @@ public actor BurnBarConfigStore {
     private let encoder = JSONEncoder()
 
     private var cachedSnapshot: BurnBarProviderConfigurationSnapshot?
+    private var modelCatalogRevision: UInt64 = 0
+    private var credentialMaterialRevision: UInt64?
+    private var cachedCredentialMaterial: [String: CachedCredentialMaterial] = [:]
+    private var inFlightCredentialReads: [String: InFlightCredentialRead] = [:]
 
     public init(
         fileURL: URL = BurnBarDaemonPaths.defaultConfigStoreURL,
@@ -174,11 +187,16 @@ public actor BurnBarConfigStore {
         return normalizedSnapshot
     }
 
+    public func modelCatalogConfigurationRevision() -> UInt64 {
+        modelCatalogRevision
+    }
+
     @discardableResult
     public func replaceSnapshot(_ snapshot: BurnBarProviderConfigurationSnapshot) throws -> BurnBarProviderConfigurationSnapshot {
         let normalized = try normalize(snapshot, defaults: makeDefaultSnapshot())
         try persist(normalized)
         cachedSnapshot = normalized
+        invalidateModelCatalogConfiguration()
 
         logger.notice(
             "config_replaced",
@@ -213,6 +231,7 @@ public actor BurnBarConfigStore {
         snapshot = try normalize(snapshot, defaults: defaultSnapshot)
         try persist(snapshot)
         cachedSnapshot = snapshot
+        invalidateModelCatalogConfiguration()
 
         logger.notice(
             "provider_config_updated",
@@ -231,6 +250,7 @@ public actor BurnBarConfigStore {
         }
 
         try await secretStore.setSecret(secret, for: providerID)
+        invalidateModelCatalogConfiguration()
         logger.notice(
             "provider_secret_updated",
             metadata: [
@@ -723,6 +743,7 @@ public actor BurnBarConfigStore {
         let normalizedSnapshot = try normalize(currentSnapshot, defaults: makeDefaultSnapshot())
         try persist(normalizedSnapshot)
         cachedSnapshot = normalizedSnapshot
+        invalidateModelCatalogConfiguration()
         logger.notice(
             "router_mode_updated",
             metadata: ["router_mode": mode.rawValue]
@@ -734,7 +755,10 @@ public actor BurnBarConfigStore {
         slotID: String
     ) throws {
         let normalizedProviderID = providerID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        _ = try mutateProviderSettings(providerID: normalizedProviderID) { settings in
+        _ = try mutateProviderSettings(
+            providerID: normalizedProviderID,
+            invalidatesModelCatalog: false
+        ) { settings in
             var mutable = settings
             guard let index = mutable.credentialSlots.firstIndex(where: { $0.slotID == slotID }) else {
                 return mutable
@@ -758,7 +782,10 @@ public actor BurnBarConfigStore {
         message: String?
     ) throws {
         let normalizedProviderID = providerID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        _ = try mutateProviderSettings(providerID: normalizedProviderID) { settings in
+        _ = try mutateProviderSettings(
+            providerID: normalizedProviderID,
+            invalidatesModelCatalog: false
+        ) { settings in
             var mutable = settings
             guard let index = mutable.credentialSlots.firstIndex(where: { $0.slotID == slotID }) else {
                 return mutable
@@ -781,7 +808,10 @@ public actor BurnBarConfigStore {
         message: String?
     ) throws {
         let normalizedProviderID = providerID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        _ = try mutateProviderSettings(providerID: normalizedProviderID) { settings in
+        _ = try mutateProviderSettings(
+            providerID: normalizedProviderID,
+            invalidatesModelCatalog: false
+        ) { settings in
             var mutable = settings
             guard let index = mutable.credentialSlots.firstIndex(where: { $0.slotID == slotID }) else {
                 return mutable
@@ -807,6 +837,7 @@ public actor BurnBarConfigStore {
     }
 
     public func resolvedConfigurations() async throws -> [BurnBarResolvedProviderConfiguration] {
+        let configurationRevision = modelCatalogRevision
         let orderedProviders = try snapshot().providers
             .sorted { catalogSupport.providerSortRank(providerID: $0.providerID) < catalogSupport.providerSortRank(providerID: $1.providerID) }
 
@@ -817,7 +848,10 @@ public actor BurnBarConfigStore {
             let provider = try catalogSupport.requiredProvider(id: settings.providerID)
             var mutableSettings = settings
             let legacySecret = mutableSettings.credentialSlots.isEmpty
-                ? try await secretStore.secret(for: settings.providerID)
+                ? try await resolvedCredentialSecret(
+                    for: settings.providerID,
+                    configurationRevision: configurationRevision
+                )
                 : nil
             if mutableSettings.credentialSlots.isEmpty,
                let legacySecret,
@@ -841,9 +875,10 @@ public actor BurnBarConfigStore {
                     slotID: slot.slotID,
                     settings: mutableSettings
                 )?.apiKeyRef
-                let key = try await secretStore.secret(
+                let key = try await resolvedCredentialSecret(
                     for: endpointAPIKeyRef
-                        ?? slotSecretStoreKey(providerID: settings.providerID, slotID: slot.slotID)
+                        ?? slotSecretStoreKey(providerID: settings.providerID, slotID: slot.slotID),
+                    configurationRevision: configurationRevision
                 )
                 var resolvedSlot = slot
                 if slot.status == .missingSecret,
@@ -944,10 +979,76 @@ public actor BurnBarConfigStore {
     public func proactivelyRefreshExpiringOAuthCredentials(slotKeys: [String]) async {
         guard let keychainStore = secretStore as? BurnBarKeychainSecretStore else { return }
         await keychainStore.proactivelyRefreshExpiringOAuthCredentials(for: slotKeys)
+        invalidateModelCatalogConfiguration()
+    }
+
+    /// Credential sources such as the current Claude Code login can rotate
+    /// outside this config actor. Call this before retrying an authentication
+    /// failure so both credential material and provider discovery are rebuilt
+    /// from the external source instead of reusing the rejected value.
+    func invalidateExternallyManagedCredentialMaterial() {
+        invalidateModelCatalogConfiguration()
     }
 
     private func slotSecretStoreKey(providerID: String, slotID: String) -> String {
         "\(providerID).slot.\(slotID)"
+    }
+
+    private func resolvedCredentialSecret(
+        for secretStoreKey: String,
+        configurationRevision: UInt64
+    ) async throws -> String? {
+        guard configurationRevision == modelCatalogRevision else {
+            return try await secretStore.secret(for: secretStoreKey)
+        }
+
+        prepareCredentialMaterialCache(for: configurationRevision)
+        if let cached = cachedCredentialMaterial[secretStoreKey] {
+            return cached.secret
+        }
+        if let inFlight = inFlightCredentialReads[secretStoreKey] {
+            return try await inFlight.task.value
+        }
+
+        let token = UUID()
+        let secretStore = self.secretStore
+        let task = Task<String?, Error> {
+            try await secretStore.secret(for: secretStoreKey)
+        }
+        inFlightCredentialReads[secretStoreKey] = InFlightCredentialRead(
+            token: token,
+            task: task
+        )
+
+        do {
+            let secret = try await task.value
+            if configurationRevision == modelCatalogRevision,
+               credentialMaterialRevision == configurationRevision,
+               inFlightCredentialReads[secretStoreKey]?.token == token {
+                cachedCredentialMaterial[secretStoreKey] = CachedCredentialMaterial(secret: secret)
+                inFlightCredentialReads.removeValue(forKey: secretStoreKey)
+            }
+            return secret
+        } catch {
+            if inFlightCredentialReads[secretStoreKey]?.token == token {
+                inFlightCredentialReads.removeValue(forKey: secretStoreKey)
+            }
+            throw error
+        }
+    }
+
+    private func prepareCredentialMaterialCache(for revision: UInt64) {
+        guard credentialMaterialRevision != revision else { return }
+        credentialMaterialRevision = revision
+        cachedCredentialMaterial.removeAll(keepingCapacity: true)
+        inFlightCredentialReads.removeAll(keepingCapacity: true)
+    }
+
+    private func invalidateModelCatalogConfiguration() {
+        modelCatalogRevision &+= 1
+        credentialMaterialRevision = nil
+        cachedCredentialMaterial.removeAll(keepingCapacity: true)
+        inFlightCredentialReads.removeAll(keepingCapacity: true)
     }
 
     /// Fold user-declared custom models into a provider's resolved preferred-model
@@ -992,6 +1093,7 @@ public actor BurnBarConfigStore {
 
     private func mutateProviderSettings(
         providerID: String,
+        invalidatesModelCatalog: Bool = true,
         mutate: (BurnBarProviderSettings) -> BurnBarProviderSettings
     ) throws -> BurnBarProviderSettings {
         guard catalogSupport.isSupported(providerID: providerID) else {
@@ -1009,6 +1111,9 @@ public actor BurnBarConfigStore {
         let normalizedSnapshot = try normalize(currentSnapshot, defaults: makeDefaultSnapshot())
         try persist(normalizedSnapshot)
         cachedSnapshot = normalizedSnapshot
+        if invalidatesModelCatalog {
+            invalidateModelCatalogConfiguration()
+        }
         return normalizedSettings
     }
 

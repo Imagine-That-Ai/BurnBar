@@ -176,6 +176,13 @@ public struct BurnBarLiveModelCatalogSnapshot: Codable, Hashable, Sendable {
     }
 }
 
+struct BurnBarLiveModelCatalogDiscoverySnapshot: Sendable {
+    fileprivate let refreshesByAccount: [
+        BurnBarLiveModelCatalog.AccountDiscoveryKey:
+            BurnBarLiveModelCatalog.LiveRefreshResult
+    ]
+}
+
 public struct BurnBarLiveModelCatalog: Sendable {
     private static let ollamaCloudCatalogURL = URL(string: "https://ollama.com/search?c=cloud")!
 
@@ -200,6 +207,50 @@ public struct BurnBarLiveModelCatalog: Sendable {
     }
 
     public func snapshot(now: Date = Date()) async throws -> BurnBarLiveModelCatalogSnapshot {
+        let contexts = try await accountRefreshContexts(now: now)
+        let liveRefreshes = await liveRefreshes(for: contexts)
+        return makeSnapshot(
+            now: now,
+            contexts: contexts,
+            liveRefreshes: liveRefreshes
+        )
+    }
+
+    func discoverySnapshot(
+        now: Date = Date()
+    ) async throws -> BurnBarLiveModelCatalogDiscoverySnapshot {
+        let contexts = try await accountRefreshContexts(now: now)
+        let liveRefreshes = await liveRefreshes(for: contexts)
+        return BurnBarLiveModelCatalogDiscoverySnapshot(
+            refreshesByAccount: Dictionary(
+                uniqueKeysWithValues: contexts.compactMap { context in
+                    liveRefreshes[context.index].map {
+                        (context.discoveryKey, $0)
+                    }
+                }
+            )
+        )
+    }
+
+    func snapshot(
+        now: Date = Date(),
+        using discovery: BurnBarLiveModelCatalogDiscoverySnapshot
+    ) async throws -> BurnBarLiveModelCatalogSnapshot {
+        let contexts = try await accountRefreshContexts(now: now)
+        return makeSnapshot(
+            now: now,
+            contexts: contexts,
+            liveRefreshes: Dictionary(
+                uniqueKeysWithValues: contexts.compactMap { context in
+                    discovery.refreshesByAccount[context.discoveryKey].map {
+                        (context.index, $0)
+                    }
+                }
+            )
+        )
+    }
+
+    private func accountRefreshContexts(now: Date) async throws -> [AccountRefreshContext] {
         let configurations = try await configStore.resolvedConfigurations()
         var contexts: [AccountRefreshContext] = []
 
@@ -276,7 +327,14 @@ public struct BurnBarLiveModelCatalog: Sendable {
             }
         }
 
-        let liveRefreshes = await liveRefreshes(for: contexts)
+        return contexts
+    }
+
+    private func makeSnapshot(
+        now: Date,
+        contexts: [AccountRefreshContext],
+        liveRefreshes: [Int: LiveRefreshResult]
+    ) -> BurnBarLiveModelCatalogSnapshot {
         var models: [BurnBarLiveAdvertisedModel] = []
         var accounts: [BurnBarLiveModelAccountDescriptor] = []
         for context in contexts.sorted(by: { $0.index < $1.index }) {
@@ -604,7 +662,7 @@ public struct BurnBarLiveModelCatalog: Sendable {
             : "daemon_provider_config"
     }
 
-    private struct LiveRefreshResult: Sendable {
+    struct LiveRefreshResult: Sendable {
         let advertisedModels: [DiscoveredModel]
         let sourceKind: String
         let refreshedAt: Date
@@ -618,6 +676,11 @@ public struct BurnBarLiveModelCatalog: Sendable {
         let displayName: String
     }
 
+    struct AccountDiscoveryKey: Hashable, Sendable {
+        let providerID: String
+        let accountID: String
+    }
+
     private struct AccountRefreshContext: Sendable {
         let index: Int
         let configuration: BurnBarResolvedProviderConfiguration
@@ -625,6 +688,13 @@ public struct BurnBarLiveModelCatalog: Sendable {
         let apiKey: String?
         let providerCanRoute: Bool
         let capabilities: [String]
+
+        var discoveryKey: AccountDiscoveryKey {
+            AccountDiscoveryKey(
+                providerID: configuration.provider.id,
+                accountID: account.accountID
+            )
+        }
     }
 
     private func liveRefreshes(

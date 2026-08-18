@@ -1,3 +1,4 @@
+import Foundation
 import GRDB
 import XCTest
 @testable import OpenBurnBarData
@@ -8,7 +9,7 @@ import XCTest
 /// `SearchIndexFTSRowidTests` exercises the identical migration through the
 /// app `DataStore`; these tests exercise the Core `OpenBurnBarDatabase`
 /// migrator directly so the SwiftPM diff-coverage gate sees the changed Core
-/// lines. They cover: (1) the migrator registers v58 as the last migration,
+/// lines. They cover: (1) the migrator registers the current schema head,
 /// (2) the backfill records ftsRowid for pre-existing chunks, (3) the orphan
 /// sweep deletes stale/duplicate FTS rows, (4) the content-gated documents
 /// FTS update trigger skips metadata-only updates, and (5) the content-gated
@@ -49,6 +50,68 @@ final class OpenBurnBarDataFTSRowidMigrationTests: XCTestCase {
         XCTAssertTrue(
             OpenBurnBarDatabase.migrator.migrations.contains("v61_usage_memory"),
             "registerUsageMemoryMigration must be wired into the migrator"
+        )
+    }
+
+    func test_v61AdditiveMigration_usesTransactionalFastLane() throws {
+        let tempDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: tempDirectory,
+            withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: tempDirectory) }
+
+        let lock = NSLock()
+        var tracedSQL: [String] = []
+        var configuration = Configuration()
+        configuration.prepareDatabase { db in
+            db.trace { event in
+                guard case let .statement(statement) = event else { return }
+                lock.lock()
+                tracedSQL.append(statement.sql.lowercased())
+                lock.unlock()
+            }
+        }
+
+        let databasePath = tempDirectory.appendingPathComponent("test.sqlite").path
+        let queue = try DatabaseQueue(path: databasePath, configuration: configuration)
+        try OpenBurnBarDatabase.migrator.migrate(queue, upTo: "v60_billing_kind")
+
+        lock.lock()
+        tracedSQL.removeAll()
+        lock.unlock()
+
+        let database = OpenBurnBarDatabase(databaseQueue: queue)
+        try database.runMigrationsSafely()
+
+        let backups = try FileManager.default.contentsOfDirectory(
+            atPath: tempDirectory.path
+        )
+        .filter { $0.contains(".backup.") }
+        XCTAssertTrue(backups.isEmpty)
+
+        lock.lock()
+        let migrationSQL = tracedSQL
+        lock.unlock()
+        XCTAssertFalse(migrationSQL.contains { $0.contains("integrity_check") })
+
+        let applied = try queue.read { db in
+            try OpenBurnBarDatabase.migrator.appliedIdentifiers(db)
+        }
+        XCTAssertTrue(applied.contains("v61_usage_memory"))
+    }
+
+    func test_additiveMigrationFastLane_failsClosed_forUnknownIdentifiers() {
+        XCTAssertFalse(
+            OpenBurnBarDatabase.requiresFullPreMigrationProtection(
+                pendingMigrationIdentifiers: ["v61_usage_memory"]
+            )
+        )
+        XCTAssertTrue(
+            OpenBurnBarDatabase.requiresFullPreMigrationProtection(
+                pendingMigrationIdentifiers: ["v61_usage_memory", "v62_unreviewed"]
+            )
         )
     }
 

@@ -92,13 +92,30 @@ final class BurnBarLocalOllamaLiveCatalogTests: XCTestCase {
     func testLiveLocalOllamaDiscovery_realServer() async throws {
         let probe = URL(string: "http://localhost:11434/api/tags")!
         var reachable = false
+        var hasInstalledLocalModel = false
         do {
-            let (_, response) = try await URLSession.shared.data(from: probe)
+            let (data, response) = try await URLSession.shared.data(from: probe)
             reachable = (response as? HTTPURLResponse)?.statusCode == 200
+            if reachable,
+               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let models = object["models"] as? [[String: Any]] {
+                hasInstalledLocalModel = models.contains { row in
+                    let model = ((row["model"] as? String) ?? (row["name"] as? String) ?? "")
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                        .lowercased()
+                    return !model.isEmpty
+                        && !model.hasSuffix(":cloud")
+                        && !model.hasSuffix("-cloud")
+                }
+            }
         } catch {
             reachable = false
         }
         try XCTSkipUnless(reachable, "Local Ollama not running; skipping live discovery smoke test.")
+        try XCTSkipUnless(
+            hasInstalledLocalModel,
+            "Local Ollama has no installed non-cloud model; skipping live discovery smoke test."
+        )
 
         let harness = try makeHarness(name: "ollama-local-live")
         let liveCatalog = BurnBarLiveModelCatalog(

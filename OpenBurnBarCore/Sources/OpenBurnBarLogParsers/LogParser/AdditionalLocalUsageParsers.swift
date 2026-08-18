@@ -6,6 +6,45 @@ import OpenBurnBarSQLiteReader
 // macOS UsageAggregator. These parsers deliberately read local artifacts only;
 // they never call provider APIs or infer a credential from the filesystem.
 
+private struct LocalUsageJSONLineSequence: Sequence {
+    let fileURL: URL
+
+    func makeIterator() -> AnyIterator<[String: Any]> {
+        let state = LocalUsageJSONLineIterator(fileURL: fileURL)
+        return AnyIterator { state.next() }
+    }
+}
+
+private final class LocalUsageJSONLineIterator {
+    private let handle: FileHandle?
+    private let reader: BufferedLineReader?
+    private var isFinished = false
+
+    init(fileURL: URL) {
+        let handle = try? FileHandle(forReadingFrom: fileURL)
+        self.handle = handle
+        self.reader = handle.map { BufferedLineReader(fileHandle: $0) }
+    }
+
+    deinit {
+        try? handle?.close()
+    }
+
+    func next() -> [String: Any]? {
+        guard !isFinished, let reader else { return nil }
+        while let line = reader.nextLine() {
+            if let object = parserAutoReleasePool({ () -> [String: Any]? in
+                try? JSONSerialization.jsonObject(with: Data(line.text.utf8)) as? [String: Any]
+            }) {
+                return object
+            }
+        }
+        isFinished = true
+        try? handle?.close()
+        return nil
+    }
+}
+
 private enum LocalUsageParserSupport {
     struct Turn: Sendable {
         let role: String
@@ -59,13 +98,8 @@ private enum LocalUsageParserSupport {
         }
     }
 
-    static func jsonLines(at file: URL) -> [[String: Any]] {
-        guard let handle = try? FileHandle(forReadingFrom: file) else { return [] }
-        defer { try? handle.close() }
-        return handle.readAllUTF8Lines().compactMap { line in
-            guard let data = line.data(using: .utf8) else { return nil }
-            return try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        }
+    static func jsonLines(at file: URL) -> LocalUsageJSONLineSequence {
+        LocalUsageJSONLineSequence(fileURL: file)
     }
 
     static func int(_ value: Any?) -> Int {
@@ -745,11 +779,14 @@ public final class OpenCodeParser: LogParser, Sendable {
 
 public final class PiAgentParser: LogParser, Sendable {
     public let provider: AgentProvider = .piAgent
+    private static let cacheCheckpointFileInterval = 16
+    private static let cancellationCheckpointLineInterval = 1_024
     private let sessionsOverride: URL?
     private let fileManager: FileManager
     private let cacheStore: ParserDiskCacheStore<CachedUsageBundleEntry<FileSignature>>
     private let sessionScanCount = Locked(0)
     private let sessionCacheHitCount = Locked(0)
+    private let contentExtractionLineCount = Locked(0)
 
     public init(
         sessionsOverride: URL? = nil,
@@ -772,18 +809,24 @@ public final class PiAgentParser: LogParser, Sendable {
 
     var lastSessionScanCount: Int { sessionScanCount.read() }
     var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
+    var lastContentExtractionLineCount: Int { contentExtractionLineCount.read() }
 
     public func parse() async throws -> ParseResult { try await parse(options: .default) }
     public func parse(options: LogParseOptions) async throws -> ParseResult {
         sessionScanCount.write(0)
         sessionCacheHitCount.write(0)
+        contentExtractionLineCount.write(0)
         let root = sessionsOverride ?? LocalUsageParserSupport.expanded(provider.logDirectory)
         let gate = ParserFileReadGate(options: options, fileManager: fileManager)
         var usages: [TokenUsage] = []; var conversations: [ConversationRecord] = []
         var parseCache = cacheStore.load()
         var activePaths = Set<String>()
-        var cacheMutated = false
-        defer { if cacheMutated { cacheStore.persist(parseCache) } }
+        var pendingCacheMutations = 0
+        defer {
+            if pendingCacheMutations > 0 {
+                cacheStore.persist(parseCache)
+            }
+        }
         for file in LocalUsageParserSupport.files(in: root, extensions: ["jsonl"]) {
             let cacheKey = file.standardizedFileURL.path
             activePaths.insert(cacheKey)
@@ -799,47 +842,90 @@ public final class PiAgentParser: LogParser, Sendable {
             }
             sessionScanCount.withLock { $0 += 1 }
             let id = file.deletingPathExtension().lastPathComponent
-            let parsed = Self.parse(file: file, sessionID: id, provider: .piAgent)
-            guard let usage = parsed.usage else { continue }
-            usages.append(usage)
+            let parsed = try Self.parse(
+                file: file,
+                sessionID: id,
+                provider: .piAgent,
+                includeConversationBodies: options.includeConversationBodies,
+                resourceGovernor: options.resourceGovernor
+            )
+            contentExtractionLineCount.withLock { $0 += parsed.contentExtractionLineCount }
+            if let usage = parsed.usage {
+                usages.append(usage)
+            }
             if let signature {
-                parseCache.fileEntries[cacheKey] = CachedUsageBundleEntry(signature: signature, usages: [usage])
-                cacheMutated = true
+                parseCache.fileEntries[cacheKey] = CachedUsageBundleEntry(
+                    signature: signature,
+                    usages: parsed.usage.map { [$0] } ?? []
+                )
+                pendingCacheMutations += 1
+                if pendingCacheMutations >= Self.cacheCheckpointFileInterval {
+                    cacheStore.persist(parseCache)
+                    pendingCacheMutations = 0
+                }
             }
             if options.includeConversationBodies, let conversation = parsed.conversation { conversations.append(conversation) }
         }
         let stale = Set(parseCache.fileEntries.keys).subtracting(activePaths)
         if !stale.isEmpty {
             for key in stale { parseCache.fileEntries.removeValue(forKey: key) }
-            cacheMutated = true
+            pendingCacheMutations += stale.count
         }
         return ParseResult(usages: usages, conversations: conversations)
     }
+
     fileprivate static func parse(
         file: URL,
         sessionID: String,
-        provider: AgentProvider
-    ) -> (usage: TokenUsage?, conversation: ConversationRecord?) {
-        let objects = LocalUsageParserSupport.jsonLines(at: file)
+        provider: AgentProvider,
+        includeConversationBodies: Bool,
+        resourceGovernor: ParserResourceGovernor?
+    ) throws -> (
+        usage: TokenUsage?,
+        conversation: ConversationRecord?,
+        contentExtractionLineCount: Int
+    ) {
         let mtime = LocalUsageParserSupport.modificationDate(file) ?? Date()
         var input = 0, output = 0, cacheCreation = 0, cacheRead = 0, userChars = 0, assistantChars = 0
-        var model = "pi", cwd: String?, start: Date?, end: Date?; var turns: [LocalUsageParserSupport.Turn] = []
-        for object in objects {
+        var model = "pi", cwd: String?, start: Date?, end: Date?
+        var turns: [LocalUsageParserSupport.Turn] = []
+        var contentExtractionLineCount = 0
+        try scanJSONLines(file: file, resourceGovernor: resourceGovernor) { object in
             let timestamp = LocalUsageParserSupport.date(object["timestamp"] ?? object["time"])
             start = start ?? timestamp; end = timestamp ?? end
             model = LocalUsageParserSupport.model(in: object) ?? model
             cwd = LocalUsageParserSupport.firstString(object, keys: ["cwd", "workingDirectory", "directory"]) ?? cwd
             let tokens = LocalUsageParserSupport.extracted(object); input += tokens.input; output += tokens.output; cacheCreation += tokens.cacheCreation; cacheRead += tokens.cacheRead
+            guard includeConversationBodies else { return }
+            contentExtractionLineCount += 1
             let message = LocalUsageParserSupport.dictionary(object["message"])
             let role = (LocalUsageParserSupport.string(object["role"]) ?? LocalUsageParserSupport.string(message?["role"]) ?? LocalUsageParserSupport.string(object["type"]) ?? "").lowercased()
             let text = LocalUsageParserSupport.contentText(object["content"] ?? message?["content"] ?? object["text"])
-            guard !text.isEmpty else { continue }
-            if role == "user" || role == "human" { userChars += text.count; turns.append(.init(role: "user", text: text, timestamp: timestamp)) }
-            if role == "assistant" || role == "ai" || role == "model" { assistantChars += text.count; turns.append(.init(role: "assistant", text: text, timestamp: timestamp)) }
+            guard !text.isEmpty else { return }
+            if role == "user" || role == "human" {
+                userChars += text.count
+                turns.append(.init(role: "user", text: text, timestamp: timestamp))
+            }
+            if role == "assistant" || role == "ai" || role == "model" {
+                assistantChars += text.count
+                turns.append(.init(role: "assistant", text: text, timestamp: timestamp))
+            }
         }
         var method: UsageProvenanceMethod = .providerLog; var confidence: UsageProvenanceConfidence = .exact
-        if input == 0 && output == 0 {
-            guard userChars + assistantChars > 0 else { return (nil, nil) }
+        let hasExplicitUsage = input > 0 || output > 0 || cacheCreation > 0 || cacheRead > 0
+        if !hasExplicitUsage {
+            if !includeConversationBodies {
+                let fallback = try fallbackContentMetrics(
+                    file: file,
+                    resourceGovernor: resourceGovernor
+                )
+                userChars = fallback.userChars
+                assistantChars = fallback.assistantChars
+                contentExtractionLineCount += fallback.lineCount
+            }
+            guard userChars + assistantChars > 0 else {
+                return (nil, nil, contentExtractionLineCount)
+            }
             let estimate = TokenExtractionUtility.estimateFallbackTokens(userVisibleChars: userChars, assistantVisibleChars: assistantChars, assistantReasoningChars: 0, userMessageCount: 1, assistantMessageCount: 1)
             input = estimate.input; output = estimate.output; method = .heuristicEstimate; confidence = .lowConfidenceEstimate
         }
@@ -865,7 +951,7 @@ public final class PiAgentParser: LogParser, Sendable {
             confidence: confidence,
             estimatorVersion: estimatorVersion
         )
-        let conversation = turns.isEmpty
+        let conversation = !includeConversationBodies || turns.isEmpty
             ? nil
             : LocalUsageParserSupport.transcript(
                 provider: provider,
@@ -877,7 +963,63 @@ public final class PiAgentParser: LogParser, Sendable {
                 fileModifiedAt: mtime,
                 workingDirectory: cwd
             )
-        return (usage, conversation)
+        return (usage, conversation, contentExtractionLineCount)
+    }
+
+    private static func fallbackContentMetrics(
+        file: URL,
+        resourceGovernor: ParserResourceGovernor?
+    ) throws -> (userChars: Int, assistantChars: Int, lineCount: Int) {
+        var userChars = 0
+        var assistantChars = 0
+        var lineCount = 0
+        try scanJSONLines(file: file, resourceGovernor: resourceGovernor) { object in
+            lineCount += 1
+            let message = LocalUsageParserSupport.dictionary(object["message"])
+            let role = (
+                LocalUsageParserSupport.string(object["role"])
+                    ?? LocalUsageParserSupport.string(message?["role"])
+                    ?? LocalUsageParserSupport.string(object["type"])
+                    ?? ""
+            ).lowercased()
+            let text = LocalUsageParserSupport.contentText(
+                object["content"] ?? message?["content"] ?? object["text"]
+            )
+            guard !text.isEmpty else { return }
+            if role == "user" || role == "human" {
+                userChars += text.count
+            } else if role == "assistant" || role == "ai" || role == "model" {
+                assistantChars += text.count
+            }
+        }
+        return (userChars, assistantChars, lineCount)
+    }
+
+    private static func scanJSONLines(
+        file: URL,
+        resourceGovernor: ParserResourceGovernor?,
+        body: ([String: Any]) throws -> Void
+    ) throws {
+        guard let handle = try? FileHandle(forReadingFrom: file) else { return }
+        defer { try? handle.close() }
+
+        let reader = BufferedLineReader(fileHandle: handle)
+        var physicalLineCount = 0
+        while let line = reader.nextLine() {
+            physicalLineCount += 1
+            if physicalLineCount.isMultiple(of: cancellationCheckpointLineInterval) {
+                try Task.checkCancellation()
+                try resourceGovernor?.checkpoint()
+            }
+            guard let object = parserAutoReleasePool({ () -> [String: Any]? in
+                try? JSONSerialization.jsonObject(with: Data(line.text.utf8)) as? [String: Any]
+            }) else {
+                continue
+            }
+            try body(object)
+        }
+        try Task.checkCancellation()
+        try resourceGovernor?.checkpoint()
     }
 }
 
@@ -886,11 +1028,13 @@ public final class PiAgentParser: LogParser, Sendable {
 /// OMP uses the Pi-compatible nested JSONL envelope; share its parser logic.
 public final class OMPParser: LogParser, Sendable {
     public let provider: AgentProvider = .omp
+    private static let cacheCheckpointFileInterval = 16
     private let sessionsOverride: URL?
     private let fileManager: FileManager
     private let cacheStore: ParserDiskCacheStore<CachedUsageBundleEntry<FileSignature>>
     private let sessionScanCount = Locked(0)
     private let sessionCacheHitCount = Locked(0)
+    private let contentExtractionLineCount = Locked(0)
 
     public init(
         sessionsOverride: URL? = nil,
@@ -913,20 +1057,26 @@ public final class OMPParser: LogParser, Sendable {
 
     var lastSessionScanCount: Int { sessionScanCount.read() }
     var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
+    var lastContentExtractionLineCount: Int { contentExtractionLineCount.read() }
 
     public func parse() async throws -> ParseResult { try await parse(options: .default) }
 
     public func parse(options: LogParseOptions) async throws -> ParseResult {
         sessionScanCount.write(0)
         sessionCacheHitCount.write(0)
+        contentExtractionLineCount.write(0)
         let root = sessionsOverride ?? LocalUsageParserSupport.expanded(provider.logDirectory)
         let gate = ParserFileReadGate(options: options, fileManager: fileManager)
         var usages: [TokenUsage] = []
         var conversations: [ConversationRecord] = []
         var parseCache = cacheStore.load()
         var activePaths = Set<String>()
-        var cacheMutated = false
-        defer { if cacheMutated { cacheStore.persist(parseCache) } }
+        var pendingCacheMutations = 0
+        defer {
+            if pendingCacheMutations > 0 {
+                cacheStore.persist(parseCache)
+            }
+        }
         for file in LocalUsageParserSupport.files(in: root, extensions: ["jsonl"]) {
             let cacheKey = file.standardizedFileURL.path
             activePaths.insert(cacheKey)
@@ -942,12 +1092,27 @@ public final class OMPParser: LogParser, Sendable {
             }
             sessionScanCount.withLock { $0 += 1 }
             let id = file.deletingPathExtension().lastPathComponent
-            let parsed = PiAgentParser.parse(file: file, sessionID: id, provider: .omp)
-            guard let usage = parsed.usage else { continue }
-            usages.append(usage)
+            let parsed = try PiAgentParser.parse(
+                file: file,
+                sessionID: id,
+                provider: .omp,
+                includeConversationBodies: options.includeConversationBodies,
+                resourceGovernor: options.resourceGovernor
+            )
+            contentExtractionLineCount.withLock { $0 += parsed.contentExtractionLineCount }
+            if let usage = parsed.usage {
+                usages.append(usage)
+            }
             if let signature {
-                parseCache.fileEntries[cacheKey] = CachedUsageBundleEntry(signature: signature, usages: [usage])
-                cacheMutated = true
+                parseCache.fileEntries[cacheKey] = CachedUsageBundleEntry(
+                    signature: signature,
+                    usages: parsed.usage.map { [$0] } ?? []
+                )
+                pendingCacheMutations += 1
+                if pendingCacheMutations >= Self.cacheCheckpointFileInterval {
+                    cacheStore.persist(parseCache)
+                    pendingCacheMutations = 0
+                }
             }
             if options.includeConversationBodies, let conversation = parsed.conversation {
                 conversations.append(conversation)
@@ -956,7 +1121,7 @@ public final class OMPParser: LogParser, Sendable {
         let stale = Set(parseCache.fileEntries.keys).subtracting(activePaths)
         if !stale.isEmpty {
             for key in stale { parseCache.fileEntries.removeValue(forKey: key) }
-            cacheMutated = true
+            pendingCacheMutations += stale.count
         }
         return ParseResult(usages: usages, conversations: conversations)
     }

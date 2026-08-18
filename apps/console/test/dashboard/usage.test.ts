@@ -46,6 +46,29 @@ describe("normalizeRollup", () => {
     expect(r.dailyPoints.map((p) => p.tokens)).toEqual([10, 20, 30]);
   });
 
+  it("cleans dailyProviderTokens: keeps positive splits, drops zeros, junk, and empty days", () => {
+    const r = normalizeRollup(
+      {
+        dailyProviderTokens: {
+          "2026-06-02": { anthropic: 120, openai: 80, junk: "x", zero: 0 },
+          "2026-06-01": { openai: 50 },
+          "2026-06-03": { allZero: 0 },
+          "2026-06-04": "not-a-record",
+        },
+      },
+      "all_time",
+    );
+    expect(r.dailyProviderTokens).toEqual({
+      "2026-06-01": { openai: 50 },
+      "2026-06-02": { anthropic: 120, openai: 80 },
+    });
+  });
+
+  it("defaults dailyProviderTokens to an empty map when absent (legacy docs)", () => {
+    expect(normalizeRollup({}, "all_time").dailyProviderTokens).toEqual({});
+    expect(emptyRollup("all_time").dailyProviderTokens).toEqual({});
+  });
+
   it("normalizes a Firestore-Timestamp computedAt to ISO", () => {
     const r1 = normalizeRollup({ computedAt: "2026-06-01T00:00:00.000Z" }, "30d");
     expect(r1.computedAt).toBe("2026-06-01T00:00:00.000Z");

@@ -11,12 +11,21 @@ import OSLog
 import Sentry
 #endif
 
+/// Firestore is a replication and command plane for the Mac app; the canonical
+/// durable state remains in encrypted local SQLite. Keeping Firestore's cache
+/// in memory avoids replaying and compacting a second persistent database on
+/// every background launch while preserving live listeners and server reads.
+enum OpenBurnBarFirestoreCacheMode: Equatable {
+    case memoryOnly
+}
+
 // Extracted verbatim from AgentLensApp.swift (audit wave 4, item 14).
 // One-time process bootstrap called from `OpenBurnBarApp.init`: Firebase +
 // App Check + Google Sign-In, Sentry crash reporting (consent-gated), and
 // consent-gated Amplitude analytics.
 extension OpenBurnBarApp {
     private static var didConfigureFirebase = false
+    static let firestoreCacheMode: OpenBurnBarFirestoreCacheMode = .memoryOnly
 
     /// Wires consent-gated Amplitude analytics and resumes prior opt-ins.
     @MainActor
@@ -55,11 +64,13 @@ extension OpenBurnBarApp {
         AppCheck.setAppCheckProviderFactory(providerFactory)
 
         FirebaseApp.configure(options: options)
-        if ProcessInfo.processInfo.environment["OPENBURNBAR_STARTUP_PROFILE"] == "1" {
-            let settings = Firestore.firestore().settings
+        let firestore = Firestore.firestore()
+        let settings = firestore.settings
+        switch firestoreCacheMode {
+        case .memoryOnly:
             settings.cacheSettings = MemoryCacheSettings()
-            Firestore.firestore().settings = settings
         }
+        firestore.settings = settings
         didConfigureFirebase = true
         if let clientID = FirebaseApp.app()?.options.clientID {
             GIDSignIn.sharedInstance.configuration = GIDConfiguration(clientID: clientID)

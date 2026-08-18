@@ -200,6 +200,8 @@ function bucketIdentityKey(contribution: UsageCounterContribution): string {
     contribution.storageScope ?? "",
     contribution.model ?? "",
     contribution.deviceId ?? "",
+    contribution.executionSourceId ?? "",
+    contribution.executionSourceName ?? "",
   ]);
 }
 
@@ -226,6 +228,8 @@ function mergeSignedContributions(
         storageScope: contribution.storageScope,
         model: contribution.model,
         deviceId: contribution.deviceId,
+        executionSourceId: contribution.executionSourceId,
+        executionSourceName: contribution.executionSourceName,
         requests: direction * contribution.requests,
         tokens: direction * contribution.tokens,
         costUsd: direction * contribution.costUsd,

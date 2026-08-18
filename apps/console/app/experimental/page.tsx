@@ -7,7 +7,6 @@ import { KERNEL_META } from "@/lib/gl/engine/registry";
 import type { KernelId } from "@/lib/gl/engine/types";
 import { useBackdrop } from "@/lib/useBackdrop";
 import { KernelTile } from "@/components/experimental/KernelTile";
-import { KernelHero } from "@/components/experimental/KernelHero";
 
 export default function ExperimentalPage() {
   const { kernelId: selected, setKernelId } = useBackdrop();
@@ -26,41 +25,17 @@ export default function ExperimentalPage() {
 
   React.useEffect(() => () => window.clearTimeout(toastTimer.current), []);
 
-  const activeMeta = KERNEL_META.find((k) => k.id === selected) ?? null;
-
   return (
     <div>
       <header className="mb-token-5">
         <span className="eyebrow eyebrow--accent">Experimental</span>
         <h1 className="font-display text-2xl text-content-bright">All kernels</h1>
         <p className="mt-1 max-w-2xl text-sm text-content-mute">
-          Every backdrop kernel in the engine, rendering live. Click one to set it as
-          your{" "}
-          <Link
-            href="/dashboard"
-            className="text-[color:var(--accent-deep)] underline-offset-2 hover:underline"
-          >
-            dashboard backdrop
-          </Link>
-          . {KERNEL_META.length} kernels.
+          Every backdrop kernel in the engine, rendering live. Click one and it
+          becomes your backdrop on the spot — the gallery's own background is the
+          preview, here and everywhere else. {KERNEL_META.length} kernels.
         </p>
       </header>
-
-      {/* Live "current backdrop" hero — updates the instant you pick one. */}
-      {selected != null && activeMeta && (
-        <div className="mb-token-6">
-          <div className="mb-token-2 flex items-center justify-between">
-            <span className="eyebrow">Your backdrop</span>
-            <Link
-              href="/dashboard"
-              className="text-xs text-[color:var(--accent-deep)] underline-offset-2 hover:underline"
-            >
-              View on dashboard →
-            </Link>
-          </div>
-          <KernelHero id={activeMeta.id} label={activeMeta.label} blurb={activeMeta.blurb} />
-        </div>
-      )}
 
       <div className="grid grid-cols-1 gap-token-4 sm:grid-cols-2 lg:grid-cols-3">
         {KERNEL_META.map((k) => (

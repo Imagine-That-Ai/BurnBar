@@ -3690,7 +3690,9 @@ service cloud.firestore {
 
     match /users/{userId}/hermes_connections/{connectionId} {
       allow create: if relayConnectionWrite(userId, connectionId);
-      allow update: if relayConnectionWrite(userId, connectionId) && resource.data.mode == "relayLink";
+      allow update: if relayConnectionWrite(userId, connectionId)
+        && request.resource.data.mode == "relayLink"
+        && resource.data.mode == "relayLink";
     }
 
     // War Room: one HermesBody per machine — the joined machine-identity
@@ -4124,7 +4126,9 @@ service cloud.firestore {
 
     match /users/{userId}/pi_agent_connections/{connectionId} {
       allow create: if piRelayConnectionWrite(userId, connectionId);
-      allow update: if piRelayConnectionWrite(userId, connectionId) && resource.data.mode == "relayLink";
+      allow update: if piRelayConnectionWrite(userId, connectionId)
+        && request.resource.data.mode == "relayLink"
+        && resource.data.mode == "relayLink";
     }
 
 

@@ -473,6 +473,155 @@ final class BurnBarUsageRecorderTests: XCTestCase {
         }
     }
 
+    func testLargeLedgerQueriesStayBoundedAndProjectionSurvivesRestart() async throws {
+        let rootURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-usage-large-ledger-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: rootURL) }
+
+        let ledgerURL = rootURL.appendingPathComponent("usage-events.jsonl")
+        let projectionURL = rootURL.appendingPathComponent("usage-projection.json")
+        let recordCount = 12_050
+        let baseTimestamp: TimeInterval = 1_750_000_000
+        let now = Date(timeIntervalSince1970: baseTimestamp + Double(recordCount) + 60)
+        let encoder = JSONEncoder()
+        var ledgerData = Data()
+        ledgerData.reserveCapacity(recordCount * 320)
+        var expectedInputTokens = 0
+        var expectedOutputTokens = 0
+        var expectedCacheCreationTokens = 0
+        var expectedCacheReadTokens = 0
+        var expectedReasoningTokens = 0
+        var expectedCost = 0.0
+        var expectedFilteredCost = 0.0
+
+        for index in 0..<recordCount {
+            let providerID = index.isMultiple(of: 2) ? "codex" : "claude_code"
+            let inputTokens = (index % 17) + 1
+            let outputTokens = index % 7
+            let cacheCreationTokens = index % 3
+            let cacheReadTokens = index % 5
+            let reasoningTokens = index % 2
+            let cost = Double((index % 11) + 1) / 1_000
+            let event = makeEvent(
+                providerID: providerID,
+                modelID: providerID == "codex" ? "gpt-5" : "claude-sonnet-4",
+                inputTokens: inputTokens,
+                outputTokens: outputTokens,
+                cacheCreationTokens: cacheCreationTokens,
+                cacheReadTokens: cacheReadTokens,
+                reasoningTokens: reasoningTokens,
+                cost: cost,
+                recordedAt: Date(timeIntervalSince1970: baseTimestamp + Double(index))
+            )
+            ledgerData.append(
+                try encoder.encode(
+                    BurnBarUsageRecord(
+                        idempotencyKey: "large-ledger-\(index)",
+                        event: event
+                    )
+                )
+            )
+            ledgerData.append(0x0A)
+
+            expectedInputTokens += inputTokens
+            expectedOutputTokens += outputTokens
+            expectedCacheCreationTokens += cacheCreationTokens
+            expectedCacheReadTokens += cacheReadTokens
+            expectedReasoningTokens += reasoningTokens
+            expectedCost += cost
+            if index >= 5_000, providerID == "codex" {
+                expectedFilteredCost += cost
+            }
+        }
+        try ledgerData.write(to: ledgerURL, options: .atomic)
+
+        let recorder = BurnBarUsageRecorder(
+            fileURL: ledgerURL,
+            projectionFileURL: projectionURL,
+            logger: BurnBarDaemonLogger(category: "usage-large-ledger-tests"),
+            now: { now }
+        )
+
+        let signature = try await recorder.signature()
+        XCTAssertEqual(signature.recordCount, recordCount)
+        XCTAssertEqual(
+            signature.latestRecordedAt,
+            Date(timeIntervalSince1970: baseTimestamp + Double(recordCount - 1))
+        )
+        let retainedRecordCount = await recorder.retainedRecordCount
+        XCTAssertEqual(retainedRecordCount, 0)
+
+        let recent = try await recorder.recentUsage(limit: 20_000)
+        XCTAssertEqual(recent.count, BurnBarUsageRecorder.maximumReturnedRecords)
+        XCTAssertEqual(recent.first?.recordedAt, signature.latestRecordedAt)
+        XCTAssertEqual(
+            recent.last?.recordedAt,
+            Date(
+                timeIntervalSince1970: baseTimestamp
+                    + Double(recordCount - BurnBarUsageRecorder.maximumReturnedRecords)
+            )
+        )
+        XCTAssertTrue(
+            zip(recent, recent.dropFirst()).allSatisfy {
+                $0.0.recordedAt >= $0.1.recordedAt
+            }
+        )
+
+        let interval = DateInterval(
+            start: Date(timeIntervalSince1970: baseTimestamp + 1_000),
+            end: Date(timeIntervalSince1970: baseTimestamp + 1_099.5)
+        )
+        let boundedWindow = try await recorder.records(in: interval, limit: 25)
+        XCTAssertEqual(boundedWindow.count, 25)
+        XCTAssertEqual(
+            boundedWindow.map(\.event.recordedAt),
+            (1_075...1_099).map {
+                Date(timeIntervalSince1970: baseTimestamp + Double($0))
+            }
+        )
+        XCTAssertTrue(
+            zip(boundedWindow, boundedWindow.dropFirst()).allSatisfy {
+                $0.0.event.recordedAt <= $0.1.event.recordedAt
+            }
+        )
+
+        let filteredCost = try await recorder.sumCost(
+            since: Date(timeIntervalSince1970: baseTimestamp + 5_000)
+        ) { $0.providerID == "codex" }
+        XCTAssertEqual(filteredCost, expectedFilteredCost, accuracy: 0.000_000_1)
+
+        let projection = try await recorder.projection()
+        XCTAssertEqual(projection.totals.eventCount, recordCount)
+        XCTAssertEqual(projection.totals.inputTokens, expectedInputTokens)
+        XCTAssertEqual(projection.totals.outputTokens, expectedOutputTokens)
+        XCTAssertEqual(projection.totals.cacheCreationTokens, expectedCacheCreationTokens)
+        XCTAssertEqual(projection.totals.cacheReadTokens, expectedCacheReadTokens)
+        XCTAssertEqual(projection.totals.reasoningTokens, expectedReasoningTokens)
+        XCTAssertEqual(
+            projection.totals.totalTokens,
+            expectedInputTokens
+                + expectedOutputTokens
+                + expectedCacheCreationTokens
+                + expectedCacheReadTokens
+                + expectedReasoningTokens
+        )
+        XCTAssertEqual(projection.totals.cost, expectedCost, accuracy: 0.000_000_1)
+        XCTAssertEqual(projection.ledgerSHA256.count, 64)
+
+        let restartedRecorder = BurnBarUsageRecorder(
+            fileURL: ledgerURL,
+            projectionFileURL: projectionURL,
+            logger: BurnBarDaemonLogger(category: "usage-large-ledger-tests"),
+            now: { now }
+        )
+        let restartedProjection = try await restartedRecorder.projection()
+        XCTAssertEqual(restartedProjection, projection)
+        XCTAssertEqual(restartedProjection.ledgerSHA256, projection.ledgerSHA256)
+        let restartedRetainedRecordCount = await restartedRecorder.retainedRecordCount
+        XCTAssertEqual(restartedRetainedRecordCount, 0)
+    }
+
     func testProjectionFailsClosedOnAggregateIntegerOverflow() async throws {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let fixture = try makeRecorderFixture(now: now)

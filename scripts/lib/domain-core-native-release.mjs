@@ -180,6 +180,22 @@ export function publicDomainProfileSha256(profile, domain) {
   });
 }
 
+// An inactive activation carries the same four identity fields a candidate
+// bundle would, and there is no attested bundle to read them from when no
+// domain ships Rust. Project them so legacy lanes can drive the same
+// candidate-bound profile and selector validation as the Rust lane.
+export function inactiveCandidateIdentity(selector) {
+  if (selector?.active !== false) {
+    throw new Error("candidate identity requires an inactive activation");
+  }
+  return validateDomainCoreCandidateIdentity({
+    candidateCommit: selector.candidateCommit,
+    coreVersion: selector.coreVersion,
+    abiVersion: selector.abiVersion,
+    sourceSha256: selector.sourceSha256,
+  });
+}
+
 export function validateNativeActivationSelector(
   raw,
   { candidate, releaseCommit, profile, profileName },

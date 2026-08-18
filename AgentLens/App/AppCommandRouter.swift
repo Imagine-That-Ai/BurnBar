@@ -57,7 +57,11 @@ final class AppCommandRouter {
         case "search", "chat":
             openConversationSearch?()
             return true
-        case "quota", "inbox":
+        // `home` belongs here too: NavigationCoordinator.handleDeepLink implements
+        // it, but a host missing from this list never reaches that handler — it
+        // falls through to `default` and is handed to the Google Sign-In fallback,
+        // so the route would be declared and unreachable.
+        case "quota", "inbox", "home":
             return routeDashboardDeepLink?(url) ?? false
         case "link-cli":
             return handleLinkCli()

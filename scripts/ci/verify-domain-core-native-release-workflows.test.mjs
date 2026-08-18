@@ -442,6 +442,10 @@ test("Windows signing and canonical evidence consume the exact gate", () => {
     gate,
     /candidate_commit: \$\{\{ steps\.gate\.outputs\.candidate_commit \}\}/u,
   );
+  assert.match(
+    gate,
+    /rust_active: \$\{\{ steps\.gate\.outputs\.rust_active \}\}/u,
+  );
   assert.match(nativeEngine, /needs: domain-core-native-release-gate/u);
   assert.match(
     nativeEngine,
@@ -469,6 +473,15 @@ test("Windows signing and canonical evidence consume the exact gate", () => {
     supplyChain,
     /expected_native_set="\$\([\s\S]*\.modes \| to_entries\[\][\s\S]*\.key == "quota" or \.key == "cloudVault"[\s\S]*\.value == "rust"[\s\S]*\| sort[\s\S]*\.schemaVersion == 2 and \.consumer == "windows" and \(\[\.domains\[\]\.domain\] \| sort\) == \$expected/u,
   );
+  assert.match(
+    supplyChain,
+    /RUST_ACTIVE: \$\{\{ needs\.domain-core-native-release-gate\.outputs\.rust_active \}\}/u,
+  );
+  assert.match(supplyChain, /protected_evidence=\(\)/u);
+  assert.match(
+    supplyChain,
+    /if \[\[ "\$RUST_ACTIVE" == "true" \]\]; then[\s\S]*--protected-signer-run-id "\$SIGNER_RUN_ID"[\s\S]*fi/u,
+  );
   assert.doesNotMatch(supplyChain, /\.domains \| length > 0/u);
   assert.match(evidence, /verify-domain-core-observed-identity\.mjs/u);
   assert.match(evidence, /create-domain-core-native-release-evidence\.mjs/u);
@@ -484,6 +497,11 @@ test("Windows signing and canonical evidence consume the exact gate", () => {
     evidence,
     /create-domain-core-native-release-evidence\.mjs[\s\S]*--commit "\$RELEASE_COMMIT"[\s\S]*--activation "\$RUNNER_TEMP\/domain-core-native-release-gate\/domain-core-activation\.json"/u,
   );
+  assert.match(
+    evidence,
+    /RUST_ACTIVE: \$\{\{ needs\.domain-core-native-release-gate\.outputs\.rust_active \}\}/u,
+  );
+  assert.match(evidence, /protected_evidence=\(\)/u);
   assert.match(evidence, /actions\/attest@[0-9a-f]{40}/u);
   assert.match(evidence, /publish-domain-core-release-evidence\.mjs/u);
   assert.match(evidence, /--phase prepare/u);

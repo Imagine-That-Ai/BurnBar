@@ -37,7 +37,7 @@ struct HermesToolCard: View {
         .animation(DesignSystem.Animation.snappy, value: isRunning)
     }
 
-    private var cardContent: some View {
+    var semanticContent: some View {
         VStack(alignment: .leading, spacing: 4) {
             // Header — always visible
             HStack(spacing: 6) {
@@ -78,6 +78,10 @@ struct HermesToolCard: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
+    }
+
+    private var cardContent: some View {
+        semanticContent
         .frame(maxWidth: 280, alignment: .leading)
         .padding(.horizontal, 10)
         .padding(.vertical, 8)

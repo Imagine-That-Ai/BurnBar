@@ -13,11 +13,8 @@ import OpenBurnBarCore
 final class OpenBurnBarDatabase: Sendable {
     typealias MigrationBackupConfigurationBuilder = @Sendable () throws -> Configuration
 
-    /// The identifier of the last registered migration, derived from the migrator
-    /// so the backup gate always tracks the newest schema and self-heals on every
-    /// future migration. Hardcoding this previously pinned it to a stale "v45",
-    /// which silently skipped the integrity-check + pre-migration backup on a
-    /// v45→v46 upgrade (any destructive v46+ step then ran with no safety net).
+    /// The identifier of the last registered migration, derived from the
+    /// migrator so schema/version consumers always track the current head.
     static var latestMigrationIdentifier: String { migrator.migrations.last ?? "" }
 
     let dbQueue: any DatabaseWriter
@@ -38,11 +35,11 @@ final class OpenBurnBarDatabase: Sendable {
 
     // MARK: - Safe Migrations (Integrity Check + Backup)
 
-    /// Run integrity check and backup only when the schema actually needs a
-    /// migration, then migrate. A full SQLite `integrity_check` walks large FTS
-    /// indexes and can block app launch for minutes on real user databases; on
-    /// ordinary already-current launches, the database should open immediately.
-    /// Skips backup for in-memory databases (tests).
+    /// Run the full integrity-check + encrypted-backup lane before unreviewed or
+    /// non-additive pending migrations, then migrate. Explicitly reviewed
+    /// additive migrations rely on GRDB's transactional rollback instead of
+    /// walking and copying a multi-gigabyte database before first paint.
+    /// In-memory databases skip backup protection.
     func runMigrationsSafely() throws {
         let migrationBackupURL: URL?
         do {

@@ -11,21 +11,17 @@ final class OpenBurnBarIrohRelayLinuxEmptyTests: XCTestCase {
         XCTAssertNotNil(ProcessInfo.processInfo.environment)
     }
 
-    func testProductionBackendMatchesShippingLibraryConfiguration() {
-        let libraryDirectory = ProcessInfo.processInfo.environment[
-            "OPENBURNBAR_LINUX_IROH_LIBRARY_DIR"
-        ]?.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        if let libraryDirectory, libraryDirectory.isEmpty == false {
-            XCTAssertNotNil(
-                OpenBurnBarIrohFFIBackendFactory.make(),
-                "shipping Linux builds must compile the production iroh backend"
-            )
-        } else {
-            XCTAssertNil(
-                OpenBurnBarIrohFFIBackendFactory.make(),
-                "development builds without the native runtime must remain fail-closed"
-            )
-        }
+    func testProductionBackendMatchesCompiledLibraryConfiguration() {
+        #if canImport(OpenBurnBarIrohFFI)
+        XCTAssertNotNil(
+            OpenBurnBarIrohFFIBackendFactory.make(),
+            "builds linked with the native runtime must construct the production iroh backend"
+        )
+        #else
+        XCTAssertNil(
+            OpenBurnBarIrohFFIBackendFactory.make(),
+            "builds without the native runtime must remain fail-closed"
+        )
+        #endif
     }
 }

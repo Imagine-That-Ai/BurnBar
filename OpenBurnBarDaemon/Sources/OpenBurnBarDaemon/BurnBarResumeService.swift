@@ -208,10 +208,7 @@ final class BurnBarResumeService: @unchecked Sendable {
     /// the count query and every persisted body passed the per-session and
     /// aggregate size limits. A caller must treat false as unavailable, never
     /// infer completeness from an empty cursor.
-    func activityHistory(
-        limit: Int,
-        usage: [BurnBarUsageRecord] = []
-    ) throws -> BurnBarActivityHistoryResponse {
+    func activityHistory(limit: Int) throws -> BurnBarActivityHistoryResponse {
         try queue.sync {
             let boundedLimit = min(max(limit, 1), Self.activityHistoryMaxLimit)
             let tombstoneFilter = columnExists("conversations", "deletedAt")
@@ -267,20 +264,19 @@ final class BurnBarResumeService: @unchecked Sendable {
                     )
                 }
 
-                let totals = usageTotals(for: row, records: usage)
                 let startedAt = nonBlank(row.startTime)
                     ?? nonBlank(row.endTime)
                     ?? nonBlank(row.indexedAt)
                     ?? "unknown"
                 let title = nonBlank(row.title) ?? providerSessionID
-                let model = nonBlank(row.summaryModel) ?? totals.model ?? "unknown"
+                let model = nonBlank(row.summaryModel) ?? "unknown"
                 sessions.append(BurnBarActivityHistorySession(
                     id: sourceID,
                     provider: nonBlank(row.provider) ?? "unknown",
                     model: model,
                     startedAt: startedAt,
-                    tokens: totals.tokens,
-                    costUsd: totals.costUsd,
+                    tokens: 0,
+                    costUsd: 0,
                     title: title,
                     sourceID: sourceID,
                     providerSessionID: providerSessionID,
@@ -297,36 +293,6 @@ final class BurnBarResumeService: @unchecked Sendable {
                 totalCount: totalCount
             )
         }
-    }
-
-    private struct UsageTotals {
-        var tokens = 0
-        var costUsd = 0.0
-        var model: String?
-    }
-
-    private func usageTotals(for row: ConversationRow, records: [BurnBarUsageRecord]) -> UsageTotals {
-        var totals = UsageTotals()
-        for record in records {
-            let event = record.event
-            let matchesSession = event.sessionID == row.sessionID
-            let matchesSource = event.runID?.rawValue == row.id
-            guard matchesSession || matchesSource else { continue }
-            let eventTokens = [event.inputTokens, event.outputTokens, event.reasoningTokens]
-                .reduce(into: 0) { partial, value in
-                    let (sum, overflow) = partial.addingReportingOverflow(max(0, value))
-                    partial = overflow ? Int.max : sum
-                }
-            let (tokenTotal, tokenOverflow) = totals.tokens.addingReportingOverflow(eventTokens)
-            totals.tokens = tokenOverflow ? Int.max : tokenTotal
-            if event.cost.isFinite {
-                totals.costUsd += max(0, event.cost)
-            }
-            if totals.model == nil, let model = nonBlank(event.modelID) {
-                totals.model = model
-            }
-        }
-        return totals
     }
 
     private func lookupConversation(_ input: String) throws -> ConversationRow? {
