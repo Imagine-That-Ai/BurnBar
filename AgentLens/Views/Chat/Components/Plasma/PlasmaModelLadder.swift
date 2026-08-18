@@ -65,8 +65,6 @@ struct PlasmaProviderGroup: Identifiable, Equatable {
     /// the flat menu buried mid-string.
     let sourceSummary: String?
     let entries: [PlasmaModelEntry]
-
-    var routableCount: Int { entries.filter { !$0.isDisabled }.count }
 }
 
 enum PlasmaModelLadder {

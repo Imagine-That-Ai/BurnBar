@@ -188,12 +188,14 @@ struct PlasmaOrb<Content: View>: View {
         )
     }
 
-    /// 11.0s serene sinusoidal breathing cycle.
+    /// The aura's breath, `0…1…0`.
+    ///
+    /// Slower than the core's 4s `plasmaGlowBreath`: the aura is a wide soft
+    /// halo, and matching the core's tempo made the whole orb pump. Eleven
+    /// seconds reads as breathing rather than pulsing.
     static func breath(at date: Date, phaseOffset: CGFloat = 0) -> CGFloat {
-        let phase = date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 11.0) / 11.0
-        let shifted = (CGFloat(phase) + phaseOffset).truncatingRemainder(dividingBy: 1)
-        let triangle = 1 - abs(2 * (shifted < 0 ? shifted + 1 : shifted) - 1)
-        return PlasmaBlobMotion.easeInOut(triangle)
+        let phase = plasmaPhase(at: date, duration: plasmaAuraBreathPeriod) + phaseOffset
+        return PlasmaBlobMotion.easeInOut(plasmaTriangle(phase))
     }
 }
 
@@ -240,8 +242,8 @@ struct PlasmaGhostBubble<Content: View>: View {
         // times a second to draw a list that has not changed. The morph only
         // needs to re-wrap an already-built view value.
         let built = content()
-        return TimelineView(.animation(minimumInterval: 1 / 30, paused: !animates)) { context in
-            let blob = animates ? PlasmaBlobMotion.bubble.state(at: context.date) : .still
+        return PlasmaClock(isRunning: animates) { tick in
+            let blob = tick.isAnimating ? PlasmaBlobMotion.bubble.state(at: tick.date) : .still
             let shape = PlasmaBlobShape(radii: blob.radii, cornerCap: 30)
 
             built
@@ -372,7 +374,11 @@ struct PlasmaTag: View {
     private var foreground: Color {
         switch emphasis {
         case .neutral: return DesignSystem.Colors.textSecondary
-        case .active: return tint
+        // Not the tint. Eight-and-a-half point heavy text over a 20% wash of
+        // its own colour is the Containment Law's exact prohibition, and
+        // `48E054` / `00E5FF` / `F97316` miss 3:1 on the light surface. The
+        // capsule fill and stroke still carry the identity.
+        case .active: return DesignSystem.Colors.textPrimary
         case .muted: return DesignSystem.Colors.textMuted
         }
     }
@@ -599,15 +605,6 @@ struct PlasmaChoice: Identifiable {
         self.action = action
     }
 
-    /// The subtitle trimmed to its leading component. A model's detail is a
-    /// composite — "gpt-5-codex · Reasoning: high · Droid Core quota" — and an
-    /// orb caption is one short line, so spelling out the whole thing there
-    /// renders as an ellipsis and identifies nothing. The first component is
-    /// the part that names the choice.
-    var compactSubtitle: String? {
-        guard let subtitle, !subtitle.isEmpty else { return nil }
-        return subtitle.components(separatedBy: " · ").first
-    }
 }
 
 /// The glyph at the heart of a choice — agent mark, provider logo, or symbol.

@@ -179,7 +179,6 @@ final class PlasmaModelSelectorTests: XCTestCase {
             gatewayModel(id: "glm-4", provider: "zai", eligible: false)
         ])
         XCTAssertEqual(groups.count, 1)
-        XCTAssertEqual(groups[0].routableCount, 1)
         XCTAssertEqual(groups[0].sourceSummary, "1 of 2 routable")
         XCTAssertTrue(groups[0].entries[1].isDisabled)
         XCTAssertEqual(groups[0].entries[1].detail?.contains("No eligible route"), true)
@@ -332,8 +331,6 @@ final class PlasmaModelSelectorTests: XCTestCase {
             tint: .blue,
             action: {}
         )
-        XCTAssertEqual(choice.compactSubtitle, "gpt-5.6-luna")
-        XCTAssertNil(PlasmaChoice(id: "x", title: "X", tint: .blue, action: {}).compactSubtitle)
     }
 
     /// Selecting a choice must run that choice's own action — the flat model is

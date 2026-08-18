@@ -89,7 +89,7 @@ struct PlasmaPersonaPicker: View {
                         .foregroundStyle(DesignSystem.Colors.textMuted)
                 }
                 Spacer(minLength: 4)
-                PlasmaSelectionTick(isSelected: selectedSeatID == nil, tint: DesignSystem.Colors.textMuted)
+                PlasmaSelectionTick(isSelected: selectedSeatID == nil)
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 6)
@@ -103,54 +103,64 @@ struct PlasmaPersonaPicker: View {
         .accessibilityAddTraits(selectedSeatID == nil ? [.isButton, .isSelected] : .isButton)
     }
 
+    /// The delete button is a *sibling* of the select button, not a child of
+    /// its label. A button inside another button's label is not independently
+    /// hit-tested on macOS — the click lands on the outer button — and
+    /// `.accessibilityElement(children: .combine)` then folds it out of the
+    /// tree entirely, leaving a hover-only tooltip as the sole affordance.
     private func seatRow(_ seat: PlasmaSeat) -> some View {
         let persona = seat.persona
         let isSelected = seat.id == selectedSeatID
-        return Button { onSelect(seat) } label: {
-            HStack(spacing: 10) {
-                // A still face at rest: a popover full of thirty blinking eyes
-                // is a distraction, not a delight.
-                PlasmaPersonaAvatar(persona: persona, diameter: 30)
+        return HStack(spacing: 6) {
+            Button { onSelect(seat) } label: {
+                HStack(spacing: 10) {
+                    PlasmaPersonaAvatar(persona: persona, diameter: 30)
 
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(seat.label)
-                        .font(.system(size: 12.5, weight: .medium, design: .rounded))
-                        .foregroundStyle(DesignSystem.Colors.textPrimary)
-                        .lineLimit(1)
-                    Text(persona.tagline)
-                        .font(.system(size: 10.5, design: .rounded))
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
-                        .lineLimit(1)
-                }
-
-                Spacer(minLength: 4)
-
-                if !seat.isBuiltIn {
-                    Button { onDelete(seat.id) } label: {
-                        Image(systemName: "trash")
-                            .font(.system(size: 10.5))
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(seat.label)
+                            .font(.system(size: 12.5, weight: .medium, design: .rounded))
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                            .lineLimit(1)
+                        Text(persona.tagline)
+                            .font(.system(size: 10.5, design: .rounded))
                             .foregroundStyle(DesignSystem.Colors.textMuted)
+                            .lineLimit(1)
                     }
-                    .buttonStyle(.plain)
-                    .help("Delete this seat")
-                    .accessibilityLabel("Delete \(seat.label)")
-                }
 
-                PlasmaSelectionTick(isSelected: isSelected, tint: persona.color)
+                    Spacer(minLength: 4)
+
+                    PlasmaSelectionTick(isSelected: isSelected)
+                }
+                .contentShape(Rectangle())
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(seat.label), \(persona.tagline)")
+            .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+            // Survives the `.combine` above, so VoiceOver can still delete.
+            .accessibilityAction(named: Text("Delete \(seat.label)")) {
+                if !seat.isBuiltIn { onDelete(seat.id) }
+            }
+
+            if !seat.isBuiltIn {
+                Button { onDelete(seat.id) } label: {
+                    Image(systemName: "trash")
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Delete this seat")
+                .accessibilityLabel("Delete \(seat.label)")
+            }
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
         .background {
             RoundedRectangle(cornerRadius: 9, style: .continuous)
                 .fill(isSelected ? DesignSystem.Colors.surfaceElevated : .clear)
         }
         .help(persona.skills.joined(separator: " · "))
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(seat.label), \(persona.tagline)")
-        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
     }
 
     // MARK: Create
@@ -241,12 +251,20 @@ struct PlasmaPersonaAvatar: View {
 /// this is the bare state for rows that are not choices.
 struct PlasmaSelectionTick: View {
     var isSelected: Bool
-    var tint: Color
 
+    /// Deliberately not the persona's colour. The ten persona hexes are raw
+    /// asset values with no light-mode variant — `84cc16` on the botanical
+    /// cream surface is about 1.9:1 — and selection is already carried by the
+    /// row fill and the `.isSelected` trait, so this glyph only has to be
+    /// readable.
     var body: some View {
         Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
             .font(.system(size: 12, weight: .semibold))
-            .foregroundStyle(isSelected ? tint : DesignSystem.Colors.textMuted.opacity(0.35))
+            .foregroundStyle(
+                isSelected
+                    ? DesignSystem.Colors.textPrimary
+                    : DesignSystem.Colors.textMuted.opacity(0.35)
+            )
             .accessibilityHidden(true)
     }
 }

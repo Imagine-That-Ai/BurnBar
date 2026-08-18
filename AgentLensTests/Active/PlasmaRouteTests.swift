@@ -90,6 +90,24 @@ final class PlasmaRouteTests: XCTestCase {
         }
     }
 
+    func testStatusShapeDistinguishesTheThreeOutcomesWithoutColour() {
+        // `AgentPresenceDot` holds the line that "colour is never the only
+        // signal", and the pill presentation of this rung uses it. The orb
+        // presentation has to make the same promise or the two disagree about
+        // who can read them.
+        XCTAssertEqual(PlasmaRouteStatus.live.dotStyle, .filled)
+        XCTAssertEqual(PlasmaRouteStatus.ready.dotStyle, .filled)
+        XCTAssertEqual(PlasmaRouteStatus.authRejected.dotStyle, .dashed)
+        XCTAssertEqual(PlasmaRouteStatus.offline.dotStyle, .hollow)
+        XCTAssertEqual(PlasmaRouteStatus.unknown.dotStyle, .hollow)
+    }
+
+    func testUsableStatesNeverShareAShapeWithBrokenOnes() {
+        let usable = Set([PlasmaRouteStatus.live, .ready].map(\.dotStyle))
+        let broken = Set([PlasmaRouteStatus.authRejected, .offline].map(\.dotStyle))
+        XCTAssertTrue(usable.isDisjoint(with: broken), "shape must survive colourblindness")
+    }
+
     func testEveryStatusHasAWordForTheLabel() {
         for state: PlasmaRouteStatus in [.live, .ready, .unknown, .authRejected, .offline] {
             XCTAssertFalse(state.word.isEmpty)

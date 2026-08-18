@@ -17,7 +17,6 @@ final class PlasmaAssetFidelityTests: XCTestCase {
         XCTAssertEqual(PlasmaBlobMotion.orbSecondary.duration, 8, "dynamicPlasmaMotion2")
         XCTAssertEqual(PlasmaBlobMotion.bubble.duration, 11, "ghostlyBubbleMorph")
         XCTAssertEqual(PlasmaGlowBreath.duration, 4, "plasmaGlowBreath")
-        XCTAssertEqual(PlasmaProxyFloat.duration, 4.2, accuracy: 0.0001, "pureProxyFloat")
     }
 
     func testConstellationDriftsUseFourDistinctAlternatingPeriods() {

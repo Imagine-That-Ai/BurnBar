@@ -13,23 +13,9 @@ import OpenBurnBarCore
 // all three rungs one click away, which is strictly more reachable than the old
 // menu: agent switching used to live in a different control entirely.
 
-struct PlasmaModelSelector<Trailing: View>: View {
-    enum Style {
-        /// Standalone pill: orb + model label. Replaces `ChatEngineModelMenu`'s
-        /// `cpu` glyph on the floating panel, the menu-bar popover and the
-        /// overflow menu.
-        case compact
-        /// Second segment of the Agent Sigil, which already draws the plate,
-        /// the rim and the agent's name.
-        case sigil
-    }
-
+struct PlasmaModelSelector: View {
     @Bindable var controller: ChatSessionController
-    var style: Style = .compact
-    var labelWidth: CGFloat = 132
-    /// The Sigil's elapsed-time suffix. Rendered between label and chevron so it
-    /// keeps dropping out first under width pressure.
-    @ViewBuilder var trailing: () -> Trailing
+    var labelWidth: CGFloat = 120
 
     @State private var isOpen = false
     @State private var level: PlasmaLadderLevel = .model
@@ -77,17 +63,23 @@ struct PlasmaModelSelector<Trailing: View>: View {
         HStack(spacing: 5) {
             PlasmaOrb(
                 tint: tint,
-                size: style == .compact ? 16 : 14,
+                size: 16,
                 motion: .orbSecondary,
                 isAnimating: orbIsAlive
             )
             Text(modelLabel)
-                .font(.system(size: style == .compact ? 9.5 : 10, weight: .semibold, design: .rounded))
-                .foregroundStyle(style == .compact ? tint : DesignSystem.Colors.textSecondary)
+                .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                // Never the agent tint. The Containment Law
+                // (`DashboardChatWorkspaceToolbar.swift:23`) keeps `sigilTint`
+                // off body text, and it is right to: several of the twelve are
+                // mid-tones that miss 4.5:1 against the app background at 9.5pt.
+                // The orb one gap to the left is already a saturated blob of
+                // exactly this colour, so the identity is not lost — only the
+                // illegibility is.
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .frame(maxWidth: labelWidth, alignment: .leading)
-            trailing()
             Image(systemName: "chevron.down")
                 .font(.system(size: 7, weight: .semibold))
                 .foregroundStyle(DesignSystem.Colors.textMuted)
@@ -169,7 +161,12 @@ struct PlasmaModelSelector<Trailing: View>: View {
             self.selection = selection
             self.routes = selector.buildRoutes()
             self.notice = selector.buildNotice(groups: all, routes: routes)
-            self.choices = selector.buildChoices(groups: all, activeGroup: group, selection: selection)
+            // Only the model rung renders a choice list. Building one for the
+            // other two cost a `ProviderQuotaChip.resolve` per enabled backend
+            // for rows nothing draws.
+            self.choices = selector.level == .model
+                ? selector.buildChoices(groups: all, activeGroup: group, selection: selection)
+                : []
         }
     }
 
@@ -189,7 +186,14 @@ struct PlasmaModelSelector<Trailing: View>: View {
             }
             crumbArrow
             crumb(.model, tint: DesignSystem.Colors.colorForModel(model), text: model) {
-                PlasmaOrb(tint: DesignSystem.Colors.colorForModel(model), size: 11, motion: .orbPrimary)
+                // Still: an 11pt orb's sub-pixel drift is invisible, and it
+                // would be a fourth concurrent timeline behind an open popover.
+                PlasmaOrb(
+                    tint: DesignSystem.Colors.colorForModel(model),
+                    size: 11,
+                    motion: .orbPrimary,
+                    isAnimating: false
+                )
             }
             Spacer(minLength: 0)
         }
@@ -299,8 +303,13 @@ struct PlasmaModelSelector<Trailing: View>: View {
                         name: state.route.backend.shortLabel,
                         mark: .backend(state.route.backend),
                         tint: state.route.tint,
-                        detail: state.route.endpointLabel ?? state.status.word,
-                        statusColor: state.status.indicatorColor,
+                        // A healthy gateway shows where it is; a broken one
+                        // shows what is wrong with it. Reporting `:8642` for an
+                        // offline Hermes defeats the only job this rung has.
+                        detail: state.status.isUsable
+                            ? (state.route.endpointLabel ?? state.status.word)
+                            : state.status.word,
+                        status: PlasmaOrbStatus(color: state.status.indicatorColor, style: state.status.dotStyle),
                         statusWord: routeStatusPhrase(state),
                         isImpaired: !state.status.isUsable
                     )
@@ -327,8 +336,11 @@ struct PlasmaModelSelector<Trailing: View>: View {
                         name: group.displayName,
                         mark: .providerID(group.id),
                         tint: providerTint(group.id),
-                        detail: "\(group.entries.count) model\(group.entries.count == 1 ? "" : "s")",
-                        statusColor: nil,
+                        // Where the tokens are billed outranks how many models
+                        // there are; the flat menu buried this mid-string.
+                        detail: group.sourceSummary
+                            ?? "\(group.entries.count) model\(group.entries.count == 1 ? "" : "s")",
+                        status: nil,
                         statusWord: group.sourceSummary
                     )
                 },
@@ -424,10 +436,17 @@ struct PlasmaModelSelector<Trailing: View>: View {
         case .agent:
             return agentChoices()
         case .provider:
-            return [automaticChoice(selection: selection)] + providerChoices(groups, active: activeGroup)
+            return automaticRow(selection) + providerChoices(groups, active: activeGroup)
         case .model:
-            return [automaticChoice(selection: selection)] + modelChoices(activeGroup, selection: selection)
+            return automaticRow(selection) + modelChoices(activeGroup, selection: selection)
         }
+    }
+
+    /// Gated by the ladder's own rule rather than open-coded, so the helper
+    /// that documents itself as the single source of truth actually is one.
+    private func automaticRow(_ selection: String) -> [PlasmaChoice] {
+        guard PlasmaModelLadder.showsAutomaticRow(on: level) else { return [] }
+        return [automaticChoice(selection: selection)]
     }
 
     private func agentChoices() -> [PlasmaChoice] {
@@ -498,13 +517,18 @@ struct PlasmaModelSelector<Trailing: View>: View {
     }
 
     private func automaticChoice(selection: String) -> PlasmaChoice {
-        PlasmaChoice(
+        // A Hermes *family* is a route, not a pinned model: `choose(provider:)`
+        // writes it through `applyHermesModelSelection` and leaves the model
+        // selection empty. `orphanCandidate` then suppresses it, so without
+        // this no row on the model rung would read as active at all.
+        let isFamilyRoute = backend == .hermes && !selection.isEmpty && orphanCandidate.isEmpty
+        return PlasmaChoice(
             id: PlasmaModelLadder.automaticChoiceID,
             title: backend == .hermes ? "Automatic (gateway picks)" : "Automatic (\(backend.displayName) decides)",
             subtitle: "Clears the pinned model for \(backend.displayName)",
             tint: tint,
             iconName: "sparkles",
-            isActive: selection.isEmpty,
+            isActive: selection.isEmpty || isFamilyRoute,
             action: { choose(modelID: "") }
         )
     }
@@ -626,9 +650,12 @@ struct PlasmaModelSelector<Trailing: View>: View {
 
     private func choose(agent candidate: ChatBackendID) {
         controller.agentDeck.switcher.select(candidate, controller: controller, settingsManager: settingsManager)
-        groupID = nil
-        // `select` can decline the switch (an unconfigured Hermes opens its
-        // wizard instead), so the ladder follows the backend that actually won.
+        // `groupID` is cleared by `.onChange(of: backend)`, which also covers
+        // switches that originate outside this control. Clearing it here too
+        // would hide which one is load-bearing when `select` declines.
+        //
+        // `select` can decline (an unconfigured Hermes opens its wizard
+        // instead), so the ladder follows the backend that actually won.
         let next = PlasmaModelLadder.levelAfterChoosingAgent(groupCount: buildGroups().count)
         withAnimation(DesignSystem.Animation.gentle) { level = next }
     }
@@ -662,16 +689,5 @@ struct PlasmaModelSelector<Trailing: View>: View {
             return ProviderBrand.colorForProviderID(providerID)
         }
         return DesignSystem.Colors.primary(for: provider)
-    }
-}
-
-extension PlasmaModelSelector where Trailing == EmptyView {
-    init(controller: ChatSessionController, style: Style = .compact, labelWidth: CGFloat = 132) {
-        self.init(
-            controller: controller,
-            style: style,
-            labelWidth: labelWidth,
-            trailing: { EmptyView() }
-        )
     }
 }

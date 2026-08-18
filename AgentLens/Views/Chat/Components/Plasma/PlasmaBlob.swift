@@ -138,7 +138,7 @@ struct PlasmaBlobMotion: Equatable, Sendable {
         // `alternate` folds the cycle into a triangle: the second half replays
         // the table in reverse rather than cutting back to the first stop.
         if autoreverses {
-            wrapped = wrapped < 0.5 ? wrapped * 2 : (1 - wrapped) * 2
+            wrapped = plasmaTriangle(wrapped)
         }
 
         // `keyframes` is authored in ascending `stop` order and always spans
