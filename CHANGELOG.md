@@ -28,7 +28,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   which folds every run across every machine into one grid with a STARTED BY
   column and per-machine / per-originator cost rollups. Standing orders persist
   in `standing_orders` (migration **v63**), with `StandingOrderScheduler` as the
-  single answer to "what should run now" for the app, the daemon, and tests.
+  single answer to "what should run now" for the app, the daemon, and tests, and
+  a runtime host that actually fires them: an order pinned to an offline Mac
+  waits for that Mac rather than being rerouted, a deferred order stays due
+  instead of silently losing its cycle, and the run is credited to the schedule
+  rather than to the router that placed it. Migration **v64** indexes
+  `token_usage.startTime` so the Command Board's window scan has an index to
+  stand on.
 - **War Room: machine-bound Hermes identity and the Wire's fail-closed spine**
   (`docs/WAR_ROOM.md`) — a Hermes is now a name bound to a *machine*, not a bot.
   Every Mac publishes one **HermesBody** (`users/{uid}/hermes_bodies/{bodyId}`):

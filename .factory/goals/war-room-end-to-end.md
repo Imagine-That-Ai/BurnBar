@@ -15,8 +15,9 @@ with a voice).
 - [x] W3 Face C Command Board: run grid, STARTED BY column, cost rollups
 - [x] W4 the Flame: `DistillRecord`, daemon service, RPC methods + socket coverage entry
 - [x] W5 Flame dispatch: `targetBodyID` plumbed through mission dispatch + rules
-- [x] W6 rhythm: standing-order persistence (GRDB v63) and the scheduler
+- [x] W6 rhythm: standing-order persistence (GRDB v63), the scheduler, and a runtime host that fires them
 - [x] Every phase carries tests that run without an Xcode build where the code allows it
+- [x] A review pass over the whole branch, with its findings fixed at the source
 
 ## Constraints
 
@@ -44,6 +45,9 @@ with a voice).
 - W4 `09d8c4e719` (distill log, `BurnBarFlameService`, 3 RPC methods, IPC canon).
 - W5 `0707f04815` (`targetBodyID` + `FlameDispatchPlanner` + rules).
 - W2/W3 `cd218bfa4f` (Hermes Room + Command Board, Kernel models + SwiftUI + settings).
+- Review fixes `bee0d1c541` (Wire fail-open delivery, concurrent reader, nondeterministic
+  rationale, daemon gateway probe, board honesty, shared components, migration v64).
+- W6 runtime `59b1e93698` (`StandingOrderRuntime` + host wired into `OpenBurnBarRuntimeContext`).
 
 Deliberate scope calls, each recorded in the commit that made them:
 
@@ -57,12 +61,19 @@ Deliberate scope calls, each recorded in the commit that made them:
 - The Command Board reads `token_usage` via a `GROUP BY sessionId` projection
   rather than widening the `TokenUsage` value type, which has hundreds of call
   sites and does not carry the v62 attribution columns.
+- **The Wire's app-side auto-dialer was deliberately not shipped.** `WarWireDialer`
+  and `WarWireLink` are complete and tested over a real transport, but nothing in
+  the app dials peers yet: that host needs the app target to compile, and it is
+  blocked by the other session. Shipping unexercised networking that reaches out
+  to other machines on its own would be the one thing this branch spent its
+  review pass removing — code asserting something nobody checked. Named here
+  rather than hidden behind a green checkbox.
 
 ## Validation
 
-- [x] `cd OpenBurnBarCore && swift test --filter "WarWire|Flame|StandingOrder|HermesRoom|CommandBoard|DistillRecord|FleetSnapshot|BurnBarOriginator"` — 213 tests, 0 failures
+- [x] `cd OpenBurnBarCore && swift test --filter "WarWire|Flame|StandingOrder|HermesRoom|CommandBoard|DistillRecord|FleetSnapshot|BurnBarOriginator"` — 203 tests, 0 failures
 - [x] `cd OpenBurnBarCore && swift test --filter "OpenBurnBarDataStandingOrderMigrationTests|WarWireDialerTests"` — 18, 0 failures
-- [x] `cd OpenBurnBarDaemon && swift test --filter "BurnBarFlameServiceTests|BurnBarDaemonSocketRPCCoverageTests"` — 18, 0 failures
+- [x] `cd OpenBurnBarDaemon && swift test --filter "BurnBarFlameServiceTests|BurnBarDaemonSocketRPCCoverageTests"` — 20, 0 failures
 - [x] `npm --prefix functions run test:firestore-rules` — 65 pass, 0 fail
 - [x] `node --test packages/hermes-wire-protocol` (18 pass) and `node parity.mjs` (PASS)
 - [x] `./tools/schema-sync/check-drift.sh` — passed
@@ -73,6 +84,11 @@ Deliberate scope calls, each recorded in the commit that made them:
 
 ## Resume Prompt
 
-All seven phases are committed. What remains is the app-target test run once
-session `a9ed65eb` lands `PlasmaTerrariumOrbItem`, and a pbxproj regeneration via
-`xcodegen` once the tree is free of the other session's WIP.
+All seven phases are committed, plus a review pass whose findings were fixed at
+the source. Three things remain, none of which this session could do:
+
+1. The app XCTest bundle, once session `a9ed65eb` lands `PlasmaTerrariumOrbItem`.
+   New app files are parse-verified only.
+2. `xcodegen` regeneration of the pbxproj, once the tree is free of that session's WIP.
+3. The Wire's app-side dial host (see the scope call above) — the last piece that
+   turns a tested transport into a live Mac-to-Mac lane.
