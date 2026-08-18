@@ -1752,6 +1752,241 @@ data class FirestoreModelBenchmarkSourceStatusDoc(
       },
     },
   },
+  "war-room": {
+    models: {
+      HermesBodyHardware: {
+        ts: `export interface HermesBodyHardware {
+  hardwareModel?: string;
+  chipBrand?: string;
+  coresPerformance?: number;
+  coresEfficiency?: number;
+  memBytes?: number;
+  gpu?: string;
+}`,
+        swift: `/// Static hardware identity for a body. Unknown fields stay absent and render em-dash.
+public struct FirestoreHermesBodyHardware: Codable, Sendable, Equatable {
+    public var hardwareModel: String?
+    public var chipBrand: String?
+    public var coresPerformance: Int?
+    public var coresEfficiency: Int?
+    public var memBytes: Int64?
+    public var gpu: String?
+}`,
+        kotlin: `@Keep
+@IgnoreExtraProperties
+data class FirestoreHermesBodyHardware(
+    val hardwareModel: String? = null,
+    val chipBrand: String? = null,
+    val coresPerformance: Long? = null,
+    val coresEfficiency: Long? = null,
+    val memBytes: Long? = null,
+    val gpu: String? = null,
+)`,
+      },
+      HermesBodyHermesState: {
+        ts: `export interface HermesBodyHermesState {
+  installed: boolean;
+  gatewayReachable: boolean;
+  version?: string;
+  gatewayClientId?: string;
+  botCount?: number;
+  botsUpdatedAt?: string;
+}`,
+        swift: `public struct FirestoreHermesBodyHermesState: Codable, Sendable, Equatable {
+    public var installed: Bool
+    public var gatewayReachable: Bool
+    public var version: String?
+    public var gatewayClientId: String?
+    public var botCount: Int?
+    public var botsUpdatedAt: String?
+}`,
+        kotlin: `@Keep
+@IgnoreExtraProperties
+data class FirestoreHermesBodyHermesState(
+    val installed: Boolean = false,
+    val gatewayReachable: Boolean = false,
+    val version: String? = null,
+    val gatewayClientId: String? = null,
+    val botCount: Long? = null,
+    val botsUpdatedAt: String? = null,
+)`,
+      },
+      HermesBodyEndpoints: {
+        ts: `export interface HermesBodyEndpoints {
+  irohNodeId?: string;
+  pairingConnectionId: string;
+}`,
+        swift: `public struct FirestoreHermesBodyEndpoints: Codable, Sendable, Equatable {
+    public var irohNodeId: String?
+    public var pairingConnectionId: String
+}`,
+        kotlin: `@Keep
+@IgnoreExtraProperties
+data class FirestoreHermesBodyEndpoints(
+    val irohNodeId: String? = null,
+    val pairingConnectionId: String = "",
+)`,
+      },
+      HermesBodyPresence: {
+        ts: `export interface HermesBodyPresence {
+  state: "idle" | "offline" | "online";
+  lastHeartbeatAt: string;
+  wireReachable: boolean;
+}`,
+        swift: `public struct FirestoreHermesBodyPresence: Codable, Sendable, Equatable {
+    public var state: String
+    public var lastHeartbeatAt: String
+    public var wireReachable: Bool
+}`,
+        kotlin: `@Keep
+@IgnoreExtraProperties
+data class FirestoreHermesBodyPresence(
+    val state: String = "",
+    val lastHeartbeatAt: String = "",
+    val wireReachable: Boolean = false,
+)`,
+      },
+      HermesBodyDoc: {
+        ts: `export interface HermesBodyDoc {
+  id: string;
+  deviceID: string;
+  displayName: string;
+  machineName: string;
+  platform: string;
+  hardware: HermesBodyHardware;
+  hermes: HermesBodyHermesState;
+  endpoints: HermesBodyEndpoints;
+  presence: HermesBodyPresence;
+  capabilities: string[];
+  schemaVersion: number;
+  createdAt: string;
+  updatedAt: string;
+}`,
+        swift: `/// Firestore: users/{uid}/hermes_bodies/{bodyId}
+/// bodyId == relay-host-<installationUUID>; written only by the owning Mac.
+public struct FirestoreHermesBodyDoc: Codable, Sendable, Equatable {
+    public var id: String
+    public var deviceID: String
+    public var displayName: String
+    public var machineName: String
+    public var platform: String
+    public var hardware: FirestoreHermesBodyHardware
+    public var hermes: FirestoreHermesBodyHermesState
+    public var endpoints: FirestoreHermesBodyEndpoints
+    public var presence: FirestoreHermesBodyPresence
+    public var capabilities: [String]
+    public var schemaVersion: Int
+    public var createdAt: String
+    public var updatedAt: String
+}`,
+        kotlin: `@Keep
+@IgnoreExtraProperties
+data class FirestoreHermesBodyDoc(
+    val id: String = "",
+    @get:PropertyName("deviceID") @set:PropertyName("deviceID")
+    var deviceId: String = "",
+    val displayName: String = "",
+    val machineName: String = "",
+    val platform: String = "",
+    val hardware: FirestoreHermesBodyHardware = FirestoreHermesBodyHardware(),
+    val hermes: FirestoreHermesBodyHermesState = FirestoreHermesBodyHermesState(),
+    val endpoints: FirestoreHermesBodyEndpoints = FirestoreHermesBodyEndpoints(),
+    val presence: FirestoreHermesBodyPresence = FirestoreHermesBodyPresence(),
+    val capabilities: List<String> = emptyList(),
+    val schemaVersion: Long = 0,
+    val createdAt: String = "",
+    val updatedAt: String = "",
+)`,
+      },
+      OriginatorRef: {
+        ts: `export interface OriginatorRef {
+  kind: "external" | "flame" | "hermes_bot" | "hermes_cron" | "mission" | "unknown" | "user_local" | "user_remote" | "wand";
+  label: string;
+  bodyID?: string;
+  decisionID?: string;
+  missionID?: string;
+  missionGroupID?: string;
+  botName?: string;
+  confidence: "exact" | "inferred" | "unknown";
+}`,
+        swift: `/// STARTED BY attribution stamped wherever work begins (Command Board column).
+public struct FirestoreOriginatorRef: Codable, Sendable, Equatable {
+    public var kind: String
+    public var label: String
+    public var bodyID: String?
+    public var decisionID: String?
+    public var missionID: String?
+    public var missionGroupID: String?
+    public var botName: String?
+    public var confidence: String
+}`,
+        kotlin: `@Keep
+@IgnoreExtraProperties
+data class FirestoreOriginatorRef(
+    val kind: String = "",
+    val label: String = "",
+    @get:PropertyName("bodyID") @set:PropertyName("bodyID")
+    var bodyId: String? = null,
+    @get:PropertyName("decisionID") @set:PropertyName("decisionID")
+    var decisionId: String? = null,
+    @get:PropertyName("missionID") @set:PropertyName("missionID")
+    var missionId: String? = null,
+    @get:PropertyName("missionGroupID") @set:PropertyName("missionGroupID")
+    var missionGroupId: String? = null,
+    val botName: String? = null,
+    val confidence: String = "",
+)`,
+      },
+      WarWireGrantDoc: {
+        ts: `export interface WarWireGrantDoc {
+  id: string;
+  bodyIdA: string;
+  bodyIdB: string;
+  state: "active" | "revoked";
+  grantedByDeviceID: string;
+  grantedAt: string;
+  revokedByDeviceID?: string;
+  revokedAt?: string;
+  schemaVersion: number;
+  createdAt: string;
+  updatedAt: string;
+}`,
+        swift: `/// Firestore: users/{uid}/war_wire_grants/{pairId}
+/// pairId == the two bodyIds sorted lexicographically and joined with "__".
+/// Revocable from either machine; unverifiable state reads as revoked.
+public struct FirestoreWarWireGrantDoc: Codable, Sendable, Equatable {
+    public var id: String
+    public var bodyIdA: String
+    public var bodyIdB: String
+    public var state: String
+    public var grantedByDeviceID: String
+    public var grantedAt: String
+    public var revokedByDeviceID: String?
+    public var revokedAt: String?
+    public var schemaVersion: Int
+    public var createdAt: String
+    public var updatedAt: String
+}`,
+        kotlin: `@Keep
+@IgnoreExtraProperties
+data class FirestoreWarWireGrantDoc(
+    val id: String = "",
+    val bodyIdA: String = "",
+    val bodyIdB: String = "",
+    val state: String = "",
+    @get:PropertyName("grantedByDeviceID") @set:PropertyName("grantedByDeviceID")
+    var grantedByDeviceId: String = "",
+    val grantedAt: String = "",
+    @get:PropertyName("revokedByDeviceID") @set:PropertyName("revokedByDeviceID")
+    var revokedByDeviceId: String? = null,
+    val revokedAt: String? = null,
+    val schemaVersion: Long = 0,
+    val createdAt: String = "",
+    val updatedAt: String = "",
+)`,
+      },
+    },
+  },
 };
 
 function emitTypeScript(domainId, models) {

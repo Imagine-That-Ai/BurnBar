@@ -664,6 +664,15 @@ enum SettingsManifest {
             subtitle: "Cast cost glances to Nest Hub, Pixel Tablet, and Pixel Clock",
             keywords: ["nest", "hub", "pixel", "clock", "display", "cast"]
         ),
+        SettingsItem(
+            id: "devices.hermesBodies",
+            tab: .devicesAndSync,
+            pageRoute: .devicesAndSyncRoot,
+            anchorID: SettingsAnchor.hermesBodies,
+            title: "Hermes Bodies",
+            subtitle: "Each Mac's Hermes identity — name, hardware, and presence",
+            keywords: ["hermes", "body", "mac", "machine", "fleet", "war", "room", "rename"]
+        ),
 
         // MARK: Text Expansion
 
@@ -943,6 +952,7 @@ enum SettingsManifest {
         SettingsAnchor.cloudSyncToggle,
         SettingsAnchor.trustedDevices,
         SettingsAnchor.smartDisplays,
+        SettingsAnchor.hermesBodies,
         SettingsAnchor.textExpansionSnippets,
         SettingsAnchor.textExpansionRuntime,
         SettingsAnchor.mediaPermissions,

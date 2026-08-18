@@ -438,6 +438,18 @@ export interface CLIAgentMissionRequestDoc {
   source: "ios-insights" | "android-insights" | "mac-insights" | "ios-chat" | "android-chat";
   sourceSkillID?: HermesSkillRunIDDoc;
   sourceSurface?: string;
+  /** War Room STARTED BY attribution (Command Board) — flat form of OriginatorRef. */
+  originatorKind?:
+    | "user_local"
+    | "user_remote"
+    | "flame"
+    | "wand"
+    | "mission"
+    | "hermes_bot"
+    | "hermes_cron"
+    | "external"
+    | "unknown";
+  originatorRef?: string;
   deliveryMode?: SkillRunDeliveryModeDoc;
   parentHermesThreadID?: string;
   status: string;

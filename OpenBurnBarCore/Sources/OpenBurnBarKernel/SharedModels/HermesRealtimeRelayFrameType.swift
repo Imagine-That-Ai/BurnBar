@@ -85,4 +85,17 @@ public enum HermesRealtimeRelayFrameType: String, Codable, Sendable, Equatable {
     // older peers skip unknown control frame types.
     case controlSystemPermissionRequest = "control.system.permission.request"
     case controlSystemPermissionStatus = "control.system.permission.status"
+    // War Room — the Wire. The encrypted Mac⇄Mac lane
+    // (plans/2026-08-17-war-room-master-plan.md). Entitlement-gated to
+    // Pro/Ultra and fail-closed: a peer that cannot prove an active
+    // war_wire_grant answers `war.denied` and the dispatcher falls back to the
+    // Firestore relay rather than degrading silently.
+    case warHello = "war.hello"
+    case warHelloAck = "war.hello.ack"
+    case warFleetSnapshot = "war.fleet.snapshot"
+    case warDispatch = "war.dispatch"
+    case warDispatchAck = "war.dispatch.ack"
+    case warStreamChunk = "war.stream.chunk"
+    case warStreamComplete = "war.stream.complete"
+    case warDenied = "war.denied"
 }

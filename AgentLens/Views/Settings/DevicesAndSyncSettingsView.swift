@@ -161,6 +161,18 @@ struct DevicesAndSyncSettingsView: View {
                         )
                     }
                     .settingsAnchor(SettingsAnchor.smartDisplays)
+
+                    NavigationLink {
+                        HermesBodiesDetailView()
+                    } label: {
+                        SettingsDrillRow(
+                            icon: "desktopcomputer",
+                            iconTint: DesignSystem.Colors.hermesAureate,
+                            title: "Hermes Bodies",
+                            subtitle: "Each Mac's Hermes identity — name, hardware, and presence"
+                        )
+                    }
+                    .settingsAnchor(SettingsAnchor.hermesBodies)
                 } header: {
                     Text("Devices")
                 } footer: {
