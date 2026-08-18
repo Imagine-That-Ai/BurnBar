@@ -621,3 +621,201 @@ private final class MemoryExtractionExtractorHTTPStub: URLProtocol {
 
     override func stopLoading() {}
 }
+
+// MARK: - Agent-conversation extraction source (T0.2: memory learns from the corpus)
+
+@MainActor
+final class AgentConversationExtractionSourceTests: XCTestCase {
+
+    // MARK: Turn splitting
+
+    func test_splitTranscript_parsesCodexAndClaudeHeadings() {
+        let anchor = Date(timeIntervalSince1970: 1_755_300_000)
+        let codex = AgentConversationExtractionSource.splitTranscript(
+            conversationID: "conv-codex",
+            fullText: "## User\n\nFix the flaky test\n\n## Assistant\n\nThe retry loop was the culprit.",
+            anchoredAt: anchor
+        )
+        XCTAssertEqual(codex.map(\.role), ["user", "assistant"])
+        XCTAssertEqual(codex.map(\.id), ["conv-codex#turn-0", "conv-codex#turn-1"])
+        XCTAssertEqual(codex[0].body, "Fix the flaky test")
+
+        let claude = AgentConversationExtractionSource.splitTranscript(
+            conversationID: "conv-claude",
+            fullText: "## You\n\nAdd the migration\n\n## Assistant\n\nDone — v50 adds the column.",
+            anchoredAt: anchor
+        )
+        XCTAssertEqual(claude.map(\.role), ["user", "assistant"])
+        XCTAssertEqual(claude[1].body, "Done — v50 adds the column.")
+    }
+
+    func test_splitTranscript_fallsBackToOneUserTurnForUnheadedText() {
+        // Several parsers store plain concatenated text with no turn headings —
+        // those transcripts must still be extractable, not silently skipped.
+        let turns = AgentConversationExtractionSource.splitTranscript(
+            conversationID: "conv-plain",
+            fullText: "The build needs cmake on the self-hosted runners.",
+            anchoredAt: Date(timeIntervalSince1970: 0)
+        )
+        XCTAssertEqual(turns.count, 1)
+        XCTAssertEqual(turns[0].role, "user")
+        XCTAssertEqual(turns[0].id, "conv-plain#turn-0")
+    }
+
+    func test_splitTranscript_emptyAndWhitespaceYieldNothing() {
+        XCTAssertTrue(
+            AgentConversationExtractionSource.splitTranscript(
+                conversationID: "c", fullText: "  \n\n  ", anchoredAt: Date()
+            ).isEmpty
+        )
+    }
+
+    func test_threadIDRoundTrip() {
+        let threadID = AgentConversationExtractionSource.threadID(forConversationID: "abc:with:colons")
+        XCTAssertEqual(
+            AgentConversationExtractionSource.conversationID(fromThreadID: threadID),
+            "abc:with:colons"
+        )
+        XCTAssertNil(AgentConversationExtractionSource.conversationID(fromThreadID: "chat-thread-1"))
+        XCTAssertNil(AgentConversationExtractionSource.conversationID(fromThreadID: "agent-conversation:"))
+    }
+
+    // MARK: Harvest → jobs table (idempotent, quiet-gated)
+
+    private struct Stores {
+        let dataStore: DataStore
+        let controlPlane: ControlPlaneStore
+    }
+
+    private func makeStores() throws -> Stores {
+        let queue = try DatabaseQueue()
+        let dataStore = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        // Same construction as production (AgentLensApp+MemoryServices): the
+        // control plane shares the data store's queue.
+        return Stores(
+            dataStore: dataStore,
+            controlPlane: ControlPlaneStore(dbQueue: dataStore.actor.dbQueue)
+        )
+    }
+
+    private func makeConversation(
+        id: String,
+        fullText: String,
+        fileModifiedAt: Date,
+        messageCount: Int = 4
+    ) -> ConversationRecord {
+        ConversationRecord(
+            id: id,
+            provider: .claudeCode,
+            sessionId: "session-\(id)",
+            projectName: "BurnBar",
+            startTime: fileModifiedAt.addingTimeInterval(-600),
+            endTime: fileModifiedAt,
+            messageCount: messageCount,
+            userWordCount: 20,
+            assistantWordCount: 40,
+            keyFiles: [],
+            keyCommands: [],
+            keyTools: [],
+            inferredTaskTitle: "Task \(id)",
+            lastAssistantMessage: "Done.",
+            fullText: fullText,
+            indexedAt: fileModifiedAt,
+            fileModifiedAt: fileModifiedAt,
+            summary: nil,
+            summaryTitle: nil,
+            summaryUpdatedAt: nil,
+            summaryProvider: nil,
+            summaryModel: nil,
+            sourceType: .providerLog
+        )
+    }
+
+    private func pendingJobs(in store: ControlPlaneStore) async throws -> [(id: String, threadID: String)] {
+        try await store.dbQueue.read { db in
+            try Row.fetchAll(
+                db,
+                sql: "SELECT id, thread_id FROM memory_extraction_jobs ORDER BY created_at ASC"
+            ).compactMap { row -> (id: String, threadID: String)? in
+                guard let id = row["id"] as? String, let threadID = row["thread_id"] as? String else { return nil }
+                return (id: id, threadID: threadID)
+            }
+        }
+    }
+
+    func test_harvest_enqueuesQuietConversationsExactlyOnce() async throws {
+        let stores = try makeStores()
+        let now = Date(timeIntervalSince1970: 1_755_300_000)
+        let quiet = makeConversation(
+            id: "conv-quiet",
+            fullText: "## User\n\nShip it\n\n## Assistant\n\nShipped.",
+            fileModifiedAt: now.addingTimeInterval(-45 * 60)
+        )
+        let active = makeConversation(
+            id: "conv-active",
+            fullText: "## User\n\nStill going",
+            fileModifiedAt: now.addingTimeInterval(-2 * 60)
+        )
+        _ = try await ConversationIndexer.shared.index([quiet, active], in: stores.dataStore)
+
+        let first = try await stores.controlPlane.harvestAgentConversationExtractions(now: now)
+        XCTAssertEqual(first, 1, "Only the QUIET conversation is harvested; an active session waits.")
+
+        let jobs = try await pendingJobs(in: stores.controlPlane)
+        XCTAssertEqual(jobs.count, 1)
+        XCTAssertEqual(
+            jobs[0].threadID,
+            AgentConversationExtractionSource.threadID(forConversationID: "conv-quiet")
+        )
+
+        // Idempotency: an unchanged conversation collapses onto its existing job.
+        let second = try await stores.controlPlane.harvestAgentConversationExtractions(now: now)
+        XCTAssertEqual(second, 1, "The sweep re-visits the row…")
+        let jobsAfter = try await pendingJobs(in: stores.controlPlane)
+        XCTAssertEqual(jobsAfter.count, 1, "…but the idempotency key keeps it ONE job.")
+
+        // Growth: new content state becomes exactly one new job.
+        let grown = makeConversation(
+            id: "conv-quiet",
+            fullText: "## User\n\nShip it\n\n## Assistant\n\nShipped.\n\n## User\n\nNow document it",
+            fileModifiedAt: now.addingTimeInterval(-31 * 60),
+            messageCount: 6
+        )
+        _ = try await ConversationIndexer.shared.index([grown], in: stores.dataStore)
+        _ = try await stores.controlPlane.harvestAgentConversationExtractions(now: now)
+        let jobsGrown = try await pendingJobs(in: stores.controlPlane)
+        XCTAssertEqual(jobsGrown.count, 2, "A grown conversation re-extracts under a new content-state key.")
+    }
+
+    // MARK: Store transcript + provenance resolution
+
+    func test_storeResolvesConversationTranscriptAndProvenanceTurns() async throws {
+        let stores = try makeStores()
+        let now = Date(timeIntervalSince1970: 1_755_300_000)
+        let conversation = makeConversation(
+            id: "conv-prov",
+            fullText: "## User\n\nWhere does the key live?\n\n## Assistant\n\nIn the Keychain item.",
+            fileModifiedAt: now.addingTimeInterval(-60 * 60)
+        )
+        _ = try await ConversationIndexer.shared.index([conversation], in: stores.dataStore)
+
+        let threadID = AgentConversationExtractionSource.threadID(forConversationID: "conv-prov")
+        let transcript = try await stores.controlPlane.fetchChatTranscriptForExtraction(threadID: threadID)
+        XCTAssertEqual(transcript.map(\.role), ["user", "assistant"])
+
+        // The worker's provenance lookup resolves the same deterministic turn id
+        // the extractor prompted with — citations bind to real corpus content.
+        let cited = try await stores.controlPlane.fetchChatProvenanceSourceMessage(
+            threadID: threadID,
+            messageID: "conv-prov#turn-1"
+        )
+        XCTAssertEqual(cited?.role, "assistant")
+        XCTAssertEqual(cited?.body, "In the Keychain item.")
+
+        let missing = try await stores.controlPlane.fetchChatProvenanceSourceMessage(
+            threadID: threadID,
+            messageID: "conv-prov#turn-99"
+        )
+        XCTAssertNil(missing, "A turn the split no longer produces is dropped, never fabricated.")
+    }
+}

@@ -354,7 +354,10 @@ private struct CloudStoreTopUpTile: View {
                 .foregroundStyle(ProTheme.Membership.foilLeaf)
 
             HStack(spacing: MobileTheme.Spacing.md) {
-                ForEach(OpenBurnBarProductCatalog.topUps) { topUp in
+                // Only packs a client can actually SPEND are sold — see
+                // `purchasableTopUps` for why Agent Control and relay packs
+                // are withheld until their reserve callables gain a caller.
+                ForEach(OpenBurnBarProductCatalog.purchasableTopUps) { topUp in
                     CloudTopUpChip(
                         catalogProduct: topUp,
                         priceText: store.displayPrice(for: topUp),

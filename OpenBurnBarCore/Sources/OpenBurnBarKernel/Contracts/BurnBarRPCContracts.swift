@@ -164,6 +164,10 @@ public enum BurnBarRPCMethod: String, Codable, CaseIterable, Hashable, Sendable 
     case clientDetach = "client.detach"
     /// Planner-backed lexical + aggregate search over the local OpenBurnBar SQLite index (daemon must have DB path).
     case searchQuery = "daemon.search.query"
+    /// Single read-only SELECT over the shared indexed store, executed on the daemon's
+    /// keyed handle so socket clients (local MCP) work against the SQLCipher database
+    /// without holding the key. Enforced via `sqlite3_stmt_readonly` + row/byte caps.
+    case searchSQL = "daemon.search.sql"
     case memoryRemember = "daemon.memory.remember"
     case memoryRecall = "daemon.memory.recall"
     case memoryReviewStatus = "daemon.memory.review_status"

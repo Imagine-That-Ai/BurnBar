@@ -1,4 +1,4 @@
-import { errorMessage, isRecord, isTimestampWithToMillis } from "./guards.js";
+import { errorMessage, isRecord, isTimestampWithToMillis, numberField } from "./guards.js";
 /**
  * @fileoverview BurnBar-hosted Intelligence Brief fallback callable.
  *
@@ -106,6 +106,16 @@ const DEFAULT_BASE_URL = "https://openrouter.ai/api/v1";
 const DEFAULT_DISPLAY_NAME = "MiniMax 2.7 · BurnBar Hosted";
 const DEFAULT_MAX_PROMPT_CHARS = 8000;
 const DEFAULT_MAX_USER_PROMPT_CHARS = 12000;
+/**
+ * Hard monthly ceiling on owner-funded OpenRouter spend per uid, in USD.
+ * The daily/burst rate limits bound call VOLUME; this bounds DOLLARS, which is
+ * the number the business model actually promises ("capped so it can't cost
+ * more than it brings in"). $2.00 against ~$6.79/mo net revenue keeps this
+ * feature's worst case under 30% of net even before real usage patterns
+ * (a heavy month of 40 answers ≈ $0.06). Override:
+ * `INSIGHTS_HOSTED_MONTHLY_USD_CAP`.
+ */
+const DEFAULT_MONTHLY_USD_CAP = 2.0;
 // Default-model pricing lives in pricing.ts (single source of truth for
 // hardcoded USD rates in functions).
 
@@ -190,7 +200,18 @@ function parseOpenRouterResponse(raw: unknown): OpenRouterResponse | undefined {
   if (!isRecord(raw)) return undefined;
   const choices = Array.isArray(raw.choices) ? raw.choices : undefined;
   const error = isRecord(raw.error) ? raw.error : undefined;
+  // `usage` must survive the parse: dropping it (as this parser originally
+  // did) silently zeroed every token count downstream, so estimatedCostUSD
+  // reported $0.00 for every hosted answer and the spend ledger recorded
+  // nothing. The monthly-ledger test pins this now.
+  const usage = isRecord(raw.usage) ? raw.usage : undefined;
   return {
+    usage: usage
+      ? {
+          prompt_tokens: typeof usage.prompt_tokens === "number" ? usage.prompt_tokens : undefined,
+          completion_tokens: typeof usage.completion_tokens === "number" ? usage.completion_tokens : undefined,
+        }
+      : undefined,
     choices: choices?.flatMap((choice, index): OpenRouterChoice[] => {
       if (!isRecord(choice)) return [];
       const message = isRecord(choice.message) ? choice.message : undefined;
@@ -537,6 +558,22 @@ export const insightsHostedAnswer = onCall(
       // validation, secret preflight, payload-size cap, and qualifies as a
       // billable hosted answer.
       await checkHostedInsightsAnswerRateLimit(uid);
+      // Dollars, not just volume: refuse once this uid's month has consumed
+      // its owner-funded budget. Read-then-spend (the transactional increment
+      // lands post-call) can overshoot by at most one burst window of calls —
+      // a few tenths of a cent — which the burst limiter above bounds.
+      const monthKey = isoNow().slice(0, 7);
+      const monthlyCapUSD = parseNumericEnv("INSIGHTS_HOSTED_MONTHLY_USD_CAP", DEFAULT_MONTHLY_USD_CAP);
+      const monthRef = db().doc(hostedInsightsMonthDocPath(uid, monthKey));
+      const monthSnapshot = await monthRef.get();
+      const spentUSD = numberField(monthSnapshot.data() ?? {}, "spentUSD") ?? 0;
+      if (spentUSD >= monthlyCapUSD) {
+        throw new HttpsError(
+          "resource-exhausted",
+          "Hosted answers for this month are used up. The budget resets at the start of next month.",
+          { code: "hosted-insights-monthly-cap" },
+        );
+      }
 
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 45_000);
@@ -557,7 +594,12 @@ export const insightsHostedAnswer = onCall(
         clearTimeout(timer);
       }
 
-      const envelope = sanitizeEnvelope(openRouterContent);
+      // ACCOUNTING BEFORE VALIDATION. OpenRouter has already billed us for the
+      // tokens above; whether the model then returned well-formed JSON is our
+      // problem, not the meter's. Sanitizing first (as this originally did) let
+      // a run of malformed-but-billed answers spend owner funds without ever
+      // touching the monthly cap or the COGS rollup — the advertised dollar cap
+      // was bypassable by making the model produce garbage.
       const completedAtISO = isoNow();
       const inputTokens = openRouterRaw.usage?.prompt_tokens ?? 0;
       const outputTokens = openRouterRaw.usage?.completion_tokens ?? 0;
@@ -588,6 +630,46 @@ export const insightsHostedAnswer = onCall(
         await flushDomainCorePricingShadowEvidence();
       }
 
+      // The usage record the margin pipeline was blind to: every owner-funded
+      // answer now lands in (a) a per-uid monthly ledger — what the monthly cap
+      // reads — and (b) the ops per-day rollup `computeTierCogsDaily` sums into
+      // the margin dashboard, same doc family as media/vision COGS. One
+      // transaction so concurrent answers accumulate rather than clobber.
+      const dayKey = completedAtISO.slice(0, 10);
+      const dayRef = db().doc(`ops/hosted_insights_daily_rollups/days/${dayKey}`);
+      await db().runTransaction(async (tx) => {
+        const [monthSnap, daySnap] = await Promise.all([tx.get(monthRef), tx.get(dayRef)]);
+        const existingMonth = monthSnap.data() ?? {};
+        const existingDay = daySnap.data() ?? {};
+        tx.set(
+          monthRef,
+          {
+            monthKey,
+            spentUSD: (numberField(existingMonth, "spentUSD") ?? 0) + estimatedCostUSD,
+            answerCount: (numberField(existingMonth, "answerCount") ?? 0) + 1,
+            inputTokens: (numberField(existingMonth, "inputTokens") ?? 0) + inputTokens,
+            outputTokens: (numberField(existingMonth, "outputTokens") ?? 0) + outputTokens,
+            updatedAt: completedAtISO,
+          },
+          { merge: true },
+        );
+        tx.set(
+          dayRef,
+          {
+            dayKey,
+            spendUSD: (numberField(existingDay, "spendUSD") ?? 0) + estimatedCostUSD,
+            answerCount: (numberField(existingDay, "answerCount") ?? 0) + 1,
+            updatedAt: completedAtISO,
+          },
+          { merge: true },
+        );
+      });
+
+      // Now that the spend is durably recorded, validate the model output. A
+      // throw from here is a failed answer the user is not charged for in the
+      // product sense, but the owner-side cost is already on the ledger.
+      const envelope = sanitizeEnvelope(openRouterContent);
+
       return {
         envelope,
         providerKey: "burnbar-hosted",
@@ -608,6 +690,15 @@ export const insightsHostedAnswer = onCall(
     },
   ),
 );
+
+/**
+ * Per-uid monthly ledger for owner-funded hosted answers. Same path family as
+ * the Cloud Pro allowance plane (`users/{uid}/billing/...`) so billing state
+ * stays under one root.
+ */
+function hostedInsightsMonthDocPath(uid: string, monthKey: string): string {
+  return `users/${uid}/billing/hosted_insights/months/${monthKey}`;
+}
 
 /**
  * Parse an env var as a non-negative float. Returns `fallback` when

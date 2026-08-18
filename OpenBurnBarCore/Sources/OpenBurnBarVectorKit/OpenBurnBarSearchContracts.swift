@@ -139,3 +139,87 @@ public struct BurnBarSearchQueryResult: Codable, Sendable, Hashable {
         self.semanticHitCount = semanticHitCount
     }
 }
+
+// MARK: - Read-only SQL (daemon + local MCP)
+
+/// One SQLite value crossing the read-only SQL wire. Encodes as the natural
+/// JSON scalar (`null` / number / string) so socket clients in any language can
+/// consume rows without a decoder; blobs — rare in the served tables — ride as
+/// `{"$blob": "<base64>"}` to stay lossless.
+public enum BurnBarSQLValue: Codable, Sendable, Hashable {
+    case null
+    case integer(Int64)
+    case real(Double)
+    case text(String)
+    case blob(Data)
+
+    private struct BlobEnvelope: Codable {
+        let blob: String
+        enum CodingKeys: String, CodingKey { case blob = "$blob" }
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if container.decodeNil() {
+            self = .null
+        } else if let integer = try? container.decode(Int64.self) {
+            self = .integer(integer)
+        } else if let real = try? container.decode(Double.self) {
+            self = .real(real)
+        } else if let text = try? container.decode(String.self) {
+            self = .text(text)
+        } else if let envelope = try? container.decode(BlobEnvelope.self),
+                  let data = Data(base64Encoded: envelope.blob) {
+            self = .blob(data)
+        } else {
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Unsupported SQL value payload."
+            )
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .null: try container.encodeNil()
+        case .integer(let value): try container.encode(value)
+        case .real(let value): try container.encode(value)
+        case .text(let value): try container.encode(value)
+        case .blob(let data): try container.encode(BlobEnvelope(blob: data.base64EncodedString()))
+        }
+    }
+}
+
+/// Parameters for `BurnBarRPCMethod.searchSQL` — a single read-only SELECT
+/// against the shared indexed store, executed by the daemon (which holds the
+/// SQLCipher key) so external readers never need the database key or a codec.
+///
+/// Enforcement is structural, not textual: the daemon prepares the statement
+/// and rejects it unless `sqlite3_stmt_readonly` reports true, on top of a
+/// read-only posture and row/byte caps. Multiple statements are rejected.
+public struct BurnBarSearchSQLRequest: Codable, Sendable, Hashable {
+    public let sql: String
+    public let args: [BurnBarSQLValue]
+    /// Row ceiling for the response; the daemon clamps to its own maximum.
+    public let maxRows: Int?
+
+    public init(sql: String, args: [BurnBarSQLValue] = [], maxRows: Int? = nil) {
+        self.sql = sql
+        self.args = args
+        self.maxRows = maxRows
+    }
+}
+
+public struct BurnBarSearchSQLResult: Codable, Sendable, Hashable {
+    public let columns: [String]
+    public let rows: [[BurnBarSQLValue]]
+    /// True when the row or byte ceiling cut the result short.
+    public let truncated: Bool
+
+    public init(columns: [String], rows: [[BurnBarSQLValue]], truncated: Bool) {
+        self.columns = columns
+        self.rows = rows
+        self.truncated = truncated
+    }
+}

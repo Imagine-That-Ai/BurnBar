@@ -1,6 +1,6 @@
 {
   "generatedBy": "tools/ipc/generate-burnbarrpc-canon.mjs",
-  "methodCount": 181,
+  "methodCount": 182,
   "methods": [
     {
       "id": "approval.respond",
@@ -1510,6 +1510,16 @@
       "owner": "OpenBurnBarDaemon",
       "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
       "result": "Codable response for daemon.search.query",
+      "error": "BurnBarRPCError"
+    },
+    {
+      "id": "daemon.search.sql",
+      "caseName": "searchSQL",
+      "domain": "search",
+      "capability": "search",
+      "owner": "OpenBurnBarDaemon",
+      "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+      "result": "Codable response for daemon.search.sql",
       "error": "BurnBarRPCError"
     },
     {

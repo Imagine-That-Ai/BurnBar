@@ -5,12 +5,12 @@ enum ClaudeCodeStreamJSONParser {
     /// Emits ordered `.text` / `.toolUse` events for one NDJSON line from Claude Code `stream-json`.
     static func events(fromLine line: String) -> [CLIChatStreamEvent] {
         guard let data = line.data(using: .utf8),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(malformed line skipped)
+              let obj = try? JSONSerialization.jsonObject(with: data) as? UntypedJSONObject else { // try?-ok(malformed line skipped)
             return []
         }
 
-        if let message = obj["message"] as? [String: Any],
-           let content = message["content"] as? [[String: Any]], !content.isEmpty {
+        if let message = obj["message"] as? UntypedJSONObject,
+           let content = message["content"] as? [UntypedJSONObject], !content.isEmpty {
             var out: [CLIChatStreamEvent] = []
             for block in content {
                 let kind = block["type"] as? String ?? ""
@@ -40,13 +40,13 @@ enum ClaudeCodeStreamJSONParser {
         return []
     }
 
-    private static func toolUsePayload(from obj: [String: Any]) -> (String, String?)? {
+    private static func toolUsePayload(from obj: UntypedJSONObject) -> (String, String?)? {
         let name = (obj["name"] as? String) ?? (obj["tool"] as? String)
         guard let name, !name.isEmpty else { return nil }
-        return (name, toolInputSummary(obj["input"] as? [String: Any]))
+        return (name, toolInputSummary(obj["input"] as? UntypedJSONObject))
     }
 
-    private static func toolResultPayload(from obj: [String: Any]) -> (String, String?)? {
+    private static func toolResultPayload(from obj: UntypedJSONObject) -> (String, String?)? {
         let name = (obj["name"] as? String)
             ?? (obj["tool"] as? String)
             ?? (obj["tool_name"] as? String)
@@ -55,7 +55,7 @@ enum ClaudeCodeStreamJSONParser {
         return (name, toolResultSummary(from: obj))
     }
 
-    private static func toolInputSummary(_ input: [String: Any]?) -> String? {
+    private static func toolInputSummary(_ input: UntypedJSONObject?) -> String? {
         guard let input else { return nil }
         if let p = input["path"] as? String ?? input["file_path"] as? String, !p.isEmpty { return p }
         if let c = input["command"] as? String, !c.isEmpty { return String(c.prefix(160)) }
@@ -64,7 +64,7 @@ enum ClaudeCodeStreamJSONParser {
         return nil
     }
 
-    private static func toolResultSummary(from obj: [String: Any]) -> String? {
+    private static func toolResultSummary(from obj: UntypedJSONObject) -> String? {
         if let content = obj["content"] as? String, !content.isEmpty {
             return String(content.prefix(400))
         }
@@ -74,7 +74,7 @@ enum ClaudeCodeStreamJSONParser {
         if let output = obj["output"] as? String, !output.isEmpty {
             return String(output.prefix(400))
         }
-        if let content = obj["content"] as? [[String: Any]] {
+        if let content = obj["content"] as? [UntypedJSONObject] {
             let joined = content.compactMap { block in
                 (block["text"] as? String) ?? (block["content"] as? String)
             }
@@ -85,16 +85,16 @@ enum ClaudeCodeStreamJSONParser {
         return nil
     }
 
-    private static func extractStreamJSONText(from obj: [String: Any]) -> String? {
-        if let delta = obj["delta"] as? [String: Any] {
+    private static func extractStreamJSONText(from obj: UntypedJSONObject) -> String? {
+        if let delta = obj["delta"] as? UntypedJSONObject {
             if let text = delta["text"] as? String { return text }
-            if let inner = delta["delta"] as? [String: Any], let text = inner["text"] as? String {
+            if let inner = delta["delta"] as? UntypedJSONObject, let text = inner["text"] as? String {
                 return text
             }
         }
 
-        if let message = obj["message"] as? [String: Any],
-           let content = message["content"] as? [[String: Any]] {
+        if let message = obj["message"] as? UntypedJSONObject,
+           let content = message["content"] as? [UntypedJSONObject] {
             for block in content {
                 if (block["type"] as? String) == "text", let text = block["text"] as? String {
                     return text
@@ -102,8 +102,8 @@ enum ClaudeCodeStreamJSONParser {
             }
         }
 
-        if let event = obj["event"] as? [String: Any],
-           let delta = event["delta"] as? [String: Any],
+        if let event = obj["event"] as? UntypedJSONObject,
+           let delta = event["delta"] as? UntypedJSONObject,
            let text = delta["text"] as? String {
             return text
         }
@@ -118,7 +118,7 @@ struct CodexExecJSONLParser {
 
     mutating func events(fromLine line: String) -> (events: [CLIChatStreamEvent], error: CLIBridgeError?) {
         guard let data = line.data(using: .utf8),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(malformed line skipped)
+              let obj = try? JSONSerialization.jsonObject(with: data) as? UntypedJSONObject else { // try?-ok(malformed line skipped)
             return ([], nil)
         }
 
@@ -177,23 +177,23 @@ struct CodexExecJSONLParser {
         return (events, nil)
     }
 
-    static func extractAgentMessageText(from obj: [String: Any]) -> String? {
+    static func extractAgentMessageText(from obj: UntypedJSONObject) -> String? {
         let type = obj["type"] as? String ?? ""
 
         if type == "item.completed" || type == "item.updated" || type == "item.started" {
-            if let item = obj["item"] as? [String: Any],
+            if let item = obj["item"] as? UntypedJSONObject,
                (item["type"] as? String) == "agent_message" {
                 if let text = item["text"] as? String { return text }
             }
         }
 
-        if let item = obj["item"] as? [String: Any],
+        if let item = obj["item"] as? UntypedJSONObject,
            (item["type"] as? String) == "agent_message",
            let text = item["text"] as? String {
             return text
         }
 
-        if let message = obj["message"] as? [String: Any],
+        if let message = obj["message"] as? UntypedJSONObject,
            let text = message["text"] as? String {
             return text
         }
@@ -201,8 +201,8 @@ struct CodexExecJSONLParser {
         return nil
     }
 
-    static func agentMessageItemId(from obj: [String: Any]) -> String? {
-        guard let item = obj["item"] as? [String: Any],
+    static func agentMessageItemId(from obj: UntypedJSONObject) -> String? {
+        guard let item = obj["item"] as? UntypedJSONObject,
               (item["type"] as? String) == "agent_message" else {
             return nil
         }
@@ -210,9 +210,9 @@ struct CodexExecJSONLParser {
         return nil
     }
 
-    static func toolEvent(from obj: [String: Any]) -> CLIChatStreamEvent? {
+    static func toolEvent(from obj: UntypedJSONObject) -> CLIChatStreamEvent? {
         let type = obj["type"] as? String
-        guard let item = obj["item"] as? [String: Any],
+        guard let item = obj["item"] as? UntypedJSONObject,
               (item["type"] as? String) == "command_execution" else {
             return nil
         }
@@ -272,7 +272,7 @@ struct GenericCLIJSONOrTextParser {
         guard !trimmed.isEmpty else { return [] }
 
         guard let data = trimmed.data(using: .utf8),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(falls back to raw text)
+              let obj = try? JSONSerialization.jsonObject(with: data) as? UntypedJSONObject else { // try?-ok(falls back to raw text)
             return [.text(line + "\n")]
         }
 
@@ -299,7 +299,7 @@ struct GenericCLIJSONOrTextParser {
         return events
     }
 
-    private static func extractText(from obj: [String: Any]) -> String? {
+    private static func extractText(from obj: UntypedJSONObject) -> String? {
         for key in ["text", "response", "output", "result", "content", "answer"] {
             if let text = obj[key] as? String, !text.isEmpty {
                 return text
@@ -308,10 +308,10 @@ struct GenericCLIJSONOrTextParser {
         if let message = obj["message"] as? String, !message.isEmpty {
             return message
         }
-        if let message = obj["message"] as? [String: Any] {
+        if let message = obj["message"] as? UntypedJSONObject {
             if let text = message["text"] as? String, !text.isEmpty { return text }
             if let content = message["content"] as? String, !content.isEmpty { return content }
-            if let content = message["content"] as? [[String: Any]] {
+            if let content = message["content"] as? [UntypedJSONObject] {
                 let joined = content.compactMap { block in
                     (block["text"] as? String) ?? (block["content"] as? String)
                 }
@@ -319,17 +319,17 @@ struct GenericCLIJSONOrTextParser {
                 if !joined.isEmpty { return joined }
             }
         }
-        if let delta = obj["delta"] as? [String: Any] {
+        if let delta = obj["delta"] as? UntypedJSONObject {
             if let text = delta["text"] as? String, !text.isEmpty { return text }
             if let content = delta["content"] as? String, !content.isEmpty { return content }
         }
-        if let choices = obj["choices"] as? [[String: Any]] {
+        if let choices = obj["choices"] as? [UntypedJSONObject] {
             let joined = choices.compactMap { choice in
                 if let text = choice["text"] as? String { return text }
-                if let delta = choice["delta"] as? [String: Any] {
+                if let delta = choice["delta"] as? UntypedJSONObject {
                     return (delta["content"] as? String) ?? (delta["text"] as? String)
                 }
-                if let message = choice["message"] as? [String: Any] {
+                if let message = choice["message"] as? UntypedJSONObject {
                     return (message["content"] as? String) ?? (message["text"] as? String)
                 }
                 return nil
@@ -340,7 +340,7 @@ struct GenericCLIJSONOrTextParser {
         return nil
     }
 
-    private static func toolEvent(from obj: [String: Any]) -> CLIChatStreamEvent? {
+    private static func toolEvent(from obj: UntypedJSONObject) -> CLIChatStreamEvent? {
         let name = (obj["tool"] as? String)
             ?? (obj["tool_name"] as? String)
             ?? (obj["name"] as? String)
@@ -358,15 +358,15 @@ struct GenericCLIJSONOrTextParser {
 }
 
 enum OpenAICompatibleUsageParser {
-    static func usage(from obj: [String: Any]) -> CLIUsageSnapshot? {
-        let usage = (obj["usage"] as? [String: Any]) ?? obj
+    static func usage(from obj: UntypedJSONObject) -> CLIUsageSnapshot? {
+        let usage = (obj["usage"] as? UntypedJSONObject) ?? obj
 
         func firstInt(paths: [[String]]) -> Int {
             for path in paths {
                 var cursor: Any = usage
                 var valid = true
                 for key in path {
-                    guard let dict = cursor as? [String: Any], let next = dict[key] else {
+                    guard let dict = cursor as? UntypedJSONObject, let next = dict[key] else {
                         valid = false
                         break
                     }
@@ -456,7 +456,7 @@ struct OpenAICompatibleSSEParser {
         if let payload = Self.payload(fromSSELine: line),
            payload != "[DONE]",
            let data = payload.data(using: .utf8),
-           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(usage skipped if unparsable)
+           let obj = try? JSONSerialization.jsonObject(with: data) as? UntypedJSONObject, // try?-ok(usage skipped if unparsable)
            let usage = OpenAICompatibleUsageParser.usage(from: obj) {
             events.append(.usage(usage))
         }
@@ -499,7 +499,7 @@ struct OpenAICompatibleSSEParser {
         guard !trimmed.isEmpty else { return nil }
 
         // Try JSON parse for known key extraction.
-        if let obj = try? JSONSerialization.jsonObject(with: trimmed.data(using: .utf8) ?? Data()) as? [String: Any] { // try?-ok(falls back to preview)
+        if let obj = try? JSONSerialization.jsonObject(with: trimmed.data(using: .utf8) ?? Data()) as? UntypedJSONObject { // try?-ok(falls back to preview)
             for key in ["path", "file_path", "command", "pattern", "query", "url"] {
                 if let value = obj[key] as? String, !value.isEmpty {
                     return String(value.prefix(200))
@@ -520,8 +520,8 @@ struct OpenAICompatibleSSEParser {
 
 enum OpenAICompatibleModelListParser {
     static func modelName(from data: Data) -> String? {
-        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil } // try?-ok(unparsable model list)
-        if let models = obj["data"] as? [[String: Any]],
+        guard let obj = try? JSONSerialization.jsonObject(with: data) as? UntypedJSONObject else { return nil } // try?-ok(unparsable model list)
+        if let models = obj["data"] as? [UntypedJSONObject],
            let first = models.first,
            let id = first["id"] as? String, !id.isEmpty {
             return id
@@ -547,8 +547,8 @@ enum OpenAICompatibleModelListParser {
     }
 
     static func advertisedModels(from data: Data) -> [OpenAICompatibleAdvertisedModel] {
-        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(unparsable model list)
-              let models = obj["data"] as? [[String: Any]] else { return [] }
+        guard let obj = try? JSONSerialization.jsonObject(with: data) as? UntypedJSONObject, // try?-ok(unparsable model list)
+              let models = obj["data"] as? [UntypedJSONObject] else { return [] }
         var seen = Set<String>()
         return models.compactMap { raw in
             guard let id = raw["id"] as? String, !id.isEmpty else { return nil }
@@ -614,7 +614,7 @@ enum OpenAICompatibleModelListParser {
 }
 
 extension CLIBridge {
-    nonisolated static func openAICompatibleUsage(from obj: [String: Any]) -> CLIUsageSnapshot? {
+    nonisolated static func openAICompatibleUsage(from obj: UntypedJSONObject) -> CLIUsageSnapshot? {
         OpenAICompatibleUsageParser.usage(from: obj)
     }
 
