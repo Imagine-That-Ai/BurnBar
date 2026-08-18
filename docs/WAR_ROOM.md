@@ -195,7 +195,7 @@ are unaffected. Migration v62 is additive and nullable, so no data is lost.
 | Dispatch plan | `OpenBurnBarCore/.../SharedModels/FlameDispatchPlan.swift` |
 | Distill log | `OpenBurnBarCore/.../SharedModels/DistillRecord.swift` |
 | Flame RPC | `OpenBurnBarDaemon/.../WarRoom/BurnBarFlameService.swift` |
-| Standing orders | `OpenBurnBarCore/.../SharedModels/StandingOrder*.swift`, `AgentLens/Services/WarRoom/StandingOrderStore.swift` |
+| Standing orders | `OpenBurnBarCore/.../SharedModels/StandingOrder*.swift`, `AgentLens/Services/WarRoom/StandingOrderStore.swift`, `.../StandingOrderRuntimeHost.swift` |
 | Hermes Room | `OpenBurnBarCore/.../SharedModels/HermesRoom.swift`, `AgentLens/Views/Settings/HermesRoomDetailView.swift` |
 | Command Board | `OpenBurnBarCore/.../SharedModels/CommandBoard.swift`, `AgentLens/Views/Settings/CommandBoardDetailView.swift` |
 
@@ -262,3 +262,23 @@ byte-identically between `OpenBurnBarData` and the app DataStore).
 app, the daemon, and tests alike; `StandingOrderRow` decomposes a cadence into
 render-ready parts and returns `nil` for a schedule it cannot describe rather
 than inventing a sentence.
+
+An order that has never fired counts from its `createdAt`, not from
+`.distantPast`. Otherwise "every day at 09:00", saved at noon, would fire
+immediately and then again the next morning. Interval cadences still start
+promptly, because "every 30 minutes" means the first one is due now.
+
+`StandingOrderRuntime` decides each tick: which orders are due, where each one
+goes, and which must wait. An order pinned to a machine that is offline **waits
+for that machine** rather than being rerouted, because a pin is an instruction
+rather than a hint. Only a mission that was actually dispatched advances
+`lastFiredAt` — a deferred order is still due on the next tick, so a fleet that
+was briefly empty does not silently swallow a cycle. Credit on the Command Board
+goes to the order rather than to the Flame: the Flame chose *where*, the
+schedule chose *whether*, and attributing the spend to the router would hide the
+thing actually spending it.
+
+`StandingOrderRuntimeHost` is the app-side loop that supplies the clock, the
+fleet, and the two side effects (dispatch, mark fired). It starts alongside the
+other cloud listeners in `OpenBurnBarRuntimeContext` and stops when Firebase
+goes away.
