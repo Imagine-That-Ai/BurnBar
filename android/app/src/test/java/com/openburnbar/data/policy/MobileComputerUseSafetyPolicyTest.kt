@@ -8,17 +8,47 @@ import org.junit.Test
 class MobileComputerUseSafetyPolicyTest {
     @Test
     fun localFlagsRejectBeforeKindAndExplainWhy() {
-        assertEquals(MobileComputerUseSafetyDecision.REJECT, MobileComputerUseSafetyPolicy.decision(kind = "valid-control", panic = true))
+        assertEquals(
+            MobileComputerUseSafetyDecision.REJECT,
+            MobileComputerUseSafetyPolicy.decision(kind = "valid-control", panic = true),
+        )
         assertEquals("panic", MobileComputerUseSafetyPolicy.reason(kind = "valid-control", panic = true))
-        assertEquals(MobileComputerUseSafetyDecision.REJECT, MobileComputerUseSafetyPolicy.decision(kind = "valid-control", sessionExpired = true))
-        assertEquals("session-expiry", MobileComputerUseSafetyPolicy.reason(kind = "valid-control", sessionExpired = true))
-        assertEquals(MobileComputerUseSafetyDecision.REJECT, MobileComputerUseSafetyPolicy.decision(kind = "valid-control", rateLimited = true))
-        assertEquals("rate-limit", MobileComputerUseSafetyPolicy.reason(kind = "valid-control", rateLimited = true))
-        assertEquals(MobileComputerUseSafetyDecision.REJECT, MobileComputerUseSafetyPolicy.decision(kind = "valid-control", viewOnly = true, intentKind = "tap"))
-        assertEquals("view-only", MobileComputerUseSafetyPolicy.reason(kind = "valid-control", viewOnly = true, intentKind = "tap"))
-        assertEquals(MobileComputerUseSafetyDecision.ALLOW, MobileComputerUseSafetyPolicy.decision(kind = "valid-control", viewOnly = true, intentKind = "panic"))
-        assertEquals("ok", MobileComputerUseSafetyPolicy.reason(kind = "valid-control", viewOnly = true, intentKind = "panic"))
-        assertEquals(MobileComputerUseSafetyDecision.REJECT, MobileComputerUseSafetyPolicy.decision(kind = "unknown-kind"))
+        assertEquals(
+            MobileComputerUseSafetyDecision.REJECT,
+            MobileComputerUseSafetyPolicy.decision(kind = "valid-control", sessionExpired = true),
+        )
+        assertEquals(
+            "session-expiry",
+            MobileComputerUseSafetyPolicy.reason(kind = "valid-control", sessionExpired = true),
+        )
+        assertEquals(
+            MobileComputerUseSafetyDecision.REJECT,
+            MobileComputerUseSafetyPolicy.decision(kind = "valid-control", rateLimited = true),
+        )
+        assertEquals(
+            "rate-limit",
+            MobileComputerUseSafetyPolicy.reason(kind = "valid-control", rateLimited = true),
+        )
+        assertEquals(
+            MobileComputerUseSafetyDecision.REJECT,
+            MobileComputerUseSafetyPolicy.decision(kind = "valid-control", viewOnly = true, intentKind = "tap"),
+        )
+        assertEquals(
+            "view-only",
+            MobileComputerUseSafetyPolicy.reason(kind = "valid-control", viewOnly = true, intentKind = "tap"),
+        )
+        assertEquals(
+            MobileComputerUseSafetyDecision.ALLOW,
+            MobileComputerUseSafetyPolicy.decision(kind = "valid-control", viewOnly = true, intentKind = "panic"),
+        )
+        assertEquals(
+            "ok",
+            MobileComputerUseSafetyPolicy.reason(kind = "valid-control", viewOnly = true, intentKind = "panic"),
+        )
+        assertEquals(
+            MobileComputerUseSafetyDecision.REJECT,
+            MobileComputerUseSafetyPolicy.decision(kind = "unknown-kind"),
+        )
         assertEquals("unknown-kind", MobileComputerUseSafetyPolicy.reason(kind = "unknown-kind"))
     }
 
