@@ -75,6 +75,24 @@ export function useProfileUsage(): ProfileUsageResult {
       return snap.exists() ? normalizeRollup(snap.data(), "all_time") : null;
     };
 
+    // A pre-v3 `all_time` document normalizes fine, so a "does it exist" check
+    // reports it as healthy — but it has no execution-source/combo counters, and
+    // the scheduled cheap path only recomputes FROM those counters. Left alone,
+    // an existing account's lifetime harness/model breakdown would stay empty
+    // (or show only post-upgrade activity) forever. Treat "has lifetime activity
+    // but no v3 breakdown" as incomplete and give it the same one-time forced
+    // rebuild a missing document gets.
+    const isPreV3 = (candidate: UsageRollup | null): boolean => {
+      if (!candidate) return false;
+      const hasActivity =
+        candidate.dailyPoints.length > 0 || candidate.totals.tokens > 0;
+      const hasV3Breakdown =
+        Object.keys(candidate.dailyProviderTokens).length > 0 ||
+        candidate.comboSummaries.length > 0 ||
+        candidate.executionSourceSummaries.length > 0;
+      return hasActivity && !hasV3Breakdown;
+    };
+
     const run = async () => {
       if (shouldRebuild) {
         setSyncing(true);
@@ -86,8 +104,9 @@ export function useProfileUsage(): ProfileUsageResult {
       }
       let result = await readRollup();
 
-      // Auto first-sync, once per session per account.
-      if (!result && !shouldRebuild && !autoSyncDone(uid)) {
+      // Auto first-sync, once per session per account. Also covers the pre-v3
+      // upgrade case, not just a missing document.
+      if ((!result || isPreV3(result)) && !shouldRebuild && !autoSyncDone(uid)) {
         markAutoSync(uid);
         if (!cancelled) setSyncing(true);
         try {

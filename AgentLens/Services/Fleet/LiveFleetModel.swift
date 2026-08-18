@@ -54,6 +54,19 @@ final class LiveFleetModel {
     /// sandboxed build, missing directory, watcher disabled.
     private var unwatchable: [AgentProvider: String] = [:]
 
+    /// The last inputs `rebuild` ran with. Retained so a watcher event can
+    /// recompute rows on its own: FSEvents is the whole point of the live panel,
+    /// and without this the observed write only lands in the evidence dictionary
+    /// and waits for the unrelated shared refresh cadence — turning an
+    /// advertised sub-second watcher into a minute-or-more lag.
+    private var lastRebuildInputs: (
+        providers: [AgentProvider],
+        presence: [ChatBackendID: AgentPresence],
+        busyLocation: [ChatBackendID: String],
+        usages: [TokenUsage],
+        usagesVersion: Int
+    )?
+
     // MARK: - Rebuild
 
     /// Rebuilds every row.
@@ -115,6 +128,21 @@ final class LiveFleetModel {
         .sorted(by: Self.rank)
 
         hasRealTimeCoverage = watchedActivity.isEmpty == false || unwatchable.count < providers.count
+        lastRebuildInputs = (providers, presence, busyLocation, usages, usagesVersion)
+    }
+
+    /// Recompute rows from the retained inputs after a watcher event. Cheap: the
+    /// usage scan is version-gated, so an unchanged `usagesVersion` skips it.
+    private func rebuildFromRetainedInputs(now: Date) {
+        guard let inputs = lastRebuildInputs else { return }
+        rebuild(
+            providers: inputs.providers,
+            presence: inputs.presence,
+            busyLocation: inputs.busyLocation,
+            usages: inputs.usages,
+            usagesVersion: inputs.usagesVersion,
+            now: now
+        )
     }
 
     // MARK: - Watcher input
@@ -124,6 +152,8 @@ final class LiveFleetModel {
         watchedActivity[provider] = (date, path)
         // The first real event after a wake proves we are watching again.
         sleepGapReason = nil
+        // Publish it now rather than waiting for the shared refresh cadence.
+        rebuildFromRetainedInputs(now: date)
     }
 
     /// Records that a provider cannot be watched, with a user-facing reason.

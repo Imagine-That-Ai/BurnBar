@@ -615,7 +615,10 @@ export class BackdropEngine {
     } catch (err) {
       // A kernel that throws on init must never take the backdrop down with
       // it — degrade to the 2D default so the field is never black.
-      console.error(`[backdrop] ${id} init failed — falling back to ${DEFAULT_KERNEL_ID}:`, err);
+      // Constant format string: `id` is caller-supplied, and console.* treats its
+      // first argument as a format string — an id containing "%s" would swallow
+      // `err` and hide the very failure this line exists to report.
+      console.error("[backdrop] %s init failed — falling back to %s:", id, DEFAULT_KERNEL_ID, err);
       this.disposeSlot(slot);
       return depth < 2 ? this.createSlot(DEFAULT_KERNEL_ID, depth + 1) : slot;
     }

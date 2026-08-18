@@ -183,10 +183,14 @@ export default function ProfilePage() {
     const peak = peakDay(points);
     const activeDays = activeDayCount(points);
     const totalTokens = rollup.totals.tokens || sumTokens(points);
-    const topProviders = rollup.providerSummaries.slice(0, 5);
-    const topModels = rollup.modelSummaries.slice(0, 5);
-    const topHarnesses = rollup.executionSourceSummaries.slice(0, 5);
-    const topCombos = rollup.comboSummaries.slice(0, 5);
+    // Full lists, deliberately unsliced: "top five" depends on the ACTIVE metric,
+    // and the normalizer's fixed order (providers/models by cost, harnesses/combos
+    // by tokens) is only correct for one of the three toggles. Ranking happens in
+    // the metric-aware `rail` memo below.
+    const allProviders = rollup.providerSummaries;
+    const allModels = rollup.modelSummaries;
+    const allHarnesses = rollup.executionSourceSummaries;
+    const allCombos = rollup.comboSummaries;
     // Trend: the trailing 90 days inclusive of today.
     const cutoff = addDays(today, -89);
     const trend = points.filter((p) => p.day >= cutoff);
@@ -196,10 +200,10 @@ export default function ProfilePage() {
       activeDays,
       totalTokens,
       avgPerActiveDay: activeDays > 0 ? Math.round(totalTokens / activeDays) : 0,
-      topProviders,
-      topModels,
-      topHarnesses,
-      topCombos,
+      allProviders,
+      allModels,
+      allHarnesses,
+      allCombos,
       trend,
     };
   }, [rollup, today]);
@@ -211,25 +215,44 @@ export default function ProfilePage() {
   // Spend) — every summary carries all three, so the toggle is pure render.
   const rail = React.useMemo(() => {
     if (!stats) return null;
-    const pv = (p: (typeof stats.topProviders)[number]) =>
+    const pv = (p: (typeof stats.allProviders)[number]) =>
       metric === "tokens" ? p.totalTokens : metric === "runs" ? p.totalRequests : p.totalCost;
-    const mv = (m: (typeof stats.topModels)[number]) =>
+    const mv = (m: (typeof stats.allModels)[number]) =>
       metric === "tokens" ? m.tokens : metric === "runs" ? m.requests : m.cost;
-    const hv = (h: (typeof stats.topHarnesses)[number]) =>
+    const hv = (h: (typeof stats.allHarnesses)[number]) =>
       metric === "tokens" ? h.totalTokens : metric === "runs" ? h.totalRequests : h.totalCost;
-    const cv = (c: (typeof stats.topCombos)[number]) =>
+    const cv = (c: (typeof stats.allCombos)[number]) =>
       metric === "tokens" ? c.tokens : metric === "runs" ? c.requests : c.cost;
+    // Rank by the metric the user is actually looking at, THEN take five.
+    const byDesc = <T,>(items: readonly T[], value: (item: T) => number): T[] =>
+      [...items].sort((a, b) => value(b) - value(a));
+    const topProviders = byDesc(stats.allProviders, pv).slice(0, 5);
+    const topModels = byDesc(stats.allModels, mv).slice(0, 5);
+    const topHarnesses = byDesc(stats.allHarnesses, hv).slice(0, 5);
+    const topCombos = byDesc(stats.allCombos, cv).slice(0, 5);
+
+    // The denominator counts EVERY provider, so with more than five the rendered
+    // segments would sum to under 100% and the remainder would read as
+    // unexplained blank space. Carry the omitted aggregate so the bar and the
+    // legend can both account for it.
+    const providerTotal = stats.allProviders.reduce((n, p) => n + pv(p), 0);
+    const shownProviderTotal = topProviders.reduce((n, p) => n + pv(p), 0);
     return {
       pv,
       mv,
       hv,
       cv,
-      providerTotal: rollup.providerSummaries.reduce((n, p) => n + pv(p), 0),
-      modelMax: stats.topModels.length ? Math.max(...stats.topModels.map(mv)) : 0,
-      harnessMax: stats.topHarnesses.length ? Math.max(...stats.topHarnesses.map(hv)) : 0,
-      comboMax: stats.topCombos.length ? Math.max(...stats.topCombos.map(cv)) : 0,
+      topProviders,
+      topModels,
+      topHarnesses,
+      topCombos,
+      providerTotal,
+      otherProviderValue: Math.max(0, providerTotal - shownProviderTotal),
+      modelMax: topModels.length ? Math.max(...topModels.map(mv)) : 0,
+      harnessMax: topHarnesses.length ? Math.max(...topHarnesses.map(hv)) : 0,
+      comboMax: topCombos.length ? Math.max(...topCombos.map(cv)) : 0,
     };
-  }, [stats, metric, rollup.providerSummaries]);
+  }, [stats, metric]);
 
   /** Value + unit under the active metric ("211 runs" / "5.2M tok" / "$12.40"). */
   const fmtMetric = (v: number): string =>
@@ -412,16 +435,21 @@ export default function ProfilePage() {
             bar, then legend rows carried by the providers' own brand marks. */}
         <div>
           <h2 className="eyebrow mb-token-3">Provider mix</h2>
-          {!pending && stats && rail && stats.topProviders.length > 0 && rail.providerTotal > 0 ? (
+          {!pending && stats && rail && rail.topProviders.length > 0 && rail.providerTotal > 0 ? (
             <>
               <div
                 role="img"
-                aria-label={stats.topProviders
-                  .map((p) => `${p.provider} ${Math.round((rail.pv(p) / rail.providerTotal) * 100)}%`)
-                  .join(", ")}
+                aria-label={[
+                  ...rail.topProviders.map(
+                    (p) => `${p.provider} ${Math.round((rail.pv(p) / rail.providerTotal) * 100)}%`,
+                  ),
+                  ...(rail.otherProviderValue > 0
+                    ? [`Other ${Math.round((rail.otherProviderValue / rail.providerTotal) * 100)}%`]
+                    : []),
+                ].join(", ")}
                 className="flex h-2 gap-px overflow-hidden rounded-pill"
               >
-                {stats.topProviders.map((p, i) => (
+                {rail.topProviders.map((p, i) => (
                   <span
                     key={p.provider}
                     className="h-full"
@@ -432,9 +460,20 @@ export default function ProfilePage() {
                     }}
                   />
                 ))}
+                {rail.otherProviderValue > 0 ? (
+                  <span
+                    key="__other"
+                    className="h-full"
+                    style={{
+                      width: `${(rail.otherProviderValue / rail.providerTotal) * 100}%`,
+                      background: "var(--content-dim)",
+                      opacity: 0.35,
+                    }}
+                  />
+                ) : null}
               </div>
               <ul className="mt-token-3 space-y-token-2">
-                {stats.topProviders.map((p) => (
+                {rail.topProviders.map((p) => (
                   <li key={p.provider} className="flex items-center gap-2 text-sm">
                     <BrandLogo id={p.provider} label={p.provider} size={18} />
                     <span className="truncate text-content-bright">{p.provider}</span>
@@ -443,6 +482,19 @@ export default function ProfilePage() {
                     </span>
                   </li>
                 ))}
+                {rail.otherProviderValue > 0 ? (
+                  <li className="flex items-center gap-2 text-sm">
+                    <span
+                      aria-hidden
+                      className="h-[18px] w-[18px] rounded-pill"
+                      style={{ background: "var(--content-dim)", opacity: 0.35 }}
+                    />
+                    <span className="truncate text-content-mute">Other</span>
+                    <span className="ml-auto shrink-0 text-content-mute tabular-nums">
+                      {fmtMetric(rail.otherProviderValue)}
+                    </span>
+                  </li>
+                ) : null}
               </ul>
             </>
           ) : (
@@ -468,14 +520,14 @@ export default function ProfilePage() {
             <InsightRow
               label="Most used model"
               value={
-                !pending && stats?.topModels[0] ? (
+                !pending && rail?.topModels[0] ? (
                   <span className="inline-flex items-center gap-2">
                     <BrandLogo
-                      id={stats.topModels[0].provider}
-                      label={stats.topModels[0].provider}
+                      id={rail.topModels[0].provider}
+                      label={rail.topModels[0].provider}
                       size={18}
                     />
-                    {stats.topModels[0].model}
+                    {rail.topModels[0].model}
                   </span>
                 ) : (
                   "—"
@@ -491,9 +543,9 @@ export default function ProfilePage() {
 
         <div>
           <h2 className="eyebrow mb-token-3">Most used models</h2>
-          {!pending && stats && rail && stats.topModels.length > 0 ? (
+          {!pending && stats && rail && rail.topModels.length > 0 ? (
             <ul className="space-y-token-3">
-              {stats.topModels.map((m) => (
+              {rail.topModels.map((m) => (
                 <li key={`${m.provider}/${m.model}`}>
                   <div className="mb-1 flex items-baseline justify-between gap-token-4">
                     <span className="flex min-w-0 items-center gap-2">
@@ -518,11 +570,11 @@ export default function ProfilePage() {
           )}
         </div>
 
-        {!pending && stats && rail && stats.topHarnesses.length > 0 && (
+        {!pending && stats && rail && rail.topHarnesses.length > 0 && (
           <div className="hidden md:block">
             <h2 className="eyebrow mb-token-3">Agent harnesses</h2>
             <ul className="space-y-token-3">
-              {stats.topHarnesses.map((h) => (
+              {rail.topHarnesses.map((h) => (
                 <li key={h.sourceId}>
                   <div className="mb-1 flex items-baseline justify-between gap-token-4">
                     <span className="flex min-w-0 items-center gap-2">
@@ -540,11 +592,11 @@ export default function ProfilePage() {
           </div>
         )}
 
-        {!pending && stats && rail && stats.topCombos.length > 0 && (
+        {!pending && stats && rail && rail.topCombos.length > 0 && (
           <div className="hidden md:block">
             <h2 className="eyebrow mb-token-3">Combos</h2>
             <ul className="space-y-token-3">
-              {stats.topCombos.map((c) => (
+              {rail.topCombos.map((c) => (
                 <li key={`${c.sourceId}/${c.provider}/${c.model}`}>
                   <div className="mb-1 flex items-baseline justify-between gap-token-4">
                     <span className="flex min-w-0 items-center gap-2">

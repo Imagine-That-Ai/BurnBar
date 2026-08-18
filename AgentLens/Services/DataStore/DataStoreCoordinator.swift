@@ -61,6 +61,8 @@ final class DataStoreCoordinator {
     /// prerequisite for the menu-bar process or its background services.
     /// Keep it cold until the user actually opens the tray or dashboard.
     private var hasLoadedUsagePresentation = false
+    /// One-shot: the status item is hydrated after the FIRST ingestion only.
+    private var didHydrateForStatusItem = false
     /// Coalesces simultaneous first-open requests from the tray, dashboard,
     /// deep links, or automation into one aggregate query.
     @ObservationIgnored private var usagePresentationLoadTask: Task<Void, Never>?
@@ -480,17 +482,6 @@ final class DataStoreCoordinator {
         return true
     }
 
-    /// Hydrate usage data for a presentation surface that is about to appear.
-    ///
-    /// Deliberately "if needed": the menu-bar popover calls this ON THE CLICK
-    /// PATH, so paying for a full fetch every time it opens would be a visible
-    /// stall. Once any refresh has landed, `lastRefresh` is set and this is a
-    /// no-op — the live observers keep the numbers current from there.
-    func loadUsagePresentationIfNeeded() async {
-        guard lastRefresh == nil, isLoading == false else { return }
-        await refresh()
-    }
-
     func refresh() async {
         refreshGeneration += 1
         let generation = refreshGeneration
@@ -558,6 +549,16 @@ final class DataStoreCoordinator {
             // before any usage UI exists. The first explicit presentation
             // load is exhaustive and records its own marker.
             lastReloadedUsageWriteMarker = marker
+            // ...except the status item, which is a presentation consumer that
+            // is ALWAYS on screen. Returning cold here left the menu bar
+            // icon-only until the user opened the popover, defeating the
+            // automatic first number. Hydrate exactly once, after the first
+            // ingestion; every later background tick still returns cheaply
+            // because `hasLoadedUsagePresentation` is set by then.
+            if didHydrateForStatusItem == false {
+                didHydrateForStatusItem = true
+                await loadUsagePresentationIfNeeded()
+            }
             return
         }
         if let lastReloadedUsageWriteMarker,

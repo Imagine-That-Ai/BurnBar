@@ -191,11 +191,17 @@ extension ProjectionPipelineService {
         ensureLineage: Bool = true,
         markSnapshotStale: Bool = true
     ) async throws -> Int {
-        guard chunks.isEmpty == false else { return 0 }
         let now = nowProvider()
+        // Activate the lineage BEFORE the empty-corpus exit. A drift re-embed with
+        // no eligible chunks (every conversation deleted while the old embedding
+        // metadata survives) would otherwise return here, leave the configured
+        // version unrecorded, and complete the job with the drift still present —
+        // so the next sweep detects the same drift and enqueues another full
+        // re-embed, forever.
         if ensureLineage {
             try await ensureEmbeddingLineage(now: now)
         }
+        guard chunks.isEmpty == false else { return 0 }
 
         do {
             let expectedDimensions = chunkEmbedder.descriptor.dimensions

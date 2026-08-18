@@ -167,14 +167,25 @@ async function allTimeDailyProviderTokenEntries(
   }
 
   const dayDocs = (await db.collection(`users/${uid}/usage_counter_days`).get()).docs;
-  const providerDocsByDay = await Promise.all(
-    dayDocs.map(async (doc) => ({
-      day: doc.id,
-      providers: (await db.collection(`users/${uid}/usage_counter_days/${doc.id}/providers`).get()).docs.map(
-        (providerDoc) => providerDoc.data() ?? {},
-      ),
-    })),
-  );
+  // Bound the fan-out. One provider-subcollection query per lifetime day, all
+  // launched at once, means a multi-year account issues thousands of concurrent
+  // Firestore reads during a routine compute — exhausting the function's
+  // sockets/memory or timing out the rebuild on exactly the long-lived accounts
+  // this backfill exists to migrate.
+  const BACKFILL_QUERY_CONCURRENCY = 25;
+  const providerDocsByDay: { day: string; providers: FirebaseFirestore.DocumentData[] }[] = [];
+  for (let offset = 0; offset < dayDocs.length; offset += BACKFILL_QUERY_CONCURRENCY) {
+    const page = dayDocs.slice(offset, offset + BACKFILL_QUERY_CONCURRENCY);
+    const resolved = await Promise.all(
+      page.map(async (doc) => ({
+        day: doc.id,
+        providers: (await db.collection(`users/${uid}/usage_counter_days/${doc.id}/providers`).get()).docs.map(
+          (providerDoc) => providerDoc.data() ?? {},
+        ),
+      })),
+    );
+    providerDocsByDay.push(...resolved);
+  }
   const entries: Record<string, Record<string, number>> = {};
   for (const { day, providers } of providerDocsByDay) {
     const dayProviders: Record<string, number> = {};

@@ -10,7 +10,9 @@
  *
  *   BURNBAR_PREVIEW=1 npx vitest run test/profilePreview.test.tsx
  */
-import { writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeAll, describe, expect, it, vi } from "vitest";
@@ -18,7 +20,10 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 import type { UsageRollup } from "../lib/usage";
 
 const PREVIEW = process.env.BURNBAR_PREVIEW === "1";
-const OUT = "/tmp/burnbar-profile-preview.html";
+// A fresh 0700 directory per run instead of a fixed /tmp path: a predictable
+// name in a world-writable dir can be pre-created or symlinked by another
+// user, so the write lands wherever they point it.
+const outPath = () => join(mkdtempSync(join(tmpdir(), "burnbar-profile-preview-")), "profile.html");
 
 // --- fixture: a heavy but realistic member ---------------------------------
 
@@ -197,10 +202,11 @@ describe.runIf(PREVIEW)("profile preview generator", () => {
     const root = createRoot(container);
     act(() => root.render(<ProfilePage />));
     expect(container.innerHTML).toContain("Token activity");
-    writeFileSync(OUT, SHELL_HEAD + container.innerHTML + "\n</body>\n</html>\n");
+    const out = outPath();
+    writeFileSync(out, SHELL_HEAD + container.innerHTML + "\n</body>\n</html>\n");
     act(() => root.unmount());
     container.remove();
-    console.log("preview written to " + OUT);
+    console.log("preview written to " + out);
   });
 });
 
