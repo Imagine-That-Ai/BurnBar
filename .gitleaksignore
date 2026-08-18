@@ -20,3 +20,7 @@ OpenBurnBarDaemon/Tests/OpenBurnBarDaemonLinuxGatewayTests/LinuxCloudDataControl
 7219d978c1026202bcabe2c9ca7c54c5ba73fb05:docs/windows-port/evidence/foundation-chat-transfer-7d5f1c4/arm64-utm/arm64-evidence-current/storage-evidence/fresh-install/openburnbar.sqlite.windows-migration-journal.json:generic-api-key:7
 7219d978c1026202bcabe2c9ca7c54c5ba73fb05:docs/windows-port/evidence/foundation-chat-transfer-7d5f1c4/arm64-utm/arm64-evidence-current/storage-evidence/generated-db-write-seams/openburnbar.sqlite.windows-migration-journal.json:generic-api-key:7
 7219d978c1026202bcabe2c9ca7c54c5ba73fb05:docs/windows-port/evidence/foundation-chat-transfer-7d5f1c4/arm64-utm/arm64-evidence-current/storage-evidence/generated-db-write-seams/openburnbar.sqlite.key-provenance.json:generic-api-key:5
+OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/BurnBarIndexedSearchReadOnlySQLTests.swift:generic-api-key:211
+tools/openburnbar-mcp-remote/src/appInstall.ts:generic-api-key:20
+tools/openburnbar-mcp-remote/src/appInstall.test.ts:generic-api-key:228
+apps/console/test/interop/swift-fixture.json:generic-api-key:35

@@ -75,6 +75,11 @@ struct AWTRIXClient: Sendable {
     private static let minimumCustomAppLifetimeSeconds = 900
     private static let sentinelPublishOrder: [SentinelApp] = [.right, .select, .left]
 
+    enum DiscoveryScope: Sendable {
+        case configuredAndBonjour
+        case fullSubnet
+    }
+
     /// AWTRIX names the BurnBar custom app `openburnbar0` (see
     /// `pushCustomApp`). The sentinel apps are durable sibling apps used
     /// purely for input detection: when the user taps Left/Right on the
@@ -131,8 +136,17 @@ struct AWTRIXClient: Sendable {
 
     private let session: URLSession
 
-    init(session: URLSession = .shared) {
-        self.session = session
+    init(session: URLSession? = nil) {
+        self.session = session ?? Self.makeLocalDeviceSession()
+    }
+
+    static func makeLocalDeviceSession() -> URLSession {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        configuration.urlCache = nil
+        configuration.httpCookieStorage = nil
+        configuration.httpShouldSetCookies = false
+        return URLSession(configuration: configuration)
     }
 
     /// Default probe used by the heartbeat. We give the device a generous
@@ -174,7 +188,8 @@ struct AWTRIXClient: Sendable {
     func discover(
         config: PixelClockConfig,
         candidateHosts: [String]? = nil,
-        candidatePorts: [Int]? = nil
+        candidatePorts: [Int]? = nil,
+        scope: DiscoveryScope = .fullSubnet
     ) async -> DiscoveryResult {
         // 1) The configured host is almost always correct — retry-probe it
         //    first so a single dropped packet doesn't kick us into the slow
@@ -199,6 +214,14 @@ struct AWTRIXClient: Sendable {
                     return DiscoveryResult(config: candidate, probe: probeResult)
                 }
             }
+        }
+
+        // Background recovery stops after the configured host and Bonjour.
+        // A full subnet sweep can create thousands of short-lived HTTP tasks
+        // on wider home-network masks, so reserve it for explicit setup and
+        // repair actions initiated by the user.
+        guard scope == .fullSubnet else {
+            return DiscoveryResult(config: config, probe: firstProbe)
         }
 
         // 3) Fall back to the active LAN netmask — covers the case where

@@ -105,7 +105,7 @@ for (const collection of ["hermes_pairings", "hermes_session_cache", "hermes_aud
   assert.match(block, /allow create: if relayConnectionWrite\(userId, connectionId\);/);
   assert.match(
     block,
-    /allow update: if relayConnectionWrite\(userId, connectionId\) && resource\.data\.mode == "relayLink";/,
+    /allow update: if relayConnectionWrite\(userId, connectionId\)\s+&& request\.resource\.data\.mode == "relayLink"\s+&& resource\.data\.mode == "relayLink";/,
   );
   assert.match(rules, /function hasActiveHostedQuotaEntitlement\(userId\)/);
   assert.match(rules, /"com\.openburnbar\.hostedQuotaSync\.cloud\.monthly"/);

@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { openText, type CloudVaultSealedText } from "@/lib/escrow";
 import { searchKnowledge, type SearchKnowledgeHit } from "@/lib/api";
-import { embedAndCloakQuery } from "@/lib/recall";
+import { embedAndCloakQuery, knowledgeChunkAADContext } from "@/lib/recall";
+import { useAuth } from "@/lib/useAuth";
 import { getConsoleVaultCryptoKey, getConsoleVaultKeyBytes } from "@/lib/vaultKeySession";
 
 interface RecallHit {
@@ -15,6 +16,7 @@ interface RecallHit {
 }
 
 export function PensieveRecallCard() {
+  const { user } = useAuth();
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -23,8 +25,13 @@ export function PensieveRecallCard() {
   async function runRecall() {
     const rawVaultKey = getConsoleVaultKeyBytes();
     const vaultKey = getConsoleVaultCryptoKey();
+    const uid = user?.uid;
     if (!rawVaultKey || !vaultKey) {
       setError("Trust this browser first so the vault key is available in memory.");
+      return;
+    }
+    if (!uid) {
+      setError("Sign in again — sealed chunks are bound to your account id.");
       return;
     }
     if (!query.trim()) return;
@@ -36,7 +43,12 @@ export function PensieveRecallCard() {
       const opened = await Promise.all(
         result.hits.map(async (hit) => ({
           hit,
-          plaintext: await openText(hit.ciphertext as CloudVaultSealedText, vaultKey),
+          // RR-8: v2 chunks are sealed path-bound to uid|collection|vectorId|field,
+          // so the reader must rebuild that exact context or AES-GCM rejects them.
+          plaintext: await openText(hit.ciphertext as CloudVaultSealedText, vaultKey, {
+            aadContext: knowledgeChunkAADContext(uid, hit.vectorId),
+            rawVaultKey,
+          }),
         })),
       );
       setHits(opened);

@@ -446,6 +446,10 @@ let burnBarRemoteEngineDependencies: [Target.Dependency] = hasBurnBarRemoteXCFra
     "BurnBarRemoteFFI"
 ] : []
 
+let burnBarRemoteEngineSwiftSettings: [SwiftSetting] = hasBurnBarRemoteXCFramework ? [
+    .define("OPENBURNBAR_HAS_BURNBAR_REMOTE_FFI")
+] : []
+
 let signalFfiDependencies: [Target.Dependency] = {
     var dependencies: [Target.Dependency] = []
     if hasSignalFfiIOSXCFramework {
@@ -1286,7 +1290,8 @@ let firstPartyTargetsBase: [Target] = [
         ),
         .target(
             name: "BurnBarRemoteEngine",
-            dependencies: burnBarRemoteEngineDependencies
+            dependencies: burnBarRemoteEngineDependencies,
+            swiftSettings: burnBarRemoteEngineSwiftSettings
         ),
         .target(
             name: "OpenBurnBarComputerUseCore",

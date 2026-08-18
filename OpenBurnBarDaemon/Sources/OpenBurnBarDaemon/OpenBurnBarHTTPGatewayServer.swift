@@ -1,18 +1,22 @@
 import OpenBurnBarEngine
 import CryptoKit
+import Dispatch
 import Foundation
 import Network
 
 /// HTTP gateway server exposing OpenAI-compatible endpoints through the daemon
 /// provider router. Built on `Network.framework`, not raw sockets.
 public actor BurnBarHTTPGatewayServer {
+    static let listenerQueueLabel = "com.openburnbar.daemon.http-gateway.listener"
+
     static let maxHeaderBytes = 16 * 1024
 
     static let maxBodyBytes = 64 * 1024 * 1024
 
-    /// Short TTL for production live-model catalog snapshots; collapses repeated
-    /// provider fan-out while keeping `/v1/models` fresh.
-    public static let defaultModelCatalogCacheTTL: TimeInterval = 45
+    /// Provider discovery is expensive and changes infrequently. Cache only
+    /// that discovery layer for ten minutes; quota, health, enablement, and
+    /// route eligibility are reprojected from current config on every read.
+    public static let defaultModelCatalogCacheTTL: TimeInterval = 10 * 60
 
     let configuration: BurnBarGatewayConfiguration
 
@@ -61,6 +65,13 @@ public actor BurnBarHTTPGatewayServer {
     /// — even in production, where no general gateway `rateLimiter` is wired.
     let unauthenticatedLoopbackRateLimiter: BurnBarRateLimiter?
 
+    /// Listener readiness is launch-critical. A dedicated queue prevents an
+    /// unrelated backlog on the process-wide utility pool from delaying the
+    /// bind long enough for the daemon or release smoke to declare the gateway
+    /// unavailable. Connection work immediately hops back into structured
+    /// Swift tasks, so this queue stays idle when the gateway is idle.
+    let listenerQueue: DispatchQueue
+
     var listener: NWListener?
 
     public init(
@@ -78,7 +89,8 @@ public actor BurnBarHTTPGatewayServer {
         modelCatalogDroidProcessRunner: any FactoryDroidProcessRunning = FactoryDroidSystemProcessRunner(),
         modelCatalogCacheTTL: TimeInterval = 0,
         logger: any BurnBarDaemonLogging = BurnBarDaemonLogger(category: "http-gateway"),
-        rateLimiter: BurnBarRateLimiter? = nil
+        rateLimiter: BurnBarRateLimiter? = nil,
+        listenerQueue: DispatchQueue? = nil
     ) {
         self.configuration = configuration
         self.configStore = configStore
@@ -99,6 +111,10 @@ public actor BurnBarHTTPGatewayServer {
             logger: logger
         )
         self.logger = logger
+        self.listenerQueue = listenerQueue ?? DispatchQueue(
+            label: Self.listenerQueueLabel,
+            qos: .userInitiated
+        )
         self.rateLimiter = rateLimiter ?? configuration.rateLimit.map {
             BurnBarRateLimiter(configuration: $0)
         }
@@ -197,7 +213,7 @@ public actor BurnBarHTTPGatewayServer {
         }
 
         self.listener = nwListener
-        nwListener.start(queue: .global(qos: .utility))
+        nwListener.start(queue: listenerQueue)
     }
 
     /// Tears down a listener that transitioned to `.failed` so the gateway does

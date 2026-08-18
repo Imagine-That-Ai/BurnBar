@@ -14,14 +14,12 @@ public actor BurnBarMissionControlStore {
     private let decoder = JSONDecoder()
 
     private var projection: BurnBarMissionControlProjectionFile?
-    private var cachedEvents: [BurnBarControllerEvent]?
     private var cachedRecentEvents: [BurnBarControllerEvent]?
-    private var seenEventIDs: Set<String> = []
 
     private var summaryEnricher: MissionControlSummaryEnricher {
         MissionControlSummaryEnricher(
             projection: projection,
-            cachedEvents: cachedRecentEvents ?? cachedEvents
+            cachedEvents: cachedRecentEvents
         )
     }
 
@@ -51,8 +49,16 @@ public actor BurnBarMissionControlStore {
     public func project(slug: String) throws -> BurnBarReviewProjectSnapshot? {
         try ensureLoaded()
         let canonicalSlug = try canonicalProjectSlug(slug)
-        return summaryEnricher.enrichedProjects()
-            .first(where: { $0.projectSlug == canonicalSlug })
+        return summaryEnricher.enrichedProject(slug: canonicalSlug)
+    }
+
+    /// Returns the durable registry value without rebuilding derived Mission
+    /// Control counts. Activity ingestion calls this once per project and only
+    /// needs persisted identity/configuration fields, not a public enrichment.
+    func registryProject(slug: String) throws -> BurnBarReviewProjectSnapshot? {
+        try ensureLoaded()
+        let canonicalSlug = try canonicalProjectSlug(slug)
+        return projection?.projects[canonicalSlug]
     }
 
     public func projects(_ request: BurnBarControllerProjectsListRequest) throws -> [BurnBarReviewProjectSnapshot] {
@@ -972,7 +978,7 @@ public actor BurnBarMissionControlStore {
         healthProjection?.notificationConfig = resolvedConfig
         let enricher = MissionControlSummaryEnricher(
             projection: healthProjection,
-            cachedEvents: cachedRecentEvents ?? cachedEvents
+            cachedEvents: cachedRecentEvents
         )
         return BurnBarNotificationHealthResponse(health: enricher.makeNotificationHealth())
     }
@@ -1149,30 +1155,37 @@ public actor BurnBarMissionControlStore {
 
         if let decoded = try journal.loadProjectionFromDiskIfPresent(decoder: decoder) {
             projection = decoded
-            // The journal is the durable source of truth. A process crash can
-            // land after appendEventToDisk but before writeProjectionFile; do
-            // not trust a projection whose checkpoint does not match the
-            // journal tail, or a delete/reassignment can be resurrected after
-            // restart.
-            let journalTailSequence = try journal
-                .readRecentEventsFromDisk(limit: 1, decoder: decoder)
-                .last?
-                .sequence ?? 0
-            if journalTailSequence != decoded.lastSequence {
-                logger.warning(
-                    "controller_projection_checkpoint_mismatch",
-                    metadata: [
-                        "projection_sequence": String(decoded.lastSequence),
-                        "journal_sequence": String(journalTailSequence)
-                    ]
+            if decoded.projectDeletionTombstones == nil {
+                logger.notice(
+                    "controller_projection_tombstone_migration_required",
+                    metadata: ["projection_sequence": String(decoded.lastSequence)]
                 )
                 try rebuildProjectionFromJournal(rebuiltAt: Date())
-                return
+            } else {
+                // The journal is the durable source of truth. A process crash can
+                // land after appendEventToDisk but before writeProjectionFile; do
+                // not trust a projection whose checkpoint does not match the
+                // journal tail, or a delete/reassignment can be resurrected after
+                // restart.
+                let journalTailSequence = try journal
+                    .readRecentEventsFromDisk(limit: 1, decoder: decoder)
+                    .last?
+                    .sequence ?? 0
+                if journalTailSequence != decoded.lastSequence {
+                    logger.warning(
+                        "controller_projection_checkpoint_mismatch",
+                        metadata: [
+                            "projection_sequence": String(decoded.lastSequence),
+                            "journal_sequence": String(journalTailSequence)
+                        ]
+                    )
+                    try rebuildProjectionFromJournal(rebuiltAt: Date())
+                } else {
+                    try normalizeLoadedMissionClosureQuestionInvariants(writeImmediately: true)
+                }
             }
-            try normalizeLoadedMissionClosureQuestionInvariants(writeImmediately: true)
         } else {
             try rebuildProjectionFromJournal(rebuiltAt: Date())
-            return
         }
 
         try migrateNotificationSecretPersistenceIfNeeded()
@@ -1183,12 +1196,34 @@ public actor BurnBarMissionControlStore {
     }
 
     private func rebuildProjectionFromJournal(rebuiltAt: Date = Date()) throws {
-        let events = try loadEvents()
         projection = BurnBarMissionControlProjectionFile.empty(now: rebuiltAt)
-        seenEventIDs = []
-        for event in events.sorted(by: MissionControlMissionStateMerger.eventSort) {
+        var rebuildSeenEventIDs: Set<String> = []
+        let replayedInOrder = try journal.replayEventsFromDiskIfOrdered(decoder: decoder) { event in
             try Task.checkCancellation()
-            try MissionControlProjectionReducer.apply(event: event, projection: &projection, seenEventIDs: &seenEventIDs)
+            try MissionControlProjectionReducer.apply(
+                event: event,
+                projection: &projection,
+                seenEventIDs: &rebuildSeenEventIDs
+            )
+        }
+        if !replayedInOrder {
+            logger.warning("controller_journal_out_of_order_replay_fallback")
+            projection = BurnBarMissionControlProjectionFile.empty(now: rebuiltAt)
+            rebuildSeenEventIDs.removeAll(keepingCapacity: true)
+            let events = try journal.readEventsFromDisk(decoder: decoder)
+            for event in events.sorted(by: MissionControlMissionStateMerger.eventSort) {
+                try Task.checkCancellation()
+                try MissionControlProjectionReducer.apply(
+                    event: event,
+                    projection: &projection,
+                    seenEventIDs: &rebuildSeenEventIDs
+                )
+            }
+        }
+        if projection?.notificationConfig.telegram.botToken?.nonEmpty != nil {
+            _ = try sanitizedNotificationEvents(
+                journal.readEventsFromDisk(decoder: decoder)
+            )
         }
         try normalizeLoadedMissionClosureQuestionInvariants(writeImmediately: false)
         try sanitizeProjectedNotificationConfigIfNeeded(writeImmediately: false)
@@ -1196,24 +1231,8 @@ public actor BurnBarMissionControlStore {
         try writeProjection()
     }
 
-    private func loadEvents() throws -> [BurnBarControllerEvent] {
-        if let cachedEvents {
-            return cachedEvents
-        }
-        let events = try sanitizedNotificationEvents(
-            journal.readEventsFromDisk(decoder: decoder)
-        )
-        try Task.checkCancellation()
-        cachedEvents = events
-        cachedRecentEvents = nil
-        return events
-    }
-
     private func loadRecentEventsForSummary(limit: Int = 100) throws -> [BurnBarControllerEvent] {
-        if let cachedEvents {
-            cachedRecentEvents = Array(cachedEvents.suffix(limit))
-            return cachedRecentEvents ?? []
-        }
+        if let cachedRecentEvents { return cachedRecentEvents }
         let events = try journal.readRecentEventsFromDisk(limit: limit, decoder: decoder)
         cachedRecentEvents = events
         return events
@@ -1224,7 +1243,9 @@ public actor BurnBarMissionControlStore {
             return
         }
         try Task.checkCancellation()
-        _ = try loadEvents()
+        _ = try sanitizedNotificationEvents(
+            journal.readEventsFromDisk(decoder: decoder)
+        )
         try Task.checkCancellation()
         try sanitizeProjectedNotificationConfigIfNeeded(writeImmediately: false)
         projection?.notificationSecretMigrationVersion = Self.currentNotificationSecretMigrationVersion
@@ -1494,49 +1515,15 @@ public actor BurnBarMissionControlStore {
     }
 
     private func projectIdentityWasDeleted(_ project: BurnBarReviewProjectSnapshot) throws -> String? {
+        try ensureLoaded()
         let identities = [project.projectSlug, project.id] + project.aliases
-        for event in try loadEvents().reversed() {
-            guard event.family == .controller,
-                  event.eventType == "project_deleted" else {
-                continue
-            }
-
-            guard let payload = try? decodePayload(BurnBarProjectDeletionPayload.self, from: event) else {
-                // A legacy or malformed tombstone still protects its event
-                // slug. Never allow a corrupted payload to weaken deletion
-                // semantics for the canonical identity.
-                if identities.contains(event.projectSlug) {
-                    return event.projectSlug
-                }
-                continue
-            }
-            let tombstoned = [payload.projectSlug]
-                + (payload.projectID.map { [$0] } ?? [])
-                + payload.aliases
-            if let match = identities.first(where: tombstoned.contains) {
-                return match
-            }
-        }
-        return nil
+        let tombstones = projection?.projectDeletionTombstones ?? [:]
+        return identities.first { tombstones[$0] != nil }
     }
 
     private func deletedProjectSlug(for identifier: String) throws -> String? {
-        for event in try loadEvents().reversed() {
-            guard event.family == .controller,
-                  event.eventType == "project_deleted" else {
-                continue
-            }
-            guard event.projectSlug != identifier else { return event.projectSlug }
-            guard let payload = try? decodePayload(BurnBarProjectDeletionPayload.self, from: event) else {
-                continue
-            }
-            if payload.projectSlug == identifier
-                || payload.projectID == identifier
-                || payload.aliases.contains(identifier) {
-                return payload.projectSlug
-            }
-        }
-        return nil
+        try ensureLoaded()
+        return projection?.projectDeletionTombstones?[identifier]
     }
 
     private func decodePayload<Value: Decodable>(_ type: Value.Type, from event: BurnBarControllerEvent) throws -> Value {
@@ -1788,12 +1775,12 @@ public actor BurnBarMissionControlStore {
 
     private func append(_ event: BurnBarControllerEvent) throws {
         try journal.appendEventToDisk(event, encoder: encoder)
-        try MissionControlProjectionReducer.apply(event: event, projection: &projection, seenEventIDs: &seenEventIDs)
-        if cachedEvents == nil {
-            cachedEvents = [event]
-        } else {
-            cachedEvents?.append(event)
-        }
+        var appendedEventIDs: Set<String> = []
+        try MissionControlProjectionReducer.apply(
+            event: event,
+            projection: &projection,
+            seenEventIDs: &appendedEventIDs
+        )
         if cachedRecentEvents != nil {
             cachedRecentEvents?.append(event)
             cachedRecentEvents = cachedRecentEvents.map { Array($0.suffix(100)) }
@@ -1807,6 +1794,11 @@ public actor BurnBarMissionControlStore {
     }
 
     // MARK: - Test Helpers
+
+    /// Exposes the bounded recent-event cache invariant to focused tests.
+    var retainedRecentEventCount: Int {
+        cachedRecentEvents?.count ?? 0
+    }
 
     /// Directly injects missions into the store's in-memory projection for testing
     /// tie-break behavior with forced equal timestamps.

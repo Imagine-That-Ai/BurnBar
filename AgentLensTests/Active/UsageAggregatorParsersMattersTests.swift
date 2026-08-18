@@ -666,7 +666,7 @@ final class UsageAggregatorParsersMattersTests: XCTestCase {
             .cursorAgent, .codex, .openCode, .piAgent, .omp, .zai, .minimax,
             .kimi, .xAI, .cline, .kiloCode, .rooCode, .forgeDev, .augment,
             .hermes, .geminiCLI, .antigravity, .goose, .openClaw, .windsurf,
-            .warp, .ollama, .junie
+            .warp, .ollama, .junie, .primeAgent, .muse
         ]
         let parsers = ParserRegistry.defaultParsers()
         let registeredProviders = Set(parsers.keys)

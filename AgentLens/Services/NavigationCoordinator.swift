@@ -31,6 +31,9 @@ final class NavigationCoordinator {
     
     /// Dashboard route enum - mirrors DashboardMainRoute for external coordination
     enum DashboardRoute: Hashable {
+        /// The inbox-first launch surface. Carried here so `openburnbar://home`
+        /// and the menu bar's "Open Dashboard" can land on it explicitly.
+        case home
         case overview
         case charts
         case database
@@ -97,6 +100,10 @@ final class NavigationCoordinator {
             return true
         case "quota":
             setDashboardRoute(.quota)
+            pendingNavigation = .dashboard
+            return true
+        case "home":
+            setDashboardRoute(.home)
             pendingNavigation = .dashboard
             return true
         default:

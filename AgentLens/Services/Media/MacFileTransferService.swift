@@ -728,8 +728,15 @@ final class MacFileTransferService: ObservableObject {
 /// v1 remains the fallback for older viewers and non-video control surfaces.
 final class MercuryControlStreamMediaSink: MediaStreamSink, Sendable {
     private static let log = Logger(subsystem: "com.openburnbar.app", category: "Mercury")
+    typealias StreamingCapabilityProvider = @Sendable () -> MercuryStreamingCapabilitySnapshot
+
     private static let maxInlineEncodedFrameBytes = 320 * 1024
     private static let maxEncodedFrameChunkBytes = 256 * 1024
+    private static let cachedStreamingCapabilities =
+        MercuryVideoToolboxCapabilityProbe.snapshot(mediaFrameVersions: .v1AndV2)
+    static let defaultStreamingCapabilityProvider: StreamingCapabilityProvider = {
+        MercuryControlStreamMediaSink.cachedStreamingCapabilities
+    }
 
     enum SinkError: Error, LocalizedError {
         case streamUnavailable
@@ -748,6 +755,7 @@ final class MercuryControlStreamMediaSink: MediaStreamSink, Sendable {
     private let streamClass: MediaStreamClass
     private let heartbeatInterval: TimeInterval
     private let extraHeartbeatCapabilities: [String]
+    private let streamingCapabilityProvider: StreamingCapabilityProvider
     private let codec = MediaPacketCodec(maxPayloadBytes: MediaFrameV2Codec.defaultMaxPayloadBytes)
     private let frameV2Codec = MediaFrameV2Codec()
     /// F7 — when present, every encoded frame is sealed (MediaFrameAEAD,
@@ -764,6 +772,8 @@ final class MercuryControlStreamMediaSink: MediaStreamSink, Sendable {
         streamClass: MediaStreamClass,
         heartbeatInterval: TimeInterval = 2.5,
         extraHeartbeatCapabilities: [String] = [],
+        streamingCapabilityProvider: @escaping StreamingCapabilityProvider =
+            MercuryControlStreamMediaSink.defaultStreamingCapabilityProvider,
         frameSealKey: SymmetricKey? = nil
     ) {
         self.sendGate = MercuryControlStreamSendGate(stream: stream)
@@ -772,6 +782,7 @@ final class MercuryControlStreamMediaSink: MediaStreamSink, Sendable {
         self.streamClass = streamClass
         self.heartbeatInterval = heartbeatInterval
         self.extraHeartbeatCapabilities = extraHeartbeatCapabilities
+        self.streamingCapabilityProvider = streamingCapabilityProvider
         self.frameSealKey = frameSealKey
         startHeartbeatLoop()
     }
@@ -783,6 +794,8 @@ final class MercuryControlStreamMediaSink: MediaStreamSink, Sendable {
         streamClass: MediaStreamClass,
         heartbeatInterval: TimeInterval = 2.5,
         extraHeartbeatCapabilities: [String] = [],
+        streamingCapabilityProvider: @escaping StreamingCapabilityProvider =
+            MercuryControlStreamMediaSink.defaultStreamingCapabilityProvider,
         frameSealKey: SymmetricKey? = nil
     ) {
         self.sendGate = MercuryControlStreamSendGate(sender: sender)
@@ -791,8 +804,13 @@ final class MercuryControlStreamMediaSink: MediaStreamSink, Sendable {
         self.streamClass = streamClass
         self.heartbeatInterval = heartbeatInterval
         self.extraHeartbeatCapabilities = extraHeartbeatCapabilities
+        self.streamingCapabilityProvider = streamingCapabilityProvider
         self.frameSealKey = frameSealKey
         startHeartbeatLoop()
+    }
+
+    deinit {
+        cancelHeartbeatLoop()
     }
 
     static func make(
@@ -873,6 +891,10 @@ final class MercuryControlStreamMediaSink: MediaStreamSink, Sendable {
     }
 
     func close() async {
+        cancelHeartbeatLoop()
+    }
+
+    private func cancelHeartbeatLoop() {
         heartbeatTask.withLock { task in
             task?.cancel()
             task = nil
@@ -933,13 +955,15 @@ final class MercuryControlStreamMediaSink: MediaStreamSink, Sendable {
 
     private func startHeartbeatLoop() {
         guard heartbeatInterval > 0 else { return }
-        heartbeatTask.write(Task { [sendGate, uid, connectionID, streamClass, heartbeatInterval, extraHeartbeatCapabilities] in
+        heartbeatTask.write(Task { [sendGate, uid, connectionID, streamClass, heartbeatInterval, extraHeartbeatCapabilities, streamingCapabilityProvider] in
+            let streamingCapabilities = streamingCapabilityProvider().wireValue
             await Self.sendMirrorHealthHeartbeat(
                 sendGate: sendGate,
                 uid: uid,
                 connectionID: connectionID,
                 streamClass: streamClass,
-                extraCapabilities: extraHeartbeatCapabilities
+                extraCapabilities: extraHeartbeatCapabilities,
+                streamingCapabilities: streamingCapabilities
             )
 
             while !Task.isCancelled {
@@ -950,7 +974,8 @@ final class MercuryControlStreamMediaSink: MediaStreamSink, Sendable {
                     uid: uid,
                     connectionID: connectionID,
                     streamClass: streamClass,
-                    extraCapabilities: extraHeartbeatCapabilities
+                    extraCapabilities: extraHeartbeatCapabilities,
+                    streamingCapabilities: streamingCapabilities
                 )
             }
         })
@@ -961,7 +986,8 @@ final class MercuryControlStreamMediaSink: MediaStreamSink, Sendable {
         uid: String,
         connectionID: String,
         streamClass: MediaStreamClass,
-        extraCapabilities: [String]
+        extraCapabilities: [String],
+        streamingCapabilities: HermesRealtimeRelayStreamingCapabilities
     ) async {
         let capabilities = Array(Set([
             MercuryPeer.Feature.mirrorHost.rawValue,
@@ -977,9 +1003,7 @@ final class MercuryControlStreamMediaSink: MediaStreamSink, Sendable {
                         sentAt: Date(),
                         deviceDisplayName: Host.current().localizedName ?? "Mac",
                         capabilities: capabilities,
-                        streamingCapabilities: MercuryVideoToolboxCapabilityProbe.snapshot(
-                            mediaFrameVersions: .v1AndV2
-                        ).wireValue
+                        streamingCapabilities: streamingCapabilities
                     )
                 )
             ))

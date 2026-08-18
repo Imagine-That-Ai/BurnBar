@@ -31,6 +31,7 @@ APP_NAME     := OpenBurnBar.app
 INSTALL_DIR  := /Applications
 DAEMON_PACKAGE := OpenBurnBarDaemon
 DAEMON_BIN     := OpenBurnBarDaemon
+DAEMON_CLI_BIN := OpenBurnBarCLI
 DAEMON_CORE_DYLIB := libOpenBurnBarCore.dylib
 
 # Built .app location inside DerivedData
@@ -68,16 +69,17 @@ bootstrap: ## Fresh-clone setup: init submodules, preflight Rust/protoc, build t
 build: bootstrap preflight
 	@mkdir -p "$(CACHE_DIR)" "$(DERIVED_DATA)"
 	@echo "==> Resolving packages…"
-	xcodebuild -resolvePackageDependencies \
+	/usr/bin/env -u OPENBURNBAR_DISABLE_BURNBAR_REMOTE_XCFRAMEWORK xcodebuild -resolvePackageDependencies \
 		-project $(PROJECT) \
 		-scheme $(SCHEME) \
 		-clonedSourcePackagesDirPath $(CACHE_DIR) \
 		-derivedDataPath $(DERIVED_DATA) \
 		-quiet
 	@echo "==> Building daemon…"
-	swift build --package-path $(DAEMON_PACKAGE) -c release
+	OPENBURNBAR_DISABLE_BURNBAR_REMOTE_XCFRAMEWORK=1 swift build --package-path $(DAEMON_PACKAGE) -c release --product $(DAEMON_BIN)
+	OPENBURNBAR_DISABLE_BURNBAR_REMOTE_XCFRAMEWORK=1 swift build --package-path $(DAEMON_PACKAGE) -c release --product $(DAEMON_CLI_BIN)
 	@echo "==> Building $(SCHEME) ($(CONFIG))…"
-	xcodebuild \
+	/usr/bin/env -u OPENBURNBAR_DISABLE_BURNBAR_REMOTE_XCFRAMEWORK xcodebuild \
 		-project $(PROJECT) \
 		-scheme $(SCHEME) \
 		-configuration $(CONFIG) \
@@ -90,15 +92,25 @@ build: bootstrap preflight
 		CODE_SIGNING_REQUIRED=NO \
 		CODE_SIGNING_ALLOWED=NO \
 		build
-	@echo "==> Embedding daemon helper…"
+	@echo "==> Embedding daemon helpers…"
 	mkdir -p "$(APP_BUNDLE)/Contents/Helpers"
 	cp "$(DAEMON_PACKAGE)/.build/release/$(DAEMON_BIN)" "$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_BIN)"
+	cp "$(DAEMON_PACKAGE)/.build/release/$(DAEMON_CLI_BIN)" "$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_CLI_BIN)"
 	if [ -f "$(DAEMON_PACKAGE)/.build/release/$(DAEMON_CORE_DYLIB)" ]; then \
 		cp "$(DAEMON_PACKAGE)/.build/release/$(DAEMON_CORE_DYLIB)" "$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_CORE_DYLIB)"; \
 	else \
 		echo "    No $(DAEMON_CORE_DYLIB) produced; daemon is statically linked."; \
 	fi
-	chmod +x "$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_BIN)"
+	chmod +x "$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_BIN)" "$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_CLI_BIN)"
+	@for HELPER in \
+		"$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_BIN)" \
+		"$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_CLI_BIN)"; do \
+		if otool -L "$$HELPER" | grep -Eq 'libsqlcipher[^/]*\.dylib'; then \
+			echo "ERROR: $$(basename "$$HELPER") links an external libsqlcipher dylib; Apple builds must use the embedded SQLCipher.framework only." >&2; \
+			otool -L "$$HELPER" >&2; \
+			exit 1; \
+		fi; \
+	done
 	@if otool -L "$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_BIN)" | grep -q 'SQLCipher.framework'; then \
 		if [ ! -d "$(APP_BUNDLE)/Contents/Frameworks/SQLCipher.framework" ]; then \
 			echo "ERROR: $(DAEMON_BIN) links SQLCipher.framework but the app bundle is missing Contents/Frameworks/SQLCipher.framework" >&2; \
@@ -106,6 +118,15 @@ build: bootstrap preflight
 		fi; \
 		if ! otool -l "$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_BIN)" | grep -q '@executable_path/../Frameworks'; then \
 			install_name_tool -add_rpath "@executable_path/../Frameworks" "$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_BIN)"; \
+		fi; \
+	fi
+	@if otool -L "$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_CLI_BIN)" | grep -q 'SQLCipher.framework'; then \
+		if [ ! -d "$(APP_BUNDLE)/Contents/Frameworks/SQLCipher.framework" ]; then \
+			echo "ERROR: $(DAEMON_CLI_BIN) links SQLCipher.framework but the app bundle is missing Contents/Frameworks/SQLCipher.framework" >&2; \
+			exit 1; \
+		fi; \
+		if ! otool -l "$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_CLI_BIN)" | grep -q '@executable_path/../Frameworks'; then \
+			install_name_tool -add_rpath "@executable_path/../Frameworks" "$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_CLI_BIN)"; \
 		fi; \
 	fi
 	@echo "==> Embedding OpenBurnBarCore framework…"
@@ -123,14 +144,15 @@ build-signed: bootstrap preflight
 	@bash scripts/ci/verify-iroh-release-artifact.sh
 	@mkdir -p "$(CACHE_DIR)" "$(DERIVED_DATA)"
 	@echo "==> Resolving packages…"
-	xcodebuild -resolvePackageDependencies \
+	/usr/bin/env -u OPENBURNBAR_DISABLE_BURNBAR_REMOTE_XCFRAMEWORK xcodebuild -resolvePackageDependencies \
 		-project $(PROJECT) \
 		-scheme $(SCHEME) \
 		-clonedSourcePackagesDirPath $(CACHE_DIR) \
 		-derivedDataPath $(DERIVED_DATA) \
 		-quiet
 	@echo "==> Building daemon…"
-	swift build --package-path $(DAEMON_PACKAGE) -c release
+	OPENBURNBAR_DISABLE_BURNBAR_REMOTE_XCFRAMEWORK=1 swift build --package-path $(DAEMON_PACKAGE) -c release --product $(DAEMON_BIN)
+	OPENBURNBAR_DISABLE_BURNBAR_REMOTE_XCFRAMEWORK=1 swift build --package-path $(DAEMON_PACKAGE) -c release --product $(DAEMON_CLI_BIN)
 	@echo "==> Building signed $(SCHEME) ($(CONFIG))…"
 	@TEAM="$(OPENBURNBAR_DEVELOPMENT_TEAM)"; \
 	if [ -z "$$TEAM" ]; then \
@@ -141,7 +163,7 @@ build-signed: bootstrap preflight
 	fi; \
 	if [ -n "$$TEAM" ]; then \
 		echo "    Using development team $$TEAM (set OPENBURNBAR_DEVELOPMENT_TEAM to override)."; \
-		xcodebuild \
+		/usr/bin/env -u OPENBURNBAR_DISABLE_BURNBAR_REMOTE_XCFRAMEWORK xcodebuild \
 			-project $(PROJECT) \
 			-scheme $(SCHEME) \
 			-configuration $(CONFIG) \
@@ -157,7 +179,7 @@ build-signed: bootstrap preflight
 	else \
 		echo "    No OPENBURNBAR_DEVELOPMENT_TEAM set and no Apple Development identity found —"; \
 		echo "    building unsigned; the bundle will be ad-hoc signed for local use."; \
-		xcodebuild \
+		/usr/bin/env -u OPENBURNBAR_DISABLE_BURNBAR_REMOTE_XCFRAMEWORK xcodebuild \
 			-project $(PROJECT) \
 			-scheme $(SCHEME) \
 			-configuration $(CONFIG) \
@@ -171,15 +193,25 @@ build-signed: bootstrap preflight
 			CODE_SIGNING_ALLOWED=NO \
 			build; \
 	fi
-	@echo "==> Embedding daemon helper…"
+	@echo "==> Embedding daemon helpers…"
 	mkdir -p "$(APP_BUNDLE)/Contents/Helpers"
 	cp "$(DAEMON_PACKAGE)/.build/release/$(DAEMON_BIN)" "$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_BIN)"
+	cp "$(DAEMON_PACKAGE)/.build/release/$(DAEMON_CLI_BIN)" "$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_CLI_BIN)"
 	if [ -f "$(DAEMON_PACKAGE)/.build/release/$(DAEMON_CORE_DYLIB)" ]; then \
 		cp "$(DAEMON_PACKAGE)/.build/release/$(DAEMON_CORE_DYLIB)" "$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_CORE_DYLIB)"; \
 	else \
 		echo "    No $(DAEMON_CORE_DYLIB) produced; daemon is statically linked."; \
 	fi
-	chmod +x "$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_BIN)"
+	chmod +x "$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_BIN)" "$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_CLI_BIN)"
+	@for HELPER in \
+		"$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_BIN)" \
+		"$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_CLI_BIN)"; do \
+		if otool -L "$$HELPER" | grep -Eq 'libsqlcipher[^/]*\.dylib'; then \
+			echo "ERROR: $$(basename "$$HELPER") links an external libsqlcipher dylib; Apple builds must use the embedded SQLCipher.framework only." >&2; \
+			otool -L "$$HELPER" >&2; \
+			exit 1; \
+		fi; \
+	done
 	@if otool -L "$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_BIN)" | grep -q 'SQLCipher.framework'; then \
 		if [ ! -d "$(APP_BUNDLE)/Contents/Frameworks/SQLCipher.framework" ]; then \
 			echo "ERROR: $(DAEMON_BIN) links SQLCipher.framework but the app bundle is missing Contents/Frameworks/SQLCipher.framework" >&2; \
@@ -187,6 +219,15 @@ build-signed: bootstrap preflight
 		fi; \
 		if ! otool -l "$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_BIN)" | grep -q '@executable_path/../Frameworks'; then \
 			install_name_tool -add_rpath "@executable_path/../Frameworks" "$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_BIN)"; \
+		fi; \
+	fi
+	@if otool -L "$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_CLI_BIN)" | grep -q 'SQLCipher.framework'; then \
+		if [ ! -d "$(APP_BUNDLE)/Contents/Frameworks/SQLCipher.framework" ]; then \
+			echo "ERROR: $(DAEMON_CLI_BIN) links SQLCipher.framework but the app bundle is missing Contents/Frameworks/SQLCipher.framework" >&2; \
+			exit 1; \
+		fi; \
+		if ! otool -l "$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_CLI_BIN)" | grep -q '@executable_path/../Frameworks'; then \
+			install_name_tool -add_rpath "@executable_path/../Frameworks" "$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_CLI_BIN)"; \
 		fi; \
 	fi
 	@echo "==> Embedding OpenBurnBarCore framework…"

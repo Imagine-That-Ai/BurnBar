@@ -202,14 +202,33 @@ final class MercuryRouterTests: XCTestCase {
         matching predicate: (HermesRealtimeRelayFrame) -> Bool,
         timeout: TimeInterval = 10.0
     ) async throws -> HermesRealtimeRelayFrame {
+        let frames = try await waitForSentFrames(
+            on: stream,
+            minimumCount: 1,
+            timeout: timeout,
+            matching: predicate
+        )
+        return frames[0]
+    }
+
+    private func waitForSentFrames(
+        on stream: RecordingIrohStream,
+        minimumCount: Int,
+        timeout: TimeInterval = 10.0,
+        matching predicate: (HermesRealtimeRelayFrame) -> Bool
+    ) async throws -> [HermesRealtimeRelayFrame] {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
-            if let frame = await stream.sentFrames.first(where: predicate) {
-                return frame
+            let frames = await stream.sentFrames.filter(predicate)
+            if frames.count >= minimumCount {
+                return frames
             }
             try await Task.sleep(nanoseconds: 20_000_000)
         }
-        XCTFail("Timed out waiting for matching Mercury frame")
+        let expected = minimumCount == 1
+            ? "matching Mercury frame"
+            : "\(minimumCount) matching Mercury frames"
+        XCTFail("Timed out waiting for \(expected)")
         throw NSError(domain: "MercuryRouterTests", code: 1)
     }
 
@@ -578,7 +597,8 @@ final class MercuryRouterTests: XCTestCase {
             stream: stream,
             uid: "u",
             connectionID: "c",
-            streamClass: .screenVideo
+            streamClass: .screenVideo,
+            heartbeatInterval: 0
         )
         let frameV2 = MediaFrameV2(
             kind: .videoNAL,
@@ -1025,12 +1045,17 @@ final class MercuryRouterTests: XCTestCase {
 
     func testControlStreamMirrorSinkEmitsHealthHeartbeatsWithoutVideoFrames() async throws {
         let stream = RecordingIrohStream()
+        let capabilityProbeCount = Locked(0)
         let sink = MercuryControlStreamMediaSink(
             stream: stream,
             uid: "u",
             connectionID: "c",
             streamClass: .screenVideo,
-            heartbeatInterval: 0.02
+            heartbeatInterval: 0.02,
+            streamingCapabilityProvider: {
+                capabilityProbeCount.withLock { $0 += 1 }
+                return MercuryRouterTestFixtures.localStreamingCapabilities
+            }
         )
         defer { Task { await sink.close() } }
 
@@ -1042,6 +1067,15 @@ final class MercuryRouterTests: XCTestCase {
         XCTAssertEqual(heartbeat.connectionId, "c")
         XCTAssertEqual(heartbeat.media?.presence?.capabilities.contains(MercuryPeer.Feature.mirrorHost.rawValue), true)
         XCTAssertEqual(heartbeat.media?.presence?.capabilities.contains(MediaStreamClass.screenVideo.rawValue), true)
+
+        _ = try await waitForSentFrames(on: stream, minimumCount: 2) { frame in
+            frame.type == .mediaPresenceHeartbeat
+        }
+        XCTAssertEqual(
+            capabilityProbeCount.read(),
+            1,
+            "stable local VideoToolbox capabilities must be captured once, not re-probed on every heartbeat"
+        )
     }
 
     func testCallInviteEntersCallRingingPhase() async {
@@ -1708,6 +1742,52 @@ final class MercuryRouterTests: XCTestCase {
         XCTAssertEqual(ack.remoteUnlockState?.lockState, .unlocked)
     }
 
+    func testRemoteUnlockResumePollingDoesNotReprobeReadinessWhileHostStaysLocked() async throws {
+        let now = Date()
+        var snapshotCallCount = 0
+        let readiness = makeRemoteUnlockReadinessService(
+            lockStateProvider: { .loginWindow },
+            snapshotObserver: { snapshotCallCount += 1 }
+        )
+        let (router, sink) = makeRouter(
+            consent: true,
+            remoteUnlockReadiness: readiness,
+            clock: { now }
+        )
+
+        await handleMirrorFrame(
+            mirrorRequestFrame(
+                requestID: "remote-unlock-bounded-resume-poll",
+                viewerID: "viewer-1",
+                viewerDeviceID: "iphone-1",
+                controlAuthorityPeerNodeID: "ios-peer",
+                remoteUnlockSession: remoteUnlockSession(
+                    sessionId: "unlock-session",
+                    peerNodeId: "ios-peer",
+                    viewerDeviceId: "iphone-1",
+                    issuedAt: now
+                )
+            ),
+            router: router,
+            sink: sink
+        )
+
+        let snapshotCallsBeforePoll = snapshotCallCount
+        router.scheduleRemoteUnlockResumePoll(
+            reason: "bounded_readiness_probe_test",
+            initialDelayNanoseconds: 0,
+            maxAttempts: 4
+        )
+        let pollTask = router.remoteUnlockResumeTask
+        await pollTask?.value
+
+        XCTAssertEqual(
+            snapshotCallCount - snapshotCallsBeforePoll,
+            1,
+            "a locked resume poll should validate capabilities once, then use the cheap lock-state probe per tick"
+        )
+    }
+
     func testLockedMirrorWithoutRemoteUnlockSessionRequestsSignedRetry() async throws {
         let readiness = makeRemoteUnlockReadinessService(lockStateProvider: { .loginWindow })
         var startCount = 0
@@ -2288,7 +2368,8 @@ final class MercuryRouterTests: XCTestCase {
             stream: stream,
             uid: "uid-1",
             connectionID: "conn-1",
-            streamClass: .screenVideo
+            streamClass: .screenVideo,
+            heartbeatInterval: 0
         )
         let payload = Data(repeating: 0x7A, count: 700_000)
         let source = MediaFrameV2(
@@ -2369,12 +2450,14 @@ final class MercuryRouterTests: XCTestCase {
     }
 
     private func makeRemoteUnlockReadinessService(
-        lockStateProvider: @escaping @MainActor @Sendable () -> HermesRealtimeRelayMacLockState
+        lockStateProvider: @escaping @MainActor @Sendable () -> HermesRealtimeRelayMacLockState,
+        snapshotObserver: @escaping @MainActor @Sendable () -> Void = {}
     ) -> MacRemoteUnlockReadinessService {
         MacRemoteUnlockReadinessService(
             defaults: makeIsolatedDefaults(),
             snapshotProvider: {
-                RemoteUnlockReadinessSnapshot(
+                snapshotObserver()
+                return RemoteUnlockReadinessSnapshot(
                     featureFlagEnabled: true,
                     directDownloadBuild: true,
                     daemonInstalled: true,

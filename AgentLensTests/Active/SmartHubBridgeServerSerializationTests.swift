@@ -113,6 +113,87 @@ final class SmartHubBridgeServerSerializationTests: XCTestCase {
         try assertPersistedBridgeURL(settings.smartHubQuotaVoiceRefreshURL, path: "/voice-refresh")
     }
 
+    func test_runCostTotalsCacheDeduplicatesPeriodsAndReusesSameBucket() async {
+        let cache = SmartHubRunCostTotalsCache()
+        let now = Date(timeIntervalSince1970: 120)
+        var loadedBatches: [[SmartHubTimePeriod]] = []
+
+        let first = await cache.values(
+            for: [.rolling5h, .rolling5h, .rolling7d],
+            writeMarker: 41,
+            now: now
+        ) { periods in
+            loadedBatches.append(periods)
+            return Dictionary(
+                uniqueKeysWithValues: periods.map { period in
+                    (
+                        period.rawValue,
+                        [
+                            .claudeCode: ProviderRunCostTotals(
+                                sessionCount: Int(period.spanHours),
+                                totalTokens: 100,
+                                totalCost: 1
+                            )
+                        ]
+                    )
+                }
+            )
+        }
+        let second = await cache.values(
+            for: [.rolling7d, .rolling5h],
+            writeMarker: 41,
+            now: now.addingTimeInterval(10)
+        ) { periods in
+            loadedBatches.append(periods)
+            return [:]
+        }
+
+        XCTAssertEqual(loadedBatches, [[.rolling5h, .rolling7d]])
+        XCTAssertEqual(first, second)
+    }
+
+    func test_runCostTotalsCacheInvalidatesWhenUsageTableChanges() async {
+        let cache = SmartHubRunCostTotalsCache()
+        let now = Date(timeIntervalSince1970: 120)
+        var loadCount = 0
+
+        for writeMarker in [41, 42] {
+            _ = await cache.values(
+                for: [.rolling5h],
+                writeMarker: writeMarker,
+                now: now
+            ) { periods in
+                XCTAssertEqual(periods, [.rolling5h])
+                loadCount += 1
+                return [:]
+            }
+        }
+
+        XCTAssertEqual(loadCount, 2)
+    }
+
+    func test_runCostTotalsCacheInvalidatesAtSixtySecondBoundary() async {
+        let cache = SmartHubRunCostTotalsCache()
+        var loadCount = 0
+
+        for now in [
+            Date(timeIntervalSince1970: 179.9),
+            Date(timeIntervalSince1970: 180)
+        ] {
+            _ = await cache.values(
+                for: [.rolling5h],
+                writeMarker: 41,
+                now: now
+            ) { periods in
+                XCTAssertEqual(periods, [.rolling5h])
+                loadCount += 1
+                return [:]
+            }
+        }
+
+        XCTAssertEqual(loadCount, 2)
+    }
+
     func testRedactedBridgeURLRemovesAccessToken() throws {
         let raw = URL(string: "http://127.0.0.1:8787/render.html?bridgeToken=secret&x=1")!
         let redacted = SmartHubBridgeServer.shared.redactedBridgeURL(raw)

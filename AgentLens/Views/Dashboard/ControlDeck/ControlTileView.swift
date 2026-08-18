@@ -422,14 +422,12 @@ private struct ChartsTile: View {
 // adapter `AlertsSettingsView` uses, so the two surfaces cannot disagree about
 // what "off" means or which amount a re-enable restores.
 //
-// **Deliberately read-only: the daily digest.**
-// `DailyDigestManager.requestAuthorization()` / `scheduleDigest(from:at:)` are
-// called only at launch (`AgentLensApp+LiveServices.swift:309-315`,
-// `OpenBurnBarStartupRecovery.swift:463-467`), so a digest switch here would
-// look like it worked and change nothing until the next launch. The tile
-// renders the real state and says so. The switch lands with
-// `SettingsEffectsObserver`, which fixes it once for *both* surfaces — putting
-// the reschedule call in this tile would leave Settings inert instead.
+// **Read-only: the daily digest.**
+// `DailyDigestManager.activate(from:isEnabled:hour:)` registers a cadence at
+// launch that re-arms the pending notification every 15 minutes, reading
+// `dailyDigestEnabled` / `dailyDigestHour` on each tick. Both this tile and
+// Settings therefore take effect on their own, so neither surface needs a
+// reschedule call — the tile just renders the resulting state.
 private struct AlertsTile: View {
     @Environment(\.backdropInk) private var ink
     @Bindable var settingsManager: SettingsManager
@@ -439,10 +437,7 @@ private struct AlertsTile: View {
     private var threshold: Double? { settingsManager.costAlertThreshold }
 
     private var state: ControlTileState {
-        if settingsManager.dailyDigestEnabled {
-            return .degraded("Digest reschedules at next launch")
-        }
-        return threshold == nil ? .off : .on
+        threshold == nil ? .off : .on
     }
 
     private var headline: String {

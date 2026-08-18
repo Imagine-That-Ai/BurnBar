@@ -36,12 +36,14 @@ final class UsageAggregatorTests: XCTestCase {
         dataStore: DataStore,
         parserOverrides: [AgentProvider: any LogParser]? = nil,
         usageAPIService: ProviderUsageAPIService? = nil,
-        quotaService: ProviderQuotaService? = nil
+        quotaService: ProviderQuotaService? = nil,
+        projectionPipelineService: ProjectionPipelineService? = nil
     ) -> UsageAggregator {
         UsageAggregator(
             dataStore: dataStore,
             usageAPIService: usageAPIService,
             quotaService: quotaService ?? makeTestQuotaService(),
+            projectionPipelineService: projectionPipelineService,
             parserOverrides: parserOverrides
         )
     }
@@ -176,6 +178,143 @@ final class UsageAggregatorTests: XCTestCase {
         let completed = try await dataStore.fetchProjectionJobs(statuses: [.completed], limit: jobCount + 10).count
         XCTAssertEqual(pending, 0)
         XCTAssertEqual(completed, jobCount)
+    }
+
+    func test_projectionWorker_waitsForDeferredReembed_thenWakesAutomatically() async throws {
+        let dataStore = try makeTestDataStore()
+        let now = Date()
+        let conversation = ConversationRecord(
+            id: "conv-worker-paced-reembed",
+            provider: .codex,
+            sessionId: "session-worker-paced-reembed",
+            projectName: "OpenBurnBar",
+            startTime: now.addingTimeInterval(-60),
+            endTime: now,
+            messageCount: 2,
+            userWordCount: 4,
+            assistantWordCount: 6,
+            keyFiles: [],
+            keyCommands: [],
+            keyTools: [],
+            inferredTaskTitle: "Worker paced re-embed",
+            lastAssistantMessage: "Pacing fixture",
+            fullText: "Worker paced re-embed source conversation.",
+            indexedAt: now,
+            fileModifiedAt: now,
+            summary: nil
+        )
+        try await dataStore.upsertConversation(conversation)
+        let document = SearchDocumentRecord(
+            id: "doc-worker-paced-reembed",
+            sourceKind: .conversation,
+            sourceID: conversation.id,
+            sourceVersionID: ProjectionIdentity.conversationSourceVersionID(for: conversation),
+            provider: "codex",
+            projectName: "OpenBurnBar",
+            title: "Worker paced re-embed",
+            subtitle: nil,
+            bodyPreview: "Pacing fixture",
+            sourceUpdatedAt: now,
+            indexedAt: now,
+            contentHash: ProjectionIdentity.conversationContentHash(for: conversation),
+            createdAt: now,
+            updatedAt: now
+        )
+        try await dataStore.upsertSearchDocument(document)
+        let chunks = (0..<25).map { index in
+            SearchChunkRecord(
+                id: "chunk-worker-paced-\(String(format: "%02d", index))",
+                documentID: document.id,
+                sourceKind: document.sourceKind,
+                sourceID: document.sourceID,
+                sourceVersionID: document.sourceVersionID,
+                ordinal: index,
+                startOffset: index * 10,
+                endOffset: (index + 1) * 10,
+                text: "Worker paced embedding chunk \(index)",
+                contentHash: "worker-paced-chunk-hash-\(index)",
+                createdAt: now,
+                updatedAt: now
+            )
+        }
+        try await dataStore.replaceSearchChunks(
+            documentID: document.id,
+            title: document.title,
+            chunks: chunks
+        )
+        let storedChunkCount = try await dataStore.countSearchChunks(documentID: document.id)
+        XCTAssertEqual(storedChunkCount, chunks.count)
+
+        let embedder = UsageAggregatorPacingEmbeddingProvider()
+        let service = ProjectionPipelineService(
+            dataStore: dataStore,
+            leaseOwner: "worker-paced-reembed",
+            chunkEmbedder: embedder,
+            reembedContinuationDelay: 0.35
+        )
+        try await service.enqueueReembedJob(reason: "worker-pacing-test", priority: 1)
+
+        let aggregator = makeTestAggregator(
+            dataStore: dataStore,
+            projectionPipelineService: service
+        )
+
+        let firstSliceDeadline = Date().addingTimeInterval(5)
+        while Date() < firstSliceDeadline, await embedder.capturedCount() < 24 {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        let firstSliceCount = await embedder.capturedCount()
+        XCTAssertEqual(
+            firstSliceCount,
+            24,
+            "The first worker pass must stop after one embedding slice."
+        )
+
+        try await Task.sleep(nanoseconds: 100_000_000)
+        let countDuringDelay = await embedder.capturedCount()
+        XCTAssertEqual(
+            countDuringDelay,
+            24,
+            "A future availableAt row must not create a 20ms polling/embedding loop."
+        )
+
+        let completionDeadline = Date().addingTimeInterval(5)
+        while Date() < completionDeadline {
+            let completed = try await dataStore.fetchProjectionJobs(
+                statuses: [.completed],
+                limit: 10
+            ).contains { $0.jobType == .reembed }
+            if completed { break }
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+
+        let finalEmbeddedCount = await embedder.capturedCount()
+        XCTAssertEqual(
+            finalEmbeddedCount,
+            chunks.count,
+            "The scheduled wake must resume and finish the durable job without another refresh."
+        )
+        let remainingEmbeddingInputs = try await dataStore.fetchSearchChunkEmbeddingInputs(
+            afterID: nil,
+            limit: chunks.count + 1,
+            embeddingVersionID: EmbeddingIdentity.versionID(for: embedder.descriptor),
+            sourceKind: nil,
+            sourceID: nil
+        )
+        XCTAssertTrue(remainingEmbeddingInputs.isEmpty)
+        let completedJobs = try await dataStore.fetchProjectionJobs(
+            statuses: [.completed],
+            limit: 10
+        )
+        XCTAssertFalse(
+            completedJobs.contains { $0.jobType == .purge },
+            "The pacing fixture must retain its live source instead of being removed by gap repair."
+        )
+        let pending = try await dataStore.countProjectionJobs(
+            statuses: [.queued, .failed, .leased, .running]
+        )
+        XCTAssertEqual(pending, 0)
+        _ = aggregator
     }
 
     // MARK: - Refresh All Tests
@@ -562,6 +701,32 @@ final class UsageAggregatorTests: XCTestCase {
             ),
             "a partial persist must keep reconciliation un-armed — the table is non-empty but incomplete"
         )
+    }
+}
+
+private actor UsageAggregatorPacingEmbeddingProvider: ChunkEmbeddingProviding {
+    nonisolated let descriptor = EmbeddingModelDescriptor(
+        provider: "usage-aggregator-pacing-test",
+        modelName: "usage-aggregator-pacing-test",
+        dimensions: 8,
+        distanceMetric: .cosine,
+        versionTag: "paced-v1",
+        chunkerVersion: ProjectionIdentity.chunkerVersion,
+        normalizationVersion: "unit-l2-v1",
+        promptVersion: "plain-text-v1"
+    )
+    private var capturedTexts: [String] = []
+
+    func embedding(for text: String) async throws -> [Float] {
+        capturedTexts.append(text)
+        var vector = [Float](repeating: 0, count: descriptor.dimensions)
+        vector[0] = 1
+        vector[1] = Float(text.count % 7) / 10
+        return VectorMath.l2Normalized(vector)
+    }
+
+    func capturedCount() -> Int {
+        capturedTexts.count
     }
 }
 

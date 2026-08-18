@@ -275,6 +275,7 @@ extension BurnBarHTTPGatewayServer {
     private func refreshedCurrentClaudeElderWandRoute(
         replacing stale: ElderWandResolvedRoute
     ) async -> ElderWandResolvedRoute? {
+        await configStore.invalidateExternallyManagedCredentialMaterial()
         guard let refreshed = await resolveElderWandRoute(modelSlug: stale.wireModelSlug),
               refreshed.formatFamily == stale.formatFamily,
               refreshed.route.providerID.caseInsensitiveCompare(stale.route.providerID) == .orderedSame,

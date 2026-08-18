@@ -144,8 +144,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const passkeySupported =
-    typeof window !== "undefined" && typeof window.PublicKeyCredential !== "undefined";
+  // WebAuthn support only exists client-side; computing it during render
+  // (`typeof window !== "undefined"`) disagrees with the static prerender and
+  // trips hydration. Start false everywhere, detect after mount.
+  const [passkeySupported, setPasskeySupported] = useState(false);
+  useEffect(() => {
+    setPasskeySupported(typeof window.PublicKeyCredential !== "undefined");
+  }, []);
   const appleAuthEnabled = process.env.NEXT_PUBLIC_ENABLE_APPLE_AUTH === "true";
   const githubAuthEnabled = process.env.NEXT_PUBLIC_ENABLE_GITHUB_AUTH === "true";
 

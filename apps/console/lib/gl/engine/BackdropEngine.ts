@@ -610,7 +610,18 @@ export class BackdropEngine {
       canvas.addEventListener("webglcontextrestored", slot.onContextRestored, false);
     }
 
-    kernel.init(ctx, this.frameCtx(substrate));
+    try {
+      kernel.init(ctx, this.frameCtx(substrate));
+    } catch (err) {
+      // A kernel that throws on init must never take the backdrop down with
+      // it — degrade to the 2D default so the field is never black.
+      // Constant format string: `id` is caller-supplied, and console.* treats its
+      // first argument as a format string — an id containing "%s" would swallow
+      // `err` and hide the very failure this line exists to report.
+      console.error("[backdrop] %s init failed — falling back to %s:", id, DEFAULT_KERNEL_ID, err);
+      this.disposeSlot(slot);
+      return depth < 2 ? this.createSlot(DEFAULT_KERNEL_ID, depth + 1) : slot;
+    }
     // Replay the live field so a newly mounted/crossfading world inherits the
     // active mark (it survives switches — spec §2.2).
     if (this.glyphField) kernel.setGlyphField?.(this.glyphField);
@@ -634,6 +645,19 @@ export class BackdropEngine {
       slot.kernel.dispose();
     } catch {
       /* ignore teardown errors */
+    }
+    // Deterministically release the GL context the engine created for this
+    // slot. Shader kernels lose their own context in dispose(), but a LAZY
+    // kernel disposed before its chunk resolves never constructs the real
+    // kernel — its dispose() is a no-op and the context would leak until GC.
+    // Under rapid kernel switching (theme flipping) those leaks pile toward
+    // the browser's per-page context budget and get the LIVE context killed.
+    // loseContext() on an already-lost context is a no-op, so this is safe to
+    // do unconditionally.
+    if (slot.substrate === "webgl2" && slot.context) {
+      (slot.context as WebGL2RenderingContext)
+        .getExtension("WEBGL_lose_context")
+        ?.loseContext();
     }
     if (slot.canvas.parentNode) slot.canvas.parentNode.removeChild(slot.canvas);
     this.slots = this.slots.filter((s) => s !== slot);

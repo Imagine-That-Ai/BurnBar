@@ -189,6 +189,39 @@ extension UsageStore {
         )
     }
 
+    /// Fetches rows whose session starts inside a half-open time window.
+    ///
+    /// Unlike the dashboard's overlap predicate, this shape maps directly to
+    /// the `token_usage.startTime` index created by v1 and is intended for
+    /// bounded background consumers that do not need dashboard aggregates.
+    static func fetchUsageRows(
+        db: Database,
+        startingIn dateRange: Range<Date>,
+        limit: Int
+    ) throws -> [TokenUsage] {
+        guard limit > 0, dateRange.lowerBound < dateRange.upperBound else {
+            return []
+        }
+        return try compactMapCachedRows(
+            db: db,
+            sql: """
+                SELECT \(usageDecodeSelectColumns.joined(separator: ", "))
+                FROM token_usage
+                \(startTimeRangeWhereSQL)
+                ORDER BY startTime DESC
+                LIMIT ?
+                """,
+            arguments: [
+                OpenBurnBarDatabase.sqliteDateString(dateRange.lowerBound),
+                OpenBurnBarDatabase.sqliteDateString(dateRange.upperBound),
+                limit
+            ],
+            transform: Self.decodeUsage
+        )
+    }
+
+    static let startTimeRangeWhereSQL = "WHERE startTime >= ? AND startTime < ?"
+
     static func fetchWindowSummary( // pure-move: was private
         db: Database,
         dateRange: ClosedRange<Date>?,

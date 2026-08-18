@@ -38,6 +38,23 @@ struct DashboardSectionSwitcher: View {
 
     var body: some View {
         Menu {
+            // Home sits above the divider for the same reason the Control Deck
+            // sits below it: `primarySections` is positional and drives ⌘1–⌘8,
+            // so neither can be a member. This menu is the browsable index of
+            // what exists, and the launch surface belongs at the top of it.
+            Button {
+                onNavigate(.home)
+            } label: {
+                Label {
+                    Text(DashboardMainRoute.home.title())
+                } icon: {
+                    Image(systemName: currentRoute == .home
+                        ? "checkmark"
+                        : DashboardMainRoute.home.systemImage())
+                }
+            }
+            Divider()
+
             ForEach(DashboardMainRoute.primarySections, id: \.self) { route in
                 Button {
                     onNavigate(route)

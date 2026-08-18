@@ -4,8 +4,18 @@ import OpenBurnBarCore
 
 // MARK: - SearchIndexStore
 
+struct SearchChunkEmbeddingInput: Identifiable, Equatable, Sendable {
+    let id: String
+    let text: String
+}
+
 /// Search documents, chunks, FTS-based lexical search, and document-level deletion.
 final class SearchIndexStore: Sendable {
+    private struct ChunkDiffMetadata {
+        let id: String
+        let contentHash: String?
+    }
+
     private enum WriteTuning {
         static let chunkMutationBatchSize = 64
         static let interChunkMutationPauseNanoseconds: UInt64 = 10_000_000
@@ -345,8 +355,10 @@ final class SearchIndexStore: Sendable {
         title: String,
         newChunks: [SearchChunkRecord]
     ) async throws -> ChunkDiffResult {
-        // Fetch existing chunks for this document
-        let existingChunks = try await fetchChunks(documentID: documentID)
+        // Diffing needs only stable identity and content hash. Reading full rows
+        // here decrypts chunk text and parses timestamps for data that the diff
+        // never uses.
+        let existingChunks = try await fetchChunkDiffMetadata(documentID: documentID)
 
         // If no existing chunks, just insert all (first projection)
         if existingChunks.isEmpty {
@@ -454,6 +466,28 @@ final class SearchIndexStore: Sendable {
             existingTotal: existingChunks.count,
             newTotal: newChunks.count
         )
+    }
+
+    private func fetchChunkDiffMetadata(documentID: String) async throws -> [ChunkDiffMetadata] {
+        try await dbQueue.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT id, contentHash
+                FROM search_chunks
+                WHERE documentID = ?
+                ORDER BY ordinal ASC
+                """,
+                arguments: [documentID]
+            )
+            return rows.compactMap { row in
+                guard let id = row["id"] as? String else { return nil }
+                return ChunkDiffMetadata(
+                    id: id,
+                    contentHash: row["contentHash"] as? String
+                )
+            }
+        }
     }
 
     func replaceChunks(documentID: String, title: String, chunks: [SearchChunkRecord]) async throws {
@@ -641,6 +675,76 @@ final class SearchIndexStore: Sendable {
                 arguments: [documentID]
             )
             return rows.compactMap(Self.chunk(from:))
+        }
+    }
+
+    /// Reads the minimum row shape required by semantic re-embedding.
+    ///
+    /// Keyset pagination keeps each SQLCipher read bounded and stable while the
+    /// caller embeds and releases one page at a time. Code chunks stay local-only.
+    func fetchChunkEmbeddingInputs(
+        afterID: String?,
+        limit: Int,
+        embeddingVersionID: String,
+        sourceKind: SearchSourceKind?,
+        sourceID: String?
+    ) async throws -> [SearchChunkEmbeddingInput] {
+        if sourceKind == .code {
+            return []
+        }
+
+        var clauses = [
+            """
+            NOT EXISTS (
+                SELECT 1
+                FROM chunk_embeddings AS existing_embedding
+                WHERE existing_embedding.chunkID = search_chunks.id
+                  AND existing_embedding.embeddingVersionID = ?
+            )
+            """
+        ]
+        var arguments: [any DatabaseValueConvertible] = [embeddingVersionID]
+
+        if let sourceKind, let sourceID {
+            clauses.append("sourceKind = ?")
+            arguments.append(sourceKind.rawValue)
+            clauses.append("sourceID = ?")
+            arguments.append(sourceID)
+        } else {
+            clauses.append("sourceKind <> ?")
+            arguments.append(SearchSourceKind.code.rawValue)
+        }
+
+        if let afterID {
+            clauses.append("id > ?")
+            arguments.append(afterID)
+        }
+
+        arguments.append(max(1, limit))
+        let whereSQL = clauses.joined(separator: " AND ")
+        let capturedArguments = arguments
+
+        return try await dbQueue.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT id, text
+                FROM search_chunks
+                WHERE \(whereSQL)
+                ORDER BY id ASC
+                LIMIT ?
+                """,
+                arguments: StatementArguments(capturedArguments)
+            )
+            return rows.compactMap { row in
+                guard
+                    let id = row["id"] as? String,
+                    let text = row["text"] as? String
+                else {
+                    return nil
+                }
+                return SearchChunkEmbeddingInput(id: id, text: text)
+            }
         }
     }
 

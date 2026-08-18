@@ -599,6 +599,27 @@ final class BurnBarAIInboxStore: @unchecked Sendable {
 
     // MARK: - Read helpers used by detectors
 
+    /// Workspace paths for the always-on change gate.
+    ///
+    /// Keep this query metadata-only. The gate needs paths for a `stat`-only
+    /// fingerprint and must not decode message bodies, summaries, key arrays,
+    /// or `length(fullText)` on every five-minute wake.
+    func recentConversationWorkingDirectories(since: Date, limit: Int) throws -> [String] {
+        try databaseSync {
+            guard try tableExistsLocked("conversations") else { return [] }
+            return try queryRows(
+                """
+                SELECT workingDirectory
+                FROM conversations
+                WHERE COALESCE(endTime, startTime) >= ?
+                ORDER BY COALESCE(endTime, startTime) DESC
+                LIMIT ?
+                """,
+                [.text(Self.grdbString(from: since)), .int(limit)]
+            ).compactMap { $0.optionalString(0) }
+        }
+    }
+
     /// Conversations touched within the window, newest first.
     ///
     /// `fullText` is deliberately excluded: it can be megabytes, and the evidence

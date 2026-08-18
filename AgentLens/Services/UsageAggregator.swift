@@ -44,6 +44,8 @@ final class UsageAggregator {
     /// Usage records fetched from provider billing APIs (separate from log-parsed data).
     private(set) var apiUsages: [ProviderUsageRecord] = []
     private var projectionWorkerTask: Task<Void, Never>?
+    private var projectionWorkerWakeTask: Task<Void, Never>?
+    private var projectionWorkerWakeAt: Date?
     private var conversationIndexingTask: Task<Void, Never>?
     private var projectionSweepRequested = false
     private var lastProjectionInsightRefreshAt: Date?
@@ -122,7 +124,7 @@ final class UsageAggregator {
                 guard let self else { return }
                 Task { @MainActor [weak self] in
                     guard let self else { return }
-                    let pendingProjectionJobs = (try? await self.dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])) ?? 0 // try?-ok(opportunistic sweep gate)
+                    let pendingProjectionJobs = (try? await self.dataStore.countProjectionJobs(statuses: [.queued, .failed, .leased, .running])) ?? 0 // try?-ok(opportunistic sweep gate)
                     if pendingProjectionJobs > 0 {
                         self.requestProjectionSweep()
                     }
@@ -420,7 +422,7 @@ final class UsageAggregator {
             typedPersistenceError = typed
         }
 
-        let pendingProjectionJobs = (try? await dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])) ?? 0 // try?-ok(opportunistic sweep gate)
+        let pendingProjectionJobs = (try? await dataStore.countProjectionJobs(statuses: [.queued, .failed, .leased, .running])) ?? 0 // try?-ok(opportunistic sweep gate)
         launchArtifactDiscoverySweep()
         if result.indexedConversationChanges > 0 {
             summaryEngine.launchAutoSummarySweep(indexedAfter: refreshStartedAt)
@@ -629,21 +631,26 @@ private extension UsageAggregator {
     @discardableResult
     func runProjectionSweep() async -> Bool {
         do {
-            let queueDepthBeforeSweep = try await dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])
+            let queueDepthBeforeSweep = try await dataStore.countProjectionJobs(statuses: [.queued, .failed, .leased, .running])
             let maxJobs = queueDepthBeforeSweep >= ProjectionWorkerPolicy.backlogCompactionThreshold
                 ? ProjectionWorkerPolicy.catchUpMaxJobsPerPass
                 : ProjectionWorkerPolicy.maxJobsPerPass
             let report = try await makeProjectionPipelineService().runSweep(
                 maxJobs: maxJobs
             )
-            let queueDepth = try await dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])
-            let hasBacklog = queueDepth > 0 || report.leasedJobs >= maxJobs
+            // Only a full pass proves there may be more work available now.
+            // Future `availableAt` rows are handled by one scheduled wake below;
+            // treating their mere existence as immediate backlog caused a 20ms
+            // polling loop while a delayed re-embed waited.
+            let hasBacklog = report.leasedJobs >= maxJobs
 
             if shouldRefreshProjectionInsights(report: report, hasBacklog: hasBacklog) {
                 _ = await WorkflowInsightRollupService(dataStore: dataStore).snapshotAsync(refreshIfStale: true)
                 lastProjectionInsightRefreshAt = Date()
             }
             return hasBacklog
+        } catch is CancellationError {
+            return false
         } catch {
             let now = Date()
             do {
@@ -670,6 +677,9 @@ private extension UsageAggregator {
     }
 
     func requestProjectionSweep() {
+        projectionWorkerWakeTask?.cancel()
+        projectionWorkerWakeTask = nil
+        projectionWorkerWakeAt = nil
         projectionSweepRequested = true
         guard projectionWorkerTask == nil else { return }
 
@@ -702,7 +712,45 @@ private extension UsageAggregator {
                 try? await Task.sleep(nanoseconds: ProjectionWorkerPolicy.coalesceDelayNanoseconds) // try?-ok(cancellation only)
             } else {
                 continuousBacklogPasses = 0
+                await scheduleNextProjectionSweepIfNeeded()
             }
+        }
+    }
+
+    func scheduleNextProjectionSweepIfNeeded() async {
+        // try?-ok(lease probe is best-effort; a failed read skips this sweep, next projection request retries)
+        guard let nextAvailableAt = try? await dataStore.nextProjectionJobLeaseOpportunity() else {
+            return
+        }
+        let delay = nextAvailableAt.timeIntervalSinceNow
+        guard delay > 0 else {
+            projectionSweepRequested = true
+            return
+        }
+        scheduleProjectionSweep(at: nextAvailableAt)
+    }
+
+    func scheduleProjectionSweep(at availableAt: Date) {
+        if let projectionWorkerWakeAt, projectionWorkerWakeAt <= availableAt {
+            return
+        }
+
+        projectionWorkerWakeTask?.cancel()
+        projectionWorkerWakeAt = availableAt
+        let delaySeconds = max(0, availableAt.timeIntervalSinceNow)
+        let delayNanoseconds = UInt64(
+            min(delaySeconds * 1_000_000_000, Double(UInt64.max))
+        )
+        projectionWorkerWakeTask = Task(priority: .background) { [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: delayNanoseconds)
+            } catch {
+                return
+            }
+            guard let self, Task.isCancelled == false else { return }
+            self.projectionWorkerWakeTask = nil
+            self.projectionWorkerWakeAt = nil
+            self.requestProjectionSweep()
         }
     }
 

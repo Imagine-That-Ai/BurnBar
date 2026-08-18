@@ -1190,7 +1190,7 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
 
         let store = try makeInMemoryStore()
         let now = Date()
-        store.replaceUsages([
+        try await store.insert([
             TokenUsage(
                 provider: .zai,
                 sessionId: "apollo-session",
@@ -1203,6 +1203,7 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
                 endTime: now.addingTimeInterval(-1_200)
             )
         ])
+        XCTAssertFalse(store.debugHasLoadedUsagePresentationForTesting)
         try await store.upsertConversation(
             ConversationRecord(
                 id: "conversation-apollo",
@@ -1277,37 +1278,113 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
         XCTAssertEqual(snapshot.projects.first?.latestConversationID, "conversation-apollo")
         XCTAssertEqual(snapshot.projects.first?.sessionCountLast7Days, 1)
         XCTAssertNil(snapshot.projects.first?.latestQuestionPrompt)
+        XCTAssertFalse(
+            store.debugHasLoadedUsagePresentationForTesting,
+            "Controller export must not force the dashboard aggregate snapshot"
+        )
+    }
+
+    @MainActor
+    func test_controllerActivityExport_coalescesConcurrentRequestsAndOmitsTranscriptPayloads() async throws {
+        let harness = try makeRuntimePathsHarness(name: "activity-export-single-flight")
+        defer { harness.cleanup() }
+
+        let tracer = OpenBurnBarQueryTracer.shared
+        let queue = try DatabaseQueue(configuration: .withQueryTracing())
+        let store = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let now = Date()
+        try await store.upsertConversation(
+            ConversationRecord(
+                id: "conversation-large-payload",
+                provider: .codex,
+                sessionId: "session-large-payload",
+                projectName: "Large Payload Project",
+                startTime: now.addingTimeInterval(-120),
+                endTime: now.addingTimeInterval(-60),
+                messageCount: 2,
+                userWordCount: 2,
+                assistantWordCount: 2,
+                keyFiles: [String(repeating: "f", count: 8_192)],
+                keyCommands: [String(repeating: "c", count: 8_192)],
+                keyTools: [String(repeating: "t", count: 8_192)],
+                inferredTaskTitle: "Keep the controller export light",
+                lastAssistantMessage: String(repeating: "assistant-body", count: 32_768),
+                fullText: String(repeating: "transcript-body", count: 131_072),
+                indexedAt: now.addingTimeInterval(-60),
+                fileModifiedAt: now.addingTimeInterval(-60),
+                summary: "The compact summary must remain available.",
+                summaryTitle: "Compact activity",
+                summaryUpdatedAt: now.addingTimeInterval(-60)
+            )
+        )
+
+        let manager = OpenBurnBarDaemonManager(
+            paths: harness.paths,
+            dependencies: daemonDependencies(resolveDaemonBinary: { nil }),
+            usageSyncService: OpenBurnBarDaemonUsageSyncService(paths: harness.paths, fileManager: .default)
+        )
+        manager.dataStore = store
+
+        tracer.resetLog()
+        async let firstExport: Void = manager.exportControllerActivitySnapshot()
+        async let secondExport: Void = manager.exportControllerActivitySnapshot()
+        _ = await (firstExport, secondExport)
+
+        let activityQueries = tracer.queryLog.filter { query in
+            let sql = query.sql.uppercased()
+            return sql.contains("FROM CONVERSATIONS")
+                && sql.contains("SUMMARYTITLE")
+                && sql.contains("INFERREDTASKTITLE")
+        }
+        XCTAssertEqual(
+            activityQueries.count,
+            1,
+            "Concurrent startup health refreshes must share one controller-activity conversation read"
+        )
+        let activitySQL = try XCTUnwrap(activityQueries.first?.sql.uppercased())
+        XCTAssertFalse(activitySQL.contains("FULLTEXT"))
+        XCTAssertFalse(activitySQL.contains("LASTASSISTANTMESSAGE"))
+        XCTAssertFalse(activitySQL.contains("KEYFILES"))
+        XCTAssertFalse(activitySQL.contains("KEYCOMMANDS"))
+        XCTAssertFalse(activitySQL.contains("KEYTOOLS"))
+
+        let data = try Data(contentsOf: harness.paths.controllerActivitySnapshotURL)
+        let snapshot = try JSONDecoder().decode(BurnBarControllerActivitySnapshot.self, from: data)
+        let project = try XCTUnwrap(snapshot.projects.first)
+        XCTAssertEqual(project.projectSlug, "large-payload-project")
+        XCTAssertEqual(project.latestConversationID, "conversation-large-payload")
+        XCTAssertEqual(project.latestConversationSummary, "The compact summary must remain available.")
+        XCTAssertEqual(project.latestConversationTitle, "Compact activity")
     }
 
     func test_slug_collapsesPunctuationWithoutRepeatedHyphens() {
         XCTAssertEqual(OpenBurnBarDaemonManager.slug(for: "  Apollo / Mission!!  "), "apollo-mission")
-        XCTAssertEqual(OpenBurnBarDaemonManager.slug(for: "---"), "---")
+        XCTAssertEqual(OpenBurnBarDaemonManager.slug(for: "---"), "")
+        XCTAssertEqual(OpenBurnBarDaemonManager.slug(for: "~"), "")
+        XCTAssertEqual(OpenBurnBarDaemonManager.slug(for: "日本語"), "")
         XCTAssertEqual(OpenBurnBarDaemonManager.slug(for: "   "), "")
+        XCTAssertEqual(
+            OpenBurnBarDaemonManager.slug(for: String(repeating: "A", count: 120)),
+            String(repeating: "a", count: 96)
+        )
     }
 
     func test_buildControllerActivitySnapshot_groupsTenThousandConversationsInLinearTime() {
         let now = Date()
         let sessionCount = 10_000
         let projectCount = 100
-        let conversations: [ConversationRecord] = (0..<sessionCount).map { index in
+        let conversations: [ConversationActivitySummary] = (0..<sessionCount).map { index in
             let projectName = "Project \(index / (sessionCount / projectCount) + 1)"
-            return ConversationRecord(
+            return ConversationActivitySummary(
                 id: "perf-conversation-\(index)",
-                provider: .zai,
                 sessionId: "perf-session-\(index)",
                 projectName: projectName,
                 startTime: now.addingTimeInterval(-Double(index + 1)),
                 endTime: now.addingTimeInterval(-Double(index)),
-                messageCount: 1,
-                userWordCount: 1,
-                assistantWordCount: 1,
-                keyFiles: [],
-                keyCommands: [],
-                keyTools: [],
+                indexedAt: now.addingTimeInterval(-Double(index)),
                 inferredTaskTitle: "Perf \(index)",
-                lastAssistantMessage: "",
-                fullText: "Perf \(index)",
-                fileModifiedAt: now.addingTimeInterval(-Double(index))
+                summary: nil,
+                summaryTitle: nil
             )
         }
 
@@ -1328,23 +1405,16 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
 
     func test_buildControllerActivitySnapshot_mergesUsageAndConversationProjects() {
         let now = Date()
-        let conversation = ConversationRecord(
+        let conversation = ConversationActivitySummary(
             id: "conv-alpha",
-            provider: .claudeCode,
             sessionId: "session-alpha",
             projectName: "Alpha",
             startTime: now.addingTimeInterval(-120),
             endTime: now.addingTimeInterval(-60),
-            messageCount: 2,
-            userWordCount: 2,
-            assistantWordCount: 2,
-            keyFiles: [],
-            keyCommands: [],
-            keyTools: [],
+            indexedAt: now.addingTimeInterval(-60),
             inferredTaskTitle: "Alpha work",
-            lastAssistantMessage: "",
-            fullText: "Alpha",
-            fileModifiedAt: now
+            summary: nil,
+            summaryTitle: nil
         )
         let usage = TokenUsage(
             provider: .codex,
