@@ -319,9 +319,9 @@ export const KERNELS: KernelDescriptor[] = [
   {
     id: "swarmEmber",
     label: "Swarm Ember",
-    blurb: "Ember particles murmurate, then spell token glyphs and dissolve.",
+    blurb: "Embers murmurate into the BurnBar flame, hold with heat, and dissolve.",
     substrate: "2d",
-    create: () => createSwarmEmberKernel({ enableSwarmSparkles: false }),
+    create: () => createSwarmEmberKernel({ enableSwarmSparkles: true, logoHero: true }),
   },
   ];
 

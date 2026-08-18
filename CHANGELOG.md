@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Swarm Ember rebuilt around the BurnBar flame mark** (`apps/console` +
+  `packages/gl-engine`): the old token-glyph / provider-slideshow field is
+  gone. Embers murmurate on a curl-noise wind, then lock onto a color-accurate
+  sampling of the official flame + bar-chart mark, hold with heat and tip
+  sparks, and dissolve. Console default is `logoHero` (mark ↔ swarm only);
+  the Linux/macOS dashboard cycle via `buildDashboardCycle` is unchanged.
 - **Usage rollups: per-day provider split** (`functions/`, `COUNTER_SCHEMA_VERSION`
   3): the all_time rollup gains `dailyProviderTokens` — a sparse
   `day → provider → tokens` map alongside `dailyPoints`, with
