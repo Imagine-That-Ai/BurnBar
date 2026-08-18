@@ -2,6 +2,24 @@ import Foundation
 import GRDB
 
 extension OpenBurnBarDatabase {
+    /// Migrations that only add tables, columns, or indexes. They execute inside
+    /// GRDB's per-migration transaction and never rewrite or delete existing user
+    /// rows, so a failure rolls back on its own.
+    ///
+    /// Anything on this list skips the pre-migration `PRAGMA integrity_check` plus
+    /// full-file backup. That lane copies the entire database before the app can
+    /// render its first frame, which on a real install is multiple gigabytes and
+    /// minutes of a frozen launch — a steep price to protect a migration that
+    /// cannot lose data in the first place.
+    ///
+    /// Deliberately fail-closed: every migration not named here keeps the full
+    /// integrity-check + backup lane until someone reviews its data-loss risk.
+    static let additiveTransactionalMigrationIdentifiers: Set<String> = [
+        "v62_war_room_originator",
+        "v63_standing_orders",
+        "v64_token_usage_start_time_index"
+    ]
+
     enum OpenBurnBarDatabaseError: Error {
         case integrityCheckFailed(details: String)
         case backupFailed(underlying: Error)
@@ -38,12 +56,20 @@ extension OpenBurnBarDatabase {
             ) ?? 0
             guard hasMigrationTable > 0 else { return true }
 
-            let latestApplied = try Int.fetchOne(
-                db,
-                sql: "SELECT COUNT(*) FROM grdb_migrations WHERE identifier = ?",
-                arguments: [Self.latestMigrationIdentifier]
-            ) ?? 0
-            return latestApplied == 0
+            let migrator = Self.migrator
+            let applied = try migrator.appliedIdentifiers(db)
+            let pending = migrator.migrations.filter { !applied.contains($0) }
+            return Self.requiresFullPreMigrationProtection(pendingMigrationIdentifiers: pending)
+        }
+    }
+
+    /// The full backup lane is required when *any* pending migration is not
+    /// provably additive. One risky migration in the batch protects the batch.
+    static func requiresFullPreMigrationProtection(
+        pendingMigrationIdentifiers: [String]
+    ) -> Bool {
+        pendingMigrationIdentifiers.contains {
+            !additiveTransactionalMigrationIdentifiers.contains($0)
         }
     }
 

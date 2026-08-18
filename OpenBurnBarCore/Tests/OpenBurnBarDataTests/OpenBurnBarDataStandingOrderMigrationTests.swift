@@ -91,4 +91,37 @@ final class OpenBurnBarDataStandingOrderMigrationTests: XCTestCase {
         XCTAssertTrue(after.usage)
         XCTAssertTrue(after.orders)
     }
+
+    /// These migrations only add tables and indexes, so they must skip the
+    /// pre-migration full-file backup. On a real install that lane copies
+    /// several gigabytes before the app can paint, which makes an additive
+    /// migration landing on the wrong lane a launch regression rather than a
+    /// cosmetic one.
+    func test_theWarRoomMigrationsSkipTheFullBackupLane() {
+        XCTAssertFalse(
+            OpenBurnBarDatabase.requiresFullPreMigrationProtection(
+                pendingMigrationIdentifiers: [
+                    "v62_war_room_originator",
+                    "v63_standing_orders",
+                    "v64_token_usage_start_time_index"
+                ]
+            )
+        )
+    }
+
+    /// Fail-closed: one unreviewed migration in the batch puts the whole batch
+    /// back on the protected lane.
+    func test_anUnlistedMigrationForcesTheFullBackupLane() {
+        XCTAssertTrue(
+            OpenBurnBarDatabase.requiresFullPreMigrationProtection(
+                pendingMigrationIdentifiers: ["v63_standing_orders", "v65_hypothetical_rewrite"]
+            )
+        )
+    }
+
+    func test_nothingPendingNeedsNoProtection() {
+        XCTAssertFalse(
+            OpenBurnBarDatabase.requiresFullPreMigrationProtection(pendingMigrationIdentifiers: [])
+        )
+    }
 }
