@@ -8,6 +8,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **War Room: machine-bound Hermes identity and the Wire's fail-closed spine**
+  (`docs/WAR_ROOM.md`) — a Hermes is now a name bound to a *machine*, not a bot.
+  Every Mac publishes one **HermesBody** (`users/{uid}/hermes_bodies/{bodyId}`):
+  the join of the device doc, the Hermes relay connection, the iroh endpoint,
+  and sysctl-probed hardware, keyed by the existing
+  `relay-host-<installationUUID>` connection id so no new identity is minted.
+  Settings → Devices & Sync gains a **Hermes Bodies** roster with rename and
+  removal. Presence is derived by the *reader* from heartbeat age rather than
+  trusted from a publisher that cannot know it went offline, and unreadable
+  hardware renders an em-dash instead of a synthetic default. `BurnBarOriginator`
+  adds typed STARTED BY attribution (9 kinds × exact/inferred/unknown
+  confidence) stamped onto Wand missions today, with a flat two-field codec for
+  the new nullable `token_usage.originatorKind` / `originatorRef` columns
+  (migration v62) and a full-map codec for Firestore. The **Wire** — the
+  Pro/Ultra-only encrypted Mac⇄Mac lane — lands its policy spine: a `war` frame
+  group in the canonical wire protocol (parity-gated across Swift, Kotlin,
+  TypeScript, and Rust), a pure `WarWireGate` both peers evaluate identically,
+  `war_wire_grants` consent records whose pair id is derived server-side and
+  whose covered pair is immutable on update, and the `war_room_kill_switch`
+  Remote Config flag that defaults to *engaged* so an install that cannot reach
+  config keeps the shipped single-machine experience.
 - **Usage rollups: per-day provider split** (`functions/`, `COUNTER_SCHEMA_VERSION`
   3): the all_time rollup gains `dailyProviderTokens` — a sparse
   `day → provider → tokens` map alongside `dailyPoints`, with
