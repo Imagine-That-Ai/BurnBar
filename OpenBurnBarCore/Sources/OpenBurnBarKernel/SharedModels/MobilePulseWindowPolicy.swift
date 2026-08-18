@@ -90,7 +90,8 @@ public enum MobilePulseWindowPolicy {
     public static func liveQueryStartMs(nowMs: Int64, timeZoneIdentifier: String) -> Int64 {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: timeZoneIdentifier)
-            ?? TimeZone(secondsFromGMT: 0)!
+            ?? TimeZone(secondsFromGMT: 0)
+            ?? TimeZone.current
         let now = Date(timeIntervalSince1970: Double(nowMs) / 1_000)
         let rollingStart = now.addingTimeInterval(-Double(dayWindowMs) / 1_000)
         let components = calendar.dateComponents([.year, .month, .day, .hour], from: rollingStart)

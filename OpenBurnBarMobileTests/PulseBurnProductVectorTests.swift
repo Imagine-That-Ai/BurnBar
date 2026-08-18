@@ -19,7 +19,9 @@ final class PulseBurnProductVectorTests: XCTestCase {
     func testPulseLiveQueryStartHourFloor() throws {
         let vector = try pulseVector("pulse.live-query-start-hour-floor")
         var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: vector["timeZone"] as? String ?? "UTC")!
+        calendar.timeZone = TimeZone(identifier: vector["timeZone"] as? String ?? "UTC")
+            ?? TimeZone(secondsFromGMT: 0)
+            ?? .current
         let now = Date(timeIntervalSince1970: number(vector["nowMs"]).doubleValue / 1_000)
         let start = PulseWindowMetricBuilder.liveQueryStart(now: now, calendar: calendar)
         let expectedMs = number(dict(vector["expected"])["startMs"]).int64Value
