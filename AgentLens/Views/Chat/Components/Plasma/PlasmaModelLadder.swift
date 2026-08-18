@@ -277,12 +277,26 @@ enum PlasmaModelLadder {
         return trimmed.isEmpty ? "unknown" : trimmed
     }
 
+    /// Rung 2's heading for a provider.
+    ///
+    /// The canonical label wins over the runtime-supplied one. A CLI is free to
+    /// report its provider as `"openai"`, and echoing that verbatim would put a
+    /// lowercase id where the app everywhere else says "OpenAI". The supplied
+    /// name is the fallback, for providers the canonical table has never heard
+    /// of — which is the only case where it knows more than we do.
     static func providerDisplayName(_ providerID: String, providerName: String? = nil) -> String {
         guard providerID != "unknown" else { return "Unlabelled provider" }
-        return OpenBurnBarModelDisplayName.providerLabel(
-            providerID: providerID,
-            providerName: providerName
-        ) ?? providerID
+        // Compared exactly, not case-insensitively: "OpenAI" for `openai` is
+        // precisely the improvement being looked for, and a case-insensitive
+        // test would throw it away as a re-spelling of the id.
+        if let canonical = OpenBurnBarModelDisplayName.providerLabel(providerID: providerID),
+           canonical != providerID {
+            return canonical
+        }
+        if let supplied = providerName?.trimmingCharacters(in: .whitespacesAndNewlines), !supplied.isEmpty {
+            return supplied
+        }
+        return providerID
     }
 
     private static func summarize(_ labels: [String]) -> String? {

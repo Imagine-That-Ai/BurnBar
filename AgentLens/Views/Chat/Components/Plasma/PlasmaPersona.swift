@@ -272,4 +272,17 @@ enum PlasmaPersonaPrompt {
         guard !trimmedBase.isEmpty else { return persona.voicePrompt }
         return "\(persona.voicePrompt)\n\n\(trimmedBase)"
     }
+
+    /// Which voice wins when a seat persona and a desktop pet are both live.
+    ///
+    /// The pet does. It is a deliberate, momentary act performed at the pet
+    /// bubble, while the seat persona is ambient configuration, and stacking
+    /// two contradictory register instructions reads worse than either alone.
+    ///
+    /// Extracted from the send path so the rule is testable: inline in
+    /// `ChatSessionController+SearchSend` it was reachable only by building a
+    /// whole controller and a whole turn.
+    static func resolveVoice(seat: PlasmaPersona?, hasActivePetVoice: Bool) -> PlasmaPersona? {
+        hasActivePetVoice ? nil : seat
+    }
 }

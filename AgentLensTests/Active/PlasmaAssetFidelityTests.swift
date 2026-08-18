@@ -136,12 +136,26 @@ final class PlasmaAssetFidelityTests: XCTestCase {
         XCTAssertEqual(PlasmaThinkingBubble.all.map(\.duration), [2.4, 3.0, 2.6])
     }
 
-    func testThinkingBubblesAreInvisibleBeforeTheirDelayElapses() {
-        let second = PlasmaThinkingBubble.second
-        // Sampled at a moment inside the first bubble's run but before the
-        // second has been released.
-        let early = second.state(at: Date(timeIntervalSinceReferenceDate: 0.2))
-        XCTAssertEqual(early.opacity, 0, accuracy: 0.001)
+    func testThinkingBubblesAreStaggeredRatherThanPulsingTogether() {
+        // The delays phase-shift a continuously looping emitter, so at any
+        // instant the three particles are at three different points of their
+        // rise. Three bubbles leaving together would read as a pulse, not as a
+        // stream, which is the whole difference from a spinner.
+        let now = Date(timeIntervalSinceReferenceDate: 12.5)
+        let heights = PlasmaThinkingBubble.all.map { $0.state(at: now).offset.height }
+        XCTAssertEqual(Set(heights.map { ($0 * 100).rounded() }).count, 3)
+    }
+
+    func testEveryThinkingBubbleFullyFadesSomewhereInItsCycle() {
+        // A particle that never reaches zero opacity would leave a permanent
+        // speck hanging over the orb.
+        for bubble in PlasmaThinkingBubble.all {
+            let samples = stride(from: 0.0, to: bubble.duration, by: 0.05).map {
+                bubble.state(at: Date(timeIntervalSinceReferenceDate: $0)).opacity
+            }
+            XCTAssertLessThan(samples.min() ?? 1, 0.05, "bubble never clears")
+            XCTAssertGreaterThan(samples.max() ?? 0, 0.5, "bubble never appears")
+        }
     }
 
     // MARK: Eyes

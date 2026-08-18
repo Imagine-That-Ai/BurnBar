@@ -78,17 +78,29 @@ final class PlasmaModelSelectorTests: XCTestCase {
         }
     }
 
-    /// The bubble is a container for text. Its silhouette may breathe, but a
-    /// corner that swings far from neutral starts eating model names, which is
-    /// the failure `cornerCap` exists to prevent — pin the input side too.
-    func testBubbleStaysNearCircularSoLongNamesSurvive() {
+    /// The bubble is a container for text. The Grok Bot D morph swings its
+    /// corners from 32% to 68% — far wider than the previous asset — so the
+    /// thing that keeps a long model id off the curve is the render-time
+    /// `cornerCap`, not the table. Pin the cap.
+    func testCappedBubbleCornersNeverExceedTheirCeilingAtAnyKeyframe() {
+        let cap: CGFloat = 30
+        let bounds = CGRect(x: 0, y: 0, width: 356, height: 268)
         for keyframe in PlasmaBlobMotion.bubble.keyframes {
-            let r = keyframe.state.radii
-            for fraction in [r.topLeadingX, r.topTrailingX, r.bottomTrailingX, r.bottomLeadingX,
-                             r.topLeadingY, r.topTrailingY, r.bottomTrailingY, r.bottomLeadingY] {
-                XCTAssertEqual(fraction, 0.5, accuracy: 0.08, "stop \(keyframe.stop) swings too far to hold text")
-            }
+            let shape = PlasmaBlobShape(radii: keyframe.state.radii, cornerCap: cap)
+            let path = shape.path(in: bounds)
+            XCTAssertFalse(path.isEmpty, "stop \(keyframe.stop) produced no path")
+            // A corner larger than the cap would bow the silhouette outside the
+            // frame it was handed.
+            XCTAssertLessThanOrEqual(path.boundingRect.width, bounds.width + 0.5)
+            XCTAssertLessThanOrEqual(path.boundingRect.height, bounds.height + 0.5)
         }
+    }
+
+    /// The morph must still be visibly *asymmetric*, or the bubble is just a
+    /// rounded rectangle with extra maths.
+    func testBubbleCornersActuallyDisagreeWithEachOther() {
+        let radii = PlasmaBlobMotion.bubble.state(atPhase: 0.2).radii
+        XCTAssertNotEqual(radii.topLeadingX, radii.bottomTrailingX, accuracy: 0.02)
     }
 
     func testPhaseOffsetDesynchronisesOrbsSharingOneClock() {
