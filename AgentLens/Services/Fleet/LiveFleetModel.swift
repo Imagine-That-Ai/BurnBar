@@ -59,13 +59,15 @@ final class LiveFleetModel {
     /// and without this the observed write only lands in the evidence dictionary
     /// and waits for the unrelated shared refresh cadence — turning an
     /// advertised sub-second watcher into a minute-or-more lag.
-    private var lastRebuildInputs: (
-        providers: [AgentProvider],
-        presence: [ChatBackendID: AgentPresence],
-        busyLocation: [ChatBackendID: String],
-        usages: [TokenUsage],
-        usagesVersion: Int
-    )?
+    private struct RebuildInputs {
+        let providers: [AgentProvider]
+        let presence: [ChatBackendID: AgentPresence]
+        let busyLocation: [ChatBackendID: String]
+        let usages: [TokenUsage]
+        let usagesVersion: Int
+    }
+
+    private var lastRebuildInputs: RebuildInputs?
 
     // MARK: - Rebuild
 
@@ -128,7 +130,13 @@ final class LiveFleetModel {
         .sorted(by: Self.rank)
 
         hasRealTimeCoverage = watchedActivity.isEmpty == false || unwatchable.count < providers.count
-        lastRebuildInputs = (providers, presence, busyLocation, usages, usagesVersion)
+        lastRebuildInputs = RebuildInputs(
+            providers: providers,
+            presence: presence,
+            busyLocation: busyLocation,
+            usages: usages,
+            usagesVersion: usagesVersion
+        )
     }
 
     /// Recompute rows from the retained inputs after a watcher event. Cheap: the
