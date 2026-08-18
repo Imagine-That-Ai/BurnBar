@@ -42,9 +42,12 @@ struct CommandBoardDetailView: View {
             picker
 
             if !store.hasLoaded {
-                loadingCard
+                SettingsLoadingCard(message: "Reading the board…")
             } else if store.summary.isEmpty {
-                emptyCard
+                SettingsEmptyCard(
+                    title: "Nothing has run yet",
+                    message: "Runs appear here as your agents work — on this Mac and on every machine signed into this account."
+                )
             } else {
                 totalsCard
                 rollupCard(title: "By machine", rollups: store.summary.byMachine)
@@ -52,8 +55,18 @@ struct CommandBoardDetailView: View {
                 runsCard
             }
         }
-        .task(id: window) { await store.load(since: window.start) }
+        // Face C answers "what is happening right now", so it keeps asking.
+        // Without this the green running dots and the durations freeze at
+        // whatever was true when the pane opened.
+        .task(id: window) {
+            while !Task.isCancelled {
+                await store.load(since: window.start)
+                try? await Task.sleep(for: .seconds(Self.refreshInterval))
+            }
+        }
     }
+
+    private static let refreshInterval: TimeInterval = 10
 
     private var picker: some View {
         Picker("Window", selection: $window) {
@@ -67,54 +80,19 @@ struct CommandBoardDetailView: View {
 
     // MARK: - Cards
 
-    private var loadingCard: some View {
-        GlassCard {
-            HStack(spacing: DesignSystem.Spacing.sm) {
-                ProgressView()
-                    .controlSize(.small)
-                Text("Reading the board…")
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
-            }
-            .padding(DesignSystem.Spacing.md)
-        }
-    }
-
-    private var emptyCard: some View {
-        GlassCard {
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-                Text("Nothing has run yet")
-                    .font(DesignSystem.Typography.body)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(DesignSystem.Colors.textPrimary)
-                Text("Runs appear here as your agents work — on this Mac and on every machine signed into this account.")
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(DesignSystem.Spacing.md)
-        }
-    }
 
     private var totalsCard: some View {
         GlassCard {
             HStack(alignment: .top, spacing: DesignSystem.Spacing.xl) {
                 metric(
                     "Spend",
-                    store.summary.totalCostUSD.formatted(.currency(code: "USD"))
+                    store.summary.totalCostUSD.formatAsCost()
                 )
                 metric("Runs", "\(store.summary.runs.count)")
                 metric("Running", "\(store.summary.runningCount)")
                 Spacer(minLength: 0)
                 if store.summary.isFleetActive {
-                    Text("Fleet active")
-                        .font(DesignSystem.Typography.tiny)
-                        .foregroundStyle(DesignSystem.Colors.hermesAureate)
-                        .padding(.horizontal, DesignSystem.Spacing.xs)
-                        .padding(.vertical, 2)
-                        .background(
-                            Capsule().stroke(DesignSystem.Colors.hermesAureate.opacity(0.6), lineWidth: 1)
-                        )
+                    HermesPill(text: "Fleet active")
                 }
             }
             .padding(DesignSystem.Spacing.md)
@@ -155,7 +133,7 @@ struct CommandBoardDetailView: View {
                         Text("\(rollup.runCount) run\(rollup.runCount == 1 ? "" : "s")")
                             .font(DesignSystem.Typography.monoTiny)
                             .foregroundStyle(DesignSystem.Colors.textMuted)
-                        Text(rollup.costUSD.formatted(.currency(code: "USD")))
+                        Text(rollup.costUSD.formatAsCost())
                             .font(DesignSystem.Typography.monoSmall)
                             .foregroundStyle(DesignSystem.Colors.textSecondary)
                             .frame(minWidth: 64, alignment: .trailing)
@@ -168,7 +146,9 @@ struct CommandBoardDetailView: View {
 
     private var runsCard: some View {
         GlassCard {
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            // Lazy because the window can hold a couple hundred runs and the
+            // pane only ever shows a screenful.
+            LazyVStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
                 HStack {
                     Text("RUN")
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -181,15 +161,16 @@ struct CommandBoardDetailView: View {
                 .fontWeight(.semibold)
                 .foregroundStyle(DesignSystem.Colors.textMuted)
 
+                let now = Date()
                 ForEach(store.summary.runs) { run in
-                    runRow(run)
+                    runRow(run, now: now)
                 }
             }
             .padding(DesignSystem.Spacing.md)
         }
     }
 
-    private func runRow(_ run: CommandBoardRun) -> some View {
+    private func runRow(_ run: CommandBoardRun, now: Date) -> some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.xxs) {
                 HStack(spacing: DesignSystem.Spacing.xs) {
@@ -203,7 +184,7 @@ struct CommandBoardDetailView: View {
                         .foregroundStyle(DesignSystem.Colors.textPrimary)
                         .lineLimit(1)
                 }
-                Text("\(run.bodyDisplayName) · \(durationLabel(run))")
+                Text("\(run.bodyDisplayName) · \(durationLabel(run, now: now))")
                     .font(DesignSystem.Typography.tiny)
                     .foregroundStyle(DesignSystem.Colors.textMuted)
             }
@@ -219,15 +200,15 @@ struct CommandBoardDetailView: View {
                 .frame(width: 150, alignment: .leading)
                 .lineLimit(1)
 
-            Text(run.costUSD.formatted(.currency(code: "USD")))
+            Text(run.costUSD.formatAsCost())
                 .font(DesignSystem.Typography.monoSmall)
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
                 .frame(width: 72, alignment: .trailing)
         }
     }
 
-    private func durationLabel(_ run: CommandBoardRun) -> String {
-        let seconds = Int(run.duration(now: Date()))
+    private func durationLabel(_ run: CommandBoardRun, now: Date) -> String {
+        let seconds = Int(run.duration(now: now))
         if seconds < 60 { return "\(seconds)s" }
         if seconds < 3_600 { return "\(seconds / 60)m" }
         return String(format: "%.1fh", Double(seconds) / 3_600)

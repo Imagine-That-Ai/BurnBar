@@ -167,6 +167,16 @@ final class HermesRoomTests: XCTestCase {
         XCTAssertFalse(room.rows[1].body.isOnline)
     }
 
+    /// `activeRow` is derived, so it cannot fall out of step with `rows`.
+    func test_activeRowTracksRowsAfterMutation() throws {
+        var room = state([body("mac-a", local: true), body("mac-b")], grants: [grant("mac-a", "mac-b")])
+        XCTAssertEqual(try XCTUnwrap(room.activeRow).body.bodyID, "mac-a")
+        room.rows = room.rows.map {
+            HermesRoomRow(body: $0.body, isActive: $0.body.bodyID == "mac-b", blockedReason: $0.blockedReason)
+        }
+        XCTAssertEqual(try XCTUnwrap(room.activeRow).body.bodyID, "mac-b")
+    }
+
     func test_anEmptyFleetIsAnEmptyRoom() {
         let room = state([])
         XCTAssertTrue(room.isEmpty)

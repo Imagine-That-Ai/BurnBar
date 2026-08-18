@@ -188,3 +188,77 @@ are unaffected. Migration v62 is additive and nullable, so no data is lost.
 | Roster UI | `AgentLens/Views/Settings/HermesBodiesDetailView.swift` |
 | Rules | `firestore.rules` (`hermesBodyWrite`, `warWireGrantWrite`) |
 | Frames | `packages/hermes-wire-protocol/protocol.json` (`war` group) |
+| Frame codec | `OpenBurnBarCore/.../SharedModels/WarWireFrameCodec.swift` |
+| Handshake | `OpenBurnBarCore/.../SharedModels/WarWireSession.swift` |
+| Dialer | `OpenBurnBarCore/Sources/OpenBurnBarIrohRelay/WarWireDialer.swift` |
+| Router | `OpenBurnBarCore/.../SharedModels/FlameRouter.swift` |
+| Dispatch plan | `OpenBurnBarCore/.../SharedModels/FlameDispatchPlan.swift` |
+| Distill log | `OpenBurnBarCore/.../SharedModels/DistillRecord.swift` |
+| Flame RPC | `OpenBurnBarDaemon/.../WarRoom/BurnBarFlameService.swift` |
+| Standing orders | `OpenBurnBarCore/.../SharedModels/StandingOrder*.swift`, `AgentLens/Services/WarRoom/StandingOrderStore.swift` |
+| Hermes Room | `OpenBurnBarCore/.../SharedModels/HermesRoom.swift`, `AgentLens/Views/Settings/HermesRoomDetailView.swift` |
+| Command Board | `OpenBurnBarCore/.../SharedModels/CommandBoard.swift`, `AgentLens/Views/Settings/CommandBoardDetailView.swift` |
+
+---
+
+## The Wire, end to end
+
+Four layers, each testable without the one below it:
+
+1. **Frames** (`WarWireFrameCodec`) — builds and parses the eight `war` frames.
+   Parsing a frame the receiver did not ask for is an error, not a shrug.
+   `FleetBodySnapshot(receivedOverWire:)` deliberately makes the *receiver*
+   supply `isOnline` / `wireReachable` / `isLocal`: a peer describing its own
+   reachability is describing something only the receiver can observe.
+2. **Handshake** (`WarWireSession`) — a fail-closed state machine
+   (`idle → awaitingAck → ready → closed`). Frames that carry fleet state or
+   dispatch return `nil` until `ready`, so nothing can leak onto a lane that
+   was never admitted. Every closure carries a typed reason, and refusal
+   yields `fallBackToFirestore` rather than an error: a denied dial is the
+   existing relay experience, not a failure.
+3. **Dial** (`WarWireDialer` / `WarWireLink`) — drives the session over a real
+   `IrohRelayTransport`. `WarWireLink` is an actor owning the stream so the
+   session is never driven from two tasks at once.
+4. **Admission** (`WarWireGate`) — the one evaluation both peers run, checked
+   before any of the above.
+
+## The Flame
+
+`FlameRouter` picks a machine; `FlameDispatchPlanner` turns that choice into a
+dispatch. A decision that routed nowhere produces no dispatch, and a *local*
+decision carries no `targetBodyID` — stamping this machine's own id would make
+every mission look Flame-steered on the board.
+
+`targetBodyID` on a mission request is advisory: the rules accept it as an
+owner-written, length-capped token, and the executing Mac still decides whether
+to claim the mission. It steers work without becoming a way to force a machine
+to run something it would refuse.
+
+The daemon exposes the Flame over three RPC methods — `war.flame.route`,
+`war.flame.distill.list`, `war.flame.distill.settle` — in their own disjoint
+`warRoom` coverage domain. Route and list classify as `observability`; settle
+classifies as `config`. `BurnBarFlameService` archives every routing decision
+into a bounded `DistillLog`, including the ones that routed nowhere, because a
+router that only remembers its successes cannot be audited.
+
+## The faces
+
+- **Face B, the Hermes Room** asks "which Mac serves Hermes, and can I move
+  it?" Its availability answer *is* `WarWireGate`'s, so the room can never
+  promise a swap the Wire will deny. Selecting the local machine clears the
+  stored id rather than writing it, so a re-identified Mac still reads as
+  serving here.
+- **Face C, the Command Board** shows every run with STARTED BY and cost
+  rollups, folded out of `token_usage` by one `GROUP BY sessionId` projection
+  (which is what lets it read the v62 attribution columns the `TokenUsage`
+  value type does not carry). There is no end-of-run marker in that table, so
+  liveness is inferred from recency rather than asserted.
+
+## The rhythm
+
+Standing orders persist in `standing_orders` (migration **v63**, mirrored
+byte-identically between `OpenBurnBarData` and the app DataStore).
+`StandingOrderScheduler` is the single answer to "what should run now" for the
+app, the daemon, and tests alike; `StandingOrderRow` decomposes a cadence into
+render-ready parts and returns `nil` for a schedule it cannot describe rather
+than inventing a sentence.

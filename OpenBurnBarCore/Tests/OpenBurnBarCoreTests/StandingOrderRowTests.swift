@@ -24,12 +24,13 @@ final class StandingOrderRowTests: XCTestCase {
             targetBodyID: target,
             requiredCapabilities: capabilities,
             isEnabled: enabled,
-            lastFiredAt: lastFired
+            lastFiredAt: lastFired,
+            createdAt: created
         )
     }
 
     private func roundTrip(_ order: StandingOrder) -> StandingOrder? {
-        StandingOrderRow(order: order, createdAt: created, updatedAt: updated).order
+        StandingOrderRow(order: order, updatedAt: updated).order
     }
 
     // MARK: - Round trips
@@ -63,7 +64,6 @@ final class StandingOrderRowTests: XCTestCase {
     func test_rowRecordsTheDecomposedCadenceForSQLToRead() {
         let row = StandingOrderRow(
             order: order(cadence: .weekly(weekday: 3, hour: 14, minute: 45)),
-            createdAt: created,
             updatedAt: updated
         )
         XCTAssertEqual(row.cadenceKind, "weekly")
@@ -76,7 +76,6 @@ final class StandingOrderRowTests: XCTestCase {
     func test_intervalRowLeavesClockComponentsNull() {
         let row = StandingOrderRow(
             order: order(cadence: .everyMinutes(15)),
-            createdAt: created,
             updatedAt: updated
         )
         XCTAssertEqual(row.cadenceKind, "interval")
@@ -91,12 +90,10 @@ final class StandingOrderRowTests: XCTestCase {
     func test_capabilitiesSerialiseDeterministically() {
         let first = StandingOrderRow(
             order: order(cadence: .everyMinutes(5), capabilities: ["b", "a", "c"]),
-            createdAt: created,
             updatedAt: updated
         )
         let second = StandingOrderRow(
             order: order(cadence: .everyMinutes(5), capabilities: ["c", "a", "b"]),
-            createdAt: created,
             updatedAt: updated
         )
         XCTAssertEqual(first.requiredCapabilities, "a\nb\nc")
@@ -106,7 +103,6 @@ final class StandingOrderRowTests: XCTestCase {
     func test_emptyCapabilitiesRoundTripAsEmpty() {
         let row = StandingOrderRow(
             order: order(cadence: .everyMinutes(5)),
-            createdAt: created,
             updatedAt: updated
         )
         XCTAssertEqual(row.requiredCapabilities, "")
@@ -125,7 +121,6 @@ final class StandingOrderRowTests: XCTestCase {
     func test_unknownCadenceKindIsDropped() {
         var row = StandingOrderRow(
             order: order(cadence: .everyMinutes(5)),
-            createdAt: created,
             updatedAt: updated
         )
         row.cadenceKind = "fortnightly"
@@ -135,7 +130,6 @@ final class StandingOrderRowTests: XCTestCase {
     func test_intervalRowWithoutItsMinutesIsDropped() {
         var row = StandingOrderRow(
             order: order(cadence: .everyMinutes(5)),
-            createdAt: created,
             updatedAt: updated
         )
         row.cadenceMinutes = nil
@@ -145,7 +139,6 @@ final class StandingOrderRowTests: XCTestCase {
     func test_nonPositiveIntervalIsDropped() {
         var row = StandingOrderRow(
             order: order(cadence: .everyMinutes(5)),
-            createdAt: created,
             updatedAt: updated
         )
         row.cadenceMinutes = 0
@@ -155,7 +148,6 @@ final class StandingOrderRowTests: XCTestCase {
     func test_dailyRowMissingItsClockIsDropped() {
         var row = StandingOrderRow(
             order: order(cadence: .daily(hour: 9, minute: 0)),
-            createdAt: created,
             updatedAt: updated
         )
         row.cadenceMinute = nil
@@ -165,7 +157,6 @@ final class StandingOrderRowTests: XCTestCase {
     func test_outOfRangeClockIsDropped() {
         var row = StandingOrderRow(
             order: order(cadence: .daily(hour: 9, minute: 0)),
-            createdAt: created,
             updatedAt: updated
         )
         row.cadenceHour = 24
@@ -175,7 +166,6 @@ final class StandingOrderRowTests: XCTestCase {
     func test_outOfRangeWeekdayIsDropped() {
         var row = StandingOrderRow(
             order: order(cadence: .weekly(weekday: 2, hour: 9, minute: 0)),
-            createdAt: created,
             updatedAt: updated
         )
         row.cadenceWeekday = 8
@@ -185,7 +175,6 @@ final class StandingOrderRowTests: XCTestCase {
     func test_weeklyRowMissingItsWeekdayIsDropped() {
         var row = StandingOrderRow(
             order: order(cadence: .weekly(weekday: 2, hour: 9, minute: 0)),
-            createdAt: created,
             updatedAt: updated
         )
         row.cadenceWeekday = nil
@@ -204,7 +193,6 @@ final class StandingOrderRowTests: XCTestCase {
                 target: "mac-mini",
                 lastFired: created
             ),
-            createdAt: created,
             updatedAt: updated
         )
         let data = try JSONEncoder().encode(row)

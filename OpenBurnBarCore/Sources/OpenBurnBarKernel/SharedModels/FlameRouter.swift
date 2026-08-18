@@ -235,9 +235,14 @@ public enum FlameRouter {
             return "No machine to route to — the fleet is empty."
         }
         let counts = Dictionary(grouping: rejected, by: { $0.rejection })
-        // Report the single dominant blocker so the operator has one thing to fix.
-        if let (reason, group) = counts.max(by: { $0.value.count < $1.value.count }),
-           let reason {
+        // Report the single dominant blocker so the operator has one thing to
+        // fix. Ties break on the reason's raw value, not on dictionary order:
+        // this string is archived verbatim into the distill log, so the same
+        // fleet must always produce the same explanation.
+        if let (reason, group) = counts.max(by: { lhs, rhs in
+            if lhs.value.count != rhs.value.count { return lhs.value.count < rhs.value.count }
+            return (lhs.key?.rawValue ?? "") > (rhs.key?.rawValue ?? "")
+        }), let reason {
             let machines = group.count == 1 ? "1 machine" : "\(group.count) machines"
             switch reason {
             case .offline:

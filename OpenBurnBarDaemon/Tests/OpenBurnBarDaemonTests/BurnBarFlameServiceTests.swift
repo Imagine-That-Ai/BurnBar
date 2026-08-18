@@ -173,15 +173,40 @@ final class BurnBarFlameServiceTests: XCTestCase {
     /// Until the Wire delivers peers, the local Mac genuinely is the whole
     /// fleet, and routing to it is the correct answer rather than a fallback.
     func test_defaultServiceRoutesToTheLocalMachine() async {
-        let routed = await BurnBarFlameServiceFactory.makeDefault().route()
+        let routed = await BurnBarFlameServiceFactory
+            .makeDefault(gatewayReachable: { true })
+            .route()
         XCTAssertEqual(routed.decision.transport, .local)
         XCTAssertNotNil(routed.decision.chosenBodyID)
     }
 
     func test_defaultServiceAdvertisesTheDaemonsCapabilities() async {
-        let routed = await BurnBarFlameServiceFactory.makeDefault()
-            .route(requiredCapabilities: BurnBarFlameServiceFactory.localCapabilities)
+        let routed = await BurnBarFlameServiceFactory
+            .makeDefault(gatewayReachable: { true })
+            .route(
+                requiredCapabilities: BurnBarFlameServiceFactory.baseCapabilities
+                    .union(BurnBarFlameServiceFactory.hermesCapabilities)
+            )
         XCTAssertTrue(routed.decision.didRoute, "the daemon must satisfy its own advertised capabilities")
+    }
+
+    /// A machine whose Hermes is down must not advertise Hermes work, and must
+    /// not be routed Hermes work. Both come from the same probe, so they cannot
+    /// disagree.
+    func test_aDownGatewayWithdrawsHermesWorkAndTheCapability() async {
+        let service = BurnBarFlameServiceFactory.makeDefault(gatewayReachable: { false })
+        let routed = await service.route()
+        XCTAssertFalse(routed.decision.didRoute)
+        XCTAssertTrue(routed.decision.rationale.contains("gateway"), routed.decision.rationale)
+
+        let hermes = await service.route(requiredCapabilities: BurnBarFlameServiceFactory.hermesCapabilities)
+        XCTAssertFalse(hermes.decision.didRoute)
+    }
+
+    /// Nothing is listening on a port the probe was never pointed at, and the
+    /// probe answers immediately rather than blocking on a connect.
+    func test_theGatewayProbeReportsAClosedPortAsUnreachable() {
+        XCTAssertFalse(HermesGatewayProbe.isListening(onLoopbackPort: 1))
     }
 
     func test_defaultBodyIDIsStableAndNonEmpty() {

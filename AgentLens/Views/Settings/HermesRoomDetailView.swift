@@ -35,10 +35,14 @@ struct HermesRoomDetailView: View {
             title: "Hermes Room",
             subtitle: "One Hermes, many machines. Pick which Mac serves it — the others stay linked and ready."
         ) {
+            let room = room
             if !directory.hasLoaded {
-                loadingCard
+                SettingsLoadingCard(message: "Reading the room…")
             } else if room.isEmpty {
-                emptyCard
+                SettingsEmptyCard(
+                    title: "No machines yet",
+                    message: "Each Mac running OpenBurnBar joins the room automatically while Cloud sync is on and you are signed in."
+                )
             } else {
                 if settingsManager.warRoomKillSwitch {
                     wireOffCard
@@ -77,35 +81,6 @@ struct HermesRoomDetailView: View {
     }
 
     // MARK: - Cards
-
-    private var loadingCard: some View {
-        GlassCard {
-            HStack(spacing: DesignSystem.Spacing.sm) {
-                ProgressView()
-                    .controlSize(.small)
-                Text("Reading the room…")
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
-            }
-            .padding(DesignSystem.Spacing.md)
-        }
-    }
-
-    private var emptyCard: some View {
-        GlassCard {
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-                Text("No machines yet")
-                    .font(DesignSystem.Typography.body)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(DesignSystem.Colors.textPrimary)
-                Text("Each Mac running OpenBurnBar joins the room automatically while Cloud sync is on and you are signed in.")
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(DesignSystem.Spacing.md)
-        }
-    }
 
     private var wireOffCard: some View {
         GlassCard {
@@ -147,10 +122,10 @@ struct HermesRoomDetailView: View {
                             .fontWeight(.semibold)
                             .foregroundStyle(DesignSystem.Colors.textPrimary)
                         if row.isActive {
-                            badge("Serving")
+                            HermesPill(text: "Serving")
                         }
                         if row.body.isLocal {
-                            badge("This Mac")
+                            HermesPill(text: "This Mac")
                         }
                     }
 
@@ -196,17 +171,6 @@ struct HermesRoomDetailView: View {
         } else {
             EmptyView()
         }
-    }
-
-    private func badge(_ text: String) -> some View {
-        Text(text)
-            .font(DesignSystem.Typography.tiny)
-            .foregroundStyle(DesignSystem.Colors.hermesAureate)
-            .padding(.horizontal, DesignSystem.Spacing.xs)
-            .padding(.vertical, 1)
-            .background(
-                Capsule().stroke(DesignSystem.Colors.hermesAureate.opacity(0.6), lineWidth: 1)
-            )
     }
 
     /// Selecting the local machine clears the stored id rather than writing it,

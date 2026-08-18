@@ -5,6 +5,39 @@ import XCTest
 /// to explain the choice it made. These pin both halves.
 final class FlameRouterTests: XCTestCase {
 
+    /// The rationale is archived verbatim into the distill log, so the same
+    /// fleet must always produce the same explanation — dictionary iteration
+    /// order must never leak into it.
+    func test_tiedBlockersProduceAStableRationale() {
+        let fleet = FleetSnapshot(bodies: [
+            FleetBodySnapshot(
+                bodyID: "mac-off",
+                displayName: "Attic",
+                isLocal: false,
+                isOnline: false,
+                hermesGatewayReachable: true,
+                wireReachable: true,
+                capabilities: [],
+                activeRunCount: 0
+            ),
+            FleetBodySnapshot(
+                bodyID: "mac-gateway",
+                displayName: "Studio",
+                isLocal: true,
+                isOnline: true,
+                hermesGatewayReachable: false,
+                wireReachable: true,
+                capabilities: [],
+                activeRunCount: 0
+            )
+        ])
+        let rationales = Set(
+            (0..<25).map { _ in FlameRouter.route(snapshot: fleet, decisionID: "d").rationale }
+        )
+        XCTAssertEqual(rationales.count, 1, "one fleet, one explanation: \(rationales)")
+    }
+
+
     private func body(
         _ id: String,
         local: Bool = false,

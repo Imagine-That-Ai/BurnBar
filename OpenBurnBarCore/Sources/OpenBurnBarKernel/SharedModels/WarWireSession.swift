@@ -187,6 +187,14 @@ public struct WarWireSession: Sendable, Equatable {
         return close(.transportLost)
     }
 
+    /// The peer sent something this side cannot interpret. Distinct from a
+    /// denial: nobody refused anything, the lane is simply no longer
+    /// trustworthy, so the session closes and the caller falls back.
+    public mutating func protocolViolated() -> [Action] {
+        guard !isClosed else { return [] }
+        return close(.protocolViolation)
+    }
+
     public mutating func closeByCaller() -> [Action] {
         guard !isClosed else { return [] }
         state = .closed(.closedByCaller)

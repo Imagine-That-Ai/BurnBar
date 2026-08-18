@@ -47,7 +47,7 @@ final class StandingOrderStore: Sendable {
     // MARK: - Write
 
     func upsert(_ order: StandingOrder, now: Date = Date()) async throws {
-        let row = StandingOrderRow(order: order, createdAt: now, updatedAt: now)
+        let row = StandingOrderRow(order: order, updatedAt: now)
         try await dbQueue.write { db in
             try db.execute(
                 sql: """
