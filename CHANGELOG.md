@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.39] - 2026-08-18
+
+### Fixed
+- Bind the emergency release packet and all version surfaces to the new
+  protected-main v1.0.39 successor after the immutable v1.0.36 candidate and
+  stale-evidence v1.0.38 preflight were both held before publication.
+
 ### Added
 - **Swarm Ember rebuilt around the BurnBar flame mark** (`apps/console` +
   `packages/gl-engine`): the old token-glyph / provider-slideshow field is
