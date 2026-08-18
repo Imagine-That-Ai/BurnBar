@@ -27,4 +27,23 @@ class FirestoreQuotaBucketParserTest {
         assertEquals(10.0, bucket.limit, 0.0)
         assertEquals("day", bucket.window)
     }
+
+    @Test
+    fun parseMergesUnitLabelAndPercentIntoMeta() {
+        val bucket = mapOf(
+            "label" to "Requests",
+            "unit" to "count",
+            "used" to 2,
+            "limit" to 8,
+            "usedPercent" to "25%",
+            "isEstimated" to true,
+        ).toQuotaBucket()
+
+        requireNotNull(bucket)
+        assertEquals("Requests", bucket.name)
+        assertEquals("count", bucket.meta?.get("unit"))
+        assertEquals("Requests", bucket.meta?.get("label"))
+        assertEquals(25.0, bucket.meta?.get("usedPercent"))
+        assertEquals("true", bucket.meta?.get("isEstimated"))
+    }
 }

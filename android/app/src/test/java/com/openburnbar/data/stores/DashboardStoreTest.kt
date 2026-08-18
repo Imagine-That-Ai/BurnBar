@@ -4,6 +4,7 @@ package com.openburnbar.data.stores
 import com.openburnbar.MainDispatcherRule
 import com.openburnbar.data.firebase.FirestoreRepository
 import com.openburnbar.data.models.UsageRollups
+import com.openburnbar.data.policy.UidScopedCacheRegistry
 import io.mockk.Runs
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -49,6 +50,24 @@ class DashboardStoreTest {
         advanceUntilIdle()
         assertEquals(first, store.rollups.value)
 
+        store.stopListening()
+    }
+
+    @Test
+    fun uidScopedCacheClearResetsPublishedRollups() = runTest {
+        val mockRepo = mockk<FirestoreRepository>()
+        val live = MutableSharedFlow<UsageRollups>()
+        every { mockRepo.listenToRollups() } returns live
+        val caches = UidScopedCacheRegistry()
+        val store = DashboardStore(mockRepo, caches)
+        store.startListening()
+        advanceUntilIdle()
+        live.emit(UsageRollups(today = 4.0, computedAt = Instant.now().toString()))
+        advanceUntilIdle()
+        assertEquals(4.0, store.rollups.value?.today)
+        caches.clearAll()
+        assertNull(store.rollups.value)
+        assertNull(store.error.value)
         store.stopListening()
     }
 
