@@ -28,8 +28,9 @@ internal data class IncomingCallRouting(
 internal object IncomingCallPayloadPolicy {
     fun correlationId(data: Map<String, String>): String? = data["correlation_id"]?.trim()?.takeIf { it.isNotBlank() }
 
-    fun connectionIdFromPush(_: Map<String, String>): String? {
+    fun connectionIdFromPush(data: Map<String, String>): String? {
         // Connection ids stay in owner-scoped Firestore context, never FCM.
+        if (data["connection_id"] != null || data["connectionId"] != null) return null
         return null
     }
 
