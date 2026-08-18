@@ -8,8 +8,14 @@ import pytest
 import scripts.ci.check_agpl_legal_release_review as agpl_review
 
 
+ROOT = Path(__file__).resolve().parents[1]
+
 validate_legal_release_review = agpl_review.validate_legal_release_review
 validate_owner_attested_soft_approval = agpl_review.validate_owner_attested_soft_approval
+validate_owner_emergency_packet_release_binding = (
+    agpl_review.validate_owner_emergency_packet_release_binding
+)
+marketing_version_release_tag = agpl_review.marketing_version_release_tag
 
 
 def valid_review() -> dict[str, object]:
@@ -81,6 +87,36 @@ def valid_owner_attestation() -> dict[str, object]:
 
 def test_validates_owner_attested_soft_approval() -> None:
     assert validate_owner_attested_soft_approval(valid_owner_attestation(), expected_release_tag="v1.0.8") == []
+
+
+def test_owner_emergency_packet_allows_forward_successor_binding(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    (repo_root / "project.yml").write_text('    MARKETING_VERSION: "1.0.37"\n', encoding="utf-8")
+
+    data = valid_owner_attestation()
+    data["repo"]["releaseTag"] = "v1.0.39"  # type: ignore[index]
+
+    assert validate_owner_emergency_packet_release_binding(data, repo_root=repo_root) == []
+    assert validate_owner_attested_soft_approval(data, expected_release_tag="v1.0.39") == []
+
+
+def test_owner_emergency_packet_rejects_stale_binding_behind_marketing_version(
+    tmp_path: Path,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    (repo_root / "project.yml").write_text('    MARKETING_VERSION: "1.0.37"\n', encoding="utf-8")
+
+    data = valid_owner_attestation()
+    data["repo"]["releaseTag"] = "v1.0.36"  # type: ignore[index]
+
+    errors = validate_owner_emergency_packet_release_binding(data, repo_root=repo_root)
+
+    assert errors == [
+        "repo.releaseTag must not be behind the committed marketing version "
+        "'v1.0.37'; found stale 'v1.0.36'"
+    ]
 
 
 def test_owner_attested_soft_approval_is_bound_to_expected_release_tag() -> None:
