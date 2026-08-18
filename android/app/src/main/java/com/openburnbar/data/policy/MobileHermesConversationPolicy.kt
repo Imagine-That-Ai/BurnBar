@@ -38,27 +38,16 @@ object MobileHermesConversationPolicy {
         MobileHermesStreamTerminal.ERROR -> false
     }
 
-    fun marksError(terminal: MobileHermesStreamTerminal): Boolean =
-        terminal == MobileHermesStreamTerminal.ERROR
+    fun marksError(terminal: MobileHermesStreamTerminal): Boolean = terminal == MobileHermesStreamTerminal.ERROR
 
-    fun shouldDropEmptyAssistant(
-        text: String,
-        toolCallCount: Int,
-        isError: Boolean,
-        terminal: MobileHermesStreamTerminal,
-    ): Boolean = when (terminal) {
+    fun shouldDropEmptyAssistant(text: String, toolCallCount: Int, isError: Boolean, terminal: MobileHermesStreamTerminal): Boolean = when (terminal) {
         MobileHermesStreamTerminal.STOPPED,
         MobileHermesStreamTerminal.CANCELLED,
         -> text.trim().isEmpty() && toolCallCount == 0 && !isError
         else -> false
     }
 
-    fun shouldApplyChunk(
-        chunkThreadId: String?,
-        activeThreadId: String?,
-        chunkGeneration: Int,
-        activeGeneration: Int,
-    ): Boolean {
+    fun shouldApplyChunk(chunkThreadId: String?, activeThreadId: String?, chunkGeneration: Int, activeGeneration: Int): Boolean {
         if (chunkGeneration != activeGeneration) return false
         val chunk = chunkThreadId?.trim().orEmpty()
         val active = activeThreadId?.trim().orEmpty()
@@ -66,12 +55,7 @@ object MobileHermesConversationPolicy {
         return chunk == active
     }
 
-    fun shouldAppendUserMessage(
-        lastRole: String?,
-        lastText: String?,
-        incomingText: String,
-        reason: String,
-    ): Boolean {
+    fun shouldAppendUserMessage(lastRole: String?, lastText: String?, incomingText: String, reason: String): Boolean {
         val incoming = incomingText.trim()
         if (incoming.isEmpty()) return false
         if (reason == "reconnect" &&
@@ -86,12 +70,7 @@ object MobileHermesConversationPolicy {
     fun shouldRenderToolCalls(toolCallCount: Int, terminal: MobileHermesStreamTerminal): Boolean =
         toolCallCount > 0 && terminal != MobileHermesStreamTerminal.ERROR
 
-    fun attachmentDisposition(
-        id: String,
-        mimeType: String,
-        byteSize: Int,
-        path: String,
-    ): MobileHermesAttachmentDisposition {
+    fun attachmentDisposition(id: String, mimeType: String, byteSize: Int, path: String): MobileHermesAttachmentDisposition {
         if (id.trim().isEmpty() || mimeType.trim().isEmpty() || path.trim().isEmpty() || byteSize < 0) {
             return MobileHermesAttachmentDisposition.REJECTED
         }

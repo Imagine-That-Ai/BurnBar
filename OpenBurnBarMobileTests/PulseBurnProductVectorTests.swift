@@ -20,9 +20,9 @@ final class PulseBurnProductVectorTests: XCTestCase {
         let vector = try pulseVector("pulse.live-query-start-hour-floor")
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: vector["timeZone"] as? String ?? "UTC")!
-        let now = Date(timeIntervalSince1970: (vector["nowMs"] as! NSNumber).doubleValue / 1_000)
+        let now = Date(timeIntervalSince1970: number(vector["nowMs"]).doubleValue / 1_000)
         let start = PulseWindowMetricBuilder.liveQueryStart(now: now, calendar: calendar)
-        let expectedMs = (dict(vector["expected"])["startMs"] as! NSNumber).int64Value
+        let expectedMs = number(dict(vector["expected"])["startMs"]).int64Value
         XCTAssertEqual(Int64((start.timeIntervalSince1970 * 1_000).rounded()), expectedMs)
     }
 
@@ -108,10 +108,10 @@ final class PulseBurnProductVectorTests: XCTestCase {
 
     private func assertWindows(_ id: String) throws {
         let vector = try pulseVector(id)
-        let now = Date(timeIntervalSince1970: (vector["nowMs"] as! NSNumber).doubleValue / 1_000)
+        let now = Date(timeIntervalSince1970: number(vector["nowMs"]).doubleValue / 1_000)
         let usages = (vector["usages"] as? [[String: Any]] ?? []).enumerated().map { index, row in
-            let start = Date(timeIntervalSince1970: (row["startMs"] as! NSNumber).doubleValue / 1_000)
-            let end = Date(timeIntervalSince1970: (row["endMs"] as! NSNumber).doubleValue / 1_000)
+            let start = Date(timeIntervalSince1970: number(row["startMs"]).doubleValue / 1_000)
+            let end = Date(timeIntervalSince1970: number(row["endMs"]).doubleValue / 1_000)
             return TokenUsage(
                 id: UUID(uuidString: String(format: "00000000-0000-0000-0000-%012d", index + 1)),
                 provider: .codex,
@@ -169,4 +169,10 @@ final class PulseBurnProductVectorTests: XCTestCase {
     }
 
     private func dict(_ value: Any?) -> [String: Any] { value as? [String: Any] ?? [:] }
+
+    private func number(_ value: Any?, file: StaticString = #filePath, line: UInt = #line) -> NSNumber {
+        if let number = value as? NSNumber { return number }
+        XCTFail("expected numeric vector field", file: file, line: line)
+        return NSNumber(value: 0)
+    }
 }

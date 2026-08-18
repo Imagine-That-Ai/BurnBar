@@ -119,8 +119,7 @@ internal object CloudVaultLegacyCrypto {
         }
     }
 
-    fun escrowOpen(combined: ByteArray, sharedSecret: ByteArray): ByteArray =
-        escrowOpen(combined, sharedSecret, ByteArray(0))
+    fun escrowOpen(combined: ByteArray, sharedSecret: ByteArray): ByteArray = escrowOpen(combined, sharedSecret, ByteArray(0))
 
     fun escrowOpen(combined: ByteArray, sharedSecret: ByteArray, aad: ByteArray): ByteArray {
         val wrappingKey = escrowWrappingKey(sharedSecret)

@@ -10,11 +10,9 @@ object MobileAccessibilityLabelPolicy {
 
     fun quotaPercentRemaining(fraction: Double): Int = kotlin.math.round(fraction * 100.0).toInt()
 
-    fun quotaRing(label: String, percentRemaining: Int): String =
-        "$label, $percentRemaining percent remaining"
+    fun quotaRing(label: String, percentRemaining: Int): String = "$label, $percentRemaining percent remaining"
 
-    fun quotaRing(label: String, remainingFraction: Double): String =
-        quotaRing(label, quotaPercentRemaining(remainingFraction))
+    fun quotaRing(label: String, remainingFraction: Double): String = quotaRing(label, quotaPercentRemaining(remainingFraction))
 
     fun chart(label: String, summary: String): String = "$label, $summary"
 
@@ -26,15 +24,9 @@ object MobileAccessibilityLabelPolicy {
 
     fun liveStream(surface: String): String = "$surface live"
 
-    fun stopButton(isStreaming: Boolean): String =
-        if (isStreaming) "Stop generating" else "Send"
+    fun stopButton(isStreaming: Boolean): String = if (isStreaming) "Stop generating" else "Send"
 
-    fun inboxRow(
-        unread: Boolean,
-        kindLabel: String,
-        priorityLabel: String?,
-        title: String,
-    ): String {
+    fun inboxRow(unread: Boolean, kindLabel: String, priorityLabel: String?, title: String): String {
         val parts = mutableListOf<String>()
         if (unread) parts.add("Unread")
         parts.add(kindLabel)

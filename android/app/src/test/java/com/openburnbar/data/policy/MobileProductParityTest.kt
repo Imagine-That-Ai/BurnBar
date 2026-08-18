@@ -237,15 +237,14 @@ class MobileProductParityTest {
         assertFalse(MobileProductSurfacePolicy.mayEnforceBudget(state))
     }
 
-    private fun classify(vector: JSONObject): MobileStoreEntitlementState =
-        MobileStoreEntitlementPolicy.classify(
-            catalogPresent = vector.getBoolean("catalogPresent"),
-            restoring = vector.getBoolean("restoring"),
-            revoked = vector.getBoolean("revoked"),
-            refunded = vector.getBoolean("refunded"),
-            expired = vector.getBoolean("expired"),
-            active = vector.getBoolean("active"),
-        )
+    private fun classify(vector: JSONObject): MobileStoreEntitlementState = MobileStoreEntitlementPolicy.classify(
+        catalogPresent = vector.getBoolean("catalogPresent"),
+        restoring = vector.getBoolean("restoring"),
+        revoked = vector.getBoolean("revoked"),
+        refunded = vector.getBoolean("refunded"),
+        expired = vector.getBoolean("expired"),
+        active = vector.getBoolean("active"),
+    )
 
     private fun assertWindows(vector: JSONObject) {
         val nowMs = vector.getLong("nowMs")
@@ -291,16 +290,15 @@ class MobileProductParityTest {
         assertEquals(vector.getJSONObject("expected").getString("presentation"), got.wire)
     }
 
-    private fun parseUsages(rows: JSONArray): List<MobilePulseUsageEvent> =
-        (0 until rows.length()).map { index ->
-            val row = rows.getJSONObject(index)
-            MobilePulseUsageEvent(
-                startMs = row.getLong("startMs"),
-                endMs = row.getLong("endMs"),
-                tokens = row.getInt("tokens"),
-                costUsd = row.getDouble("costUsd"),
-            )
-        }
+    private fun parseUsages(rows: JSONArray): List<MobilePulseUsageEvent> = (0 until rows.length()).map { index ->
+        val row = rows.getJSONObject(index)
+        MobilePulseUsageEvent(
+            startMs = row.getLong("startMs"),
+            endMs = row.getLong("endMs"),
+            tokens = row.getInt("tokens"),
+            costUsd = row.getDouble("costUsd"),
+        )
+    }
 
     private fun parseRollups(raw: JSONObject): UsageRollups {
         fun totals(key: String): Triple<Int, Long, Double> {
@@ -335,16 +333,15 @@ class MobileProductParityTest {
         "90d" to MobilePulseRollupTotals(ninetyDayRequests, ninetyDayTokens.toInt(), ninetyDays),
     )
 
-    private fun List<MobilePulseUsageEvent>.toTokenUsages(): List<TokenUsage> =
-        mapIndexed { index, event ->
-            TokenUsage(
-                id = "row-$index",
-                costUsd = event.costUsd,
-                totalTokens = event.tokens,
-                startTime = event.startMs,
-                endTime = event.endMs,
-            )
-        }
+    private fun List<MobilePulseUsageEvent>.toTokenUsages(): List<TokenUsage> = mapIndexed { index, event ->
+        TokenUsage(
+            id = "row-$index",
+            costUsd = event.costUsd,
+            totalTokens = event.tokens,
+            startTime = event.startMs,
+            endTime = event.endMs,
+        )
+    }
 
     private fun String.toScope(): MobilePulseTimelineScope = when (this) {
         "minute" -> MobilePulseTimelineScope.MINUTE
@@ -396,8 +393,7 @@ class MobileProductParityTest {
         error("could not locate $relative")
     }
 
-    private fun expectedStringList(array: JSONArray): List<String> =
-        (0 until array.length()).map { array.getString(it) }
+    private fun expectedStringList(array: JSONArray): List<String> = (0 until array.length()).map { array.getString(it) }
 
     private fun JSONObject.optNullable(key: String): String? {
         if (!has(key) || isNull(key)) return null

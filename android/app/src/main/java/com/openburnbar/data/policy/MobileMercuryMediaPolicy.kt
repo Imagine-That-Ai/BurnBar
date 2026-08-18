@@ -66,9 +66,7 @@ object MobileMercuryMediaPolicy {
     fun canRequestMirror(isOnline: Boolean, capabilities: Collection<String>): Boolean =
         isOnline && capabilities.contains(MobileMercuryCapability.MIRROR_HOST.raw)
 
-    fun canPlaceCall(isOnline: Boolean, capabilities: Collection<String>): Boolean =
-        isOnline && capabilities.contains(MobileMercuryCapability.CALL_RECEIVE.raw)
+    fun canPlaceCall(isOnline: Boolean, capabilities: Collection<String>): Boolean = isOnline && capabilities.contains(MobileMercuryCapability.CALL_RECEIVE.raw)
 
-    fun canSendFile(isOnline: Boolean, capabilities: Collection<String>): Boolean =
-        isOnline && capabilities.contains(MobileMercuryCapability.FILE_RECEIVE.raw)
+    fun canSendFile(isOnline: Boolean, capabilities: Collection<String>): Boolean = isOnline && capabilities.contains(MobileMercuryCapability.FILE_RECEIVE.raw)
 }

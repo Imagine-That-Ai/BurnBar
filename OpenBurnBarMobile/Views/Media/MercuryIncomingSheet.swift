@@ -6,7 +6,7 @@ import SwiftUI
 struct MercuryIncomingSheet: View {
     let pairedDeviceName: String
     let initial: String
-    var connectionId: String? = nil
+    var connectionId: String?
     let onAccept: () -> Void
     let onDecline: () -> Void
 

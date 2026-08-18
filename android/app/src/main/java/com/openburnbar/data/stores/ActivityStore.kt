@@ -121,17 +121,23 @@ class ActivityStore(
         }
         searchJob =
             viewModelScope.launch {
-                try {
+                val search = runCatching {
                     kotlinx.coroutines.delay(SEARCH_DEBOUNCE_MS.toLong())
-                    if (lastSearchQuery != trimmed) return@launch
-                    _cloudSearchHits.value = cloudSearchService().search(trimmed)
-                    _searchFailed.value = false
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    _searchFailed.value = true
-                    _error.value = e.message ?: e::class.simpleName
+                    if (lastSearchQuery != trimmed) {
+                        null
+                    } else {
+                        cloudSearchService().search(trimmed)
+                    }
                 }
+                search.exceptionOrNull()?.let { error ->
+                    if (error is CancellationException) throw error
+                    _searchFailed.value = true
+                    _error.value = error.message ?: error::class.simpleName
+                    return@launch
+                }
+                val hits = search.getOrNull() ?: return@launch
+                _cloudSearchHits.value = hits
+                _searchFailed.value = false
             }
     }
 

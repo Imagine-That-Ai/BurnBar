@@ -334,13 +334,12 @@ class HermesService(
         streamGeneration += 1
     }
 
-    internal fun isCurrentStream(generation: Int, threadId: String?): Boolean =
-        MobileHermesConversationPolicy.shouldApplyChunk(
-            chunkThreadId = threadId,
-            activeThreadId = applyThreadId,
-            chunkGeneration = generation,
-            activeGeneration = applyGeneration,
-        ) && streamGeneration == generation
+    internal fun isCurrentStream(generation: Int, threadId: String?): Boolean = MobileHermesConversationPolicy.shouldApplyChunk(
+        chunkThreadId = threadId,
+        activeThreadId = applyThreadId,
+        chunkGeneration = generation,
+        activeGeneration = applyGeneration,
+    ) && streamGeneration == generation
 
     private fun finalizeMessagesAfterCancelledStream() {
         val terminal = MobileHermesConversationPolicy.terminal("stop")

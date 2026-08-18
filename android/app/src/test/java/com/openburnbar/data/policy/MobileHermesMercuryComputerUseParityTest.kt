@@ -265,6 +265,5 @@ class MobileHermesMercuryComputerUseParityTest {
         error("could not locate $relative")
     }
 
-    private fun expectedStringList(array: JSONArray): List<String> =
-        (0 until array.length()).map { array.getString(it) }
+    private fun expectedStringList(array: JSONArray): List<String> = (0 until array.length()).map { array.getString(it) }
 }

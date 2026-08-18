@@ -242,30 +242,32 @@ class CredentialTransferStore(
         viewModelScope.launch {
             _status.value = TransferStatus.IMPORTING
             _lastError.value = null
-            try {
-                val uid = FirebaseAuth.getInstance().currentUser?.uid
-                if (uid == null) {
-                    _lastError.value = "Not signed in"
-                    _status.value = TransferStatus.ERROR
-                    return@launch
-                }
-                when (val result = escrowImporter.importFromFirestore(uid, envelopeId)) {
-                    is AndroidEscrowCredentialImporter.Result.Rejected -> {
-                        _lastError.value = result.failure.userVisibleLabel
-                        _status.value = TransferStatus.ERROR
-                    }
-                    is AndroidEscrowCredentialImporter.Result.PersistFailed -> {
-                        _lastError.value = result.message
-                        _status.value = TransferStatus.ERROR
-                    }
-                    is AndroidEscrowCredentialImporter.Result.Imported -> {
-                        _status.value = TransferStatus.SUCCESS
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e("BurnBar", "Escrow envelope import failed", e)
-                _lastError.value = e.message ?: "Escrow import failed"
+            val uid = FirebaseAuth.getInstance().currentUser?.uid
+            if (uid == null) {
+                _lastError.value = "Not signed in"
                 _status.value = TransferStatus.ERROR
+                return@launch
+            }
+            val imported = runCatching { escrowImporter.importFromFirestore(uid, envelopeId) }
+            imported.exceptionOrNull()?.let { error ->
+                if (error is kotlinx.coroutines.CancellationException) throw error
+                Log.e("BurnBar", "Escrow envelope import failed", error)
+                _lastError.value = error.message ?: "Escrow import failed"
+                _status.value = TransferStatus.ERROR
+                return@launch
+            }
+            when (val result = imported.getOrThrow()) {
+                is AndroidEscrowCredentialImporter.Result.Rejected -> {
+                    _lastError.value = result.failure.userVisibleLabel
+                    _status.value = TransferStatus.ERROR
+                }
+                is AndroidEscrowCredentialImporter.Result.PersistFailed -> {
+                    _lastError.value = result.message
+                    _status.value = TransferStatus.ERROR
+                }
+                is AndroidEscrowCredentialImporter.Result.Imported -> {
+                    _status.value = TransferStatus.SUCCESS
+                }
             }
         }
     }

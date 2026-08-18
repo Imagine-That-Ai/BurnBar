@@ -218,7 +218,7 @@ final class AgentReplyNotificationService: NSObject, ObservableObject {
         }
         let tombstonedAtMs = Int64(Date().timeIntervalSince1970 * 1000)
         do {
-            try await Firestore.firestore()
+            try await FirestoreRepository.database
                 .collection("users").document(uid)
                 .collection("devices").document(deviceID)
                 .setData([
@@ -432,7 +432,7 @@ final class AgentReplyNotificationService: NSObject, ObservableObject {
         if let activeRuntime { payload["activeRuntime"] = activeRuntime }
         if let activeSurface { payload["activeSurface"] = activeSurface }
         do {
-            try await Firestore.firestore()
+            try await FirestoreRepository.database
                 .collection("users").document(uid)
                 .collection("devices").document(deviceID)
                 .setData(payload, merge: true)
@@ -716,7 +716,7 @@ extension AgentReplyNotificationService: UNUserNotificationCenterDelegate {
         guard let payload, payload.threadID.isEmpty, !payload.eventID.isEmpty else { return payload }
         guard let uid = Auth.auth().currentUser?.uid else { return payload }
         do {
-            let snapshot = try await Firestore.firestore()
+            let snapshot = try await FirestoreRepository.database
                 .collection("users").document(uid)
                 .collection("agent_notification_events").document(payload.eventID)
                 .getDocument(source: .server)

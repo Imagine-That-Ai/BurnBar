@@ -10,11 +10,7 @@ data class MobileInboxSelectionState(
 
 /** Cold/warm inbox focus. Source: iOS `AIInboxStore.focus` / `reconcileSelection`. */
 object MobileInboxSelectionPolicy {
-    fun focus(
-        state: MobileInboxSelectionState,
-        itemID: String?,
-        recordIDs: List<String>,
-    ): MobileInboxSelectionState {
+    fun focus(state: MobileInboxSelectionState, itemID: String?, recordIDs: List<String>): MobileInboxSelectionState {
         val pending = if (itemID != null && itemID !in recordIDs) itemID else null
         return state.copy(
             filter = "active",
@@ -25,11 +21,7 @@ object MobileInboxSelectionPolicy {
         )
     }
 
-    fun reconcile(
-        state: MobileInboxSelectionState,
-        visibleIDs: List<String>,
-        recordIDs: List<String>,
-    ): MobileInboxSelectionState {
+    fun reconcile(state: MobileInboxSelectionState, visibleIDs: List<String>, recordIDs: List<String>): MobileInboxSelectionState {
         val selectedID = state.selectedID ?: return state
         if (state.pendingFocusID != null && state.pendingFocusID !in recordIDs) {
             return state

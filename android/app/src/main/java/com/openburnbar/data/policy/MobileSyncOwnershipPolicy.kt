@@ -20,15 +20,9 @@ enum class MobileSyncFreshness(val wire: String, val label: String) {
 object MobileSyncOwnershipPolicy {
     val macRole = MobileSyncPublisherRole.MAC_PUBLISHES
     val mobileRole = MobileSyncPublisherRole.MOBILE_MIRRORS_READ_ONLY
-    const val mobileMayPublishUsage = false
+    val mobileMayPublishUsage = false
 
-    fun freshness(
-        hasData: Boolean,
-        failed: Boolean,
-        offline: Boolean,
-        stale: Boolean,
-        partial: Boolean,
-    ): MobileSyncFreshness = when {
+    fun freshness(hasData: Boolean, failed: Boolean, offline: Boolean, stale: Boolean, partial: Boolean): MobileSyncFreshness = when {
         failed -> MobileSyncFreshness.FAILED
         offline -> MobileSyncFreshness.OFFLINE
         !hasData -> MobileSyncFreshness.EMPTY
@@ -37,8 +31,7 @@ object MobileSyncOwnershipPolicy {
         else -> MobileSyncFreshness.LIVE
     }
 
-    fun shouldApply(startedGeneration: Int, currentGeneration: Int, cancelled: Boolean): Boolean =
-        !cancelled && startedGeneration == currentGeneration
+    fun shouldApply(startedGeneration: Int, currentGeneration: Int, cancelled: Boolean): Boolean = !cancelled && startedGeneration == currentGeneration
 
     fun nextGeneration(current: Int): Int = current + 1
 }

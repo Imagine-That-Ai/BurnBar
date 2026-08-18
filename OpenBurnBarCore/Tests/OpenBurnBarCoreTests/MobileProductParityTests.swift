@@ -87,15 +87,14 @@ final class MobileProductParityTests: XCTestCase {
     func testStreamsPaginationBoundary() throws {
         let vector = try streamsVector("streams.pagination-boundary")
         _ = vector
-        XCTAssertEqual(
+        XCTAssertTrue(
             MobileStreamsListPolicy.pageOutcome(
                 accumulatedCount: 25,
                 pageCount: 25,
                 pageSize: 25,
                 lastCursorPresent: true,
                 failed: false
-            ).hasMore,
-            true
+            ).hasMore
         )
         let afterSecond = MobileStreamsListPolicy.pageOutcome(
             accumulatedCount: 25,

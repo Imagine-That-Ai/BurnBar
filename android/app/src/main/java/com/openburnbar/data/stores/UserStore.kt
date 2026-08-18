@@ -306,7 +306,7 @@ class UserStore(
                         firebaseAuth.startActivityForSignInWithProvider(activity, provider).await()
                     }
                 }
-            } catch (e: Exception) {
+            } catch (e: FirebaseException) {
                 val raw = e.localizedMessage.orEmpty()
                 if (raw.contains("web-context-cancelled", ignoreCase = true) ||
                     raw.contains("cancelled", ignoreCase = true)
@@ -373,13 +373,14 @@ class UserStore(
         if (switchingAway && BurnBarApplication.isAppContextInitialized) {
             AgentReplyNotificationState.tombstoneCurrentDevice(BurnBarApplication.appContext)
         }
+        var succeeded = false
         try {
             perform()
-        } catch (error: Throwable) {
-            if (switchingAway && BurnBarApplication.isAppContextInitialized) {
+            succeeded = true
+        } finally {
+            if (!succeeded && switchingAway && BurnBarApplication.isAppContextInitialized) {
                 AgentReplyNotificationState.restoreDeviceAfterFailedSwitch(BurnBarApplication.appContext)
             }
-            throw error
         }
     }
 
@@ -413,12 +414,11 @@ class UserStore(
     }
 
     /** Where an attempt lands once it stops running, per the live Firebase user. */
-    private fun settledSessionState(): MobileAuthSessionState =
-        if (auth?.currentUser != null) {
-            MobileAuthSessionState.SIGNED_IN
-        } else {
-            MobileAuthSessionState.SIGNED_OUT
-        }
+    private fun settledSessionState(): MobileAuthSessionState = if (auth?.currentUser != null) {
+        MobileAuthSessionState.SIGNED_IN
+    } else {
+        MobileAuthSessionState.SIGNED_OUT
+    }
 
     private fun applyFirebaseUnavailable() {
         reconcileEpoch(null)

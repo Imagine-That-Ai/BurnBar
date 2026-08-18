@@ -143,13 +143,12 @@ internal fun inboxRowSubtitle(row: AIInboxRow, nowEpoch: Long): String {
 }
 
 /** Spoken form of a row, so the list is navigable without reading the chrome. */
-internal fun inboxRowAccessibilityLabel(row: AIInboxRow): String =
-    MobileAccessibilityLabelPolicy.inboxRow(
-        unread = row.isUnread(),
-        kindLabel = InboxPresentation.kindLabel(row.item.kind),
-        priorityLabel = InboxPresentation.priorityLabel(row.item.priority).takeIf { row.item.priority.rank <= 2 },
-        title = row.item.title,
-    )
+internal fun inboxRowAccessibilityLabel(row: AIInboxRow): String = MobileAccessibilityLabelPolicy.inboxRow(
+    unread = row.isUnread(),
+    kindLabel = InboxPresentation.kindLabel(row.item.kind),
+    priorityLabel = InboxPresentation.priorityLabel(row.item.priority).takeIf { row.item.priority.rank <= 2 },
+    title = row.item.title,
+)
 
 /**
  * Coarse relative time. Deliberately vague past a week: "3 weeks ago" is a more

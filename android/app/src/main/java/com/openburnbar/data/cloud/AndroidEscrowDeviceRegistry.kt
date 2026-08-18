@@ -15,7 +15,7 @@ data class AndroidEscrowDeviceRegistration(
 )
 
 class AndroidEscrowDeviceRegistry(
-    private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance(),
+    internal val firestore: FirebaseFirestore = FirebaseFirestore.getInstance(),
     private val securityClient: ComputerUseSecurityCallableClient = ComputerUseSecurityCallableClient(),
 ) {
     suspend fun registerSelf(

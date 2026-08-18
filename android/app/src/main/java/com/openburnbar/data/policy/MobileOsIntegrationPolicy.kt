@@ -19,8 +19,7 @@ enum class MobileOsDestination(val wire: String) {
     ;
 
     companion object {
-        fun fromWire(wire: String): MobileOsDestination =
-            entries.firstOrNull { it.wire == wire } ?: UNKNOWN
+        fun fromWire(wire: String): MobileOsDestination = entries.firstOrNull { it.wire == wire } ?: UNKNOWN
     }
 }
 
@@ -98,8 +97,7 @@ object MobileOsIntegrationPolicy {
     fun delivery(permissionGranted: Boolean): MobileNotificationDelivery =
         if (permissionGranted) MobileNotificationDelivery.DELIVERED else MobileNotificationDelivery.SUPPRESSED
 
-    fun mayDeliver(permissionGranted: Boolean): Boolean =
-        delivery(permissionGranted) == MobileNotificationDelivery.DELIVERED
+    fun mayDeliver(permissionGranted: Boolean): Boolean = delivery(permissionGranted) == MobileNotificationDelivery.DELIVERED
 
     fun acceptedDeepLink(raw: String?): String? {
         val value = firstNonEmpty(raw) ?: return null
@@ -308,18 +306,25 @@ object MobileOsIntegrationPolicy {
     private val SECRET_KEYS = setOf("secret", "apikey", "api_key", "token", "fcm_token", "password", "privatekey")
     private val CONVERSATION_KEYS = setOf("conversation", "conversationtext", "messagebody", "replytext", "preview")
 
-    private fun looksLikeFirebaseUid(value: String): Boolean = value.matches(Regex("^[A-Za-z0-9]{28}$"))
+    private const val FIREBASE_UID_LENGTH = 28
+    private const val SECRET_HEX_MIN_LENGTH = 40
+    private const val CONVERSATION_MIN_LENGTH = 40
 
-    private fun looksLikeSecret(value: String): Boolean =
-        value.startsWith("sk-") ||
-            value.startsWith("AIza") ||
-            (value.length >= 40 && value.all { it.isDigit() || it in 'a'..'f' || it in 'A'..'F' })
+    private fun looksLikeFirebaseUid(value: String): Boolean =
+        value.matches(Regex("^[A-Za-z0-9]{$FIREBASE_UID_LENGTH}$"))
 
-    private fun looksLikeConversation(value: String): Boolean = value.contains(' ') && value.length > 40
+    private fun looksLikeSecret(value: String): Boolean = value.startsWith("sk-") ||
+        value.startsWith("AIza") ||
+        (
+            value.length >= SECRET_HEX_MIN_LENGTH &&
+                value.all { it.isDigit() || it in 'a'..'f' || it in 'A'..'F' }
+            )
 
-    private fun decodeQueryComponent(raw: String): String =
-        runCatching { java.net.URLDecoder.decode(raw.replace("+", "%20"), Charsets.UTF_8.name()) }
-            .getOrDefault(raw)
+    private fun looksLikeConversation(value: String): Boolean =
+        value.contains(' ') && value.length > CONVERSATION_MIN_LENGTH
+
+    private fun decodeQueryComponent(raw: String): String = runCatching { java.net.URLDecoder.decode(raw.replace("+", "%20"), Charsets.UTF_8.name()) }
+        .getOrDefault(raw)
 
     private fun parseQuery(raw: String?): Map<String, String> {
         if (raw.isNullOrBlank()) return emptyMap()

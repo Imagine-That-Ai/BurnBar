@@ -29,11 +29,8 @@ class AndroidEscrowCredentialImporterTest {
                 decrypted = true
                 ByteArray(0)
             }
-        assertTrue(result is AndroidEscrowCredentialImporter.Result.Rejected)
-        assertEquals(
-            MobileEscrowImportFailure.EXPIRED_GRANT,
-            (result as AndroidEscrowCredentialImporter.Result.Rejected).failure,
-        )
+        val rejected = result as? AndroidEscrowCredentialImporter.Result.Rejected
+        assertEquals(MobileEscrowImportFailure.EXPIRED_GRANT, rejected?.failure)
         assertTrue(!decrypted)
     }
 

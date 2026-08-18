@@ -38,13 +38,12 @@ fun pulseWindowMetrics(
     )
 }
 
-fun startOfLocalPulseDayMillis(nowMillis: Long = System.currentTimeMillis(), zoneId: ZoneId = ZoneId.systemDefault()): Long =
-    Instant.ofEpochMilli(nowMillis)
-        .atZone(zoneId)
-        .toLocalDate()
-        .atStartOfDay(zoneId)
-        .toInstant()
-        .toEpochMilli()
+fun startOfLocalPulseDayMillis(nowMillis: Long = System.currentTimeMillis(), zoneId: ZoneId = ZoneId.systemDefault()): Long = Instant.ofEpochMilli(nowMillis)
+    .atZone(zoneId)
+    .toLocalDate()
+    .atStartOfDay(zoneId)
+    .toInstant()
+    .toEpochMilli()
 
 fun livePulseUsageQueryStartMillis(nowMillis: Long = System.currentTimeMillis(), zoneId: ZoneId = ZoneId.systemDefault()): Long =
     MobilePulseWindowPolicy.liveQueryStartMs(nowMillis, zoneId.id)

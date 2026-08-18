@@ -57,6 +57,13 @@ enum class MobilePulseLoadPresentation(val wire: String) {
 /** Shared Pulse/Burn window math. Authority: iOS `PulseWindowMetricBuilder`. */
 object MobilePulseWindowPolicy {
     const val DAY_WINDOW_MS: Long = 24L * 60L * 60L * 1_000L
+    const val HOUR_WINDOW_MS: Long = 60L * 60L * 1_000L
+    const val MINUTE_WINDOW_MS: Long = 60L * 1_000L
+    private const val COST_ZERO_EPSILON = 1e-9
+    private const val COST_CENT_THRESHOLD = 0.01
+    private const val TOKEN_BILLION = 1_000_000_000
+    private const val TOKEN_MILLION = 1_000_000
+    private const val TOKEN_THOUSAND = 1_000
 
     fun metrics(
         scope: MobilePulseTimelineScope,
@@ -65,9 +72,9 @@ object MobilePulseWindowPolicy {
         nowMs: Long,
     ): MobilePulseWindowResult = when (scope) {
         MobilePulseTimelineScope.MINUTE ->
-            liveMetrics(usages, nowMs - 60_000L, nowMs, rollups["7d"])
+            liveMetrics(usages, nowMs - MINUTE_WINDOW_MS, nowMs, rollups["7d"])
         MobilePulseTimelineScope.HOUR ->
-            liveMetrics(usages, nowMs - 3_600_000L, nowMs, rollups["7d"])
+            liveMetrics(usages, nowMs - HOUR_WINDOW_MS, nowMs, rollups["7d"])
         MobilePulseTimelineScope.DAY ->
             liveMetrics(usages, nowMs - DAY_WINDOW_MS, nowMs, rollups["7d"])
         MobilePulseTimelineScope.WEEK ->
@@ -91,14 +98,13 @@ object MobilePulseWindowPolicy {
         return calendar.timeInMillis
     }
 
-    fun loadPresentation(isLoading: Boolean, failed: Boolean, hasCachedData: Boolean): MobilePulseLoadPresentation =
-        when {
-            isLoading && !hasCachedData -> MobilePulseLoadPresentation.LOADING
-            failed && hasCachedData -> MobilePulseLoadPresentation.STALE_REFRESH_FAILED
-            failed -> MobilePulseLoadPresentation.FAILED
-            !hasCachedData -> MobilePulseLoadPresentation.EMPTY
-            else -> MobilePulseLoadPresentation.LIVE
-        }
+    fun loadPresentation(isLoading: Boolean, failed: Boolean, hasCachedData: Boolean): MobilePulseLoadPresentation = when {
+        isLoading && !hasCachedData -> MobilePulseLoadPresentation.LOADING
+        failed && hasCachedData -> MobilePulseLoadPresentation.STALE_REFRESH_FAILED
+        failed -> MobilePulseLoadPresentation.FAILED
+        !hasCachedData -> MobilePulseLoadPresentation.EMPTY
+        else -> MobilePulseLoadPresentation.LIVE
+    }
 
     fun currencyHero(costUsd: Double): String = formatAsCost(max(0.0, costUsd))
 
@@ -120,14 +126,7 @@ object MobilePulseWindowPolicy {
         return max(0.0, raw)
     }
 
-    fun pulseTokens(
-        totalTokens: Int,
-        inputTokens: Int,
-        outputTokens: Int,
-        cacheCreationTokens: Int,
-        cacheReadTokens: Int,
-        reasoningTokens: Int,
-    ): Int {
+    fun pulseTokens(totalTokens: Int, inputTokens: Int, outputTokens: Int, cacheCreationTokens: Int, cacheReadTokens: Int, reasoningTokens: Int): Int {
         val billed =
             max(0, inputTokens) + max(0, outputTokens) + max(0, cacheCreationTokens) +
                 max(0, cacheReadTokens) + max(0, reasoningTokens)
@@ -135,12 +134,7 @@ object MobilePulseWindowPolicy {
         return max(0, raw)
     }
 
-    private fun liveMetrics(
-        usages: List<MobilePulseUsageEvent>,
-        startMs: Long,
-        endMs: Long,
-        trailing: MobilePulseRollupTotals?,
-    ): MobilePulseWindowResult {
+    private fun liveMetrics(usages: List<MobilePulseUsageEvent>, startMs: Long, endMs: Long, trailing: MobilePulseRollupTotals?): MobilePulseWindowResult {
         val rows = usages.filter { it.eventDateMs in startMs..endMs }
         return MobilePulseWindowResult(
             total = MobilePulseRollupTotals(
@@ -153,8 +147,8 @@ object MobilePulseWindowPolicy {
     }
 
     private fun formatAsCost(value: Double): String {
-        if (value < 1e-9) return "$0.00"
-        return if (value < 0.01) {
+        if (value < COST_ZERO_EPSILON) return "$0.00"
+        return if (value < COST_CENT_THRESHOLD) {
             "$" + "%.4f".format(Locale.US, value)
         } else {
             "$" + "%.2f".format(Locale.US, value)
@@ -164,9 +158,9 @@ object MobilePulseWindowPolicy {
     private fun formatAsTokenVolume(tokens: Int): String {
         val magnitude = tokens.toDouble()
         return when {
-            tokens >= 1_000_000_000 -> "%.2fB".format(Locale.US, magnitude / 1_000_000_000)
-            tokens >= 1_000_000 -> "%.2fM".format(Locale.US, magnitude / 1_000_000)
-            tokens >= 1_000 -> "%.1fK".format(Locale.US, magnitude / 1_000)
+            tokens >= TOKEN_BILLION -> "%.2fB".format(Locale.US, magnitude / TOKEN_BILLION)
+            tokens >= TOKEN_MILLION -> "%.2fM".format(Locale.US, magnitude / TOKEN_MILLION)
+            tokens >= TOKEN_THOUSAND -> "%.1fK".format(Locale.US, magnitude / TOKEN_THOUSAND)
             else -> tokens.toString()
         }
     }

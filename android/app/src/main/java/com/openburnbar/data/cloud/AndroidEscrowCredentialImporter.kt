@@ -6,7 +6,7 @@ import kotlinx.coroutines.tasks.await
 
 /** Production escrow envelope import. Classify before decrypt, matching iOS LiveCloudReader. */
 class AndroidEscrowCredentialImporter(
-    private val firestoreProvider: () -> FirebaseFirestore = { FirebaseFirestore.getInstance() },
+    private val firestoreProvider: () -> FirebaseFirestore = { AndroidEscrowDeviceRegistry().firestore },
     private val keypairProvider: () -> AndroidCloudVaultDeviceKeypair = { AndroidCloudVaultDeviceKeypair.loadOrCreate() },
     private val decrypt: (AndroidCloudVaultDeviceKeypair, String, ByteArray) -> ByteArray = { keypair, wrapped, aad ->
         keypair.decryptEscrowPayload(wrapped, aad)

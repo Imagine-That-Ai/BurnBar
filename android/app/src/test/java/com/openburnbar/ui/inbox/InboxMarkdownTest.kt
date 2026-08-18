@@ -205,8 +205,7 @@ class InboxMarkdownTest {
         }
     }
 
-    private fun kindFromLabel(label: String): AIInboxItemKind =
-        AIInboxItemKind.entries.first { InboxPresentation.kindLabel(it) == label }
+    private fun kindFromLabel(label: String): AIInboxItemKind = AIInboxItemKind.entries.first { InboxPresentation.kindLabel(it) == label }
 
     private fun a11yVectors(): List<org.json.JSONObject> {
         val file = locateA11y("docs/mobile-parity/fixtures/product/a11y-contract-vectors.json")

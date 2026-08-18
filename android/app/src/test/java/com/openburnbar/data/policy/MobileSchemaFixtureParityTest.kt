@@ -18,7 +18,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MobileSchemaFixtureParityTest {
-    private val GSON = Gson()
+    private val gson = Gson()
 
     @Test
     fun usageEventPassFixturesDecode() {
@@ -121,95 +121,87 @@ class MobileSchemaFixtureParityTest {
     private fun decodeUsageEvent(document: JSONObject): FirestoreUsageEventDoc =
         decodeGenerated(document, FirestoreUsageEventDoc::class.java, listOf("provider", "recordedAt"))
 
-    private fun decodeQuotaSnapshot(document: JSONObject): FirestoreQuotaSnapshotDoc =
-        decodeGenerated(
-            document,
-            FirestoreQuotaSnapshotDoc::class.java,
-            listOf("sourceKind", "sourceId", "provider", "fetchedAt"),
-        )
+    private fun decodeQuotaSnapshot(document: JSONObject): FirestoreQuotaSnapshotDoc = decodeGenerated(
+        document,
+        FirestoreQuotaSnapshotDoc::class.java,
+        listOf("sourceKind", "sourceId", "provider", "fetchedAt"),
+    )
 
-    private fun decodeProviderAccount(document: JSONObject): FirestoreProviderAccountDoc =
-        decodeGenerated(
-            document,
-            FirestoreProviderAccountDoc::class.java,
-            listOf(
-                "id",
-                "providerID",
-                "label",
-                "status",
-                "credentialKind",
-                "storageScope",
-                "redactedLabel",
-                "isDefault",
-                "sortKey",
-                "schemaVersion",
-                "createdAt",
-                "updatedAt",
-            ),
-        )
+    private fun decodeProviderAccount(document: JSONObject): FirestoreProviderAccountDoc = decodeGenerated(
+        document,
+        FirestoreProviderAccountDoc::class.java,
+        listOf(
+            "id",
+            "providerID",
+            "label",
+            "status",
+            "credentialKind",
+            "storageScope",
+            "redactedLabel",
+            "isDefault",
+            "sortKey",
+            "schemaVersion",
+            "createdAt",
+            "updatedAt",
+        ),
+    )
 
-    private fun decodeEntitlement(document: JSONObject): FirestoreEntitlementBindingDoc =
-        decodeGenerated(
-            document,
-            FirestoreEntitlementBindingDoc::class.java,
-            listOf("appAccountToken", "uid", "createdAt"),
-        )
+    private fun decodeEntitlement(document: JSONObject): FirestoreEntitlementBindingDoc = decodeGenerated(
+        document,
+        FirestoreEntitlementBindingDoc::class.java,
+        listOf("appAccountToken", "uid", "createdAt"),
+    )
 
-    private fun decodeInsight(document: JSONObject): FirestoreInsightCanvasDoc =
-        decodeGenerated(
-            document,
-            FirestoreInsightCanvasDoc::class.java,
-            listOf("id", "title", "theme", "origin", "updatedAt"),
-        )
+    private fun decodeInsight(document: JSONObject): FirestoreInsightCanvasDoc = decodeGenerated(
+        document,
+        FirestoreInsightCanvasDoc::class.java,
+        listOf("id", "title", "theme", "origin", "updatedAt"),
+    )
 
-    private fun decodeHermesRelay(document: JSONObject): FirestoreHermesRelayRequestDoc =
-        decodeGenerated(
-            document,
-            FirestoreHermesRelayRequestDoc::class.java,
-            listOf("operation", "status", "createdAt"),
-        )
+    private fun decodeHermesRelay(document: JSONObject): FirestoreHermesRelayRequestDoc = decodeGenerated(
+        document,
+        FirestoreHermesRelayRequestDoc::class.java,
+        listOf("operation", "status", "createdAt"),
+    )
 
-    private fun decodeComputerUse(document: JSONObject): FirestoreComputerUsePhoneAuthorityDoc =
-        decodeGenerated(
-            document,
-            FirestoreComputerUsePhoneAuthorityDoc::class.java,
-            listOf(
-                "deviceId",
-                "connectionId",
-                "peerNodeId",
-                "publicKeyBase64",
-                "publishedAtMillis",
-                "protocolVersion",
-                "schemaVersion",
-                "createdAt",
-                "updatedAt",
-            ),
-        )
+    private fun decodeComputerUse(document: JSONObject): FirestoreComputerUsePhoneAuthorityDoc = decodeGenerated(
+        document,
+        FirestoreComputerUsePhoneAuthorityDoc::class.java,
+        listOf(
+            "deviceId",
+            "connectionId",
+            "peerNodeId",
+            "publicKeyBase64",
+            "publishedAtMillis",
+            "protocolVersion",
+            "schemaVersion",
+            "createdAt",
+            "updatedAt",
+        ),
+    )
 
-    private fun decodeIroh(document: JSONObject): FirestoreIrohPairingDoc =
-        decodeGenerated(
-            document,
-            FirestoreIrohPairingDoc::class.java,
-            listOf("pairingCodeDigest", "status", "createdAt", "expiresAt"),
-        )
+    private fun decodeIroh(document: JSONObject): FirestoreIrohPairingDoc = decodeGenerated(
+        document,
+        FirestoreIrohPairingDoc::class.java,
+        listOf("pairingCodeDigest", "status", "createdAt", "expiresAt"),
+    )
 
-    private fun decodeDeviceLink(document: JSONObject): FirestoreProviderAccountDeviceLinkDoc =
-        decodeGenerated(
-            document,
-            FirestoreProviderAccountDeviceLinkDoc::class.java,
-            listOf(
-                "id",
-                "accountID",
-                "deviceID",
-                "deviceDisplayName",
-                "capability",
-                "status",
-                "lastObservedAt",
-                "createdAt",
-                "updatedAt",
-                "schemaVersion",
-            ),
-        )
+    private fun decodeDeviceLink(document: JSONObject): FirestoreProviderAccountDeviceLinkDoc = decodeGenerated(
+        document,
+        FirestoreProviderAccountDeviceLinkDoc::class.java,
+        listOf(
+            "id",
+            "accountID",
+            "deviceID",
+            "deviceDisplayName",
+            "capability",
+            "status",
+            "lastObservedAt",
+            "createdAt",
+            "updatedAt",
+            "schemaVersion",
+        ),
+    )
 
     private val numericKeys =
         setOf(
@@ -277,7 +269,7 @@ class MobileSchemaFixtureParityTest {
             require(document.has(key) && !document.isNull(key)) { "missing required $key" }
         }
         rejectWrongTypes(document)
-        return GSON.fromJson(document.toString(), type)
+        return gson.fromJson(document.toString(), type)
             ?: throw IllegalArgumentException("generated decode returned null")
     }
 

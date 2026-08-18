@@ -28,6 +28,5 @@ object MobileProductSurfacePolicy {
         else -> MobileProductCardDisposition.REMOVED
     }
 
-    fun mayEnforceBudget(entitlement: MobileStoreEntitlementState): Boolean =
-        entitlement == MobileStoreEntitlementState.ACTIVE
+    fun mayEnforceBudget(entitlement: MobileStoreEntitlementState): Boolean = entitlement == MobileStoreEntitlementState.ACTIVE
 }

@@ -238,10 +238,9 @@ object MobileOsIntentNavigation {
         return payload
     }
 
-    fun hasPushEnvelope(payload: Map<String, String>): Boolean =
-        !payload["event_id"].isNullOrBlank() ||
-            !payload["uid"].isNullOrBlank() ||
-            !payload["expires_at_millis"].isNullOrBlank()
+    fun hasPushEnvelope(payload: Map<String, String>): Boolean = !payload["event_id"].isNullOrBlank() ||
+        !payload["uid"].isNullOrBlank() ||
+        !payload["expires_at_millis"].isNullOrBlank()
 
     fun navigation(
         payload: Map<String, String>,
@@ -249,14 +248,13 @@ object MobileOsIntentNavigation {
         lastConsumedEventId: String?,
         nowMs: Long = System.currentTimeMillis(),
         permissionGranted: Boolean = true,
-    ): MobileNavigationDecision =
-        MobileOsIntegrationPolicy.navigation(
-            envelope = MobileOsIntegrationPolicy.envelope(payload),
-            activeUid = activeUid,
-            nowMs = nowMs,
-            lastConsumedEventId = lastConsumedEventId,
-            permissionGranted = permissionGranted,
-        )
+    ): MobileNavigationDecision = MobileOsIntegrationPolicy.navigation(
+        envelope = MobileOsIntegrationPolicy.envelope(payload),
+        activeUid = activeUid,
+        nowMs = nowMs,
+        lastConsumedEventId = lastConsumedEventId,
+        permissionGranted = permissionGranted,
+    )
 
     fun putEnvelopeExtras(intent: Intent, data: Map<String, String>): Intent {
         for ((key, extra) in ENVELOPE_EXTRAS) {

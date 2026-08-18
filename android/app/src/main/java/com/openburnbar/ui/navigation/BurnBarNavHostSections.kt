@@ -30,9 +30,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -396,10 +396,7 @@ private fun MissionConsoleDestination(missionId: String?, onClose: () -> Unit) {
 }
 
 @Composable
-private fun MercuryCallDestination(
-    navController: NavHostController,
-    entry: androidx.navigation.NavBackStackEntry,
-) {
+private fun MercuryCallDestination(navController: NavHostController, entry: androidx.navigation.NavBackStackEntry) {
     val connectionId = entry.arguments?.getString("connectionId").orEmpty()
     val context = LocalContext.current
     var accepted by remember(connectionId) { mutableStateOf(false) }

@@ -29,8 +29,7 @@ data class MercuryPeer(
         companion object {
             fun fromRaw(raw: String): Feature? = entries.firstOrNull { it.raw == raw }
 
-            fun filterKnown(raw: Collection<String>): Set<Feature> =
-                MobileMercuryMediaPolicy.filterCapabilities(raw).mapNotNull(::fromRaw).toSet()
+            fun filterKnown(raw: Collection<String>): Set<Feature> = MobileMercuryMediaPolicy.filterCapabilities(raw).mapNotNull(::fromRaw).toSet()
         }
     }
 

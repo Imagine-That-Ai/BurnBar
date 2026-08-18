@@ -7,11 +7,7 @@ import com.openburnbar.data.policy.MobileEscrowImportFailure
 object AndroidEscrowEnvelopeImport {
     const val MIN_ENVELOPE_VERSION = 2
 
-    fun wellFormed(
-        ciphertextBase64: String?,
-        grantId: String?,
-        envelopeVersion: Int?,
-    ): Boolean {
+    fun wellFormed(ciphertextBase64: String?, grantId: String?, envelopeVersion: Int?): Boolean {
         val ciphertext = ciphertextBase64?.trim().orEmpty()
         if (ciphertext.isEmpty()) return false
         if (grantId?.trim().isNullOrEmpty()) return false
@@ -28,14 +24,13 @@ object AndroidEscrowEnvelopeImport {
         ciphertextBase64: String?,
         grantId: String?,
         envelopeVersion: Int?,
-    ): MobileEscrowImportFailure? =
-        MobileEscrowEnvelopePolicy.classify(
-            targetDeviceId = targetDeviceId,
-            currentDeviceId = currentDeviceId,
-            grantStatus = grantStatus,
-            grantExpiresAtMs = grantExpiresAtMs,
-            nowMs = nowMs,
-            hasPrivateKey = hasPrivateKey,
-            envelopeWellFormed = wellFormed(ciphertextBase64, grantId, envelopeVersion),
-        )
+    ): MobileEscrowImportFailure? = MobileEscrowEnvelopePolicy.classify(
+        targetDeviceId = targetDeviceId,
+        currentDeviceId = currentDeviceId,
+        grantStatus = grantStatus,
+        grantExpiresAtMs = grantExpiresAtMs,
+        nowMs = nowMs,
+        hasPrivateKey = hasPrivateKey,
+        envelopeWellFormed = wellFormed(ciphertextBase64, grantId, envelopeVersion),
+    )
 }

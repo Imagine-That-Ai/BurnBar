@@ -30,34 +30,23 @@ data class MobileAuthSessionEpoch(
     val uid: String?,
     val generation: Int,
 ) {
-    fun advanced(nextUid: String?): MobileAuthSessionEpoch =
-        MobileAuthSessionEpoch(uid = nextUid, generation = generation + 1)
+    fun advanced(nextUid: String?): MobileAuthSessionEpoch = MobileAuthSessionEpoch(uid = nextUid, generation = generation + 1)
 }
 
 object MobileAuthSessionPolicy {
     fun shouldReconcile(previousUid: String?, nextUid: String?): Boolean = previousUid != nextUid
 
-    fun isCurrent(
-        expectedUid: String?,
-        expectedGeneration: Long,
-        currentUid: String?,
-        currentGeneration: Long,
-    ): Boolean = expectedUid == currentUid && expectedGeneration == currentGeneration
+    fun isCurrent(expectedUid: String?, expectedGeneration: Long, currentUid: String?, currentGeneration: Long): Boolean =
+        expectedUid == currentUid && expectedGeneration == currentGeneration
 
-    fun isCurrent(expected: MobileAuthSessionEpoch, current: MobileAuthSessionEpoch): Boolean =
-        isCurrent(
-            expectedUid = expected.uid,
-            expectedGeneration = expected.generation.toLong(),
-            currentUid = current.uid,
-            currentGeneration = current.generation.toLong(),
-        )
+    fun isCurrent(expected: MobileAuthSessionEpoch, current: MobileAuthSessionEpoch): Boolean = isCurrent(
+        expectedUid = expected.uid,
+        expectedGeneration = expected.generation.toLong(),
+        currentUid = current.uid,
+        currentGeneration = current.generation.toLong(),
+    )
 
-    fun shouldServeCachedData(
-        cacheUid: String?,
-        activeUid: String?,
-        cacheGeneration: Int,
-        activeGeneration: Int,
-    ): Boolean {
+    fun shouldServeCachedData(cacheUid: String?, activeUid: String?, cacheGeneration: Int, activeGeneration: Int): Boolean {
         if (cacheUid.isNullOrEmpty() || activeUid.isNullOrEmpty() || cacheUid != activeUid) return false
         return cacheGeneration == activeGeneration
     }

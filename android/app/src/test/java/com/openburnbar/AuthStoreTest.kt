@@ -21,6 +21,7 @@ import org.junit.Test
 class AuthStoreTest {
     @get:Rule
     val mainDispatcherRule = MainDispatcherRule()
+
     @Test
     fun `initial state reflects Firebase auth`() = runTest {
         val store = AuthStore(authProvider = { null }, firebaseAvailableOverride = true)

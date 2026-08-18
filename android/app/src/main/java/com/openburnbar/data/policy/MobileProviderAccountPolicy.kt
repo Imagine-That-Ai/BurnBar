@@ -18,8 +18,7 @@ object MobileProviderAccountPolicy {
         else -> MobileProviderConnectivity.LOCAL_ONLY
     }
 
-    fun isCloudConnected(storageScope: String): Boolean =
-        connectivity(storageScope) == MobileProviderConnectivity.CLOUD_CONNECTED
+    fun isCloudConnected(storageScope: String): Boolean = connectivity(storageScope) == MobileProviderConnectivity.CLOUD_CONNECTED
 
     fun classifyError(code: String, message: String? = null): MobileProviderErrorClass {
         val haystack = listOf(code, message.orEmpty()).joinToString(" ").replace(" ", "").lowercase()

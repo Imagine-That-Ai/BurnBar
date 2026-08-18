@@ -8,9 +8,9 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.RemoteInput
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
 import com.openburnbar.MainActivity
 import com.openburnbar.MobileOsIntentNavigation
+import com.openburnbar.data.firebase.FirestoreRepository
 import com.openburnbar.data.policy.MobileOsDestination
 import com.openburnbar.data.policy.MobileOsIntegrationPolicy
 import kotlinx.coroutines.tasks.await
@@ -26,18 +26,14 @@ internal data class IncomingCallRouting(
 )
 
 internal object IncomingCallPayloadPolicy {
-    fun correlationId(data: Map<String, String>): String? =
-        data["correlation_id"]?.trim()?.takeIf { it.isNotBlank() }
+    fun correlationId(data: Map<String, String>): String? = data["correlation_id"]?.trim()?.takeIf { it.isNotBlank() }
 
-    fun connectionIdFromPush(data: Map<String, String>): String? {
+    fun connectionIdFromPush(_: Map<String, String>): String? {
         // Connection ids stay in owner-scoped Firestore context, never FCM.
         return null
     }
 
-    suspend fun resolveConnectionId(
-        data: Map<String, String>,
-        lookup: suspend (correlationId: String) -> String?,
-    ): String? {
+    suspend fun resolveConnectionId(data: Map<String, String>, lookup: suspend (correlationId: String) -> String?): String? {
         connectionIdFromPush(data)?.let { return it }
         val correlation = correlationId(data) ?: return null
         return lookup(correlation)
@@ -177,7 +173,7 @@ internal fun MercuryFcmService.postRoutedOsNotification(data: Map<String, String
 private suspend fun resolveThreadId(eventId: String): String? {
     val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return null
     return try {
-        val snapshot = FirebaseFirestore.getInstance()
+        val snapshot = FirestoreRepository.database()
             .collection("users").document(uid)
             .collection("agent_notification_events").document(eventId)
             .get()
@@ -208,7 +204,7 @@ private suspend fun resolveIncomingCallContextConnectionId(rawCorrelationId: Str
     val correlationId = normalizedCorrelationId(rawCorrelationId) ?: return null
     val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return null
     return try {
-        val snapshot = FirebaseFirestore.getInstance()
+        val snapshot = FirestoreRepository.database()
             .collection("users").document(uid)
             .collection(INCOMING_CALL_CONTEXT_COLLECTION).document(correlationId)
             .get()

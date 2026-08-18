@@ -341,12 +341,7 @@ class PiService {
         persistCurrentThread()
     }
 
-    internal fun stageStreamingForTest(
-        text: String,
-        toolCalls: List<PiToolCall> = emptyList(),
-        threadId: String = "thread-a",
-        userText: String = "hello",
-    ) {
+    internal fun stageStreamingForTest(text: String, toolCalls: List<PiToolCall> = emptyList(), threadId: String = "thread-a", userText: String = "hello") {
         _currentThreadID.value = threadId
         applyThreadId = threadId
         applyGeneration = streamGeneration
@@ -363,13 +358,12 @@ class PiService {
         streamGeneration += 1
     }
 
-    private fun isCurrentStream(generation: Int, threadId: String?): Boolean =
-        MobileHermesConversationPolicy.shouldApplyChunk(
-            chunkThreadId = threadId,
-            activeThreadId = applyThreadId,
-            chunkGeneration = generation,
-            activeGeneration = applyGeneration,
-        ) && streamGeneration == generation
+    private fun isCurrentStream(generation: Int, threadId: String?): Boolean = MobileHermesConversationPolicy.shouldApplyChunk(
+        chunkThreadId = threadId,
+        activeThreadId = applyThreadId,
+        chunkGeneration = generation,
+        activeGeneration = applyGeneration,
+    ) && streamGeneration == generation
 
     private fun finalizeMessagesAfterCancelledStream() {
         val terminal = MobileHermesConversationPolicy.terminal("stop")

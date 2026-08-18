@@ -82,18 +82,17 @@ object MobileComputerUseSafetyPolicy {
         panic: Boolean,
         viewOnly: Boolean,
         intentKind: String,
-    ): Boolean =
-        decision(
-            kind = "valid-control",
-            viewOnly = viewOnly,
-            authenticated = authenticated,
-            grantExpired = grantExpired,
-            bindingMatches = bindingMatches,
-            replayed = replayed,
-            tampered = tampered,
-            rateLimited = rateLimited,
-            sessionExpired = sessionExpired,
-            panic = panic,
-            intentKind = intentKind,
-        ) == MobileComputerUseSafetyDecision.ALLOW
+    ): Boolean = decision(
+        kind = "valid-control",
+        viewOnly = viewOnly,
+        authenticated = authenticated,
+        grantExpired = grantExpired,
+        bindingMatches = bindingMatches,
+        replayed = replayed,
+        tampered = tampered,
+        rateLimited = rateLimited,
+        sessionExpired = sessionExpired,
+        panic = panic,
+        intentKind = intentKind,
+    ) == MobileComputerUseSafetyDecision.ALLOW
 }
