@@ -1,5 +1,5 @@
 import XCTest
-@testable import AgentLens
+@testable import OpenBurnBar
 import OpenBurnBarKernel
 
 /// The grant store is the Wire's consent supply. These pin the two pure
