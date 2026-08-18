@@ -191,6 +191,7 @@ final class OpenBurnBarRuntimeContext {
     var cloudSyncService: CloudSyncService?
     var iCloudSessionMirrorService: ICloudSessionMirrorService?
     var hermesRelayHostService: HermesRelayHostService?
+    var hermesBodyPublisher: HermesBodyPublisher?
     var piAgentRelayHostService: PiAgentCloudRelayHostService?
     var smartHubBridgeController: SmartHubBridgeController?
     var pixelClockController: PixelClockController?
@@ -289,6 +290,7 @@ final class OpenBurnBarRuntimeContext {
 
         guard accountManager.isFirebaseAvailable else {
             hermesRelayHostService?.stop()
+            hermesBodyPublisher?.stop()
             piAgentRelayHostService?.stop()
             return
         }
@@ -330,6 +332,16 @@ final class OpenBurnBarRuntimeContext {
             hermesRelayHostService = hermesRelayHost
         }
         hermesRelayHost.start()
+        // War Room W0: this Mac's HermesBody rides the relay host's identity —
+        // same connection id, published for as long as the host is up.
+        if hermesBodyPublisher == nil {
+            hermesBodyPublisher = HermesBodyPublisher(
+                accountManager: accountManager,
+                settingsManager: settingsManager,
+                bodyIDProvider: { hermesRelayHost.connectionID }
+            )
+        }
+        hermesBodyPublisher?.start()
         #if canImport(AppKit) && !DISTRIBUTION_MAS
         startComputerUseServices(relayHostService: hermesRelayHost)
         #endif

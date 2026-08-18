@@ -53,7 +53,9 @@ CREATE TABLE token_usage (
   agentVersion    TEXT,                                   -- agent CLI version
   requestId       TEXT,                                   -- provider-assigned request ID (v38+)
   traceId         TEXT,                                   -- distributed trace ID (v41+)
-  billingKind     TEXT    NOT NULL DEFAULT 'unknown'      -- "api" | "subscription" | "unknown" (v60+)
+  billingKind     TEXT    NOT NULL DEFAULT 'unknown',     -- "api" | "subscription" | "unknown" (v60+)
+  originatorKind  TEXT,                                   -- STARTED BY kind: user_local | user_remote | flame | wand | mission | hermes_bot | hermes_cron | external | unknown (v62+)
+  originatorRef   TEXT                                    -- STARTED BY primary ref: decisionID / missionGroupID / missionID / botName / bodyID (v62+)
 );
 
 CREATE INDEX token_usage_sync_pending_idx ON token_usage(syncStatus) WHERE syncStatus = 'pending';
@@ -64,6 +66,7 @@ CREATE INDEX token_usage_session_idx ON token_usage(sessionId);
 CREATE INDEX token_usage_execution_source_time_idx ON token_usage(executionSourceID, startTime);
 CREATE INDEX token_usage_timestamp_idx ON token_usage(timestamp DESC);
 CREATE INDEX token_usage_billing_kind_time_idx ON token_usage(billingKind, startTime);
+CREATE INDEX token_usage_originator_time_idx ON token_usage(originatorKind, startTime);
 
 -- ── Chat Messages (v10+) ─────────────────────────────────────────────────────
 -- Stores local chat history for the Hermes and Local Index chat surfaces.

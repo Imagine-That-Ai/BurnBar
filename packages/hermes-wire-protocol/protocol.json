@@ -21,7 +21,8 @@
     { "id": "media", "title": "Mercury media", "doc": "Mercury media rollout (plans/2026-05-15-mercury-media-master-plan.md, docs/HERMES_MEDIA_TRANSPORT.md). Older peers skip unknown frame types on the chat stream, so adding cases here is forward-compatible. iroh-only." },
     { "id": "control", "title": "Computer Use control plane", "doc": "Computer Use control plane (plans/2026-05-16-computer-use-master-plan.md). Same forward-compatibility contract as the media frames: older peers skip unknown control frame types. iroh-only." },
     { "id": "remoteUnlock", "title": "Remote Unlock", "doc": "Human-only Mac unlock lane. These frames are kept deliberately separate from Computer Use so agents can never consume credential input. iroh-only." },
-    { "id": "systemPermission", "title": "System Permission Concierge", "doc": "System Permission Concierge (Phase 14). The Mac emits status frames when a tool failure is classified as a TCC denial; the phone replies with a signed request asking the Mac to surface the right native prompt / System Settings deep link. Both frames are forward-compatible. iroh-only." }
+    { "id": "systemPermission", "title": "System Permission Concierge", "doc": "System Permission Concierge (Phase 14). The Mac emits status frames when a tool failure is classified as a TCC denial; the phone replies with a signed request asking the Mac to surface the right native prompt / System Settings deep link. Both frames are forward-compatible. iroh-only." },
+    { "id": "war", "title": "War Room — the Wire", "doc": "The Wire: the encrypted Mac⇄Mac lane for War Room fleet orchestration (plans/2026-08-17-war-room-master-plan.md). Entitlement-gated to Pro/Ultra and fail-closed — a peer that cannot prove an active war_wire_grant answers war.denied and the dispatcher falls back to the Firestore relay. iroh-only; the dialing Mac uses the transport's outbound connect() rather than accept-only host mode." }
   ],
   "frames": [
     { "id": "hostRegister", "wire": "host.register", "group": "session", "relayAccepted": true, "doc": "Host announces itself and its capabilities to the relay." },
@@ -70,6 +71,14 @@
     { "id": "remoteUnlockDenied", "wire": "remote_unlock.denied", "group": "remoteUnlock", "relayAccepted": false, "doc": "A remote-unlock attempt was denied." },
 
     { "id": "controlSystemPermissionRequest", "wire": "control.system.permission.request", "group": "systemPermission", "relayAccepted": false, "doc": "Phone asks the Mac to surface the right native TCC prompt / System Settings deep link." },
-    { "id": "controlSystemPermissionStatus", "wire": "control.system.permission.status", "group": "systemPermission", "relayAccepted": false, "doc": "Mac reports a TCC denial classification back to the phone." }
+    { "id": "controlSystemPermissionStatus", "wire": "control.system.permission.status", "group": "systemPermission", "relayAccepted": false, "doc": "Mac reports a TCC denial classification back to the phone." },
+    { "id": "warHello", "wire": "war.hello", "group": "war", "relayAccepted": false, "doc": "Dialing Mac announces its bodyId, protocol capabilities, and the war_wire_grant it is claiming." },
+    { "id": "warHelloAck", "wire": "war.hello.ack", "group": "war", "relayAccepted": false, "doc": "Dialed Mac accepts the Wire session and returns its own bodyId and capabilities." },
+    { "id": "warFleetSnapshot", "wire": "war.fleet.snapshot", "group": "war", "relayAccepted": false, "doc": "A body pushes its current fleet-visible state (presence, Hermes state, load) to its Wire peer." },
+    { "id": "warDispatch", "wire": "war.dispatch", "group": "war", "relayAccepted": false, "doc": "Route a unit of work to this body. Carries the sealed mission payload plus the OriginatorRef the Command Board's STARTED BY column renders." },
+    { "id": "warDispatchAck", "wire": "war.dispatch.ack", "group": "war", "relayAccepted": false, "doc": "Dispatch accepted and queued; carries the run id the stream frames reference." },
+    { "id": "warStreamChunk", "wire": "war.stream.chunk", "group": "war", "relayAccepted": false, "doc": "Incremental output for an accepted dispatch, streamed back to the dispatching Mac." },
+    { "id": "warStreamComplete", "wire": "war.stream.complete", "group": "war", "relayAccepted": false, "doc": "Terminal frame for a dispatched run; carries the final status." },
+    { "id": "warDenied", "wire": "war.denied", "group": "war", "relayAccepted": false, "doc": "Fail-closed refusal: no active grant, entitlement below Pro, or war_room_kill_switch engaged. The dispatcher falls back to the Firestore relay." }
   ]
 }

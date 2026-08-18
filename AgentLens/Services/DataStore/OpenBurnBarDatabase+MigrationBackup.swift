@@ -12,7 +12,8 @@ extension OpenBurnBarDatabase {
     /// the full integrity-check + encrypted-backup lane until its data-loss risk
     /// is reviewed explicitly.
     static let additiveTransactionalMigrationIdentifiers: Set<String> = [
-        "v61_usage_memory"
+        "v61_usage_memory",
+        "v62_war_room_originator"
     ]
 
     enum OpenBurnBarDatabaseError: Error {
