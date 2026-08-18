@@ -3,7 +3,7 @@
   "status": "passed",
   "generatedAt": "2026-08-17T17:47:01Z",
   "privacy": "proof_only_no_plaintext_keys_or_user_data",
-  "candidateReleaseTag": "v1.0.36",
+  "candidateReleaseTag": "v1.0.37",
   "testedSourceCommit": "305e6b376ceedcb18b793ffad6ce883d48f7d68d",
   "artifactDigests": [
     {
@@ -44,7 +44,7 @@
     },
     {
       "path": "android/app/build.gradle.kts",
-      "sha256": "78d572b88a4204af7f0ff0e20be7d2c3e8dc9e78b12c1cd00c2459cde1fac44a"
+      "sha256": "b97a2737d4d6c4a0aeae297b60e405282606ade81b9afd4a5cff331585aa0249"
     },
     {
       "path": "android/app/src/test/java/com/openburnbar/data/cloud/AndroidCloudVaultSignalPayloadsTest.kt",
