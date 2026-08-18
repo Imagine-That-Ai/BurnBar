@@ -693,10 +693,7 @@ def check_owner_emergency_packet_release_binding() -> Check:
     if packet_tag == source_tag:
         detail = f"packet bound to committed marketing version {source_tag}"
     else:
-        detail = (
-            f"packet names forward successor {packet_tag} ahead of committed "
-            f"marketing version {source_tag}"
-        )
+        detail = f"packet names forward successor {packet_tag} ahead of committed marketing version {source_tag}"
     return Check("owner emergency packet release binding", True, detail)
 
 
