@@ -74,7 +74,7 @@ struct ChatEngineModelMenu: View {
                 },
                 onDelete: { controller.removePersonaSeat(id: $0) }
             )
-            PlasmaModelSelector(controller: controller, style: .compact, labelWidth: 120)
+            PlasmaModelSelector(controller: controller, labelWidth: 120)
         }
     }
 

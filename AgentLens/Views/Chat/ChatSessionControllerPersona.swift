@@ -7,10 +7,19 @@ import Foundation
 // reasoning gateway, and having one global persona would force a re-pick on
 // every agent switch.
 //
-// Storage deliberately differs from `chatModelSelection(for:)`, which spends
-// twelve stored properties and twelve `UserDefaults` keys on the same idea.
-// Personas are a sparse map — most agents will never have one — so they persist
-// as a single JSON blob, following the `ElderWandSettings.presets` convention.
+// Storage sits on the controller in raw `UserDefaults`, next to
+// `chatModelSelection(for:)` and gated by the same `persistsViewState` flag,
+// because this is pane-local chat view state and a detached pane must be able
+// to hold a different persona from the window it came from — which is exactly
+// why the model selection lives here and not in `SettingsManager`.
+//
+// It differs from its neighbour in shape only: `chatModelSelection` spends
+// twelve stored properties and twelve keys on the same idea, while personas are
+// a sparse map (most agents will never have one) and persist as a single JSON
+// blob, the way `ElderWandSettings.presets` encodes its list. Note that
+// `ElderWandSettings` writes through `SettingsPersistenceCoordinator`; this does
+// not, and should not, since app-wide debounced settings persistence is the
+// wrong home for per-pane view state.
 
 extension ChatSessionController {
     static let udPersonaSeats = "chatPanel.personaSeats.v1"
@@ -67,10 +76,10 @@ extension ChatSessionController {
         guard customPersonaSeats.contains(where: { $0.id == id }) else { return }
         customPersonaSeats.removeAll { $0.id == id }
         // A seat that is deleted while agents are pointed at it must not leave
-        // them resolving to nothing on the next send.
-        for (backendID, seatID) in personaSeatsByBackend where seatID == id {
-            personaSeatsByBackend.removeValue(forKey: backendID)
-        }
+        // them resolving to nothing on the next send. Rebuilt rather than
+        // mutated in place: one `@Observable` write instead of N, and no
+        // mutation of the collection being iterated.
+        personaSeatsByBackend = personaSeatsByBackend.filter { $0.value != id }
         persistPersonaRoster()
         persistPersonaSeats()
     }

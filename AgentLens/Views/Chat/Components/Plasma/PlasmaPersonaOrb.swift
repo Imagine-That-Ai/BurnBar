@@ -108,7 +108,7 @@ struct PlasmaPersonaOrb: View {
                         lineWidth: 1
                     )
                 }
-                .overlay { face }
+                .overlay { face(tick: tick) }
                 .shadow(color: tint.opacity(0.5), radius: size * 0.24, y: size * 0.08)
         }
         .frame(width: size, height: size)
@@ -140,22 +140,22 @@ struct PlasmaPersonaOrb: View {
     }
 
     @ViewBuilder
-    private var face: some View {
+    private func face(tick: PlasmaTick) -> some View {
         if let persona {
-            // The face is redrawn from the same clock as the orb, but on its own
-            // tracks: a 5s glance and a 5.9s blink that deliberately do not
-            // divide into each other, so the orb never falls into a loop the
-            // eye can predict.
-            PlasmaClock(isRunning: !reduceMotion) { tick in
-                let glance = tick.isAnimating ? PlasmaEyeMotion.glance(at: tick.date) : .zero
-                let blink = tick.isAnimating ? PlasmaEyeMotion.blinkScaleY(at: tick.date) : 1
-                PlasmaPersonaFace(
-                    persona: persona,
-                    width: size * 0.52,
-                    glance: CGSize(width: glance.width * size / 52, height: glance.height * size / 52),
-                    blinkScaleY: blink
-                )
-            }
+            // Driven by the orb's clock, not a clock of its own. The eyes run
+            // their own *tracks* — a 5s glance and a 5.9s blink, chosen not to
+            // divide into each other so the face never settles into a loop the
+            // eye can predict — but they share the orb's timeline, so a resting
+            // orb costs nothing and a live one blinks.
+            let glance = tick.isAnimating ? PlasmaEyeMotion.glance(at: tick.date) : .zero
+            let blink = tick.isAnimating ? PlasmaEyeMotion.blinkScaleY(at: tick.date) : 1
+            PlasmaPersonaFace(
+                persona: persona,
+                width: size * 0.52,
+                // The glance offsets are authored against a 52pt orb.
+                glance: CGSize(width: glance.width * size / 52, height: glance.height * size / 52),
+                blinkScaleY: blink
+            )
         } else {
             Image(systemName: "person.crop.circle.dashed")
                 .font(.system(size: size * 0.42, weight: .light))

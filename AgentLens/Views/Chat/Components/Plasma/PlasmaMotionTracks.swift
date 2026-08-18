@@ -42,7 +42,7 @@ enum PlasmaGlowBreath {
     /// `0%,100%: blur(10px) brightness(1.1) scale(.95) opacity(.8)`
     /// `50%:     blur(15px) brightness(1.3) scale(1.15) opacity(.95)`
     static func state(atPhase phase: CGFloat) -> PlasmaGlowState {
-        let t = PlasmaBlobMotion.easeInOut(triangle(phase))
+        let t = PlasmaBlobMotion.easeInOut(plasmaTriangle(phase))
         func mix(_ a: CGFloat, _ b: CGFloat) -> CGFloat { a + (b - a) * t }
         return PlasmaGlowState(
             blurFraction: mix(10.0 / 52, 15.0 / 52),
@@ -53,32 +53,7 @@ enum PlasmaGlowBreath {
     }
 
     static func state(at date: Date, phaseOffset: CGFloat = 0) -> PlasmaGlowState {
-        state(atPhase: phase(at: date, duration: duration) + phaseOffset)
-    }
-}
-
-// MARK: Gateway badge orbit
-
-/// `@keyframes pureProxyFloat` (4.2s) — the standalone gateway mark riding the
-/// model orb's shoulder. It never lands: the badge is a live route indicator,
-/// and a still badge reads as a decal.
-enum PlasmaProxyFloat {
-    static let duration: Double = 4.2
-    /// Authored against the 52pt orb, like the blob tracks.
-    static let authoredSize: CGFloat = 52
-
-    static func offset(atPhase phase: CGFloat, renderedSize: CGFloat) -> (offset: CGSize, scale: CGFloat) {
-        let t = PlasmaBlobMotion.easeInOut(triangle(phase))
-        func mix(_ a: CGFloat, _ b: CGFloat) -> CGFloat { a + (b - a) * t }
-        let factor = authoredSize > 0 ? renderedSize / authoredSize : 1
-        return (
-            CGSize(width: mix(16, 18) * factor, height: mix(-14, -18) * factor),
-            mix(1, 1.08)
-        )
-    }
-
-    static func offset(at date: Date, renderedSize: CGFloat) -> (offset: CGSize, scale: CGFloat) {
-        offset(atPhase: phase(at: date, duration: duration), renderedSize: renderedSize)
+        state(atPhase: plasmaPhase(at: date, duration: duration) + phaseOffset)
     }
 }
 
@@ -244,24 +219,34 @@ enum PlasmaEyeMotion {
     }
 
     static func glance(at date: Date, phaseOffset: CGFloat = 0) -> CGSize {
-        glance(atPhase: phase(at: date, duration: glanceDuration) + phaseOffset)
+        glance(atPhase: plasmaPhase(at: date, duration: glanceDuration) + phaseOffset)
     }
 
     static func blinkScaleY(at date: Date, phaseOffset: CGFloat = 0) -> CGFloat {
-        blinkScaleY(atPhase: phase(at: date, duration: blinkDuration) + phaseOffset)
+        blinkScaleY(atPhase: plasmaPhase(at: date, duration: blinkDuration) + phaseOffset)
     }
 }
 
 // MARK: Shared helpers
 
 /// Normalized position within a loop of `duration` seconds.
-private func phase(at date: Date, duration: Double) -> CGFloat {
+/// The orb aura's breath period.
+///
+/// Slower than the core's 4s `plasmaGlowBreath`: the aura is a wide soft halo,
+/// and matching the core's tempo made the whole orb pump rather than breathe.
+let plasmaAuraBreathPeriod: Double = 11
+
+func plasmaPhase(at date: Date, duration: Double) -> CGFloat {
     guard duration > 0 else { return 0 }
     return CGFloat(date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: duration) / duration)
 }
 
 /// Folds `0…1` into `0…1…0`, which is how CSS reads a `0%,100% / 50%` pair.
-private func triangle(_ phase: CGFloat) -> CGFloat {
+///
+/// Shared rather than private: `PlasmaBlobMotion`'s `autoreverses` branch and
+/// the orb's aura breath both need exactly this, and three spellings of one
+/// function is three chances for them to drift apart.
+func plasmaTriangle(_ phase: CGFloat) -> CGFloat {
     var wrapped = phase.truncatingRemainder(dividingBy: 1)
     if wrapped < 0 { wrapped += 1 }
     return wrapped < 0.5 ? wrapped * 2 : (1 - wrapped) * 2

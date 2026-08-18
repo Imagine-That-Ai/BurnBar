@@ -24,7 +24,13 @@ import SwiftUI
 enum PlasmaMark: Equatable {
     case backend(ChatBackendID)
     case providerID(String)
-    case glyph(String)
+}
+
+/// The status light on an orb: hue plus shape, so neither carries the state
+/// alone.
+struct PlasmaOrbStatus: Equatable {
+    var color: Color
+    var style: PlasmaRouteStatus.DotStyle
 }
 
 /// One selectable orb.
@@ -33,16 +39,46 @@ struct PlasmaConstellationItem: Identifiable, Equatable {
     let name: String
     let mark: PlasmaMark
     let tint: Color
+    /// The orb's deep shade, resolved at construction.
+    ///
+    /// `PlasmaShade.deep` costs two AppKit colour-space conversions and a
+    /// blend. The grid rebuilds every orb on every tick, so computing it in
+    /// `sphere` meant ~360 conversions a second for a value that only changes
+    /// when the tint does — the exact waste `PlasmaOrb` documents itself as
+    /// avoiding.
+    let deepTint: Color
     /// The small caps line under the name — `":8642"`, `"12 models"`.
     var detail: String?
     /// The status light. `nil` draws no dot, which is the honest presentation
-    /// for a provider (there is nothing to be reachable).
-    var statusColor: Color?
+    /// for a provider (there is nothing to be reachable). The style is carried
+    /// alongside the colour so the rung survives colourblindness.
+    var status: PlasmaOrbStatus?
     /// Spoken instead of the visual composition when the status needs words.
     var statusWord: String?
     /// A route whose endpoint is refusing us stays visible and stays clickable
     /// — the user needs to see *why* — but reads as unavailable.
     var isImpaired: Bool = false
+
+    init(
+        id: String,
+        name: String,
+        mark: PlasmaMark,
+        tint: Color,
+        detail: String? = nil,
+        status: PlasmaOrbStatus? = nil,
+        statusWord: String? = nil,
+        isImpaired: Bool = false
+    ) {
+        self.id = id
+        self.name = name
+        self.mark = mark
+        self.tint = tint
+        self.deepTint = PlasmaShade.deep(tint, fraction: 0.55)
+        self.detail = detail
+        self.status = status
+        self.statusWord = statusWord
+        self.isImpaired = isImpaired
+    }
 }
 
 struct PlasmaConstellation: View {
@@ -146,7 +182,7 @@ private struct PlasmaConstellationOrb: View {
                             gradient: Gradient(stops: [
                                 .init(color: .white.opacity(colorScheme == .dark ? 0.28 : 0.55), location: 0),
                                 .init(color: item.tint.opacity(0.34), location: 0.45),
-                                .init(color: PlasmaShade.deep(item.tint, fraction: 0.55).opacity(0.55), location: 1)
+                                .init(color: item.deepTint.opacity(0.55), location: 1)
                             ]),
                             center: UnitPoint(x: 0.35, y: 0.30),
                             startRadius: 0,
@@ -178,9 +214,8 @@ private struct PlasmaConstellationOrb: View {
                 .overlay { markView }
                 .shadow(color: .black.opacity(0.35), radius: 6, y: 4)
 
-            if let statusColor = item.statusColor {
-                Circle()
-                    .fill(statusColor)
+            if let status = item.status {
+                statusDot(status)
                     .frame(width: 8, height: 8)
                     .overlay { Circle().strokeBorder(DesignSystem.Colors.surface, lineWidth: 1.5) }
                     .offset(x: orbSize * 0.34, y: -orbSize * 0.34)
@@ -189,6 +224,18 @@ private struct PlasmaConstellationOrb: View {
         .frame(width: orbSize, height: orbSize)
         .opacity(item.isImpaired ? 0.55 : 1)
         .saturation(item.isImpaired ? 0.4 : 1)
+    }
+
+    @ViewBuilder
+    private func statusDot(_ status: PlasmaOrbStatus) -> some View {
+        switch status.style {
+        case .filled:
+            Circle().fill(status.color)
+        case .hollow:
+            Circle().strokeBorder(status.color, lineWidth: 1.6)
+        case .dashed:
+            Circle().strokeBorder(status.color, style: StrokeStyle(lineWidth: 1.6, dash: [2, 1.6]))
+        }
     }
 
     private var glowOpacity: Double {
@@ -203,11 +250,11 @@ private struct PlasmaConstellationOrb: View {
         case let .backend(backend):
             AgentMark(backend: backend, size: 22)
         case let .providerID(id):
-            CatalogProviderLogoView(providerID: id, size: 22)
-        case let .glyph(name):
-            Image(systemName: name)
-                .font(.system(size: 18, weight: .medium))
-                .foregroundStyle(.white.opacity(0.92))
+            // The same resolver the pill body uses. `CatalogProviderLogoView`
+            // falls back to an SF Symbol where this one falls back to a
+            // monogram, so mixing them made one provider render two different
+            // ways in two presentations of the same list.
+            ProxyProviderLogoView(catalogProviderID: id, providerName: item.name, size: 22)
         }
     }
 

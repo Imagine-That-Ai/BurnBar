@@ -88,6 +88,29 @@ enum PlasmaRouteStatus: Equatable, Sendable {
         }
     }
 
+    /// Shape, so hue is never the only carrier.
+    ///
+    /// The app already holds this line: `AgentPresenceDot` draws filled /
+    /// hollow / dashed "because colour is never the only signal", and the pill
+    /// presentation of this very rung uses it. The orb presentation has to make
+    /// the same promise or the two disagree about who can read them.
+    enum DotStyle: Equatable, Sendable {
+        /// Serving.
+        case filled
+        /// Answering, and refusing us. Needs a decision.
+        case dashed
+        /// Nothing there, or nothing known yet.
+        case hollow
+    }
+
+    var dotStyle: DotStyle {
+        switch self {
+        case .live, .ready: return .filled
+        case .authRejected: return .dashed
+        case .offline, .unknown: return .hollow
+        }
+    }
+
     var word: String {
         switch self {
         case .live: return "live"
@@ -146,7 +169,10 @@ enum PlasmaRouteCatalog {
     /// endpoint is the single most useful thing this rung can tell you, and
     /// burying it under nine subprocess routes would waste the position.
     static func routes(forEnabled backends: [ChatBackendID]) -> [PlasmaRoute] {
-        let routes = backends.map(route(for:))
+        // `enabledChatBackends` decodes a CSV without deduplicating, and a
+        // repeated entry would give two orbs the same `ForEach` id — which
+        // SwiftUI answers with broken diffing and a runtime warning.
+        let routes = backends.uniquedPreservingOrder().map(route(for:))
         return routes.filter { $0.kind == .gateway } + routes.filter { $0.kind == .direct }
     }
 }
