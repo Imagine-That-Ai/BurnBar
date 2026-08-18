@@ -78,6 +78,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (fast mode, reasoning mix, skills) are stated as untracked, never mocked.
 
 ### Fixed
+- **Console: experimental gallery tiles stay alive** — `LiveKernelCanvas`
+  unmounts the canvas on scroll-away instead of calling `loseContext()` on a
+  reused element. A lost WebGL context stays counted against the browser cap
+  and `getContext` returns the same dead context forever, which is why retro
+  plasma / blobs mesh / plasma orbs / flow imaging showed blank tiles.
+- **Blobs mesh: cold-start wash** — blob centres are quadrant-anchored and
+  the colour blend is keyed by the strongest single-blob weight so t=0 is a
+  field of distinct bodies, not a featureless slate gradient.
+- **Firestore: Hermes/Pi relay updates cannot change `mode`** — connection
+  updates now require both the stored and incoming docs to stay `relayLink`.
 - **Backdrop engine: leaked GL contexts on fast kernel switches** — a lazy
   kernel disposed before its chunk resolved never constructed the real kernel,
   so its `dispose()` was a no-op and the WebGL context the engine created for

@@ -9,11 +9,18 @@ import type { Kernel, KernelFrameContext, KernelId } from "@/lib/gl/engine/types
 
 /**
  * A self-contained live kernel canvas. Renders one kernel via the engine's
- * low-level factory (NOT the full BackdropEngine — no window-global input). When
- * `gateVisibility` is set, the GPU context + rAF loop exist ONLY while the
- * element is on screen (IntersectionObserver) and are freed when it scrolls
- * away, so a 30-tile grid never exceeds the browser's live-context cap. A failed
- * context degrades to a gradient instead of breaking.
+ * low-level factory (NOT the full BackdropEngine — no window-global input).
+ *
+ * When `gateVisibility` is set, the GPU context + rAF loop exist ONLY while the
+ * element is on screen (IntersectionObserver), so a 30-tile grid never exceeds
+ * the browser's live-context cap. The canvas ELEMENT is unmounted on scroll-away
+ * (not just loseContext()'d): browsers keep counting a lost context against the
+ * cap until the canvas is garbage-collected, and `getContext` on a lost canvas
+ * returns the same dead context forever — so a reused canvas means scrolled-past
+ * tiles would never render again (white tiles). A fresh element per live period
+ * gets a fresh, valid context — the same pattern BackdropEngine uses per slot.
+ *
+ * A failed context degrades to a gradient instead of breaking.
  */
 const FROZEN_MS = 2400;
 
@@ -34,14 +41,36 @@ export function LiveKernelCanvas({
 }) {
   const wrapRef = React.useRef<HTMLDivElement>(null);
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
+  const [live, setLive] = React.useState(false);
   const [failed, setFailed] = React.useState(false);
 
+  // Visibility gate: the canvas element only exists while `live` is true.
   React.useEffect(() => {
+    setFailed(false);
+    if (!gateVisibility) {
+      setLive(true);
+      return;
+    }
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+    const io = new IntersectionObserver(
+      (entries) => setLive(!!entries[0]?.isIntersecting),
+      { rootMargin: "150px" },
+    );
+    io.observe(wrap);
+    return () => {
+      io.disconnect();
+      setLive(false);
+    };
+  }, [id, gateVisibility]);
+
+  // GL/2D lifecycle: runs only while live, against the freshly-mounted canvas.
+  React.useEffect(() => {
+    if (!live) return;
     const wrap = wrapRef.current;
     const canvas = canvasRef.current;
     if (!wrap || !canvas) return;
 
-    setFailed(false);
     const reduced =
       typeof window !== "undefined" &&
       window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
@@ -53,7 +82,6 @@ export function LiveKernelCanvas({
     let caps = NO_FLOAT_CAPS;
     let raf = 0;
     let t0 = 0;
-    let running = false;
 
     const dpr = Math.min(
       typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1,
@@ -81,91 +109,49 @@ export function LiveKernelCanvas({
       };
     };
 
-    const start = () => {
-      if (running) return;
-      running = true;
-      try {
-        kernel = desc.create();
-        if (desc.substrate === "webgl2") {
-          const gl = canvas.getContext("webgl2", {
-            alpha: false,
-            antialias: false,
-            depth: false,
-            stencil: false,
-            premultipliedAlpha: true,
-            powerPreference: "low-power",
-            preserveDrawingBuffer: false,
-          });
-          if (!gl) {
-            setFailed(true);
-            running = false;
-            kernel = null;
-            return;
-          }
-          glOrCtx = gl;
-          caps = detectGlCapabilities(gl);
-        } else {
-          const c2d = canvas.getContext("2d", { alpha: true });
-          if (!c2d) {
-            setFailed(true);
-            running = false;
-            kernel = null;
-            return;
-          }
-          glOrCtx = c2d;
+    try {
+      kernel = desc.create();
+      if (desc.substrate === "webgl2") {
+        const gl = canvas.getContext("webgl2", {
+          alpha: false,
+          antialias: false,
+          depth: false,
+          stencil: false,
+          premultipliedAlpha: true,
+          powerPreference: "low-power",
+          preserveDrawingBuffer: false,
+        });
+        if (!gl) {
+          setFailed(true);
+          kernel = null;
+          return;
         }
-        sizeCanvas();
-        kernel.init(glOrCtx, frameCtx());
-        if (reduced) {
-          kernel.frame(FROZEN_MS, 16);
-        } else {
-          const loop = (now: number) => {
-            if (!t0) t0 = now;
-            kernel?.frame(now - t0, 16);
-            raf = requestAnimationFrame(loop);
-          };
+        glOrCtx = gl;
+        caps = detectGlCapabilities(gl);
+      } else {
+        const c2d = canvas.getContext("2d", { alpha: true });
+        if (!c2d) {
+          setFailed(true);
+          kernel = null;
+          return;
+        }
+        glOrCtx = c2d;
+      }
+      sizeCanvas();
+      kernel.init(glOrCtx, frameCtx());
+      if (reduced) {
+        kernel.frame(FROZEN_MS, 16);
+      } else {
+        const loop = (now: number) => {
+          if (!t0) t0 = now;
+          kernel?.frame(now - t0, 16);
           raf = requestAnimationFrame(loop);
-        }
-      } catch {
-        setFailed(true);
-        running = false;
-        kernel = null;
+        };
+        raf = requestAnimationFrame(loop);
       }
-    };
-
-    const stop = () => {
-      running = false;
-      if (raf) cancelAnimationFrame(raf);
-      raf = 0;
-      t0 = 0;
-      try {
-        kernel?.dispose();
-      } catch {
-        /* ignore */
-      }
-      if (glOrCtx && "getExtension" in glOrCtx) {
-        try {
-          (glOrCtx as WebGL2RenderingContext).getExtension("WEBGL_lose_context")?.loseContext();
-        } catch {
-          /* ignore */
-        }
-      }
+    } catch {
+      setFailed(true);
       kernel = null;
-      glOrCtx = null;
-    };
-
-    let io: IntersectionObserver | null = null;
-    if (gateVisibility) {
-      io = new IntersectionObserver(
-        (entries) => {
-          if (entries[0]?.isIntersecting) start();
-          else stop();
-        },
-        { rootMargin: "150px" },
-      );
-      io.observe(wrap);
-    } else {
-      start();
     }
 
     let resizeTimer: number | undefined;
@@ -181,22 +167,40 @@ export function LiveKernelCanvas({
     window.addEventListener("resize", onResize);
 
     return () => {
-      io?.disconnect();
       window.removeEventListener("resize", onResize);
       window.clearTimeout(resizeTimer);
-      stop();
+      if (raf) cancelAnimationFrame(raf);
+      try {
+        kernel?.dispose();
+      } catch {
+        /* ignore */
+      }
+      // Free the context promptly; React then unmounts the canvas element, so
+      // the browser can actually reclaim the slot (a lost context on a mounted
+      // canvas keeps counting against the live-context cap).
+      if (glOrCtx && "getExtension" in glOrCtx) {
+        try {
+          (glOrCtx as WebGL2RenderingContext).getExtension("WEBGL_lose_context")?.loseContext();
+        } catch {
+          /* ignore */
+        }
+      }
+      kernel = null;
+      glOrCtx = null;
     };
-  }, [id, gateVisibility, dprCap]);
+  }, [live, id, dprCap]);
 
   const base = toCss(resolvePalette("dark").bg);
 
   return (
     <div ref={wrapRef} className={className} style={{ background: base, ...style }}>
-      <canvas
-        ref={canvasRef}
-        aria-hidden
-        style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: "block" }}
-      />
+      {live && (
+        <canvas
+          ref={canvasRef}
+          aria-hidden
+          style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: "block" }}
+        />
+      )}
       {failed && (
         <div
           aria-hidden
