@@ -269,6 +269,7 @@ jobs:
     outputs:
       profile_name: ${{ steps.gate.outputs.profile_name }}
       candidate_commit: ${{ steps.gate.outputs.candidate_commit }}
+      rust_active: ${{ steps.gate.outputs.rust_active }}
       signer_run_id: ${{ steps.gate.outputs.signer_run_id }}
       signer_run_attempt: ${{ steps.gate.outputs.signer_run_attempt }}
     steps:
@@ -1085,6 +1086,7 @@ jobs:
       RELEASE_COMMIT: ${{ needs.resolve-release.outputs.release_commit }}
       RELEASE_TAG: windows-v${{ needs.resolve-release.outputs.version }}
       PROFILE: ${{ needs.domain-core-native-release-gate.outputs.profile_name }}
+      RUST_ACTIVE: ${{ needs.domain-core-native-release-gate.outputs.rust_active }}
       SIGNER_RUN_ID: ${{ needs.domain-core-native-release-gate.outputs.signer_run_id }}
       SIGNER_RUN_ATTEMPT: ${{ needs.domain-core-native-release-gate.outputs.signer_run_attempt }}
     steps:
@@ -1250,6 +1252,16 @@ jobs:
           # the activation, candidate bundle, promotion attestation, and rollback
           # against the exact candidate C, release commit P, and signed profile.
           evidence_dir="$RUNNER_TEMP/domain-core-windows-candidate-evidence"
+          protected_evidence=()
+          if [[ "$RUST_ACTIVE" == "true" ]]; then
+            protected_evidence=(
+              --candidate-bundle "$gate_dir/source/domain-core-candidate-bundle.json"
+              --promotion-attestation "$gate_dir/promotion/domain-core-promotion-attestation.sigstore.jsonl"
+              --protected-signer-run-id "$SIGNER_RUN_ID"
+              --protected-signer-run-attempt "$SIGNER_RUN_ATTEMPT"
+              --rollback-artifact "$gate_dir/source/domain-core-public-production-rollback.json"
+            )
+          fi
           node scripts/ci/create-domain-core-native-release-evidence.mjs \
             --consumer windows \
             --artifact "$artifact" \
@@ -1259,11 +1271,7 @@ jobs:
             --profile-name "$PROFILE" \
             --profile "$gate_dir/domain-core-selected-public-profile.json" \
             --activation "$gate_dir/domain-core-activation.json" \
-            --candidate-bundle "$gate_dir/source/domain-core-candidate-bundle.json" \
-            --promotion-attestation "$gate_dir/promotion/domain-core-promotion-attestation.sigstore.jsonl" \
-            --protected-signer-run-id "$SIGNER_RUN_ID" \
-            --protected-signer-run-attempt "$SIGNER_RUN_ATTEMPT" \
-            --rollback-artifact "$gate_dir/source/domain-core-public-production-rollback.json" \
+            ${protected_evidence[@]+"${protected_evidence[@]}"} \
             --output-dir "$evidence_dir" \
             --github-output "$GITHUB_OUTPUT"
           # The generator writes the canonical plan to
@@ -1422,20 +1430,28 @@ jobs:
         id: windows-plan
         env:
           GH_TOKEN: ${{ github.token }}
+          RUST_ACTIVE: ${{ needs.domain-core-native-release-gate.outputs.rust_active }}
           SIGNER_RUN_ID: ${{ needs.domain-core-native-release-gate.outputs.signer_run_id }}
           SIGNER_RUN_ATTEMPT: ${{ needs.domain-core-native-release-gate.outputs.signer_run_attempt }}
         run: |
+          set -euo pipefail
+          protected_evidence=()
+          if [[ "$RUST_ACTIVE" == "true" ]]; then
+            protected_evidence=(
+              --candidate-bundle "$RUNNER_TEMP/domain-core-native-release-gate/source/domain-core-candidate-bundle.json"
+              --promotion-attestation "$RUNNER_TEMP/domain-core-native-release-gate/promotion/domain-core-promotion-attestation.sigstore.jsonl"
+              --protected-signer-run-id "$SIGNER_RUN_ID"
+              --protected-signer-run-attempt "$SIGNER_RUN_ATTEMPT"
+              --rollback-artifact "$RUNNER_TEMP/domain-core-native-release-gate/source/domain-core-public-production-rollback.json"
+            )
+          fi
           node scripts/ci/create-domain-core-native-release-evidence.mjs \
             --consumer windows --artifact "${{ steps.bundle.outputs.artifact }}" \
             --version "$VERSION" --tag "$RELEASE_TAG" --commit "$RELEASE_COMMIT" \
             --profile-name "$PROFILE" \
             --profile "$RUNNER_TEMP/domain-core-native-release-gate/domain-core-selected-public-profile.json" \
             --activation "$RUNNER_TEMP/domain-core-native-release-gate/domain-core-activation.json" \
-            --candidate-bundle "$RUNNER_TEMP/domain-core-native-release-gate/source/domain-core-candidate-bundle.json" \
-            --promotion-attestation "$RUNNER_TEMP/domain-core-native-release-gate/promotion/domain-core-promotion-attestation.sigstore.jsonl" \
-            --protected-signer-run-id "$SIGNER_RUN_ID" \
-            --protected-signer-run-attempt "$SIGNER_RUN_ATTEMPT" \
-            --rollback-artifact "$RUNNER_TEMP/domain-core-native-release-gate/source/domain-core-public-production-rollback.json" \
+            ${protected_evidence[@]+"${protected_evidence[@]}"} \
             --output-dir "$RUNNER_TEMP/domain-core-windows-evidence" \
             --github-output "$GITHUB_OUTPUT"
 

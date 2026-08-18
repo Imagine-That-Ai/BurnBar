@@ -144,6 +144,7 @@ test("signer lookup binds exact successful protected workflow attempt on main", 
 
 test("full gate resolves the signed public profile against the exact candidate", () => {
   const outputDirectory = mkdtempSync(join(tmpdir(), "native-gate-run-"));
+  const githubOutput = join(outputDirectory, "github-output.txt");
   const profileCatalogPath = join(outputDirectory, "profiles.json");
   const profileCatalog = JSON.parse(
     readFileSync("config/domain-core-build-profiles.json", "utf8"),
@@ -318,6 +319,8 @@ test("full gate resolves the signed public profile against the exact candidate",
         outputDirectory,
         "--profile-catalog",
         profileCatalogPath,
+        "--github-output",
+        githubOutput,
       ],
       {
         command,
@@ -330,6 +333,10 @@ test("full gate resolves the signed public profile against the exact candidate",
     assert.equal(result.profileName, "public-production");
     assert.deepEqual(result.candidate, CANDIDATE);
     assert.equal(result.activation.activationCommit, RELEASE_COMMIT);
+    // release.yml skips every Rust demand unless this reads exactly "true",
+    // so an active gate that forgets to emit it would fail open.
+    assert.equal(result.rustActive, true);
+    assert.match(readFileSync(githubOutput, "utf8"), /^rust_active=true$/mu);
     assert.equal(
       JSON.parse(readFileSync(result.profilePath, "utf8")).candidateIdentity
         .candidateCommit,
@@ -474,5 +481,159 @@ test("expired artifact downloads bypass the transient retry budget", () => {
     });
     assert.throws(() => command("gh", ["run", "download"]));
     assert.equal(calls.length, 1, stderr);
+  }
+});
+
+const AUTHORITY_COMMIT = "e".repeat(40);
+const EMPTY_CHANGED_PATHS_SHA256 = createHash("sha256")
+  .update("[]")
+  .digest("hex");
+
+function inactiveGateFixture() {
+  const outputDirectory = mkdtempSync(join(tmpdir(), "native-gate-legacy-"));
+  const profileCatalogPath = join(outputDirectory, "profiles.json");
+  writeFileSync(
+    profileCatalogPath,
+    readFileSync("config/domain-core-build-profiles.json", "utf8"),
+  );
+  const activationPath = join(outputDirectory, "domain-core-activation.json");
+  // What the resolver actually emits when no domain is on Rust: C = P = the
+  // authority commit that last set the modes, which is not the release commit.
+  writeFileSync(
+    activationPath,
+    `${JSON.stringify({
+      active: false,
+      candidateCommit: AUTHORITY_COMMIT,
+      activationCommit: AUTHORITY_COMMIT,
+      coreVersion: CANDIDATE.coreVersion,
+      abiVersion: CANDIDATE.abiVersion,
+      sourceSha256: CANDIDATE.sourceSha256,
+      changedPathsSha256: EMPTY_CHANGED_PATHS_SHA256,
+      domains: [],
+    })}\n`,
+  );
+  return { outputDirectory, profileCatalogPath, activationPath };
+}
+
+function inactiveGateArguments({
+  outputDirectory,
+  profileCatalogPath,
+  activationPath,
+  candidateCommit = AUTHORITY_COMMIT,
+}) {
+  return [
+    "--candidate-commit",
+    candidateCommit,
+    "--release-commit",
+    RELEASE_COMMIT,
+    "--activation",
+    activationPath,
+    "--event-name",
+    "push",
+    "--requested-profile",
+    "public-production",
+    "--output-dir",
+    outputDirectory,
+    "--profile-catalog",
+    profileCatalogPath,
+  ];
+}
+
+function releaseBoundInactiveActivation(overrides = {}) {
+  return {
+    active: false,
+    candidateCommit: RELEASE_COMMIT,
+    activationCommit: RELEASE_COMMIT,
+    coreVersion: CANDIDATE.coreVersion,
+    abiVersion: CANDIDATE.abiVersion,
+    sourceSha256: CANDIDATE.sourceSha256,
+    changedPathsSha256: EMPTY_CHANGED_PATHS_SHA256,
+    domains: [],
+    ...overrides,
+  };
+}
+
+test("inactive activation ships legacy without demanding an attested candidate", () => {
+  const fixture = inactiveGateFixture();
+  const githubOutput = join(fixture.outputDirectory, "github-output.txt");
+  writeFileSync(githubOutput, "");
+  try {
+    const result = run(
+      [...inactiveGateArguments(fixture), "--github-output", githubOutput],
+      {
+        command: (program, args) => {
+          throw new Error(
+            `inactive gate must not shell out: ${program} ${args.join(" ")}`,
+          );
+        },
+        releaseActivationResolver: (releaseCommit) => {
+          assert.equal(releaseCommit, RELEASE_COMMIT);
+          return releaseBoundInactiveActivation();
+        },
+      },
+    );
+    assert.equal(result.rustActive, false);
+    assert.equal(result.profileName, "public-production");
+    assert.equal(result.candidate.candidateCommit, RELEASE_COMMIT);
+    assert.equal(
+      readFileSync(result.profilePath, "utf8").includes('"rust"'),
+      false,
+    );
+    // The uploaded selector is rebound to the release commit so every
+    // downstream validateNativeActivationSelector call still binds C and P.
+    assert.deepEqual(
+      JSON.parse(readFileSync(result.activationPath, "utf8")),
+      releaseBoundInactiveActivation(),
+    );
+    assert.equal(
+      JSON.parse(readFileSync(result.gatePath, "utf8")).resolvedActivationCommit,
+      AUTHORITY_COMMIT,
+    );
+    const emitted = readFileSync(githubOutput, "utf8");
+    assert.match(emitted, /^rust_active=false$/mu);
+    assert.match(emitted, new RegExp(`^candidate_commit=${RELEASE_COMMIT}$`, "mu"));
+    assert.doesNotMatch(emitted, /^signer_run_id=/mu);
+  } finally {
+    rmSync(fixture.outputDirectory, { recursive: true, force: true });
+  }
+});
+
+test("inactive gate fails closed when the release checkout still activates Rust", () => {
+  const fixture = inactiveGateFixture();
+  try {
+    assert.throws(
+      () =>
+        run(inactiveGateArguments(fixture), {
+          command: () => {
+            throw new Error("unexpected command");
+          },
+          releaseActivationResolver: () =>
+            releaseBoundInactiveActivation({ active: true }),
+        }),
+      /inactive release gate resolved an active Rust activation/u,
+    );
+  } finally {
+    rmSync(fixture.outputDirectory, { recursive: true, force: true });
+  }
+});
+
+test("inactive gate rejects a candidate commit the resolver did not emit", () => {
+  const fixture = inactiveGateFixture();
+  try {
+    assert.throws(
+      () =>
+        run(
+          inactiveGateArguments({ ...fixture, candidateCommit: COMMIT }),
+          {
+            command: () => {
+              throw new Error("unexpected command");
+            },
+            releaseActivationResolver: () => releaseBoundInactiveActivation(),
+          },
+        ),
+      /inactive release gate candidate commit must match the resolved activation/u,
+    );
+  } finally {
+    rmSync(fixture.outputDirectory, { recursive: true, force: true });
   }
 });
