@@ -1,6 +1,7 @@
 import Foundation
 import OpenBurnBarEngine
 import OpenBurnBarComputerUseCore
+import OpenBurnBarKernel
 
 /// Routes a `BurnBarToolInvocation` whose `tool` is a Computer Use
 /// kind through the in-daemon dispatch flow:
@@ -49,6 +50,15 @@ public actor ComputerUseRunCoordinator {
         _ action: MacInspectAction
     ) async throws -> BurnBarJSONValue
 
+    public typealias SafariDispatcher = @Sendable (
+        _ computerUseSessionId: ComputerUseSessionID,
+        _ action: SafariActionDescriptor
+    ) async throws -> BurnBarSafariToolResponse
+
+    public typealias SafariPageStateResolver = @Sendable (
+        _ safariSessionId: String
+    ) async throws -> BurnBarSafariPageState
+
     public typealias BrowserHostResolver = @Sendable (_ host: String) -> [String]
 
     public typealias PreDispatchAuthorizer = @Sendable (
@@ -83,6 +93,8 @@ public actor ComputerUseRunCoordinator {
     private let approvalIssuer: ApprovalIssuer
     private let macInputDispatcher: MacInputDispatcher?
     private let macInspectDispatcher: MacInspectDispatcher?
+    private let safariDispatcher: SafariDispatcher?
+    private let safariPageStateResolver: SafariPageStateResolver?
     private let browserHostResolver: BrowserHostResolver
     private let preDispatchAuthorizer: PreDispatchAuthorizer?
     private let macAppVersion: String
@@ -103,6 +115,8 @@ public actor ComputerUseRunCoordinator {
         approvalIssuer: @escaping ApprovalIssuer,
         macInputDispatcher: MacInputDispatcher? = nil,
         macInspectDispatcher: MacInspectDispatcher? = nil,
+        safariDispatcher: SafariDispatcher? = nil,
+        safariPageStateResolver: SafariPageStateResolver? = nil,
         browserHostResolver: BrowserHostResolver? = nil,
         preDispatchAuthorizer: PreDispatchAuthorizer? = nil,
         macAppVersion: String,
@@ -114,6 +128,8 @@ public actor ComputerUseRunCoordinator {
         self.approvalIssuer = approvalIssuer
         self.macInputDispatcher = macInputDispatcher
         self.macInspectDispatcher = macInspectDispatcher
+        self.safariDispatcher = safariDispatcher
+        self.safariPageStateResolver = safariPageStateResolver
         self.browserHostResolver = browserHostResolver ?? OpenBurnBarBrowserTargetPolicy.systemResolvedAddresses
         self.preDispatchAuthorizer = preDispatchAuthorizer
         self.macAppVersion = macAppVersion
@@ -404,6 +420,29 @@ public actor ComputerUseRunCoordinator {
                 denyReason: String(describing: error)
             )
         }
+        var effectiveScopeContext = scopeContext
+        var effectiveScopeOutcome = scopeOutcome
+        if case .safari(let safariAction) = action {
+            do {
+                let resolved = try await resolveSafariScope(
+                    action: safariAction,
+                    active: active
+                )
+                effectiveScopeContext = resolved.context
+                effectiveScopeOutcome = resolved.outcome
+            } catch {
+                return deniedResponse(
+                    sessionId: sessionId.rawValue,
+                    invocation: invocation,
+                    action: action,
+                    scopeContext: scopeContext,
+                    scopeRuleId: nil,
+                    reason: "safari_page_state_unavailable",
+                    generation: generation,
+                    invocationId: invocationId
+                )
+            }
+        }
 
         let effectiveUsage: ComputerUseQuotaUsage
         do {
@@ -435,7 +474,7 @@ public actor ComputerUseRunCoordinator {
         )
         let gateOutcome = gate.check(
             action: action,
-            scopeOutcome: scopeOutcome,
+            scopeOutcome: effectiveScopeOutcome,
             accessibilityDeny: accessibilityDeny,
             context: refreshedCapabilityContext(effectiveCapability, active: active, sessionId: sessionId)
         )
@@ -446,8 +485,8 @@ public actor ComputerUseRunCoordinator {
                 sessionId: sessionId.rawValue,
                 invocation: invocation,
                 action: action,
-                scopeContext: scopeContext,
-                scopeRuleId: scopeRuleIfDenied(outcome: scopeOutcome),
+                scopeContext: effectiveScopeContext,
+                scopeRuleId: scopeRuleIfDenied(outcome: effectiveScopeOutcome),
                 reason: reason.rawValue,
                 generation: generation,
                 invocationId: invocationId
@@ -461,11 +500,11 @@ public actor ComputerUseRunCoordinator {
             var approvalId: String?
             if approvedByCandidate == .trustedScope {
                 approvedBy = .trustedScope
-            } else if isReadOnlyInspect(action: action) {
+            } else if isReadOnlyAction(action: action) {
                 approvedBy = .mac
             } else if let burst = consumeStepBurstApproval(
                 for: action,
-                scopeContext: scopeContext,
+                scopeContext: effectiveScopeContext,
                 active: &active,
                 now: Date()
             ) {
@@ -481,7 +520,11 @@ public actor ComputerUseRunCoordinator {
                         generation: generation,
                         invocationId: invocationId
                     ) { [self, activeDriver = active.driver] in
-                        await approvalEvidence(for: action, activeDriver: activeDriver)
+                        await approvalEvidence(
+                            for: action,
+                            computerUseSessionId: sessionId,
+                            activeDriver: activeDriver
+                        )
                     }
                 } catch {
                     return revokedResponse(sessionId: sessionId, invocation: invocation)
@@ -504,7 +547,7 @@ public actor ComputerUseRunCoordinator {
                         sessionId: sessionId,
                         invocation: invocation,
                         action: action,
-                        scopeContext: scopeContext,
+                        scopeContext: effectiveScopeContext,
                         generation: generation,
                         invocationId: invocationId
                     )
@@ -514,13 +557,13 @@ public actor ComputerUseRunCoordinator {
                     runId: invocation.runID.rawValue,
                     sessionId: sessionId.rawValue,
                     toolKind: invocation.tool.rawValue,
-                    title: action.executableSummary(forApproval: scopeContext),
-                    message: action.executableSummary(forApproval: scopeContext),
+                    title: action.executableSummary(forApproval: effectiveScopeContext),
+                    message: action.executableSummary(forApproval: effectiveScopeContext),
                     beforeScreenshotBlake3: evidence?.hashHex,
                     beforeScreenshotPNGBase64: evidence?.pngBase64,
                     beforeScreenshotMimeType: evidence?.mimeType,
                     beforeScreenshotSizeBytes: evidence?.sizeBytes,
-                    actionSummary: action.executableSummary(forApproval: scopeContext),
+                    actionSummary: action.executableSummary(forApproval: effectiveScopeContext),
                     requestedAt: Date(),
                     trustMode: active.state.liveTrustMode.rawValue
                 )
@@ -552,7 +595,7 @@ public actor ComputerUseRunCoordinator {
                                 sessionId: sessionId,
                                 invocation: invocation,
                                 action: action,
-                                scopeContext: scopeContext,
+                                scopeContext: effectiveScopeContext,
                                 generation: generation,
                                 invocationId: invocationId
                             )
@@ -569,7 +612,10 @@ public actor ComputerUseRunCoordinator {
                         approvalId = response.approvalId
                         if shouldOpenStepBurst(from: response, active: active) {
                             active.stepBurstApproval = StepBurstApproval(
-                                actionSignature: stepBurstSignature(for: action, scopeContext: scopeContext),
+                                actionSignature: stepBurstSignature(
+                                    for: action,
+                                    scopeContext: effectiveScopeContext
+                                ),
                                 approvedBy: approvedBy,
                                 approvalId: response.approvalId,
                                 remainingActions: 9,
@@ -582,7 +628,7 @@ public actor ComputerUseRunCoordinator {
                             for: action,
                             approvedBy: .denied,
                             denyReason: ComputerUseDenyReason.userRejected.rawValue,
-                            scopeContext: scopeContext
+                            scopeContext: effectiveScopeContext
                         )
                         if let entry { _ = try? active.logger.append(entry) }
                         active.state.actionsRejected += 1
@@ -631,7 +677,7 @@ public actor ComputerUseRunCoordinator {
 
             let currentGateOutcome = gate.check(
                 action: action,
-                scopeOutcome: scopeOutcome,
+                scopeOutcome: effectiveScopeOutcome,
                 accessibilityDeny: accessibilityDeny,
                 context: refreshedCapabilityContext(effectiveCapability, active: active, sessionId: sessionId)
             )
@@ -640,8 +686,8 @@ public actor ComputerUseRunCoordinator {
                     sessionId: sessionId.rawValue,
                     invocation: invocation,
                     action: action,
-                    scopeContext: scopeContext,
-                    scopeRuleId: scopeRuleIfDenied(outcome: scopeOutcome),
+                    scopeContext: effectiveScopeContext,
+                    scopeRuleId: scopeRuleIfDenied(outcome: effectiveScopeOutcome),
                     reason: reason.rawValue,
                     generation: generation,
                     invocationId: invocationId
@@ -658,7 +704,7 @@ public actor ComputerUseRunCoordinator {
                     sessionId: sessionId,
                     invocation: invocation,
                     action: action,
-                    scopeContext: scopeContext,
+                    scopeContext: effectiveScopeContext,
                     generation: generation,
                     invocationId: invocationId
                 )
@@ -680,9 +726,9 @@ public actor ComputerUseRunCoordinator {
                     for: action,
                     approvalId: approvalId,
                     approvedBy: approvedBy,
-                    scopeRuleId: scopeRuleIfAllowed(outcome: scopeOutcome),
+                    scopeRuleId: scopeRuleIfAllowed(outcome: effectiveScopeOutcome),
                     denyReason: Self.auditReservationSentinel,
-                    scopeContext: scopeContext
+                    scopeContext: effectiveScopeContext
                 )
                 try active.logger.append(reservation)
                 guard storeIfCurrent(active, sessionId: sessionId, generation: generation) else {
@@ -709,7 +755,7 @@ public actor ComputerUseRunCoordinator {
 
             let actionClass: ComputerUseLocalQuotaLedger.ActionClass
             switch action {
-            case .browser:
+            case .browser, .safari:
                 actionClass = .browser
             case .macInput, .macInspect, .phoneIntent, .remoteClipboard:
                 actionClass = .system
@@ -717,7 +763,7 @@ public actor ComputerUseRunCoordinator {
             let exemptsMeteredCap = effectiveCapability.originatedFromPhone && {
                 switch action {
                 case .macInput, .phoneIntent, .remoteClipboard: return true
-                case .browser, .macInspect: return false
+                case .browser, .safari, .macInspect: return false
                 }
             }()
             var quotaReservationInserted = false
@@ -735,9 +781,9 @@ public actor ComputerUseRunCoordinator {
                         for: action,
                         approvalId: approvalId,
                         approvedBy: .denied,
-                        scopeRuleId: scopeRuleIfAllowed(outcome: scopeOutcome),
+                        scopeRuleId: scopeRuleIfAllowed(outcome: effectiveScopeOutcome),
                         denyReason: ComputerUseDenyReason.counterReplay.rawValue,
-                        scopeContext: scopeContext
+                        scopeContext: effectiveScopeContext
                     )
                     if let entry { _ = try? active.logger.append(entry) }
                     active.state.actionsRejected += 1
@@ -762,9 +808,9 @@ public actor ComputerUseRunCoordinator {
                     for: action,
                     approvalId: approvalId,
                     approvedBy: .denied,
-                    scopeRuleId: scopeRuleIfAllowed(outcome: scopeOutcome),
+                    scopeRuleId: scopeRuleIfAllowed(outcome: effectiveScopeOutcome),
                     denyReason: reason.rawValue,
-                    scopeContext: scopeContext
+                    scopeContext: effectiveScopeContext
                 )
                 if let entry { _ = try? active.logger.append(entry) }
                 active.state.actionsRejected += 1
@@ -816,9 +862,9 @@ public actor ComputerUseRunCoordinator {
                     for: action,
                     approvalId: approvalId,
                     approvedBy: approvedBy,
-                    scopeRuleId: scopeRuleIfAllowed(outcome: scopeOutcome),
+                    scopeRuleId: scopeRuleIfAllowed(outcome: effectiveScopeOutcome),
                     denyReason: String(describing: error),
-                    scopeContext: scopeContext
+                    scopeContext: effectiveScopeContext
                 )
                 if let failureEntry { _ = try? active.logger.append(failureEntry) }
                 active.state.actionsRejected += 1
@@ -850,8 +896,8 @@ public actor ComputerUseRunCoordinator {
                     for: action,
                     approvalId: approvalId,
                     approvedBy: approvedBy,
-                    scopeRuleId: scopeRuleIfAllowed(outcome: scopeOutcome),
-                    scopeContext: scopeContext
+                    scopeRuleId: scopeRuleIfAllowed(outcome: effectiveScopeOutcome),
+                    scopeContext: effectiveScopeContext
                 )
                 try active.logger.append(entry)
                 active.state.actionsExecuted += 1
@@ -1128,6 +1174,12 @@ public actor ComputerUseRunCoordinator {
         case .browserExtract:
             let args = try decodeBrowserArgs(invocation: invocation)
             return .browser(BrowserAction(kind: .extract, selector: args.selector))
+        case .safariPageContext, .safariScreenshot, .safariFullPageScreenshot,
+             .safariClick, .safariType, .safariPressKey, .safariScroll,
+             .safariHover, .safariFocus, .safariSelectOption, .safariNavigate,
+             .safariOpenTab, .safariCloseTab, .safariListTabs, .safariWaitFor,
+             .safariRunJavaScript, .safariExtract, .safariAbort:
+            return .safari(try decodeSafariAction(invocation: invocation))
         case .macInputClick:
             return .macInput(try decodeMacInput(invocation: invocation, kind: .click))
         case .macInputType:
@@ -1158,6 +1210,144 @@ public actor ComputerUseRunCoordinator {
         return try JSONDecoder().decode(BurnBarBrowserActionArguments.self, from: encoded)
     }
 
+    private func decodeSafariAction(
+        invocation: BurnBarToolInvocation
+    ) throws -> SafariActionDescriptor {
+        let kind: BurnBarSafariActionKind
+        switch invocation.tool {
+        case .safariPageContext: kind = .pageContext
+        case .safariScreenshot: kind = .screenshot
+        case .safariFullPageScreenshot: kind = .fullPageScreenshot
+        case .safariClick: kind = .click
+        case .safariType: kind = .type
+        case .safariPressKey: kind = .pressKey
+        case .safariScroll: kind = .scroll
+        case .safariHover: kind = .hover
+        case .safariFocus: kind = .focus
+        case .safariSelectOption: kind = .selectOption
+        case .safariNavigate: kind = .navigate
+        case .safariOpenTab: kind = .openTab
+        case .safariCloseTab: kind = .closeTab
+        case .safariListTabs: kind = .listTabs
+        case .safariWaitFor: kind = .waitFor
+        case .safariRunJavaScript: kind = .runJavaScript
+        case .safariExtract: kind = .extract
+        case .safariAbort: kind = .abort
+        default:
+            throw DispatchError.unsupportedTool(invocation.tool.rawValue)
+        }
+
+        guard let safariSessionID = stringArgument(invocation, key: "safariSessionId")?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+            safariSessionID.isEmpty == false,
+            safariSessionID.utf8.count <= 256 else {
+            throw DispatchError.invalidArguments("Safari tools require a bounded safariSessionId.")
+        }
+        let selector = stringArgument(invocation, key: "selector")
+        let text = stringArgument(invocation, key: "text")
+        let url = stringArgument(invocation, key: "url")
+        let navigationOperation: BurnBarSafariNavigationOperation?
+        if kind == .navigate {
+            guard let rawOperation = stringArgument(invocation, key: "operation"),
+                  let parsedOperation = BurnBarSafariNavigationOperation(rawValue: rawOperation) else {
+                throw DispatchError.invalidArguments(
+                    "Safari navigate requires operation url, back, forward, or reload."
+                )
+            }
+            navigationOperation = parsedOperation
+        } else {
+            navigationOperation = nil
+        }
+        let key = stringArgument(invocation, key: "key")
+        let value = stringArgument(invocation, key: "value")
+        let script = stringArgument(invocation, key: "script")
+        let positionX = doubleArgument(invocation, key: "positionX")
+        let positionY = doubleArgument(invocation, key: "positionY")
+        let timeoutMillis = min(
+            max(
+                1_000,
+                intArgument(invocation, key: "timeoutMillis")
+                    ?? BurnBarSafariProtocol.defaultCommandTimeoutMillis
+            ),
+            120_000
+        )
+
+        switch kind {
+        case .click:
+            guard selector?.isEmpty == false
+                    || (positionX != nil && positionY != nil) else {
+                throw DispatchError.invalidArguments(
+                    "Safari click requires a selector or both viewport coordinates."
+                )
+            }
+        case .type:
+            guard text != nil else {
+                throw DispatchError.invalidArguments("Safari type requires text.")
+            }
+        case .pressKey:
+            guard key?.isEmpty == false else {
+                throw DispatchError.invalidArguments("Safari press_key requires key.")
+            }
+        case .hover, .focus:
+            guard selector?.isEmpty == false else {
+                throw DispatchError.invalidArguments(
+                    "Safari \(kind.rawValue) requires a selector."
+                )
+            }
+        case .selectOption:
+            guard selector?.isEmpty == false, value != nil else {
+                throw DispatchError.invalidArguments(
+                    "Safari select_option requires selector and value."
+                )
+            }
+        case .navigate:
+            if navigationOperation == .url, url?.isEmpty != false {
+                throw DispatchError.invalidArguments(
+                    "Safari navigate operation url requires a URL."
+                )
+            }
+        case .openTab:
+            guard url?.isEmpty == false else {
+                throw DispatchError.invalidArguments("Safari open_tab requires url.")
+            }
+        case .closeTab:
+            guard intArgument(invocation, key: "tabId") != nil else {
+                throw DispatchError.invalidArguments("Safari close_tab requires tabId.")
+            }
+        case .runJavaScript:
+            guard let script, script.isEmpty == false, script.utf8.count <= 32 * 1024 else {
+                throw DispatchError.invalidArguments(
+                    "Safari run_javascript requires a non-empty script of at most 32 KiB."
+                )
+            }
+        case .pageContext, .screenshot, .fullPageScreenshot, .scroll,
+             .listTabs, .waitFor, .extract, .abort:
+            break
+        }
+
+        return SafariActionDescriptor(
+            kind: kind,
+            safariSessionId: safariSessionID,
+            tabId: intArgument(invocation, key: "tabId"),
+            expectedNavigationEpoch: intArgument(
+                invocation,
+                key: "expectedNavigationEpoch"
+            ),
+            selector: selector,
+            text: text,
+            url: url,
+            navigationOperation: navigationOperation,
+            key: key,
+            value: value,
+            positionX: positionX,
+            positionY: positionY,
+            deltaX: doubleArgument(invocation, key: "deltaX"),
+            deltaY: doubleArgument(invocation, key: "deltaY"),
+            script: script,
+            timeoutMillis: timeoutMillis
+        )
+    }
+
     private func decodeMacInput(invocation: BurnBarToolInvocation, kind: MacInputAction.Kind) throws -> MacInputAction {
         MacInputAction(
             kind: kind,
@@ -1177,6 +1367,11 @@ public actor ComputerUseRunCoordinator {
     private func intArgument(_ invocation: BurnBarToolInvocation, key: String) -> Int? {
         guard case let .object(dict) = invocation.arguments, let value = dict[key] else { return nil }
         if case let .number(n) = value { return Int(n) }
+        return nil
+    }
+    private func doubleArgument(_ invocation: BurnBarToolInvocation, key: String) -> Double? {
+        guard case let .object(dict) = invocation.arguments, let value = dict[key] else { return nil }
+        if case let .number(number) = value, number.isFinite { return number }
         return nil
     }
     private func stringArgument(_ invocation: BurnBarToolInvocation, key: String) -> String? {
@@ -1205,9 +1400,66 @@ public actor ComputerUseRunCoordinator {
         return nil
     }
 
-    private func isReadOnlyInspect(action: ComputerUseAction) -> Bool {
-        if case .macInspect = action { return true }
-        return false
+    private func resolveSafariScope(
+        action: SafariActionDescriptor,
+        active: ActiveSession
+    ) async throws -> (
+        context: ComputerUseScopeContext,
+        outcome: ComputerUseScopeOutcome
+    ) {
+        guard let safariPageStateResolver else {
+            throw DispatchError.missingDriver
+        }
+        let page = try await safariPageStateResolver(action.safariSessionId)
+        let context = ComputerUseScopeContext(
+            url: page.url,
+            bundleId: "com.apple.Safari",
+            windowTitle: page.title
+        )
+        var rulesByID: [ComputerUseScopeRuleID: ComputerUseScopeRule] = [:]
+        for rule in ComputerUseDenyRegistry.builtInRules + active.state.manifest.scopeRules {
+            rulesByID[rule.id] = rule
+        }
+        let rules = Array(rulesByID.values)
+        let matcher = ComputerUseScopeMatcher()
+        let liveOutcome = matcher.evaluate(rules: rules, context: context)
+
+        guard action.kind == .navigate || action.kind == .openTab,
+              let targetURL = action.url else {
+            return (context, liveOutcome)
+        }
+        let targetContext = ComputerUseScopeContext(
+            url: targetURL,
+            bundleId: "com.apple.Safari",
+            windowTitle: page.title
+        )
+        let targetOutcome = matcher.evaluate(rules: rules, context: targetContext)
+        return (context, Self.combinedScopeOutcome(liveOutcome, targetOutcome))
+    }
+
+    private static func combinedScopeOutcome(
+        _ live: ComputerUseScopeOutcome,
+        _ target: ComputerUseScopeOutcome
+    ) -> ComputerUseScopeOutcome {
+        if case .denied = live { return live }
+        if case .denied = target { return target }
+        guard case .allowed = live, case .allowed = target else {
+            return .notMatched
+        }
+        return live
+    }
+
+    private func isReadOnlyAction(action: ComputerUseAction) -> Bool {
+        switch action {
+        case .macInspect:
+            return true
+        case .safari(let safari):
+            // Full-page capture is intentionally opt-in despite not modifying
+            // the page because it can collect substantially more private data.
+            return safari.isReadOnly && safari.kind != .fullPageScreenshot
+        case .browser, .macInput, .phoneIntent, .remoteClipboard:
+            return false
+        }
     }
 
     private func consumeStepBurstApproval(
@@ -1250,6 +1502,18 @@ public actor ComputerUseRunCoordinator {
                 "browser",
                 action.kind.rawValue,
                 scopeContext.url.flatMap(browserHost) ?? "",
+                action.selector ?? "",
+                action.url.flatMap(browserHost) ?? action.url ?? "",
+                action.key?.lowercased() ?? "",
+                action.value ?? "",
+                coordinateSignature(x: action.positionX, y: action.positionY)
+            ].joined(separator: "|")
+        case .safari(let action):
+            return [
+                "safari",
+                action.kind.rawValue,
+                action.safariSessionId,
+                action.tabId.map(String.init) ?? "",
                 action.selector ?? "",
                 action.url.flatMap(browserHost) ?? action.url ?? "",
                 action.key?.lowercased() ?? "",
@@ -1306,6 +1570,11 @@ public actor ComputerUseRunCoordinator {
         return "\(x),\(y)"
     }
 
+    private func coordinateSignature(x: Double?, y: Double?) -> String {
+        guard let x, let y else { return "" }
+        return "\(x),\(y)"
+    }
+
     // MARK: Concrete dispatch
 
     private func dispatch(
@@ -1319,6 +1588,17 @@ public actor ComputerUseRunCoordinator {
         case .browser(let browser):
             guard let driver = activeDriver else { throw DispatchError.missingDriver }
             let response = try await dispatch(browser: browser, on: driver)
+            return BurnBarToolResult(
+                callID: invocation.callID,
+                runID: invocation.runID,
+                succeeded: response.ok,
+                output: response.result,
+                errorMessage: response.error,
+                completedAt: Date()
+            )
+        case .safari(let safari):
+            guard let dispatcher = safariDispatcher else { throw DispatchError.missingDriver }
+            let response = try await dispatcher(sessionId, safari)
             return BurnBarToolResult(
                 callID: invocation.callID,
                 runID: invocation.runID,
@@ -1369,27 +1649,48 @@ public actor ComputerUseRunCoordinator {
 
     private func approvalEvidence(
         for action: ComputerUseAction,
+        computerUseSessionId: ComputerUseSessionID,
         activeDriver: OpenBurnBarPlaywrightDriver?
     ) async -> ApprovalEvidence? {
-        guard case .browser = action,
-              let activeDriver else {
-            return nil
-        }
-
         do {
-            let response = try await activeDriver.screenshot()
-            guard case .object(let object)? = response.result,
+            let result: BurnBarJSONValue?
+            let fallbackMimeType: String
+            switch action {
+            case .browser:
+                guard let activeDriver else { return nil }
+                result = try await activeDriver.screenshot().result
+                fallbackMimeType = "image/png"
+            case .safari(let safari):
+                guard let safariDispatcher else { return nil }
+                let screenshot = SafariActionDescriptor(
+                    kind: .screenshot,
+                    safariSessionId: safari.safariSessionId,
+                    tabId: safari.tabId,
+                    expectedNavigationEpoch: safari.expectedNavigationEpoch,
+                    timeoutMillis: min(
+                        safari.timeoutMillis,
+                        BurnBarSafariProtocol.defaultCommandTimeoutMillis
+                    )
+                )
+                let response = try await safariDispatcher(computerUseSessionId, screenshot)
+                guard response.ok else { return nil }
+                result = response.result
+                fallbackMimeType = "image/jpeg"
+            case .macInput, .macInspect, .phoneIntent, .remoteClipboard:
+                return nil
+            }
+
+            guard case .object(let object)? = result,
                   let base64 = object.stringValue(forKey: "base64"),
                   base64.isEmpty == false else {
                 return nil
             }
-
             let decoded = Data(base64Encoded: base64)
             let sizeBytes = object.intValue(forKey: "sizeBytes") ?? decoded?.count ?? 0
             let hashHex = decoded.map(Self.sha256Hex(data:)) ?? Self.sha256Hex(string: base64)
             return ApprovalEvidence(
                 pngBase64: base64,
-                mimeType: "image/png",
+                mimeType: object.stringValue(forKey: "mimeType") ?? fallbackMimeType,
                 sizeBytes: sizeBytes,
                 hashHex: hashHex
             )

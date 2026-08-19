@@ -142,6 +142,11 @@ public struct BurnBarContextSelector {
             case .applyPatch, .runTerminal,
                  .browserClick, .browserFill, .browserGoto, .browserKey,
                  .browserSelect, .browserScreenshot, .browserExtract,
+                 .safariPageContext, .safariScreenshot, .safariFullPageScreenshot,
+                 .safariClick, .safariType, .safariPressKey, .safariScroll,
+                 .safariHover, .safariFocus, .safariSelectOption, .safariNavigate,
+                 .safariOpenTab, .safariCloseTab, .safariListTabs, .safariWaitFor,
+                 .safariRunJavaScript, .safariExtract, .safariAbort,
                  .macInputClick, .macInputType, .macInputKey,
                  .macInputShortcut, .macInputDragDrop, .macInputScroll,
                  .macInputPointerMove, .macInspectAccessibility:

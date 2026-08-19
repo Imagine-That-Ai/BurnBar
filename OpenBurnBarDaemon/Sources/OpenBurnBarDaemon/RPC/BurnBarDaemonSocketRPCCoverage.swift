@@ -252,6 +252,36 @@ enum BurnBarDaemonSocketRPCCoverage {
         .inboxMemoryExport
     ]
 
+    static let safari: Set<BurnBarRPCMethod> = [
+        .safariBootstrap,
+        .safariUISnapshot,
+        .safariApprovalRespond,
+        .safariTrustUpdate,
+        .safariSessionAttach,
+        .safariSessionDetach,
+        .safariSessionStatus,
+        .safariCommandPoll,
+        .safariCommandComplete,
+        .safariPageContext,
+        .safariScreenshot,
+        .safariFullPageScreenshot,
+        .safariClick,
+        .safariType,
+        .safariPressKey,
+        .safariScroll,
+        .safariHover,
+        .safariFocus,
+        .safariSelectOption,
+        .safariNavigate,
+        .safariOpenTab,
+        .safariCloseTab,
+        .safariListTabs,
+        .safariWaitFor,
+        .safariRunJavaScript,
+        .safariExtract,
+        .safariAbort
+    ]
+
     static var allHandled: Set<BurnBarRPCMethod> {
         auth
             .union(lifecycle)
@@ -273,6 +303,7 @@ enum BurnBarDaemonSocketRPCCoverage {
             .union(inbox)
             .union(fleet)
             .union(warRoom)
+            .union(safari)
     }
 
     static func domain(for method: BurnBarRPCMethod) -> String? {
@@ -296,6 +327,7 @@ enum BurnBarDaemonSocketRPCCoverage {
         if inbox.contains(method) { return "inbox" }
         if fleet.contains(method) { return "fleet" }
         if warRoom.contains(method) { return "war_room" }
+        if safari.contains(method) { return "safari" }
         return nil
     }
 }
