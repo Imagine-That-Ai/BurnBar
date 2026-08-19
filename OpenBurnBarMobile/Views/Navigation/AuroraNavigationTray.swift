@@ -16,10 +16,16 @@ import SwiftUI
 //     `selection` binding + `onScrubCommit`).
 //   • Custom Aurora vector icons with animated selection morph.
 //   • Reduced-motion respect and full VoiceOver support.
+//
+// The tray renders the user's ordered `AuroraNavItem` list (see
+// `AppCustomization.navItems`), not a hardcoded destination set. Identity is
+// per item, so two AI Inbox instances are distinct tabs. Tab width adapts to
+// the measured available width (clamped 40…56 pt) so up to
+// `AuroraNavItem.maxItems` tabs stay tappable on the smallest iPhones.
 
 struct AuroraNavigationTray: View {
-    @Binding var selection: AuroraNavDestination
-    let destinations: [AuroraNavDestination]
+    @Binding var selection: AuroraNavItem
+    let items: [AuroraNavItem]
     /// Optional user identity that the `.you` tab renders as the avatar.
     var userPhotoURL: URL?
     var userDisplayName: String?
@@ -28,29 +34,33 @@ struct AuroraNavigationTray: View {
     /// The single dot/crest swap is the universal whisper-vs-status signal
     /// across the app.
     var isCloudMember: Bool = false
-    /// Fires continuously during a scrub with the destination currently
-    /// under the finger. Pass `nil` to clear the preview (gesture cancelled).
+    /// Fires continuously during a scrub with the item currently under the
+    /// finger. Pass `nil` to clear the preview (gesture cancelled).
     /// The host uses this to drive live content preview without committing.
-    var onScrubPreview: ((AuroraNavDestination?) -> Void)?
+    var onScrubPreview: ((AuroraNavItem?) -> Void)?
     /// Fires once when the user releases inside the tray, committing the
-    /// previewed destination. The `selection` binding is also updated.
-    var onScrubCommit: ((AuroraNavDestination) -> Void)?
+    /// previewed item. The `selection` binding is also updated.
+    var onScrubCommit: ((AuroraNavItem) -> Void)?
 
     // MARK: - Scrub state
 
     /// The selection captured at scrub start. Restored if the gesture cancels.
-    @State private var restingSelection: AuroraNavDestination = .pulse
-    /// Destination currently under the finger during a scrub.
-    @State private var previewDestination: AuroraNavDestination?
+    @State private var restingSelection: AuroraNavItem = .canonical(.pulse)
+    /// Item currently under the finger during a scrub.
+    @State private var previewItem: AuroraNavItem?
     /// Finger x-position in the pill's local coordinate space.
     @State private var fingerX: CGFloat = 0
     /// Smoothed viewfinder x — springs toward the finger / tab center.
     @State private var viewfinderX: CGFloat = 0
     /// Whether a scrub gesture is in progress.
     @State private var isScrubbing = false
-    /// Last preview destination we fired a boundary haptic for, so we
-    /// only haptic when crossing into a NEW tab.
-    @State private var lastHapticDestination: AuroraNavDestination?
+    /// Last preview item we fired a boundary haptic for, so we only haptic
+    /// when crossing into a NEW tab.
+    @State private var lastHapticItem: AuroraNavItem?
+    /// Available width measured from the tray's own full-width slot; drives
+    /// the adaptive tab width. Seeded with a common iPhone width so the first
+    /// layout pass is sane before geometry lands.
+    @State private var measuredWidth: CGFloat = 393
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -59,29 +69,47 @@ struct AuroraNavigationTray: View {
     // Store are discoverable without relying on icon interpretation.
     private let pillHeight: CGFloat = 62
     private let iconSize: CGFloat = 24
-    private let tabWidth: CGFloat = 56
     private let pillSidePadding: CGFloat = 6
     private let pillBottomInset: CGFloat = 14
+    /// Minimum breathing room between the pill and the screen edges when the
+    /// tab count forces the pill toward full width.
+    private let minEdgeMargin: CGFloat = 12
+
+    /// Adaptive per-tab width: the classic 56 pt whenever it fits, compressing
+    /// down to 40 pt (still comfortably tappable) as the user adds tabs.
+    private var tabWidth: CGFloat {
+        let usable = measuredWidth - minEdgeMargin * 2 - pillSidePadding * 2
+        guard items.isEmpty == false, usable > 0 else { return 56 }
+        return min(56, max(40, usable / CGFloat(items.count)))
+    }
 
     /// Effective pill content width (sum of all tab widths + side padding).
     private var trayContentWidth: CGFloat {
-        CGFloat(destinations.count) * tabWidth + pillSidePadding * 2
+        CGFloat(items.count) * tabWidth + pillSidePadding * 2
     }
 
-    /// The destination that should appear selected right now: the preview
-    /// during a scrub, otherwise the committed selection.
-    private var activeSelection: AuroraNavDestination {
-        isScrubbing ? (previewDestination ?? restingSelection) : selection
+    /// The item that should appear selected right now: the preview during a
+    /// scrub, otherwise the committed selection.
+    private var activeSelection: AuroraNavItem {
+        isScrubbing ? (previewItem ?? restingSelection) : selection
     }
 
     var body: some View {
-        // Pill-only body. The tray is sized to its intrinsic height
-        // (`pillHeight + bottomInset`); the parent decides where it sits.
-        // Avoids an inner Spacer that would expand the tray to fill the
-        // screen and visually swallow the underlying content.
+        // Pill-only body, centered in a full-width slot. The slot spans the
+        // screen so the pill can measure how much room it actually has; the
+        // pill itself stays intrinsic-width. The parent decides where it sits.
         pill
             .padding(.bottom, pillBottomInset)
-            .padding(.horizontal, 32)
+            .frame(maxWidth: .infinity)
+            .background(
+                GeometryReader { geo in
+                    Color.clear
+                        .onAppear { measuredWidth = geo.size.width }
+                        .onChange(of: geo.size.width) { _, width in
+                            measuredWidth = width
+                        }
+                }
+            )
             .accessibilityElement(children: .contain)
     }
 
@@ -134,16 +162,17 @@ struct AuroraNavigationTray: View {
 
     private var tabRow: some View {
         HStack(spacing: 0) {
-            ForEach(destinations) { dest in
+            ForEach(items) { item in
                 AuroraTabItem(
-                    destination: dest,
+                    item: item,
                     iconSize: iconSize,
-                    isSelected: activeSelection == dest,
-                    isPreviewed: isScrubbing && previewDestination == dest,
+                    tabWidth: tabWidth,
+                    isSelected: activeSelection == item,
+                    isPreviewed: isScrubbing && previewItem == item,
                     isPressed: false,
-                    userPhotoURL: dest == .you ? userPhotoURL : nil,
-                    userDisplayName: dest == .you ? userDisplayName : nil,
-                    cloudIndicator: dest == .you ? (isCloudMember ? .member : .free) : .none
+                    userPhotoURL: item.kind == .you ? userPhotoURL : nil,
+                    userDisplayName: item.kind == .you ? userDisplayName : nil,
+                    cloudIndicator: item.kind == .you ? (isCloudMember ? .member : .free) : .none
                 )
                 .frame(width: tabWidth, height: pillHeight - 6)
                 .contentShape(Capsule())
@@ -160,21 +189,21 @@ struct AuroraNavigationTray: View {
     /// `liquidGlassEffect`; on older systems it's a material + tint capsule.
     @ViewBuilder
     private var viewfinderOverlay: some View {
-        if isScrubbing, let preview = previewDestination {
+        if isScrubbing, let preview = previewItem {
             let capsuleWidth = tabWidth + 4
             let x = viewfinderX - capsuleWidth / 2
             Capsule(style: .continuous)
-                .fill(preview.accent.opacity(colorScheme == .dark ? 0.12 : 0.08))
+                .fill(preview.kind.accent.opacity(colorScheme == .dark ? 0.12 : 0.08))
                 .frame(width: capsuleWidth, height: pillHeight - 4)
                 .overlay(
                     Capsule(style: .continuous)
-                        .stroke(preview.accent.opacity(0.45), lineWidth: 1)
+                        .stroke(preview.kind.accent.opacity(0.45), lineWidth: 1)
                 )
                 .offset(x: x)
                 .transition(.opacity)
                 .animation(AuroraNavGestureModel.viewfinderAnimation(reduceMotion: reduceMotion),
                            value: viewfinderX)
-                .animation(.easeInOut(duration: 0.15), value: previewDestination)
+                .animation(.easeInOut(duration: 0.15), value: previewItem)
         }
     }
 
@@ -187,44 +216,44 @@ struct AuroraNavigationTray: View {
                     // Capture resting state at scrub start.
                     restingSelection = selection
                     isScrubbing = true
-                    lastHapticDestination = nil
+                    lastHapticItem = nil
                     // Seed the viewfinder at the current tab center.
-                    let currentIdx = destinations.firstIndex(of: selection) ?? 0
+                    let currentIdx = items.firstIndex(of: selection) ?? 0
                     viewfinderX = AuroraNavGestureModel.viewfinderCenterX(
                         index: currentIdx,
-                        count: destinations.count,
+                        count: items.count,
                         trayWidth: trayContentWidth
                     ) + pillSidePadding
                 }
                 fingerX = value.location.x
-                // Resolve preview destination from finger position.
+                // Resolve preview item from finger position.
                 let localX = fingerX - pillSidePadding
                 guard let preview = AuroraNavGestureModel.destination(
                     x: localX,
-                    trayWidth: CGFloat(destinations.count) * tabWidth,
-                    destinations: destinations
+                    trayWidth: CGFloat(items.count) * tabWidth,
+                    destinations: items
                 ) else { return }
-                if previewDestination != preview {
-                    previewDestination = preview
+                if previewItem != preview {
+                    previewItem = preview
                     // Move viewfinder toward the previewed tab center.
-                    let idx = destinations.firstIndex(of: preview) ?? 0
+                    let idx = items.firstIndex(of: preview) ?? 0
                     viewfinderX = AuroraNavGestureModel.viewfinderCenterX(
                         index: idx,
-                        count: destinations.count,
-                        trayWidth: CGFloat(destinations.count) * tabWidth
+                        count: items.count,
+                        trayWidth: CGFloat(items.count) * tabWidth
                     ) + pillSidePadding
                     onScrubPreview?(preview)
                     // Boundary haptic — only when crossing into a new tab.
-                    if lastHapticDestination != preview {
-                        lastHapticDestination = preview
+                    if lastHapticItem != preview {
+                        lastHapticItem = preview
                         HapticBus.tabChange()
                     }
                 }
             }
             .onEnded { value in
                 // Determine if the finger ended inside the pill bounds.
-                let insideX = value.location.x >= 0 && value.location.x <= trayContentWidth + pillSidePadding * 2
-                if insideX, let committed = previewDestination {
+                let insideX = value.location.x >= 0 && value.location.x <= trayContentWidth
+                if insideX, let committed = previewItem {
                     // Commit: write the binding (fires analytics via .onChange
                     // in the host) and notify the host.
                     withAnimation(AuroraNavGestureModel.transitionAnimation(reduceMotion: reduceMotion)) {
@@ -240,8 +269,8 @@ struct AuroraNavigationTray: View {
                 }
                 // Reset scrub state.
                 isScrubbing = false
-                previewDestination = nil
-                lastHapticDestination = nil
+                previewItem = nil
+                lastHapticItem = nil
             }
     }
 
@@ -292,8 +321,9 @@ struct AuroraNavigationTray: View {
 struct AuroraTabItem: View {
     enum CloudIndicator { case none, free, member }
 
-    let destination: AuroraNavDestination
+    let item: AuroraNavItem
     let iconSize: CGFloat
+    var tabWidth: CGFloat = 56
     let isSelected: Bool
     var isPreviewed: Bool = false
     var isPressed: Bool = false
@@ -311,7 +341,7 @@ struct AuroraTabItem: View {
         VStack(spacing: 3) {
             ZStack(alignment: .topTrailing) {
                 AuroraNavIcon(
-                    destination: destination,
+                    destination: item.kind,
                     size: iconSize,
                     isSelected: showsActive,
                     isPressed: isPressed,
@@ -328,15 +358,15 @@ struct AuroraTabItem: View {
                     .offset(x: 9, y: -6)
             }
 
-            Text(destination.trayLabel)
+            Text(item.trayLabel)
                 .font(.system(size: 9, weight: showsActive ? .bold : .semibold, design: .rounded))
                 .lineLimit(1)
                 .minimumScaleFactor(0.78)
-                .foregroundStyle(showsActive ? destination.accent : MobileTheme.Colors.textSecondary)
-                .frame(width: 48)
+                .foregroundStyle(showsActive ? item.kind.accent : MobileTheme.Colors.textSecondary)
+                .frame(width: min(48, tabWidth - 8))
 
             Capsule(style: .continuous)
-                .fill(destination.accent)
+                .fill(item.kind.accent)
                 .frame(width: showsActive ? 16 : 4, height: 3)
                 .opacity(showsActive ? 1 : 0.35)
                 .animation(.spring(response: 0.28, dampingFraction: 0.72), value: showsActive)
@@ -348,7 +378,17 @@ struct AuroraTabItem: View {
         // Stable UI-test hook for the floating nav tray. Inert in production:
         // an accessibility identifier changes no behavior, only exposes each
         // tab to XCUITest so the scrub-gesture destination can be tapped.
-        .accessibilityIdentifier("auroraTab.\(destination.id)")
+        // Canonical items keep the historical `auroraTab.<kind>` id; extra
+        // instances (second inbox, …) append their instance id so duplicated
+        // kinds stay individually addressable.
+        .accessibilityIdentifier(accessibilityIdentifierValue)
+    }
+
+    private var accessibilityIdentifierValue: String {
+        if item.id == AuroraNavItem.canonical(item.kind).id {
+            return "auroraTab.\(item.kind.id)"
+        }
+        return "auroraTab.\(item.kind.id).\(item.id)"
     }
 
     @ViewBuilder
@@ -366,11 +406,11 @@ struct AuroraTabItem: View {
     private var accessibilityLabel: String {
         switch cloudIndicator {
         case .none:
-            return destination.label
+            return item.displayLabel
         case .free:
-            return "\(destination.label). OpenBurnBar Cloud available."
+            return "\(item.displayLabel). OpenBurnBar Cloud available."
         case .member:
-            return "\(destination.label). Cloud Member."
+            return "\(item.displayLabel). Cloud Member."
         }
     }
 }
@@ -379,7 +419,8 @@ struct AuroraTabItem: View {
 
 #Preview("Aurora Navigation Tray") {
     struct PreviewWrapper: View {
-        @State private var selection: AuroraNavDestination = .pulse
+        @State private var items: [AuroraNavItem] = AuroraNavItem.defaultItems
+        @State private var selection: AuroraNavItem = .canonical(.pulse)
 
         var body: some View {
             ZStack {
@@ -388,7 +429,7 @@ struct AuroraTabItem: View {
                     Spacer()
                     AuroraNavigationTray(
                         selection: $selection,
-                        destinations: AuroraNavDestination.allCases,
+                        items: items,
                         userPhotoURL: nil,
                         userDisplayName: "Alberto Nunez"
                     )

@@ -132,6 +132,9 @@ enum SettingsPageRoute: Hashable, Codable {
     case theme
     /// `QuotaCustomizationSettingsView` — Custom quota sorting, toggles, and percentage settings
     case quotaCustomization
+    /// `NavigationSettingsView` — tab-bar layout editor (add / remove /
+    /// reorder / configure tabs) and the swipe-between-tabs toggle.
+    case navigation
 }
 
 // MARK: - Anchor IDs
@@ -148,6 +151,9 @@ enum SettingsAnchor {
     static let useWebsiteBackground = "hub.appearance.useWebsiteBackground"
     static let backdropKernel = "theme.appearance.backdropKernel"
     static let glassTransparency = "theme.glassTransparency"
+    static let navigationRow = "hub.appearance.navigation"
+    static let navigationTabBar = "navigation.tabBar"
+    static let navigationSwipe = "navigation.swipe"
     static let uiMode = "hub.uiMode"
     static let dailyBudget = "hub.budget.dailyBudget"
     static let costAlerts = "hub.budget.costAlerts"

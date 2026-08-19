@@ -23,15 +23,18 @@ struct RootTabView: View {
     let devicesStore: DevicesStore
     let transferStore: CredentialTransferStore
 
-    @State private var selection: AuroraNavDestination = .pulse
-    /// Live preview destination during a nav-tray scrub. When non-nil, the
-    /// content area shows this tab so the user sees what they're about to
-    /// commit. Cleared on commit (selection binding updates) or cancel.
-    @State private var scrubPreview: AuroraNavDestination?
+    @State private var selection: AuroraNavItem = .canonical(.pulse)
+    /// Live preview item during a nav-tray scrub. When non-nil, the content
+    /// area shows this tab so the user sees what they're about to commit.
+    /// Cleared on commit (selection binding updates) or cancel.
+    @State private var scrubPreview: AuroraNavItem?
     /// Horizontal swipe gesture state for root page swiping. Tracks whether
     /// a recognized horizontal swipe has already committed, so one swipe =
     /// one tab advance.
     @State private var rootSwipeCommitted = false
+    /// The user's tab-bar layout (order, membership, inbox presets) and the
+    /// swipe-navigation toggle live here; the tray renders whatever this says.
+    @StateObject private var customization = AppCustomization.shared
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var didApplyScreenshotRoute = false
@@ -73,12 +76,20 @@ struct RootTabView: View {
     @State private var streamsPath = NavigationPath()
     @State private var hermesPath = NavigationPath()
     @State private var youPath = NavigationPath()
+    @State private var fleetPath = NavigationPath()
+    /// Inbox paths are keyed by nav-item instance id: two inbox tabs are two
+    /// distinct navigation stacks even though they share one store.
+    @State private var inboxPaths: [String: NavigationPath] = [:]
 
-    private let destinations = AuroraNavDestination.allCases
+    private var navItems: [AuroraNavItem] { customization.navItems }
+
+    /// The item whose content is on screen: the scrub preview, else the
+    /// committed selection.
+    private var activeItem: AuroraNavItem { scrubPreview ?? selection }
 
     var body: some View {
         ZStack {
-            if selection == .hermes {
+            if selection.kind == .hermes {
                 contentForSelection
                     .environment(\.mobileBackgroundVisibility, rootBackgroundVisibility)
             } else {
@@ -91,13 +102,13 @@ struct RootTabView: View {
                 Spacer()
                 AuroraNavigationTray(
                     selection: $selection,
-                    destinations: destinations,
+                    items: navItems,
                     userPhotoURL: authStore.currentIdentity?.photoURL,
                     userDisplayName: authStore.currentIdentity?.displayName
                                   ?? authStore.currentIdentity?.email,
                     isCloudMember: subscriptionStore.isActive,
-                    onScrubPreview: { dest in
-                        scrubPreview = dest
+                    onScrubPreview: { item in
+                        scrubPreview = item
                     },
                     onScrubCommit: { _ in
                         scrubPreview = nil
@@ -140,7 +151,7 @@ struct RootTabView: View {
                 singleton: liveStageSingleton,
                 presenter: liveStagePresenter,
                 hermesService: hermesService,
-                onTapHermesTab: { selection = .hermes }
+                onTapHermesTab: { select(kind: .hermes) }
             )
             .zIndex(20)
 
@@ -188,34 +199,55 @@ struct RootTabView: View {
             )
         }
         .onAppear {
+            // Land on the user's leftmost configured tab (the initial `.pulse`
+            // placeholder may not exist in a customized layout).
+            if navItems.contains(selection) == false, let first = navItems.first {
+                selection = first
+            }
             applyScreenshotRouteIfNeeded()
             applyHermesE2EPromptIfNeeded()
             applyComputerUseE2EProofIfNeeded()
             // First visible tab is a screen view too (the launch destination).
             MobileAnalytics.shared.track(.screenViewed, [
-                "surface": Self.surface(for: selection),
+                "surface": Self.surface(for: selection.kind),
                 "is_first_view": .bool(true)
             ])
         }
         .onChange(of: selection) { oldValue, newValue in
+            // A preset-pinned inbox tab applies its filter on commit; the
+            // shared store keeps whatever the user picked otherwise.
+            if let preset = newValue.inboxFilterPreset {
+                streamsInboxStore.filter = preset
+            }
             // A deliberate tab switch: the primary navigation action on iPhone.
-            MobileAnalytics.shared.track(.mobileTabSelected, ["tab": Self.routeLabel(newValue)])
+            MobileAnalytics.shared.track(.mobileTabSelected, ["tab": Self.routeLabel(newValue.kind)])
             MobileAnalytics.shared.track(.navRouteChanged, [
-                "from_route": Self.routeLabel(oldValue),
-                "to_route": Self.routeLabel(newValue)
+                "from_route": Self.routeLabel(oldValue.kind),
+                "to_route": Self.routeLabel(newValue.kind)
             ])
-            MobileAnalytics.shared.track(.screenViewed, ["surface": Self.surface(for: newValue)])
+            MobileAnalytics.shared.track(.screenViewed, ["surface": Self.surface(for: newValue.kind)])
+        }
+        .onChange(of: customization.navItems) { _, items in
+            // The editor can rewrite an item in place (same id, new preset) or
+            // remove the selected tab entirely. Track the live value; fall back
+            // to the first tab when the selection is gone. Transient selections
+            // (deep links to kinds not in the tray) are deliberately left alone.
+            if let updated = items.first(where: { $0.id == selection.id }) {
+                if updated != selection { selection = updated }
+            } else if selection.id.hasPrefix("transient.") == false {
+                selection = items.first ?? .canonical(.pulse)
+            }
         }
         .onChange(of: router.pendingDestination) { _, destination in
             handleRouter(destination)
         }
         .onReceive(NotificationCenter.default.publisher(for: .init("ShowHermesChat"))) { _ in
-            selection = .hermes
+            select(kind: .hermes)
         }
         .onReceive(NotificationCenter.default.publisher(for: .init("ShowAssistantsTab"))) { notification in
             let runtime = notification.userInfo?["runtime"] as? String
             if runtime == nil || runtime == AssistantRuntimeID.hermes.rawValue {
-                selection = .hermes
+                select(kind: .hermes)
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .init("ShowAgentWatch"))) { _ in
@@ -225,10 +257,13 @@ struct RootTabView: View {
             openSettingsRoute()
         }
         .onReceive(NotificationCenter.default.publisher(for: .init("NavigateToDashboard"))) { _ in
-            selection = .pulse
+            select(kind: .pulse)
         }
         .onReceive(NotificationCenter.default.publisher(for: .init("ShowBurnTab"))) { _ in
-            selection = .burn
+            select(kind: .burn)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .init("ShowFleetTab"))) { _ in
+            select(kind: .fleet)
         }
         .onReceive(NotificationCenter.default.publisher(for: .init("ShowMercuryCall"))) { notification in
             guard case .mercuryCall = MobilePendingOsRouteStore.shared.consume() else { return }
@@ -239,7 +274,7 @@ struct RootTabView: View {
             presentMissionConsole(missionId: notification.userInfo?["missionId"] as? String)
         }
         .onReceive(NotificationCenter.default.publisher(for: .init("ShowStreamsTab"))) { _ in
-            selection = .streams
+            select(kind: .streams)
         }
         .onReceive(NotificationCenter.default.publisher(for: HermesGatewayPairingDeepLink.notificationName)) { notification in
             openHermesGatewayPairingRoute(notification)
@@ -267,13 +302,14 @@ struct RootTabView: View {
 
     @ViewBuilder
     private var contentForSelection: some View {
-        let active = scrubPreview ?? selection
-        switch active {
+        switch activeItem.kind {
         case .pulse:    pulseStack
         case .burn:     burnStack
         case .insights: insightsStack
         case .streams:  streamsStack
         case .hermes:   hermesStack
+        case .inbox:    inboxStack(for: activeItem)
+        case .fleet:    fleetStack
         case .you:      youStack
         }
     }
@@ -304,10 +340,12 @@ struct RootTabView: View {
     // MARK: - Root swipe gating
 
     /// Whether root-level page swiping is currently enabled. Disabled when
+    /// the user turned the gesture off in Settings → Navigation, and when
     /// any full-screen control surface is active so the gesture doesn't
     /// fight with the overlay or change tabs underneath a modal.
     private var isRootSwipeEnabled: Bool {
-        !isHermesKeyboardVisible
+        customization.isSwipeNavigationEnabled
+            && !isHermesKeyboardVisible
             && !isCloudStoreChromeHidden
             && studioPresenter.mode != .fullscreen
             && liveStagePresenter.mode != .split
@@ -328,11 +366,10 @@ struct RootTabView: View {
                 guard let direction = AuroraNavGestureModel.swipeDirection(
                     translation: value.translation
                 ) else { return }
-                let active = scrubPreview ?? selection
                 guard let next = AuroraNavGestureModel.adjacent(
-                    current: active,
+                    current: activeItem,
                     direction: direction,
-                    destinations: destinations
+                    destinations: navItems
                 ) else { return }
                 rootSwipeCommitted = true
                 withAnimation(AuroraNavGestureModel.transitionAnimation(reduceMotion: reduceMotion)) {
@@ -363,8 +400,14 @@ struct RootTabView: View {
     @State private var burnActivityStore = ActivityStore()
     /// Hoisted for the same reason as the Pulse/Burn stores: Streams remounts on
     /// every tab return, and a per-view inbox store would tear down and re-open
-    /// two Firestore listeners each time.
+    /// two Firestore listeners each time. Shared by BOTH inbox surfaces — the
+    /// Streams segment and any first-class inbox tabs — so there is exactly one
+    /// pair of listeners and one triage state no matter how many entry points
+    /// the user configures.
     @State private var streamsInboxStore = AIInboxStore()
+    /// Hoisted for the same reason: the fleet mirror listener survives tab
+    /// swaps instead of re-opening on every return to the Fleet tab.
+    @State private var fleetStore = MobileFleetStore()
 
     private var insightsStack: some View {
         AgentInsightsTabScreen(
@@ -404,6 +447,29 @@ struct RootTabView: View {
         NavigationStack(path: $streamsPath) {
             StreamsView(inbox: streamsInboxStore)
                 .navigationDestination(for: TokenUsage.self) { SessionDetailView(usage: $0) }
+        }
+    }
+
+    /// A first-class AI Inbox tab. Each configured instance gets its own
+    /// navigation stack (keyed by instance id) over the one shared store; a
+    /// filter preset on the item is applied when the tab is committed (see the
+    /// `selection` onChange).
+    private func inboxStack(for item: AuroraNavItem) -> some View {
+        NavigationStack(path: inboxPathBinding(for: item.id)) {
+            AIInboxTabScreen(store: streamsInboxStore)
+        }
+    }
+
+    private func inboxPathBinding(for id: String) -> Binding<NavigationPath> {
+        Binding(
+            get: { inboxPaths[id] ?? NavigationPath() },
+            set: { inboxPaths[id] = $0 }
+        )
+    }
+
+    private var fleetStack: some View {
+        NavigationStack(path: $fleetPath) {
+            FleetDashboardScreen(store: fleetStore)
         }
     }
 
@@ -450,39 +516,51 @@ struct RootTabView: View {
 
     // MARK: - Router Bridge
 
+    /// Selects the first configured tab of the given kind. A kind the user
+    /// removed from the tray still opens — as a transient selection that
+    /// renders the content without highlighting any tab — so deep links,
+    /// pushes, and cross-surface routes never dead-end on a customized layout.
+    private func select(kind: AuroraNavDestination) {
+        if let item = navItems.first(where: { $0.kind == kind }) {
+            selection = item
+        } else {
+            selection = AuroraNavItem(id: "transient.\(kind.rawValue)", kind: kind)
+        }
+    }
+
     private func handleRouter(_ destination: PulseRouter.Destination?) {
         guard let destination else { return }
         switch destination {
         case .burn(let focus):
-            selection = .burn
+            select(kind: .burn)
             // BurnView consumes focus through `initialFocus` — for runtime focus
             // (after the view is already mounted) we let the user reselect from
             // the constellation so we don't introduce store coupling.
             _ = focus
         case .streams:
-            selection = .streams
+            select(kind: .streams)
         case .hermes:
-            selection = .hermes
+            select(kind: .hermes)
         case .session(let usage):
-            selection = .pulse
+            select(kind: .pulse)
             pulsePath.append(usage)
         case .project:
-            selection = .streams
+            select(kind: .streams)
         case .provider(let provider):
-            selection = .pulse
+            select(kind: .pulse)
             pulsePath.append(provider)
         }
         router.clear()
     }
 
     private func openAgentWatchRoute() {
-        selection = .you
+        select(kind: .you)
         youPath = NavigationPath()
         youPath.append(YouRoute.computerUse)
     }
 
     private func openSettingsRoute() {
-        selection = .you
+        select(kind: .you)
         youPath = NavigationPath()
         youPath.append(YouRoute.settings)
     }
@@ -490,21 +568,31 @@ struct RootTabView: View {
     /// Lands a `burnbar://inbox[/{itemId}]` deep link — the tap target of an AI
     /// Inbox P1 push.
     ///
-    /// The Inbox lives inside the Streams stack, so this selects that tab, resets
-    /// its path (the user may have been deep inside a session), and pushes the
-    /// item route. `AIInboxDetailRoute` resolves the row from the live store, so
-    /// an item the Mac resolved between the push and the tap shows the
-    /// "this item is gone" pane rather than a blank screen.
+    /// When the user has a first-class Inbox tab, the link lands there (its own
+    /// stack is reset and the item route pushed). Otherwise it falls back to the
+    /// classic home inside the Streams stack. Either way `AIInboxDetailRoute`
+    /// resolves the row from the live store, so an item the Mac resolved between
+    /// the push and the tap shows the "this item is gone" pane rather than a
+    /// blank screen.
     private func openAIInboxRoute(itemID: String?) {
         // Drain the stash on the live path too. The tap has been served here, so
         // leaving it parked would let a later `.task` re-navigate the user back
         // to this item after they had moved on.
         _ = AIInboxDeepLink.consumePendingItemID()
-        selection = .streams
-        streamsPath = NavigationPath()
         streamsInboxStore.focus(itemID: itemID)
-        guard let itemID else { return }
-        streamsPath.append(AIInboxDetailRoute(itemID: itemID))
+        if let inboxItem = navItems.first(where: { $0.kind == .inbox }) {
+            selection = inboxItem
+            var path = NavigationPath()
+            if let itemID {
+                path.append(AIInboxDetailRoute(itemID: itemID))
+            }
+            inboxPaths[inboxItem.id] = path
+        } else {
+            select(kind: .streams)
+            streamsPath = NavigationPath()
+            guard let itemID else { return }
+            streamsPath.append(AIInboxDetailRoute(itemID: itemID))
+        }
     }
 
     /// Cold-launch counterpart to the `onReceive` above.
@@ -539,13 +627,13 @@ struct RootTabView: View {
         if let missionId, !missionId.isEmpty {
             missionConsoleHost.focusMission(id: missionId)
         }
-        selection = .hermes
+        select(kind: .hermes)
         showMissionConsole = true
     }
 
     private func openHermesGatewayPairingRoute(_: Notification) {
         settingsRouter.prepareDeepLink(anchor: SettingsAnchor.hermesCloudGateway)
-        selection = .you
+        select(kind: .you)
         youPath = NavigationPath()
         youPath.append(YouRoute.settings)
         youPath.append(SettingsPageRoute.hermes)
@@ -556,15 +644,19 @@ struct RootTabView: View {
         didApplyScreenshotRoute = true
         switch AppStoreScreenshotMode.route {
         case "burn", "quota":
-            selection = .burn
+            select(kind: .burn)
         case "streams", "activity":
-            selection = .streams
+            select(kind: .streams)
         case "hermes", "chat":
-            selection = .hermes
+            select(kind: .hermes)
+        case "inbox":
+            select(kind: .inbox)
+        case "fleet":
+            select(kind: .fleet)
         case "you", "account":
-            selection = .you
+            select(kind: .you)
         default:
-            selection = .pulse
+            select(kind: .pulse)
         }
     }
 
@@ -589,7 +681,7 @@ struct RootTabView: View {
         let selectedModelID = (modelID?.isEmpty == false) ? modelID! : "default"
         Self.hermesE2ELogger.info("Applying Hermes E2E prompt promptCharacters=\(prompt.count, privacy: .public) model=\(selectedModelID, privacy: .public)")
         didApplyHermesE2EPrompt = true
-        selection = .hermes
+        select(kind: .hermes)
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 1_000_000_000)
             await hermesService.refreshRuntime()
@@ -622,7 +714,7 @@ struct RootTabView: View {
             } else {
                 Self.computerUseE2ELogger.info("OpenBurnBarMobile ComputerUseE2E existing_connection selected=\(hermesService.selectedConnection.id, privacy: .public) mode=\(hermesService.selectedConnection.mode.rawValue, privacy: .public)")
             }
-            selection = .you
+            select(kind: .you)
             if youPath.isEmpty {
                 youPath.append(YouRoute.computerUse)
             }
@@ -661,6 +753,8 @@ struct RootTabView: View {
         case .insights: return "insights"
         case .streams:  return "streams"
         case .hermes:   return "hermes"
+        case .inbox:    return "inbox"
+        case .fleet:    return "fleet"
         case .you:      return "you"
         }
     }
@@ -673,6 +767,8 @@ struct RootTabView: View {
         case .insights: return "insights"
         case .streams:  return "dashboard_activity"
         case .hermes:   return "chat"
+        case .inbox:    return "inbox"
+        case .fleet:    return "fleet"
         case .you:      return "account"
         }
     }

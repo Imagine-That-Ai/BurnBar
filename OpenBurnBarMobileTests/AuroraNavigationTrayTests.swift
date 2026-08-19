@@ -201,8 +201,71 @@ final class AuroraNavigationTrayTests: XCTestCase {
     // MARK: - Destination order invariant
 
     func test_destinationOrder_matchesSpec() {
-        // The single source of truth: pulse → burn → insights → streams → hermes → you
-        XCTAssertEqual(AuroraNavDestination.allCases, [.pulse, .burn, .insights, .streams, .hermes, .you])
+        // Every addable kind, with the two customization-only kinds (inbox,
+        // fleet) between hermes and you.
+        XCTAssertEqual(
+            AuroraNavDestination.allCases,
+            [.pulse, .burn, .insights, .streams, .hermes, .inbox, .fleet, .you]
+        )
+    }
+
+    func test_defaultTrayOrder_matchesLegacyTabs() {
+        // The factory tab bar is exactly the six legacy tabs in their legacy
+        // order — adding inbox/fleet to the enum must not change a fresh
+        // install's tray.
+        XCTAssertEqual(
+            AuroraNavDestination.defaultTrayOrder,
+            [.pulse, .burn, .insights, .streams, .hermes, .you]
+        )
+        XCTAssertEqual(
+            AuroraNavItem.defaultItems.map(\.kind),
+            AuroraNavDestination.defaultTrayOrder
+        )
+    }
+
+    // MARK: - Item-based navigation (customized layouts)
+
+    func test_adjacent_overItems_walksDuplicateInboxInstances() {
+        // Two inbox instances are distinct tabs: adjacency is by item
+        // identity, not kind, so a swipe from the first inbox lands on the
+        // second rather than skipping it.
+        let inboxA = AuroraNavItem(id: "a", kind: .inbox, inboxFilter: "attention")
+        let inboxB = AuroraNavItem(id: "b", kind: .inbox, inboxFilter: "archived")
+        let items: [AuroraNavItem] = [.canonical(.pulse), inboxA, inboxB, .canonical(.you)]
+
+        XCTAssertEqual(
+            AuroraNavGestureModel.adjacent(current: inboxA, direction: .leading, destinations: items),
+            inboxB
+        )
+        XCTAssertEqual(
+            AuroraNavGestureModel.adjacent(current: inboxB, direction: .trailing, destinations: items),
+            inboxA
+        )
+    }
+
+    func test_adjacent_overItems_transientSelectionHasNoNeighbors() {
+        // A transient selection (deep link to a kind the user removed) is not
+        // in the tray, so root swipes are inert rather than jumping somewhere
+        // arbitrary.
+        let items: [AuroraNavItem] = [.canonical(.pulse), .canonical(.you)]
+        let transient = AuroraNavItem(id: "transient.fleet", kind: .fleet)
+        XCTAssertNil(
+            AuroraNavGestureModel.adjacent(current: transient, direction: .leading, destinations: items)
+        )
+    }
+
+    func test_destination_overItems_resolvesInstanceUnderFinger() {
+        let inboxA = AuroraNavItem(id: "a", kind: .inbox)
+        let inboxB = AuroraNavItem(id: "b", kind: .inbox)
+        let items: [AuroraNavItem] = [.canonical(.pulse), inboxA, inboxB]
+        let trayWidth = CGFloat(items.count) * tabWidth
+        let secondInboxCenter = 2 * tabWidth + tabWidth * 0.5
+        let resolved = AuroraNavGestureModel.destination(
+            x: secondInboxCenter,
+            trayWidth: trayWidth,
+            destinations: items
+        )
+        XCTAssertEqual(resolved, inboxB)
     }
 
     // MARK: - Scrub phase semantics

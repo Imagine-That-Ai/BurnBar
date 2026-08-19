@@ -22,15 +22,20 @@ import SwiftUI
 
 // MARK: - Destinations
 
-enum AuroraNavDestination: Hashable, Identifiable, CaseIterable {
+enum AuroraNavDestination: String, Hashable, Identifiable, CaseIterable, Codable {
     case pulse
     case burn
     case insights
     case streams
     case hermes
+    // The raw values ("inbox", "fleet") are the canonical cross-platform
+    // destination ids from docs/mobile-parity/mobile-route-map.json — they
+    // must match the Android routes and the `burnbar://` deep-link hosts.
+    case inbox
+    case fleet
     case you
 
-    var id: String { String(describing: self) }
+    var id: String { rawValue }
 
     var label: String {
         switch self {
@@ -42,6 +47,8 @@ enum AuroraNavDestination: Hashable, Identifiable, CaseIterable {
         // `.hermes` so existing route strings, deep links, and persisted
         // selection values keep working.
         case .hermes:   return "Agents"
+        case .inbox:    return "AI Inbox"
+        case .fleet:    return "Fleet"
         case .you:      return "You"
         }
     }
@@ -53,8 +60,16 @@ enum AuroraNavDestination: Hashable, Identifiable, CaseIterable {
         case .insights: return "Insights"
         case .streams:  return "Streams"
         case .hermes:   return "Agents"
+        case .inbox:    return "Inbox"
+        case .fleet:    return "Fleet"
         case .you:      return "Store"
         }
+    }
+
+    /// Destinations offered by the tab-bar editor. `allCases` keeps the
+    /// legacy order for default layouts; the editor sorts its add menu itself.
+    static var defaultTrayOrder: [AuroraNavDestination] {
+        [.pulse, .burn, .insights, .streams, .hermes, .you]
     }
 
     var accent: Color {
@@ -64,6 +79,8 @@ enum AuroraNavDestination: Hashable, Identifiable, CaseIterable {
         case .insights: return MobileTheme.whimsy
         case .streams:  return MobileTheme.whimsy
         case .hermes:   return MobileTheme.hermesAureate
+        case .inbox:    return MobileTheme.amber
+        case .fleet:    return MobileTheme.success
         case .you:      return MobileTheme.blaze
         }
     }
@@ -96,6 +113,18 @@ enum AuroraNavDestination: Hashable, Identifiable, CaseIterable {
             )
         case .hermes:
             return MobileTheme.mercuryGradient
+        case .inbox:
+            return LinearGradient(
+                colors: [MobileTheme.amber, MobileTheme.ember],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        case .fleet:
+            return LinearGradient(
+                colors: [MobileTheme.success, MobileTheme.whimsy],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
         case .you:
             return LinearGradient(
                 colors: [MobileTheme.blaze, MobileTheme.ember],
@@ -171,7 +200,7 @@ struct AuroraNavIcon: View {
         case .burn:
             IgnisOutlineShape()
                 .fill(destination.accent.opacity(0.45))
-        case .insights:
+        case .insights, .inbox, .fleet:
             Circle()
                 .fill(destination.accent.opacity(0.45))
         case .streams:
@@ -196,12 +225,21 @@ struct AuroraNavIcon: View {
         case .insights: insightsIcon
         case .streams:  streamsIcon
         case .hermes:   hermesIcon
+        case .inbox:    symbolIcon("tray.full.fill")
+        case .fleet:    symbolIcon("point.3.connected.trianglepath.dotted")
         case .you:      youIcon
         }
     }
 
     private var insightsIcon: some View {
-        Image(systemName: "sparkles.tv.fill")
+        symbolIcon("sparkles.tv.fill")
+    }
+
+    /// SF Symbol rendering path shared by the destinations that don't carry a
+    /// bespoke vector glyph (Insights precedent). New tab kinds start here and
+    /// can graduate to hand-drawn `Path` art later without changing call sites.
+    private func symbolIcon(_ name: String) -> some View {
+        Image(systemName: name)
             .font(.system(size: size * 0.55, weight: .semibold))
             .foregroundStyle(
                 isSelected ? destination.gradient : LinearGradient(

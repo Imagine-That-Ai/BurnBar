@@ -4,7 +4,7 @@ import OpenBurnBarCore
 
 /// Defines cross-platform layout destinations for the primary tabs and sidebar.
 enum AppDestination: String, Hashable, Identifiable, Codable, CaseIterable {
-    case pulse, burn, insights, streams, agents, you, settings, devices, providers
+    case pulse, burn, insights, streams, agents, inbox, fleet, you, settings, devices, providers
 
     var id: String { rawValue }
 
@@ -15,6 +15,8 @@ enum AppDestination: String, Hashable, Identifiable, Codable, CaseIterable {
         case .insights: return "Insights"
         case .streams:  return "Streams"
         case .agents:   return "Agents"
+        case .inbox:    return "AI Inbox"
+        case .fleet:    return "Fleet"
         case .you:      return "You"
         case .settings: return "Settings"
         case .devices:  return "Devices"
@@ -32,13 +34,15 @@ enum AppDestination: String, Hashable, Identifiable, Codable, CaseIterable {
         case .burn:      return "flame.fill"
         case .streams:   return "list.bullet.rectangle.portrait.fill"
         case .agents:    return "theatermasks.fill"
+        case .inbox:     return "tray.full.fill"
+        case .fleet:     return "point.3.connected.trianglepath.dotted"
         case .you:       return "person.crop.circle"
         }
     }
 
     var isPrimary: Bool {
         switch self {
-        case .pulse, .burn, .insights, .streams, .agents: return true
+        case .pulse, .burn, .insights, .streams, .agents, .inbox, .fleet: return true
         default: return false
         }
     }
@@ -50,6 +54,8 @@ enum AppDestination: String, Hashable, Identifiable, Codable, CaseIterable {
         case .insights: return MobileTheme.whimsy
         case .streams:  return MobileTheme.whimsy
         case .agents:   return MobileTheme.hermesAureate
+        case .inbox:    return MobileTheme.amber
+        case .fleet:    return MobileTheme.success
         case .you:      return MobileTheme.blaze
         case .settings: return MobileTheme.amber
         case .devices:  return MobileTheme.whimsy
@@ -64,6 +70,8 @@ enum AppDestination: String, Hashable, Identifiable, Codable, CaseIterable {
         case .insights: return .insights
         case .streams:  return .streams
         case .agents:   return .hermes
+        case .inbox:    return .inbox
+        case .fleet:    return .fleet
         case .you:      return .you
         default:        return nil
         }
@@ -71,6 +79,24 @@ enum AppDestination: String, Hashable, Identifiable, Codable, CaseIterable {
 
     var auroraAccessibilityIdentifier: String {
         "auroraTab.\(asAuroraDestination?.id ?? id)"
+    }
+}
+
+extension AuroraNavDestination {
+    /// Inverse of `AppDestination.asAuroraDestination` — every tray kind has a
+    /// sidebar counterpart (the sidebar-only kinds settings/devices/providers
+    /// simply have no tray form).
+    var asAppDestination: AppDestination {
+        switch self {
+        case .pulse:    return .pulse
+        case .burn:     return .burn
+        case .insights: return .insights
+        case .streams:  return .streams
+        case .hermes:   return .agents
+        case .inbox:    return .inbox
+        case .fleet:    return .fleet
+        case .you:      return .you
+        }
     }
 }
 
@@ -151,23 +177,83 @@ final class AppCustomization: ObservableObject {
 
     @AppStorage("customPrimaryTabs") private var primaryTabsRaw: String = ""
     @AppStorage("customSecondaryTabs") private var secondaryTabsRaw: String = ""
+    @AppStorage("customNavItems") private var navItemsRaw: String = ""
+    @AppStorage("rootSwipeNavigationEnabled") var isSwipeNavigationEnabled: Bool = true
     @AppStorage("appThemePalette") var themePalette: AppThemePalette = .system
+
+    /// The user's tab bar, in order. This is the single source of truth for
+    /// the iPhone tray; the iPad sidebar derives its primary section from it
+    /// (deduped by kind — instances are a tray concept).
+    ///
+    /// First read migrates the legacy iPad-only `customPrimaryTabs` order so a
+    /// user who had rearranged the sidebar keeps that order in the tray.
+    var navItems: [AuroraNavItem] {
+        get {
+            if navItemsRaw.isEmpty {
+                return Self.migratedNavItems(fromLegacyPrimaryRaw: primaryTabsRaw)
+            }
+            return Self.decodeNavItems(fromRaw: navItemsRaw) ?? AuroraNavItem.defaultItems
+        }
+        set {
+            let sanitized = AuroraNavItem.sanitized(newValue)
+            if let data = try? JSONEncoder().encode(sanitized), // try?-ok(unencodable layout keeps the previous persisted one)
+               let str = String(data: data, encoding: .utf8) {
+                navItemsRaw = str
+                objectWillChange.send()
+            }
+        }
+    }
+
+    /// Decodes a persisted layout, sanitized. `nil` for empty or corrupt raw
+    /// strings (the caller decides the fallback — defaults vs migration).
+    nonisolated static func decodeNavItems(fromRaw raw: String) -> [AuroraNavItem]? {
+        guard raw.isEmpty == false,
+              let data = raw.data(using: .utf8),
+              let decoded = try? JSONDecoder().decode([AuroraNavItem].self, from: data) else { // try?-ok(corrupt persisted layout falls back to defaults)
+            return nil
+        }
+        return AuroraNavItem.sanitized(decoded)
+    }
+
+    /// Legacy sidebar order → tray layout. `customPrimaryTabs` never contained
+    /// `.you` (it lived in the secondary section); `sanitized` re-appends it so
+    /// Settings stays reachable.
+    nonisolated static func migratedNavItems(fromLegacyPrimaryRaw raw: String) -> [AuroraNavItem] {
+        guard raw.isEmpty == false,
+              let data = raw.data(using: .utf8),
+              let decoded = try? JSONDecoder().decode([AppDestination].self, from: data), // try?-ok(unreadable legacy order falls back to defaults)
+              decoded.isEmpty == false else {
+            return AuroraNavItem.defaultItems
+        }
+        let items = decoded.compactMap { destination in
+            destination.asAuroraDestination.map { AuroraNavItem.canonical($0) }
+        }
+        return AuroraNavItem.sanitized(items)
+    }
 
     var primaryDestinations: [AppDestination] {
         get {
-            if primaryTabsRaw.isEmpty { return [.pulse, .burn, .insights, .streams, .agents] }
-            guard let data = primaryTabsRaw.data(using: .utf8),
-                  let decoded = try? JSONDecoder().decode([AppDestination].self, from: data) else {
-                return [.pulse, .burn, .insights, .streams, .agents]
+            // `.you` is excluded: the iPad sidebar renders it in the Account
+            // (secondary) section, and the historic primary list never held it.
+            var seen = Set<AppDestination>()
+            return navItems.compactMap { item in
+                let destination = item.kind.asAppDestination
+                guard destination != .you else { return nil }
+                return seen.insert(destination).inserted ? destination : nil
             }
-            return decoded
         }
         set {
-            if let data = try? JSONEncoder().encode(newValue),
-               let str = String(data: data, encoding: .utf8) {
-                primaryTabsRaw = str
-                objectWillChange.send()
+            // Legacy write path (iPad sidebar reorder): apply the new kind
+            // order to the nav items, keeping instance configuration.
+            let order = newValue.compactMap(\.asAuroraDestination)
+            var remaining = navItems
+            var reordered: [AuroraNavItem] = []
+            for kind in order {
+                while let index = remaining.firstIndex(where: { $0.kind == kind }) {
+                    reordered.append(remaining.remove(at: index))
+                }
             }
+            navItems = reordered + remaining
         }
     }
 
