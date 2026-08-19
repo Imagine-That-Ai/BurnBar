@@ -3076,6 +3076,32 @@ jobs:
     # packaging + artifact smoke chain. A skipped gate only occurs through the
     # owner-approved bypass inputs validated in release-preflight; a failed or
     # cancelled gate blocks publication.
+    #
+    # One deliberate exception: when the iOS lane itself failed
+    # (build-ios-release.result != 'success'), a failed release-mobile-gate no
+    # longer blocks publication. The iOS product is already excluded from the
+    # release in that case, so iOS unit tests failing alongside a broken iOS
+    # build is consistent rather than new signal -- and holding the finished,
+    # signed macOS release hostage to it recreates the August 2026 coupling
+    # this workflow was restructured to remove. Every other gate remains
+    # strictly required, and mobile-gate failure still blocks whenever the iOS
+    # build succeeded.
+    if: >-
+      ${{ !cancelled()
+          && needs.release-preflight.result == 'success'
+          && needs.release-swift-gate.result != 'failure'
+          && needs.release-app-gate.result != 'failure'
+          && needs.release-sqlcipher-gate.result != 'failure'
+          && (needs.release-mobile-gate.result != 'failure'
+              || needs.build-ios-release.result != 'success')
+          && needs.release-android-gate.result != 'failure'
+          && needs.release-functions-gate.result != 'failure'
+          && needs.release-extension-gate.result != 'failure'
+          && needs.release-supply-chain-gate.result != 'failure'
+          && needs.build-and-release.result == 'success'
+          && needs.domain-core-ios-release-evidence.result != 'failure'
+          && needs.smoke-test.result == 'success'
+          && needs.apple-native-prepublication.result != 'failure' }}
     needs:
       - release-preflight
       - release-swift-gate
@@ -3087,6 +3113,7 @@ jobs:
       - release-extension-gate
       - release-supply-chain-gate
       - build-and-release
+      - build-ios-release
       - domain-core-ios-release-evidence
       - smoke-test
       - apple-native-prepublication
