@@ -3,12 +3,12 @@ import { FullPageCaptureCoordinator } from './captureState';
 import { extractPageContext } from './extract';
 import { resizeImageInDocument } from './imageResize';
 import { ensurePageWorldRunner } from './pageWorldBridge';
-import { getBrowserAPI } from '../shared/browser';
+import { getContentBrowserAPI } from '../shared/browser';
 import { serializeError } from '../shared/errors';
 import { isContentRequest, type ContentRequest, type ContentResponse } from '../shared/messages';
 import { currentPageState } from './verification';
 
-const browserAPI = getBrowserAPI();
+const browserAPI = getContentBrowserAPI();
 const executor = new ContentActionExecutor();
 const capture = new FullPageCaptureCoordinator();
 

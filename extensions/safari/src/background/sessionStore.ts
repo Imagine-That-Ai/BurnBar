@@ -8,12 +8,16 @@ export interface StoredSiteTrust {
   sensitiveOverride: boolean;
 }
 
+// The cloud-screenshot disclosure is deliberately NOT part of this persisted
+// shape. The enforcement error tells the user the acknowledgement applies "for
+// this session", so it lives in controller memory and is cleared whenever the
+// native session changes. Persisting it here would let one acknowledgement
+// silently authorise cloud screenshots from every later Safari session.
 export interface SafariPreferences {
   selectedAgentId?: string;
   mode: SafariMode;
   onlyCurrentTab: boolean;
   automaticallyTrustInvokedWebsites: boolean;
-  cloudScreenshotDisclosureAcknowledged: boolean;
   learningOptedIn: boolean;
   learningConsentSeen: boolean;
   sites: Record<string, StoredSiteTrust>;
@@ -23,7 +27,6 @@ const DEFAULT_PREFERENCES: SafariPreferences = {
   mode: 'ask',
   onlyCurrentTab: true,
   automaticallyTrustInvokedWebsites: false,
-  cloudScreenshotDisclosureAcknowledged: false,
   learningOptedIn: false,
   learningConsentSeen: false,
   sites: {}
@@ -69,10 +72,6 @@ export function parsePreferences(value: unknown): SafariPreferences {
       typeof record.automaticallyTrustInvokedWebsites === 'boolean'
         ? record.automaticallyTrustInvokedWebsites
         : DEFAULT_PREFERENCES.automaticallyTrustInvokedWebsites,
-    cloudScreenshotDisclosureAcknowledged:
-      typeof record.cloudScreenshotDisclosureAcknowledged === 'boolean'
-        ? record.cloudScreenshotDisclosureAcknowledged
-        : DEFAULT_PREFERENCES.cloudScreenshotDisclosureAcknowledged,
     learningOptedIn:
       typeof record.learningOptedIn === 'boolean' ? record.learningOptedIn : DEFAULT_PREFERENCES.learningOptedIn,
     learningConsentSeen:

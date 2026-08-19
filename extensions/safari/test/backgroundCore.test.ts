@@ -61,7 +61,6 @@ describe('background permission, storage, ownership, page, and capture adapters'
       mode: 'handoff',
       onlyCurrentTab: false,
       automaticallyTrustInvokedWebsites: false,
-      cloudScreenshotDisclosureAcknowledged: false,
       learningOptedIn: true,
       learningConsentSeen: true,
       sites: {
@@ -74,7 +73,6 @@ describe('background permission, storage, ownership, page, and capture adapters'
       mode: 'agentic' as const,
       onlyCurrentTab: true,
       automaticallyTrustInvokedWebsites: true,
-      cloudScreenshotDisclosureAcknowledged: true,
       learningOptedIn: false,
       learningConsentSeen: true,
       sites: {

@@ -1,4 +1,4 @@
-import { activeTab, getBrowserAPI } from '../src/shared/browser';
+import { activeTab, getBrowserAPI, getContentBrowserAPI } from '../src/shared/browser';
 import { base64ToBytes, bytesToBase64, dataUrlByteLength, sha256Hex } from '../src/shared/binary';
 import { SafariExtensionError, errorMessage, serializeError } from '../src/shared/errors';
 import {
@@ -424,5 +424,34 @@ describe('shared utilities', () => {
     expect(await sha256Hex(new TextEncoder().encode('abc'))).toBe(
       'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'
     );
+  });
+});
+
+describe('content script browser surface', () => {
+  // Safari gives content scripts runtime + storage only; the privileged
+  // namespaces (tabs, scripting, permissions) are background/popup-only.
+  const safariContentAPI = {
+    runtime: {
+      getURL: (path: string) => `safari-web-extension://abc/${path}`,
+      onMessage: { addListener: () => undefined }
+    },
+    storage: { local: { get: () => undefined, set: () => undefined, remove: () => undefined } }
+  };
+
+  it('accepts the restricted API Safari actually gives a content script', () => {
+    const api = getContentBrowserAPI(safariContentAPI);
+    expect(api.runtime.getURL('page-world-runner.js')).toContain('page-world-runner.js');
+  });
+
+  it('rejects the same restricted API through the privileged validator', () => {
+    // Regression guard: the content entrypoint must NOT use getBrowserAPI().
+    // Doing so threw before the message listener was registered, which
+    // disabled ping, extraction, screenshot fallback and every page action.
+    expect(() => getBrowserAPI(safariContentAPI)).toThrow(/missing tabs/);
+  });
+
+  it('still rejects a content API with no runtime at all', () => {
+    expect(() => getContentBrowserAPI({ storage: {} })).toThrow(/missing runtime/);
+    expect(() => getContentBrowserAPI({ runtime: { getURL: () => '' } })).toThrow(/unavailable/);
   });
 });

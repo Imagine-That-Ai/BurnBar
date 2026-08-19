@@ -263,11 +263,18 @@ export class SafariBackgroundController {
   private readonly performanceRecorder: SafariPerformanceRecorder;
   private readonly ownership = new TabOwnershipRegistry();
   private readonly nativeTrustedOrigins = new Set<string>();
+  // Session-scoped: the disclosure copy promises "for this session", so this
+  // resets with the native session rather than persisting to storage.local.
+  private cloudScreenshotAcknowledged = false;
+  // performInitialization() deliberately resolves even when the native attach
+  // fails, so `initialized` alone would latch the extension offline until a
+  // forced init or a service-worker restart. Track the failure so the next
+  // initialize() retries bridge.hello instead of returning early.
+  private nativeAttachmentFailed = false;
   private preferences: SafariPreferences = {
     mode: 'ask',
     onlyCurrentTab: true,
     automaticallyTrustInvokedWebsites: false,
-    cloudScreenshotDisclosureAcknowledged: false,
     learningOptedIn: false,
     learningConsentSeen: false,
     sites: {}
@@ -336,7 +343,7 @@ export class SafariBackgroundController {
   }
 
   async initialize(force = false): Promise<void> {
-    if (this.initialized && !force) {
+    if (this.initialized && !force && !this.nativeAttachmentFailed) {
       return;
     }
     if (force && this.pageAuthorizationInFlight) {
@@ -457,7 +464,7 @@ export class SafariBackgroundController {
         delete state.selectedAgentId;
       }
       state.trust.onlyCurrentTab = this.preferences.onlyCurrentTab;
-      state.trust.cloudScreenshotAcknowledged = this.preferences.cloudScreenshotDisclosureAcknowledged;
+      state.trust.cloudScreenshotAcknowledged = this.cloudScreenshotAcknowledged;
       state.learning.optedIn = this.preferences.learningOptedIn;
       state.learning.consentSeen = this.preferences.learningConsentSeen;
       state.busy = true;
@@ -488,6 +495,7 @@ export class SafariBackgroundController {
           }
           this.locallyHaltedSession = undefined;
           this.nativeTrustedOrigins.clear();
+          this.cloudScreenshotAcknowledged = false;
           this.localWorkGeneration += 1;
         }
         if (tab) {
@@ -501,10 +509,12 @@ export class SafariBackgroundController {
           state.busy = false;
         });
       });
+      this.nativeAttachmentFailed = false;
       if (this.options.startPolling !== false) {
         this.startPollLoop();
       }
     } catch (error) {
+      this.nativeAttachmentFailed = true;
       this.gatewayClient.clear();
       this.mutate((state) => {
         state.bridge = {
@@ -1374,7 +1384,7 @@ export class SafariBackgroundController {
       nextPreferences.onlyCurrentTab = patch.onlyCurrentTab;
     }
     if (patch.cloudScreenshotAcknowledged !== undefined) {
-      nextPreferences.cloudScreenshotDisclosureAcknowledged = patch.cloudScreenshotAcknowledged;
+      this.cloudScreenshotAcknowledged = patch.cloudScreenshotAcknowledged;
     }
     if (patch.siteAllowed !== undefined || patch.sensitiveSiteOverride !== undefined) {
       if (!origin) {
@@ -1501,6 +1511,7 @@ export class SafariBackgroundController {
       this.ownership.releaseSession(previousSessionId);
       this.locallyHaltedSession = undefined;
       this.nativeTrustedOrigins.clear();
+      this.cloudScreenshotAcknowledged = false;
       this.localWorkGeneration += 1;
     }
     this.ownership.claimUserHanded(tab, attached.sessionId);
@@ -1570,8 +1581,7 @@ export class SafariBackgroundController {
       );
     }
     const selectedAgent = this.snapshot.bridge.agents.find((agent) => agent.id === this.snapshot.selectedAgentId);
-    const cloudDisclosureRequired =
-      Boolean(selectedAgent?.cloud) && !this.preferences.cloudScreenshotDisclosureAcknowledged;
+    const cloudDisclosureRequired = Boolean(selectedAgent?.cloud) && !this.cloudScreenshotAcknowledged;
     if (cloudDisclosureRequired && !request.acknowledgeCloudScreenshots) {
       throw new SafariExtensionError(
         'cloud_disclosure_not_acknowledged',
@@ -1608,12 +1618,13 @@ export class SafariBackgroundController {
     await this.updateAuthorizationTrust(currentOrigin, currentTab);
     this.nativeTrustedOrigins.add(currentOrigin);
 
+    if (cloudDisclosureRequired && request.acknowledgeCloudScreenshots) {
+      this.cloudScreenshotAcknowledged = true;
+    }
+
     const nextPreferences: SafariPreferences = {
       ...previousPreferences,
       automaticallyTrustInvokedWebsites: true,
-      cloudScreenshotDisclosureAcknowledged:
-        previousPreferences.cloudScreenshotDisclosureAcknowledged ||
-        (cloudDisclosureRequired && request.acknowledgeCloudScreenshots),
       sites: {
         ...previousPreferences.sites,
         [currentOrigin]: {
@@ -1875,7 +1886,7 @@ export class SafariBackgroundController {
       state.trust.siteAllowed = this.preferences.automaticallyTrustInvokedWebsites && (resolvedTrust?.allowed ?? false);
       state.trust.sensitiveSiteOverride = resolvedTrust?.sensitiveOverride ?? false;
       state.trust.onlyCurrentTab = this.preferences.onlyCurrentTab;
-      state.trust.cloudScreenshotAcknowledged = this.preferences.cloudScreenshotDisclosureAcknowledged;
+      state.trust.cloudScreenshotAcknowledged = this.cloudScreenshotAcknowledged;
       state.trust.globalKillSwitch = state.bridge.killSwitchEnabled;
     });
   }

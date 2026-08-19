@@ -51,6 +51,7 @@ The current architecture canon lives in [OPENBURNBAR_RELEASE_ARCHITECTURE.md](do
 - [OpenBurnBar Cursor Marketplace Plugin](docs/OPENBURNBAR_CURSOR_PLUGIN.md)
 - [OpenBurnBar Current Release Architecture](docs/OPENBURNBAR_RELEASE_ARCHITECTURE.md)
 - [The Elder Wand model-fusion router](docs/ELDER_WAND.md)
+- [The Safari web extension](docs/SAFARI_EXTENSION.md)
 - [Threat Model and Permission Model](docs/THREAT_MODEL.md)
 - [Governance and Maintainer Expectations](docs/GOVERNANCE.md)
 - [Technical readiness & diligence scorecard](docs/TECHNICAL_READINESS.md)

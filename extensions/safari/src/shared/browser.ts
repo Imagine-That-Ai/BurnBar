@@ -129,6 +129,38 @@ function isBrowserAPI(value: unknown): value is BrowserAPI {
   );
 }
 
+/**
+ * The slice of the WebExtension API that Safari actually exposes to content
+ * scripts. Content scripts do NOT receive the privileged namespaces (`tabs`,
+ * `scripting`, `permissions`), so validating the full background/popup surface
+ * from a content script throws before the message listener is ever registered
+ * and silently disables every content feature — ping, extraction, screenshot
+ * fallback and page actions all report unavailable.
+ */
+interface ContentBrowserAPI {
+  runtime: {
+    getURL(path: string): string;
+    onMessage: BrowserEvent<RuntimeMessageListener>;
+  };
+}
+
+function isContentBrowserAPI(value: unknown): value is ContentBrowserAPI {
+  if (!isRecord(value)) {
+    return false;
+  }
+  const runtime = requireAPIObject(value, 'runtime');
+  return isFunctionProperty(runtime, 'getURL') && typeof runtime.onMessage === 'object' && runtime.onMessage !== null;
+}
+
+/** Resolve the content-script API surface. See {@link ContentBrowserAPI}. */
+export function getContentBrowserAPI(candidate?: unknown): ContentBrowserAPI {
+  const resolved = candidate ?? Reflect.get(globalThis, 'browser');
+  if (!isContentBrowserAPI(resolved)) {
+    throw new Error('The WebExtension content script browser API is unavailable.');
+  }
+  return resolved;
+}
+
 export function getBrowserAPI(candidate?: unknown): BrowserAPI {
   const resolved = candidate ?? Reflect.get(globalThis, 'browser');
   if (!isBrowserAPI(resolved)) {

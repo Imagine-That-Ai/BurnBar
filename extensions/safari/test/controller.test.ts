@@ -873,7 +873,6 @@ describe('Safari background controller integration', () => {
       selectedAgentId: 'vision-model',
       onlyCurrentTab: true,
       automaticallyTrustInvokedWebsites: true,
-      cloudScreenshotDisclosureAcknowledged: false,
       learningOptedIn: false,
       learningConsentSeen: false,
       sites: {}
@@ -1430,7 +1429,6 @@ describe('Safari background controller integration', () => {
       selectedAgentId: 'vision-model',
       onlyCurrentTab: true,
       automaticallyTrustInvokedWebsites: true,
-      cloudScreenshotDisclosureAcknowledged: false,
       learningOptedIn: false,
       learningConsentSeen: false,
       sites: {
@@ -1477,10 +1475,9 @@ describe('Safari background controller integration', () => {
       patch: { cloudScreenshotAcknowledged: true }
     });
     expectSuccess(acknowledged);
-    expect(harness.controls.storage.get('openburnbar.safari.preferences.v1')).toEqual({
-      ...originalPreferences,
-      cloudScreenshotDisclosureAcknowledged: true
-    });
+    // The acknowledgement is session-scoped, so it must NOT reach storage.local.
+    expect(harness.controls.storage.get('openburnbar.safari.preferences.v1')).toEqual(originalPreferences);
+    expect(harness.controller.currentSnapshot().trust.cloudScreenshotAcknowledged).toBe(true);
   });
 
   it('binds newly granted loopback website access to daemon trust before persisting it locally', async () => {
@@ -1557,7 +1554,6 @@ describe('Safari background controller integration', () => {
     });
     expect(harness.controls.storage.get('openburnbar.safari.preferences.v1')).toMatchObject({
       automaticallyTrustInvokedWebsites: true,
-      cloudScreenshotDisclosureAcknowledged: true,
       onlyCurrentTab: true,
       sites: {
         'https://example.com': {
@@ -1566,6 +1562,69 @@ describe('Safari background controller integration', () => {
         }
       }
     });
+  });
+
+  it('retries the native attach after a failed bootstrap instead of latching offline', async () => {
+    // performInitialization() swallows attach failures so the popup can still
+    // render. Marking the controller initialized anyway left the extension
+    // offline until a forced init or a service-worker restart.
+    const harness = createControllerHarness();
+    harness.setHelloObserver((_sessionId, helloCount) => {
+      if (helloCount === 1) {
+        throw new Error('OpenBurnBar is not running.');
+      }
+    });
+
+    await harness.controller.initialize();
+    expect(harness.controller.currentSnapshot().bridge.connection).toBe('disconnected');
+    expect(harness.helloCount()).toBe(1);
+
+    // A later, non-forced initialize must attempt bridge.hello again.
+    await harness.controller.initialize();
+    expect(harness.helloCount()).toBe(2);
+    expect(harness.controller.currentSnapshot().bridge.connection).toBe('connected');
+
+    // Once attached, it stops re-attaching on every call.
+    await harness.controller.initialize();
+    expect(harness.helloCount()).toBe(2);
+  });
+
+  it('scopes the cloud screenshot acknowledgement to the session and never persists it', async () => {
+    // The enforcement copy promises the acknowledgement applies "for this
+    // session". Persisting it to storage.local let a single acknowledgement
+    // authorise cloud screenshots from every later Safari session.
+    const harness = createControllerHarness();
+    await harness.controller.initialize();
+
+    const acknowledged = await harness.controller.handlePopupRequest({
+      type: 'popup.setTrust',
+      patch: { cloudScreenshotAcknowledged: true }
+    });
+    expectSuccess(acknowledged);
+    expect(harness.controller.currentSnapshot().trust.cloudScreenshotAcknowledged).toBe(true);
+
+    // It is session state, so it must leave no trace in persisted preferences.
+    const stored = harness.controls.storage.get('openburnbar.safari.preferences.v1');
+    expect(JSON.stringify(stored ?? {})).not.toContain('loudScreenshot');
+  });
+
+  it('ignores a cloud screenshot acknowledgement persisted by an older build', async () => {
+    // Upgrade path: installs carrying the previously persisted flag must still
+    // see the disclosure again rather than inheriting a stale acknowledgement.
+    const harness = createControllerHarness();
+    harness.controls.storage.set('openburnbar.safari.preferences.v1', {
+      mode: 'ask',
+      onlyCurrentTab: true,
+      automaticallyTrustInvokedWebsites: true,
+      cloudScreenshotDisclosureAcknowledged: true,
+      learningOptedIn: false,
+      learningConsentSeen: false,
+      sites: {}
+    });
+
+    await harness.controller.initialize();
+
+    expect(harness.controller.currentSnapshot().trust.cloudScreenshotAcknowledged).toBe(false);
   });
 
   it('reattaches and retries native trust exactly once when the daemon replaced the Safari session', async () => {
@@ -1606,7 +1665,6 @@ describe('Safari background controller integration', () => {
     ]);
     expect(harness.controls.storage.get('openburnbar.safari.preferences.v1')).toMatchObject({
       automaticallyTrustInvokedWebsites: true,
-      cloudScreenshotDisclosureAcknowledged: true,
       sites: {
         'https://example.com': {
           allowed: true
@@ -1657,7 +1715,6 @@ describe('Safari background controller integration', () => {
     ).toEqual(['safari-session-old', 'safari-session-retry']);
     expect(harness.controls.storage.get('openburnbar.safari.preferences.v1')).toMatchObject({
       automaticallyTrustInvokedWebsites: true,
-      cloudScreenshotDisclosureAcknowledged: true,
       sites: {
         'https://example.com': {
           allowed: true
@@ -1720,7 +1777,6 @@ describe('Safari background controller integration', () => {
     expect(harness.popupCalls.filter((call) => call.action === 'trust.update')).toHaveLength(2);
     expect(harness.controls.storage.get('openburnbar.safari.preferences.v1')).toMatchObject({
       automaticallyTrustInvokedWebsites: false,
-      cloudScreenshotDisclosureAcknowledged: false,
       sites: {}
     });
   });
@@ -1751,7 +1807,6 @@ describe('Safari background controller integration', () => {
     });
     expect(harness.popupCalls.some((call) => call.action === 'trust.update')).toBe(false);
     expect(harness.controls.storage.get('openburnbar.safari.preferences.v1')).toMatchObject({
-      cloudScreenshotDisclosureAcknowledged: false,
       sites: {}
     });
   });
@@ -1789,7 +1844,6 @@ describe('Safari background controller integration', () => {
     });
     expect(harness.controls.storage.get('openburnbar.safari.preferences.v1')).toMatchObject({
       automaticallyTrustInvokedWebsites: false,
-      cloudScreenshotDisclosureAcknowledged: false,
       sites: {}
     });
   });
@@ -1983,7 +2037,6 @@ describe('Safari background controller integration', () => {
       expect(harness.popupCalls.some((call) => call.action === 'trust.update')).toBe(false);
       expect(harness.controls.storage.get('openburnbar.safari.preferences.v1')).toMatchObject({
         automaticallyTrustInvokedWebsites: false,
-        cloudScreenshotDisclosureAcknowledged: false,
         sites: {}
       });
     }
@@ -1998,7 +2051,6 @@ describe('Safari background controller integration', () => {
       selectedAgentId: 'vision-model',
       onlyCurrentTab: true,
       automaticallyTrustInvokedWebsites: true,
-      cloudScreenshotDisclosureAcknowledged: true,
       learningOptedIn: false,
       learningConsentSeen: false,
       sites: {}
@@ -2019,7 +2071,9 @@ describe('Safari background controller integration', () => {
       },
       trust: {
         siteAllowed: true,
-        cloudScreenshotAcknowledged: true,
+        // A previously stored acknowledgement must never survive into a new
+        // session: the disclosure copy promises "for this session".
+        cloudScreenshotAcknowledged: false,
         onlyCurrentTab: true
       }
     });

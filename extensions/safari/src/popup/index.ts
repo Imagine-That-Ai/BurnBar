@@ -23,6 +23,11 @@ const appRoot = root;
 
 let state: PopupLocalState = createInitialPopupState();
 let refreshTimer: number | undefined;
+// Safari's permission sheet is modal and asynchronous. While it is open the
+// popup must stop advancing controller state, or a scheduled popup.refresh
+// bumps stateVersion and the authorize call below is rejected as
+// authorization_page_changed after Safari has already granted access.
+let permissionSheetOpen = false;
 
 function dispatch(action: PopupLocalAction): void {
   state = reducePopupState(state, action);
@@ -204,6 +209,10 @@ async function recordPopupBootstrap(outcome: SafariPerformanceOutcome): Promise<
 function scheduleRefresh(): void {
   if (refreshTimer !== undefined) {
     window.clearTimeout(refreshTimer);
+    refreshTimer = undefined;
+  }
+  if (permissionSheetOpen) {
+    return;
   }
   const interval = state.snapshot?.running || state.snapshot?.mode === 'watch' ? 1_250 : 5_000;
   refreshTimer = window.setTimeout(() => {
@@ -240,17 +249,27 @@ async function completePermissionSetup(): Promise<void> {
   // user's click. Moving this call behind runtime.sendMessage loses the user
   // gesture and Safari rejects the request without presenting its sheet.
   let websiteAccessGranted = false;
+  permissionSheetOpen = true;
+  scheduleRefresh();
   try {
     websiteAccessGranted = await browserAPI.permissions.request({
       origins: [...ALL_WEBSITE_ORIGINS]
     });
   } catch {
     websiteAccessGranted = false;
+  } finally {
+    permissionSheetOpen = false;
   }
+
+  // A refresh already in flight when the sheet opened can still have landed, so
+  // authorize against the version the popup holds now. The tab and origin
+  // captured before the sheet stay pinned, and the controller re-verifies both
+  // against the live tab after the sheet closes.
+  const expectedStateVersion = state.snapshot?.stateVersion ?? snapshot.stateVersion;
 
   await send({
     type: 'popup.authorizePage',
-    expectedStateVersion: snapshot.stateVersion,
+    expectedStateVersion,
     expectedTabId: page.tabId,
     expectedOrigin,
     acknowledgeCloudScreenshots,
