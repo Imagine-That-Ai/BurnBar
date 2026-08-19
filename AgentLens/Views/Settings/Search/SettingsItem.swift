@@ -245,6 +245,7 @@ enum SettingsAnchor {
     static let agentsModels = "agents.models"
     static let agentsAdvanced = "agents.advanced"
     static let agentsQuotaDisplay = "agents.quotaDisplay"
+    static let agentsLocalDBox = "agents.localDBox"
 
     // Legacy anchors — every one aliases to an agents anchor so back-compat
     // search and deep links keep working.
