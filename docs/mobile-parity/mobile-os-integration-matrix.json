@@ -20,59 +20,106 @@
       "id": "os.notification.permission-denied",
       "family": "notification",
       "title": "Denied notification permission is not delivered",
-      "platforms": ["ios", "ipados", "android"],
-      "states": ["denied"],
+      "platforms": [
+        "ios",
+        "ipados",
+        "android"
+      ],
+      "states": [
+        "denied"
+      ],
       "automatable": true,
       "status": "implemented",
-      "evidenceFloor": ["unit"],
-      "vectorIds": ["os.notification.denied-not-delivered"],
+      "evidenceFloor": [
+        "unit"
+      ],
+      "vectorIds": [
+        "os.notification.denied-not-delivered"
+      ],
       "testRefs": {
-        "swift": ["OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileOsIntegrationParityTests.swift"],
-        "kotlin": ["android/app/src/test/java/com/openburnbar/data/policy/MobileOsIntegrationParityTest.kt"]
+        "swift": [
+          "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileOsIntegrationParityTests.swift"
+        ],
+        "kotlin": [
+          "android/app/src/test/java/com/openburnbar/data/policy/MobileOsIntegrationParityTest.kt"
+        ]
       }
     },
     {
       "id": "os.notification.permission-granted",
       "family": "notification",
       "title": "Granted permission may deliver",
-      "platforms": ["ios", "ipados", "android"],
-      "states": ["ready"],
+      "platforms": [
+        "ios",
+        "ipados",
+        "android"
+      ],
+      "states": [
+        "ready"
+      ],
       "automatable": true,
       "status": "implemented",
-      "evidenceFloor": ["unit"],
-      "vectorIds": ["os.notification.granted-may-deliver"],
+      "evidenceFloor": [
+        "unit"
+      ],
+      "vectorIds": [
+        "os.notification.granted-may-deliver"
+      ],
       "testRefs": {
-        "swift": ["OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileOsIntegrationParityTests.swift"],
-        "kotlin": ["android/app/src/test/java/com/openburnbar/data/policy/MobileOsIntegrationParityTest.kt"]
+        "swift": [
+          "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileOsIntegrationParityTests.swift"
+        ],
+        "kotlin": [
+          "android/app/src/test/java/com/openburnbar/data/policy/MobileOsIntegrationParityTest.kt"
+        ]
       }
     },
     {
       "id": "os.notification.physical-granted-trace",
       "family": "notification",
       "title": "Installed-candidate notification permission traces",
-      "platforms": ["ios", "ipados", "android"],
-      "states": ["ready", "denied"],
+      "platforms": [
+        "ios",
+        "ipados",
+        "android"
+      ],
+      "states": [
+        "ready",
+        "denied"
+      ],
       "automatable": false,
       "status": "blocked",
-      "evidenceFloor": ["physical device"],
+      "evidenceFloor": [
+        "physical device"
+      ],
       "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate notification receipt"
     },
     {
       "id": "os.lifecycle.foreground-same-thread-suppress",
       "family": "lifecycle",
       "title": "Foreground same-thread agent reply is locally suppressed",
-      "platforms": ["ios", "ipados", "android"],
-      "states": ["ready"],
+      "platforms": [
+        "ios",
+        "ipados",
+        "android"
+      ],
+      "states": [
+        "ready"
+      ],
       "automatable": true,
       "status": "implemented",
-      "evidenceFloor": ["unit"],
+      "evidenceFloor": [
+        "unit"
+      ],
       "notes": "Covered by existing AgentReplyNotificationState.shouldSuppressLocal / iOS active-thread check. Routing table still applies.",
       "vectorIds": [
         "os.lifecycle.foreground-same-thread-suppress",
         "os.lifecycle.foreground-other-thread-delivers"
       ],
       "testRefs": {
-        "swift": ["OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileOsIntegrationParityTests.swift"],
+        "swift": [
+          "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileOsIntegrationParityTests.swift"
+        ],
         "kotlin": [
           "android/app/src/test/java/com/openburnbar/data/policy/MobileOsIntegrationParityTest.kt",
           "android/app/src/test/java/com/openburnbar/services/media/AgentReplyNotificationStateTest.kt"
@@ -83,27 +130,76 @@
       "id": "os.lifecycle.background-terminated-physical",
       "family": "lifecycle",
       "title": "Background and terminated notification delivery",
-      "platforms": ["ios", "ipados", "android"],
-      "states": ["ready"],
+      "platforms": [
+        "ios",
+        "ipados",
+        "android"
+      ],
+      "states": [
+        "ready"
+      ],
       "automatable": false,
       "status": "blocked",
-      "evidenceFloor": ["physical device"],
+      "evidenceFloor": [
+        "physical device"
+      ],
       "missingPrerequisite": "named-device background and terminated launch logs bound to the candidate"
     },
     {
       "id": "os.deeplink.cold-inbox",
       "family": "deep-link",
       "title": "Cold inbox deep link stashes the item",
-      "platforms": ["ios", "ipados", "android"],
-      "states": ["ready"],
+      "platforms": [
+        "ios",
+        "ipados",
+        "android"
+      ],
+      "states": [
+        "ready"
+      ],
       "automatable": true,
       "status": "implemented",
-      "evidenceFloor": ["unit"],
-      "vectorIds": ["os.deeplink.cold-inbox", "os.deeplink.mixed-case-inbox-id"],
+      "evidenceFloor": [
+        "unit"
+      ],
+      "vectorIds": [
+        "os.deeplink.cold-inbox",
+        "os.deeplink.mixed-case-inbox-id"
+      ],
       "testRefs": {
         "swift": [
           "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileOsIntegrationParityTests.swift",
           "OpenBurnBarMobileTests/AIInboxNotificationRoutingTests.swift"
+        ],
+        "kotlin": [
+          "android/app/src/test/java/com/openburnbar/data/policy/MobileOsIntegrationParityTest.kt",
+          "android/app/src/test/java/com/openburnbar/BurnBarDeepLinkTest.kt"
+        ]
+      }
+    },
+    {
+      "id": "os.deeplink.cold-fleet",
+      "family": "deep-link",
+      "title": "Fleet deep link routes to the fleet dashboard",
+      "platforms": [
+        "ios",
+        "ipados",
+        "android"
+      ],
+      "states": [
+        "ready"
+      ],
+      "automatable": true,
+      "status": "implemented",
+      "evidenceFloor": [
+        "unit"
+      ],
+      "vectorIds": [
+        "os.deeplink.cold-fleet"
+      ],
+      "testRefs": {
+        "swift": [
+          "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileOsIntegrationParityTests.swift"
         ],
         "kotlin": [
           "android/app/src/test/java/com/openburnbar/data/policy/MobileOsIntegrationParityTest.kt",
@@ -115,26 +211,49 @@
       "id": "os.deeplink.warm-assistants",
       "family": "deep-link",
       "title": "Warm assistants deep link routes the thread",
-      "platforms": ["ios", "ipados", "android"],
-      "states": ["ready"],
+      "platforms": [
+        "ios",
+        "ipados",
+        "android"
+      ],
+      "states": [
+        "ready"
+      ],
       "automatable": true,
       "status": "implemented",
-      "evidenceFloor": ["unit"],
-      "vectorIds": ["os.deeplink.warm-assistants", "os.deeplink.encoded-thread-id"],
+      "evidenceFloor": [
+        "unit"
+      ],
+      "vectorIds": [
+        "os.deeplink.warm-assistants",
+        "os.deeplink.encoded-thread-id"
+      ],
       "testRefs": {
-        "swift": ["OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileOsIntegrationParityTests.swift"],
-        "kotlin": ["android/app/src/test/java/com/openburnbar/data/policy/MobileOsIntegrationParityTest.kt"]
+        "swift": [
+          "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileOsIntegrationParityTests.swift"
+        ],
+        "kotlin": [
+          "android/app/src/test/java/com/openburnbar/data/policy/MobileOsIntegrationParityTest.kt"
+        ]
       }
     },
     {
       "id": "os.push.payload-types",
       "family": "payload",
       "title": "Agent reply, inbox, quota, mercury/call, and mission push types",
-      "platforms": ["ios", "ipados", "android"],
-      "states": ["ready"],
+      "platforms": [
+        "ios",
+        "ipados",
+        "android"
+      ],
+      "states": [
+        "ready"
+      ],
       "automatable": true,
       "status": "implemented",
-      "evidenceFloor": ["unit"],
+      "evidenceFloor": [
+        "unit"
+      ],
       "vectorIds": [
         "os.push.agent-reply-route",
         "os.push.inbox-route",
@@ -145,56 +264,99 @@
         "os.push.evil-https-deep-link-ignored"
       ],
       "testRefs": {
-        "swift": ["OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileOsIntegrationParityTests.swift"],
-        "kotlin": ["android/app/src/test/java/com/openburnbar/data/policy/MobileOsIntegrationParityTest.kt"]
+        "swift": [
+          "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileOsIntegrationParityTests.swift"
+        ],
+        "kotlin": [
+          "android/app/src/test/java/com/openburnbar/data/policy/MobileOsIntegrationParityTest.kt"
+        ]
       }
     },
     {
       "id": "os.push.stale-expired",
       "family": "payload",
       "title": "Expired payload does not navigate",
-      "platforms": ["ios", "ipados", "android"],
-      "states": ["expired"],
+      "platforms": [
+        "ios",
+        "ipados",
+        "android"
+      ],
+      "states": [
+        "expired"
+      ],
       "automatable": true,
       "status": "implemented",
-      "evidenceFloor": ["unit"],
+      "evidenceFloor": [
+        "unit"
+      ],
       "vectorIds": [
         "os.push.stale-expired-no-navigate",
         "os.push.omit-uid-expiry-no-navigate",
         "os.push.navigate-happy-path"
       ],
       "testRefs": {
-        "swift": ["OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileOsIntegrationParityTests.swift"],
-        "kotlin": ["android/app/src/test/java/com/openburnbar/data/policy/MobileOsIntegrationParityTest.kt"]
+        "swift": [
+          "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileOsIntegrationParityTests.swift"
+        ],
+        "kotlin": [
+          "android/app/src/test/java/com/openburnbar/data/policy/MobileOsIntegrationParityTest.kt"
+        ]
       }
     },
     {
       "id": "os.push.account-change",
       "family": "payload",
       "title": "Payload for another UID does not navigate",
-      "platforms": ["ios", "ipados", "android"],
-      "states": ["denied"],
+      "platforms": [
+        "ios",
+        "ipados",
+        "android"
+      ],
+      "states": [
+        "denied"
+      ],
       "automatable": true,
       "status": "implemented",
-      "evidenceFloor": ["unit"],
-      "vectorIds": ["os.push.account-mismatch-no-navigate"],
+      "evidenceFloor": [
+        "unit"
+      ],
+      "vectorIds": [
+        "os.push.account-mismatch-no-navigate"
+      ],
       "testRefs": {
-        "swift": ["OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileOsIntegrationParityTests.swift"],
-        "kotlin": ["android/app/src/test/java/com/openburnbar/data/policy/MobileOsIntegrationParityTest.kt"]
+        "swift": [
+          "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileOsIntegrationParityTests.swift"
+        ],
+        "kotlin": [
+          "android/app/src/test/java/com/openburnbar/data/policy/MobileOsIntegrationParityTest.kt"
+        ]
       }
     },
     {
       "id": "os.push.duplicate-tap",
       "family": "payload",
       "title": "Duplicate tap is idempotent",
-      "platforms": ["ios", "ipados", "android"],
-      "states": ["ready"],
+      "platforms": [
+        "ios",
+        "ipados",
+        "android"
+      ],
+      "states": [
+        "ready"
+      ],
       "automatable": true,
       "status": "implemented",
-      "evidenceFloor": ["unit"],
-      "vectorIds": ["os.push.duplicate-tap-idempotent", "os.state.pending-claim-once"],
+      "evidenceFloor": [
+        "unit"
+      ],
+      "vectorIds": [
+        "os.push.duplicate-tap-idempotent",
+        "os.state.pending-claim-once"
+      ],
       "testRefs": {
-        "swift": ["OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileOsIntegrationParityTests.swift"],
+        "swift": [
+          "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileOsIntegrationParityTests.swift"
+        ],
         "kotlin": [
           "android/app/src/test/java/com/openburnbar/data/policy/MobileOsIntegrationParityTest.kt",
           "android/app/src/test/java/com/openburnbar/BurnBarDeepLinkTest.kt"
@@ -205,11 +367,19 @@
       "id": "os.widget.privacy-safe-snapshot",
       "family": "widget",
       "title": "Widget snapshot has no UID, secret, or conversation text",
-      "platforms": ["ios", "ipados", "android"],
-      "states": ["ready"],
+      "platforms": [
+        "ios",
+        "ipados",
+        "android"
+      ],
+      "states": [
+        "ready"
+      ],
       "automatable": true,
       "status": "implemented",
-      "evidenceFloor": ["unit"],
+      "evidenceFloor": [
+        "unit"
+      ],
       "vectorIds": [
         "os.widget.no-raw-uid",
         "os.widget.no-secret",
@@ -217,7 +387,9 @@
         "os.widget.aggregate-snapshot-safe"
       ],
       "testRefs": {
-        "swift": ["OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileOsIntegrationParityTests.swift"],
+        "swift": [
+          "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileOsIntegrationParityTests.swift"
+        ],
         "kotlin": [
           "android/app/src/test/java/com/openburnbar/data/policy/MobileOsIntegrationParityTest.kt",
           "android/app/src/test/java/com/openburnbar/WidgetSnapshotPrivacyTest.kt"
@@ -228,115 +400,202 @@
       "id": "os.widget.refresh-and-entitlement",
       "family": "widget",
       "title": "Widget refresh cadence and App Group entitlement",
-      "platforms": ["ios", "ipados", "android"],
-      "states": ["ready"],
+      "platforms": [
+        "ios",
+        "ipados",
+        "android"
+      ],
+      "states": [
+        "ready"
+      ],
       "automatable": true,
       "status": "implemented",
-      "evidenceFloor": ["unit"],
+      "evidenceFloor": [
+        "unit"
+      ],
       "notes": "Cadence is BurnBarWidgetShared.snapshotStaleAfter (15 minutes). Entitlement is group.com.openburnbar.app.",
-      "vectorIds": ["os.widget.aggregate-snapshot-safe"],
+      "vectorIds": [
+        "os.widget.aggregate-snapshot-safe"
+      ],
       "testRefs": {
-        "swift": ["OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileOsIntegrationParityTests.swift"],
-        "kotlin": ["android/app/src/test/java/com/openburnbar/data/policy/MobileOsIntegrationParityTest.kt"]
+        "swift": [
+          "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileOsIntegrationParityTests.swift"
+        ],
+        "kotlin": [
+          "android/app/src/test/java/com/openburnbar/data/policy/MobileOsIntegrationParityTest.kt"
+        ]
       }
     },
     {
       "id": "os.widget.physical-timeline",
       "family": "widget",
       "title": "Installed widget timeline readback",
-      "platforms": ["ios", "ipados", "android"],
-      "states": ["ready"],
+      "platforms": [
+        "ios",
+        "ipados",
+        "android"
+      ],
+      "states": [
+        "ready"
+      ],
       "automatable": false,
       "status": "blocked",
-      "evidenceFloor": ["physical device"],
+      "evidenceFloor": [
+        "physical device"
+      ],
       "missingPrerequisite": "named-device widget snapshots and timeline readback for the installed candidate"
     },
     {
       "id": "os.live-activity.privacy-policy",
       "family": "live-activity",
       "title": "Live Activity privacy-safe fields (same scan as widgets)",
-      "platforms": ["ios", "ipados"],
-      "states": ["ready"],
+      "platforms": [
+        "ios",
+        "ipados"
+      ],
+      "states": [
+        "ready"
+      ],
       "automatable": true,
       "status": "implemented",
-      "evidenceFloor": ["unit"],
-      "vectorIds": ["os.widget.no-conversation-text", "os.widget.no-raw-uid"],
+      "evidenceFloor": [
+        "unit"
+      ],
+      "vectorIds": [
+        "os.widget.no-conversation-text",
+        "os.widget.no-raw-uid"
+      ],
       "testRefs": {
-        "swift": ["OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileOsIntegrationParityTests.swift"],
-        "kotlin": ["android/app/src/test/java/com/openburnbar/data/policy/MobileOsIntegrationParityTest.kt"]
+        "swift": [
+          "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileOsIntegrationParityTests.swift"
+        ],
+        "kotlin": [
+          "android/app/src/test/java/com/openburnbar/data/policy/MobileOsIntegrationParityTest.kt"
+        ]
       }
     },
     {
       "id": "os.live-activity.physical",
       "family": "live-activity",
       "title": "Live Activity on a named device",
-      "platforms": ["ios", "ipados"],
-      "states": ["ready"],
+      "platforms": [
+        "ios",
+        "ipados"
+      ],
+      "states": [
+        "ready"
+      ],
       "automatable": false,
       "status": "blocked",
-      "evidenceFloor": ["physical device"],
+      "evidenceFloor": [
+        "physical device"
+      ],
       "missingPrerequisite": "named iPhone/iPad Live Activity receipt bound to the candidate"
     },
     {
       "id": "os.durable.keyboard-ime",
       "family": "durable-ui",
       "title": "Keyboard and IME avoidance",
-      "platforms": ["ios", "ipados", "android"],
-      "states": ["ready"],
+      "platforms": [
+        "ios",
+        "ipados",
+        "android"
+      ],
+      "states": [
+        "ready"
+      ],
       "automatable": false,
       "status": "blocked",
-      "evidenceFloor": ["physical device"],
+      "evidenceFloor": [
+        "physical device"
+      ],
       "missingPrerequisite": "named-device keyboard/IME captures on Pulse/Hermes composer"
     },
     {
       "id": "os.durable.rotation",
       "family": "durable-ui",
       "title": "Rotation layout",
-      "platforms": ["ios", "ipados", "android"],
-      "states": ["ready"],
+      "platforms": [
+        "ios",
+        "ipados",
+        "android"
+      ],
+      "states": [
+        "ready"
+      ],
       "automatable": false,
       "status": "blocked",
-      "evidenceFloor": ["physical device"],
+      "evidenceFloor": [
+        "physical device"
+      ],
       "missingPrerequisite": "named-device rotation captures"
     },
     {
       "id": "os.durable.split-screen",
       "family": "durable-ui",
       "title": "iPad split view and Android multi-window",
-      "platforms": ["ipados", "android"],
-      "states": ["ready"],
+      "platforms": [
+        "ipados",
+        "android"
+      ],
+      "states": [
+        "ready"
+      ],
       "automatable": false,
       "status": "blocked",
-      "evidenceFloor": ["physical device"],
+      "evidenceFloor": [
+        "physical device"
+      ],
       "missingPrerequisite": "named iPad split-view and Android multi-window receipts"
     },
     {
       "id": "os.durable.process-death",
       "family": "durable-ui",
       "title": "Pending deep-link claim is one-shot after restore",
-      "platforms": ["ios", "ipados", "android"],
-      "states": ["recovery"],
+      "platforms": [
+        "ios",
+        "ipados",
+        "android"
+      ],
+      "states": [
+        "recovery"
+      ],
       "automatable": true,
       "status": "implemented",
-      "evidenceFloor": ["unit"],
-      "vectorIds": ["os.state.pending-claim-once"],
+      "evidenceFloor": [
+        "unit"
+      ],
+      "vectorIds": [
+        "os.state.pending-claim-once"
+      ],
       "testRefs": {
         "swift": [
           "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileOsIntegrationParityTests.swift",
           "OpenBurnBarMobileTests/AIInboxNotificationRoutingTests.swift"
         ],
-        "kotlin": ["android/app/src/test/java/com/openburnbar/BurnBarDeepLinkTest.kt"]
+        "kotlin": [
+          "android/app/src/test/java/com/openburnbar/BurnBarDeepLinkTest.kt"
+        ]
       }
     },
     {
       "id": "os.background.retry-bounded",
       "family": "background",
       "title": "Background retry is bounded and cancelable",
-      "platforms": ["ios", "ipados", "android"],
-      "states": ["retry", "cancel"],
+      "platforms": [
+        "ios",
+        "ipados",
+        "android"
+      ],
+      "states": [
+        "retry",
+        "cancel"
+      ],
       "automatable": true,
       "status": "implemented",
-      "evidenceFloor": ["unit"],
+      "evidenceFloor": [
+        "unit"
+      ],
       "vectorIds": [
         "os.background.retry-attempt-0",
         "os.background.retry-attempt-1",
@@ -345,8 +604,12 @@
         "os.background.cancel-stops-retry"
       ],
       "testRefs": {
-        "swift": ["OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileOsIntegrationParityTests.swift"],
-        "kotlin": ["android/app/src/test/java/com/openburnbar/data/policy/MobileOsIntegrationParityTest.kt"]
+        "swift": [
+          "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileOsIntegrationParityTests.swift"
+        ],
+        "kotlin": [
+          "android/app/src/test/java/com/openburnbar/data/policy/MobileOsIntegrationParityTest.kt"
+        ]
       }
     }
   ]

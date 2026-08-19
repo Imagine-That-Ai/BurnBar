@@ -5,7 +5,7 @@
   "productParityClaim": false,
   "note": "Unit-checkable floor only. Manual VoiceOver/TalkBack and profiler captures stay blocked.",
   "typography": {
-    "ios": "UIFontMetrics-scaled system fonts via MobileScaledFont / MobileTheme.Typography. Font.system(size:) on user-facing Text is forbidden on Pulse/Burn/Hermes/Inbox/Store primary surfaces.",
+    "ios": "UIFontMetrics-scaled system fonts via MobileScaledFont / MobileTheme.Typography. Font.system(size:) on user-facing Text is forbidden on Pulse/Burn/Hermes/Inbox/Fleet/Store primary surfaces.",
     "android": "Compose `sp` plus AuroraType / AuroraTypography tokens. fontSize in `dp` is forbidden on those surfaces."
   },
   "labels": {

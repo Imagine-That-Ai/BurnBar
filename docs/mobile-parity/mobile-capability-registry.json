@@ -2836,6 +2836,81 @@
       "notes": "iOS hosts Inbox inside Streams; Android hosts it as a primary tab. See divergence.inbox-primary-android."
     },
     {
+      "capabilityId": "fleet.dashboard",
+      "title": "Agent Fleet dashboard (sealed cloud mirror)",
+      "family": "fleet",
+      "kind": "capability",
+      "actor": "signed-in user",
+      "sourceSurface": "Mac fleet dashboard (AgentLens/Views/Dashboard/Fleet) via users/{uid}/fleet_snapshot/current",
+      "iosSurface": {
+        "ipad": [],
+        "services": [],
+        "stores": [
+          "OpenBurnBarMobile/Services/MobileFleetStore.swift"
+        ],
+        "tests": [],
+        "views": [
+          "OpenBurnBarMobile/Views/Fleet/FleetDashboardScreen.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [
+          "android/app/src/main/java/com/openburnbar/data/fleet/FleetStore.kt",
+          "android/app/src/main/java/com/openburnbar/data/fleet/FleetStoreParts.kt",
+          "android/app/src/main/java/com/openburnbar/data/fleet/FleetModels.kt",
+          "android/app/src/main/java/com/openburnbar/data/fleet/FleetSnapshotParsing.kt"
+        ],
+        "tests": [
+          "android/app/src/test/java/com/openburnbar/data/fleet/FleetSnapshotParsingTest.kt",
+          "android/app/src/test/java/com/openburnbar/data/fleet/FleetStorePartsTest.kt"
+        ],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/fleet/FleetScreen.kt",
+          "android/app/src/main/java/com/openburnbar/ui/fleet/FleetScreenSections.kt",
+          "android/app/src/main/java/com/openburnbar/ui/fleet/FleetPresentation.kt"
+        ]
+      },
+      "sharedContract": "OpenBurnBarCore/Sources/OpenBurnBarKernel/Contracts/BurnBarFleetContracts.swift (schemaVersion 1)",
+      "states": [
+        "loading",
+        "ready",
+        "empty",
+        "offline",
+        "retry"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "encryption",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "status": "implemented",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "primary",
+        "deepLinkable": true,
+        "gated": false,
+        "platformSpecific": false,
+        "primary": true,
+        "secondary": false
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [
+        "Reads the Mac-published sealed fleet_snapshot mirror (read-only; no write-back)"
+      ],
+      "routeIds": [
+        "route.shell.fleet"
+      ],
+      "notes": "Both platform surfaces landed in this branch (Android in the Android lane, iOS in the parallel iOS lane). Read-only mirror: orchestrator designation and directives stay Mac/daemon-local. Code presence is not validation."
+    },
+    {
       "capabilityId": "inbox.detail",
       "title": "AI Inbox detail and row actions",
       "family": "inbox",
@@ -5318,6 +5393,61 @@
         "route.shell.inbox"
       ],
       "notes": "Accepted route divergence. Do not treat iOS missing a primary Inbox tab as an unregistered gap."
+    },
+    {
+      "capabilityId": "divergence.inbox-multi-instance-ios",
+      "title": "iOS-only multi-instance AI Inbox tray items",
+      "family": "divergence",
+      "kind": "accepted-divergence",
+      "actor": "signed-in user",
+      "sourceSurface": "AuroraNavItem (iOS nav customization) vs single BurnBarTab.INBOX",
+      "iosSurface": {
+        "ipad": [],
+        "services": [],
+        "stores": [],
+        "tests": [],
+        "views": [
+          "OpenBurnBarMobile/Models/AppCustomization.swift",
+          "OpenBurnBarMobile/Views/Inbox/AIInboxView.swift"
+        ]
+      },
+      "androidSurface": {
+        "services": [],
+        "stores": [],
+        "tests": [],
+        "views": [
+          "android/app/src/main/java/com/openburnbar/ui/navigation/BurnBarNavHost.kt"
+        ]
+      },
+      "sharedContract": "none",
+      "states": [
+        "ready"
+      ],
+      "entitlement": "none",
+      "securityBoundary": "none",
+      "evidenceFloor": [
+        "unit"
+      ],
+      "status": "accepted-divergence",
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "routing": {
+        "class": "platform-specific",
+        "deepLinkable": false,
+        "gated": false,
+        "platformSpecific": true,
+        "primary": false,
+        "secondary": false
+      },
+      "widgets": [],
+      "intents": [],
+      "pushRoutes": [],
+      "backgroundJobs": [],
+      "crossDeviceSideEffects": [],
+      "routeIds": [],
+      "notes": "Accepted divergence: iOS may pin multiple inbox tray instances with filter presets; Android keeps its single default-primary Inbox tab. Do not treat the asymmetry as a gap."
     },
     {
       "capabilityId": "divergence.you-store-label",

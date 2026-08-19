@@ -9,8 +9,8 @@
 - Product parity claim: **false**
 - Baseline: `3f127f7da28f590441c46e0674dac7f27a04b7aa`
 - VAL contracts: **28**
-- Capability rows: **86**
-- Status counts: implemented=76, accepted-divergence=10
+- Capability rows: **88**
+- Status counts: implemented=77, accepted-divergence=11
 
 A green structural check means the inventory, route map, and evidence schema are internally valid.
 It does not mean iOS, iPadOS, and Android are promotable. Structural validity is not promotion.
@@ -92,6 +92,7 @@ Historical or stale evidence cannot close a row. Physical-device navigation tran
 | budget.center | insights-budget | capability | implemented | none | unit, physical device | route.shell.insights |
 | budget.enforcement | insights-budget | capability | implemented | none | unit, integration |  |
 | inbox.list | inbox | capability | implemented | none | unit, physical device | route.inbox.item, route.shell.inbox |
+| fleet.dashboard | fleet | capability | implemented | none | unit, physical device | route.shell.fleet |
 | inbox.detail | inbox | capability | implemented | none | unit, physical device | route.inbox.item |
 | inbox.push-routing | inbox | capability | implemented | none | unit, physical device | route.inbox.item |
 | providers.connections | providers | capability | implemented | none | unit, physical device | route.shell.providers |
@@ -130,6 +131,7 @@ Historical or stale evidence cannot close a row. Physical-device navigation tran
 | missions.console | insights-budget | capability | implemented | Cloud | unit, physical device | route.shell.insights |
 | analytics.consent | os | capability | implemented | none | unit |  |
 | divergence.inbox-primary-android | divergence | accepted-divergence | accepted-divergence | none | unit | route.shell.inbox |
+| divergence.inbox-multi-instance-ios | divergence | accepted-divergence | accepted-divergence | none | unit |  |
 | divergence.you-store-label | divergence | accepted-divergence | accepted-divergence | none | unit | route.shell.you |
 | divergence.hermes-label | divergence | accepted-divergence | accepted-divergence | none | unit | route.shell.hermes |
 | divergence.insights-tab-label | divergence | accepted-divergence | accepted-divergence | none | unit | route.shell.insights |

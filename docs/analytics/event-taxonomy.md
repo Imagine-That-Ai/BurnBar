@@ -127,7 +127,7 @@ hash already used by the app. Never set `user_id` before verified login.
 `dashboard_credential` · `dashboard_model` · `dashboard_project` · `dashboard_provider` ·
 `model_detail` · `provider_detail` · `chat` · `chat_composer` · `chat_stream` · `insights` ·
 `settings` · `quota` · `budget` · `cloud_sync` · `menubar` · `mission_console` · `wallpaper` ·
-`account` · `widget` · `keyboard` · `console`
+`account` · `widget` · `keyboard` · `console` · `inbox` · `fleet` · `other`
 
 **Website pages** (`platform: web`) — bounded set; any unmapped path collapses to `other` so a
 unique URL can never become a unique surface value: `home` · `download` · `pricing` · `trust` ·

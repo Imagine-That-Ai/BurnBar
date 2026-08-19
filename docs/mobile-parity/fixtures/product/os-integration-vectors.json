@@ -186,6 +186,12 @@
       "expected": { "destination": "assistants", "threadId": "thr_warm", "runtime": "hermes" }
     },
     {
+      "id": "os.deeplink.cold-fleet",
+      "kind": "urlRoute",
+      "url": "burnbar://fleet",
+      "expected": { "destination": "fleet" }
+    },
+    {
       "id": "os.deeplink.mixed-case-inbox-id",
       "kind": "urlRoute",
       "url": "burnbar://inbox/Inb_MixedCase",

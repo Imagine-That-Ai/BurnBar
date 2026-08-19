@@ -10,6 +10,7 @@ final class MobileOsIntegrationParityTests: XCTestCase {
     // os.push.navigate-happy-path, os.push.stale-expired-no-navigate,
     // os.push.account-mismatch-no-navigate, os.push.duplicate-tap-idempotent,
     // os.deeplink.cold-inbox, os.deeplink.warm-assistants,
+    // os.deeplink.cold-fleet,
     // os.deeplink.mixed-case-inbox-id, os.deeplink.encoded-thread-id,
     // os.widget.no-raw-uid, os.widget.no-secret, os.widget.no-conversation-text,
     // os.widget.aggregate-snapshot-safe, os.background.retry-attempt-0,

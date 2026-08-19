@@ -219,8 +219,13 @@
       "kind": "val-contract",
       "status": "implemented",
       "evidenceFreshness": "blocked",
-      "evidenceFloor": ["unit"],
-      "owner": { "implementation": "mobile-apps", "validation": "mobile-parity" },
+      "evidenceFloor": [
+        "unit"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
       "promotionCriterion": "Auth session states, UID-scoped cache isolation, App Check class, and firebase-unavailable ≠ signed-out are unit-pinned.",
       "notes": "Scrutiny portion only. Does not close VAL-MOB-004. Live App Check remains blocked.",
       "missingPrerequisite": "staging accounts and live App Check traces on named devices"
@@ -230,8 +235,13 @@
       "kind": "val-contract",
       "status": "implemented",
       "evidenceFreshness": "blocked",
-      "evidenceFloor": ["unit"],
-      "owner": { "implementation": "mobile-apps", "validation": "mobile-parity" },
+      "evidenceFloor": [
+        "unit"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
       "promotionCriterion": "Mac-publish / mobile-mirror ownership, freshness labels, and canceled refresh are unit-pinned.",
       "notes": "Scrutiny portion only. Does not close VAL-MOB-005.",
       "missingPrerequisite": "offline/online device runs bound to the candidate"
@@ -241,8 +251,13 @@
       "kind": "val-contract",
       "status": "implemented",
       "evidenceFreshness": "blocked",
-      "evidenceFloor": ["unit"],
-      "owner": { "implementation": "mobile-apps", "validation": "mobile-parity" },
+      "evidenceFloor": [
+        "unit"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
       "promotionCriterion": "Shared pulse-burn vectors pin 1M/1H/1D/7D/30D totals, rolling 24h, hour-floored liveQueryStart, grouping/sort, and failed≠live $0.",
       "notes": "Scrutiny portion only. Does not close VAL-MOB-006. Physical-device screenshots stay blocked.",
       "missingPrerequisite": "named-device Pulse/Burn captures"
@@ -252,8 +267,13 @@
       "kind": "val-contract",
       "status": "implemented",
       "evidenceFreshness": "blocked",
-      "evidenceFloor": ["unit"],
-      "owner": { "implementation": "mobile-apps", "validation": "mobile-parity" },
+      "evidenceFloor": [
+        "unit"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
       "promotionCriterion": "Streams pagination boundary, empty vs error vs lock, and search-error ≠ empty are unit-pinned.",
       "notes": "Scrutiny portion only. Does not close VAL-MOB-007. Encrypted search uses the existing Cloud Vault path.",
       "missingPrerequisite": "deterministic corpus replay on named devices"
@@ -263,8 +283,13 @@
       "kind": "val-contract",
       "status": "implemented",
       "evidenceFreshness": "blocked",
-      "evidenceFloor": ["unit"],
-      "owner": { "implementation": "mobile-apps", "validation": "mobile-parity" },
+      "evidenceFloor": [
+        "unit"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
       "promotionCriterion": "Provider local-only vs cloud-connected, inbox cold/warm selection, card-action real-or-removed, and budget entitlement gates are unit-pinned.",
       "notes": "Scrutiny portion only. Does not close VAL-MOB-009.",
       "missingPrerequisite": "named-device Insights/Budget/Inbox receipts"
@@ -274,8 +299,13 @@
       "kind": "val-contract",
       "status": "implemented",
       "evidenceFreshness": "blocked",
-      "evidenceFloor": ["unit"],
-      "owner": { "implementation": "mobile-apps", "validation": "mobile-parity" },
+      "evidenceFloor": [
+        "unit"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
       "promotionCriterion": "StoreKit/Play product IDs align semantically; missing catalog is labeled Price unavailable, not a price.",
       "notes": "Scrutiny portion only. Does not close VAL-MOB-015. Live StoreKit/Play readback remains blocked.",
       "missingPrerequisite": "authorized TestFlight/Play closed-test readback"
@@ -285,8 +315,13 @@
       "kind": "val-contract",
       "status": "implemented",
       "evidenceFreshness": "blocked",
-      "evidenceFloor": ["unit"],
-      "owner": { "implementation": "mobile-apps", "validation": "mobile-parity" },
+      "evidenceFloor": [
+        "unit"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
       "promotionCriterion": "Stop/cancel are real, partial is kept, cancel≠error, reconnect does not duplicate the user row, tool-calls render after stop, malformed attachments reject, missing deep links are honest, and late chunks cannot cross threads.",
       "notes": "Scrutiny portion only. Does not close VAL-MOB-008. Physical-device chat transcripts stay blocked.",
       "missingPrerequisite": "physical-device chat transcripts bound to the candidate"
@@ -296,8 +331,13 @@
       "kind": "val-contract",
       "status": "implemented",
       "evidenceFreshness": "blocked",
-      "evidenceFloor": ["unit"],
-      "owner": { "implementation": "mobile-apps", "validation": "mobile-parity" },
+      "evidenceFloor": [
+        "unit"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
       "promotionCriterion": "Device-trust and envelope-AAD vectors fail closed on empty device, unknown state, and AAD mismatch.",
       "notes": "Scrutiny portion only. Does not close VAL-MOB-010.",
       "missingPrerequisite": "physical-device transfer receipt"
@@ -307,8 +347,13 @@
       "kind": "val-contract",
       "status": "implemented",
       "evidenceFreshness": "blocked",
-      "evidenceFloor": ["unit"],
-      "owner": { "implementation": "mobile-apps", "validation": "mobile-parity" },
+      "evidenceFloor": [
+        "unit"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
       "promotionCriterion": "Relay chunk reassembly fails closed; MercuryPeer unknown capabilities are filtered; heartbeat is 60s; invite/ack pairing and denial≠connected are unit-pinned.",
       "notes": "Scrutiny portion only. Does not close VAL-MOB-011. Live paired-Mac traces stay blocked.",
       "missingPrerequisite": "live paired-Mac traces"
@@ -318,8 +363,13 @@
       "kind": "val-contract",
       "status": "implemented",
       "evidenceFreshness": "blocked",
-      "evidenceFloor": ["unit"],
-      "owner": { "implementation": "mobile-apps", "validation": "mobile-parity" },
+      "evidenceFloor": [
+        "unit"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
       "promotionCriterion": "Shared error classes, cancellation vs legacy-fallback, and negative KATs (replay, tamper, expired grant, unauthenticated sender, binding mismatch) fail closed on every mobile family.",
       "notes": "Scrutiny portion only. Does not close VAL-MOB-012. Historical Android-only rows cannot close iPhone/iPad. Physical 100-intent latency / live panic stay blocked. Phone `requireSafety` only observes the local rate limiter; grant expiry, session expiry, panic, and view-only remain Mac-authoritative and are not invented on the client.",
       "missingPrerequisite": "physical-device Computer Use matrix; historical Android-only rows cannot close iPhone/iPad"
@@ -377,8 +427,13 @@
       "kind": "val-contract",
       "status": "implemented",
       "evidenceFreshness": "blocked",
-      "evidenceFloor": ["unit"],
-      "owner": { "implementation": "mobile-apps", "validation": "mobile-parity" },
+      "evidenceFloor": [
+        "unit"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
       "promotionCriterion": "Push payload types, denied≠delivered, stale/account mismatch, duplicate tap, and widget privacy are unit-pinned.",
       "notes": "Scrutiny portion only. Does not close VAL-MOB-013. Physical notification/widget receipts stay blocked.",
       "missingPrerequisite": "installed candidate notification and widget receipts"
@@ -388,8 +443,13 @@
       "kind": "val-contract",
       "status": "implemented",
       "evidenceFreshness": "blocked",
-      "evidenceFloor": ["unit"],
-      "owner": { "implementation": "mobile-apps", "validation": "mobile-parity" },
+      "evidenceFloor": [
+        "unit"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
       "promotionCriterion": "Shared a11y labels for hero burn, quota ring, stop, and inbox row match Pulse/Burn fixtures; Pulse window metrics stay O(n); retry is bounded.",
       "notes": "Scrutiny portion only. Does not close VAL-MOB-014. Manual VoiceOver/TalkBack and profiler captures stay blocked.",
       "missingPrerequisite": "manual a11y and profiler evidence on representative hardware"
@@ -399,8 +459,13 @@
       "kind": "val-contract",
       "status": "implemented",
       "evidenceFreshness": "blocked",
-      "evidenceFloor": ["unit"],
-      "owner": { "implementation": "mobile-apps", "validation": "mobile-parity" },
+      "evidenceFloor": [
+        "unit"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
       "promotionCriterion": "Candidate fingerprint refuses dirty close; empty/placeholder evidence is rejected; VAL-MOB-015 cannot be validated without store readback fields.",
       "notes": "Scaffolding only. Does not close VAL-MOB-015. No TestFlight/Play submission was performed.",
       "missingPrerequisite": "authorized TestFlight/Play closed-test readback on a clean candidate"
@@ -1149,6 +1214,25 @@
       "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
     },
     {
+      "id": "CAP-fleet.dashboard",
+      "kind": "capability",
+      "capabilityId": "fleet.dashboard",
+      "family": "fleet",
+      "status": "implemented",
+      "evidenceFreshness": "blocked",
+      "evidenceFloor": [
+        "unit",
+        "physical device"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Prove fleet.dashboard on iOS, iPadOS, and Android with candidate-bound evidence meeting unit, physical device.",
+      "notes": "Code presence is not validation. Physical-device, store, and provider rows stay blocked until rebound.",
+      "missingPrerequisite": "named iPhone, iPad, and Android devices plus an installed candidate artifact"
+    },
+    {
       "id": "CAP-inbox.detail",
       "kind": "capability",
       "capabilityId": "inbox.detail",
@@ -1856,6 +1940,23 @@
       },
       "promotionCriterion": "Keep divergence.inbox-primary-android as an explicit accepted-divergence; do not treat absence as an implicit non-goal.",
       "notes": "Accepted route divergence. Do not treat iOS missing a primary Inbox tab as an unregistered gap."
+    },
+    {
+      "id": "CAP-divergence.inbox-multi-instance-ios",
+      "kind": "capability",
+      "capabilityId": "divergence.inbox-multi-instance-ios",
+      "family": "divergence",
+      "status": "accepted-divergence",
+      "evidenceFreshness": "accepted-divergence",
+      "evidenceFloor": [
+        "unit"
+      ],
+      "owner": {
+        "implementation": "mobile-apps",
+        "validation": "mobile-parity"
+      },
+      "promotionCriterion": "Keep divergence.inbox-multi-instance-ios as an explicit accepted-divergence; do not treat absence as an implicit non-goal.",
+      "notes": "Accepted route divergence: iOS-only multi-instance inbox tray items; Android stays single-instance."
     },
     {
       "id": "CAP-divergence.you-store-label",

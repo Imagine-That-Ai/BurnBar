@@ -274,6 +274,18 @@
       "removalCondition": "Add TypeSpec ai-inbox domain for the sealed Cloud Vault inbox mirror."
     },
     {
+      "id": "doc.fleet_snapshot",
+      "collection": "fleet_snapshot",
+      "path": "users/{uid}/fleet_snapshot/current",
+      "access": "read-only",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.fleet-mirror",
+      "typeName": "BurnBarFleetSnapshot sealed mirror",
+      "sourceFile": "OpenBurnBarCore/Sources/OpenBurnBarKernel/Contracts/BurnBarFleetContracts.swift",
+      "owner": "mobile-apps",
+      "removalCondition": "Add a TypeSpec fleet domain for the sealed Cloud Vault fleet mirror."
+    },
+    {
       "id": "doc.budgetRules",
       "collection": "budgetRules",
       "path": "users/{uid}/budgetRules/{id}",
