@@ -45,7 +45,7 @@ plugins {
     // version (not in the root plugins block) so the mapping-upload + native
     // gradle config stays scoped to :app. Upload is auth-token gated below so
     // local/offline builds without Sentry credentials still succeed.
-    id("io.sentry.android.gradle") version "6.14.0"
+    id("io.sentry.android.gradle") version "6.19.0"
     // Baseline-profile consumer: wires the :macrobenchmark producer so
     // `./gradlew :app:generateBaselineProfile` captures an app-specific
     // profile (library profiles for Compose/activity already ship via the
@@ -595,7 +595,7 @@ dependencies {
     implementation(project(":burnbar-remote"))
     // Computer Use phone-control intents are signed on Android with the
     // same portable Ed25519 primitive used by the relay pairing verifier.
-    implementation("com.google.crypto.tink:tink-android:1.15.0")
+    implementation("com.google.crypto.tink:tink-android:1.23.0")
     val irohAar = rootProject.layout.projectDirectory.dir("..").asFile.resolve("Vendor/openburnbar-iroh.aar")
     if (irohAar.exists()) {
         implementation(files(irohAar))
@@ -619,7 +619,7 @@ dependencies {
     "baselineProfile"(project(":macrobenchmark"))
 
     // Compose BOM
-    val composeBom = platform("androidx.compose:compose-bom:2026.06.01")
+    val composeBom = platform("androidx.compose:compose-bom:2026.08.00")
     implementation(composeBom)
     androidTestImplementation(composeBom)
 
@@ -635,7 +635,7 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 
     // Activity & Lifecycle
-    implementation("androidx.activity:activity-compose:1.9.3")
+    implementation("androidx.activity:activity-compose:1.13.0")
     implementation("androidx.biometric:biometric:1.1.0")
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
@@ -645,7 +645,7 @@ dependencies {
     implementation("androidx.navigation:navigation-compose:2.8.5")
 
     // Firebase
-    implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
+    implementation(platform("com.google.firebase:firebase-bom:34.17.0"))
     implementation("com.google.firebase:firebase-auth-ktx")
     implementation("com.google.firebase:firebase-appcheck-playintegrity")
     // The debug provider is compiled only into debuggable developer builds.
@@ -663,7 +663,7 @@ dependencies {
     // ANR detection, breadcrumbs, and release health metrics. Captures
     // errors via the sentry-issue-sync CI workflow → GitHub issues pipeline.
     // Gracefully no-ops when SENTRY_DSN meta-data value is empty.
-    implementation("io.sentry:sentry-android:8.49.0")
+    implementation("io.sentry:sentry-android:8.53.0")
     // Mercury Media — high-priority FCM data messages for incoming calls.
     implementation("com.google.firebase:firebase-messaging-ktx")
 
@@ -691,26 +691,26 @@ dependencies {
     implementation("com.android.billingclient:billing-ktx:9.1.0")
 
     // OkHttp + WebSocket for Hermes
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:okhttp:5.4.0")
 
     // Amplitude — opt-in, consent-gated analytics. The only caller of this SDK
     // is com.openburnbar.analytics.AmplitudeTransport (constructed solely after
     // affirmative opt-in). Autocapture is fully disabled; key is BuildConfig-
     // injected and never committed (absent key ⇒ recorder stays dark).
-    implementation("com.amplitude:analytics-android:1.21.0")
+    implementation("com.amplitude:analytics-android:1.30.1")
 
     // Vico 2.x — Compose-first chart library for Insights
-    implementation("com.patrykandpatrick.vico:compose-m3:2.1.2")
+    implementation("com.patrykandpatrick.vico:compose-m3:3.2.3")
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.11.0")
 
     // Serialization
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
 
     // Official Signal libsignal at-rest HPKE identity seal (v0.94.4 pin).
-    implementation("org.signal:libsignal-android:0.94.4")
+    implementation("org.signal:libsignal-android:0.101.0")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 
     // Glance for Widget
@@ -735,15 +735,15 @@ dependencies {
     // Testing
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
-    testImplementation("io.mockk:mockk:1.13.13")
-    testImplementation("org.signal:libsignal-client:0.94.4")
+    testImplementation("io.mockk:mockk:1.14.11")
+    testImplementation("org.signal:libsignal-client:0.101.0")
     // Android's JNA AAR supplies only device JNI slices. Activated Rust-mode
     // JVM contracts need the desktop JAR's host libjnidispatch resource.
-    testImplementation("net.java.dev.jna:jna:5.19.0")
+    testImplementation("net.java.dev.jna:jna:5.19.1")
     // Real org.json on the JVM test classpath so parsers can run without an
     // emulator (Android's bundled JSONObject is stubbed in unit tests).
-    testImplementation("org.json:json:20240303")
-    testImplementation("com.google.code.gson:gson:2.11.0")
+    testImplementation("org.json:json:20260814")
+    testImplementation("com.google.code.gson:gson:2.14.0")
     // Ed25519 signer for the Hermes iroh transport tests only — production
     // code is verify-only via Tink. Same lib + version the relay module's
     // test classpath uses.
@@ -751,14 +751,14 @@ dependencies {
     // DataStore Preferences test helpers — the partner-save preference
     // store materialises a Preferences DataStore on a temp dir.
     testImplementation("androidx.datastore:datastore-preferences:1.2.1")
-    androidTestImplementation("androidx.test.ext:junit:1.2.1")
-    androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
+    androidTestImplementation("androidx.test.ext:junit:1.3.0")
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     androidTestImplementation("androidx.compose.ui:ui-test-manifest")
     // Mockk on-device flavor — pure-JVM `io.mockk:mockk` brings in
     // bytebuddy classes the ART runtime can't load, so the instrumented
     // suites use `mockk-android` instead.
-    androidTestImplementation("io.mockk:mockk-android:1.13.13")
+    androidTestImplementation("io.mockk:mockk-android:1.14.11")
 }
 
 detekt {
