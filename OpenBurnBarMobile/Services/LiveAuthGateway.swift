@@ -132,7 +132,7 @@ final class LiveAuthGateway: NSObject, AuthGateway {
         // Present the GitHub sheet first. Cancel throws here with Auth still A
         // and no tombstone. Only after the OAuth credential is in hand do we
         // invalidate A's device doc and call signIn.
-        let credential = try await provider.getCredentialWith(nil)
+        let credential = try await provider.credential(with: nil)
         try await Self.authChangingUid {
             try await Auth.auth().signIn(with: credential)
         }

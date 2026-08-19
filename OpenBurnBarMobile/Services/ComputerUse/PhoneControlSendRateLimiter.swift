@@ -2,7 +2,9 @@ import Foundation
 
 enum PhoneControlSendRateLimiter {
     private static let lock = NSLock()
-    private static var stamps: [Int64] = []
+    // Protected by `lock`; Swift 6's global-state diagnostic cannot infer
+    // that synchronization from the NSLock calls below.
+    private nonisolated(unsafe) static var stamps: [Int64] = []
     private static let windowMs: Int64 = 1_000
     private static let maxEvents = 30
 
