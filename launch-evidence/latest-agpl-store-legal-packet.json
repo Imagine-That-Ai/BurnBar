@@ -8,7 +8,7 @@
     "ownerRepo": "Imagine-That-Ai/BurnBar",
     "branch": "main",
     "originMain": "c7fe21697b6750077e3c51df3d80765ab17707a7",
-    "releaseTag": "v1.0.40"
+    "releaseTag": "v1.0.40+repair.1"
   },
   "purpose": "Owner-attested emergency release evidence for the v1.0.40 public release boundary. This cut supersedes the unpublished immutable v1.0.36 candidate and the failed v1.0.38 preflight after the protected-main release lane was repaired, keeps the npm installer bound to the live signed feed, and restores an honest current macOS public download. The release must be cut from protected main only.",
   "ownerAttestation": {
