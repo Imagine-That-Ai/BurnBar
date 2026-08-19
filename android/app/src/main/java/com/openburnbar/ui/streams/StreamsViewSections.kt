@@ -480,7 +480,7 @@ internal fun LazyListScope.streamsSessionsItems(ctx: StreamsSessionsListContext)
                 icon = Icons.Filled.Error,
                 title = "Search failed",
                 message = ctx.error ?: "Could not search sessions. Try again.",
-                onRetry = { ctx.activityStore.refresh() },
+                onRetry = { ctx.activityStore.updateSearch(ctx.searchQuery) },
             )
         }
         return

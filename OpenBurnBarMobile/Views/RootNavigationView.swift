@@ -103,7 +103,10 @@ struct RootNavigationView: View {
         .task(id: authStore.currentIdentity?.uid) { applyHermesE2EPromptIfNeeded() }
         .task(id: authStore.currentIdentity?.uid) { applyComputerUseE2EProofIfNeeded() }
         .task { missionActivityCenter.start() }
-        .task { missionConsoleHost.start() }
+        .task {
+            missionConsoleHost.start()
+            claimPendingOsRouteIfNeeded()
+        }
         .task { liveStagePresenter.observe(liveStageSingleton.state) }
         .task { liveStageSingleton.installLiveActivityIntentRouter() }
         // Claims a push tap that landed BEFORE this view existed — a cold
@@ -112,7 +115,6 @@ struct RootNavigationView: View {
         // has no subscriber yet and the stash is the only surviving record of
         // it. Same shape as `applyPendingGatewayPairingDeepLink`.
         .task { claimPendingAIInboxDeepLink() }
-        .task { claimPendingOsRouteIfNeeded() }
         .task {
             liveStageSingleton.configurePictureInPicture(
                 onDidStart: { liveStagePresenter.setPiPActive(true) },

@@ -223,7 +223,7 @@ struct StreamsView: View {
             onOpenFilters: { showCockpitFilters = true },
             onSaveQuery: { showSaveQuery = true },
             onOpenStore: { showCloudStore = true },
-            onRetrySearch: { Task { await activity.refresh() } }
+            onRetrySearch: { Task { await activity.updateSearch(query: searchText) } }
         )
     }
 
@@ -296,7 +296,7 @@ struct StreamsView: View {
                         title: "Search failed",
                         message: activity.error ?? "Could not search sessions. Try again.",
                         ctaLabel: "Try Again",
-                        onCTA: { Task { await activity.refresh() } }
+                        onCTA: { Task { await activity.updateSearch(query: searchText) } }
                     )
                     .frame(minHeight: 320)
                 } else if let loadError = activity.error, activity.usages.isEmpty {
