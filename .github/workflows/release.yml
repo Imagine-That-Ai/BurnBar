@@ -1245,8 +1245,10 @@ jobs:
             echo "::error::Missing required release secrets: ${missing[*]}"
             exit 1
           fi
+          # regularFile() fail-closes on relative paths, so the policy must be
+          # passed absolute or this step can never pass.
           node scripts/ci/verify-domain-core-apple-signing-identity.mjs \
-            --policy config/apple-release-signing-policy.json --environment
+            --policy "$GITHUB_WORKSPACE/config/apple-release-signing-policy.json" --environment
 
       - name: Write Apple API key
         env:
