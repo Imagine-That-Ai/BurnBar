@@ -80,7 +80,7 @@ struct GrokDBoxView: View {
             Button("Refresh") {
                 Task { await model.refresh() }
             }
-            .disabled(!model.enabled || model.isRefreshing)
+            .disabled(!model.enabled || model.isRefreshing || model.isSending)
             .accessibilityIdentifier(OBBAccessibilityID.localDBoxRefresh)
         }
     }

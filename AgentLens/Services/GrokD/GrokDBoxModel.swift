@@ -75,6 +75,7 @@ final class GrokDBoxModel {
     }
 
     func refresh(preservingStatus: Bool = false) async {
+        if isSending && !preservingStatus { return }
         refreshGeneration += 1
         let generation = refreshGeneration
         let preservedMessage = lastMessage
@@ -130,13 +131,17 @@ final class GrokDBoxModel {
             }
         } catch {
             guard generation == refreshGeneration else { return }
+            if preservingStatus {
+                lastMessage = preservedMessage
+                statusTone = preservedTone
+                phase = preservedPhase
+                return
+            }
             health = .cannotList
             agents = []
             lastMessage = (error as? GrokDHostError)?.userMessage ?? "Local D box refresh failed."
             statusTone = .error
-            if !preservingStatus {
-                phase = .refused
-            }
+            phase = .refused
         }
     }
 
@@ -172,7 +177,7 @@ final class GrokDBoxModel {
             case .agentMissing:
                 phase = .refused
             case .cancelled:
-                phase = .refused
+                phase = .stillRunning
             }
             await refresh(preservingStatus: true)
             if selectedAgent?.isBusy == true {

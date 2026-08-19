@@ -1,7 +1,6 @@
 import Foundation
 
 /// Mac-only Local D box client. Talks to `127.0.0.1:1337` JSON.
-/// Send is allowed only when health is `.ok`. Never writes `store.db`.
 struct GrokDHostClient: Sendable {
     let config: GrokDHostConfig
     let session: URLSession
@@ -35,9 +34,21 @@ struct GrokDHostClient: Sendable {
     }
 
     func health() async -> GrokDBoxHealth {
-        let shimUp = portProbe.isListening(host: config.loopbackHost, port: config.shimPort)
-        let hostUp = portProbe.isListening(host: config.loopbackHost, port: config.hostPort)
-        let inferenceUp = portProbe.isListening(host: config.loopbackHost, port: config.inferencePort)
+        let probe = portProbe
+        let host = config.loopbackHost
+        let shimPort = config.shimPort
+        let hostPort = config.hostPort
+        let inferencePort = config.inferencePort
+        let probed = await Task.detached(priority: .utility) {
+            (
+                probe.isListening(host: host, port: shimPort),
+                probe.isListening(host: host, port: hostPort),
+                probe.isListening(host: host, port: inferencePort)
+            )
+        }.value
+        let shimUp = probed.0
+        let hostUp = probed.1
+        let inferenceUp = probed.2
 
         if shimUp && !hostUp {
             return .canListHostDown
@@ -61,7 +72,7 @@ struct GrokDHostClient: Sendable {
         return try decodeAgentList(data)
     }
 
-    /// Sends one UUID a prompt. Refuses unless health is `.ok`. Does not wait for an assistant line.
+    /// Sends one UUID a prompt. Refuses unless health is `.ok`.
     func sendPrompt(agentID: String, prompt: String) async throws -> GrokDTurnHandle {
         guard Self.isAgentUUID(agentID) else { throw GrokDHostError.invalidAgentID }
         let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -86,9 +97,7 @@ struct GrokDHostClient: Sendable {
         return GrokDTurnHandle(agentID: agentID, prompt: trimmed, acceptedAt: Date())
     }
 
-    /// Polls `listAgents` and, when `path` is present, a **read-only** sqlite
-    /// window. Preview follow stays the fallback if the db is missing or busy.
-    /// Never writes SQLite. `sendPrompt` stays `awaitTurn: false`.
+    /// Preview later-reply is used only when sqlite is busy or the db cannot be opened.
     func followTurn(
         agentID: String,
         prompt: String,
@@ -123,35 +132,44 @@ struct GrokDHostClient: Sendable {
             }
             let preview = agent.lastMessagePreview
             lastPreview = preview
+            var trustPreviewReply = true
             if let path = agent.path {
-                switch await transcriptReader.read(path: path, token: needle) {
+                switch await transcriptReader.read(path: path, agentID: agentID, token: needle) {
                 case .completed:
                     return GrokDTurnFollowResult(outcome: .completed, lastPreview: preview)
                 case .promptLanded:
                     sawPrompt = true
-                case .skippedBusy, .unavailable, .noEvidence:
+                    trustPreviewReply = false
+                case .noEvidence:
+                    trustPreviewReply = false
+                case .skippedBusy, .unavailable:
                     break
                 }
             }
-            if !sawPrompt {
-                if Self.previewLooksLikePrompt(preview, needle: needle, baseline: baselinePreview) {
-                    sawPrompt = true
-                    userPreview = preview
+            if trustPreviewReply {
+                if !sawPrompt {
+                    if Self.previewLooksLikePrompt(preview, needle: needle, baseline: baselinePreview) {
+                        sawPrompt = true
+                        userPreview = preview
+                    } else if Self.previewLooksLikeLaterReply(
+                        preview,
+                        needle: needle,
+                        baseline: baselinePreview,
+                        userPreview: nil
+                    ) {
+                        return GrokDTurnFollowResult(outcome: .completed, lastPreview: preview)
+                    }
                 } else if Self.previewLooksLikeLaterReply(
                     preview,
                     needle: needle,
                     baseline: baselinePreview,
-                    userPreview: nil
+                    userPreview: userPreview
                 ) {
                     return GrokDTurnFollowResult(outcome: .completed, lastPreview: preview)
                 }
-            } else if Self.previewLooksLikeLaterReply(
-                preview,
-                needle: needle,
-                baseline: baselinePreview,
-                userPreview: userPreview
-            ) {
-                return GrokDTurnFollowResult(outcome: .completed, lastPreview: preview)
+            } else if !sawPrompt, Self.previewLooksLikePrompt(preview, needle: needle, baseline: baselinePreview) {
+                sawPrompt = true
+                userPreview = preview
             }
         }
         if sawPrompt {
@@ -186,7 +204,7 @@ struct GrokDHostClient: Sendable {
         if config.loopbackHost != GrokDHostConfig.loopbackHost {
             throw GrokDHostError.notLoopback
         }
-        var request = URLRequest(url: config.apiURL(method))
+        var request = URLRequest(url: try config.apiURL(method))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(config.bearerToken)", forHTTPHeaderField: "Authorization")

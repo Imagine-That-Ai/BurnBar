@@ -18,13 +18,6 @@ struct GrokDHostConfig: Equatable, Sendable {
     let bearerToken: String
     let guiMode: String?
 
-    var shimBaseURL: URL {
-        if let url = URL(string: "http://\(loopbackHost):\(shimPort)") {
-            return url
-        }
-        return URL(fileURLWithPath: "/grokd-invalid-loopback")
-    }
-
     var guiIsLocalProfile: Bool {
         guard let guiMode else { return true }
         return guiMode == "local"
@@ -69,8 +62,20 @@ struct GrokDHostConfig: Equatable, Sendable {
         )
     }
 
-    func apiURL(_ method: String) -> URL {
-        shimBaseURL.appendingPathComponent("api").appendingPathComponent(method)
+    func apiURL(_ method: String) throws -> URL {
+        var components = URLComponents()
+        components.scheme = "http"
+        components.host = loopbackHost
+        components.port = Int(shimPort)
+        components.path = "/api/\(method)"
+        guard loopbackHost == Self.loopbackHost,
+              let url = components.url,
+              url.scheme == "http",
+              url.host == Self.loopbackHost
+        else {
+            throw GrokDHostError.notLoopback
+        }
+        return url
     }
 }
 

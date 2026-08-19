@@ -33,8 +33,8 @@ final class GrokDHostClientTests: XCTestCase {
         let config = try GrokDHostConfig.load(fromActiveEnv: env)
         XCTAssertEqual(config.loopbackHost, "127.0.0.1")
         XCTAssertEqual(config.shimPort, 1337)
-        XCTAssertEqual(config.apiURL("listAgents").absoluteString, "http://127.0.0.1:1337/api/listAgents")
-        XCTAssertFalse(config.apiURL("sendPrompt").absoluteString.contains("localhost"))
+        XCTAssertEqual(try config.apiURL("listAgents").absoluteString, "http://127.0.0.1:1337/api/listAgents")
+        XCTAssertFalse(try config.apiURL("sendPrompt").absoluteString.contains("localhost"))
         XCTAssertFalse(config.guiIsLocalProfile)
         XCTAssertFalse(config.description.contains(token))
         XCTAssertFalse(String(reflecting: config).contains(token))
@@ -470,8 +470,13 @@ final class GrokDHostClientTests: XCTestCase {
         let token = "unique-sqlite-token"
         let user = #"{"kind":"message","role":"user","content":"\#(token)"}"#
         let assistant = #"{"kind":"send-message","message":{"type":"text","content":"pong"}}"#
+        let assistantRole = #"{"kind":"message","role":"assistant","content":"pong"}"#
         XCTAssertEqual(
             GrokDReadonlyTranscriptReader.interpret(entriesNewestFirst: [assistant, user], token: token),
+            .completed
+        )
+        XCTAssertEqual(
+            GrokDReadonlyTranscriptReader.interpret(entriesNewestFirst: [assistantRole, user], token: token),
             .completed
         )
         XCTAssertEqual(
@@ -481,6 +486,25 @@ final class GrokDHostClientTests: XCTestCase {
         XCTAssertEqual(
             GrokDReadonlyTranscriptReader.interpret(entriesNewestFirst: [assistant], token: token),
             .noEvidence
+        )
+        let envelope = #"{"kind":"message","role":"user","content":"hello","isStreaming":false}"#
+        XCTAssertEqual(
+            GrokDReadonlyTranscriptReader.interpret(entriesNewestFirst: [assistant, envelope], token: "message"),
+            .noEvidence
+        )
+        XCTAssertEqual(
+            GrokDReadonlyTranscriptReader.interpret(entriesNewestFirst: [assistant, envelope], token: "false"),
+            .noEvidence
+        )
+        let oldUser = #"{"kind":"message","role":"user","content":"please say hi"}"#
+        let oldAssistant = #"{"kind":"send-message","message":{"type":"text","content":"hi"}}"#
+        let newUser = #"{"kind":"message","role":"user","content":"hi"}"#
+        XCTAssertEqual(
+            GrokDReadonlyTranscriptReader.interpret(
+                entriesNewestFirst: [newUser, oldAssistant, oldUser],
+                token: "hi"
+            ),
+            .promptLanded
         )
     }
 
@@ -508,13 +532,15 @@ final class GrokDHostClientTests: XCTestCase {
         let db = try Self.makeTempStoreDB(entries: [
             #"{"kind":"message","role":"user","content":"\#(token)"}"#
         ])
-        let writer = try Self.beginExclusive(on: db)
-        defer { writer.finish() }
-        let reader = GrokDReadonlyTranscriptReader(busyTimeoutMilliseconds: 0)
-        let busy = await reader.read(path: db.path, token: token)
+        let locked = try Self.makeSqliteShim(mode: "locked")
+        let reader = GrokDReadonlyTranscriptReader(
+            busyTimeoutMilliseconds: 0,
+            sqlite3URL: locked.script
+        )
+        let busy = await reader.read(path: db.path, agentID: Self.benchID, token: token)
         XCTAssertEqual(busy, .skippedBusy)
         GrokDStubURLProtocol.handler = { request in
-            Self.json(request, 200, Self.agentJSON(running: false, preview: "\(token) pong", path: db.path))
+            Self.json(request, 200, Self.agentJSON(running: false, preview: token, path: db.path))
         }
         let client = GrokDHostClient(
             config: GrokDHostConfig(
@@ -522,7 +548,7 @@ final class GrokDHostClientTests: XCTestCase {
                 shimPort: 1337,
                 hostPort: 1338,
                 inferencePort: 8787,
-                bearerToken: token,
+                bearerToken: self.token,
                 guiMode: "local"
             ),
             session: session,
@@ -536,7 +562,7 @@ final class GrokDHostClientTests: XCTestCase {
             maxPolls: 2,
             pollNanoseconds: 0
         )
-        XCTAssertEqual(result.outcome, .completed)
+        XCTAssertEqual(result.outcome, .promptLandedNoReply)
     }
 
     func testReadonlySqliteNeverWrites() async throws {
@@ -544,11 +570,21 @@ final class GrokDHostClientTests: XCTestCase {
         let db = try Self.makeTempStoreDB(entries: [
             #"{"kind":"message","role":"user","content":"\#(token)"}"#
         ])
+        let shim = try Self.makeSqliteShim(mode: "passthrough")
         let before = try Self.sqliteQuery(db, "SELECT COUNT(*) FROM transcript_entries;")
         let bytesBefore = try Data(contentsOf: db)
-        let reader = GrokDReadonlyTranscriptReader(busyTimeoutMilliseconds: 0)
-        let landed = await reader.read(path: db.path, token: token)
+        let reader = GrokDReadonlyTranscriptReader(
+            busyTimeoutMilliseconds: 0,
+            sqlite3URL: shim.script
+        )
+        let landed = await reader.read(path: db.path, agentID: Self.benchID, token: token)
         XCTAssertEqual(landed, .promptLanded)
+        let argv = try String(contentsOf: shim.log, encoding: .utf8)
+        XCTAssertTrue(argv.contains("-readonly"))
+        XCTAssertTrue(argv.contains("SELECT entry FROM transcript_entries"))
+        XCTAssertFalse(argv.contains("INSERT"))
+        XCTAssertFalse(argv.contains("UPDATE"))
+        XCTAssertFalse(argv.contains("DELETE"))
         let insertRC = Self.sqliteStatus(
             db,
             "INSERT INTO transcript_entries (id, entry) VALUES ('should-fail', 'x');",
@@ -559,6 +595,50 @@ final class GrokDHostClientTests: XCTestCase {
         let bytesAfter = try Data(contentsOf: db)
         XCTAssertEqual(before, after)
         XCTAssertEqual(bytesBefore, bytesAfter)
+    }
+
+    func testReadonlySqliteMissingDbFallsBackToPreview() async throws {
+        let token = "missing-db-token"
+        let missing = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokd-miss-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("box-data", isDirectory: true)
+            .appendingPathComponent("agents", isDirectory: true)
+            .appendingPathComponent(Self.benchID, isDirectory: true)
+            .appendingPathComponent("store.db")
+        let reader = GrokDReadonlyTranscriptReader(busyTimeoutMilliseconds: 0)
+        let missingRead = await reader.read(path: missing.path, agentID: Self.benchID, token: token)
+        XCTAssertEqual(missingRead, .unavailable)
+        let junk = await reader.read(path: "/tmp/not-a-store.sqlite", agentID: Self.benchID, token: token)
+        XCTAssertEqual(junk, .unavailable)
+        GrokDStubURLProtocol.handler = { request in
+            Self.json(request, 200, Self.agentJSON(running: false, preview: token, path: missing.path))
+        }
+        let result = await makeClient(ports: [1337, 1338, 8787]).followTurn(
+            agentID: Self.benchID,
+            prompt: token,
+            baselinePreview: "old",
+            maxPolls: 2,
+            pollNanoseconds: 0
+        )
+        XCTAssertEqual(result.outcome, .promptLandedNoReply)
+    }
+
+    func testReadonlySqliteUserRowWithoutAssistantIsPromptLanded() async throws {
+        let token = "user-only-token"
+        let db = try Self.makeTempStoreDB(entries: [
+            #"{"kind":"message","role":"user","content":"\#(token)"}"#
+        ])
+        GrokDStubURLProtocol.handler = { request in
+            Self.json(request, 200, Self.agentJSON(running: false, preview: token, path: db.path))
+        }
+        let result = await makeClient(ports: [1337, 1338, 8787]).followTurn(
+            agentID: Self.benchID,
+            prompt: token,
+            baselinePreview: "old",
+            maxPolls: 2,
+            pollNanoseconds: 0
+        )
+        XCTAssertEqual(result.outcome, .promptLandedNoReply)
     }
 
     func testBoxViewEnableEmptyRosterSendDisabledAndSearchAnchor() async {
@@ -574,7 +654,7 @@ final class GrokDHostClientTests: XCTestCase {
         XCTAssertTrue(offModel.agents.isEmpty)
         XCTAssertFalse(offModel.canSend)
         XCTAssertEqual(offModel.lastMessage, "Local D box is off.")
-        _ = GrokDBoxView(model: offModel)
+        _ = GrokDBoxView(model: offModel).body
 
         let defaults = UserDefaults(suiteName: "GrokDBoxView.hostdown.\(UUID().uuidString)")!
         defaults.set(true, forKey: GrokDFeature.DefaultsKey.enabled)
@@ -605,7 +685,7 @@ final class GrokDHostClientTests: XCTestCase {
         XCTAssertFalse(model.canSend)
         XCTAssertEqual(model.lastMessage, "local box host is down")
         XCTAssertEqual(model.statusTone, .warning)
-        _ = GrokDBoxView(model: model)
+        _ = GrokDBoxView(model: model).body
 
         GrokDStubURLProtocol.handler = { request in
             Self.json(request, 200, "[]")
@@ -632,7 +712,35 @@ final class GrokDHostClientTests: XCTestCase {
         XCTAssertTrue(okModel.agents.isEmpty)
         okModel.promptText = "hello"
         XCTAssertFalse(okModel.canSend)
-        _ = GrokDBoxView(model: okModel)
+        XCTAssertEqual(okModel.sendBlockedReason, "Select a live agent.")
+        _ = GrokDBoxView(model: okModel).body
+
+        GrokDStubURLProtocol.handler = { request in
+            Self.json(request, 200, Self.agentJSON(running: false))
+        }
+        let infDefaults = UserDefaults(suiteName: "GrokDBoxView.inf.\(UUID().uuidString)")!
+        infDefaults.set(true, forKey: GrokDFeature.DefaultsKey.enabled)
+        let infModel = GrokDBoxModel(defaults: infDefaults) {
+            GrokDHostClient(
+                config: GrokDHostConfig(
+                    loopbackHost: "127.0.0.1",
+                    shimPort: 1337,
+                    hostPort: 1338,
+                    inferencePort: 8787,
+                    bearerToken: token,
+                    guiMode: "local"
+                ),
+                session: session,
+                portProbe: GrokDStubPortProbe(open: [1337, 1338])
+            )
+        }
+        await infModel.refresh()
+        XCTAssertEqual(infModel.health, .canListCannotComplete)
+        XCTAssertEqual(infModel.lastMessage, "inference proxy is down")
+        infModel.promptText = "hello"
+        infModel.selectedAgentID = Self.benchID
+        XCTAssertFalse(infModel.canSend)
+        _ = GrokDBoxView(model: infModel).body
     }
 
     func testLiveProbeBotUniqueTokenFollow() async throws {
@@ -651,19 +759,31 @@ final class GrokDHostClientTests: XCTestCase {
         XCTAssertEqual(health, .ok)
         let agents = try await client.listAgents()
         let bot = agents.first { $0.name == "Probe Bot" && GrokDHostClient.isAgentUUID($0.id) && !$0.isBusy }
-        try XCTSkipUnless(bot != nil, "idle Probe Bot missing")
+        guard let bot else {
+            throw XCTSkip("idle Probe Bot missing")
+        }
         let token = "BBLOCALD-AUDIT-\(Int(Date().timeIntervalSince1970))-\(UUID().uuidString.prefix(8))"
         let started = Date()
-        _ = try await client.sendPrompt(agentID: bot!.id, prompt: token)
+        do {
+            _ = try await client.sendPrompt(agentID: bot.id, prompt: token)
+        } catch let error as GrokDHostError {
+            switch error {
+            case .agentBusy, .sendRefused:
+                throw XCTSkip("Probe Bot refused send")
+            default:
+                throw error
+            }
+        }
         let result = await client.followTurn(
-            agentID: bot!.id,
+            agentID: bot.id,
             prompt: token,
-            baselinePreview: bot?.lastMessagePreview,
+            baselinePreview: bot.lastMessagePreview,
             maxPolls: 30,
             pollNanoseconds: 1_000_000_000
         )
         XCTAssertLessThan(Date().timeIntervalSince(started), 35)
         XCTAssertEqual(result.outcome, .completed)
+        XCTAssertTrue((result.lastPreview ?? "").contains(token))
     }
 
     // MARK: - Helpers
@@ -712,7 +832,11 @@ final class GrokDHostClientTests: XCTestCase {
     }
 
     private nonisolated static func makeTempStoreDB(entries: [String]) throws -> URL {
-        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("grokd-store-\(UUID().uuidString)", isDirectory: true)
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokd-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("box-data", isDirectory: true)
+            .appendingPathComponent("agents", isDirectory: true)
+            .appendingPathComponent(benchID, isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let db = dir.appendingPathComponent("store.db")
         var sql = "CREATE TABLE transcript_entries (id TEXT, entry TEXT);\n"
@@ -759,28 +883,30 @@ final class GrokDHostClientTests: XCTestCase {
         return String(data: out.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
     }
 
-    private struct ExclusiveLock {
-        let process: Process
-        let stdin: Pipe
-        func finish() {
-            stdin.fileHandleForWriting.write(Data("ROLLBACK;\n".utf8))
-            stdin.fileHandleForWriting.closeFile()
-            process.waitUntilExit()
+    private nonisolated static func makeSqliteShim(mode: String) throws -> (script: URL, log: URL) {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "grokd-sqlite-shim-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let log = dir.appendingPathComponent("argv.log")
+        let script = dir.appendingPathComponent("sqlite3-shim.sh")
+        let body: String
+        if mode == "locked" {
+            body = "#!/bin/bash\necho \"database is locked\" >&2\nexit 5\n"
+        } else {
+            body = """
+            #!/bin/bash
+            : > '\(log.path)'
+            for a in "$@"; do
+              printf '%s\\n' "$a" >> '\(log.path)'
+            done
+            exec /usr/bin/sqlite3 "$@"
+            """
         }
-    }
-
-    private nonisolated static func beginExclusive(on db: URL) throws -> ExclusiveLock {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
-        process.arguments = [db.path]
-        let stdin = Pipe()
-        process.standardInput = stdin
-        process.standardOutput = Pipe()
-        process.standardError = Pipe()
-        try process.run()
-        stdin.fileHandleForWriting.write(Data("BEGIN EXCLUSIVE;\n".utf8))
-        usleep(200_000)
-        return ExclusiveLock(process: process, stdin: stdin)
+        try Data(body.utf8).write(to: script)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: script.path)
+        return (script, log)
     }
 
     private nonisolated static func json(_ request: URLRequest, _ status: Int, _ body: String) -> (HTTPURLResponse, Data) {

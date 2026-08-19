@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// Local D box feature flags. Defaults OFF. No catalog / Hermes / quota identity.
 enum GrokDFeature {
@@ -23,9 +24,8 @@ enum GrokDFeature {
         ProcessInfo.processInfo.environment["APP_SANDBOX_CONTAINER_ID"] != nil
     }
 
-    /// Runs `ensure-local-box.sh` once when enabled, auto-start is on, and the process is not sandboxed.
+    /// Runs `ensure-local-box.sh` at most once per process when enabled and auto-start is on.
     /// Never launches `grokd-local`, D.app, or Seat4.
-    /// The process wait is `Task.detached` so Settings never blocks on `@MainActor`.
     @discardableResult
     static func startLocalBoxIfNeeded(
         defaults: UserDefaults = .standard,
@@ -47,6 +47,7 @@ enum GrokDFeature {
     }
 
     static func runEnsureScript(_ script: URL) async throws {
+        if GrokDEnsureOnce.ran.withLock({ $0 }) { return }
         let path = script.path
         try await Task.detached(priority: .utility) {
             let process = Process()
@@ -65,5 +66,10 @@ enum GrokDFeature {
                 throw GrokDHostError.transport("ensure-local-box \(status)")
             }
         }.value
+        GrokDEnsureOnce.ran.withLock { $0 = true }
     }
+}
+
+private enum GrokDEnsureOnce {
+    static let ran = OSAllocatedUnfairLock(initialState: false)
 }

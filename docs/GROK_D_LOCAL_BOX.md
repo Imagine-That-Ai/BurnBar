@@ -10,9 +10,9 @@ Default **off**. Mac App Store builds do not show the pane (no `~/.grok` without
 2. Sends **one UUID** a prompt with `awaitTurn: false`.
 3. Follows the turn by polling `listAgents` and, when the roster includes a `path` to that agent’s `store.db`, a **read-only** sqlite window:
 
-   `SELECT entry FROM transcript_entries ORDER BY rowid DESC LIMIT n` with `busy_timeout=5000`.
+   `SELECT entry FROM transcript_entries ORDER BY rowid DESC LIMIT n` with a short `busy_timeout` (well under the 1s poll).
 
-   Success is the unique token in a **user** line (`"role":"user"` or the prompt text) **and** a later **assistant** / `send-message` line. `SQLITE_BUSY` skips that poll. A missing or locked db falls back to `lastMessagePreview` follow. Never INSERT / UPDATE / DELETE. An exact/truncated preview of the prompt is the user line; a different later preview (including an echo such as `"<token> pong"`) is a completed turn.
+   Success is the newest user line whose content equals (or is a truncation of) this prompt **and** a strictly newer **assistant** / `send-message` line. `SQLITE_BUSY` skips that poll. A missing or locked db falls back to `lastMessagePreview` follow. Never INSERT / UPDATE / DELETE. An exact/truncated preview of the prompt is the user line; a different later preview (including an echo such as `"<token> pong"`) is a completed turn.
 
 ## Ports (always `127.0.0.1`, never `localhost`)
 
@@ -22,7 +22,7 @@ Default **off**. Mac App Store builds do not show the pane (no `~/.grok` without
 | 1338 | host-main | list may still 200 from disk; **send is refused** |
 | 8787 | proxy2 inference | send refused (“inference proxy is down”) |
 
-The shim must not return `{ok:true, scheduled:true}` when forwarding `sendPrompt` fails because `:1338` is down. That path is an honest non-2xx (`{ok:false, error: "local box host is down"}`). BurnBar still probes TCP first and refuses send unless health is `.ok`. Disk `listAgents` fallback may still 200 when the host is down.
+The shim must not return `{ok:true, scheduled:true}` when forwarding `sendPrompt` or `broadcastToAgents` fails because `:1338` is down. Those paths are an honest non-2xx (`{ok:false, error: "local box host is down"}`). Inbound `/api/*` requires `Authorization` matching the shim bearer. BurnBar still probes TCP first and refuses send unless health is `.ok`. Disk `listAgents` fallback may still 200 when the host is down.
 
 ## Auth
 
@@ -35,7 +35,7 @@ Tokens are redacted from `description` / `debugDescription`.
 
 ## Auto-start
 
-Optional, default off. Unsandboxed only. Runs `~/.grok/grokbot-d/ensure-local-box.sh` once from app launch (when both flags are on) and from the pane refresh. Never launches `grokd-local`, D.app, or Seat4.
+Optional, default off. Unsandboxed only. Runs `~/.grok/grokbot-d/ensure-local-box.sh` at most once per process when both flags are on (app launch and later auto-start refreshes share that once-guard). Never launches `grokd-local`, D.app, or Seat4.
 
 ## Feature flags
 
