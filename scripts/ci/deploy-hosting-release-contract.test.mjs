@@ -72,8 +72,8 @@ test("push deploys are enabled while manual dry-runs remain build-only", () => {
   );
   assert.match(
     deploy,
-    /if: \$\{\{ github\.event_name != 'workflow_dispatch' \|\| inputs\.dry_run != true \}\}/u,
-    "push and tag events must not depend on absent workflow_dispatch inputs",
+    /if: >-\n\s+\$\{\{ !cancelled\(\)\n\s+&& needs\.build-hosting-artifacts\.result == 'success'\n\s+&& \(github\.event_name != 'workflow_dispatch' \|\| inputs\.dry_run != true\) \}\}/u,
+    "push and tag events must not depend on absent workflow_dispatch inputs, and the credentialed deploy must carry a status-check function so a skipped upstream gate job cannot propagate a skip onto it",
   );
   assert.match(
     smoke,

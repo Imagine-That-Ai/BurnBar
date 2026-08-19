@@ -478,7 +478,10 @@ jobs:
 
   deploy-hosting:
     needs: build-hosting-artifacts
-    if: ${{ github.event_name != 'workflow_dispatch' || inputs.dry_run != true }}
+    if: >-
+      ${{ !cancelled()
+          && needs.build-hosting-artifacts.result == 'success'
+          && (github.event_name != 'workflow_dispatch' || inputs.dry_run != true) }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: production
@@ -789,7 +792,8 @@ jobs:
   dispatch-domain-core-console-evidence:
     needs: [build-hosting-artifacts, deploy-hosting, hosting-smoke-result]
     if: >-
-      ${{ needs.build-hosting-artifacts.result == 'success'
+      ${{ !cancelled()
+          && needs.build-hosting-artifacts.result == 'success'
           && needs.deploy-hosting.result == 'success'
           && needs.hosting-smoke-result.result == 'success'
           && needs.build-hosting-artifacts.outputs.stable_release == 'true'

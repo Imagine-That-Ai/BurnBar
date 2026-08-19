@@ -118,7 +118,10 @@ jobs:
       - name: Upload immutable hosting artifact
   deploy-hosting:
     needs: build-hosting-artifacts
-    if: \${{ github.event_name != 'workflow_dispatch' || inputs.dry_run != true }}
+    if: >-
+      \${{ !cancelled()
+          && needs.build-hosting-artifacts.result == 'success'
+          && (github.event_name != 'workflow_dispatch' || inputs.dry_run != true) }}
     environment: production
     permissions:
       contents: read
@@ -187,6 +190,39 @@ function expect(label, workflow, wantExit) {
 console.log("Self-test: verify-hosting-deploy-boundary.mjs\n");
 
 expect("current hardened hosting workflow passes", GOOD, 0);
+expect(
+  "deploy job without a status-check function fails (a skipped upstream gate job silently propagates a skip onto the credentialed deploy)",
+  GOOD.replace(
+    "!cancelled()\n          && needs.build-hosting-artifacts.result == 'success'\n          && ",
+    "",
+  ),
+  1,
+);
+expect(
+  "deploy job that drops the successful-build requirement fails",
+  GOOD.replace(
+    "\n          && needs.build-hosting-artifacts.result == 'success'",
+    "",
+  ),
+  1,
+);
+expect(
+  "broken job-level if is not laundered by a no-op step carrying the status clauses",
+  GOOD.replace(
+    "    if: >-\n" +
+      "      ${{ !cancelled()\n" +
+      "          && needs.build-hosting-artifacts.result == 'success'\n" +
+      "          && (github.event_name != 'workflow_dispatch' || inputs.dry_run != true) }}\n",
+    "    if: ${{ (github.event_name != 'workflow_dispatch' || inputs.dry_run != true) }}\n",
+  ).replace(
+    "      - name: Download immutable hosting artifact\n",
+    "      - name: Decoy step\n" +
+      "        if: ${{ !cancelled() && needs.build-hosting-artifacts.result == 'success' }}\n" +
+      "        run: echo decoy\n" +
+      "      - name: Download immutable hosting artifact\n",
+  ),
+  1,
+);
 expect(
   "missing stable tag trigger fails",
   GOOD.replace('    tags: ["v*"]\n', ""),
