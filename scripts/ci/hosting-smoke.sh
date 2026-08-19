@@ -140,13 +140,20 @@ const fs = require("fs");
 const [livePath, expectedPath] = process.argv.slice(2);
 const live = fs.readFileSync(livePath, "utf8");
 const expected = fs.readFileSync(expectedPath, "utf8");
-const privateRule = "# The member console is private — never index it.\n";
-const suffixStart = live.lastIndexOf(privateRule);
-if (suffixStart < 0 || live.slice(suffixStart) !== expected) process.exit(1);
-const managedPrefix = live.slice(0, suffixStart);
+if (!live.endsWith(expected)) process.exit(1);
+const managedPrefix = live.slice(0, live.length - expected.length);
+const beginMarker = "# BEGIN Cloudflare Managed content\n";
+const endMarker = "\n# END Cloudflare Managed Content\n\n";
+if (!managedPrefix.startsWith(beginMarker) || !managedPrefix.endsWith(endMarker)) {
+  process.exit(1);
+}
+const managedBody = managedPrefix.slice(
+  beginMarker.length,
+  managedPrefix.length - endMarker.length,
+);
 if (
-  !managedPrefix.includes("# BEGIN Cloudflare Managed content") ||
-  !managedPrefix.includes("# END Cloudflare Managed Content")
+  managedBody.includes("# BEGIN Cloudflare Managed content") ||
+  managedBody.includes("# END Cloudflare Managed Content")
 ) {
   process.exit(1);
 }
