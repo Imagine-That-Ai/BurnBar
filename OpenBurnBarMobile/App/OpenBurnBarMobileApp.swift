@@ -35,9 +35,12 @@ enum HermesGatewayPairingDeepLink {
     }
 
     static func code(from notification: Notification) -> String? {
-        (notification.userInfo?[codeUserInfoKey] as? String)?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .nilIfEmpty()
+        guard let code = (notification.userInfo?[codeUserInfoKey] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !code.isEmpty else {
+            return nil
+        }
+        return code
     }
 
     static func consumePendingCode() -> String? {
@@ -48,12 +51,13 @@ enum HermesGatewayPairingDeepLink {
 
     static func pairingCode(from url: URL) -> String? {
         let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
-        let code = components?.queryItems?
+        guard let code = components?.queryItems?
             .first { ["code", "userCode", "user_code"].contains($0.name) }?
             .value?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .nilIfEmpty()
-        guard let code else { return nil }
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !code.isEmpty else {
+            return nil
+        }
 
         let scheme = url.scheme?.lowercased()
         let host = url.host?.lowercased()
