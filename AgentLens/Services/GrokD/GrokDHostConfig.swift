@@ -19,7 +19,10 @@ struct GrokDHostConfig: Equatable, Sendable {
     let guiMode: String?
 
     var shimBaseURL: URL {
-        URL(string: "http://\(loopbackHost):\(shimPort)")!
+        if let url = URL(string: "http://\(loopbackHost):\(shimPort)") {
+            return url
+        }
+        return URL(fileURLWithPath: "/grokd-invalid-loopback")
     }
 
     var guiIsLocalProfile: Bool {
