@@ -39,28 +39,44 @@ final class WarWireGrantStore {
         guard listenerUID != uid else { return }
         listener?.remove()
         listenerUID = uid
+        // Grants belong to an account: switching accounts starts from consent
+        // zero rather than carrying the previous account's cache.
+        grantsByPairID = [:]
+        hasLoaded = false
         listener = collection(uid: uid).addSnapshotListener { [weak self] snapshot, error in
             Task { @MainActor [weak self] in
-                guard let self else { return }
-                if let error {
-                    AppLogger.network.silentFailure("war_wire_grants_listen_failed", error: error)
-                    return
-                }
-                var parsed: [String: WarWireGrant] = [:]
-                for document in snapshot?.documents ?? [] {
-                    guard let grant = Self.grant(from: document.data()) else { continue }
-                    parsed[grant.pairID] = grant
-                }
-                self.grantsByPairID = parsed
-                self.hasLoaded = true
+                self?.apply(documents: snapshot?.documents.map { $0.data() }, error: error)
             }
         }
+    }
+
+    /// Listener seam: parses a snapshot's documents, or fails closed on error.
+    /// Unverifiable consent reads as revoked — a failing listener clears the
+    /// cache so the Wire closes instead of trusting grants it can no longer
+    /// confirm.
+    func apply(documents: [[String: Any]]?, error: Error?) {
+        if let error {
+            AppLogger.network.silentFailure("war_wire_grants_listen_failed", error: error)
+            grantsByPairID = [:]
+            hasLoaded = false
+            return
+        }
+        var parsed: [String: WarWireGrant] = [:]
+        for data in documents ?? [] {
+            guard let grant = Self.grant(from: data) else { continue }
+            parsed[grant.pairID] = grant
+        }
+        grantsByPairID = parsed
+        hasLoaded = true
     }
 
     func stop() {
         listener?.remove()
         listener = nil
         listenerUID = nil
+        // A stopped store can no longer verify consent; fail closed.
+        grantsByPairID = [:]
+        hasLoaded = false
     }
 
     func grant(between first: String, and second: String) -> WarWireGrant? {

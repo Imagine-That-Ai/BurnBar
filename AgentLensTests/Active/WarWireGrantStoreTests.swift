@@ -92,4 +92,49 @@ final class WarWireGrantStoreTests: XCTestCase {
         ])
         XCTAssertEqual(grant?.pairID, WarWireGrant.pairID(bodyB, bodyA))
     }
+
+    // MARK: - cache lifecycle (fail closed)
+
+    private var activeDocument: [String: Any] {
+        ["bodyIdA": bodyA, "bodyIdB": bodyB, "state": "active"]
+    }
+
+    @MainActor
+    private func loadedStore() -> WarWireGrantStore {
+        let store = WarWireGrantStore(accountManager: FakeAccountManager.makeSignedIn())
+        store.apply(documents: [activeDocument], error: nil)
+        XCTAssertTrue(store.hasLoaded)
+        XCTAssertEqual(store.grant(between: bodyA, and: bodyB)?.state, .active)
+        return store
+    }
+
+    /// A listener error means consent can no longer be verified, and
+    /// unverifiable consent reads as revoked: the cached grants must go, not
+    /// linger as the last-known answer.
+    @MainActor
+    func test_listenerErrorClearsCachedGrants() {
+        let store = loadedStore()
+        store.apply(documents: nil, error: URLError(.notConnectedToInternet))
+        XCTAssertFalse(store.hasLoaded)
+        XCTAssertNil(store.grant(between: bodyA, and: bodyB))
+    }
+
+    /// A recovered listener repopulates the cache on its next snapshot.
+    @MainActor
+    func test_snapshotAfterErrorRestoresGrants() {
+        let store = loadedStore()
+        store.apply(documents: nil, error: URLError(.notConnectedToInternet))
+        store.apply(documents: [activeDocument], error: nil)
+        XCTAssertTrue(store.hasLoaded)
+        XCTAssertEqual(store.grant(between: bodyA, and: bodyB)?.state, .active)
+    }
+
+    /// A stopped store can no longer verify consent, so it holds none.
+    @MainActor
+    func test_stopClearsCachedGrants() {
+        let store = loadedStore()
+        store.stop()
+        XCTAssertFalse(store.hasLoaded)
+        XCTAssertNil(store.grant(between: bodyA, and: bodyB))
+    }
 }

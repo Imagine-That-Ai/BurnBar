@@ -24,6 +24,7 @@ final class StandingOrderRuntimeHost {
     private let store: StandingOrderStore
     private let directory: HermesBodyDirectory
     private let dispatcher: MacWandMissionDispatcher
+    private let killSwitchProvider: () -> Bool
     @ObservationIgnored private var started = false
     @ObservationIgnored private var generation: UInt64 = 0
     @ObservationIgnored private var tickInFlight = false
@@ -31,11 +32,13 @@ final class StandingOrderRuntimeHost {
     init(
         store: StandingOrderStore,
         directory: HermesBodyDirectory,
-        dispatcher: MacWandMissionDispatcher
+        dispatcher: MacWandMissionDispatcher,
+        killSwitchProvider: @escaping () -> Bool
     ) {
         self.store = store
         self.directory = directory
         self.dispatcher = dispatcher
+        self.killSwitchProvider = killSwitchProvider
     }
 
     /// The fleet directory is shared with the other War Room hosts, so its
@@ -74,6 +77,14 @@ final class StandingOrderRuntimeHost {
         defer { tickInFlight = false }
         let tickGeneration = generation
         lastTickAt = now
+        // The kill switch halts every War Room actuator, not just the Wire:
+        // stored standing orders must stop creating missions the moment the
+        // operator engages the documented rollback.
+        if killSwitchProvider() {
+            lastDispatchCount = 0
+            lastDeferralCount = 0
+            return
+        }
         let orders: [StandingOrder]
         do {
             orders = try await store.fetchOrders()
@@ -108,6 +119,26 @@ final class StandingOrderRuntimeHost {
         generation fireGeneration: UInt64
     ) async {
         guard generation == fireGeneration, started || fireGeneration == 0 else { return }
+        // Re-checked per dispatch: the switch can engage mid-tick, between
+        // the plan and a later order in the same pass.
+        guard !killSwitchProvider() else { return }
+        // The claim commits BEFORE the external mission write, so a crash or
+        // DB failure between the two can only skip an occurrence — never let
+        // the next tick double-run paid or destructive scheduled work. A
+        // failed dispatch rolls the claim back, so a transient Firestore
+        // outage retries next tick instead of silently eating the cycle.
+        let previousFiredAt = dispatch.order.lastFiredAt
+        do {
+            try await store.markFired(id: dispatch.order.id, at: now)
+        } catch {
+            AppLogger.dataStore.silentFailure("standing_order_claim_failed", error: error)
+            return
+        }
+        guard generation == fireGeneration, started || fireGeneration == 0 else {
+            // Nothing external happened yet; hand the occurrence back.
+            await rollBack(dispatch, claimedAt: now, to: previousFiredAt)
+            return
+        }
         do {
             _ = try await dispatcher.dispatch(
                 title: dispatch.order.title,
@@ -117,13 +148,24 @@ final class StandingOrderRuntimeHost {
                 originator: dispatch.originator,
                 targetBodyID: dispatch.plan.targetBodyID
             )
-            guard generation == fireGeneration, started || fireGeneration == 0 else { return }
-            // Only a mission that was actually created advances the schedule.
-            // Marking a failed dispatch as fired would silently skip the cycle
-            // the user asked for.
-            try await store.markFired(id: dispatch.order.id, at: now)
         } catch {
             AppLogger.network.silentFailure("standing_order_dispatch_failed", error: error)
+            await rollBack(dispatch, claimedAt: now, to: previousFiredAt)
+        }
+    }
+
+    /// A rollback that itself fails leaves the claim standing, which skips this
+    /// occurrence rather than risking a double run of paid work — the safe
+    /// direction, but never a silent one.
+    private func rollBack(
+        _ dispatch: StandingOrderDispatch,
+        claimedAt: Date,
+        to previous: Date?
+    ) async {
+        do {
+            try await store.rollBackFire(id: dispatch.order.id, from: claimedAt, to: previous)
+        } catch {
+            AppLogger.dataStore.silentFailure("standing_order_rollback_failed", error: error)
         }
     }
 }

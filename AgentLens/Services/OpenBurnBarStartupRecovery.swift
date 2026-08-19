@@ -682,7 +682,8 @@ final class OpenBurnBarRuntimeContext {
             standingOrders = StandingOrderRuntimeHost(
                 store: StandingOrderStore(dbQueue: dataStore.actor.dbQueue),
                 directory: fleetDirectory,
-                dispatcher: MacWandMissionDispatcher(accountManager: accountManager)
+                dispatcher: MacWandMissionDispatcher(accountManager: accountManager),
+                killSwitchProvider: { [settingsManager] in settingsManager.warRoomKillSwitch }
             )
             standingOrderRuntimeHost = standingOrders
         }

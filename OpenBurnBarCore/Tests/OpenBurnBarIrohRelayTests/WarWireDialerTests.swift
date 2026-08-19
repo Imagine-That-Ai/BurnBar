@@ -350,6 +350,38 @@ final class WarWireDialerTests: XCTestCase {
         XCTAssertEqual(outcome.closure, .transportLost)
     }
 
+    /// A peer that accepts the stream and then never answers the hello must
+    /// not wedge the dial: the handshake receive is bounded by the same
+    /// deadline as connect, and `WarWireHost.refresh()` dials serially, so a
+    /// wedged dial would block every future pass.
+    func test_silentPeerTimesOutInsteadOfWedgingTheDial() async throws {
+        let rendezvous = LoopbackIrohRelayRendezvous()
+        let answerTransport = LoopbackIrohRelayTransport(nodeId: "node-mini", rendezvous: rendezvous)
+        let dialTransport = LoopbackIrohRelayTransport(nodeId: "node-studio", rendezvous: rendezvous)
+        _ = try await answerTransport.start()
+        _ = try await dialTransport.start()
+
+        // Accept the inbound stream and hold it open without ever answering.
+        let held = Task<any IrohRelayStream, Error> {
+            try await answerTransport.accept(timeout: 5)
+        }
+
+        let started = Date()
+        let outcome = await WarWireDialer.dial(
+            transport: dialTransport,
+            target: IrohDialTarget(nodeId: "node-mini"),
+            remoteBodyID: answererBody,
+            grant: activeGrant(),
+            credentials: credentials(bodyID: dialerBody),
+            timeout: 0.25
+        )
+        XCTAssertEqual(outcome.closure, .transportLost)
+        XCTAssertNil(outcome.link)
+        XCTAssertLessThan(Date().timeIntervalSince(started), 5, "the dial must return on the deadline, not hang")
+
+        if let inbound = try? await held.value { await inbound.close() }
+    }
+
     func test_peerHangupReadsAsFinished() async throws {
         let pair = try await makePair(
             answererCredentials: credentials(bodyID: answererBody),

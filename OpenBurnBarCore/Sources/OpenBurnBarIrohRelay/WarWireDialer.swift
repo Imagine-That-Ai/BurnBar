@@ -214,9 +214,10 @@ public enum WarWireDialer {
         }
 
         let answer: HermesRealtimeRelayFrame?
-        do {
-            answer = try await stream.receive()
-        } catch {
+        switch await receiveHandshake(from: stream, timeout: timeout) {
+        case .success(let frame):
+            answer = frame
+        case .failure:
             await stream.close()
             return .fallBackToFirestore(.transportLost)
         }
@@ -254,12 +255,14 @@ public enum WarWireDialer {
     public static func accept(
         on stream: any IrohRelayStream,
         credentials: WarWireCredentials,
-        grantForPeer: @Sendable (String) -> WarWireGrant?
+        grantForPeer: @Sendable (String) -> WarWireGrant?,
+        timeout: TimeInterval = 10
     ) async -> WarWireDialOutcome {
         let opening: HermesRealtimeRelayFrame?
-        do {
-            opening = try await stream.receive()
-        } catch {
+        switch await receiveHandshake(from: stream, timeout: timeout) {
+        case .success(let frame):
+            opening = frame
+        case .failure:
             await stream.close()
             return .fallBackToFirestore(.transportLost)
         }
@@ -322,6 +325,60 @@ public enum WarWireDialer {
         }
 
         return .connected(WarWireLink(stream: stream, session: session))
+    }
+
+    /// Bound a handshake read with the dial deadline.
+    ///
+    /// `transport.connect` honours `timeout`, but a peer that accepts the QUIC
+    /// stream and then goes silent would suspend `receive()` forever — and
+    /// `WarWireHost.refresh()` awaits dials serially, so one silent peer would
+    /// wedge every future pass, including the passes that close links after a
+    /// revocation or the kill switch. Neither transport promises a
+    /// cancellation-aware `receive`, so the race is settled by a resume-once
+    /// gate: whichever verdict lands first is delivered, and a timeout closes
+    /// the stream so the orphaned read ends when the transport tears down.
+    private static func receiveHandshake(
+        from stream: any IrohRelayStream,
+        timeout: TimeInterval
+    ) async -> Result<HermesRealtimeRelayFrame?, any Error> {
+        await withCheckedContinuation { continuation in
+            let gate = WarWireHandshakeGate(continuation)
+            Task {
+                let verdict: Result<HermesRealtimeRelayFrame?, any Error>
+                do {
+                    verdict = .success(try await stream.receive())
+                } catch {
+                    verdict = .failure(error)
+                }
+                await gate.finish(verdict)
+            }
+            Task {
+                try? await Task.sleep(nanoseconds: UInt64(max(0, timeout) * 1_000_000_000))
+                if await gate.finish(.failure(IrohRelayTransportError.timedOut)) {
+                    await stream.close()
+                }
+            }
+        }
+    }
+}
+
+/// Resume-once gate for the handshake race. The losing verdict is discarded,
+/// so a frame that arrives after the deadline cannot resume a continuation the
+/// timeout already consumed (and vice versa).
+private actor WarWireHandshakeGate {
+    private var continuation: CheckedContinuation<Result<HermesRealtimeRelayFrame?, any Error>, Never>?
+
+    init(_ continuation: CheckedContinuation<Result<HermesRealtimeRelayFrame?, any Error>, Never>) {
+        self.continuation = continuation
+    }
+
+    /// Settle the race. Returns whether this verdict is the one delivered.
+    @discardableResult
+    func finish(_ verdict: Result<HermesRealtimeRelayFrame?, any Error>) -> Bool {
+        guard let continuation else { return false }
+        self.continuation = nil
+        continuation.resume(returning: verdict)
+        return true
     }
 }
 

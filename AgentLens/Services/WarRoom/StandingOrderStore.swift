@@ -89,6 +89,18 @@ final class StandingOrderStore: Sendable {
         }
     }
 
+    /// Roll a failed dispatch's claim back so the next tick retries the
+    /// occurrence. Guarded on the claimed stamp so it never clobbers a newer
+    /// fire recorded by anyone else in the window.
+    func rollBackFire(id: String, from claimed: Date, to previous: Date?) async throws {
+        try await dbQueue.write { db in
+            try db.execute(
+                sql: "UPDATE standing_orders SET lastFiredAt = ?, updatedAt = ? WHERE id = ? AND lastFiredAt = ?",
+                arguments: [previous, claimed, id, claimed]
+            )
+        }
+    }
+
     func setEnabled(id: String, isEnabled: Bool, now: Date = Date()) async throws {
         try await dbQueue.write { db in
             try db.execute(
@@ -106,29 +118,34 @@ final class StandingOrderStore: Sendable {
 
     // MARK: - Mapping
 
+    /// Reads through GRDB's typed subscript rather than casting the untyped
+    /// value: SQLite hands an INTEGER column back as `Int64`, so `as? Int`
+    /// silently yields nil and would drop every interval order on the floor.
     private static func order(from row: Row) -> StandingOrder? {
         guard
-            let id = row["id"] as? String,
-            let title = row["title"] as? String,
-            let instruction = row["instruction"] as? String,
-            let cadenceKind = row["cadenceKind"] as? String,
-            let createdAt = OpenBurnBarDatabase.parseDateValue(row["createdAt"]),
-            let updatedAt = OpenBurnBarDatabase.parseDateValue(row["updatedAt"])
+            let id: String = row["id"],
+            let title: String = row["title"],
+            let instruction: String = row["instruction"],
+            let cadenceKind: String = row["cadenceKind"],
+            let createdAt: Date = row["createdAt"],
+            let updatedAt: Date = row["updatedAt"]
         else { return nil }
+
+        let isEnabled: Bool = row["isEnabled"] ?? true
 
         return StandingOrderRow(
             id: id,
             title: title,
             instruction: instruction,
             cadenceKind: cadenceKind,
-            cadenceMinutes: row["cadenceMinutes"] as? Int,
-            cadenceHour: row["cadenceHour"] as? Int,
-            cadenceMinute: row["cadenceMinute"] as? Int,
-            cadenceWeekday: row["cadenceWeekday"] as? Int,
-            targetBodyId: row["targetBodyId"] as? String,
-            requiredCapabilities: (row["requiredCapabilities"] as? String) ?? "",
-            isEnabled: ((row["isEnabled"] as? Int) ?? 1) != 0,
-            lastFiredAt: OpenBurnBarDatabase.parseDateValue(row["lastFiredAt"]),
+            cadenceMinutes: row["cadenceMinutes"],
+            cadenceHour: row["cadenceHour"],
+            cadenceMinute: row["cadenceMinute"],
+            cadenceWeekday: row["cadenceWeekday"],
+            targetBodyId: row["targetBodyId"],
+            requiredCapabilities: row["requiredCapabilities"] ?? "",
+            isEnabled: isEnabled,
+            lastFiredAt: row["lastFiredAt"],
             createdAt: createdAt,
             updatedAt: updatedAt
         ).order
