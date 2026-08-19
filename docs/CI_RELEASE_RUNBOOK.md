@@ -252,3 +252,61 @@ lives inside the bundle at `Modules/module.modulemap` and cannot collide. See
 
 A static library placed inside a `.framework` bundle is a normal "static
 framework" and is what both of those scripts produce.
+
+---
+
+## 9. iOS must not block a macOS release
+
+`build-and-release` packages the macOS DMG **and** the App Store iOS archive in
+one job, deliberately: both come from a single source-coherent Signal FFI build
+(see *Prepare Signal FFI XCFramework for release app*). Moving iOS to its own
+job would mean either duplicating ~1300 lines of signing/FFI setup or rebuilding
+the FFI separately — which breaks exactly the coherence that design protects.
+
+The defect was never the shared job. It was that **an iOS failure failed the
+whole release**, including a macOS app that had already built and signed
+cleanly. In August 2026 an iOS-only `module.modulemap` collision blocked every
+macOS release for weeks.
+
+So the iOS archive is `continue-on-error: true`, and its outcome is recorded:
+
+- `steps.ios-status` writes `success` / `failure` into the job output
+  `ios_status`.
+- Failure emits an `::error::` annotation **and** a job-summary block naming
+  exactly what is excluded.
+- The iOS artifact upload and `domain-core-ios-release-evidence` both gate on
+  `ios_status == 'success'`.
+
+The release therefore **degrades visibly** — macOS ships, iOS is excluded, and
+the run says so in three places — instead of failing wholesale or, worse,
+silently publishing an incomplete set.
+
+**If you are debugging a release that shipped without iOS assets**, look for the
+`iOS archive failed` annotation on `build-and-release`. That is the intended
+signal, not a bug.
+
+### Corrections to §2, from a peer session
+
+The manifest rule in §2 was stated too broadly. Precisely:
+
+- The control-plane manifest pins ~14 release/deploy workflows and ~300
+  **scripts**. `fast-feedback.yml` and `security-pr.yml` are **not** pinned.
+- The pinned set spans `scripts/` broadly — including `scripts/ci/*.py` and
+  release-verification shell scripts such as `verify-public-macos-download-trust.sh`.
+  **If a release packet touches anything under `scripts/`, assume it is pinned
+  and run `--write`.**
+- Release packets are the highest-risk carrier for this: they routinely edit
+  pinned scripts while everyone's attention is on the release. Three separate
+  emergency packets (#2343, #2344, #2347) each left `main` red this way, and the
+  resulting failure names a file the author never touched — which reads as an
+  inexplicable ejection rather than a missing regeneration.
+
+**The check that catches all of it**, and the one to make reflexive:
+
+```bash
+node scripts/ci/verify-domain-core-control-plane.mjs --write
+git diff config/domain-core-control-plane-manifest.json
+```
+
+The diff should name **only files you edited**. Any other filename means `main`
+was already stale before you started — do not assume it is your change.

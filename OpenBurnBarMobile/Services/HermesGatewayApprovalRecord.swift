@@ -138,7 +138,3 @@ extension HermesGatewayApprovalRecord {
         ParsePrimitives.string(raw)
     }
 }
-
-private extension String {
-    var nilIfEmpty: String? { isEmpty ? nil : self }
-}

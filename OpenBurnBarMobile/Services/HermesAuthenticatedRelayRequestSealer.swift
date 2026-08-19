@@ -145,9 +145,3 @@ enum MobileHermesAuthenticatedRelayRequestSealer {
         return "relay-v3-\(hex)"
     }
 }
-
-private extension String {
-    var nilIfEmpty: String? {
-        isEmpty ? nil : self
-    }
-}
