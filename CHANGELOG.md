@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.40] - 2026-08-18
+
+### Fixed
+- Repair the Functions release-gate fixture so notification events include a
+  future expiry timestamp, matching the production event contract.
+- Advance the macOS, daemon, extension, Android fallback, Windows manifest, and
+  release documentation surfaces to build 81 / version 1.0.40.
+
 ## [1.0.39] - 2026-08-18
 
 ### Fixed
