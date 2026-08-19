@@ -54,7 +54,8 @@ test("committed policy pins the production TeamIdentifier and leaf Authority", (
   assert.deepEqual(policy, {
     schemaVersion: 1,
     teamIdentifier: "4Y367DF25B",
-    authority: "Developer ID Application: Imagine That AI LLC (4Y367DF25B)",
+    authority:
+      "Developer ID Application: Imagine That AI Limited Liability Company (4Y367DF25B)",
   });
 });
 
