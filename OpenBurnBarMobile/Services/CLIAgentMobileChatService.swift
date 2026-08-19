@@ -540,4 +540,3 @@ enum CLIAgentPresentationModePreferences {
         UserDefaults.standard.set(mode.rawValue, forKey: key(for: runtime))
     }
 }
-

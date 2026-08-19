@@ -523,4 +523,3 @@ struct HermesGatewayQueuedEvent: Decodable, Hashable, Sendable {
     let sequence: Int
     let targetClientId: String?
 }
-

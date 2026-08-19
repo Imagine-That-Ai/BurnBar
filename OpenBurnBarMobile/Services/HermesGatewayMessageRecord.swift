@@ -592,4 +592,3 @@ enum HermesGatewayMessageResolver {
         return trimmed
     }
 }
-

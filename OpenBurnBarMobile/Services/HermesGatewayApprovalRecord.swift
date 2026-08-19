@@ -138,4 +138,3 @@ extension HermesGatewayApprovalRecord {
         ParsePrimitives.string(raw)
     }
 }
-

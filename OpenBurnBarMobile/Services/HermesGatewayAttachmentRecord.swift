@@ -230,4 +230,3 @@ struct HermesGatewayAttachmentManifest: Hashable, Sendable {
         self.destinationId = destinationId
     }
 }
-

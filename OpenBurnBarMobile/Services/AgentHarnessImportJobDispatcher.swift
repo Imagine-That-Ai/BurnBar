@@ -108,4 +108,3 @@ struct AgentHarnessImportJobSnapshot: Identifiable, Equatable, Sendable {
         ["completed", "failed", "canceled", "cancelled"].contains(status)
     }
 }
-

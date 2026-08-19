@@ -145,4 +145,3 @@ enum MobileHermesAuthenticatedRelayRequestSealer {
         return "relay-v3-\(hex)"
     }
 }
-

@@ -268,4 +268,3 @@ struct CLIAgentMissionSnapshot: Equatable, Sendable, Identifiable {
         }.first
     }
 }
-
