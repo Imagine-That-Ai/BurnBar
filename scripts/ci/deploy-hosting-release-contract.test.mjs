@@ -72,8 +72,8 @@ test("push deploys are enabled while manual dry-runs remain build-only", () => {
   );
   assert.match(
     deploy,
-    /if: \$\{\{ github\.event_name == 'push' \|\| \(github\.event_name == 'workflow_dispatch' && inputs\.dry_run != true\) \}\}/u,
-    "push events must be explicitly deploy-enabled without absent workflow_dispatch inputs",
+    /if: \$\{\{ always\(\) && needs\.build-hosting-artifacts\.result == 'success' && \(github\.event_name == 'push' \|\| \(github\.event_name == 'workflow_dispatch' && inputs\.dry_run != true\)\) \}\}/u,
+    "push events must explicitly run after a successful artifact build without absent workflow_dispatch inputs",
   );
   assert.match(
     smoke,
