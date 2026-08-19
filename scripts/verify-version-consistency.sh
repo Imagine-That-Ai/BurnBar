@@ -54,6 +54,13 @@ check() {
 check "$repo_root/README.md" '.*Status:.*macOS `([^`]+)`.*' "README status line"
 check "$repo_root/CHANGELOG.md" '^## \[([0-9][^]]*)\].*' "CHANGELOG heading"
 check "$repo_root/extensions/openburnbar/package.json" '.*"version": "([^"]+)".*' "Extension package.json"
+# The Safari web extension ships inside OpenBurnBar.app as an appex, so its
+# version is the app's version. build.mjs stamps dist/manifest.json from
+# package.json, so all three must agree with MARKETING_VERSION — dist/ drifted
+# to 1.0.34 while the app shipped 1.0.40 before this gate existed.
+check "$repo_root/extensions/safari/package.json" '.*"version": "([^"]+)".*' "Safari extension package.json"
+check "$repo_root/extensions/safari/manifest.json" '.*"version": "([^"]+)".*' "Safari extension source manifest"
+check "$repo_root/extensions/safari/dist/manifest.json" '.*"version": "([^"]+)".*' "Safari extension built manifest"
 
 homebrew_file="$repo_root/homebrew/burnbar.rb"
 homebrew_version="$(sed -nE 's/^[[:space:]]*version "([^"]+)".*/\1/p' "$homebrew_file" | head -1 || true)"

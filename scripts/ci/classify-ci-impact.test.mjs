@@ -161,6 +161,52 @@ test("signal-envelope-contracts mixed with AgentLens still wakes macos", () => {
   assert.equal(result.mobile, false);
 });
 
+test("safari extension npm manifests select macos, not a full run", () => {
+  const result = classifyPaths([
+    "extensions/safari/package-lock.json",
+    "extensions/safari/package.json",
+  ]);
+  assert.equal(result.full, false);
+  assert.equal(result.reason, "owned-paths");
+  assert.equal(result.macos, true);
+  assert.equal(result.mobile, false);
+  assert.equal(result.android, false);
+  assert.equal(result.rust, false);
+  assert.equal(result.daemon, false);
+  assert.equal(result.functions, false);
+  assert.equal(result.web, false);
+  assert.equal(result.console, false);
+});
+
+test("safari extension source and built bundle select macos", () => {
+  for (const path of [
+    "extensions/safari/src/background/controller.ts",
+    "extensions/safari/src/shared/protocol.ts",
+    "extensions/safari/test/controller.serviceWorker.test.ts",
+    "extensions/safari/tsconfig.background.json",
+    "extensions/safari/dist/background.js",
+    "OpenBurnBarSafariExtension/SafariWebExtensionHandler.swift",
+  ]) {
+    const result = classifyPaths([path]);
+    assert.equal(result.full, false, path);
+    assert.equal(result.reason, "owned-paths", path);
+    assert.equal(result.macos, true, path);
+    assert.equal(result.mobile, false, path);
+    assert.equal(result.web, false, path);
+  }
+});
+
+test("safari extension manifests mixed with functions wake both lanes", () => {
+  const result = classifyPaths([
+    "extensions/safari/package.json",
+    "functions/src/index.ts",
+  ]);
+  assert.equal(result.full, false);
+  assert.equal(result.macos, true);
+  assert.equal(result.functions, true);
+  assert.equal(result.mobile, false);
+});
+
 test("this classifier edit still classifies as full", () => {
   const result = classifyPaths(["scripts/ci/classify-ci-impact.mjs"]);
   assert.equal(result.full, true);

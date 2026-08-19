@@ -57,6 +57,25 @@ const NODE_SIGNAL_ENVELOPE_CONTRACTS = Object.freeze([
   /^packages\/signal-envelope-contracts\/(?:package\.json|package-lock\.json)$/,
 ]);
 
+// The Safari web extension is a self-contained npm project whose only product
+// consumer is the macOS app bundle, which embeds its dist/ as the appex
+// resources. Its two npm manifests would otherwise hit the repo-wide
+// package.json rule above and wake every lane — including the ~90 minute
+// macos-26 libsignal FFI rebuild — for a change that cannot reach them. Same
+// false-full trap as the Signal envelope contracts above. Only the manifests
+// take the exception; src, test, scripts, and configs stay fail-closed.
+const SAFARI_EXTENSION_NPM_MANIFESTS = Object.freeze([
+  /^extensions\/safari\/(?:package\.json|package-lock\.json)$/,
+]);
+
+// Paths that look repo-wide by filename but are provably lane-local. Every
+// entry must ALSO be owned by a LANE_PATTERNS rule below, or it falls into
+// `ambiguous` and fails closed to a full run regardless of this exemption.
+const FULL_PATTERN_EXEMPTIONS = Object.freeze([
+  ...NODE_SIGNAL_ENVELOPE_CONTRACTS,
+  ...SAFARI_EXTENSION_NPM_MANIFESTS,
+]);
+
 const FULL_PATTERNS = [
   /(^|\/)(Package\.swift|Package\.resolved|Cargo\.toml|Cargo\.lock|build\.gradle(?:\.kts)?|settings\.gradle(?:\.kts)?|gradle\.properties|package\.json|package-lock\.json|pnpm-lock\.yaml|yarn\.lock|[^/]+\.csproj|[^/]+\.slnx?|Directory\.Build\.(?:props|targets)|global\.json|packages\.lock\.json)$/,
   /^(OpenBurnBar\.xcodeproj|OpenBurnBar\.xcworkspace|tools\/schema-sync|Vendor\/|scripts\/lib\/|scripts\/release\/|scripts\/security\/)/,
@@ -208,7 +227,7 @@ export function classifyPaths(
   if (
     cleanPaths.some(
       (path) =>
-        !matchesAny(path, NODE_SIGNAL_ENVELOPE_CONTRACTS) &&
+        !matchesAny(path, FULL_PATTERN_EXEMPTIONS) &&
         matchesAny(path, FULL_PATTERNS),
     )
   ) {
