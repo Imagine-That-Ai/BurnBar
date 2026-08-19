@@ -458,12 +458,6 @@ class HostedQuotaSubscriptionStore(
         }
     }
 
-    fun loadProducts() = load()
-
-    fun purchase(activity: Activity) {
-        purchase(activity, PRODUCT_ID)
-    }
-
     fun purchase(activity: Activity, productID: String) {
         viewModelScope.launch {
             _isLoading.value = true

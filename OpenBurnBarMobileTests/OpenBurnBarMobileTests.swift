@@ -3308,7 +3308,7 @@ final class OpenBurnBarMobileTests: XCTestCase {
     func testPendingOsRouteApplyStashesMissionBeforePost() {
         let routed = MobileOsIntegrationPolicy.route(payload: [
             "type": "mission",
-            "mission_id": "m-cold",
+            "mission_id": "m-cold"
         ])
         MobileOsDeepLinkApplier.apply(routed)
         XCTAssertEqual(
