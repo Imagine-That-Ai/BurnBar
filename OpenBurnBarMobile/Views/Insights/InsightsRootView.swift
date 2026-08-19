@@ -529,7 +529,6 @@ private struct AdaptiveInsightsLayout: View {
     }
 }
 
-
 // Shared mission live detail views extracted to MissionLiveDetailSharedViews.swift
 
 @Observable
