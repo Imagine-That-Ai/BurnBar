@@ -22,6 +22,7 @@ import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.functions.FirebaseFunctionsException
 import com.openburnbar.data.firebase.FunctionsRepository
 import com.openburnbar.data.policy.MobileStoreEntitlementPolicy
+import com.openburnbar.data.policy.UidScopedCacheRegistry
 import com.openburnbar.ui.pro.CloudTier
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -70,6 +71,7 @@ class HostedQuotaSubscriptionStore(
     initialBillingClient: BillingClient? = null,
     initialFirestore: FirebaseFirestore? = null,
     initialFirebaseAuth: FirebaseAuth? = null,
+    scopedCaches: UidScopedCacheRegistry = UidScopedCacheRegistry.shared,
 ) : ViewModel(), PurchasesUpdatedListener {
     companion object {
         private const val LOG_TAG = "BurnBarBilling"
@@ -318,6 +320,26 @@ class HostedQuotaSubscriptionStore(
     private var authListener: FirebaseAuth.AuthStateListener? = null
     private var firestoreEntitlementActive: Boolean? = null
 
+    init {
+        scopedCaches.register { clearCache() }
+    }
+
+    /**
+     * Drop UID-scoped entitlement StateFlows and Firestore listeners so an
+     * A→B account switch cannot keep serving A's tier. Play catalog prices
+     * stay; they are device-level, not account-level.
+     */
+    fun clearCache() {
+        entitlementListener?.remove()
+        entitlementListener = null
+        firestoreEntitlementActive = null
+        _error.value = null
+        _lastTopUpCredit.value = null
+        _isLoading.value = false
+        clearSubscriptionState()
+        firebaseAuth.currentUser?.uid?.let { attachEntitlementListener(it) }
+    }
+
     fun initialize(context: Context) {
         if (billingClient == null) {
             billingClient =
@@ -350,31 +372,36 @@ class HostedQuotaSubscriptionStore(
                     return@AuthStateListener
                 }
 
-                entitlementListener =
-                    firestore.collection("users")
-                        .document(uid)
-                        .collection("entitlements")
-                        .addSnapshotListener { snap, error ->
-                            if (firebaseAuth.currentUser?.uid != uid) {
-                                return@addSnapshotListener
-                            }
-                            if (error != null) {
-                                Log.w(LOG_TAG, "cloud entitlement listener failed: ${error.localizedMessage}")
-                                return@addSnapshotListener
-                            }
-                            if (snap == null) {
-                                Log.w(LOG_TAG, "cloud entitlement listener returned no snapshot")
-                                return@addSnapshotListener
-                            }
-                            applyEntitlementDocs(
-                                snap.documents.associate { document ->
-                                    document.id to (document.data ?: emptyMap())
-                                },
-                            )
-                        }
+                attachEntitlementListener(uid)
             }
         firebaseAuth.addAuthStateListener(listener)
         authListener = listener
+    }
+
+    private fun attachEntitlementListener(uid: String) {
+        entitlementListener?.remove()
+        entitlementListener =
+            firestore.collection("users")
+                .document(uid)
+                .collection("entitlements")
+                .addSnapshotListener { snap, error ->
+                    if (firebaseAuth.currentUser?.uid != uid) {
+                        return@addSnapshotListener
+                    }
+                    if (error != null) {
+                        Log.w(LOG_TAG, "cloud entitlement listener failed: ${error.localizedMessage}")
+                        return@addSnapshotListener
+                    }
+                    if (snap == null) {
+                        Log.w(LOG_TAG, "cloud entitlement listener returned no snapshot")
+                        return@addSnapshotListener
+                    }
+                    applyEntitlementDocs(
+                        snap.documents.associate { document ->
+                            document.id to (document.data ?: emptyMap())
+                        },
+                    )
+                }
     }
 
     // / Resolve all canonical Firestore entitlement documents highest-tier

@@ -474,11 +474,22 @@ internal fun LazyListScope.streamsSessionsItems(ctx: StreamsSessionsListContext)
         items(5) { ShimmerCard(height = 70) }
         return
     }
-    if ((ctx.error != null || ctx.searchFailed) && ctx.usages.isEmpty()) {
+    if (ctx.searchFailed) {
         item {
             ErrorStateView(
                 icon = Icons.Filled.Error,
-                title = if (ctx.searchFailed) "Search failed" else "Couldn't Load Streams",
+                title = "Search failed",
+                message = ctx.error ?: "Could not search sessions. Try again.",
+                onRetry = { ctx.activityStore.refresh() },
+            )
+        }
+        return
+    }
+    if (ctx.error != null && ctx.usages.isEmpty()) {
+        item {
+            ErrorStateView(
+                icon = Icons.Filled.Error,
+                title = "Couldn't Load Streams",
                 message = ctx.error ?: "",
                 onRetry = { ctx.activityStore.refresh() },
             )

@@ -136,12 +136,14 @@ final class OpenBurnBarMobileTests: XCTestCase {
         // no cross-test leak can change a downstream test's assertion.
         AssistantPendingThread.shared.clear(.hermes)
         AssistantPendingThread.shared.clear(.pi)
+        MobilePendingOsRouteStore.shared.clear()
     }
 
     override func tearDown() async throws {
         HermesGatewayRelayKeypair.resetPrivateKeyStorageForTesting()
         AssistantPendingThread.shared.clear(.hermes)
         AssistantPendingThread.shared.clear(.pi)
+        MobilePendingOsRouteStore.shared.clear()
         try await super.tearDown()
     }
 
@@ -3280,6 +3282,39 @@ final class OpenBurnBarMobileTests: XCTestCase {
         )
 
         XCTAssertEqual(state.mode, .inactive)
+    }
+
+    func testStreamsSearchStateSurfacesFailureEvenWithCachedHits() {
+        let state = StreamsSearchResultState(
+            query: "session cache",
+            isSearching: false,
+            cloudConversationHitCount: 2,
+            streamHitCount: 4,
+            searchFailed: true
+        )
+
+        XCTAssertEqual(state.mode, .failed)
+    }
+
+    func testPendingOsRouteConsumeIsOneShot() {
+        MobilePendingOsRouteStore.shared.stash(.mission(missionId: "mission-1"))
+        XCTAssertEqual(
+            MobilePendingOsRouteStore.shared.consume(),
+            .mission(missionId: "mission-1")
+        )
+        XCTAssertNil(MobilePendingOsRouteStore.shared.consume())
+    }
+
+    func testPendingOsRouteApplyStashesMissionBeforePost() {
+        let routed = MobileOsIntegrationPolicy.route(payload: [
+            "type": "mission",
+            "mission_id": "m-cold",
+        ])
+        MobileOsDeepLinkApplier.apply(routed)
+        XCTAssertEqual(
+            MobilePendingOsRouteStore.shared.consume(),
+            .mission(missionId: "m-cold")
+        )
     }
 
     func testCloudConversationRowsResolveProviderLogosFromCloudProviderStrings() {

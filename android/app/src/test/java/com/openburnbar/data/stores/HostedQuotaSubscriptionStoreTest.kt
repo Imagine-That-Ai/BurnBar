@@ -27,6 +27,7 @@ import com.google.firebase.firestore.QuerySnapshot
 import com.openburnbar.MainDispatcherRule
 import com.openburnbar.data.firebase.FunctionsRepository
 import com.openburnbar.data.policy.MobileStoreEntitlementPolicy
+import com.openburnbar.data.policy.UidScopedCacheRegistry
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -158,6 +159,55 @@ class HostedQuotaSubscriptionStoreTest {
         assertTrue(store.currentTier.value.satisfies(com.openburnbar.ui.pro.CloudTier.CLOUD))
         assertTrue(store.currentTier.value.satisfies(com.openburnbar.ui.pro.CloudTier.PRO))
         assertFalse(store.currentTier.value.satisfies(com.openburnbar.ui.pro.CloudTier.ULTRA))
+    }
+
+    @Test
+    fun uidScopedCacheClearDropsPublishedEntitlement() = runTest {
+        every { mockBillingClient.isReady } returns true
+
+        val mockResult = mockk<BillingResult>()
+        every { mockResult.responseCode } returns BillingClient.BillingResponseCode.OK
+        every { mockResult.debugMessage } returns ""
+
+        val proPurchase = mockk<Purchase>()
+        every { proPurchase.purchaseState } returns Purchase.PurchaseState.PURCHASED
+        every { proPurchase.products } returns listOf(HostedQuotaSubscriptionStore.CLOUD_PRO_MONTHLY_PRODUCT_ID)
+        every { proPurchase.purchaseToken } returns "pro-token"
+        every { proPurchase.purchaseTime } returns 123456789L
+        every { proPurchase.isAcknowledged } returns true
+
+        val purchasesListenerSlot = slot<PurchasesResponseListener>()
+        every { mockBillingClient.queryPurchasesAsync(any(), capture(purchasesListenerSlot)) } answers {
+            purchasesListenerSlot.captured.onQueryPurchasesResponse(mockResult, listOf(proPurchase))
+        }
+
+        coEvery {
+            mockFunctions.verifyGooglePlayBurnBarProSubscription(
+                purchaseToken = "pro-token",
+                productID = HostedQuotaSubscriptionStore.CLOUD_PRO_MONTHLY_PRODUCT_ID,
+            )
+        } returns mapOf("active" to true, "expiresAt" to ACTIVE_SUBSCRIPTION_EXPIRES_AT)
+
+        val caches = UidScopedCacheRegistry()
+        val store =
+            HostedQuotaSubscriptionStore(
+                functions = mockFunctions,
+                initialBillingClient = mockBillingClient,
+                scopedCaches = caches,
+            )
+
+        store.restorePurchases()
+        advanceUntilIdle()
+        assertTrue(store.isActive.value)
+        assertEquals(HostedQuotaSubscriptionStore.CLOUD_PRO_MONTHLY_PRODUCT_ID, store.activeProductID.value)
+
+        caches.clearAll()
+        advanceUntilIdle()
+
+        assertFalse(store.isActive.value)
+        assertNull(store.activeProductID.value)
+        assertEquals(com.openburnbar.ui.pro.CloudTier.NONE, store.currentTier.value)
+        assertNull(store.error.value)
     }
 
     @Test
