@@ -249,6 +249,7 @@
     "budgetRules": "Local automation rules; surfaced in Budgeting UI, not a privacy data domain.",
     "budgetEvents": "Covered transitively by audit_timeline.",
     "agent_import_jobs": "Ephemeral job state.",
+    "fleet_snapshot": "Ephemeral sealed mirror of the local fleet board (single vault-sealed doc, overwritten every daemon tick; only version numbers and timestamps are server-readable). Regenerated continuously from local state, so there is nothing durable to export; deleted with the account namespace.",
     "mission_groups": "Local agent orchestration state.",
     "smart_hub_config": "Local smart-home config.",
     "smart_display_actions": "Ephemeral action queue.",

@@ -11,7 +11,7 @@ rules_version = '2';
 // - users/{uid}/cloud_profile, sync_watermarks, sync_status, cloud_settings, recent_usage
 // - users/{uid}/cloud_search_index_manifest, remote_mcp_clients, remote_mcp_grants, remote_mcp_audit_events, remote_mcp_rate_limits
 // - users/{uid}/cli_sessions, cli_agent_mission_requests
-// - users/{uid}/ai_inbox_items, ai_inbox_item_state
+// - users/{uid}/ai_inbox_items, ai_inbox_item_state, fleet_snapshot
 // - users/{uid}/escrow_devices, escrow_public_keys, signal_identity_public_keys, escrow_grants, escrow_envelopes, escrow_audit_events
 // - server-only: provider_account_secret_refs, users/{uid}/_rate_limits, users/{uid}/rollup_jobs
 // - public read-only: model_benchmark_snapshots, model_benchmark_source_status
@@ -1316,8 +1316,8 @@ service cloud.firestore {
 
     // M-007: use this only on writers that already emit path-bound AAD. Today
     // that is `conversations`, `chat_threads`, `mobile_assistant_chats`,
-    // `cli_sessions`, and `ai_inbox_items`; other sealed surfaces stay on
-    // `validSealedPayloadForUser` until their clients migrate.
+    // `cli_sessions`, `ai_inbox_items`, and `fleet_snapshot`; other sealed
+    // surfaces stay on `validSealedPayloadForUser` until their clients migrate.
     function validPathBoundSealedPayloadForUser(userId, vaultKeyID, payload, collection, docId) {
       return matchesCurrentVaultKey(userId, vaultKeyID)
         && validPathBoundCloudSealedPayload(userId, collection, docId, payload)
@@ -1853,7 +1853,7 @@ service cloud.firestore {
         "usage", "budgetRules", "budgetEvents", "conversations",
         "chat_threads", "text_snippets", "mobile_assistant_chats",
         "cli_sessions", "cli_agent_mission_requests", "agent_import_jobs",
-        "ai_inbox_items", "ai_inbox_item_state",
+        "ai_inbox_items", "ai_inbox_item_state", "fleet_snapshot",
         "mission_groups", "approval_policies", "rollback_requests",
         "agent_identities", "subscription_topics", "session_logs",
         "project_memory_snapshots", "cloud_search_documents",
@@ -1893,7 +1893,7 @@ service cloud.firestore {
       allow delete: if ownsUserNamespace(userId) && collectionId in [
         "usage", "budgetRules", "chat_threads", "text_snippets",
         "mobile_assistant_chats", "cli_sessions", "agent_import_jobs",
-        "ai_inbox_items", "ai_inbox_item_state",
+        "ai_inbox_items", "ai_inbox_item_state", "fleet_snapshot",
         "mission_groups", "approval_policies", "rollback_requests",
         "agent_identities", "subscription_topics", "session_logs",
         "project_memory_snapshots", "cloud_search_documents",
@@ -2318,6 +2318,41 @@ service cloud.firestore {
 
       allow create, update: if ownerWritableNonSecret(userId)
         && validAIInboxItemState();
+    }
+
+    // Fleet dashboard snapshot mirrored from the Mac so a phone can render the
+    // agent fleet board with the Mac asleep. Single document (`current`),
+    // sealed like `ai_inbox_items` but stricter: NOTHING interesting rides in
+    // plaintext — only envelope versions and timestamps — so the server learns
+    // neither which agents exist nor what they are working on. The key list
+    // must equal `FleetMirrorCodec.documentKeys` — a field added there without
+    // a matching entry here is silently rejected. Mobile consumption is
+    // read-only in v1: orchestrator designation and directives stay
+    // Mac/daemon-local, and no write-back collection exists.
+    match /users/{userId}/fleet_snapshot/{docId} {
+      function validFleetSnapshotMirror() {
+        let d = request.resource.data;
+        return docId == "current"
+        && d.keys().hasOnly([
+          "schemaVersion",
+          "updatedAt",
+          "generatedAt",
+          "contentSealed",
+          "sealedSchemaVersion",
+          "vaultKeyID",
+          "sealedPayload"
+        ])
+        && d.schemaVersion == 1
+        && d.updatedAt is timestamp
+        && d.generatedAt is timestamp
+        && d.contentSealed == true
+        && d.sealedSchemaVersion == 2
+        && validPathBoundSealedPayloadForUser(userId, d.vaultKeyID, d.sealedPayload, "fleet_snapshot", docId)
+        && forbidsSealedPlaintextContentFields();
+      }
+
+      allow create, update: if ownerWritableNonSecret(userId)
+        && validFleetSnapshotMirror();
     }
 
     // Mobile Insights mission dispatch. iOS/iPadOS/Android create pending

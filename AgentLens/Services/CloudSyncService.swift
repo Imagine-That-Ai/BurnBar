@@ -207,6 +207,20 @@ final class CloudSyncService {
         lastSyncError = service.lastSyncError
     }
 
+    func syncFleetMirror() async {
+        guard !isSyncing else { return }
+        isSyncing = true
+        lastSyncError = nil
+        defer { isSyncing = false }
+
+        let context = makeSyncContext()
+        let service = FleetSyncService(context: context)
+        await service.sync()
+        applyContextSuppression(from: context)
+        lastSyncDate = service.lastSyncDate ?? lastSyncDate
+        lastSyncError = service.lastSyncError
+    }
+
     func syncRoamingProfile() async {
         guard !isSyncing else { return }
         isSyncing = true

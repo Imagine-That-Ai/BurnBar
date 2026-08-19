@@ -41,6 +41,12 @@ struct OpenBurnBarDaemonRuntimePaths: Hashable {
         supportDirectory.appendingPathComponent("controller-activity-snapshot.json", isDirectory: false)
     }
 
+    /// The daemon's atomically-replaced well-known fleet snapshot file
+    /// (`BurnBarDaemonPaths.defaultFleetSnapshotURL` on the daemon side).
+    var fleetSnapshotFileURL: URL {
+        supportDirectory.appendingPathComponent("fleet-snapshot.json", isDirectory: false)
+    }
+
     var heartbeatURL: URL {
         daemonDirectory.appendingPathComponent("openburnbar-daemon.heartbeat.json", isDirectory: false)
     }
