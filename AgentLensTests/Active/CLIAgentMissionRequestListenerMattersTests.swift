@@ -41,17 +41,23 @@ final class CLIAgentMissionRequestListenerMattersTests: XCTestCase {
         )
 
         XCTAssertNotEqual(pendingIdentity, approvedIdentity)
-        XCTAssertTrue(CLIAgentMissionRequestListener.isParkedPendingApproval(pending))
-        XCTAssertFalse(CLIAgentMissionRequestListener.isParkedPendingApproval(approved))
+        XCTAssertEqual(
+            MissionClaimGate.ignoreReason(pending, localBodyID: "body-a"),
+            "remains parked for mobile approval"
+        )
+        XCTAssertNil(MissionClaimGate.ignoreReason(approved, localBodyID: "body-a"))
     }
 
     @MainActor
     func testMalformedPendingApprovalIsNotSilentlyParked() {
-        XCTAssertFalse(
-            CLIAgentMissionRequestListener.isParkedPendingApproval([
-                "status": "waiting_for_approval",
-                "approvalStatus": "pending"
-            ])
+        XCTAssertNil(
+            MissionClaimGate.ignoreReason(
+                [
+                    "status": "waiting_for_approval",
+                    "approvalStatus": "pending"
+                ],
+                localBodyID: "body-a"
+            )
         )
     }
 

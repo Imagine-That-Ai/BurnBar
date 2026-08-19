@@ -308,3 +308,6 @@ node_modules/
 .artifacts/
 # Transient AppImage extraction dir from package smoke (--appimage-extract)
 squashfs-root/
+
+# Agent-owned goal ledgers are working notes, not public artifacts.
+.factory/goals/

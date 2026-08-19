@@ -102,4 +102,21 @@ public enum HermesRealtimeRelayFrameType: String, Codable, Sendable, Equatable {
     case controlSystemPermissionRequest = "control.system.permission.request"
     /// Mac reports a TCC denial classification back to the phone.
     case controlSystemPermissionStatus = "control.system.permission.status"
+    // War Room — the Wire
+    /// Dialing Mac announces its bodyId, protocol capabilities, and the war_wire_grant it is claiming.
+    case warHello = "war.hello"
+    /// Dialed Mac accepts the Wire session and returns its own bodyId and capabilities.
+    case warHelloAck = "war.hello.ack"
+    /// A body pushes its current fleet-visible state (presence, Hermes state, load) to its Wire peer.
+    case warFleetSnapshot = "war.fleet.snapshot"
+    /// Route a unit of work to this body. Carries the sealed mission payload plus the OriginatorRef the Command Board's STARTED BY column renders.
+    case warDispatch = "war.dispatch"
+    /// Dispatch accepted and queued; carries the run id the stream frames reference.
+    case warDispatchAck = "war.dispatch.ack"
+    /// Incremental output for an accepted dispatch, streamed back to the dispatching Mac.
+    case warStreamChunk = "war.stream.chunk"
+    /// Terminal frame for a dispatched run; carries the final status.
+    case warStreamComplete = "war.stream.complete"
+    /// Fail-closed refusal: no active grant, entitlement below Pro, or war_room_kill_switch engaged. The dispatcher falls back to the Firestore relay.
+    case warDenied = "war.denied"
 }

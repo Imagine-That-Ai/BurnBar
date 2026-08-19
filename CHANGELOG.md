@@ -23,6 +23,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   stale-evidence v1.0.38 preflight were both held before publication.
 
 ### Added
+- **War Room: the Wire dials, the Flame routes, and the fleet gets two faces**
+  (`docs/WAR_ROOM.md`) — the multi-machine plan lands end to end on top of the
+  identity spine below. The **Wire** grows its remaining three layers: a frame
+  codec for the eight `war` frames, a fail-closed handshake state machine whose
+  fleet and dispatch frames return nothing until the lane is admitted (and whose
+  refusal yields *fall back to Firestore*, not an error), and a dialer that
+  drives both over a real iroh transport. The **Flame** becomes a router with a
+  hand — `FlameDispatchPlanner` turns a routing decision into a dispatch,
+  refusing rather than aiming a mission at nothing, and missions carry an
+  advisory `targetBodyID` that steers work without letting anyone force a
+  machine to run it. The daemon exposes the Flame over three RPC methods
+  (`war.flame.route`, `war.flame.distill.list`, `war.flame.distill.settle`) and
+  archives every decision — including the ones that routed nowhere — into a
+  bounded distill log, because a router that only remembers its successes cannot
+  be audited. Two new surfaces in Settings → Devices & Sync: the **Hermes Room**,
+  whose "can I move Hermes there?" answer *is* the Wire's admission decision so
+  it can never promise a swap the Wire will deny, and the **Command Board**,
+  which folds every run across every machine into one grid with a STARTED BY
+  column and per-machine / per-originator cost rollups. Standing orders persist
+  in `standing_orders` (migration **v63**), with `StandingOrderScheduler` as the
+  single answer to "what should run now" for the app, the daemon, and tests, and
+  a runtime host that actually fires them: an order pinned to an offline Mac
+  waits for that Mac rather than being rerouted, a deferred order stays due
+  instead of silently losing its cycle, and the run is credited to the schedule
+  rather than to the router that placed it. Migration **v64** indexes
+  `token_usage.startTime` so the Command Board's window scan has an index to
+  stand on.
+- **War Room: machine-bound Hermes identity and the Wire's fail-closed spine**
+  (`docs/WAR_ROOM.md`) — a Hermes is now a name bound to a *machine*, not a bot.
+  Every Mac publishes one **HermesBody** (`users/{uid}/hermes_bodies/{bodyId}`):
+  the join of the device doc, the Hermes relay connection, the iroh endpoint,
+  and sysctl-probed hardware, keyed by the existing
+  `relay-host-<installationUUID>` connection id so no new identity is minted.
+  Settings → Devices & Sync gains a **Hermes Bodies** roster with rename and
+  removal. Presence is derived by the *reader* from heartbeat age rather than
+  trusted from a publisher that cannot know it went offline, and unreadable
+  hardware renders an em-dash instead of a synthetic default. `BurnBarOriginator`
+  adds typed STARTED BY attribution (9 kinds × exact/inferred/unknown
+  confidence) stamped onto Wand missions today, with a flat two-field codec for
+  the new nullable `token_usage.originatorKind` / `originatorRef` columns
+  (migration v62) and a full-map codec for Firestore. The **Wire** — the
+  Pro/Ultra-only encrypted Mac⇄Mac lane — lands its policy spine: a `war` frame
+  group in the canonical wire protocol (parity-gated across Swift, Kotlin,
+  TypeScript, and Rust), a pure `WarWireGate` both peers evaluate identically,
+  `war_wire_grants` consent records whose pair id is derived server-side and
+  whose covered pair is immutable on update, and the `war_room_kill_switch`
+  Remote Config flag that defaults to *engaged* so an install that cannot reach
+  config keeps the shipped single-machine experience.
+- **Liquid Plasma selectors** (`AgentLens/Views/Chat/Components/Plasma/`): the flat
+  chat model menu becomes two living orbs. The left one wears a face — ten personas,
+  each with its own eyes, palette and voice line, chosen per agent because the voice
+  you want from a fast local CLI is not the one you want from a reasoning gateway.
+  While the agent streams, droplets rise out of the orb and pop instead of a spinner.
+  The right one opens a Route › Provider › Model cascade whose first rung lists
+  BurnBar's *real* routes, not a catalog of endpoints that cannot serve a request
+  here, and reports five status states rather than two so an unprobed gateway says
+  "not probed" instead of claiming a server is down that nobody contacted.
 - **Swarm Ember rebuilt around the BurnBar flame mark** (`apps/console` +
   `packages/gl-engine`): the old token-glyph / provider-slideshow field is
   gone. Embers murmurate on a curl-noise wind, then lock onto a color-accurate
@@ -129,6 +186,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Console: analytics consent banner on mobile** — the flex-wrap row squeezed
   the copy into a ~150px column at phone widths; the banner now stacks
   (text full-width, buttons on their own row) below sm.
+
 ## [openburnbar 0.1.2] - 2026-08-18
 
 ### Changed

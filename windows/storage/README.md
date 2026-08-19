@@ -64,7 +64,7 @@ dotnet test windows/storage/OpenBurnBar.Storage.Tests
 Runs today on the macOS authoring host: the **same** managed assembly ships on
 Windows; the native SQLCipher comes from the bundle per-RID (osx-arm64 here,
 win-x64/win-arm64 on Windows CI). The read test opens the committed
-`openburnbar-db-compat-v61.sqlcipher` and asserts:
+`openburnbar-db-compat-v64.sqlcipher` and asserts:
 
 - every `sqlite_master` object decrypts,
 - the schema hash SHA-256 matches `openburnbar-db-compat-vector.json`,

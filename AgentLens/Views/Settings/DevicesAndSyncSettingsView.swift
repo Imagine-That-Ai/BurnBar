@@ -161,6 +161,52 @@ struct DevicesAndSyncSettingsView: View {
                         )
                     }
                     .settingsAnchor(SettingsAnchor.smartDisplays)
+
+                    if let fleet = runtimeContext?.hermesBodyDirectory {
+                        NavigationLink {
+                            HermesBodiesDetailView(directory: fleet)
+                        } label: {
+                            SettingsDrillRow(
+                                icon: "desktopcomputer",
+                                iconTint: DesignSystem.Colors.hermesAureate,
+                                title: "Hermes Bodies",
+                                subtitle: "Each Mac's Hermes identity — name, hardware, and presence"
+                            )
+                        }
+                        .settingsAnchor(SettingsAnchor.hermesBodies)
+
+                        if let grants = runtimeContext?.warWireGrantStore {
+                            NavigationLink {
+                                HermesRoomDetailView(
+                                    directory: fleet,
+                                    grants: grants,
+                                    settingsManager: settingsManager
+                                )
+                            } label: {
+                                SettingsDrillRow(
+                                    icon: "person.2.badge.gearshape",
+                                    iconTint: DesignSystem.Colors.hermesAureate,
+                                    title: "Hermes Room",
+                                    subtitle: "Pick which Mac serves Hermes — the others stay linked and ready"
+                                )
+                            }
+                            .settingsAnchor(SettingsAnchor.hermesRoom)
+                        }
+                    }
+
+                    if let dataStore = runtimeContext?.dataStore {
+                        NavigationLink {
+                            CommandBoardDetailView(dataStore: dataStore)
+                        } label: {
+                            SettingsDrillRow(
+                                icon: "square.grid.3x2.fill",
+                                iconTint: DesignSystem.Colors.hermesAureate,
+                                title: "Command Board",
+                                subtitle: "Every run across every machine, with who started it and what it cost"
+                            )
+                        }
+                        .settingsAnchor(SettingsAnchor.commandBoard)
+                    }
                 } header: {
                     Text("Devices")
                 } footer: {

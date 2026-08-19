@@ -110,6 +110,9 @@ final class OpenBurnBarDatabase: Sendable {
         registerFounderLensMigration(on: &migrator)
         registerBillingKindMigration(on: &migrator)
         registerUsageMemoryMigration(on: &migrator)
+        registerWarRoomOriginatorMigration(on: &migrator)
+        registerStandingOrdersMigration(on: &migrator)
+        registerCommandBoardIndexMigration(on: &migrator)
         return migrator
     }
 }

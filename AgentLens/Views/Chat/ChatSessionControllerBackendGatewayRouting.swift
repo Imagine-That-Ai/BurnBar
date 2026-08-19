@@ -77,6 +77,10 @@ extension ChatSessionController {
         for backend in ChatBackendID.allCases {
             setChatModelSelection(source.chatModelSelection(for: backend), for: backend)
         }
+        // A new pane inherits the voice it was split from; re-picking a persona
+        // per pane would make splitting a window feel like starting over.
+        customPersonaSeats = source.customPersonaSeats
+        personaSeatsByBackend = source.personaSeatsByBackend
         chatViewMode = source.chatViewMode
         hermesAvailable = source.hermesAvailable
         openClawAvailable = source.openClawAvailable
@@ -459,11 +463,6 @@ extension ChatSessionController {
             return "No eligible route for \(selectedModel). Add or enable an account/provider that serves this model."
         }
         return nil
-    }
-
-    /// Short label for the model picker (reflects `effectiveChatModel` for the current backend).
-    func chatModelMenuTitle() -> String {
-        Self.abbreviateChatModelName(effectiveChatModel(for: chatBackend))
     }
 
     static func abbreviateChatModelName(_ name: String) -> String {

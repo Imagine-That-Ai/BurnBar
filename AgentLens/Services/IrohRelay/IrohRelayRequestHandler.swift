@@ -35,6 +35,14 @@ typealias MediaControlStreamRegistrar = @Sendable (
     _ connectionID: String
 ) async -> Void
 
+/// Closure type the host client injects when a Mac opens a War Wire stream.
+/// The opening `war.hello` has already been consumed for classification, so
+/// the Wire host receives both the live stream and the frame it must accept.
+typealias WarWireStreamAcceptor = @Sendable @MainActor (
+    _ stream: any IrohRelayStream,
+    _ opening: HermesRealtimeRelayFrame
+) async -> Void
+
 /// Serves one inbound iroh stream: decrypts an inbound `request.start`
 /// frame, forwards the request to the local Hermes gateway, and streams
 /// the response back as `response.chunk` + `response.complete` frames. The
@@ -67,6 +75,7 @@ final class IrohRelayRequestHandler: Sendable {
     private let settingsManager: any SettingsManagerProtocol
     private let mediaDispatcher: MediaFrameDispatcher?
     private let mediaControlRegistrar: MediaControlStreamRegistrar?
+    private let warWireAcceptor: WarWireStreamAcceptor?
     private let controlDispatcher: ControlFrameDispatcher?
     private let cliChatDispatcher: CLIAgentRelayChatDispatcher?
     private let cliModelCatalogDispatcher: CLIRuntimeModelCatalogDispatcher?
@@ -81,6 +90,7 @@ final class IrohRelayRequestHandler: Sendable {
         settingsManager: any SettingsManagerProtocol,
         mediaDispatcher: MediaFrameDispatcher? = nil,
         mediaControlRegistrar: MediaControlStreamRegistrar? = nil,
+        warWireAcceptor: WarWireStreamAcceptor? = nil,
         controlDispatcher: ControlFrameDispatcher? = nil,
         cliChatDispatcher: CLIAgentRelayChatDispatcher? = nil,
         cliModelCatalogDispatcher: CLIRuntimeModelCatalogDispatcher? = nil,
@@ -93,6 +103,7 @@ final class IrohRelayRequestHandler: Sendable {
         self.settingsManager = settingsManager
         self.mediaDispatcher = mediaDispatcher
         self.mediaControlRegistrar = mediaControlRegistrar
+        self.warWireAcceptor = warWireAcceptor
         self.controlDispatcher = controlDispatcher
         self.cliChatDispatcher = cliChatDispatcher
         self.cliModelCatalogDispatcher = cliModelCatalogDispatcher
@@ -106,6 +117,7 @@ final class IrohRelayRequestHandler: Sendable {
         connectionID: String
     ) async throws -> ServeDisposition {
         var classifiedAsMediaControl = false
+        var classifiedAsWarWire = false
         while let frame = try await stream.receive() {
             guard frame.uid == uid else { continue }
             await auditStage(
@@ -144,6 +156,25 @@ final class IrohRelayRequestHandler: Sendable {
                     )
                 }
                 await mediaControlRegistrar(stream, uid, frame.connectionId)
+                return .transferredStreamOwnership
+            }
+            // War Room W1 — a peer Mac opening the Wire identifies ITSELF in
+            // `connectionId` (its HermesBody id), so the strict host-match
+            // guard below never applies to this classification. Identity is
+            // settled downstream by the Kernel's gate: same uid here, then a
+            // pair id, an active grant, and a Pro/Ultra tier on both sides.
+            if !classifiedAsWarWire,
+               frame.type == .warHello,
+               let warWireAcceptor {
+                classifiedAsWarWire = true
+                await auditStage(
+                    "host_war_wire_classified",
+                    uid: uid,
+                    connectionID: frame.connectionId,
+                    requestID: frame.requestId,
+                    extra: ["hostConnectionId": connectionID]
+                )
+                await warWireAcceptor(stream, frame)
                 return .transferredStreamOwnership
             }
             guard frame.connectionId == connectionID else {

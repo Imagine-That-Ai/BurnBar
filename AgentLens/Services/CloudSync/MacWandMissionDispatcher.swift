@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 @preconcurrency import FirebaseFirestore
 
 struct MacWandDispatchResult: Sendable, Equatable {
@@ -21,6 +22,7 @@ private struct MacWandChildPayloadInput {
     let groupID: String
     let siblingIndex: Int
     let siblingCount: Int
+    let targetBodyID: String?
 }
 
 enum MacWandDispatchError: LocalizedError {
@@ -66,7 +68,9 @@ struct MacWandMissionDispatcher {
         approvalMode: String = "existing_policy",
         commandsAllowed: Bool = false,
         fileEditsAllowed: Bool = false,
-        mergeStrategy: String = "pick_one"
+        mergeStrategy: String = "pick_one",
+        originator: BurnBarOriginator? = nil,
+        targetBodyID: String? = nil
     ) async throws -> MacWandDispatchResult {
         guard accountManager.isFirebaseAvailable else { throw MacWandDispatchError.firebaseUnavailable }
         guard let uid = accountManager.currentUID else { throw MacWandDispatchError.notSignedIn }
@@ -107,6 +111,15 @@ struct MacWandMissionDispatcher {
             merge: false
         )
 
+        // STARTED BY attribution (War Room Command Board). The Wand is the
+        // default originator; the Flame passes its decision-linked originator
+        // through `originator` when it dispatches.
+        let resolvedOriginator = originator ?? BurnBarOriginator(
+            kind: .wand,
+            missionGroupID: groupID,
+            confidence: .exact
+        )
+
         for index in childMissionIDs.indices {
             let missionID = childMissionIDs[index]
             let requestRef = userRef.collection("cli_agent_mission_requests").document(missionID)
@@ -126,8 +139,10 @@ struct MacWandMissionDispatcher {
                         fileEditsAllowed: fileEditsAllowed,
                         groupID: groupID,
                         siblingIndex: index,
-                        siblingCount: workerCount
+                        siblingCount: workerCount,
+                        targetBodyID: targetBodyID
                     ),
+                    originator: resolvedOriginator,
                     now: now,
                     key: key
                 ),
@@ -204,6 +219,7 @@ struct MacWandMissionDispatcher {
 
     private func childPayload(
         _ input: MacWandChildPayloadInput,
+        originator: BurnBarOriginator,
         now: String,
         key: CloudVaultResolvedKey
     ) throws -> [String: Any] {
@@ -230,6 +246,16 @@ struct MacWandMissionDispatcher {
             "sealedSchemaVersion": CLIAgentMissionCloudSealer.sealedSchemaVersion,
             "vaultKeyID": key.vaultKeyID
         ]
+        payload["originatorKind"] = originator.kind.rawValue
+        if let originatorRef = originator.primaryRef {
+            payload["originatorRef"] = originatorRef
+        }
+        // The Flame's routing target. Advisory: the executing Mac still decides
+        // whether to claim the mission, so this steers work without becoming a
+        // way to force a machine to run something.
+        if let targetBodyID = input.targetBodyID?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty {
+            payload["targetBodyID"] = targetBodyID
+        }
         payload["sealedPayload"] = try CLIAgentMissionCloudSealer.seal(
             CLIAgentMissionPrivatePayload(
                 title: input.title,

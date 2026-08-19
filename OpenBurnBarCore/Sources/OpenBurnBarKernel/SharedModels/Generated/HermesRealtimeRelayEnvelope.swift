@@ -299,3 +299,70 @@ public struct HermesRealtimeRelayAgentContextTarget: Codable, Sendable, Equatabl
         self.authority = authority
     }
 }
+
+/// War Room Wire payload — the Mac⇄Mac fleet lane.
+///
+/// Fields are mutually optional so one struct carries any of the eight war
+/// frames without forcing a receiver to learn cases it does not support,
+/// matching the Computer Use control payload's shape. The `kind`
+/// discriminator pairs with the outer frame's `HermesRealtimeRelayFrameType`
+/// for explicit dispatch.
+public struct HermesRealtimeRelayWarPayload: Codable, Sendable, Equatable {
+    public var kind: Kind
+    public var bodyId: String?
+    public var displayName: String?
+    public var capabilities: [String]?
+    /// The canonical `war_wire_grants` document id the dialer is claiming.
+    /// The answering Mac re-derives it and refuses a mismatch rather than
+    /// trusting the dialer's arithmetic.
+    public var pairId: String?
+    public var fleet: [HermesRealtimeRelayWarBodyState]?
+    public var dispatch: HermesRealtimeRelayWarDispatchRequest?
+    public var runId: String?
+    /// Monotonic per-run chunk ordinal. The receiver drops a chunk that
+    /// arrives out of order rather than splicing output incorrectly.
+    public var sequence: Int?
+    public var chunk: String?
+    public var status: HermesRealtimeRelayWarRunStatus?
+    public var denialReason: HermesRealtimeRelayWarDenialReason?
+    public var message: String?
+    public enum Kind: String, Codable, CaseIterable, Sendable, Equatable {
+        case hello
+        case helloAck = "hello_ack"
+        case fleetSnapshot = "fleet_snapshot"
+        case dispatch
+        case dispatchAck = "dispatch_ack"
+        case streamChunk = "stream_chunk"
+        case streamComplete = "stream_complete"
+        case denied
+    }
+    public init(
+        kind: Kind,
+        bodyId: String? = nil,
+        displayName: String? = nil,
+        capabilities: [String]? = nil,
+        pairId: String? = nil,
+        fleet: [HermesRealtimeRelayWarBodyState]? = nil,
+        dispatch: HermesRealtimeRelayWarDispatchRequest? = nil,
+        runId: String? = nil,
+        sequence: Int? = nil,
+        chunk: String? = nil,
+        status: HermesRealtimeRelayWarRunStatus? = nil,
+        denialReason: HermesRealtimeRelayWarDenialReason? = nil,
+        message: String? = nil
+    ) {
+        self.kind = kind
+        self.bodyId = bodyId
+        self.displayName = displayName
+        self.capabilities = capabilities
+        self.pairId = pairId
+        self.fleet = fleet
+        self.dispatch = dispatch
+        self.runId = runId
+        self.sequence = sequence
+        self.chunk = chunk
+        self.status = status
+        self.denialReason = denialReason
+        self.message = message
+    }
+}

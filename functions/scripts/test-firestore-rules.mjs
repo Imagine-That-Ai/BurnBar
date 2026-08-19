@@ -1285,6 +1285,31 @@ test("Wand dispatch accepts established presentation modes and platform group so
     )
   );
 
+  // War Room — the Flame's routing target. Advisory and owner-written; the
+  // executing Mac still decides whether to claim the mission.
+  await assertSucceeds(
+    setDoc(
+      doc(db, `users/${uid}/cli_agent_mission_requests/mission-flame-routed`),
+      sealedMissionBase(uid, "mission-flame-routed", {
+        originatorKind: "flame",
+        originatorRef: "d-a3f2c9",
+        targetBodyID: "mac-mini-abc123",
+      })
+    )
+  );
+  await assertFails(
+    setDoc(
+      doc(db, `users/${uid}/cli_agent_mission_requests/mission-flame-long-target`),
+      sealedMissionBase(uid, "mission-flame-long-target", { targetBodyID: "b".repeat(161) })
+    )
+  );
+  await assertFails(
+    setDoc(
+      doc(db, `users/${uid}/cli_agent_mission_requests/mission-flame-bad-target`),
+      sealedMissionBase(uid, "mission-flame-bad-target", { targetBodyID: 42 })
+    )
+  );
+
   for (const source of ["ios-hermes-square", "android-hermes-square", "mac-wand"]) {
     const id = `group-${source}`;
     await assertSucceeds(
@@ -5504,6 +5529,280 @@ test("T19 memory cloud artifacts require sealed facts and HMAC-only source lists
       replicatedAt: timestamp,
     })
   );
+});
+
+test("hermes_bodies: owner can create, update, delete; non-owner cannot", async () => {
+  const ownerDb = authedDb("hermes-body-owner");
+  const otherDb = authedDb("hermes-body-attacker");
+  const bodyId = "relay-host-test-uuid";
+  const now = new Date().toISOString();
+
+  function validBody(overrides = {}) {
+    return {
+      id: bodyId,
+      deviceID: "device-abc-123",
+      displayName: "Studio Hermes",
+      machineName: "Mac Studio",
+      platform: "macos",
+      hardware: {
+        hardwareModel: "mac14,13",
+        chipBrand: "Apple M2 Ultra",
+        coresPerformance: 16,
+        coresEfficiency: 4,
+        memBytes: 64000000000,
+      },
+      hermes: { installed: true, gatewayReachable: true },
+      endpoints: { pairingConnectionId: bodyId },
+      presence: { state: "online", lastHeartbeatAt: now, wireReachable: false },
+      capabilities: ["fleet_probe", "hermes_chat"],
+      schemaVersion: 1,
+      createdAt: now,
+      updatedAt: now,
+      ...overrides,
+    };
+  }
+
+  // Owner can create
+  await assertSucceeds(
+    setDoc(doc(ownerDb, `users/hermes-body-owner/hermes_bodies/${bodyId}`), validBody())
+  );
+
+  // Owner can update (heartbeat — no displayName/createdAt)
+  await assertSucceeds(
+    updateDoc(doc(ownerDb, `users/hermes-body-owner/hermes_bodies/${bodyId}`), {
+      presence: { state: "online", lastHeartbeatAt: new Date().toISOString(), wireReachable: false },
+      updatedAt: new Date().toISOString(),
+    })
+  );
+
+  // Owner can delete
+  await assertSucceeds(
+    deleteDoc(doc(ownerDb, `users/hermes-body-owner/hermes_bodies/${bodyId}`))
+  );
+
+  // Non-owner cannot create
+  await assertFails(
+    setDoc(doc(otherDb, `users/hermes-body-owner/hermes_bodies/${bodyId}`), validBody())
+  );
+
+  // Re-create for non-owner tests
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), `users/hermes-body-owner/hermes_bodies/${bodyId}`), validBody());
+  });
+
+  // Non-owner cannot update
+  await assertFails(
+    updateDoc(doc(otherDb, `users/hermes-body-owner/hermes_bodies/${bodyId}`), {
+      updatedAt: now,
+    })
+  );
+
+  // Non-owner cannot delete
+  await assertFails(
+    deleteDoc(doc(otherDb, `users/hermes-body-owner/hermes_bodies/${bodyId}`))
+  );
+});
+
+test("hermes_bodies: rejects invalid payloads", async () => {
+  const ownerDb = authedDb("hermes-body-owner-2");
+  const bodyId = "relay-host-test-uuid-2";
+  const now = new Date().toISOString();
+  const base = {
+    id: bodyId,
+    deviceID: "device-abc-123",
+    displayName: "Studio Hermes",
+    machineName: "Mac Studio",
+    platform: "macos",
+    hardware: { hardwareModel: "mac14,13" },
+    hermes: { installed: true, gatewayReachable: true },
+    endpoints: { pairingConnectionId: bodyId },
+    presence: { state: "online", lastHeartbeatAt: now, wireReachable: false },
+    capabilities: ["fleet_probe"],
+    schemaVersion: 1,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  // id mismatch
+  await assertFails(
+    setDoc(doc(ownerDb, `users/hermes-body-owner-2/hermes_bodies/${bodyId}`), {
+      ...base,
+      id: "wrong-id",
+    })
+  );
+
+  // wrong platform
+  await assertFails(
+    setDoc(doc(ownerDb, `users/hermes-body-owner-2/hermes_bodies/${bodyId}`), {
+      ...base,
+      platform: "ios",
+    })
+  );
+
+  // extra key not in allowlist
+  await assertFails(
+    setDoc(doc(ownerDb, `users/hermes-body-owner-2/hermes_bodies/${bodyId}`), {
+      ...base,
+      secretKey: "should-not-be-here",
+    })
+  );
+
+  // hardware not a map
+  await assertFails(
+    setDoc(doc(ownerDb, `users/hermes-body-owner-2/hermes_bodies/${bodyId}`), {
+      ...base,
+      hardware: "not-a-map",
+    })
+  );
+
+  // capabilities not a list
+  await assertFails(
+    setDoc(doc(ownerDb, `users/hermes-body-owner-2/hermes_bodies/${bodyId}`), {
+      ...base,
+      capabilities: "not-a-list",
+    })
+  );
+
+  // schemaVersion not an int
+  await assertFails(
+    setDoc(doc(ownerDb, `users/hermes-body-owner-2/hermes_bodies/${bodyId}`), {
+      ...base,
+      schemaVersion: "one",
+    })
+  );
+
+  // missing createdAt on create (omit the field entirely)
+  const { createdAt: _omit, ...bodyWithoutCreatedAt } = base;
+  await assertFails(
+    setDoc(doc(ownerDb, `users/hermes-body-owner-2/hermes_bodies/${bodyId}`), bodyWithoutCreatedAt)
+  );
+
+  // valid create succeeds
+  await assertSucceeds(
+    setDoc(doc(ownerDb, `users/hermes-body-owner-2/hermes_bodies/${bodyId}`), base)
+  );
+
+  // displayName over the 120-char cap
+  await assertFails(
+    setDoc(doc(ownerDb, `users/hermes-body-owner-2/hermes_bodies/${bodyId}`), {
+      ...base,
+      displayName: "x".repeat(121),
+    })
+  );
+
+  // capabilities over the 16-entry cap
+  await assertFails(
+    setDoc(doc(ownerDb, `users/hermes-body-owner-2/hermes_bodies/${bodyId}`), {
+      ...base,
+      capabilities: Array.from({ length: 17 }, (_, i) => `cap_${i}`),
+    })
+  );
+});
+
+// The HermesBodyDirectory renders the fleet from a collection listener, so the
+// owner-read allowlist entry is load-bearing: without it the War Room surfaces
+// go blank while every write still passes.
+test("hermes_bodies: owner reads the collection, non-owner is denied", async () => {
+  const ownerId = "hermes-body-reader";
+  const bodyId = "relay-host-reader-uuid";
+  const now = new Date().toISOString();
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), `users/${ownerId}/hermes_bodies/${bodyId}`), {
+      id: bodyId,
+      deviceID: "device-reader",
+      displayName: "Reader Hermes",
+      machineName: "Mac mini",
+      platform: "macos",
+      hardware: {},
+      hermes: { installed: true, gatewayReachable: false },
+      endpoints: { pairingConnectionId: bodyId },
+      presence: { state: "online", lastHeartbeatAt: now, wireReachable: false },
+      capabilities: ["fleet_probe"],
+      schemaVersion: 1,
+      createdAt: now,
+      updatedAt: now,
+    });
+  });
+
+  const ownerDb = authedDb(ownerId);
+  await assertSucceeds(getDoc(doc(ownerDb, `users/${ownerId}/hermes_bodies/${bodyId}`)));
+  await assertSucceeds(getDocs(collection(ownerDb, `users/${ownerId}/hermes_bodies`)));
+
+  const otherDb = authedDb("hermes-body-reader-attacker");
+  await assertFails(getDoc(doc(otherDb, `users/${ownerId}/hermes_bodies/${bodyId}`)));
+  await assertFails(getDocs(collection(otherDb, `users/${ownerId}/hermes_bodies`)));
+});
+
+test("war_wire_grants: owner grants and revokes; pairId must be canonical", async () => {
+  const ownerId = "war-wire-owner";
+  const bodyA = "relay-host-aaaa";
+  const bodyB = "relay-host-bbbb";
+  const pairId = `${bodyA}__${bodyB}`;
+  const now = new Date().toISOString();
+  const ownerDb = authedDb(ownerId);
+  const path = `users/${ownerId}/war_wire_grants/${pairId}`;
+
+  const base = {
+    id: pairId,
+    bodyIdA: bodyA,
+    bodyIdB: bodyB,
+    state: "active",
+    grantedByDeviceID: "device-a",
+    grantedAt: now,
+    schemaVersion: 1,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  await assertSucceeds(setDoc(doc(ownerDb, path), base));
+
+  // Either machine may revoke.
+  await assertSucceeds(
+    updateDoc(doc(ownerDb, path), {
+      state: "revoked",
+      revokedByDeviceID: "device-b",
+      revokedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    })
+  );
+
+  // The covered pair is immutable — a revoked grant can't be re-pointed.
+  await assertFails(
+    updateDoc(doc(ownerDb, path), { bodyIdB: "relay-host-cccc" })
+  );
+
+  // Unknown state values are rejected.
+  await assertFails(updateDoc(doc(ownerDb, path), { state: "pending" }));
+
+  // pairId must be the sorted join, not an arbitrary id.
+  await assertFails(
+    setDoc(doc(ownerDb, `users/${ownerId}/war_wire_grants/whatever`), {
+      ...base,
+      id: "whatever",
+    })
+  );
+
+  // Reversed (unsorted) endpoints are rejected so both Macs derive one doc.
+  const reversedPair = `${bodyB}__${bodyA}`;
+  await assertFails(
+    setDoc(doc(ownerDb, `users/${ownerId}/war_wire_grants/${reversedPair}`), {
+      ...base,
+      id: reversedPair,
+      bodyIdA: bodyB,
+      bodyIdB: bodyA,
+    })
+  );
+
+  // A non-owner can neither read nor write another account's grants.
+  const otherDb = authedDb("war-wire-attacker");
+  await assertFails(getDoc(doc(otherDb, path)));
+  await assertFails(setDoc(doc(otherDb, path), base));
+  await assertFails(deleteDoc(doc(otherDb, path)));
+
+  // The owner reads its own grants (the Wire gate depends on this).
+  await assertSucceeds(getDoc(doc(ownerDb, path)));
+  await assertSucceeds(getDocs(collection(ownerDb, `users/${ownerId}/war_wire_grants`)));
+  await assertSucceeds(deleteDoc(doc(ownerDb, path)));
 });
 
 test("rules test environment is isolated", () => {

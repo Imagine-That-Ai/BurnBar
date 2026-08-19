@@ -56,7 +56,7 @@ public static class LiveTileReadback
 
     public static string CopyDbFixture()
     {
-        string source = Path.Combine(AppContext.BaseDirectory, "Fixtures", "openburnbar-db-compat-v61.sqlcipher");
+        string source = Path.Combine(AppContext.BaseDirectory, "Fixtures", "openburnbar-db-compat-v64.sqlcipher");
         string dest = Path.Combine(Path.GetTempPath(), $"b0-spike-{Guid.NewGuid():N}.sqlcipher");
         File.Copy(source, dest, overwrite: true);
         return dest;

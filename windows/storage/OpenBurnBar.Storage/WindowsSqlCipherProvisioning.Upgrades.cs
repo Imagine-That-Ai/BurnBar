@@ -60,7 +60,72 @@ public sealed partial class WindowsSqlCipherProvisioner
         new WindowsSchemaUpgradeStep(
             "v61_usage_memory",
             Array.Empty<WindowsSchemaUpgradeStatement>()),
+
+        // v62_war_room_originator — peer of OpenBurnBarDatabase+DataMigrationV62.swift.
+        // Both columns are nullable with no backfill: a row written before the War
+        // Room existed has no originator, and inventing one would attribute work to
+        // a machine that never claimed it.
+        new WindowsSchemaUpgradeStep(
+            "v62_war_room_originator",
+            new[]
+            {
+                WindowsSchemaUpgradeStatement.AddColumn(
+                    "token_usage",
+                    "originatorKind",
+                    "ALTER TABLE token_usage ADD COLUMN originatorKind TEXT"),
+                WindowsSchemaUpgradeStatement.AddColumn(
+                    "token_usage",
+                    "originatorRef",
+                    "ALTER TABLE token_usage ADD COLUMN originatorRef TEXT"),
+                WindowsSchemaUpgradeStatement.Always(
+                    "CREATE INDEX IF NOT EXISTS token_usage_originator_time_idx ON token_usage(originatorKind, startTime)"),
+            }),
+
+        // v63_standing_orders — peer of OpenBurnBarDatabase+StandingOrderMigrations.swift.
+        new WindowsSchemaUpgradeStep(
+            "v63_standing_orders",
+            new[]
+            {
+                WindowsSchemaUpgradeStatement.Always(StandingOrdersTableSql),
+                WindowsSchemaUpgradeStatement.Always(
+                    "CREATE INDEX IF NOT EXISTS standing_orders_enabled_fired_idx ON standing_orders(isEnabled, lastFiredAt)"),
+            }),
+
+        // v64_token_usage_start_time_index — peer of
+        // OpenBurnBarDatabase+CommandBoardIndexMigration.swift.
+        new WindowsSchemaUpgradeStep(
+            "v64_token_usage_start_time_index",
+            new[]
+            {
+                WindowsSchemaUpgradeStatement.Always(
+                    "CREATE INDEX IF NOT EXISTS token_usage_start_time_idx ON token_usage(startTime)"),
+            }),
     };
+
+    /// <summary>
+    /// The standing-orders table, kept identical to the fresh-install statement in
+    /// <c>WindowsSqlCipherProvisioning.Schema.cs</c> so an upgraded database and a
+    /// freshly provisioned one describe the same table.
+    /// </summary>
+    internal const string StandingOrdersTableSql =
+        """
+        CREATE TABLE IF NOT EXISTS standing_orders (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            instruction TEXT NOT NULL,
+            cadenceKind TEXT NOT NULL,
+            cadenceMinutes INTEGER,
+            cadenceHour INTEGER,
+            cadenceMinute INTEGER,
+            cadenceWeekday INTEGER,
+            targetBodyId TEXT,
+            requiredCapabilities TEXT NOT NULL DEFAULT '',
+            isEnabled BOOLEAN NOT NULL DEFAULT 1,
+            lastFiredAt DATETIME,
+            createdAt DATETIME NOT NULL,
+            updatedAt DATETIME NOT NULL
+        )
+        """;
 
     /// <summary>
     /// The v60 billing-provenance backfill, kept semantically byte-for-byte with

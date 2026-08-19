@@ -455,8 +455,22 @@ extension ChatSessionController {
         } else {
             petPersonaSection = ""
         }
+        // The seat's persona is app-authored — the ten voices ship in
+        // `PlasmaPersona.all` and no user text ever reaches them — so it belongs
+        // in the trusted `.core` region beside the rest of the system persona,
+        // and it survives token pressure the way the rest of `.core` does.
+        // The desktop pet's voice is the opposite: user-authored, and therefore
+        // wrapped as untrusted style below. When both are live the pet wins for
+        // that one send, because it is a deliberate momentary act at the pet
+        // bubble, and stacking two contradictory voice instructions reads worse
+        // than either alone.
+        let seatVoice = PlasmaPersonaPrompt.resolveVoice(
+            seat: activePersona(for: chatBackend),
+            hasActivePetVoice: !petPersonaSection.isEmpty
+        )
+        let corePrompt = PlasmaPersonaPrompt.compose(voice: seatVoice, base: promptSections.core)
         let assembledPrompt = promptArbiter.assemble([
-            PromptTokenSection(id: .core, content: promptSections.core),
+            PromptTokenSection(id: .core, content: corePrompt),
             PromptTokenSection(id: .toolDefs, content: toolDefsSection),
             PromptTokenSection(id: .focus, content: focusSection),
             PromptTokenSection(id: .evidence, content: evidencePack + oracleContextSection),

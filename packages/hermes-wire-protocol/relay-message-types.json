@@ -87,6 +87,18 @@
           }
         },
         {
+          "name": "war",
+          "swiftType": "HermesRealtimeRelayWarPayload?",
+          "doc": [
+            "    // Optional sibling to `payload`, `media`, and `control`. Carries the",
+            "    // War Room Wire's Mac\u21c4Mac fleet traffic. Encoded only when non-nil so",
+            "    // every pre-War Room peer sees a byte-identical wire form."
+          ],
+          "codable": {
+            "key": "war"
+          }
+        },
+        {
           "name": "signalSessionCiphertextB64",
           "swiftType": "String?",
           "codable": {
@@ -108,6 +120,7 @@
         "payload": "nil",
         "media": "nil",
         "control": "nil",
+        "war": "nil",
         "signalSessionCiphertextB64": "nil",
         "signalMessageType": "nil"
       },
@@ -6408,6 +6421,392 @@
         "focusContext": "nil"
       },
       "nested": []
+    },
+    {
+      "kind": "enum",
+      "name": "HermesRealtimeRelayWarDenialReason",
+      "conformances": [
+        "String",
+        "Codable",
+        "CaseIterable",
+        "Sendable",
+        "Equatable"
+      ],
+      "namespace": false,
+      "doc": [
+        "/// Why a Wire dial was refused. Wire values are identical to",
+        "/// `WarWireDenialReason` in OpenBurnBarKernel, and",
+        "/// `WarWireFrameCodecTests` fails if the two vocabularies ever drift \u2014 the",
+        "/// gate that makes the decision and the frame that reports it must agree."
+      ],
+      "cases": [
+        {
+          "id": "killSwitch",
+          "wire": "kill_switch"
+        },
+        {
+          "id": "entitlement"
+        },
+        {
+          "id": "noGrant",
+          "wire": "no_grant"
+        },
+        {
+          "id": "grantRevoked",
+          "wire": "grant_revoked"
+        },
+        {
+          "id": "grantMismatch",
+          "wire": "grant_mismatch"
+        },
+        {
+          "id": "selfDial",
+          "wire": "self_dial"
+        },
+        {
+          "id": "unidentified"
+        }
+      ]
+    },
+    {
+      "kind": "enum",
+      "name": "HermesRealtimeRelayWarRunStatus",
+      "conformances": [
+        "String",
+        "Codable",
+        "CaseIterable",
+        "Sendable",
+        "Equatable"
+      ],
+      "namespace": false,
+      "doc": [
+        "/// Terminal and intermediate states for a dispatched run, as reported back",
+        "/// to the dispatching Mac."
+      ],
+      "cases": [
+        {
+          "id": "accepted"
+        },
+        {
+          "id": "running"
+        },
+        {
+          "id": "succeeded"
+        },
+        {
+          "id": "failed"
+        },
+        {
+          "id": "rejected"
+        }
+      ]
+    },
+    {
+      "kind": "struct",
+      "name": "HermesRealtimeRelayWarBodyState",
+      "conformances": [
+        "Codable",
+        "Sendable",
+        "Equatable"
+      ],
+      "hasCustomCodable": false,
+      "doc": [
+        "/// One machine's fleet-visible state as pushed over the Wire. Deliberately",
+        "/// mirrors `FleetBodySnapshot` so a received snapshot feeds `FlameRouter`",
+        "/// without a second translation layer.",
+        "///",
+        "/// Note what is absent: presence. A body never asserts its own liveness \u2014",
+        "/// the receiver derives that from frame arrival, which is the same",
+        "/// \"presence is the reader's verdict\" law the Firestore path follows."
+      ],
+      "fields": [
+        {
+          "name": "bodyId",
+          "swiftType": "String",
+          "codable": {
+            "key": "bodyId"
+          }
+        },
+        {
+          "name": "displayName",
+          "swiftType": "String",
+          "codable": {
+            "key": "displayName"
+          }
+        },
+        {
+          "name": "hermesGatewayReachable",
+          "swiftType": "Bool",
+          "codable": {
+            "key": "hermesGatewayReachable"
+          }
+        },
+        {
+          "name": "capabilities",
+          "swiftType": "[String]",
+          "codable": {
+            "key": "capabilities"
+          }
+        },
+        {
+          "name": "activeRunCount",
+          "swiftType": "Int",
+          "codable": {
+            "key": "activeRunCount"
+          }
+        },
+        {
+          "name": "performanceCores",
+          "swiftType": "Int?",
+          "codable": {
+            "key": "performanceCores"
+          }
+        }
+      ],
+      "initDefaults": {
+        "performanceCores": "nil"
+      },
+      "nested": []
+    },
+    {
+      "kind": "struct",
+      "name": "HermesRealtimeRelayWarDispatchRequest",
+      "conformances": [
+        "Codable",
+        "Sendable",
+        "Equatable"
+      ],
+      "hasCustomCodable": false,
+      "doc": [
+        "/// A unit of work routed to a peer Mac. Carries the originator so the",
+        "/// receiving machine can stamp the run it starts, which is what the Command",
+        "/// Board's STARTED BY column reads."
+      ],
+      "fields": [
+        {
+          "name": "dispatchId",
+          "swiftType": "String",
+          "codable": {
+            "key": "dispatchId"
+          }
+        },
+        {
+          "name": "instruction",
+          "swiftType": "String",
+          "codable": {
+            "key": "instruction"
+          }
+        },
+        {
+          "name": "requiredCapabilities",
+          "swiftType": "[String]",
+          "codable": {
+            "key": "requiredCapabilities"
+          }
+        },
+        {
+          "name": "originatorKind",
+          "swiftType": "String?",
+          "codable": {
+            "key": "originatorKind"
+          }
+        },
+        {
+          "name": "originatorRef",
+          "swiftType": "String?",
+          "codable": {
+            "key": "originatorRef"
+          }
+        }
+      ],
+      "initDefaults": {
+        "requiredCapabilities": "[]",
+        "originatorKind": "nil",
+        "originatorRef": "nil"
+      },
+      "nested": []
+    },
+    {
+      "kind": "struct",
+      "name": "HermesRealtimeRelayWarPayload",
+      "conformances": [
+        "Codable",
+        "Sendable",
+        "Equatable"
+      ],
+      "hasCustomCodable": false,
+      "doc": [
+        "/// War Room Wire payload \u2014 the Mac\u21c4Mac fleet lane.",
+        "///",
+        "/// Fields are mutually optional so one struct carries any of the eight war",
+        "/// frames without forcing a receiver to learn cases it does not support,",
+        "/// matching the Computer Use control payload's shape. The `kind`",
+        "/// discriminator pairs with the outer frame's `HermesRealtimeRelayFrameType`",
+        "/// for explicit dispatch."
+      ],
+      "fields": [
+        {
+          "name": "kind",
+          "swiftType": "Kind",
+          "codable": {
+            "key": "kind"
+          }
+        },
+        {
+          "name": "bodyId",
+          "swiftType": "String?",
+          "codable": {
+            "key": "bodyId"
+          }
+        },
+        {
+          "name": "displayName",
+          "swiftType": "String?",
+          "codable": {
+            "key": "displayName"
+          }
+        },
+        {
+          "name": "capabilities",
+          "swiftType": "[String]?",
+          "codable": {
+            "key": "capabilities"
+          }
+        },
+        {
+          "name": "pairId",
+          "swiftType": "String?",
+          "doc": [
+            "    /// The canonical `war_wire_grants` document id the dialer is claiming.",
+            "    /// The answering Mac re-derives it and refuses a mismatch rather than",
+            "    /// trusting the dialer's arithmetic."
+          ],
+          "codable": {
+            "key": "pairId"
+          }
+        },
+        {
+          "name": "fleet",
+          "swiftType": "[HermesRealtimeRelayWarBodyState]?",
+          "codable": {
+            "key": "fleet"
+          }
+        },
+        {
+          "name": "dispatch",
+          "swiftType": "HermesRealtimeRelayWarDispatchRequest?",
+          "codable": {
+            "key": "dispatch"
+          }
+        },
+        {
+          "name": "runId",
+          "swiftType": "String?",
+          "codable": {
+            "key": "runId"
+          }
+        },
+        {
+          "name": "sequence",
+          "swiftType": "Int?",
+          "doc": [
+            "    /// Monotonic per-run chunk ordinal. The receiver drops a chunk that",
+            "    /// arrives out of order rather than splicing output incorrectly."
+          ],
+          "codable": {
+            "key": "sequence"
+          }
+        },
+        {
+          "name": "chunk",
+          "swiftType": "String?",
+          "codable": {
+            "key": "chunk"
+          }
+        },
+        {
+          "name": "status",
+          "swiftType": "HermesRealtimeRelayWarRunStatus?",
+          "codable": {
+            "key": "status"
+          }
+        },
+        {
+          "name": "denialReason",
+          "swiftType": "HermesRealtimeRelayWarDenialReason?",
+          "codable": {
+            "key": "denialReason"
+          }
+        },
+        {
+          "name": "message",
+          "swiftType": "String?",
+          "codable": {
+            "key": "message"
+          }
+        }
+      ],
+      "initDefaults": {
+        "bodyId": "nil",
+        "displayName": "nil",
+        "capabilities": "nil",
+        "pairId": "nil",
+        "fleet": "nil",
+        "dispatch": "nil",
+        "runId": "nil",
+        "sequence": "nil",
+        "chunk": "nil",
+        "status": "nil",
+        "denialReason": "nil",
+        "message": "nil"
+      },
+      "nested": [
+        {
+          "model": {
+            "kind": "enum",
+            "name": "Kind",
+            "conformances": [
+              "String",
+              "Codable",
+              "CaseIterable",
+              "Sendable",
+              "Equatable"
+            ],
+            "namespace": false,
+            "cases": [
+              {
+                "id": "hello"
+              },
+              {
+                "id": "helloAck",
+                "wire": "hello_ack"
+              },
+              {
+                "id": "fleetSnapshot",
+                "wire": "fleet_snapshot"
+              },
+              {
+                "id": "dispatch"
+              },
+              {
+                "id": "dispatchAck",
+                "wire": "dispatch_ack"
+              },
+              {
+                "id": "streamChunk",
+                "wire": "stream_chunk"
+              },
+              {
+                "id": "streamComplete",
+                "wire": "stream_complete"
+              },
+              {
+                "id": "denied"
+              }
+            ]
+          }
+        }
+      ]
     }
   ]
 }

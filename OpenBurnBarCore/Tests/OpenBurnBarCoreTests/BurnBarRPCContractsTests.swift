@@ -199,7 +199,12 @@ final class BurnBarRPCContractsTests: XCTestCase {
         .fleetSnapshot: "daemon.fleet.snapshot",
         .fleetOrchestratorGet: "daemon.fleet.orchestrator.get",
         .fleetOrchestratorSet: "daemon.fleet.orchestrator.set",
-        .fleetDirectiveRecord: "daemon.fleet.directive.record"
+        .fleetDirectiveRecord: "daemon.fleet.directive.record",
+        // War Room: the Flame's three RPCs (route, and the distill log it
+        // archives every decision into).
+        .warFlameRoute: "daemon.war.flame.route",
+        .warFlameDistillList: "daemon.war.flame.distill.list",
+        .warFlameDistillSettle: "daemon.war.flame.distill.settle"
     ]
 
     func testRPCMethodWireNames_areStableForEveryCase() {

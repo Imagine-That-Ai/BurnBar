@@ -46,6 +46,7 @@ enum AnalyticsEvent: String, CaseIterable, Sendable {
     case chatToolInvoked = "chat.tool.invoked"
     case chatBackendSwitched = "chat.backend.switched"
     case chatModelSelected = "chat.model.selected"
+    case chatPersonaSelected = "chat.persona.selected"
     case chatAttachmentAdded = "chat.attachment.added"
     case chatAttachmentFailed = "chat.attachment.failed"
     case chatHistoryCleared = "chat.history.cleared"

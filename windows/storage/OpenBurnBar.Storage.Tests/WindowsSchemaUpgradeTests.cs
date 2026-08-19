@@ -34,8 +34,8 @@ public sealed class WindowsSchemaUpgradeTests
 {
     private const string PreviousEndpoint = "v59_founder_lens";
     private const long PreviousMigrationCount = 60;
-    private const string CurrentEndpoint = "v61_usage_memory";
-    private const long CurrentMigrationCount = 62;
+    private const string CurrentEndpoint = "v64_token_usage_start_time_index";
+    private const long CurrentMigrationCount = 65;
 
     private const string Passphrase = "OBB-WinPort-SchemaUpgrade-Test-Key-0000000=";
     private const string KeyProvenance = "test-static:schema-upgrade";
@@ -158,7 +158,7 @@ public sealed class WindowsSchemaUpgradeTests
         // history must stay a strict PREFIX for the upgrade path to engage.
         Execute(
             profile.DatabasePath,
-            "DELETE FROM grdb_migrations WHERE identifier IN ('v60_billing_kind', 'v61_usage_memory')");
+            "DELETE FROM grdb_migrations WHERE identifier IN ('v60_billing_kind', 'v61_usage_memory', 'v62_war_room_originator', 'v63_standing_orders', 'v64_token_usage_start_time_index')");
 
         WindowsStorageProvisioningReport report =
             provisioner.EnsureReady(profile.DatabasePath, Passphrase, KeyProvenance);
@@ -335,7 +335,13 @@ public sealed class WindowsSchemaUpgradeTests
             """
             DROP INDEX IF EXISTS token_usage_billing_kind_time_idx;
             ALTER TABLE token_usage DROP COLUMN billingKind;
-            DELETE FROM grdb_migrations WHERE identifier IN ('v60_billing_kind', 'v61_usage_memory');
+            DROP INDEX IF EXISTS token_usage_originator_time_idx;
+            DROP INDEX IF EXISTS token_usage_start_time_idx;
+            ALTER TABLE token_usage DROP COLUMN originatorKind;
+            ALTER TABLE token_usage DROP COLUMN originatorRef;
+            DROP INDEX IF EXISTS standing_orders_enabled_fired_idx;
+            DROP TABLE IF EXISTS standing_orders;
+            DELETE FROM grdb_migrations WHERE identifier IN ('v60_billing_kind', 'v61_usage_memory', 'v62_war_room_originator', 'v63_standing_orders', 'v64_token_usage_start_time_index');
             """);
     }
 
@@ -346,6 +352,8 @@ public sealed class WindowsSchemaUpgradeTests
         Assert.Equal(PreviousMigrationCount, SqlCipherConnection.ReadMigrationCount(connection));
         Assert.False(ColumnExists(connection, "token_usage", "billingKind"));
         Assert.False(IndexExists(connection, "token_usage_billing_kind_time_idx"));
+        Assert.False(ColumnExists(connection, "token_usage", "originatorKind"));
+        Assert.False(IndexExists(connection, "token_usage_start_time_idx"));
     }
 
     private static void AssertEndpointUnchanged(string databasePath, string endpoint, long count)

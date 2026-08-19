@@ -264,3 +264,65 @@ struct SettingsDetailContainer<Content: View>: View {
         }
     }
 }
+
+// MARK: - Shared detail-pane states
+
+/// "Still loading" as a card, so a detail pane that is waiting on a listener
+/// looks like the rest of the pane instead of an empty screen.
+struct SettingsLoadingCard: View {
+    let message: String
+
+    var body: some View {
+        GlassCard {
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                ProgressView()
+                    .controlSize(.small)
+                Text(message)
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+            }
+            .padding(DesignSystem.Spacing.md)
+        }
+    }
+}
+
+/// "Nothing here yet, and here is why" — an empty state always explains what
+/// would make it non-empty.
+struct SettingsEmptyCard: View {
+    let title: String
+    let message: String
+
+    var body: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                Text(title)
+                    .font(DesignSystem.Typography.body)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                Text(message)
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(DesignSystem.Spacing.md)
+        }
+    }
+}
+
+/// The small aureate capsule the Hermes surfaces use for "This Mac",
+/// "Serving", and similar one-word states.
+struct HermesPill: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(DesignSystem.Typography.tiny)
+            .foregroundStyle(DesignSystem.Colors.hermesAureate)
+            .padding(.horizontal, DesignSystem.Spacing.xs)
+            .padding(.vertical, 1)
+            .background(
+                Capsule().stroke(DesignSystem.Colors.hermesAureate.opacity(0.6), lineWidth: 1)
+            )
+    }
+}

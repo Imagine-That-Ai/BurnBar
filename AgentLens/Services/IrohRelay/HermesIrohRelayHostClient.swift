@@ -60,6 +60,18 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
     private let urlSession: URLSession
     private let auditLogger: any IrohTransportAuditLogging
     private var transport: (any IrohRelayTransport)?
+
+    /// The live endpoint, for callers that dial their own lanes over it (the
+    /// War Wire). `nil` until the host has started, which is the honest answer:
+    /// there is no endpoint to dial from yet.
+    var activeTransport: (any IrohRelayTransport)? { transport }
+
+    /// The published NodeId for callers that advertise this host as a War Wire
+    /// endpoint. Keep this narrower than the full endpoint identity: callers
+    /// only need the routable identity, and `nil` is the honest answer before
+    /// the host has published one (or after it has stopped).
+    var publishedNodeID: String? { publishedIdentity?.nodeId }
+
     private var acceptTask: Task<Void, Never>?
     private var heartbeatTask: Task<Void, Never>?
     private var recoveryTask: Task<Void, Never>?
@@ -87,6 +99,9 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
     /// Mac can push `media.blob.advertise` frames at any time without
     /// waiting for an active iOS-initiated chat request.
     var mediaControlRegistrar: MediaControlStreamRegistrar?
+    /// War Room Wire handoff. The first `war.hello` frame is classified by
+    /// `IrohRelayRequestHandler`; the owner then accepts and owns the stream.
+    var warWireAcceptor: WarWireStreamAcceptor?
     /// RR-18 — the same persistent media-control registry the owner builds in
     /// `HermesRelayHostService`. The host hands inbound `media.control` streams
     /// to it via `mediaControlRegistrar`; this reference lets the heartbeat tear
@@ -786,6 +801,7 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
                     settingsManager: settingsManager,
                     mediaDispatcher: mediaDispatcher,
                     mediaControlRegistrar: mediaControlRegistrar,
+                    warWireAcceptor: warWireAcceptor,
                     controlDispatcher: controlDispatcher,
                     cliChatDispatcher: cliChatDispatcher,
                     cliModelCatalogDispatcher: cliModelCatalogDispatcher,

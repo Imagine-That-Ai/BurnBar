@@ -278,6 +278,9 @@ enum SettingsAnchor {
     static let cloudSyncToggle = "devices.cloudSync"
     static let trustedDevices = "devices.trusted"
     static let smartDisplays = "devices.smartDisplays"
+    static let hermesBodies = "devices.hermesBodies"
+    static let hermesRoom = "devices.hermesRoom"
+    static let commandBoard = "devices.commandBoard"
 
     // Text Expansion
     static let textExpansionRuntime = "textExpansion.runtime"

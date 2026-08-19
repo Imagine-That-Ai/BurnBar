@@ -4,6 +4,7 @@ import FirebaseFirestore
 import FirebaseFunctions
 import Foundation
 import OpenBurnBarCore
+import OpenBurnBarIrohRelay
 import OpenBurnBarMedia
 
 // MARK: - Hermes Remote Relay Host
@@ -21,6 +22,28 @@ final class HermesRelayHostService {
     private let relayKeyStore: HermesRelayKeyStore
     private let authenticatedRequestOpener: HermesRelayAuthenticatedRequestOpener
     private let realtimeRelayClient: HermesRealtimeRelayHosting
+
+    /// The live iroh endpoint, for callers that open their own lanes over it
+    /// (the War Wire). `nil` whenever the active relay client is not the iroh
+    /// host or has not started — either way there is nothing to dial from.
+    var activeIrohTransport: (any IrohRelayTransport)? {
+        (realtimeRelayClient as? HermesIrohRelayHostClient)?.activeTransport
+    }
+
+    /// The NodeId this Mac currently advertises, for the HermesBody heartbeat.
+    /// `nil` until the iroh host has published one, which is exactly when the
+    /// body must report itself unreachable over the Wire.
+    var publishedIrohNodeID: String? {
+        (realtimeRelayClient as? HermesIrohRelayHostClient)?.publishedNodeID
+    }
+
+    /// War Room W1 — hand inbound `war.hello` streams to the Wire host. The
+    /// request handler classifies the opening frame and transfers stream
+    /// ownership; without an acceptor an inbound Wire is simply not served.
+    func setWarWireAcceptor(_ acceptor: WarWireStreamAcceptor?) {
+        (realtimeRelayClient as? HermesIrohRelayHostClient)?.warWireAcceptor = acceptor
+    }
+
     private let cliChatDispatcher: CLIAgentRelayChatDispatcher?
     private let cliModelCatalogDispatcher: CLIRuntimeModelCatalogDispatcher?
     private let cliSessionActionDispatcher: CLIAgentSessionActionDispatcher?

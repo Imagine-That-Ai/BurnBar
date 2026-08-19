@@ -24,6 +24,10 @@ public struct HermesRealtimeRelayFrame: Codable, Sendable, Equatable {
     // control-plane metadata. Encoded only when non-nil so pre-Computer
     // Use traffic stays byte-identical to the existing wire form.
     public var control: HermesRealtimeRelayControlPayload?
+    // Optional sibling to `payload`, `media`, and `control`. Carries the
+    // War Room Wire's Mac⇄Mac fleet traffic. Encoded only when non-nil so
+    // every pre-War Room peer sees a byte-identical wire form.
+    public var war: HermesRealtimeRelayWarPayload?
     public var signalSessionCiphertextB64: String?
     public var signalMessageType: Int?
     public init(
@@ -36,6 +40,7 @@ public struct HermesRealtimeRelayFrame: Codable, Sendable, Equatable {
         payload: HermesRealtimeRelayPayload? = nil,
         media: HermesRealtimeRelayMediaPayload? = nil,
         control: HermesRealtimeRelayControlPayload? = nil,
+        war: HermesRealtimeRelayWarPayload? = nil,
         signalSessionCiphertextB64: String? = nil,
         signalMessageType: Int? = nil
     ) {
@@ -48,6 +53,7 @@ public struct HermesRealtimeRelayFrame: Codable, Sendable, Equatable {
         self.payload = payload
         self.media = media
         self.control = control
+        self.war = war
         self.signalSessionCiphertextB64 = signalSessionCiphertextB64
         self.signalMessageType = signalMessageType
     }
@@ -628,5 +634,84 @@ public struct HermesRealtimeRelayDisplayDescriptor: Codable, Sendable, Equatable
         self.width = width
         self.height = height
         self.isPrimary = isPrimary
+    }
+}
+
+/// Why a Wire dial was refused. Wire values are identical to
+/// `WarWireDenialReason` in OpenBurnBarKernel, and
+/// `WarWireFrameCodecTests` fails if the two vocabularies ever drift — the
+/// gate that makes the decision and the frame that reports it must agree.
+public enum HermesRealtimeRelayWarDenialReason: String, Codable, CaseIterable, Sendable, Equatable {
+    case killSwitch = "kill_switch"
+    case entitlement
+    case noGrant = "no_grant"
+    case grantRevoked = "grant_revoked"
+    case grantMismatch = "grant_mismatch"
+    case selfDial = "self_dial"
+    case unidentified
+}
+
+/// Terminal and intermediate states for a dispatched run, as reported back
+/// to the dispatching Mac.
+public enum HermesRealtimeRelayWarRunStatus: String, Codable, CaseIterable, Sendable, Equatable {
+    case accepted
+    case running
+    case succeeded
+    case failed
+    case rejected
+}
+
+/// One machine's fleet-visible state as pushed over the Wire. Deliberately
+/// mirrors `FleetBodySnapshot` so a received snapshot feeds `FlameRouter`
+/// without a second translation layer.
+///
+/// Note what is absent: presence. A body never asserts its own liveness —
+/// the receiver derives that from frame arrival, which is the same
+/// "presence is the reader's verdict" law the Firestore path follows.
+public struct HermesRealtimeRelayWarBodyState: Codable, Sendable, Equatable {
+    public var bodyId: String
+    public var displayName: String
+    public var hermesGatewayReachable: Bool
+    public var capabilities: [String]
+    public var activeRunCount: Int
+    public var performanceCores: Int?
+    public init(
+        bodyId: String,
+        displayName: String,
+        hermesGatewayReachable: Bool,
+        capabilities: [String],
+        activeRunCount: Int,
+        performanceCores: Int? = nil
+    ) {
+        self.bodyId = bodyId
+        self.displayName = displayName
+        self.hermesGatewayReachable = hermesGatewayReachable
+        self.capabilities = capabilities
+        self.activeRunCount = activeRunCount
+        self.performanceCores = performanceCores
+    }
+}
+
+/// A unit of work routed to a peer Mac. Carries the originator so the
+/// receiving machine can stamp the run it starts, which is what the Command
+/// Board's STARTED BY column reads.
+public struct HermesRealtimeRelayWarDispatchRequest: Codable, Sendable, Equatable {
+    public var dispatchId: String
+    public var instruction: String
+    public var requiredCapabilities: [String]
+    public var originatorKind: String?
+    public var originatorRef: String?
+    public init(
+        dispatchId: String,
+        instruction: String,
+        requiredCapabilities: [String] = [],
+        originatorKind: String? = nil,
+        originatorRef: String? = nil
+    ) {
+        self.dispatchId = dispatchId
+        self.instruction = instruction
+        self.requiredCapabilities = requiredCapabilities
+        self.originatorKind = originatorKind
+        self.originatorRef = originatorRef
     }
 }

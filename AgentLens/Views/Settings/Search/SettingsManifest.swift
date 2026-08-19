@@ -664,6 +664,33 @@ enum SettingsManifest {
             subtitle: "Cast cost glances to Nest Hub, Pixel Tablet, and Pixel Clock",
             keywords: ["nest", "hub", "pixel", "clock", "display", "cast"]
         ),
+        SettingsItem(
+            id: "devices.hermesBodies",
+            tab: .devicesAndSync,
+            pageRoute: .devicesAndSyncRoot,
+            anchorID: SettingsAnchor.hermesBodies,
+            title: "Hermes Bodies",
+            subtitle: "Each Mac's Hermes identity — name, hardware, and presence",
+            keywords: ["hermes", "body", "mac", "machine", "fleet", "war", "room", "rename"]
+        ),
+        SettingsItem(
+            id: "devices.hermesRoom",
+            tab: .devicesAndSync,
+            pageRoute: .devicesAndSyncRoot,
+            anchorID: SettingsAnchor.hermesRoom,
+            title: "Hermes Room",
+            subtitle: "Pick which Mac serves Hermes — the others stay linked and ready",
+            keywords: ["hermes", "room", "swap", "move", "wire", "link", "war", "machine"]
+        ),
+        SettingsItem(
+            id: "devices.commandBoard",
+            tab: .devicesAndSync,
+            pageRoute: .devicesAndSyncRoot,
+            anchorID: SettingsAnchor.commandBoard,
+            title: "Command Board",
+            subtitle: "Every run across every machine, with who started it and what it cost",
+            keywords: ["command", "board", "runs", "started", "by", "cost", "flame", "war", "fleet"]
+        ),
 
         // MARK: Text Expansion
 
@@ -943,6 +970,9 @@ enum SettingsManifest {
         SettingsAnchor.cloudSyncToggle,
         SettingsAnchor.trustedDevices,
         SettingsAnchor.smartDisplays,
+        SettingsAnchor.hermesBodies,
+        SettingsAnchor.hermesRoom,
+        SettingsAnchor.commandBoard,
         SettingsAnchor.textExpansionSnippets,
         SettingsAnchor.textExpansionRuntime,
         SettingsAnchor.mediaPermissions,

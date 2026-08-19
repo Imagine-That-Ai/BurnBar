@@ -67,6 +67,14 @@ final class ChatSessionController {
     /// byte-for-byte unchanged.
     var personaCoreOverride: String?
 
+    /// Which persona seat each agent speaks in, keyed by `ChatBackendID.rawValue`.
+    /// Sparse: an agent with no entry uses its own default voice. Written through
+    /// `setPersonaSeatID(_:for:)`, which owns the persistence.
+    var personaSeatsByBackend: [String: String] = [:]
+
+    /// Seats the user added beyond the four built-ins.
+    var customPersonaSeats: [PlasmaSeat] = []
+
     var desktopControlGrant: AgentCapabilityGrant?
 
     var desktopControlError: String?
@@ -424,6 +432,7 @@ final class ChatSessionController {
         chatModelOpenClaude = UserDefaults.standard.string(forKey: Self.udChatModelOpenClaude) ?? ""
         chatModelOMP = UserDefaults.standard.string(forKey: Self.udChatModelOMP) ?? ""
         chatModelJunie = UserDefaults.standard.string(forKey: Self.udChatModelJunie) ?? ""
+        loadPersonaState()
 
         let w = UserDefaults.standard.double(forKey: Self.udPanelW)
         if w >= 260 && w <= 800 { panelWidth = CGFloat(w) }

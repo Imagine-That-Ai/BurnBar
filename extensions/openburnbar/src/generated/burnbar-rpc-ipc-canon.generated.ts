@@ -1702,6 +1702,36 @@ export const burnBarRpcIpcCanon = [
     "error": "BurnBarRPCError"
   },
   {
+    "id": "daemon.war.flame.distill.list",
+    "caseName": "warFlameDistillList",
+    "domain": "war_room",
+    "capability": "observability",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.war.flame.distill",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.war.flame.distill.settle",
+    "caseName": "warFlameDistillSettle",
+    "domain": "war_room",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.war.flame.distill.settle",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.war.flame.route",
+    "caseName": "warFlameRoute",
+    "domain": "war_room",
+    "capability": "observability",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.war.flame.route",
+    "error": "BurnBarRPCError"
+  },
+  {
     "id": "perf.measure",
     "caseName": "perfMeasure",
     "domain": "observability",

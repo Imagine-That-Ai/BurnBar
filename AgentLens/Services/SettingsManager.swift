@@ -271,6 +271,10 @@ final class SettingsManager {
         // "computer_use_trusted_scopes_allowed": NSNumber(value: true),
         // "computer_use_audit_export_allowed": NSNumber(value: true),
         "media_kill_switch": NSNumber(value: true),
+        // War Room (the Wire + the Flame). Secure default: engaged, so an
+        // install that cannot reach Remote Config keeps the shipped
+        // single-machine experience instead of opening the Mac⇄Mac lane.
+        "war_room_kill_switch": NSNumber(value: true),
         // Memory extraction fleet kill switch. Default true (extraction allowed);
         // Remote Config sets false to halt extraction instantly. Fetch transport
         // errors keep any active cached false authoritative while avoiding
@@ -356,6 +360,7 @@ final class SettingsManager {
             computerUseKillSwitch = true
             hasResolvedComputerUseRemoteConfig = true
             mediaKillSwitch = true
+            warRoomKillSwitch = true
             // Preserve opted-in local memory only when the active cached config is
             // not a fleet kill. A previously activated false value remains
             // authoritative even if this refresh cannot reach Firebase.
@@ -394,6 +399,7 @@ final class SettingsManager {
         ).boolValue
 
         mediaKillSwitch = remoteConfig.configValue(forKey: "media_kill_switch").boolValue
+        warRoomKillSwitch = remoteConfig.configValue(forKey: "war_room_kill_switch").boolValue
 
         let memoryRCEnabled = activeMemoryExtractionEnabled
         memoryExtractionRemoteConfigEnabled = memoryRCEnabled
@@ -1097,6 +1103,20 @@ final class SettingsManager {
     var mediaKillSwitch: Bool {
         get { chatBackend.mediaKillSwitch }
         set { chatBackend.mediaKillSwitch = newValue }
+    }
+
+    /// War Room's global stop (the Wire + the Flame). Fail-closed: engaged
+    /// unless Remote Config says otherwise, so an unreachable config never
+    /// opens the Mac⇄Mac lane.
+    var warRoomKillSwitch: Bool {
+        get { chatBackend.warRoomKillSwitch }
+        set { chatBackend.warRoomKillSwitch = newValue }
+    }
+
+    /// Which machine the Hermes Room points at. Nil means this Mac.
+    var activeHermesBodyID: String? {
+        get { chatBackend.activeHermesBodyID.isEmpty ? nil : chatBackend.activeHermesBodyID }
+        set { chatBackend.activeHermesBodyID = newValue ?? "" }
     }
 
     var launchHermesWithOpenBurnBar: Bool {

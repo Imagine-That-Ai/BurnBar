@@ -55,6 +55,12 @@
           "serialName": null,
           "encodeDefault": false
         },
+        "war": {
+          "ktType": "HermesRealtimeRelayWarPayload?",
+          "default": "null",
+          "serialName": null,
+          "encodeDefault": false
+        },
         "signalSessionCiphertextB64": {
           "ktType": "String?",
           "default": "null",
@@ -78,6 +84,7 @@
         "payload",
         "media",
         "control",
+        "war",
         "signalSessionCiphertextB64",
         "signalMessageType"
       ]
@@ -638,34 +645,145 @@
     "HermesRealtimeRelaySessionGrantChallenge": {
       "kind": "data class",
       "fields": {
-        "version": { "ktType": "Int", "serialName": null, "encodeDefault": false },
-        "challengeId": { "ktType": "String", "serialName": null, "encodeDefault": false },
-        "nonce": { "ktType": "String", "serialName": null, "encodeDefault": false },
-        "issuedAt": { "ktType": "Double", "serialName": null, "encodeDefault": false },
-        "expiresAt": { "ktType": "Double", "serialName": null, "encodeDefault": false },
-        "sessionIntentId": { "ktType": "String", "serialName": null, "encodeDefault": false },
-        "runtime": { "ktType": "String", "serialName": null, "encodeDefault": false },
-        "threadId": { "ktType": "String", "serialName": null, "encodeDefault": false },
-        "preset": { "ktType": "String", "serialName": null, "encodeDefault": false },
-        "capabilities": { "ktType": "List<String>", "serialName": null, "encodeDefault": false },
-        "mode": { "ktType": "String", "serialName": null, "encodeDefault": false },
-        "trustMode": { "ktType": "String", "serialName": null, "encodeDefault": false },
-        "scopeRuleIds": { "ktType": "List<String>", "serialName": null, "encodeDefault": false },
-        "phoneViewerNodeId": { "ktType": "String?", "default": "null", "serialName": null, "encodeDefault": false },
-        "macHostNodeId": { "ktType": "String?", "default": "null", "serialName": null, "encodeDefault": false },
-        "actionCap": { "ktType": "Int", "serialName": null, "encodeDefault": false },
-        "sessionTimeoutSeconds": { "ktType": "Int", "serialName": null, "encodeDefault": false },
-        "clientId": { "ktType": "String", "serialName": null, "encodeDefault": false },
-        "runId": { "ktType": "String?", "default": "null", "serialName": null, "encodeDefault": false },
-        "runCallId": { "ktType": "String?", "default": "null", "serialName": null, "encodeDefault": false },
-        "runGeneration": { "ktType": "Long?", "default": "null", "serialName": null, "encodeDefault": false },
-        "desktopOwnerAuthorizationMethod": { "ktType": "String?", "default": "null", "serialName": null, "encodeDefault": false }
+        "version": {
+          "ktType": "Int",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "challengeId": {
+          "ktType": "String",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "nonce": {
+          "ktType": "String",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "issuedAt": {
+          "ktType": "Double",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "expiresAt": {
+          "ktType": "Double",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "sessionIntentId": {
+          "ktType": "String",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "runtime": {
+          "ktType": "String",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "threadId": {
+          "ktType": "String",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "preset": {
+          "ktType": "String",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "capabilities": {
+          "ktType": "List<String>",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "mode": {
+          "ktType": "String",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "trustMode": {
+          "ktType": "String",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "scopeRuleIds": {
+          "ktType": "List<String>",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "phoneViewerNodeId": {
+          "ktType": "String?",
+          "default": "null",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "macHostNodeId": {
+          "ktType": "String?",
+          "default": "null",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "actionCap": {
+          "ktType": "Int",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "sessionTimeoutSeconds": {
+          "ktType": "Int",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "clientId": {
+          "ktType": "String",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "runId": {
+          "ktType": "String?",
+          "default": "null",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "runCallId": {
+          "ktType": "String?",
+          "default": "null",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "runGeneration": {
+          "ktType": "Long?",
+          "default": "null",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "desktopOwnerAuthorizationMethod": {
+          "ktType": "String?",
+          "default": "null",
+          "serialName": null,
+          "encodeDefault": false
+        }
       },
       "fieldOrder": [
-        "version", "challengeId", "nonce", "issuedAt", "expiresAt", "sessionIntentId",
-        "runtime", "threadId", "preset", "capabilities", "mode", "trustMode",
-        "scopeRuleIds", "phoneViewerNodeId", "macHostNodeId", "actionCap",
-        "sessionTimeoutSeconds", "clientId", "runId", "runCallId", "runGeneration",
+        "version",
+        "challengeId",
+        "nonce",
+        "issuedAt",
+        "expiresAt",
+        "sessionIntentId",
+        "runtime",
+        "threadId",
+        "preset",
+        "capabilities",
+        "mode",
+        "trustMode",
+        "scopeRuleIds",
+        "phoneViewerNodeId",
+        "macHostNodeId",
+        "actionCap",
+        "sessionTimeoutSeconds",
+        "clientId",
+        "runId",
+        "runCallId",
+        "runGeneration",
         "desktopOwnerAuthorizationMethod"
       ]
     },
@@ -3125,6 +3243,244 @@
         "screenshotHashBlake3",
         "parentEntryBlake3",
         "errorCategory"
+      ]
+    },
+    "HermesRealtimeRelayWarPayload": {
+      "kind": "data class",
+      "fields": {
+        "kind": {
+          "ktType": "Kind",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "bodyId": {
+          "ktType": "String?",
+          "default": "null",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "displayName": {
+          "ktType": "String?",
+          "default": "null",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "capabilities": {
+          "ktType": "List<String>?",
+          "default": "null",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "pairId": {
+          "ktType": "String?",
+          "default": "null",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "fleet": {
+          "ktType": "List<HermesRealtimeRelayWarBodyState>?",
+          "default": "null",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "dispatch": {
+          "ktType": "HermesRealtimeRelayWarDispatchRequest?",
+          "default": "null",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "runId": {
+          "ktType": "String?",
+          "default": "null",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "sequence": {
+          "ktType": "Int?",
+          "default": "null",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "chunk": {
+          "ktType": "String?",
+          "default": "null",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "status": {
+          "ktType": "HermesRealtimeRelayWarRunStatus?",
+          "default": "null",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "denialReason": {
+          "ktType": "HermesRealtimeRelayWarDenialReason?",
+          "default": "null",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "message": {
+          "ktType": "String?",
+          "default": "null",
+          "serialName": null,
+          "encodeDefault": false
+        }
+      },
+      "fieldOrder": [
+        "kind",
+        "bodyId",
+        "displayName",
+        "capabilities",
+        "pairId",
+        "fleet",
+        "dispatch",
+        "runId",
+        "sequence",
+        "chunk",
+        "status",
+        "denialReason",
+        "message"
+      ]
+    },
+    "HermesRealtimeRelayWarBodyState": {
+      "kind": "data class",
+      "fields": {
+        "bodyId": {
+          "ktType": "String",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "displayName": {
+          "ktType": "String",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "hermesGatewayReachable": {
+          "ktType": "Boolean",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "capabilities": {
+          "ktType": "List<String>",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "activeRunCount": {
+          "ktType": "Int",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "performanceCores": {
+          "ktType": "Int?",
+          "default": "null",
+          "serialName": null,
+          "encodeDefault": false
+        }
+      },
+      "fieldOrder": [
+        "bodyId",
+        "displayName",
+        "hermesGatewayReachable",
+        "capabilities",
+        "activeRunCount",
+        "performanceCores"
+      ]
+    },
+    "HermesRealtimeRelayWarDispatchRequest": {
+      "kind": "data class",
+      "fields": {
+        "dispatchId": {
+          "ktType": "String",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "instruction": {
+          "ktType": "String",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "requiredCapabilities": {
+          "ktType": "List<String>",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "originatorKind": {
+          "ktType": "String?",
+          "default": "null",
+          "serialName": null,
+          "encodeDefault": false
+        },
+        "originatorRef": {
+          "ktType": "String?",
+          "default": "null",
+          "serialName": null,
+          "encodeDefault": false
+        }
+      },
+      "fieldOrder": [
+        "dispatchId",
+        "instruction",
+        "requiredCapabilities",
+        "originatorKind",
+        "originatorRef"
+      ]
+    },
+    "HermesRealtimeRelayWarRunStatus": {
+      "kind": "enum",
+      "cases": [
+        {
+          "id": "ACCEPTED",
+          "serialName": "accepted"
+        },
+        {
+          "id": "RUNNING",
+          "serialName": "running"
+        },
+        {
+          "id": "SUCCEEDED",
+          "serialName": "succeeded"
+        },
+        {
+          "id": "FAILED",
+          "serialName": "failed"
+        },
+        {
+          "id": "REJECTED",
+          "serialName": "rejected"
+        }
+      ]
+    },
+    "HermesRealtimeRelayWarDenialReason": {
+      "kind": "enum",
+      "cases": [
+        {
+          "id": "KILL_SWITCH",
+          "serialName": "kill_switch"
+        },
+        {
+          "id": "ENTITLEMENT",
+          "serialName": "entitlement"
+        },
+        {
+          "id": "NO_GRANT",
+          "serialName": "no_grant"
+        },
+        {
+          "id": "GRANT_REVOKED",
+          "serialName": "grant_revoked"
+        },
+        {
+          "id": "GRANT_MISMATCH",
+          "serialName": "grant_mismatch"
+        },
+        {
+          "id": "SELF_DIAL",
+          "serialName": "self_dial"
+        },
+        {
+          "id": "UNIDENTIFIED",
+          "serialName": "unidentified"
+        }
       ]
     }
   },

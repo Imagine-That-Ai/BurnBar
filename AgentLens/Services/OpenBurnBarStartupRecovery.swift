@@ -191,6 +191,7 @@ final class OpenBurnBarRuntimeContext {
     var cloudSyncService: CloudSyncService?
     var iCloudSessionMirrorService: ICloudSessionMirrorService?
     var hermesRelayHostService: HermesRelayHostService?
+    var hermesBodyPublisher: HermesBodyPublisher?
     var piAgentRelayHostService: PiAgentCloudRelayHostService?
     var smartHubBridgeController: SmartHubBridgeController?
     var pixelClockController: PixelClockController?
@@ -200,6 +201,20 @@ final class OpenBurnBarRuntimeContext {
     var castActionsListener: CastActionsListener?
     var cliAgentMissionRequestListener: CLIAgentMissionRequestListener?
     var agentHarnessImportJobListener: AgentHarnessImportJobListener?
+    /// The War Room rhythm (W6). Fires due standing orders at the machine the
+    /// Flame picks; without it the `standing_orders` table is a table nobody reads.
+    var standingOrderRuntimeHost: StandingOrderRuntimeHost?
+    /// The War Room Wire (W1). Keeps Mac-to-Mac lanes open where consent and
+    /// entitlement allow, and closes them when either is withdrawn.
+    var warWireHost: WarWireHost?
+    /// One fleet listener shared by every War Room surface. Two listeners on the
+    /// same collection would double the Firestore reads and could disagree about
+    /// the fleet for a beat.
+    var hermesBodyDirectory: HermesBodyDirectory?
+    /// Shared for the same reason as the directory: the Hermes Room reads the
+    /// grants the Wire is acting on, so a second listener could show a lane as
+    /// open that the Wire had already closed.
+    var warWireGrantStore: WarWireGrantStore?
     var routedClientWiringSentry: RoutedClientWiringSentry?
     #if canImport(AppKit) && !DISTRIBUTION_MAS
     var computerUseRuntimeController: ComputerUseRuntimeController?
@@ -289,6 +304,7 @@ final class OpenBurnBarRuntimeContext {
 
         guard accountManager.isFirebaseAvailable else {
             hermesRelayHostService?.stop()
+            hermesBodyPublisher?.stop()
             piAgentRelayHostService?.stop()
             return
         }
@@ -330,6 +346,20 @@ final class OpenBurnBarRuntimeContext {
             hermesRelayHostService = hermesRelayHost
         }
         hermesRelayHost.start()
+        // War Room W0: this Mac's HermesBody rides the relay host's identity —
+        // same connection id, published for as long as the host is up.
+        if hermesBodyPublisher == nil {
+            hermesBodyPublisher = HermesBodyPublisher(
+                accountManager: accountManager,
+                settingsManager: settingsManager,
+                bodyIDProvider: { hermesRelayHost.connectionID },
+                // The Wire's endpoint is the relay host's published NodeId.
+                // Without this the body advertises no endpoint and every peer
+                // plans `.noEndpoint`, so the Wire would never dial.
+                irohNodeIDProvider: { hermesRelayHost.publishedIrohNodeID }
+            )
+        }
+        hermesBodyPublisher?.start()
         #if canImport(AppKit) && !DISTRIBUTION_MAS
         startComputerUseServices(relayHostService: hermesRelayHost)
         #endif
@@ -561,6 +591,9 @@ final class OpenBurnBarRuntimeContext {
             castActionsListener?.stop()
             cliAgentMissionRequestListener?.stop()
             agentHarnessImportJobListener?.stop()
+            standingOrderRuntimeHost?.stop()
+            warWireHost?.stop()
+            hermesBodyDirectory?.stop()
             return
         }
 
@@ -610,7 +643,10 @@ final class OpenBurnBarRuntimeContext {
             missionListener = CLIAgentMissionRequestListener(
                 accountManager: accountManager,
                 settingsManager: settingsManager,
-                chatController: chatController
+                chatController: chatController,
+                // The HermesBody id is the relay host's connection id, so a
+                // mission the Flame routed to another Mac is left for it.
+                localBodyIDProvider: { [weak self] in self?.hermesRelayHostService?.connectionID }
             )
             cliAgentMissionRequestListener = missionListener
         }
@@ -629,6 +665,62 @@ final class OpenBurnBarRuntimeContext {
             agentHarnessImportJobListener = importListener
         }
         importListener.start()
+
+        let fleetDirectory: HermesBodyDirectory
+        if let existing = hermesBodyDirectory {
+            fleetDirectory = existing
+        } else {
+            fleetDirectory = HermesBodyDirectory(accountManager: accountManager)
+            hermesBodyDirectory = fleetDirectory
+        }
+        fleetDirectory.start()
+
+        let standingOrders: StandingOrderRuntimeHost
+        if let existing = standingOrderRuntimeHost {
+            standingOrders = existing
+        } else {
+            standingOrders = StandingOrderRuntimeHost(
+                store: StandingOrderStore(dbQueue: dataStore.actor.dbQueue),
+                directory: fleetDirectory,
+                dispatcher: MacWandMissionDispatcher(accountManager: accountManager),
+                killSwitchProvider: { [settingsManager] in settingsManager.warRoomKillSwitch }
+            )
+            standingOrderRuntimeHost = standingOrders
+        }
+        standingOrders.start()
+
+        let grants: WarWireGrantStore
+        if let existing = warWireGrantStore {
+            grants = existing
+        } else {
+            grants = WarWireGrantStore(
+                accountManager: accountManager,
+                settingsManager: settingsManager
+            )
+            warWireGrantStore = grants
+        }
+
+        let wire: WarWireHost
+        if let existing = warWireHost {
+            wire = existing
+        } else {
+            wire = WarWireHost(
+                directory: fleetDirectory,
+                grantStore: grants,
+                accountManager: accountManager,
+                tierProvider: { MacCloudEntitlementStore.shared.cloudTier },
+                killSwitchProvider: { [settingsManager] in settingsManager.warRoomKillSwitch },
+                transportProvider: { [weak self] in self?.hermesRelayHostService?.activeIrohTransport }
+            )
+            warWireHost = wire
+        }
+        wire.start()
+        // Inbound half of the Wire: the relay host classifies a peer Mac's
+        // opening `war.hello` and hands the stream here, so a lane opens
+        // whichever machine dialled first.
+        hermesRelayHostService?.setWarWireAcceptor { [weak wire] stream, opening in
+            await wire?.acceptInbound(stream: stream, opening: opening)
+        }
     }
 
     /// Boot the durability sentry that keeps Codex / Forge / OpenCode / Droid
