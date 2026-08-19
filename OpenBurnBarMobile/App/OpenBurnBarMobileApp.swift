@@ -37,7 +37,7 @@ enum HermesGatewayPairingDeepLink {
     static func code(from notification: Notification) -> String? {
         (notification.userInfo?[codeUserInfoKey] as? String)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
-            .nilIfEmpty()
+            .nilIfEmpty
     }
 
     static func consumePendingCode() -> String? {
@@ -52,7 +52,7 @@ enum HermesGatewayPairingDeepLink {
             .first { ["code", "userCode", "user_code"].contains($0.name) }?
             .value?
             .trimmingCharacters(in: .whitespacesAndNewlines)
-            .nilIfEmpty()
+            .nilIfEmpty
         guard let code else { return nil }
 
         let scheme = url.scheme?.lowercased()

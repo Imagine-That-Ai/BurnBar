@@ -40,7 +40,7 @@ struct MissionLiveDetailView: View {
                         Text(mission.title)
                             .font(UnifiedDesignSystem.Typography.title)
                             .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
-                        Text(mission.displayLiveSummary?.nilIfEmpty ?? mission.displayStatus.capitalized)
+                        Text(mission.displayLiveSummary?.nilIfBlankPreservingWhitespace ?? mission.displayStatus.capitalized)
                             .font(UnifiedDesignSystem.Typography.caption)
                             .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
                     }
@@ -86,9 +86,9 @@ struct MissionLiveDetailView: View {
                     }
 
                     if mission.isWaitingForApproval {
-                        MissionDetailSection(title: mission.approvalTitle?.nilIfEmpty ?? "Approval Required") {
+                        MissionDetailSection(title: mission.approvalTitle?.nilIfBlankPreservingWhitespace ?? "Approval Required") {
                             VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
-                                Text(mission.approvalMessage?.nilIfEmpty ?? "The Mac is waiting for approval before continuing this mission.")
+                                Text(mission.approvalMessage?.nilIfBlankPreservingWhitespace ?? "The Mac is waiting for approval before continuing this mission.")
                                     .font(UnifiedDesignSystem.Typography.caption)
                                     .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
                                 HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
@@ -111,7 +111,7 @@ struct MissionLiveDetailView: View {
                         }
                     }
 
-                    if let sessionID = mission.sessionID?.nilIfEmpty {
+                    if let sessionID = mission.sessionID?.nilIfBlankPreservingWhitespace {
                         MissionDetailSection(title: "Session") {
                             Text(sessionID)
                                 .font(UnifiedDesignSystem.Typography.monoTiny)
@@ -135,7 +135,7 @@ struct MissionLiveDetailView: View {
                         }
                     }
 
-                    if let result = mission.resultPreview?.nilIfEmpty {
+                    if let result = mission.resultPreview?.nilIfBlankPreservingWhitespace {
                         MissionDetailSection(title: "Result") {
                             Text(result)
                                 .font(UnifiedDesignSystem.Typography.caption)
@@ -144,7 +144,7 @@ struct MissionLiveDetailView: View {
                         }
                     }
 
-                    if let error = mission.errorMessage?.nilIfEmpty {
+                    if let error = mission.errorMessage?.nilIfBlankPreservingWhitespace {
                         MissionDetailSection(title: "Failure") {
                             Text(error)
                                 .font(UnifiedDesignSystem.Typography.caption)
@@ -294,10 +294,10 @@ struct MissionTimelineRow: View {
                 .frame(width: 18, height: 18)
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: UnifiedDesignSystem.Spacing.xs) {
-                    Text((event.title?.nilIfEmpty ?? event.phase.replacingOccurrences(of: "_", with: " ")).uppercased())
+                    Text((event.title?.nilIfBlankPreservingWhitespace ?? event.phase.replacingOccurrences(of: "_", with: " ")).uppercased())
                         .font(UnifiedDesignSystem.Typography.monoTiny.weight(.semibold))
                         .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
-                    if let runtime = event.runtime?.nilIfEmpty {
+                    if let runtime = event.runtime?.nilIfBlankPreservingWhitespace {
                         Text(runtime)
                             .font(UnifiedDesignSystem.Typography.monoTiny)
                             .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
@@ -320,15 +320,15 @@ struct MissionTimelineRow: View {
                         .font(UnifiedDesignSystem.Typography.monoTiny)
                         .foregroundStyle(UnifiedDesignSystem.Colors.warning)
                 }
-                if event.toolName?.nilIfEmpty != nil || event.artifactPath?.nilIfEmpty != nil || event.changedFilePath?.nilIfEmpty != nil {
+                if event.toolName?.nilIfBlankPreservingWhitespace != nil || event.artifactPath?.nilIfBlankPreservingWhitespace != nil || event.changedFilePath?.nilIfBlankPreservingWhitespace != nil {
                     HStack(spacing: UnifiedDesignSystem.Spacing.xs) {
-                        if let toolName = event.toolName?.nilIfEmpty {
+                        if let toolName = event.toolName?.nilIfBlankPreservingWhitespace {
                             MissionDetailChip(label: toolName, systemImage: "hammer")
                         }
-                        if let artifactPath = event.artifactPath?.nilIfEmpty {
+                        if let artifactPath = event.artifactPath?.nilIfBlankPreservingWhitespace {
                             MissionDetailChip(label: artifactPath, systemImage: "doc.text")
                         }
-                        if let changedFilePath = event.changedFilePath?.nilIfEmpty {
+                        if let changedFilePath = event.changedFilePath?.nilIfBlankPreservingWhitespace {
                             MissionDetailChip(label: changedFilePath, systemImage: "pencil.and.list.clipboard")
                         }
                     }
@@ -364,7 +364,7 @@ struct MissionTimelineRow: View {
 
 extension CLIAgentMissionEvent {
     var displayMessage: String {
-        fullMessage?.nilIfEmpty ?? message
+        fullMessage?.nilIfBlankPreservingWhitespace ?? message
     }
 
     var prefersMonospace: Bool {
@@ -522,8 +522,8 @@ enum SkillRunPiPFrameRenderer {
         drawPill(status, at: CGPoint(x: 92, y: 206), color: statusColor)
         drawPill(mission.deliveryMode.displayName.uppercased(), at: CGPoint(x: 92, y: 262), color: UIColor(red: 0.54, green: 0.70, blue: 1.0, alpha: 1))
 
-        let latest = mission.events.last?.displayMessage.nilIfEmpty
-            ?? mission.displayLiveSummary?.nilIfEmpty
+        let latest = mission.events.last?.displayMessage.nilIfBlankPreservingWhitespace
+            ?? mission.displayLiveSummary?.nilIfBlankPreservingWhitespace
             ?? mission.currentStepLabel
         drawText(latest, at: CGPoint(x: 94, y: 336), size: 24, weight: .regular, color: UIColor.white.withAlphaComponent(0.78), maxWidth: 760)
 
@@ -804,7 +804,7 @@ private struct SkillRunLiveStageTile: View {
                         .font(UnifiedDesignSystem.Typography.caption.weight(.semibold))
                         .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
                         .lineLimit(2)
-                    Text(mission.events.last?.displayMessage.nilIfEmpty ?? mission.displayLiveSummary?.nilIfEmpty ?? mission.currentStepLabel)
+                    Text(mission.events.last?.displayMessage.nilIfBlankPreservingWhitespace ?? mission.displayLiveSummary?.nilIfBlankPreservingWhitespace ?? mission.currentStepLabel)
                         .font(UnifiedDesignSystem.Typography.tiny)
                         .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
                         .lineLimit(3)
@@ -870,6 +870,3 @@ private struct SkillRunStagePill: View {
 }
 #endif
 
-private extension String {
-    var nilIfEmpty: String? { trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : self }
-}

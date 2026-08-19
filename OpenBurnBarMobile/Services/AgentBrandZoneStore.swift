@@ -65,7 +65,7 @@ final class AgentBrandZoneStore {
         }
         switch identity.dispatchTransport {
         case .macRelay(let runtime):
-            return runtime.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+            return runtime.trimmingCharacters(in: .whitespacesAndNewlines).nilIfBlankPreservingWhitespace
         case .nativeRelay, .httpGateway, .mcpServer:
             return nil
         }
@@ -79,9 +79,9 @@ final class AgentBrandZoneStore {
         switch runtime {
         case .hermes, .pi:
             guard let thread = historyStore.threads(for: runtime).first else { return nil }
-            let preview = thread.preview.nilIfEmpty ?? thread.messages.last?.text.nilIfEmpty ?? "No preview available."
+            let preview = thread.preview.nilIfBlankPreservingWhitespace ?? thread.messages.last?.text.nilIfBlankPreservingWhitespace ?? "No preview available."
             return AgentForwardContextSnapshot(
-                title: thread.title.nilIfEmpty ?? "(untitled)",
+                title: thread.title.nilIfBlankPreservingWhitespace ?? "(untitled)",
                 preview: preview,
                 sourceLabel: "mobile thread",
                 updatedAt: thread.updatedAt
@@ -92,8 +92,8 @@ final class AgentBrandZoneStore {
             await cliReader.refresh()
             guard let session = cliReader.sessions(for: cliRuntime).first else { return nil }
             return AgentForwardContextSnapshot(
-                title: session.title.nilIfEmpty ?? "(untitled)",
-                preview: session.preview.nilIfEmpty ?? "No preview available.",
+                title: session.title.nilIfBlankPreservingWhitespace ?? "(untitled)",
+                preview: session.preview.nilIfBlankPreservingWhitespace ?? "No preview available.",
                 sourceLabel: "Mac mirrored session",
                 updatedAt: session.updatedAt
             )
@@ -203,8 +203,3 @@ final class AgentBrandZoneStore {
     }
 }
 
-private extension String {
-    var nilIfEmpty: String? {
-        trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : self
-    }
-}

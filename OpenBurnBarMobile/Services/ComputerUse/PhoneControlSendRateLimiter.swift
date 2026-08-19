@@ -2,7 +2,11 @@ import Foundation
 
 enum PhoneControlSendRateLimiter {
     private static let lock = NSLock()
-    private static var stamps: [Int64] = []
+    // AUDIT(nonisolated(unsafe)): every read and write below happens inside
+    // `lock`, which is the only access path to this array. The isolation is
+    // the lock, not the compiler's, so the annotation records an invariant
+    // that already holds rather than suppressing a real data race.
+    private nonisolated(unsafe) static var stamps: [Int64] = []
     private static let windowMs: Int64 = 1_000
     private static let maxEvents = 30
 

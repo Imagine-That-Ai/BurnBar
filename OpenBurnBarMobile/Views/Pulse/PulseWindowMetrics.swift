@@ -21,7 +21,9 @@ enum PulseWindowMetricBuilder {
             rollups: Dictionary(uniqueKeysWithValues: rollupTotals.map { key, value in
                 (key.rawValue, MobilePulseRollupTotals(
                     requests: value.requests,
-                    tokens: value.tokens,
+                    // RollupTotals.tokens is Int; the policy model widens to
+                    // Int64. Widening is total, so no clamping is needed.
+                    tokens: Int64(value.tokens),
                     costUsd: value.costUsd
                 ))
             }),

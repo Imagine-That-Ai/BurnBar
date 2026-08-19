@@ -1191,6 +1191,10 @@ jobs:
       zip_path: ${{ steps.zip.outputs.zip_path }}
       zip_name: ${{ steps.zip.outputs.zip_name }}
       aab_name: ${{ steps.android.outputs.aab_name }}
+      # 'success' | 'failure' | '' (empty on prerelease, where iOS never runs).
+      # Downstream iOS-only jobs gate on this so a failed iOS archive excludes
+      # iOS from the release instead of failing the whole macOS release.
+      ios_status: ${{ steps.ios-status.outputs.status }}
       native_identity_artifact_name: domain-core-native-observed-identities-${{ needs.release-preflight.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
 
     steps:
@@ -1390,9 +1394,21 @@ jobs:
       - name: Verify Mercury Iroh release artifact
         run: bash scripts/ci/verify-iroh-release-artifact.sh
 
+      # The macOS direct-download app and the App Store iOS archive are built
+      # from one source-coherent FFI build (see "Prepare Signal FFI XCFramework"
+      # above), so iOS cannot simply move to its own job without either
+      # duplicating ~1300 lines of signing/FFI setup or rebuilding the FFI
+      # independently — which would break exactly the coherence that comment
+      # protects. Instead iOS stays here and stops being fatal: a broken iOS
+      # target must not hold a working, signed Mac release hostage, which is
+      # what it did through the August 2026 outage. Failure is recorded in
+      # `ios_status`, surfaced as an annotation, and every iOS-dependent
+      # downstream job gates on it, so the release degrades visibly rather than
+      # silently shipping an incomplete set. See docs/CI_RELEASE_RUNBOOK.md.
       - name: Archive and export signed iOS app
         if: needs.release-preflight.outputs.is_prerelease == 'false'
         id: ios-archive
+        continue-on-error: true
         env:
           APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
           APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
@@ -1498,8 +1514,26 @@ jobs:
           echo "archive_path=$archive_zip" >> "$GITHUB_OUTPUT"
           echo "artifact_name=OpenBurnBar-${VERSION}-iOS-archive" >> "$GITHUB_OUTPUT"
 
-      - name: Upload signed iOS archive artifact
+      - name: Record iOS archive outcome
         if: needs.release-preflight.outputs.is_prerelease == 'false'
+        id: ios-status
+        env:
+          IOS_OUTCOME: ${{ steps.ios-archive.outcome }}
+        run: |
+          set -euo pipefail
+          echo "status=$IOS_OUTCOME" >> "$GITHUB_OUTPUT"
+          if [[ "$IOS_OUTCOME" != "success" ]]; then
+            echo "::error::iOS archive failed ($IOS_OUTCOME). The macOS release continues; iOS assets, iOS release evidence, and any App Store submission are EXCLUDED from this release."
+            {
+              echo "### iOS archive failed"
+              echo
+              echo "The macOS lane is unaffected and continues."
+              echo "This release ships **without** iOS assets or iOS release evidence."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload signed iOS archive artifact
+        if: needs.release-preflight.outputs.is_prerelease == 'false' && steps.ios-archive.outcome == 'success'
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
           name: ${{ steps.ios-archive.outputs.artifact_name }}
@@ -2752,7 +2786,11 @@ jobs:
       - build-and-release
     uses: ./.github/workflows/domain-core-ios-release-evidence.yml
     with:
-      enabled: ${{ needs.release-preflight.outputs.is_prerelease == 'false' }}
+      # There is no iOS archive to gather evidence for when the iOS lane
+      # failed, so this reports "not enabled" rather than failing on a missing
+      # artifact. build-and-release has already emitted an ::error:: naming the
+      # exclusion, so the omission is visible rather than silent.
+      enabled: ${{ needs.release-preflight.outputs.is_prerelease == 'false' && needs.build-and-release.outputs.ios_status == 'success' }}
       version: ${{ needs.release-preflight.outputs.version }}
       release_commit: ${{ needs.release-preflight.outputs.release_commit }}
       archive_artifact_name: OpenBurnBar-${{ needs.release-preflight.outputs.version }}-iOS-archive
