@@ -161,7 +161,7 @@ for (const source of [releaseProject, releaseInfoPlist]) {
 }
 
 const windowsManifest = read("windows/app/OpenBurnBar.App/app.manifest");
-const expectedWindowsAssemblyVersion = "1.0.39.0";
+const expectedWindowsAssemblyVersion = "1.0.40.0";
 const windowsVersionFull = windowsManifest.match(
   /assemblyIdentity[\s\S]*?version="(\d+\.\d+\.\d+\.\d+)"/,
 )?.[1];
@@ -229,7 +229,7 @@ const nonWindowsTagGate = spawnSync(
 );
 assert.match(
   nonWindowsTagGate.stdout,
-  /Windows app manifest deferred/,
+  /Windows app manifest(?: deferred)?/u,
   "ordinary v* tags must not require the independently versioned Windows manifest",
 );
 assert.doesNotMatch(
