@@ -144,12 +144,24 @@ if (!live.endsWith(expected)) process.exit(1);
 const managedPrefix = live.slice(0, live.length - expected.length);
 const beginMarker = "# BEGIN Cloudflare Managed content\n";
 const endMarker = "\n# END Cloudflare Managed Content\n\n";
-if (!managedPrefix.startsWith(beginMarker) || !managedPrefix.endsWith(endMarker)) {
+const beginIndex = managedPrefix.indexOf(beginMarker);
+const endIndex = managedPrefix.lastIndexOf(endMarker);
+if (
+  beginIndex < 0 ||
+  managedPrefix.lastIndexOf(beginMarker) !== beginIndex ||
+  endIndex < beginIndex + beginMarker.length ||
+  managedPrefix.indexOf(endMarker) !== endIndex ||
+  endIndex + endMarker.length !== managedPrefix.length
+) {
+  process.exit(1);
+}
+const preamble = managedPrefix.slice(0, beginIndex);
+if (preamble.split("\n").some((line) => line && !line.startsWith("#"))) {
   process.exit(1);
 }
 const managedBody = managedPrefix.slice(
-  beginMarker.length,
-  managedPrefix.length - endMarker.length,
+  beginIndex + beginMarker.length,
+  endIndex,
 );
 if (
   managedBody.includes("# BEGIN Cloudflare Managed content") ||

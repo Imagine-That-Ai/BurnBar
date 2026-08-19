@@ -44,7 +44,7 @@ case "$url" in
       exit 0
     fi
     if [[ "$relative" == "robots.txt" && "${MOCK_ROBOTS_CLOUDFLARE_PREFIX:-}" == "1" ]]; then
-      printf '# BEGIN Cloudflare Managed content\nUser-agent: CloudflareBrowserRenderingCrawler\nDisallow: /\n# END Cloudflare Managed Content\n\n' > "$body"
+      printf '# As a condition of accessing this website, you agree to abide by the following\n# content signals:\n\n# BEGIN Cloudflare Managed content\nUser-agent: CloudflareBrowserRenderingCrawler\nDisallow: /\n# END Cloudflare Managed Content\n\n' > "$body"
       cat "$MOCK_RUNTIME_ROOT/$relative" >> "$body"
       printf '200'
       exit 0
