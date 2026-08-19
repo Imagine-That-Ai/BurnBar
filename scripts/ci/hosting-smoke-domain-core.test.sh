@@ -43,6 +43,12 @@ case "$url" in
       printf '301'
       exit 0
     fi
+    if [[ "$relative" == "robots.txt" && "${MOCK_ROBOTS_CLOUDFLARE_PREFIX:-}" == "1" ]]; then
+      printf '# BEGIN Cloudflare Managed content\nUser-agent: CloudflareBrowserRenderingCrawler\nDisallow: /\n# END Cloudflare Managed Content\n\n' > "$body"
+      cat "$MOCK_RUNTIME_ROOT/$relative" >> "$body"
+      printf '200'
+      exit 0
+    fi
     if [[ "$relative" == "404" ]]; then
       cp "$MOCK_RUNTIME_ROOT/404.html" "$body"
       printf '200'
@@ -156,11 +162,13 @@ cp "$profile" "$runtime_root/domain-core-build-profile.json"
 printf 'domain-core-wasm-bytes\n' > "$runtime_root/domain-core.wasm"
 printf 'fetch("domain-core.wasm"); domainCoreSourceFingerprint();\n' > "$runtime_root/domain-core.js"
 printf 'not-found\n' > "$runtime_root/404.html"
+printf '# The member console is private — never index it.\nUser-agent: *\nDisallow: /\n' > "$runtime_root/robots.txt"
 node "$ROOT/scripts/ci/create-domain-core-runtime-artifact-manifest.mjs" \
   --consumer console \
   --root "$runtime_root" \
   --profile-receipt "$profile" \
   --output "$runtime_manifest" >/dev/null
+cp "$runtime_root/robots.txt" "$TMP/robots.txt"
 
 hosting_coordinates='{"schemaVersion":1,"project":"burnbar","sites":[{"target":"marketing","site":"burnbar","versionName":"sites/burnbar/versions/version-1","releaseName":"sites/burnbar/channels/live/releases/release-1"},{"target":"console","site":"burnbar-console","versionName":"sites/burnbar-console/versions/version-2","releaseName":"sites/burnbar-console/channels/live/releases/release-2"}]}'
 
@@ -264,5 +272,13 @@ if (cd "$ROOT" && run_smoke >/dev/null 2>&1); then
 fi
 [[ ! -e "$health" ]] || { echo "FAIL: tampered WASM produced health evidence" >&2; exit 1; }
 cp "$TMP/good-domain-core.wasm" "$runtime_root/domain-core.wasm"
+
+rm -f "$health"
+if (cd "$ROOT" && MOCK_ROBOTS_CLOUDFLARE_PREFIX=1 run_smoke >/dev/null); then
+  [[ -e "$health" ]] || { echo "FAIL: Cloudflare-managed robots prefix produced no health evidence" >&2; exit 1; }
+else
+  echo "FAIL: Cloudflare-managed robots prefix was rejected" >&2
+  exit 1
+fi
 
 echo "PASS: Console Hosting identity, runtime bytes, and immutable provider coordinates are exact and fail-closed"
