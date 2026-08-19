@@ -74,6 +74,12 @@ function jobBlock(source, jobName) {
   return start === -1 ? "" : blockStartingAt(lines, start, 4);
 }
 
+function jobLevelCondition(jobSource) {
+  const lines = jobSource.split("\n");
+  const start = lines.findIndex((line) => /^ {4}if:/u.test(line));
+  return start === -1 ? "" : blockStartingAt(lines, start, 6);
+}
+
 function stepBlock(jobSource, stepName) {
   const lines = jobSource.split("\n");
   const start = lines.findIndex((line) => {
@@ -184,11 +190,14 @@ if (!existsSync(WORKFLOW)) {
 const source = stripYamlComments(readFileSync(WORKFLOW, "utf8"));
 const buildJob = jobBlock(source, "build-hosting-artifacts");
 const deployJob = jobBlock(source, "deploy-hosting");
+const deployJobCondition = jobLevelCondition(deployJob);
 const verifyStep = stepBlock(buildJob, "Verify hosting deploy ref");
 const verifyRun = stepRunBlock(verifyStep);
 
 if (!buildJob) fail("missing build-hosting-artifacts job");
 if (!deployJob) fail("missing deploy-hosting job");
+if (!deployJobCondition)
+  fail("deploy-hosting must declare a job-level if: condition");
 if (!verifyStep) fail("missing Verify hosting deploy ref step");
 if (/^\s{8}if\s*:/mu.test(verifyStep)) {
   fail("Verify hosting deploy ref step must not be conditional");
@@ -205,17 +214,17 @@ requireIncludes(
   "hosting deploy must support stable release tags",
 );
 requireIncludes(
-  deployJob,
+  deployJobCondition,
   "!cancelled()",
   "hosting deploy must carry a status-check function so an upstream skipped gate job cannot propagate a skip onto the credentialed deploy",
 );
 requireIncludes(
-  deployJob,
+  deployJobCondition,
   "needs.build-hosting-artifacts.result == 'success'",
   "hosting deploy must require a successful immutable-artifact build",
 );
 requireIncludes(
-  deployJob,
+  deployJobCondition,
   "(github.event_name != 'workflow_dispatch' || inputs.dry_run != true)",
   "hosting deploy must run on push/tag events and skip only manual dry-runs",
 );

@@ -207,6 +207,23 @@ expect(
   1,
 );
 expect(
+  "broken job-level if is not laundered by a no-op step carrying the status clauses",
+  GOOD.replace(
+    "    if: >-\n" +
+      "      ${{ !cancelled()\n" +
+      "          && needs.build-hosting-artifacts.result == 'success'\n" +
+      "          && (github.event_name != 'workflow_dispatch' || inputs.dry_run != true) }}\n",
+    "    if: ${{ (github.event_name != 'workflow_dispatch' || inputs.dry_run != true) }}\n",
+  ).replace(
+    "      - name: Download immutable hosting artifact\n",
+    "      - name: Decoy step\n" +
+      "        if: ${{ !cancelled() && needs.build-hosting-artifacts.result == 'success' }}\n" +
+      "        run: echo decoy\n" +
+      "      - name: Download immutable hosting artifact\n",
+  ),
+  1,
+);
+expect(
   "missing stable tag trigger fails",
   GOOD.replace('    tags: ["v*"]\n', ""),
   1,
