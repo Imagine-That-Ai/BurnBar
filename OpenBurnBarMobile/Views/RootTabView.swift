@@ -155,114 +155,46 @@ struct RootTabView: View {
         .environment(\.cloudSubscriptionStore, subscriptionStore)
         .environment(\.mobileAuthStore, authStore)
         .simultaneousGesture(rootSwipeGesture)
-        .task {
-            hermesService.bindElderWandEntitlement(to: subscriptionStore)
-            pulseHermesService.bindElderWandEntitlement(to: subscriptionStore)
-        }
-        .task(id: authStore.currentIdentity?.uid) { await subscriptionStore.load() }
-        .task(id: authStore.currentIdentity?.uid) { applyHermesE2EPromptIfNeeded() }
-        .task(id: authStore.currentIdentity?.uid) { applyComputerUseE2EProofIfNeeded() }
-        .task { missionActivityCenter.start() }
-        .task {
-            missionConsoleHost.start()
-            claimPendingOsRouteIfNeeded()
-        }
-        .task { liveStagePresenter.observe(liveStageSingleton.state) }
-        .task { liveStageSingleton.installLiveActivityIntentRouter() }
-        // Claims a push tap that landed BEFORE this view existed — a cold
-        // launch from an AI Inbox notification posts `AIInboxDeepLink` while
-        // the app is still in `didFinishLaunching`, so the `onReceive` below
-        // has no subscriber yet and the stash is the only surviving record of
-        // it. Same shape as `applyPendingGatewayPairingDeepLink`.
-        .task { claimPendingAIInboxDeepLink() }
-        .task {
-            liveStageSingleton.configurePictureInPicture(
-                onDidStart: { liveStagePresenter.setPiPActive(true) },
-                onDidStop: { liveStagePresenter.enterMaximizeFromPiP() }
-            )
-        }
-        .task(id: liveStageEvaluationKey) {
-            liveStageSingleton.evaluate(
-                authUID: authStore.currentIdentity?.uid,
-                hermesService: hermesService
-            )
-        }
-        .onAppear {
-            applyScreenshotRouteIfNeeded()
-            applyHermesE2EPromptIfNeeded()
-            applyComputerUseE2EProofIfNeeded()
-            // First visible tab is a screen view too (the launch destination).
-            MobileAnalytics.shared.track(.screenViewed, [
-                "surface": Self.surface(for: selection),
-                "is_first_view": .bool(true)
-            ])
-        }
-        .onChange(of: selection) { oldValue, newValue in
-            // A deliberate tab switch: the primary navigation action on iPhone.
-            MobileAnalytics.shared.track(.mobileTabSelected, ["tab": Self.routeLabel(newValue)])
-            MobileAnalytics.shared.track(.navRouteChanged, [
-                "from_route": Self.routeLabel(oldValue),
-                "to_route": Self.routeLabel(newValue)
-            ])
-            MobileAnalytics.shared.track(.screenViewed, ["surface": Self.surface(for: newValue)])
-        }
-        .onChange(of: router.pendingDestination) { _, destination in
-            handleRouter(destination)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .init("ShowHermesChat"))) { _ in
-            selection = .hermes
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .init("ShowAssistantsTab"))) { notification in
-            let runtime = notification.userInfo?["runtime"] as? String
-            if runtime == nil || runtime == AssistantRuntimeID.hermes.rawValue {
-                selection = .hermes
-            }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .init("ShowAgentWatch"))) { _ in
-            openAgentWatchRoute()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .init("ShowSettings"))) { _ in
-            openSettingsRoute()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .init("NavigateToDashboard"))) { _ in
-            selection = .pulse
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .init("ShowBurnTab"))) { _ in
-            selection = .burn
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .init("ShowMercuryCall"))) { notification in
-            guard case .mercuryCall = MobilePendingOsRouteStore.shared.consume() else { return }
-            presentMercuryCall(connectionId: notification.userInfo?["connectionId"] as? String)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .init("ShowMissionConsole"))) { notification in
-            guard case .mission = MobilePendingOsRouteStore.shared.consume() else { return }
-            presentMissionConsole(missionId: notification.userInfo?["missionId"] as? String)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .init("ShowStreamsTab"))) { _ in
-            selection = .streams
-        }
-        .onReceive(NotificationCenter.default.publisher(for: HermesGatewayPairingDeepLink.notificationName)) { notification in
-            openHermesGatewayPairingRoute(notification)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: AIInboxDeepLink.notificationName)) { notification in
-            openAIInboxRoute(itemID: AIInboxDeepLink.itemID(from: notification))
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .hermesKeyboardFocusChanged)) { notification in
-            isHermesKeyboardVisible = notification.userInfo?["focused"] as? Bool ?? false
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .cloudStoreChromeVisibilityChanged)) { notification in
-            isCloudStoreChromeHidden = notification.object as? Bool ?? false
-        }
-        .sheet(isPresented: $showMissionConsole) {
-            MobileMissionConsoleSheet(host: missionConsoleHost) {
-                showMissionConsole = false
-            }
-        }
-        .sheet(isPresented: $showMercuryCall) {
-            MercuryRoutedIncomingSheet(connectionId: pendingMercuryConnectionId) {
-                showMercuryCall = false
-            }
-        }
+        .modifier(RootTasksModifier(
+            authStore: authStore,
+            subscriptionStore: subscriptionStore,
+            hermesService: hermesService,
+            pulseHermesService: pulseHermesService,
+            missionActivityCenter: missionActivityCenter,
+            missionConsoleHost: missionConsoleHost,
+            liveStagePresenter: liveStagePresenter,
+            liveStageSingleton: liveStageSingleton,
+            liveStageEvaluationKey: liveStageEvaluationKey,
+            applyHermesE2EPromptIfNeeded: applyHermesE2EPromptIfNeeded,
+            applyComputerUseE2EProofIfNeeded: applyComputerUseE2EProofIfNeeded,
+            claimPendingOsRouteIfNeeded: claimPendingOsRouteIfNeeded,
+            claimPendingAIInboxDeepLink: claimPendingAIInboxDeepLink
+        ))
+        .modifier(RootNavigationLifecycleModifier(
+            selection: $selection,
+            router: router,
+            applyScreenshotRouteIfNeeded: applyScreenshotRouteIfNeeded,
+            applyHermesE2EPromptIfNeeded: applyHermesE2EPromptIfNeeded,
+            applyComputerUseE2EProofIfNeeded: applyComputerUseE2EProofIfNeeded,
+            handleRouter: handleRouter
+        ))
+        .modifier(RootNotificationHandlersModifier(
+            selection: $selection,
+            isHermesKeyboardVisible: $isHermesKeyboardVisible,
+            isCloudStoreChromeHidden: $isCloudStoreChromeHidden,
+            openAgentWatchRoute: openAgentWatchRoute,
+            openSettingsRoute: openSettingsRoute,
+            presentMercuryCall: presentMercuryCall,
+            presentMissionConsole: presentMissionConsole,
+            openHermesGatewayPairingRoute: openHermesGatewayPairingRoute,
+            openAIInboxRoute: openAIInboxRoute
+        ))
+        .modifier(RootSheetsModifier(
+            showMissionConsole: $showMissionConsole,
+            showMercuryCall: $showMercuryCall,
+            pendingMercuryConnectionId: $pendingMercuryConnectionId,
+            missionConsoleHost: missionConsoleHost
+        ))
     }
 
     @ViewBuilder
@@ -654,7 +586,7 @@ struct RootTabView: View {
 
     /// A stable, bounded label for a tab — the analytics `tab`/route value. Never a
     /// raw enum description that could drift; an explicit closed mapping.
-    private static func routeLabel(_ destination: AuroraNavDestination) -> AnalyticsValue {
+    fileprivate static func routeLabel(_ destination: AuroraNavDestination) -> AnalyticsValue {
         switch destination {
         case .pulse:    return "pulse"
         case .burn:     return "burn"
@@ -666,7 +598,7 @@ struct RootTabView: View {
     }
 
     /// The canonical cross-platform `surface` value for a tab (taxonomy enum).
-    private static func surface(for destination: AuroraNavDestination) -> AnalyticsValue {
+    fileprivate static func surface(for destination: AuroraNavDestination) -> AnalyticsValue {
         switch destination {
         case .pulse:    return "dashboard"
         case .burn:     return "dashboard"
@@ -703,4 +635,165 @@ struct RootTabView: View {
         devicesStore: DevicesStore(),
         transferStore: CredentialTransferStore()
     )
+}
+
+private struct RootTasksModifier: ViewModifier {
+    let authStore: AuthStore
+    let subscriptionStore: HostedQuotaSubscriptionStore
+    let hermesService: HermesService
+    let pulseHermesService: HermesService
+    let missionActivityCenter: MobileMissionActivityCenter
+    let missionConsoleHost: MobileMissionConsoleHost
+    let liveStagePresenter: AgentLiveStagePresenter
+    let liveStageSingleton: AgentWatchOverlaySingleton
+    let liveStageEvaluationKey: String
+    let applyHermesE2EPromptIfNeeded: () -> Void
+    let applyComputerUseE2EProofIfNeeded: () -> Void
+    let claimPendingOsRouteIfNeeded: () -> Void
+    let claimPendingAIInboxDeepLink: () -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .task {
+                hermesService.bindElderWandEntitlement(to: subscriptionStore)
+                pulseHermesService.bindElderWandEntitlement(to: subscriptionStore)
+            }
+            .task(id: authStore.currentIdentity?.uid) { await subscriptionStore.load() }
+            .task(id: authStore.currentIdentity?.uid) { applyHermesE2EPromptIfNeeded() }
+            .task(id: authStore.currentIdentity?.uid) { applyComputerUseE2EProofIfNeeded() }
+            .task { missionActivityCenter.start() }
+            .task {
+                missionConsoleHost.start()
+                claimPendingOsRouteIfNeeded()
+            }
+            .task { liveStagePresenter.observe(liveStageSingleton.state) }
+            .task { liveStageSingleton.installLiveActivityIntentRouter() }
+            .task { claimPendingAIInboxDeepLink() }
+            .task {
+                liveStageSingleton.configurePictureInPicture(
+                    onDidStart: { liveStagePresenter.setPiPActive(true) },
+                    onDidStop: { liveStagePresenter.enterMaximizeFromPiP() }
+                )
+            }
+            .task(id: liveStageEvaluationKey) {
+                liveStageSingleton.evaluate(
+                    authUID: authStore.currentIdentity?.uid,
+                    hermesService: hermesService
+                )
+            }
+    }
+}
+
+private struct RootNavigationLifecycleModifier: ViewModifier {
+    @Binding var selection: AuroraNavDestination
+    let router: PulseRouter
+    let applyScreenshotRouteIfNeeded: () -> Void
+    let applyHermesE2EPromptIfNeeded: () -> Void
+    let applyComputerUseE2EProofIfNeeded: () -> Void
+    let handleRouter: (PulseRouter.Destination?) -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .onAppear {
+                applyScreenshotRouteIfNeeded()
+                applyHermesE2EPromptIfNeeded()
+                applyComputerUseE2EProofIfNeeded()
+                MobileAnalytics.shared.track(.screenViewed, [
+                    "surface": RootTabView.surface(for: selection),
+                    "is_first_view": .bool(true)
+                ])
+            }
+            .onChange(of: selection) { oldValue, newValue in
+                MobileAnalytics.shared.track(.mobileTabSelected, ["tab": RootTabView.routeLabel(newValue)])
+                MobileAnalytics.shared.track(.navRouteChanged, [
+                    "from_route": RootTabView.routeLabel(oldValue),
+                    "to_route": RootTabView.routeLabel(newValue)
+                ])
+                MobileAnalytics.shared.track(.screenViewed, ["surface": RootTabView.surface(for: newValue)])
+            }
+            .onChange(of: router.pendingDestination) { _, destination in
+                handleRouter(destination)
+            }
+    }
+}
+
+private struct RootNotificationHandlersModifier: ViewModifier {
+    @Binding var selection: AuroraNavDestination
+    @Binding var isHermesKeyboardVisible: Bool
+    @Binding var isCloudStoreChromeHidden: Bool
+    let openAgentWatchRoute: () -> Void
+    let openSettingsRoute: () -> Void
+    let presentMercuryCall: (String?) -> Void
+    let presentMissionConsole: (String?) -> Void
+    let openHermesGatewayPairingRoute: (Notification) -> Void
+    let openAIInboxRoute: (String?) -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ShowHermesChat"))) { _ in
+                selection = .hermes
+            }
+            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ShowAssistantsTab"))) { (notification: Notification) in
+                let runtime = notification.userInfo?["runtime"] as? String
+                if runtime == nil || runtime == AssistantRuntimeID.hermes.rawValue {
+                    selection = .hermes
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ShowAgentWatch"))) { _ in
+                openAgentWatchRoute()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ShowSettings"))) { _ in
+                openSettingsRoute()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("NavigateToDashboard"))) { _ in
+                selection = .pulse
+            }
+            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ShowBurnTab"))) { _ in
+                selection = .burn
+            }
+            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ShowMercuryCall"))) { (notification: Notification) in
+                guard case .mercuryCall = MobilePendingOsRouteStore.shared.consume() else { return }
+                presentMercuryCall(notification.userInfo?["connectionId"] as? String)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ShowMissionConsole"))) { (notification: Notification) in
+                guard case .mission = MobilePendingOsRouteStore.shared.consume() else { return }
+                presentMissionConsole(notification.userInfo?["missionId"] as? String)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ShowStreamsTab"))) { _ in
+                selection = .streams
+            }
+            .onReceive(NotificationCenter.default.publisher(for: HermesGatewayPairingDeepLink.notificationName)) { (notification: Notification) in
+                openHermesGatewayPairingRoute(notification)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: AIInboxDeepLink.notificationName)) { (notification: Notification) in
+                openAIInboxRoute(AIInboxDeepLink.itemID(from: notification))
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .hermesKeyboardFocusChanged)) { (notification: Notification) in
+                isHermesKeyboardVisible = notification.userInfo?["focused"] as? Bool ?? false
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .cloudStoreChromeVisibilityChanged)) { (notification: Notification) in
+                isCloudStoreChromeHidden = notification.object as? Bool ?? false
+            }
+    }
+}
+
+private struct RootSheetsModifier: ViewModifier {
+    @Binding var showMissionConsole: Bool
+    @Binding var showMercuryCall: Bool
+    @Binding var pendingMercuryConnectionId: String?
+    let missionConsoleHost: MobileMissionConsoleHost
+
+    func body(content: Content) -> some View {
+        content
+            .sheet(isPresented: $showMissionConsole) {
+                MobileMissionConsoleSheet(host: missionConsoleHost) {
+                    showMissionConsole = false
+                }
+            }
+            .sheet(isPresented: $showMercuryCall) {
+                MercuryRoutedIncomingSheet(connectionId: pendingMercuryConnectionId) {
+                    showMercuryCall = false
+                }
+            }
+    }
 }

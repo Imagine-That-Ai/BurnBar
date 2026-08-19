@@ -657,7 +657,7 @@ final class AgentReplyNotificationService: NSObject, ObservableObject {
         )
     }()
 
-    private static let replyActionID = "AGENT_REPLY_INLINE_REPLY"
+    private nonisolated static let replyActionID = "AGENT_REPLY_INLINE_REPLY"
     private nonisolated static let openActionID = "AGENT_REPLY_OPEN"
     private static let agentReplyCategory: UNNotificationCategory = {
         let reply = UNTextInputNotificationAction(

@@ -286,16 +286,5 @@ static id DBT_HitTestView(UIWindow *window, CGPoint point) {
 
 @end
 
-#else // Release or !TARGET_OS_IOS
-
-// Release and non-iOS builds use a public-API-only no-op implementation.
-// This keeps the module resolvable without carrying any of the private UIKit
-// or IOKit selectors used by the live-device Debug build.
-@implementation DebugBridgeTouch
-+ (BOOL)sendTapAtPoint:(CGPoint)point inWindow:(UIWindow *)window {
-    (void)point; (void)window;
-    return NO;
-}
-@end
-
 #endif // defined(DEBUG) && TARGET_OS_IOS
+
