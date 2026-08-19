@@ -31,7 +31,8 @@ const OPEN_WORKFLOWS = [
 ];
 
 const ACTION_USES = "./.github/actions/ops-failure-issue";
-const PAGING_LINE = "paging-slack-webhook: ${{ secrets.OPS_PAGING_SLACK_WEBHOOK }}";
+const PAGING_LINE =
+  "paging-slack-webhook: ${{ secrets.OPS_PAGING_SLACK_WEBHOOK }}";
 
 /**
  * Read a workflow file's lines.
@@ -136,7 +137,7 @@ for (const { file, lanes } of OPEN_WORKFLOWS) {
     const blocks = extractActionBlocks(file);
     assert.ok(
       blocks.length > 0,
-      `${file} must call the ops-failure-issue action at least once`
+      `${file} must call the ops-failure-issue action at least once`,
     );
 
     const openBlocks = blocks.filter((b) => b.mode === "open");
@@ -145,7 +146,7 @@ for (const { file, lanes } of OPEN_WORKFLOWS) {
     assert.equal(
       openBlocks.length,
       lanes.length,
-      `${file} must have exactly ${lanes.length} mode: open call(s) to ops-failure-issue`
+      `${file} must have exactly ${lanes.length} mode: open call(s) to ops-failure-issue`,
     );
 
     // Validate every open invocation independently: each must page and use one
@@ -153,25 +154,25 @@ for (const { file, lanes } of OPEN_WORKFLOWS) {
     for (const { lane, block } of openBlocks) {
       assert.ok(
         block.includes(PAGING_LINE),
-        `${file} mode: open block must wire paging-slack-webhook to the repo secret:\n${block}`
+        `${file} mode: open block must wire paging-slack-webhook to the repo secret:\n${block}`,
       );
       assert.ok(
         lanes.includes(lane),
-        `${file} mode: open block must declare one of the exact expected lanes (${lanes.join(", ")}):\n${block}`
+        `${file} mode: open block must declare one of the exact expected lanes (${lanes.join(", ")}):\n${block}`,
       );
     }
 
     assert.deepEqual(
       openBlocks.map(({ lane }) => lane).sort(),
       [...lanes].sort(),
-      `${file} mode: open calls must declare exactly the expected lanes`
+      `${file} mode: open calls must declare exactly the expected lanes`,
     );
 
     // Close never pages: no close block may carry the paging input.
     for (const { block } of closeBlocks) {
       assert.ok(
         !/^\s+paging-slack-webhook:\s/m.test(block),
-        `${file} mode: close block must NOT wire paging-slack-webhook (close never pages):\n${block}`
+        `${file} mode: close block must NOT wire paging-slack-webhook (close never pages):\n${block}`,
       );
     }
   });
@@ -181,17 +182,17 @@ test("Functions result pages any failed deploy stage and closes only after full 
   const job = extractJob("deploy-production.yml", "functions-result");
   assert.match(
     job,
-    /^    needs: \[prepare-functions-deploy, deploy-functions, functions-health-gate\]$/m
+    /^    needs: \[prepare-functions-deploy, deploy-functions, functions-health-gate\]$/m,
   );
   assert.match(
     job,
     /^    if: \$\{\{ always\(\) && !inputs\.dry_run \}\}$/m,
-    "the result job must run after failed or skipped non-dry-run stages"
+    "the result job must run after failed or skipped non-dry-run stages",
   );
 
   const open = extractStep(
     job,
-    "Record Functions deploy or health failure (per-lane dedupe; page once)"
+    "Record Functions deploy or health failure (per-lane dedupe; page once)",
   );
   for (const dependency of [
     "prepare-functions-deploy",
@@ -201,21 +202,24 @@ test("Functions result pages any failed deploy stage and closes only after full 
     assert.match(
       open,
       new RegExp(`needs\\.${dependency}\\.result != 'success'`),
-      `${dependency} failure must open and page the Functions incident`
+      `${dependency} failure must open and page the Functions incident`,
     );
   }
   assert.match(open, /^          mode: open$/m);
   assert.match(open, /^          lane: deploy-production$/m);
   assert.match(
     open,
-    /^          title-prefix: Production Functions deploy or health gate failed$/m
+    /^          title-prefix: Production Functions deploy or health gate failed$/m,
   );
   assert.match(
     open,
-    /^          paging-slack-webhook: \$\{\{ secrets\.OPS_PAGING_SLACK_WEBHOOK \}\}$/m
+    /^          paging-slack-webhook: \$\{\{ secrets\.OPS_PAGING_SLACK_WEBHOOK \}\}$/m,
   );
 
-  const close = extractStep(job, "Close resolved Functions deploy failure issue");
+  const close = extractStep(
+    job,
+    "Close resolved Functions deploy failure issue",
+  );
   for (const dependency of [
     "prepare-functions-deploy",
     "deploy-functions",
@@ -224,14 +228,14 @@ test("Functions result pages any failed deploy stage and closes only after full 
     assert.match(
       close,
       new RegExp(`needs\\.${dependency}\\.result == 'success'`),
-      `${dependency} must recover before the Functions incident closes`
+      `${dependency} must recover before the Functions incident closes`,
     );
   }
   assert.match(close, /^          mode: close$/m);
   assert.match(close, /^          lane: deploy-production$/m);
   assert.match(
     close,
-    /^          title-prefix: Production Functions deploy or health gate failed$/m
+    /^          title-prefix: Production Functions deploy or health gate failed$/m,
   );
 });
 
@@ -243,11 +247,11 @@ test("Hosting opens and closes its incident for tag and manual non-dry-run outco
   const job = extractJob("deploy-hosting.yml", "hosting-smoke-result");
   assert.match(
     job,
-    /^    if: \$\{\{ always\(\) && \(github\.event_name != 'workflow_dispatch' \|\| inputs\.dry_run != true\) \}\}$/m
+    /^    if: \$\{\{ always\(\) && \(github\.event_name == 'push' \|\| \(github\.event_name == 'workflow_dispatch' && inputs\.dry_run != true\)\) \}\}$/m,
   );
   const open = extractStep(
     job,
-    "Record hosting deploy failure (per-lane dedupe; comment, never silent-skip)"
+    "Record hosting deploy failure (per-lane dedupe; comment, never silent-skip)",
   );
   const close = extractStep(job, "Close resolved hosting deploy failure issue");
   assert.match(open, /^        if: failure\(\)$/m);
@@ -264,13 +268,16 @@ test("Firestore manual production failures open an incident and successful recov
   assert.match(
     job,
     /^    if: \$\{\{ always\(\) && \(github\.event_name != 'workflow_dispatch' \|\| github\.event\.inputs\.dry_run != 'true'\) \}\}$/m,
-    "manual non-dry-run deploys must reach the result job"
+    "manual non-dry-run deploys must reach the result job",
   );
   const open = extractStep(
     job,
-    "Record Firestore deploy failure (per-lane dedupe; comment, never silent-skip)"
+    "Record Firestore deploy failure (per-lane dedupe; comment, never silent-skip)",
   );
-  const close = extractStep(job, "Close resolved Firestore deploy failure issue");
+  const close = extractStep(
+    job,
+    "Close resolved Firestore deploy failure issue",
+  );
   assert.match(open, /^        if: failure\(\)$/m);
   assert.match(open, /^          mode: open$/m);
   assert.match(close, /^        if: success\(\)$/m);
@@ -283,7 +290,9 @@ test("Firestore serializes every trigger through one project-scoped concurrency 
     assert.match(preamble, new RegExp(`^  ${trigger}:`, "m"));
   }
   const groupLines = preamble.match(/^  group: .*$/gm) || [];
-  assert.deepEqual(groupLines, ["  group: deploy-firestore-production-burnbar"]);
+  assert.deepEqual(groupLines, [
+    "  group: deploy-firestore-production-burnbar",
+  ]);
   assert.doesNotMatch(groupLines[0], /\$\{\{/);
   assert.match(preamble, /^  cancel-in-progress: false$/m);
 });
@@ -310,7 +319,7 @@ test("exactly the 8 expected workflows call ops-failure-issue with mode: open", 
   assert.deepEqual(
     actual,
     expected,
-    "the set of workflows with a mode: open call to ops-failure-issue must be exactly the 8 P-OPS-4 paging lanes"
+    "the set of workflows with a mode: open call to ops-failure-issue must be exactly the 8 P-OPS-4 paging lanes",
   );
 });
 
@@ -323,14 +332,14 @@ test("action.yml wires paging-slack-webhook input to OPS_PAGING_SLACK_WEBHOOK en
   const content = fs.readFileSync(ACTION_YML, "utf8");
   assert.ok(
     /OPS_PAGING_SLACK_WEBHOOK:\s*\$\{\{\s*inputs\.paging-slack-webhook\s*\}\}/.test(
-      content
+      content,
     ),
-    "action.yml must map the paging-slack-webhook input to the OPS_PAGING_SLACK_WEBHOOK env var on the composite step"
+    "action.yml must map the paging-slack-webhook input to the OPS_PAGING_SLACK_WEBHOOK env var on the composite step",
   );
   assert.ok(
     /^\s+paging-slack-webhook:\s*$/m.test(content) &&
       /required:\s*false/.test(content) &&
       /default:\s*""/.test(content),
-    "action.yml must declare paging-slack-webhook as an optional input defaulting to empty"
+    "action.yml must declare paging-slack-webhook as an optional input defaulting to empty",
   );
 });

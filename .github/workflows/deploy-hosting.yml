@@ -478,7 +478,13 @@ jobs:
 
   deploy-hosting:
     needs: build-hosting-artifacts
-    if: ${{ github.event_name != 'workflow_dispatch' || inputs.dry_run != true }}
+    # Keep push/tag deploys independent of the absent workflow_dispatch
+    # inputs context. An explicit event guard is required here because a
+    # missing typed input can otherwise evaluate as false and silently skip
+    # the credentialed deploy job.
+    # always() also prevents a skipped optional rollback-authorization
+    # ancestor from implicitly skipping this downstream production job.
+    if: ${{ always() && needs.build-hosting-artifacts.result == 'success' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.dry_run != true)) }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: production
@@ -699,7 +705,7 @@ jobs:
 
   hosting-smoke-result:
     needs: [build-hosting-artifacts, deploy-hosting]
-    if: ${{ always() && (github.event_name != 'workflow_dispatch' || inputs.dry_run != true) }}
+    if: ${{ always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.dry_run != true)) }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
