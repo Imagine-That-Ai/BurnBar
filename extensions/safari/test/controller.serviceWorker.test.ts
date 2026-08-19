@@ -39,14 +39,22 @@ function pacedStreamResponse(frames: string[], gapMs = 2): Response {
   );
 }
 
+type SnapshotMessage = {
+  readonly type: 'background.snapshot';
+  readonly snapshot?: PopupResponse['snapshot'];
+};
+
+function isSnapshotMessage(message: unknown): message is SnapshotMessage {
+  return typeof message === 'object' && message !== null && Reflect.get(message, 'type') === 'background.snapshot';
+}
+
 function assistantSnapshots(runtimeMessages: unknown[]): string[] {
   const texts: string[] = [];
   for (const message of runtimeMessages) {
-    if (typeof message !== 'object' || message === null || Reflect.get(message, 'type') !== 'background.snapshot') {
+    if (!isSnapshotMessage(message)) {
       continue;
     }
-    const snapshot = Reflect.get(message, 'snapshot') as PopupResponse['snapshot'];
-    const assistant = snapshot?.transcript.filter((entry) => entry.role === 'assistant').at(-1);
+    const assistant = message.snapshot?.transcript.filter((entry) => entry.role === 'assistant').at(-1);
     if (assistant && assistant.text) {
       texts.push(assistant.text);
     }
