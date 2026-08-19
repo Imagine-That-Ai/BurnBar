@@ -26,7 +26,10 @@ concurrency:
 jobs:
   trusted-deletion-guard:
     name: Domain Core Trusted Deletion Guard
-    runs-on: ubuntu-latest
+    # Keep the required guard on the owned fleet. ubuntu-latest is held on
+    # this account and can sit queued indefinitely, blocking every PR even
+    # though this job only needs git, bash, Python, and the repository tools.
+    runs-on: [self-hosted, macOS, ARM64, bb-fleet]
     timeout-minutes: 60
     steps:
       - name: Check out trusted default-branch evaluator
