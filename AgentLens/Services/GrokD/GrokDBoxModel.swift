@@ -15,6 +15,7 @@ final class GrokDBoxModel {
     var promptText: String = ""
     var lastMessage: String = ""
     var statusTone: GrokDStatusTone = .info
+    var phase: GrokDBoxPhase = .off
     var guiWarning: String?
     var isRefreshing: Bool = false
     var isSending: Bool = false
@@ -44,6 +45,16 @@ final class GrokDBoxModel {
         agents.first { $0.id == selectedAgentID }
     }
 
+    var sendBlockedReason: String {
+        if !enabled { return "Local D box is off." }
+        if !health.allowsSend { return health.userMessage }
+        if !GrokDHostClient.isAgentUUID(selectedAgentID ?? "") { return "Select a live agent." }
+        if selectedAgent?.isBusy == true { return "That agent is already running a turn." }
+        if promptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "Type a message first." }
+        if isSending { return "Send in progress." }
+        return "Ready to send."
+    }
+
     @ObservationIgnored private var refreshGeneration = 0
     @ObservationIgnored private var busyPollTask: Task<Void, Never>?
 
@@ -68,13 +79,18 @@ final class GrokDBoxModel {
         let generation = refreshGeneration
         let preservedMessage = lastMessage
         let preservedTone = statusTone
+        let preservedPhase = phase
         guard enabled else {
             busyPollTask?.cancel()
             agents = []
             health = .cannotList
+            phase = .off
             lastMessage = "Local D box is off."
             statusTone = .info
             return
+        }
+        if !preservingStatus {
+            phase = .listing
         }
         if autoStart {
             _ = await startBox()
@@ -94,6 +110,7 @@ final class GrokDBoxModel {
                 if !preservingStatus {
                     lastMessage = health.userMessage
                     statusTone = .error
+                    phase = .refused
                 }
                 return
             }
@@ -105,9 +122,11 @@ final class GrokDBoxModel {
             if preservingStatus {
                 lastMessage = preservedMessage
                 statusTone = preservedTone
+                phase = preservedPhase
             } else {
                 lastMessage = health.userMessage
                 statusTone = health.allowsSend ? .success : .warning
+                phase = health.allowsSend ? .ready : .refused
             }
         } catch {
             guard generation == refreshGeneration else { return }
@@ -115,6 +134,9 @@ final class GrokDBoxModel {
             agents = []
             lastMessage = (error as? GrokDHostError)?.userMessage ?? "Local D box refresh failed."
             statusTone = .error
+            if !preservingStatus {
+                phase = .refused
+            }
         }
     }
 
@@ -130,6 +152,7 @@ final class GrokDBoxModel {
             promptText = ""
             lastMessage = "Sent. Waiting for the box to run the turn…"
             statusTone = .info
+            phase = .sent
             let result = await client.followTurn(
                 agentID: agentID,
                 prompt: text,
@@ -139,6 +162,18 @@ final class GrokDBoxModel {
             )
             lastMessage = result.userMessage
             statusTone = result.tone
+            switch result.outcome {
+            case .completed:
+                phase = .assistantDone
+            case .promptLandedNoReply:
+                phase = .userLanded
+            case .stillRunning:
+                phase = .stillRunning
+            case .agentMissing:
+                phase = .refused
+            case .cancelled:
+                phase = .refused
+            }
             await refresh(preservingStatus: true)
             if selectedAgent?.isBusy == true {
                 startBusyPoll()
@@ -146,6 +181,7 @@ final class GrokDBoxModel {
         } catch {
             lastMessage = (error as? GrokDHostError)?.userMessage ?? "Send failed."
             statusTone = .error
+            phase = .refused
         }
     }
 

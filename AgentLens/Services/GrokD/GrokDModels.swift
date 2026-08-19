@@ -35,17 +35,44 @@ enum GrokDStatusTone: String, Equatable, Sendable {
     case error
 }
 
+/// Settings pane phase so Off / Listing / Ready / refused / Sent / landed / Done stay distinct.
+enum GrokDBoxPhase: String, Equatable, Sendable {
+    case off
+    case listing
+    case ready
+    case refused
+    case sent
+    case userLanded
+    case assistantDone
+    case stillRunning
+
+    var chipTitle: String {
+        switch self {
+        case .off: return "Off"
+        case .listing: return "Listing"
+        case .ready: return "Ready"
+        case .refused: return "Unavailable"
+        case .sent: return "Sent"
+        case .userLanded: return "Prompt landed"
+        case .assistantDone: return "Done"
+        case .stillRunning: return "Still running"
+        }
+    }
+}
+
 struct GrokDAgentRecord: Identifiable, Equatable, Sendable, Decodable {
     let id: String
     let name: String
     let isRunning: Bool
     let isComposingMessage: Bool
     let lastMessagePreview: String?
+    /// Absolute path to this agent's `store.db` when the host includes it.
+    let path: String?
 
     var isBusy: Bool { isRunning || isComposingMessage }
 
     enum CodingKeys: String, CodingKey {
-        case id, name, isRunning, isComposingMessage, lastMessagePreview
+        case id, name, isRunning, isComposingMessage, lastMessagePreview, path
     }
 
     init(
@@ -53,13 +80,15 @@ struct GrokDAgentRecord: Identifiable, Equatable, Sendable, Decodable {
         name: String,
         isRunning: Bool,
         isComposingMessage: Bool,
-        lastMessagePreview: String? = nil
+        lastMessagePreview: String? = nil,
+        path: String? = nil
     ) {
         self.id = id
         self.name = name
         self.isRunning = isRunning
         self.isComposingMessage = isComposingMessage
         self.lastMessagePreview = lastMessagePreview
+        self.path = path
     }
 
     init(from decoder: Decoder) throws {
@@ -69,6 +98,7 @@ struct GrokDAgentRecord: Identifiable, Equatable, Sendable, Decodable {
         isRunning = try c.decodeIfPresent(Bool.self, forKey: .isRunning) ?? false
         isComposingMessage = try c.decodeIfPresent(Bool.self, forKey: .isComposingMessage) ?? false
         lastMessagePreview = try c.decodeIfPresent(String.self, forKey: .lastMessagePreview)
+        path = try c.decodeIfPresent(String.self, forKey: .path)
     }
 }
 
@@ -119,7 +149,7 @@ struct GrokDTurnFollowResult: Equatable, Sendable {
     }
 }
 
-enum GrokDHostError: Error, Equatable {
+enum GrokDHostError: Error, Equatable, Sendable {
     case sendRefused(GrokDBoxHealth)
     case invalidAgentID
     case emptyPrompt

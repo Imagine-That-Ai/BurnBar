@@ -2,66 +2,76 @@ import SwiftUI
 
 /// Default-off Local D box pane: live `listAgents` roster, status pills, UUID composer.
 struct GrokDBoxView: View {
-    @State private var model = GrokDBoxModel()
+    @State private var model: GrokDBoxModel
     @FocusState private var composerFocused: Bool
+
+    init(model: GrokDBoxModel = GrokDBoxModel()) {
+        _model = State(initialValue: model)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
             header
-            Toggle("Enable Local D box", isOn: $model.enabled)
-                .onChange(of: model.enabled) { _, _ in
-                    Task { await model.refresh() }
-                }
-                .accessibilityIdentifier(OBBAccessibilityID.localDBoxEnable)
-            Toggle("Auto-start local box", isOn: $model.autoStart)
-                .disabled(!model.enabled)
-                .onChange(of: model.autoStart) { _, _ in
-                    Task { await model.refresh() }
-                }
-                .accessibilityIdentifier(OBBAccessibilityID.localDBoxAutoStart)
-
+            toggles
             if let warning = model.guiWarning {
                 Text(warning)
                     .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.warning)
                     .fixedSize(horizontal: false, vertical: true)
             }
-
             statusLine
-
             if model.enabled {
                 roster
                 composer
             } else {
-                Text("Off until you enable it. Talks only to 127.0.0.1 — never D.app, never the Grok Build CLI.")
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
-                    .fixedSize(horizontal: false, vertical: true)
+                offCopy
             }
         }
         .padding(DesignSystem.Spacing.md)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(DesignSystem.Colors.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(DesignSystem.Colors.borderSubtle, lineWidth: 1)
+        .background(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                .fill(DesignSystem.Colors.surfaceElevated.opacity(0.36))
         )
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                .stroke(DesignSystem.Colors.border.opacity(0.45), lineWidth: 0.5)
+        )
+        .animation(DesignSystem.Animation.snappy, value: model.phase)
+        .animation(DesignSystem.Animation.snappy, value: model.enabled)
         .settingsAnchor(SettingsAnchor.agentsLocalDBox)
         .accessibilityIdentifier(OBBAccessibilityID.localDBoxRoot)
+        .accessibilityElement(children: .contain)
         .task { await model.refresh() }
     }
 
     private var header: some View {
-        HStack(alignment: .firstTextBaseline, spacing: DesignSystem.Spacing.sm) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(model.title)
-                    .font(DesignSystem.Typography.headline)
-                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+        HStack(alignment: .center, spacing: DesignSystem.Spacing.md) {
+            ZStack {
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                    .fill(DesignSystem.Colors.ember.opacity(0.16))
+                    .frame(width: 34, height: 34)
+                Image(systemName: "shippingbox.fill")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.ember)
+            }
+            .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(statusColor)
+                        .frame(width: 7, height: 7)
+                    Text(model.title)
+                        .font(DesignSystem.Typography.body)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                }
                 Text("127.0.0.1 · shim 1337 · host 1338 · inference 8787")
-                    .font(DesignSystem.Typography.caption)
+                    .font(DesignSystem.Typography.tiny)
                     .foregroundStyle(DesignSystem.Colors.textMuted)
             }
             Spacer(minLength: 8)
+            phaseChip
             if model.isRefreshing || model.isSending {
                 ProgressView()
                     .controlSize(.small)
@@ -73,6 +83,29 @@ struct GrokDBoxView: View {
             .disabled(!model.enabled || model.isRefreshing)
             .accessibilityIdentifier(OBBAccessibilityID.localDBoxRefresh)
         }
+    }
+
+    private var toggles: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            Toggle("Enable Local D box", isOn: $model.enabled)
+                .onChange(of: model.enabled) { _, _ in
+                    Task { await model.refresh() }
+                }
+                .accessibilityIdentifier(OBBAccessibilityID.localDBoxEnable)
+            Toggle("Auto-start local box", isOn: $model.autoStart)
+                .disabled(!model.enabled)
+                .onChange(of: model.autoStart) { _, _ in
+                    Task { await model.refresh() }
+                }
+                .accessibilityIdentifier(OBBAccessibilityID.localDBoxAutoStart)
+        }
+    }
+
+    private var offCopy: some View {
+        Text("Off until you enable it. Talks only to 127.0.0.1 — never D.app, never the Grok Build CLI.")
+            .font(DesignSystem.Typography.caption)
+            .foregroundStyle(DesignSystem.Colors.textMuted)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     private var statusLine: some View {
@@ -89,24 +122,48 @@ struct GrokDBoxView: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Local D box status")
-        .accessibilityValue(model.lastMessage)
+        .accessibilityValue("\(model.phase.chipTitle). \(model.lastMessage)")
+    }
+
+    private var phaseChip: some View {
+        Text(model.phase.chipTitle)
+            .font(DesignSystem.Typography.caption)
+            .foregroundStyle(statusColor)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(statusColor.opacity(0.14), in: Capsule())
+            .accessibilityHidden(true)
     }
 
     @ViewBuilder
     private var roster: some View {
-        if model.agents.isEmpty {
+        if model.isRefreshing && model.agents.isEmpty {
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                ProgressView()
+                    .controlSize(.small)
+                Text("Listing live agents…")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+            }
+            .accessibilityLabel("Listing live agents")
+        } else if model.agents.isEmpty {
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
                 Text("No live agents.")
                     .font(DesignSystem.Typography.body)
+                    .fontWeight(.medium)
                     .foregroundStyle(DesignSystem.Colors.textPrimary)
                 Text(emptyRosterHint)
                     .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.textMuted)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            .padding(.vertical, DesignSystem.Spacing.xs)
             .accessibilityIdentifier(OBBAccessibilityID.localDBoxEmpty)
         } else {
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                Text("Live agents")
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
                 ForEach(model.agents) { agent in
                     agentRow(agent)
                 }
@@ -125,7 +182,7 @@ struct GrokDBoxView: View {
                         .font(DesignSystem.Typography.body)
                         .foregroundStyle(DesignSystem.Colors.textPrimary)
                     Text(agent.id)
-                        .font(DesignSystem.Typography.caption)
+                        .font(DesignSystem.Typography.monoTiny)
                         .foregroundStyle(DesignSystem.Colors.textMuted)
                         .textSelection(.enabled)
                     if let preview = agent.lastMessagePreview, !preview.isEmpty {
@@ -147,18 +204,22 @@ struct GrokDBoxView: View {
             .padding(.vertical, DesignSystem.Spacing.xs)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
                     .fill(selected ? DesignSystem.Colors.ember.opacity(0.12) : DesignSystem.Colors.surfaceElevated)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(selected ? DesignSystem.Colors.ember.opacity(0.45) : DesignSystem.Colors.borderSubtle, lineWidth: 1)
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                    .stroke(
+                        selected ? DesignSystem.Colors.ember.opacity(0.45) : DesignSystem.Colors.borderSubtle,
+                        lineWidth: selected ? 1.5 : 1
+                    )
             )
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(selected ? .isSelected : [])
         .accessibilityLabel(agent.name.isEmpty ? agent.id : agent.name)
         .accessibilityValue("\(pillTitle(for: agent)). \(agent.id)")
+        .accessibilityHint(selected ? "Selected" : "Select this agent")
         .accessibilityIdentifier(OBBAccessibilityID.localDBoxAgent(agent.id))
     }
 
@@ -167,6 +228,7 @@ struct GrokDBoxView: View {
             TextField("Message the selected UUID", text: $model.promptText)
                 .textFieldStyle(.roundedBorder)
                 .disabled(!model.health.allowsSend || model.isSending)
+                .opacity(model.health.allowsSend ? 1 : 0.55)
                 .focused($composerFocused)
                 .onSubmit {
                     Task { await model.send() }
@@ -175,9 +237,12 @@ struct GrokDBoxView: View {
             Button("Send") {
                 Task { await model.send() }
             }
+            .buttonStyle(.borderedProminent)
+            .tint(DesignSystem.Colors.ember)
             .disabled(!model.canSend)
             .keyboardShortcut(.return, modifiers: .command)
             .accessibilityIdentifier(OBBAccessibilityID.localDBoxSend)
+            .accessibilityHint(model.canSend ? "Send the prompt to the selected agent" : model.sendBlockedReason)
         }
     }
 

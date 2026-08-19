@@ -6,15 +6,18 @@ struct GrokDHostClient: Sendable {
     let config: GrokDHostConfig
     let session: URLSession
     let portProbe: any GrokDPortProbing
+    let transcriptReader: any GrokDTranscriptReading
 
     init(
         config: GrokDHostConfig,
         session: URLSession = GrokDHostClient.makeLoopbackSession(),
-        portProbe: any GrokDPortProbing = GrokDTCPPortProbe()
+        portProbe: any GrokDPortProbing = GrokDTCPPortProbe(),
+        transcriptReader: any GrokDTranscriptReading = GrokDReadonlyTranscriptReader()
     ) {
         self.config = config
         self.session = session
         self.portProbe = portProbe
+        self.transcriptReader = transcriptReader
     }
 
     static func makeLoopbackSession() -> URLSession {
@@ -77,13 +80,14 @@ struct GrokDHostClient: Sendable {
         let body: [String: Any] = [
             "agentId": agentID,
             "prompt": trimmed,
-            "awaitTurn": false,
+            "awaitTurn": false
         ]
         _ = try await post(method: "sendPrompt", body: body)
         return GrokDTurnHandle(agentID: agentID, prompt: trimmed, acceptedAt: Date())
     }
 
-    /// Polls `listAgents` until the agent's preview changes after the prompt lands.
+    /// Polls `listAgents` and, when `path` is present, a **read-only** sqlite
+    /// window. Preview follow stays the fallback if the db is missing or busy.
     /// Never writes SQLite. `sendPrompt` stays `awaitTurn: false`.
     func followTurn(
         agentID: String,
@@ -119,6 +123,16 @@ struct GrokDHostClient: Sendable {
             }
             let preview = agent.lastMessagePreview
             lastPreview = preview
+            if let path = agent.path {
+                switch await transcriptReader.read(path: path, token: needle) {
+                case .completed:
+                    return GrokDTurnFollowResult(outcome: .completed, lastPreview: preview)
+                case .promptLanded:
+                    sawPrompt = true
+                case .skippedBusy, .unavailable, .noEvidence:
+                    break
+                }
+            }
             if !sawPrompt {
                 if Self.previewLooksLikePrompt(preview, needle: needle, baseline: baselinePreview) {
                     sawPrompt = true

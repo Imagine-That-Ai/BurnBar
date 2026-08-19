@@ -8,7 +8,11 @@ Default **off**. Mac App Store builds do not show the pane (no `~/.grok` without
 
 1. Lists live agents from `POST http://127.0.0.1:1337/api/listAgents`.
 2. Sends **one UUID** a prompt with `awaitTurn: false`.
-3. Polls `listAgents` until that agent’s `lastMessagePreview` moves past the prompt. An exact/truncated prompt is the user line; a different later preview (including an echo such as `"<token> pong"`) is a completed turn. Never writes `store.db`.
+3. Follows the turn by polling `listAgents` and, when the roster includes a `path` to that agent’s `store.db`, a **read-only** sqlite window:
+
+   `SELECT entry FROM transcript_entries ORDER BY rowid DESC LIMIT n` with `busy_timeout=5000`.
+
+   Success is the unique token in a **user** line (`"role":"user"` or the prompt text) **and** a later **assistant** / `send-message` line. `SQLITE_BUSY` skips that poll. A missing or locked db falls back to `lastMessagePreview` follow. Never INSERT / UPDATE / DELETE. An exact/truncated preview of the prompt is the user line; a different later preview (including an echo such as `"<token> pong"`) is a completed turn.
 
 ## Ports (always `127.0.0.1`, never `localhost`)
 
@@ -18,7 +22,7 @@ Default **off**. Mac App Store builds do not show the pane (no `~/.grok` without
 | 1338 | host-main | list may still 200 from disk; **send is refused** |
 | 8787 | proxy2 inference | send refused (“inference proxy is down”) |
 
-The shim can return `{ok:true, scheduled:true}` while `:1338` is dead. BurnBar ignores that and probes TCP first.
+The shim must not return `{ok:true, scheduled:true}` when forwarding `sendPrompt` fails because `:1338` is down. That path is an honest non-2xx (`{ok:false, error: "local box host is down"}`). BurnBar still probes TCP first and refuses send unless health is `.ok`. Disk `listAgents` fallback may still 200 when the host is down.
 
 ## Auth
 
