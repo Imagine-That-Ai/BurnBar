@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Bump the separately versioned `openburnbar` npm CLI to 0.1.3. The CLI's
+  macOS installer continues to resolve the signed app from the live feed.
+
 ## [1.0.40] - 2026-08-18
 
 ### Fixed
