@@ -22,9 +22,11 @@ import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.functions.FirebaseFunctionsException
 import com.openburnbar.data.firebase.FunctionsRepository
 import com.openburnbar.data.policy.MobileStoreEntitlementPolicy
+import com.openburnbar.data.policy.UidScopedCacheRegistry
 import com.openburnbar.ui.pro.CloudTier
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -70,6 +72,7 @@ class HostedQuotaSubscriptionStore(
     initialBillingClient: BillingClient? = null,
     initialFirestore: FirebaseFirestore? = null,
     initialFirebaseAuth: FirebaseAuth? = null,
+    private val scopedCaches: UidScopedCacheRegistry = UidScopedCacheRegistry.shared,
 ) : ViewModel(), PurchasesUpdatedListener {
     companion object {
         private const val LOG_TAG = "BurnBarBilling"
@@ -317,6 +320,30 @@ class HostedQuotaSubscriptionStore(
     private var entitlementListener: ListenerRegistration? = null
     private var authListener: FirebaseAuth.AuthStateListener? = null
     private var firestoreEntitlementActive: Boolean? = null
+    private var entitlementWork: Job? = null
+    private val uidClearer = { clearCache() }
+
+    init {
+        scopedCaches.register(uidClearer)
+    }
+
+    /**
+     * Drop UID-scoped entitlement StateFlows and Firestore listeners so an
+     * A→B account switch cannot keep serving A's tier. Play catalog prices
+     * stay; they are device-level, not account-level.
+     */
+    fun clearCache() {
+        entitlementWork?.cancel()
+        entitlementWork = null
+        entitlementListener?.remove()
+        entitlementListener = null
+        firestoreEntitlementActive = null
+        _error.value = null
+        _lastTopUpCredit.value = null
+        _isLoading.value = false
+        clearSubscriptionState()
+        firebaseAuth.currentUser?.uid?.let { attachEntitlementListener(it) }
+    }
 
     fun initialize(context: Context) {
         if (billingClient == null) {
@@ -350,31 +377,36 @@ class HostedQuotaSubscriptionStore(
                     return@AuthStateListener
                 }
 
-                entitlementListener =
-                    firestore.collection("users")
-                        .document(uid)
-                        .collection("entitlements")
-                        .addSnapshotListener { snap, error ->
-                            if (firebaseAuth.currentUser?.uid != uid) {
-                                return@addSnapshotListener
-                            }
-                            if (error != null) {
-                                Log.w(LOG_TAG, "cloud entitlement listener failed: ${error.localizedMessage}")
-                                return@addSnapshotListener
-                            }
-                            if (snap == null) {
-                                Log.w(LOG_TAG, "cloud entitlement listener returned no snapshot")
-                                return@addSnapshotListener
-                            }
-                            applyEntitlementDocs(
-                                snap.documents.associate { document ->
-                                    document.id to (document.data ?: emptyMap())
-                                },
-                            )
-                        }
+                attachEntitlementListener(uid)
             }
         firebaseAuth.addAuthStateListener(listener)
         authListener = listener
+    }
+
+    private fun attachEntitlementListener(uid: String) {
+        entitlementListener?.remove()
+        entitlementListener =
+            firestore.collection("users")
+                .document(uid)
+                .collection("entitlements")
+                .addSnapshotListener { snap, error ->
+                    if (firebaseAuth.currentUser?.uid != uid) {
+                        return@addSnapshotListener
+                    }
+                    if (error != null) {
+                        Log.w(LOG_TAG, "cloud entitlement listener failed: ${error.localizedMessage}")
+                        return@addSnapshotListener
+                    }
+                    if (snap == null) {
+                        Log.w(LOG_TAG, "cloud entitlement listener returned no snapshot")
+                        return@addSnapshotListener
+                    }
+                    applyEntitlementDocs(
+                        snap.documents.associate { document ->
+                            document.id to (document.data ?: emptyMap())
+                        },
+                    )
+                }
     }
 
     // / Resolve all canonical Firestore entitlement documents highest-tier
@@ -412,7 +444,8 @@ class HostedQuotaSubscriptionStore(
     }
 
     fun load() {
-        viewModelScope.launch {
+        entitlementWork?.cancel()
+        entitlementWork = viewModelScope.launch {
             _isLoading.value = true
             _error.value = null
             try {
@@ -431,14 +464,9 @@ class HostedQuotaSubscriptionStore(
         }
     }
 
-    fun loadProducts() = load()
-
-    fun purchase(activity: Activity) {
-        purchase(activity, PRODUCT_ID)
-    }
-
     fun purchase(activity: Activity, productID: String) {
-        viewModelScope.launch {
+        entitlementWork?.cancel()
+        entitlementWork = viewModelScope.launch {
             _isLoading.value = true
             _error.value = null
             try {
@@ -481,7 +509,8 @@ class HostedQuotaSubscriptionStore(
     }
 
     fun restorePurchases() {
-        viewModelScope.launch {
+        entitlementWork?.cancel()
+        entitlementWork = viewModelScope.launch {
             _isLoading.value = true
             _error.value = null
             try {
@@ -509,7 +538,8 @@ class HostedQuotaSubscriptionStore(
             _isLoading.value = false
             return
         }
-        viewModelScope.launch {
+        entitlementWork?.cancel()
+        entitlementWork = viewModelScope.launch {
             try {
                 handlePurchases(purchases.orEmpty())
             } catch (e: FirebaseFunctionsException) {
@@ -523,6 +553,9 @@ class HostedQuotaSubscriptionStore(
     }
 
     override fun onCleared() {
+        scopedCaches.unregister(uidClearer)
+        entitlementWork?.cancel()
+        entitlementWork = null
         billingClient?.endConnection()
         billingClient = null
         entitlementListener?.remove()

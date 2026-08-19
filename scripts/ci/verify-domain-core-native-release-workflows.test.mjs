@@ -108,9 +108,11 @@ test("Apple and Android signing consumes the exact protected gate first", () => 
   assert.match(build, /domain-core-android-observed-identity\.json/u);
   assert.match(build, /verify-domain-core-observed-identity\.mjs/u);
   assert.doesNotMatch(build, /OpenBurnBarDomainCoreIdentityProbe/u);
+  // regularFile() fail-closes on a relative path, so the policy argument must
+  // stay workspace-anchored or the signing step can never run at all.
   assert.match(
     build,
-    /--policy config\/apple-release-signing-policy\.json --environment/u,
+    /--policy "\$GITHUB_WORKSPACE\/config\/apple-release-signing-policy\.json" --environment/u,
   );
   assert.match(build, /--binary "\$packaged_library"/u);
   assert.match(build, /verify-domain-core-android-universal-artifact\.mjs/u);

@@ -163,7 +163,10 @@ struct RootTabView: View {
         .task(id: authStore.currentIdentity?.uid) { applyHermesE2EPromptIfNeeded() }
         .task(id: authStore.currentIdentity?.uid) { applyComputerUseE2EProofIfNeeded() }
         .task { missionActivityCenter.start() }
-        .task { missionConsoleHost.start() }
+        .task {
+            missionConsoleHost.start()
+            claimPendingOsRouteIfNeeded()
+        }
         .task { liveStagePresenter.observe(liveStageSingleton.state) }
         .task { liveStageSingleton.installLiveActivityIntentRouter() }
         // Claims a push tap that landed BEFORE this view existed — a cold
@@ -228,15 +231,12 @@ struct RootTabView: View {
             selection = .burn
         }
         .onReceive(NotificationCenter.default.publisher(for: .init("ShowMercuryCall"))) { notification in
-            pendingMercuryConnectionId = notification.userInfo?["connectionId"] as? String
-            showMercuryCall = true
+            guard case .mercuryCall = MobilePendingOsRouteStore.shared.consume() else { return }
+            presentMercuryCall(connectionId: notification.userInfo?["connectionId"] as? String)
         }
         .onReceive(NotificationCenter.default.publisher(for: .init("ShowMissionConsole"))) { notification in
-            if let missionId = notification.userInfo?["missionId"] as? String {
-                missionConsoleHost.focusMission(id: missionId)
-            }
-            selection = .hermes
-            showMissionConsole = true
+            guard case .mission = MobilePendingOsRouteStore.shared.consume() else { return }
+            presentMissionConsole(missionId: notification.userInfo?["missionId"] as? String)
         }
         .onReceive(NotificationCenter.default.publisher(for: .init("ShowStreamsTab"))) { _ in
             selection = .streams
@@ -517,6 +517,30 @@ struct RootTabView: View {
     private func claimPendingAIInboxDeepLink() {
         guard let itemID = AIInboxDeepLink.consumePendingItemID() else { return }
         openAIInboxRoute(itemID: itemID)
+    }
+
+    private func claimPendingOsRouteIfNeeded() {
+        switch MobilePendingOsRouteStore.shared.consume() {
+        case .mercuryCall(let connectionId):
+            presentMercuryCall(connectionId: connectionId)
+        case .mission(let missionId):
+            presentMissionConsole(missionId: missionId)
+        case nil:
+            break
+        }
+    }
+
+    private func presentMercuryCall(connectionId: String?) {
+        pendingMercuryConnectionId = connectionId
+        showMercuryCall = true
+    }
+
+    private func presentMissionConsole(missionId: String?) {
+        if let missionId, !missionId.isEmpty {
+            missionConsoleHost.focusMission(id: missionId)
+        }
+        selection = .hermes
+        showMissionConsole = true
     }
 
     private func openHermesGatewayPairingRoute(_: Notification) {
