@@ -51,6 +51,9 @@ fun SettingsRootScreen(
             SettingsPageRoute.WALLPAPER_GENERATOR -> WallpaperGeneratorScreen(
                 onBack = { router.page = SettingsPageRoute.THEME_PREFS },
             )
+            SettingsPageRoute.NAV_PREFS -> NavigationCustomizationScreen(
+                onBack = { router.page = SettingsPageRoute.ROOT },
+            )
             SettingsPageRoute.QUOTA_PREFS -> QuotaCustomizationScreen(
                 onBack = { router.page = SettingsPageRoute.ROOT },
             )

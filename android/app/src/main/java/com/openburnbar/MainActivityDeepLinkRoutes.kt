@@ -191,6 +191,7 @@ object OsPendingNavigation {
         val route = when (routed.destination) {
             MobileOsDestination.BURN -> "burn"
             MobileOsDestination.INBOX -> "inbox"
+            MobileOsDestination.FLEET -> "fleet"
             MobileOsDestination.MISSION ->
                 routed.missionId?.takeIf { it.isNotBlank() }?.let { "mission/$it" } ?: "mission"
             MobileOsDestination.MERCURY_CALL ->

@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -231,6 +232,14 @@ internal fun buildSettingsVisualGroup(router: SettingsRouter): List<RootRow> = l
         subtitle = "Customise visual appearance, spring physics, and grid backdrops",
         pageRoute = SettingsPageRoute.THEME_PREFS,
         onTap = { router.page = SettingsPageRoute.THEME_PREFS },
+    ),
+    RootRow(
+        anchor = SettingsAnchor.NAV_CUSTOMIZATION_ROW,
+        icon = SettingsRowIcon.Vector(Icons.Filled.SwapHoriz),
+        title = "Navigation",
+        subtitle = "Reorder or remove tabs, add the Fleet dashboard, toggle swipe navigation",
+        pageRoute = SettingsPageRoute.NAV_PREFS,
+        onTap = { router.page = SettingsPageRoute.NAV_PREFS },
     ),
     RootRow(
         anchor = SettingsAnchor.QUOTA_CUSTOMIZATION_ROW,

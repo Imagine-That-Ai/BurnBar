@@ -1,5 +1,7 @@
 package com.openburnbar
 
+import com.openburnbar.data.policy.MobileOsDestination
+import com.openburnbar.data.policy.MobileOsIntegrationPolicy
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -9,6 +11,7 @@ class BurnBarDeepLinkTest {
     @After
     fun tearDown() {
         InboxPendingItem.reset()
+        OsPendingNavigation.reset()
     }
 
     @Test
@@ -30,6 +33,7 @@ class BurnBarDeepLinkTest {
         // These hosts are declared as navDeepLink patterns on their composables.
         // Claiming them here would route them twice.
         assertNull(BurnBarDeepLink.parse("burnbar://pulse"))
+        assertNull(BurnBarDeepLink.parse("burnbar://fleet"))
         assertNull(BurnBarDeepLink.parse("burnbar://insights/all"))
         assertNull(BurnBarDeepLink.parse("burnbar://assistants/hermes?threadId=t1"))
         assertNull(BurnBarDeepLink.parse("https://burnbar.ai/inbox/inb_abc"))
@@ -50,6 +54,22 @@ class BurnBarDeepLinkTest {
             BurnBarDeepLinkRoute.Inbox("inb_abc"),
             BurnBarDeepLink.parse(BurnBarDeepLink.inboxURL("inb_abc")),
         )
+    }
+
+    @Test
+    fun warmFleetLinksRouteThroughOsPendingNavigation() {
+        // `burnbar://fleet` is a nav-graph destination on cold start; a WARM
+        // link rides OsPendingNavigation exactly like `burnbar://quota`, and
+        // the nav host claims it once, moving to the Fleet tab.
+        val routed = MobileOsIntegrationPolicy.route("burnbar://fleet")
+        assertEquals(MobileOsDestination.FLEET, routed.destination)
+
+        OsPendingNavigation.request(routed, eventId = "evt_fleet")
+
+        val request = OsPendingNavigation.claim()
+        assertEquals(MobileOsDestination.FLEET, request?.destination)
+        assertEquals("fleet", request?.route)
+        assertNull(OsPendingNavigation.claim())
     }
 
     @Test

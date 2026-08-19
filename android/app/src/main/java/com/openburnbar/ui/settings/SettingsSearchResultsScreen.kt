@@ -161,6 +161,7 @@ private fun breadcrumb(item: SettingsItem): String {
             SettingsPageRoute.SMART_DISPLAYS -> "Smart Displays"
             SettingsPageRoute.MENU_BAR_PREFS -> "Quick-Glance"
             SettingsPageRoute.THEME_PREFS -> "Theme & SOTA UX"
+            SettingsPageRoute.NAV_PREFS -> "Navigation"
             SettingsPageRoute.WALLPAPER_GENERATOR -> "Swarm Background"
             SettingsPageRoute.QUOTA_PREFS -> "Quota Customisation"
             SettingsPageRoute.BUDGET_PREFS -> "Budgeting & Rules"

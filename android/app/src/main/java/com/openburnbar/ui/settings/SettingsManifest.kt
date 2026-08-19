@@ -195,6 +195,19 @@ object SettingsManifest {
                 keywords = listOf("budget", "rules", "limit", "spend", "warn", "block", "enforce"),
             ),
             SettingsItem(
+                id = "root.navCustomization",
+                section = SettingsSection.THEME,
+                pageRoute = SettingsPageRoute.NAV_PREFS,
+                anchorId = SettingsAnchor.NAV_CUSTOMIZATION_ROW,
+                title = "Navigation",
+                subtitle = "Reorder or remove bottom tabs, add the Fleet dashboard, and toggle swipe navigation",
+                keywords =
+                listOf(
+                    "navigation", "tabs", "tab bar", "tray", "reorder", "remove", "add",
+                    "fleet", "agents", "swipe", "gesture", "bottom bar", "customise", "customization",
+                ),
+            ),
+            SettingsItem(
                 id = "root.quotaCustomization",
                 section = SettingsSection.THEME,
                 pageRoute = SettingsPageRoute.QUOTA_PREFS,
@@ -326,6 +339,7 @@ object SettingsManifest {
             SettingsAnchor.MOBILE_BACKDROP_KERNEL,
             SettingsAnchor.ENABLE_SWARM_SPARKLES,
             SettingsAnchor.QUOTA_CUSTOMIZATION_ROW,
+            SettingsAnchor.NAV_CUSTOMIZATION_ROW,
             SettingsAnchor.BUDGET_ROW,
             SettingsAnchor.HERMES_CONNECTIONS,
             SettingsAnchor.HERMES_MODELS,

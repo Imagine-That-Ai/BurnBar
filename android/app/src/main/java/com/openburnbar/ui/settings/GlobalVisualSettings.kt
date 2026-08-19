@@ -26,6 +26,7 @@ object GlobalVisualSettings {
     private const val KEY_SWARM_SPARKLES = "enableSwarmSparkles"
     private const val KEY_PROVIDER_GLYPHS = "providerGlyphs"
     private const val KEY_EXCLUDE_BRAND_SHAPES = "excludeBrandShapesFromSwarm"
+    private const val KEY_SWIPE_NAVIGATION = "swipeNavigationEnabled"
 
     @Volatile
     private var loaded = false
@@ -43,6 +44,7 @@ object GlobalVisualSettings {
     private val _enableSwarmSparkles = mutableStateOf(true)
     private val _providerGlyphs = mutableStateOf(AgentProvider.swarmGlyphProviders.toSet())
     private val _excludeBrandShapesFromSwarm = mutableStateOf(false)
+    private val _swipeNavigationEnabled = mutableStateOf(true)
 
     private fun ensureLoaded() {
         if (loaded) return
@@ -69,6 +71,7 @@ object GlobalVisualSettings {
                 _mobileBackdropKernel.value = MobileBackdropKernel.resolved(prefs.getString(KEY_MOBILE_BACKDROP_KERNEL, null))
                 _enableSwarmSparkles.value = prefs.getBoolean(KEY_SWARM_SPARKLES, true)
                 _excludeBrandShapesFromSwarm.value = prefs.getBoolean(KEY_EXCLUDE_BRAND_SHAPES, false)
+                _swipeNavigationEnabled.value = prefs.getBoolean(KEY_SWIPE_NAVIGATION, true)
                 GlobalVisualSettingsPalette.loadFromPrefs(prefs)
                 GlobalVisualSettingsUIMode.loadFromPrefs(prefs)
                 GlobalVisualSettingsAppearance.loadFromPrefs(prefs)
@@ -226,17 +229,58 @@ object GlobalVisualSettings {
         return AgentProvider.swarmGlyphProviders.filter { selected.contains(it) }.toSet()
     }
 
-    val primaryTabs: State<String>
+    /**
+     * The user's tab order as route tokens (primary then secondary, legacy
+     * tokens mapped forward). Reads the underlying Compose states, so a
+     * composable calling this recomposes when the order changes.
+     */
+    val orderedTabRoutes: List<String>
         get() {
             ensureLoaded()
-            return GlobalVisualSettingsTabs.primaryTabs
+            return GlobalVisualSettingsTabs.tabTokens(GlobalVisualSettingsTabs.primaryTabs.value) +
+                GlobalVisualSettingsTabs.tabTokens(GlobalVisualSettingsTabs.secondaryTabs.value)
         }
 
-    val secondaryTabs: State<String>
+    /** Routes the user explicitly removed, as tokens. */
+    val removedTabRoutes: List<String>
         get() {
             ensureLoaded()
-            return GlobalVisualSettingsTabs.secondaryTabs
+            return GlobalVisualSettingsTabs.tabTokens(GlobalVisualSettingsTabs.removedTabs.value)
         }
+
+    fun setPrimaryTabs(value: String) {
+        ensureLoaded()
+        GlobalVisualSettingsTabs.setPrimaryTabs(value)
+    }
+
+    fun setRemovedTabs(routes: Collection<String>) {
+        ensureLoaded()
+        GlobalVisualSettingsTabs.setRemovedTabs(routes)
+    }
+
+    fun addRemovedTab(route: String) {
+        ensureLoaded()
+        GlobalVisualSettingsTabs.addRemovedTab(route)
+    }
+
+    fun clearRemovedTab(route: String) {
+        ensureLoaded()
+        GlobalVisualSettingsTabs.clearRemovedTab(route)
+    }
+
+    /** Exposes the root content-area swipe-between-tabs toggle (default on). */
+    val swipeNavigationEnabled: State<Boolean> get() {
+        ensureLoaded()
+        return _swipeNavigationEnabled
+    }
+
+    /** Sets the root swipe-navigation toggle and persists it. */
+    fun setSwipeNavigationEnabled(value: Boolean) {
+        ensureLoaded()
+        _swipeNavigationEnabled.value = value
+        GlobalVisualSettingsPersistence.persistBoolean(KEY_SWIPE_NAVIGATION, value)
+        trackSettingChanged("swipe_navigation", value)
+    }
 }
 
 /** Composable shorthand helper to observe global Premium SOTA UX setting. */
@@ -271,6 +315,10 @@ fun rememberWebsiteBackground(): State<Boolean> {
 /** Composable shorthand helper to observe global Swarm Sparkles setting. */
 @Composable
 fun rememberSwarmSparkles(): State<Boolean> = remember { GlobalVisualSettings.enableSwarmSparkles }
+
+/** Composable shorthand helper to observe the root swipe-navigation toggle. */
+@Composable
+fun rememberSwipeNavigationEnabled(): State<Boolean> = remember { GlobalVisualSettings.swipeNavigationEnabled }
 
 /** Composable shorthand helper to observe global Exclude Brand Shapes setting. */
 @Composable

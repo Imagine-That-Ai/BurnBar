@@ -13,6 +13,7 @@ enum class MobileOsDestination(val wire: String) {
     ASSISTANTS("assistants"),
     INSIGHTS("insights"),
     INBOX("inbox"),
+    FLEET("fleet"),
     MERCURY_CALL("mercury-call"),
     MISSION("mission"),
     UNKNOWN("unknown"),
@@ -79,7 +80,7 @@ object MobileOsIntegrationPolicy {
         setOf(
             "dashboard", "pulse", "burn", "quota", "streams", "search", "settings",
             "agent-watch", "agent-live", "computer-use", "chat", "hermes", "pi",
-            "assistants", "insights", "inbox", "mercury", "mission",
+            "assistants", "insights", "inbox", "fleet", "mercury", "mission",
         )
 
     val pushTypes: Map<String, MobileOsDestination> =
@@ -205,6 +206,7 @@ object MobileOsIntegrationPolicy {
                 )
             "insights" -> MobileOsRouteDecision(MobileOsDestination.INSIGHTS, url, slug = first)
             "inbox" -> MobileOsRouteDecision(MobileOsDestination.INBOX, url, itemId = first)
+            "fleet" -> MobileOsRouteDecision(MobileOsDestination.FLEET, url)
             "mercury" ->
                 if (firstLower == "call") {
                     MobileOsRouteDecision(

@@ -160,6 +160,7 @@ class MainActivity : FragmentActivity() {
                 if (warmStart) OsPendingNavigation.request(routed, eventId)
             }
             MobileOsDestination.BURN,
+            MobileOsDestination.FLEET,
             MobileOsDestination.MERCURY_CALL,
             -> if (warmStart) OsPendingNavigation.request(routed, eventId)
             else -> Unit
