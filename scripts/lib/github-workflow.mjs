@@ -94,19 +94,35 @@ function scalarAt(lines, keyIndex) {
     .trim();
 }
 
-/** List items directly under `key`, unquoted. */
+function parseFlowSequence(text) {
+  return text
+    .replace(/^\[|\]$/gu, "")
+    .split(",")
+    .map((entry) => unquote(entry.trim()))
+    .filter((entry) => entry !== "");
+}
+
+/**
+ * List items directly under `key`, unquoted.
+ *
+ * Accepts all three spellings GitHub allows: a block sequence of `- ` items, an
+ * inline flow sequence, and a flow sequence opened on the line *after* the key —
+ * which is how `release.yml` writes its longer `needs:` lists. Collapsing that
+ * third form into one scalar silently invents a dependency name that matches no
+ * job, which makes any `needs`-graph audit under-report rather than fail.
+ */
 function listAt(lines, keyIndex) {
   const line = stripComment(lines[keyIndex]);
   const inline = line.slice(line.indexOf(":") + 1).trim();
-  if (inline.startsWith("[")) {
-    return inline
-      .replace(/^\[|\]$/gu, "")
-      .split(",")
-      .map((entry) => unquote(entry.trim()))
-      .filter((entry) => entry !== "");
-  }
-  return blockLines(lines, keyIndex)
-    .map((entry) => stripComment(entry).trim())
+  if (inline.startsWith("[")) return parseFlowSequence(inline);
+
+  const body = blockLines(lines, keyIndex).map((entry) =>
+    stripComment(entry).trim(),
+  );
+  const joined = body.filter((entry) => entry !== "").join(" ");
+  if (joined.startsWith("[")) return parseFlowSequence(joined);
+
+  return body
     .filter((entry) => entry.startsWith("- "))
     .map((entry) => unquote(entry.slice(2).trim()));
 }

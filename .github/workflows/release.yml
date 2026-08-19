@@ -2768,6 +2768,14 @@ jobs:
 
   smoke-test:
     needs: build-and-release
+    # `authorize-domain-core-rollback` skips on every non-rollback release, and
+    # a skip propagates transitively through `needs` even across
+    # `build-and-release`, which runs under always() and succeeds. Without a
+    # status-check function here this job is never scheduled, and because
+    # apple-native-prepublication and prepare-release-publication both require
+    # `needs.smoke-test.result == 'success'`, publication could not happen on a
+    # normal release at all. See docs/CI_RELEASE_RUNBOOK.md §1.1.
+    if: ${{ !cancelled() && needs.build-and-release.result == 'success' }}
     runs-on: macos-15
     timeout-minutes: 15
     steps:

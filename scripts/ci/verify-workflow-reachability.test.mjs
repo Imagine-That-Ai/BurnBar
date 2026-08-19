@@ -281,6 +281,88 @@ test("hasStatusCheckFunction recognises the guards GitHub honours", () => {
   assert.equal(hasStatusCheckFunction(undefined), false);
 });
 
+test("a flow sequence opened on the next line parses as a list, not one scalar", () => {
+  // `release.yml` writes its longer `needs:` this way. Collapsing it into a
+  // single scalar invents a dependency matching no job, which makes the audit
+  // silently under-report instead of failing — it hid a real `smoke-test`
+  // finding until this was fixed.
+  const root = fixtureRoot({
+    ".github/workflows/fixture.yml": `name: Fixture
+on:
+  push:
+    branches: [main]
+jobs:
+  gate:
+    if: \${{ inputs.rollback == true }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo gate
+  build:
+    needs:
+      [
+        gate,
+      ]
+    if: \${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo build
+  after:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo after
+`,
+  });
+  try {
+    const workflow = readWorkflow(join(root, ".github/workflows/fixture.yml"));
+    assert.deepEqual(workflow.jobs.build.needs, ["gate"]);
+    // And the audit must therefore reach `gate` transitively from `after`.
+    assert.ok(
+      auditWorkflows(root).some(
+        (finding) => finding.kind === "skip-propagation" && finding.job === "after",
+      ),
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("all three needs spellings parse identically", () => {
+  const shapes = {
+    inline: "    needs: [a, b]\n",
+    block: "    needs:\n      - a\n      - b\n",
+    multilineFlow: "    needs:\n      [\n        a,\n        b,\n      ]\n",
+  };
+  for (const [label, needs] of Object.entries(shapes)) {
+    const root = fixtureRoot({
+      ".github/workflows/fixture.yml": `name: F
+on:
+  push:
+    branches: [main]
+jobs:
+  a:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo a
+  b:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo b
+  c:
+${needs}    runs-on: ubuntu-latest
+    steps:
+      - run: echo c
+`,
+    });
+    try {
+      const workflow = readWorkflow(join(root, ".github/workflows/fixture.yml"));
+      assert.deepEqual(workflow.jobs.c.needs, ["a", "b"], `${label} spelling`);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }
+});
+
 test("the repository itself satisfies the gate", () => {
   // Guards the committed baseline: a new violation must be fixed or declared.
   assert.deepEqual(auditWorkflows(), []);
