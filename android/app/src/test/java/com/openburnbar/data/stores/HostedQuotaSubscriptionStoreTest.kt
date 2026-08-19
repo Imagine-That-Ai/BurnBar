@@ -201,6 +201,8 @@ class HostedQuotaSubscriptionStoreTest {
         assertTrue(store.isActive.value)
         assertEquals(HostedQuotaSubscriptionStore.CLOUD_PRO_MONTHLY_PRODUCT_ID, store.activeProductID.value)
 
+        store.load()
+        advanceUntilIdle()
         caches.clearAll()
         advanceUntilIdle()
 
@@ -208,6 +210,10 @@ class HostedQuotaSubscriptionStoreTest {
         assertNull(store.activeProductID.value)
         assertEquals(com.openburnbar.ui.pro.CloudTier.NONE, store.currentTier.value)
         assertNull(store.error.value)
+
+        val onCleared = androidx.lifecycle.ViewModel::class.java.getDeclaredMethod("onCleared")
+        onCleared.isAccessible = true
+        onCleared.invoke(store)
     }
 
     @Test
