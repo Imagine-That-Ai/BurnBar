@@ -3731,6 +3731,8 @@ def bench_explain(stack_json: str) -> str:
     except Exception as exc:
         return _bench_envelope_error(exc)
     return bench_core.json_dumps(payload)
+
+
 # Toolsets
 #
 # One process, two personas. The full registry costs ~11k tokens of standing
