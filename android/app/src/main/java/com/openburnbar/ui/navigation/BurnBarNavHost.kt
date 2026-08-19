@@ -72,24 +72,64 @@ sealed class BurnBarTab(
 
     object YOU : BurnBarTab("you", "Store", AuroraNavDestination.YOU)
 
+    /**
+     * The Agent Fleet dashboard, mirrored from the Mac through the sealed
+     * `fleet_snapshot` Firestore document. Not part of the default tray —
+     * users add it through Settings → Navigation — so [allCandidates] (the
+     * default set) does not list it while [addableCandidates] does.
+     */
+    object FLEET : BurnBarTab("fleet", "Fleet", AuroraNavDestination.FLEET)
+
     companion object {
+        /** The default tray, in default order. */
         val allCandidates: List<BurnBarTab> = listOf(PULSE, BURN, INBOX, INSIGHTS, STREAMS, HERMES, YOU)
+
+        /** Every tab the customization screen may place in the tray. */
+        val addableCandidates: List<BurnBarTab> = allCandidates + FLEET
+
+        /** The route `you` can never be removed: it hosts Settings, the only way back. */
+        val PERMANENT_ROUTE: String = YOU.route
+
+        /** A tray below this many tabs stops being a tray. */
+        const val MINIMUM_TAB_COUNT: Int = 2
+
         val all: List<BurnBarTab> get() {
-            try {
-                val primary = com.openburnbar.ui.settings.GlobalVisualSettings.primaryTabs.value
-                val secondary = com.openburnbar.ui.settings.GlobalVisualSettings.secondaryTabs.value
-                val keys = (primary.split(",") + secondary.split(",")).map { it.trim() }.filter { it.isNotEmpty() }
-                val mapped = keys.mapNotNull { key -> allCandidates.firstOrNull { it.route == key } }
-                if (mapped.isEmpty()) return allCandidates
-                // Add any missing
-                val missing = allCandidates.filter { !mapped.contains(it) }
-                return mapped + missing
+            return try {
+                resolveCustomizedTabs(
+                    orderedRoutes = com.openburnbar.ui.settings.GlobalVisualSettings.orderedTabRoutes,
+                    removedRoutes = com.openburnbar.ui.settings.GlobalVisualSettings.removedTabRoutes,
+                )
             } catch (_: IllegalStateException) {
-                return allCandidates
+                allCandidates
             }
         }
 
-        fun fromRoute(route: String?): BurnBarTab? = allCandidates.firstOrNull { it.route == route }
+        /**
+         * Resolves the visible tray from the stored order + removal prefs.
+         *
+         * - [orderedRoutes] wins for ordering; unknown tokens are dropped.
+         * - Every DEFAULT tab missing from the order is re-appended unless the
+         *   user explicitly removed it (so a tab added in an app update still
+         *   shows up, while a deliberate removal sticks).
+         * - Non-default tabs (Fleet) appear only when explicitly ordered.
+         * - Guards: `you` is always present, and a result below
+         *   [MINIMUM_TAB_COUNT] falls back to the defaults rather than
+         *   rendering an unusable tray.
+         */
+        fun resolveCustomizedTabs(orderedRoutes: List<String>, removedRoutes: List<String>): List<BurnBarTab> {
+            val removed = removedRoutes.toSet() - PERMANENT_ROUTE
+            val ordered = orderedRoutes
+                .mapNotNull { route -> addableCandidates.firstOrNull { it.route == route } }
+                .distinct()
+                .filter { it.route !in removed }
+            val reAppended = allCandidates.filter { it !in ordered && it.route !in removed }
+            val merged = ordered + reAppended
+            val visible = if (BurnBarTab.YOU in merged) merged else merged + YOU
+            if (visible.size < MINIMUM_TAB_COUNT) return allCandidates
+            return visible
+        }
+
+        fun fromRoute(route: String?): BurnBarTab? = addableCandidates.firstOrNull { it.route == route }
     }
 }
 
@@ -271,6 +311,8 @@ private fun OsWarmDeepLinkNavigator(navController: NavHostController, isSignedIn
                 navigateToTab(navController, BurnBarTab.BURN)
             MobileOsDestination.INBOX ->
                 navigateToTab(navController, BurnBarTab.INBOX)
+            MobileOsDestination.FLEET ->
+                navigateToTab(navController, BurnBarTab.FLEET)
             MobileOsDestination.MISSION,
             MobileOsDestination.MERCURY_CALL,
             ->

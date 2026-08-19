@@ -34,6 +34,11 @@
       "id": "doc.provider_accounts",
       "publisher": "mac-or-callable",
       "mobile": "read-mirror-or-callable"
+    },
+    {
+      "id": "doc.fleet_snapshot",
+      "publisher": "mac",
+      "mobile": "read-mirror"
     }
   ],
   "freshnessLabels": ["live", "stale", "offline", "empty", "failed", "partial"],

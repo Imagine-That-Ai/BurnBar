@@ -227,6 +227,13 @@
       "android": "android/app/src/main/java/com/openburnbar/ui/inbox"
     },
     {
+      "family": "fleet",
+      "source": "BurnBarFleetContracts + sealed fleet_snapshot mirror (Mac publisher)",
+      "ios": "OpenBurnBarMobile/Views/Fleet",
+      "ipados": "OpenBurnBarMobile/Views/Fleet",
+      "android": "android/app/src/main/java/com/openburnbar/ui/fleet"
+    },
+    {
       "family": "providers",
       "source": "provider-account TypeSpec",
       "ios": "OpenBurnBarMobile/Views/ProviderConnectionsView.swift",

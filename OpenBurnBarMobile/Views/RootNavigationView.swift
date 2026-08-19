@@ -49,7 +49,12 @@ struct RootNavigationView: View {
     /// Hoisted for the same reason as the Pulse/Burn stores: the detail switch
     /// destroys the selected branch's view tree on every sidebar change, and a
     /// per-view inbox store would re-open two Firestore listeners each time.
+    /// Shared by both inbox surfaces (the Streams segment and the first-class
+    /// Inbox sidebar destination) so there is exactly one listener pair.
     @State private var streamsInboxStore = AIInboxStore()
+    /// Hoisted for the same reason: the fleet mirror listener survives sidebar
+    /// changes instead of re-opening on every return to Fleet.
+    @State private var fleetStore = MobileFleetStore()
     @State private var missionActivityCenter = MobileMissionActivityCenter()
     @State private var missionConsoleHost = MobileMissionConsoleHost()
     @State private var showHermesSheet = false
@@ -430,6 +435,8 @@ struct RootNavigationView: View {
                     case .insights: AgentInsightsTabScreen(dashboardStore: insightsDashboardStore, hermesService: hermesService)
                     case .streams:  StreamsView(inbox: streamsInboxStore)
                     case .agents:   EmptyView()
+                    case .inbox:    AIInboxTabScreen(store: streamsInboxStore)
+                    case .fleet:    FleetDashboardScreen(store: fleetStore)
                     case .you:      YouView(authStore: authStore, syncStore: syncHealthStore, devicesStore: devicesStore)
                     case .settings: SettingsHubView(authStore: authStore)
                         .environment(settingsRouter)
@@ -510,10 +517,14 @@ struct RootNavigationView: View {
         // leaving it parked would let a later `.task` re-navigate the user back
         // to this item after they had moved on.
         _ = AIInboxDeepLink.consumePendingItemID()
-        selection = .streams
+        // Land on the first-class Inbox destination when the user's layout has
+        // one; otherwise on its classic home inside Streams.
+        let target: AppDestination =
+            customization.primaryDestinations.contains(.inbox) ? .inbox : .streams
+        selection = target
         detailPath = NavigationPath()
         streamsInboxStore.focus(itemID: itemID)
-        updateColumnVisibility(for: .streams, animated: false)
+        updateColumnVisibility(for: target, animated: false)
         guard let itemID else { return }
         detailPath.append(AIInboxDetailRoute(itemID: itemID))
     }
@@ -576,6 +587,10 @@ struct RootNavigationView: View {
             selection = .streams
         case "hermes", "chat":
             selection = .agents
+        case "inbox":
+            selection = .inbox
+        case "fleet":
+            selection = .fleet
         case "you", "account":
             selection = .you
         case "settings":

@@ -124,6 +124,7 @@ struct SettingsSearchResultsView: View {
         case .textExpansion: return "Text Expansion"
         case .theme: return "Theme"
         case .quotaCustomization: return "Quota Customization"
+        case .navigation: return "Navigation"
         }
     }
 }

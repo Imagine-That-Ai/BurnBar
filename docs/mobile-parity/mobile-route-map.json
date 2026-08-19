@@ -14,6 +14,7 @@
       "hermes",
       "you",
       "inbox",
+      "fleet",
       "settings",
       "devices",
       "providers",
@@ -85,11 +86,21 @@
       },
       {
         "canonicalId": "inbox",
-        "iosDestinationId": null,
+        "iosDestinationId": "inbox",
         "ipadDestinationId": null,
         "androidDestinationId": "inbox",
         "androidEnum": "BurnBarTab.INBOX",
-        "acceptedDivergenceId": "divergence.inbox-primary-android"
+        "acceptedDivergenceId": "divergence.inbox-primary-android",
+        "notes": "iOS now ships an addable first-class inbox destination (AuroraNavDestination.inbox); Android keeps Inbox as a default primary tab. See divergence.inbox-primary-android and divergence.inbox-multi-instance-ios."
+      },
+      {
+        "canonicalId": "fleet",
+        "iosDestinationId": "fleet",
+        "ipadDestinationId": "fleet",
+        "androidDestinationId": "fleet",
+        "iosEnum": "AuroraNavDestination.fleet",
+        "androidEnum": "BurnBarTab.FLEET",
+        "notes": "Addable (not default) on both platforms: users place the Fleet dashboard in the tray through the navigation customization settings."
       },
       {
         "canonicalId": "settings",
@@ -215,9 +226,10 @@
         "paired_mac",
         "settings",
         "devices",
-        "providers"
+        "providers",
+        "fleet"
       ],
-      "notes": "BurnBarTab.allCandidates. Inbox is a primary tab. You tray label is Store."
+      "notes": "BurnBarTab.allCandidates is the DEFAULT tray; the tray is user-editable (reorder/remove/add, `you` permanent, minimum 2 tabs) and `fleet` is addable via Settings -> Navigation. Inbox is a default primary tab. You tray label is Store."
     }
   },
   "routes": [
@@ -489,6 +501,34 @@
       "widgets": [],
       "intents": [],
       "acceptedDivergenceId": "divergence.inbox-primary-android"
+    },
+    {
+      "routeId": "route.shell.fleet",
+      "capabilityId": "fleet.dashboard",
+      "canonicalDestinationId": "fleet",
+      "kind": "addable-primary",
+      "authGate": "signed-in",
+      "coldLaunch": true,
+      "warmLaunch": true,
+      "iosDestinationId": "fleet",
+      "ipadDestinationId": "fleet",
+      "androidDestinationId": "fleet",
+      "labels": {
+        "ios": "Fleet",
+        "ipados": "Fleet",
+        "android": "Fleet"
+      },
+      "deepLinks": {
+        "ios": [
+          "burnbar://fleet"
+        ],
+        "android": [
+          "burnbar://fleet"
+        ]
+      },
+      "pushTaps": [],
+      "widgets": [],
+      "intents": []
     },
     {
       "routeId": "route.shell.settings",
@@ -923,6 +963,12 @@
       "id": "divergence.ipad-sidebar-secondary",
       "capabilityId": "divergence.ipad-sidebar-secondary",
       "summary": "iPad lists Settings, Devices, and Providers as first-class sidebar destinations.",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "divergence.inbox-multi-instance-ios",
+      "capabilityId": "divergence.inbox-multi-instance-ios",
+      "summary": "iOS supports multiple AI Inbox tray instances, each with an optional filter preset; Android stays single-instance (Inbox is already a default primary tab there).",
       "owner": "mobile-apps"
     }
   ]

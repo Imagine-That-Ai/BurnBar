@@ -8,8 +8,24 @@ fleet state; they do not reconstruct it by walking agent roots.
 2. `fleet-snapshot.json` — atomically replaced file of the same snapshot
    payload (`tmp` + rename).
 
-Fleet is local-only. It does not use Firebase, Firestore, a cloud relay, or
-a multi-machine transport.
+Fleet is local-first. The socket and file above remain the canonical serving
+surfaces, and the daemon itself never touches the network. In addition, the
+Mac **app** (the only process with Firebase auth) publishes an optional
+**sealed cloud mirror** for the user's own mobile devices — default on, user
+preference `fleet.cloudMirror.enabled` (absent = enabled), surfaced next to
+the AI Inbox mirror toggle in Mac Settings:
+
+- One Firestore document, `users/{uid}/fleet_snapshot/current`
+  (`FleetSyncService` → `FleetMirrorCodec`).
+- The snapshot JSON is sealed with the user's cloud-vault key before Firestore
+  sees it (same `sealedPayload` envelope and path-bound AAD as
+  `ai_inbox_items`); only `schemaVersion`, `updatedAt`, and `generatedAt` ride
+  in plaintext, so the server learns nothing about agents, tasks, or repos.
+- A content hash of the snapshot JSON gates the write, so an unchanged board
+  (or a dead daemon) re-publishes nothing.
+- Mobile consumption is **read-only**. Orchestrator designation and directives
+  remain Mac/daemon-local; no write-back collection exists. Mobile clients
+  render the snapshot plus honest staleness from `updatedAt`.
 
 Per-agent signal paths and freshness windows live in
 [`BURNBAR_FLEET_SIGNALS.md`](./BURNBAR_FLEET_SIGNALS.md).

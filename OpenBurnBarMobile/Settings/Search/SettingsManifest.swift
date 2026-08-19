@@ -67,6 +67,33 @@ enum SettingsManifest {
             keywords: ["swarm", "particles", "ember", "website", "background", "backdrop", "murmuration", "burnbar"]
         ),
         SettingsItem(
+            id: "hub.appearance.navigation",
+            section: .appearance,
+            pageRoute: .hubRoot,
+            anchorID: SettingsAnchor.navigationRow,
+            title: "Navigation",
+            subtitle: "Customize the tab bar and swipe gesture",
+            keywords: ["tabs", "tab bar", "navigation", "tray", "reorder", "swipe", "inbox", "fleet", "customize"]
+        ),
+        SettingsItem(
+            id: "navigation.tabBar",
+            section: .appearance,
+            pageRoute: .navigation,
+            anchorID: SettingsAnchor.navigationTabBar,
+            title: "Tab Bar Layout",
+            subtitle: "Add, remove, and reorder tabs; pin extra AI Inbox tabs to filters",
+            keywords: ["tabs", "tab bar", "reorder", "add tab", "remove tab", "inbox", "fleet", "layout", "tray"]
+        ),
+        SettingsItem(
+            id: "navigation.swipe",
+            section: .appearance,
+            pageRoute: .navigation,
+            anchorID: SettingsAnchor.navigationSwipe,
+            title: "Swipe between tabs",
+            subtitle: "Horizontal swipe on tab content moves to the neighboring tab",
+            keywords: ["swipe", "gesture", "page", "navigate", "tabs", "toggle"]
+        ),
+        SettingsItem(
             id: "theme.appearance.backdropKernel",
             section: .appearance,
             pageRoute: .theme,
@@ -437,6 +464,9 @@ enum SettingsManifest {
         SettingsAnchor.useWebsiteBackground,
         SettingsAnchor.backdropKernel,
         SettingsAnchor.glassTransparency,
+        SettingsAnchor.navigationRow,
+        SettingsAnchor.navigationTabBar,
+        SettingsAnchor.navigationSwipe,
         SettingsAnchor.uiMode,
         SettingsAnchor.dailyBudget,
         SettingsAnchor.costAlerts,

@@ -40,11 +40,15 @@ enum AuroraNavGestureModel {
     }
 
     /// Convenience: resolve a destination from an x-coordinate.
-    static func destination(
+    ///
+    /// Generic over the element type so the same math serves both the legacy
+    /// `[AuroraNavDestination]` call sites (tests) and the customizable
+    /// `[AuroraNavItem]` tray, where duplicate kinds make identity per-item.
+    static func destination<Element>(
         x: CGFloat,
         trayWidth: CGFloat,
-        destinations: [AuroraNavDestination]
-    ) -> AuroraNavDestination? {
+        destinations: [Element]
+    ) -> Element? {
         guard let index = destinationIndex(x: x, trayWidth: trayWidth, count: destinations.count) else {
             return nil
         }
@@ -70,11 +74,11 @@ enum AuroraNavGestureModel {
     ///     (swipe left → next).
     ///   - destinations: Ordered destination list.
     /// - Returns: The adjacent destination, or `nil` at an edge.
-    static func adjacent(
-        current: AuroraNavDestination,
+    static func adjacent<Element: Equatable>(
+        current: Element,
         direction: SwipeDirection,
-        destinations: [AuroraNavDestination]
-    ) -> AuroraNavDestination? {
+        destinations: [Element]
+    ) -> Element? {
         guard let currentIndex = destinations.firstIndex(of: current) else { return nil }
         switch direction {
         case .leading:  // swipe right-to-left visually moves forward? No.

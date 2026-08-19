@@ -12,6 +12,7 @@ public enum MobileOsDestination: String, Sendable, Equatable {
     case assistants
     case insights
     case inbox
+    case fleet
     case mercuryCall = "mercury-call"
     case mission
     case unknown
@@ -124,7 +125,7 @@ public enum MobileOsIntegrationPolicy {
     public static let allowlistedHosts: Set<String> = [
         "dashboard", "pulse", "burn", "quota", "streams", "search", "settings",
         "agent-watch", "agent-live", "computer-use", "chat", "hermes", "pi",
-        "assistants", "insights", "inbox", "mercury", "mission"
+        "assistants", "insights", "inbox", "fleet", "mercury", "mission"
     ]
 
     public static let pushTypes: [String: MobileOsDestination] = [
@@ -276,6 +277,8 @@ public enum MobileOsIntegrationPolicy {
                 deepLink: url.absoluteString,
                 itemId: first
             )
+        case "fleet":
+            return MobileOsRouteDecision(destination: .fleet, deepLink: url.absoluteString)
         case "mercury":
             if firstLower == "call" {
                 return MobileOsRouteDecision(

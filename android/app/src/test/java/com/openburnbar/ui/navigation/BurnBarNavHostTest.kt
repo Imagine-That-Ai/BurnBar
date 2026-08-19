@@ -18,11 +18,24 @@ import org.junit.Test
  */
 class BurnBarNavHostTest {
     @Test
-    fun `the tab catalog exposes seven unique deep-link routes`() {
+    fun `the default tab catalog exposes seven unique deep-link routes`() {
         val routes = BurnBarTab.allCandidates.map { it.route }
 
         assertEquals(listOf("pulse", "burn", "inbox", "insights", "streams", "hermes", "you"), routes)
         assertEquals(routes.size, routes.toSet().size)
+    }
+
+    @Test
+    fun `fleet is addable but not part of the default tray`() {
+        // The Fleet dashboard mirrors the Mac and is opt-in: it appears in the
+        // addable catalog (so customization and deep links can reach it) while
+        // the default seven-tab tray stays exactly as it was.
+        assertEquals("fleet", BurnBarTab.FLEET.route)
+        assertEquals("Fleet", BurnBarTab.FLEET.label)
+        assertEquals(AuroraNavDestination.FLEET, BurnBarTab.FLEET.destination)
+        assertSame(BurnBarTab.FLEET, BurnBarTab.fromRoute("fleet"))
+        assertEquals(BurnBarTab.allCandidates + BurnBarTab.FLEET, BurnBarTab.addableCandidates)
+        assertEquals(false, BurnBarTab.allCandidates.contains(BurnBarTab.FLEET))
     }
 
     @Test
@@ -74,20 +87,97 @@ class BurnBarNavHostTest {
 
     @Test
     fun `each tab maps to a distinct aurora destination`() {
-        val destinations = BurnBarTab.allCandidates.map { it.destination }
+        val destinations = BurnBarTab.addableCandidates.map { it.destination }
 
         assertEquals(destinations.size, destinations.toSet().size)
     }
 
-    @Test
-    fun `tab customization merge never drops a tab`() {
-        // `all` reorders from the visual settings but re-appends anything the
-        // stored keys miss ("Add any missing"), so every candidate survives
-        // exactly once no matter what preference string is stored.
-        val all = BurnBarTab.all
+    // ── Customization merge (resolveCustomizedTabs) ──
+    //
+    // The old "merge never drops a tab" contract evolved deliberately: removal
+    // is now a real state, tracked separately from ordering, so a DEFAULT tab
+    // only survives re-appending when the user never explicitly removed it.
 
-        assertEquals(BurnBarTab.allCandidates.size, all.size)
-        assertEquals(BurnBarTab.allCandidates.toSet(), all.toSet())
+    @Test
+    fun `empty prefs resolve to the default tray`() {
+        assertEquals(
+            BurnBarTab.allCandidates,
+            BurnBarTab.resolveCustomizedTabs(orderedRoutes = emptyList(), removedRoutes = emptyList()),
+        )
+    }
+
+    @Test
+    fun `stored order wins and missing defaults re-append`() {
+        val resolved = BurnBarTab.resolveCustomizedTabs(
+            orderedRoutes = listOf("hermes", "pulse"),
+            removedRoutes = emptyList(),
+        )
+
+        assertEquals(BurnBarTab.HERMES, resolved[0])
+        assertEquals(BurnBarTab.PULSE, resolved[1])
+        // Every default the order missed is still present, exactly once.
+        assertEquals(BurnBarTab.allCandidates.toSet(), resolved.toSet())
+        assertEquals(resolved.size, resolved.distinct().size)
+    }
+
+    @Test
+    fun `an explicitly removed default tab stays removed`() {
+        val resolved = BurnBarTab.resolveCustomizedTabs(
+            orderedRoutes = listOf("pulse", "burn", "insights", "streams", "hermes", "you"),
+            removedRoutes = listOf("inbox"),
+        )
+
+        assertEquals(false, resolved.contains(BurnBarTab.INBOX))
+        assertEquals(BurnBarTab.allCandidates.size - 1, resolved.size)
+    }
+
+    @Test
+    fun `the you tab can never be removed`() {
+        val resolved = BurnBarTab.resolveCustomizedTabs(
+            orderedRoutes = listOf("pulse", "burn", "inbox", "insights", "streams", "hermes"),
+            removedRoutes = listOf("you"),
+        )
+
+        // `you` hosts Settings — a removal request for it is ignored.
+        assertEquals(true, resolved.contains(BurnBarTab.YOU))
+    }
+
+    @Test
+    fun `unknown route tokens are dropped from the order`() {
+        val resolved = BurnBarTab.resolveCustomizedTabs(
+            orderedRoutes = listOf("agents", "not-a-tab", "pulse"),
+            removedRoutes = listOf("bogus"),
+        )
+
+        // `agents` is a legacy PREF token handled by the settings layer, not a
+        // route — the resolver itself only knows real routes.
+        assertSame(BurnBarTab.PULSE, resolved.first())
+        assertEquals(BurnBarTab.allCandidates.toSet(), resolved.toSet())
+    }
+
+    @Test
+    fun `fleet joins the tray only when explicitly ordered`() {
+        val withoutFleet = BurnBarTab.resolveCustomizedTabs(orderedRoutes = emptyList(), removedRoutes = emptyList())
+        val withFleet = BurnBarTab.resolveCustomizedTabs(
+            orderedRoutes = listOf("pulse", "fleet"),
+            removedRoutes = emptyList(),
+        )
+
+        assertEquals(false, withoutFleet.contains(BurnBarTab.FLEET))
+        assertEquals(true, withFleet.contains(BurnBarTab.FLEET))
+        assertSame(BurnBarTab.FLEET, withFleet[1])
+    }
+
+    @Test
+    fun `a tray below the minimum falls back to the defaults`() {
+        // A hand-corrupted pref that removes everything must not render an
+        // unusable one-tab tray.
+        val resolved = BurnBarTab.resolveCustomizedTabs(
+            orderedRoutes = listOf("you"),
+            removedRoutes = listOf("pulse", "burn", "inbox", "insights", "streams", "hermes"),
+        )
+
+        assertEquals(BurnBarTab.allCandidates, resolved)
     }
 
     @Test

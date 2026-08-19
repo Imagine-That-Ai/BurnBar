@@ -12,6 +12,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import com.openburnbar.ui.components.aurora.BurnGlyph
+import com.openburnbar.ui.components.aurora.FleetGlyph
 import com.openburnbar.ui.components.aurora.HermesGlyph
 import com.openburnbar.ui.components.aurora.InboxGlyph
 import com.openburnbar.ui.components.aurora.InsightsGlyph
@@ -39,6 +40,10 @@ enum class AuroraNavDestination(val label: String) {
     // landing screen (Hermes + Pi).
     HERMES("Assistants"),
     INBOX("Inbox"),
+
+    // The Agent Fleet dashboard mirrored from the Mac. Addable (not default),
+    // so it only renders in the tray when the user placed it there.
+    FLEET("Fleet"),
     YOU("You"),
     ;
 
@@ -51,6 +56,7 @@ enum class AuroraNavDestination(val label: String) {
                 STREAMS -> AuroraColors.whimsy
                 HERMES -> AuroraColors.hermesAureate
                 INBOX -> AuroraColors.ember
+                FLEET -> AuroraColors.success
                 YOU -> AuroraColors.blaze
             }
 
@@ -63,6 +69,7 @@ enum class AuroraNavDestination(val label: String) {
                 STREAMS -> "Streams"
                 HERMES -> "Agents"
                 INBOX -> "Inbox"
+                FLEET -> "Fleet"
                 YOU -> "Store"
             }
 
@@ -75,6 +82,7 @@ enum class AuroraNavDestination(val label: String) {
                 STREAMS -> listOf(AuroraColors.whimsy, AuroraColors.whimsy.copy(alpha = 0.55f))
                 HERMES -> AuroraGradients.mercuryGradient
                 INBOX -> listOf(AuroraColors.ember, AuroraColors.amber)
+                FLEET -> listOf(AuroraColors.success, AuroraColors.whimsy)
                 YOU -> listOf(AuroraColors.blaze, AuroraColors.ember)
             }
 }
@@ -118,6 +126,7 @@ fun AuroraNavIcon(
             AuroraNavDestination.STREAMS -> StreamsGlyph(size = size.dp, isSelected = isSelected)
             AuroraNavDestination.HERMES -> HermesGlyph(size = size.dp, isSelected = isSelected)
             AuroraNavDestination.INBOX -> InboxGlyph(size = size.dp, isSelected = isSelected)
+            AuroraNavDestination.FLEET -> FleetGlyph(size = size.dp, isSelected = isSelected)
             AuroraNavDestination.YOU -> {
                 val initials =
                     userDisplayName

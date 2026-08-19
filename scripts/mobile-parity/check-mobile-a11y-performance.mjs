@@ -23,6 +23,7 @@ export const PRIMARY_SURFACES = {
     'OpenBurnBarMobile/Views/Burn',
     'OpenBurnBarMobile/Views/Hermes/HermesTabView.swift',
     'OpenBurnBarMobile/Views/Inbox',
+    'OpenBurnBarMobile/Views/Fleet',
     'OpenBurnBarMobile/Views/Store'
   ],
   android: [
@@ -30,6 +31,7 @@ export const PRIMARY_SURFACES = {
     'android/app/src/main/java/com/openburnbar/ui/burn',
     'android/app/src/main/java/com/openburnbar/ui/hermes',
     'android/app/src/main/java/com/openburnbar/ui/inbox',
+    'android/app/src/main/java/com/openburnbar/ui/fleet',
     'android/app/src/main/java/com/openburnbar/ui/store'
   ]
 };

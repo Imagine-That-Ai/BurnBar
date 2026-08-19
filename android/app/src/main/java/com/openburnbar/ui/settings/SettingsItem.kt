@@ -66,6 +66,7 @@ enum class SettingsPageRoute {
     SMART_DISPLAYS,
     MENU_BAR_PREFS,
     THEME_PREFS,
+    NAV_PREFS,
     QUOTA_PREFS,
     WALLPAPER_GENERATOR,
     BUDGET_PREFS,
@@ -93,6 +94,7 @@ object SettingsAnchor {
     const val TEXT_EXPANSION_ROW = "root.textExpansion"
     const val THEME_ROW = "root.theme"
     const val QUOTA_CUSTOMIZATION_ROW = "root.quotaCustomization"
+    const val NAV_CUSTOMIZATION_ROW = "root.navCustomization"
     const val BUDGET_ROW = "root.budgeting"
     const val PRIVACY_ANALYTICS_ROW = "root.privacyAnalytics"
 

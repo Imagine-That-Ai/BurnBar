@@ -21,6 +21,7 @@ import OpenBurnBarCore
 /// | `syncSessionLogs()` | `uploadPendingSessionLogs()` |
 /// | `syncTextExpansionSnippets()` | new encrypted text-expansion mirror |
 /// | `syncAIInbox()` | new sealed AI Inbox mirror |
+/// | `syncFleetMirror()` | new sealed fleet snapshot mirror |
 /// | `syncCollaborationArtifacts()` | `syncSharedArtifacts()` |
 /// | `syncRemoteReplicas()` | `downloadRemoteData()` |
 /// `@MainActor`: this is the `@Observable` aggregate read by SwiftUI; main-actor
@@ -43,6 +44,7 @@ final class CloudSyncCoordinator {
     private let quotaSnapshotSync: QuotaSnapshotSyncService
     private let textExpansionSync: TextExpansionSyncService
     private let aiInboxSync: AIInboxSyncService
+    private let fleetSync: FleetSyncService
     private let roamingProfileSync: RoamingProfileSyncService
     private let collaborationSync: CollaborationSyncService
     private let downloadSync: DownloadSyncService
@@ -92,6 +94,7 @@ final class CloudSyncCoordinator {
         self.quotaSnapshotSync = QuotaSnapshotSyncService(context: context)
         self.textExpansionSync = TextExpansionSyncService(context: context)
         self.aiInboxSync = AIInboxSyncService(context: context, vaultKeyProvider: conversationVaultKeyProvider)
+        self.fleetSync = FleetSyncService(context: context, vaultKeyProvider: conversationVaultKeyProvider)
         self.roamingProfileSync = RoamingProfileSyncService(context: context)
         self.collaborationSync = CollaborationSyncService(
             context: context,
@@ -180,6 +183,13 @@ final class CloudSyncCoordinator {
     /// so a phone can read the inbox while this Mac is asleep.
     func syncAIInbox() async {
         await propagateAIInboxErrors { await aiInboxSync.sync() }
+    }
+
+    /// Mirror the sealed fleet snapshot up (single `fleet_snapshot/current`
+    /// document), so a phone can render the agent fleet board while this Mac
+    /// is asleep. Upload-only: mobile consumption is read-only in v1.
+    func syncFleetMirror() async {
+        await propagateFleetErrors { await fleetSync.sync() }
     }
 
     /// Upload or download the encrypted roaming profile carrying non-secret routing/profile state.
@@ -380,6 +390,26 @@ final class CloudSyncCoordinator {
             }
             if aiInboxSync.lastSyncDate != nil {
                 lastSyncDate = aiInboxSync.lastSyncDate
+            }
+            isSyncing = false
+        }
+    }
+
+    private func propagateFleetErrors(_ block: () async -> Void) async {
+        let shouldProceed = await MainActor.run { () -> Bool in
+            guard !isSyncing else { return false }
+            isSyncing = true
+            clearSyncFailureState()
+            return true
+        }
+        guard shouldProceed else { return }
+        await block()
+        await MainActor.run {
+            if let err = fleetSync.lastSyncError, err.isEmpty == false {
+                recordSyncFailure(err)
+            }
+            if fleetSync.lastSyncDate != nil {
+                lastSyncDate = fleetSync.lastSyncDate
             }
             isSyncing = false
         }

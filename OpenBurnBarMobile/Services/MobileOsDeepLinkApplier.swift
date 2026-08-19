@@ -74,6 +74,8 @@ enum MobileOsDeepLinkApplier {
             )
         case .inbox:
             AIInboxDeepLink.open(itemID: routed.itemId)
+        case .fleet:
+            NotificationCenter.default.post(name: .init("ShowFleetTab"), object: nil)
         case .mercuryCall:
             MobilePendingOsRouteStore.shared.stash(.mercuryCall(connectionId: routed.connectionId))
             var userInfo: [AnyHashable: Any] = [:]

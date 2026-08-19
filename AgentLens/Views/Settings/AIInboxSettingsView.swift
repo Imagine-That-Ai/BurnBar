@@ -23,6 +23,12 @@ struct AIInboxSettingsView: View {
     /// switch from rendering "off" while the mirror is in fact running.
     @AppStorage(AIInboxSyncService.preferenceKey) private var cloudMirrorEnabled = true
 
+    /// Same absent-means-enabled contract as `FleetSyncService.isEnabled`. The
+    /// fleet mirror switch lives beside the inbox mirror switch deliberately:
+    /// they are the two sealed off-device mirrors, and a user reasoning about
+    /// "what leaves this Mac" should find them in one place.
+    @AppStorage(FleetSyncService.preferenceKey) private var fleetCloudMirrorEnabled = true
+
     var body: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
             header
@@ -358,6 +364,20 @@ struct AIInboxSettingsView: View {
                     (kind, priority, timestamps) is readable by the server. Turn this off to keep the inbox on this Mac only.
                     """,
                 isOn: $cloudMirrorEnabled
+            )
+
+            // Also a local preference rather than daemon config, for the same
+            // reason as the inbox mirror above: the publisher runs in the app,
+            // the only process with Firebase auth.
+            SettingsToggle(
+                title: "Sync the Agent Fleet to my phone",
+                subtitle: """
+                    Mirrors the fleet dashboard to your other signed-in devices so you can check on your agents \
+                    while this Mac is asleep. Agent names, tasks, repos, and machine stats are encrypted before \
+                    they leave — only timestamps are readable by the server. The phone view is read-only: \
+                    orchestrator controls stay on this Mac. Turn this off to keep the fleet on this Mac only.
+                    """,
+                isOn: $fleetCloudMirrorEnabled
             )
         }
     }

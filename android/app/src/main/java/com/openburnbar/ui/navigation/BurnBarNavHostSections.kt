@@ -119,6 +119,7 @@ internal fun BurnBarContent(
         burnBarPulseRoute(navigateToBurn, navigateToHermes, navigateToStreams)
         burnBarBurnRoute()
         burnBarInboxRoute(navController)
+        burnBarFleetRoute()
         burnBarInsightsRoutes(navController, isCloudMember)
         burnBarStreamsRoute(navController, isCloudMember)
         burnBarHermesRoutes(navController, currentTier)
@@ -185,6 +186,13 @@ private fun androidx.navigation.NavGraphBuilder.burnBarInboxRoute(navController:
             },
         )
     }
+}
+
+private fun androidx.navigation.NavGraphBuilder.burnBarFleetRoute() {
+    composable(
+        BurnBarTab.FLEET.route,
+        deepLinks = listOf(navDeepLink { uriPattern = "burnbar://fleet" }),
+    ) { com.openburnbar.ui.fleet.FleetScreen() }
 }
 
 private fun androidx.navigation.NavGraphBuilder.burnBarInsightsRoutes(navController: NavHostController, isCloudMember: Boolean) {
@@ -715,12 +723,31 @@ private fun BurnBarWideScreenShell(state: BurnBarSignedInShellState, navControll
 
 @Composable
 private fun BurnBarPhoneShell(state: BurnBarSignedInShellState, navController: NavHostController, navigateTo: (BurnBarTab) -> Unit) {
+    val context = LocalContext.current
+    val swipeEnabled by com.openburnbar.ui.settings.rememberSwipeNavigationEnabled()
+    // The handler identity must survive recomposition (a fresh lambda would
+    // restart the pointerInput loop mid-gesture), while still reading the
+    // CURRENT tab/order/navigator when a swipe finally commits.
+    val currentTab = androidx.compose.runtime.rememberUpdatedState(state.currentTab)
+    val tabs = androidx.compose.runtime.rememberUpdatedState(BurnBarTab.all)
+    val navigate = androidx.compose.runtime.rememberUpdatedState(navigateTo)
+    val onRootSwipe: (AuroraNavGestureModel.SwipeDirection) -> Unit = remember {
+        { direction ->
+            AuroraNavGestureModel.adjacent(currentTab.value, direction, tabs.value)?.let { target ->
+                navigate.value(target)
+                com.openburnbar.ui.components.HapticBus.tabChange(context)
+            }
+        }
+    }
     Box(
         modifier =
         Modifier
             .fillMaxSize()
             .statusBarsPadding()
-            .padding(bottom = 96.dp),
+            .padding(bottom = 96.dp)
+            // Passive root swipe (PointerEventPass.Final): one adjacent-tab
+            // move per drag no child consumed, exactly like the iOS shell.
+            .auroraRootSwipe(enabled = swipeEnabled, onSwipe = onRootSwipe),
     ) {
         BurnBarContent(
             navController = navController,

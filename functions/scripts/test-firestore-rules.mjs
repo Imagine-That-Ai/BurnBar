@@ -2399,6 +2399,67 @@ test("any owner device may write AI Inbox item state, with a constrained feedbac
   await assertSucceeds(deleteDoc(doc(phoneDb, statePath)));
 });
 
+test("owners can mirror the sealed fleet snapshot as a single current document", async () => {
+  const macDb = authedDb("fiona");
+  const otherDb = authedDb("mallory");
+  const snapshotPath = "users/fiona/fleet_snapshot/current";
+  await seedCloudVaultState("fiona");
+
+  const validSnapshot = (docID = "current", overrides = {}) => ({
+    schemaVersion: 1,
+    updatedAt: serverTimestamp(),
+    generatedAt: serverTimestamp(),
+    contentSealed: true,
+    sealedSchemaVersion: 2,
+    vaultKeyID: TEST_VAULT_KEY_ID,
+    sealedPayload: sealedPayload(TEST_VAULT_KEY_ID, "c2VhbGVk", cloudVaultAAD("fiona", "fleet_snapshot", docID, "sealedPayload")),
+    ...overrides,
+  });
+
+  await assertSucceeds(setDoc(doc(macDb, snapshotPath), validSnapshot()));
+  await assertSucceeds(getDoc(doc(macDb, snapshotPath)));
+  await assertFails(getDoc(doc(otherDb, snapshotPath)));
+
+  // Single-document collection: only `current` is writable.
+  await assertFails(
+    setDoc(doc(macDb, "users/fiona/fleet_snapshot/other"), validSnapshot("other"))
+  );
+
+  // Nothing interesting may ride in plaintext — the board lives in the seal.
+  await assertFails(
+    setDoc(doc(macDb, snapshotPath), validSnapshot("current", { agents: [] }))
+  );
+  await assertFails(
+    setDoc(doc(macDb, snapshotPath), validSnapshot("current", { projectName: "BurnBar" }))
+  );
+  await assertFails(
+    setDoc(doc(macDb, snapshotPath), validSnapshot("current", { notInAllowlist: true }))
+  );
+
+  // Envelope constraints.
+  await assertFails(
+    setDoc(doc(macDb, snapshotPath), validSnapshot("current", { schemaVersion: 2 }))
+  );
+  await assertFails(
+    setDoc(doc(macDb, snapshotPath), validSnapshot("current", { contentSealed: false }))
+  );
+  await assertFails(
+    setDoc(doc(macDb, snapshotPath), validSnapshot("current", { updatedAt: "2026-08-19" }))
+  );
+
+  // AAD is path-bound: a payload sealed for a different doc must not transplant.
+  await assertFails(
+    setDoc(
+      doc(macDb, snapshotPath),
+      validSnapshot("current", {
+        sealedPayload: sealedPayload(TEST_VAULT_KEY_ID, "c2VhbGVk", cloudVaultAAD("fiona", "fleet_snapshot", "other", "sealedPayload")),
+      })
+    )
+  );
+
+  await assertSucceeds(deleteDoc(doc(macDb, snapshotPath)));
+});
+
 test("conversation and session-log backup require hosted cloud entitlement", async () => {
   const db = authedDb("carol");
   await seedCloudVaultState("carol");
