@@ -1,0 +1,75 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://openburnbar.ai/schemas/workflow-reachability.json",
+  "title": "Workflow reachability exceptions",
+  "description": "Declared exceptions to scripts/ci/verify-workflow-reachability.mjs. An entry asserts that a job inheriting a skipped upstream, or a script outside its workflow's push path filter, is a reviewed decision rather than the silent-failure defect documented in docs/CI_RELEASE_RUNBOOK.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["skipPropagation", "pathsCoverage"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "documentation": {
+      "type": "string",
+      "description": "Path to the runbook explaining both failure modes."
+    },
+    "purpose": {
+      "type": "string",
+      "description": "Why this file exists, for a reader who found it via a failing gate."
+    },
+    "skipPropagation": {
+      "type": "array",
+      "description": "Jobs allowed to inherit a skipped upstream through `needs` without carrying a status-check function.",
+      "items": { "$ref": "#/definitions/skipEntry" }
+    },
+    "pathsCoverage": {
+      "type": "array",
+      "description": "Scripts a workflow executes that are intentionally absent from its push path filter.",
+      "items": { "$ref": "#/definitions/pathEntry" }
+    }
+  },
+  "definitions": {
+    "reason": {
+      "type": "string",
+      "minLength": 20,
+      "description": "Why this is safe, or an explicit statement that it was baselined without individual review. The verifier rejects reasons under 20 characters so a token string cannot buy an exemption."
+    },
+    "workflow": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._-]+\\.ya?ml$",
+      "description": "Workflow file name as it appears in .github/workflows."
+    },
+    "skipEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workflow", "job", "reason"],
+      "properties": {
+        "workflow": { "$ref": "#/definitions/workflow" },
+        "job": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Job key exactly as declared under `jobs:`."
+        },
+        "reason": { "$ref": "#/definitions/reason" }
+      }
+    },
+    "pathEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workflow", "job", "path", "reason"],
+      "properties": {
+        "workflow": { "$ref": "#/definitions/workflow" },
+        "job": {
+          "type": "string",
+          "const": "*",
+          "description": "Path coverage is a whole-workflow property, so this is always \"*\"."
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Repo-relative path of the executed script or transitively imported module."
+        },
+        "reason": { "$ref": "#/definitions/reason" }
+      }
+    }
+  }
+}

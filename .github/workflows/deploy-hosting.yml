@@ -19,14 +19,29 @@ on:
       - "config/domain-core-build-profiles.json"
       - "firebase.json"
       - ".firebaserc"
+      # Every local script this workflow executes, and every local module those
+      # scripts import transitively. A gap here is silent: the fix merges, the
+      # workflow never triggers, and the site keeps serving the old build with
+      # no red check anywhere. `verify-workflow-reachability.mjs` holds this
+      # list against the workflow body so it cannot drift again.
       - "scripts/ci/deploy-firebase-hosting-rest.mjs"
       - "scripts/ci/write-firebase-hosting-ci-config.mjs"
       - "scripts/ci/create-domain-core-deployment-identity.mjs"
+      - "scripts/ci/create-domain-core-runtime-artifact-manifest.mjs"
+      - "scripts/ci/hosting-smoke.sh"
+      - "scripts/ci/resolve-domain-core-activation.mjs"
+      - "scripts/ci/resolve-domain-core-build-profile.mjs"
       - "scripts/ci/verify-domain-core-build-profile-artifact.mjs"
       - "scripts/ci/verify-domain-core-release-gate.mjs"
+      - "scripts/ci/verify-existing-domain-core-deployment.mjs"
+      - "scripts/lib/atomic-regular-file.mjs"
+      - "scripts/lib/curl-bearer.sh"
+      - "scripts/lib/domain-core-activation.mjs"
+      - "scripts/lib/domain-core-artifact-profile.mjs"
       - "scripts/lib/domain-core-build-profile.mjs"
       - "scripts/lib/domain-core-candidate-receipt.mjs"
       - "scripts/lib/domain-core-release-evidence.mjs"
+      - "scripts/lib/firebase-hosting-rest-url.mjs"
       - ".github/workflows/deploy-hosting.yml"
       - ".github/workflows/domain-core-console-release-evidence.yml"
   workflow_dispatch:
@@ -794,8 +809,13 @@ jobs:
 
   dispatch-domain-core-console-evidence:
     needs: [build-hosting-artifacts, deploy-hosting, hosting-smoke-result]
+    # `!cancelled()` displaces the implicit `success()` guard so the explicit
+    # per-upstream result checks below are what actually decide. Without it this
+    # job silently inherits the routine skip of `authorize-domain-core-rollback`
+    # through `needs`, exactly as `deploy-hosting` did for a month.
     if: >-
-      ${{ needs.build-hosting-artifacts.result == 'success'
+      ${{ !cancelled()
+          && needs.build-hosting-artifacts.result == 'success'
           && needs.deploy-hosting.result == 'success'
           && needs.hosting-smoke-result.result == 'success'
           && needs.build-hosting-artifacts.outputs.stable_release == 'true'
