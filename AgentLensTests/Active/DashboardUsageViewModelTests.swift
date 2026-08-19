@@ -352,7 +352,11 @@ final class DashboardUsageViewModelTests: XCTestCase {
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let usageStore = UsageStore(dbQueue: queue)
         let tracer = OpenBurnBarQueryTracer.shared
-        let now = Date()
+        // Keep insertion, SQL windows, and in-memory windows on one
+        // millisecond-exact clock. GRDB persists Date values with millisecond
+        // precision, so a live sub-millisecond boundary can round past an
+        // independently captured upper bound.
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
 
         try await usageStore.insert(ViewTestFixtures.makeUsage(
             provider: .codex,
@@ -375,9 +379,15 @@ final class DashboardUsageViewModelTests: XCTestCase {
             endTime: now.addingTimeInterval(-8 * 24 * 3600 + 30)
         ))
 
-        _ = try await usageStore.fetchDashboardUsageSnapshot(loadedUsageLimit: 100)
+        _ = try await usageStore.fetchDashboardUsageSnapshot(
+            loadedUsageLimit: 100,
+            now: now
+        )
         tracer.resetLog()
-        let snapshot = try await usageStore.fetchDashboardUsageSnapshot(loadedUsageLimit: 100)
+        let snapshot = try await usageStore.fetchDashboardUsageSnapshot(
+            loadedUsageLimit: 100,
+            now: now
+        )
 
         let coveringSelects = tracer.queryLog.filter { event in
             let sql = event.sql

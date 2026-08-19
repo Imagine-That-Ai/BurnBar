@@ -4,6 +4,7 @@ package com.openburnbar.data.media
 
 import android.util.Log
 import com.openburnbar.data.computeruse.ComputerUseSessionGrantChallengeDelivery
+import com.openburnbar.data.policy.MobileMercuryMediaPolicy
 import com.openburnbar.irohrelay.HermesRealtimeRelayAgentGrantReceipt
 import com.openburnbar.irohrelay.HermesRealtimeRelayAgentTerminalRequest
 import com.openburnbar.irohrelay.HermesRealtimeRelayCallAck
@@ -73,7 +74,7 @@ class MediaControlStreamCoordinator(
     private val peerDeviceIdProvider: () -> String = { android.os.Build.MODEL.orEmpty().ifBlank { "android" } },
     private val displayNameProvider: () -> String = { android.os.Build.MODEL.orEmpty().ifBlank { "Android" } },
     private val controlAuthorityPeerNodeIdProvider: () -> String? = { null },
-    private val presenceHeartbeatIntervalMillis: Long = 60_000L,
+    private val presenceHeartbeatIntervalMillis: Long = MobileMercuryMediaPolicy.HEARTBEAT_INTERVAL_MS,
     private val sessionGrantChallengeHandler: (ComputerUseSessionGrantChallengeDelivery) -> Unit = {},
     /**
      * F7 — per-mirror media-seal establishment hook, invoked by

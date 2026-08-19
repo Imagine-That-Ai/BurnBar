@@ -7,6 +7,202 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.40] - 2026-08-18
+
+### Fixed
+- Repair the Functions release-gate fixture so notification events include a
+  future expiry timestamp, matching the production event contract.
+- Advance the macOS, daemon, extension, Android fallback, Windows manifest, and
+  release documentation surfaces to build 81 / version 1.0.40.
+
+## [1.0.39] - 2026-08-18
+
+### Fixed
+- Bind the emergency release packet and all version surfaces to the new
+  protected-main v1.0.39 successor after the immutable v1.0.36 candidate and
+  stale-evidence v1.0.38 preflight were both held before publication.
+
+### Added
+- **War Room: the Wire dials, the Flame routes, and the fleet gets two faces**
+  (`docs/WAR_ROOM.md`) — the multi-machine plan lands end to end on top of the
+  identity spine below. The **Wire** grows its remaining three layers: a frame
+  codec for the eight `war` frames, a fail-closed handshake state machine whose
+  fleet and dispatch frames return nothing until the lane is admitted (and whose
+  refusal yields *fall back to Firestore*, not an error), and a dialer that
+  drives both over a real iroh transport. The **Flame** becomes a router with a
+  hand — `FlameDispatchPlanner` turns a routing decision into a dispatch,
+  refusing rather than aiming a mission at nothing, and missions carry an
+  advisory `targetBodyID` that steers work without letting anyone force a
+  machine to run it. The daemon exposes the Flame over three RPC methods
+  (`war.flame.route`, `war.flame.distill.list`, `war.flame.distill.settle`) and
+  archives every decision — including the ones that routed nowhere — into a
+  bounded distill log, because a router that only remembers its successes cannot
+  be audited. Two new surfaces in Settings → Devices & Sync: the **Hermes Room**,
+  whose "can I move Hermes there?" answer *is* the Wire's admission decision so
+  it can never promise a swap the Wire will deny, and the **Command Board**,
+  which folds every run across every machine into one grid with a STARTED BY
+  column and per-machine / per-originator cost rollups. Standing orders persist
+  in `standing_orders` (migration **v63**), with `StandingOrderScheduler` as the
+  single answer to "what should run now" for the app, the daemon, and tests, and
+  a runtime host that actually fires them: an order pinned to an offline Mac
+  waits for that Mac rather than being rerouted, a deferred order stays due
+  instead of silently losing its cycle, and the run is credited to the schedule
+  rather than to the router that placed it. Migration **v64** indexes
+  `token_usage.startTime` so the Command Board's window scan has an index to
+  stand on.
+- **War Room: machine-bound Hermes identity and the Wire's fail-closed spine**
+  (`docs/WAR_ROOM.md`) — a Hermes is now a name bound to a *machine*, not a bot.
+  Every Mac publishes one **HermesBody** (`users/{uid}/hermes_bodies/{bodyId}`):
+  the join of the device doc, the Hermes relay connection, the iroh endpoint,
+  and sysctl-probed hardware, keyed by the existing
+  `relay-host-<installationUUID>` connection id so no new identity is minted.
+  Settings → Devices & Sync gains a **Hermes Bodies** roster with rename and
+  removal. Presence is derived by the *reader* from heartbeat age rather than
+  trusted from a publisher that cannot know it went offline, and unreadable
+  hardware renders an em-dash instead of a synthetic default. `BurnBarOriginator`
+  adds typed STARTED BY attribution (9 kinds × exact/inferred/unknown
+  confidence) stamped onto Wand missions today, with a flat two-field codec for
+  the new nullable `token_usage.originatorKind` / `originatorRef` columns
+  (migration v62) and a full-map codec for Firestore. The **Wire** — the
+  Pro/Ultra-only encrypted Mac⇄Mac lane — lands its policy spine: a `war` frame
+  group in the canonical wire protocol (parity-gated across Swift, Kotlin,
+  TypeScript, and Rust), a pure `WarWireGate` both peers evaluate identically,
+  `war_wire_grants` consent records whose pair id is derived server-side and
+  whose covered pair is immutable on update, and the `war_room_kill_switch`
+  Remote Config flag that defaults to *engaged* so an install that cannot reach
+  config keeps the shipped single-machine experience.
+- **Liquid Plasma selectors** (`AgentLens/Views/Chat/Components/Plasma/`): the flat
+  chat model menu becomes two living orbs. The left one wears a face — ten personas,
+  each with its own eyes, palette and voice line, chosen per agent because the voice
+  you want from a fast local CLI is not the one you want from a reasoning gateway.
+  While the agent streams, droplets rise out of the orb and pop instead of a spinner.
+  The right one opens a Route › Provider › Model cascade whose first rung lists
+  BurnBar's *real* routes, not a catalog of endpoints that cannot serve a request
+  here, and reports five status states rather than two so an unprobed gateway says
+  "not probed" instead of claiming a server is down that nobody contacted.
+- **Swarm Ember rebuilt around the BurnBar flame mark** (`apps/console` +
+  `packages/gl-engine`): the old token-glyph / provider-slideshow field is
+  gone. Embers murmurate on a curl-noise wind, then lock onto a color-accurate
+  sampling of the official flame + bar-chart mark, hold with heat and tip
+  sparks, and dissolve. Console default is `logoHero` (mark ↔ swarm only);
+  the Linux/macOS dashboard cycle via `buildDashboardCycle` is unchanged.
+- **Usage rollups: per-day provider split** (`functions/`, `COUNTER_SCHEMA_VERSION`
+  3): the all_time rollup gains `dailyProviderTokens` — a sparse
+  `day → provider → tokens` map alongside `dailyPoints`, with
+  `sum(split[day]) === dailyPoints[day]` per day. Legacy counters (schema < 3)
+  fall back to the reference path once, backfill, and persist with an
+  updatedAt guard. The console normalizes it defensively (positive entries
+  only) and fails soft until functions are deployed and backfilled.
+- **Console profile: hover detail, metric toggle, self-healing first sync** —
+  hovering a heatmap day (Daily mode) now floats a day card with the exact
+  token count and, when the rollup carries schema-v3 data, the per-provider
+  split with brand marks (top 3 + "other"); the hovered cell rings in
+  accent-deep. The insights rail gains a "Break down by" Tokens / Runs / Spend
+  toggle that re-bases provider mix, models, harnesses, and combos on the
+  chosen metric. First visit with no rollup auto-fires `rebuildUsageRollups`
+  (once per session) with a syncing banner instead of showing silent zeros,
+  and the empty state gains a manual "Re-sync now".
+- **Console: Experimental gallery selects in place** — picking a kernel tile on
+  /experimental now takes over the page's own background instantly (the global
+  backdrop renders behind the gallery, like every other route), so the preview
+  IS the real thing. The "Your backdrop" hero strip is retired — the horizontal
+  preview box is gone; the active tile keeps its ring + badge and the toast
+  confirms the switch.
+- **Usage rollups: execution-source + combo aggregation** (`functions/`): the
+  counter pipeline gains an `executionSources` dimension and a harness × model
+  `combos` dimension per counter bucket (`COUNTER_SCHEMA_VERSION` 2), aggregated
+  into `executionSourceSummaries` / `comboSummaries` on every rollup window —
+  the data behind the console profile's new sections. Both the reference path
+  and the pending-delta queue drain carry the fields (`test-rollups.mjs`
+  two-path equivalence still passes byte-identical). Legacy events without
+  execution-source attribution are skipped, never zero-filled. History
+  backfills via `rebuildUserRollupCounters` after deploy; until then the
+  fields are absent and the console hides the sections.
+- **Console command rail + ⌘K palette** (`apps/console/components/nav`): the
+  numbered folio top bar is replaced by a slim left rail that groups
+  destinations by intent (Observe · Vault · System), with the member identity,
+  theme switcher, and a quarantined Panic control in the rail footer. The same
+  rail content powers the mobile slide-over drawer (one nav component, no
+  duplicated mobile strip). `⌘K`/`Ctrl+K` opens a command palette — every
+  destination, every theme, and sign out — with ranked substring filtering.
+  The destination model (`components/nav/navModel.ts`) is the single source of
+  truth for rail, drawer, and palette. The "Private — not indexed" folio strip
+  is retired; the footer's privacy line carries the message. Content routes are
+  now left-aligned in a `max-w-5xl` column beside the rail (console convention)
+  instead of floating centered, and the Pensieve membership pill becomes an
+  icon-forward `PlanBadge` lockup (cloud crest in an accent tile + stacked
+  tier name). `ThemeMenu` gained a `direction="up"` popover mode so the rail
+  footer's switcher never opens past the viewport's bottom edge. The rail
+  brand lockup is the bare BurnBar flame mark, enlarged — no tile, no
+  hairline; the full-colour mark reads on every theme as-is.
+- **Profile: agent harnesses + combos** (`apps/console`): the usage profile
+  gains "Agent harnesses" (Claude Code, Codex, Cursor, … with brand logos via
+  `lib/brandLogos.ts` + `components/BrandLogo.tsx`) and harness × model
+  "Combos" sections, driven by the new `executionSourceSummaries` /
+  `comboSummaries` rollup fields in `lib/usage.ts`. Both sections fail soft —
+  they stay hidden until the server-side execution-source counters ship and
+  backfill. On xl+ screens the insights become a right rail beside the main
+  column (harness/combo blocks render from md up, where there's room);
+  narrower layouts keep the single-column stack. The rail leads with an
+  accent-led "Provider mix" share bar whose legend rows carry the providers'
+  own brand marks, and the model rows are logo-led too; before the first sync,
+  dimmed ghost shapes preview the layout without inventing numbers.
+- **Console usage profile** (`apps/console/app/profile`): a Codex/Cursor-style
+  activity page — identity header, lifetime stat row (lifetime/peak tokens,
+  total requests, current and longest streaks), a GitHub-style contribution
+  heatmap of daily token activity with Daily / Weekly / Cumulative modes, a
+  90-day token trend, and most-used provider/model insights. All figures come
+  from the owner-readable `usage_rollups/all_time` doc; untracked dimensions
+  (fast mode, reasoning mix, skills) are stated as untracked, never mocked.
+
+### Fixed
+- **Console: experimental gallery tiles stay alive** — `LiveKernelCanvas`
+  unmounts the canvas on scroll-away instead of calling `loseContext()` on a
+  reused element. A lost WebGL context stays counted against the browser cap
+  and `getContext` returns the same dead context forever, which is why retro
+  plasma / blobs mesh / plasma orbs / flow imaging showed blank tiles.
+- **Blobs mesh: cold-start wash** — blob centres are quadrant-anchored and
+  the colour blend is keyed by the strongest single-blob weight so t=0 is a
+  field of distinct bodies, not a featureless slate gradient.
+- **Firestore: Hermes/Pi relay updates cannot change `mode`** — connection
+  updates now require both the stored and incoming docs to stay `relayLink`.
+- **Backdrop engine: leaked GL contexts on fast kernel switches** — a lazy
+  kernel disposed before its chunk resolved never constructed the real kernel,
+  so its `dispose()` was a no-op and the WebGL context the engine created for
+  the slot leaked until GC. Rapid switching piled these toward the browser's
+  per-page context budget until the compositor killed the LIVE context — the
+  next kernel then compiled on a dead context and logged a spurious
+  `shader compile failed: unknown`. The engine now force-releases the slot's
+  context in `disposeSlot`, `lazyKernel` skips a deferred init whose context
+  died in flight, and `compile()` treats a lost context as the lifecycle
+  condition it is instead of logging a shader error. A kernel that throws on
+  init now degrades to the 2D default instead of risking a black backdrop.
+  (Both engine copies — `apps/console/lib/gl/engine` and
+  `packages/gl-engine` — stay byte-identical per the parity gate.)
+- **Console: passkey hydration mismatch** — `passkeySupported` was computed
+  with `typeof window` during render, so the statically prerendered HTML and
+  the client's first render disagreed (React hydration error on /settings and
+  the Basin). WebAuthn support is now detected after mount.
+- **Console: analytics consent banner on mobile** — the flex-wrap row squeezed
+  the copy into a ~150px column at phone widths; the banner now stacks
+  (text full-width, buttons on their own row) below sm.
+
+## [openburnbar 0.1.2] - 2026-08-18
+
+### Changed
+- Bump the separately versioned `openburnbar` Node CLI from `0.1.1` to
+  `0.1.2`; the CLI continues to follow the signed public macOS feed instead of
+  embedding or downloading a DMG during npm installation.
+
+## [1.0.37] - 2026-08-17
+
+### Fixed
+- Prioritize committed promotion bundles in `prepare-domain-core-native-release-gate.mjs`
+  so the native release candidate gate hydrates the exact attested `a46c7234` bundle
+  and cryptographic provenance against Sigstore attestation `38437922`.
+- Supersede the unpublished `v1.0.36` candidate without moving its immutable tag.
+  This release includes the full `1.0.36` and `1.0.35` feature sets.
+
 ## [1.0.36] - 2026-08-17
 
 ### Fixed

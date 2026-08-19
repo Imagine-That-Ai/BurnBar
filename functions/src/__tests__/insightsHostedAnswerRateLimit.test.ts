@@ -170,3 +170,80 @@ describe("insightsHostedAnswer prompt cap", () => {
     expect(mocks.fetch).not.toHaveBeenCalled();
   });
 });
+
+describe("insightsHostedAnswer monthly dollar cap", () => {
+  beforeEach(() => {
+    mocks.store.clear();
+    mocks.fetch.mockReset();
+    mocks.secretValues.clear();
+    mocks.secretValues.set("OPENROUTER_API_KEY", "test-openrouter-key");
+    seedActiveEntitlement(ALICE_UID);
+  });
+
+  afterEach(() => {
+    delete process.env.INSIGHTS_HOSTED_MONTHLY_USD_CAP;
+  });
+
+  it("refuses once the uid's month has consumed the owner-funded budget", async () => {
+    // The ledger is keyed by the CURRENT month (the callable stamps isoNow()),
+    // so seed the cap as already burned for whatever month "now" is.
+    const monthKey = new Date().toISOString().slice(0, 7);
+    seedDoc(mocks.store, `users/${ALICE_UID}/billing/hosted_insights/months/${monthKey}`, {
+      monthKey,
+      spentUSD: 2.5,
+      answerCount: 900,
+    });
+    const run = callableRunner(insightsHostedAnswer);
+
+    await expect(
+      run(
+        callableRequest(ALICE_UID, {
+          instruction: "answerFollowUp",
+          request: { prompt: "Summarize this." },
+        }),
+      ),
+    ).rejects.toMatchObject({
+      code: "resource-exhausted",
+      message: expect.stringContaining("resets at the start of next month"),
+    });
+    expect(mocks.fetch).not.toHaveBeenCalled();
+  });
+
+  it("records spend, count, and tokens in the monthly ledger after an answer", async () => {
+    mocks.fetch.mockImplementation(async () => ({
+      ok: true,
+      status: 200,
+      text: async () =>
+        JSON.stringify({
+          choices: [{ message: { content: JSON.stringify({ executiveSummary: "All quiet today." }) } }],
+          usage: { prompt_tokens: 1000, completion_tokens: 500 },
+        }),
+    }));
+    const run = callableRunner(insightsHostedAnswer);
+
+    const result = await run(
+      callableRequest(ALICE_UID, {
+        instruction: "answerFollowUp",
+        request: { prompt: "Summarize this." },
+      }),
+    );
+    expect(result).toMatchObject({ providerKey: "burnbar-hosted" });
+
+    const monthKey = new Date().toISOString().slice(0, 7);
+    const ledger = mocks.store.get(`users/${ALICE_UID}/billing/hosted_insights/months/${monthKey}`);
+    expect(ledger).toBeDefined();
+    expect(ledger).toMatchObject({
+      monthKey,
+      answerCount: 1,
+      inputTokens: 1000,
+      outputTokens: 500,
+    });
+    expect(Number(ledger?.spentUSD)).toBeGreaterThan(0);
+
+    // And the ops per-day rollup the margin dashboard reads.
+    const dayKey = new Date().toISOString().slice(0, 10);
+    const rollup = mocks.store.get(`ops/hosted_insights_daily_rollups/days/${dayKey}`);
+    expect(rollup).toMatchObject({ dayKey, answerCount: 1 });
+    expect(Number(rollup?.spendUSD)).toBeCloseTo(Number(ledger?.spentUSD), 10);
+  });
+});

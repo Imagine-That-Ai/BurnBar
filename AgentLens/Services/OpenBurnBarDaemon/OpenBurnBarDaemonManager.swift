@@ -339,6 +339,11 @@ final class OpenBurnBarDaemonManager {
     var controllerProjects: [BurnBarReviewProjectSnapshot] = []
     var connectorPlaneSnapshot: BurnBarConnectorPlaneSnapshot?
     var browserToolingSnapshot: BurnBarBrowserToolingSnapshot?
+    /// Coalesces the attach-time and startup-probe activity exports. Both
+    /// startup paths can request a full health refresh within the same two
+    /// seconds; without this task they race the stale-file check and each load
+    /// the same 10k-conversation snapshot on a separate GRDB reader.
+    @ObservationIgnored var controllerActivitySnapshotExportTask: Task<Void, Never>?
     /// Supervision state tracks consecutive health-check failures and crash-loop
     /// detection. The daemon manager reads this to decide when to back off
     /// health probes and when to surface a "needs repair" prompt.
@@ -643,7 +648,7 @@ final class OpenBurnBarDaemonManager {
             guard let dataStore else { return }
             do {
                 try await dataStore.insert(importedUsages)
-                await dataStore.refresh()
+                await dataStore.reloadUsagesIfChanged()
                 await self?.uploadImportedUsageIfNeeded(importedUsages.count)
             } catch {
                 AppLogger.dataStore.silentFailure("OpenBurnBarDaemonManager: Failed to import daemon usage", error: error)

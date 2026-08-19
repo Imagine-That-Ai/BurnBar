@@ -109,13 +109,8 @@ extension MercuryRouter {
             for attempt in 0..<maxAttempts {
                 guard !Task.isCancelled, let self else { return }
                 let activeViewers = self.currentMirrorSessions()
-                guard self.shouldKeepMirrorAliveForRemoteUnlock(activeViewers) else { return }
-                let remoteUnlockSessionID = self.activeRemoteUnlockSessionID(in: activeViewers)
-                let state = self.remoteUnlockReadiness.currentState(
-                    sessionId: remoteUnlockSessionID,
-                    controlOwnerViewerId: self.activeControlViewerID
-                )
-                if state.lockState == .unlocked {
+                guard self.hasActiveRemoteUnlockViewer(activeViewers) else { return }
+                if self.remoteUnlockReadiness.currentLockState() == .unlocked {
                     await self.handleRemoteUnlockHostUnlocked(reason: reason)
                     return
                 }
@@ -130,13 +125,13 @@ extension MercuryRouter {
 
     func handleRemoteUnlockHostUnlocked(reason: String) async {
         let activeViewers = currentMirrorSessions()
-        guard shouldKeepMirrorAliveForRemoteUnlock(activeViewers) else { return }
+        guard hasActiveRemoteUnlockViewer(activeViewers) else { return }
         let remoteUnlockSessionID = activeRemoteUnlockSessionID(in: activeViewers)
         let state = remoteUnlockReadiness.currentState(
             sessionId: remoteUnlockSessionID,
             controlOwnerViewerId: activeControlViewerID
         )
-        guard state.lockState == .unlocked else { return }
+        guard state.capabilities.enabled, state.lockState == .unlocked else { return }
 
         remoteUnlockReadiness.revokeAllRemoteUnlockSessions(revokePublishedTrust: false)
         Self.log.info("router_remote_unlock_unlocked_resuming_normal_capture reason=\(reason, privacy: .public)")
@@ -375,6 +370,14 @@ extension MercuryRouter {
 
     func shouldKeepMirrorAliveForRemoteUnlock(_ activeViewers: [ActiveMirrorViewer]) -> Bool {
         guard remoteUnlockReadiness.capabilities().enabled else { return false }
+        return hasActiveRemoteUnlockViewer(activeViewers)
+    }
+
+    /// The session was already capability-validated when the locked mirror was
+    /// accepted. Hot resume polling only needs to prove that the same bound,
+    /// unexpired viewer remains active; capability freshness is revalidated
+    /// once when an unlock is actually observed.
+    func hasActiveRemoteUnlockViewer(_ activeViewers: [ActiveMirrorViewer]) -> Bool {
         return activeViewers.contains { viewer in
             guard let sessionID = viewer.remoteUnlockSessionID,
                   let peerNodeID = viewer.controlAuthorityPeerNodeID else {

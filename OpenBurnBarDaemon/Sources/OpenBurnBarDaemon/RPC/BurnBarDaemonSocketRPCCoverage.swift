@@ -184,7 +184,8 @@ enum BurnBarDaemonSocketRPCCoverage {
     ]
 
     static let search: Set<BurnBarRPCMethod> = [
-        .searchQuery
+        .searchQuery,
+        .searchSQL
     ]
 
     static let memory: Set<BurnBarRPCMethod> = [
@@ -225,6 +226,15 @@ enum BurnBarDaemonSocketRPCCoverage {
         .fleetDirectiveRecord
     ]
 
+    /// War Room, the Flame. Kept separate from `fleet` because the two answer
+    /// different questions: `fleet` reports what the agents on this machine are
+    /// doing, `warRoom` decides which machine should do a thing next.
+    static let warRoom: Set<BurnBarRPCMethod> = [
+        .warFlameRoute,
+        .warFlameDistillList,
+        .warFlameDistillSettle
+    ]
+
     static let inbox: Set<BurnBarRPCMethod> = [
         .inboxList,
         .inboxGet,
@@ -262,6 +272,7 @@ enum BurnBarDaemonSocketRPCCoverage {
             .union(databaseRecovery)
             .union(inbox)
             .union(fleet)
+            .union(warRoom)
     }
 
     static func domain(for method: BurnBarRPCMethod) -> String? {
@@ -284,6 +295,7 @@ enum BurnBarDaemonSocketRPCCoverage {
         if databaseRecovery.contains(method) { return "database_recovery" }
         if inbox.contains(method) { return "inbox" }
         if fleet.contains(method) { return "fleet" }
+        if warRoom.contains(method) { return "war_room" }
         return nil
     }
 }

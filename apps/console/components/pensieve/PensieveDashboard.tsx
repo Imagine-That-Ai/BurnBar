@@ -4,6 +4,7 @@ import { Brain, GitBranch, Boxes, HardDrive } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { TierBadge } from "@/components/inventory/TierBadge";
+import { PlanBadge } from "@/components/PlanBadge";
 import { dataDomain } from "@/lib/domains";
 import { useDomainUsage, usageById } from "@/lib/useDomainUsage";
 import { usePensieveRepos } from "@/lib/usePensieveRepos";
@@ -82,20 +83,7 @@ export function PensieveDashboard() {
             <p className="mt-0.5 text-sm text-content-mute">{PENSIEVE.summary}</p>
           </div>
         </div>
-        <span className="flex items-center gap-1.5 rounded-pill border border-glass-line bg-mercury-wash px-token-3 py-1 text-xs uppercase tracking-wide text-content-mute">
-          {(tier === "pro" || tier === "ultra") && (
-            <img
-              src={
-                tier === "ultra"
-                  ? "/brand/burnbar_cloud_ultra_crest.svg"
-                  : "/brand/burnbar_cloud_pro_crest.svg"
-              }
-              alt=""
-              className="size-5 overflow-hidden object-contain"
-            />
-          )}
-          {tier} plan
-        </span>
+        <PlanBadge tier={tier} />
       </header>
 
       <Card>

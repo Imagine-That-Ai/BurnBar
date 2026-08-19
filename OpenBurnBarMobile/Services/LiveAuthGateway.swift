@@ -125,13 +125,16 @@ final class LiveAuthGateway: NSObject, AuthGateway {
     }
 
     private func authWithProvider(_ provider: OAuthProvider) async throws {
-        // OAuthProvider is a FederatedAuthProvider, not an AuthCredential — drive the
-        // web OAuth flow via the provider overloads (uiDelegate: nil lets Firebase
-        // present its default SFSafariViewController from the key window).
         if let u = Auth.auth().currentUser, u.isAnonymous {
             try await u.link(with: provider, uiDelegate: nil)
-        } else {
-            try await Auth.auth().signIn(with: provider, uiDelegate: nil)
+            return
+        }
+        // Present the GitHub sheet first. Cancel throws here with Auth still A
+        // and no tombstone. Only after the OAuth credential is in hand do we
+        // invalidate A's device doc and call signIn.
+        let credential = try await provider.getCredentialWith(nil)
+        try await Self.authChangingUid {
+            try await Auth.auth().signIn(with: credential)
         }
     }
 
@@ -140,18 +143,42 @@ final class LiveAuthGateway: NSObject, AuthGateway {
     func createEmailAccount(email: String, password: String) async throws {
         try validateFirebaseBundle()
         try validateEmailCredentials(email: email, password: password)
-        try await Auth.auth().createUser(withEmail: email.trimmedEmail, password: password)
+        try await Self.authChangingUid {
+            try await Auth.auth().createUser(withEmail: email.trimmedEmail, password: password)
+        }
     }
 
     func signInWithEmail(email: String, password: String) async throws {
         try validateFirebaseBundle()
         try validateEmailCredentials(email: email, password: password)
-        try await Auth.auth().signIn(withEmail: email.trimmedEmail, password: password)
+        try await Self.authChangingUid {
+            try await Auth.auth().signIn(withEmail: email.trimmedEmail, password: password)
+        }
     }
 
     private func auth(_ cred: AuthCredential) async throws {
         if let u = Auth.auth().currentUser, u.isAnonymous { try await u.link(with: cred); return }
-        try await Auth.auth().signIn(with: cred)
+        try await Self.authChangingUid {
+            try await Auth.auth().signIn(with: cred)
+        }
+    }
+
+    /// Tombstone A only after the new credential exists and immediately before
+    /// Firebase Auth leaves A. Cancelled picker/sheet paths never reach here.
+    /// A failed Auth call restores the still-signed-in device heartbeat.
+    static func authChangingUid(_ perform: () async throws -> Void) async throws {
+        let switchingAway = Auth.auth().currentUser != nil && !(Auth.auth().currentUser?.isAnonymous ?? false)
+        if switchingAway {
+            await AgentReplyNotificationService.shared.tombstoneIfSwitchingAwayFromCurrentUid()
+        }
+        do {
+            try await perform()
+        } catch {
+            if switchingAway {
+                await AgentReplyNotificationService.shared.restoreDeviceAfterFailedSwitch()
+            }
+            throw error
+        }
     }
 
     private var rootVC: UIViewController? {
@@ -250,7 +277,9 @@ private final class AppleDelegate: NSObject, ASAuthorizationControllerDelegate, 
                 if let u = Auth.auth().currentUser, u.isAnonymous {
                     try await u.link(with: fc)
                 } else {
-                    try await Auth.auth().signIn(with: fc)
+                    try await LiveAuthGateway.authChangingUid {
+                        try await Auth.auth().signIn(with: fc)
+                    }
                 }
                 done(.success(()))
             } catch { done(.failure(CloudGatewayError.classified(.other(message: error.localizedDescription)))) }

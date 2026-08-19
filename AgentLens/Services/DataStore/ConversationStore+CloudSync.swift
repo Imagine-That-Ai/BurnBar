@@ -67,6 +67,15 @@ extension ConversationStore {
                         record.deletedAt, record.version
                     ]
                 )
+                let inserted = db.changesCount > 0
+                if inserted, record.deletedAt == nil {
+                    try Self.upsertProjectionContentHash(
+                        conversationID: record.id,
+                        contentHash: ProjectionIdentity.conversationContentHash(for: record),
+                        updatedAt: record.indexedAt,
+                        db: db
+                    )
+                }
 
                 // Honor a remote tombstone even for a row that already exists
                 // locally: `INSERT OR IGNORE` skips existing rows, so the delete

@@ -4,8 +4,9 @@ import type { KernelId } from "@/lib/gl/engine/types";
 import { LiveKernelCanvas } from "./LiveKernelCanvas";
 
 /**
- * A clickable, selectable live kernel preview. Clicking sets it as the dashboard
- * backdrop; the active one is ringed + badged.
+ * A clickable, selectable live kernel preview. Clicking sets it as the global
+ * backdrop — the gallery's own page background becomes the selection instantly;
+ * the active one is ringed + badged.
  */
 export function KernelTile({
   id,
@@ -25,7 +26,7 @@ export function KernelTile({
       type="button"
       onClick={onSelect}
       aria-pressed={active}
-      aria-label={`Use ${label} as dashboard backdrop`}
+      aria-label={`Use ${label} as your backdrop`}
       className="group relative block overflow-hidden rounded-lg text-left outline-none transition-transform focus-visible:scale-[1.01]"
       style={{
         aspectRatio: "16 / 10",

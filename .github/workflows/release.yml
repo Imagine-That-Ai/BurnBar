@@ -1113,6 +1113,10 @@ jobs:
       attestations: read
       contents: read
     outputs:
+      # "false" once the resolver reports no domain on Rust: the release ships
+      # the legacy implementation and there is no attested candidate, promotion
+      # attestation, rollback artifact, or protected signer run to demand.
+      rust_active: ${{ steps.gate.outputs.rust_active }}
       profile_name: ${{ steps.gate.outputs.profile_name }}
       public_profile_sha256: ${{ steps.gate.outputs.public_profile_sha256 }}
       candidate_commit: ${{ steps.gate.outputs.candidate_commit }}
@@ -1241,8 +1245,10 @@ jobs:
             echo "::error::Missing required release secrets: ${missing[*]}"
             exit 1
           fi
+          # regularFile() fail-closes on relative paths, so the policy must be
+          # passed absolute or this step can never pass.
           node scripts/ci/verify-domain-core-apple-signing-identity.mjs \
-            --policy config/apple-release-signing-policy.json --environment
+            --policy "$GITHUB_WORKSPACE/config/apple-release-signing-policy.json" --environment
 
       - name: Write Apple API key
         env:
@@ -1587,6 +1593,8 @@ jobs:
             bash scripts/ci/run-domain-core-android-native-load.sh android/openburnbar-domain-core/build/outputs/apk/androidTest/debug/openburnbar-domain-core-debug-androidTest.apk "${{ needs.domain-core-native-release-gate.outputs.candidate_commit }}" "$RUNNER_TEMP/domain-core-android-observed-identity.json"
 
       - name: Verify loaded Android Rust identity
+        env:
+          RUST_ACTIVE: ${{ needs.domain-core-native-release-gate.outputs.rust_active }}
         run: |
           set -euo pipefail
           packaged_library="$RUNNER_TEMP/domain-core-android-packaged-libopenburnbar_domain_ffi.so"
@@ -1597,11 +1605,13 @@ jobs:
             --profile "$RUNNER_TEMP/domain-core-native-release-gate/domain-core-selected-public-profile.json" \
             --observed-identity "$RUNNER_TEMP/domain-core-android-observed-identity.json" \
             --binary "$packaged_library"
-          node scripts/ci/verify-domain-core-android-universal-artifact.mjs \
-            --aab "${{ steps.android.outputs.aab_path }}" \
-            --candidate-aar Vendor/openburnbar-domain-core.aar \
-            --candidate-bundle "$RUNNER_TEMP/domain-core-native-release-gate/source/domain-core-candidate-bundle.json" \
-            --output "$RUNNER_TEMP/domain-core-android-universal-build-manifest.json"
+          if [[ "$RUST_ACTIVE" == "true" ]]; then
+            node scripts/ci/verify-domain-core-android-universal-artifact.mjs \
+              --aab "${{ steps.android.outputs.aab_path }}" \
+              --candidate-aar Vendor/openburnbar-domain-core.aar \
+              --candidate-bundle "$RUNNER_TEMP/domain-core-native-release-gate/source/domain-core-candidate-bundle.json" \
+              --output "$RUNNER_TEMP/domain-core-android-universal-build-manifest.json"
+          fi
 
       - name: Upload Android release bundle artifact
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
@@ -2738,6 +2748,7 @@ jobs:
     name: Domain Core iOS release evidence
     needs:
       - release-preflight
+      - domain-core-native-release-gate
       - build-and-release
     uses: ./.github/workflows/domain-core-ios-release-evidence.yml
     with:
@@ -2746,6 +2757,13 @@ jobs:
       release_commit: ${{ needs.release-preflight.outputs.release_commit }}
       archive_artifact_name: OpenBurnBar-${{ needs.release-preflight.outputs.version }}-iOS-archive
       domain_core_profile: ${{ needs.release-preflight.outputs.domain_core_profile }}
+      # build-and-release bakes the gate's candidate identity into the iOS app.
+      # Forward the same verdict so iOS evidence verifies against it rather than
+      # re-deriving an activation authority commit that the artifacts never saw.
+      gate_artifact_name: ${{ needs.domain-core-native-release-gate.outputs.artifact_name }}
+      gate_candidate_commit: ${{ needs.domain-core-native-release-gate.outputs.candidate_commit }}
+      gate_profile_name: ${{ needs.domain-core-native-release-gate.outputs.profile_name }}
+      gate_rust_active: ${{ needs.domain-core-native-release-gate.outputs.rust_active }}
     secrets: inherit
 
   smoke-test:
@@ -3036,18 +3054,25 @@ jobs:
           COMMIT: ${{ needs.domain-core-native-release-gate.outputs.candidate_commit }}
           DMG_PATH: ${{ runner.temp }}/domain-core-native-artifacts/${{ needs.build-and-release.outputs.dmg_name }}
           AAB_PATH: ${{ runner.temp }}/domain-core-native-artifacts/${{ needs.build-and-release.outputs.aab_name }}
+          RUST_ACTIVE: ${{ needs.domain-core-native-release-gate.outputs.rust_active }}
         run: |
           set -euo pipefail
           profile="$RUNNER_TEMP/domain-core-native-release-gate/domain-core-selected-public-profile.json"
           mkdir -p "$RUNNER_TEMP/domain-core-native-evidence"
+          protected_android=()
+          if [[ "$RUST_ACTIVE" == "true" ]]; then
+            protected_android=(
+              "$RUNNER_TEMP/domain-core-native-release-gate/source/domain-core-candidate-bundle.json"
+              "$RUNNER_TEMP/domain-core-native-evidence/android-universal-abi-manifest.json"
+            )
+          fi
           bash scripts/ci/verify-domain-core-native-release-artifact.sh \
             apple "$DMG_PATH" "$VERSION" "$PROFILE" "$COMMIT" "$profile" \
             "$RUNNER_TEMP/domain-core-native-evidence/apple-final-reverify-identity.json"
           bash scripts/ci/verify-domain-core-native-release-artifact.sh \
             android "$AAB_PATH" "$VERSION" "$PROFILE" "$COMMIT" "$profile" \
             "$RUNNER_TEMP/domain-core-native-identities/domain-core-android-observed-identity.json" \
-            "$RUNNER_TEMP/domain-core-native-release-gate/source/domain-core-candidate-bundle.json" \
-            "$RUNNER_TEMP/domain-core-native-evidence/android-universal-abi-manifest.json"
+            ${protected_android[@]+"${protected_android[@]}"}
 
       - name: Create Apple v2 release predicates
         id: apple-plan
@@ -3060,17 +3085,25 @@ jobs:
           SIGNER_RUN_ID: ${{ needs.domain-core-native-release-gate.outputs.signer_run_id }}
           SIGNER_RUN_ATTEMPT: ${{ needs.domain-core-native-release-gate.outputs.signer_run_attempt }}
           DMG_PATH: ${{ runner.temp }}/domain-core-native-artifacts/${{ needs.build-and-release.outputs.dmg_name }}
+          RUST_ACTIVE: ${{ needs.domain-core-native-release-gate.outputs.rust_active }}
         run: |
+          set -euo pipefail
+          protected_evidence=()
+          if [[ "$RUST_ACTIVE" == "true" ]]; then
+            protected_evidence=(
+              --candidate-bundle "$RUNNER_TEMP/domain-core-native-release-gate/source/domain-core-candidate-bundle.json"
+              --promotion-attestation "$RUNNER_TEMP/domain-core-native-release-gate/promotion/domain-core-promotion-attestation.sigstore.jsonl"
+              --protected-signer-run-id "$SIGNER_RUN_ID"
+              --protected-signer-run-attempt "$SIGNER_RUN_ATTEMPT"
+              --rollback-artifact "$RUNNER_TEMP/domain-core-native-release-gate/source/domain-core-public-production-rollback.json"
+            )
+          fi
           node scripts/ci/create-domain-core-native-release-evidence.mjs \
             --consumer apple --artifact "$DMG_PATH" --version "$VERSION" \
             --tag "$TAG" --commit "$COMMIT" --profile-name "$PROFILE" \
             --profile "$RUNNER_TEMP/domain-core-native-release-gate/domain-core-selected-public-profile.json" \
             --activation "$RUNNER_TEMP/domain-core-native-release-gate/domain-core-activation.json" \
-            --candidate-bundle "$RUNNER_TEMP/domain-core-native-release-gate/source/domain-core-candidate-bundle.json" \
-            --promotion-attestation "$RUNNER_TEMP/domain-core-native-release-gate/promotion/domain-core-promotion-attestation.sigstore.jsonl" \
-            --protected-signer-run-id "$SIGNER_RUN_ID" \
-            --protected-signer-run-attempt "$SIGNER_RUN_ATTEMPT" \
-            --rollback-artifact "$RUNNER_TEMP/domain-core-native-release-gate/source/domain-core-public-production-rollback.json" \
+            ${protected_evidence[@]+"${protected_evidence[@]}"} \
             --output-dir "$RUNNER_TEMP/domain-core-native-evidence/apple" \
             --github-output "$GITHUB_OUTPUT"
 
@@ -3085,18 +3118,26 @@ jobs:
           SIGNER_RUN_ID: ${{ needs.domain-core-native-release-gate.outputs.signer_run_id }}
           SIGNER_RUN_ATTEMPT: ${{ needs.domain-core-native-release-gate.outputs.signer_run_attempt }}
           AAB_PATH: ${{ runner.temp }}/domain-core-native-artifacts/${{ needs.build-and-release.outputs.aab_name }}
+          RUST_ACTIVE: ${{ needs.domain-core-native-release-gate.outputs.rust_active }}
         run: |
+          set -euo pipefail
+          protected_evidence=()
+          if [[ "$RUST_ACTIVE" == "true" ]]; then
+            protected_evidence=(
+              --candidate-bundle "$RUNNER_TEMP/domain-core-native-release-gate/source/domain-core-candidate-bundle.json"
+              --promotion-attestation "$RUNNER_TEMP/domain-core-native-release-gate/promotion/domain-core-promotion-attestation.sigstore.jsonl"
+              --protected-signer-run-id "$SIGNER_RUN_ID"
+              --protected-signer-run-attempt "$SIGNER_RUN_ATTEMPT"
+              --rollback-artifact "$RUNNER_TEMP/domain-core-native-release-gate/source/domain-core-public-production-rollback.json"
+              --android-abi-manifest "$RUNNER_TEMP/domain-core-native-evidence/android-universal-abi-manifest.json"
+            )
+          fi
           node scripts/ci/create-domain-core-native-release-evidence.mjs \
             --consumer android --artifact "$AAB_PATH" --version "$VERSION" \
             --tag "$TAG" --commit "$COMMIT" --profile-name "$PROFILE" \
             --profile "$RUNNER_TEMP/domain-core-native-release-gate/domain-core-selected-public-profile.json" \
             --activation "$RUNNER_TEMP/domain-core-native-release-gate/domain-core-activation.json" \
-            --candidate-bundle "$RUNNER_TEMP/domain-core-native-release-gate/source/domain-core-candidate-bundle.json" \
-            --promotion-attestation "$RUNNER_TEMP/domain-core-native-release-gate/promotion/domain-core-promotion-attestation.sigstore.jsonl" \
-            --protected-signer-run-id "$SIGNER_RUN_ID" \
-            --protected-signer-run-attempt "$SIGNER_RUN_ATTEMPT" \
-            --rollback-artifact "$RUNNER_TEMP/domain-core-native-release-gate/source/domain-core-public-production-rollback.json" \
-            --android-abi-manifest "$RUNNER_TEMP/domain-core-native-evidence/android-universal-abi-manifest.json" \
+            ${protected_evidence[@]+"${protected_evidence[@]}"} \
             --output-dir "$RUNNER_TEMP/domain-core-native-evidence/android" \
             --github-output "$GITHUB_OUTPUT"
 

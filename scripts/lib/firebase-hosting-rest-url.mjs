@@ -136,31 +136,45 @@ export function firebaseHostingUploadUrl(uploadUrl, expectedSite, hash) {
   return url;
 }
 
+// The create/finalize calls address `projects/-/sites/<site>/...`, and the
+// Hosting API answers with either the bare `sites/...` resource name or the
+// project-qualified `projects/<project>/sites/...` form. Both name the same
+// resource; only the bare form may be pasted back into a request path, so
+// accept either and return the bare one. The site segment stays pinned to the
+// allowlist in both shapes, so this widens the accepted spelling without
+// widening which site can be addressed.
+function bareResourceName(value, expectedSite, suffixPattern) {
+  if (!allowedSite(expectedSite) || typeof value !== "string") return undefined;
+  const bare = `sites/${expectedSite}/${suffixPattern}`;
+  if (new RegExp(`^${bare}$`, "u").test(value)) return value;
+  const qualified = new RegExp(`^projects/[A-Za-z0-9_-]{1,128}/(${bare})$`, "u");
+  return qualified.exec(value)?.[1];
+}
+
+function describeName(value) {
+  return typeof value === "string" ? `"${value}"` : typeof value;
+}
+
 export function firebaseHostingVersionName(value, expectedSite) {
-  if (
-    !allowedSite(expectedSite) ||
-    typeof value !== "string" ||
-    !new RegExp(`^sites/${expectedSite}/versions/${VERSION}$`, "u").test(value)
-  ) {
+  const name = bareResourceName(value, expectedSite, `versions/${VERSION}`);
+  if (name === undefined) {
     throw new Error(
-      `Hosting API did not return an exact version name for site ${expectedSite}`,
+      `Hosting API did not return an exact version name for site ${expectedSite} (got ${describeName(value)})`,
     );
   }
-  return value;
+  return name;
 }
 
 export function firebaseHostingReleaseName(value, expectedSite) {
-  if (
-    !allowedSite(expectedSite) ||
-    typeof value !== "string" ||
-    !new RegExp(
-      `^sites/${expectedSite}/channels/live/releases/${VERSION}$`,
-      "u",
-    ).test(value)
-  ) {
+  const name = bareResourceName(
+    value,
+    expectedSite,
+    `channels/live/releases/${VERSION}`,
+  );
+  if (name === undefined) {
     throw new Error(
-      `Hosting API did not return an exact release name for site ${expectedSite}`,
+      `Hosting API did not return an exact release name for site ${expectedSite} (got ${describeName(value)})`,
     );
   }
-  return value;
+  return name;
 }

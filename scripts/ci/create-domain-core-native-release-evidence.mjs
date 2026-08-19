@@ -12,6 +12,7 @@ import { fileURLToPath } from "node:url";
 
 import { run as createReleaseEvidence } from "./create-domain-core-release-evidence.mjs";
 import {
+  inactiveCandidateIdentity,
   nativeAttestationName,
   nativeEvidenceDomains,
   nativePredicateName,
@@ -87,14 +88,21 @@ function parseArguments(argv) {
     "--profile-name",
     "--profile",
     "--activation",
+    "--output-dir",
+  ]);
+  // Only a Rust activation has an attested candidate bundle, a promotion
+  // attestation, a rollback artifact, and a protected signer run to bind
+  // evidence to. run() demands each of these once it knows the activation is
+  // active; a legacy release has none of them to pass.
+  const optional = new Set([
+    "--github-output",
+    "--android-abi-manifest",
     "--candidate-bundle",
     "--promotion-attestation",
     "--protected-signer-run-id",
     "--protected-signer-run-attempt",
     "--rollback-artifact",
-    "--output-dir",
   ]);
-  const optional = new Set(["--github-output", "--android-abi-manifest"]);
   const values = new Map();
   for (let index = 0; index < argv.length; index += 2) {
     const flag = argv[index];
@@ -112,6 +120,12 @@ function parseArguments(argv) {
     if (!values.has(flag)) throw new Error(`${flag} is required`);
   }
   return values;
+}
+
+function requiredArgument(args, flag) {
+  const value = args.get(flag);
+  if (!value) throw new Error(`${flag} is required`);
+  return value;
 }
 
 export function run(argv, { promotionVerifier, activationVerifier } = {}) {
@@ -144,10 +158,18 @@ export function run(argv, { promotionVerifier, activationVerifier } = {}) {
       `native artifact must be named ${expectedArtifactName(consumer, version)}`,
     );
   }
-  const candidateBundle = resolve(args.get("--candidate-bundle"));
-  const { candidate } = validateCandidateBundle(
-    readJson(candidateBundle, "candidate bundle"),
+  const activationDocument = readJson(
+    resolve(args.get("--activation")),
+    "release activation",
   );
+  const rustActive = activationDocument?.active !== false;
+  const candidateBundle = rustActive
+    ? resolve(requiredArgument(args, "--candidate-bundle"))
+    : undefined;
+  const candidate = candidateBundle
+    ? validateCandidateBundle(readJson(candidateBundle, "candidate bundle"))
+        .candidate
+    : inactiveCandidateIdentity(activationDocument);
   const profileName = args.get("--profile-name");
   const profile = validateResolvedProfile(
     readJson(resolve(args.get("--profile")), "selected public profile"),
@@ -156,17 +178,21 @@ export function run(argv, { promotionVerifier, activationVerifier } = {}) {
   );
   const profileSha256 = publicProfileSha256(profile, profileName, candidate);
   const activationSelector = validateNativeActivationSelector(
-    readJson(resolve(args.get("--activation")), "release activation"),
+    activationDocument,
     { candidate, releaseCommit: commit, profile, profileName },
   );
-  const signerRunId = positiveInteger(
-    args.get("--protected-signer-run-id"),
-    "protected signer run ID",
-  );
-  const signerRunAttempt = positiveInteger(
-    args.get("--protected-signer-run-attempt"),
-    "protected signer run attempt",
-  );
+  const signerRunId = rustActive
+    ? positiveInteger(
+        requiredArgument(args, "--protected-signer-run-id"),
+        "protected signer run ID",
+      )
+    : undefined;
+  const signerRunAttempt = rustActive
+    ? positiveInteger(
+        requiredArgument(args, "--protected-signer-run-attempt"),
+        "protected signer run attempt",
+      )
+    : undefined;
   const outputDirectory = resolve(args.get("--output-dir"));
   mkdirSync(outputDirectory, { recursive: true });
   const predicateActivationPath = join(
@@ -175,8 +201,13 @@ export function run(argv, { promotionVerifier, activationVerifier } = {}) {
   );
   writeCreateOnly(predicateActivationPath, activationSelector.activation);
   const domains = nativeEvidenceDomains(consumer, profile, profileName);
+  if (!rustActive && domains.length > 0) {
+    throw new Error(
+      "inactive release activation cannot ship native evidence domains",
+    );
+  }
   const androidAbiManifest = args.get("--android-abi-manifest");
-  if (consumer === "android" && !androidAbiManifest) {
+  if (rustActive && consumer === "android" && !androidAbiManifest) {
     throw new Error("android requires --android-abi-manifest");
   }
   if (consumer !== "android" && androidAbiManifest) {
@@ -214,13 +245,13 @@ export function run(argv, { promotionVerifier, activationVerifier } = {}) {
       "--candidate-bundle",
       candidateBundle,
       "--promotion-attestation",
-      resolve(args.get("--promotion-attestation")),
+      resolve(requiredArgument(args, "--promotion-attestation")),
       "--protected-signer-run-id",
       String(signerRunId),
       "--protected-signer-run-attempt",
       String(signerRunAttempt),
       "--rollback-artifact",
-      resolve(args.get("--rollback-artifact")),
+      resolve(requiredArgument(args, "--rollback-artifact")),
     ];
     if (androidAbiManifest) {
       evidenceArguments.push(

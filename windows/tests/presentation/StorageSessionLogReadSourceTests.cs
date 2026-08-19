@@ -115,7 +115,7 @@ public sealed class StorageSessionLogReadSourceTests
                 var candidate = Path.Combine(dir.FullName, "AgentLensTests", "Fixtures", "DBByteCompat");
                 if (File.Exists(Path.Combine(candidate, "openburnbar-db-compat-vector.json")))
                 {
-                    var pinned = Path.Combine(candidate, "openburnbar-db-compat-v61.sqlcipher");
+                    var pinned = Path.Combine(candidate, "openburnbar-db-compat-v64.sqlcipher");
                     if (File.Exists(pinned))
                     {
                         return pinned;

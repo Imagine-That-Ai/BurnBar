@@ -8,6 +8,7 @@ import com.openburnbar.data.assistants.AssistantChatHistoryStore
 import com.openburnbar.data.assistants.CLIAgentRelayChatTransport
 import com.openburnbar.data.hermes.AssistantRuntimeID
 import com.openburnbar.data.hermes.PiService
+import com.openburnbar.data.hermes.bindHistoryStore
 
 @Composable
 fun AssistantsScreen(initialRuntime: AssistantRuntimeID? = null, initialThreadId: String? = null) {

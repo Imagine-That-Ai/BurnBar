@@ -1,0 +1,100 @@
+{
+  "schemaVersion": 1,
+  "id": "openburnbar-mobile-evidence-schema-v1",
+  "note": "Evidence cannot close a row unless it binds to one exact candidate. Dirty, stale, unattributed, empty, or placeholder files fail.",
+  "candidate": {
+    "required": [
+      "commitSha",
+      "dirty",
+      "dirtyEntries"
+    ],
+    "optional": [
+      "version",
+      "build",
+      "packageId",
+      "artifactPath",
+      "artifactSha256"
+    ],
+    "fields": {
+      "commitSha": "40-64 lowercase hex git SHA",
+      "dirty": "boolean; true refuses close",
+      "dirtyEntries": "git status --short lines",
+      "version": "marketing version",
+      "build": "build number",
+      "packageId": "bundle id or applicationId",
+      "artifactPath": "repository-relative artifact path",
+      "artifactSha256": "64 hex digest"
+    }
+  },
+  "device": {
+    "required": [
+      "platform",
+      "name",
+      "osVersion"
+    ],
+    "fields": {
+      "platform": "ios | ipados | android",
+      "name": "named device, not \"simulator\" when floor is physical device",
+      "osVersion": "OS version string",
+      "udidOrSerial": "device identity",
+      "formFactor": "phone | tablet | foldable | display"
+    }
+  },
+  "network": {
+    "required": [
+      "kind"
+    ],
+    "fields": {
+      "kind": "wifi | cellular | offline | unknown",
+      "ssidHash": "optional hashed SSID"
+    }
+  },
+  "account": {
+    "required": [
+      "uidHash"
+    ],
+    "fields": {
+      "uidHash": "hashed UID",
+      "tier": "none | Free | Cloud | Pro | Ultra"
+    }
+  },
+  "freshness": {
+    "enum": [
+      "fresh",
+      "historical",
+      "stale",
+      "rebind-required",
+      "blocked"
+    ],
+    "closingValues": [
+      "fresh"
+    ]
+  },
+  "pointer": {
+    "required": [
+      "path",
+      "candidateSha"
+    ],
+    "optional": [
+      "sha256",
+      "kind",
+      "simulatorOnly"
+    ],
+    "fields": {
+      "path": "repository-relative POSIX path",
+      "candidateSha": "SHA of the candidate that produced the file",
+      "sha256": "content digest",
+      "kind": "screenshot | log | transcript | receipt | store-receipt | provider-receipt",
+      "simulatorOnly": "boolean; forbidden when evidenceFloor includes physical device"
+    }
+  },
+  "rejectionRules": [
+    "empty files",
+    "placeholder text (TODO, TBD, PLACEHOLDER, lorem ipsum)",
+    "unattributed screenshots or logs (missing candidateSha)",
+    "dirty candidate used to close a row",
+    "historical or stale freshness used as fresh/validated/PASS",
+    "simulator-only receipts when evidenceFloor requires physical device",
+    "paths that escape the repository root"
+  ]
+}

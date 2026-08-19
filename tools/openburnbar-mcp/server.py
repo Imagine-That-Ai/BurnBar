@@ -20,8 +20,10 @@ import hashlib
 import math
 import os
 import re
+import shutil
 import sqlite3
 import string
+import subprocess
 import struct
 import sys
 import time
@@ -181,14 +183,202 @@ def _default_db_path() -> Path:
     return support / "OpenBurnBar" / "openburnbar.sqlite"
 
 
-def _connect_ro(path: Path) -> sqlite3.Connection:
+# ---------------------------------------------------------------------------
+# Read-only access to the shared store.
+#
+# The app keys openburnbar.sqlite with SQLCipher (mandatory since B-DATA-1), and
+# stdlib `sqlite3` has no codec — a direct open of a production store raises
+# "file is not a database". The daemon holds the key, so encrypted stores are
+# read through its `daemon.search.sql` RPC: a single-SELECT, stmt_readonly-
+# enforced, row/byte-capped surface. `_connect_ro` probes the file and returns
+# either a real sqlite3 connection (plaintext dev/test databases) or a shim
+# that speaks the same tiny API over the daemon socket, so the ~two dozen
+# read tools work against both without changing a line.
+# ---------------------------------------------------------------------------
+
+
+class _DaemonRow:
+    """sqlite3.Row-alike over daemon result rows: index and name access, dict()able."""
+
+    __slots__ = ("_columns", "_index_by_name", "_values")
+
+    def __init__(self, columns: list[str], index_by_name: dict[str, int], values: list[Any]) -> None:
+        self._columns = columns
+        self._index_by_name = index_by_name
+        self._values = values
+
+    def __getitem__(self, key: Any) -> Any:
+        if isinstance(key, int):
+            return self._values[key]
+        return self._values[self._index_by_name[key]]
+
+    def keys(self) -> list[str]:
+        return list(self._columns)
+
+    def __iter__(self):
+        return iter(self._values)
+
+    def __len__(self) -> int:
+        return len(self._values)
+
+
+class _DaemonCursor:
+    def __init__(self, columns: list[str], rows: list[_DaemonRow], truncated: bool) -> None:
+        self.description = tuple((name, None, None, None, None, None, None) for name in columns)
+        self.truncated = truncated
+        self._rows = rows
+        self._cursor_position = 0
+
+    def fetchall(self) -> list[_DaemonRow]:
+        remaining = self._rows[self._cursor_position :]
+        self._cursor_position = len(self._rows)
+        return remaining
+
+    def fetchone(self) -> _DaemonRow | None:
+        if self._cursor_position >= len(self._rows):
+            return None
+        row = self._rows[self._cursor_position]
+        self._cursor_position += 1
+        return row
+
+    def __iter__(self):
+        return iter(self.fetchall())
+
+
+def _sql_value_to_wire(value: Any) -> Any:
+    if isinstance(value, (bytes, bytearray, memoryview)):
+        return {"$blob": base64.b64encode(bytes(value)).decode("ascii")}
+    return value
+
+
+def _sql_value_from_wire(value: Any) -> Any:
+    if isinstance(value, dict) and "$blob" in value:
+        return base64.b64decode(value["$blob"])
+    return value
+
+
+def _signed_cli_path() -> str | None:
+    """
+    Locate the first-party signed CLI. Production daemons validate the peer's
+    code signature and admit only OpenBurnBar identities; this Python process
+    can never satisfy that, so encrypted-store reads have to travel through a
+    binary the daemon already trusts.
+    """
+    override = os.environ.get("OPENBURNBAR_CLI_PATH", "").strip()
+    candidates = [override] if override else []
+    candidates += [
+        "/Applications/OpenBurnBar.app/Contents/MacOS/openburnbar-cli",
+        os.path.expanduser("~/Applications/OpenBurnBar.app/Contents/MacOS/openburnbar-cli"),
+        shutil.which("openburnbar-cli") or "",
+    ]
+    for candidate in candidates:
+        if candidate and os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+    return None
+
+
+def _signed_search_sql(payload: dict[str, Any]) -> dict[str, Any] | None:
+    """
+    Run one read-only query through the signed CLI. Returns None when no signed
+    binary is present, so the caller can fall back to the direct socket (which
+    is what dev builds, where the peer gate is off, actually want).
+    """
+    cli = _signed_cli_path()
+    if not cli:
+        return None
+    try:
+        completed = subprocess.run(
+            [cli, "search-sql"],
+            input=json.dumps(payload).encode("utf-8"),
+            capture_output=True,
+            timeout=20,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if completed.returncode != 0:
+        return None
+    try:
+        decoded = json.loads(completed.stdout.decode("utf-8", "replace"))
+    except (ValueError, UnicodeDecodeError):
+        return None
+    return decoded if isinstance(decoded, dict) else None
+
+
+class _DaemonReadConnection:
+    """
+    The slice of `sqlite3.Connection` the read tools use, served by the daemon's
+    keyed handle. Assigning `row_factory` is accepted and ignored — rows always
+    behave like `sqlite3.Row`. Write statements are rejected server-side by
+    `sqlite3_stmt_readonly`, so misuse cannot corrupt the store from here.
+    """
+
+    row_factory: Any = None
+
+    def execute(self, sql: str, params: Any = ()) -> _DaemonCursor:
+        wire_args = [_sql_value_to_wire(value) for value in params]
+        payload = {"sql": sql, "args": wire_args, "maxRows": 2000}
+        result = _signed_search_sql(payload)
+        if result is None:
+            # Dev/unsigned builds: the daemon's peer gate is not enforced, so the
+            # direct socket still works and is the cheaper path.
+            result = pcm.call_daemon("daemon.search.sql", payload, timeout_seconds=15.0)
+        columns = [str(name) for name in (result.get("columns") or [])]
+        index_by_name = {name: index for index, name in enumerate(columns)}
+        rows = [
+            _DaemonRow(columns, index_by_name, [_sql_value_from_wire(value) for value in row])
+            for row in (result.get("rows") or [])
+        ]
+        return _DaemonCursor(columns, rows, truncated=bool(result.get("truncated")))
+
+    def close(self) -> None:
+        return None
+
+    def __enter__(self) -> _DaemonReadConnection:
+        return self
+
+    def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
+        return None
+
+
+def _truncation_payload(cursor: Any) -> dict[str, Any]:
+    """
+    When the daemon's read-only SQL surface capped this result (row or byte
+    ceiling), say so — a silently partial result presented as complete is the
+    same lie `exists:true` used to tell. Empty dict on the direct-sqlite path
+    (plain cursors carry no `truncated`).
+    """
+    if getattr(cursor, "truncated", False):
+        return {
+            "truncated": True,
+            "truncationNote": "The daemon capped this result (row/byte ceiling). Narrow the query or add filters for the full picture.",
+        }
+    return {}
+
+
+def _connect_ro(path: Path) -> sqlite3.Connection | _DaemonReadConnection:
     if not path.is_file():
         raise FileNotFoundError(
             f"OpenBurnBar database not found at {path}. Open OpenBurnBar once or set BURNBAR_DB_PATH."
         )
     uri = f"file:{path}?mode=ro"
-    return sqlite3.connect(uri, uri=True)
+    conn = sqlite3.connect(uri, uri=True)
     # check_same_thread: default True; MCP tools run sync on one thread
+    try:
+        conn.execute("SELECT 1 FROM sqlite_master LIMIT 1").fetchone()
+        return conn
+    except sqlite3.DatabaseError as exc:
+        conn.close()
+        if "file is not a database" not in str(exc).lower():
+            raise
+        # SQLCipher at rest. Route reads through the daemon, which holds the key.
+        try:
+            return _DaemonReadConnection()
+        except Exception:  # noqa: BLE001 — the original error is the useful one
+            raise sqlite3.DatabaseError(
+                f"{path} is SQLCipher-encrypted and the OpenBurnBar daemon socket is not "
+                "reachable to read it. Start OpenBurnBar (or the daemon) and retry."
+            ) from exc
 
 
 def _connect_rw(path: Path) -> sqlite3.Connection:
@@ -642,7 +832,10 @@ def _table_names(conn: sqlite3.Connection) -> set[str]:
 
 
 def _table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
-    return {str(row[1]) for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+    # pragma_table_info as a table-valued SELECT (not `PRAGMA table_info(x)`) so
+    # the probe also passes the daemon's SELECT-only gate when the connection is
+    # the encrypted-store socket shim.
+    return {str(row[0]) for row in conn.execute("SELECT name FROM pragma_table_info(?)", (table,)).fetchall()}
 
 
 def _deterministic_query_embedding(text: str, dimensions: int = DETERMINISTIC_EMBEDDING_DIMENSIONS) -> list[float]:
@@ -949,10 +1142,45 @@ def _semantic_search_payload(
 
 @mcp.tool()
 def burnbar_resolve_db_path() -> str:
-    """Return the SQLite path that will be used (for debugging)."""
+    """
+    Return the SQLite path that will be used, plus how it is actually readable:
+    directly (plaintext), via the daemon socket (SQLCipher at rest), or not at
+    all. `exists: true` alone is not health — an encrypted store with no daemon
+    is unreadable, and this report says so instead of looking healthy.
+    """
     p = _default_db_path()
     exists = p.is_file()
-    return json.dumps({"path": str(p), "exists": exists}, indent=2)
+    report: dict[str, Any] = {"path": str(p), "exists": exists}
+    if exists:
+        try:
+            with open(p, "rb") as handle:
+                header = handle.read(16)
+            report["encrypted"] = header != b"SQLite format 3\x00"
+        except OSError as exc:
+            report["encrypted"] = None
+            report["headerError"] = str(exc)
+        try:
+            conn = _connect_ro(p)
+            if isinstance(conn, _DaemonReadConnection):
+                # Constructing the shim is free; only a real round-trip proves
+                # the daemon is up AND speaks daemon.search.sql. Reporting
+                # readable without this probe is the exists:true lie again.
+                conn.execute("SELECT 1")
+                report["readPath"] = "daemon-socket"
+            else:
+                report["readPath"] = "direct-sqlite"
+            report["readable"] = True
+            conn.close()
+        except Exception as exc:  # noqa: BLE001 — the report is the point
+            report["readable"] = False
+            report["readPath"] = None
+            report["readError"] = str(exc)
+            if report.get("encrypted"):
+                report["hint"] = (
+                    "The store is SQLCipher-encrypted; reads route through the OpenBurnBar "
+                    "daemon. Start OpenBurnBar (or the daemon) and retry."
+                )
+    return json.dumps(report, indent=2)
 
 
 @mcp.tool()
@@ -1020,6 +1248,7 @@ def burnbar_search_conversations(
     return json.dumps(
         {
             "results": out,
+            **_truncation_payload(cur),
             "trustSignal": {
                 "untrustedContentWrapped": True,
                 "wrappedCount": len(out),
@@ -2018,7 +2247,7 @@ def burnbar_recent_usage(limit: int = 40) -> str:
             (lim,),
         )
         rows = [_row_to_dict(r) for r in cur.fetchall()]
-    return json.dumps({"usage": rows}, indent=2, default=str)
+    return json.dumps({"usage": rows, **_truncation_payload(cur)}, indent=2, default=str)
 
 
 @mcp.tool()
@@ -2079,7 +2308,7 @@ def burnbar_chat_messages(limit: int = 80) -> str:
             (lim,),
         )
         rows = [_row_to_dict(r) for r in cur.fetchall()]
-    return json.dumps({"messages": list(reversed(rows))}, indent=2, default=str)
+    return json.dumps({"messages": list(reversed(rows)), **_truncation_payload(cur)}, indent=2, default=str)
 
 
 @mcp.tool()
@@ -3502,9 +3731,71 @@ def bench_explain(stack_json: str) -> str:
     except Exception as exc:
         return _bench_envelope_error(exc)
     return bench_core.json_dumps(payload)
+# Toolsets
+#
+# One process, two personas. The full registry costs ~11k tokens of standing
+# context per agent turn and ~73% of it is agent-launcher / FinOps tooling
+# unrelated to memory. `BURNBAR_MCP_TOOLSET` narrows what this server offers:
+#
+#   memory  — the corpus + memory surface a coding agent should carry
+#             everywhere (search, recall, remember, project memory, resume).
+#   ops     — everything else (usage, budgets, inbox, cloud, spawn, hermes).
+#   all     — the historical single-server behavior (default).
+#
+# The one-click installers write `memory` for coding agents; `ops` is for
+# dashboards and operators that want the FinOps plane without the corpus.
+# ---------------------------------------------------------------------------
+
+MEMORY_TOOLSET: frozenset[str] = frozenset(
+    {
+        "burnbar_resolve_db_path",
+        "burnbar_list_providers",
+        "burnbar_search_conversations",
+        "burnbar_semantic_search_conversations",
+        "burnbar_get_conversation",
+        "burnbar_remember",
+        "burnbar_recall",
+        "burnbar_forget",
+        "burnbar_audit_trail",
+        "burnbar_memory_analytics",
+        "burnbar_search_code",
+        "burnbar_context_pack",
+        "burnbar_code_context_pack",
+        "burnbar_list_project_memory",
+        "burnbar_get_project_memory",
+        "burnbar_list_resumable_conversations",
+        "burnbar_resume_conversation",
+    }
+)
+
+
+def _apply_toolset_filter(server: Any, toolset_raw: str | None) -> str:
+    """
+    Narrow the registered tools to the requested toolset. Returns the effective
+    toolset name. Fails OPEN to "all": if FastMCP's internals ever change shape,
+    a mis-narrowed server would silently hide capability, while an un-narrowed
+    one merely costs context — so the fallback keeps everything and says so.
+    """
+    requested = (toolset_raw or "all").strip().lower()
+    if requested not in ("memory", "ops"):
+        return "all"
+    tool_manager = getattr(server, "_tool_manager", None)
+    tools = getattr(tool_manager, "_tools", None)
+    if not isinstance(tools, dict) or not tools:
+        print(
+            "openburnbar-mcp: FastMCP tool registry not found; serving the full toolset.",
+            file=sys.stderr,
+        )
+        return "all"
+    for name in list(tools):
+        in_memory = name in MEMORY_TOOLSET
+        if (requested == "memory") != in_memory:
+            del tools[name]
+    return requested
 
 
 def main() -> None:
+    _apply_toolset_filter(mcp, os.environ.get("BURNBAR_MCP_TOOLSET"))
     mcp.run()
 
 

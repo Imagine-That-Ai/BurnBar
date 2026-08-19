@@ -2,6 +2,7 @@
 
 package com.openburnbar.ui.pulse
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -32,6 +33,10 @@ import androidx.compose.ui.unit.sp
 import com.openburnbar.data.hermes.HermesService
 import com.openburnbar.data.models.UsageDisplayMode
 import com.openburnbar.data.models.UsageRollups
+import com.openburnbar.data.policy.MobileProductCardDisposition
+import com.openburnbar.data.policy.MobileProductSurfacePolicy
+import com.openburnbar.data.policy.MobilePulseLoadPresentation
+import com.openburnbar.data.policy.MobilePulseWindowPolicy
 import com.openburnbar.data.stores.ActivityStore
 import com.openburnbar.data.stores.DashboardStore
 import com.openburnbar.data.stores.QuotaStore
@@ -108,6 +113,36 @@ internal data class PulseViewScaffoldState(
 )
 
 @Composable
+private fun PulseRefreshErrorBanner(message: String, onRetry: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = AuroraSpacing.MD.dp, vertical = AuroraSpacing.SM.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.SM.dp),
+    ) {
+        Text(
+            text = "Couldn't refresh usage",
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            text = message,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+            maxLines = 2,
+        )
+        Text(
+            text = "Retry",
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.clickable(onClick = onRetry),
+        )
+    }
+}
+
+@Composable
 internal fun PulseViewScaffold(state: PulseViewScaffoldState, content: @Composable () -> Unit) {
     Box(modifier = Modifier.fillMaxSize()) {
         PulseDepthBackdrop()
@@ -116,22 +151,43 @@ internal fun PulseViewScaffold(state: PulseViewScaffoldState, content: @Composab
             PulseViewTitleBar(photoUrl = state.photoUrl, displayName = state.displayName)
         }
 
-        when {
-            state.isLoading && state.rollups == null -> PulseViewLoadingSkeleton()
-            state.error != null && state.rollups == null ->
+        val presentation = MobilePulseWindowPolicy.loadPresentation(
+            isLoading = state.isLoading,
+            failed = state.error != null,
+            hasCachedData = state.rollups != null,
+        )
+        val mayRetry = MobileProductSurfacePolicy.disposition("pulse.retry") ==
+            MobileProductCardDisposition.REAL
+        when (presentation) {
+            MobilePulseLoadPresentation.LOADING -> PulseViewLoadingSkeleton()
+            MobilePulseLoadPresentation.FAILED ->
                 ErrorStateView(
                     icon = Icons.Filled.Error,
                     title = "Couldn't Load Dashboard",
-                    message = state.error,
-                    onRetry = state.onRetry,
+                    message = state.error ?: "Usage failed to load.",
+                    onRetry = if (mayRetry) state.onRetry else ({ }),
                 )
-            state.rollups == null ->
+            MobilePulseLoadPresentation.EMPTY ->
                 EmptyStateView(
                     icon = Icons.AutoMirrored.Filled.ShowChart,
                     title = "No Usage Data",
                     message = "Start using AI to see your burn here.",
                 )
-            else -> content()
+            MobilePulseLoadPresentation.STALE_REFRESH_FAILED,
+            MobilePulseLoadPresentation.LIVE,
+            -> {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    if (presentation == MobilePulseLoadPresentation.STALE_REFRESH_FAILED &&
+                        state.error != null
+                    ) {
+                        PulseRefreshErrorBanner(
+                            message = state.error,
+                            onRetry = if (mayRetry) state.onRetry else ({}),
+                        )
+                    }
+                    Box(modifier = Modifier.weight(1f)) { content() }
+                }
+            }
         }
     }
 }

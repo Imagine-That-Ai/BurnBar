@@ -1,14 +1,26 @@
 /**
- * Swarm Ember kernel — faithful port of macOS SwarmSimulation (cinematic pace).
- * Noise-driven ember particles periodically form glyph shapes, then dissolve.
+ * Swarm Ember — living embers that condense into the BurnBar flame mark.
+ *
+ * The console default (`logoHero`) is a two-beat cycle: the flock murmurates
+ * as a warm fire, then locks onto a precomputed sampling of the official
+ * flame + bar-chart mark (color-accurate), holds with heat and tip-sparks,
+ * and dissolves. The Linux/macOS dashboard cycle — provider glyphs, $,
+ * rings, router — is unchanged behind `buildDashboardCycle`.
  */
 
-import { toCss } from "../palette";
+import { curl2 } from "../noise/simplex";
+import { mixRgb, toCss } from "../palette";
+import {
+  BURNBAR_LOGO_COUNT,
+  BURNBAR_LOGO_PACKED,
+  ROLE_FLAME,
+  ROLE_TIP,
+} from "./swarmEmberLogoData";
 import { PROVIDER_SHAPE_POINTS } from "./swarmEmberShapeData";
 import {
   normalizeSwarmProviderGlyphs,
-  SWARM_PROVIDER_GLYPH_OPTIONS,
   SWARM_PROVIDER_GLYPH_IDS,
+  SWARM_PROVIDER_GLYPH_OPTIONS,
   type SwarmProviderGlyphId,
 } from "./swarmCatalog";
 import type {
@@ -20,32 +32,36 @@ import type {
   ThemeName,
 } from "../types";
 
-// ── Cinematic pace (SwarmCanvasView.Pace.cinematic) ─────────────────────
-const TIME_STEP = 0.000004;
-const SWARM_NOISE = 0.02;
-const SWARM_DRAG = 0.97;
-const MAX_SPEED_GLYPH = 0.35;
-const MAX_SPEED_PIXEL = 0.6;
-const MORPH_ATTRACT = 0.12;
-const MORPH_NOISE = 0.008;
-const MORPH_DRAG = 0.9;
-const CYCLE_INTERVAL_MS = 14_000;
-const MOUSE_FORCE = 0.7;
-const POINTER_REPULSE_R = 140;
+// ── Pace ────────────────────────────────────────────────────────────────
+const DASHBOARD_CYCLE_MS = 14_000;
+const HERO_LOGO_MS = 16_000;
+const HERO_SWARM_MS = 7_500;
+const MOUSE_FORCE = 0.9;
+const POINTER_REPULSE_R = 170;
 
-const PARTICLE_DIVISOR = 900;
-const PARTICLE_MIN = 520;
-const PARTICLE_MAX = 900;
-const GLYPH_FRACTION = 0.08;
+const PARTICLE_DIVISOR = 620;
+const PARTICLE_MIN = 980;
+const PARTICLE_MAX = 1500;
 
-const GLYPHS = ["$", "{}", "</>", "tok", "ctx", "429", "503", "run", "cache"];
+const SWARM_CURL = 0.62;
+const SWARM_RISE = 0.018;
+const SWARM_DRAG = 0.962;
+const SWARM_MAX_SPEED = 2.05;
+const CURL_SCALE = 0.0015;
+const CURL_TIME = 0.000065;
+const HOME_PULL = 0.000055;
 
-// Editorial ember ramp (brass-core → brass-bright)
+const MORPH_SPRING = 0.092;
+const MORPH_NOISE = 0.01;
+const MORPH_DRAG = 0.86;
+const MORPH_MAX_SPEED = 2.15;
+
 const EMBER_CORE: RGB = [250, 107, 6];
 const EMBER_BRIGHT: RGB = [253, 196, 44];
+const WARM_DARK: RGB = [18, 7, 3];
+const SHAPE_BOOST = 1.55;
 
-const SHAPE_BOOST = 1.7;
-
+const LOGO_URLS = ["/brand/burnbar-logo-mark.png", "/provider-logos/openburnbar.png"];
 
 const PROVIDER_ACCENTS: Record<string, RGB> = {
   openai: [16, 163, 127],
@@ -69,7 +85,6 @@ type FormationMode =
   | "shapeRings"
   | "shapeRouterFlow"
   | { type: "shapeProviderLogo"; providers: string[] };
-
 
 /** macOS SwarmFormationMode.defaultCycle(excludeBrandShapes: true) — [logo, swarm] per segment. */
 const SHOWCASE_PROVIDER_IDS: string[] = [
@@ -117,12 +132,33 @@ const PROVIDER_LOGO_ASSETS: Record<string, string> = {
 const providerLogoPointsCache = new Map<string, ShapePoint[]>();
 const providerLogoLoadStarted = new Set<string>();
 
-/** Shape tables use a few catalog aliases (anthropic/google) vs persisted tokens. */
 const SHAPE_PROVIDER_ALIASES: Record<string, string> = {
   claudecode: "anthropic",
   geminicli: "google",
   openai: "openai",
 };
+
+export type BurnBarLogoPoint = { x: number; y: number; rgb: RGB; role: number };
+
+let unpackedLogo: BurnBarLogoPoint[] | null = null;
+
+export function burnBarLogoPoints(): BurnBarLogoPoint[] {
+  if (unpackedLogo) return unpackedLogo;
+  const src = BURNBAR_LOGO_PACKED;
+  const out: BurnBarLogoPoint[] = new Array(BURNBAR_LOGO_COUNT);
+  let n = 0;
+  for (let i = 0; i + 3 < src.length; i += 4) {
+    const packed = src[i + 2]!;
+    out[n++] = {
+      x: src[i]!,
+      y: src[i + 1]!,
+      rgb: [(packed >> 16) & 255, (packed >> 8) & 255, packed & 255],
+      role: src[i + 3]!,
+    };
+  }
+  unpackedLogo = out;
+  return out;
+}
 
 function shapeProviderKey(persistedId: string): string | null {
   const alias = SHAPE_PROVIDER_ALIASES[persistedId] ?? persistedId;
@@ -173,6 +209,10 @@ export function buildDashboardCycle(
   ];
 }
 
+/** Console default: the official mark, then a murmur, forever. */
+export function logoHeroCycle(): FormationMode[] {
+  return ["shapeBurnBarLogo", "swarm"];
+}
 
 interface LogoSlot {
   centerX: number;
@@ -218,6 +258,14 @@ function providerLogoSlots(count: number, w: number, h: number): LogoSlot[] {
   return slots;
 }
 
+interface ShapePoint {
+  x: number;
+  y: number;
+  role: string | null;
+  progress: number;
+  rgb?: RGB;
+}
+
 function flatToShapePoints(flat: number[]): ShapePoint[] {
   const pts: ShapePoint[] = [];
   for (let i = 0; i + 1 < flat.length; i += 2) {
@@ -235,130 +283,8 @@ function providerLabel(providerId: string): string {
   return SWARM_PROVIDER_GLYPH_OPTIONS.find((option) => option.id === providerId)?.label ?? providerId;
 }
 
-function providerTextFallbackPoints(providerId: string): ShapePoint[] {
-  const words = providerLabel(providerId).split(/\s+/).filter(Boolean);
-  const initials = words.length > 1
-    ? words.map((word) => word[0]).join("").slice(0, 4)
-    : providerLabel(providerId).replace(/[^a-z0-9]/gi, "").slice(0, 6);
-  return sampleTextPoints(initials || "?", 150);
-}
-
-function imageToShapePoints(image: HTMLImageElement): ShapePoint[] {
-  const side = 240;
-  const canvas = document.createElement("canvas");
-  canvas.width = side;
-  canvas.height = side;
-  const context = canvas.getContext("2d");
-  if (!context) return [];
-  context.clearRect(0, 0, side, side);
-  const scale = Math.min(side / Math.max(image.naturalWidth || side, 1), side / Math.max(image.naturalHeight || side, 1));
-  const width = (image.naturalWidth || side) * scale;
-  const height = (image.naturalHeight || side) * scale;
-  context.drawImage(image, (side - width) / 2, (side - height) / 2, width, height);
-  const pixels = context.getImageData(0, 0, side, side).data;
-  const points: ShapePoint[] = [];
-  const stride = 4;
-  for (let y = 0; y < side; y += stride) {
-    for (let x = 0; x < side; x += stride) {
-      const offset = (y * side + x) * 4;
-      const alpha = pixels[offset + 3] ?? 0;
-      const luminance = (pixels[offset] ?? 0) + (pixels[offset + 1] ?? 0) + (pixels[offset + 2] ?? 0);
-      if (alpha < 48 || luminance < 30) continue;
-      points.push({
-        x: (x - side / 2) / (side / 2),
-        y: -((y - side / 2) / (side / 2)),
-        role: "logo-flame-inner",
-        progress: Math.random(),
-      });
-    }
-  }
-  return points;
-}
-
-function requestProviderLogoPoints(providerId: string, onReady: () => void): void {
-  if (providerLogoLoadStarted.has(providerId) || typeof Image === "undefined") return;
-  providerLogoLoadStarted.add(providerId);
-  const image = new Image();
-  image.onload = () => {
-    const points = imageToShapePoints(image);
-    if (points.length > 0) {
-      providerLogoPointsCache.set(providerId, points);
-      onReady();
-    }
-  };
-  image.onerror = () => undefined;
-  const asset = PROVIDER_LOGO_ASSETS[providerId] ?? `${providerId}.png`;
-  image.src = `/provider-logos/${asset}`;
-}
-
-function providerShapePoints(providerId: string, onImageReady: () => void): ShapePoint[] {
-  const key = shapeProviderKey(providerId);
-  if (key) return flatToShapePoints(PROVIDER_SHAPE_POINTS[key]);
-  const cached = providerLogoPointsCache.get(providerId);
-  if (cached) return cached;
-  requestProviderLogoPoints(providerId, onImageReady);
-  return providerTextFallbackPoints(providerId);
-}
-
-function formationKind(mode: FormationMode): string {
-  return typeof mode === "string" ? mode : mode.type;
-}
-
-function isProviderLogoMode(mode: FormationMode): mode is { type: "shapeProviderLogo"; providers: string[] } {
-  return typeof mode !== "string" && mode.type === "shapeProviderLogo";
-}
-
-
-interface ShapePoint {
-  x: number;
-  y: number;
-  role: string | null;
-  progress: number;
-}
-
-interface Particle {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  size: number;
-  isGlyph: boolean;
-  /** Saved isGlyph state before logo formations force it false; restored by clearFormation. */
-  wasGlyph: boolean;
-  glyph: string;
-  colorIndex: number;
-  baseOpacity: number;
-  opacity: number;
-  tx: number | null;
-  ty: number | null;
-  role: string | null;
-  flowProgress: number;
-  logoProviderId: string | null;
-  slotIndex: number | null;
-  toneSeed: number | null;
-}
-
-function lerpRgb(a: RGB, b: RGB, t: number): RGB {
-  return [
-    a[0] + (b[0] - a[0]) * t,
-    a[1] + (b[1] - a[1]) * t,
-    a[2] + (b[2] - a[2]) * t,
-  ];
-}
-
-function emberFromKey(key: number, intensity: number): RGB {
-  const t = (key & 1) === 0 ? 0.35 : 0.85;
-  const rgb = lerpRgb(EMBER_CORE, EMBER_BRIGHT, t);
-  const k = intensity;
-  return [rgb[0] * k, rgb[1] * k, rgb[2] * k];
-}
-
-function animationFrameScale(elapsedSec: number | null): number {
-  if (elapsedSec == null || !Number.isFinite(elapsedSec) || elapsedSec <= 0) return 1;
-  return Math.min(4, Math.max(0.25, elapsedSec * 60));
-}
-
 function sampleTextPoints(text: string, fontSize: number): ShapePoint[] {
+  if (typeof document === "undefined") return [];
   const side = 400;
   const canvas = document.createElement("canvas");
   canvas.width = side;
@@ -391,6 +317,76 @@ function sampleTextPoints(text: string, fontSize: number): ShapePoint[] {
     }
   }
   return pts;
+}
+
+function providerTextFallbackPoints(providerId: string): ShapePoint[] {
+  const words = providerLabel(providerId).split(/\s+/).filter(Boolean);
+  const initials =
+    words.length > 1
+      ? words.map((word) => word[0]).join("").slice(0, 4)
+      : providerLabel(providerId).replace(/[^a-z0-9]/gi, "").slice(0, 6);
+  return sampleTextPoints(initials || "?", 150);
+}
+
+function imageToShapePoints(image: HTMLImageElement): ShapePoint[] {
+  const side = 240;
+  const canvas = document.createElement("canvas");
+  canvas.width = side;
+  canvas.height = side;
+  const context = canvas.getContext("2d");
+  if (!context) return [];
+  context.clearRect(0, 0, side, side);
+  const scale = Math.min(
+    side / Math.max(image.naturalWidth || side, 1),
+    side / Math.max(image.naturalHeight || side, 1)
+  );
+  const width = (image.naturalWidth || side) * scale;
+  const height = (image.naturalHeight || side) * scale;
+  context.drawImage(image, (side - width) / 2, (side - height) / 2, width, height);
+  const pixels = context.getImageData(0, 0, side, side).data;
+  const points: ShapePoint[] = [];
+  const stride = 4;
+  for (let y = 0; y < side; y += stride) {
+    for (let x = 0; x < side; x += stride) {
+      const offset = (y * side + x) * 4;
+      const alpha = pixels[offset + 3] ?? 0;
+      const luminance = (pixels[offset] ?? 0) + (pixels[offset + 1] ?? 0) + (pixels[offset + 2] ?? 0);
+      if (alpha < 48 || luminance < 30) continue;
+      points.push({
+        x: (x - side / 2) / (side / 2),
+        y: -((y - side / 2) / (side / 2)),
+        role: "logo-flame-inner",
+        progress: Math.random(),
+        rgb: [pixels[offset] ?? 0, pixels[offset + 1] ?? 0, pixels[offset + 2] ?? 0],
+      });
+    }
+  }
+  return points;
+}
+
+function requestProviderLogoPoints(providerId: string, onReady: () => void): void {
+  if (providerLogoLoadStarted.has(providerId) || typeof Image === "undefined") return;
+  providerLogoLoadStarted.add(providerId);
+  const image = new Image();
+  image.onload = () => {
+    const points = imageToShapePoints(image);
+    if (points.length > 0) {
+      providerLogoPointsCache.set(providerId, points);
+      onReady();
+    }
+  };
+  image.onerror = () => undefined;
+  const asset = PROVIDER_LOGO_ASSETS[providerId] ?? `${providerId}.png`;
+  image.src = `/provider-logos/${asset}`;
+}
+
+function providerShapePoints(providerId: string, onImageReady: () => void): ShapePoint[] {
+  const key = shapeProviderKey(providerId);
+  if (key) return flatToShapePoints(PROVIDER_SHAPE_POINTS[key]!);
+  const cached = providerLogoPointsCache.get(providerId);
+  if (cached) return cached;
+  requestProviderLogoPoints(providerId, onImageReady);
+  return providerTextFallbackPoints(providerId);
 }
 
 function generateRingPoints(numRings = 3): ShapePoint[] {
@@ -465,6 +461,31 @@ function shuffleIndices(n: number): number[] {
   return idx;
 }
 
+function punchWhite(image: HTMLImageElement): HTMLCanvasElement | null {
+  const w = image.naturalWidth || image.width;
+  const h = image.naturalHeight || image.height;
+  if (!w || !h) return null;
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const g = canvas.getContext("2d");
+  if (!g) return null;
+  g.drawImage(image, 0, 0);
+  const data = g.getImageData(0, 0, w, h);
+  const px = data.data;
+  for (let i = 0; i < px.length; i += 4) {
+    const r = px[i] ?? 0;
+    const gg = px[i + 1] ?? 0;
+    const b = px[i + 2] ?? 0;
+    const a = px[i + 3] ?? 0;
+    const max = Math.max(r, gg, b);
+    const min = Math.min(r, gg, b);
+    const sat = max === 0 ? 0 : 1 - min / max;
+    if (a < 16 || (max > 245 && sat < 0.08)) px[i + 3] = 0;
+  }
+  g.putImageData(data, 0, 0);
+  return canvas;
+}
 
 export type SwarmEmberKernelOptions = {
   /** macOS SwarmCanvasView.enableSwarmSparkles — dashboard default false. */
@@ -479,14 +500,15 @@ export type SwarmEmberKernelOptions = {
   autoCycleShapes?: boolean;
   /** macOS clickDesktopToCycleSwarm equivalent for the Linux backdrop surface. */
   allowsClickCycle?: boolean;
+  /**
+   * Console hero: ignore the provider slideshow and cycle only
+   * BurnBar flame mark ↔ murmurating swarm.
+   */
+  logoHero?: boolean;
 };
 
 function clampMotionSpeedMultiplier(value: number): number {
   return Math.min(2.5, Math.max(0.35, value));
-}
-
-function mixRgb(a: RGB, b: RGB, t: number): RGB {
-  return lerpRgb(a, b, t);
 }
 
 function adjustRgb(rgb: RGB, lighten: number, darken: number, seed: number): RGB {
@@ -503,26 +525,47 @@ function providerBrandRgb(providerId: string): RGB {
   return PROVIDER_ACCENTS[key] ?? PROVIDER_ACCENTS[providerId] ?? [242, 242, 247];
 }
 
-function particleProviderRgb(p: Particle, index: number): RGB | null {
-  if (!p.logoProviderId) return null;
-  const base = providerBrandRgb(p.logoProviderId);
-  const toneSeed = p.toneSeed ?? flameToneSeed(p.role, index);
-  if (p.role === "logo-flame-inner") {
-    return adjustRgb(base, 0.24, 0.1, toneSeed);
-  }
-  if (p.role === "logo-flame-outer") {
-    return adjustRgb(base, 0.1, 0.3, toneSeed);
-  }
-  if (p.role === "logo-flame-spark") {
-    return adjustRgb(base, 0.18, 0.12, toneSeed + 0.58);
-  }
-  return adjustRgb(base, 0.1, 0.15, toneSeed);
+function hotter(rgb: RGB, amount = 0.35): RGB {
+  return mixRgb(rgb, [255, 236, 200], amount);
 }
 
-function flameToneSeed(role: string | null, index: number): number {
-  const roleShift =
-    role === "logo-flame-outer" ? 0.18 : role === "logo-flame-spark" ? 0.58 : 0;
-  return ((index * 0.137) % 1) + roleShift;
+function animationFrameScale(elapsedSec: number | null): number {
+  if (elapsedSec == null || !Number.isFinite(elapsedSec) || elapsedSec <= 0) return 1;
+  return Math.min(4, Math.max(0.25, elapsedSec * 60));
+}
+
+function formationKind(mode: FormationMode): string {
+  return typeof mode === "string" ? mode : mode.type;
+}
+
+function isProviderLogoMode(
+  mode: FormationMode
+): mode is { type: "shapeProviderLogo"; providers: string[] } {
+  return typeof mode !== "string" && mode.type === "shapeProviderLogo";
+}
+
+interface Particle {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  size: number;
+  seed: number;
+  home: number;
+  tx: number | null;
+  ty: number | null;
+  tr: number;
+  tg: number;
+  tb: number;
+  cr: number;
+  cg: number;
+  cb: number;
+  role: number;
+  roleStr: string | null;
+  logoProviderId: string | null;
+  slotIndex: number | null;
+  flowProgress: number;
+  opacity: number;
 }
 
 export function createSwarmEmberKernel(options: SwarmEmberKernelOptions = {}): Kernel {
@@ -534,116 +577,148 @@ export function createSwarmEmberKernel(options: SwarmEmberKernelOptions = {}): K
   let reducedMotion = false;
   const motionSpeedMultiplier = clampMotionSpeedMultiplier(options.motionSpeedMultiplier ?? 1);
   const enableSwarmSparkles = options.enableSwarmSparkles ?? false;
+  const logoHero = options.logoHero === true;
   const providerGlyphs = options.providerGlyphs ?? SWARM_PROVIDER_GLYPH_IDS;
-  const modeCycle = buildDashboardCycle(
-    providerGlyphs,
-    options.excludeBrandShapes ?? true,
-    options.autoCycleShapes ?? true
-  );
+  const modeCycle: FormationMode[] = logoHero
+    ? options.autoCycleShapes === false
+      ? ["shapeBurnBarLogo"]
+      : logoHeroCycle()
+    : buildDashboardCycle(
+        providerGlyphs,
+        options.excludeBrandShapes ?? true,
+        options.autoCycleShapes ?? true
+      );
   const allowsClickCycle = options.allowsClickCycle ?? false;
 
+  const logoPts = burnBarLogoPoints();
+
   let particles: Particle[] = [];
-  let mode: FormationMode = "swarm";
+  let mode: FormationMode = modeCycle[0] ?? "swarm";
   let cycleIndex = 0;
   let nextCycleAtMs = 0;
   let flowTime = 0;
   let lastAdvanceMs: number | null = null;
   let shapeSettledAtMs: number | null = null;
   let modeAssignedAtMs = 0;
-
-  const effectiveCycleIntervalMs = () => CYCLE_INTERVAL_MS / motionSpeedMultiplier;
+  let settleAmt = 0;
 
   let pointer: { x: number; y: number; active: boolean } = { x: 0, y: 0, active: false };
 
   let dollarPoints: ShapePoint[] = [];
   let codePoints: ShapePoint[] = [];
-  let burnBarLogoPoints: ShapePoint[] = [];
   let ringPoints: ShapePoint[] = [];
   let routerFlowPoints: ShapePoint[] = [];
   let shapesReady = false;
 
+  let logoSprite: HTMLCanvasElement | null = null;
+  let logoLoadStarted = false;
+
+  const curlOut: [number, number] = [0, 0];
+
+  function intervalFor(m: FormationMode): number {
+    if (!logoHero) return DASHBOARD_CYCLE_MS / motionSpeedMultiplier;
+    return (formationKind(m) === "swarm" ? HERO_SWARM_MS : HERO_LOGO_MS) / motionSpeedMultiplier;
+  }
+
   function particleCount(): number {
     const area = width * height;
-    return Math.max(PARTICLE_MIN, Math.min(PARTICLE_MAX, Math.round(area / PARTICLE_DIVISOR)));
+    const n = Math.round(area / PARTICLE_DIVISOR);
+    return Math.max(PARTICLE_MIN, Math.min(PARTICLE_MAX, n, logoPts.length));
+  }
+
+  function requestLogoSprite(): void {
+    if (logoLoadStarted || typeof Image === "undefined") return;
+    logoLoadStarted = true;
+    const tryUrl = (index: number) => {
+      if (index >= LOGO_URLS.length) return;
+      const image = new Image();
+      image.onload = () => {
+        const punched = punchWhite(image);
+        if (punched) logoSprite = punched;
+      };
+      image.onerror = () => tryUrl(index + 1);
+      image.src = LOGO_URLS[index]!;
+    };
+    tryUrl(0);
   }
 
   function ensureShapeCaches(): void {
     if (shapesReady) return;
-    dollarPoints = sampleTextPoints("$", 280);
-    codePoints = sampleTextPoints("</>", 220);
-    burnBarLogoPoints = sampleTextPoints("BurnBar", 200);
-    ringPoints = generateRingPoints();
-    routerFlowPoints = generateRouterFlowPoints();
+    if (!logoHero) {
+      dollarPoints = sampleTextPoints("$", 280);
+      codePoints = sampleTextPoints("</>", 220);
+      ringPoints = generateRingPoints();
+      routerFlowPoints = generateRouterFlowPoints();
+    }
     shapesReady = true;
   }
 
-  function makeParticle(): Particle {
-    const isGlyph = Math.random() < GLYPH_FRACTION;
+  function homePoint(index: number): BurnBarLogoPoint {
+    const n = particles.length || particleCount();
+    const srcIndex =
+      n <= 1 ? 0 : Math.round((index * (logoPts.length - 1)) / Math.max(n - 1, 1));
+    return logoPts[srcIndex] ?? logoPts[0]!;
+  }
+
+  function makeParticle(index: number): Particle {
+    const home = homePoint(index);
+    const ember = mixRgb(home.rgb, EMBER_BRIGHT, 0.25);
+    const { cx, cy, scale } = width > 0 ? logoLayout() : { cx: 300, cy: 300, scale: 180 };
+    const ang = Math.random() * Math.PI * 2;
+    const rad = scale * (0.45 + Math.random() * 1.15);
     return {
-      x: Math.random() * Math.max(width, 600),
-      y: Math.random() * Math.max(height, 600),
-      vx: (Math.random() - 0.5) * 1.5,
-      vy: (Math.random() - 0.5) * 1.5,
-      size: 0.8 + Math.random() * 1.5,
-      isGlyph,
-      wasGlyph: isGlyph,
-      glyph: GLYPHS[(Math.random() * GLYPHS.length) | 0]!,
-      colorIndex: Math.random(),
-      baseOpacity: 0.16 + Math.random() * 0.2,
-      opacity: 0.16,
+      x: cx + Math.cos(ang) * rad,
+      y: cy + Math.sin(ang) * rad,
+      vx: (Math.random() - 0.5) * 0.9,
+      vy: (Math.random() - 0.5) * 0.9 - 0.15,
+      size: 0.85 + Math.random() * 1.55,
+      seed: Math.random() * Math.PI * 2,
+      home: index,
       tx: null,
       ty: null,
-      role: null,
-      flowProgress: Math.random(),
+      tr: home.rgb[0],
+      tg: home.rgb[1],
+      tb: home.rgb[2],
+      cr: ember[0],
+      cg: ember[1],
+      cb: ember[2],
+      role: home.role,
+      roleStr: null,
       logoProviderId: null,
       slotIndex: null,
-      toneSeed: null,
+      flowProgress: Math.random(),
+      opacity: 0.55 + Math.random() * 0.4,
     };
   }
 
   function buildParticles(): void {
     const n = particleCount();
-    particles = [];
-    for (let i = 0; i < n; i++) particles.push(makeParticle());
-    for (const p of particles) {
-      p.x = Math.random() * width;
-      p.y = Math.random() * height;
-    }
+    particles = new Array(n);
+    for (let i = 0; i < n; i++) particles[i] = makeParticle(i);
   }
 
   function clearFormation(p: Particle): void {
     p.tx = null;
     p.ty = null;
-    p.role = null;
+    p.roleStr = null;
     p.logoProviderId = null;
     p.slotIndex = null;
-    p.toneSeed = null;
-    // Restore the glyph flag saved before the logo formation overrode it,
-    // so token-text particles reappear when returning to swarm mode.
-    p.isGlyph = p.wasGlyph;
+    const home = homePoint(p.home);
+    p.role = home.role;
+    p.tr = home.rgb[0];
+    p.tg = home.rgb[1];
+    p.tb = home.rgb[2];
   }
 
-  function shapePointsFor(m: FormationMode): { points: ShapePoint[]; roles: (string | null)[] } {
-    switch (m) {
-      case "shapeDollar":
-        return { points: dollarPoints, roles: dollarPoints.map(() => null) };
-      case "shapeCode":
-        return { points: codePoints, roles: codePoints.map(() => null) };
-      case "shapeBurnBarLogo":
-        return { points: burnBarLogoPoints, roles: burnBarLogoPoints.map(() => null) };
-      case "shapeRings":
-        return { points: ringPoints, roles: ringPoints.map(() => null) };
-      case "shapeRouterFlow":
-        return {
-          points: routerFlowPoints,
-          roles: routerFlowPoints.map((pt) => pt.role),
-        };
-      default:
-        return { points: [], roles: [] };
-    }
+  function logoLayout(): { cx: number; cy: number; scale: number } {
+    const cx = width * 0.5;
+    const cy = height * 0.5;
+    const scale = Math.min(width, height) * (width > 960 ? 0.46 : 0.5);
+    return { cx, cy, scale };
   }
 
   function layoutForMode(m: FormationMode): { cx: number; cy: number; scale: number } {
+    if (m === "shapeBurnBarLogo" || logoHero) return logoLayout();
     let centerX = width * 0.5;
     let centerY = height * 0.45;
     let scaleFactor = 0.35;
@@ -654,11 +729,6 @@ export function createSwarmEmberKernel(options: SwarmEmberKernelOptions = {}): K
           centerX = width * 0.78;
           centerY = height * 0.3;
           scaleFactor = 0.38;
-          break;
-        case "shapeBurnBarLogo":
-          centerX = width * 0.75;
-          centerY = height * 0.32;
-          scaleFactor = 0.3;
           break;
         case "shapeRouterFlow":
           centerX = width * 0.5;
@@ -676,10 +746,6 @@ export function createSwarmEmberKernel(options: SwarmEmberKernelOptions = {}): K
           centerY = height * 0.24;
           scaleFactor = 0.34;
           break;
-        case "shapeBurnBarLogo":
-          centerY = height * 0.24;
-          scaleFactor = 0.3;
-          break;
         case "shapeRouterFlow":
           centerY = height * 0.24;
           scaleFactor = 0.62;
@@ -689,14 +755,48 @@ export function createSwarmEmberKernel(options: SwarmEmberKernelOptions = {}): K
           scaleFactor = 0.32;
       }
     }
-    const scale = Math.min(width, height) * scaleFactor;
-    return { cx: centerX, cy: centerY, scale };
+    return { cx: centerX, cy: centerY, scale: Math.min(width, height) * scaleFactor };
   }
 
+  function shapePointsFor(m: FormationMode): ShapePoint[] {
+    switch (m) {
+      case "shapeDollar":
+        return dollarPoints;
+      case "shapeCode":
+        return codePoints;
+      case "shapeRings":
+        return ringPoints;
+      case "shapeRouterFlow":
+        return routerFlowPoints;
+      default:
+        return [];
+    }
+  }
 
-  function assignProviderLogoFormation(
-    specs: { providerId: string; points: ShapePoint[] }[]
-  ): void {
+  function assignBurnBarLogo(): void {
+    const { cx, cy, scale } = logoLayout();
+    const n = particles.length;
+    const total = logoPts.length;
+    for (let i = 0; i < n; i++) {
+      const p = particles[i]!;
+      const srcIndex = n <= 1 ? 0 : Math.round((i * (total - 1)) / Math.max(n - 1, 1));
+      const pt = logoPts[srcIndex] ?? logoPts[0]!;
+      p.tx = cx + pt.x * scale;
+      p.ty = cy - pt.y * scale;
+      p.tr = pt.rgb[0];
+      p.tg = pt.rgb[1];
+      p.tb = pt.rgb[2];
+      p.role = pt.role;
+      p.roleStr = null;
+      p.logoProviderId = null;
+      p.slotIndex = 0;
+      p.home = i;
+      p.x += (p.tx - p.x) * 0.22;
+      p.y += (p.ty - p.y) * 0.22;
+    }
+  }
+
+  function assignProviderLogoFormation(specs: { providerId: string; points: ShapePoint[] }[]): void {
     const visible = specs.filter((s) => s.points.length > 0);
     const count = visible.length;
     if (count === 0) {
@@ -713,39 +813,74 @@ export function createSwarmEmberKernel(options: SwarmEmberKernelOptions = {}): K
       const spec = visible[specIndex]!;
       const logoSlot = slots[specIndex]!;
       const groupParticles = groups[specIndex]!;
+      const brand = providerBrandRgb(spec.providerId);
       for (let slot = 0; slot < groupParticles.length; slot++) {
         const particleIdx = groupParticles[slot]!;
         const p = particles[particleIdx]!;
         let pointIndex: number;
         if (groupParticles.length <= spec.points.length) {
           const t = slot / Math.max(groupParticles.length - 1, 1);
-          pointIndex = Math.min(
-            spec.points.length - 1,
-            Math.round((spec.points.length - 1) * t)
-          );
+          pointIndex = Math.min(spec.points.length - 1, Math.round((spec.points.length - 1) * t));
         } else {
           pointIndex = slot % spec.points.length;
         }
         const pt = spec.points[pointIndex]!;
         p.tx = logoSlot.centerX + pt.x * logoSlot.scale;
-        p.ty = logoSlot.centerY + pt.y * logoSlot.scale;
-        p.wasGlyph = p.isGlyph;
-        p.isGlyph = false;
-        p.slotIndex = specIndex;
-        p.role = pt.role;
+        p.ty = logoSlot.centerY - pt.y * logoSlot.scale;
+        const rgb = pt.rgb ?? adjustRgb(brand, 0.18, 0.12, p.seed);
+        p.tr = rgb[0];
+        p.tg = rgb[1];
+        p.tb = rgb[2];
+        p.roleStr = pt.role;
         p.logoProviderId = spec.providerId;
-        p.toneSeed = flameToneSeed(pt.role, particleIdx);
+        p.slotIndex = specIndex;
         p.flowProgress = pt.progress;
       }
     }
+  }
+
+  function assignGenericShape(m: FormationMode): void {
+    ensureShapeCaches();
+    const points = shapePointsFor(m);
+    const { cx, cy, scale } = layoutForMode(m);
+    const order = shuffleIndices(particles.length);
+    for (let slot = 0; slot < order.length; slot++) {
+      const p = particles[order[slot]!]!;
+      if (slot < points.length) {
+        const pt = points[slot]!;
+        p.tx = cx + pt.x * scale;
+        p.ty = cy - pt.y * scale;
+        p.roleStr = pt.role;
+        p.flowProgress = pt.progress;
+        p.logoProviderId = null;
+        p.slotIndex = 0;
+        const tint = mixRgb(EMBER_CORE, EMBER_BRIGHT, (p.seed % 1 + 1) / 2);
+        p.tr = tint[0];
+        p.tg = tint[1];
+        p.tb = tint[2];
+      } else {
+        clearFormation(p);
+      }
+    }
+  }
+
+  function sameFormation(a: FormationMode, b: FormationMode): boolean {
+    if (typeof a === "string" || typeof b === "string") return a === b;
+    return a.type === b.type && a.providers.join(",") === b.providers.join(",");
   }
 
   function assignMode(next: FormationMode, atMs: number): void {
     mode = next;
     modeAssignedAtMs = atMs;
     shapeSettledAtMs = null;
+    settleAmt = 0;
+    if (ctx) paintBase(0.5);
     if (next === "swarm") {
       for (const p of particles) clearFormation(p);
+      return;
+    }
+    if (next === "shapeBurnBarLogo") {
+      assignBurnBarLogo();
       return;
     }
     if (isProviderLogoMode(next)) {
@@ -761,30 +896,7 @@ export function createSwarmEmberKernel(options: SwarmEmberKernelOptions = {}): K
       assignProviderLogoFormation(specs);
       return;
     }
-    ensureShapeCaches();
-    const { points, roles } = shapePointsFor(next);
-    const { cx, cy, scale } = layoutForMode(next);
-    const order = shuffleIndices(particles.length);
-    for (let slot = 0; slot < order.length; slot++) {
-      const pi = order[slot]!;
-      const p = particles[pi]!;
-      if (slot < points.length) {
-        const pt = points[slot]!;
-        p.tx = cx + pt.x * scale;
-        p.ty = cy + pt.y * scale;
-        p.role = roles[slot] ?? pt.role;
-        p.flowProgress = pt.progress;
-        p.logoProviderId = null;
-        p.slotIndex = 0;
-      } else {
-        clearFormation(p);
-      }
-    }
-  }
-
-  function sameFormation(a: FormationMode, b: FormationMode): boolean {
-    if (typeof a === 'string' || typeof b === 'string') return a === b;
-    return a.type === b.type && a.providers.join(',') === b.providers.join(',');
+    assignGenericShape(next);
   }
 
   function cycleFormation(atMs: number): void {
@@ -793,7 +905,7 @@ export function createSwarmEmberKernel(options: SwarmEmberKernelOptions = {}): K
     cycleIndex = (currentIndex < 0 ? cycleIndex : currentIndex) + 1;
     cycleIndex %= modeCycle.length;
     assignMode(modeCycle[cycleIndex]!, atMs);
-    nextCycleAtMs = atMs + effectiveCycleIntervalMs();
+    nextCycleAtMs = atMs + intervalFor(mode);
   }
 
   function applyTransform(): void {
@@ -801,14 +913,28 @@ export function createSwarmEmberKernel(options: SwarmEmberKernelOptions = {}): K
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
+  function fieldBg(): RGB {
+    if (!palette) return WARM_DARK;
+    if (palette.theme === "light") return palette.bg;
+    return mixRgb(palette.bg, WARM_DARK, 0.72);
+  }
+
   function paintBase(alpha: number): void {
-    if (!ctx || !palette) return;
-    ctx.fillStyle = toCss(palette.bg, alpha);
+    if (!ctx) return;
+    ctx.globalCompositeOperation = "source-over";
+    ctx.fillStyle = toCss(fieldBg(), alpha);
     ctx.fillRect(0, 0, width, height);
   }
 
-  function colorKey(p: Particle): number {
-    return p.colorIndex < 0.5 ? 0 : 1;
+  function paintVignette(): void {
+    if (!ctx) return;
+    const { cx, cy } = logoLayout();
+    const r = Math.max(width, height) * 0.72;
+    const g = ctx.createRadialGradient(cx, cy, r * 0.18, cx, cy, r);
+    g.addColorStop(0, "rgba(48,14,4,0)");
+    g.addColorStop(1, palette?.theme === "light" ? "rgba(40,24,12,0.08)" : "rgba(0,0,0,0.46)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, width, height);
   }
 
   function stepParticle(
@@ -817,10 +943,12 @@ export function createSwarmEmberKernel(options: SwarmEmberKernelOptions = {}): K
     attract: number,
     frameScale: number,
     pointerX: number | null,
-    pointerY: number | null
+    pointerY: number | null,
+    tMs: number
   ): void {
-    const noiseX = Math.sin(p.y * 0.005 + flowTime * 2) * Math.cos(p.x * 0.003 + flowTime);
-    const noiseY = Math.cos(p.x * 0.005 + flowTime * 3) * Math.sin(p.y * 0.003 + flowTime * 2);
+    curl2(p.x * CURL_SCALE, p.y * CURL_SCALE, tMs * CURL_TIME, curlOut);
+    const noiseX = curlOut[0];
+    const noiseY = curlOut[1];
 
     let pushX = 0;
     let pushY = 0;
@@ -836,42 +964,53 @@ export function createSwarmEmberKernel(options: SwarmEmberKernelOptions = {}): K
     }
 
     const speedMul = motionSpeedMultiplier;
-    if (formationKind(mode) === "swarm") {
-      p.vx += (noiseX * SWARM_NOISE + pushX) * motion * frameScale * speedMul;
-      p.vy += (noiseY * SWARM_NOISE + pushY) * motion * frameScale * speedMul;
+    const inForm = p.tx != null && p.ty != null;
+
+    if (!inForm) {
+      const { cx, cy } = logoLayout();
+      p.vx += (noiseX * SWARM_CURL + pushX) * motion * frameScale * speedMul;
+      p.vy += (noiseY * SWARM_CURL + pushY - SWARM_RISE) * motion * frameScale * speedMul;
+      p.vx += (cx - p.x) * HOME_PULL * frameScale;
+      p.vy += (cy - p.y) * HOME_PULL * frameScale;
       const drag = Math.pow(SWARM_DRAG, frameScale);
       p.vx *= drag;
       p.vy *= drag;
-      const speed = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
-      const maxSpeed = (p.isGlyph ? MAX_SPEED_GLYPH : MAX_SPEED_PIXEL) * speedMul;
+      const speed = Math.hypot(p.vx, p.vy);
+      const maxSpeed = SWARM_MAX_SPEED * speedMul;
       if (speed > maxSpeed && speed > 0) {
         p.vx = (p.vx / speed) * maxSpeed;
         p.vy = (p.vy / speed) * maxSpeed;
       }
       p.x += p.vx * frameScale;
       p.y += p.vy * frameScale;
-      if (p.x < 0) p.x = width;
-      if (p.x > width) p.x = 0;
-      if (p.y < 0) p.y = height;
-      if (p.y > height) p.y = 0;
+      if (p.x < -20) p.x = width + 20;
+      if (p.x > width + 20) p.x = -20;
+      if (p.y < -20) p.y = height + 20;
+      if (p.y > height + 20) p.y = -20;
+      const ember = mixRgb([p.tr, p.tg, p.tb], EMBER_BRIGHT, 0.28);
+      const k = 0.08;
+      p.cr += (ember[0] - p.cr) * k;
+      p.cg += (ember[1] - p.cg) * k;
+      p.cb += (ember[2] - p.cb) * k;
+      p.opacity = 0.64 + 0.22 * (0.5 + 0.5 * Math.sin(tMs * 0.003 + p.seed));
       return;
     }
 
-    if (formationKind(mode) === "shapeRouterFlow" && p.role) {
+    if (formationKind(mode) === "shapeRouterFlow" && p.roleStr) {
       const centerX = width * 0.5;
       const centerY = height * 0.48;
       const scaleFactor = width > 960 ? 0.7 : 0.8;
       const scale = Math.min(width, height) * scaleFactor;
-      const role = p.role;
+      const role = p.roleStr;
       if (role === "gateway") {
-        const angle = p.colorIndex * Math.PI * 2 + flowTime * 15;
+        const angle = p.seed + flowTime * 15;
         p.tx = centerX + (-0.45 + Math.cos(angle) * 0.08) * scale;
         p.ty = centerY + Math.sin(angle) * 0.08 * scale;
       } else if (role.startsWith("target-")) {
         let tgtY = 0;
         if (role === "target-1") tgtY = -0.28;
         if (role === "target-3") tgtY = 0.28;
-        const angle = p.colorIndex * Math.PI * 2 + flowTime * 12;
+        const angle = p.seed + flowTime * 12;
         p.tx = centerX + (0.45 + Math.cos(angle) * 0.05) * scale;
         p.ty = centerY + (tgtY + Math.sin(angle) * 0.05) * scale;
       } else if (role.startsWith("path-")) {
@@ -881,66 +1020,135 @@ export function createSwarmEmberKernel(options: SwarmEmberKernelOptions = {}): K
         p.flowProgress += 0.003 * frameScale * motionSpeedMultiplier;
         if (p.flowProgress > 1) p.flowProgress = 0;
         const t = p.flowProgress;
-        const px = -0.45 + 0.9 * t;
-        const py = tgtY * (3 * t * t - 2 * t * t * t);
-        p.tx = centerX + px * scale;
-        p.ty = centerY + py * scale;
+        p.tx = centerX + (-0.45 + 0.9 * t) * scale;
+        p.ty = centerY + tgtY * (3 * t * t - 2 * t * t * t) * scale;
       }
     }
 
-    if (p.tx != null && p.ty != null) {
-      const dx = p.tx - p.x;
-      const dy = p.ty - p.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist > 1) {
-        p.vx += (dx / dist) * MORPH_ATTRACT * attract * frameScale * motionSpeedMultiplier;
-        p.vy += (dy / dist) * MORPH_ATTRACT * attract * frameScale * motionSpeedMultiplier;
+    let tx = p.tx!;
+    let ty = p.ty!;
+    // Living fire: flame tongue flickers; tip sparks lift off.
+    if (mode === "shapeBurnBarLogo") {
+      const flick = Math.sin(tMs * 0.011 + p.seed) * (p.role === ROLE_TIP ? 3.4 : p.role === ROLE_FLAME ? 1.6 : 0.45);
+      const lift = p.role === ROLE_TIP || p.role === ROLE_FLAME ? Math.sin(tMs * 0.007 + p.seed * 1.7) * 2.2 : 0;
+      tx += flick;
+      ty -= lift;
+      if (enableSwarmSparkles && p.role === ROLE_TIP) {
+        const burst = Math.sin(tMs * 0.004 + p.seed * 9.1);
+        if (burst > 0.94) {
+          p.vy -= 1.8 * motion * speedMul;
+          p.vx += Math.sin(p.seed * 13) * 0.6;
+        }
       }
-      p.vx += (noiseX * MORPH_NOISE + pushX) * motion * frameScale * motionSpeedMultiplier;
-      p.vy += (noiseY * MORPH_NOISE + pushY) * motion * frameScale * motionSpeedMultiplier;
-      const drag = Math.pow(MORPH_DRAG, frameScale);
-      p.vx *= drag;
-      p.vy *= drag;
-      p.x += p.vx * frameScale;
-      p.y += p.vy * frameScale;
-    } else {
-      p.vx += (noiseX * SWARM_NOISE * 0.75 + pushX) * motion * frameScale * motionSpeedMultiplier;
-      p.vy += (noiseY * SWARM_NOISE * 0.75 + pushY) * motion * frameScale * motionSpeedMultiplier;
-      const drag = Math.pow(SWARM_DRAG, frameScale);
-      p.vx *= drag;
-      p.vy *= drag;
-      p.x += p.vx * frameScale;
-      p.y += p.vy * frameScale;
-      if (p.x < 0) p.x = width;
-      if (p.x > width) p.x = 0;
-      if (p.y < 0) p.y = height;
-      if (p.y > height) p.y = 0;
     }
 
-    const inShape = p.tx != null;
-    const boost = inShape ? SHAPE_BOOST : 1;
-    p.opacity = Math.min(1, p.baseOpacity * boost);
+    const dx = tx - p.x;
+    const dy = ty - p.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist > 0.4) {
+      p.vx += (dx / dist) * MORPH_SPRING * attract * frameScale * speedMul * Math.min(dist, 80);
+      p.vy += (dy / dist) * MORPH_SPRING * attract * frameScale * speedMul * Math.min(dist, 80);
+    }
+    p.vx += (noiseX * MORPH_NOISE + pushX) * motion * frameScale * speedMul;
+    p.vy += (noiseY * MORPH_NOISE + pushY) * motion * frameScale * speedMul;
+    const drag = Math.pow(MORPH_DRAG, frameScale);
+    p.vx *= drag;
+    p.vy *= drag;
+    const speed = Math.hypot(p.vx, p.vy);
+    const maxSpeed = MORPH_MAX_SPEED * speedMul;
+    if (speed > maxSpeed && speed > 0) {
+      p.vx = (p.vx / speed) * maxSpeed;
+      p.vy = (p.vy / speed) * maxSpeed;
+    }
+    p.x += p.vx * frameScale;
+    p.y += p.vy * frameScale;
+
+    const ck = 0.16;
+    p.cr += (p.tr - p.cr) * ck;
+    p.cg += (p.tg - p.cg) * ck;
+    p.cb += (p.tb - p.cb) * ck;
+    p.opacity = Math.min(1, 0.72 * SHAPE_BOOST);
   }
 
   function updateShapeSettled(tMs: number): void {
-    if (formationKind(mode) === "swarm" || shapeSettledAtMs != null) return;
+    if (formationKind(mode) === "swarm") {
+      settleAmt += (0 - settleAmt) * 0.08;
+      return;
+    }
     let assigned = 0;
     let settled = 0;
     for (const p of particles) {
-      if (p.tx == null) continue;
+      if (p.tx == null || p.ty == null) continue;
       assigned++;
       const dx = p.tx - p.x;
-      const dy = p.ty! - p.y;
-      if (dx * dx + dy * dy < 36) settled++;
+      const dy = p.ty - p.y;
+      if (dx * dx + dy * dy < 64) settled++;
     }
-    if (assigned > 0 && settled / assigned >= 0.95) {
-      shapeSettledAtMs = tMs;
-    } else if (tMs - modeAssignedAtMs > 6000) {
-      shapeSettledAtMs = tMs;
+    const ratio = assigned > 0 ? settled / assigned : 0;
+    if (ratio >= 0.9 || tMs - modeAssignedAtMs > 5500) {
+      if (shapeSettledAtMs == null) shapeSettledAtMs = tMs;
     }
+    const target = shapeSettledAtMs != null ? 1 : Math.min(1, ratio);
+    settleAmt += (target - settleAmt) * 0.07;
   }
 
-  function advanceSim(tMs: number, dtMs: number, draw: boolean): void {
+  function drawLogoCoal(): void {
+    if (!ctx || !logoSprite || mode !== "shapeBurnBarLogo") return;
+    const { cx, cy, scale } = logoLayout();
+    const side = scale * 2;
+    const alpha = (palette?.theme === "light" ? 0.16 : 0.34) * settleAmt * (palette?.intensity ?? 1);
+    if (alpha < 0.02) return;
+    ctx.save();
+    ctx.globalCompositeOperation = "source-over";
+    ctx.globalAlpha = alpha;
+    ctx.drawImage(logoSprite, cx - side / 2, cy - side / 2, side, side);
+    ctx.restore();
+  }
+
+  function drawParticles(tMs: number): void {
+    if (!ctx || !palette) return;
+    const intensity = palette.intensity;
+    const light = palette.theme === "light";
+    const baseA = (light ? 0.2 : 0.38) * intensity;
+
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    for (let i = 0; i < particles.length; i++) {
+      const p = particles[i]!;
+      const pulse = 0.86 + 0.14 * Math.sin(tMs * 0.006 + p.seed);
+      const inForm = p.tx != null;
+      const spd = Math.hypot(p.vx, p.vy);
+      const slim = 1 / (1 + spd * 0.22);
+      const rGlow = Math.max(1.0, p.size * (inForm ? 2.35 : 2.05) * pulse * slim);
+      const rCore = Math.max(0.4, p.size * (inForm ? 0.64 : 0.58) * pulse * slim);
+      const rgb: RGB = [p.cr, p.cg, p.cb];
+      const a = baseA * p.opacity;
+
+      ctx.fillStyle = toCss(rgb, a * 0.26);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, rGlow, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = toCss(hotter(rgb, 0.14), a * 0.88);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, rCore, 0, Math.PI * 2);
+      ctx.fill();
+
+      if (enableSwarmSparkles && inForm && (p.role === ROLE_TIP || p.role === ROLE_FLAME)) {
+        const sparkleVal = Math.sin(flowTime * (0.7 + (i % 5) * 0.13) + p.seed);
+        if (sparkleVal > 0.93) {
+          const s = ((sparkleVal - 0.93) / 0.07) ** 2;
+          ctx.fillStyle = toCss([255, 244, 220], s * 0.55);
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, rCore * 0.55, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+    ctx.restore();
+  }
+
+  function advanceSim(tMs: number, draw: boolean): void {
     if (!ctx || !palette) return;
     ensureShapeCaches();
 
@@ -948,142 +1156,53 @@ export function createSwarmEmberKernel(options: SwarmEmberKernelOptions = {}): K
     const frameScale = animationFrameScale(elapsedSec);
     lastAdvanceMs = tMs;
 
-    if (!reducedMotion && tMs >= nextCycleAtMs) {
+    if (!reducedMotion && modeCycle.length > 1 && tMs >= nextCycleAtMs) {
       cycleIndex = (cycleIndex + 1) % modeCycle.length;
       assignMode(modeCycle[cycleIndex]!, tMs);
-      nextCycleAtMs = tMs + effectiveCycleIntervalMs();
+      nextCycleAtMs = tMs + intervalFor(mode);
     }
 
     const motion = reducedMotion ? 0 : 1;
-    const attract = reducedMotion ? 0.04 : 1;
-    flowTime += TIME_STEP * 1000 * frameScale * motionSpeedMultiplier;
+    const attract = reducedMotion ? 0.05 : 1;
+    flowTime += 0.004 * frameScale * motionSpeedMultiplier;
 
     const pointerX = pointer.active ? pointer.x : null;
     const pointerY = pointer.active ? pointer.y : null;
 
     for (const p of particles) {
-      stepParticle(p, motion, attract, frameScale, pointerX, pointerY);
+      stepParticle(p, motion, attract, frameScale, pointerX, pointerY, tMs);
     }
     updateShapeSettled(tMs);
 
     if (!draw) return;
+    drawLogoCoal();
+    drawParticles(tMs);
+  }
 
-    const intensity = palette.intensity;
-    const light = palette.theme === "light";
-    const dotAlpha = (light ? 0.38 : 0.42) * intensity;
-
-    const renderProviderLogoIndividually = isProviderLogoMode(mode);
-
-    if (renderProviderLogoIndividually) {
-      for (let index = 0; index < particles.length; index++) {
-        const p = particles[index]!;
-        if (p.isGlyph) continue;
-        const inShape = p.tx != null;
-        const rgb = particleProviderRgb(p, index) ?? emberFromKey(colorKey(p), 1);
-        let r = Math.max(0.4, p.size * (inShape ? 1.2 : 0.85));
-        const alphaMul = inShape && p.logoProviderId ? SHAPE_BOOST : 1;
-
-        let sparkleIntensity = 0;
-        if (enableSwarmSparkles && inShape && shapeSettledAtMs != null) {
-          const pHash = ((index * 127) % 1000) / 1000;
-          const speed = 0.5 + ((index * 17) % 5) * 0.15;
-          const sparkleVal = Math.sin(flowTime * speed + pHash * Math.PI * 2);
-          if (sparkleVal > 0.94) {
-            const normalized = (sparkleVal - 0.94) / 0.06;
-            sparkleIntensity = normalized * normalized;
-            r *= 1 + sparkleIntensity * 0.06;
-          }
-        }
-
-        ctx.fillStyle = toCss(rgb, dotAlpha * alphaMul);
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
-        ctx.fill();
-
-        if (sparkleIntensity > 0) {
-          const sr = r * 0.35;
-          ctx.fillStyle = toCss([255, 255, 255], sparkleIntensity * 0.55);
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, sr, 0, Math.PI * 2);
-          ctx.fill();
-          const glowR = r * 0.75;
-          ctx.fillStyle = toCss([255, 255, 255], sparkleIntensity * 0.15);
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, glowR, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      }
-    } else {
-      const buckets = new Map<string, { rgb: RGB; logoBoost: boolean; path: Path2D; sparkle: { x: number; y: number; r: number; i: number }[] }>();
-
-      particles.forEach((p, index) => {
-        if (p.isGlyph) return;
-        const inShape = formationKind(mode) !== "swarm" && p.tx != null;
-        const bucketKey = `ember:${colorKey(p)}`;
-        let bucket = buckets.get(bucketKey);
-        if (!bucket) {
-          const rgb = emberFromKey(colorKey(p), 1);
-          bucket = { rgb, logoBoost: false, path: new Path2D(), sparkle: [] };
-          buckets.set(bucketKey, bucket);
-        }
-        let r = Math.max(0.4, p.size * (inShape ? 1.2 : 0.85));
-
-        if (enableSwarmSparkles && inShape && shapeSettledAtMs != null) {
-          const pHash = ((index * 127) % 1000) / 1000;
-          const speed = 0.5 + ((index * 17) % 5) * 0.15;
-          const sparkleVal = Math.sin(flowTime * speed + pHash * Math.PI * 2);
-          if (sparkleVal > 0.94) {
-            const normalized = (sparkleVal - 0.94) / 0.06;
-            const intensitySpark = normalized * normalized;
-            r *= 1 + intensitySpark * 0.06;
-            bucket.sparkle.push({ x: p.x, y: p.y, r, i: intensitySpark });
-          }
-        }
-
-        bucket.path.arc(p.x, p.y, r, 0, Math.PI * 2);
-      });
-
-      for (const [, bucket] of buckets) {
-        const alphaMul = bucket.logoBoost ? SHAPE_BOOST : 1;
-        ctx.fillStyle = toCss(bucket.rgb, dotAlpha * alphaMul);
-        ctx.fill(bucket.path);
-        for (const s of bucket.sparkle) {
-          const sr = s.r * 0.35;
-          ctx.fillStyle = toCss([255, 255, 255], s.i * 0.55);
-          ctx.beginPath();
-          ctx.arc(s.x, s.y, sr, 0, Math.PI * 2);
-          ctx.fill();
-          const glowR = s.r * 0.75;
-          ctx.fillStyle = toCss([255, 255, 255], s.i * 0.15);
-          ctx.beginPath();
-          ctx.arc(s.x, s.y, glowR, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      }
+  function snapToLogo(): void {
+    assignMode("shapeBurnBarLogo", 0);
+    for (const p of particles) {
+      if (p.tx == null || p.ty == null) continue;
+      p.x = p.tx;
+      p.y = p.ty;
+      p.vx = 0;
+      p.vy = 0;
+      p.cr = p.tr;
+      p.cg = p.tg;
+      p.cb = p.tb;
+      p.opacity = 0.95;
     }
-
-    ctx.font = "600 12px ui-monospace, Menlo, monospace";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    for (let index = 0; index < particles.length; index++) {
-      const p = particles[index]!;
-      if (!p.isGlyph) continue;
-      const stride = particles.length >= 1000 ? 4 : 3;
-      if (index % stride !== 0) continue;
-      const key = colorKey(p);
-      const rgb = emberFromKey(key, 1);
-      ctx.fillStyle = toCss(rgb, dotAlpha * 1.1);
-      ctx.fillText(p.glyph, p.x, p.y);
-    }
+    settleAmt = 1;
+    shapeSettledAtMs = 0;
   }
 
   function renderStaticFrame(): void {
     if (!ctx || !palette) return;
     paintBase(1);
-    ensureShapeCaches();
-    assignMode("shapeDollar", 0);
-    for (let step = 0; step < 120; step++) advanceSim(step * 16, 16, false);
-    advanceSim(120 * 16, 16, true);
+    paintVignette();
+    snapToLogo();
+    drawLogoCoal();
+    drawParticles(0);
   }
 
   return {
@@ -1099,22 +1218,26 @@ export function createSwarmEmberKernel(options: SwarmEmberKernelOptions = {}): K
       reducedMotion = frame.reducedMotion;
       palette = frame.palette;
       applyTransform();
+      requestLogoSprite();
       buildParticles();
       cycleIndex = 0;
-      mode = "swarm";
-      nextCycleAtMs = effectiveCycleIntervalMs();
+      mode = modeCycle[0] ?? "swarm";
       lastAdvanceMs = null;
-      assignMode("swarm", 0);
+      assignMode(mode, 0);
+      nextCycleAtMs = intervalFor(mode);
       paintBase(1);
+      paintVignette();
       if (reducedMotion) renderStaticFrame();
-      else advanceSim(0, 16, true);
+      else advanceSim(0, true);
     },
 
-    frame(tMs: number, dtMs: number) {
+    frame(tMs: number, _dtMs: number) {
       if (!ctx || reducedMotion) return;
       const light = palette?.theme === "light";
-      paintBase(light ? 0.2 : 0.17);
-      advanceSim(tMs, dtMs, true);
+      const forming = formationKind(mode) !== "swarm" && settleAmt < 0.82;
+      const dissolving = formationKind(mode) === "swarm" && tMs - modeAssignedAtMs < 1600;
+      paintBase(light ? 0.24 : forming || dissolving ? 0.28 : 0.16);
+      advanceSim(tMs, true);
     },
 
     resize(frame: KernelFrameContext) {
@@ -1125,14 +1248,16 @@ export function createSwarmEmberKernel(options: SwarmEmberKernelOptions = {}): K
       palette = frame.palette;
       applyTransform();
       buildParticles();
-      assignMode(mode, 0);
+      assignMode(mode, lastAdvanceMs ?? 0);
       paintBase(1);
+      paintVignette();
       if (reducedMotion) renderStaticFrame();
     },
 
     setTheme(_theme: ThemeName, next: KernelPalette) {
       palette = next;
       paintBase(1);
+      paintVignette();
       if (reducedMotion) renderStaticFrame();
     },
 
@@ -1145,9 +1270,7 @@ export function createSwarmEmberKernel(options: SwarmEmberKernelOptions = {}): K
     },
 
     wake(x: number, y: number, _dx: number, _dy: number, radius: number, strength: number) {
-      if (!pointer.active) {
-        pointer = { x, y, active: true };
-      }
+      if (!pointer.active) pointer = { x, y, active: true };
       const reach = radius * 2.4;
       for (const p of particles) {
         const dx = p.x - x;
@@ -1155,7 +1278,7 @@ export function createSwarmEmberKernel(options: SwarmEmberKernelOptions = {}): K
         const d2 = dx * dx + dy * dy;
         if (d2 < reach * reach && d2 > 0) {
           const d = Math.sqrt(d2);
-          const f = (1 - d / reach) * strength * 0.15;
+          const f = (1 - d / reach) * strength * 0.18;
           p.vx += (dx / d) * f;
           p.vy += (dy / d) * f;
         }
@@ -1169,6 +1292,7 @@ export function createSwarmEmberKernel(options: SwarmEmberKernelOptions = {}): K
     dispose() {
       ctx = null;
       particles = [];
+      logoSprite = null;
     },
   };
 }

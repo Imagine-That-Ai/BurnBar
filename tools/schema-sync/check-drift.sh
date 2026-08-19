@@ -44,6 +44,30 @@ node tools/schema-sync/check-hand-mirror.mjs
 echo "==> Checking hand-maintained TS surface budget…"
 node tools/schema-sync/check-legacy-budget.mjs
 
+echo "==> Checking mobile schema boundary…"
+node scripts/mobile-parity/check-mobile-schema-boundary.mjs
+
+echo "==> Checking mobile generated-consumer imports…"
+node scripts/mobile-parity/check-mobile-generated-consumers.mjs
+
+echo "==> Checking cross-language schema fixtures…"
+node scripts/mobile-parity/check-cross-language-fixtures.mjs
+
+echo "==> Checking mobile policy vectors…"
+node scripts/mobile-parity/check-mobile-policy-vectors.mjs
+
+echo "==> Checking mobile OS integration matrix…"
+node scripts/mobile-parity/check-mobile-os-integration.mjs
+
+echo "==> Checking mobile a11y/performance policy…"
+node scripts/mobile-parity/check-mobile-a11y-performance.mjs
+
+echo "==> Checking mobile release evidence scaffolding…"
+node scripts/mobile-parity/check-release-evidence.mjs
+
+echo "==> Validating mobile parity ledger (allow-blocked)…"
+node scripts/mobile-parity/validate-mobile-parity.mjs --allow-blocked
+
 echo "==> Checking Firestore collection-group index coverage…"
 node tools/firestore-indexes/check-collection-group-coverage.mjs
 

@@ -29,16 +29,7 @@
           "path": "android/app/src/main/java/com/openburnbar/data/models/TokenUsage.kt"
         }
       ],
-      "tsHandMirror": [
-        {
-          "path": "functions/src/types/legacy/quota-usage.ts",
-          "interfaces": [
-            "UsageEventDoc",
-            "QuotaSnapshotDoc",
-            "QuotaBucket"
-          ]
-        }
-      ],
+      "tsHandMirror": [],
       "tspOnlyModels": [
         "UsageRollupDoc",
         "ProviderSummary",
@@ -103,15 +94,7 @@
         "swift": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/HermesRelayModels.swift",
         "kotlin": "android/app/src/main/java/com/openburnbar/data/models/generated/HermesRelayModels.kt"
       },
-      "tsHandMirror": [
-        {
-          "path": "functions/src/types/legacy/connections.ts",
-          "interfaces": [
-            "HermesRelayRequestDoc",
-            "HermesRelayChunkDoc"
-          ]
-        }
-      ],
+      "tsHandMirror": [],
       "csharpHandMirror": [
         {
           "path": "windows/cloudsync/OpenBurnBar.CloudSync/Models/FirestoreHermesRelayModels.cs"
@@ -218,14 +201,7 @@
           ]
         }
       ],
-      "tsHandMirror": [
-        {
-          "path": "functions/src/types/legacy/connections.ts",
-          "interfaces": [
-            "ComputerUsePhoneAuthorityDoc"
-          ]
-        }
-      ],
+      "tsHandMirror": [],
       "tspOnlyModels": [
         "ComputerUseAuditExportSignerPublicKeyDoc"
       ],
@@ -247,14 +223,7 @@
         "swift": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/HostedQuotaModels.swift",
         "kotlin": "android/app/src/main/java/com/openburnbar/data/models/generated/HostedQuotaModels.kt"
       },
-      "tsHandMirror": [
-        {
-          "path": "functions/src/types/legacy/config.ts",
-          "interfaces": [
-            "EntitlementBindingDoc"
-          ]
-        }
-      ],
+      "tsHandMirror": [],
       "tspOnlyModels": [
         "EntitlementEventDoc"
       ],
@@ -297,14 +266,7 @@
         "swift": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/InsightModels.swift",
         "kotlin": "android/app/src/main/java/com/openburnbar/data/models/generated/InsightModels.kt"
       },
-      "tsHandMirror": [
-        {
-          "path": "functions/src/types/legacy/insights-spec.ts",
-          "interfaces": [
-            "InsightCanvasDoc"
-          ]
-        }
-      ],
+      "tsHandMirror": [],
       "tspOnlyModels": [
         "InsightWidgetDoc"
       ],
@@ -347,14 +309,7 @@
         "swift": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/MediaAnalyticsModels.swift",
         "kotlin": "android/app/src/main/java/com/openburnbar/data/models/generated/MediaAnalyticsModels.kt"
       },
-      "tsHandMirror": [
-        {
-          "path": "functions/src/types/legacy/media.ts",
-          "interfaces": [
-            "MediaQuotaUsageDoc"
-          ]
-        }
-      ],
+      "tsHandMirror": [],
       "tspOnlyModels": [
         "MediaSessionDailyFeatureRollup",
         "MediaSessionDailyRollupDoc",
@@ -398,6 +353,27 @@
       "csharpHandMirror": [
         {
           "path": "windows/cloudsync/OpenBurnBar.CloudSync/Models/FirestoreModelBenchmarkModels.cs"
+        }
+      ]
+    },
+    {
+      "id": "war-room",
+      "typespec": "typespec/domains/war-room.tsp",
+      "firestoreCollections": [
+        "users/{uid}/hermes_bodies/{bodyId}",
+        "users/{uid}/war_wire_grants/{pairId}"
+      ],
+      "emit": {
+        "typescript": "functions/src/types/generated/war-room.ts",
+        "swift": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/WarRoomModels.swift",
+        "kotlin": "android/app/src/main/java/com/openburnbar/data/models/generated/WarRoomModels.kt"
+      },
+      "swiftHandMirror": [
+        {
+          "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/BurnBarOriginator.swift",
+          "interfaces": [
+            "OriginatorRef"
+          ]
         }
       ]
     }

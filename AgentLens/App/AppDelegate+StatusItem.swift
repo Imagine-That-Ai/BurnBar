@@ -12,7 +12,10 @@ extension AppDelegate {
         if statusItem != nil {
             return
         }
-        let item = NSStatusBar.system.statusItem(withLength: OpenBurnBarStatusItemBrandMark.statusItemWidth)
+        // Variable length: the item is icon-only until the first scan lands a
+        // real number, then grows to hold it. The number appearing in the menu
+        // bar IS the first-run aha — a fixed square could never show it.
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = item.button {
             button.image = OpenBurnBarStatusItemBrandMark.image(
                 colorful: shouldRenderColorfulMenuBarIcon
@@ -30,6 +33,58 @@ extension AppDelegate {
         installStatusItemMouseFallback()
         observeMenuBarIconStyle()
         observeUpdateBadge()
+        observeMenuBarValue()
+    }
+
+    // MARK: - Menu-bar value (the number the product is named for)
+
+    /// Watches today's totals + the display-mode setting and renders the value
+    /// as the status-item title. Same house pattern as `observeMenuBarIconStyle`.
+    /// Until sources attach — or while today is genuinely zero — the item stays
+    /// icon-only rather than asserting "$0.00" it cannot yet back.
+    func observeMenuBarValue() {
+        guard let dataStore, let settingsManager else { return }
+        menuBarValueObservation = withObservationTracking {
+            _ = dataStore.totalCostToday
+            _ = dataStore.totalTokensToday
+            _ = settingsManager.usageDisplayMode
+            return nil as Any?
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                self.refreshMenuBarValue()
+                self.observeMenuBarValue()
+            }
+        }
+        refreshMenuBarValue()
+    }
+
+    func refreshMenuBarValue() {
+        guard let button = statusItem?.button, let dataStore, let settingsManager else { return }
+        let cost = dataStore.totalCostToday
+        let tokens = dataStore.totalTokensToday
+        guard cost > 0 || tokens > 0 else {
+            button.attributedTitle = NSAttributedString(string: "")
+            button.imagePosition = .imageOnly
+            // Clear the tooltip too. At the midnight rollover the totals return
+            // to zero and the title goes away, but a stale tooltip left behind
+            // would keep reporting YESTERDAY's number as "today" until new usage
+            // arrived — the one place the icon-only zero state could still lie.
+            button.toolTip = "OpenBurnBar — nothing burned today yet"
+            return
+        }
+        let value = settingsManager.formatUsageMetric(cost: cost, tokens: tokens)
+        // Monospaced digits so the value doesn't wobble as it counts; matches
+        // the exact string the popover renders for the same metric.
+        button.attributedTitle = NSAttributedString(
+            string: value,
+            attributes: [
+                .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium),
+                .baselineOffset: 0.5
+            ]
+        )
+        button.imagePosition = .imageLeading
+        button.toolTip = "OpenBurnBar — today: \(value)"
     }
 
     /// Watches `colorfulMenuBarIcon` and swaps the status item image live.
@@ -146,6 +201,11 @@ extension AppDelegate {
     }
 
     private func showPopover(_ sender: NSStatusBarButton) {
+        if let dataStore {
+            Task { @MainActor in
+                await dataStore.loadUsagePresentationIfNeeded()
+            }
+        }
         let popover = ensurePopover()
 
         // Fallback only: the prewarmer rebuilds content off the click path

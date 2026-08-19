@@ -24,11 +24,11 @@ public sealed class TokenUsageWriteRoundTripTests
     // caught, not merely self-consistency. All four move together whenever the
     // fixture is regenerated — see openburnbar-db-compat-vector.json, which is the
     // regeneration output these literals mirror.
-    private const string FixtureName = "openburnbar-db-compat-v61.sqlcipher";
+    private const string FixtureName = "openburnbar-db-compat-v64.sqlcipher";
     private const string ExpectedSchemaHash =
-        "15cedbf8e2d5785df963ff09ae6b5d64a4bba10d86187bad9a4cf6c0c380d698";
-    private const string ExpectedMigrationEndpoint = "v61_usage_memory";
-    private const long ExpectedMigrationCount = 62;
+        "daa8815b309cf4035183a47211eacdb0afa613b38928187f1b797654fc5c95cd";
+    private const string ExpectedMigrationEndpoint = "v64_token_usage_start_time_index";
+    private const long ExpectedMigrationCount = 65;
     private const long ExpectedUserVersion = 0;
 
     private static string FixtureSource =>

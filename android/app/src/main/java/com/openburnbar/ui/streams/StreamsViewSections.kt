@@ -102,6 +102,7 @@ internal data class StreamsViewContentState(
     val cloudSearchHits: List<CloudConversationSearchRow>,
     val isLoading: Boolean,
     val error: String?,
+    val searchFailed: Boolean,
     val isCloudMember: Boolean,
     val isDark: Boolean,
 )
@@ -254,6 +255,7 @@ internal fun StreamsViewContent(
                                     searchQuery = state.searchQuery,
                                     isLoading = state.isLoading,
                                     error = state.error,
+                                    searchFailed = state.searchFailed,
                                     onCloudHitSelected = callbacks.onCloudHitSelected,
                                     onAskHermes = { prompt -> hermesPendingPrompt?.value = prompt },
                                 ),
@@ -462,6 +464,7 @@ internal data class StreamsSessionsListContext(
     val searchQuery: String,
     val isLoading: Boolean,
     val error: String?,
+    val searchFailed: Boolean,
     val onCloudHitSelected: (CloudConversationSearchRow) -> Unit,
     val onAskHermes: (String) -> Unit,
 )
@@ -469,6 +472,17 @@ internal data class StreamsSessionsListContext(
 internal fun LazyListScope.streamsSessionsItems(ctx: StreamsSessionsListContext) {
     if (ctx.isLoading && ctx.usages.isEmpty()) {
         items(5) { ShimmerCard(height = 70) }
+        return
+    }
+    if (ctx.searchFailed) {
+        item {
+            ErrorStateView(
+                icon = Icons.Filled.Error,
+                title = "Search failed",
+                message = ctx.error ?: "Could not search sessions. Try again.",
+                onRetry = { ctx.activityStore.updateSearch(ctx.searchQuery) },
+            )
+        }
         return
     }
     if (ctx.error != null && ctx.usages.isEmpty()) {

@@ -12,22 +12,7 @@ import type { Provider, ProviderAccountStorageScope, ProviderID } from "./provid
 // Firestore: quota_snapshots/{provider}_{sourceId}
 // ---------------------------------------------------------------------------
 
-export interface QuotaBucket {
-  /** Bucket name from the provider (e.g. "tokens", "requests", "fast-calls"). */
-  name: string;
-
-  /** Used amount (same unit as limit). */
-  used?: number;
-
-  /** Granted limit, or -1 if unlimited/unknown. */
-  limit?: number;
-
-  /** Provider-reported unit label (schema-sync canon). */
-  unit?: string;
-
-  /** ISO 8601 refill moment (schema-sync canon; legacy clients may use resetsAt). */
-  resetAt?: string;
-
+export type QuotaBucket = import("../generated/usage-quota.js").QuotaBucket & {
   /** Remaining computed as max(0, limit - used) when limit >= 0. */
   remaining: number;
 
@@ -44,33 +29,16 @@ export interface QuotaBucket {
 
   /** Bucket-specific metadata from the provider. */
   meta?: Record<string, unknown>;
-}
+};
 
-export interface QuotaSnapshotDoc {
-  /** Kind of source (always "provider" today; reserved for future expansion). */
+export type QuotaSnapshotDoc = Omit<
+  import("../generated/usage-quota.js").QuotaSnapshotDoc,
+  "sourceKind" | "provider" | "providerID" | "accountStorageScope"
+> & {
   sourceKind: "provider";
-
-  /** Source identifier (e.g. "default" or a plan ID). */
-  sourceId: string;
-
-  /** Provider key. */
   provider: Provider;
-
-  /** Canonical provider catalog/cloud key. Defaults to provider for legacy docs. */
   providerID?: ProviderID;
-
-  /** Provider account this snapshot belongs to. Missing means legacy/provider-level. */
-  accountID?: string;
-
-  /** Denormalized account label at fetch time for stable display/history. */
-  accountLabel?: string;
-
-  /** Storage scope of the account that produced this snapshot. */
   accountStorageScope?: ProviderAccountStorageScope;
-
-  /** ISO 8601 timestamp when this snapshot was fetched. */
-  fetchedAt: string;
-
   /** Human-readable source label. */
   source: string;
 
@@ -100,7 +68,7 @@ export interface QuotaSnapshotDoc {
 
   /** ISO 8601 timestamp of last document update. */
   updatedAt: string;
-}
+};
 
 // ---------------------------------------------------------------------------
 // Firestore: users/{uid}/project_memory_snapshots/{docID}
@@ -367,6 +335,24 @@ export interface DeviceSummary {
   tokens: number;
 }
 
+export interface ExecutionSourceSummary {
+  sourceId: string;
+  sourceName: string;
+  totalRequests: number;
+  totalTokens: number;
+  totalCost: number;
+}
+
+export interface ComboSummary {
+  sourceId: string;
+  sourceName: string;
+  provider: Provider;
+  model: string;
+  requests: number;
+  tokens: number;
+  cost: number;
+}
+
 export interface UsageRollupDoc {
   /** Window key: "today", "7d", "30d", "90d", "all_time". */
   today: number;
@@ -390,8 +376,17 @@ export interface UsageRollupDoc {
   /** Per-device summaries. */
   deviceSummaries: DeviceSummary[];
 
+  /** Per-execution-source (agent harness) summaries. Missing on legacy docs. */
+  executionSourceSummaries?: ExecutionSourceSummary[];
+
+  /** Per-execution-source × model combo summaries. Missing on legacy docs. */
+  comboSummaries?: ComboSummary[];
+
   /** Sparse daily points for sparkline rendering: YYYY-MM-DD -> value. */
   dailyPoints: Record<string, number>;
+
+  /** Sparse per-day per-provider token split: YYYY-MM-DD -> providerID -> value. All_time only; missing on legacy docs. */
+  dailyProviderTokens?: Record<string, Record<string, number>>;
 
   /** ISO 8601 timestamp when the rollup was last computed. */
   computedAt: string;
@@ -416,6 +411,8 @@ export interface UsageCounterDimensionDoc {
   storageScope?: ProviderAccountStorageScope;
   model?: string;
   deviceId?: string;
+  executionSourceId?: string;
+  executionSourceName?: string;
   updatedAt: string;
   schemaVersion: number;
 }
@@ -475,104 +472,19 @@ export interface RollupJobDoc {
 // Firestore: users/{uid}/usage/{usageDoc}
 // ---------------------------------------------------------------------------
 
-export interface UsageEventDoc {
-  /** Provider that served the request. */
+export type UsageEventDoc = Omit<
+  import("../generated/usage-quota.js").UsageEventDoc,
+  "provider" | "providerID" | "providerAccountSource"
+> & {
   provider: Provider;
-
-  /** Canonical provider account namespace. Defaults to provider when absent. */
   providerID?: ProviderID;
-
-  /** Optional provider account attribution. Missing means unattributed/legacy. */
-  providerAccountID?: string;
-
-  /** Denormalized account label at ingestion time. */
-  providerAccountLabel?: string;
-
-  /** Account storage/source class. */
   providerAccountSource?: ProviderAccountStorageScope;
-
-  /** Model identifier. */
-  model?: string;
-
-  /** Provider/session identifier used to collapse idempotent re-uploads. */
-  sessionId?: string;
-
-  /**
-   * Vault-sealed project name (privacy-leak-remediation-2026-06-02 §1). The
-   * legacy plaintext `projectName` is no longer written by updated clients — the
-   * working-dir/project label is private text the server must not read, so it is
-   * AES-256-GCM-sealed on device. Absent on legacy docs (read with a fallback).
-   */
   sealedProjectName?: CloudVaultSealedTextDoc;
-
-  /**
-   * Opaque vault-keyed HMAC trapdoor of the normalized project name, so clients
-   * can group usage by project without decrypting every doc. Carries no
-   * plaintext; the server cannot recover the name from it.
-   */
   projectKeyHash?: string;
-
-  /** Device that originated the request. */
-  deviceId?: string;
-
-  /** Source device identifier used by synced records from another device. */
-  sourceDeviceId?: string;
-
-  /** Stable identity of the product surface that executed the request. */
-  executionSourceID?: string;
-
-  /** User-facing execution source label. */
-  executionSourceName?: string;
-
-  /** Execution surface class (IDE, CLI, desktop app, service, or automation). */
-  executionSourceKind?: string;
-
-  /** Confidence of the execution-source attribution. */
-  executionSourceConfidence?: string;
-
-  /** Number of input tokens. */
-  inputTokens?: number;
-
-  /** Number of output tokens. */
-  outputTokens?: number;
-
-  /** Number of cache creation/write tokens. */
   cacheCreationTokens?: number;
-
-  /** Number of cache read tokens. */
-  cacheReadTokens?: number;
-
-  /** Number of cache write tokens (schema-sync canon). */
-  cacheWriteTokens?: number;
-
-  /** Number of reasoning/thinking tokens. */
   reasoningTokens?: number;
-
-  /** Total tokens as written by legacy clients. */
-  totalTokens?: number;
-
-  /** Estimated cost in USD (optional, canonical field). */
   costUsd?: number;
-
-  /** Schema-sync alias for {@link costUsd}. */
-  costUSD?: number;
-
-  /** ISO 4217 currency code when cost is present (schema-sync canon). */
-  currency?: string;
-
-  /** Cost in USD (legacy field written by desktop UsageSyncService). */
   cost?: number;
-
-  /** ISO 8601 ingestion timestamp (schema-sync canon). */
-  recordedAt: string;
-
-  /** Event classification (schema-sync canon). */
-  eventKind?: string;
-
-  /** Idempotency key for duplicate suppression (schema-sync canon). */
-  idempotencyKey?: string;
-
-  /** Parser/source confidence used to choose the best copy of a duplicate. */
   provenanceConfidence?: string;
 
   /** ISO 8601 timestamp of the event. */
@@ -592,4 +504,4 @@ export interface UsageEventDoc {
 
   /** Schema version. */
   schemaVersion: number;
-}
+};

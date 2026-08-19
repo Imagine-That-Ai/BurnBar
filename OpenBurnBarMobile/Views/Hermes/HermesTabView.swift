@@ -591,7 +591,7 @@ struct HermesChatView: View {
             }
         } label: {
             Image(systemName: "ellipsis")
-                .font(.system(size: 15, weight: .semibold))
+                .font(MobileTheme.Typography.headline)
                 .foregroundStyle(MobileTheme.Colors.textPrimary)
                 .frame(width: 32, height: 32)
                 .contentShape(Circle())
@@ -866,7 +866,7 @@ struct HermesChatView: View {
             } label: {
                 HStack(spacing: 10) {
                     Image(systemName: "macbook.and.iphone")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(MobileTheme.Typography.caption)
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Use \(relay.displayName)")
                             .font(MobileTheme.Typography.caption)
@@ -879,7 +879,7 @@ struct HermesChatView: View {
                     }
                     Spacer(minLength: 8)
                     Image(systemName: "arrow.right.circle.fill")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(MobileTheme.Typography.caption)
                 }
                 .foregroundStyle(MobileTheme.hermesAureate)
                 .padding(.horizontal, 12)
@@ -925,7 +925,7 @@ struct HermesChatView: View {
     private func runtimeChip(icon: String, label: String) -> some View {
         HStack(spacing: 5) {
             Image(systemName: icon)
-                .font(.system(size: 11, weight: .semibold))
+                .font(MobileScaledFont.system(size: 11, weight: .semibold))
             Text(label)
                 .lineLimit(1)
                 .font(MobileTheme.Typography.tiny)
@@ -946,15 +946,15 @@ struct HermesChatView: View {
         let label = FriendlyModelName.format(option?.displayName ?? fallbackModel ?? "Choose model")
         return HStack(spacing: 5) {
             Text("Hermes")
-                .font(.system(size: 16, weight: .semibold))
+                .font(MobileTheme.Typography.headline)
                 .foregroundStyle(MobileTheme.Colors.textPrimary)
             Text(label)
-                .font(.system(size: 16, weight: .regular))
+                .font(MobileTheme.Typography.body)
                 .foregroundStyle(MobileTheme.Colors.textSecondary)
                 .lineLimit(1)
                 .truncationMode(.middle)
             Image(systemName: "chevron.down")
-                .font(.system(size: 11, weight: .semibold))
+                .font(MobileScaledFont.system(size: 11, weight: .semibold))
                 .foregroundStyle(MobileTheme.Colors.textMuted)
         }
         .frame(maxWidth: 230)
@@ -1000,7 +1000,7 @@ struct HermesChatView: View {
     private func contextChip(icon: String, label: String, value: String) -> some View {
         HStack(spacing: 5) {
             Image(systemName: icon)
-                .font(.system(size: 11, weight: .semibold))
+                .font(MobileScaledFont.system(size: 11, weight: .semibold))
                 .foregroundStyle(MobileTheme.Colors.textMuted)
             Text(label)
                 .font(MobileTheme.Typography.tiny)
@@ -1107,7 +1107,7 @@ struct HermesChatView: View {
             }
         } label: {
             Image(systemName: "plus")
-                .font(.system(size: 19, weight: .medium))
+                .font(MobileScaledFont.system(size: 19, weight: .medium))
                 .foregroundStyle(service.isStreaming ? MobileTheme.Colors.textMuted : MobileTheme.Colors.textSecondary)
                 .frame(width: 34, height: 34)
                 .contentShape(Circle())
@@ -1179,16 +1179,16 @@ struct HermesChatView: View {
                     .fill(sendDisabled
                           ? AnyShapeStyle(MobileTheme.Colors.surfaceElevated.opacity(0.8))
                           : AnyShapeStyle(MobileTheme.Colors.textPrimary))
-                    .frame(width: 32, height: 32)
+                    .frame(width: 44, height: 44)
                 Image(systemName: service.isStreaming ? "stop.fill" : "arrow.up")
-                    .font(.system(size: service.isStreaming ? 13 : 15, weight: .semibold))
+                    .font(MobileScaledFont.system(size: service.isStreaming ? 13 : 15, weight: .semibold, relativeTo: .body))
                     .foregroundStyle(sendDisabled ? MobileTheme.Colors.textMuted : MobileTheme.Colors.background)
             }
-            .frame(width: 34, height: 34)
+            .frame(minWidth: 44, minHeight: 44)
         }
         .buttonStyle(.plain)
         .disabled(sendDisabled)
-        .accessibilityLabel(service.isStreaming ? "Stop generating" : "Send")
+        .accessibilityLabel(MobileAccessibilityLabelPolicy.stopButton(isStreaming: service.isStreaming))
     }
 
     private var sendDisabled: Bool {

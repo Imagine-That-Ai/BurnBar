@@ -53,7 +53,14 @@ extension ControlPlaneStore {
     /// the worker can recompute provenance without a second store handle. Tool/system
     /// rows are excluded: only user/assistant turns are citable provenance (G8).
     func fetchChatTranscriptForExtraction(threadID: String) async throws -> [ChatTranscriptMessage] {
-        try await dbQueue.read { db in
+        // The agent-corpus branch: a prefixed thread id reads the indexed
+        // `conversations` row (28 providers' sessions) and splits it into
+        // deterministic citable turns. Same seam, second source — the extractor
+        // and the provenance-recomputing worker stay source-agnostic.
+        if let conversationID = AgentConversationExtractionSource.conversationID(fromThreadID: threadID) {
+            return try await fetchAgentConversationTranscriptForExtraction(conversationID: conversationID)
+        }
+        return try await dbQueue.read { db in
             let rows = try Row.fetchAll(
                 db,
                 sql: """
@@ -76,6 +83,35 @@ extension ControlPlaneStore {
         }
     }
 
+    /// Fetch an indexed agent conversation as extraction turns. Empty when the
+    /// conversation is missing, tombstoned, or has no extractable text.
+    func fetchAgentConversationTranscriptForExtraction(conversationID: String) async throws -> [ChatTranscriptMessage] {
+        try await dbQueue.read { db in
+            guard let row = try Row.fetchOne(
+                db,
+                sql: """
+                SELECT id, fullText, startTime, endTime
+                FROM conversations
+                WHERE id = ? AND deletedAt IS NULL
+                LIMIT 1
+                """,
+                arguments: [conversationID]
+            ),
+                  let id = row["id"] as? String,
+                  let fullText = row["fullText"] as? String else {
+                return []
+            }
+            let anchor = OpenBurnBarDatabase.parseDateValue(row["endTime"])
+                ?? OpenBurnBarDatabase.parseDateValue(row["startTime"])
+                ?? Date(timeIntervalSince1970: 0)
+            return AgentConversationExtractionSource.splitTranscript(
+                conversationID: id,
+                fullText: fullText,
+                anchoredAt: anchor
+            )
+        }
+    }
+
     /// Fetch a single citable source message by id, scoped to the job's thread, for
     /// worker-side provenance recomputation (PR-D1 must-fix #1/#3). Returns nil when the
     /// message is absent or not a user/assistant turn — the caller then drops the
@@ -84,7 +120,15 @@ extension ControlPlaneStore {
         threadID: String,
         messageID: String
     ) async throws -> ChatTranscriptMessage? {
-        try await dbQueue.read { db in
+        // Conversation-sourced citations resolve against the same deterministic
+        // turn split the extractor prompted with; an id the split no longer
+        // produces (the session file grew mid-job) returns nil and the caller
+        // drops the citation — never fabricates provenance.
+        if AgentConversationExtractionSource.conversationID(fromThreadID: threadID) != nil {
+            let transcript = try await fetchChatTranscriptForExtraction(threadID: threadID)
+            return transcript.first { $0.id == messageID }
+        }
+        return try await dbQueue.read { db in
             guard let row = try Row.fetchOne(
                 db,
                 sql: """

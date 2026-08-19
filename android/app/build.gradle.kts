@@ -56,7 +56,7 @@ plugins {
 
 val openBurnBarAppVersionName =
     providers.gradleProperty("openBurnBarAppVersionName")
-        .orElse("1.0.36")
+        .orElse("1.0.40")
 fun Any?.asJsonMap(): Map<*, *> = this as? Map<*, *> ?: emptyMap<Any, Any>()
 fun Any?.asJsonList(): List<*> = this as? List<*> ?: emptyList<Any>()
 
@@ -253,7 +253,7 @@ android {
         applicationId = "com.openburnbar"
         minSdk = 26
         targetSdk = 35
-        versionCode = 47
+        versionCode = 48
         versionName = openBurnBarAppVersionName.get()
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -743,6 +743,7 @@ dependencies {
     // Real org.json on the JVM test classpath so parsers can run without an
     // emulator (Android's bundled JSONObject is stubbed in unit tests).
     testImplementation("org.json:json:20240303")
+    testImplementation("com.google.code.gson:gson:2.11.0")
     // Ed25519 signer for the Hermes iroh transport tests only — production
     // code is verify-only via Tink. Same lib + version the relay module's
     // test classpath uses.

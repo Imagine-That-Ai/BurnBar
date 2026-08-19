@@ -1,0 +1,74 @@
+{
+  "generatedType": "ProviderAccountDoc",
+  "pass": [
+    {
+      "id": "happy",
+      "document": {
+        "id": "acct-1",
+        "providerID": "openai",
+        "label": "Work",
+        "status": "connected",
+        "credentialKind": "token",
+        "storageScope": "cloud_refreshable",
+        "redactedLabel": "sk-…abcd",
+        "isDefault": true,
+        "sortKey": 0,
+        "schemaVersion": 1,
+        "createdAt": "2026-08-17T12:00:00.000Z",
+        "updatedAt": "2026-08-17T12:00:00.000Z"
+      }
+    },
+    {
+      "id": "optional-absent",
+      "document": {
+        "id": "acct-1",
+        "providerID": "openai",
+        "label": "Work",
+        "status": "connected",
+        "credentialKind": "token",
+        "storageScope": "local_only",
+        "redactedLabel": "local",
+        "isDefault": false,
+        "sortKey": 1,
+        "schemaVersion": 1,
+        "createdAt": "2026-08-17T12:00:00.000Z",
+        "updatedAt": "2026-08-17T12:00:00.000Z"
+      }
+    }
+  ],
+  "fail": [
+    {
+      "id": "unknown-status-enum",
+      "document": {
+        "id": "acct-1",
+        "providerID": "openai",
+        "label": "Work",
+        "status": "maybe",
+        "credentialKind": "token",
+        "storageScope": "local_only",
+        "redactedLabel": "local",
+        "isDefault": false,
+        "sortKey": 1,
+        "schemaVersion": 1,
+        "createdAt": "2026-08-17T12:00:00.000Z",
+        "updatedAt": "2026-08-17T12:00:00.000Z"
+      }
+    },
+    {
+      "id": "missing-id",
+      "document": {
+        "providerID": "openai",
+        "label": "Work",
+        "status": "connected",
+        "credentialKind": "token",
+        "storageScope": "local_only",
+        "redactedLabel": "local",
+        "isDefault": false,
+        "sortKey": 1,
+        "schemaVersion": 1,
+        "createdAt": "2026-08-17T12:00:00.000Z",
+        "updatedAt": "2026-08-17T12:00:00.000Z"
+      }
+    }
+  ]
+}

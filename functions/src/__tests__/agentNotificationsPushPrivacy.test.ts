@@ -82,4 +82,11 @@ describe("buildFcmMessage — push privacy", () => {
     const msg = buildFcmMessage({ event: makeEvent(), device: makeDevice() });
     expect(msg.data?.event_id).toBe("evt-123");
   });
+
+  it("stamps uid and expires_at_millis on every fan-out fixture", () => {
+    const msg = buildFcmMessage({ event: makeEvent(), device: makeDevice() });
+    expect(msg.data?.uid).toBe("user-123");
+    expect(msg.data?.expires_at_millis).toMatch(/^\d+$/);
+    expect(Number(msg.data?.expires_at_millis)).toBeGreaterThan(0);
+  });
 });

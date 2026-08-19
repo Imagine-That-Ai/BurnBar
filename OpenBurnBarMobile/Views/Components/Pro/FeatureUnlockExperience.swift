@@ -74,7 +74,7 @@ enum TierPricing {
     static func priceLine(for tier: CloudTier, store: HostedQuotaSubscriptionStore?) -> String? {
         guard let id = entryProductID(for: tier),
               let catalog = OpenBurnBarProductCatalog.product(for: id) else { return nil }
-        let price = store?.displayPrice(for: catalog) ?? catalog.fallbackDisplayPrice
+        let price = store?.displayPrice(for: catalog) ?? MobileStoreEntitlementPolicy.unavailablePriceLabel
         return "From \(price)/mo"
     }
 }

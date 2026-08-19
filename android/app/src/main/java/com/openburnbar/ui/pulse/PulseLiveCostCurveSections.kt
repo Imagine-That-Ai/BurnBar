@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.openburnbar.data.models.TokenUsage
 import com.openburnbar.data.models.UsageDisplayMode
+import com.openburnbar.data.policy.MobileAccessibilityLabelPolicy
 import com.openburnbar.ui.theme.AuroraColors
 import kotlin.math.max
 
@@ -137,7 +138,10 @@ internal fun PulseLiveCostEmptyCaption(scope: PulseTimelineScope, accent: Color)
         ) {
             Icon(
                 imageVector = Icons.Filled.Timeline,
-                contentDescription = null,
+                contentDescription = MobileAccessibilityLabelPolicy.chart(
+                    "Live cost curve",
+                    emptyMessage(scope),
+                ),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(11.dp),
             )

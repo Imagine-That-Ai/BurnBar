@@ -17,7 +17,7 @@ The public git history begins in April 2026 with a curated extraction from a pri
 
 ## Era 3 — Mercury media and mobile parity (May 2026, early)
 
-- **2026-05-16**: Android reached full iOS parity — Hermes Square, messaging, iroh transport, Mercury Media.
+- **2026-05-16**: Android reached source-complete iOS feature coverage — Hermes Square, messaging, iroh transport, Mercury Media. Historical/`rebind-required`; see `docs/mobile-parity/mobile-parity-ledger.md`.
 - Key decisions: UniFFI for single Rust crate → XCFramework + AAR, Ed25519 pairing, Android incoming-call via `Notification.CallStyle`, per-partner save preferences.
 
 ## Era 4 — Computer Use Phases 8–13 (May 2026, mid)

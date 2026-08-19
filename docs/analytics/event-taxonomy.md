@@ -240,6 +240,7 @@ who emits what.
 | `chat.tool.invoked`            | primary_action | `tool_name` (closed tool bucket; never raw custom names or args)       |
 | `chat.backend.switched`        | primary_action | `from_backend`, `to_backend`                                          |
 | `chat.model.selected`          | primary_action | `backend`, `model_source`                                            |
+| `chat.persona.selected`        | primary_action | `backend`, `persona_id` (closed app-authored set; never the prompt body) |
 | `chat.attachment.added`        | primary_action | `attachment_kind` (`file`\|`image`), `attachment_count_bucket`        |
 | `chat.attachment.failed`       | error          | `error_kind`                                                          |
 | `chat.history.cleared`         | primary_action | —                                                                     |

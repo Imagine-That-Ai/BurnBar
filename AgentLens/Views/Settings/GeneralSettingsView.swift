@@ -222,13 +222,21 @@ struct OperatorModelDetailView: View {
                         .foregroundStyle(DesignSystem.Colors.textMuted)
 
                     Button {
-                        WindowManager.shared.openOnboardingWizard(
-                            dataStore: dataStore,
-                            aggregator: nil,
-                            settingsManager: settingsManager,
-                            chatController: nil,
-                            onOpenDashboard: {}
-                        )
+                        // Route through the fully-wired entry. The old direct
+                        // call passed aggregator: nil, which parked the wizard's
+                        // scan step on "Scanning…" forever — a dead end on the
+                        // one screen meant to rescue a lost user.
+                        if let openWizard = AppCommandRouter.shared.openOnboardingWizard {
+                            openWizard()
+                        } else {
+                            WindowManager.shared.openOnboardingWizard(
+                                dataStore: dataStore,
+                                aggregator: nil,
+                                settingsManager: settingsManager,
+                                chatController: nil,
+                                onOpenDashboard: {}
+                            )
+                        }
                     } label: {
                         Label("Run Setup Wizard", systemImage: "wand.and.stars")
                     }

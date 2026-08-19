@@ -48,6 +48,9 @@ struct RootTabView: View {
     @State private var missionConsoleHost = MobileMissionConsoleHost()
     @State private var isHermesKeyboardVisible = false
     @State private var isCloudStoreChromeHidden = false
+    @State private var showMissionConsole = false
+    @State private var showMercuryCall = false
+    @State private var pendingMercuryConnectionId: String?
     /// Shared OpenBurnBar Cloud / Hosted Quota Sync store, hoisted here so a
     /// single StoreKit observer feeds the Settings row, the Pulse upsell
     /// banner, and the dedicated `CloudStoreView`.
@@ -160,7 +163,10 @@ struct RootTabView: View {
         .task(id: authStore.currentIdentity?.uid) { applyHermesE2EPromptIfNeeded() }
         .task(id: authStore.currentIdentity?.uid) { applyComputerUseE2EProofIfNeeded() }
         .task { missionActivityCenter.start() }
-        .task { missionConsoleHost.start() }
+        .task {
+            missionConsoleHost.start()
+            claimPendingOsRouteIfNeeded()
+        }
         .task { liveStagePresenter.observe(liveStageSingleton.state) }
         .task { liveStageSingleton.installLiveActivityIntentRouter() }
         // Claims a push tap that landed BEFORE this view existed — a cold
@@ -218,6 +224,23 @@ struct RootTabView: View {
         .onReceive(NotificationCenter.default.publisher(for: .init("ShowSettings"))) { _ in
             openSettingsRoute()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .init("NavigateToDashboard"))) { _ in
+            selection = .pulse
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .init("ShowBurnTab"))) { _ in
+            selection = .burn
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .init("ShowMercuryCall"))) { notification in
+            guard case .mercuryCall = MobilePendingOsRouteStore.shared.consume() else { return }
+            presentMercuryCall(connectionId: notification.userInfo?["connectionId"] as? String)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .init("ShowMissionConsole"))) { notification in
+            guard case .mission = MobilePendingOsRouteStore.shared.consume() else { return }
+            presentMissionConsole(missionId: notification.userInfo?["missionId"] as? String)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .init("ShowStreamsTab"))) { _ in
+            selection = .streams
+        }
         .onReceive(NotificationCenter.default.publisher(for: HermesGatewayPairingDeepLink.notificationName)) { notification in
             openHermesGatewayPairingRoute(notification)
         }
@@ -229,6 +252,16 @@ struct RootTabView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .cloudStoreChromeVisibilityChanged)) { notification in
             isCloudStoreChromeHidden = notification.object as? Bool ?? false
+        }
+        .sheet(isPresented: $showMissionConsole) {
+            MobileMissionConsoleSheet(host: missionConsoleHost) {
+                showMissionConsole = false
+            }
+        }
+        .sheet(isPresented: $showMercuryCall) {
+            MercuryRoutedIncomingSheet(connectionId: pendingMercuryConnectionId) {
+                showMercuryCall = false
+            }
         }
     }
 
@@ -484,6 +517,30 @@ struct RootTabView: View {
     private func claimPendingAIInboxDeepLink() {
         guard let itemID = AIInboxDeepLink.consumePendingItemID() else { return }
         openAIInboxRoute(itemID: itemID)
+    }
+
+    private func claimPendingOsRouteIfNeeded() {
+        switch MobilePendingOsRouteStore.shared.consume() {
+        case .mercuryCall(let connectionId):
+            presentMercuryCall(connectionId: connectionId)
+        case .mission(let missionId):
+            presentMissionConsole(missionId: missionId)
+        case nil:
+            break
+        }
+    }
+
+    private func presentMercuryCall(connectionId: String?) {
+        pendingMercuryConnectionId = connectionId
+        showMercuryCall = true
+    }
+
+    private func presentMissionConsole(missionId: String?) {
+        if let missionId, !missionId.isEmpty {
+            missionConsoleHost.focusMission(id: missionId)
+        }
+        selection = .hermes
+        showMissionConsole = true
     }
 
     private func openHermesGatewayPairingRoute(_: Notification) {

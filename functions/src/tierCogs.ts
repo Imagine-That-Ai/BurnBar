@@ -33,6 +33,7 @@ interface TierInputs {
   dailyBaseCogsUSD: number;
   mediaRelayCogsUSD?: number;
   hostedVisionCogsUSD?: number;
+  hostedInsightsCogsUSD?: number;
   netRevenuePerSubscriberDayUSD: number;
 }
 
@@ -58,6 +59,7 @@ interface TierCogsDailyDoc {
   cloudPro: TierCogsBucket;
   mediaRelayCogsUSD: number;
   hostedVisionCogsUSD: number;
+  hostedInsightsCogsUSD: number;
   updatedAt: Timestamp;
   schemaVersion: 1;
 }
@@ -76,7 +78,8 @@ function buildBucket(input: TierInputs): TierCogsBucket {
   const cogsUSD = money(
     input.activeSubscribers * input.dailyBaseCogsUSD +
       (input.mediaRelayCogsUSD ?? 0) +
-      (input.hostedVisionCogsUSD ?? 0),
+      (input.hostedVisionCogsUSD ?? 0) +
+      (input.hostedInsightsCogsUSD ?? 0),
   );
   return {
     activeSubscribers: input.activeSubscribers,
@@ -96,6 +99,7 @@ export function buildTierCogsDailyDoc(input: TierCogsDailyInput, updatedAt: Time
     cloudPro: buildBucket(input.cloudPro),
     mediaRelayCogsUSD: money(input.cloudPro.mediaRelayCogsUSD ?? 0),
     hostedVisionCogsUSD: money(input.cloudPro.hostedVisionCogsUSD ?? 0),
+    hostedInsightsCogsUSD: money(input.cloud.hostedInsightsCogsUSD ?? 0),
     updatedAt,
     schemaVersion: 1,
   };
@@ -140,6 +144,16 @@ async function hostedVisionCogsForDay(dayKey: string): Promise<number> {
   return numberField(snap.data(), "visionModelSpendUSD") ?? 0;
 }
 
+/**
+ * Owner-funded OpenRouter spend from `insightsHostedAnswer`, written per day by
+ * the callable itself. Before this line existed the margin dashboard was blind
+ * to the one hosted path where BurnBar pays for inference directly.
+ */
+async function hostedInsightsCogsForDay(dayKey: string): Promise<number> {
+  const snap = await getFirestore().doc(`ops/hosted_insights_daily_rollups/days/${dayKey}`).get();
+  return numberField(snap.data(), "spendUSD") ?? 0;
+}
+
 export const computeTierCogsDaily = onSchedule(
   {
     schedule: "15 1 * * *",
@@ -149,12 +163,14 @@ export const computeTierCogsDaily = onSchedule(
   },
   async () => {
     const dayKey = previousUtcDay(new Date());
-    const [cloudSubscribers, cloudProSubscribers, mediaRelayCogsUSD, hostedVisionCogsUSD] = await Promise.all([
-      countActiveEntitlements(CLOUD_ENTITLEMENT_ID),
-      countActiveEntitlements(CLOUD_PRO_ENTITLEMENT_ID),
-      mediaRelayCogsForDay(dayKey),
-      hostedVisionCogsForDay(dayKey),
-    ]);
+    const [cloudSubscribers, cloudProSubscribers, mediaRelayCogsUSD, hostedVisionCogsUSD, hostedInsightsCogsUSD] =
+      await Promise.all([
+        countActiveEntitlements(CLOUD_ENTITLEMENT_ID),
+        countActiveEntitlements(CLOUD_PRO_ENTITLEMENT_ID),
+        mediaRelayCogsForDay(dayKey),
+        hostedVisionCogsForDay(dayKey),
+        hostedInsightsCogsForDay(dayKey),
+      ]);
 
     const doc = buildTierCogsDailyDoc(
       {
@@ -162,6 +178,9 @@ export const computeTierCogsDaily = onSchedule(
         cloud: {
           activeSubscribers: cloudSubscribers,
           dailyBaseCogsUSD: CLOUD_DAILY_BASE_COGS_USD,
+          // Hosted answers are gated on the Cloud (`burnbar_pro`) entitlement,
+          // so their inference spend is a Cloud-tier COGS line.
+          hostedInsightsCogsUSD,
           netRevenuePerSubscriberDayUSD: (CLOUD_MONTHLY_PRICE_USD * STORE_NET_REVENUE_FACTOR) / 30,
         },
         cloudPro: {

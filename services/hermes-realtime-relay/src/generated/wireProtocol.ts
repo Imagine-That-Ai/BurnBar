@@ -16,7 +16,7 @@ export const HERMES_ROLE_HEADER_NAME = "X-OpenBurnBar-Relay-Role" as const;
 export const HERMES_HOST_ROLE_HEADER_VALUE = "host" as const;
 export const HERMES_CLIENT_ROLE_HEADER_VALUE = "client" as const;
 
-/** Every frame type in the protocol (42 total). */
+/** Every frame type in the protocol (50 total). */
 export type HermesFrameType =
   | "host.register"
   | "host.ready"
@@ -59,7 +59,15 @@ export type HermesFrameType =
   | "remote_unlock.result"
   | "remote_unlock.denied"
   | "control.system.permission.request"
-  | "control.system.permission.status";
+  | "control.system.permission.status"
+  | "war.hello"
+  | "war.hello.ack"
+  | "war.fleet.snapshot"
+  | "war.dispatch"
+  | "war.dispatch.ack"
+  | "war.stream.chunk"
+  | "war.stream.complete"
+  | "war.denied";
 
 export const HERMES_FRAME_TYPES: readonly HermesFrameType[] = [
   "host.register",
@@ -104,6 +112,14 @@ export const HERMES_FRAME_TYPES: readonly HermesFrameType[] = [
   "remote_unlock.denied",
   "control.system.permission.request",
   "control.system.permission.status",
+  "war.hello",
+  "war.hello.ack",
+  "war.fleet.snapshot",
+  "war.dispatch",
+  "war.dispatch.ack",
+  "war.stream.chunk",
+  "war.stream.complete",
+  "war.denied",
 ];
 
 /** The 9 frame types the Cloud Run WebSocket relay validates and multiplexes. */

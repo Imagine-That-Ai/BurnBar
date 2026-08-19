@@ -12,11 +12,18 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 from typing import Any
+
+
+MARKETING_VERSION_PATTERN = re.compile(
+    r'^\s+MARKETING_VERSION:\s*"?([0-9]+(?:\.[0-9]+)+)"?',
+    re.MULTILINE,
+)
 
 
 APPROVED_STATUS = "approved"
@@ -409,6 +416,80 @@ def validate_legal_release_review(
                     )
 
     return errors
+
+
+def marketing_version_release_tag(repo_root: Path) -> str:
+    project_yml = repo_root / "project.yml"
+    if not project_yml.is_file():
+        raise FileNotFoundError(f"project.yml is missing: {project_yml}")
+    body = project_yml.read_text(encoding="utf-8")
+    match = MARKETING_VERSION_PATTERN.search(body)
+    if match is None:
+        raise ValueError("project.yml must declare MARKETING_VERSION")
+    return f"v{match.group(1)}"
+
+
+def release_tag_sort_key(tag: str) -> tuple[int, ...]:
+    if not isinstance(tag, str) or not tag.startswith("v"):
+        raise ValueError(f"release tag must start with 'v': {tag!r}")
+    parts = tag[1:].split(".")
+    if not parts or not all(part.isdigit() for part in parts):
+        raise ValueError(f"release tag must be vMAJOR.MINOR.PATCH: {tag!r}")
+    return tuple(int(part) for part in parts)
+
+
+def compare_release_tags(left: str, right: str) -> int:
+    left_key = release_tag_sort_key(left)
+    right_key = release_tag_sort_key(right)
+    if left_key < right_key:
+        return -1
+    if left_key > right_key:
+        return 1
+    return 0
+
+
+def validate_owner_emergency_packet_release_binding(
+    data: Any,
+    *,
+    repo_root: Path,
+) -> list[str]:
+    """Validate owner-emergency packet releaseTag against project.yml.
+
+    The packet may name the committed marketing version or a forward semver
+    successor being prepared for the next honest protected-main cut. Tags behind
+    the committed marketing version are rejected.
+    """
+    if not isinstance(data, dict):
+        return ["owner emergency packet binding root must be a JSON object"]
+
+    status = data.get("reviewStatus") or data.get("status")
+    if status != OWNER_ATTESTED_SOFT_APPROVAL_STATUS:
+        return []
+
+    repo = data.get("repo")
+    if not isinstance(repo, dict):
+        return ["repo must be an object for owner emergency approval packet binding"]
+
+    packet_tag = repo.get("releaseTag")
+    if not isinstance(packet_tag, str) or not packet_tag.strip():
+        return ["repo.releaseTag must be a non-empty string for owner emergency approval"]
+
+    try:
+        source_tag = marketing_version_release_tag(repo_root)
+    except (FileNotFoundError, ValueError) as exc:
+        return [f"owner emergency packet binding: {exc}"]
+
+    try:
+        relation = compare_release_tags(packet_tag, source_tag)
+    except ValueError as exc:
+        return [f"owner emergency packet binding: {exc}"]
+
+    if relation < 0:
+        return [
+            "repo.releaseTag must not be behind the committed marketing version "
+            f"{source_tag!r}; found stale {packet_tag!r}"
+        ]
+    return []
 
 
 def validate_owner_attested_soft_approval(

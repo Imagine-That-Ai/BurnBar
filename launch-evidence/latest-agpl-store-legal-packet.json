@@ -1,26 +1,26 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-17T17:02:34Z",
+  "generatedAt": "2026-08-18T15:08:15Z",
   "status": "owner_attested_soft_approval",
   "reviewStatus": "owner_attested_soft_approval",
   "repo": {
     "remote": "origin",
     "ownerRepo": "Imagine-That-Ai/BurnBar",
-    "branch": "codex/release-v1.0.36-functions-gate",
-    "originMain": "3f127f7da28f590441c46e0674dac7f27a04b7aa",
-    "releaseTag": "v1.0.36"
+    "branch": "main",
+    "originMain": "c7fe21697b6750077e3c51df3d80765ab17707a7",
+    "releaseTag": "v1.0.40"
   },
-  "purpose": "Owner-attested emergency release evidence for the v1.0.36 public release boundary. This cut supersedes the unpublished immutable v1.0.35 candidate after its strict Functions gate exposed a stale Firestore rules assertion, keeps the npm installer bound to the live signed feed, and restores an honest current macOS public download. The release must be cut from protected main only.",
+  "purpose": "Owner-attested emergency release evidence for the v1.0.40 public release boundary. This cut supersedes the unpublished immutable v1.0.36 candidate and the failed v1.0.38 preflight after the protected-main release lane was repaired, keeps the npm installer bound to the live signed feed, and restores an honest current macOS public download. The release must be cut from protected main only.",
   "ownerAttestation": {
     "ownerName": "Alberto Nunez",
     "ownerGitHub": "Ajnunezg",
     "ownerRole": "release_owner",
-    "attestedAt": "2026-08-17T17:02:34Z",
+    "attestedAt": "2026-08-18T15:08:15Z",
     "counselName": "Heather Meeker",
     "approvalType": "soft_approval",
-    "emergencyReason": "Publish the v1.0.36 protected-main release after the immutable v1.0.35 candidate failed before packaging on a stale release-only Functions assertion, so the website and npm app installer stop resolving to the stale v1.0.29 macOS artifact while signed, notarized, and protected release requirements remain intact.",
-    "approvalBoundary": "Emergency owner-attested soft approval for the v1.0.36 public macOS direct-download, app-store/TestFlight, Google Play, hosted gateway, and commercial distribution release train while the signed counsel packet is collected.",
-    "ownerStatement": "As release owner, Alberto Nunez attests that Heather Meeker's existing soft approval applies to this v1.0.36 release boundary and authorizes the emergency owner-approved public release lane.",
+    "emergencyReason": "Publish the v1.0.40 protected-main release after the immutable v1.0.36 candidate failed before packaging and the canonical v1.0.38 release preflight found stale tag-bound emergency evidence, so the website and npm app installer stop resolving to the stale v1.0.29 macOS artifact while signed, notarized, and protected release requirements remain intact.",
+    "approvalBoundary": "Emergency owner-attested soft approval for the v1.0.40 public macOS direct-download, app-store/TestFlight, Google Play, hosted gateway, and commercial distribution release train while the signed counsel packet is collected.",
+    "ownerStatement": "As release owner, Alberto Nunez attests that Heather Meeker's existing soft approval applies to this v1.0.40 release boundary and authorizes the emergency owner-approved public release lane.",
     "followUpRequired": true
   },
   "scope": [
@@ -57,9 +57,9 @@
   ],
   "commandEvidence": [
     {
-      "command": "python3 scripts/ci/check_burnbar_release_preflight.py --allow-owner-emergency-approval --expected-release-tag v1.0.36",
-      "purpose": "Validate the bounded owner-emergency v1.0.36 release lane without claiming signed external-counsel approval"
+      "command": "python3 scripts/ci/check_burnbar_release_preflight.py --allow-owner-emergency-approval --allow-owner-emergency-runtime-hold --expected-release-tag v1.0.40",
+      "purpose": "Validate the bounded owner-emergency v1.0.40 release lane without claiming signed external-counsel approval"
     }
   ],
-  "notes": "Emergency approval is owner-attested soft approval, not a detached counsel signature. Keep the signed-counsel gate intact and replace this emergency packet with signed evidence when available."
+  "notes": "Emergency approval is owner-attested soft approval, not a detached counsel signature. Keep the signed-counsel gate intact and replace this emergency packet with signed evidence when available. v1.0.40 is a new immutable successor; existing v1.0.36, v1.0.37, and v1.0.38 tags remain untouched."
 }

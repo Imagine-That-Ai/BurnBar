@@ -3,7 +3,13 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SMOKE_DIR="${ROOT_DIR}/build/burnbar-remote-swift-smoke"
+if [[ -n "${OPENBURNBAR_REMOTE_SWIFT_SMOKE_ROOT:-}" ]]; then
+  SMOKE_DIR="${OPENBURNBAR_REMOTE_SWIFT_SMOKE_ROOT%/}/BurnBarRemoteSwiftSmoke"
+elif [[ -n "${OPENBURNBAR_SWIFT_SCRATCH_ROOT:-}" ]]; then
+  SMOKE_DIR="${OPENBURNBAR_SWIFT_SCRATCH_ROOT%/}/BurnBarRemoteSwiftSmoke"
+else
+  SMOKE_DIR="${ROOT_DIR}/build/burnbar-remote-swift-smoke"
+fi
 XCFRAMEWORK="${ROOT_DIR}/Vendor/BurnBarRemote.xcframework"
 FILTER="${OPENBURNBAR_REMOTE_SWIFT_FILTER:-BurnBarRemoteEngineSupportTests}"
 

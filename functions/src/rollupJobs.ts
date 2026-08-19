@@ -507,7 +507,15 @@ export async function writeUserRollups(
 
   for (const key of WINDOW_KEYS) {
     const ref = db.doc(`users/${uid}/usage_rollups/${key}`);
-    batch.set(ref, stripUndefinedDocument(rollups[key]), { merge: true });
+    // `mergeFields`, not `merge: true`. `dailyProviderTokens` is a sparse nested
+    // map, and a correction that drops a provider/day to zero OMITS that key
+    // rather than zeroing it — under a deep merge Firestore keeps the previous
+    // nested keys, so the profile shows a provider split for tokens that no
+    // longer exist. Listing the computed fields replaces each of them wholesale
+    // (killing stale nested keys) while still leaving any field this writer does
+    // not own untouched, and it stays ONE write per document.
+    const payload = stripUndefinedDocument(rollups[key]);
+    batch.set(ref, payload, { mergeFields: Object.keys(payload) });
   }
 
   await batch.commit();

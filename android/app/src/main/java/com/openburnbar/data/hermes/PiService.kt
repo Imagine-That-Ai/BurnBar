@@ -4,9 +4,12 @@ import com.openburnbar.data.assistants.AssistantChatHistoryStore
 import com.openburnbar.data.assistants.AssistantChatMessage
 import com.openburnbar.data.assistants.AssistantChatThread
 import com.openburnbar.data.computeruse.AgentCapabilityGrantState
+import com.openburnbar.data.policy.MobileHermesConversationDeepLink
+import com.openburnbar.data.policy.MobileHermesConversationPolicy
 import java.io.IOException
 import java.util.UUID
 import java.util.concurrent.TimeUnit
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -55,15 +58,21 @@ class PiService {
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var streamJob: Job? = null
+    private var streamGeneration: Int = 0
+    private var applyGeneration: Int = 0
+    private var applyThreadId: String? = null
 
     private val _currentThreadID = MutableStateFlow<String?>(null)
     val currentThreadID: StateFlow<String?> = _currentThreadID
 
     private var historyStore: AssistantChatHistoryStore? = null
-
-    fun bindHistoryStore(store: AssistantChatHistoryStore) {
-        this.historyStore = store
-    }
+    internal var historyStoreInternal
+        get() = historyStore
+        set(value) {
+            historyStore = value
+        }
+    internal val selectedModelIDInternal get() = _selectedModelID
+    internal val runtimeSupportInternal get() = runtimeSupport
 
     // MARK: - Observable state
 
@@ -141,27 +150,33 @@ class PiService {
         return record
     }
 
-    fun selectModel(option: HermesRuntimeModelOption) {
-        _selectedModelID.value = option.modelID
-    }
-
     fun clear() {
+        supersedeCurrentStream()
+        _isStreaming.value = false
         _messages.value = emptyList()
         _currentThreadID.value = null
     }
 
     /** Starts a brand-new conversation. The previous thread remains in history. */
     fun startNewThread() {
-        _messages.value = emptyList()
-        _currentThreadID.value = null
+        clear()
+        _runtimeErrorText.value = null
     }
 
     /** Restores messages from a persisted thread. */
-    fun loadThread(id: String) {
+    fun loadThread(id: String): String {
         val cleanId = id.removePrefix("pi:")
-        val store = historyStore ?: return
-        val thread = store.thread(cleanId) ?: return
-        if (thread.runtime != "pi") return
+        val store = historyStore
+        val thread = store?.thread(cleanId)?.takeIf { it.runtime == "pi" }
+        val outcome = MobileHermesConversationPolicy.conversationDeepLink(cleanId, thread != null)
+        if (outcome != MobileHermesConversationDeepLink.LOADED || thread == null) {
+            clear()
+            _runtimeErrorText.value = MobileHermesConversationPolicy.missingConversationMessage(outcome)
+            return outcome.wire
+        }
+        supersedeCurrentStream()
+        _isStreaming.value = false
+        _runtimeErrorText.value = null
         _currentThreadID.value = thread.id
         _messages.value =
             thread.messages.map { stored ->
@@ -176,6 +191,7 @@ class PiService {
                     toolCalls = emptyList(),
                 )
             }
+        return outcome.wire
     }
 
     /** Removes a thread from chat history. Clears the active chat if it matches. */
@@ -228,19 +244,30 @@ class PiService {
 
     // MARK: - Probes
 
-    suspend fun refreshRuntime() = runtimeSupport.refreshRuntime()
-
     // MARK: - Chat
 
     fun send(prompt: String) {
         val trimmed = prompt.trim()
         if (trimmed.isEmpty()) return
-
         if (_currentThreadID.value == null) {
             _currentThreadID.value = UUID.randomUUID().toString()
         }
+        val assistantId = appendOutgoingTurn(trimmed)
+        persistCurrentThread()
+        startOutgoingStream(trimmed, assistantId)
+    }
 
-        val userMessage = PiChatMessage(role = "user", content = trimmed)
+    private fun appendOutgoingTurn(trimmed: String): String {
+        val last = _messages.value.lastOrNull()
+        // "reconnect" lets the policy drop a replayed turn; it re-checks the
+        // role/text match itself, so there is nothing to pre-compute here.
+        val appendUser =
+            MobileHermesConversationPolicy.shouldAppendUserMessage(
+                lastRole = last?.role,
+                lastText = last?.content,
+                incomingText = trimmed,
+                reason = "reconnect",
+            )
         val assistantPlaceholder =
             PiChatMessage(
                 role = "assistant",
@@ -248,12 +275,18 @@ class PiService {
                 modelName = _selectedModelID.value,
                 isStreaming = true,
             )
-        _messages.value = _messages.value + userMessage + assistantPlaceholder
+        _messages.value = _messages.value +
+            (if (appendUser) listOf(PiChatMessage(role = "user", content = trimmed)) else emptyList()) +
+            assistantPlaceholder
         _isStreaming.value = true
-        persistCurrentThread()
+        return assistantPlaceholder.id
+    }
 
-        val assistantId = assistantPlaceholder.id
-        streamJob?.cancel()
+    private fun startOutgoingStream(trimmed: String, assistantId: String) {
+        supersedeCurrentStream()
+        val generation = streamGeneration
+        applyGeneration = generation
+        applyThreadId = _currentThreadID.value
         streamJob =
             scope.launch {
                 try {
@@ -262,25 +295,34 @@ class PiService {
                     } else {
                         chatStreamSupport.streamChat(prompt = trimmed, assistantId = assistantId)
                     }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: IOException) {
-                    applyError(assistantId, e.message ?: "Pi stream failed.")
-                } finally {
-                    _isStreaming.value = false
-                    appendToAssistant(assistantId, "") { msg ->
-                        msg.copy(
-                            isStreaming = false,
-                            toolCalls =
-                            msg.toolCalls.map { tc ->
-                                tc.copy(
-                                    status = "done",
-                                    detail = tc.detail ?: PiServiceToolArgumentSummarizer.summarize(tc.arguments),
-                                )
-                            },
-                        )
+                    if (isCurrentStream(generation, _currentThreadID.value)) {
+                        applyError(assistantId, e.message ?: "Pi stream failed.")
                     }
-                    persistCurrentThread()
+                } finally {
+                    finishOutgoingStream(generation, assistantId)
                 }
             }
+    }
+
+    private fun finishOutgoingStream(generation: Int, assistantId: String) {
+        if (!isCurrentStream(generation, _currentThreadID.value)) return
+        _isStreaming.value = false
+        appendToAssistant(assistantId, "") { msg ->
+            msg.copy(
+                isStreaming = false,
+                toolCalls =
+                msg.toolCalls.map { tc ->
+                    tc.copy(
+                        status = "done",
+                        detail = tc.detail ?: PiServiceToolArgumentSummarizer.summarize(tc.arguments),
+                    )
+                },
+            )
+        }
+        persistCurrentThread()
     }
 
     fun ensureDesktopGrantThreadID(): String {
@@ -296,14 +338,62 @@ class PiService {
     }
 
     fun cancel() {
-        streamJob?.cancel()
-        streamJob = null
+        if (!_isStreaming.value && streamJob == null) return
+        supersedeCurrentStream()
+        finalizeMessagesAfterCancelledStream()
         _isStreaming.value = false
+        persistCurrentThread()
     }
 
-    internal fun summarizeToolArguments(raw: String): String? = PiServiceToolArgumentSummarizer.summarize(raw)
+    internal fun stageStreamingForTest(text: String, toolCalls: List<PiToolCall> = emptyList(), threadId: String = "thread-a", userText: String = "hello") {
+        _currentThreadID.value = threadId
+        applyThreadId = threadId
+        applyGeneration = streamGeneration
+        _isStreaming.value = true
+        _messages.value = listOf(
+            PiChatMessage(role = "user", content = userText),
+            PiChatMessage(role = "assistant", content = text, isStreaming = true, toolCalls = toolCalls),
+        )
+    }
+
+    private fun supersedeCurrentStream() {
+        streamJob?.cancel()
+        streamJob = null
+        streamGeneration += 1
+    }
+
+    private fun isCurrentStream(generation: Int, threadId: String?): Boolean = MobileHermesConversationPolicy.shouldApplyChunk(
+        chunkThreadId = threadId,
+        activeThreadId = applyThreadId,
+        chunkGeneration = generation,
+        activeGeneration = applyGeneration,
+    ) && streamGeneration == generation
+
+    private fun finalizeMessagesAfterCancelledStream() {
+        val terminal = MobileHermesConversationPolicy.terminal("stop")
+        val finalized =
+            _messages.value.map { msg ->
+                if (msg.isStreaming) msg.copy(isStreaming = false) else msg
+            }
+        val last = finalized.lastOrNull()
+        _messages.value =
+            if (last != null &&
+                last.role == "assistant" &&
+                MobileHermesConversationPolicy.shouldDropEmptyAssistant(
+                    text = last.content,
+                    toolCallCount = last.toolCalls.size,
+                    isError = last.isError,
+                    terminal = terminal,
+                )
+            ) {
+                finalized.dropLast(1)
+            } else {
+                finalized
+            }
+    }
 
     private fun appendToAssistant(assistantId: String, delta: String, transform: ((PiChatMessage) -> PiChatMessage)? = null) {
+        if (!isCurrentStream(applyGeneration, applyThreadId)) return
         _messages.value =
             _messages.value.map { existing ->
                 if (existing.id == assistantId) {
@@ -316,6 +406,7 @@ class PiService {
     }
 
     private fun applyError(assistantId: String, text: String) {
+        if (!isCurrentStream(applyGeneration, applyThreadId)) return
         _messages.value =
             _messages.value.map { existing ->
                 if (existing.id == assistantId) {
@@ -327,3 +418,15 @@ class PiService {
         _runtimeErrorText.value = text
     }
 }
+
+fun PiService.bindHistoryStore(store: AssistantChatHistoryStore) {
+    historyStoreInternal = store
+}
+
+fun PiService.selectModel(option: HermesRuntimeModelOption) {
+    selectedModelIDInternal.value = option.modelID
+}
+
+suspend fun PiService.refreshRuntime() = runtimeSupportInternal.refreshRuntime()
+
+internal fun PiService.summarizeToolArguments(raw: String): String? = PiServiceToolArgumentSummarizer.summarize(raw)

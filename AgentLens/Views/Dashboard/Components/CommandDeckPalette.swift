@@ -104,7 +104,11 @@ struct CommandDeckPalette: View {
     /// so typing "accessibility", "snippet", or "daemon" finds the page that
     /// actually carries those controls.
     private var searchableSections: [DashboardMainRoute] {
-        DashboardMainRoute.primarySections + [.controlDeck, .fleet]
+        // Home leads and the deck + fleet trail, all outside
+        // `primarySections` — that array is positional and drives ⌘1–⌘8, so
+        // none of them can live in it. The palette is the browsable index,
+        // so it carries all three.
+        [.home] + DashboardMainRoute.primarySections + [.controlDeck, .fleet]
     }
 
     private var filteredSections: [DashboardMainRoute] {

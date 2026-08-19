@@ -39,7 +39,7 @@ final class ChatMessageViewTests: XCTestCase {
             isStreaming: false,
             showViaBadge: false
         )
-        XCTAssertNoThrow(try view.inspect())
+        XCTAssertNoThrow(try view.agentRowContent.inspect())
     }
 
     func test_rendersAssistantMessage() throws {
@@ -49,7 +49,7 @@ final class ChatMessageViewTests: XCTestCase {
             isStreaming: false,
             showViaBadge: false
         )
-        XCTAssertNoThrow(try view.inspect())
+        XCTAssertNoThrow(try view.agentRowContent.inspect())
     }
 
     func test_userMessageShowsContent() throws {
@@ -59,7 +59,7 @@ final class ChatMessageViewTests: XCTestCase {
             isStreaming: false,
             showViaBadge: false
         )
-        let sut = try view.inspect()
+        let sut = try view.agentRowContent.inspect()
         XCTAssertNoThrow(try sut.find(textWhere: { value, _ in value.contains("Test content here") }))
     }
 
@@ -70,7 +70,7 @@ final class ChatMessageViewTests: XCTestCase {
             isStreaming: false,
             showViaBadge: false
         )
-        let sut = try view.inspect()
+        let sut = try view.agentRowContent.inspect()
         XCTAssertNoThrow(try sut.find(textWhere: { value, _ in value.contains("Assistant reply") }))
     }
 
@@ -81,7 +81,7 @@ final class ChatMessageViewTests: XCTestCase {
             isStreaming: true,
             showViaBadge: false
         )
-        let sut = try view.inspect()
+        let sut = try view.agentRowContent.inspect()
         XCTAssertNoThrow(try sut.find(textWhere: { value, _ in value.contains("▍") }))
     }
 
@@ -92,7 +92,7 @@ final class ChatMessageViewTests: XCTestCase {
             isStreaming: false,
             showViaBadge: false
         )
-        let sut = try view.inspect()
+        let sut = try view.agentRowContent.inspect()
         XCTAssertThrowsError(try sut.find(textWhere: { value, _ in value.contains("▍") }))
     }
 
@@ -107,7 +107,7 @@ final class ChatMessageViewTests: XCTestCase {
             showViaBadge: true,
             isHermes: true
         )
-        let sut = try view.inspect()
+        let sut = try view.agentRowContent.inspect()
         XCTAssertNoThrow(try sut.find(textWhere: { value, _ in value.contains("via Hermes") }))
     }
 
@@ -122,7 +122,7 @@ final class ChatMessageViewTests: XCTestCase {
             showViaBadge: true,
             isHermes: false
         )
-        let sut = try view.inspect()
+        let sut = try view.agentRowContent.inspect()
         XCTAssertNoThrow(try sut.find(textWhere: { value, _ in value.contains("via claude") }))
     }
 
@@ -138,7 +138,7 @@ final class ChatMessageViewTests: XCTestCase {
             isStreaming: false,
             showViaBadge: false
         )
-        let sut = try view.inspect()
+        let sut = try view.agentRowContent.inspect()
         XCTAssertNoThrow(try sut.find(textWhere: { value, _ in value.contains("First paragraph") }))
         XCTAssertNoThrow(try sut.find(textWhere: { value, _ in value.contains("Second paragraph") }))
     }
@@ -155,7 +155,7 @@ final class ChatMessageViewTests: XCTestCase {
             showViaBadge: false,
             isHermes: true
         )
-        XCTAssertNoThrow(try view.inspect())
+        XCTAssertNoThrow(try view.agentRowContent.inspect())
     }
 
     func test_oversizedUserMessageRendersCollapsedExcerpt() throws {
@@ -167,7 +167,7 @@ final class ChatMessageViewTests: XCTestCase {
             showViaBadge: false
         )
 
-        let sut = try view.inspect()
+        let sut = try view.agentRowContent.inspect()
 
         XCTAssertNoThrow(try sut.find(textWhere: { value, _ in value.count == ChatMessageTextLimiter.defaultVisibleCharacterLimit }))
         XCTAssertNoThrow(try sut.find(textWhere: { value, _ in value.contains("37 more characters") }))
@@ -183,6 +183,23 @@ final class ChatMessageViewTests: XCTestCase {
         XCTAssertEqual(collapsed.hiddenCharacterCount, 5)
         XCTAssertEqual(expanded.visibleText, content)
         XCTAssertEqual(expanded.hiddenCharacterCount, 0)
+    }
+
+    func test_geometryWrapperRendersAtRepresentativeChatWidth() throws {
+        let message = ViewTestFixtures.makeAssistantMessage(content: "Rendered reply")
+        let view = ChatMessageView(
+            message: message,
+            isStreaming: false,
+            showViaBadge: false
+        )
+        .frame(width: 420)
+
+        let renderer = ImageRenderer(content: view)
+        renderer.proposedSize = ProposedViewSize(width: 420, height: 160)
+
+        let image = try XCTUnwrap(renderer.nsImage)
+        XCTAssertEqual(image.size.width, 420, accuracy: 1)
+        XCTAssertGreaterThan(image.size.height, 0)
     }
 
     func test_chatMessageViewEquatable_usesSemanticInputs_notClosureIdentity() {

@@ -9,6 +9,75 @@ import GRDB
 @testable import OpenBurnBarLogParsers
 @MainActor
 final class ProjectionPipelineServiceTests: XCTestCase {
+    func test_markVectorIndexSnapshotStale_preservesSnapshotCountWithoutEmbeddingRecount() async throws {
+        let queue = try DatabaseQueue(configuration: .withQueryTracing())
+        let store = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let embedder = DeterministicFakeEmbeddingProvider(
+            dimensions: 8,
+            versionTag: "stale-count-v1",
+            seed: "stale-count-seed"
+        )
+        let service = ProjectionPipelineService(
+            dataStore: store,
+            leaseOwner: "worker-stale-count",
+            chunkEmbedder: embedder
+        )
+        let now = Date(timeIntervalSince1970: 1_742_100_000)
+        try await service.ensureEmbeddingLineage(now: now)
+
+        let embeddingVersionID = EmbeddingIdentity.versionID(for: embedder.descriptor)
+        let snapshotBackend = BurnBarPersistentVectorIndexFactory.defaultBackend()
+        try await store.upsertVectorIndexSnapshot(
+            VectorIndexSnapshotRecord(
+                embeddingVersionID: embeddingVersionID,
+                backendID: snapshotBackend.backendID,
+                state: .ready,
+                fingerprint: "ready-fingerprint",
+                dimensions: embedder.descriptor.dimensions,
+                distanceMetric: embedder.descriptor.distanceMetric,
+                vectorCount: 42,
+                storageRelativePath: "snapshots/ready",
+                fileBytes: 8_192,
+                backendVersion: snapshotBackend.backendVersion,
+                errorCode: nil,
+                errorMessage: nil,
+                createdAt: now,
+                updatedAt: now,
+                lastBuiltAt: now
+            )
+        )
+
+        let tracer = OpenBurnBarQueryTracer.shared
+        tracer.resetLog()
+        try await service.markVectorIndexSnapshotStale(now: now.addingTimeInterval(1))
+
+        let embeddingRecounts = tracer.queryLog.filter { query in
+            let sql = query.sql
+                .lowercased()
+                .replacingOccurrences(of: "\n", with: " ")
+            return sql.contains("select count(*)")
+                && sql.contains("from chunk_embeddings")
+        }
+        XCTAssertTrue(
+            embeddingRecounts.isEmpty,
+            "Marking a snapshot stale must not rescan the full embedding index."
+        )
+
+        let fetchedSnapshot = try await store.fetchVectorIndexSnapshot(
+            embeddingVersionID: embeddingVersionID,
+            backendID: snapshotBackend.backendID
+        )
+        let stale = try XCTUnwrap(fetchedSnapshot)
+        XCTAssertEqual(stale.state, .stale)
+        XCTAssertEqual(
+            stale.vectorCount,
+            42,
+            "A stale record must retain the count represented by its persisted snapshot file."
+        )
+        XCTAssertEqual(stale.storageRelativePath, "snapshots/ready")
+        XCTAssertEqual(stale.fileBytes, 8_192)
+    }
+
     func test_projectionWorker_recoversExpiredRunningJob_afterCrash() async throws {
         let store = try makeDiscoveryInMemoryStore()
         let service = ProjectionPipelineService(dataStore: store, leaseOwner: "worker-recovery")
@@ -4089,6 +4158,186 @@ extension ProjectionPipelineServiceTests {
             Set(reprojectQueued.compactMap { $0.sourceID }).count,
             activeCount,
             "No duplicate artifact reproject enqueues with non-divisible page size"
+        )
+    }
+
+    // MARK: - Embedder version drift
+
+    func test_embedderDriftCheck_enqueuesOneReembedAndNeverDuplicates() async throws {
+        let queue = try DatabaseQueue(configuration: .withQueryTracing())
+        let store = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let now = Date(timeIntervalSince1970: 1_755_300_000)
+
+        // A prior generation of the index stamped its lineage active (e.g. the
+        // retired seeded-hash default before the appleNL migration).
+        let oldEmbedder = DeterministicFakeEmbeddingProvider(versionTag: "old-gen-v1", seed: "old-gen")
+        let oldService = ProjectionPipelineService(
+            dataStore: store,
+            leaseOwner: "worker-drift-old",
+            chunkEmbedder: oldEmbedder
+        )
+        try await oldService.ensureEmbeddingLineage(now: now)
+
+        // The app relaunches configured with a different embedder.
+        let newEmbedder = DeterministicFakeEmbeddingProvider(versionTag: "new-gen-v1", seed: "new-gen")
+        let newService = ProjectionPipelineService(
+            dataStore: store,
+            leaseOwner: "worker-drift-new",
+            chunkEmbedder: newEmbedder
+        )
+
+        try await newService.enqueueEmbedderDriftReembedIfNeeded()
+
+        let queuedAfterFirst = try await store.fetchProjectionJobs(statuses: [.queued], limit: 50)
+        let reembeds = queuedAfterFirst.filter { $0.jobType == .reembed }
+        XCTAssertEqual(reembeds.count, 1, "Version drift must enqueue exactly one re-embed job.")
+        XCTAssertEqual(
+            reembeds.first?.sourceVersionID,
+            EmbeddingIdentity.versionID(for: newEmbedder.descriptor),
+            "The drift re-embed must target the newly configured embedder's version."
+        )
+
+        // A second check while that job is live must not stack another.
+        try await newService.enqueueEmbedderDriftReembedIfNeeded()
+        let queuedAfterSecond = try await store.fetchProjectionJobs(statuses: [.queued], limit: 50)
+        XCTAssertEqual(
+            queuedAfterSecond.filter { $0.jobType == .reembed }.count, 1,
+            "Drift detection must be idempotent while a re-embed job is queued or running."
+        )
+    }
+
+    func test_embedderDriftCheck_quietWhenConfiguredVersionIsActive() async throws {
+        let queue = try DatabaseQueue(configuration: .withQueryTracing())
+        let store = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let embedder = DeterministicFakeEmbeddingProvider(versionTag: "steady-v1", seed: "steady")
+        let service = ProjectionPipelineService(
+            dataStore: store,
+            leaseOwner: "worker-drift-steady",
+            chunkEmbedder: embedder
+        )
+        try await service.ensureEmbeddingLineage(now: Date(timeIntervalSince1970: 1_755_300_000))
+
+        try await service.enqueueEmbedderDriftReembedIfNeeded()
+
+        let queued = try await store.fetchProjectionJobs(statuses: [.queued], limit: 50)
+        XCTAssertTrue(
+            queued.filter { $0.jobType == .reembed }.isEmpty,
+            "No drift, no job: a matching active lineage must never trigger a re-embed."
+        )
+    }
+
+    /// The automated stand-in for a real upgrade-install QA pass: a store left
+    /// by the legacy seeded-hash default, relaunched through the REAL settings
+    /// migration and the REAL `makeConfigured` path, must converge — one drift
+    /// re-embed, an active apple-natural-language lineage, and the document's
+    /// chunks re-embedded in the new space.
+    func test_upgradeFromLegacyHashDefault_convergesIndexToRealEmbeddings() async throws {
+        try XCTSkipUnless(
+            NLEmbeddingProvider() != nil,
+            "NLEmbedding sentence model unavailable on this host; the upgrade converges only where it exists."
+        )
+
+        // 1. The pre-upgrade install: one conversation projected under ci-v1.
+        let queue = try DatabaseQueue(configuration: .withQueryTracing())
+        let store = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let legacyService = ProjectionPipelineService(
+            dataStore: store,
+            leaseOwner: "worker-upgrade-legacy",
+            chunkEmbedder: DeterministicFakeEmbeddingProvider()
+        )
+        let now = Date(timeIntervalSince1970: 1_755_300_000)
+        let conversation = makeConversation(
+            id: "upgrade-conv-1",
+            fullText: "The self-hosted runners need cmake before native merge jobs can pass.",
+            indexedAt: now
+        )
+        try await store.upsertConversation(conversation)
+        try await legacyService.ensureEmbeddingLineage(now: now)
+        try await legacyService.projectConversation(
+            conversation,
+            sourceVersionID: ProjectionIdentity.conversationSourceVersionID(for: conversation)
+        )
+
+        // 2. Relaunch: stored legacy default runs through the one-shot settings
+        //    migration, and makeConfigured builds the pipeline exactly as the
+        //    app would.
+        let suiteName = "upgrade-sim-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        defaults.set("deterministic", forKey: "indexEmbeddingProvider")
+        let settings = SettingsManager(
+            defaults: defaults,
+            controllerRuntimeSecrets: KeychainStore(
+                service: "tests.upgrade.controller.\(UUID().uuidString)",
+                legacyServices: [],
+                backend: SettingsManagerTestKeychainBackend()
+            ),
+            chatGatewaySecrets: KeychainStore(
+                service: "tests.upgrade.gateway.\(UUID().uuidString)",
+                legacyServices: [],
+                backend: SettingsManagerTestKeychainBackend()
+            ),
+            launchAgentGatewayAuthTokenReader: { nil },
+            flushDelayNanoseconds: 0
+        )
+        XCTAssertEqual(settings.indexEmbeddingProvider, .appleNL, "The legacy hash default must migrate on relaunch.")
+
+        let upgradedService = ProjectionPipelineService.makeConfigured(
+            dataStore: store,
+            settingsManager: settings,
+            leaseOwner: "worker-upgrade-new"
+        )
+        let nlVersionID = await upgradedService.embeddingVersionID
+        XCTAssertNotEqual(
+            nlVersionID,
+            EmbeddingIdentity.versionID(for: DeterministicFakeEmbeddingProvider().descriptor),
+            "makeConfigured must build the NL embedder for the migrated setting."
+        )
+
+        // 3. Sweep to convergence: drift check enqueues the re-embed, sweeps
+        //    drain it. Bounded loop — an unconverged store fails the assertions.
+        for _ in 0 ..< 3 {
+            _ = try await upgradedService.runSweep()
+        }
+
+        let versions = try await store.fetchEmbeddingVersions()
+        let models = try await store.fetchEmbeddingModels()
+        let modelByID = Dictionary(uniqueKeysWithValues: models.map { ($0.id, $0) })
+        XCTAssertTrue(
+            versions.contains { version in
+                version.isActive
+                    && version.id == nlVersionID
+                    && modelByID[version.modelID]?.provider == "apple-natural-language"
+            },
+            "An active apple-natural-language lineage must exist after convergence."
+        )
+
+        let documentID = ProjectionIdentity.documentID(sourceKind: .conversation, sourceID: conversation.id)
+        let reembedded = try await store.fetchEmbeddingByContentHash(
+            documentID: documentID,
+            embeddingVersionID: nlVersionID
+        )
+        XCTAssertFalse(
+            reembedded.isEmpty,
+            "The document's chunks must carry embeddings in the NEW space — queries and index reunited."
+        )
+    }
+
+    func test_embedderDriftCheck_quietOnFreshStore() async throws {
+        let queue = try DatabaseQueue(configuration: .withQueryTracing())
+        let store = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let service = ProjectionPipelineService(
+            dataStore: store,
+            leaseOwner: "worker-drift-fresh",
+            chunkEmbedder: DeterministicFakeEmbeddingProvider()
+        )
+
+        try await service.enqueueEmbedderDriftReembedIfNeeded()
+
+        let queued = try await store.fetchProjectionJobs(statuses: [.queued], limit: 50)
+        XCTAssertTrue(
+            queued.isEmpty,
+            "An empty version table is a fresh store — the first projection stamps lineage; no drift job."
         )
     }
 }

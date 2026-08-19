@@ -45,6 +45,12 @@ const recaptchaSiteKey =
 
 const isBrowser = typeof window !== "undefined";
 
+// Dev defaults to the local Firebase emulator suite. Set
+// NEXT_PUBLIC_FIREBASE_EMULATORS=0 to point a dev build at the real project
+// instead (e.g. previewing against live data without running emulators).
+const useEmulators =
+  process.env.NODE_ENV !== "production" && process.env.NEXT_PUBLIC_FIREBASE_EMULATORS !== "0";
+
 let _app: FirebaseApp | undefined;
 let _auth: Auth | undefined;
 let _functions: Functions | undefined;
@@ -81,7 +87,7 @@ export function firebaseApp(): FirebaseApp {
 export function auth(): Auth {
   if (_auth) return _auth;
   _auth = getAuth(firebaseApp());
-  if (process.env.NODE_ENV !== "production" && isBrowser && !_auth.emulatorConfig) {
+  if (useEmulators && isBrowser && !_auth.emulatorConfig) {
     try {
       connectAuthEmulator(_auth, "http://localhost:9099", { disableWarnings: true });
     } catch {
@@ -94,7 +100,7 @@ export function auth(): Auth {
 export function functions(): Functions {
   if (_functions) return _functions;
   _functions = getFunctions(firebaseApp(), "us-central1");
-  if (process.env.NODE_ENV !== "production" && isBrowser) {
+  if (useEmulators && isBrowser) {
     try {
       connectFunctionsEmulator(_functions, "localhost", 5001);
     } catch {
@@ -107,7 +113,7 @@ export function functions(): Functions {
 export function db(): Firestore {
   if (_db) return _db;
   _db = getFirestore(firebaseApp());
-  if (process.env.NODE_ENV !== "production" && isBrowser) {
+  if (useEmulators && isBrowser) {
     try {
       connectFirestoreEmulator(_db, "localhost", 8080);
     } catch {

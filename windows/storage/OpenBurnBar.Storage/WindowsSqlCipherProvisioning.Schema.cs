@@ -65,7 +65,9 @@ public sealed partial class WindowsSqlCipherProvisioner
             provenanceConfidence TEXT NOT NULL DEFAULT 'exact',
             estimatorVersion TEXT NOT NULL DEFAULT 'windows-provisioner-v1',
             parentRequestID TEXT,
-            billingKind TEXT NOT NULL DEFAULT 'unknown'
+            billingKind TEXT NOT NULL DEFAULT 'unknown',
+            originatorKind TEXT,
+            originatorRef TEXT
         )
         """,
         "CREATE UNIQUE INDEX IF NOT EXISTS token_usage_unique_session_model_idx ON token_usage(provider, sessionId, model, COALESCE(sourceDeviceId, ''), COALESCE(providerAccountID, ''))",
@@ -74,6 +76,34 @@ public sealed partial class WindowsSqlCipherProvisioner
         "CREATE INDEX IF NOT EXISTS token_usage_execution_source_time_idx ON token_usage(executionSourceID, startTime)",
         // v60_billing_kind — mirrors OpenBurnBarDatabase+DataMigrationV60.swift.
         "CREATE INDEX IF NOT EXISTS token_usage_billing_kind_time_idx ON token_usage(billingKind, startTime)",
+        // v62_war_room_originator — mirrors OpenBurnBarDatabase+DataMigrationV62.swift.
+        "CREATE INDEX IF NOT EXISTS token_usage_originator_time_idx ON token_usage(originatorKind, startTime)",
+        // v64_token_usage_start_time_index — mirrors
+        // OpenBurnBarDatabase+CommandBoardIndexMigration.swift.
+        "CREATE INDEX IF NOT EXISTS token_usage_start_time_idx ON token_usage(startTime)",
+        // v63_standing_orders — mirrors OpenBurnBarDatabase+StandingOrderMigrations.swift.
+        // GRDB's .boolean and .datetime map to SQLite BOOLEAN / DATETIME, which are
+        // NUMERIC affinity; spelling them the same way keeps the two schemas
+        // comparable column-type for column-type.
+        """
+        CREATE TABLE IF NOT EXISTS standing_orders (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            instruction TEXT NOT NULL,
+            cadenceKind TEXT NOT NULL,
+            cadenceMinutes INTEGER,
+            cadenceHour INTEGER,
+            cadenceMinute INTEGER,
+            cadenceWeekday INTEGER,
+            targetBodyId TEXT,
+            requiredCapabilities TEXT NOT NULL DEFAULT '',
+            isEnabled BOOLEAN NOT NULL DEFAULT 1,
+            lastFiredAt DATETIME,
+            createdAt DATETIME NOT NULL,
+            updatedAt DATETIME NOT NULL
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS standing_orders_enabled_fired_idx ON standing_orders(isEnabled, lastFiredAt)",
         """
         CREATE TABLE IF NOT EXISTS conversations (
             id TEXT NOT NULL PRIMARY KEY,

@@ -45,7 +45,7 @@ private final class DBByteCompatBundleMarker {}
 @MainActor
 final class DatabaseByteCompatVectorTests: XCTestCase {
 
-    private let fixtureBaseName = "openburnbar-db-compat-v61"
+    private let fixtureBaseName = "openburnbar-db-compat-v64"
     private let vectorBaseName = "openburnbar-db-compat-vector"
     private let paramsBaseName = "openburnbar-db-compat-params-observed"
 

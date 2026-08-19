@@ -487,6 +487,14 @@ struct FakeCLIClient: BurnBarCLIClient {
         )
     }
 
+    func searchSQL(_ request: BurnBarSearchSQLRequest) throws -> BurnBarSearchSQLResult {
+        BurnBarSearchSQLResult(
+            columns: ["id", "title"],
+            rows: [[.text("conv-1"), .text(request.sql)]],
+            truncated: false
+        )
+    }
+
     func memoryRecall(query: String, projectPath: String?, limit: Int) throws -> BurnBarProjectMemoryRecallResponse {
         BurnBarProjectMemoryRecallResponse(
             traceID: "trace-test",

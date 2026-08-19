@@ -29,6 +29,11 @@ extension OpenBurnBarApp {
             openDashboard(context: context)
             navigationCoordinator.setDashboardRoute(.charts)
         }
+        router.routeDashboardDeepLink = { url in
+            guard navigationCoordinator.handleDeepLink(url) else { return false }
+            openDashboard(context: context)
+            return true
+        }
         router.openConversationSearch = {
             openDashboard(context: context)
             navigationCoordinator.openConversationSearch()
@@ -80,20 +85,26 @@ extension OpenBurnBarApp {
                     },
                     onOpenOnboardingWizard: {
                         onDismiss()
-                        windowManager.openOnboardingWizard(
-                            dataStore: context.dataStore,
-                            aggregator: context.aggregator,
-                            settingsManager: context.settingsManager,
-                            chatController: context.chatController,
-                            onOpenDashboard: {
-                                openDashboard(context: context)
-                            }
-                        )
+                        AppCommandRouter.shared.openOnboardingWizard?()
                     },
                     runtimeContext: context
                 )
                 .environment(context.settingsManager)
                 .environment(context.accountManager)
+            )
+        }
+        // One wizard entry, fully wired: the popover splash and Settings both
+        // route here, so no caller can ever open the scan step with a nil
+        // aggregator again.
+        router.openOnboardingWizard = {
+            windowManager.openOnboardingWizard(
+                dataStore: context.dataStore,
+                aggregator: context.aggregator,
+                settingsManager: context.settingsManager,
+                chatController: context.chatController,
+                onOpenDashboard: {
+                    openDashboard(context: context)
+                }
             )
         }
 
@@ -204,6 +215,23 @@ extension OpenBurnBarApp {
                 StartupProfiler.interval("quota_refresh_schedule") {
                     context.quotaService.startAutomaticRefresh(dataStore: context.dataStore)
                 }
+                // Routing decides with the DAEMON's copy of quota state, whose
+                // only writers used to be the Provider Plan wizard's dashboard
+                // and save steps — so slot freshness died the moment the wizard
+                // closed, and the router fell back to learning quota from
+                // response headers and failures. Push fresh slot quotas on the
+                // app's own cadence whenever routing can actually use them
+                // (gateway on, daemon healthy).
+                Task(priority: .utility) {
+                    try? await Task.sleep(for: .seconds(7 * 60))
+                    while !Task.isCancelled {
+                        if context.settingsManager.gatewayEnabled,
+                           case .healthy = context.daemonManager.status {
+                            await context.daemonManager.refreshProviderCredentialSlotQuotas()
+                        }
+                        try? await Task.sleep(for: .seconds(15 * 60))
+                    }
+                }
                 StartupProfiler.interval("agent_reply_listener_start") {
                     MacAgentReplyNotificationListener.shared.start(
                         chatController: context.chatController,
@@ -291,28 +319,44 @@ extension OpenBurnBarApp {
                 StartupProfiler.event("startup_probe_work_end")
             }
 
+            // The first scan is the product. The logs are already on disk, so
+            // read them NOW — a signed-out stranger's first number must never
+            // wait behind a cloud sign-in poll or a courtesy sleep (the old
+            // 30×1s + 15s/600s path meant the app said nothing true for its
+            // first minute on exactly the launch that decides the install).
+            let firstScan = Task(priority: .userInitiated) {
+                guard !Task.isCancelled else { return }
+                StartupProfiler.event("first_scan_start")
+                await aggregator.refreshAll()
+                StartupProfiler.event("first_scan_end")
+            }
+
             Task(priority: .utility) {
+                // Cloud catch-up stays sign-in gated; it just no longer holds
+                // the local scan hostage.
                 for _ in 0..<30 where !context.accountManager.isSignedIn {
                     try? await Task.sleep(for: .seconds(1))
                     guard !Task.isCancelled else { return }
                 }
                 await sync.uploadPending()
-                let startupScanDelay: Duration = context.settingsManager.pixelClockConfig.enabled
-                    ? .seconds(600)
-                    : .seconds(15)
-                try? await Task.sleep(for: startupScanDelay)
+                // Preserve the original ordering guarantee: conversation upload
+                // runs against a completed first scan, not a moving one.
+                _ = await firstScan.value
                 guard !Task.isCancelled else { return }
-                await aggregator.refreshAll()
                 await sync.uploadPendingConversations()
                 await sync.uploadPendingChatThreads()
                 await sync.syncTextExpansionSnippets()
                 if context.settingsManager.dailyDigestEnabled {
                     await DailyDigestManager.shared.requestAuthorization()
-                    DailyDigestManager.shared.scheduleDigest(
-                        from: context.dataStore,
-                        at: context.settingsManager.dailyDigestHour
-                    )
                 }
+                // Registered whether or not the digest is on: the cadence reads
+                // both settings live, so it arms, re-arms and clears itself
+                // without waiting for the next launch.
+                DailyDigestManager.shared.activate(
+                    from: context.dataStore,
+                    isEnabled: { context.settingsManager.dailyDigestEnabled },
+                    hour: { context.settingsManager.dailyDigestHour }
+                )
             }
 
             periodicRefreshTask?.cancel()

@@ -23,3 +23,4 @@ This file is the project-level index of active and completed agent goals. It rec
 | `sota-quality-apple-apps-2026-07-06` | active | none | `.agent/runs/sota-quality-apple-apps-2026-07-06/` | 2026-07-06T11:22:23Z |
 | `burnbar-accretive-pr-merge-2026-08-07` | complete — #2191/#2172/#2125/#2088/#2054/#2186 MERGED; main@20ec5aba4e | none | `.agent/runs/burnbar-accretive-pr-merge-2026-08-07/` | 2026-08-08T07:38:18Z |
 | `windows-macos-parity-completion-2026-08-09` | active | windows-parity-100-2026-07-06 | `.agent/runs/windows-macos-parity-completion-2026-08-09/` | 2026-08-09T21:43:11Z |
+| `product-truth-activation-2026-08-16` | active | none | `.agent/runs/product-truth-activation-2026-08-16/` | 2026-08-17T01:36:55Z |

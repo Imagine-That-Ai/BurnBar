@@ -189,6 +189,17 @@ final class AIInboxViewFormattingTests: XCTestCase {
         XCTAssertEqual(coordinator.pendingNavigation, .dashboard)
     }
 
+    func testQuotaDeepLinkRoutesToTheQuotaVault() throws {
+        // The pre-limit alert's tap target. If this route dies, the product's
+        // core loop ends at a notification with nowhere to land.
+        let coordinator = NavigationCoordinator()
+        let url = try XCTUnwrap(URL(string: "openburnbar://quota"))
+
+        XCTAssertTrue(coordinator.handleDeepLink(url))
+        XCTAssertEqual(coordinator.dashboardRoute, .quota)
+        XCTAssertEqual(coordinator.pendingNavigation, .dashboard)
+    }
+
     func testForeignSchemesAndUnknownHostsAreDeclined() throws {
         let coordinator = NavigationCoordinator()
 

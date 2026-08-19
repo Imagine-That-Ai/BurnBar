@@ -178,6 +178,12 @@ final class MobileMissionConsoleHost: MissionConsoleHost {
         observedMissions[id]
     }
 
+    func focusMission(id: String) {
+        lastDispatchedMissionID = id
+        beginObservingIfNeeded(missionID: id)
+        rebuildSnapshot()
+    }
+
     var skillRunMissions: [CLIAgentMissionSnapshot] {
         observedOrder
             .compactMap { observedMissions[$0] }

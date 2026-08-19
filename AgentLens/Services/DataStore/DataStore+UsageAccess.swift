@@ -51,6 +51,14 @@ extension DataStore {
         try await actor.usageStore.fetchUsage(in: dateRange, limit: limit)
     }
 
+    func fetchUsage(startingIn dateRange: Range<Date>, limit: Int) async throws -> [TokenUsage] {
+        try await actor.usageStore.fetchUsage(startingIn: dateRange, limit: limit)
+    }
+
+    func fetchRecentUsage(limit: Int) async throws -> [TokenUsage] {
+        try await actor.usageStore.fetchRecentUsage(limit: limit)
+    }
+
     func fetchChartFactRows(in dateRange: ClosedRange<Date>?) async throws -> [ChartFactRow] {
         try await actor.usageStore.fetchChartFactRows(in: dateRange)
     }
@@ -116,6 +124,12 @@ extension DataStore {
 
     func providerRunCostTotals(in dateRange: ClosedRange<Date>?) async throws -> [AgentProvider: ProviderRunCostTotals] {
         try await actor.usageStore.providerRunCostTotals(in: dateRange)
+    }
+
+    func providerRunCostTotals(
+        in dateRanges: [ClosedRange<Date>]
+    ) async throws -> [[AgentProvider: ProviderRunCostTotals]] {
+        try await actor.usageStore.providerRunCostTotals(in: dateRanges)
     }
 
     func fetchOrgRollup(groupBy: OrgGroupBy, period: BudgetPeriod) async throws -> [OrgRollupRow] {

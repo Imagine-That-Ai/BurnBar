@@ -53,6 +53,26 @@ export interface DeviceSummary {
   tokens: number;
 }
 
+/** Agent-harness totals (Claude Code, Codex, Cursor, …) — the execution source. */
+export interface ExecutionSourceSummary {
+  sourceId: string;
+  sourceName: string;
+  totalRequests: number;
+  totalTokens: number;
+  totalCost: number;
+}
+
+/** Harness × model pairing, e.g. "Codex × gpt-5.2". */
+export interface ComboSummary {
+  sourceId: string;
+  sourceName: string;
+  provider: string;
+  model: string;
+  requests: number;
+  tokens: number;
+  cost: number;
+}
+
 /** One day of the daily series (server stores a YYYY-MM-DD → tokens map). */
 export interface DailyPoint {
   day: string;
@@ -66,8 +86,19 @@ export interface UsageRollup {
   providerSummaries: ProviderSummary[];
   modelSummaries: ModelSummary[];
   deviceSummaries: DeviceSummary[];
+  /** Harness totals. Empty until the server ships execution-source counters. */
+  executionSourceSummaries: ExecutionSourceSummary[];
+  /** Harness × model pairings. Empty until the server ships combo counters. */
+  comboSummaries: ComboSummary[];
   /** Ascending by day. */
   dailyPoints: DailyPoint[];
+  /**
+   * Sparse per-day per-provider token split (all_time only):
+   * "YYYY-MM-DD" → providerID → tokens. Powers the heatmap's day-hover
+   * provider breakdown. Empty until the server ships counter schema v3;
+   * absent days/providers mean zero, never zero-filled.
+   */
+  dailyProviderTokens: Record<string, Record<string, number>>;
   /** ISO timestamp the rollup was computed server-side, or null if unknown. */
   computedAt: string | null;
 }
@@ -165,7 +196,10 @@ export function emptyRollup(window: UsageWindowKey): UsageRollup {
     providerSummaries: [],
     modelSummaries: [],
     deviceSummaries: [],
+    executionSourceSummaries: [],
+    comboSummaries: [],
     dailyPoints: [],
+    dailyProviderTokens: {},
     computedAt: null,
   };
 }
@@ -211,11 +245,50 @@ export function normalizeRollup(raw: unknown, window: UsageWindowKey): UsageRoll
     }))
     .sort((a, b) => b.tokens - a.tokens);
 
+  const executionSourceSummaries: ExecutionSourceSummary[] = arr(raw.executionSourceSummaries)
+    .filter(isRecord)
+    .map((s) => ({
+      sourceId: str(s.sourceId, "unknown"),
+      sourceName: str(s.sourceName, str(s.sourceId, "unknown")),
+      totalRequests: num(s.totalRequests),
+      totalTokens: num(s.totalTokens),
+      totalCost: num(s.totalCost),
+    }))
+    .sort((a, b) => b.totalTokens - a.totalTokens || b.totalRequests - a.totalRequests);
+
+  const comboSummaries: ComboSummary[] = arr(raw.comboSummaries)
+    .filter(isRecord)
+    .map((c) => ({
+      sourceId: str(c.sourceId, "unknown"),
+      sourceName: str(c.sourceName, str(c.sourceId, "unknown")),
+      provider: str(c.provider, "unknown"),
+      model: str(c.model, "unknown"),
+      requests: num(c.requests),
+      tokens: num(c.tokens),
+      cost: num(c.cost),
+    }))
+    .sort((a, b) => b.tokens - a.tokens || b.requests - a.requests);
+
   // dailyPoints is a { "YYYY-MM-DD": tokens } map; flatten to a sorted array.
   const dailyRaw = isRecord(raw.dailyPoints) ? raw.dailyPoints : {};
   const dailyPoints: DailyPoint[] = Object.entries(dailyRaw)
     .map(([day, tokens]) => ({ day, tokens: num(tokens) }))
     .sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : 0));
+
+  // dailyProviderTokens is a sparse { "YYYY-MM-DD": { providerID: tokens } }
+  // map (all_time only, counter schema v3+). Keep only positive counts.
+  const dailyProviderTokens: Record<string, Record<string, number>> = {};
+  if (isRecord(raw.dailyProviderTokens)) {
+    for (const [day, split] of Object.entries(raw.dailyProviderTokens)) {
+      if (!isRecord(split)) continue;
+      const cleaned: Record<string, number> = {};
+      for (const [provider, tokens] of Object.entries(split)) {
+        const n = num(tokens);
+        if (n > 0) cleaned[provider] = n;
+      }
+      if (Object.keys(cleaned).length > 0) dailyProviderTokens[day] = cleaned;
+    }
+  }
 
   return {
     window,
@@ -223,7 +296,10 @@ export function normalizeRollup(raw: unknown, window: UsageWindowKey): UsageRoll
     providerSummaries,
     modelSummaries,
     deviceSummaries,
+    executionSourceSummaries,
+    comboSummaries,
     dailyPoints,
+    dailyProviderTokens,
     computedAt: toIso(raw.computedAt),
   };
 }

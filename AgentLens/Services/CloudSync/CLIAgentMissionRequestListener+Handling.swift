@@ -223,8 +223,8 @@ extension CLIAgentMissionRequestListener {
     }
     func handle(document: QueryDocumentSnapshot) async {
         let rawData = document.data()
-        if Self.isParkedPendingApproval(rawData) {
-            logger.debug("mission id=\(document.documentID, privacy: .public) remains parked for mobile approval")
+        if let ignored = MissionClaimGate.ignoreReason(rawData, localBodyID: localBodyIDProvider()) {
+            logger.debug("mission id=\(document.documentID, privacy: .public) \(ignored, privacy: .public)")
             return
         }
         let cancellationTracker = MissionCancellationTracker()

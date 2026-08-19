@@ -16,9 +16,9 @@ final class PulseWindowMetricsTests: XCTestCase {
             usage(id: 3, cost: 4.00, tokens: 400, at: now.addingTimeInterval(-2 * 60 * 60))
         ]
 
-        let minute = PulseWindowMetricBuilder.metrics(scope: .minute, rollupTotals: rollups, liveUsages: usages, now: now, calendar: calendar)
-        let hour = PulseWindowMetricBuilder.metrics(scope: .hour, rollupTotals: rollups, liveUsages: usages, now: now, calendar: calendar)
-        let day = PulseWindowMetricBuilder.metrics(scope: .day, rollupTotals: rollups, liveUsages: usages, now: now, calendar: calendar)
+        let minute = PulseWindowMetricBuilder.metrics(scope: .minute, rollupTotals: rollups, liveUsages: usages, now: now)
+        let hour = PulseWindowMetricBuilder.metrics(scope: .hour, rollupTotals: rollups, liveUsages: usages, now: now)
+        let day = PulseWindowMetricBuilder.metrics(scope: .day, rollupTotals: rollups, liveUsages: usages, now: now)
 
         XCTAssertEqual(minute.total.costUsd, 1.25, accuracy: 0.001)
         XCTAssertEqual(minute.total.tokens, 125)
@@ -48,8 +48,7 @@ final class PulseWindowMetricsTests: XCTestCase {
                 usage(id: 1, cost: 10, tokens: 1_000, at: outsideRollingDay),
                 usage(id: 2, cost: 2, tokens: 200, at: insideRollingDay)
             ],
-            now: now,
-            calendar: calendar
+            now: now
         )
 
         XCTAssertEqual(day.total.costUsd, 2, accuracy: 0.001)
@@ -93,8 +92,8 @@ final class PulseWindowMetricsTests: XCTestCase {
         let now = calendar.date(from: DateComponents(year: 2026, month: 5, day: 13, hour: 12, minute: 0, second: 0))!
         let row = usage(id: 1, cost: 1, tokens: 100, at: now.addingTimeInterval(-30))
 
-        let current = PulseWindowMetricBuilder.metrics(scope: .minute, rollupTotals: [:], liveUsages: [row], now: now, calendar: calendar)
-        let aged = PulseWindowMetricBuilder.metrics(scope: .minute, rollupTotals: [:], liveUsages: [row], now: now.addingTimeInterval(31), calendar: calendar)
+        let current = PulseWindowMetricBuilder.metrics(scope: .minute, rollupTotals: [:], liveUsages: [row], now: now)
+        let aged = PulseWindowMetricBuilder.metrics(scope: .minute, rollupTotals: [:], liveUsages: [row], now: now.addingTimeInterval(31))
 
         XCTAssertEqual(current.total.requests, 1)
         XCTAssertEqual(aged.total.requests, 0)
@@ -112,8 +111,8 @@ final class PulseWindowMetricsTests: XCTestCase {
             end: now.addingTimeInterval(-30)
         )
 
-        let minute = PulseWindowMetricBuilder.metrics(scope: .minute, rollupTotals: [:], liveUsages: [row], now: now, calendar: calendar)
-        let hour = PulseWindowMetricBuilder.metrics(scope: .hour, rollupTotals: [:], liveUsages: [row], now: now, calendar: calendar)
+        let minute = PulseWindowMetricBuilder.metrics(scope: .minute, rollupTotals: [:], liveUsages: [row], now: now)
+        let hour = PulseWindowMetricBuilder.metrics(scope: .hour, rollupTotals: [:], liveUsages: [row], now: now)
 
         XCTAssertEqual(minute.total.requests, 1)
         XCTAssertEqual(minute.total.tokens, 400)

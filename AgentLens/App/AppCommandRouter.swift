@@ -16,6 +16,17 @@ final class AppCommandRouter {
     /// Opens the dashboard directly on the Charts analytics page
     /// (`openburnbar://charts`).
     var openCharts: (() -> Void)?
+    /// Routes deep links that land INSIDE the dashboard (`openburnbar://quota`,
+    /// `openburnbar://inbox/<item>`): the installer opens the dashboard window
+    /// and hands the URL to `NavigationCoordinator.handleDeepLink`. Without this
+    /// hook those URLs fell through to the sign-in handler and died — the
+    /// pre-limit alert's tap had nowhere to land.
+    var routeDashboardDeepLink: ((URL) -> Bool)?
+    /// Opens the setup wizard with the REAL runtime context. Settings must call
+    /// this rather than constructing the wizard itself: its old direct call
+    /// passed `aggregator: nil`, which left the scan step on "Scanning…"
+    /// forever — a dead end on the exact screen meant to rescue a lost user.
+    var openOnboardingWizard: (() -> Void)?
     var openConversationSearch: (() -> Void)?
     var openChatPanel: (() -> Void)?
     var openSettings: (() -> Void)?
@@ -46,6 +57,12 @@ final class AppCommandRouter {
         case "search", "chat":
             openConversationSearch?()
             return true
+        // `home` belongs here too: NavigationCoordinator.handleDeepLink implements
+        // it, but a host missing from this list never reaches that handler — it
+        // falls through to `default` and is handed to the Google Sign-In fallback,
+        // so the route would be declared and unreachable.
+        case "quota", "inbox", "home":
+            return routeDashboardDeepLink?(url) ?? false
         case "link-cli":
             return handleLinkCli()
         default:

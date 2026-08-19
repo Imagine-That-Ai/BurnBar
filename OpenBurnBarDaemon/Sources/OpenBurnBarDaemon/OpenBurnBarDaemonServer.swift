@@ -74,6 +74,7 @@ public actor BurnBarDaemonServer {
     let computerUseSessionGrantMetadataResolver: ComputerUseSessionGrantMetadataResolver?
     let computerUseSessionGrantReadinessProvider: ComputerUseSessionGrantReadinessProvider?
     let fleetService: BurnBarFleetService
+    let flameService: BurnBarFlameService
     #if os(Linux)
     let linuxComputerUseOwnerAuthorizer: LinuxComputerUseOwnerAuthorizer
     let linuxCloudCredentialAuthority: LinuxDaemonCloudCredentialAuthority?
@@ -194,7 +195,8 @@ public actor BurnBarDaemonServer {
         linuxPrivacyService: BurnBarLinuxPrivacyService? = nil,
         subscriptionService: BurnBarSubscriptionService? = nil,
         chatThreadService: (any BurnBarChatThreadServing)? = nil,
-        fleetService: BurnBarFleetService? = nil
+        fleetService: BurnBarFleetService? = nil,
+        flameService: BurnBarFlameService? = nil
     ) {
         self.configuration = configuration
         self.logger = logger
@@ -237,6 +239,7 @@ public actor BurnBarDaemonServer {
         self.chatThreadService = chatThreadService
         self.ownsChatThreadService = chatThreadService == nil
         self.fleetService = fleetService ?? BurnBarFleetServiceFactory.makeDefault(configuration: configuration)
+        self.flameService = flameService ?? BurnBarFlameServiceFactory.makeDefault()
 
         let resolvedConfigStore = configStore ?? BurnBarConfigStore(
             catalog: configuration.catalog,
@@ -1639,7 +1642,7 @@ public actor BurnBarDaemonServer {
                     decoder: decoder,
                     requestData: requestData
                 )
-            case .searchQuery:
+            case .searchQuery, .searchSQL:
                 return try await handleSearchRPC(
                     method: method,
                     decoder: decoder,
@@ -1667,6 +1670,12 @@ public actor BurnBarDaemonServer {
                 )
             case .fleetSnapshot, .fleetOrchestratorGet, .fleetOrchestratorSet, .fleetDirectiveRecord:
                 return try await handleFleetRPC(
+                    method: method,
+                    decoder: decoder,
+                    requestData: requestData
+                )
+            case .warFlameRoute, .warFlameDistillList, .warFlameDistillSettle:
+                return try await handleWarFlameRPC(
                     method: method,
                     decoder: decoder,
                     requestData: requestData

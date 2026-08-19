@@ -52,6 +52,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.openburnbar.R
+import com.openburnbar.data.policy.MobileStoreEntitlementPolicy
 import com.openburnbar.data.stores.HostedQuotaProductDetails
 import com.openburnbar.data.stores.HostedQuotaStoreProduct
 import com.openburnbar.data.stores.HostedQuotaStoreProductRole
@@ -595,7 +596,8 @@ internal fun TierPlanCardBody(presentation: TierPlanPresentation, commerce: Tier
             options.forEach { option ->
                 PlanPurchaseButton(
                     option = option,
-                    price = prices[option.product.id]?.formattedPrice ?: option.product.fallbackPrice,
+                    price = prices[option.product.id]?.formattedPrice
+                        ?: MobileStoreEntitlementPolicy.UNAVAILABLE_PRICE_LABEL,
                     accent = accent,
                     enabled = enabled,
                     modifier = Modifier.weight(1f).testTag(cloudStorePurchaseTag(option.product.id)),
@@ -760,7 +762,8 @@ internal fun TopUpPlanRail(
                 title = metadata.title,
                 detail = metadata.detail,
                 drawableRes = metadata.drawableRes,
-                price = prices[product.id]?.formattedPrice ?: product.fallbackPrice,
+                price = prices[product.id]?.formattedPrice
+                    ?: MobileStoreEntitlementPolicy.UNAVAILABLE_PRICE_LABEL,
                 enabled = enabled,
                 purchaseTestTag = cloudStorePurchaseTag(product.id),
                 onClick = { onPurchase(product.id) },

@@ -57,12 +57,23 @@ final class DataStoreCoordinator {
     private var lastAppliedFingerprint: UsageContentFingerprint?
     private var lastAppliedSnapshotFingerprint: DashboardUsageSnapshotFingerprint?
     private var nextWindowBoundary: Date = .distantPast
+    /// The expensive dashboard aggregate snapshot is presentation state, not a
+    /// prerequisite for the menu-bar process or its background services.
+    /// Keep it cold until the user actually opens the tray or dashboard.
+    private var hasLoadedUsagePresentation = false
+    /// One-shot: the status item is hydrated after the FIRST ingestion only.
+    private var didHydrateForStatusItem = false
+    /// Coalesces simultaneous first-open requests from the tray, dashboard,
+    /// deep links, or automation into one aggregate query.
+    @ObservationIgnored private var usagePresentationLoadTask: Task<Void, Never>?
     /// Usage-table write marker observed by the most recent
-    /// `reloadUsagesIfChanged()` reload (see `UsageTableWriteMarker`). `nil`
-    /// until the first tick reload, which therefore always runs.
+    /// `reloadUsagesIfChanged()` pass or explicit presentation hydration (see
+    /// `UsageTableWriteMarker`). Background-only launches record the marker
+    /// without fetching the dashboard snapshot.
     private var lastReloadedUsageWriteMarker: Int?
     #if DEBUG
     var debugLastReloadedUsageWriteMarkerForTesting: Int? { lastReloadedUsageWriteMarker }
+    var debugHasLoadedUsagePresentationForTesting: Bool { hasLoadedUsagePresentation }
     #endif
     /// Injectable clock so boundary-crossing behavior is unit-testable.
     @ObservationIgnored var nowProvider: () -> Date = Date.init
@@ -397,6 +408,7 @@ final class DataStoreCoordinator {
         try OpenBurnBarDatabase.configureWALMode(openResult.pool)
         try self.init(
             databaseQueue: openResult.pool,
+            refreshOnInit: false,
             migrationBackupConfigurationBuilder: openResult.migrationBackupConfigurationBuilder
         )
     }
@@ -426,6 +438,7 @@ final class DataStoreCoordinator {
 
     func replaceUsages(_ newUsages: [TokenUsage]) {
         guard applyGateAdmits(newUsages) else { return }
+        hasLoadedUsagePresentation = true
         lastAppliedSnapshotFingerprint = nil
         let sortedUsages = newUsages.sorted { $0.startTime > $1.startTime }
         usages = sortedUsages
@@ -439,6 +452,7 @@ final class DataStoreCoordinator {
         let aggregateChanged = snapshotFingerprint != lastAppliedSnapshotFingerprint
         let rowsChanged = applyGateAdmits(snapshot.loadedUsages)
         guard aggregateChanged || rowsChanged else { return }
+        hasLoadedUsagePresentation = true
         lastAppliedSnapshotFingerprint = snapshotFingerprint
         let sortedUsages = snapshot.loadedUsages.sorted { $0.startTime > $1.startTime }
         usages = sortedUsages
@@ -479,12 +493,32 @@ final class DataStoreCoordinator {
         }
 
         do {
+            let marker = await actor.usageTableWriteMarker
             let snapshot = try await actor.fetchDashboardUsageSnapshot(loadedUsageLimit: Self.quickHydrationLimit)
             guard generation == refreshGeneration else { return }
+            lastReloadedUsageWriteMarker = marker
             replaceUsageSnapshot(snapshot)
         } catch {
             AppLogger.dataStore.silentFailure("refresh_failed", error: error)
         }
+    }
+
+    /// Hydrates dashboard presentation state once, on explicit UI demand.
+    /// Later writes flow through the marker-gated reload path.
+    func loadUsagePresentationIfNeeded() async {
+        guard !hasLoadedUsagePresentation else { return }
+        if let usagePresentationLoadTask {
+            await usagePresentationLoadTask.value
+            return
+        }
+
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.refresh()
+        }
+        usagePresentationLoadTask = task
+        await task.value
+        usagePresentationLoadTask = nil
     }
 
     func deleteAll() async throws {
@@ -509,6 +543,24 @@ final class DataStoreCoordinator {
     func reloadUsagesIfChanged() async {
         let marker = await actor.usageTableWriteMarker
         let now = nowProvider()
+        guard hasLoadedUsagePresentation else {
+            // Background ingestion still advances the marker, but it must not
+            // force a multi-window GROUP BY over a multi-gigabyte database
+            // before any usage UI exists. The first explicit presentation
+            // load is exhaustive and records its own marker.
+            lastReloadedUsageWriteMarker = marker
+            // ...except the status item, which is a presentation consumer that
+            // is ALWAYS on screen. Returning cold here left the menu bar
+            // icon-only until the user opened the popover, defeating the
+            // automatic first number. Hydrate exactly once, after the first
+            // ingestion; every later background tick still returns cheaply
+            // because `hasLoadedUsagePresentation` is set by then.
+            if didHydrateForStatusItem == false {
+                didHydrateForStatusItem = true
+                await loadUsagePresentationIfNeeded()
+            }
+            return
+        }
         if let lastReloadedUsageWriteMarker,
            lastReloadedUsageWriteMarker == marker,
            now < nextWindowBoundary {

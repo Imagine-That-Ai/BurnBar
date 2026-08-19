@@ -4,6 +4,11 @@ import CryptoKit
 import OpenBurnBarCore
 
 extension ControlPlaneStore {
+    /// App scope for memories harvested out of the indexed agent corpus. It is
+    /// deliberately the SAME app id the chat recall path queries — harvested
+    /// facts are only worth extracting if the assistant can later recall them.
+    static let agentCorpusMemoryAppID = "openburnbar"
+
     func enqueueMemoryExtraction(_ intent: ExtractionIntent, now: Date = Date()) async throws -> String {
         try await dbQueue.write { db in
             try self.enqueueMemoryExtraction(intent, in: db, now: now)
@@ -67,6 +72,124 @@ extension ControlPlaneStore {
             ]
         )
         return id
+    }
+
+    /// Sweep the indexed agent corpus for QUIET conversations and enqueue one
+    /// extraction job per content state. This is the wire the product thesis
+    /// runs on: memory learns from all 28 providers' sessions, not only from
+    /// BurnBar's own chat panel.
+    ///
+    /// Debounce is structural, not stateful:
+    ///  - Only conversations whose file has been untouched for `quietInterval`
+    ///    qualify — a session still being written re-queues on a later sweep.
+    ///  - The idempotency key hashes the conversation's content state
+    ///    (`fileModifiedAt` + `messageCount`), so an unchanged conversation
+    ///    collapses onto its existing (possibly completed) job via the enqueue's
+    ///    ON CONFLICT, and a grown one becomes exactly one new job.
+    ///  - `limit` bounds enqueue work per sweep. Candidates whose content state
+    ///    ALREADY has a job are skipped BEFORE the limit is applied, so the
+    ///    sweep walks backwards through the corpus instead of re-selecting the
+    ///    same newest rows forever (their inserts would collapse onto the
+    ///    existing idempotency key and the older tail would never be reached).
+    @discardableResult
+    func harvestAgentConversationExtractions(
+        now: Date = Date(),
+        quietInterval: TimeInterval = 30 * 60,
+        limit: Int = 8
+    ) async throws -> Int {
+        let cutoff = now.addingTimeInterval(-quietInterval)
+        struct HarvestRow {
+            let id: String
+            let projectName: String
+            let stateMarker: String
+            let idempotencyKey: String
+        }
+        let wanted = max(1, limit)
+        // Page backwards through the quiet corpus, dropping states that already
+        // have a job, until `wanted` genuinely-new ones are found. `maxScan`
+        // bounds the walk so one sweep can never turn into a full-table crawl.
+        let pageSize = max(wanted * 4, 32)
+        let maxScan = 2_000
+        let rows: [HarvestRow] = try await dbQueue.read { db in
+            var collected: [HarvestRow] = []
+            var offset = 0
+            while collected.count < wanted, offset < maxScan {
+                let page: [HarvestRow] = try Row.fetchAll(
+                    db,
+                    sql: """
+                    SELECT id, projectName, messageCount, fileModifiedAt
+                    FROM conversations
+                    WHERE deletedAt IS NULL
+                      AND fullText != ''
+                      AND fileModifiedAt IS NOT NULL
+                      AND fileModifiedAt < ?
+                    ORDER BY fileModifiedAt DESC
+                    LIMIT ? OFFSET ?
+                    """,
+                    arguments: [cutoff, pageSize, offset]
+                ).compactMap { row in
+                    guard let id = row["id"] as? String, id.isEmpty == false else { return nil }
+                    let modifiedEpoch = OpenBurnBarDatabase.parseDateValue(row["fileModifiedAt"])
+                        .map { String(Int($0.timeIntervalSince1970)) } ?? "0"
+                    let messageCount = (row["messageCount"] as? Int64).map(String.init) ?? "0"
+                    let stateMarker = "state-\(modifiedEpoch)-\(messageCount)"
+                    let threadID = AgentConversationExtractionSource.threadID(forConversationID: id)
+                    return HarvestRow(
+                        id: id,
+                        projectName: (row["projectName"] as? String) ?? "",
+                        stateMarker: stateMarker,
+                        idempotencyKey: MemoryExtraction.idempotencyKey(
+                            threadLogicalID: threadID,
+                            messageID: stateMarker,
+                            promptVersion: AgentConversationExtractionSource.promptVersion
+                        )
+                    )
+                }
+                if page.isEmpty { break }
+                offset += pageSize
+
+                // One round trip per page: which of these states are already known?
+                let placeholders = Array(repeating: "?", count: page.count).joined(separator: ", ")
+                let known = try String.fetchSet(
+                    db,
+                    sql: """
+                    SELECT idempotency_key FROM memory_extraction_jobs
+                    WHERE idempotency_key IN (\(placeholders))
+                    """,
+                    arguments: StatementArguments(page.map(\.idempotencyKey))
+                )
+                for candidate in page where known.contains(candidate.idempotencyKey) == false {
+                    collected.append(candidate)
+                    if collected.count == wanted { break }
+                }
+            }
+            return collected
+        }
+        guard rows.isEmpty == false else { return 0 }
+
+        var enqueued = 0
+        for row in rows {
+            let threadID = AgentConversationExtractionSource.threadID(forConversationID: row.id)
+            let promptVersion = AgentConversationExtractionSource.promptVersion
+            // The app scope the normal recall path queries. `memoryStorageProjectID`
+            // buckets a project-less chat scope to `chat:<appID>`, which is exactly
+            // what `MemoryScope(appID: "openburnbar")` recall reads; setting
+            // `projectID` here instead would file these rows under the bare project
+            // name where no reader ever looks, so the harvest would extract
+            // memories that could never be recalled.
+            var scope = MemoryScope(appID: Self.agentCorpusMemoryAppID)
+            let intent = ExtractionIntent(
+                threadID: threadID,
+                threadLogicalID: threadID,
+                messageID: row.stateMarker,
+                scope: scope,
+                promptVersion: promptVersion,
+                idempotencyKey: row.idempotencyKey
+            )
+            _ = try await enqueueMemoryExtraction(intent, now: now)
+            enqueued += 1
+        }
+        return enqueued
     }
 
     func claimNextMemoryExtractionJob(

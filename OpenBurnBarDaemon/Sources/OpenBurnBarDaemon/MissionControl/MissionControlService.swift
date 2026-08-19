@@ -62,8 +62,14 @@ public actor BurnBarMissionControlService: BurnBarMissionControlServing {
         .completed, .failed, .cancelled
     ]
     private static let maxActivitySnapshotBytes = 2 * 1024 * 1024
+
+    private struct ActivitySnapshotContent: Equatable {
+        let activeProjectSlug: String?
+        let projects: [BurnBarControllerActivityProject]
+    }
+
     var notificationLoopTask: Task<Void, Never>?
-    var lastIngestedActivityDigest: String?
+    private var lastIngestedActivityContent: ActivitySnapshotContent?
 
     public init(
         store: BurnBarMissionControlStore = BurnBarMissionControlStore(),
@@ -543,9 +549,25 @@ public actor BurnBarMissionControlService: BurnBarMissionControlServing {
             return
         }
 
-        for activityProject in snapshot.projects {
+        for (index, activityProject) in snapshot.projects.enumerated() {
             try Task.checkCancellation()
-            try await syncActivityProject(activityProject, now: now)
+            do {
+                try await syncActivityProject(activityProject, now: now)
+            } catch let error as BurnBarMissionControlError {
+                switch error {
+                case .invalidProjectIdentifier:
+                    // The activity snapshot is derived, non-authoritative
+                    // input. Older app builds could emit punctuation-only or
+                    // otherwise invalid slugs (for example "~"). One bad row
+                    // must not make every controller list/snapshot RPC fail.
+                    logger.warning(
+                        "mission_control_activity_project_skipped_invalid_identifier",
+                        metadata: ["project_index": "\(index)"]
+                    )
+                default:
+                    throw error
+                }
+            }
         }
     }
 
@@ -570,13 +592,18 @@ public actor BurnBarMissionControlService: BurnBarMissionControlServing {
 
         let data = try Data(contentsOf: activitySnapshotURL)
         try Task.checkCancellation()
-        let digest = String(decoding: data, as: UTF8.self)
-        guard digest != lastIngestedActivityDigest else {
+        let snapshot = try JSONDecoder().decode(BurnBarControllerActivitySnapshot.self, from: data)
+        let content = ActivitySnapshotContent(
+            activeProjectSlug: snapshot.activeProjectSlug,
+            projects: snapshot.projects
+        )
+        guard content != lastIngestedActivityContent else {
             return nil
         }
-
-        let snapshot = try JSONDecoder().decode(BurnBarControllerActivitySnapshot.self, from: data)
-        lastIngestedActivityDigest = digest
+        // `generatedAt` intentionally does not participate. The app refreshes
+        // this file every minute even when its 2k+ project payload is identical;
+        // treating the export timestamp as content forced a full re-ingest.
+        lastIngestedActivityContent = content
         return snapshot
     }
 
@@ -620,7 +647,7 @@ public actor BurnBarMissionControlService: BurnBarMissionControlServing {
         _ activityProject: BurnBarControllerActivityProject,
         now: Date
     ) async throws {
-        let existing = try await store.project(slug: activityProject.projectSlug)
+        let existing = try await store.registryProject(slug: activityProject.projectSlug)
         let mergedProject = mergeProject(activityProject, existing: existing)
 
         if let existing, projectRegistryEquivalent(existing, mergedProject) == false {

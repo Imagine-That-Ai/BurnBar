@@ -321,6 +321,8 @@ describe("computeUserRollupsFromCounters", () => {
       expect(rollups[key].accountSummaries).toEqual([]);
       expect(rollups[key].modelSummaries).toEqual([]);
       expect(rollups[key].deviceSummaries).toEqual([]);
+      expect(rollups[key].executionSourceSummaries).toEqual([]);
+      expect(rollups[key].comboSummaries).toEqual([]);
       expect(rollups[key].dailyPoints).toEqual({});
       expect(rollups[key].schemaVersion).toBe(3);
       expect(typeof rollups[key].computedAt).toBe("string");

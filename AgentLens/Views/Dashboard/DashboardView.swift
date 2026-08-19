@@ -39,7 +39,11 @@ struct DashboardView: View {
     var iCloudSessionMirrorService: ICloudSessionMirrorService?
     var runtimeContext: OpenBurnBarRuntimeContext?
     @State var consentCoordinator: DashboardConsentCoordinator?
-    @State var mainRoute: DashboardMainRoute = .overview
+    /// The launch surface. Home is the root: the inbox is the only screen that
+    /// turns the fleet/quota/corpus signals into a next move, so it is what the
+    /// window opens on. Users who want the old spend-first landing flip
+    /// `AppearanceSettings.dashboardLaunchSurface`.
+    @State var mainRoute: DashboardMainRoute = DashboardLaunchSurface.current.route
     @State var fleetService = FleetService(socketURL: OpenBurnBarDaemonRuntimePaths.live().socketURL)
     /// True while Fleet asked for orchestrator chat and the CLI consent sheet
     /// is still outstanding. Deny must not open chat; allow must.
@@ -102,6 +106,17 @@ struct DashboardView: View {
     /// a store discarded mid-debounce loses the write. `@State` gives it a
     /// lifetime tied to this view instead of to the process.
     @State private var inboxShelf = InboxShelfStore()
+
+    /// Fleet liveness for the Home rail.
+    ///
+    /// Owned here rather than by `DashboardHomeView` so the watchers keep
+    /// running while the user is on another route — the panel should be warm
+    /// the instant they come back, not start from "not watched".
+    @State private var fleetModel = LiveFleetModel()
+    @State private var fleetWatcher: ProviderSessionActivityWatcher?
+    /// The inbox model Home shares with the focused route. Built once so
+    /// switching between them does not reset selection or re-query.
+    @State private var homeInboxModel: InboxModel?
 
     @State var pendingMemoryReviewCount: Int?
     /// Unread AI Inbox items, shown as a badge on the section switcher. Nil until
@@ -224,11 +239,15 @@ struct DashboardView: View {
         switch route {
         case .overview, .insights, .charts, .provider, .model:
             return true
-        case .database, .projects, .missions, .sessionLogs, .memoryReview, .inbox, .chat, .quota,
-             .controlDeck, .fleet:
+        case .home, .database, .projects, .missions, .sessionLogs, .memoryReview, .inbox, .chat,
+             .quota, .controlDeck, .fleet:
             // The Control Deck is a full-width workspace like Inbox and Quota:
             // it is *not* about the provider/model breakdown, so the provider
             // rail would be a third redundant column.
+            //
+            // Home owns its own right rail, so a provider column would make it
+            // a fourth vertical band — and at the 1040pt window minimum there
+            // is not room for a third, let alone a fourth.
             return false
         }
     }
@@ -262,7 +281,7 @@ struct DashboardView: View {
     }
 
     var canGoBack: Bool {
-        !routeHistory.isEmpty || mainRoute != .overview
+        !routeHistory.isEmpty || mainRoute != .home
     }
 
     func navigate(to route: DashboardMainRoute) {
@@ -274,8 +293,8 @@ struct DashboardView: View {
     func goBack() {
         if let previous = routeHistory.popLast() {
             mainRoute = previous
-        } else if mainRoute != .overview {
-            mainRoute = .overview
+        } else if mainRoute != .home {
+            mainRoute = .home
         }
     }
 
@@ -287,12 +306,14 @@ struct DashboardView: View {
         navigationCoordinator.dashboardRoute = nil
         let route: DashboardMainRoute
         switch pending {
+        case .home: route = .home
         case .overview: route = .overview
         case .charts: route = .charts
         case .database: route = .database
         case .projects: route = .projects
         case .sessionLogs: route = .sessionLogs
         case .chat: route = .chat
+        case .quota: route = .quota
         case .inbox(let itemID):
             route = .inbox
             // Carried through so a tapped notification opens the exact item.
@@ -307,11 +328,12 @@ struct DashboardView: View {
         if let previous = routeHistory.last {
             return "Back to \(routeTitle(previous))"
         }
-        return "Back to Overview"
+        return "Back to Home"
     }
 
     func routeTitle(_ route: DashboardMainRoute) -> String {
         switch route {
+        case .home: return "Home"
         case .overview: return "Overview"
         case .insights: return "Insights"
         case .charts: return "Charts"
@@ -548,7 +570,10 @@ struct DashboardView: View {
         .background {
             sectionShortcuts
             controlDeckShortcut
+            homeShortcut
+            railToggleShortcut
             commandPaletteShortcut
+            fleetSleepObservers
         }
         .sheet(isPresented: $showCommandPalette) {
             CommandDeckPalette(
@@ -752,6 +777,41 @@ struct DashboardView: View {
         .allowsHitTesting(false)
     }
 
+    /// Hidden ⌘⇧H for Home.
+    ///
+    /// Outside the ⌘1–⌘8 range for the same reason ⌘0 is: `primarySections` is
+    /// positional, and putting Home in it would shift Inbox to ⌘2 and push
+    /// Memory off the end of every existing user's keyboard.
+    private var homeShortcut: some View {
+        Button {
+            withAnimation(DesignSystem.Animation.standard) {
+                navigate(to: .home)
+            }
+        } label: {
+            EmptyView()
+        }
+        .keyboardShortcut("h", modifiers: [.command, .shift])
+        .opacity(0)
+        .frame(width: 0, height: 0)
+        .allowsHitTesting(false)
+    }
+
+    /// Hidden ⌘⌥R to show/hide Home's fleet + quota rail.
+    private var railToggleShortcut: some View {
+        Button {
+            guard mainRoute == .home else { return }
+            let key = DashboardHomeRailMetrics.collapsedStorageKey
+            let collapsed = UserDefaults.standard.bool(forKey: key)
+            UserDefaults.standard.set(!collapsed, forKey: key)
+        } label: {
+            EmptyView()
+        }
+        .keyboardShortcut("r", modifiers: [.command, .option])
+        .opacity(0)
+        .frame(width: 0, height: 0)
+        .allowsHitTesting(false)
+    }
+
     /// Hidden ⌘K to open the Command Palette from anywhere in the window.
     private var commandPaletteShortcut: some View {
         Button {
@@ -771,6 +831,8 @@ struct DashboardView: View {
     var detailView: some View {
         Group {
                 switch mainRoute {
+                case .home:
+                    homeView
                 case .overview:
                     overviewRouteView
                 case .insights:
@@ -785,7 +847,16 @@ struct DashboardView: View {
                         dataStore: dataStore,
                         settingsManager: settingsManager,
                         chatController: chatController,
-                        selectedTimeRange: $selectedTimeRange
+                        selectedTimeRange: $selectedTimeRange,
+                        onOpenSessionLog: { conversationID in
+                            // Same landing the inbox uses: resolve a jump target
+                            // so the click opens the session, then navigate.
+                            Task { @MainActor in
+                                let resolver = InboxConversationJumpResolver(dataStore: dataStore)
+                                sessionLogJumpTarget = await resolver.jumpTarget(conversationID: conversationID)
+                                navigate(to: .sessionLogs)
+                            }
+                        }
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 case .database:
@@ -1024,57 +1095,162 @@ struct DashboardView: View {
     /// The memory-approval handler is bound to the SAME scope the Memory review
     /// surface uses, so a fact approved from the inbox is visible and revocable
     /// there too rather than living in a parallel bucket.
+    /// Builds the inbox view model.
+    ///
+    /// Extracted so the Home surface and the focused `.inbox` route construct
+    /// the *same* nine closures. Two call sites building this inline is how the
+    /// two surfaces silently drift — one gaining a capability the other lacks.
+    func makeInboxModel() -> InboxModel {
+        InboxModel(
+            loadRows: { [dataStore] states in
+                try await dataStore.fetchAIInboxRows(states: states)
+            },
+            loadMarker: { [dataStore] in try await dataStore.aiInboxChangeMarker() },
+            markRead: { [dataStore] id in try await dataStore.markAIInboxItemRead(id: id) },
+            markUnread: { [dataStore] id in try await dataStore.markAIInboxItemUnread(id: id) },
+            setArchived: { [dataStore] id, archived in
+                try await dataStore.setAIInboxItemArchived(id: id, archived: archived)
+            },
+            snooze: { [dataStore] id, until in
+                try await dataStore.snoozeAIInboxItem(id: id, until: until)
+            },
+            setFeedback: { [dataStore] id, feedback in
+                try await dataStore.setAIInboxItemFeedback(id: id, feedback: feedback)
+            },
+            markAllRead: { [dataStore] in try await dataStore.markAllAIInboxItemsRead() },
+            loadRuns: { [dataStore] in try await dataStore.fetchAIInboxRuns() },
+            shelf: inboxShelf
+        )
+    }
+
+    /// Opens a cited conversation at the passage that justified the item.
+    ///
+    /// Shared by the focused inbox and the Home surface. If the conversation is
+    /// no longer indexed we still navigate — going nowhere reads as a broken
+    /// link.
+    func openInboxSessionLog(conversationID: String) {
+        Task { @MainActor in
+            let resolver = InboxConversationJumpResolver(dataStore: dataStore)
+            sessionLogJumpTarget = await resolver.jumpTarget(conversationID: conversationID)
+            navigate(to: .sessionLogs)
+        }
+    }
+
+    /// The memory-approval handler, bound to the SAME scope the Memory review
+    /// surface uses so a fact approved from the inbox is visible and revocable
+    /// there rather than living in a parallel bucket.
+    func makeInboxMemoryApproval() -> InboxMemoryApprovalHandler? {
+        runtimeContext?.chatMemoryStore.map { store in
+            InboxMemoryApprovalHandler(
+                store: store,
+                scope: memoryReviewScope,
+                // After each approval, push the refreshed approved-snippet set
+                // to the daemon so the next tick can cite the fact (L21).
+                // Best-effort: approval never fails on daemon-down.
+                exporter: { [memoryReviewScope] in
+                    await InboxMemoryExportService(
+                        store: store,
+                        scope: memoryReviewScope,
+                        socketURL: OpenBurnBarDaemonRuntimePaths.live().socketURL
+                    ).pushApprovedSnippets()
+                }
+            )
+        }
+    }
+
+    /// The launch surface: inbox + fleet/quota rail.
+    @ViewBuilder
+    private var homeView: some View {
+        let model = homeInboxModel ?? makeInboxModel()
+        DashboardHomeView(
+            dataStore: dataStore,
+            settingsManager: settingsManager,
+            inboxModel: model,
+            fleetModel: fleetModel,
+            onOpenSessionLog: { openInboxSessionLog(conversationID: $0) },
+            onOpenSettings: { presentSettings(itemID: SettingsDeepLinkRouting.aiInboxItemID) },
+            onOpenInbox: { itemID in
+                pendingInboxItemID = itemID
+                navigate(to: .inbox)
+            },
+            onOpenQuota: { navigate(to: .quota) },
+            memoryApproval: makeInboxMemoryApproval()
+        )
+        .background(dashboardLiveBackdropActive ? Color.clear : DesignSystem.Colors.background)
+        .task {
+            if homeInboxModel == nil { homeInboxModel = model }
+            await startFleetIfNeeded()
+        }
+    }
+
+    /// Arms the fleet watchers once, and does the first presence/usage merge.
+    ///
+    /// Idempotent: `.task` re-fires on every route return, and `arm` skips
+    /// providers that already hold a stream.
+    @MainActor
+    private func startFleetIfNeeded() async {
+        let providers = settingsManager.detectAvailableProviders()
+            .filter(\.value)
+            .map(\.key)
+            .sorted { $0.displayName < $1.displayName }
+
+        if fleetWatcher == nil {
+            fleetWatcher = ProviderSessionActivityWatcher(model: fleetModel)
+        }
+        fleetWatcher?.arm(providers: providers)
+        refreshFleet(providers: providers)
+    }
+
+    /// Display sleep tears the watchers down and marks external rows
+    /// unobservable.
+    ///
+    /// A stream that survives sleep wakes the process on every write from a
+    /// CLI running with the lid closed — strictly worse than the 60s poll it
+    /// replaced. And showing pre-sleep timestamps as if they were current is
+    /// the exact dishonesty the whole liveness model exists to prevent.
+    var fleetSleepObservers: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .allowsHitTesting(false)
+            .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.willSleepNotification)) { _ in
+                fleetWatcher?.handleWillSleep()
+            }
+            .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didWakeNotification)) { _ in
+                Task { @MainActor in await startFleetIfNeeded() }
+            }
+            // The shared cadence already fires on the app's refresh interval and
+            // pauses during sleep, so the fleet's parsed-usage half rides it
+            // rather than owning a second timer.
+            .onReceive(NotificationCenter.default.publisher(for: DashboardView.inboxBadgeRefreshNotification)) { _ in
+                Task { @MainActor in
+                    let providers = settingsManager.detectAvailableProviders()
+                        .filter(\.value)
+                        .map(\.key)
+                        .sorted { $0.displayName < $1.displayName }
+                    refreshFleet(providers: providers)
+                }
+            }
+    }
+
+    @MainActor
+    private func refreshFleet(providers: [AgentProvider]) {
+        let presenceModel = chatController.agentDeck.presence
+        fleetModel.rebuild(
+            providers: providers,
+            presence: presenceModel.presence,
+            busyLocation: presenceModel.busyLocation,
+            usages: dataStore.usages,
+            usagesVersion: dataStore.usagesVersion
+        )
+    }
+
     @ViewBuilder
     private var inboxView: some View {
         InboxView(
-            model: InboxModel(
-                loadRows: { [dataStore] states in
-                    try await dataStore.fetchAIInboxRows(states: states)
-                },
-                loadMarker: { [dataStore] in try await dataStore.aiInboxChangeMarker() },
-                markRead: { [dataStore] id in try await dataStore.markAIInboxItemRead(id: id) },
-                markUnread: { [dataStore] id in try await dataStore.markAIInboxItemUnread(id: id) },
-                setArchived: { [dataStore] id, archived in
-                    try await dataStore.setAIInboxItemArchived(id: id, archived: archived)
-                },
-                snooze: { [dataStore] id, until in
-                    try await dataStore.snoozeAIInboxItem(id: id, until: until)
-                },
-                setFeedback: { [dataStore] id, feedback in
-                    try await dataStore.setAIInboxItemFeedback(id: id, feedback: feedback)
-                },
-                markAllRead: { [dataStore] in try await dataStore.markAllAIInboxItemsRead() },
-                loadRuns: { [dataStore] in try await dataStore.fetchAIInboxRuns() },
-                shelf: inboxShelf
-            ),
-            onOpenSessionLog: { conversationID in
-                // Resolve the citation into a real jump target so the click lands
-                // on the passage that justified the item, not the top of a long
-                // transcript. If the conversation is no longer indexed we still
-                // navigate — going nowhere would read as a broken link.
-                Task { @MainActor in
-                    let resolver = InboxConversationJumpResolver(dataStore: dataStore)
-                    sessionLogJumpTarget = await resolver.jumpTarget(conversationID: conversationID)
-                    navigate(to: .sessionLogs)
-                }
-            },
+            model: homeInboxModel ?? makeInboxModel(),
+            onOpenSessionLog: { conversationID in openInboxSessionLog(conversationID: conversationID) },
             onOpenSettings: { presentSettings(itemID: SettingsDeepLinkRouting.aiInboxItemID) },
-            memoryApproval: runtimeContext?.chatMemoryStore.map { store in
-                InboxMemoryApprovalHandler(
-                    store: store,
-                    scope: memoryReviewScope,
-                    // After each approval, push the refreshed approved-snippet
-                    // set to the daemon so the next tick can cite the fact
-                    // (L21). Best-effort: approval never fails on daemon-down.
-                    exporter: { [memoryReviewScope] in
-                        await InboxMemoryExportService(
-                            store: store,
-                            scope: memoryReviewScope,
-                            socketURL: OpenBurnBarDaemonRuntimePaths.live().socketURL
-                        ).pushApprovedSnippets()
-                    }
-                )
-            },
+            memoryApproval: makeInboxMemoryApproval(),
             openItemID: pendingInboxItemID
         )
         // Consume the deep link so returning to the Inbox later opens normally.

@@ -1522,6 +1522,16 @@ export const burnBarRpcIpcCanon = [
     "error": "BurnBarRPCError"
   },
   {
+    "id": "daemon.search.sql",
+    "caseName": "searchSQL",
+    "domain": "search",
+    "capability": "search",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.search.sql",
+    "error": "BurnBarRPCError"
+  },
+  {
     "id": "daemon.simulator.list",
     "caseName": "simulatorList",
     "domain": "mission_control",
@@ -1689,6 +1699,36 @@ export const burnBarRpcIpcCanon = [
     "owner": "OpenBurnBarDaemon",
     "params": "BurnBarUsageRecountRequest",
     "result": "BurnBarUsageProjectionResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.war.flame.distill.list",
+    "caseName": "warFlameDistillList",
+    "domain": "war_room",
+    "capability": "observability",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.war.flame.distill",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.war.flame.distill.settle",
+    "caseName": "warFlameDistillSettle",
+    "domain": "war_room",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.war.flame.distill.settle",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.war.flame.route",
+    "caseName": "warFlameRoute",
+    "domain": "war_room",
+    "capability": "observability",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.war.flame.route",
     "error": "BurnBarRPCError"
   },
   {

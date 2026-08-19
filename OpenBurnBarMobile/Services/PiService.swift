@@ -546,7 +546,17 @@ final class PiService {
 
         if currentThreadID == nil { currentThreadID = UUID().uuidString }
 
-        messages.append(PiChatMessage(role: .user, text: trimmed))
+        let last = messages.last
+        // "reconnect" lets the policy drop a replayed turn; it re-checks the
+        // role/text match itself, so there is nothing to pre-compute here.
+        if MobileHermesConversationPolicy.shouldAppendUserMessage(
+            lastRole: last?.role.rawValue,
+            lastText: last?.text,
+            incomingText: trimmed,
+            reason: "reconnect"
+        ) {
+            messages.append(PiChatMessage(role: .user, text: trimmed))
+        }
         isStreaming = true
         persistCurrentThread()
 
@@ -783,6 +793,7 @@ final class PiService {
     /// branch of the send task (whichever runs first — both are
     /// idempotent).
     private func finalizeMessagesAfterCancelledStream() {
+        let terminal = MobileHermesConversationPolicy.terminal(forEvent: "stop")
         for idx in messages.indices where messages[idx].isStreaming {
             var msg = messages[idx]
             msg.isStreaming = false
@@ -790,9 +801,12 @@ final class PiService {
         }
         if let last = messages.last,
            last.role == .assistant,
-           last.text.isEmpty,
-           last.toolCalls.isEmpty,
-           !last.isError {
+           MobileHermesConversationPolicy.shouldDropEmptyAssistant(
+            text: last.text,
+            toolCallCount: last.toolCalls.count,
+            isError: last.isError,
+            terminal: terminal
+           ) {
             messages.removeLast()
         }
     }
@@ -817,7 +831,13 @@ final class PiService {
     /// Restores `messages` from a persisted thread. Used when the user taps a
     /// row in the chat history list.
     func loadThread(id: String) {
-        guard let thread = history.thread(id: id), thread.runtime == AssistantRuntimeID.pi.rawValue else { return }
+        let stored = history.thread(id: id).flatMap { $0.runtime == AssistantRuntimeID.pi.rawValue ? $0 : nil }
+        let outcome = MobileHermesConversationPolicy.conversationDeepLink(threadId: id, exists: stored != nil)
+        guard outcome == .loaded, let thread = stored else {
+            startNewThread()
+            lastError = MobileHermesConversationPolicy.missingConversationMessage(outcome)
+            return
+        }
         supersedeCurrentStream()
         isStreaming = false
         currentThreadID = thread.id

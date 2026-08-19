@@ -95,7 +95,11 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
              // fact. All operator actions.
              .inboxReply, .inboxPlansAccept, .inboxPlansUpdateStep,
              .inboxPlansGrade, .inboxMemoryExport,
-             .fleetOrchestratorSet, .fleetDirectiveRecord:
+             .fleetOrchestratorSet, .fleetDirectiveRecord,
+             // Settling rewrites the record operators judge the Flame's
+             // judgement by. A read-only peer must not be able to launder a
+             // failed decision into a successful one.
+             .warFlameDistillSettle:
             return .config
         case .usageRecord, .usageRecent, .usageProjection, .usageRecount,
              .usageHistory, .usageInsights,
@@ -107,7 +111,13 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
              // usage/insight reads, so they share the observability group.
              .inboxList, .inboxGet, .inboxRunsRecent, .inboxConfigGet,
              // Plan reads are the same already-synthesized shape.
-             .inboxPlansList, .inboxPlansGet:
+             .inboxPlansList, .inboxPlansGet,
+             // The Flame advises; it does not act. `route` answers "which
+             // machine should do this" and archives the question in a bounded
+             // in-memory log — nothing is dispatched and nothing is spent, so
+             // it reads at the same grade as the other synthesized reads.
+             // Actual dispatch is a separate, higher-privileged path.
+             .warFlameRoute, .warFlameDistillList:
             return .observability
         case .chatThreadList, .chatThreadGet, .chatMessageAppend,
              // Inbox reply threads store the user's own dialogue verbatim —
@@ -155,7 +165,7 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
              .subscriptionStart, .subscriptionResume, .subscriptionStop,
              .workspaceExecuteTool, .workspaceToolResult, .approvalRespond:
             return .run
-        case .searchQuery:
+        case .searchQuery, .searchSQL:
             return .search
         case .memoryRemember, .memoryReviewStatus, .memoryForget:
             return .memoryWrite

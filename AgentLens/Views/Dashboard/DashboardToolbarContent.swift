@@ -173,9 +173,22 @@ extension DashboardView {
 
     private var dashboardDeckLeading: some View {
         HStack(spacing: 10) {
-            AppLogoView(size: 36)
-                .frame(width: 44, height: 44)
-                .help("OpenBurnBar")
+            // The logo is the Home button. "Logo goes home" is universal, and
+            // it costs zero width — which matters, because the deck strip is
+            // `.fixedSize(horizontal:)` and a seventh route button would push
+            // the 116pt deck past the 1040pt window minimum.
+            Button {
+                withAnimation(DesignSystem.Animation.standard) {
+                    navigate(to: .home)
+                }
+            } label: {
+                AppLogoView(size: 36)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Home (⌘⇧H)")
+            .accessibilityLabel("Home")
 
             DashboardSectionSwitcher(
                 currentRoute: mainRoute,
@@ -1257,6 +1270,7 @@ extension DashboardMainRoute {
         case "chat": return .chat
         case "quota": return .quota
         case "controlDeck": return .controlDeck
+        case "home": return .home
         case "fleet": return .fleet
         default: return nil
         }

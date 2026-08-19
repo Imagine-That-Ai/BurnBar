@@ -4,6 +4,8 @@ import re
 import subprocess
 from pathlib import Path
 
+import scripts.ci.check_agpl_legal_release_review as agpl_review
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -18,10 +20,7 @@ def load_release_preflight_module():
 
 
 def current_release_tag() -> str:
-    project_yml = (ROOT / "project.yml").read_text(encoding="utf-8")
-    match = re.search(r'MARKETING_VERSION:\s*"?([0-9]+(?:\.[0-9]+)+)"?', project_yml)
-    assert match is not None, "project.yml must declare MARKETING_VERSION"
-    return f"v{match.group(1)}"
+    return agpl_review.marketing_version_release_tag(ROOT)
 
 
 def test_release_preflight_holds_until_signed_legal_evidence_is_approved():
@@ -58,20 +57,32 @@ def test_release_preflight_rejects_pending_legal_template_as_release_approval():
     assert "legal release review is not approved: 'pending'" in result.stderr
 
 
-def test_current_owner_emergency_packet_is_bound_to_current_release_tag():
+def test_owner_emergency_packet_is_honestly_bound_for_release():
     evidence = ROOT / "launch-evidence/latest-agpl-store-legal-packet.json"
     data = json.loads(evidence.read_text(encoding="utf-8"))
-    expected_release_tag = current_release_tag()
+    packet_tag = data["repo"]["releaseTag"]
 
-    assert data["repo"]["releaseTag"] == expected_release_tag
+    binding_errors = agpl_review.validate_owner_emergency_packet_release_binding(
+        data,
+        repo_root=ROOT,
+    )
+    assert binding_errors == [], binding_errors
+
+    attestation_errors = agpl_review.validate_owner_attested_soft_approval(
+        data,
+        repo_root=ROOT,
+        expected_release_tag=packet_tag,
+    )
+    assert attestation_errors == [], attestation_errors
 
     result = subprocess.run(
         [
             "python3",
             "scripts/ci/check_burnbar_release_preflight.py",
             "--allow-owner-emergency-approval",
+            "--allow-owner-emergency-runtime-hold",
             "--expected-release-tag",
-            expected_release_tag,
+            packet_tag,
         ],
         cwd=ROOT,
         text=True,
@@ -196,6 +207,9 @@ def test_release_workflow_uses_bounded_release_critical_app_gate():
         'OPENBURNBAR_APP_TEST_FILTERS="${OPENBURNBAR_APP_TEST_FILTERS:-$(openburnbar_release_app_test_filters_env)}"'
         in smoke
     )
+    assert 'support_dir="$(mktemp -d "/tmp/openburnbar-release-smoke-support-$uid.XXXXXX")"' in smoke
+    assert '"OPENBURNBAR_DAEMON_SUPPORT_DIR": "${support_dir}"' in smoke
+    assert '"WorkingDirectory": "${installed_daemon_dir}"' in smoke
 
     for required_filter in (
         "OpenBurnBarTests/DirectDownloadReleaseMetadataTests",
@@ -683,13 +697,15 @@ def test_release_smoke_uses_packaged_daemon_helper_without_persistent_install_as
 
 def test_local_source_builds_package_daemon_sqlcipher_runtime_before_signing():
     makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
-    rpath_command = (
+    website_release = (ROOT / "scripts/build-macos-website-release.sh").read_text(encoding="utf-8")
+    sqlcipher_verifier = (ROOT / "scripts/ci/verify-sqlcipher-codec.sh").read_text(encoding="utf-8")
+    daemon_rpath_command = (
         'install_name_tool -add_rpath "@executable_path/../Frameworks" '
         '"$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_BIN)"'
     )
-    framework_guard = (
-        "links SQLCipher.framework but the app bundle is missing "
-        "Contents/Frameworks/SQLCipher.framework"
+    cli_rpath_command = (
+        'install_name_tool -add_rpath "@executable_path/../Frameworks" '
+        '"$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_CLI_BIN)"'
     )
 
     build_section = makefile.split("build: bootstrap preflight", 1)[1].split(
@@ -699,11 +715,52 @@ def test_local_source_builds_package_daemon_sqlcipher_runtime_before_signing():
         "release-mas: preflight", 1
     )[0]
 
-    assert rpath_command in build_section
-    assert framework_guard in build_section
-    assert rpath_command in signed_section
-    assert framework_guard in signed_section
-    assert signed_section.index(rpath_command) < signed_section.index("scripts/sign-openburnbar-local.sh")
+    for section in (build_section, signed_section):
+        assert (
+            "swift build --package-path $(DAEMON_PACKAGE) -c release "
+            "--product $(DAEMON_BIN)"
+        ) in section
+        assert (
+            "swift build --package-path $(DAEMON_PACKAGE) -c release "
+            "--product $(DAEMON_CLI_BIN)"
+        ) in section
+        assert (
+            'cp "$(DAEMON_PACKAGE)/.build/release/$(DAEMON_CLI_BIN)" '
+            '"$(APP_BUNDLE)/Contents/Helpers/$(DAEMON_CLI_BIN)"'
+        ) in section
+        assert "$(DAEMON_BIN) links SQLCipher.framework" in section
+        assert "$(DAEMON_CLI_BIN) links SQLCipher.framework" in section
+        assert daemon_rpath_command in section
+        assert cli_rpath_command in section
+        assert "links an external libsqlcipher dylib" in section
+
+    signing_index = signed_section.index("scripts/sign-openburnbar-local.sh")
+    assert signed_section.index(daemon_rpath_command) < signing_index
+    assert signed_section.index(cli_rpath_command) < signing_index
+    assert signed_section.index("links an external libsqlcipher dylib") < signing_index
+    assert "Apple releases must use the embedded SQLCipher.framework only" in website_release
+    assert "external_sqlcipher_loaders=()" in sqlcipher_verifier
+    assert "Release app bundle still links an external SQLCipher dylib" in sqlcipher_verifier
+
+
+def test_local_release_smoke_uses_signed_installed_layout_daemon_and_cli():
+    smoke = (ROOT / "scripts/test-openburnbar-release-smoke.sh").read_text(encoding="utf-8")
+
+    assert "requires an Apple Development code-signing identity" in smoke
+    assert 'make -C "$repo_root" build-signed' in smoke
+    assert 'cli_bin="$app_path/Contents/Helpers/OpenBurnBarCLI"' in smoke
+    assert 'installed_daemon_dir="$support_dir/daemon"' in smoke
+    assert 'installed_cli_bin="$installed_daemon_dir/OpenBurnBarCLI"' in smoke
+    assert 'cp "$cli_bin" "$installed_cli_bin"' in smoke
+    assert "--socket-auth-token-file" in smoke
+    assert 'OPENBURNBAR_DAEMON_SOCKET_PATH="$socket_path"' in smoke
+    assert 'OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN_FILE="$socket_auth_token_file"' in smoke
+    assert 'python3 - "$installed_cli_bin"' in smoke
+    assert '[cli, "health"]' in smoke
+    assert "Authenticated daemon health RPC passed via installed-layout OpenBurnBarCLI" in smoke
+    assert "import socket" not in smoke
+    assert '"method": "daemon.health"' not in smoke
+    assert '"OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN": "${socket_auth_token}"' not in smoke
 
 
 def test_macos_release_does_not_require_unsupported_app_attest_entitlement():

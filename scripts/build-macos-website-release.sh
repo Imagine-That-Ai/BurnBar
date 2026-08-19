@@ -163,6 +163,13 @@ fi
 cp "$daemon_bin" "$helpers_dir/OpenBurnBarDaemon"
 cp "$daemon_cli_bin" "$helpers_dir/OpenBurnBarCLI"
 chmod +x "$helpers_dir/OpenBurnBarDaemon" "$helpers_dir/OpenBurnBarCLI"
+for helper in "$helpers_dir/OpenBurnBarDaemon" "$helpers_dir/OpenBurnBarCLI"; do
+  if otool -L "$helper" | grep -Eq 'libsqlcipher[^/]*\.dylib'; then
+    echo "ERROR: $(basename "$helper") links an external libsqlcipher dylib; Apple releases must use the embedded SQLCipher.framework only." >&2
+    otool -L "$helper" >&2
+    exit 1
+  fi
+done
 if [[ -f "$daemon_core_dylib" ]]; then
   cp "$daemon_core_dylib" "$helpers_dir/libOpenBurnBarCore.dylib"
 fi

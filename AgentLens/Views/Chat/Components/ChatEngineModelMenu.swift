@@ -45,50 +45,57 @@ final class CLIRuntimeModelCatalogCache {
 /// The compact model picker used by `ChatPanelHeader`, `ChatMenuPopover`,
 /// `ChatPanel` and `HermesPopoverChatView`.
 ///
-/// **This view is deliberately not deleted.** The Agent Deck absorbs its *rows*
-/// as the Sigil's second segment (see `modelRows(controller:)`); the view itself
-/// keeps its four other call sites working untouched.
+/// Since the Liquid Plasma swap this is a thin adapter over
+/// `PlasmaModelSelector`, so those four surfaces inherit the living orb and the
+/// three-rung ladder without touching their layouts. The *rows* below stay:
+/// `contextMenu` and the Sigil's long-press menu are AppKit menus, which only
+/// render plain `Button(title)` rows, and `AgentSigilTests` / `CLIBridgeTests`
+/// pin `cliMenuRows`.
 struct ChatEngineModelMenu: View {
     @Bindable var controller: ChatSessionController
 
+    /// The asset's pair: the mascot on the left, the model on the right.
+    ///
+    /// They sit together because they answer the two halves of the same
+    /// question — *who* is answering and *what* is answering — and separating
+    /// them would put the persona somewhere the user has to go looking for it.
+    /// The persona orb comes first because it is the one with a face, and a
+    /// face is what the eye lands on.
     var body: some View {
-        Menu {
-            Self.modelRows(controller: controller)
-        } label: {
-            HStack(spacing: 4) {
-                Image(systemName: "cpu").font(.system(size: 11, weight: .medium))
-                Text(controller.chatModelMenuTitle())
-                    .font(.system(size: 9, weight: .semibold, design: .rounded))
-                    .lineLimit(1)
-                    .frame(maxWidth: 120, alignment: .leading)
-            }
-            .foregroundStyle(controller.chatBackend == .hermes ? DesignSystem.Colors.hermesAureate : DesignSystem.Colors.textSecondary)
-        }
-        .menuStyle(.borderlessButton)
-        .help("Model for \(controller.chatBackend.displayName) chat. Each agent remembers its own choice.")
-        .animation(DesignSystem.Animation.snappy, value: controller.chatBackend)
-        .animation(DesignSystem.Animation.snappy, value: controller.chatModelSelection(for: controller.chatBackend))
-        .animation(DesignSystem.Animation.snappy, value: controller.hermesModelName)
-        .task(id: controller.chatBackend) {
-            // Warm the catalog eagerly (as this view always has), so the menu is
-            // populated the first time it is opened — from here or from the
-            // Sigil.
-            await controller.agentDeck.modelCatalog.refreshIfNeeded(
-                runtime: Self.cliRuntime(for: controller.chatBackend),
-                settingsManager: controller.settingsManager
+        HStack(spacing: 6) {
+            PlasmaPersonaOrb(
+                seat: activeSeat,
+                roster: controller.personaRoster,
+                isThinking: controller.isStreaming,
+                onSelect: selectSeat,
+                onCreate: { label, personaID in
+                    guard let seat = controller.addPersonaSeat(label: label, personaID: personaID) else { return }
+                    selectSeat(seat)
+                },
+                onDelete: { controller.removePersonaSeat(id: $0) }
             )
-        }
-        .task(id: controller.isElderWandActive) {
-            if controller.isElderWandActive {
-                await controller.probeBurnBarGatewayAvailability()
-            }
+            PlasmaModelSelector(controller: controller, labelWidth: 120)
         }
     }
 
-    /// The menu's rows, extracted so the Agent Sigil's model segment can host
-    /// the identical content. Hermes additionally gets its `ROUTE` section —
-    /// the first time the Hermes routing ladder is legible on the full-canvas
-    /// surface.
+    private var activeSeat: PlasmaSeat? {
+        guard let id = controller.personaSeatID(for: controller.chatBackend) else { return nil }
+        return controller.personaRoster.first { $0.id == id }
+    }
+
+    private func selectSeat(_ seat: PlasmaSeat?) {
+        controller.setPersonaSeatID(seat?.id, for: controller.chatBackend)
+        Analytics.shared.track(.chatPersonaSelected, [
+            "backend": .string(controller.chatBackend.rawValue),
+            // The closed, app-authored persona id — never the seat's label,
+            // which the user typed.
+            "persona_id": .string(seat?.personaID ?? "none")
+        ])
+    }
+
+    /// The equivalent rows as an AppKit menu, for the surfaces that must be a
+    /// native menu (`contextMenu`). Hermes additionally gets its `ROUTE`
+    /// section.
     @ViewBuilder
     static func modelRows(controller: ChatSessionController) -> some View {
         ChatEngineModelRows(controller: controller)

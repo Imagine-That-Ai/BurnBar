@@ -85,3 +85,11 @@ docs/pricing/gpt-pro-brief/06_OPERATIONAL_EXECUTION_APPENDIX.md ::: zero-knowled
 # becomes fully accurate once C-1 lands") to track the finding — it is an internal
 # audit doc, NOT shipped to users, so the quote is reviewed + allowlisted.
 docs/security/SECURITY_REMEDIATION_2026-06-09.md ::: no one in the middle ::: 1
+# Product-truth program docs (2026-08-17): all three occurrences below are the
+# opposite of over-claims — they are the paywall/claims-discipline rules that
+# BAN saying "zero-knowledge" for hosted surfaces (mirroring the existing
+# FEATURE_GATING_SPEC honesty section). Internal planning docs, not shipped
+# user copy; the phrase appears only inside the prohibition itself.
+docs/PRODUCT_FOCUS_AND_ONBOARDING_PLAN.md ::: zero-knowledge ::: 1
+docs/product-focus/FEATURE_INVENTORY.md ::: zero-knowledge ::: 2
+docs/product-focus/MONETIZATION_AND_TRIAL_SPEC.md ::: zero-knowledge ::: 1

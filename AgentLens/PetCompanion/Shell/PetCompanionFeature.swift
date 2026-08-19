@@ -106,11 +106,14 @@ enum PetCompanionFeature {
         showCompanion()
     }
 
-    /// Whether the one-window onboarding should run on this launch (first launch
-    /// with the companion never set up). The host presents ``PetFirstRunView``
-    /// when this is `true` (build-notes documents the `WindowManager` mirror).
+    /// Whether the one-window onboarding should run on this launch: only for a
+    /// user who has ENABLED the companion and never finished setting it up.
+    /// A fresh install must never meet the pet before their first number — the
+    /// ungated version force-activated a setup window over every new user's
+    /// first launch. The host presents ``PetFirstRunView`` when this is `true`
+    /// (build-notes documents the `WindowManager` mirror).
     static var shouldRunFirstRun: Bool {
-        !PetFirstRunModel.hasCompleted
+        isEnabled && !PetFirstRunModel.hasCompleted
     }
 
     /// Load the active pet's definition and start + show the companion. Falls back

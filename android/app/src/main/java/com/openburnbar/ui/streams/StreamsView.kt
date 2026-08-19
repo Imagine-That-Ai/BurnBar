@@ -24,6 +24,7 @@ fun StreamsView(
     val projects by activityStore.projects.collectAsState()
     val isLoading by activityStore.isLoading.collectAsState()
     val error by activityStore.error.collectAsState()
+    val searchFailed by activityStore.searchFailed.collectAsState()
     val selectedSegment by activityStore.selectedSegment.collectAsState()
     val hasMore by activityStore.hasMore.collectAsState()
     val cloudSearchHits by activityStore.cloudSearchHits.collectAsState()
@@ -45,6 +46,7 @@ fun StreamsView(
             cloudSearchHits = cloudSearchHits,
             isLoading = isLoading,
             error = error,
+            searchFailed = searchFailed,
             isCloudMember = isCloudMember,
             isDark = androidx.compose.foundation.isSystemInDarkTheme(),
         ),

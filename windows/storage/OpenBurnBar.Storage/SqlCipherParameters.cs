@@ -42,7 +42,7 @@ public static class SqlCipherParameters
 
     /// <summary>
     /// The fixed, <b>non-secret</b> test passphrase that keys the committed
-    /// byte-compat fixture (<c>openburnbar-db-compat-v61.sqlcipher</c>). It exists so
+    /// byte-compat fixture (<c>openburnbar-db-compat-v64.sqlcipher</c>). It exists so
     /// the macOS generator and this Windows open-side check open the <i>same</i>
     /// committed encrypted file; it keys only that throwaway fixture, never real
     /// user data. Documented in the fixture README and

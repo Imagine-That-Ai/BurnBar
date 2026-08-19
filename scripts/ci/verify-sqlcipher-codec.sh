@@ -210,6 +210,7 @@ if [[ "${OPENBURNBAR_REQUIRE_SQLCIPHER_CODEC:-}" == "1" ]]; then
 
   sqlcipher_loader_found=0
   system_sqlite_loaders=()
+  external_sqlcipher_loaders=()
   while IFS= read -r -d '' candidate; do
     if ! file "$candidate" | grep -q 'Mach-O'; then
       continue
@@ -217,6 +218,9 @@ if [[ "${OPENBURNBAR_REQUIRE_SQLCIPHER_CODEC:-}" == "1" ]]; then
     deps="$(otool -L "$candidate" 2>/dev/null || true)"
     if grep -q 'SQLCipher.framework' <<<"$deps"; then
       sqlcipher_loader_found=1
+    fi
+    if grep -Eq 'libsqlcipher[^/]*\.dylib' <<<"$deps"; then
+      external_sqlcipher_loaders+=("$candidate")
     fi
     if grep -q '/usr/lib/libsqlite3.dylib' <<<"$deps"; then
       if is_non_database_helper_binary "$candidate"; then
@@ -228,6 +232,11 @@ if [[ "${OPENBURNBAR_REQUIRE_SQLCIPHER_CODEC:-}" == "1" ]]; then
 
   if [[ "$sqlcipher_loader_found" != "1" ]]; then
     fail "Release app bundle has no Mach-O image loading SQLCipher.framework"
+  fi
+  if [[ "${#external_sqlcipher_loaders[@]}" -gt 0 ]]; then
+    printf 'FAIL: Release app bundle still links an external SQLCipher dylib from:\n' >&2
+    printf '  - %s\n' "${external_sqlcipher_loaders[@]}" >&2
+    exit 1
   fi
   if [[ "${#system_sqlite_loaders[@]}" -gt 0 ]]; then
     printf 'FAIL: Release app bundle still links system sqlite3 from:\n' >&2

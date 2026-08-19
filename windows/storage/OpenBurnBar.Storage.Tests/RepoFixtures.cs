@@ -13,7 +13,7 @@ namespace OpenBurnBar.Storage.Tests;
 internal static class RepoFixtures
 {
     private const string RelativeDir = "AgentLensTests/Fixtures/DBByteCompat";
-    private const string PinnedFixtureFile = "openburnbar-db-compat-v61.sqlcipher";
+    private const string PinnedFixtureFile = "openburnbar-db-compat-v64.sqlcipher";
     private const string VectorFile = "openburnbar-db-compat-vector.json";
     private const string ParamsFile = "openburnbar-db-compat-params-observed.json";
 

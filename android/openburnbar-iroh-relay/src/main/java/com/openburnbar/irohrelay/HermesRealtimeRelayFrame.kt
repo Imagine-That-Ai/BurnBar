@@ -139,6 +139,33 @@ enum class HermesRealtimeRelayFrameType {
 
     @SerialName("remote_unlock.denied")
     REMOTE_UNLOCK_DENIED,
+
+    // War Room — the Wire. The encrypted Mac⇄Mac lane
+    // (plans/2026-08-17-war-room-master-plan.md). Mac-to-Mac only; Android
+    // carries the cases so the shared decoder never drops a frame it can see.
+    @SerialName("war.hello")
+    WAR_HELLO,
+
+    @SerialName("war.hello.ack")
+    WAR_HELLO_ACK,
+
+    @SerialName("war.fleet.snapshot")
+    WAR_FLEET_SNAPSHOT,
+
+    @SerialName("war.dispatch")
+    WAR_DISPATCH,
+
+    @SerialName("war.dispatch.ack")
+    WAR_DISPATCH_ACK,
+
+    @SerialName("war.stream.chunk")
+    WAR_STREAM_CHUNK,
+
+    @SerialName("war.stream.complete")
+    WAR_STREAM_COMPLETE,
+
+    @SerialName("war.denied")
+    WAR_DENIED,
 }
 
 /**

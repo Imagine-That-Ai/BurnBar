@@ -1,0 +1,72 @@
+{
+  "generatedType": "UsageEventDoc",
+  "pass": [
+    {
+      "id": "happy",
+      "document": {
+        "provider": "openai",
+        "providerID": "openai",
+        "providerAccountID": "acct-1",
+        "model": "gpt-4.1",
+        "sessionId": "sess-1",
+        "inputTokens": 12,
+        "outputTokens": 34,
+        "costUSD": 0.0123,
+        "currency": "USD",
+        "recordedAt": "2026-08-17T12:00:00.000Z",
+        "eventKind": "completion",
+        "idempotencyKey": "idem-1"
+      }
+    },
+    {
+      "id": "optional-absent",
+      "document": {
+        "provider": "openai",
+        "recordedAt": "2026-08-17T12:00:00.000Z"
+      }
+    },
+    {
+      "id": "unknown-fields-ignored",
+      "document": {
+        "provider": "openai",
+        "recordedAt": "2026-08-17T12:00:00.000Z",
+        "legacyDesktopOnly": true
+      }
+    },
+    {
+      "id": "numeric-precision",
+      "document": {
+        "provider": "openai",
+        "recordedAt": "2026-08-17T12:00:00.000Z",
+        "costUSD": 0.10000000000000002,
+        "totalTokens": 9007199254740991
+      }
+    }
+  ],
+  "fail": [
+    {
+      "id": "missing-required-provider",
+      "document": { "recordedAt": "2026-08-17T12:00:00.000Z" }
+    },
+    {
+      "id": "missing-required-recordedAt",
+      "document": { "provider": "openai" }
+    },
+    {
+      "id": "null-required-provider",
+      "document": { "provider": null, "recordedAt": "2026-08-17T12:00:00.000Z" }
+    },
+    {
+      "id": "wrong-type-costUSD",
+      "document": { "provider": "openai", "recordedAt": "2026-08-17T12:00:00.000Z", "costUSD": "0.01" }
+    },
+    {
+      "id": "malformed-timestamp",
+      "document": { "provider": "openai", "recordedAt": "yesterday" }
+    },
+    {
+      "id": "not-an-object",
+      "document": []
+    }
+  ]
+}

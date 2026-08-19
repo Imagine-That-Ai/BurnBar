@@ -13,12 +13,26 @@ final class CredentialTransferStore {
     private(set) var importingEnvelopeID: String?
     private(set) var importStage: ImportStage = .idle
 
-    init(reader: CloudReader = LiveCloudReader(), escrowGateway: EscrowGateway = LiveEscrowGateway()) {
-        self.reader = reader; self.escrowGateway = escrowGateway
+    init(
+        reader: CloudReader = LiveCloudReader(),
+        escrowGateway: EscrowGateway = LiveEscrowGateway(),
+        scopedCaches: MobileUIDScopedCacheRegistry = .shared
+    ) {
+        self.reader = reader
+        self.escrowGateway = escrowGateway
+        scopedCaches.register { [weak self] in self?.clearCache() }
         escrowGateway.observeEnvelopes { [weak self] in
             guard let self else { return }
             Task { await self.load() }
         }
+    }
+
+    func clearCache() {
+        available = []
+        unsupported = []
+        history = []
+        lastError = nil
+        resetImport()
     }
 
     var availableCount: Int { available.count }

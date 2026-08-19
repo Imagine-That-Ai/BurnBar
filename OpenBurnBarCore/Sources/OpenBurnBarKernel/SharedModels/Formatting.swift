@@ -123,3 +123,18 @@ public extension Int {
         return tokenFormatter.string(from: NSNumber(value: self)) ?? "\(self)"
     }
 }
+
+public extension Int64 {
+    func formatAsTokenVolume() -> String {
+        if self >= 1_000_000_000 {
+            return String(format: "%.2fB", Double(self) / 1_000_000_000)
+        }
+        if self >= 1_000_000 {
+            return String(format: "%.2fM", Double(self) / 1_000_000)
+        }
+        if self >= 1_000 {
+            return String(format: "%.1fK", Double(self) / 1_000)
+        }
+        return tokenFormatter.string(from: NSNumber(value: self)) ?? "\(self)"
+    }
+}

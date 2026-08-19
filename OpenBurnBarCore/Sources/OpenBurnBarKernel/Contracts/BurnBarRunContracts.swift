@@ -202,11 +202,26 @@ public struct BurnBarRunPollRequest: Codable, Hashable, Sendable {
     public let runID: BurnBarRunID?
     public let limit: Int
 
+    private enum CodingKeys: String, CodingKey {
+        case clientID
+        case sessionID
+        case runID
+        case limit
+    }
+
     public init(clientID: BurnBarClientID, sessionID: BurnBarSessionID, runID: BurnBarRunID? = nil, limit: Int = 50) {
         self.clientID = clientID
         self.sessionID = sessionID
         self.runID = runID
         self.limit = max(limit, 1)
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.clientID = try container.decode(BurnBarClientID.self, forKey: .clientID)
+        self.sessionID = try container.decode(BurnBarSessionID.self, forKey: .sessionID)
+        self.runID = try container.decodeIfPresent(BurnBarRunID.self, forKey: .runID)
+        self.limit = max(try container.decodeIfPresent(Int.self, forKey: .limit) ?? 50, 1)
     }
 }
 

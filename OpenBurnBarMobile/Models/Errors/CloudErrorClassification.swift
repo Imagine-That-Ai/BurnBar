@@ -63,6 +63,13 @@ public enum CloudErrorClassification: Sendable, Equatable {
             || normalized.contains("couldnotloadhermesconnections") {
             return .permissionDenied
         }
+        if normalized.contains("user-disabled") || normalized.contains("userdisabled")
+            || normalized.contains("revokedaccount") {
+            return .accountMismatch
+        }
+        if normalized.contains("id-token-expired") || normalized.contains("sessionexpired") {
+            return .notAuthenticated
+        }
         return .other(message: message)
     }
 }

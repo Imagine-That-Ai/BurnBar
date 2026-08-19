@@ -250,6 +250,15 @@ export function buildFcmMessage(args: {
   // durable agent_notification_events/{event_id} document, and the inbox body
   // from the SEALED ai_inbox_items/{item_id} document, after delivery
   // (OPUS-F-006). `kind`/`priority` are bounded enums, not user text.
+
+  // The push must never outlive the event doc, and never sits open longer than
+  // the 10-minute cap even when the event has no TTL of its own.
+  const cappedExpiresAtMillis = Date.now() + 10 * 60 * 1000;
+  const eventExpiresAtMillis = args.event.expireAt?.toMillis();
+  const expiresAtMillis =
+    eventExpiresAtMillis === undefined
+      ? cappedExpiresAtMillis
+      : Math.min(cappedExpiresAtMillis, eventExpiresAtMillis);
   const data: Record<string, string> = inbox
     ? {
         type: "ai_inbox_item",
@@ -260,6 +269,8 @@ export function buildFcmMessage(args: {
         source_kind: args.event.sourceKind,
         title,
         preview: args.event.preview,
+        uid: args.event.uid,
+        expires_at_millis: String(expiresAtMillis),
         deep_link: `burnbar://inbox/${encodeURIComponent(itemId)}`,
       }
     : {
@@ -270,6 +281,8 @@ export function buildFcmMessage(args: {
         title,
         preview: args.event.preview,
         reply_enabled: args.event.replyEnabled ? "true" : "false",
+        uid: args.event.uid,
+        expires_at_millis: String(expiresAtMillis),
         deep_link: `burnbar://assistants/${encodeURIComponent(args.event.runtime)}?eventId=${encodeURIComponent(args.event.id)}`,
       };
 

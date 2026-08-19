@@ -313,6 +313,10 @@ public struct BurnBarRunJournalEvent: Codable, Hashable, Sendable {
     public let kind: BurnBarRunJournalEventKind
     public let phase: BurnBarRunPhase?
     public let payload: BurnBarJSONValue?
+    /// STARTED BY attribution (War Room Command Board). Optional so
+    /// pre-attribution journal lines keep decoding; absent means the
+    /// originator could not be derived, never that it was "you".
+    public let originator: BurnBarOriginator?
     public let emittedAt: Date
 
     public init(
@@ -321,6 +325,7 @@ public struct BurnBarRunJournalEvent: Codable, Hashable, Sendable {
         kind: BurnBarRunJournalEventKind,
         phase: BurnBarRunPhase? = nil,
         payload: BurnBarJSONValue? = nil,
+        originator: BurnBarOriginator? = nil,
         emittedAt: Date
     ) {
         self.eventID = eventID
@@ -328,6 +333,7 @@ public struct BurnBarRunJournalEvent: Codable, Hashable, Sendable {
         self.kind = kind
         self.phase = phase
         self.payload = payload
+        self.originator = originator
         self.emittedAt = emittedAt
     }
 }

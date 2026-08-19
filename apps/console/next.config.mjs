@@ -1,5 +1,11 @@
 /** @type {import('next').NextConfig} */
 
+// In development the Next client runtime (webpack HMR / react-refresh)
+// executes modules via eval(), so script-src needs 'unsafe-eval' locally.
+// Production is a static export served by Firebase Hosting with its own strict
+// CSP in firebase.json (no 'unsafe-eval') — this relaxes DEV ONLY.
+const isDev = process.env.NODE_ENV === "development";
+
 // Strict CSP for the console. Firebase Auth + callables need their endpoints in
 // connect-src; Firebase Auth's popup bridge loads apis.google.com, and
 // reCAPTCHA Enterprise uses google.com/gstatic runtime calls for App Check.
@@ -15,7 +21,8 @@ const csp = [
   // Google Fonts stylesheet is loaded from fonts.googleapis.com (see app/layout.tsx).
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   // Next.js 15 emits a small inline bootstrap; 'wasm-unsafe-eval' covers Firebase SDK wasm.
-  "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://apis.google.com https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/",
+  // 'unsafe-eval' is dev-only (see isDev above) — never ship it in production.
+  `script-src 'self' 'unsafe-inline' ${isDev ? "'unsafe-eval' " : ""}'wasm-unsafe-eval' https://apis.google.com https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/`,
   // Google Fonts webfont files come from fonts.gstatic.com.
   "font-src 'self' data: https://fonts.gstatic.com",
   // api2.amplitude.com (US) / api.eu.amplitude.com (EU) are the opt-in analytics
@@ -24,7 +31,11 @@ const csp = [
   // also be present in firebase.json's `console` hosting target, since a static
   // export does not apply these next.config headers in production.
   "connect-src 'self' https://apis.google.com https://*.googleapis.com https://*.firebaseio.com https://*.cloudfunctions.net https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firebaseinstallations.googleapis.com https://firebaseappcheck.googleapis.com https://content-firebaseappcheck.googleapis.com https://www.google.com https://www.gstatic.com https://api2.amplitude.com https://api.eu.amplitude.com https://*.ingest.sentry.io https://*.ingest.us.sentry.io",
-  "frame-src 'self' https://*.firebaseapp.com https://accounts.google.com https://appleid.apple.com https://www.google.com/recaptcha/",
+  // app.burnbar.ai in frame-src: in local dev the origin is localhost, so the
+  // Firebase Auth helper iframe (custom authDomain) is cross-origin and must be
+  // explicitly allowed — without it popup sign-in hangs, then dies with
+  // auth/popup-closed-by-user. Same-origin in prod, where 'self' already covers it.
+  "frame-src 'self' https://*.firebaseapp.com https://app.burnbar.ai https://accounts.google.com https://appleid.apple.com https://www.google.com/recaptcha/",
   "frame-ancestors 'none'",
   "form-action 'self'",
   "upgrade-insecure-requests",

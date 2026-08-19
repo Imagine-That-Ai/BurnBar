@@ -357,7 +357,9 @@ export const DATA_DOMAINS: readonly DataDomain[] = [
       "iroh_pairing_keys",
       "iroh_controller_route_challenges",
       "relay_sender_keys",
-      "runtime_connection_preferences"
+      "runtime_connection_preferences",
+      "hermes_bodies",
+      "war_wire_grants"
     ],
     "storagePaths": [
       "hermes_gateway_attachments/**"

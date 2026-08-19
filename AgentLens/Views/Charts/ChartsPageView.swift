@@ -36,6 +36,8 @@ struct ChartsPageView: View {
     @Bindable var settingsManager: SettingsManager
     let chatController: ChatSessionController
     @Binding var selectedTimeRange: TimeRange
+    /// Threaded from the dashboard so receipt rows can open session logs.
+    var onOpenSessionLog: ((String) -> Void)?
 
     @State private var service = ChartsDataService()
     @State private var insightEngine = ChartInsightEngine()
@@ -81,6 +83,12 @@ struct ChartsPageView: View {
                                 persistLayout()
                             }
                         )
+
+                        // The Receipt: conversations × usage join — problems
+                        // solved more than once and what the repeats cost.
+                        // Not a ChartKind (it draws no chart), so it sits as
+                        // its own card section under the gallery.
+                        ReceiptCardView(dataStore: dataStore, timeRange: selectedTimeRange, onOpenConversation: onOpenSessionLog)
                     }
                 } else {
                     loadingState

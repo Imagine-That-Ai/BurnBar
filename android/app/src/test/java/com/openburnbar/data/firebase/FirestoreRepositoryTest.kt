@@ -48,6 +48,7 @@ class FirestoreRepositoryTest {
         val snapshot = mockk<DocumentSnapshot>()
         every { snapshot.id } returns "usage-1"
         every { snapshot.data } returns mapOf(
+            "provider" to "openai",
             "executionSourceID" to "cursor",
             "executionSourceName" to "Cursor",
             "executionSourceKind" to "ide",
@@ -59,6 +60,15 @@ class FirestoreRepositoryTest {
         assertEquals("Cursor", usage.executionSourceName)
         assertEquals("ide", usage.executionSourceKind)
         assertEquals("exact", usage.executionSourceConfidence)
+        assertEquals("openai", usage.provider)
+    }
+
+    @Test
+    fun `toTokenUsage fails closed when provider is missing`() {
+        val snapshot = mockk<DocumentSnapshot>()
+        every { snapshot.id } returns "usage-missing-provider"
+        every { snapshot.data } returns mapOf("model" to "gpt-4.1")
+        assertNull(snapshot.toTokenUsage())
     }
 
     // ── BudgetEvent codec ──

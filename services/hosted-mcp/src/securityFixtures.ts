@@ -177,17 +177,24 @@ export function createInMemoryFirestore(seed: StoredDoc[] = []): InMemoryFiresto
       throw new Error("collectionGroup is not used by the hosted MCP request path");
     },
     async runTransaction<T>(fn: (tx: McpTransaction) => Promise<T>): Promise<T> {
-      const writes: Promise<unknown>[] = [];
+      const writes: Array<{
+        ref: { set(value: unknown, options?: unknown): Promise<unknown> };
+        data: unknown;
+        options?: unknown;
+      }> = [];
       const tx = {
         async get(ref: { get(): Promise<{ get(field: string): unknown }> }) {
           return ref.get();
         },
         set(ref: { set(value: unknown, options?: unknown): Promise<unknown> }, data: unknown, options?: unknown) {
-          writes.push(ref.set(data, options));
+          // Queue writes until the transaction callback succeeds — matches
+          // Firestore rollback semantics and keeps rate-limit counters from
+          // leaking partial increments when the callback throws.
+          writes.push({ ref, data, options });
         },
       };
       const result = await fn(tx);
-      await Promise.all(writes);
+      await Promise.all(writes.map((write) => write.ref.set(write.data, write.options)));
       return result;
     },
     __docs() {
@@ -211,6 +218,29 @@ export function sealedSessionBody(uid: string, docId: string): string {
  * into a stored doc). The at-rest proof asserts none of these reach the wire.
  */
 export const PLAINTEXT_MARKERS = ["TENANT_B_PLAINTEXT_SECRET", "TENANT_A_PLAINTEXT_SECRET"] as const;
+
+const BODY_STANDARD_WINDOW_MS = 60_000;
+
+/** Mid-window millis so local proofs cannot straddle adjacent rate-limit windows. */
+export function midWindowProofMillis(referenceMs = Date.now()): number {
+  return Math.floor(referenceMs / BODY_STANDARD_WINDOW_MS) * BODY_STANDARD_WINDOW_MS + BODY_STANDARD_WINDOW_MS / 2;
+}
+
+export interface ProofRateLimitClockHandle {
+  restore(): void;
+}
+
+/** Freeze Date.now mid-window for deterministic in-process proofs only. */
+export function freezeProofRateLimitClock(referenceMs = Date.now()): ProofRateLimitClockHandle {
+  const stableNow = midWindowProofMillis(referenceMs);
+  const realDateNow = Date.now;
+  Date.now = () => stableNow;
+  return {
+    restore: () => {
+      Date.now = realDateNow;
+    },
+  };
+}
 
 export interface SeededTenant {
   uid: string;

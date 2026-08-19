@@ -147,4 +147,29 @@ enum class HermesRealtimeRelayFrameType {
     /** Mac reports a TCC denial classification back to the phone. */
     @SerialName("control.system.permission.status")
     CONTROL_SYSTEM_PERMISSION_STATUS,
+    // War Room — the Wire
+    /** Dialing Mac announces its bodyId, protocol capabilities, and the war_wire_grant it is claiming. */
+    @SerialName("war.hello")
+    WAR_HELLO,
+    /** Dialed Mac accepts the Wire session and returns its own bodyId and capabilities. */
+    @SerialName("war.hello.ack")
+    WAR_HELLO_ACK,
+    /** A body pushes its current fleet-visible state (presence, Hermes state, load) to its Wire peer. */
+    @SerialName("war.fleet.snapshot")
+    WAR_FLEET_SNAPSHOT,
+    /** Route a unit of work to this body. Carries the sealed mission payload plus the OriginatorRef the Command Board's STARTED BY column renders. */
+    @SerialName("war.dispatch")
+    WAR_DISPATCH,
+    /** Dispatch accepted and queued; carries the run id the stream frames reference. */
+    @SerialName("war.dispatch.ack")
+    WAR_DISPATCH_ACK,
+    /** Incremental output for an accepted dispatch, streamed back to the dispatching Mac. */
+    @SerialName("war.stream.chunk")
+    WAR_STREAM_CHUNK,
+    /** Terminal frame for a dispatched run; carries the final status. */
+    @SerialName("war.stream.complete")
+    WAR_STREAM_COMPLETE,
+    /** Fail-closed refusal: no active grant, entitlement below Pro, or war_room_kill_switch engaged. The dispatcher falls back to the Firestore relay. */
+    @SerialName("war.denied")
+    WAR_DENIED,
 }

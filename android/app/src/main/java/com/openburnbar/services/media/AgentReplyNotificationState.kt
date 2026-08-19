@@ -9,8 +9,10 @@ import android.os.Build
 import android.os.Bundle
 import androidx.core.content.ContextCompat
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.SetOptions
+import com.openburnbar.data.firebase.FirestoreRepository
+import com.openburnbar.data.policy.MobileOsIntegrationPolicy
 import java.security.MessageDigest
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -51,6 +53,55 @@ object AgentReplyNotificationState {
     @Volatile private var fcmToken: String? = null
 
     @Volatile private var lifecycleTrackingInstalled = false
+
+    var lastConsumedEventId: String?
+        get() = AgentReplyConsumedStore.lastConsumedEventId
+        internal set(value) {
+            AgentReplyConsumedStore.lastConsumedEventId = value
+        }
+
+    @Volatile private var tombstonedUid: String? = null
+
+    suspend fun tombstoneCurrentDevice(context: Context) {
+        val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return
+        tombstoneDevice(context, uid)
+    }
+
+    suspend fun tombstoneDevice(context: Context, uid: String) {
+        if (uid.isBlank()) return
+        val boundUid = FirebaseAuth.getInstance().currentUser?.uid
+        if (boundUid == uid) {
+            tombstonedUid = uid
+        }
+        val deviceId = stableDeviceId(context)
+        val now = System.currentTimeMillis()
+        runCatching {
+            FirestoreRepository.database()
+                .collection("users").document(uid)
+                .collection("devices").document(deviceId)
+                .set(
+                    mapOf(
+                        "pushTokenInvalidatedAtMillis" to now,
+                        "agentNotificationsEnabled" to false,
+                        "updated_at_millis" to now,
+                        "fcm_token" to FieldValue.delete(),
+                    ),
+                    SetOptions.merge(),
+                )
+                .await()
+        }
+        if (AgentReplyConsumedStore.shouldClearLastConsumed(tombstonedUid = uid, boundUid = boundUid)) {
+            lastConsumedEventId = null
+        }
+    }
+
+    suspend fun restoreDeviceAfterFailedSwitch(context: Context) {
+        val uid = FirebaseAuth.getInstance().currentUser?.uid
+        if (tombstonedUid != null && tombstonedUid == uid) {
+            tombstonedUid = null
+        }
+        persistAwaiting(context.applicationContext, clearInvalidation = true)
+    }
 
     fun installLifecycleTracking(application: Application) {
         if (lifecycleTrackingInstalled) return
@@ -132,7 +183,13 @@ object AgentReplyNotificationState {
         persist(context.applicationContext)
     }
 
-    fun shouldSuppressLocal(runtime: String, threadId: String): Boolean = appLifecycle == "active" && activeRuntime == runtime && activeThreadId == threadId
+    fun shouldSuppressLocal(runtime: String, threadId: String): Boolean = MobileOsIntegrationPolicy.shouldSuppressForegroundSameThread(
+        foreground = appLifecycle == "active",
+        activeRuntime = activeRuntime,
+        activeThreadId = activeThreadId,
+        payloadRuntime = runtime,
+        payloadThreadId = threadId,
+    )
 
     fun stableDeviceId(context: Context): String {
         val prefs = context.getSharedPreferences(DEVICE_ID_PREF_NAME, Context.MODE_PRIVATE)
@@ -195,19 +252,56 @@ object AgentReplyNotificationState {
                 "updated_at_millis" to now,
             )
         applyEscrowCrossReference(payload)
-        fcmToken?.let { payload["fcm_token"] = it }
+        applyLiveTokenFields(uid, payload, clearInvalidation = false)
         activeRuntime?.let { payload["activeRuntime"] = it }
         activeThreadId?.let { payload["activeThreadId"] = it }
         activeSurface?.let { payload["activeSurface"] = it }
 
         scope.launch {
-            runCatching {
-                FirebaseFirestore.getInstance()
-                    .collection("users").document(uid)
-                    .collection("devices").document(stableDeviceId(context))
-                    .set(payload, SetOptions.merge())
-                    .await()
-            }
+            runCatching { writeDevicePayload(uid, context, payload) }
         }
+    }
+
+    private suspend fun persistAwaiting(context: Context, clearInvalidation: Boolean) {
+        val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return
+        val now = System.currentTimeMillis()
+        val payload =
+            mutableMapOf<String, Any>(
+                "deviceId" to stableDeviceId(context),
+                "platform" to "android",
+                "appLifecycle" to appLifecycle,
+                "agentNotificationsEnabled" to notificationsEnabled(context),
+                "lastSeenAtMillis" to now,
+                "updated_at_millis" to now,
+            )
+        applyEscrowCrossReference(payload)
+        applyLiveTokenFields(uid, payload, clearInvalidation = clearInvalidation)
+        runCatching { writeDevicePayload(uid, context, payload) }
+    }
+
+    internal fun markTombstonedForTest(uid: String) {
+        tombstonedUid = uid
+    }
+
+    internal fun clearTombstoneForTest() {
+        tombstonedUid = null
+    }
+
+    internal fun applyLiveTokenFields(uid: String, payload: MutableMap<String, Any>, clearInvalidation: Boolean) {
+        val tombstoned = tombstonedUid == uid
+        if (clearInvalidation && !tombstoned) {
+            payload["pushTokenInvalidatedAtMillis"] = FieldValue.delete()
+        }
+        if (!tombstoned) {
+            fcmToken?.let { payload["fcm_token"] = it }
+        }
+    }
+
+    private suspend fun writeDevicePayload(uid: String, context: Context, payload: Map<String, Any>) {
+        FirestoreRepository.database()
+            .collection("users").document(uid)
+            .collection("devices").document(stableDeviceId(context))
+            .set(payload, SetOptions.merge())
+            .await()
     }
 }

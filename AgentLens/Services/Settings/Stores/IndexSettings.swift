@@ -25,7 +25,7 @@ final class IndexSettings {
         didSet { persistence.set(preferredIndexEmbeddingVersionID, forKey: "preferredIndexEmbeddingVersionID") }
     }
 
-    var indexEmbeddingProvider: IndexEmbeddingProviderID = .deterministic {
+    var indexEmbeddingProvider: IndexEmbeddingProviderID = .appleNL {
         didSet { persistence.set(indexEmbeddingProvider, forKey: "indexEmbeddingProvider") }
     }
 
@@ -61,12 +61,27 @@ final class IndexSettings {
         persistence.removeObject(forKey: DataStoreCoordinator.plaintextFallbackAcknowledgedDefaultsKey)
         persistence.removeObject(forKey: "plaintextDatabaseAcknowledged")
         self.preferredIndexEmbeddingVersionID = persistence.string(forKey: "preferredIndexEmbeddingVersionID")
+        // One-shot upgrade: `deterministic` (the seeded-hash CI embedder) was the
+        // silent default for every install before the appleNL provider existed, so a
+        // stored `deterministic` value was never a real user choice. Upgrade it once
+        // to on-device semantic embeddings; after the migration flag is set, an
+        // explicit re-selection of `deterministic` in Settings sticks. The projection
+        // pipeline notices the embedding-version drift on its next sweep and
+        // re-embeds automatically.
+        let nlMigrationKey = "indexEmbeddingProviderNLMigration.v1"
+        let nlMigrationDone = persistence.bool(forKey: nlMigrationKey)
         if let rawProvider = persistence.optionalString(forKey: "indexEmbeddingProvider"),
            let provider = IndexEmbeddingProviderID(rawValue: rawProvider) {
-            self.indexEmbeddingProvider = provider
+            if provider == .deterministic, nlMigrationDone == false {
+                self.indexEmbeddingProvider = .appleNL
+                persistence.set(IndexEmbeddingProviderID.appleNL, forKey: "indexEmbeddingProvider")
+            } else {
+                self.indexEmbeddingProvider = provider
+            }
         } else {
-            self.indexEmbeddingProvider = .deterministic
+            self.indexEmbeddingProvider = .appleNL
         }
+        persistence.set(true, forKey: nlMigrationKey)
         self.indexOpenAIModel = persistence.string(forKey: "indexOpenAIModel", defaultValue: "text-embedding-3-small")
     }
 }

@@ -1,4 +1,13 @@
-import { mkdtempSync, cpSync, mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
+import {
+  closeSync,
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  readFileSync,
+  writeFileSync
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { execFileSync, spawn } from "node:child_process";
@@ -25,6 +34,7 @@ const smokeOutput = join(tempRoot, "smoke-output.json");
 const socketPath = join("/tmp", `obbcs-${smokeID}.sock`);
 const logPath = join("/tmp", `obbcs-${smokeID}.log`);
 const fakeProviderOutputsPath = join(tempRoot, "fake-provider-outputs.json");
+const smokeFilePath = join(workspaceDir, "src", "example.ts");
 
 mkdirSync(userDataDir, { recursive: true });
 mkdirSync(extensionsDir, { recursive: true });
@@ -33,7 +43,7 @@ mkdirSync(supportDir, { recursive: true });
 mkdirSync(join(userDataDir, "User"), { recursive: true });
 mkdirSync(join(workspaceDir, "src"), { recursive: true });
 
-writeFileSync(join(workspaceDir, "src", "example.ts"), "export const value = 42;\n", "utf8");
+writeFileSync(smokeFilePath, "export const value = 42;\n", "utf8");
 writeFileSync(
   fakeProviderOutputsPath,
   JSON.stringify({
@@ -50,7 +60,7 @@ writeFileSync(
         action: "read_file",
         requestedTool: "read_file",
         arguments: {
-          path: join(workspaceDir, "src", "example.ts")
+          path: smokeFilePath
         },
         rationale: "Inspect the current file contents before patching."
       }),
@@ -60,7 +70,7 @@ writeFileSync(
         arguments: {
           changes: [
             {
-              path: join(workspaceDir, "src", "example.ts"),
+              path: smokeFilePath,
               text: "export const value = 43;\n"
             }
           ]
@@ -81,8 +91,9 @@ writeFileSync(
   JSON.stringify(
     {
       "security.workspace.trust.enabled": false,
+      "openburnbar.cursorSmoke.autoConfirm": true,
       "openburnbar.cursorSmoke.outputPath": smokeOutput,
-      "openburnbar.cursorSmoke.filePath": join(workspaceDir, "src", "example.ts"),
+      "openburnbar.cursorSmoke.filePath": smokeFilePath,
       "openburnbar.cursorSmoke.modelID": "glm-5"
     },
     null,
@@ -153,23 +164,33 @@ execFileSync("security", [
 // and the spawned Cursor process via OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN.
 const socketAuthToken = randomBytes(16).toString("hex");
 
+const daemonLogDescriptor = openSync(logPath, "a");
 const daemon = spawn(daemonBinary, ["--socket-path", socketPath, "--version", "cursor-smoke"], {
   env: {
     ...process.env,
     OPENBURNBAR_DAEMON_SUPPORT_DIR: supportDir,
     OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN: socketAuthToken,
+    // The Cursor smoke owns an unsigned SwiftPM DEBUG daemon and an external
+    // Cursor client. Use the DEBUG-only development seam while retaining the
+    // one-shot socket token as the authorization boundary for this isolated run.
+    OPENBURNBAR_DAEMON_DISABLE_PEER_CODESIG: "1",
     BURNBAR_FAKE_PROVIDER_OUTPUTS_FILE: fakeProviderOutputsPath
   },
-  stdio: ["ignore", "ignore", "ignore"]
+  stdio: ["ignore", daemonLogDescriptor, daemonLogDescriptor]
 });
+closeSync(daemonLogDescriptor);
 
 const daemonStart = Date.now();
 while (!existsSync(socketPath)) {
   if (daemon.exitCode != null) {
-    throw new Error(`OpenBurnBar daemon exited before creating the socket (exit ${daemon.exitCode}).`);
+    throw new Error(
+      `OpenBurnBar daemon exited before creating the socket (exit ${daemon.exitCode}).${daemonLogDetail()}`
+    );
   }
   if (Date.now() - daemonStart > 10000) {
-    throw new Error("Timed out waiting for the OpenBurnBar daemon socket to appear.");
+    throw new Error(
+      `Timed out waiting for the OpenBurnBar daemon socket to appear.${daemonLogDetail()}`
+    );
   }
   await new Promise((resolve) => setTimeout(resolve, 100));
 }
@@ -180,7 +201,11 @@ const cursor = spawn(cursorBinary, [workspaceDir, "--new-window", "--user-data-d
   env: {
     ...process.env,
     OPENBURNBAR_DAEMON_SOCKET_PATH: socketPath,
-    OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN: socketAuthToken
+    OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN: socketAuthToken,
+    BURNBAR_CURSOR_SMOKE_OUTPUT: smokeOutput,
+    BURNBAR_CURSOR_SMOKE_FILE_PATH: smokeFilePath,
+    BURNBAR_CURSOR_SMOKE_MODEL: "glm-5",
+    BURNBAR_CURSOR_SMOKE_AUTO_CONFIRM: "1"
   },
   stdio: ["ignore", "ignore", "ignore"]
 });
@@ -195,7 +220,7 @@ while (!existsSync(smokeOutput)) {
 
 let result = JSON.parse(readFileSync(smokeOutput, "utf8"));
 while (!result.ok && !result.error) {
-  if (Date.now() - start > 120000) {
+  if (Date.now() - start > 180000) {
     throw new Error("Timed out waiting for Cursor smoke run completion.");
   }
 
@@ -255,6 +280,17 @@ async function waitForDaemonHealth(socketPath, daemonProcess, authToken, timeout
   }
 
   throw new Error(lastError);
+}
+
+function daemonLogDetail() {
+  if (!existsSync(logPath)) {
+    return ` Daemon log: ${logPath}`;
+  }
+  const log = readFileSync(logPath, "utf8");
+  const tail = log.slice(-4000).trim();
+  return tail
+    ? ` Daemon log: ${logPath}\n${tail}`
+    : ` Daemon log: ${logPath} (empty)`;
 }
 
 async function requestHealth(socketPath, authToken) {

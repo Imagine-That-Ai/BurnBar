@@ -11,6 +11,8 @@ import com.google.firebase.firestore.SetOptions
 import com.openburnbar.data.cloud.AndroidCloudVaultDeviceKeypair
 import com.openburnbar.data.cloud.AndroidCloudVaultKeyAccess
 import com.openburnbar.data.firebase.FirestoreRepository
+import com.openburnbar.data.policy.MobileInboxSelectionPolicy
+import com.openburnbar.data.policy.MobileInboxSelectionState
 import java.util.Date
 import java.util.TimeZone
 import java.util.concurrent.atomic.AtomicReference
@@ -60,6 +62,12 @@ class AIInboxStore(
 
     private val _selectedID = MutableStateFlow<String?>(null)
     val selectedID = _selectedID.asStateFlow()
+
+    private val _focusRequestToken = MutableStateFlow(0)
+    val focusRequestToken = _focusRequestToken.asStateFlow()
+
+    private var pendingFocusID: String? = null
+    private var inboxSearchQuery: String = ""
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading = _isLoading.asStateFlow()
@@ -148,12 +156,25 @@ class AIInboxStore(
         if (_filter.value == value) return
         _filter.value = value
         recompute()
-        // The previous selection may not exist in the new slice; land on its
-        // first row rather than showing an empty detail pane.
-        val visible = _parts.value.rows
-        if (visible.none { it.id == _selectedID.value }) {
-            _selectedID.value = visible.firstOrNull()?.id
-        }
+    }
+
+    /**
+     * Cold/warm focus. Matches iOS `AIInboxStore.focus`: widen to Active,
+     * clear search, hold a not-yet-synced id so an intervening snapshot cannot
+     * steal the selection.
+     */
+    fun focus(itemID: String?) {
+        val next = MobileInboxSelectionPolicy.focus(
+            selectionState(),
+            itemID,
+            items.map { it.id },
+        )
+        _filter.value = AIInboxFilter.ACTIVE
+        inboxSearchQuery = next.searchQuery
+        pendingFocusID = next.pendingFocusID
+        _selectedID.value = next.selectedID
+        _focusRequestToken.value = next.focusRequestToken
+        recompute()
     }
 
     /**
@@ -417,7 +438,22 @@ class AIInboxStore(
                 nowEpoch = System.currentTimeMillis(),
                 timeZone = timeZone,
             )
+        val next = MobileInboxSelectionPolicy.reconcile(
+            selectionState(),
+            _parts.value.rows.map { it.id },
+            items.map { it.id },
+        )
+        pendingFocusID = next.pendingFocusID
+        _selectedID.value = next.selectedID
     }
+
+    private fun selectionState() = MobileInboxSelectionState(
+        selectedID = _selectedID.value,
+        pendingFocusID = pendingFocusID,
+        filter = _filter.value.name.lowercase(),
+        searchQuery = inboxSearchQuery,
+        focusRequestToken = _focusRequestToken.value,
+    )
 
     private fun reportListenerFailure(cause: Throwable) {
         _isLoading.value = false

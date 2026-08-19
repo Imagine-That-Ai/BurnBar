@@ -185,7 +185,7 @@ struct CloudHeroAnimation: View {
                 )
                 .shadow(color: tint.opacity(0.45), radius: 10, y: 0)
             Image(systemName: systemName)
-                .font(.system(size: glyphSize * 0.5, weight: .bold))
+                .font(MobileScaledFont.system(size: glyphSize * 0.5, weight: .bold))
                 .foregroundStyle(
                     glassy
                         ? AnyShapeStyle(UnifiedDesignSystem.mercuryGradient)
@@ -229,12 +229,12 @@ struct CloudHeroAnimation: View {
                 .frame(width: size * 0.34, height: size * 0.34)
 
             Image(systemName: "cloud.fill")
-                .font(.system(size: size * 0.13, weight: .bold))
+                .font(MobileScaledFont.system(size: size * 0.13, weight: .bold))
                 .foregroundStyle(.white)
                 .offset(y: -size * 0.018)
 
             Image(systemName: "flame.fill")
-                .font(.system(size: size * 0.075, weight: .bold))
+                .font(MobileScaledFont.system(size: size * 0.075, weight: .bold))
                 .foregroundStyle(.white.opacity(0.95))
                 .offset(y: size * 0.06)
         }

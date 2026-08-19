@@ -26,7 +26,7 @@ export type ThemeId = (typeof THEMES)[number]["id"];
 export const DEFAULT_THEME: ThemeId = "paper";
 const STORAGE_KEY = "burnbar.console.theme";
 
-function isThemeId(v: unknown): v is ThemeId {
+export function isThemeId(v: unknown): v is ThemeId {
   return typeof v === "string" && THEMES.some((t) => t.id === v);
 }
 

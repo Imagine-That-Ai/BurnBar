@@ -185,7 +185,7 @@ struct CloudStoreView: View {
                         dismiss()
                     } label: {
                         Image(systemName: "xmark")
-                            .font(.system(size: 13, weight: .bold))
+                            .font(MobileTheme.Typography.caption)
                             .foregroundStyle(MobileTheme.Colors.textSecondary)
                             .frame(width: 30, height: 30)
                             .liquidGlassInteractive(in: .circle)
@@ -354,7 +354,10 @@ private struct CloudStoreTopUpTile: View {
                 .foregroundStyle(ProTheme.Membership.foilLeaf)
 
             HStack(spacing: MobileTheme.Spacing.md) {
-                ForEach(OpenBurnBarProductCatalog.topUps) { topUp in
+                // Only packs a client can actually SPEND are sold — see
+                // `purchasableTopUps` for why Agent Control and relay packs
+                // are withheld until their reserve callables gain a caller.
+                ForEach(OpenBurnBarProductCatalog.purchasableTopUps) { topUp in
                     CloudTopUpChip(
                         catalogProduct: topUp,
                         priceText: store.displayPrice(for: topUp),
@@ -491,7 +494,7 @@ private struct CloudStoreCapabilityCard: View {
                             .fixedSize(horizontal: false, vertical: true)
                         if isActive {
                             Image(systemName: "checkmark.circle.fill")
-                                .font(.system(size: 12, weight: .bold))
+                                .font(MobileScaledFont.system(size: 12, weight: .bold))
                                 .foregroundStyle(ProTheme.Membership.foilLeaf)
                         }
                     }
@@ -502,18 +505,18 @@ private struct CloudStoreCapabilityCard: View {
                         .fixedSize(horizontal: false, vertical: true)
                     HStack(spacing: 4) {
                         Text("SEE HOW IT FEELS")
-                            .font(.system(size: 12, weight: .heavy, design: .rounded))
+                            .font(MobileScaledFont.system(size: 12, weight: .heavy, design: .rounded))
                             .tracking(1.4)
                             .foregroundStyle(ProTheme.Membership.engravingMuted)
                         Image(systemName: "arrow.right")
-                            .font(.system(size: 12, weight: .bold))
+                            .font(MobileScaledFont.system(size: 12, weight: .bold))
                             .foregroundStyle(ProTheme.Membership.engravingMuted)
                     }
                     .padding(.top, 2)
                 }
                 Spacer(minLength: 0)
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(MobileScaledFont.system(size: 12, weight: .bold))
                     .foregroundStyle(ProTheme.Membership.engravingMuted)
                     .padding(.top, 4)
             }
@@ -948,7 +951,7 @@ private struct RemoteMCPCommandRow: View {
                 .tracking(1.4)
                 .foregroundStyle(MobileTheme.Colors.textMuted)
             Text(value)
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .font(MobileScaledFont.system(size: 12, weight: .medium, design: .monospaced))
                 .foregroundStyle(MobileTheme.Colors.textPrimary)
                 .lineLimit(2)
                 .minimumScaleFactor(0.75)
@@ -1185,7 +1188,7 @@ private struct CloudStoreActionBar: View {
                         MiningPickLoader(.inline, tint: MobileTheme.Colors.textPrimary)
                     } else {
                         Image(systemName: "creditcard.fill")
-                            .font(.system(size: 16, weight: .bold))
+                            .font(MobileTheme.Typography.headline)
                     }
                     Text(primaryButtonTitle)
                         .font(MobileTheme.Typography.body)
@@ -1350,7 +1353,7 @@ private struct CloudStoreMemberCard: View {
                     VStack(spacing: 6) {
                         HStack(spacing: 6) {
                             Text(memberTierLabel)
-                                .font(.system(size: 12, weight: .heavy, design: .rounded))
+                                .font(MobileScaledFont.system(size: 12, weight: .heavy, design: .rounded))
                                 .tracking(1.8)
                                 .foregroundStyle(ProTheme.Membership.letterpress)
                                 .padding(.horizontal, 8)
@@ -1402,7 +1405,7 @@ private struct CloudStoreMemberCard: View {
             } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "rosette")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(MobileScaledFont.system(size: 13, weight: .semibold))
                     Text("Change badge")
                         .font(MobileTheme.Typography.caption)
                         .fontWeight(.semibold)
@@ -1482,7 +1485,7 @@ private struct CloudStoreMemberCard: View {
     private var statusRow: some View {
         HStack(spacing: MobileTheme.Spacing.sm) {
             Image(systemName: "checkmark.seal.fill")
-                .font(.system(size: 13, weight: .bold))
+                .font(MobileScaledFont.system(size: 13, weight: .bold))
                 .foregroundStyle(MobileTheme.Colors.success)
             Text("Active")
                 .font(MobileTheme.Typography.body)
@@ -1513,7 +1516,7 @@ private struct CloudStoreMemberCard: View {
     private func serialChip(_ serial: String) -> some View {
         HStack(spacing: 4) {
             Image(systemName: "lock.shield")
-                .font(.system(size: 12, weight: .semibold))
+                .font(MobileScaledFont.system(size: 12, weight: .semibold))
                 .foregroundStyle(MobileTheme.Colors.textMuted)
             Text(serial)
                 .font(MobileTheme.Typography.monoTiny)
@@ -1539,7 +1542,7 @@ private struct CloudStoreMemberCard: View {
                         MiningPickLoader(.inline, tint: ProTheme.Membership.engraving)
                     } else {
                         Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(MobileScaledFont.system(size: 14, weight: .semibold))
                     }
                     Text("Restore")
                         .font(MobileTheme.Typography.body)

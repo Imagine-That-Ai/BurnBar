@@ -595,6 +595,15 @@ struct AgentPresenceDot: View {
     var presence: AgentPresence
     var tint: Color
     var size: CGFloat = 6
+    /// Colour for the inert states (`.offline`, `.notInstalled`).
+    ///
+    /// Defaults to the historical `textMuted` so every existing call site is
+    /// unchanged. Hosts drawn over the dashboard's live backdrop must pass
+    /// `backdropInk.icon` instead: `textMuted` measures 3.77:1 against the
+    /// app's own surface — it is the exact token
+    /// `BackdropLegiblePlateTests.testInactiveDotTintClearsNonTextContrast`
+    /// pins as a failure, and over a live backdrop the dot simply vanishes.
+    var inactiveTint: Color = DesignSystem.Colors.textMuted
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var pulsing = false
@@ -632,7 +641,7 @@ struct AgentPresenceDot: View {
         case .thinking, .streaming: return tint
         case .exhausted: return DesignSystem.Colors.amber
         case .needsAuth: return DesignSystem.Colors.warning
-        case .offline, .notInstalled: return DesignSystem.Colors.textMuted
+        case .offline, .notInstalled: return inactiveTint
         case .error: return DesignSystem.Colors.error
         }
     }

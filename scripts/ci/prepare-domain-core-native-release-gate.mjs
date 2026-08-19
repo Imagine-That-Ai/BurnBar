@@ -14,6 +14,7 @@ import {
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { validateDomainCoreActivation } from "../lib/domain-core-activation.mjs";
 import {
   loadDomainCoreBuildProfiles,
   resolveDomainCoreBuildProfile,
@@ -26,6 +27,7 @@ import {
   DOMAIN_CORE_ROLLBACK_FILE,
   DOMAIN_CORE_ROLLBACK_PROFILE,
   candidateArtifactName,
+  inactiveCandidateIdentity,
   publicProfileSha256,
   resolveNativeReleaseProfile,
   resolveProtectedSignerCoordinates,
@@ -404,23 +406,6 @@ function downloadOrMaterializeSourceArtifacts({
   command,
 }) {
   try {
-    downloadRunArtifact(
-      sourceRun,
-      repository,
-      candidateArtifactName(candidateCommit, sourceRun),
-      sourceDirectory,
-      command,
-    );
-    downloadRunArtifact(
-      sourceRun,
-      repository,
-      rollbackArtifactName(candidateCommit, sourceRun),
-      sourceDirectory,
-      command,
-    );
-    return { source: "actions" };
-  } catch (error) {
-    if (!isExpiredArtifactDownloadError(error)) throw error;
     return materializeCandidateBoundRollback({
       repoRoot,
       candidateCommit,
@@ -428,6 +413,26 @@ function downloadOrMaterializeSourceArtifacts({
       sourceDirectory,
       command,
     });
+  } catch (materializeError) {
+    try {
+      downloadRunArtifact(
+        sourceRun,
+        repository,
+        candidateArtifactName(candidateCommit, sourceRun),
+        sourceDirectory,
+        command,
+      );
+      downloadRunArtifact(
+        sourceRun,
+        repository,
+        rollbackArtifactName(candidateCommit, sourceRun),
+        sourceDirectory,
+        command,
+      );
+      return { source: "actions" };
+    } catch (downloadError) {
+      throw materializeError;
+    }
   }
 }
 
@@ -458,9 +463,151 @@ function promotionVerificationArguments(
   ];
 }
 
+function catalogPath(args) {
+  return resolve(
+    args.get("--profile-catalog") ??
+      join(repoRoot, "config/domain-core-build-profiles.json"),
+  );
+}
+
+// Derive the canonical release-bound empty C=P selector straight from the
+// release checkout. validateDomainCoreActivation re-reads the working-tree
+// build profiles and throws when any public-production domain is still
+// "rust", so an active release can never reach the legacy lane through here.
+function defaultReleaseActivationResolver(releaseCommit) {
+  return {
+    ...validateDomainCoreActivation({
+      repoRoot,
+      candidateCommit: releaseCommit,
+      activationCommit: releaseCommit,
+      requireHead: false,
+    }),
+    domains: [],
+  };
+}
+
+// Rust is not activated for the public profile: there is no protected
+// candidate to download, no promotion attestation to verify, and no protected
+// signer run to pin, so demanding any of them would block every legacy
+// release. Bind the release to its own commit instead and ship the legacy
+// closure. Both the authority-derived resolver verdict and this release-bound
+// selector must agree that Rust is off, and each fails closed on its own.
+function prepareLegacyNativeRelease({
+  args,
+  activationPath,
+  candidateCommit,
+  releaseCommit,
+  profileName,
+  outputDirectory,
+  resolvedActivation,
+  releaseActivationResolver,
+}) {
+  if (candidateCommit !== resolvedActivation.candidateCommit) {
+    throw new Error(
+      "inactive release gate candidate commit must match the resolved activation",
+    );
+  }
+  const activation = releaseActivationResolver(releaseCommit);
+  if (activation.active !== false) {
+    throw new Error("inactive release gate resolved an active Rust activation");
+  }
+  const candidate = inactiveCandidateIdentity(activation);
+  const catalog = loadDomainCoreBuildProfiles(catalogPath(args));
+  const profile = resolveDomainCoreBuildProfile(catalog, profileName, candidate);
+  validateResolvedProfile(profile, profileName, candidate);
+  const activationProfile = resolveDomainCoreBuildProfile(
+    catalog,
+    DOMAIN_CORE_PUBLIC_PROFILE,
+    candidate,
+  );
+  validateResolvedProfile(
+    activationProfile,
+    DOMAIN_CORE_PUBLIC_PROFILE,
+    candidate,
+  );
+  validateNativeActivationSelector(activation, {
+    candidate,
+    releaseCommit,
+    profile: activationProfile,
+    profileName: DOMAIN_CORE_PUBLIC_PROFILE,
+  });
+  const profileSha256 = publicProfileSha256(profile, profileName, candidate);
+  const profilePath = join(
+    outputDirectory,
+    "domain-core-selected-public-profile.json",
+  );
+  const gatePath = join(
+    outputDirectory,
+    "domain-core-native-release-gate.json",
+  );
+  // The resolver binds P to the authority commit that last set the modes,
+  // which is right for its own drift check but is not what release consumers
+  // verify against. Replace it in place with the release-bound selector this
+  // lane just proved, so the uploaded artifact is the one downstream
+  // validateNativeActivationSelector calls accept.
+  writeFileSync(activationPath, `${JSON.stringify(activation, null, 2)}\n`, {
+    encoding: "utf8",
+    mode: 0o600,
+  });
+  writeCreateOnly(profilePath, profile);
+  writeCreateOnly(gatePath, {
+    schemaVersion: 2,
+    rustActive: false,
+    profileName,
+    publicProfileSha256: profileSha256,
+    candidate,
+    releaseCommit,
+    resolvedActivationCommit: resolvedActivation.activationCommit,
+  });
+  const result = {
+    schemaVersion: 2,
+    rustActive: false,
+    profileName,
+    publicProfileSha256: profileSha256,
+    candidate,
+    activation,
+    activationPath,
+    profilePath,
+    gatePath,
+  };
+  const coordinatesPath = join(
+    outputDirectory,
+    "domain-core-native-release-inputs.json",
+  );
+  writeCreateOnly(coordinatesPath, result);
+  result.coordinatesPath = coordinatesPath;
+
+  const githubOutput = args.get("--github-output");
+  if (githubOutput) {
+    appendFileSync(
+      githubOutput,
+      Object.entries({
+        rust_active: "false",
+        profile_name: profileName,
+        public_profile_sha256: profileSha256,
+        candidate_commit: candidate.candidateCommit,
+        activation_commit: releaseCommit,
+        core_version: candidate.coreVersion,
+        abi_version: candidate.abiVersion,
+        source_sha256: candidate.sourceSha256,
+        coordinates_path: coordinatesPath,
+      })
+        .map(([key, value]) => `${key}=${value}`)
+        .join("\n") + "\n",
+      "utf8",
+    );
+  }
+  process.stdout.write(`${JSON.stringify({ ok: true, ...result })}\n`);
+  return result;
+}
+
 export function run(
   argv,
-  { command = createCommandRunner(), activationVerifier } = {},
+  {
+    command = createCommandRunner(),
+    activationVerifier,
+    releaseActivationResolver = defaultReleaseActivationResolver,
+  } = {},
 ) {
   const args = parseArguments(argv);
   const candidateCommit = args.get("--candidate-commit");
@@ -481,6 +628,27 @@ export function run(
   });
   const outputDirectory = resolve(args.get("--output-dir"));
   mkdirSync(outputDirectory, { recursive: true });
+
+  const activationPath = exactFile(
+    resolve(args.get("--activation")),
+    "canonical release activation",
+  );
+  const resolvedActivation = parseJson(
+    readFileSync(activationPath, "utf8"),
+    "canonical release activation",
+  );
+  if (resolvedActivation.active === false) {
+    return prepareLegacyNativeRelease({
+      args,
+      activationPath,
+      candidateCommit,
+      releaseCommit,
+      profileName,
+      outputDirectory,
+      resolvedActivation,
+      releaseActivationResolver,
+    });
+  }
 
   const sourceQuery = `/repos/${repository}/actions/workflows/${basename(DOMAIN_CORE_SOURCE_WORKFLOW)}/runs?event=push&status=completed&head_sha=${candidateCommit}&per_page=100`;
   const sourceRun = selectExactSourceRun(
@@ -533,12 +701,7 @@ export function run(
     "domain-core-public-production-rollback-release.json",
   );
   const releaseBoundRollback = resolveDomainCoreBuildProfile(
-    loadDomainCoreBuildProfiles(
-      resolve(
-        args.get("--profile-catalog") ??
-          join(repoRoot, "config/domain-core-build-profiles.json"),
-      ),
-    ),
+    loadDomainCoreBuildProfiles(catalogPath(args)),
     DOMAIN_CORE_ROLLBACK_PROFILE,
     resolvedSource.candidate,
     {
@@ -613,11 +776,7 @@ export function run(
   );
   validateProtectedSignerRun(signerMetadata, signerRun, candidateCommit);
 
-  const catalogPath = resolve(
-    args.get("--profile-catalog") ??
-      join(repoRoot, "config/domain-core-build-profiles.json"),
-  );
-  const catalog = loadDomainCoreBuildProfiles(catalogPath);
+  const catalog = loadDomainCoreBuildProfiles(catalogPath(args));
   const profile = resolveDomainCoreBuildProfile(
     catalog,
     profileName,
@@ -634,15 +793,8 @@ export function run(
     DOMAIN_CORE_PUBLIC_PROFILE,
     resolvedSource.candidate,
   );
-  const activationPath = exactFile(
-    resolve(args.get("--activation")),
-    "canonical release activation",
-  );
   const activationSelector = validateNativeActivationSelector(
-    parseJson(
-      readFileSync(activationPath, "utf8"),
-      "canonical release activation",
-    ),
+    resolvedActivation,
     {
       candidate: resolvedSource.candidate,
       releaseCommit,
@@ -686,6 +838,7 @@ export function run(
   writeCreateOnly(gatePath, gate);
   const result = {
     schemaVersion: 2,
+    rustActive: true,
     profileName,
     publicProfileSha256: profileSha256,
     candidate: resolvedSource.candidate,
@@ -714,6 +867,7 @@ export function run(
     appendFileSync(
       githubOutput,
       Object.entries({
+        rust_active: "true",
         profile_name: profileName,
         public_profile_sha256: profileSha256,
         candidate_commit: resolvedSource.candidate.candidateCommit,

@@ -131,6 +131,21 @@ final class ChatBackendSettings {
         didSet { persistence.set(mediaKillSwitch, forKey: "mediaKillSwitch") }
     }
 
+    /// War Room's Wire + Flame global stop. Defaults to engaged so a fresh or
+    /// offline install (where Remote Config has not published the key) keeps
+    /// the single-machine experience rather than opening the Mac⇄Mac lane.
+    var warRoomKillSwitch: Bool = true {
+        didSet { persistence.set(warRoomKillSwitch, forKey: "warRoomKillSwitch") }
+    }
+
+    /// Which Hermes body the Hermes Room has been pointed at. Empty means this
+    /// Mac, which is the default and the pre-War Room behaviour — the room
+    /// never persists the local machine's own id, so a machine that is renamed
+    /// or re-identified still reads as "serving here".
+    var activeHermesBodyID: String = "" {
+        didSet { persistence.set(activeHermesBodyID, forKey: "activeHermesBodyID") }
+    }
+
     var launchHermesWithOpenBurnBar: Bool = false {
         didSet { persistence.set(launchHermesWithOpenBurnBar, forKey: "launchHermesWithOpenBurnBar") }
     }
@@ -296,6 +311,8 @@ final class ChatBackendSettings {
             defaultValue: true
         )
         self.mediaKillSwitch = persistence.bool(forKey: "mediaKillSwitch", defaultValue: true)
+        self.warRoomKillSwitch = persistence.bool(forKey: "warRoomKillSwitch", defaultValue: true)
+        self.activeHermesBodyID = persistence.string(forKey: "activeHermesBodyID", defaultValue: "")
         self.launchHermesWithOpenBurnBar = persistence.bool(forKey: "launchHermesWithOpenBurnBar")
         self.piAgentGatewayBaseURL = persistence.string(forKey: "piAgentGatewayBaseURL", defaultValue: "http://127.0.0.1:8765")
         self.piAgentBearerToken = secretPersistence.load(

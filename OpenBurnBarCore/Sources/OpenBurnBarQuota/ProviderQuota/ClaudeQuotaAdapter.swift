@@ -1,5 +1,6 @@
 import Foundation
 import OpenBurnBarKernel
+import OpenBurnBarLogParsers
 
 #if canImport(FoundationNetworking)
 import FoundationNetworking
@@ -97,108 +98,36 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
     /// per-call allocation, and safe under the concurrent scans this adapter
     /// runs (a plain `static let ISO8601DateFormatter` would not be, since
     /// `ISO8601DateFormatter` is not thread-safe).
-    private enum JSONLTimestamp {
-        static func date(from text: String) -> Date? {
-            ThreadSafeISO8601DateFormatter.parse(text)
-        }
-    }
-
-    /// Per-file invalidation key: a transcript is unchanged iff both its
-    /// modification time and byte size are unchanged. Mirrors
-    /// `CodexRolloutFileSignature`.
-    private struct JSONLFileSignature: Equatable {
-        let modifiedAt: TimeInterval
-        let sizeBytes: Int64
-    }
-
     /// Boundary-independent contribution of a single assistant turn: its
     /// timestamp and token total. Window membership (5-hour / 7-day) is applied
     /// at aggregation time, so cached contributions stay valid as the rolling
     /// windows slide.
-    private struct JSONLContribution {
+    private struct JSONLContribution: Codable, Equatable, Sendable {
         let timestamp: Date
         let total: Int
     }
 
-    /// Process-lifetime, thread-safe cache of parsed per-file contributions.
+    /// Persisted facts-only cache entry for one Claude transcript.
     ///
-    /// The Claude statusline watcher re-runs this scan on *every* hook write
-    /// (constantly during an active Claude session), and the provider, account,
-    /// and switcher-profile scopes each scan concurrently. Without a cache,
-    /// every run re-reads and re-JSON-parses every in-window transcript on every
-    /// core. With it, only the file Claude actually appended to is re-read;
-    /// everything else is an O(lines) re-sum of cached numbers.
-    ///
-    /// Unlike `CodexRolloutScanCache` this is in-memory only (no disk
-    /// persistence plumbed through `ProviderQuotaAdapterContext`): the
-    /// modification-time window cutoff already keeps a cold first scan cheap, so
-    /// the persisted variant's complexity isn't warranted here.
-    private final class JSONLScanCache: Sendable {
-        private struct Entry {
-            let signature: JSONLFileSignature
-            let contributions: [JSONLContribution]
-            let endedAtLineBoundary: Bool
-        }
-        struct ResumePrefix {
-            let contributions: [JSONLContribution]
-            let offset: UInt64
-        }
-        private let entries = Locked<[String: Entry]>([:])
-
-        func contributions(forPath path: String, signature: JSONLFileSignature) -> [JSONLContribution]? {
-            entries.withLock { entries in
-                guard let entry = entries[path], entry.signature == signature else { return nil }
-                return entry.contributions
-            }
-        }
-
-        /// Append-only resume: previous parse ended on a newline and the file
-        /// only grew. Fail-closed to a full reparse when the last cached byte
-        /// was mid-line (a later append may complete that turn).
-        func resumePrefix(forPath path: String, newSignature: JSONLFileSignature) -> ResumePrefix? {
-            entries.withLock { entries in
-                guard let entry = entries[path],
-                      entry.endedAtLineBoundary,
-                      entry.signature.sizeBytes > 0,
-                      entry.signature.sizeBytes < newSignature.sizeBytes,
-                      entry.signature.modifiedAt <= newSignature.modifiedAt else {
-                    return nil
-                }
-                return ResumePrefix(
-                    contributions: entry.contributions,
-                    offset: UInt64(entry.signature.sizeBytes)
-                )
-            }
-        }
-
-        func store(
-            path: String,
-            signature: JSONLFileSignature,
-            contributions: [JSONLContribution],
-            endedAtLineBoundary: Bool
-        ) {
-            entries.withLock {
-                $0[path] = Entry(
-                    signature: signature,
-                    contributions: contributions,
-                    endedAtLineBoundary: endedAtLineBoundary
-                )
-            }
-        }
-
-        /// Drop entries for transcripts that fell out of the widest rolling
-        /// window. Pruning by absolute modification time (not by one scope's
-        /// file set) keeps it safe when scopes scan concurrently: every scope
-        /// derives the cutoff from the same `now`, so none evicts another
-        /// scope's still-relevant entries.
-        func pruneEntries(olderThan cutoffEpoch: TimeInterval) {
-            entries.withLock { entries in
-                entries = entries.filter { $0.value.signature.modifiedAt >= cutoffEpoch }
-            }
-        }
+    /// Only timestamp and token totals are persisted. No prompt, response,
+    /// message body, model text, or raw JSONL bytes enter this cache.
+    private struct JSONLQuotaCacheEntry: Codable, Equatable, Sendable {
+        let signature: FileSignature
+        let contributions: [JSONLContribution]
+        let endedAtLineBoundary: Bool
+        let headPrefixLength: Int
+        let headPrefixSHA256: String
     }
 
-    private static let scanCache = JSONLScanCache()
+    private static let jsonlQuotaCacheSchemaVersion = 1
+    private static let jsonlHeadDigestSpan = 64
+    private static let scanSerialization = Locked(())
+    private static let inMemoryScanCache = Locked(
+        ParserDiskCache<JSONLQuotaCacheEntry>.empty(schemaVersion: jsonlQuotaCacheSchemaVersion)
+    )
+    private static let persistedScanCaches = Locked(
+        [String: ParserDiskCache<JSONLQuotaCacheEntry>]()
+    )
 
     public func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
         let usesScopedConfig = Self.hasScopedClaudeConfig(environment: context.environment)
@@ -371,7 +300,8 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         let jsonlWindows = (try? Self.scanJSONLTokenWindows( // try?-ok(no quota, zero fallback)
             homeDirectoryURL: context.homeDirectoryURL,
             fileManager: context.fileManager,
-            environment: context.environment
+            environment: context.environment,
+            cacheURL: context.appPaths.claudeQuotaJSONLCacheURL
         )) ?? JSONLTokenWindows(fiveHourTokens: 0, sevenDayTokens: 0, latestTimestamp: nil, filesScanned: 0)
 
         if jsonlWindows.fiveHourTokens > 0 || jsonlWindows.sevenDayTokens > 0 {
@@ -657,7 +587,26 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         homeDirectoryURL: URL,
         fileManager: FileManager,
         environment: [String: String],
-        now: Date = Date()
+        now: Date = Date(),
+        cacheURL: URL? = nil
+    ) throws -> JSONLTokenWindows {
+        try scanSerialization.withLock { _ in
+            try scanJSONLTokenWindowsSerialized(
+                homeDirectoryURL: homeDirectoryURL,
+                fileManager: fileManager,
+                environment: environment,
+                now: now,
+                cacheURL: cacheURL
+            )
+        }
+    }
+
+    private static func scanJSONLTokenWindowsSerialized(
+        homeDirectoryURL: URL,
+        fileManager: FileManager,
+        environment: [String: String],
+        now: Date,
+        cacheURL: URL?
     ) throws -> JSONLTokenWindows {
         let calendar = Calendar.current
         let fiveHoursAgo = calendar.date(byAdding: .hour, value: -5, to: now) ?? now
@@ -683,33 +632,78 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         var latestTimestamp: Date?
         var filesScanned = 0
         var bytesRead = 0
+        let cacheStore = cacheURL.map {
+            ParserDiskCacheStore<JSONLQuotaCacheEntry>(
+                cacheURL: $0,
+                fileManager: fileManager,
+                schemaVersion: jsonlQuotaCacheSchemaVersion,
+                logLabel: "ClaudeQuotaAdapter"
+            )
+        }
+        let cacheKey = cacheURL?.standardizedFileURL.path
+        var parseCache: ParserDiskCache<JSONLQuotaCacheEntry>
+        if let cacheStore, let cacheKey {
+            parseCache = persistedScanCaches.withLock { caches in
+                if let cached = caches[cacheKey] {
+                    return cached
+                }
+                let loaded = parserAutoReleasePool {
+                    cacheStore.load()
+                }
+                caches[cacheKey] = loaded
+                return loaded
+            }
+        } else {
+            parseCache = inMemoryScanCache.read()
+        }
+        var cacheMutated = false
 
         for (file, signature) in files {
             let path = file.standardizedFileURL.path
             let contributions: [JSONLContribution]
-            if let cached = scanCache.contributions(forPath: path, signature: signature) {
-                contributions = cached
+            if let cached = parseCache.fileEntries[path], cached.signature == signature {
+                contributions = cached.contributions
             } else {
                 guard let handle = try? FileHandle(forReadingFrom: file) else { continue } // try?-ok(skip unreadable file)
                 defer { try? handle.close() } // try?-ok(handle teardown)
-                let prefix = scanCache.resumePrefix(forPath: path, newSignature: signature)
+                let cached = parseCache.fileEntries[path]
+                let head = headFingerprint(
+                    handle: handle,
+                    fileSize: signature.sizeBytes
+                )
+                bytesRead += head.bytesRead
+                let canResume = cached.map {
+                    $0.endedAtLineBoundary
+                        && $0.signature.sizeBytes > 0
+                        && $0.signature.sizeBytes < signature.sizeBytes
+                        && $0.signature.modifiedAt <= signature.modifiedAt
+                        && $0.headPrefixLength == head.length
+                        && $0.headPrefixSHA256 == head.sha256
+                } ?? false
+                let startOffset = canResume ? UInt64(cached?.signature.sizeBytes ?? 0) : 0
                 let parsed = parseFileContributions(
                     from: handle,
-                    now: now,
-                    startOffset: prefix?.offset ?? 0
+                    startOffset: startOffset,
+                    maxBytes: max(signature.sizeBytes - Int64(startOffset), 0)
                 )
                 bytesRead += parsed.bytesRead
-                contributions = (prefix?.contributions ?? []) + parsed.contributions
-                scanCache.store(
-                    path: path,
+                contributions = (canResume ? cached?.contributions ?? [] : []) + parsed.contributions
+                let entry = JSONLQuotaCacheEntry(
                     signature: signature,
                     contributions: contributions,
-                    endedAtLineBoundary: parsed.endedAtLineBoundary
+                    endedAtLineBoundary: parsed.endedAtLineBoundary,
+                    headPrefixLength: head.length,
+                    headPrefixSHA256: head.sha256
                 )
+                if entry != cached {
+                    parseCache.fileEntries[path] = entry
+                    cacheMutated = true
+                }
             }
 
             filesScanned += 1
             for contribution in contributions {
+                guard contribution.timestamp <= now else { continue }
                 if contribution.total > 0 {
                     if contribution.timestamp >= fiveHoursAgo { fiveHourTokens += contribution.total }
                     if contribution.timestamp >= sevenDaysAgo { sevenDayTokens += contribution.total }
@@ -718,7 +712,23 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
             }
         }
 
-        scanCache.pruneEntries(olderThan: windowCutoffEpoch)
+        let staleKeys = parseCache.fileEntries.compactMap { key, entry in
+            entry.signature.modifiedAt < windowCutoffEpoch ? key : nil
+        }
+        if !staleKeys.isEmpty {
+            parseCache.prune(staleKeys: staleKeys)
+            cacheMutated = true
+        }
+        if cacheMutated {
+            if let cacheStore, let cacheKey {
+                persistedScanCaches.withLock { $0[cacheKey] = parseCache }
+                parserAutoReleasePool {
+                    cacheStore.persist(parseCache)
+                }
+            } else {
+                inMemoryScanCache.write(parseCache)
+            }
+        }
 
         return JSONLTokenWindows(
             fiveHourTokens: fiveHourTokens,
@@ -727,6 +737,22 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
             filesScanned: filesScanned,
             bytesRead: bytesRead
         )
+    }
+
+    /// Simulate a fresh process in focused tests without touching the
+    /// persisted facts cache on disk.
+    static func resetJSONLQuotaCacheMemoryForTesting(cacheURL: URL? = nil) {
+        scanSerialization.withLock { _ in
+            if let cacheURL {
+                let cacheKey = cacheURL.standardizedFileURL.path
+                _ = persistedScanCaches.withLock { $0.removeValue(forKey: cacheKey) }
+            } else {
+                persistedScanCaches.write([:])
+                inMemoryScanCache.write(
+                    .empty(schemaVersion: jsonlQuotaCacheSchemaVersion)
+                )
+            }
+        }
     }
 
     private static func claudeProjectDirectories(
@@ -896,8 +922,8 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         in directories: [URL],
         fileManager: FileManager,
         modifiedAtOrAfterEpoch cutoffEpoch: TimeInterval
-    ) -> [(url: URL, signature: JSONLFileSignature)] {
-        var files: [(url: URL, signature: JSONLFileSignature)] = []
+    ) -> [(url: URL, signature: FileSignature)] {
+        var files: [(url: URL, signature: FileSignature)] = []
         var seen = Set<String>()
 
         for directory in directories {
@@ -924,7 +950,7 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
 
                 files.append((
                     fileURL,
-                    JSONLFileSignature(
+                    FileSignature(
                         modifiedAt: modifiedEpoch,
                         sizeBytes: Int64(values.fileSize ?? 0)
                     )
@@ -1112,10 +1138,12 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
     /// `startOffset` must land on a line boundary (0 or a previous parse that
     /// ended with a newline). Incomplete last lines are still flushed at EOF
     /// so a one-shot scan stays bit-identical; those files are not resumed.
+    /// `maxBytes` pins the read to the signature captured during discovery, so
+    /// a concurrent Claude append cannot be cached under an older file size.
     private static func parseFileContributions(
         from handle: FileHandle,
-        now: Date,
-        startOffset: UInt64 = 0
+        startOffset: UInt64 = 0,
+        maxBytes: Int64
     ) -> JSONLParseResult {
         try? handle.seek(toOffset: startOffset) // try?-ok(best-effort rewind)
 
@@ -1125,40 +1153,51 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         var lineByteCount = 0
         var bytesRead = 0
         var endedAtLineBoundary = true
+        var remainingBytes = max(maxBytes, 0)
 
         func flushCurrentLine() {
             if lineByteCount > 0, lineByteCount <= ScannerPolicy.maxLineBytes,
-               let contribution = parseLineContribution(currentLine, now: now) {
+               let contribution = parserAutoReleasePool({
+                   parseLineContribution(currentLine)
+               }) {
                 contributions.append(contribution)
             }
             currentLine.removeAll(keepingCapacity: true)
             lineByteCount = 0
         }
 
-        while true {
-            guard let chunk = try? handle.read(upToCount: 256 * 1024), !chunk.isEmpty else { // try?-ok(EOF/read end-of-stream)
-                flushCurrentLine()
-                break
-            }
-            bytesRead += chunk.count
-            if let last = chunk.last {
-                endedAtLineBoundary = last == 0x0A
-            }
+        while remainingBytes > 0 {
+            var reachedReadEnd = false
+            parserAutoReleasePool {
+                let requestBytes = Int(min(remainingBytes, 256 * 1024))
+                guard let chunk = try? handle.read(upToCount: requestBytes), !chunk.isEmpty else { // try?-ok(EOF/read end-of-stream)
+                    flushCurrentLine()
+                    reachedReadEnd = true
+                    return
+                }
+                bytesRead += chunk.count
+                remainingBytes -= Int64(chunk.count)
+                if let last = chunk.last {
+                    endedAtLineBoundary = last == 0x0A
+                }
 
-            var segmentStart = chunk.startIndex
-            while let nl = chunk[segmentStart...].firstIndex(of: 0x0A) {
-                currentLine.append(chunk[segmentStart..<nl])
-                lineByteCount += chunk[segmentStart..<nl].count
-                flushCurrentLine()
-                segmentStart = chunk.index(after: nl)
-            }
+                var segmentStart = chunk.startIndex
+                while let nl = chunk[segmentStart...].firstIndex(of: 0x0A) {
+                    currentLine.append(chunk[segmentStart..<nl])
+                    lineByteCount += chunk[segmentStart..<nl].count
+                    flushCurrentLine()
+                    segmentStart = chunk.index(after: nl)
+                }
 
-            if segmentStart < chunk.endIndex {
-                currentLine.append(chunk[segmentStart..<chunk.endIndex])
-                lineByteCount += chunk[segmentStart..<chunk.endIndex].count
-                endedAtLineBoundary = false
+                if segmentStart < chunk.endIndex {
+                    currentLine.append(chunk[segmentStart..<chunk.endIndex])
+                    lineByteCount += chunk[segmentStart..<chunk.endIndex].count
+                    endedAtLineBoundary = false
+                }
             }
+            if reachedReadEnd { break }
         }
+        flushCurrentLine()
 
         return JSONLParseResult(
             contributions: contributions,
@@ -1173,10 +1212,20 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         let endedAtLineBoundary: Bool
     }
 
-    private static func parseLineContribution(
-        _ data: Data,
-        now: Date
-    ) -> JSONLContribution? {
+    private static func headFingerprint(
+        handle: FileHandle,
+        fileSize: Int64
+    ) -> (length: Int, sha256: String, bytesRead: Int) {
+        let length = Int(min(max(fileSize, 0), Int64(jsonlHeadDigestSpan)))
+        guard length > 0 else {
+            return (0, "", 0)
+        }
+        try? handle.seek(toOffset: 0) // try?-ok(head fingerprint best-effort)
+        let data = handle.readData(ofLength: length)
+        return (data.count, QuotaSHA256.hexDigest(data), data.count)
+    }
+
+    private static func parseLineContribution(_ data: Data) -> JSONLContribution? {
         guard !data.isEmpty else { return nil }
 
         guard data.containsAscii(#""type""#),
@@ -1197,8 +1246,7 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         }
 
         guard let tsText = obj["timestamp"] as? String,
-              let timestamp = JSONLTimestamp.date(from: tsText),
-              timestamp <= now else {
+              let timestamp = ClaudeJSONLTimestamp.parse(tsText) else {
             return nil
         }
 
@@ -1207,6 +1255,122 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         let total = max(0, input) + max(0, output)
 
         return JSONLContribution(timestamp: timestamp, total: total)
+    }
+}
+
+enum ClaudeJSONLTimestamp {
+    static func parse(_ text: String) -> Date? {
+        if let contiguous = text.utf8.withContiguousStorageIfAvailable({
+            parseCanonicalUTC($0)
+        }),
+            let parsed = contiguous {
+            return parsed
+        }
+        return ThreadSafeISO8601DateFormatter.parse(text)
+    }
+
+    /// Claude's normal transcript timestamp is ASCII UTC
+    /// `yyyy-MM-dd'T'HH:mm:ss[.fraction]Z`. Parsing that fixed layout directly
+    /// avoids constructing ICU date-format state for every assistant turn.
+    /// Less common but valid ISO-8601 variants fall back to the shared
+    /// Foundation formatter in `parse(_:)`.
+    static func parseCanonicalUTC(_ bytes: UnsafeBufferPointer<UInt8>) -> Date? {
+        guard bytes.count >= 20,
+              bytes[4] == 0x2D,
+              bytes[7] == 0x2D,
+              bytes[10] == 0x54,
+              bytes[13] == 0x3A,
+              bytes[16] == 0x3A else {
+            return nil
+        }
+
+        func digit(_ index: Int) -> Int? {
+            let value = bytes[index]
+            guard value >= 0x30, value <= 0x39 else { return nil }
+            return Int(value - 0x30)
+        }
+
+        func pair(_ index: Int) -> Int? {
+            guard let first = digit(index), let second = digit(index + 1) else { return nil }
+            return first * 10 + second
+        }
+
+        guard let y0 = digit(0),
+              let y1 = digit(1),
+              let y2 = digit(2),
+              let y3 = digit(3),
+              let month = pair(5),
+              let day = pair(8),
+              let hour = pair(11),
+              let minute = pair(14),
+              let second = pair(17) else {
+            return nil
+        }
+        let year = y0 * 1_000 + y1 * 100 + y2 * 10 + y3
+        guard year >= 1970,
+              (1...12).contains(month),
+              (1...daysInMonth(year: year, month: month)).contains(day),
+              (0...23).contains(hour),
+              (0...59).contains(minute),
+              (0...59).contains(second) else {
+            return nil
+        }
+
+        var fraction = 0.0
+        var index = 19
+        if bytes[index] == 0x2E {
+            index += 1
+            var divisor = 10.0
+            var digits = 0
+            while index < bytes.count, bytes[index] != 0x5A {
+                guard digits < 9, let value = digit(index) else { return nil }
+                // ISO8601DateFormatter on Darwin resolves fractional seconds
+                // to milliseconds. Match that existing behavior exactly so
+                // the fast path remains a drop-in replacement even when an
+                // input happens to carry more than Claude's usual 3 digits.
+                if digits < 3 {
+                    fraction += Double(value) / divisor
+                    divisor *= 10
+                }
+                digits += 1
+                index += 1
+            }
+            guard digits > 0 else { return nil }
+        }
+        guard index == bytes.count - 1, bytes[index] == 0x5A else {
+            return nil
+        }
+
+        let days = daysFromUnixEpoch(year: year, month: month, day: day)
+        let seconds = days * 86_400
+            + Int64(hour * 3_600)
+            + Int64(minute * 60)
+            + Int64(second)
+        return Date(timeIntervalSince1970: Double(seconds) + fraction)
+    }
+
+    private static func daysInMonth(year: Int, month: Int) -> Int {
+        switch month {
+        case 2:
+            let leap = year.isMultiple(of: 4)
+                && (!year.isMultiple(of: 100) || year.isMultiple(of: 400))
+            return leap ? 29 : 28
+        case 4, 6, 9, 11:
+            return 30
+        default:
+            return 31
+        }
+    }
+
+    /// Howard Hinnant's civil-date conversion, offset to Unix epoch day zero.
+    private static func daysFromUnixEpoch(year: Int, month: Int, day: Int) -> Int64 {
+        let adjustedYear = year - (month <= 2 ? 1 : 0)
+        let era = adjustedYear / 400
+        let yearOfEra = adjustedYear - era * 400
+        let adjustedMonth = month + (month > 2 ? -3 : 9)
+        let dayOfYear = (153 * adjustedMonth + 2) / 5 + day - 1
+        let dayOfEra = yearOfEra * 365 + yearOfEra / 4 - yearOfEra / 100 + dayOfYear
+        return Int64(era * 146_097 + dayOfEra - 719_468)
     }
 }
 

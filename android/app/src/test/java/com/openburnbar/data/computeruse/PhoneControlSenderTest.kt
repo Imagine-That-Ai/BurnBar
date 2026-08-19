@@ -19,10 +19,16 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
+import org.junit.Before
 import org.junit.Test
 
 class PhoneControlSenderTest {
     private val privateSeed = ByteArray(32) { index -> (index + 1).toByte() }
+
+    @Before
+    fun resetRateLimiter() {
+        PhoneControlSendRateLimiter.reset()
+    }
 
     @Test
     fun sendWritesSignedControlInputFrame() = runBlocking {

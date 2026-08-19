@@ -127,6 +127,20 @@ final class AppearanceSettings {
         }
     }
 
+    /// Which screen the dashboard window opens on. Defaults to ``.home`` — the
+    /// inbox with its fleet + quota rail.
+    ///
+    /// Written straight to `UserDefaults.standard` alongside the debounced
+    /// coordinator, mirroring ``dashboardLayout``, because
+    /// `DashboardLaunchSurface.current` is read from `DashboardView`'s `@State`
+    /// initializer and must see the value without waiting on `SettingsManager`.
+    var dashboardLaunchSurface: DashboardLaunchSurface = .home {
+        didSet {
+            UserDefaults.standard.set(dashboardLaunchSurface.rawValue, forKey: DashboardLaunchSurface.storageKey)
+            persistence.set(dashboardLaunchSurface.rawValue, forKey: DashboardLaunchSurface.storageKey)
+        }
+    }
+
     var showInMenuBar: Bool = true {
         didSet { persistence.set(showInMenuBar, forKey: "showInMenuBar") }
     }
@@ -258,6 +272,7 @@ final class AppearanceSettings {
         // (where `DashboardLayout.current` reads it); mirror it back through the
         // coordinator so a fresh suite stays consistent. Defaults to `.atelier`.
         self.dashboardLayout = DashboardLayout.current
+        self.dashboardLaunchSurface = DashboardLaunchSurface.current
         let hasLaunched = persistence.bool(forKey: "hasLaunchedBefore")
         self.showInMenuBar = hasLaunched ? persistence.bool(forKey: "showInMenuBar") : true
         self.colorfulMenuBarIcon = persistence.bool(forKey: "colorfulMenuBarIcon")

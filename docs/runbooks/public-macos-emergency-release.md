@@ -23,8 +23,11 @@ Only the release owner may use this lane.
    `launch-evidence/latest-agpl-store-legal-packet.json`.
 2. The packet must name the owner, GitHub owner account, counsel name, approval
    type, release boundary, emergency reason, and follow-up requirement.
-3. The packet's `repo.releaseTag` must match the exact tag being cut. Check it
-   before tagging:
+3. The packet's `repo.releaseTag` must match the exact tag being cut. During PR
+   prep on protected main, owner-attested packets may name a forward semver
+   successor ahead of the committed `project.yml` marketing version while the
+   source tree still carries the last published cut; stale tags behind
+   `project.yml` are rejected. Check binding before tagging:
    `python3 scripts/ci/check_burnbar_release_preflight.py --allow-owner-emergency-approval --expected-release-tag vX.Y.Z`
 4. The release workflow may run the same command with
    `--expected-release-tag` set from the resolved release tag.

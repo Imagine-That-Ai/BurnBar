@@ -69,6 +69,25 @@ extension ProjectionPipelineService {
         )
     }
 
+    /// When the configured embedder's version no longer matches any active
+    /// embedding version in the store, the index is serving vectors from a space
+    /// the query side no longer speaks. Enqueue one full re-embed — guarded on
+    /// there being no live re-embed job — so provider changes (including the
+    /// deterministic→appleNL migration) and OS model drift converge without
+    /// manual intervention. An empty version table is a fresh store: the first
+    /// projection stamps it, so no job is needed.
+    func enqueueEmbedderDriftReembedIfNeeded() async throws {
+        let versions = try await dataStore.fetchEmbeddingVersions()
+        guard versions.isEmpty == false else { return }
+        guard versions.contains(where: { $0.isActive && $0.id == embeddingVersionID }) == false else { return }
+        let hasLiveReembed = try await dataStore.hasProjectionJobs(
+            statuses: [.queued, .leased, .running],
+            jobTypes: [.reembed]
+        )
+        guard hasLiveReembed == false else { return }
+        try await enqueueReembedJob(reason: "embedder_version_drift", priority: 20)
+    }
+
     nonisolated func enqueueSelectiveReproject(
         sourceKind: SearchSourceKind,
         sourceID: String,
@@ -113,6 +132,7 @@ extension ProjectionPipelineService {
         let sweepStartedAt = OpenBurnBarProjectionPerformanceTimer.now()
 
         try await ensureBackfillSeededIfNeeded()
+        try? await enqueueEmbedderDriftReembedIfNeeded() // try?-ok(drift check retried next sweep)
         let pendingQueueDepth = try await dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])
         if pendingQueueDepth <= ProjectionPipelineRuntimeTuning.gapRepairQueueDepthThreshold {
             try? await enqueueGapRepairIfNeeded() // try?-ok(self-heal retried next sweep)

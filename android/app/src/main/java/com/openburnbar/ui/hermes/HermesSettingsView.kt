@@ -10,6 +10,8 @@ import androidx.compose.ui.Modifier
 import com.openburnbar.data.hermes.HermesService
 import com.openburnbar.data.hermes.addDirectConnection
 import com.openburnbar.data.hermes.selectConnection
+import com.openburnbar.data.hermes.selectModel
+import com.openburnbar.data.hermes.toggleFavoriteModel
 
 @Composable
 fun HermesSettingsView(service: HermesService, onDismiss: () -> Unit, modifier: Modifier = Modifier) {

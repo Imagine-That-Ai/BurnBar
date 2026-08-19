@@ -228,6 +228,7 @@ appcheck-token.json
 **/.env.production
 .env.*.local
 .firebase/
+.wrangler/
 assets/generated/
 
 # Claude Code local worktrees (transient)
@@ -329,3 +330,5 @@ arena-public/publish_manifest.json
 # `.tmp.driveupload` (dot) or `website/.tmp/`.
 .tmp.driveupload/
 website/.tmp/
+# Agent-owned goal ledgers are working notes, not public artifacts.
+.factory/goals/

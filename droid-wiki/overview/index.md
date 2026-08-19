@@ -23,7 +23,7 @@ The product is **daemon-first** and **local-first**: local SQLite plus daemon-ow
 |----------|--------|-------|
 | macOS | macOS 14+ | Menu bar + popover + settings window (Mac App Store + direct DMG) |
 | iOS / iPadOS | iOS 17+ | Companion for Computer Use mirror, Mercury calls, notifications |
-| Android | API 29+ | Full parity companion (Kotlin/Compose, iroh transport, Mercury media) |
+| Android | API 29+ | Companion in remediation (Kotlin/Compose, iroh, Mercury). `productParityClaim` is false; physical/store/VoiceOver stay blocked. |
 | VS Code / Cursor | Extension | Daemon health, projected run state, workspace trust gating |
 
 ## Architecture summary

@@ -112,6 +112,9 @@ MIGRATIONS=(
   "v59_founder_lens|atomic|unapplied-only|backup-restore|Founder Lens reply threads, plan ledger, and memory export"
   "v60_billing_kind|atomic|unapplied-only|backup-restore|Billing provenance column (api vs subscription spend) with deterministic backfill"
   "v61_usage_memory|atomic|unapplied-only|backup-restore|Usage-memory substrate: candidate spool, salience sidecar, memory links, extraction-job source_kind"
+  "v62_war_room_originator|atomic|unapplied-only|backup-restore|War Room STARTED BY attribution columns on token_usage plus the originator lookup index"
+  "v63_standing_orders|atomic|unapplied-only|backup-restore|Standing orders table backing the War Room rhythm (cadence, target machine, last fired)"
+  "v64_token_usage_start_time_index|atomic|unapplied-only|backup-restore|Index on token_usage.startTime so the Command Board window scan stops walking the table"
 )
 
 # ── Commands ─────────────────────────────────────────────────────────────

@@ -119,11 +119,19 @@ function compile(
   src: string,
   label: string
 ): WebGLShader | null {
+  // A lost context no-ops every GL call and reports COMPILE_STATUS=false with a
+  // null info log — that is an engine lifecycle condition (handled by the
+  // contextlost path), not a shader bug, so it must not log as one.
+  if (gl.isContextLost()) return null;
   const sh = gl.createShader(type);
   if (!sh) return null;
   gl.shaderSource(sh, src);
   gl.compileShader(sh);
   if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
+    if (gl.isContextLost()) {
+      gl.deleteShader(sh);
+      return null;
+    }
     const log = gl.getShaderInfoLog(sh) ?? "unknown";
     console.error(`[backdrop] ${label} shader compile failed:\n${log}`);
     gl.deleteShader(sh);

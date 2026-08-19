@@ -15,7 +15,7 @@
 
 ### 1.1 Log Parsing (Provider Session Ingestion — Primary Injection Surface)
 - **Directory:** `AgentLens/Services/LogParser/` (17 parsers)
-  - Key files: [`GrokParser.swift`](../../../AgentLens/Services/LogParser/GrokParser.swift), [`ClaudeCodeParser.swift`](../../../AgentLens/Services/LogParser/ClaudeCodeParser.swift), [`CursorAgentParser.swift`](../../../AgentLens/Services/LogParser/CursorAgentParser.swift), [`HermesParser.swift`](../../../AgentLens/Services/LogParser/HermesParser.swift), [`LogParserProtocol.swift`](../../../AgentLens/Services/LogParser/LogParserProtocol.swift)
+  - Key files: [`GrokParser.swift`](../../OpenBurnBarCore/Sources/OpenBurnBarLogParsers/LogParser/GrokParser.swift), [`ClaudeCodeParser.swift`](../../OpenBurnBarCore/Sources/OpenBurnBarLogParsers/LogParser/ClaudeCodeParser.swift), [`CursorAgentParser.swift`](../../OpenBurnBarCore/Sources/OpenBurnBarLogParsers/LogParser/CursorAgentParser.swift), [`HermesParser.swift`](../../OpenBurnBarCore/Sources/OpenBurnBarLogParsers/LogParser/HermesParser.swift), [`LogParserProtocol.swift`](../../OpenBurnBarCore/Sources/OpenBurnBarLogParsers/LogParser/LogParserProtocol.swift)
 - **What they do:** Parse `~/.grok/sessions/`, `~/.claude/projects/`, `~/.codex/`, `~/.cursor/`, `~/.hermes/` etc. into `TokenUsage` + `ConversationRecord` (fullText, chunks via projection).
 - **Downstream:** Indexed into SQLite `conversations`/`search_chunks` → RAG retrieval → prompt stuffing. Also used for focus sessions, summaries, iCloud/CloudSync backup, MCP exposure.
 - **Risk surface:** Raw agent logs (user messages, tool outputs, previous LLM responses, web results, code diffs, attachments metadata) become untrusted content in future prompts.

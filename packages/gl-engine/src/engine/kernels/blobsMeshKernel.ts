@@ -83,6 +83,10 @@ vec3 renderKernel(vec2 uv, vec2 fragCoord){
   // its size breathes gently, its softness is per-instance so silhouettes vary.
   vec3 weightedColor = vec3(0.0);
   float weightSum = 0.0;
+  float maxWeight = 0.0;   // strongest single-blob influence at p — the
+                           // spatial key that keeps blob centres readable
+                           // (a flat weightSum wash is what made the field
+                           // read as a featureless gradient).
 
   for (int i = 0; i < BLOB_COUNT; i++) {
     float fi = float(i);
@@ -94,7 +98,7 @@ vec3 renderKernel(vec2 uv, vec2 fragCoord){
       snoise(vec3(pw * 0.6 + fi * 7.1,         t * driftSpd)),
       snoise(vec3(pw * 0.6 + fi * 7.1 + 12.3,  t * driftSpd))
     );
-    float rad = 0.42 + 0.14 * blobHash(fi * 5.3 + 2.7);
+    float rad = 0.36 + 0.12 * blobHash(fi * 5.3 + 2.7);
     // Breathing radius — 5.7s/11s irrational pair, never phase-locks.
     float breathe = 1.0 + 0.12 * (
         0.62 * sin(uTime * 1.099 + seed * 6.2831) +
@@ -105,13 +109,20 @@ vec3 renderKernel(vec2 uv, vec2 fragCoord){
     // The blob's resting colour comes from a per-instance palette slot (the
     // existing accent ramp), with a tiny per-blob hue roll driven by tHue +
     // a deterministic per-instance offset.
-    float hueT = fract(tHue + 0.07 * fi + 0.13 * blobHash(fi * 9.7 + 6.1));
+    float hueT = fract(tHue + 0.13 * fi + 0.13 * blobHash(fi * 9.7 + 6.1));
     vec3  col  = accentRamp(hueT);
 
-    vec2 c = centre + driftAmp * wander;
+    // Quadrant anchor per blob: even angular spread + deterministic jitter.
+    // Without it the four noise-driven centres can start on top of each
+    // other, and the mesh opens as a featureless wash until they separate.
+    float ang = fi * 1.5708 + blobHash(fi * 4.3 + 2.2) * 0.9;
+    vec2 anchor = 0.34 * vec2(cos(ang), sin(ang));
+
+    vec2 c = centre + anchor + driftAmp * wander;
     float w = blobWeight(pw, c, rad);
     weightedColor += col * w;
     weightSum += w;
+    maxWeight = max(maxWeight, w);
   }
 
   // Normalise: weighted colour sum / total weight → the mesh colour at p.
@@ -121,10 +132,13 @@ vec3 renderKernel(vec2 uv, vec2 fragCoord){
   vec3 col;
   if (uTheme < 0.5) {
     // DARK: additive bloom over deep ink; the mesh glows like a luminous
-    // gradient poster. Filmic knee keeps the brightest blob-centres from
-    // burning to flat white.
+    // gradient poster. The maxWeight key concentrates the bloom at blob
+    // centres and lets the gaps fall back toward the ink, so the blobs read
+    // as distinct bodies instead of one saturated wash. Filmic knee keeps
+    // the brightest blob-centres from burning to flat white.
+    float key = smoothstep(0.12, 0.9, maxWeight);
     col = uBg;
-    col += mesh * (0.95 * uIntensity);
+    col += mesh * (0.95 * uIntensity) * (0.22 + 0.78 * key);
     col = col / (col + vec3(0.55));
     col *= 1.16;
     // Faint airglow floor (prevents "dead black" between blobs).

@@ -305,4 +305,53 @@ final class AIInboxAnalystParsingTests: XCTestCase {
             "Refused to send: host is not local"
         )
     }
+
+    // MARK: - Voice enforcement
+
+    /// The ban list is a contract, not advice: a model finding that speaks in
+    /// the banned register never publishes. This is the production caller
+    /// `violations(in:)` documents itself as serving.
+    func test_findingInTheBannedRegisterIsRejectedNotPublished() throws {
+        let pack = AIInboxFixtures.packWithConversation()
+        let payload = try BurnBarAIInboxAnalyst.decode("""
+            {
+              "brief_md": "",
+              "findings": [
+                {
+                  "kind": "brief",
+                  "title": "It looks like the auth refactor might be interesting",
+                  "summary_md": "You might want to delve into this robust landscape of changes.",
+                  "priority": 3,
+                  "confidence": 0.7,
+                  "evidence_ids": ["conv:conv-1:12"]
+                },
+                {
+                  "kind": "brief",
+                  "title": "Auth refactor restarted twice; second attempt landed",
+                  "summary_md": "Sessions 12 and 14 restarted the same middleware move. The merged commit is the keeper.",
+                  "priority": 3,
+                  "confidence": 0.7,
+                  "evidence_ids": ["conv:conv-1:12"]
+                }
+              ]
+            }
+            """)
+
+        let result = BurnBarAIInboxAnalyst.validate(
+            payload: payload,
+            pack: pack,
+            detectorFindings: [],
+            provenance: "test:model",
+            now: Date()
+        )
+
+        XCTAssertEqual(result.findings.count, 1, "The violating finding must be rejected, the clean one kept")
+        XCTAssertEqual(result.rejectedFindings, 1)
+        let survivor = try XCTUnwrap(result.findings.first)
+        XCTAssertTrue(survivor.title.hasPrefix("Auth refactor restarted twice"))
+        XCTAssertTrue(
+            BurnBarFounderLens.violations(in: survivor.title + "\n" + survivor.summaryMarkdown).isEmpty,
+            "Published output must carry zero banned phrases"
+        )
+    }
 }

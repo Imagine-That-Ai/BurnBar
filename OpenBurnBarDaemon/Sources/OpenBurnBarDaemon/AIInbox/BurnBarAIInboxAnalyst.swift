@@ -337,6 +337,19 @@ struct BurnBarAIInboxAnalyst: Sendable {
             let title = candidate.title.trimmingCharacters(in: .whitespacesAndNewlines)
             guard title.isEmpty == false, title.count <= 200 else { rejectedFindings += 1; continue }
 
+            // The voice contract is ENFORCED, not advisory: a model brief that
+            // trips the snapshot-locked ban list never publishes. Rejected, not
+            // scrubbed — a mechanical rewrite would fake the voice; rejection
+            // leaves the next attempt to the analyst's own repair loop. This is
+            // the production caller `violations(in:)` was always meant to have.
+            let voiceViolations = BurnBarFounderLens.violations(
+                in: title + "\n" + (candidate.summaryMD ?? "")
+            )
+            guard voiceViolations.isEmpty else {
+                rejectedFindings += 1
+                continue
+            }
+
             let citedIDs = (candidate.evidenceIDs ?? []).filter(validIDs.contains)
             guard citedIDs.isEmpty == false else {
                 // The single most important check: no real citation, no finding.

@@ -9,6 +9,13 @@ import SwiftUI
 // honest warnings otherwise.
 
 struct PixelClockSettingsCard: View {
+    private enum Copy {
+        static let flashAndFinishSetup = "Flash and Finish Setup"
+        static let detectAfterFlash = "Detect after flash"
+        static let customizeDisplay = "Customize display"
+        static let advanced = "Advanced"
+    }
+
     @Bindable var settingsManager: SettingsManager
     @State private var model: PixelClockSettingsModel
     @State private var carouselTick: Int = 0
@@ -42,6 +49,20 @@ struct PixelClockSettingsCard: View {
             )
         }
         _model = State(initialValue: resolvedModel)
+    }
+
+    /// Labels of the controls this card renders once the integration is enabled.
+    /// Tests assert against this instead of walking the real view tree, which
+    /// ViewInspector cannot traverse without crashing the host.
+    var enabledControlLabels: [String] {
+        guard model.config.enabled else { return [] }
+        var labels = [Copy.customizeDisplay, Copy.advanced]
+        if model.firmware == .awtrixReady {
+            labels.insert(model.setupPrimaryTitle, at: 0)
+        } else {
+            labels.insert(contentsOf: [Copy.flashAndFinishSetup, Copy.detectAfterFlash], at: 0)
+        }
+        return labels
     }
 
     var body: some View {
@@ -89,7 +110,7 @@ struct PixelClockSettingsCard: View {
             }
 
             VStack(alignment: .leading, spacing: 3) {
-                Text("ULANZI TC001 Pixel Clock")
+                Text(MacCopy.pixelClockSectionTitle)
                     .font(DesignSystem.Typography.headline)
                     .foregroundStyle(DesignSystem.Colors.textPrimary)
                 Text("Show live OpenBurnBar quota on a Pixel Clock running AWTRIX firmware.")
@@ -174,7 +195,7 @@ struct PixelClockSettingsCard: View {
 
     private var setupFlashButton: some View {
         GlassButton(
-            title: model.isBusy ? "Flashing..." : "Flash and Finish Setup",
+            title: model.isBusy ? "Flashing..." : Copy.flashAndFinishSetup,
             icon: model.isBusy ? "ellipsis" : "bolt.badge.automatic.fill",
             style: .prominent
         ) {
@@ -196,7 +217,7 @@ struct PixelClockSettingsCard: View {
 
     private var setupDetectButton: some View {
         GlassButton(
-            title: model.isBusy ? "Detecting..." : "Detect after flash",
+            title: model.isBusy ? "Detecting..." : Copy.detectAfterFlash,
             icon: model.isBusy ? "ellipsis" : "wifi",
             style: .regular
         ) {
@@ -234,7 +255,7 @@ struct PixelClockSettingsCard: View {
             }
             .padding(.top, DesignSystem.Spacing.sm)
         } label: {
-            Label("Customize display", systemImage: "slider.horizontal.3")
+            Label(Copy.customizeDisplay, systemImage: "slider.horizontal.3")
                 .font(DesignSystem.Typography.caption)
                 .fontWeight(.semibold)
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
@@ -249,7 +270,7 @@ struct PixelClockSettingsCard: View {
             }
             .padding(.top, DesignSystem.Spacing.sm)
         } label: {
-            Label("Advanced", systemImage: "wrench.and.screwdriver")
+            Label(Copy.advanced, systemImage: "wrench.and.screwdriver")
                 .font(DesignSystem.Typography.caption)
                 .fontWeight(.semibold)
                 .foregroundStyle(DesignSystem.Colors.textMuted)

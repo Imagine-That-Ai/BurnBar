@@ -8,6 +8,7 @@ import com.openburnbar.data.cloud.CloudConversationSearchService
 import com.openburnbar.data.firebase.FirestoreRepository
 import com.openburnbar.data.models.ProjectSummary
 import com.openburnbar.data.models.TokenUsage
+import com.openburnbar.data.policy.UidScopedCacheRegistry
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -20,6 +21,7 @@ private const val SEARCH_DEBOUNCE_MS = 250
 class ActivityStore(
     private val repo: FirestoreRepository = FirestoreRepository(),
     private val cloudSearchFactory: () -> CloudConversationSearchService = { CloudConversationSearchService() },
+    scopedCaches: UidScopedCacheRegistry = UidScopedCacheRegistry.shared,
 ) : ViewModel() {
     private val _usages = MutableStateFlow<List<TokenUsage>>(emptyList())
     val usages = _usages.asStateFlow()
@@ -39,6 +41,9 @@ class ActivityStore(
     private val _error = MutableStateFlow<String?>(null)
     val error = _error.asStateFlow()
 
+    private val _searchFailed = MutableStateFlow(false)
+    val searchFailed = _searchFailed.asStateFlow()
+
     private val _hasMore = MutableStateFlow(false)
     val hasMore = _hasMore.asStateFlow()
 
@@ -52,6 +57,30 @@ class ActivityStore(
     private var lastSearchQuery: String = ""
     private var cloudSearch: CloudConversationSearchService? = null
 
+    init {
+        scopedCaches.register { clearCache() }
+    }
+
+    fun clearCache() {
+        listenJob?.cancel()
+        liveListenJob?.cancel()
+        searchJob?.cancel()
+        listenJob = null
+        liveListenJob = null
+        searchJob = null
+        lastDoc = null
+        lastSearchQuery = ""
+        cloudSearch = null
+        _usages.value = emptyList()
+        _liveUsages.value = emptyList()
+        _projects.value = emptyList()
+        _cloudSearchHits.value = emptyList()
+        _isLoading.value = false
+        _error.value = null
+        _searchFailed.value = false
+        _hasMore.value = false
+    }
+
     fun loadInitial(pageSize: Int = 25) {
         viewModelScope.launch {
             _isLoading.value = true
@@ -63,6 +92,7 @@ class ActivityStore(
                 }
                 lastDoc = last
                 _hasMore.value = last != null
+                _error.value = null
             } catch (e: FirebaseException) {
                 _error.value = e.message
             } finally {
@@ -80,6 +110,7 @@ class ActivityStore(
                 _usages.value = _usages.value + page
                 lastDoc = last
                 _hasMore.value = last != null
+                _error.value = null
             } catch (e: FirebaseException) {
                 _error.value = e.message
             } finally {
@@ -96,6 +127,7 @@ class ActivityStore(
                 _usages.value = page
                 lastDoc = last
                 _hasMore.value = last != null
+                _error.value = null
             } catch (e: FirebaseException) {
                 _error.value = e.message
             } finally {
@@ -110,19 +142,28 @@ class ActivityStore(
         searchJob?.cancel()
         if (trimmed.length < 2) {
             _cloudSearchHits.value = emptyList()
+            _searchFailed.value = false
             return
         }
         searchJob =
             viewModelScope.launch {
-                try {
+                val search = runCatching {
                     kotlinx.coroutines.delay(SEARCH_DEBOUNCE_MS.toLong())
-                    if (lastSearchQuery != trimmed) return@launch
-                    _cloudSearchHits.value = cloudSearchService().search(trimmed)
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (_: Exception) {
-                    _cloudSearchHits.value = emptyList()
+                    if (lastSearchQuery != trimmed) {
+                        null
+                    } else {
+                        cloudSearchService().search(trimmed)
+                    }
                 }
+                search.exceptionOrNull()?.let { error ->
+                    if (error is CancellationException) throw error
+                    _searchFailed.value = true
+                    _error.value = error.message ?: error::class.simpleName
+                    return@launch
+                }
+                val hits = search.getOrNull() ?: return@launch
+                _cloudSearchHits.value = hits
+                _searchFailed.value = false
             }
     }
 

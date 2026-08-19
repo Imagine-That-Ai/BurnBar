@@ -26,7 +26,7 @@ iPhone and iPad companion app. Primary surfaces:
 
 **Location:** `android/`
 
-Kotlin/Jetpack Compose Android companion reaching full iOS parity as of 2026-05-16: Hermes Square, messaging, iroh transport, Mercury Media (file transfer, screen-share viewer, 1:1 calls). Data layer mirrors `functions/src/types.ts` canonical schema via annotated Kotlin data classes.
+Kotlin/Jetpack Compose Android companion with source-complete iOS feature coverage as of 2026-05-16 (historical/`rebind-required`). Current product-parity status lives in `docs/mobile-parity/mobile-parity-ledger.md` (`productParityClaim` is false). Data layer mirrors `functions/src/types.ts` canonical schema via annotated Kotlin data classes.
 
 → [Android app](android-app.md)
 

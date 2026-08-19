@@ -14,7 +14,7 @@
 
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
--- Schema hash: c9ee5b178722e05f8419a1e09b70670afb812c76e51193724f889c809b724fd5
+-- Schema hash: ba38a165da9b661f6ebc457f7c5dc6995a70053f2038d1e384f7ab4adca72c01
 
 -- ── GRDB migrations tracking ──────────────────────────────────────────────────
 
@@ -53,7 +53,9 @@ CREATE TABLE token_usage (
   agentVersion    TEXT,                                   -- agent CLI version
   requestId       TEXT,                                   -- provider-assigned request ID (v38+)
   traceId         TEXT,                                   -- distributed trace ID (v41+)
-  billingKind     TEXT    NOT NULL DEFAULT 'unknown'      -- "api" | "subscription" | "unknown" (v60+)
+  billingKind     TEXT    NOT NULL DEFAULT 'unknown',     -- "api" | "subscription" | "unknown" (v60+)
+  originatorKind  TEXT,                                   -- STARTED BY kind: user_local | user_remote | flame | wand | mission | hermes_bot | hermes_cron | external | unknown (v62+)
+  originatorRef   TEXT                                    -- STARTED BY primary ref: decisionID / missionGroupID / missionID / botName / bodyID (v62+)
 );
 
 CREATE INDEX token_usage_sync_pending_idx ON token_usage(syncStatus) WHERE syncStatus = 'pending';
@@ -64,6 +66,8 @@ CREATE INDEX token_usage_session_idx ON token_usage(sessionId);
 CREATE INDEX token_usage_execution_source_time_idx ON token_usage(executionSourceID, startTime);
 CREATE INDEX token_usage_timestamp_idx ON token_usage(timestamp DESC);
 CREATE INDEX token_usage_billing_kind_time_idx ON token_usage(billingKind, startTime);
+CREATE INDEX token_usage_originator_time_idx ON token_usage(originatorKind, startTime);
+CREATE INDEX token_usage_start_time_idx ON token_usage(startTime);   -- War Room Command Board window scan (v64+)
 
 -- ── Chat Messages (v10+) ─────────────────────────────────────────────────────
 -- Stores local chat history for the Hermes and Local Index chat surfaces.
@@ -822,3 +826,27 @@ CREATE TABLE IF NOT EXISTS ai_inbox_memory_export (
     approved_at TEXT NOT NULL,
     exported_at TEXT NOT NULL
 );
+
+-- War Room W6 (the rhythm): recurring work the fleet performs without being
+-- asked each time. The cadence is decomposed rather than stored as a blob so a
+-- row stays readable in a SQL client and a partial cadence is detectable.
+-- targetBodyId NULL means "let the Flame choose at fire time".
+CREATE TABLE IF NOT EXISTS standing_orders (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    instruction TEXT NOT NULL,
+    cadenceKind TEXT NOT NULL,
+    cadenceMinutes INTEGER,
+    cadenceHour INTEGER,
+    cadenceMinute INTEGER,
+    cadenceWeekday INTEGER,
+    targetBodyId TEXT,
+    requiredCapabilities TEXT NOT NULL DEFAULT '',
+    isEnabled BOOLEAN NOT NULL DEFAULT 1,
+    lastFiredAt DATETIME,
+    createdAt DATETIME NOT NULL,
+    updatedAt DATETIME NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS standing_orders_enabled_fired_idx
+    ON standing_orders(isEnabled, lastFiredAt);

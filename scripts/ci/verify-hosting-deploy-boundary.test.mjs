@@ -118,7 +118,7 @@ jobs:
       - name: Upload immutable hosting artifact
   deploy-hosting:
     needs: build-hosting-artifacts
-    if: \${{ github.event_name != 'workflow_dispatch' || inputs.dry_run != true }}
+    if: \${{ always() && needs.build-hosting-artifacts.result == 'success' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.dry_run != true)) }}
     environment: production
     permissions:
       contents: read

@@ -24,9 +24,10 @@ import OpenBurnBarKernel
 ///   still short-circuits the apply. A MISSED bump is the dangerous
 ///   direction (stale dashboard until the next window boundary), so writers
 ///   bump whenever SQLite reports any row change.
-/// * Startup migrations may rewrite `token_usage` before this marker exists;
-///   that is safe because the first tick always reloads (`nil` last-seen
-///   marker) and `DataStoreCoordinator.refresh()` runs at init.
+/// * Startup migrations may rewrite `token_usage` before this marker exists.
+///   Background ticks record the current marker without hydrating presentation
+///   state; the first explicit tray/dashboard load is exhaustive and records
+///   the marker that preceded its snapshot.
 final class UsageTableWriteMarker: Sendable {
     private let counter = Locked<Int>(0)
 

@@ -318,10 +318,10 @@ actor BurnBarAIInboxService {
         // that end in "nothing changed". So the gate reads a `stat`-only
         // fingerprint, and the real snapshot is taken inside the pipeline, only
         // once the gate has actually opened.
-        let recentPaths = ((try? store.recentConversations(
+        let recentPaths = (try? store.recentConversationWorkingDirectories(
             since: now.addingTimeInterval(-Double(config.lookbackMinutes) * 60),
             limit: BurnBarAIInboxEvidencePackBuilder.maxConversations
-        )) ?? []).compactMap(\.workingDirectory)
+        )) ?? []
 
         let decision = changeGate.decide(
             config: config,
@@ -586,27 +586,25 @@ actor BurnBarAIInboxService {
     private func spendToday() async throws -> Double {
         let startOfDay = Calendar.current.startOfDay(for: clock())
         let countsSubscription = configuration().budgetCountsSubscriptionSpend
-        return try await usageRecorder.records()
-            .map(\.event)
-            .filter { $0.executionSourceID == BurnBarAIInboxUsage.executionSourceID && $0.recordedAt >= startOfDay }
-            .filter { event in
-                // The protective budget guards real dollars. Subscription-routed
-                // calls are plan-covered imputed value — they only count when the
-                // user opts in. `unknown` counts as spend: fail-protective.
-                if countsSubscription { return true }
-                return BurnBarBillingProvenance.effectiveKind(of: event) != .subscription
+        return try await usageRecorder.sumCost(since: startOfDay) { event in
+            guard event.executionSourceID == BurnBarAIInboxUsage.executionSourceID else {
+                return false
             }
-            .reduce(0) { $0 + $1.cost }
+            // The protective budget guards real dollars. Subscription-routed
+            // calls are plan-covered imputed value — they only count when the
+            // user opts in. `unknown` counts as spend: fail-protective.
+            if countsSubscription { return true }
+            return BurnBarBillingProvenance.effectiveKind(of: event) != .subscription
+        }
     }
 
     /// Cheap "did spend happen?" signal for the change gate — count and latest
     /// timestamp, no full scan of amounts.
     private func usageLedgerSignature() async -> String {
-        guard let records = try? await usageRecorder.records() else { return "ledger-unavailable" }
-        let latest = records.map(\.event.recordedAt).max()
+        guard let signature = try? await usageRecorder.signature() else { return "ledger-unavailable" }
         return BurnBarAIInboxStableHasher.hash([
-            String(records.count),
-            latest.map(BurnBarAIInboxTimestamp.string(from:)) ?? "-"
+            String(signature.recordCount),
+            signature.latestRecordedAt.map(BurnBarAIInboxTimestamp.string(from:)) ?? "-"
         ])
     }
 

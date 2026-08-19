@@ -109,6 +109,18 @@ struct DashboardDetailView: View {
                         description: Text("Open Memory from the main dashboard to review extracted memories.")
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                case .home:
+                    // Parallel/legacy detail surface. Home needs the fleet model,
+                    // the quota service and the chat controller for presence —
+                    // none of which this context carries — so render the graceful
+                    // unavailable state rather than a half-wired rail, the same
+                    // choice `.memoryReview` and `.controlDeck` make.
+                    ContentUnavailableView(
+                        "Home is unavailable",
+                        systemImage: "house",
+                        description: Text("Open the main dashboard to see your inbox, fleet, and quota.")
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 case .fleet:
                     ContentUnavailableView(
                         "Fleet is unavailable",

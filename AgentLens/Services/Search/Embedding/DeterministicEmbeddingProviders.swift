@@ -129,23 +129,29 @@ struct Bge384EmbeddingProvider: ChunkEmbeddingProviding, QueryEmbeddingProviding
 struct NLEmbeddingProvider: ChunkEmbeddingProviding, QueryEmbeddingProviding, Sendable {
     let descriptor: EmbeddingModelDescriptor
 
+    /// The canonical provider string, shared by the index chunk path and the
+    /// query path so both resolve the same vector space from a stored
+    /// `EmbeddingModelRecord`.
+    static let providerName = "apple-natural-language"
+
     init?(
         processInfo: ProcessInfo = .processInfo,
-        chunkerVersion: String = ProjectionIdentity.chunkerVersion
+        chunkerVersion: String = ProjectionIdentity.chunkerVersion,
+        promptVersion: String = "memory-fact-v1"
     ) {
         guard let model = NLEmbedding.sentenceEmbedding(for: .english) else { return nil }
         let dimension = model.dimension
         let os = processInfo.operatingSystemVersion
         let revision = "macos-\(os.majorVersion).\(os.minorVersion).\(os.patchVersion)"
         descriptor = EmbeddingModelDescriptor(
-            provider: "apple-natural-language",
+            provider: Self.providerName,
             modelName: "nl-sentence-en",
             dimensions: dimension,
             distanceMetric: .cosine,
             versionTag: "nl-sentence-en-\(dimension)-r\(revision)",
             chunkerVersion: chunkerVersion,
             normalizationVersion: "unit-l2-v1",
-            promptVersion: "memory-fact-v1"
+            promptVersion: promptVersion
         )
     }
 

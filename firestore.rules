@@ -1884,6 +1884,7 @@ service cloud.firestore {
         "quota_snapshots", "provider_connections", "provider_accounts",
         "roaming_profile", "provider_account_device_links",
         "runtime_connection_preferences", "hermes_connections",
+        "hermes_bodies", "war_wire_grants",
         "hermes_pairings", "hermes_relay_requests", "hermes_session_cache",
         "hermes_audit_events", "hermes_gateway_clients",
         "hermes_gateway_destinations", "hermes_gateway_events",
@@ -2448,7 +2449,16 @@ service cloud.firestore {
           "sealedStatePayload",
           "sealedStateSchemaVersion",
           "sealedStateVaultKeyID",
-          "approvedByDeviceId"
+          "approvedByDeviceId",
+          // War Room — STARTED BY attribution (Command Board). Advisory,
+          // owner-written, non-secret.
+          "originatorKind",
+          "originatorRef",
+          // War Room — the Flame's routing target: which of the account's Macs
+          // should run this mission. Advisory and owner-written; the executing
+          // Mac decides whether to claim it, so a forged value cannot make a
+          // machine run work it would otherwise refuse.
+          "targetBodyID"
         ]);
       }
 
@@ -2494,6 +2504,9 @@ service cloud.firestore {
         && (!("personaID" in d) || validCliMissionMetadataToken(d.personaID, 160))
         && (!("groupID" in d) || validCliMissionMetadataToken(d.groupID, 160))
         && (!("resumeAction" in d) || validCliMissionResumeAction(d.resumeAction))
+        && (!("originatorKind" in d) || validCliMissionMetadataToken(d.originatorKind, 24))
+        && (!("originatorRef" in d) || validCliMissionMetadataToken(d.originatorRef, 160))
+        && (!("targetBodyID" in d) || validCliMissionMetadataToken(d.targetBodyID, 160))
         // The exact hasOnly([...]) allowlist above contains neither plaintext
         // content fields nor signalEnvelope. Repeating either deny check here
         // pushes the full fan-out child payload past Firestore's 1000-expression
@@ -3693,7 +3706,79 @@ service cloud.firestore {
 
     match /users/{userId}/hermes_connections/{connectionId} {
       allow create: if relayConnectionWrite(userId, connectionId);
-      allow update: if relayConnectionWrite(userId, connectionId) && resource.data.mode == "relayLink";
+      allow update: if relayConnectionWrite(userId, connectionId)
+        && request.resource.data.mode == "relayLink"
+        && resource.data.mode == "relayLink";
+    }
+
+    // War Room: one HermesBody per machine — the joined machine-identity
+    // record (device + Hermes connection + iroh endpoint + hardware) the
+    // three faces navigate by. Written only by the owning account; bodyId is
+    // the canonical relay-host-<installationUUID> connection id.
+    function hermesBodyWrite(userId, bodyId) {
+      let d = request.resource.data;
+      return ownsUserNamespace(userId)
+        && hasNoPlaintextSecretFields()
+        && d.keys().hasOnly([
+          "id", "deviceID", "displayName", "machineName", "platform",
+          "hardware", "hermes", "endpoints", "presence", "capabilities",
+          "schemaVersion", "createdAt", "updatedAt"
+        ])
+        && d.id == bodyId
+        && d.id.size() <= 200
+        && d.deviceID is string && d.deviceID.size() <= 160
+        && d.displayName is string && d.displayName.size() <= 120
+        && d.machineName is string && d.machineName.size() <= 120
+        && d.platform == "macos"
+        && d.hardware is map
+        && d.hermes is map
+        && d.endpoints is map
+        && d.presence is map
+        && d.capabilities is list && d.capabilities.size() <= 16
+        && d.schemaVersion is int;
+    }
+
+    match /users/{userId}/hermes_bodies/{bodyId} {
+      allow create: if hermesBodyWrite(userId, bodyId)
+        && request.resource.data.createdAt is string;
+      allow update: if hermesBodyWrite(userId, bodyId);
+      allow delete: if ownsUserNamespace(userId);
+    }
+
+    // War Room: the Wire's mutual-consent record between two of the account's
+    // own Macs. pairId is the two bodyIds sorted lexicographically and joined
+    // with "__", enforced here rather than trusted from the client, so both
+    // machines derive the same document without coordinating. Revocable from
+    // either machine; the client gate (WarWireGate) reads anything not
+    // provably "active" as revoked.
+    function warWireGrantWrite(userId, pairId) {
+      let d = request.resource.data;
+      return ownsUserNamespace(userId)
+        && hasNoPlaintextSecretFields()
+        && d.keys().hasOnly([
+          "id", "bodyIdA", "bodyIdB", "state", "grantedByDeviceID", "grantedAt",
+          "revokedByDeviceID", "revokedAt", "schemaVersion", "createdAt", "updatedAt"
+        ])
+        && d.id == pairId
+        && d.bodyIdA is string && d.bodyIdA.size() > 0 && d.bodyIdA.size() <= 200
+        && d.bodyIdB is string && d.bodyIdB.size() > 0 && d.bodyIdB.size() <= 200
+        && d.bodyIdA < d.bodyIdB
+        && pairId == d.bodyIdA + "__" + d.bodyIdB
+        && d.state in ["active", "revoked"]
+        && d.grantedByDeviceID is string && d.grantedByDeviceID.size() <= 160
+        && d.grantedAt is string
+        && d.schemaVersion is int;
+    }
+
+    match /users/{userId}/war_wire_grants/{pairId} {
+      allow create: if warWireGrantWrite(userId, pairId)
+        && request.resource.data.createdAt is string;
+      allow update: if warWireGrantWrite(userId, pairId)
+        // The pair a grant covers is immutable; revoking replaces the state,
+        // never the endpoints, so a revoked grant can't be re-pointed.
+        && request.resource.data.bodyIdA == resource.data.bodyIdA
+        && request.resource.data.bodyIdB == resource.data.bodyIdB;
+      allow delete: if ownsUserNamespace(userId);
     }
 
 
@@ -4057,7 +4142,9 @@ service cloud.firestore {
 
     match /users/{userId}/pi_agent_connections/{connectionId} {
       allow create: if piRelayConnectionWrite(userId, connectionId);
-      allow update: if piRelayConnectionWrite(userId, connectionId) && resource.data.mode == "relayLink";
+      allow update: if piRelayConnectionWrite(userId, connectionId)
+        && request.resource.data.mode == "relayLink"
+        && resource.data.mode == "relayLink";
     }
 
 
