@@ -157,6 +157,10 @@ on:
       - "scripts/ci/verify-vendored-agent-source.sh"
       - "scripts/ci/verify-libsignal-submodule-delta.sh"
       - "scripts/ci/verify-scanner-governance.test.mjs"
+      - "scripts/ci/verify-xcframework-modulemap-collision.mjs"
+      - "scripts/ci/verify-xcframework-modulemap-collision.test.mjs"
+      - "scripts/build-domain-core-xcframework.sh"
+      - "scripts/build-iroh-xcframework.sh"
       - "scripts/ci/verify-codeowners-security-trees.test.sh"
       - "third_party/hermes-agent/manifest.json"
       - "third_party/libsignal/manifest.json"
@@ -295,6 +299,10 @@ on:
       - "scripts/ci/verify-vendored-agent-source.sh"
       - "scripts/ci/verify-libsignal-submodule-delta.sh"
       - "scripts/ci/verify-scanner-governance.test.mjs"
+      - "scripts/ci/verify-xcframework-modulemap-collision.mjs"
+      - "scripts/ci/verify-xcframework-modulemap-collision.test.mjs"
+      - "scripts/build-domain-core-xcframework.sh"
+      - "scripts/build-iroh-xcframework.sh"
       - "scripts/ci/verify-workflow-reachability.mjs"
       - "scripts/ci/verify-workflow-reachability.test.mjs"
       - "scripts/lib/github-workflow.mjs"
@@ -334,6 +342,14 @@ jobs:
         run: |
           node scripts/ci/verify-merge-queue-workflows.mjs
           node scripts/ci/verify-merge-queue-workflows.test.mjs
+
+      # Two xcframeworks shipping a bare `Headers/module.modulemap` both claim
+      # `include/module.modulemap` and break every iOS archive, which blocked
+      # all releases in August 2026. One is safe; a second is not.
+      - name: Verify xcframework module map collision limit
+        run: |
+          node scripts/ci/verify-xcframework-modulemap-collision.mjs
+          node --test scripts/ci/verify-xcframework-modulemap-collision.test.mjs
 
       # Two defects that fail silently rather than red: a job that inherits a
       # skipped upstream through `needs` and is never scheduled, and a `paths:`

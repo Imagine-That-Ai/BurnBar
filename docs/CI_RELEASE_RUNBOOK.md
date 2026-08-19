@@ -219,3 +219,36 @@ In order, because each is cheap and rules out the next:
   burned that way. Fix the gate; the tag is not the problem.
 - **Verify against the tag CI is building**, not your working tree. Local
   branches drift, and a fix that "works locally" may be testing different code.
+
+---
+
+## 8. xcframeworks and the `include/module.modulemap` collision
+
+`xcodebuild -create-xcframework -library X.a -headers H/` makes Xcode copy `H/`
+into a **shared** `BuildProductsPath/include` at build time. A headers directory
+containing `module.modulemap` therefore claims a path no other binary target can
+also claim. Link two such xcframeworks into one target and the build dies:
+
+```
+error: Multiple commands produce '.../Release-iphoneos/include/module.modulemap'
+  Command: ProcessXCFramework Vendor/OpenBurnBarDomainCore.xcframework
+  Command: ProcessXCFramework Vendor/OpenBurnBarIroh.xcframework
+```
+
+This blocked every iOS archive — and therefore every release, since
+`build-and-release` packages iOS in the same job that produces the macOS DMG —
+in August 2026. **PR CI never saw it**: `OpenBurnBarDomainCore.xcframework` is
+built during the release job and is not vendored, so the two only met on the
+release path.
+
+**One bare-layout xcframework is fine.** The collision needs two, so
+`scripts/ci/verify-xcframework-modulemap-collision.mjs` fails on the second
+rather than banning the layout.
+
+**The fix for a new one** is to package a real `.framework`, whose module map
+lives inside the bundle at `Modules/module.modulemap` and cannot collide. See
+`make_framework()` in `scripts/build-domain-core-xcframework.sh`, modelled on
+`scripts/build-burnbar-remote-xcframework.sh`, which has always shipped this way.
+
+A static library placed inside a `.framework` bundle is a normal "static
+framework" and is what both of those scripts produce.

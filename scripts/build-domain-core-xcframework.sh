@@ -199,6 +199,54 @@ ARCHS_DIR="${ROOT_DIR}/build/domain-core-archs"
 rm -rf "${ARCHS_DIR}"
 mkdir -p "${ARCHS_DIR}"
 
+# The iOS archive links this xcframework alongside OpenBurnBarIroh. Both used to
+# ship a bare static library plus `Headers/module.modulemap`, and Xcode flattens
+# every `-headers` directory into the SAME `BuildProductsPath/include`, so both
+# tried to write `include/module.modulemap` and the archive failed with
+# "Multiple commands produce ...". Packaging as a real `.framework` keeps the
+# module map inside the bundle at `Modules/module.modulemap`, where it cannot
+# collide with any other binary target. BurnBarRemote.xcframework already ships
+# this way; this converges on that proven layout.
+FRAMEWORK_MODULE_NAME="openburnbar_domain_ffiFFI"
+
+make_framework() {
+  local source_library="$1"
+  local out_dir="$2"
+  local framework_dir="${out_dir}/${FRAMEWORK_MODULE_NAME}.framework"
+  local umbrella_header="${FRAMEWORK_MODULE_NAME}.h"
+  [[ -f "${GENERATED_DIR}/${umbrella_header}" ]] \
+    || { echo "missing generated umbrella header ${umbrella_header} in ${GENERATED_DIR}" >&2; exit 1; }
+  rm -rf "${framework_dir}"
+  mkdir -p "${framework_dir}/Headers" "${framework_dir}/Modules"
+  cp "${source_library}" "${framework_dir}/${FRAMEWORK_MODULE_NAME}"
+  cp "${GENERATED_DIR}/"*.h "${framework_dir}/Headers/"
+  cat > "${framework_dir}/Modules/module.modulemap" <<EOF
+framework module ${FRAMEWORK_MODULE_NAME} {
+  umbrella header "${umbrella_header}"
+  export *
+}
+EOF
+  cat > "${framework_dir}/Info.plist" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundlePackageType</key>
+  <string>FMWK</string>
+  <key>CFBundleName</key>
+  <string>${FRAMEWORK_MODULE_NAME}</string>
+  <key>CFBundleIdentifier</key>
+  <string>ai.openburnbar.domain-core-ffi</string>
+  <key>CFBundleVersion</key>
+  <string>1</string>
+  <key>CFBundleShortVersionString</key>
+  <string>1.0</string>
+</dict>
+</plist>
+EOF
+  build_xcframework_args+=(-framework "${framework_dir}")
+}
+
 # Group iOS device + simulator separately because lipo cannot merge across
 # platforms; we let `xcodebuild -create-xcframework` do platform separation.
 package_static_for_target() {
@@ -213,17 +261,10 @@ package_static_for_target() {
     *) echo "unknown target ${target}" >&2; exit 1 ;;
   esac
   local out_dir="${ARCHS_DIR}/${platform_id}"
-  mkdir -p "${out_dir}/Headers"
+  mkdir -p "${out_dir}"
   cp "${TARGET_DIR}/${target}/${PROFILE_DIR}/libopenburnbar_domain_ffi.a" \
      "${out_dir}/libopenburnbar_domain_ffi.a"
-  if compgen -G "${GENERATED_DIR}/*.h" >/dev/null; then
-    cp "${GENERATED_DIR}/"*.h "${out_dir}/Headers/"
-  fi
-  if compgen -G "${GENERATED_DIR}/*.modulemap" >/dev/null; then
-    cp "${GENERATED_DIR}/"*.modulemap "${out_dir}/Headers/module.modulemap"
-    perl -0pi -e 's/framework module /module /g' "${out_dir}/Headers/module.modulemap"
-  fi
-  build_xcframework_args+=(-library "${out_dir}/libopenburnbar_domain_ffi.a" -headers "${out_dir}/Headers")
+  make_framework "${out_dir}/libopenburnbar_domain_ffi.a" "${out_dir}"
 }
 
 # Direct-download macOS supports Apple Silicon and Intel. Package both
@@ -231,15 +272,12 @@ package_static_for_target() {
 if printf '%s\n' "${TARGETS[@]}" | grep -q "aarch64-apple-darwin" \
    && printf '%s\n' "${TARGETS[@]}" | grep -q "x86_64-apple-darwin"; then
   MAC_DIR="${ARCHS_DIR}/macos"
-  mkdir -p "${MAC_DIR}/Headers"
+  mkdir -p "${MAC_DIR}"
   lipo -create \
     "${TARGET_DIR}/aarch64-apple-darwin/${PROFILE_DIR}/libopenburnbar_domain_ffi.a" \
     "${TARGET_DIR}/x86_64-apple-darwin/${PROFILE_DIR}/libopenburnbar_domain_ffi.a" \
     -output "${MAC_DIR}/libopenburnbar_domain_ffi.a"
-  cp "${GENERATED_DIR}/"*.h "${MAC_DIR}/Headers/"
-  cp "${GENERATED_DIR}/"*.modulemap "${MAC_DIR}/Headers/module.modulemap"
-  perl -0pi -e 's/framework module /module /g' "${MAC_DIR}/Headers/module.modulemap"
-  build_xcframework_args+=(-library "${MAC_DIR}/libopenburnbar_domain_ffi.a" -headers "${MAC_DIR}/Headers")
+  make_framework "${MAC_DIR}/libopenburnbar_domain_ffi.a" "${MAC_DIR}"
 else
   for target in aarch64-apple-darwin x86_64-apple-darwin; do
     [[ " ${TARGETS[*]} " == *" ${target} "* ]] && package_static_for_target "${target}"
@@ -251,19 +289,12 @@ fi
 if printf '%s\n' "${TARGETS[@]}" | grep -q "aarch64-apple-ios-sim" \
    && printf '%s\n' "${TARGETS[@]}" | grep -q "x86_64-apple-ios"; then
   SIM_DIR="${ARCHS_DIR}/ios-simulator"
-  mkdir -p "${SIM_DIR}/Headers"
+  mkdir -p "${SIM_DIR}"
   lipo -create \
     "${TARGET_DIR}/aarch64-apple-ios-sim/${PROFILE_DIR}/libopenburnbar_domain_ffi.a" \
     "${TARGET_DIR}/x86_64-apple-ios/${PROFILE_DIR}/libopenburnbar_domain_ffi.a" \
     -output "${SIM_DIR}/libopenburnbar_domain_ffi.a"
-  if compgen -G "${GENERATED_DIR}/*.h" >/dev/null; then
-    cp "${GENERATED_DIR}/"*.h "${SIM_DIR}/Headers/"
-  fi
-  if compgen -G "${GENERATED_DIR}/*.modulemap" >/dev/null; then
-    cp "${GENERATED_DIR}/"*.modulemap "${SIM_DIR}/Headers/module.modulemap"
-    perl -0pi -e 's/framework module /module /g' "${SIM_DIR}/Headers/module.modulemap"
-  fi
-  build_xcframework_args+=(-library "${SIM_DIR}/libopenburnbar_domain_ffi.a" -headers "${SIM_DIR}/Headers")
+  make_framework "${SIM_DIR}/libopenburnbar_domain_ffi.a" "${SIM_DIR}"
 
   # Per-arch slices still emitted for archive reproducibility.
   if [[ " ${TARGETS[*]} " == *" aarch64-apple-ios "* ]]; then

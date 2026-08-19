@@ -61,7 +61,7 @@
     "scripts/build-domain-core-android-aar.sh": ["86f81c77867597ac","3686a837cf7f4849","0c7e821d831f7a2a","4f0252c2b425fb23"],
     "scripts/build-domain-core-python.sh": ["c754e97e3db79524","9c43640783c337b2","59caeb3a4242a324","b5ab8a96a61b4ba0"],
     "scripts/build-domain-core-wasm.sh": ["b56722d24572873c","d41d44ac731929cd","50b304534341ee0a","8612d60f0d1935cd"],
-    "scripts/build-domain-core-xcframework.sh": ["6573fdca02a4b519","663cb51a1f9a2c49","904ff767036d100e","daa88ea4f6d8f094"],
+    "scripts/build-domain-core-xcframework.sh": ["e4717073d3a6aa96","33f8045cb6f04ca1","a3122638e12a74d1","a9de2798e7aca696"],
     "scripts/build-iroh-xcframework.sh": ["6b2f0aa378306786","07c0b754f255148b","76f0780670946f10","d0e10704a834e116"],
     "scripts/build-macos-website-release.sh": ["9324bcc9a2315bc7","2da526d9bf318e66","64679fd76d000fc1","65979ec1e2a6d7c7"],
     "scripts/check-openburnbar-app-swiftpm-lock.sh": ["ed6637aa5cabb164","e80f440a97f418f5","a48017d45218be44","e132944ac47b72e3"],
