@@ -254,8 +254,11 @@ export function buildFcmMessage(args: {
   // The push must never outlive the event doc, and never sits open longer than
   // the 10-minute cap even when the event has no TTL of its own.
   const cappedExpiresAtMillis = Date.now() + 10 * 60 * 1000;
-  const eventExpiresAtMillis = args.event.expireAt.toMillis();
-  const expiresAtMillis = Math.min(cappedExpiresAtMillis, eventExpiresAtMillis);
+  const eventExpiresAtMillis = args.event.expireAt?.toMillis();
+  const expiresAtMillis =
+    eventExpiresAtMillis === undefined
+      ? cappedExpiresAtMillis
+      : Math.min(cappedExpiresAtMillis, eventExpiresAtMillis);
   const data: Record<string, string> = inbox
     ? {
         type: "ai_inbox_item",
