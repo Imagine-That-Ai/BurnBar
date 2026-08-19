@@ -60,6 +60,7 @@ jobs:
       control_sha: ${{ steps.tag.outputs.control_sha }}
       stable_release: ${{ steps.tag.outputs.stable_release }}
       domain_core_profile: ${{ steps.tag.outputs.domain_core_profile }}
+      domain_core_active: ${{ steps.activation.outputs.active }}
       core_version: ${{ steps.domain-core-profile.outputs.core_version }}
       abi_version: ${{ steps.domain-core-profile.outputs.abi_version }}
       source_sha256: ${{ steps.domain-core-profile.outputs.source_sha256 }}
@@ -290,19 +291,26 @@ jobs:
           DOMAIN_CORE_PROFILE: ${{ steps.tag.outputs.domain_core_profile }}
           RELEASE_COMMIT: ${{ steps.tag.outputs.commit }}
           CANDIDATE_COMMIT: ${{ steps.activation.outputs.candidate_commit }}
+          DOMAIN_CORE_ACTIVE: ${{ steps.activation.outputs.active }}
           RELEASE_TAG: ${{ steps.tag.outputs.tag }}
         run: |
           set -euo pipefail
           profile="$RUNNER_TEMP/domain-core-functions-profile.json"
+          profile_candidate="$CANDIDATE_COMMIT"
+          if [[ "$DOMAIN_CORE_ACTIVE" == "false" ]]; then
+            # No active Rust domain has a protected C bundle or signer proof.
+            # The inactive lane is a release-bound legacy closure: C=P=R.
+            profile_candidate="$RELEASE_COMMIT"
+          fi
           node scripts/ci/resolve-domain-core-build-profile.mjs \
             --profile "$DOMAIN_CORE_PROFILE" \
-            --expected-candidate-commit "$CANDIDATE_COMMIT" \
+            --expected-candidate-commit "$profile_candidate" \
             --expected-release-commit "$RELEASE_COMMIT" \
             --format json \
             --output "$profile"
           node scripts/ci/resolve-domain-core-build-profile.mjs \
             --profile "$DOMAIN_CORE_PROFILE" \
-            --expected-candidate-commit "$CANDIDATE_COMMIT" \
+            --expected-candidate-commit "$profile_candidate" \
             --expected-release-commit "$RELEASE_COMMIT" \
             --format github-env \
             --output "$RUNNER_TEMP/domain-core-functions.env"
@@ -329,6 +337,7 @@ jobs:
 
       - name: Locate exact deterministic candidate source run
         id: domain-core-source
+        if: ${{ steps.activation.outputs.active == 'true' }}
         env:
           CANDIDATE_COMMIT: ${{ steps.domain-core-profile.outputs.candidate_commit }}
           GH_TOKEN: ${{ github.token }}
@@ -361,6 +370,7 @@ jobs:
           printf 'run_id=%s\nrun_attempt=%s\n' "$run_id" "$run_attempt" >> "$GITHUB_OUTPUT"
 
       - name: Download exact unsigned candidate bundle
+        if: ${{ steps.activation.outputs.active == 'true' }}
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
         with:
           github-token: ${{ github.token }}
@@ -369,6 +379,7 @@ jobs:
           path: ${{ runner.temp }}/domain-core-release-materials/candidate
 
       - name: Download exact candidate rollback artifact
+        if: ${{ steps.activation.outputs.active == 'true' }}
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
         with:
           github-token: ${{ github.token }}
@@ -378,6 +389,7 @@ jobs:
 
       - name: Verify protected promotion and exact rollback before build
         id: domain-core-gate
+        if: ${{ steps.activation.outputs.active == 'true' }}
         env:
           CANDIDATE_COMMIT: ${{ steps.domain-core-profile.outputs.candidate_commit }}
           CORE_VERSION: ${{ steps.domain-core-profile.outputs.core_version }}
@@ -507,6 +519,30 @@ jobs:
             echo "gate_sha256=$gate_sha256"
           } >> "$GITHUB_OUTPUT"
 
+      - name: Prepare inactive legacy Functions release gate
+        if: ${{ steps.activation.outputs.active == 'false' }}
+        env:
+          RELEASE_COMMIT: ${{ steps.tag.outputs.commit }}
+          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
+          PROFILE: ${{ steps.domain-core-profile.outputs.profile_path }}
+        run: |
+          set -euo pipefail
+          materials="$RUNNER_TEMP/domain-core-release-materials"
+          mkdir -p "$materials"
+          node scripts/ci/prepare-domain-core-functions-release-gate.mjs \
+            --release-commit "$RELEASE_COMMIT" \
+            --release-tag "$RELEASE_TAG" \
+            --profile "$PROFILE" \
+            --output "$materials/domain-core-release-gate.json"
+          node scripts/ci/resolve-domain-core-build-profile.mjs \
+            --profile public-production-rollback \
+            --expected-candidate-commit "$RELEASE_COMMIT" \
+            --expected-release-commit "$RELEASE_COMMIT" \
+            --expected-release-version "${RELEASE_TAG#v}" \
+            --expected-release-tag "$RELEASE_TAG" \
+            --format json \
+            --output "$materials/domain-core-public-production-rollback-release.json"
+
       - name: Install and build selected Functions artifact
         id: domain-core-build
         env:
@@ -555,29 +591,38 @@ jobs:
         env:
           RELEASE_TAG: ${{ steps.tag.outputs.tag }}
           RELEASE_COMMIT: ${{ steps.tag.outputs.commit }}
+          DOMAIN_CORE_ACTIVE: ${{ steps.activation.outputs.active }}
         run: |
           set -euo pipefail
           materials="$RUNNER_TEMP/domain-core-release-materials"
           stage="$RUNNER_TEMP/domain-core-functions-deploy-proof"
           mkdir -p "$stage"
           cp -a functions/lib "$stage/functions-lib"
+          proof_args=(
+            --profile "${{ steps.domain-core-profile.outputs.profile_path }}"
+            --compiled-receipt functions/lib/generated/domainCoreCandidateReceipt.js
+            --runtime-manifest functions/lib/domain-core-runtime-artifact-manifest.json
+            --release-gate "$materials/domain-core-release-gate.json"
+            --tag "$RELEASE_TAG"
+            --commit "$RELEASE_COMMIT"
+            --deploy-run-id "$GITHUB_RUN_ID"
+            --deploy-run-attempt "$GITHUB_RUN_ATTEMPT"
+          )
+          if [[ "$DOMAIN_CORE_ACTIVE" == "false" ]]; then
+            proof_args+=(--domain-core-inactive true)
+          fi
           node scripts/ci/create-domain-core-functions-deploy-proof.mjs \
-            --profile "${{ steps.domain-core-profile.outputs.profile_path }}" \
-            --compiled-receipt functions/lib/generated/domainCoreCandidateReceipt.js \
-            --runtime-manifest functions/lib/domain-core-runtime-artifact-manifest.json \
-            --release-gate "$materials/domain-core-release-gate.json" \
-            --tag "$RELEASE_TAG" \
-            --commit "$RELEASE_COMMIT" \
-            --deploy-run-id "$GITHUB_RUN_ID" \
-            --deploy-run-attempt "$GITHUB_RUN_ATTEMPT" \
+            "${proof_args[@]}" \
             --output "$stage/domain-core-functions-deploy-proof.json"
           install -m 0600 "${{ steps.domain-core-profile.outputs.profile_path }}" "$stage/domain-core-functions-profile.json"
           install -m 0600 functions/lib/generated/domainCoreCandidateReceipt.js "$stage/domainCoreCandidateReceipt.js"
           install -m 0600 functions/lib/domain-core-runtime-artifact-manifest.json "$stage/domain-core-runtime-artifact-manifest.json"
           install -m 0600 "$materials/domain-core-release-gate.json" "$stage/domain-core-release-gate.json"
-          install -m 0600 "$materials/candidate/domain-core-candidate-bundle.json" "$stage/domain-core-candidate-bundle.json"
-          install -m 0600 "$materials/promotion/domain-core-promotion.sigstore.jsonl" "$stage/domain-core-promotion.sigstore.jsonl"
-          install -m 0600 "$materials/rollback/domain-core-public-production-rollback.json" "$stage/domain-core-public-production-rollback.json"
+          if [[ "$DOMAIN_CORE_ACTIVE" == "true" ]]; then
+            install -m 0600 "$materials/candidate/domain-core-candidate-bundle.json" "$stage/domain-core-candidate-bundle.json"
+            install -m 0600 "$materials/promotion/domain-core-promotion.sigstore.jsonl" "$stage/domain-core-promotion.sigstore.jsonl"
+            install -m 0600 "$materials/rollback/domain-core-public-production-rollback.json" "$stage/domain-core-public-production-rollback.json"
+          fi
           install -m 0600 "$materials/domain-core-public-production-rollback-release.json" \
             "$stage/domain-core-public-production-rollback-release.json"
           artifact_name="domain-core-functions-deploy-proof-${RELEASE_TAG}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
@@ -741,6 +786,7 @@ jobs:
       existing_tag_retry: ${{ needs.prepare-functions-deploy.outputs.existing_tag_retry }}
       stable_release: ${{ needs.prepare-functions-deploy.outputs.stable_release }}
       domain_core_profile: ${{ needs.prepare-functions-deploy.outputs.domain_core_profile }}
+      domain_core_active: ${{ needs.prepare-functions-deploy.outputs.domain_core_active }}
       core_version: ${{ needs.prepare-functions-deploy.outputs.core_version }}
       abi_version: ${{ needs.prepare-functions-deploy.outputs.abi_version }}
       source_sha256: ${{ needs.prepare-functions-deploy.outputs.source_sha256 }}
@@ -1178,6 +1224,7 @@ jobs:
           && needs.deploy-functions.outputs.dry_run != 'true'
           && needs.deploy-functions.outputs.stable_release == 'true'
           && needs.deploy-functions.outputs.existing_tag_retry != 'true'
+          && needs.deploy-functions.outputs.domain_core_active == 'true'
           && needs.deploy-functions.outputs.reused_existing_evidence != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -1207,6 +1254,7 @@ jobs:
           && needs.deploy-functions.outputs.dry_run != 'true'
           && needs.deploy-functions.outputs.stable_release == 'true'
           && needs.deploy-functions.outputs.existing_tag_retry == 'true'
+          && needs.deploy-functions.outputs.domain_core_active == 'true'
           && needs.deploy-functions.outputs.reused_existing_evidence != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5

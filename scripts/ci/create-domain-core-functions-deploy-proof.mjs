@@ -44,11 +44,12 @@ function parseArguments(argv) {
     "--deploy-run-attempt",
     "--output",
   ]);
+  const optional = new Set(["--domain-core-inactive"]);
   const values = new Map();
   for (let index = 0; index < argv.length; index += 2) {
     const flag = argv[index];
     const value = argv[index + 1];
-    if (!required.has(flag))
+    if (!required.has(flag) && !optional.has(flag))
       throw new Error(`unknown argument: ${String(flag)}`);
     if (!value || value.startsWith("--"))
       throw new Error(`${flag} requires a value`);
@@ -139,6 +140,45 @@ function validateProfile(raw) {
 }
 
 function validateReleaseGate(raw, profile, releaseCommit) {
+  if (raw?.verificationKind === "domain-core-release-gate-inactive") {
+    const gate = exactObject(
+      raw,
+      [
+        "schemaVersion",
+        "verificationKind",
+        "candidate",
+        "activation",
+        "release",
+      ],
+      "inactive release gate",
+    );
+    if (gate.schemaVersion !== 2) {
+      throw new Error("inactive release gate is not v2");
+    }
+    const candidate = validateDomainCoreCandidateIdentity(gate.candidate);
+    if (!isDeepStrictEqual(candidate, profile.candidateIdentity)) {
+      throw new Error(
+        "inactive release gate candidate does not match the Functions profile",
+      );
+    }
+    if (
+      gate.release?.commit !== releaseCommit ||
+      gate.activation?.candidateCommit !== releaseCommit ||
+      gate.activation?.activationCommit !== releaseCommit ||
+      gate.activation?.releaseCommit !== releaseCommit ||
+      gate.activation?.coreVersion !== candidate.coreVersion ||
+      gate.activation?.abiVersion !== candidate.abiVersion ||
+      gate.activation?.sourceSha256 !== candidate.sourceSha256 ||
+      gate.activation?.changedPathsSha256 !==
+        createHash("sha256").update("[]").digest("hex") ||
+      (gate.release?.tag !== undefined && !RELEASE_TAG.test(gate.release.tag))
+    ) {
+      throw new Error(
+        "inactive release gate does not bind the exact release identity",
+      );
+    }
+    return structuredClone(gate);
+  }
   const gate = exactObject(
     raw,
     [
@@ -232,6 +272,7 @@ export function buildFunctionsDeployProof({
   commit,
   deployRunId,
   deployRunAttempt,
+  domainCoreInactive = false,
 }) {
   const resolvedProfilePath = regularFile(profilePath, "Functions profile");
   const resolvedReceiptPath = regularFile(
@@ -269,7 +310,17 @@ export function buildFunctionsDeployProof({
     );
   }
   const gateArtifact = readArtifact(resolvedGatePath, "release gate");
-  validateReleaseGate(gateArtifact.json, profile, commit);
+  const gate = validateReleaseGate(gateArtifact.json, profile, commit);
+  if (
+    domainCoreInactive !==
+    (gate.verificationKind === "domain-core-release-gate-inactive")
+  ) {
+    throw new Error(
+      domainCoreInactive
+        ? "inactive Functions proof requires the inactive release gate"
+        : "active Functions proof cannot use the inactive release gate",
+    );
+  }
   const manifestArtifact = readArtifact(
     resolvedManifestPath,
     "Functions runtime manifest",
@@ -340,6 +391,7 @@ export function run(argv) {
     commit: args.get("--commit"),
     deployRunId: args.get("--deploy-run-id"),
     deployRunAttempt: args.get("--deploy-run-attempt"),
+    domainCoreInactive: args.has("--domain-core-inactive"),
   });
   const output = writeCreateOnly(
     args.get("--output"),

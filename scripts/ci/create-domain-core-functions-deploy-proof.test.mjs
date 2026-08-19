@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -69,7 +75,7 @@ function workspace(selected = profile()) {
       manifestKind: "domain-core-runtime-artifact",
       consumer: "functions",
       profile: selected.name,
-      candidate: CANDIDATE,
+      candidate: selected.candidateIdentity,
       files: [
         {
           path: "vendor/openburnbar/domain-core-wasm/openburnbar_domain_core_bg.wasm",
@@ -147,6 +153,48 @@ test("binds the selected profile, compiled receipt, release gate, and exact depl
       proof.proofKind,
     );
     run(args(files));
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+test("binds an inactive legacy release directly to its exact tag commit", () => {
+  const selected = profile("public-production", "legacy");
+  selected.candidateIdentity = {
+    ...CANDIDATE,
+    candidateCommit: ACTIVATION.activationCommit,
+  };
+  const files = workspace(selected);
+  try {
+    writeFileSync(
+      files.releaseGatePath,
+      `${JSON.stringify(
+        {
+          schemaVersion: 2,
+          verificationKind: "domain-core-release-gate-inactive",
+          candidate: selected.candidateIdentity,
+          activation: {
+            candidateCommit: ACTIVATION.activationCommit,
+            activationCommit: ACTIVATION.activationCommit,
+            coreVersion: selected.candidateIdentity.coreVersion,
+            abiVersion: selected.candidateIdentity.abiVersion,
+            sourceSha256: selected.candidateIdentity.sourceSha256,
+            changedPathsSha256:
+              "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            releaseCommit: ACTIVATION.activationCommit,
+          },
+          release: {
+            tag: "v1.2.3",
+            commit: ACTIVATION.activationCommit,
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    const proof = run([...args(files), "--domain-core-inactive", "true"]);
+    assert.equal(proof.profile.value.modes.pricing, "legacy");
+    assert.equal(proof.release.commit, ACTIVATION.activationCommit);
   } finally {
     rmSync(files.directory, { recursive: true, force: true });
   }
