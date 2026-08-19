@@ -83,6 +83,12 @@ if [[ ! -f "$privileged_input_profile" ]]; then
   exit 1
 fi
 
+# Prove the profiles are actually signable with a key in this keychain BEFORE
+# a 30-minute build. In August 2026 the app profile authorized a certificate
+# whose private key existed nowhere; packaging died at the final signing step
+# with "no identity found". This turns that into an immediate, named failure.
+bash scripts/check-signing-identity-coherence.sh "$app_profile" "$privileged_input_profile"
+
 identity="${OPENBURNBAR_SIGNING_IDENTITY:-}"
 if [[ -z "$identity" ]]; then
   identity="$(security find-identity -v -p codesigning | sed -n 's/.*"\(Developer ID Application:[^"]*\)".*/\1/p' | head -n 1)"
