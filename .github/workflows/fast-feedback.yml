@@ -1410,6 +1410,9 @@ jobs:
       - name: unsafe cast debt budget
         run: ./scripts/debt/check-unsafe-cast-budget.sh
 
+      - name: GRDB row cast debt budget
+        run: ./scripts/debt/check-grdb-row-cast-budget.sh
+
       - name: unchecked Sendable debt budget
         run: ./scripts/debt/check-unchecked-sendable-budget.sh
 

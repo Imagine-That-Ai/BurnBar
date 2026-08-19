@@ -41,9 +41,12 @@ extension UsageStore {
                     cacheCreationTokens: Self.intColumn(row, "cacheCreation"),
                     cacheReadTokens: Self.intColumn(row, "cacheRead"),
                     totalTokens: Self.intColumn(row, "total"),
-                    costUSD: row["cost"] as? Double ?? 0,
-                    startTime: row["startTime"] as? Date,
-                    endTime: row["endTime"] as? Date
+                    costUSD: row["cost"] ?? 0,
+                    // A row subscript hands back SQLite storage (TEXT or a
+                    // number), never a Date, so an `as? Date` cast always
+                    // dropped both timestamps.
+                    startTime: OpenBurnBarDatabase.parseDateValue(row["startTime"]),
+                    endTime: OpenBurnBarDatabase.parseDateValue(row["endTime"])
                 )
                 if let existing = result[key] {
                     result[key] = existing.merging(facets)

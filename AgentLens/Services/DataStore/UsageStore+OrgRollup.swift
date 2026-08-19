@@ -42,10 +42,13 @@ extension UsageStore {
             }
             return rows.compactMap { row -> OrgRollupRow? in
                 guard let label = row["label"] as? String else { return nil }
-                let totalCost = (row["totalCost"] as? Double) ?? 0
-                let totalTokens = (row["totalTokens"] as? Double) ?? 0
-                let sessionCount = Int(row["sessionCount"] as? Int64 ?? 0)
-                let deviceCount = Int(row["deviceCount"] as? Int64 ?? 0)
+                // SUM over an INTEGER column comes back as Int64, so reading
+                // `totalTokens` as a Double cast would report zero tokens for
+                // every rollup row. The typed subscript converts instead.
+                let totalCost: Double = row["totalCost"] ?? 0
+                let totalTokens: Double = row["totalTokens"] ?? 0
+                let sessionCount: Int = row["sessionCount"] ?? 0
+                let deviceCount: Int = row["deviceCount"] ?? 0
                 return OrgRollupRow(
                     label: label,
                     totalCost: totalCost,

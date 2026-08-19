@@ -315,6 +315,7 @@ debt-check: ## Enforce debt budgets + refresh tech-debt metrics
 	@./scripts/ci/check-no-committed-build-artifacts.sh
 	@./scripts/ci/check-no-stale-launch-evidence.sh
 	@./scripts/debt/check-unsafe-cast-budget.sh
+	@./scripts/debt/check-grdb-row-cast-budget.sh
 	@./scripts/debt/check-empty-catch-budget.sh
 	@./scripts/debt/check-try-optional-budget.sh
 	@./scripts/debt/check-swift-file-size-budget.sh

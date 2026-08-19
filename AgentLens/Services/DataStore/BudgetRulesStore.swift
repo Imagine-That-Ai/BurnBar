@@ -220,11 +220,10 @@ final class BudgetRulesStore: Sendable {
               let behavior = BudgetBehavior(rawValue: behaviorRaw) else {
             return nil
         }
-        let amount = (row["amountUSD"] as? Double)
-            ?? Double(row["amountUSD"] as? Int64 ?? 0)
-        let createdAt = (row["createdAt"] as? Date) ?? Date()
-        let updatedAt = (row["updatedAt"] as? Date) ?? createdAt
-        let isEnabled = (row["isEnabled"] as? Int64 ?? 1) != 0
+        let amount: Double = row["amountUSD"] ?? 0
+        let createdAt = OpenBurnBarDatabase.parseDateValue(row["createdAt"]) ?? Date()
+        let updatedAt = OpenBurnBarDatabase.parseDateValue(row["updatedAt"]) ?? createdAt
+        let isEnabled: Bool = row["isEnabled"] ?? true
 
         var fallbacks: [String] = []
         if let json = row["fallbackCredentialIDsJSON"] as? String,
@@ -245,10 +244,10 @@ final class BudgetRulesStore: Sendable {
             period: period,
             behavior: behavior,
             fallbackCredentialIDs: fallbacks,
-            pausedUntil: row["pausedUntil"] as? Date,
+            pausedUntil: OpenBurnBarDatabase.parseDateValue(row["pausedUntil"]),
             createdAt: createdAt,
             updatedAt: updatedAt,
-            syncedAt: row["syncedAt"] as? Date,
+            syncedAt: OpenBurnBarDatabase.parseDateValue(row["syncedAt"]),
             sourceDeviceID: row["sourceDeviceID"] as? String,
             isEnabled: isEnabled
         )
@@ -261,10 +260,8 @@ final class BudgetRulesStore: Sendable {
               let kind = BudgetEventKind(rawValue: kindRaw) else {
             return nil
         }
-        let amountAtEvent = (row["amountAtEvent"] as? Double)
-            ?? Double(row["amountAtEvent"] as? Int64 ?? 0)
-        let limitAtEvent = (row["limitAtEvent"] as? Double)
-            ?? Double(row["limitAtEvent"] as? Int64 ?? 0)
+        let amountAtEvent: Double = row["amountAtEvent"] ?? 0
+        let limitAtEvent: Double = row["limitAtEvent"] ?? 0
         return BudgetEvent(
             id: id,
             ruleID: ruleID,
@@ -273,8 +270,8 @@ final class BudgetRulesStore: Sendable {
             amountAtEvent: amountAtEvent,
             limitAtEvent: limitAtEvent,
             detailJSON: row["detailJSON"] as? String,
-            occurredAt: (row["occurredAt"] as? Date) ?? Date(),
-            syncedAt: row["syncedAt"] as? Date,
+            occurredAt: OpenBurnBarDatabase.parseDateValue(row["occurredAt"]) ?? Date(),
+            syncedAt: OpenBurnBarDatabase.parseDateValue(row["syncedAt"]),
             sourceDeviceID: row["sourceDeviceID"] as? String
         )
     }

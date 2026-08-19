@@ -138,7 +138,8 @@ actor BudgetForecast {
             let whereSQL = clauses.isEmpty ? "" : "WHERE " + clauses.joined(separator: " AND ")
             let sql = "SELECT COALESCE(SUM(cost), 0) AS total FROM token_usage \(whereSQL)"
             let row = try Row.fetchOne(db, sql: sql, arguments: StatementArguments(args))
-            return row?["total"] as? Double ?? 0
+            let total: Double = row?["total"] ?? 0
+            return total
         }
     }
 

@@ -17,6 +17,7 @@ import { spawnSync } from "node:child_process";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import {
+  INTENTIONAL_DIVERGENCES,
   extractCatalogNames,
   extractMigrationNames,
   normalizeSwiftBody,
@@ -24,64 +25,41 @@ import {
 } from "./verify-migration-rollback-catalog.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const appFiles = [
-  "OpenBurnBarDatabase.swift",
-  "OpenBurnBarDatabase+MigrationsV1toV20.swift",
-  "OpenBurnBarDatabase+MigrationsV21toV40.swift",
-  "OpenBurnBarDatabase+MigrationsV41toV51.swift",
-  "OpenBurnBarDatabase+MemoryMigrations.swift",
-  "OpenBurnBarDatabase+MigrationV55.swift",
-  "OpenBurnBarDatabase+MigrationV56.swift",
-  "OpenBurnBarDatabase+MigrationV57.swift",
-  "OpenBurnBarDatabase+MigrationV58.swift",
-  "OpenBurnBarDatabase+MigrationV59.swift",
-  "OpenBurnBarDatabase+MigrationV60.swift",
-  "OpenBurnBarDatabase+UsageMemoryMigrations.swift",
-  "OpenBurnBarDatabase+MigrationV62.swift",
-  "OpenBurnBarDatabase+StandingOrderMigrations.swift",
-  "OpenBurnBarDatabase+CommandBoardIndexMigration.swift",
+
+// The verifier walks these two directories whole, so the fixture mirrors them
+// whole. Enumerating the migration files by hand meant every new migration had
+// to be remembered here too, and forgetting left the mutation tests running
+// against a partial migration surface — still throwing, just for the wrong
+// reason, which is the one failure mode a fail-closed contract test cannot have.
+const migrationDirectories = [
+  path.join("AgentLens", "Services", "DataStore"),
+  path.join("OpenBurnBarCore", "Sources", "OpenBurnBarData"),
 ];
-const sharedFiles = [
-  "OpenBurnBarDatabase.swift",
-  "OpenBurnBarDatabase+DataMigrationsV1toV20.swift",
-  "OpenBurnBarDatabase+DataMigrationsV21toV40.swift",
-  "OpenBurnBarDatabase+DataMigrationsV41toV51.swift",
-  "OpenBurnBarDatabase+MemoryMigrations.swift",
-  "OpenBurnBarDatabase+DataMigrationV55.swift",
-  "OpenBurnBarDatabase+DataMigrationV56.swift",
-  "OpenBurnBarDatabase+DataMigrationV57.swift",
-  "OpenBurnBarDatabase+DataMigrationV58.swift",
-  "OpenBurnBarDatabase+DataMigrationV59.swift",
-  "OpenBurnBarDatabase+DataMigrationV60.swift",
-  "OpenBurnBarDatabase+UsageMemoryMigrations.swift",
-  "OpenBurnBarDatabase+DataMigrationV62.swift",
-  "OpenBurnBarDatabase+StandingOrderMigrations.swift",
-  "OpenBurnBarDatabase+CommandBoardIndexMigration.swift",
-];
+
+// Swift files outside those directories that pinned fingerprints depend on,
+// read straight off the verifier's own exception table.
+const dependencyFiles = Object.values(INTENTIONAL_DIVERGENCES)
+  .flatMap((divergence) => divergence.appExternalDependencies ?? [])
+  .map((dependency) => dependency.file);
 
 function copyFiles(sourceDirectory, destinationDirectory, files) {
   mkdirSync(destinationDirectory, { recursive: true });
   for (const file of files) cpSync(path.join(sourceDirectory, file), path.join(destinationDirectory, file));
 }
 
+function copyRelativeFile(root, relativePath) {
+  const destination = path.join(root, relativePath);
+  mkdirSync(path.dirname(destination), { recursive: true });
+  cpSync(path.join(repoRoot, relativePath), destination);
+}
+
 function fixture(t) {
   const root = mkdtempSync(path.join(tmpdir(), "openburnbar-migration-contract-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
-  copyFiles(
-    path.join(repoRoot, "AgentLens", "Services", "DataStore"),
-    path.join(root, "AgentLens", "Services", "DataStore"),
-    appFiles
-  );
-  copyFiles(
-    path.join(repoRoot, "OpenBurnBarCore", "Sources", "OpenBurnBarData"),
-    path.join(root, "OpenBurnBarCore", "Sources", "OpenBurnBarData"),
-    sharedFiles
-  );
-  copyFiles(
-    path.join(repoRoot, "OpenBurnBarCore", "Sources", "OpenBurnBarKernel", "SharedModels"),
-    path.join(root, "OpenBurnBarCore", "Sources", "OpenBurnBarKernel", "SharedModels"),
-    ["SwitcherProfile.swift", "AgentProvider.swift"]
-  );
+  for (const directory of migrationDirectories) {
+    cpSync(path.join(repoRoot, directory), path.join(root, directory), { recursive: true });
+  }
+  for (const dependency of dependencyFiles) copyRelativeFile(root, dependency);
   copyFiles(path.join(repoRoot, "scripts"), path.join(root, "scripts"), ["rollback-migration.sh"]);
   copyFiles(path.join(repoRoot, "docs"), path.join(root, "docs"), ["DATABASE_OPERATIONS.md"]);
   return root;

@@ -32,7 +32,8 @@ final class SearchIndexFTSRowidTests: XCTestCase {
         }
         XCTAssertEqual(mappings.count, 2)
         for row in mappings {
-            XCTAssertNotNil(row["ftsRowid"] as? Int64, "every inserted chunk must record its FTS rowid")
+            let ftsRowid: Int64? = row["ftsRowid"]
+            XCTAssertNotNil(ftsRowid, "every inserted chunk must record its FTS rowid")
         }
 
         let ftsRows = try await queue.read { db in
@@ -41,7 +42,9 @@ final class SearchIndexFTSRowidTests: XCTestCase {
         XCTAssertEqual(ftsRows.count, 2)
         for (mapping, ftsRow) in zip(mappings, ftsRows) {
             XCTAssertEqual(mapping["id"] as? String, ftsRow["chunkID"] as? String)
-            XCTAssertEqual(mapping["ftsRowid"] as? Int64, ftsRow["ftsRowid"] as? Int64)
+            let mappedRowid: Int64? = mapping["ftsRowid"]
+            let indexedRowid: Int64? = ftsRow["ftsRowid"]
+            XCTAssertEqual(mappedRowid, indexedRowid)
         }
     }
 
@@ -171,7 +174,7 @@ final class SearchIndexFTSRowidTests: XCTestCase {
         let mapping = try queue.read { db in
             try Row.fetchOne(db, sql: "SELECT ftsRowid FROM search_chunks WHERE id = 'chunk-1'")
         }
-        let backfilledRowid = mapping?["ftsRowid"] as? Int64
+        let backfilledRowid: Int64? = mapping?["ftsRowid"]
         XCTAssertNotNil(backfilledRowid, "v55 must backfill ftsRowid for pre-existing chunks")
 
         let ftsRows = try queue.read { db in
@@ -180,7 +183,8 @@ final class SearchIndexFTSRowidTests: XCTestCase {
         XCTAssertEqual(ftsRows.count, 1, "the orphan and stale duplicate FTS rows must be swept by the migration")
         XCTAssertEqual(ftsRows.first?["chunkID"] as? String, "chunk-1")
         XCTAssertEqual(ftsRows.first?["chunkText"] as? String, "hello world")
-        XCTAssertEqual(ftsRows.first?["ftsRowid"] as? Int64, backfilledRowid)
+        let survivingRowid: Int64? = ftsRows.first?["ftsRowid"]
+        XCTAssertEqual(survivingRowid, backfilledRowid)
     }
 
     // MARK: - Documents FTS trigger only fires on content change

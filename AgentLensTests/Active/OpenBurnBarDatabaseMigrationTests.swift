@@ -1069,13 +1069,14 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
 
         XCTAssertNil(high.supersededBy)
         let low = try await store.fetchChatMemoryAuthorityRecord(id: "mem-dedup-low")
-        let winner = try await store.fetchChatMemoryAuthorityRecord(id: "mem-dedup-high")
+        let fetchedWinner = try await store.fetchChatMemoryAuthorityRecord(id: "mem-dedup-high")
+        let winner = try XCTUnwrap(fetchedWinner)
         XCTAssertEqual(low?.supersededBy, "mem-dedup-high")
         XCTAssertNotNil(low?.validTo)
-        XCTAssertNil(winner?.supersededBy)
-        XCTAssertNil(winner?.validTo)
+        XCTAssertNil(winner.supersededBy)
+        XCTAssertNil(winner.validTo)
         XCTAssertEqual(
-            Set(winner?.citations.map(\.crossDeviceHMAC) ?? []),
+            Set(winner.citations.map(\.crossDeviceHMAC)),
             Set(["hmac-low", "hmac-high"])
         )
 
@@ -1214,11 +1215,12 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         XCTAssertEqual(quarantined.supersededBy, "mem-approved-winner")
         XCTAssertNotNil(quarantined.validTo)
 
-        let approved = try await store.fetchChatMemoryAuthorityRecord(id: "mem-approved-winner")
-        XCTAssertNil(approved?.supersededBy)
-        XCTAssertNil(approved?.validTo)
+        let fetchedApproved = try await store.fetchChatMemoryAuthorityRecord(id: "mem-approved-winner")
+        let approved = try XCTUnwrap(fetchedApproved)
+        XCTAssertNil(approved.supersededBy)
+        XCTAssertNil(approved.validTo)
         XCTAssertEqual(
-            Set(approved?.citations.map(\.crossDeviceHMAC) ?? []),
+            Set(approved.citations.map(\.crossDeviceHMAC)),
             Set(["hmac-approved", "hmac-quarantined"])
         )
 
