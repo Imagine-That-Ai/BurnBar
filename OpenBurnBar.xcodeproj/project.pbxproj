@@ -641,6 +641,7 @@
 		36DA9A8F89C8DD0CC96CB259 /* UIModeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6882EF66E2E1AEFEAD12A38B /* UIModeTests.swift */; };
 		36E310C9CA5A1BE5588BF9DD /* RoutedClientWiringSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72EF41CFAE2CACC0F592D089 /* RoutedClientWiringSettings.swift */; };
 		36E9AA987F379D638EF64DEF /* BurnBarDaemonServer+RPCAuth.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E8E5ABB4676E27EB5C63C56 /* BurnBarDaemonServer+RPCAuth.swift */; };
+		36FA1B80A8C028B66473F989 /* SafariServices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 00F99AB0C8F3BCD222674FE2 /* SafariServices.framework */; };
 		36FF5E60E377AFA45E002844 /* AgentToolBroker+Payload.swift in Sources */ = {isa = PBXBuildFile; fileRef = 759FCAFF97B32BD5A7D68E07 /* AgentToolBroker+Payload.swift */; };
 		3741FE208006F9E861FCB9E9 /* BurnBarModelDisplayOverrideConfigStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4297D5E6B49C143FA0DB4D2C /* BurnBarModelDisplayOverrideConfigStoreTests.swift */; };
 		3743DC30DF277A9D604AE585 /* BurnBarCLIComputerUseLiveSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52D5EE9138675D1242FE5AD2 /* BurnBarCLIComputerUseLiveSurface.swift */; };
@@ -942,6 +943,7 @@
 		548A6A1FE879EFB7C904BFAD /* CrossSurfaceUpgradeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E6B9A52E744A7897FD4ECF6 /* CrossSurfaceUpgradeTests.swift */; };
 		54D853A19DC9C93983A1FF2B /* BurnBarModelEquivalenceRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42FC8B7CF3FDA31DB101A2E3 /* BurnBarModelEquivalenceRegistry.swift */; };
 		54FB338D294F4D08E1001CE4 /* AgentToolBrokerShellAuditTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA1D0770DF59ABB462A4CA28 /* AgentToolBrokerShellAuditTests.swift */; };
+		552EC7DD4DC220E069DD9C4A /* OpenBurnBarSafariExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = C58B4CC0BB087976C228C2F4 /* OpenBurnBarSafariExtension.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		5547908C2C4D8773AD304240 /* BurnBarDaemonServer+RPCCode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BABF98C4281ED876B268EF1 /* BurnBarDaemonServer+RPCCode.swift */; };
 		554909D941C4670212726AE0 /* ControlPlaneStore+MemoryEmbeddings.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFF79A8BD0B0785568F0C627 /* ControlPlaneStore+MemoryEmbeddings.swift */; };
 		555132D4A5852C9C7F06D653 /* FusionSearchQuotaReaderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8879A7FADED385CD41E7FB5 /* FusionSearchQuotaReaderTests.swift */; };
@@ -2156,6 +2158,7 @@
 		C68D0106BD3B8F949D65054C /* CloudStoreSubscribeUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49EC97D4751D2B4FD9004926 /* CloudStoreSubscribeUITests.swift */; };
 		C69D066CC20800685948E09B /* TimeRange.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13CA448314F5769F2C79E6F6 /* TimeRange.swift */; };
 		C6A0A9C0DD49E07530DAC903 /* ConversationTombstoneGCService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C7C5AD95D65AACC3E50E35D /* ConversationTombstoneGCService.swift */; };
+		C6B4AEAEF2D45B5EF13A3C40 /* SafariWebExtensionHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07FAF1459B0B18A9BC234EE1 /* SafariWebExtensionHandler.swift */; };
 		C6C93FD5F29A766C2328DEF1 /* ManagedAgentRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A5A2558E567A495F10843B /* ManagedAgentRuntime.swift */; };
 		C6D86AE4D6069AF55F7CCB76 /* GatewayStreamingUsageAccumulator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8523489B580545DCC9BBFA16 /* GatewayStreamingUsageAccumulator.swift */; };
 		C713EB04C6E48624E9E68896 /* CredentialExposureScanTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC69E3DF3076A23BF25B3D6A /* CredentialExposureScanTests.swift */; };
@@ -2817,6 +2820,13 @@
 			remoteGlobalIDString = F1CEE1287FD8689F642FBF13;
 			remoteInfo = OpenBurnBarVirtualHIDBridge;
 		};
+		6BBFE437F29E1BF32250A036 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 30D7AE5203B96DE5064EE3BF /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 47F9C7E802A28AFD864F3A4F;
+			remoteInfo = OpenBurnBarSafariExtension;
+		};
 		6E70BE93853CBE00A6FDD48D /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 30D7AE5203B96DE5064EE3BF /* Project object */;
@@ -2874,6 +2884,17 @@
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		D173B48BFE5FEA8AAE6C5DC0 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				552EC7DD4DC220E069DD9C4A /* OpenBurnBarSafariExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
@@ -2886,6 +2907,7 @@
 		006ACC48E5F5610156972DD3 /* AuroraGlassCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuroraGlassCard.swift; sourceTree = "<group>"; };
 		00D04B9DFB295A5377F83F2A /* ModelPricingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelPricingTests.swift; sourceTree = "<group>"; };
 		00E6E0B7352A0469B23905B8 /* BudgetCenterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BudgetCenterView.swift; sourceTree = "<group>"; };
+		00F99AB0C8F3BCD222674FE2 /* SafariServices.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SafariServices.framework; path = System/Library/Frameworks/SafariServices.framework; sourceTree = SDKROOT; };
 		011B282C26F13DADEE671FAD /* TestableFactoryDroidParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestableFactoryDroidParser.swift; sourceTree = "<group>"; };
 		012BE852052A468A521DCAF3 /* ConversationFTSOrphanInvariantTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationFTSOrphanInvariantTests.swift; sourceTree = "<group>"; };
 		013E8FFBD78E77520E347934 /* HomeAssistantCastRecoveryClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeAssistantCastRecoveryClientTests.swift; sourceTree = "<group>"; };
@@ -2968,6 +2990,7 @@
 		07D860918A7891AC5AEA1EF3 /* AppCheckAttestationMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppCheckAttestationMonitor.swift; sourceTree = "<group>"; };
 		07DB75A3B7CA0F2754BB198D /* MacEscrowCredentialProducerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacEscrowCredentialProducerTests.swift; sourceTree = "<group>"; };
 		07F168E44BCEE4CDE1B367AB /* AIInboxVerifierTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIInboxVerifierTests.swift; sourceTree = "<group>"; };
+		07FAF1459B0B18A9BC234EE1 /* SafariWebExtensionHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafariWebExtensionHandler.swift; sourceTree = "<group>"; };
 		082E5D696BC53500C3DEFFDD /* CastSetupWizardWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CastSetupWizardWindow.swift; sourceTree = "<group>"; };
 		085FF96469EF5CA9538235C1 /* BurnBarDaemonServer+RPCChat.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BurnBarDaemonServer+RPCChat.swift"; sourceTree = "<group>"; };
 		086FC1D44A7F5C4A3F4F9B75 /* PowerSourceMonitoringTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PowerSourceMonitoringTests.swift; sourceTree = "<group>"; };
@@ -4915,6 +4938,7 @@
 		C51B91B71D3590E3A2D4E2F8 /* SettingsTestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsTestSupport.swift; sourceTree = "<group>"; };
 		C55ACE182159D7EE9EC7D61F /* ProviderQuotaServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderQuotaServiceTests.swift; sourceTree = "<group>"; };
 		C57E605AC1983EB99E7ABC84 /* ChatSearchResultsList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatSearchResultsList.swift; sourceTree = "<group>"; };
+		C58B4CC0BB087976C228C2F4 /* OpenBurnBarSafariExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = OpenBurnBarSafariExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		C58DDC9D44E53FA086C8D412 /* InboxModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxModelTests.swift; sourceTree = "<group>"; };
 		C58E189D22843BD248EE83BF /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		C59D6C2F54CD2E27F99ED467 /* OpenBurnBarCLITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBurnBarCLITests.swift; sourceTree = "<group>"; };
@@ -5592,6 +5616,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		335FAA3B7F5BD0CF16FE4768 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				36FA1B80A8C028B66473F989 /* SafariServices.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		3505B8498DBD0D62E52A2437 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -5814,6 +5846,14 @@
 				4CA1873CEC895060E0EB4BCF /* InboxPriorityBoard.swift */,
 			);
 			path = Home;
+			sourceTree = "<group>";
+		};
+		07A741DABA6861C9834586D6 /* OpenBurnBarSafariExtension */ = {
+			isa = PBXGroup;
+			children = (
+				07FAF1459B0B18A9BC234EE1 /* SafariWebExtensionHandler.swift */,
+			);
+			path = OpenBurnBarSafariExtension;
 			sourceTree = "<group>";
 		};
 		091C3BE6C097ABB0C05C2ABC /* ComputerUse */ = {
@@ -6678,6 +6718,7 @@
 				F97059954E2A1A551BEA270D /* OpenBurnBarPrivilegedInputExecution */,
 				9DF1C180A3C429C05D2C5E95 /* OpenBurnBarPrivilegedInputKillSwitchWatchdog */,
 				5AF8D166AAAA65DBA071ED7D /* OpenBurnBarRemoteAccessAgentCore */,
+				07A741DABA6861C9834586D6 /* OpenBurnBarSafariExtension */,
 				31F5F6F0430BE8780F32F55D /* OpenBurnBarUITests */,
 				EF5F1FE44B9FB4C8F60C1350 /* OpenBurnBarVirtualHIDBridge */,
 				C4D1BCB423BF451FB6BBABC4 /* OpenBurnBarWidget */,
@@ -7446,6 +7487,7 @@
 			children = (
 				A88836FE94B894DCB3BC4F0A /* CoreGraphics.framework */,
 				17CE330D32583C0344A97AE2 /* IOKit.framework */,
+				00F99AB0C8F3BCD222674FE2 /* SafariServices.framework */,
 				76E1F12AD233E431B35B7A22 /* Security.framework */,
 				24A3FAFF18AFBBD4293791D4 /* SwiftUI.framework */,
 				988ACFE2F1474B1D1BC865A8 /* SystemConfiguration.framework */,
@@ -8720,6 +8762,7 @@
 				2BE2310D9C9BC8E3EEED5A75 /* OpenBurnBarMobileUITests.xctest */,
 				82BAED78B255DD0AB25286D8 /* OpenBurnBarPrivilegedInputExecution */,
 				FA9094F67E9F3630A7E8646C /* OpenBurnBarPrivilegedInputKillSwitchWatchdog */,
+				C58B4CC0BB087976C228C2F4 /* OpenBurnBarSafariExtension.appex */,
 				A86596B85F21103F9A9F9ED7 /* OpenBurnBarTests.xctest */,
 				C6B992E20431F0869B01810C /* OpenBurnBarUITests.xctest */,
 				7A8ED623CB3C2B566D0ADE81 /* OpenBurnBarVirtualHIDBridge */,
@@ -10339,6 +10382,7 @@
 				EF7D3D6CF9326CBCD20C7DF5 /* Sources */,
 				BF543DDDE8456E6E5033A02D /* Resources */,
 				FAA70BABCC5CB9EA6AEC9DB9 /* Frameworks */,
+				D173B48BFE5FEA8AAE6C5DC0 /* Embed Foundation Extensions */,
 				F19F6F508537047AB82F67A8 /* Configure Firebase Auth Resources */,
 				F8714EEAF9893F18F827916D /* Block Mac App Check Debug Token In Release */,
 				A3B6B6DFDAF6BB3707742792 /* Stamp Build Provenance */,
@@ -10348,6 +10392,7 @@
 			buildRules = (
 			);
 			dependencies = (
+				274BE20650835ABB2A1A1583 /* PBXTargetDependency */,
 				39121F4C8032977ED95010F3 /* PBXTargetDependency */,
 				69F3B5A526FD1B27103693DA /* PBXTargetDependency */,
 				D357B802CF30473CCCF84A7B /* PBXTargetDependency */,
@@ -10383,6 +10428,25 @@
 			productName = OpenBurnBar;
 			productReference = E9D18112AE70F9FD93DB787E /* OpenBurnBar.app */;
 			productType = "com.apple.product-type.application";
+		};
+		47F9C7E802A28AFD864F3A4F /* OpenBurnBarSafariExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 73FF2CADEFC8D2DA83A51B2D /* Build configuration list for PBXNativeTarget "OpenBurnBarSafariExtension" */;
+			buildPhases = (
+				F4E8A81D20BF319CB2FC2FD6 /* Sources */,
+				335FAA3B7F5BD0CF16FE4768 /* Frameworks */,
+				6DAEE4605A805B567FAA1972 /* Embed Safari WebExtension Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = OpenBurnBarSafariExtension;
+			packageProductDependencies = (
+			);
+			productName = OpenBurnBarSafariExtension;
+			productReference = C58B4CC0BB087976C228C2F4 /* OpenBurnBarSafariExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 		490ED52F84361AB3F657CB1D /* OpenBurnBarDaemonExecutable */ = {
 			isa = PBXNativeTarget;
@@ -10650,6 +10714,10 @@
 						DevelopmentTeam = 4Y367DF25B;
 						ProvisioningStyle = Automatic;
 					};
+					47F9C7E802A28AFD864F3A4F = {
+						DevelopmentTeam = 4Y367DF25B;
+						ProvisioningStyle = Automatic;
+					};
 					490ED52F84361AB3F657CB1D = {
 						DevelopmentTeam = 4Y367DF25B;
 						ProvisioningStyle = Automatic;
@@ -10722,6 +10790,7 @@
 			projectRoot = "";
 			targets = (
 				44D5E48B577F4746577F9F94 /* OpenBurnBar */,
+				47F9C7E802A28AFD864F3A4F /* OpenBurnBarSafariExtension */,
 				2550C7945EDECE95DC6CEEB4 /* OpenBurnBarDaemon */,
 				490ED52F84361AB3F657CB1D /* OpenBurnBarDaemonExecutable */,
 				76B46DCB3A8D020754979918 /* OpenBurnBarPrivilegedInputExecution */,
@@ -11037,6 +11106,27 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "# Xcode 16.4 can pass GRDB.o twice to libtool for this static target:\n# once via LinkFileList and once as an explicit linker argument.\n# Keep GRDB in the explicit arg path on 16.x by removing it from all\n# per-arch LinkFileLists only for 16.x toolchains.\nif [[ -n \"${XCODE_VERSION_MAJOR:-}\" && \"${XCODE_VERSION_MAJOR}\" -lt 1700 ]]; then\n  for candidate in \\\n    \"${LINK_FILE_LIST_normal_arm64:-}\" \\\n    \"${LINK_FILE_LIST_normal_x86_64:-}\" \\\n    \"${OBJECT_FILE_DIR_normal}/arm64/${PRODUCT_NAME}.LinkFileList\" \\\n    \"${OBJECT_FILE_DIR_normal}/x86_64/${PRODUCT_NAME}.LinkFileList\" \\\n    \"${OBJECT_FILE_DIR_normal}/${CURRENT_ARCH}/${PRODUCT_NAME}.LinkFileList\" \\\n    \"${OBJECT_FILE_DIR_normal}/${PRODUCT_NAME}.LinkFileList\"\n  do\n    if [[ -n \"${candidate}\" && -f \"${candidate}\" ]]; then\n      tmp_file=\"${candidate}.tmp\"\n      # Drop GRDB.o from each link file (it is added explicitly by Xcode)\n      # and collapse any accidental duplicate object entries.\n      awk '!/\\/GRDB\\.o$/ && !seen[$0]++' \"${candidate}\" > \"${tmp_file}\" || true\n      mv \"${tmp_file}\" \"${candidate}\"\n    fi\n  done\nfi\n";
+		};
+		6DAEE4605A805B567FAA1972 /* Embed Safari WebExtension Resources */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(PROJECT_DIR)/extensions/safari/dist/manifest.json",
+			);
+			name = "Embed Safari WebExtension Resources";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/manifest.json",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -euo pipefail\n\nDIST_DIR=\"${PROJECT_DIR}/extensions/safari/dist\"\nMANIFEST=\"${DIST_DIR}/manifest.json\"\nRESOURCES_DIR=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}\"\n\nif [[ ! -f \"${MANIFEST}\" ]]; then\n  echo \"error: Safari WebExtension bundle is missing ${MANIFEST}.\" >&2\n  exit 1\nfi\n\nmkdir -p \"${RESOURCES_DIR}\"\n/usr/bin/rsync -a --delete \"${DIST_DIR}/\" \"${RESOURCES_DIR}/\"\n\nif [[ ! -f \"${RESOURCES_DIR}/manifest.json\" ]]; then\n  echo \"error: Safari appex resource copy did not produce Contents/Resources/manifest.json.\" >&2\n  exit 1\nfi\n";
 		};
 		75EAFDCE26A21D6F52845A3F /* Copy Swift Objective-C Interface Header */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -13826,6 +13916,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		F4E8A81D20BF319CB2FC2FD6 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C6B4AEAEF2D45B5EF13A3C40 /* SafariWebExtensionHandler.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		FA65B9C027F00A7F659FCDF7 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -13856,6 +13954,11 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		274BE20650835ABB2A1A1583 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 47F9C7E802A28AFD864F3A4F /* OpenBurnBarSafariExtension */;
+			targetProxy = 6BBFE437F29E1BF32250A036 /* PBXContainerItemProxy */;
+		};
 		285A1B8388CE7B4EA09C143A /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 44D5E48B577F4746577F9F94 /* OpenBurnBar */;
@@ -13873,11 +13976,11 @@
 		};
 		3D86C882AF3E0903D2B6AEC1 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_F974D0C0-5592-447C-81CA-1B10BE234915" /* OpenBurnBarInsights */;
+			productRef = "TEMP_C9A49239-954D-4070-BAFF-9CB261F97460" /* OpenBurnBarInsights */;
 		};
 		443FF277670BA948D441326F /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_0C87D0EB-A4BB-40D2-A903-2ACE2176E335" /* OpenBurnBarEngine */;
+			productRef = "TEMP_F3EB0B6B-BE75-4AC9-A843-566920C2F243" /* OpenBurnBarEngine */;
 		};
 		5499EFD4C8229C93F39C16E8 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -13891,7 +13994,7 @@
 		};
 		5F473CBA91EA3EDB5979FCF0 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_86370112-8510-441E-ABFE-8AD8F1156139" /* OpenBurnBarMedia */;
+			productRef = "TEMP_88D88956-B246-4E23-80EC-56A84CD304E4" /* OpenBurnBarMedia */;
 		};
 		65381FC60CCDA6ECB17D631F /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -13910,11 +14013,11 @@
 		};
 		8229DDE642E5DC615FF30C8F /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_EA6AC787-463C-496F-B3C8-C992B2D4BCC9" /* OpenBurnBarComputerUseCore */;
+			productRef = "TEMP_BF23E318-52E4-4E97-96F6-9F74B49C19E6" /* OpenBurnBarComputerUseCore */;
 		};
 		84623C60942B5FF3BB9AC227 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_044814D4-723D-453C-B9AF-B3904C0B88CE" /* OpenBurnBarLinuxSecurity */;
+			productRef = "TEMP_8B59413E-7FFB-4BE8-9855-19BC06B1F1CF" /* OpenBurnBarLinuxSecurity */;
 		};
 		8DA8E1A1A0D1FEBA7474F3C7 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -13938,7 +14041,7 @@
 		};
 		A6FB5F544F37FA83D0398F77 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_19AC1ED7-5CA5-44E1-9A9B-1FBEA301A76C" /* OpenBurnBarCore */;
+			productRef = "TEMP_88FB3A0A-065E-4B9F-AD2E-2E0BA0C9356D" /* OpenBurnBarCore */;
 		};
 		B0DD6D2AA24F4537C1FD53E7 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -13955,7 +14058,7 @@
 		};
 		DAD9D7BB77FED252BF883D7C /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_31D1157D-AB1E-48DE-B478-C275A55DC635" /* OpenBurnBarIrohRelay */;
+			productRef = "TEMP_1017E780-AAAF-41EE-B5FF-EF48CB7414AC" /* OpenBurnBarIrohRelay */;
 		};
 		DB969356C591A565802DBBD9 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -13973,11 +14076,11 @@
 		};
 		F34772D139441B426AAE80E8 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_BC3F3820-F5C8-4599-9AA3-83FA93EEBCD1" /* OpenBurnBarMedia */;
+			productRef = "TEMP_443DBA26-6AA5-432A-855D-3DB203A2206A" /* OpenBurnBarMedia */;
 		};
 		FF93F13225A86244B6415A4C /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_E9C02635-D533-4B87-ACC7-7080D2BD95DD" /* OpenBurnBarComputerUseCore */;
+			productRef = "TEMP_5BB72A41-237B-4007-916A-4B2C52E776B3" /* OpenBurnBarComputerUseCore */;
 		};
 /* End PBXTargetDependency section */
 
@@ -14337,7 +14440,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_ENTITLEMENTS = AgentLens/Resources/OpenBurnBar.entitlements;
+				CODE_SIGN_ENTITLEMENTS = "$(OPENBURNBAR_HOST_CODE_SIGN_ENTITLEMENTS)";
 				COMBINE_HIDPI_IMAGES = YES;
 				DEVELOPMENT_TEAM = 4Y367DF25B;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -14402,6 +14505,33 @@
 			};
 			name = Release;
 		};
+		593DF36FEFDBB7F69EFD32EC /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = OpenBurnBarSafariExtension/Resources/OpenBurnBarSafariExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_TEAM = 4Y367DF25B;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = OpenBurnBarSafariExtension/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				OTHER_CODE_SIGN_FLAGS = "--options runtime,library";
+				PRODUCT_BUNDLE_IDENTIFIER = "com.openburnbar.app.safari-extension";
+				PRODUCT_MODULE_NAME = OpenBurnBarSafariExtension;
+				PRODUCT_NAME = OpenBurnBarSafariExtension;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SWIFT_ENABLE_EXPLICIT_MODULES = NO;
+			};
+			name = Release;
+		};
 		5AFDF0095A36592721910907 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -14441,6 +14571,33 @@
 			};
 			name = Release;
 		};
+		665B28B603F47E7B227DDF08 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = OpenBurnBarSafariExtension/Resources/OpenBurnBarSafariExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_TEAM = 4Y367DF25B;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = OpenBurnBarSafariExtension/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				OTHER_CODE_SIGN_FLAGS = "--options runtime,library";
+				PRODUCT_BUNDLE_IDENTIFIER = "com.openburnbar.app.safari-extension";
+				PRODUCT_MODULE_NAME = OpenBurnBarSafariExtension;
+				PRODUCT_NAME = OpenBurnBarSafariExtension;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SWIFT_ENABLE_EXPLICIT_MODULES = NO;
+			};
+			name = Debug;
+		};
 		7493DF06B800D555E847E27B /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -14468,7 +14625,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_ENTITLEMENTS = AgentLens/Resources/OpenBurnBar.entitlements;
+				CODE_SIGN_ENTITLEMENTS = "$(OPENBURNBAR_HOST_CODE_SIGN_ENTITLEMENTS)";
 				COMBINE_HIDPI_IMAGES = YES;
 				DEVELOPMENT_TEAM = 4Y367DF25B;
 				GCC_PREPROCESSOR_DEFINITIONS = "$(inherited) SQLITE_HAS_CODEC=1";
@@ -14610,6 +14767,7 @@
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
+				OPENBURNBAR_HOST_CODE_SIGN_ENTITLEMENTS = AgentLens/Resources/OpenBurnBar.entitlements;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
@@ -14789,6 +14947,7 @@
 				MARKETING_VERSION = 1.0.40;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
+				OPENBURNBAR_HOST_CODE_SIGN_ENTITLEMENTS = AgentLens/Resources/OpenBurnBar.entitlements;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
@@ -14900,6 +15059,15 @@
 			buildConfigurations = (
 				A6926DE59BCED7457BA963F9 /* Debug */,
 				D94D66D1A60B912D83222DFA /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		73FF2CADEFC8D2DA83A51B2D /* Build configuration list for PBXNativeTarget "OpenBurnBarSafariExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				665B28B603F47E7B227DDF08 /* Debug */,
+				593DF36FEFDBB7F69EFD32EC /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
@@ -15408,41 +15576,41 @@
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarKernel;
 		};
-		"TEMP_044814D4-723D-453C-B9AF-B3904C0B88CE" /* OpenBurnBarLinuxSecurity */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = OpenBurnBarLinuxSecurity;
-		};
-		"TEMP_0C87D0EB-A4BB-40D2-A903-2ACE2176E335" /* OpenBurnBarEngine */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = OpenBurnBarEngine;
-		};
-		"TEMP_19AC1ED7-5CA5-44E1-9A9B-1FBEA301A76C" /* OpenBurnBarCore */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = OpenBurnBarCore;
-		};
-		"TEMP_31D1157D-AB1E-48DE-B478-C275A55DC635" /* OpenBurnBarIrohRelay */ = {
+		"TEMP_1017E780-AAAF-41EE-B5FF-EF48CB7414AC" /* OpenBurnBarIrohRelay */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarIrohRelay;
 		};
-		"TEMP_86370112-8510-441E-ABFE-8AD8F1156139" /* OpenBurnBarMedia */ = {
+		"TEMP_443DBA26-6AA5-432A-855D-3DB203A2206A" /* OpenBurnBarMedia */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarMedia;
 		};
-		"TEMP_BC3F3820-F5C8-4599-9AA3-83FA93EEBCD1" /* OpenBurnBarMedia */ = {
+		"TEMP_5BB72A41-237B-4007-916A-4B2C52E776B3" /* OpenBurnBarComputerUseCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OpenBurnBarComputerUseCore;
+		};
+		"TEMP_88D88956-B246-4E23-80EC-56A84CD304E4" /* OpenBurnBarMedia */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarMedia;
 		};
-		"TEMP_E9C02635-D533-4B87-ACC7-7080D2BD95DD" /* OpenBurnBarComputerUseCore */ = {
+		"TEMP_88FB3A0A-065E-4B9F-AD2E-2E0BA0C9356D" /* OpenBurnBarCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OpenBurnBarCore;
+		};
+		"TEMP_8B59413E-7FFB-4BE8-9855-19BC06B1F1CF" /* OpenBurnBarLinuxSecurity */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OpenBurnBarLinuxSecurity;
+		};
+		"TEMP_BF23E318-52E4-4E97-96F6-9F74B49C19E6" /* OpenBurnBarComputerUseCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarComputerUseCore;
 		};
-		"TEMP_EA6AC787-463C-496F-B3C8-C992B2D4BCC9" /* OpenBurnBarComputerUseCore */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = OpenBurnBarComputerUseCore;
-		};
-		"TEMP_F974D0C0-5592-447C-81CA-1B10BE234915" /* OpenBurnBarInsights */ = {
+		"TEMP_C9A49239-954D-4070-BAFF-9CB261F97460" /* OpenBurnBarInsights */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarInsights;
+		};
+		"TEMP_F3EB0B6B-BE75-4AC9-A843-566920C2F243" /* OpenBurnBarEngine */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OpenBurnBarEngine;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

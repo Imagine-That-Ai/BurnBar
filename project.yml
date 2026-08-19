@@ -16,6 +16,11 @@ settings:
     MARKETING_VERSION: "1.0.40"
     CURRENT_PROJECT_VERSION: 81
     CODE_SIGN_STYLE: Automatic
+    # Release scripts override only this host-specific variable. Keeping the
+    # Safari appex's CODE_SIGN_ENTITLEMENTS target-local prevents a command-line
+    # CODE_SIGN_ENTITLEMENTS= (as the Mac App Store lane passes) from stamping the
+    # host's entitlements onto the embedded extension.
+    OPENBURNBAR_HOST_CODE_SIGN_ENTITLEMENTS: AgentLens/Resources/OpenBurnBar.entitlements
     INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.utilities"
     INFOPLIST_KEY_LSUIElement: true
     GENERATE_INFOPLIST_FILE: YES
@@ -224,7 +229,7 @@ targets:
         PRODUCT_NAME: OpenBurnBar
         PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.app
         DEVELOPMENT_TEAM: 4Y367DF25B
-        CODE_SIGN_ENTITLEMENTS: AgentLens/Resources/OpenBurnBar.entitlements
+        CODE_SIGN_ENTITLEMENTS: "$(OPENBURNBAR_HOST_CODE_SIGN_ENTITLEMENTS)"
         INFOPLIST_KEY_CFBundleDisplayName: OpenBurnBar
         INFOPLIST_KEY_CFBundleName: OpenBurnBar
         INFOPLIST_KEY_NSSupportsAutomaticTermination: NO
@@ -405,6 +410,10 @@ targets:
           - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/ProjectCodeMemory/secret-pattern-corpus.json
           - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/tools/openburnbar-mcp/select_wand_models.py
     dependencies:
+      # Embeds OpenBurnBarSafariExtension.appex into Contents/PlugIns so the
+      # committed Safari web extension actually ships inside OpenBurnBar.app.
+      - target: OpenBurnBarSafariExtension
+        codeSign: true
       - target: OpenBurnBarDaemonExecutable
         link: false
         embed: false
@@ -479,6 +488,76 @@ targets:
       testTargets:
         - OpenBurnBarTests
         - OpenBurnBarDaemonTests
+
+  # The Safari Web Extension that ships inside OpenBurnBar.app. The web payload is
+  # the committed bundle at extensions/safari/dist; this target wraps it in the
+  # appex Safari can actually load, and the host embeds it via `codeSign: true`
+  # above. Intentionally links no OpenBurnBar module — see
+  # OpenBurnBarSafariExtension/SafariWebExtensionHandler.swift for why.
+  OpenBurnBarSafariExtension:
+    type: app-extension
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: OpenBurnBarSafariExtension
+        excludes:
+          - Info.plist
+          - Resources
+          - Resources/**
+    info:
+      path: OpenBurnBarSafariExtension/Info.plist
+      properties:
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.Safari.web-extension
+          NSExtensionPrincipalClass: "$(PRODUCT_MODULE_NAME).SafariWebExtensionHandler"
+    settings:
+      base:
+        PRODUCT_NAME: OpenBurnBarSafariExtension
+        PRODUCT_MODULE_NAME: OpenBurnBarSafariExtension
+        PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.app.safari-extension
+        DEVELOPMENT_TEAM: 4Y367DF25B
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_ENTITLEMENTS: OpenBurnBarSafariExtension/Resources/OpenBurnBarSafariExtension.entitlements
+        APPLICATION_EXTENSION_API_ONLY: YES
+        ENABLE_HARDENED_RUNTIME: YES
+        OTHER_CODE_SIGN_FLAGS: --options runtime,library
+        GENERATE_INFOPLIST_FILE: NO
+        SKIP_INSTALL: YES
+        SWIFT_ENABLE_EXPLICIT_MODULES: NO
+    postBuildScripts:
+      # Mirror the whole committed bundle rather than listing files: a resource
+      # added to dist/ then ships automatically instead of silently going missing.
+      # rsync also preserves icons/ as a subdirectory, which Xcode's resource phase
+      # would flatten into Resources/.
+      - name: Embed Safari WebExtension Resources
+        script: |
+          set -euo pipefail
+
+          DIST_DIR="${PROJECT_DIR}/extensions/safari/dist"
+          MANIFEST="${DIST_DIR}/manifest.json"
+          RESOURCES_DIR="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}"
+
+          if [[ ! -f "${MANIFEST}" ]]; then
+            echo "error: Safari WebExtension bundle is missing ${MANIFEST}." >&2
+            exit 1
+          fi
+
+          mkdir -p "${RESOURCES_DIR}"
+          /usr/bin/rsync -a --delete "${DIST_DIR}/" "${RESOURCES_DIR}/"
+
+          if [[ ! -f "${RESOURCES_DIR}/manifest.json" ]]; then
+            echo "error: Safari appex resource copy did not produce Contents/Resources/manifest.json." >&2
+            exit 1
+          fi
+        inputFiles:
+          - $(PROJECT_DIR)/extensions/safari/dist/manifest.json
+        outputFiles:
+          - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/manifest.json
+        basedOnDependencyAnalysis: false
+    dependencies:
+      - sdk: SafariServices.framework
 
   OpenBurnBarDaemon:
     type: library.static
