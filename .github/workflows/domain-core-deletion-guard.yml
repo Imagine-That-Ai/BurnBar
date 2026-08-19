@@ -29,7 +29,7 @@ jobs:
     # Keep the required guard on the owned fleet. ubuntu-latest is held on
     # this account and can sit queued indefinitely, blocking every PR even
     # though this job only needs git, bash, Python, and the repository tools.
-    runs-on: [self-hosted, macOS, ARM64, bb-fleet]
+    runs-on: [self-hosted, macos, arm64]
     timeout-minutes: 60
     steps:
       - name: Check out trusted default-branch evaluator
