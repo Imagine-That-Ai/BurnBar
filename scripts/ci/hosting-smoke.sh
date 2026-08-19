@@ -133,9 +133,36 @@ NODE
     rm -f "$headers"
     [[ "$http_code" == "200" ]] || { rm -f "$body"; echo "FAIL: Console runtime file $path returned HTTP $http_code" >&2; return 1; }
     actual_sha="$(sha256sum "$body" | cut -d' ' -f1)"
+    expected_file="$(dirname "$expected_manifest")/$path"
+    if [[ "$actual_sha" != "$expected_sha" && "$path" == "robots.txt" ]]; then
+      if ! node - "$body" "$expected_file" <<'NODE'
+const fs = require("fs");
+const [livePath, expectedPath] = process.argv.slice(2);
+const live = fs.readFileSync(livePath, "utf8");
+const expected = fs.readFileSync(expectedPath, "utf8");
+const privateRule = "# The member console is private — never index it.\n";
+const suffixStart = live.lastIndexOf(privateRule);
+if (suffixStart < 0 || live.slice(suffixStart) !== expected) process.exit(1);
+const managedPrefix = live.slice(0, suffixStart);
+if (
+  !managedPrefix.includes("# BEGIN Cloudflare Managed content") ||
+  !managedPrefix.includes("# END Cloudflare Managed Content")
+) {
+  process.exit(1);
+}
+NODE
+      then
+        rm -f "$body"
+        echo "FAIL: live Console runtime file $path differs from manifest" >&2
+        return 1
+      fi
+      echo "OK Console runtime file $path preserves exact app-owned suffix behind Cloudflare managed prefix"
+    elif [[ "$actual_sha" != "$expected_sha" ]]; then
+      rm -f "$body"
+      echo "FAIL: live Console runtime file $path differs from manifest" >&2
+      return 1
+    fi
     rm -f "$body"
-    [[ "$actual_sha" == "$expected_sha" ]] \
-      || { echo "FAIL: live Console runtime file $path differs from manifest" >&2; return 1; }
   done < "$manifest_files"
   RUNTIME_MANIFEST_FILE="$(mktemp)"
   cp "$live_manifest" "$RUNTIME_MANIFEST_FILE"
