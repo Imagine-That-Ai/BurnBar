@@ -110,14 +110,66 @@ NODE
     return 1
   fi
   while IFS=$'\t' read -r path expected_sha; do
-    local body actual_sha
+    local body headers actual_sha location canonical_path
     body="$(mktemp)"
-    http_code="$(curl -sS -o "$body" -w "%{http_code}" "$base_url/$path" 2>/dev/null || echo "000")"
+    headers="$(mktemp)"
+    http_code="$(curl -sS -D "$headers" -o "$body" -w "%{http_code}" "$base_url/$path" 2>/dev/null || echo "000")"
+    if [[ "$http_code" =~ ^30[1278]$ ]]; then
+      location="$(awk 'tolower($1) == "location:" { sub(/\r$/, "", $2); print $2; exit }' "$headers")"
+      canonical_path=""
+      case "$path" in
+        index.html) canonical_path="/" ;;
+        */index.html) canonical_path="/${path%/index.html}" ;;
+        *.html) canonical_path="/${path%.html}" ;;
+      esac
+      if [[ -z "$canonical_path" || "$location" != "$canonical_path" ]]; then
+        rm -f "$body" "$headers"
+        echo "FAIL: Console runtime file $path returned an unexpected redirect to ${location:-<missing>}" >&2
+        return 1
+      fi
+      : > "$body"
+      http_code="$(curl -sS -o "$body" -w "%{http_code}" "$base_url$canonical_path" 2>/dev/null || echo "000")"
+    fi
+    rm -f "$headers"
     [[ "$http_code" == "200" ]] || { rm -f "$body"; echo "FAIL: Console runtime file $path returned HTTP $http_code" >&2; return 1; }
     actual_sha="$(sha256sum "$body" | cut -d' ' -f1)"
+    expected_file="$(dirname "$expected_manifest")/$path"
+    if [[ "$actual_sha" != "$expected_sha" && "$path" == "robots.txt" ]]; then
+      if ! node - "$body" "$expected_file" <<'NODE'
+const fs = require("fs");
+const [livePath, expectedPath] = process.argv.slice(2);
+const live = fs.readFileSync(livePath, "utf8");
+const expected = fs.readFileSync(expectedPath, "utf8");
+if (!live.endsWith(expected)) process.exit(1);
+const managedPrefix = live.slice(0, live.length - expected.length);
+const beginMarker = "# BEGIN Cloudflare Managed content\n";
+const endMarker = "\n# END Cloudflare Managed Content\n\n";
+if (!managedPrefix.startsWith(beginMarker) || !managedPrefix.endsWith(endMarker)) {
+  process.exit(1);
+}
+const managedBody = managedPrefix.slice(
+  beginMarker.length,
+  managedPrefix.length - endMarker.length,
+);
+if (
+  managedBody.includes("# BEGIN Cloudflare Managed content") ||
+  managedBody.includes("# END Cloudflare Managed Content")
+) {
+  process.exit(1);
+}
+NODE
+      then
+        rm -f "$body"
+        echo "FAIL: live Console runtime file $path differs from manifest" >&2
+        return 1
+      fi
+      echo "OK Console runtime file $path preserves exact app-owned suffix behind Cloudflare managed prefix"
+    elif [[ "$actual_sha" != "$expected_sha" ]]; then
+      rm -f "$body"
+      echo "FAIL: live Console runtime file $path differs from manifest" >&2
+      return 1
+    fi
     rm -f "$body"
-    [[ "$actual_sha" == "$expected_sha" ]] \
-      || { echo "FAIL: live Console runtime file $path differs from manifest" >&2; return 1; }
   done < "$manifest_files"
   RUNTIME_MANIFEST_FILE="$(mktemp)"
   cp "$live_manifest" "$RUNTIME_MANIFEST_FILE"
