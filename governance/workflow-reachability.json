@@ -1,0 +1,274 @@
+{
+  "$schema": "./workflow-reachability.schema.json",
+  "documentation": "docs/CI_RELEASE_RUNBOOK.md",
+  "purpose": "Declared exceptions to the workflow reachability gate. An entry states that a job inheriting a skip, or a script outside its workflow's path filter, is a reviewed decision rather than the silent-failure defect that took burnbar.ai down for a month in August 2026. Entries baselined without individual review say so; closing them is ordinary maintenance, not a blocker.",
+  "skipPropagation": [
+    {
+      "workflow": "app-pr-gate.yml",
+      "job": "app-build-test",
+      "reason": "Baselined 2026-08-19 without individual review. PR gate lanes are conditional on changed-path detection, where inheriting a skip is the expected behaviour."
+    },
+    {
+      "workflow": "app-pr-gate.yml",
+      "job": "mobile-build-gate",
+      "reason": "Baselined 2026-08-19 without individual review. PR gate lanes are conditional on changed-path detection, where inheriting a skip is the expected behaviour."
+    },
+    {
+      "workflow": "codex-nightly-ci-repair.yml",
+      "job": "repair-nightly-ci",
+      "reason": "Baselined 2026-08-19 without individual review. Nightly repair lane; a skip here delays automation rather than shipping a stale artifact."
+    },
+    {
+      "workflow": "deploy-cloud-run.yml",
+      "job": "deploy-hosted-mcp",
+      "reason": "Baselined 2026-08-19 without individual review. `verify-attestations` is conditional; this lane inherits its skip. Likely the same defect class as the hosting outage — review before relying on Cloud Run deploys."
+    },
+    {
+      "workflow": "domain-core.yml",
+      "job": "apple-native-smoke",
+      "reason": "Baselined 2026-08-19 without individual review. `apple-native-smoke` follows `apple`, which is itself conditional; the inherited skip is plausible but unproven."
+    },
+    {
+      "workflow": "openburnbar-release-windows.yml",
+      "job": "domain-core-windows-release-evidence",
+      "reason": "Baselined 2026-08-19 without individual review. `authorize-domain-core-rollback` skips on every non-rollback run, so these jobs inherit that skip. Windows release lanes have not been exercised end to end recently; review before the next Windows cut."
+    },
+    {
+      "workflow": "openburnbar-release-windows.yml",
+      "job": "native-engine",
+      "reason": "Baselined 2026-08-19 without individual review. `authorize-domain-core-rollback` skips on every non-rollback run, so these jobs inherit that skip. Windows release lanes have not been exercised end to end recently; review before the next Windows cut."
+    },
+    {
+      "workflow": "openburnbar-release-windows.yml",
+      "job": "supply-chain",
+      "reason": "Baselined 2026-08-19 without individual review. `authorize-domain-core-rollback` skips on every non-rollback run, so these jobs inherit that skip. Windows release lanes have not been exercised end to end recently; review before the next Windows cut."
+    },
+    {
+      "workflow": "openburnbar-release-windows.yml",
+      "job": "windows-msix-lifecycle",
+      "reason": "Baselined 2026-08-19 without individual review. `authorize-domain-core-rollback` skips on every non-rollback run, so these jobs inherit that skip. Windows release lanes have not been exercised end to end recently; review before the next Windows cut."
+    },
+    {
+      "workflow": "ops-plane-verify.yml",
+      "job": "skipped-no-gcp-key",
+      "reason": "Baselined 2026-08-19 without individual review. Both jobs branch on `detect-secrets`, which is the intended fork between the credentialed and skipped lanes."
+    },
+    {
+      "workflow": "ops-plane-verify.yml",
+      "job": "verify",
+      "reason": "Baselined 2026-08-19 without individual review. Both jobs branch on `detect-secrets`, which is the intended fork between the credentialed and skipped lanes."
+    },
+    {
+      "workflow": "release.yml",
+      "job": "apple-native-prepublication",
+      "reason": "Intended. `release-preflight` is skipped on the promote=true dispatch path, which promotes an already-built release and runs no build or validation. Every lane below it genuinely does not apply on that path, so inheriting the skip is the correct outcome rather than a silent stall."
+    },
+    {
+      "workflow": "release.yml",
+      "job": "authorize-domain-core-rollback",
+      "reason": "Intended. `release-preflight` is skipped on the promote=true dispatch path, which promotes an already-built release and runs no build or validation. Every lane below it genuinely does not apply on that path, so inheriting the skip is the correct outcome rather than a silent stall."
+    },
+    {
+      "workflow": "release.yml",
+      "job": "domain-core-ios-release-evidence",
+      "reason": "Intended. `release-preflight` is skipped on the promote=true dispatch path, which promotes an already-built release and runs no build or validation. Every lane below it genuinely does not apply on that path, so inheriting the skip is the correct outcome rather than a silent stall."
+    },
+    {
+      "workflow": "release.yml",
+      "job": "domain-core-native-release-evidence",
+      "reason": "Intended. `release-preflight` is skipped on the promote=true dispatch path, which promotes an already-built release and runs no build or validation. Every lane below it genuinely does not apply on that path, so inheriting the skip is the correct outcome rather than a silent stall."
+    },
+    {
+      "workflow": "release.yml",
+      "job": "prepare-release-publication",
+      "reason": "Intended. `release-preflight` is skipped on the promote=true dispatch path, which promotes an already-built release and runs no build or validation. Every lane below it genuinely does not apply on that path, so inheriting the skip is the correct outcome rather than a silent stall."
+    },
+    {
+      "workflow": "release.yml",
+      "job": "release-android-gate",
+      "reason": "Intended. `release-preflight` is skipped on the promote=true dispatch path, which promotes an already-built release and runs no build or validation. Every lane below it genuinely does not apply on that path, so inheriting the skip is the correct outcome rather than a silent stall."
+    },
+    {
+      "workflow": "release.yml",
+      "job": "release-app-gate",
+      "reason": "Intended. `release-preflight` is skipped on the promote=true dispatch path, which promotes an already-built release and runs no build or validation. Every lane below it genuinely does not apply on that path, so inheriting the skip is the correct outcome rather than a silent stall."
+    },
+    {
+      "workflow": "release.yml",
+      "job": "release-mobile-gate",
+      "reason": "Intended. `release-preflight` is skipped on the promote=true dispatch path, which promotes an already-built release and runs no build or validation. Every lane below it genuinely does not apply on that path, so inheriting the skip is the correct outcome rather than a silent stall."
+    },
+    {
+      "workflow": "release.yml",
+      "job": "release-sqlcipher-gate",
+      "reason": "Intended. `release-preflight` is skipped on the promote=true dispatch path, which promotes an already-built release and runs no build or validation. Every lane below it genuinely does not apply on that path, so inheriting the skip is the correct outcome rather than a silent stall."
+    },
+    {
+      "workflow": "release.yml",
+      "job": "release-swift-gate",
+      "reason": "Intended. `release-preflight` is skipped on the promote=true dispatch path, which promotes an already-built release and runs no build or validation. Every lane below it genuinely does not apply on that path, so inheriting the skip is the correct outcome rather than a silent stall."
+    },
+    {
+      "workflow": "release.yml",
+      "job": "verify-live-update-feed",
+      "reason": "Intended. `release-preflight` is skipped on the promote=true dispatch path, which promotes an already-built release and runs no build or validation. Every lane below it genuinely does not apply on that path, so inheriting the skip is the correct outcome rather than a silent stall."
+    },
+    {
+      "workflow": "wiki-mem0-reconcile.yml",
+      "job": "commit-refreshed-manifest",
+      "reason": "Baselined 2026-08-19 without individual review. The commit lane follows `reconcile`; inheriting its skip leaves the mirror unchanged, which is safe."
+    }
+  ],
+  "pathsCoverage": [
+    {
+      "workflow": "ci-cache-warm.yml",
+      "job": "*",
+      "path": "scripts/ci/update-submodules-with-retry.sh",
+      "reason": "Baselined 2026-08-19 without individual review. Cache warming is scheduled; a missed path trigger costs a cold cache, not correctness."
+    },
+    {
+      "workflow": "computer-use-loopback-test.yml",
+      "job": "*",
+      "path": "scripts/install-playwright.sh",
+      "reason": "Baselined 2026-08-19 without individual review. Loopback test lane; a missed trigger delays a test rather than shipping a stale artifact."
+    },
+    {
+      "workflow": "computer-use-loopback-test.yml",
+      "job": "*",
+      "path": "scripts/lib/prepare-signal-ffi-xcframework.sh",
+      "reason": "Baselined 2026-08-19 without individual review. Loopback test lane; a missed trigger delays a test rather than shipping a stale artifact."
+    },
+    {
+      "workflow": "computer-use-loopback-test.yml",
+      "job": "*",
+      "path": "scripts/test-computer-use-browser-scenarios.mjs",
+      "reason": "Baselined 2026-08-19 without individual review. Loopback test lane; a missed trigger delays a test rather than shipping a stale artifact."
+    },
+    {
+      "workflow": "computer-use-loopback-test.yml",
+      "job": "*",
+      "path": "scripts/test-computer-use-loopback.sh",
+      "reason": "Baselined 2026-08-19 without individual review. Loopback test lane; a missed trigger delays a test rather than shipping a stale artifact."
+    },
+    {
+      "workflow": "deploy-firestore.yml",
+      "job": "*",
+      "path": "scripts/ci/verify-firestore-ttl-state.mjs",
+      "reason": "Baselined 2026-08-19 without individual review. LIKELY A REAL GAP of the same class as the August hosting outage: editing this script would not trigger the deploy. Review and close before the next Firestore rules change."
+    },
+    {
+      "workflow": "headless-app-build.yml",
+      "job": "*",
+      "path": "scripts/ci/update-submodules-with-retry.sh",
+      "reason": "Baselined 2026-08-19 without individual review. Headless build precursor is scheduled and dispatchable."
+    },
+    {
+      "workflow": "pr-windows-full.yml",
+      "job": "*",
+      "path": "scripts/lib/domain-core-activation.mjs",
+      "reason": "Baselined 2026-08-19 without individual review. Windows full suite is additionally scheduled and dispatchable, so a missed path trigger does not leave it unrun indefinitely."
+    },
+    {
+      "workflow": "pr-windows-full.yml",
+      "job": "*",
+      "path": "scripts/lib/domain-core-candidate-receipt.mjs",
+      "reason": "Baselined 2026-08-19 without individual review. Windows full suite is additionally scheduled and dispatchable, so a missed path trigger does not leave it unrun indefinitely."
+    },
+    {
+      "workflow": "workflow-lint.yml",
+      "job": "*",
+      "path": "scripts/ci/firebase-rules-source.mjs",
+      "reason": "Intended. This workflow lints other workflows and their verifiers; its `paths:` list is curated to the surfaces it gates, not to every module those verifiers transitively import. Broadening it would run the linter on unrelated library edits."
+    },
+    {
+      "workflow": "workflow-lint.yml",
+      "job": "*",
+      "path": "scripts/ci/publish-domain-core-release-evidence.mjs",
+      "reason": "Intended. This workflow lints other workflows and their verifiers; its `paths:` list is curated to the surfaces it gates, not to every module those verifiers transitively import. Broadening it would run the linter on unrelated library edits."
+    },
+    {
+      "workflow": "workflow-lint.yml",
+      "job": "*",
+      "path": "scripts/ci/verify-ci-cache-warm.test.mjs",
+      "reason": "Intended. This workflow lints other workflows and their verifiers; its `paths:` list is curated to the surfaces it gates, not to every module those verifiers transitively import. Broadening it would run the linter on unrelated library edits."
+    },
+    {
+      "workflow": "workflow-lint.yml",
+      "job": "*",
+      "path": "scripts/ci/verify-domain-core-android-universal-artifact.mjs",
+      "reason": "Intended. This workflow lints other workflows and their verifiers; its `paths:` list is curated to the surfaces it gates, not to every module those verifiers transitively import. Broadening it would run the linter on unrelated library edits."
+    },
+    {
+      "workflow": "workflow-lint.yml",
+      "job": "*",
+      "path": "scripts/ci/verify-gitleaks-allowlist-boundary.mjs",
+      "reason": "Intended. This workflow lints other workflows and their verifiers; its `paths:` list is curated to the surfaces it gates, not to every module those verifiers transitively import. Broadening it would run the linter on unrelated library edits."
+    },
+    {
+      "workflow": "workflow-lint.yml",
+      "job": "*",
+      "path": "scripts/ci/verify-gitleaks-allowlist-boundary.test.mjs",
+      "reason": "Intended. This workflow lints other workflows and their verifiers; its `paths:` list is curated to the surfaces it gates, not to every module those verifiers transitively import. Broadening it would run the linter on unrelated library edits."
+    },
+    {
+      "workflow": "workflow-lint.yml",
+      "job": "*",
+      "path": "scripts/ci/verify-gitleaks-workflow-boundary.mjs",
+      "reason": "Intended. This workflow lints other workflows and their verifiers; its `paths:` list is curated to the surfaces it gates, not to every module those verifiers transitively import. Broadening it would run the linter on unrelated library edits."
+    },
+    {
+      "workflow": "workflow-lint.yml",
+      "job": "*",
+      "path": "scripts/ci/verify-gitleaks-workflow-boundary.test.mjs",
+      "reason": "Intended. This workflow lints other workflows and their verifiers; its `paths:` list is curated to the surfaces it gates, not to every module those verifiers transitively import. Broadening it would run the linter on unrelated library edits."
+    },
+    {
+      "workflow": "workflow-lint.yml",
+      "job": "*",
+      "path": "scripts/ci/verify-libsignal-toolchain-preflight.mjs",
+      "reason": "Intended. This workflow lints other workflows and their verifiers; its `paths:` list is curated to the surfaces it gates, not to every module those verifiers transitively import. Broadening it would run the linter on unrelated library edits."
+    },
+    {
+      "workflow": "workflow-lint.yml",
+      "job": "*",
+      "path": "scripts/ci/verify-libsignal-toolchain-preflight.test.mjs",
+      "reason": "Intended. This workflow lints other workflows and their verifiers; its `paths:` list is curated to the surfaces it gates, not to every module those verifiers transitively import. Broadening it would run the linter on unrelated library edits."
+    },
+    {
+      "workflow": "workflow-lint.yml",
+      "job": "*",
+      "path": "scripts/ci/verify-merge-queue-workflows.mjs",
+      "reason": "Intended. This workflow lints other workflows and their verifiers; its `paths:` list is curated to the surfaces it gates, not to every module those verifiers transitively import. Broadening it would run the linter on unrelated library edits."
+    },
+    {
+      "workflow": "workflow-lint.yml",
+      "job": "*",
+      "path": "scripts/ci/verify-merge-queue-workflows.test.mjs",
+      "reason": "Intended. This workflow lints other workflows and their verifiers; its `paths:` list is curated to the surfaces it gates, not to every module those verifiers transitively import. Broadening it would run the linter on unrelated library edits."
+    },
+    {
+      "workflow": "workflow-lint.yml",
+      "job": "*",
+      "path": "scripts/lib/domain-core-activation.mjs",
+      "reason": "Intended. This workflow lints other workflows and their verifiers; its `paths:` list is curated to the surfaces it gates, not to every module those verifiers transitively import. Broadening it would run the linter on unrelated library edits."
+    },
+    {
+      "workflow": "workflow-lint.yml",
+      "job": "*",
+      "path": "scripts/lib/domain-core-candidate-receipt.mjs",
+      "reason": "Intended. This workflow lints other workflows and their verifiers; its `paths:` list is curated to the surfaces it gates, not to every module those verifiers transitively import. Broadening it would run the linter on unrelated library edits."
+    },
+    {
+      "workflow": "workflow-lint.yml",
+      "job": "*",
+      "path": "scripts/lib/domain-core-native-release.mjs",
+      "reason": "Intended. This workflow lints other workflows and their verifiers; its `paths:` list is curated to the surfaces it gates, not to every module those verifiers transitively import. Broadening it would run the linter on unrelated library edits."
+    },
+    {
+      "workflow": "workflow-lint.yml",
+      "job": "*",
+      "path": "scripts/lib/domain-core-release-evidence.mjs",
+      "reason": "Intended. This workflow lints other workflows and their verifiers; its `paths:` list is curated to the surfaces it gates, not to every module those verifiers transitively import. Broadening it would run the linter on unrelated library edits."
+    }
+  ]
+}
