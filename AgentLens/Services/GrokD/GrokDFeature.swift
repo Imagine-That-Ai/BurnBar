@@ -25,12 +25,13 @@ enum GrokDFeature {
 
     /// Runs `ensure-local-box.sh` once when enabled, auto-start is on, and the process is not sandboxed.
     /// Never launches `grokd-local`, D.app, or Seat4.
+    /// The process wait is async (`terminationHandler`) so Settings never blocks on `@MainActor`.
     @discardableResult
     static func startLocalBoxIfNeeded(
         defaults: UserDefaults = .standard,
         fileManager: FileManager = .default,
-        runner: (URL) throws -> Void = GrokDFeature.runEnsureScript
-    ) -> Bool {
+        runner: @escaping (URL) async throws -> Void = GrokDFeature.runEnsureScript
+    ) async -> Bool {
         guard isEnabled(defaults: defaults), isAutoStartEnabled(defaults: defaults) else { return false }
         guard !isAppSandboxed else { return false }
         let script = GrokDHostConfig.defaultEnsureLocalBoxURL()
@@ -38,23 +39,45 @@ enum GrokDFeature {
             return false
         }
         do {
-            try runner(script)
+            try await runner(script)
             return true
         } catch {
             return false
         }
     }
 
-    static func runEnsureScript(_ script: URL) throws {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/bash")
-        process.arguments = [script.path]
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
-        try process.run()
-        process.waitUntilExit()
-        if process.terminationStatus != 0 {
-            throw GrokDHostError.transport("ensure-local-box \(process.terminationStatus)")
+    static func runEnsureScript(_ script: URL) async throws {
+        let box = GrokDEnsureProcess()
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            box.continuation = continuation
+            let process = box.process
+            process.executableURL = URL(fileURLWithPath: "/bin/bash")
+            process.arguments = [script.path]
+            process.standardOutput = FileHandle.nullDevice
+            process.standardError = FileHandle.nullDevice
+            process.terminationHandler = { proc in
+                let cont = box.continuation
+                box.continuation = nil
+                if proc.terminationStatus == 0 {
+                    cont?.resume(returning: ())
+                } else {
+                    cont?.resume(throwing: GrokDHostError.transport("ensure-local-box \(proc.terminationStatus)"))
+                }
+            }
+            do {
+                try process.run()
+            } catch {
+                box.continuation = nil
+                continuation.resume(throwing: error)
+            }
         }
     }
+}
+
+/// Retains `Process` until `terminationHandler` fires. The continuation
+/// setup closure returns immediately; without this box the process is
+/// released mid-run.
+private final class GrokDEnsureProcess: @unchecked Sendable {
+    let process = Process()
+    var continuation: CheckedContinuation<Void, Error>?
 }

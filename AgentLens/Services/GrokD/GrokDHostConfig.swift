@@ -39,10 +39,23 @@ struct GrokDHostConfig: Equatable, Sendable {
         fromActiveEnv url: URL = GrokDHostConfig.defaultActiveEnvURL(),
         fileManager: FileManager = .default
     ) throws -> GrokDHostConfig {
+        guard fileManager.fileExists(atPath: url.path) else {
+            throw GrokDHostError.missingActiveEnv
+        }
         let data = try Data(contentsOf: url)
         let env = try JSONDecoder().decode(GrokDActiveEnvFile.self, from: data)
         let rawToken = env.SAND_HOST_GATEWAY_TOKEN?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let token = rawToken.isEmpty ? localBoxShimBearer : rawToken
+        let token: String
+        if rawToken.isEmpty {
+            // Local profiles write the shim bearer. Cursor seats omit it; only
+            // then do we fall back. A blank local token is a broken env file.
+            if env.mode == "local" {
+                throw GrokDHostError.missingToken
+            }
+            token = localBoxShimBearer
+        } else {
+            token = rawToken
+        }
         return GrokDHostConfig(
             loopbackHost: loopbackHost,
             shimPort: shimPort,

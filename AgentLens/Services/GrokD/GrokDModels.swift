@@ -28,23 +28,38 @@ enum GrokDBoxHealth: String, Equatable, Sendable {
     }
 }
 
+enum GrokDStatusTone: String, Equatable, Sendable {
+    case info
+    case success
+    case warning
+    case error
+}
+
 struct GrokDAgentRecord: Identifiable, Equatable, Sendable, Decodable {
     let id: String
     let name: String
     let isRunning: Bool
     let isComposingMessage: Bool
+    let lastMessagePreview: String?
 
     var isBusy: Bool { isRunning || isComposingMessage }
 
     enum CodingKeys: String, CodingKey {
-        case id, name, isRunning, isComposingMessage
+        case id, name, isRunning, isComposingMessage, lastMessagePreview
     }
 
-    init(id: String, name: String, isRunning: Bool, isComposingMessage: Bool) {
+    init(
+        id: String,
+        name: String,
+        isRunning: Bool,
+        isComposingMessage: Bool,
+        lastMessagePreview: String? = nil
+    ) {
         self.id = id
         self.name = name
         self.isRunning = isRunning
         self.isComposingMessage = isComposingMessage
+        self.lastMessagePreview = lastMessagePreview
     }
 
     init(from decoder: Decoder) throws {
@@ -53,6 +68,7 @@ struct GrokDAgentRecord: Identifiable, Equatable, Sendable, Decodable {
         name = try c.decodeIfPresent(String.self, forKey: .name) ?? ""
         isRunning = try c.decodeIfPresent(Bool.self, forKey: .isRunning) ?? false
         isComposingMessage = try c.decodeIfPresent(Bool.self, forKey: .isComposingMessage) ?? false
+        lastMessagePreview = try c.decodeIfPresent(String.self, forKey: .lastMessagePreview)
     }
 }
 
@@ -62,10 +78,55 @@ struct GrokDTurnHandle: Equatable, Sendable {
     let acceptedAt: Date
 }
 
+struct GrokDTurnFollowResult: Equatable, Sendable {
+    enum Outcome: String, Equatable, Sendable {
+        case completed
+        case promptLandedNoReply
+        case stillRunning
+        case agentMissing
+        case cancelled
+    }
+
+    let outcome: Outcome
+    let lastPreview: String?
+
+    var userMessage: String {
+        switch outcome {
+        case .completed:
+            return "Turn completed."
+        case .promptLandedNoReply:
+            return "Prompt landed; no assistant reply yet."
+        case .stillRunning:
+            return "Turn still running. Refresh to check."
+        case .agentMissing:
+            return "That agent disappeared from the live roster."
+        case .cancelled:
+            return "Turn follow cancelled."
+        }
+    }
+
+    var tone: GrokDStatusTone {
+        switch outcome {
+        case .completed:
+            return .success
+        case .promptLandedNoReply, .stillRunning:
+            return .warning
+        case .agentMissing:
+            return .error
+        case .cancelled:
+            return .info
+        }
+    }
+}
+
 enum GrokDHostError: Error, Equatable {
     case sendRefused(GrokDBoxHealth)
     case invalidAgentID
+    case emptyPrompt
+    case unknownAgent(id: String)
     case agentBusy(id: String)
+    case missingActiveEnv
+    case missingToken
     case notLoopback
     case httpStatus(Int)
     case decoding
@@ -77,8 +138,16 @@ enum GrokDHostError: Error, Equatable {
             return health.userMessage
         case .invalidAgentID:
             return "Agent id must be a UUID."
+        case .emptyPrompt:
+            return "Prompt is empty."
+        case .unknownAgent:
+            return "That agent is not on the live roster."
         case .agentBusy:
             return "That agent is already running a turn."
+        case .missingActiveEnv:
+            return "Local D box is not configured."
+        case .missingToken:
+            return "Local D box token is missing from active-env.json."
         case .notLoopback:
             return "Local D box is loopback-only."
         case .httpStatus(let code):

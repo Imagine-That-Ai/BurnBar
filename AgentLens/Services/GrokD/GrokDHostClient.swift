@@ -61,21 +61,111 @@ struct GrokDHostClient: Sendable {
     /// Sends one UUID a prompt. Refuses unless health is `.ok`. Does not wait for an assistant line.
     func sendPrompt(agentID: String, prompt: String) async throws -> GrokDTurnHandle {
         guard Self.isAgentUUID(agentID) else { throw GrokDHostError.invalidAgentID }
+        let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { throw GrokDHostError.emptyPrompt }
         let status = await health()
         guard status.allowsSend else { throw GrokDHostError.sendRefused(status) }
 
         let agents = try await listAgents()
-        if let agent = agents.first(where: { $0.id == agentID }), agent.isBusy {
+        guard let agent = agents.first(where: { $0.id == agentID }) else {
+            throw GrokDHostError.unknownAgent(id: agentID)
+        }
+        if agent.isBusy {
             throw GrokDHostError.agentBusy(id: agentID)
         }
 
         let body: [String: Any] = [
             "agentId": agentID,
-            "prompt": prompt,
+            "prompt": trimmed,
             "awaitTurn": false,
         ]
         _ = try await post(method: "sendPrompt", body: body)
-        return GrokDTurnHandle(agentID: agentID, prompt: prompt, acceptedAt: Date())
+        return GrokDTurnHandle(agentID: agentID, prompt: trimmed, acceptedAt: Date())
+    }
+
+    /// Polls `listAgents` until the agent's preview changes after the prompt lands.
+    /// Never writes SQLite. `sendPrompt` stays `awaitTurn: false`.
+    func followTurn(
+        agentID: String,
+        prompt: String,
+        baselinePreview: String?,
+        maxPolls: Int = 30,
+        pollNanoseconds: UInt64 = 1_000_000_000
+    ) async -> GrokDTurnFollowResult {
+        let needle = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        var sawPrompt = false
+        var userPreview: String?
+        var lastPreview: String?
+        let polls = max(1, maxPolls)
+        for poll in 0..<polls {
+            if Task.isCancelled {
+                return GrokDTurnFollowResult(outcome: .cancelled, lastPreview: lastPreview)
+            }
+            if poll > 0 && pollNanoseconds > 0 {
+                do {
+                    try await Task.sleep(nanoseconds: pollNanoseconds)
+                } catch {
+                    return GrokDTurnFollowResult(outcome: .cancelled, lastPreview: lastPreview)
+                }
+            }
+            let agents: [GrokDAgentRecord]
+            do {
+                agents = try await listAgents()
+            } catch {
+                continue
+            }
+            guard let agent = agents.first(where: { $0.id == agentID }) else {
+                return GrokDTurnFollowResult(outcome: .agentMissing, lastPreview: lastPreview)
+            }
+            let preview = agent.lastMessagePreview
+            lastPreview = preview
+            if !sawPrompt {
+                if Self.previewLooksLikePrompt(preview, needle: needle, baseline: baselinePreview) {
+                    sawPrompt = true
+                    userPreview = preview
+                } else if Self.previewLooksLikeLaterReply(
+                    preview,
+                    needle: needle,
+                    baseline: baselinePreview,
+                    userPreview: nil
+                ) {
+                    return GrokDTurnFollowResult(outcome: .completed, lastPreview: preview)
+                }
+            } else if Self.previewLooksLikeLaterReply(
+                preview,
+                needle: needle,
+                baseline: baselinePreview,
+                userPreview: userPreview
+            ) {
+                return GrokDTurnFollowResult(outcome: .completed, lastPreview: preview)
+            }
+        }
+        if sawPrompt {
+            return GrokDTurnFollowResult(outcome: .promptLandedNoReply, lastPreview: lastPreview)
+        }
+        return GrokDTurnFollowResult(outcome: .stillRunning, lastPreview: lastPreview)
+    }
+
+    /// User line: exact prompt, or a truncation of it. A longer preview that
+    /// merely *contains* the prompt is treated as an assistant/echo line.
+    static func previewLooksLikePrompt(_ preview: String?, needle: String, baseline: String?) -> Bool {
+        guard let preview, !preview.isEmpty, preview != baseline else { return false }
+        if preview == needle { return true }
+        return needle.hasPrefix(preview)
+    }
+
+    static func previewLooksLikeLaterReply(
+        _ preview: String?,
+        needle: String,
+        baseline: String?,
+        userPreview: String?
+    ) -> Bool {
+        guard let preview, !preview.isEmpty else { return false }
+        if preview == baseline { return false }
+        if preview == userPreview { return false }
+        if preview == needle { return false }
+        if needle.hasPrefix(preview) { return false }
+        return true
     }
 
     private func post(method: String, body: [String: Any]) async throws -> Data {
@@ -98,13 +188,16 @@ struct GrokDHostClient: Sendable {
     }
 
     private func decodeAgentList(_ data: Data) throws -> [GrokDAgentRecord] {
-        if let list = try? JSONDecoder().decode([GrokDAgentRecord].self, from: data) {
-            return list
+        let decoder = JSONDecoder()
+        do {
+            return try decoder.decode([GrokDAgentRecord].self, from: data)
+        } catch {
+            struct Envelope: Decodable { let agents: [GrokDAgentRecord] }
+            do {
+                return try decoder.decode(Envelope.self, from: data).agents
+            } catch {
+                throw GrokDHostError.decoding
+            }
         }
-        struct Envelope: Decodable { let agents: [GrokDAgentRecord] }
-        if let envelope = try? JSONDecoder().decode(Envelope.self, from: data) {
-            return envelope.agents
-        }
-        throw GrokDHostError.decoding
     }
 }

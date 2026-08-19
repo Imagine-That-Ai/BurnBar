@@ -582,6 +582,7 @@ enum SettingsManifest {
             ],
             logoProviders: [.codex, .claudeCode, .openCode, .factory]
         ),
+#if !DISTRIBUTION_MAS
         SettingsItem(
             id: "agents.localDBox",
             tab: .agents,
@@ -595,6 +596,7 @@ enum SettingsManifest {
                 "1337", "1338", "8787", "uuid", "listagents", "sendprompt"
             ]
         ),
+#endif
 
         // MARK: Alerts
 
@@ -975,6 +977,9 @@ enum SettingsManifest {
         SettingsAnchor.agentsModels,
         SettingsAnchor.agentsAdvanced,
         SettingsAnchor.agentsQuotaDisplay,
+#if !DISTRIBUTION_MAS
+        SettingsAnchor.agentsLocalDBox,
+#endif
         SettingsAnchor.alertsDailySpend,
         SettingsAnchor.alertsDigest,
         SettingsAnchor.notificationsLocal,

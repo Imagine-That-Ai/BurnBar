@@ -125,14 +125,196 @@ final class GrokDHostClientTests: XCTestCase {
         XCTAssertFalse(GrokDStubURLProtocol.requests.contains(where: { $0.url?.path == "/api/sendPrompt" }))
     }
 
-    func testAutoStartDoesNotRunWhenFlagOffOrSandboxed() {
+    func testAutoStartDoesNotRunWhenFlagOffOrSandboxed() async {
         let defaults = UserDefaults(suiteName: "GrokDHostClientTests.autostart.\(UUID().uuidString)")!
         defaults.set(false, forKey: GrokDFeature.DefaultsKey.enabled)
         defaults.set(true, forKey: GrokDFeature.DefaultsKey.autoStart)
-        var ran = false
-        let started = GrokDFeature.startLocalBoxIfNeeded(defaults: defaults) { _ in ran = true }
+        let ran = Locked(false)
+        let started = await GrokDFeature.startLocalBoxIfNeeded(defaults: defaults) { _ in
+            ran.write(true)
+        }
         XCTAssertFalse(started)
-        XCTAssertFalse(ran)
+        XCTAssertFalse(ran.read())
+    }
+
+    func testAutoStartRunsWhenBothFlagsOnAndScriptExists() async throws {
+        let script = GrokDHostConfig.defaultEnsureLocalBoxURL()
+        try XCTSkipUnless(
+            FileManager.default.fileExists(atPath: script.path),
+            "ensure-local-box.sh not installed"
+        )
+        try XCTSkipIf(GrokDFeature.isAppSandboxed, "sandboxed host cannot auto-start")
+        let defaults = UserDefaults(suiteName: "GrokDHostClientTests.autostart.on.\(UUID().uuidString)")!
+        defaults.set(true, forKey: GrokDFeature.DefaultsKey.enabled)
+        defaults.set(true, forKey: GrokDFeature.DefaultsKey.autoStart)
+        let ran = Locked(false)
+        let started = await GrokDFeature.startLocalBoxIfNeeded(defaults: defaults) { _ in
+            ran.write(true)
+        }
+        XCTAssertTrue(started)
+        XCTAssertTrue(ran.read())
+    }
+
+    func testLocalProfileMissingTokenThrows() throws {
+        let env = try makeActiveEnv(token: nil, mode: "local")
+        XCTAssertThrowsError(try GrokDHostConfig.load(fromActiveEnv: env)) { error in
+            XCTAssertEqual(error as? GrokDHostError, .missingToken)
+        }
+    }
+
+    func testMissingActiveEnvThrows() {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("missing-grokd-env-\(UUID().uuidString).json")
+        XCTAssertThrowsError(try GrokDHostConfig.load(fromActiveEnv: url)) { error in
+            XCTAssertEqual(error as? GrokDHostError, .missingActiveEnv)
+        }
+    }
+
+    func testListAgentsAcceptsEnvelope() async throws {
+        GrokDStubURLProtocol.handler = { request in
+            let envelope = "{\"agents\":" + Self.agentJSON(running: false) + "}"
+            return Self.json(request, 200, envelope)
+        }
+        let agents = try await makeClient(ports: [1337, 1338, 8787]).listAgents()
+        XCTAssertEqual(agents.count, 1)
+        XCTAssertEqual(agents.first?.id, Self.benchID)
+    }
+
+    func testSendPromptRejectsUnknownAgent() async {
+        GrokDStubURLProtocol.handler = { request in
+            Self.json(request, 200, Self.agentJSON(running: false))
+        }
+        let missing = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        await XCTAssertThrowsErrorAsync({
+            try await self.makeClient(ports: [1337, 1338, 8787]).sendPrompt(agentID: missing, prompt: "x")
+        }) { error in
+            XCTAssertEqual(error as? GrokDHostError, .unknownAgent(id: missing))
+        }
+        XCTAssertFalse(GrokDStubURLProtocol.requests.contains(where: { $0.url?.path == "/api/sendPrompt" }))
+    }
+
+    func testSendPromptRejectsEmptyPrompt() async {
+        await XCTAssertThrowsErrorAsync({
+            try await self.makeClient(ports: [1337, 1338, 8787]).sendPrompt(agentID: Self.benchID, prompt: "   ")
+        }) { error in
+            XCTAssertEqual(error as? GrokDHostError, .emptyPrompt)
+        }
+        XCTAssertTrue(GrokDStubURLProtocol.requests.isEmpty)
+    }
+
+    func testFollowTurnCompletesWhenPreviewChanges() async {
+        let prompt = "unique-follow-token-xyz"
+        let polls = Locked(0)
+        GrokDStubURLProtocol.handler = { request in
+            let n = polls.withLock { value -> Int in
+                value += 1
+                return value
+            }
+            if n == 1 {
+                return Self.json(request, 200, Self.agentJSON(running: true, preview: prompt))
+            }
+            return Self.json(request, 200, Self.agentJSON(running: false, preview: "assistant pong"))
+        }
+        let result = await makeClient(ports: [1337, 1338, 8787]).followTurn(
+            agentID: Self.benchID,
+            prompt: prompt,
+            baselinePreview: "old line",
+            maxPolls: 4,
+            pollNanoseconds: 0
+        )
+        XCTAssertEqual(result.outcome, .completed)
+        XCTAssertEqual(result.lastPreview, "assistant pong")
+    }
+
+    func testFollowTurnCompletesWhenFirstPreviewIsEcho() async {
+        let prompt = "echo-token-xyz"
+        GrokDStubURLProtocol.handler = { request in
+            Self.json(request, 200, Self.agentJSON(running: false, preview: "\(prompt) pong"))
+        }
+        let result = await makeClient(ports: [1337, 1338, 8787]).followTurn(
+            agentID: Self.benchID,
+            prompt: prompt,
+            baselinePreview: "old line",
+            maxPolls: 2,
+            pollNanoseconds: 0
+        )
+        XCTAssertEqual(result.outcome, .completed)
+    }
+
+    func testFollowTurnReportsPromptLandedWithoutReply() async {
+        let prompt = "landed-only-token"
+        GrokDStubURLProtocol.handler = { request in
+            Self.json(request, 200, Self.agentJSON(running: false, preview: prompt))
+        }
+        let result = await makeClient(ports: [1337, 1338, 8787]).followTurn(
+            agentID: Self.benchID,
+            prompt: prompt,
+            baselinePreview: "before",
+            maxPolls: 2,
+            pollNanoseconds: 0
+        )
+        XCTAssertEqual(result.outcome, .promptLandedNoReply)
+    }
+
+    func testHealthCannotListWhenListAgentsFailsWithPortsUp() async {
+        GrokDStubURLProtocol.handler = { request in
+            Self.json(request, 500, #"{"error":"no"}"#)
+        }
+        let health = await makeClient(ports: [1337, 1338, 8787]).health()
+        XCTAssertEqual(health, .cannotList)
+    }
+
+    func testBoxModelSendPreservesFollowStatus() async throws {
+        let defaults = UserDefaults(suiteName: "GrokDBoxModel.send.\(UUID().uuidString)")!
+        defaults.set(true, forKey: GrokDFeature.DefaultsKey.enabled)
+        let sent = Locked(0)
+        let listsAfterSend = Locked(0)
+        GrokDStubURLProtocol.handler = { request in
+            if request.url?.path == "/api/sendPrompt" {
+                sent.withLock { $0 += 1 }
+                return Self.json(request, 200, #"{"accepted":true}"#)
+            }
+            if sent.read() == 0 {
+                return Self.json(request, 200, Self.agentJSON(running: false, preview: "old"))
+            }
+            let n = listsAfterSend.withLock { value -> Int in
+                value += 1
+                return value
+            }
+            if n == 1 {
+                return Self.json(request, 200, Self.agentJSON(running: true, preview: "hello-token"))
+            }
+            return Self.json(request, 200, Self.agentJSON(running: false, preview: "done"))
+        }
+        let session = self.session!
+        let token = self.token
+        let model = GrokDBoxModel(
+            defaults: defaults,
+            makeClient: {
+                GrokDHostClient(
+                    config: GrokDHostConfig(
+                        loopbackHost: "127.0.0.1",
+                        shimPort: 1337,
+                        hostPort: 1338,
+                        inferencePort: 8787,
+                        bearerToken: token,
+                        guiMode: "local"
+                    ),
+                    session: session,
+                    portProbe: GrokDStubPortProbe(open: [1337, 1338, 8787])
+                )
+            },
+            startBox: { false }
+        )
+        model.followMaxPolls = 4
+        model.followPollNanoseconds = 0
+        await model.refresh()
+        model.selectedAgentID = Self.benchID
+        model.promptText = "hello-token"
+        XCTAssertTrue(model.canSend)
+        await model.send()
+        XCTAssertEqual(model.lastMessage, "Turn completed.")
+        XCTAssertEqual(model.statusTone, .success)
+        XCTAssertTrue(GrokDStubURLProtocol.requests.contains(where: { $0.url?.path == "/api/sendPrompt" }))
     }
 
     func testCursorModeMissingTokenUsesLoopbackBearerAndWarns() throws {
@@ -283,9 +465,15 @@ final class GrokDHostClientTests: XCTestCase {
         return url
     }
 
-    private nonisolated static func agentJSON(running: Bool) -> String {
-        """
-        [{"id":"\(benchID)","name":"Robust Bench","isRunning":\(running),"isComposingMessage":false}]
+    private nonisolated static func agentJSON(running: Bool, preview: String? = nil) -> String {
+        let previewField: String
+        if let preview {
+            previewField = ",\"lastMessagePreview\":\"\(preview)\""
+        } else {
+            previewField = ""
+        }
+        return """
+        [{"id":"\(benchID)","name":"Robust Bench","isRunning":\(running),"isComposingMessage":false\(previewField)}]
         """
     }
 
