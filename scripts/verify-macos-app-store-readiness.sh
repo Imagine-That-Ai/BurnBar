@@ -67,7 +67,7 @@ xcodebuild build \
   ARCHS=arm64 \
   ONLY_ACTIVE_ARCH=YES \
   CODE_SIGNING_ALLOWED=NO \
-  CODE_SIGN_ENTITLEMENTS="$entitlements" \
+  OPENBURNBAR_HOST_CODE_SIGN_ENTITLEMENTS="$entitlements" \
   GCC_PREPROCESSOR_DEFINITIONS='$(inherited) DISTRIBUTION_MAS=1' \
   OTHER_SWIFT_FLAGS='$(inherited) -D DISTRIBUTION_MAS' \
   2>&1 | tee "$log_path" | tail -120

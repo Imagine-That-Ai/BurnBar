@@ -79,6 +79,11 @@ const LANE_PATTERNS = {
   macos: [
     /^AgentLens\//,
     /^AgentLensTests\//,
+    // The Safari appex and the web bundle it embeds are built by the macOS app
+    // graph. Without these a PR touching only the extension selects no lane and
+    // ships unbuilt — the path-filter drift failure in docs/CI_RELEASE_RUNBOOK.md.
+    /^OpenBurnBarSafariExtension\//,
+    /^extensions\/safari\//,
     /^scripts\/(?:test-openburnbar-app|diff-coverage)(?:[^/]*)$/,
     /^\.github\/workflows\/app-pr-gate\.yml$/,
   ],

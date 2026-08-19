@@ -1885,6 +1885,28 @@ jobs:
             "runtime,library" \
             "com.openburnbar.privileged-input-killswitch-watchdog"
 
+          # Sign the embedded Safari extension BEFORE the host app (nested-first).
+          # The build ran with CODE_SIGNING_ALLOWED=NO, so the appex arrives
+          # unsigned; skipping it fails `codesign --verify --deep --strict`
+          # below and reproduces the bug the target exists to fix: an extension
+          # that is committed but reaches no release. Mirrors
+          # scripts/build-macos-website-release.sh exactly.
+          SAFARI_EXTENSION_APPEX="$APP_PATH/Contents/PlugIns/OpenBurnBarSafariExtension.appex"
+          SAFARI_EXTENSION_ENTITLEMENTS="OpenBurnBarSafariExtension/Resources/OpenBurnBarSafariExtension.entitlements"
+          if [[ ! -d "$SAFARI_EXTENSION_APPEX" ]]; then
+            echo "::error::Safari extension missing at $SAFARI_EXTENSION_APPEX. The OpenBurnBarSafariExtension target must build and embed into Contents/PlugIns."
+            exit 1
+          fi
+          if [[ ! -f "$SAFARI_EXTENSION_APPEX/Contents/Resources/manifest.json" ]]; then
+            echo "::error::Safari extension at $SAFARI_EXTENSION_APPEX has no Contents/Resources/manifest.json; the extensions/safari/dist copy did not run."
+            exit 1
+          fi
+          sign_one_with_entitlements \
+            "$SAFARI_EXTENSION_APPEX" \
+            "$SAFARI_EXTENSION_ENTITLEMENTS" \
+            "runtime,library" \
+            "com.openburnbar.app.safari-extension"
+
           cp "$APP_PROFILE" "$APP_PATH/Contents/embedded.provisionprofile"
           codesign --force --timestamp --options runtime,library \
             --entitlements "$APP_SIGNING_ENTITLEMENTS" \
@@ -1896,6 +1918,7 @@ jobs:
           assert_peer_signature "$APP_PATH" "com.openburnbar.app"
           assert_peer_signature "$HELPERS_DIR/OpenBurnBarDaemon" "com.openburnbar.app"
           assert_peer_signature "$HELPERS_DIR/OpenBurnBarCLI" "com.openburnbar.cli"
+          assert_peer_signature "$SAFARI_EXTENSION_APPEX" "com.openburnbar.app.safari-extension"
           assert_peer_signature "$HELPERS_DIR/OpenBurnBarPrivilegedInputExecution" "com.openburnbar.privileged-input-execution"
           assert_peer_signature "$HELPERS_DIR/OpenBurnBarVirtualHIDBridge" "com.openburnbar.virtual-hid-bridge"
           assert_peer_signature "$HELPERS_DIR/OpenBurnBarPrivilegedInputKillSwitchWatchdog" "com.openburnbar.privileged-input-killswitch-watchdog"

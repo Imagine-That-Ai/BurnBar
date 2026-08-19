@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+		Attenuated on purpose. A Safari Web Extension appex must be sandboxed, and
+		the loopback client grant is what the bridge will need to reach
+		OpenBurnBarDaemon on 127.0.0.1.
+
+		App Groups and Keychain Sharing are deliberately NOT here. Both are
+		profile-restricted for Developer ID distribution, so claiming them would
+		require a dedicated MAC_APP_DIRECT provisioning profile for
+		com.openburnbar.app.safari-extension that does not exist yet — and the
+		website release lane would fail closed the moment it could not find one.
+		They land together with the native bridge and its profile, not before.
+
+		No network.server: the appex is a loopback client and must never listen
+		for inbound traffic.
+	-->
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<key>com.apple.security.network.client</key>
+	<true/>
+</dict>
+</plist>
