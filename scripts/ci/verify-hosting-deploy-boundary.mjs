@@ -206,7 +206,17 @@ requireIncludes(
 );
 requireIncludes(
   deployJob,
-  "if: ${{ github.event_name != 'workflow_dispatch' || inputs.dry_run != true }}",
+  "!cancelled()",
+  "hosting deploy must carry a status-check function so an upstream skipped gate job cannot propagate a skip onto the credentialed deploy",
+);
+requireIncludes(
+  deployJob,
+  "needs.build-hosting-artifacts.result == 'success'",
+  "hosting deploy must require a successful immutable-artifact build",
+);
+requireIncludes(
+  deployJob,
+  "(github.event_name != 'workflow_dispatch' || inputs.dry_run != true)",
   "hosting deploy must run on push/tag events and skip only manual dry-runs",
 );
 requireNoPattern(
