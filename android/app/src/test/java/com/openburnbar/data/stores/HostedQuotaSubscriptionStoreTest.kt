@@ -211,6 +211,45 @@ class HostedQuotaSubscriptionStoreTest {
     }
 
     @Test
+    fun uidScopedCacheClearCancelsWorkAndReattachesCurrentUid() = runTest {
+        val context = mockk<Context>(relaxed = true)
+        val firestore = mockk<FirebaseFirestore>()
+        val usersCollection = mockk<CollectionReference>()
+        val userDocument = mockk<DocumentReference>()
+        val entitlementsCollection = mockk<CollectionReference>()
+        val firstRegistration = mockk<ListenerRegistration>(relaxed = true)
+        val secondRegistration = mockk<ListenerRegistration>(relaxed = true)
+        every { firestore.collection("users") } returns usersCollection
+        every { usersCollection.document("user-123") } returns userDocument
+        every { userDocument.collection("entitlements") } returns entitlementsCollection
+        every { entitlementsCollection.addSnapshotListener(any()) } returnsMany listOf(firstRegistration, secondRegistration)
+
+        val firebaseUser = mockk<FirebaseUser>()
+        every { firebaseUser.uid } returns "user-123"
+        val firebaseAuth = mockk<FirebaseAuth>(relaxed = true)
+        every { firebaseAuth.currentUser } returns firebaseUser
+        every { firebaseAuth.addAuthStateListener(any()) } answers {
+            firstArg<FirebaseAuth.AuthStateListener>().onAuthStateChanged(firebaseAuth)
+        }
+
+        val caches = UidScopedCacheRegistry()
+        val store =
+            HostedQuotaSubscriptionStore(
+                functions = mockFunctions,
+                initialBillingClient = mockBillingClient,
+                initialFirestore = firestore,
+                initialFirebaseAuth = firebaseAuth,
+                scopedCaches = caches,
+            )
+        store.initialize(context)
+        verify(exactly = 1) { entitlementsCollection.addSnapshotListener(any()) }
+
+        caches.clearAll()
+        verify { firstRegistration.remove() }
+        verify(exactly = 2) { entitlementsCollection.addSnapshotListener(any()) }
+    }
+
+    @Test
     fun `tierForActiveProduct maps every Play SKU and Apple substring`() {
         // Inactive ⇒ NONE regardless of product.
         assertEquals(
