@@ -206,8 +206,8 @@ requireIncludes(
 );
 requireIncludes(
   deployJob,
-  "if: ${{ github.event_name != 'workflow_dispatch' || inputs.dry_run != true }}",
-  "hosting deploy must run on push/tag events and skip only manual dry-runs",
+  "if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.dry_run != true) }}",
+  "hosting deploy must explicitly run on push/tag events and skip only manual dry-runs",
 );
 requireNoPattern(
   deployJob,

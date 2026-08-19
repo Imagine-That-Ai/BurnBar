@@ -77,8 +77,8 @@ test("push deploys are enabled while manual dry-runs remain build-only", () => {
   );
   assert.match(
     smoke,
-    /if: \$\{\{ always\(\) && \(github\.event_name != 'workflow_dispatch' \|\| inputs\.dry_run != true\) \}\}/u,
-    "hosting smoke must follow the same push-safe dry-run gate",
+    /if: \$\{\{ always\(\) && \(github\.event_name == 'push' \|\| \(github\.event_name == 'workflow_dispatch' && inputs\.dry_run != true\)\) \}\}/u,
+    "hosting smoke must follow the same explicit push-safe dry-run gate",
   );
   assert.doesNotMatch(
     WORKFLOW,
