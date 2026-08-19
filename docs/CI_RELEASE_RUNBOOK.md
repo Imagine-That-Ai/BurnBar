@@ -252,3 +252,39 @@ lives inside the bundle at `Modules/module.modulemap` and cannot collide. See
 
 A static library placed inside a `.framework` bundle is a normal "static
 framework" and is what both of those scripts produce.
+
+---
+
+## 10. Signing identities: the map, and the rule
+
+The August 2026 signing maze, so nobody re-derives it at 2 a.m.:
+
+| Certificate (SHA-256 prefix) | Expires | Private key exists | Verdict |
+|---|---|---|---|
+| `2B5CCCC3…` | Feb 2027 | Mac keychain ✅, vault p12 ✅, CI `CSC_LINK` ✅ | **The canonical signer.** Everything signs with this. |
+| `F6D16CF6…` | Mar 2031 | **Nowhere.** Not the Mac, not the vault, not CI. | Dead. Never reference it in a profile. Revoke after nothing points at it. |
+| `81E8BAF0…` | Feb 2027 | Unknown | A portal twin of the 2027 cert. Not ours to use. |
+
+The portal shows **two visually identical "Feb 01, 2027" Developer ID entries**
+and gives no way to tell them apart in the UI. Therefore:
+
+**The rule: never trust a profile you have not fingerprinted.** After
+downloading any provisioning profile:
+
+```bash
+security cms -D -i profile.provisionprofile > /tmp/p.plist
+python3 -c "import plistlib,hashlib;d=plistlib.load(open('/tmp/p.plist','rb'));[print(hashlib.sha256(c).hexdigest().upper()[:8]) for c in d['DeveloperCertificates']]"
+```
+
+`2B5CCCC3` = correct. Anything else = regenerate with the other twin.
+
+`scripts/check-signing-identity-coherence.sh` automates the whole check —
+every profile under `build/` versus every key actually in the keychain — and
+runs automatically at the top of `make release-website`. Run it standalone any
+time signing behaves strangely; it names the mismatch in one screen.
+
+**When the 2027 cert nears expiry (early 2027):** create the replacement
+cert *and export its .p12 + password into the vault the same day*, regenerate
+both profiles (`com.openburnbar.app`, `com.openburnbar.app.safari-extension`),
+update CI's `CSC_LINK`, and only then revoke the old one. The 2031 cert died
+because the key was never banked anywhere — that is the failure to not repeat.
