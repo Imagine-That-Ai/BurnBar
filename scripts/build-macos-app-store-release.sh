@@ -182,7 +182,7 @@ xcodebuild archive \
   ONLY_ACTIVE_ARCH=YES \
   DEVELOPMENT_TEAM="$team_id" \
   CODE_SIGN_STYLE=Automatic \
-  CODE_SIGN_ENTITLEMENTS="$entitlements" \
+  OPENBURNBAR_HOST_CODE_SIGN_ENTITLEMENTS="$entitlements" \
   GCC_PREPROCESSOR_DEFINITIONS='$(inherited) DISTRIBUTION_MAS=1' \
   OTHER_SWIFT_FLAGS='$(inherited) -D DISTRIBUTION_MAS' \
   2>&1 | tee "$log_path" | tail -120
