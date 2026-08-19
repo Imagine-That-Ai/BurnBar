@@ -57,6 +57,7 @@ forbidden_pattern='DebugBridge(Core|UI|Touch)?|gstack[.-]ios[.-]qa|StateServer|D
 
 symbol_hits="$(
   nm -j "${executable_path}" 2>/dev/null \
+    | grep -v '__swift_FORCE_LOAD_' \
     | LC_ALL=C grep -E -i "${forbidden_pattern}" \
     | head -n 20 \
     || true

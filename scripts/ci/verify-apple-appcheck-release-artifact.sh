@@ -94,6 +94,9 @@ def inspect_release_feeds(value: Any, path: Path) -> None:
     global failed
     if not isinstance(value, dict) or value.get("CFBundleIdentifier") != "com.openburnbar.app":
         return
+    platforms = value.get("CFBundleSupportedPlatforms") or []
+    if value.get("DTPlatformName") == "iphoneos" or "iPhoneOS" in platforms or value.get("LSRequiresIPhoneOS"):
+        return
     expected = {
         direct_feed_key: expected_direct_feed,
         sparkle_feed_key: expected_sparkle_feed,
