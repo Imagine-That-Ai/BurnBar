@@ -17,6 +17,7 @@ struct ConversationCockpitSection: View {
     let streamSearchHits: [StreamSearchHit]
     let cloudSearchHits: [CloudConversationSearchRow]
     let isSearching: Bool
+    var searchFailed: Bool = false
     let isEntitled: Bool
     let bottomPadding: CGFloat
     let onSelectRow: (CockpitConversationRow) -> Void
@@ -24,6 +25,7 @@ struct ConversationCockpitSection: View {
     let onOpenFilters: () -> Void
     let onSaveQuery: () -> Void
     let onOpenStore: () -> Void
+    var onRetrySearch: () -> Void = {}
 
     var body: some View {
         if isEntitled {
@@ -66,7 +68,8 @@ struct ConversationCockpitSection: View {
             query: searchText,
             isSearching: isSearching,
             cloudConversationHitCount: cloudSearchHits.count,
-            streamHitCount: streamSearchHits.count
+            streamHitCount: streamSearchHits.count,
+            searchFailed: searchFailed
         ).mode
     }
 
@@ -166,6 +169,16 @@ struct ConversationCockpitSection: View {
                 .tint(MobileTheme.ember)
                 .frame(maxWidth: .infinity, minHeight: 260)
                 .padding(.vertical, 24)
+        case .failed:
+            AuroraStatePane(
+                kind: .error,
+                icon: "exclamationmark.icloud.fill",
+                title: "Search failed",
+                message: "Could not search sessions. Try again.",
+                ctaLabel: "Try Again",
+                onCTA: onRetrySearch
+            )
+            .frame(minHeight: 300)
         case .empty:
             AuroraStatePane(
                 kind: .empty,
