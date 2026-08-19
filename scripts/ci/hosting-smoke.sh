@@ -110,9 +110,27 @@ NODE
     return 1
   fi
   while IFS=$'\t' read -r path expected_sha; do
-    local body actual_sha
+    local body headers actual_sha location canonical_path
     body="$(mktemp)"
-    http_code="$(curl -sS -o "$body" -w "%{http_code}" "$base_url/$path" 2>/dev/null || echo "000")"
+    headers="$(mktemp)"
+    http_code="$(curl -sS -D "$headers" -o "$body" -w "%{http_code}" "$base_url/$path" 2>/dev/null || echo "000")"
+    if [[ "$http_code" =~ ^30[1278]$ ]]; then
+      location="$(awk 'tolower($1) == "location:" { sub(/\r$/, "", $2); print $2; exit }' "$headers")"
+      canonical_path=""
+      case "$path" in
+        index.html) canonical_path="/" ;;
+        */index.html) canonical_path="/${path%/index.html}" ;;
+        *.html) canonical_path="/${path%.html}" ;;
+      esac
+      if [[ -z "$canonical_path" || "$location" != "$canonical_path" ]]; then
+        rm -f "$body" "$headers"
+        echo "FAIL: Console runtime file $path returned an unexpected redirect to ${location:-<missing>}" >&2
+        return 1
+      fi
+      : > "$body"
+      http_code="$(curl -sS -o "$body" -w "%{http_code}" "$base_url$canonical_path" 2>/dev/null || echo "000")"
+    fi
+    rm -f "$headers"
     [[ "$http_code" == "200" ]] || { rm -f "$body"; echo "FAIL: Console runtime file $path returned HTTP $http_code" >&2; return 1; }
     actual_sha="$(sha256sum "$body" | cut -d' ' -f1)"
     rm -f "$body"

@@ -37,6 +37,17 @@ case "$url" in
     ;;
   https://mock.invalid/console/*)
     relative="${url#https://mock.invalid/console/}"
+    if [[ "$relative" == "404.html" ]]; then
+      [[ -z "$headers" ]] || printf 'HTTP/2 301\r\nlocation: /404\r\n\r\n' > "$headers"
+      : > "$body"
+      printf '301'
+      exit 0
+    fi
+    if [[ "$relative" == "404" ]]; then
+      cp "$MOCK_RUNTIME_ROOT/404.html" "$body"
+      printf '200'
+      exit 0
+    fi
     if [[ -f "$MOCK_RUNTIME_ROOT/$relative" ]]; then
       cp "$MOCK_RUNTIME_ROOT/$relative" "$body"
       printf '200'
@@ -144,6 +155,7 @@ cp "$identity" "$runtime_root/domain-core-deployment-identity.json"
 cp "$profile" "$runtime_root/domain-core-build-profile.json"
 printf 'domain-core-wasm-bytes\n' > "$runtime_root/domain-core.wasm"
 printf 'fetch("domain-core.wasm"); domainCoreSourceFingerprint();\n' > "$runtime_root/domain-core.js"
+printf 'not-found\n' > "$runtime_root/404.html"
 node "$ROOT/scripts/ci/create-domain-core-runtime-artifact-manifest.mjs" \
   --consumer console \
   --root "$runtime_root" \
