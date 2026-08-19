@@ -356,6 +356,7 @@ jobs:
           RELEASE_COMMIT: ${{ steps.ref.outputs.commit }}
           RELEASE_TAG: ${{ steps.ref.outputs.release_tag }}
           REQUIRES_PROOF: ${{ steps.proof_gate.outputs.proof_required }}
+          DOMAIN_CORE_ACTIVE: ${{ steps.activation.outputs.active }}
         run: |
           set -euo pipefail
           args=(
@@ -367,6 +368,9 @@ jobs:
           [[ -z "$RELEASE_TAG" ]] || args+=(--tag "$RELEASE_TAG")
           [[ "$REQUIRES_PROOF" != "true" ]] \
             || args+=(--release-gate "$RUNNER_TEMP/domain-core-release-inputs/domain-core-release-gate.json")
+          if [[ "$DOMAIN_CORE_ACTIVE" == "false" ]]; then
+            args+=(--domain-core-inactive true)
+          fi
           node scripts/ci/create-domain-core-deployment-identity.mjs "${args[@]}"
 
       - name: Install hosting dependencies

@@ -150,6 +150,57 @@ test("legacy main deploy may omit proof but tagged and Rust deploys fail closed"
   }
 });
 
+test("tagged legacy deployment may bind its tag when the domain-core lane is explicitly inactive", () => {
+  const files = fixture({ mode: "legacy" });
+  try {
+    const identity = buildDeploymentIdentity({
+      consumer: "console",
+      commit: ACTIVATION.activationCommit,
+      tag: "v1.2.3",
+      profileReceiptPath: files.profile,
+      domainCoreInactive: true,
+    });
+    assert.equal(identity.tag, "v1.2.3");
+    assert.equal(identity.releaseGate, null);
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+test("inactive domain-core mode cannot weaken Rust or rollback profiles", () => {
+  const rust = fixture({ mode: "rust" });
+  const rollback = fixture({
+    mode: "legacy",
+    profileName: "public-production-rollback",
+  });
+  try {
+    assert.throws(
+      () =>
+        buildDeploymentIdentity({
+          consumer: "console",
+          commit: ACTIVATION.activationCommit,
+          tag: "v1.2.3",
+          profileReceiptPath: rust.profile,
+          domainCoreInactive: true,
+        }),
+      /inactive domain-core mode is only valid/u,
+    );
+    assert.throws(
+      () =>
+        buildDeploymentIdentity({
+          consumer: "console",
+          commit: CANDIDATE.candidateCommit,
+          profileReceiptPath: rollback.profile,
+          domainCoreInactive: true,
+        }),
+      /inactive domain-core mode is only valid/u,
+    );
+  } finally {
+    rmSync(rust.directory, { recursive: true, force: true });
+    rmSync(rollback.directory, { recursive: true, force: true });
+  }
+});
+
 test("rollback deploy requires exact protected proof and all-legacy modes", () => {
   const files = fixture({ profileName: "public-production-rollback" });
   try {
