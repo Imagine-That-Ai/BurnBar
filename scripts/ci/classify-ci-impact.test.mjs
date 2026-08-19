@@ -196,6 +196,25 @@ test("safari extension source and built bundle select macos", () => {
   }
 });
 
+test("external Safari build inputs reach the macos lane", () => {
+  // build.mjs copies these into extensions/safari/dist; if a change to one
+  // does not select macos, safari-extension-fast never runs and the stale
+  // bundle sails past the byte-for-byte dist gate.
+  const icon = classifyPaths(["extensions/openburnbar/media/app-icon-128.png"]);
+  assert.equal(icon.macos, true);
+  assert.equal(icon.web, true);
+
+  const logo = classifyPaths([
+    "AgentLens/Resources/Assets.xcassets/AppLogo.imageset/AppLogo.svg",
+  ]);
+  assert.equal(logo.macos, true);
+
+  // design-tokens has no lane of its own, so it fails closed to a full run,
+  // which already includes macos.
+  const tokens = classifyPaths(["packages/design-tokens/dist/css/pensieve.css"]);
+  assert.equal(tokens.macos, true);
+});
+
 test("safari extension manifests mixed with functions wake both lanes", () => {
   const result = classifyPaths([
     "extensions/safari/package.json",

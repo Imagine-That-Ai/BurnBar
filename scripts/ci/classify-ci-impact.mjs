@@ -103,6 +103,11 @@ const LANE_PATTERNS = {
     // ships unbuilt — the path-filter drift failure in docs/CI_RELEASE_RUNBOOK.md.
     /^OpenBurnBarSafariExtension\//,
     /^extensions\/safari\//,
+    // extensions/safari/scripts/build.mjs copies this icon straight into the
+    // Safari dist. The path otherwise belongs to the VS Code extension (web
+    // lane), so without this an icon change merges without rebuilding the
+    // Safari bundle and ships a stale asset past the byte-for-byte dist gate.
+    /^extensions\/openburnbar\/media\/app-icon-128\.png$/,
     /^scripts\/(?:test-openburnbar-app|diff-coverage)(?:[^/]*)$/,
     /^\.github\/workflows\/app-pr-gate\.yml$/,
   ],
