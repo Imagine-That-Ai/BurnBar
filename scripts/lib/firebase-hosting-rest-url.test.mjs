@@ -113,3 +113,46 @@ test("accepts only exact immutable version and release resource names", () => {
     /exact release name/u,
   );
 });
+
+test("project-qualified resource names normalize to the bare request path", () => {
+  // The Hosting API may answer a `projects/-/sites/...` create with either the
+  // bare or the project-qualified name. Both must resolve to the bare form,
+  // because that is what gets pasted back into :populateFiles and :finalize.
+  assert.equal(
+    firebaseHostingVersionName(
+      "projects/openburnbar/sites/burnbar/versions/v1",
+      "burnbar",
+    ),
+    "sites/burnbar/versions/v1",
+  );
+  assert.equal(
+    firebaseHostingReleaseName(
+      "projects/openburnbar/sites/burnbar-console/channels/live/releases/r1",
+      "burnbar-console",
+    ),
+    "sites/burnbar-console/channels/live/releases/r1",
+  );
+  // Qualifying the name must not smuggle in a site outside the allowlist.
+  assert.throws(
+    () =>
+      firebaseHostingVersionName(
+        "projects/openburnbar/sites/attacker/versions/v1",
+        "burnbar",
+      ),
+    /exact version name/u,
+  );
+  // A nested project segment must not let a second `sites/` slip through.
+  assert.throws(
+    () =>
+      firebaseHostingVersionName(
+        "projects/a/sites/evil/sites/burnbar/versions/v1",
+        "burnbar",
+      ),
+    /exact version name/u,
+  );
+  // The failure names what actually came back, so the next outage is one read.
+  assert.throws(
+    () => firebaseHostingVersionName(undefined, "burnbar"),
+    /got undefined/u,
+  );
+});
