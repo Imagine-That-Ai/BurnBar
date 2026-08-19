@@ -542,15 +542,18 @@ public actor BurnBarRunService {
         )
     }
 
-    public func cancelRun(_ request: BurnBarRunCancelRequest) async throws -> BurnBarRunDetailResponse {
-        try await restorePersistedRunsIfNeeded()
-        try await clientRegistry.requireController(request.clientID)
-        try await restoreSingleRunIfNeeded(runID: request.runID)
-        guard var run = runs[request.runID] else {
-            throw BurnBarRunServiceError.runNotFound(request.runID)
-        }
-
-        let message = request.reason ?? "Cancelled by controller."
+    /// Shared cancellation sequence for every authority that may stop a run.
+    ///
+    /// Callers are responsible for proving authority BEFORE calling this —
+    /// `cancelRun` requires controller status, `cancelSafariRun` requires the
+    /// exact attached Safari client/session pair. Everything after that proof is
+    /// identical, so it lives here once: terminal transition, computer-use
+    /// revocation, workspace-call teardown, journal event, and checkpoint.
+    private func applyRunCancellation(
+        _ run: inout BurnBarManagedRun,
+        runID: BurnBarRunID,
+        message: String
+    ) async throws {
         try transition(&run, to: .cancelled, errorMessage: message, activeApprovalID: nil)
         run.approvalRequest = nil
         run.activeToolCallID = nil
@@ -560,9 +563,9 @@ public actor BurnBarRunService {
         let cancellationGeneration = run.computerUseGeneration
         // Publish revocation state before the first await. A concurrent resume
         // must observe cancellation even while external session cleanup blocks.
-        runs[request.runID] = run
-        await computerUseRunRevoker?(request.runID, revokedComputerUseGeneration)
-        _ = await workspaceBridgeBroker.cancelActiveCall(for: request.runID)
+        runs[runID] = run
+        await computerUseRunRevoker?(runID, revokedComputerUseGeneration)
+        _ = await workspaceBridgeBroker.cancelActiveCall(for: runID)
         try await appendJournalEvent(
             BurnBarRunJournalEvent(
                 runID: run.runID,
@@ -572,11 +575,63 @@ public actor BurnBarRunService {
                 emittedAt: Date()
             )
         )
-        if let current = runs[request.runID],
+        if let current = runs[runID],
            current.snapshot.phase == .cancelled,
            current.computerUseGeneration == cancellationGeneration {
             try await writeCheckpoint(for: current)
         }
+    }
+
+    /// Cancels a run only when it is still owned by the exact attached Safari
+    /// client/session pair.
+    ///
+    /// This is the non-interactive Stop path for the embedded Safari extension.
+    /// It deliberately does NOT go through `cancelRun`, because that requires
+    /// controller authority the appex must never hold. Ownership is proved by
+    /// the attached client/session pair instead, so one Safari session can never
+    /// cancel another client's run.
+    ///
+    /// The CLI hand-off lane is intentionally absent: Safari hand-off is not part
+    /// of this bridge slice, so a Safari stop only ever cancels a managed run.
+    @discardableResult
+    public func cancelSafariRun(
+        _ runID: BurnBarRunID,
+        clientID: BurnBarClientID,
+        sessionID: BurnBarSessionID,
+        reason: String
+    ) async throws -> Bool {
+        try await restorePersistedRunsIfNeeded()
+        try await clientRegistry.requireAttached(clientID, sessionID: sessionID)
+        try await restoreSingleRunIfNeeded(runID: runID)
+        guard var run = runs[runID],
+              run.snapshot.clientID == clientID,
+              run.snapshot.sessionID == sessionID else {
+            return false
+        }
+        if [.completed, .failed, .cancelled].contains(run.snapshot.phase) {
+            return true
+        }
+        try await applyRunCancellation(&run, runID: runID, message: reason)
+        logger.notice(
+            "safari_run_cancelled",
+            metadata: [
+                "run_id": runID.rawValue,
+                "client_id": clientID.rawValue
+            ]
+        )
+        return true
+    }
+
+    public func cancelRun(_ request: BurnBarRunCancelRequest) async throws -> BurnBarRunDetailResponse {
+        try await restorePersistedRunsIfNeeded()
+        try await clientRegistry.requireController(request.clientID)
+        try await restoreSingleRunIfNeeded(runID: request.runID)
+        guard var run = runs[request.runID] else {
+            throw BurnBarRunServiceError.runNotFound(request.runID)
+        }
+
+        let message = request.reason ?? "Cancelled by controller."
+        try await applyRunCancellation(&run, runID: request.runID, message: message)
 
         logger.notice(
             "run_cancelled",

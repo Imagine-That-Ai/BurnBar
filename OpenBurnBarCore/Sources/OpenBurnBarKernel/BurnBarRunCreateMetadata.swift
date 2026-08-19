@@ -27,6 +27,12 @@ public enum BurnBarRunCreateMetadataKey: String, Sendable, CaseIterable, Hashabl
     case path
     case activeFilePath
     case activeSelectionText
+    case surface
+    case safariSessionId
+    case safariTabId
+    case safariURL
+    case safariPageContext
+    case safariScreenshot
 }
 
 /// JSON object carried on `BurnBarRunCreateRequest` (same on-wire shape as

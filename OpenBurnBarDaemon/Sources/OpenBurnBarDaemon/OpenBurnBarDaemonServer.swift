@@ -107,6 +107,10 @@ public actor BurnBarDaemonServer {
     #endif
     let missionControlService: any BurnBarMissionControlServing
     let membershipService: any BurnBarMembershipServing
+    let safariSessionBroker: BurnBarSafariSessionBroker
+    let safariTrustStore: BurnBarSafariTrustStore
+    let safariAppGroupPayloadResolver: BurnBarSafariAppGroupPayloadResolver?
+    var safariRunResumeTasks: [String: Task<Void, Never>] = [:]
     var chatThreadService: (any BurnBarChatThreadServing)?
     var indexedSearch: BurnBarIndexedSearchService?
     /// The code-memory store is opened lazily when a configured database file
@@ -177,6 +181,9 @@ public actor BurnBarDaemonServer {
         computerUseAuthorizationRegistry: ComputerUseAuthorizationRegistry? = nil,
         missionControlService: (any BurnBarMissionControlServing)? = nil,
         membershipService: (any BurnBarMembershipServing)? = nil,
+        safariSessionBroker: BurnBarSafariSessionBroker? = nil,
+        safariTrustStore: BurnBarSafariTrustStore? = nil,
+        safariAppGroupPayloadResolver: BurnBarSafariAppGroupPayloadResolver? = nil,
         rateLimiter: BurnBarRateLimiter? = nil,
         peerAuthenticator: BurnBarDaemonPeerAuthenticator = .disabled,
         capabilityProfile: BurnBarPeerCapabilityProfile = .full,
@@ -397,13 +404,19 @@ public actor BurnBarDaemonServer {
             approvalPublisher = nil
             sessionEndedObserver = nil
         }
+        let resolvedSafariSessionBroker =
+            safariSessionBroker ?? BurnBarSafariSessionBroker()
         let resolvedComputerUseService = computerUseService ?? ComputerUseService(
+            safariSessionBroker: resolvedSafariSessionBroker,
             authorizationRegistry: resolvedComputerUseAuthorizationRegistry,
             approvalPublisher: approvalPublisher,
             sessionEndedObserver: sessionEndedObserver
         )
         #else
+        let resolvedSafariSessionBroker =
+            safariSessionBroker ?? BurnBarSafariSessionBroker()
         let resolvedComputerUseService = computerUseService ?? ComputerUseService(
+            safariSessionBroker: resolvedSafariSessionBroker,
             authorizationRegistry: resolvedComputerUseAuthorizationRegistry
         )
         #endif
@@ -555,6 +568,17 @@ public actor BurnBarDaemonServer {
             executionReadinessGate: executionReadinessGate
         )
         self.membershipService = membershipService ?? BurnBarMembershipService()
+        self.safariSessionBroker = resolvedSafariSessionBroker
+        self.safariTrustStore = safariTrustStore ?? BurnBarSafariTrustStore()
+        if let safariAppGroupPayloadResolver {
+            self.safariAppGroupPayloadResolver = safariAppGroupPayloadResolver
+        } else if let appGroupRoot = BurnBarSafariSharedContainer.liveRoot() {
+            self.safariAppGroupPayloadResolver = BurnBarSafariAppGroupPayloadResolver(
+                trustedRoot: appGroupRoot
+            )
+        } else {
+            self.safariAppGroupPayloadResolver = nil
+        }
 
         if let path = configuration.indexDatabasePath?.trimmingCharacters(in: .whitespacesAndNewlines),
            path.isEmpty == false {
@@ -1601,6 +1625,38 @@ public actor BurnBarDaemonServer {
                     decoder: decoder,
                     requestData: requestData,
                     peerPID: peerPID
+                )
+            case .safariBootstrap,
+                 .safariUISnapshot,
+                 .safariApprovalRespond,
+                 .safariTrustUpdate,
+                 .safariSessionAttach,
+                 .safariSessionDetach,
+                 .safariSessionStatus,
+                 .safariCommandPoll,
+                 .safariCommandComplete,
+                 .safariPageContext,
+                 .safariScreenshot,
+                 .safariFullPageScreenshot,
+                 .safariClick,
+                 .safariType,
+                 .safariPressKey,
+                 .safariScroll,
+                 .safariHover,
+                 .safariFocus,
+                 .safariSelectOption,
+                 .safariNavigate,
+                 .safariOpenTab,
+                 .safariCloseTab,
+                 .safariListTabs,
+                 .safariWaitFor,
+                 .safariRunJavaScript,
+                 .safariExtract,
+                 .safariAbort:
+                return try await handleSafariRPC(
+                    method: method,
+                    decoder: decoder,
+                    requestData: requestData
                 )
             case .daemonMediaSessionState, .daemonMediaCallAccept,
                  .daemonMediaCallDecline, .daemonMediaCallEnd,

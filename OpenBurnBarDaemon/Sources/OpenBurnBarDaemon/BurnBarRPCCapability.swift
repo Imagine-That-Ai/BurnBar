@@ -33,6 +33,10 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
     /// Computer-use / HID-adjacent agency (session start, invoke, approvals,
     /// panic-halt, audit export). The highest-risk group.
     case computerUse = "computer_use"
+    /// Embedded Safari WebExtension bridge. Deliberately separate from
+    /// `computerUse` and `tooling` so the appex receives an exact, attenuated
+    /// profile that cannot reach the HID surface or credential writes.
+    case safari
     /// Mercury media session status and user call actions.
     case media
     /// Mission-control + controller surface (missions, questions, followups,
@@ -138,6 +142,34 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
              .computerUseApprovalPending, .computerUseApprovalRespond,
              .computerUsePanicHalt, .computerUseAuditExport:
             return .computerUse
+        case .safariBootstrap,
+             .safariUISnapshot,
+             .safariApprovalRespond,
+             .safariTrustUpdate,
+             .safariSessionAttach,
+             .safariSessionDetach,
+             .safariSessionStatus,
+             .safariCommandPoll,
+             .safariCommandComplete,
+             .safariPageContext,
+             .safariScreenshot,
+             .safariFullPageScreenshot,
+             .safariClick,
+             .safariType,
+             .safariPressKey,
+             .safariScroll,
+             .safariHover,
+             .safariFocus,
+             .safariSelectOption,
+             .safariNavigate,
+             .safariOpenTab,
+             .safariCloseTab,
+             .safariListTabs,
+             .safariWaitFor,
+             .safariRunJavaScript,
+             .safariExtract,
+             .safariAbort:
+            return .safari
         case .phoneControlPinProvision:
             // T-DMN-04: provisioning mutates daemon trust state; classify with
             // config-credential writes so only a fully-trusted first-party peer
@@ -239,6 +271,47 @@ public struct BurnBarPeerCapabilityProfile: Hashable, Sendable, Codable {
     /// `BurnBarCLISocketClient`; a missing method makes the corresponding
     /// command fail at the daemon capability gate even though its parser and
     /// transport implementation are present.
+    /// Exact authority for the embedded Safari appex. The extension may attach
+    /// its own bridge session, drain its Safari command lane, resolve approvals,
+    /// and update per-origin trust. It cannot mutate provider credentials,
+    /// invoke arbitrary Computer Use actions, write workspace files, or inherit
+    /// the host app's `.full` profile.
+    public static let safariExtension = methodScoped([
+        .health,
+        .catalog,
+        .membershipStatus,
+        .clientAttach,
+        .clientDetach,
+        .runCreate,
+        .safariBootstrap,
+        .safariUISnapshot,
+        .safariApprovalRespond,
+        .safariTrustUpdate,
+        .safariSessionAttach,
+        .safariSessionDetach,
+        .safariSessionStatus,
+        .safariCommandPoll,
+        .safariCommandComplete,
+        .safariPageContext,
+        .safariScreenshot,
+        .safariFullPageScreenshot,
+        .safariClick,
+        .safariType,
+        .safariPressKey,
+        .safariScroll,
+        .safariHover,
+        .safariFocus,
+        .safariSelectOption,
+        .safariNavigate,
+        .safariOpenTab,
+        .safariCloseTab,
+        .safariListTabs,
+        .safariWaitFor,
+        .safariRunJavaScript,
+        .safariExtract,
+        .safariAbort
+    ])
+
     public static let cliSupport = methodScoped([
         .health,
         .controllerSummary,

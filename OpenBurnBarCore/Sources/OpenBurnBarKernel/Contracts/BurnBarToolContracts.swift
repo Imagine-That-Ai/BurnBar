@@ -27,6 +27,27 @@ public enum BurnBarToolKind: String, Codable, CaseIterable, Hashable, Sendable {
     case browserSelect = "browser_select"
     case browserScreenshot = "browser_screenshot"
     case browserExtract = "browser_extract"
+    // Safari Web Extension — the user's real logged-in Safari session. These
+    // are deliberately NOT members of `computerUseToolKinds`: they are served by
+    // the daemon's Safari command lane, not the Playwright dispatcher.
+    case safariPageContext = "safari_page_context"
+    case safariScreenshot = "safari_screenshot"
+    case safariFullPageScreenshot = "safari_full_page_screenshot"
+    case safariClick = "safari_click"
+    case safariType = "safari_type"
+    case safariPressKey = "safari_press_key"
+    case safariScroll = "safari_scroll"
+    case safariHover = "safari_hover"
+    case safariFocus = "safari_focus"
+    case safariSelectOption = "safari_select_option"
+    case safariNavigate = "safari_navigate"
+    case safariOpenTab = "safari_open_tab"
+    case safariCloseTab = "safari_close_tab"
+    case safariListTabs = "safari_list_tabs"
+    case safariWaitFor = "safari_wait_for"
+    case safariRunJavaScript = "safari_run_javascript"
+    case safariExtract = "safari_extract"
+    case safariAbort = "safari_abort"
     // Computer Use — Mac System (Path C).
     case macInputClick = "mac_input_click"
     case macInputType = "mac_input_type"
@@ -50,6 +71,34 @@ public extension BurnBarToolKind {
         .macInputShortcut, .macInputDragDrop, .macInputScroll,
         .macInputPointerMove, .macInspectAccessibility
     ]
+
+    /// Whether this kind targets the user's real Safari session through the
+    /// embedded WebExtension rather than an isolated Playwright profile.
+    var isSafariComputerUse: Bool {
+        switch self {
+        case .safariPageContext,
+             .safariScreenshot,
+             .safariFullPageScreenshot,
+             .safariClick,
+             .safariType,
+             .safariPressKey,
+             .safariScroll,
+             .safariHover,
+             .safariFocus,
+             .safariSelectOption,
+             .safariNavigate,
+             .safariOpenTab,
+             .safariCloseTab,
+             .safariListTabs,
+             .safariWaitFor,
+             .safariRunJavaScript,
+             .safariExtract,
+             .safariAbort:
+            return true
+        default:
+            return false
+        }
+    }
 
     /// Whether this kind dispatches through Playwright.
     var isBrowserComputerUse: Bool {

@@ -138,6 +138,33 @@ public actor ComputerUseAuthorizationRegistry {
         return authorization.expiresAt ?? .distantPast > now
     }
 
+    /// Verifies the complete immutable identity of one managed-run binding.
+    ///
+    /// Safari uses this stricter form because a run ID alone is not enough to
+    /// distinguish a stale extension session or a replacement run generation.
+    /// The caller must already know the exact Computer Use session selected by
+    /// the Safari surface; this method never discovers or revokes a session by
+    /// run ID alone.
+    public func hasActiveBinding(
+        sessionID: ComputerUseSessionID,
+        runID: BurnBarRunID,
+        clientID: BurnBarClientID,
+        generation: UInt64,
+        now: Date = Date()
+    ) -> Bool {
+        pruneExpired(now: now)
+        guard sessionIDsByRunID[runID] == sessionID,
+              let authorization = authorizations[sessionID],
+              authorization.sessionID == sessionID,
+              authorization.runID == runID,
+              authorization.clientID == clientID,
+              authorization.generation == generation else {
+            return false
+        }
+        guard enforcementEnabled else { return true }
+        return authorization.expiresAt ?? .distantPast > now
+    }
+
     public func permits(
         sessionID: ComputerUseSessionID,
         invocation: BurnBarToolInvocation,

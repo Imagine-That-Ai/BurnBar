@@ -101,6 +101,17 @@ public enum ComputerUseDesktopOwnerAuthorizationMethod: String, Codable, Hashabl
     case linuxDesktopOwner = "linux_desktop_owner"
 }
 
+/// Concrete browser execution surface selected for a Computer Use session.
+///
+/// The legacy wire shape omits this field and therefore continues to mean the
+/// daemon-managed Playwright browser. Safari sessions opt in explicitly so the
+/// daemon can skip Playwright startup, require an exact run binding on macOS,
+/// and route every action through the embedded WebExtension broker.
+public enum ComputerUseExecutionSurface: String, Codable, Hashable, Sendable {
+    case managedBrowser = "managed_browser"
+    case safariExtension = "safari_extension"
+}
+
 /// Requests a fresh, desktop-local owner authorization before session start.
 /// This is a request only: success, timestamps, and proofs are produced and
 /// verified locally by the daemon and are never accepted from the client.
@@ -126,6 +137,12 @@ public struct ComputerUseSessionStartRequest: Codable, Hashable, Sendable {
     public let runCallID: String?
     /// Exact managed-run generation selected by the Linux session handshake.
     public let runGeneration: UInt64?
+    /// Explicit execution surface for browser-mode sessions. `nil` preserves
+    /// the legacy managed-browser behavior.
+    public let executionSurface: ComputerUseExecutionSurface?
+    /// Surface-owned session identifier. Safari requires the exact attached
+    /// WebExtension session id; managed-browser sessions leave this nil.
+    public let executionSurfaceSessionId: String?
     /// Opaque handle for daemon-brokered paired-phone authority. The challenge
     /// id is transport state, not part of the canonical session intent hash.
     /// Linux release clients send this instead of receiving proof material.
@@ -167,6 +184,8 @@ public struct ComputerUseSessionStartRequest: Codable, Hashable, Sendable {
         runID: BurnBarRunID? = nil,
         runCallID: String? = nil,
         runGeneration: UInt64? = nil,
+        executionSurface: ComputerUseExecutionSurface? = nil,
+        executionSurfaceSessionId: String? = nil,
         grantChallengeId: String? = nil,
         desktopOwnerAuthorizationRequest: ComputerUseDesktopOwnerAuthorizationRequest? = nil,
         localAuthProof: HermesRealtimeRelayAgentGrantLocalAuthProof? = nil,
@@ -185,6 +204,8 @@ public struct ComputerUseSessionStartRequest: Codable, Hashable, Sendable {
         self.runID = runID
         self.runCallID = runCallID
         self.runGeneration = runGeneration
+        self.executionSurface = executionSurface
+        self.executionSurfaceSessionId = executionSurfaceSessionId
         self.grantChallengeId = grantChallengeId
         self.desktopOwnerAuthorizationRequest = desktopOwnerAuthorizationRequest
         self.localAuthProof = localAuthProof

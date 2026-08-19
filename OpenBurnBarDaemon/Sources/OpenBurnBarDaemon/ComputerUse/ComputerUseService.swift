@@ -17,6 +17,10 @@ public actor ComputerUseService {
         case invalidMode(String)
         case invalidTrustMode(String)
         case invalidSession(String)
+        case invalidExecutionSurface(String)
+        case safariSessionUnavailable(String)
+        case safariSessionMismatch(expected: String, actual: String)
+        case incompatibleToolForExecutionSurface(String)
         case browserRunRequired
         case runBindingUnsupportedMode(String)
         case runAlreadyBound(String)
@@ -39,6 +43,14 @@ public actor ComputerUseService {
                 return "Unknown Computer Use trust mode: \(mode)."
             case .invalidSession(let sessionID):
                 return "Computer Use session is not active: \(sessionID)."
+            case .invalidExecutionSurface(let detail):
+                return "Computer Use execution surface is invalid: \(detail)."
+            case .safariSessionUnavailable(let sessionID):
+                return "Safari extension session is not attached: \(sessionID)."
+            case .safariSessionMismatch(let expected, let actual):
+                return "Computer Use is bound to Safari session \(expected), not \(actual)."
+            case .incompatibleToolForExecutionSurface(let detail):
+                return "Computer Use tool does not match its execution surface: \(detail)."
             case .browserRunRequired:
                 return "Browser Computer Use must be bound to an active agent run."
             case .runBindingUnsupportedMode(let mode):
@@ -72,6 +84,7 @@ public actor ComputerUseService {
     private static let computerUseProductId = ComputerUseEntitlementSnapshot.hostedProductID
 
     private let coordinator: ComputerUseRunCoordinator
+    private let safariSessionBroker: BurnBarSafariSessionBroker
     private let approvalBridge: ComputerUseApprovalBridge
     private let authorizationRegistry: ComputerUseAuthorizationRegistry
     private let auditBaseDirectory: URL
@@ -96,6 +109,9 @@ public actor ComputerUseService {
     private let linuxInputSessionManager: LinuxComputerUseInputSessionManager
 #endif
     private var manifests: [ComputerUseSessionID: ComputerUseSessionManifest] = [:]
+    private var computerUseSessionIDBySafariSessionID: [String: ComputerUseSessionID] = [:]
+    private var safariSessionIDByComputerUseSessionID: [ComputerUseSessionID: String] = [:]
+    private var safariSessionIDByExtensionInstanceID: [String: String] = [:]
     private var pendingEndedSessions: [ComputerUseSessionEndRecord] = []
     private var sessionStartReserved = false
     private var timeoutTasks: [ComputerUseSessionID: Task<Void, Never>] = [:]
@@ -122,6 +138,7 @@ public actor ComputerUseService {
         systemInputAccessibilityDeny: (@Sendable (MacInputAction) async -> ComputerUseAccessibilityDenyReason?)? = nil,
         computerUseKillSwitchEnabled: (@Sendable () -> Bool)? = nil,
         privilegedInputKillSwitchActivator: (@Sendable (String) -> Void)? = nil,
+        safariSessionBroker: BurnBarSafariSessionBroker = BurnBarSafariSessionBroker(),
         playwrightDriverFactory: (@Sendable (ComputerUseSessionManifest) async throws -> OpenBurnBarPlaywrightDriver?)? = nil,
         authorizationRegistry: ComputerUseAuthorizationRegistry? = nil,
         preDispatchAuthorizer: ComputerUseRunCoordinator.PreDispatchAuthorizer? = nil,
@@ -153,6 +170,7 @@ public actor ComputerUseService {
             systemInputAccessibilityDeny: systemInputAccessibilityDeny,
             computerUseKillSwitchEnabled: computerUseKillSwitchEnabled,
             privilegedInputKillSwitchActivator: privilegedInputKillSwitchActivator,
+            safariSessionBroker: safariSessionBroker,
             authorizationRegistry: authorizationRegistry,
             preDispatchAuthorizer: preDispatchAuthorizer,
             requiresManagedBrowserRunAuthority: requiresManagedBrowserRunAuthority,
@@ -180,6 +198,7 @@ public actor ComputerUseService {
         systemInputAccessibilityDeny: (@Sendable (MacInputAction) async -> ComputerUseAccessibilityDenyReason?)? = nil,
         computerUseKillSwitchEnabled: (@Sendable () -> Bool)? = nil,
         privilegedInputKillSwitchActivator: (@Sendable (String) -> Void)? = nil,
+        safariSessionBroker: BurnBarSafariSessionBroker = BurnBarSafariSessionBroker(),
         authorizationRegistry: ComputerUseAuthorizationRegistry? = nil,
         preDispatchAuthorizer: ComputerUseRunCoordinator.PreDispatchAuthorizer? = nil,
         requiresManagedBrowserRunAuthority: Bool? = nil,
@@ -193,6 +212,7 @@ public actor ComputerUseService {
             enforcementEnabled: false
         )
         self.approvalBridge = approvalBridge
+        self.safariSessionBroker = safariSessionBroker
         self.authorizationRegistry = authorizationRegistry
         self.auditBaseDirectory = auditBaseDirectory
         self.macAppVersion = macAppVersion
@@ -284,6 +304,12 @@ public actor ComputerUseService {
             },
             macInputDispatcher: systemInputDispatcher ?? defaultSystemInputDispatcher,
             macInspectDispatcher: systemInspectDispatcher ?? defaultSystemInspectDispatcher,
+            safariDispatcher: { _, action in
+                try await safariSessionBroker.execute(action: action)
+            },
+            safariPageStateResolver: { safariSessionID in
+                try await safariSessionBroker.activePage(sessionID: safariSessionID)
+            },
             preDispatchAuthorizer: preDispatchAuthorizer ?? { sessionID, invocation in
                 guard resolvedComputerUseKillSwitchEnabled() == false else { return false }
                 guard invocation.tool.isBrowserComputerUse else { return true }
@@ -303,7 +329,8 @@ public actor ComputerUseService {
     public func startSession(
         _ request: ComputerUseSessionStartRequest,
         boundClientID: BurnBarClientID? = nil,
-        runGeneration: UInt64? = nil
+        runGeneration: UInt64? = nil,
+        scopeRules: [ComputerUseScopeRule] = []
     ) async throws -> ComputerUseSessionStartResponse {
         guard let mode = ComputerUseMode(rawValue: request.mode) else {
             throw ServiceError.invalidMode(request.mode)
@@ -321,7 +348,61 @@ public actor ComputerUseService {
         if mode != .browser, request.runID != nil {
             throw ServiceError.runBindingUnsupportedMode(mode.rawValue)
         }
-        if mode == .browser, requiresManagedBrowserRunAuthority, request.runID == nil {
+        let isSafariSession = request.executionSurface == .safariExtension
+        let normalizedSurfaceSessionID = request.executionSurfaceSessionId?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if mode != .browser,
+           request.executionSurface != nil || normalizedSurfaceSessionID != nil {
+            throw ServiceError.invalidExecutionSurface(
+                "Only browser-mode sessions may select a browser execution surface."
+            )
+        }
+        if mode == .browser {
+            switch request.executionSurface {
+            case .safariExtension:
+                #if !os(macOS)
+                throw ServiceError.unsupportedDaemonMode("safari_extension")
+                #else
+                guard let safariSessionID = normalizedSurfaceSessionID,
+                      safariSessionID.isEmpty == false,
+                      safariSessionID.utf8.count <= 256 else {
+                    throw ServiceError.invalidExecutionSurface(
+                        "Safari requires an exact bounded executionSurfaceSessionId."
+                    )
+                }
+                guard request.runID != nil else {
+                    throw ServiceError.browserRunRequired
+                }
+                let expectedClientID = Self.safariClientID(sessionID: safariSessionID)
+                guard request.clientID == expectedClientID,
+                      boundClientID == nil || boundClientID == expectedClientID else {
+                    throw ServiceError.clientIdentityMismatch(
+                        expected: expectedClientID.rawValue,
+                        actual: (boundClientID ?? request.clientID).rawValue
+                    )
+                }
+                let status = try await safariSessionBroker.status(sessionID: safariSessionID)
+                guard status.attached, let activePage = status.activePage else {
+                    throw ServiceError.safariSessionUnavailable(safariSessionID)
+                }
+                try Self.validateSafeSafariLandedURL(activePage.url)
+                guard computerUseSessionIDBySafariSessionID[safariSessionID] == nil else {
+                    throw ServiceError.invalidExecutionSurface(
+                        "Safari session \(safariSessionID) already owns a Computer Use session."
+                    )
+                }
+                #endif
+            case .managedBrowser, .none:
+                guard normalizedSurfaceSessionID == nil else {
+                    throw ServiceError.invalidExecutionSurface(
+                        "Managed-browser sessions cannot carry a surface session identifier."
+                    )
+                }
+            }
+        }
+        let requiresRunAuthority = mode == .browser
+            && (requiresManagedBrowserRunAuthority || isSafariSession)
+        if requiresRunAuthority, request.runID == nil {
             throw ServiceError.browserRunRequired
         }
 
@@ -338,7 +419,7 @@ public actor ComputerUseService {
         sessionStartReserved = true
         defer { sessionStartReserved = false }
 
-        let reservedRunID = requiresManagedBrowserRunAuthority ? request.runID : nil
+        let reservedRunID = requiresRunAuthority ? request.runID : nil
         if let runID = reservedRunID {
             if let existing = await authorizationRegistry.binding(runID: runID),
                let expiresAt = existing.expiresAt,
@@ -360,9 +441,12 @@ public actor ComputerUseService {
             startedAt: Date(),
             userId: ownerClientID.rawValue,
             runId: request.runID?.rawValue,
+            executionSurface: request.executionSurface,
+            executionSurfaceSessionId: normalizedSurfaceSessionID,
             macHostNodeId: request.macHostNodeId,
             phoneViewerNodeId: request.phoneViewerNodeId,
-            scopeRuleIds: request.scopeRuleIds,
+            scopeRuleIds: scopeRules.isEmpty ? request.scopeRuleIds : scopeRules.map(\.id.rawValue),
+            scopeRules: scopeRules,
             entitlementProductId: Self.computerUseProductId,
             actionCap: effectiveActionCap,
             sessionTimeoutSeconds: request.sessionTimeoutSeconds
@@ -391,6 +475,8 @@ public actor ComputerUseService {
                     startedAt: manifest.startedAt,
                     userId: manifest.userId,
                     runId: manifest.runId,
+                    executionSurface: manifest.executionSurface,
+                    executionSurfaceSessionId: manifest.executionSurfaceSessionId,
                     macHostNodeId: manifest.macHostNodeId,
                     phoneViewerNodeId: manifest.phoneViewerNodeId,
                     scopeRuleIds: manifest.scopeRuleIds,
@@ -405,7 +491,7 @@ public actor ComputerUseService {
             guard await coordinator.session(sessionId) != nil else {
                 throw ServiceError.invalidSession(sessionId.rawValue)
             }
-            if requiresManagedBrowserRunAuthority,
+            if requiresRunAuthority,
                let runID = request.runID {
                 guard await authorizationRegistry.bind(
                     sessionID: sessionId,
@@ -441,6 +527,11 @@ public actor ComputerUseService {
             throw error
         }
         manifests[sessionId] = manifest
+        if let safariSessionID = manifest.executionSurfaceSessionId,
+           manifest.executionSurface == .safariExtension {
+            computerUseSessionIDBySafariSessionID[safariSessionID] = sessionId
+            safariSessionIDByComputerUseSessionID[sessionId] = safariSessionID
+        }
         scheduleTimeout(for: manifest)
         return ComputerUseSessionStartResponse(
             sessionId: sessionId.rawValue,
@@ -449,6 +540,164 @@ public actor ComputerUseService {
             entitlementProductId: Self.computerUseProductId,
             actionCap: manifest.actionCap
         )
+    }
+
+    // MARK: - Safari WebExtension session bridge
+
+    public func attachSafariSession(
+        _ request: BurnBarSafariSessionAttachRequest
+    ) async throws -> BurnBarSafariSessionAttachResponse {
+        let extensionInstanceID = request.extensionInstanceId
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if let previousSafariSessionID = safariSessionIDByExtensionInstanceID[extensionInstanceID] {
+            if let computerUseSessionID =
+                computerUseSessionIDBySafariSessionID[previousSafariSessionID] {
+                _ = await haltSession(computerUseSessionID, source: .revoked)
+            }
+            _ = await safariSessionBroker.detach(
+                BurnBarSafariSessionDetachRequest(
+                    sessionId: previousSafariSessionID,
+                    reason: "extension_reconnected"
+                )
+            )
+        }
+        let response = try await safariSessionBroker.attach(request)
+        safariSessionIDByExtensionInstanceID[extensionInstanceID] = response.sessionId
+        return response
+    }
+
+    public func detachSafariSession(
+        _ request: BurnBarSafariSessionDetachRequest
+    ) async -> BurnBarSafariCommandCompletionResponse {
+        if let computerUseSessionID = computerUseSessionIDBySafariSessionID[request.sessionId] {
+            _ = await haltSession(computerUseSessionID, source: .revoked)
+        }
+        safariSessionIDByExtensionInstanceID = safariSessionIDByExtensionInstanceID.filter {
+            $0.value != request.sessionId
+        }
+        return await safariSessionBroker.detach(request)
+    }
+
+    public func safariSessionStatus(
+        sessionID: String
+    ) async throws -> BurnBarSafariSessionStatusResponse {
+        try await safariSessionBroker.status(sessionID: sessionID)
+    }
+
+    public func pollSafariCommand(
+        _ request: BurnBarSafariCommandPollRequest
+    ) async throws -> BurnBarSafariCommandPollResponse {
+        try await safariSessionBroker.poll(request)
+    }
+
+    public func completeSafariCommand(
+        _ request: BurnBarSafariCommandCompletionRequest
+    ) async throws -> BurnBarSafariCommandCompletionResponse {
+        try Self.validateSafeSafariLandedURL(request.pageState.url)
+        return try await safariSessionBroker.complete(request)
+    }
+
+    public func safariActivePage(sessionID: String) async throws -> BurnBarSafariPageState {
+        try await safariSessionBroker.activePage(sessionID: sessionID)
+    }
+
+    public func computerUseSessionID(
+        forSafariSessionID safariSessionID: String
+    ) -> ComputerUseSessionID? {
+        computerUseSessionIDBySafariSessionID[safariSessionID]
+    }
+
+    public func computerUseManifest(
+        sessionID: ComputerUseSessionID
+    ) -> ComputerUseSessionManifest? {
+        manifests[sessionID]
+    }
+
+    public func safariSessionID(
+        forExtensionInstanceID extensionInstanceID: String
+    ) -> String? {
+        safariSessionIDByExtensionInstanceID[
+            extensionInstanceID.trimmingCharacters(in: .whitespacesAndNewlines)
+        ]
+    }
+
+    /// Returns the exact live Computer Use session for one immutable Safari run
+    /// requirement. Every identity layer is checked: run, daemon client,
+    /// client-session, tool call, generation, Safari surface session, manifest,
+    /// and authorization-registry binding.
+    public func safariRunBindingSessionID(
+        _ requirement: BurnBarComputerUseRunRequirement
+    ) async -> ComputerUseSessionID? {
+        await safariRunBindingSessionID(
+            requirement,
+            requiresActiveAuthorization: true
+        )
+    }
+
+    /// Dispatches a Safari run action without allowing a stale requirement to
+    /// discover or reuse a replacement Computer Use session for the same run.
+    public func invokeForSafariRun(
+        _ requirement: BurnBarComputerUseRunRequirement
+    ) async throws -> BurnBarComputerUseBrowserDispatchResult {
+        guard let sessionID = await safariRunBindingSessionID(requirement) else {
+            throw ServiceError.authorizationExpired(requirement.runID.rawValue)
+        }
+        let response = try await invoke(
+            ComputerUseInvokeRequest(
+                sessionId: sessionID.rawValue,
+                invocation: requirement.invocation
+            ),
+            allowManagedRunDispatch: true
+        )
+        return BurnBarComputerUseBrowserDispatchResult(
+            expectedSessionID: sessionID,
+            response: response
+        )
+    }
+
+    /// Revokes only the currently bound session that matches the complete
+    /// Safari run requirement. A run ID or generation by itself is never
+    /// sufficient authority for this path.
+    public func revokeSafariRun(
+        _ requirement: BurnBarComputerUseRunRequirement
+    ) async {
+        guard let sessionID = await safariRunBindingSessionID(
+            requirement,
+            requiresActiveAuthorization: false
+        ) else {
+            return
+        }
+        _ = await haltSession(sessionID, source: .revoked)
+    }
+
+    /// Panic-halts the exact Computer Use session currently attached to one
+    /// Safari extension session. Optional expected identities make abort RPCs
+    /// fail closed when the popup is holding stale run/session state.
+    @discardableResult
+    public func haltSafariComputerUseSession(
+        safariSessionID: String,
+        expectedComputerUseSessionID: ComputerUseSessionID? = nil,
+        expectedRunID: BurnBarRunID? = nil,
+        source: ComputerUsePanicSource = .revoked
+    ) async -> Bool {
+        let normalizedSafariSessionID = safariSessionID
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard normalizedSafariSessionID == safariSessionID,
+              Self.isBoundedSafariSessionID(normalizedSafariSessionID),
+              let sessionID =
+                computerUseSessionIDBySafariSessionID[normalizedSafariSessionID],
+              expectedComputerUseSessionID == nil
+                || expectedComputerUseSessionID == sessionID,
+              let manifest = manifests[sessionID],
+              manifest.mode == .browser,
+              manifest.executionSurface == .safariExtension,
+              manifest.executionSurfaceSessionId == normalizedSafariSessionID,
+              expectedRunID == nil
+                || manifest.runId == expectedRunID?.rawValue else {
+            return false
+        }
+        _ = await haltSession(sessionID, source: source)
+        return true
     }
 
     public func updateCapabilityState(
@@ -502,6 +751,7 @@ public actor ComputerUseService {
                 let directory = auditBaseDirectory.appendingPathComponent(sessionID.rawValue, isDirectory: true)
                 finalizeAuditHeadIfPossible(sessionDirectory: directory)
             }
+            await releaseSafariBinding(for: sessionID)
             timeoutTasks.removeValue(forKey: sessionID)?.cancel()
             await authorizationRegistry.revoke(sessionID: sessionID)
             return nil
@@ -512,6 +762,57 @@ public actor ComputerUseService {
             return nil
         }
         return sessionID
+    }
+
+    private func safariRunBindingSessionID(
+        _ requirement: BurnBarComputerUseRunRequirement,
+        requiresActiveAuthorization: Bool
+    ) async -> ComputerUseSessionID? {
+        let invocation = requirement.invocation
+        guard requirement.runID == invocation.runID,
+              requirement.clientID == invocation.requestedBy,
+              requirement.sessionID.rawValue.utf8.count <= 256,
+              invocation.tool.isSafariComputerUse,
+              Self.isBoundedCallID(invocation.callID),
+              let safariSessionID = Self.safariSessionID(from: invocation),
+              safariSessionID == requirement.sessionID.rawValue,
+              requirement.clientID == Self.safariClientID(sessionID: safariSessionID),
+              let mappedSessionID =
+                computerUseSessionIDBySafariSessionID[safariSessionID],
+              safariSessionIDByComputerUseSessionID[mappedSessionID]
+                == safariSessionID,
+              let manifest = manifests[mappedSessionID],
+              manifest.sessionId == mappedSessionID,
+              manifest.mode == .browser,
+              manifest.executionSurface == .safariExtension,
+              manifest.executionSurfaceSessionId == safariSessionID,
+              manifest.runId == requirement.runID.rawValue,
+              manifest.userId == requirement.clientID.rawValue else {
+            return nil
+        }
+
+        if requiresActiveAuthorization {
+            guard let liveSessionID = await liveSessionID(for: requirement.runID),
+                  liveSessionID == mappedSessionID,
+                  await authorizationRegistry.hasActiveBinding(
+                    sessionID: mappedSessionID,
+                    runID: requirement.runID,
+                    clientID: requirement.clientID,
+                    generation: requirement.generation
+                  ) else {
+                return nil
+            }
+        } else {
+            guard let authorization =
+                    await authorizationRegistry.binding(sessionID: mappedSessionID),
+                  authorization.sessionID == mappedSessionID,
+                  authorization.runID == requirement.runID,
+                  authorization.clientID == requirement.clientID,
+                  authorization.generation == requirement.generation else {
+                return nil
+            }
+        }
+        return mappedSessionID
     }
 
     private func scheduleTimeout(for manifest: ComputerUseSessionManifest) {
@@ -607,6 +908,7 @@ public actor ComputerUseService {
         let directory = auditBaseDirectory.appendingPathComponent(sessionID.rawValue, isDirectory: true)
         finalizeAuditHeadIfPossible(sessionDirectory: directory, closedAt: ended?.endedAt ?? closedAt)
         manifests.removeValue(forKey: sessionID)
+        await releaseSafariBinding(for: sessionID)
         revokingSessionIDs.remove(sessionID)
         return ended
     }
@@ -627,7 +929,13 @@ public actor ComputerUseService {
               let state = await coordinator.session(sessionId) else {
             throw ServiceError.invalidSession(request.sessionId)
         }
-        if manifest.mode == .browser, requiresManagedBrowserRunAuthority {
+        let decodedAction = try await coordinator.actionDescriptor(invocation: request.invocation)
+        try await validateExecutionSurface(
+            manifest: manifest,
+            action: decodedAction,
+            invocation: request.invocation
+        )
+        if sessionRequiresRunAuthority(manifest) {
             guard allowManagedRunDispatch else {
                 throw ServiceError.managedRunDispatchRequired
             }
@@ -675,8 +983,10 @@ public actor ComputerUseService {
         }
 
         let anotherDaemonSession = await coordinator.hasActiveSession(excluding: sessionId)
-        let action = try? await coordinator.actionDescriptor(invocation: request.invocation)
-        let accessibilityDeny = await accessibilityDenyReason(for: action, mode: manifest.mode)
+        let accessibilityDeny = await accessibilityDenyReason(
+            for: decodedAction,
+            mode: manifest.mode
+        )
         let capability = ComputerUseCapabilityContext(
             entitlement: capabilityState.entitlement,
             envelope: capabilityState.budgetEnvelope,
@@ -918,6 +1228,7 @@ public actor ComputerUseService {
     private func makePlaywrightDriverIfNeeded(
         for manifest: ComputerUseSessionManifest
     ) async throws -> OpenBurnBarPlaywrightDriver? {
+        guard manifest.executionSurface != .safariExtension else { return nil }
         if let playwrightDriverFactory {
             return try await playwrightDriverFactory(manifest)
         }
@@ -1037,6 +1348,9 @@ public actor ComputerUseService {
             }
         }
         await approvalBridge.cancelAll()
+        for sessionID in manifestedSessionIDs {
+            await releaseSafariBinding(for: sessionID)
+        }
         return manifestedSessionIDs
     }
 
@@ -1103,6 +1417,142 @@ public actor ComputerUseService {
         #else
         return mode == .browser
         #endif
+    }
+
+    private static func safariClientID(sessionID: String) -> BurnBarClientID {
+        BurnBarClientID(rawValue: "safari-extension:\(sessionID)")
+    }
+
+    private static func safariSessionID(
+        from invocation: BurnBarToolInvocation
+    ) -> String? {
+        guard case .object(let arguments) = invocation.arguments,
+              case .string(let rawSessionID)? = arguments["safariSessionId"] else {
+            return nil
+        }
+        let sessionID = rawSessionID
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard sessionID == rawSessionID,
+              isBoundedSafariSessionID(sessionID) else {
+            return nil
+        }
+        return sessionID
+    }
+
+    private static func isBoundedSafariSessionID(_ value: String) -> Bool {
+        value.isEmpty == false && value.utf8.count <= 256
+    }
+
+    private static func isBoundedCallID(_ value: String) -> Bool {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed == value
+            && trimmed.isEmpty == false
+            && trimmed.utf8.count <= 512
+    }
+
+    private func sessionRequiresRunAuthority(
+        _ manifest: ComputerUseSessionManifest
+    ) -> Bool {
+        guard manifest.mode == .browser else { return false }
+        return requiresManagedBrowserRunAuthority
+            || manifest.executionSurface == .safariExtension
+    }
+
+    private func validateExecutionSurface(
+        manifest: ComputerUseSessionManifest,
+        action: ComputerUseAction,
+        invocation: BurnBarToolInvocation
+    ) async throws {
+        guard manifest.mode == .browser else {
+            if case .browser = action {
+                throw ServiceError.incompatibleToolForExecutionSurface(
+                    "Browser tools require a browser-mode Computer Use session."
+                )
+            }
+            if case .safari = action {
+                throw ServiceError.incompatibleToolForExecutionSurface(
+                    "Safari tools require a browser-mode Safari Computer Use session."
+                )
+            }
+            return
+        }
+
+        switch manifest.executionSurface {
+        case .safariExtension:
+            guard invocation.tool.isSafariComputerUse,
+                  case .safari(let safariAction) = action else {
+                throw ServiceError.incompatibleToolForExecutionSurface(
+                    "A Safari-extension session accepts only safari_* tools."
+                )
+            }
+            guard let expectedSessionID = manifest.executionSurfaceSessionId,
+                  expectedSessionID.isEmpty == false else {
+                throw ServiceError.invalidExecutionSurface(
+                    "The Safari execution-surface session identifier is missing from the immutable manifest."
+                )
+            }
+            guard safariAction.safariSessionId == expectedSessionID else {
+                throw ServiceError.safariSessionMismatch(
+                    expected: expectedSessionID,
+                    actual: safariAction.safariSessionId
+                )
+            }
+            let expectedClientID = Self.safariClientID(sessionID: expectedSessionID)
+            guard invocation.requestedBy == expectedClientID else {
+                throw ServiceError.clientIdentityMismatch(
+                    expected: expectedClientID.rawValue,
+                    actual: invocation.requestedBy.rawValue
+                )
+            }
+            let status = try await safariSessionBroker.status(sessionID: expectedSessionID)
+            guard status.attached, let activePage = status.activePage else {
+                throw ServiceError.safariSessionUnavailable(expectedSessionID)
+            }
+            try Self.validateSafeSafariLandedURL(activePage.url)
+
+        case .managedBrowser, .none:
+            guard invocation.tool.isSafariComputerUse == false,
+                  case .browser = action else {
+                throw ServiceError.incompatibleToolForExecutionSurface(
+                    "A managed-browser session accepts only browser_* tools."
+                )
+            }
+            guard manifest.executionSurfaceSessionId == nil else {
+                throw ServiceError.invalidExecutionSurface(
+                    "A managed-browser manifest cannot carry a surface session identifier."
+                )
+            }
+        }
+    }
+
+    private static func validateSafeSafariLandedURL(_ rawValue: String) throws {
+        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.isEmpty == false,
+              let parsed = URL(string: trimmed),
+              let scheme = parsed.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              parsed.host?.isEmpty == false else {
+            throw ServiceError.invalidExecutionSurface(
+                "Safari reported a malformed or non-HTTP(S) top-frame URL."
+            )
+        }
+        do {
+            _ = try OpenBurnBarBrowserTargetPolicy.validatedResolvedURL(trimmed)
+        } catch {
+            throw ServiceError.invalidExecutionSurface(
+                "Safari reported an unsafe top-frame URL: \(error.localizedDescription)"
+            )
+        }
+    }
+
+    private func releaseSafariBinding(for sessionID: ComputerUseSessionID) async {
+        guard let safariSessionID =
+                safariSessionIDByComputerUseSessionID.removeValue(forKey: sessionID)
+                ?? manifests[sessionID]?.executionSurfaceSessionId else {
+            return
+        }
+        computerUseSessionIDBySafariSessionID.removeValue(forKey: safariSessionID)
+        await safariSessionBroker.abort(sessionID: safariSessionID)
     }
 
     private func accessibilityDenyReason(

@@ -28,6 +28,10 @@ public enum OpenBurnBarIdentity {
         "com.agentlens.cursor-connector"
     ]
     public static let controllerRuntimeKeychainService = "com.openburnbar.controller-runtime"
+    /// App Group-backed keychain access group shared by the host app and the
+    /// embedded Safari appex, so the sandboxed extension can read the daemon
+    /// socket credential without an interactive prompt.
+    public static let sharedKeychainAccessGroup = "4Y367DF25B.com.openburnbar.app"
     public static let legacyControllerRuntimeKeychainServices = ["com.burnbar.controller-runtime"]
     public static let controllerTelegramBotTokenAccount = "provider.controller.telegram.apiKey"
     public static let chatGatewayKeychainService = "com.openburnbar.chat-gateway-secrets"

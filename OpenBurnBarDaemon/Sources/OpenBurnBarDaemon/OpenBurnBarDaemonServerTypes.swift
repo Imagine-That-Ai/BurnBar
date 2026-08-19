@@ -57,6 +57,7 @@ struct IncomingRequestEnvelope: Decodable {
     let id: String
     let method: String
     let authToken: String?
+    let params: BurnBarJSONValue?
 }
 
 struct BurnBarEmptyResult: Codable, Sendable {}

@@ -247,7 +247,7 @@ public struct DefaultComputerUseCapabilityGate: ComputerUseCapabilityGate {
             && context.session.manifest.phoneViewerNodeId?.isEmpty == false
         if !context.entitlement.isActive && !directPhoneControl { return .denied(.entitlement) }
         switch action {
-        case .browser:
+        case .browser, .safari:
             if !context.entitlement.allowsBrowser { return .denied(.entitlement) }
         case .macInput, .macInspect:
             if !context.entitlement.allowsSystem { return .denied(.entitlement) }
@@ -324,7 +324,7 @@ public struct DefaultComputerUseCapabilityGate: ComputerUseCapabilityGate {
             switch action {
             case .macInput, .phoneIntent:
                 return .allowed(approvedBy: .phone)
-            case .browser, .macInspect, .remoteClipboard:
+            case .browser, .safari, .macInspect, .remoteClipboard:
                 break
             }
         }
@@ -345,7 +345,7 @@ public struct DefaultComputerUseCapabilityGate: ComputerUseCapabilityGate {
             switch action {
             case .macInput, .phoneIntent:
                 return phoneControlApproval(context: context)
-            case .browser, .macInspect, .remoteClipboard:
+            case .browser, .safari, .macInspect, .remoteClipboard:
                 break
             }
         }
@@ -396,7 +396,7 @@ public struct DefaultComputerUseCapabilityGate: ComputerUseCapabilityGate {
         switch action {
         case .macInput, .phoneIntent, .remoteClipboard:
             return true
-        case .browser, .macInspect:
+        case .browser, .safari, .macInspect:
             return false
         }
     }

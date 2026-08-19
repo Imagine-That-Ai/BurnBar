@@ -21,7 +21,7 @@ enum PulseWindowMetricBuilder {
             rollups: Dictionary(uniqueKeysWithValues: rollupTotals.map { key, value in
                 (key.rawValue, MobilePulseRollupTotals(
                     requests: value.requests,
-                    tokens: Int64(clamping: value.tokens),
+                    tokens: value.tokens,
                     costUsd: value.costUsd
                 ))
             }),

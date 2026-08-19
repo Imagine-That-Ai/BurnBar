@@ -405,6 +405,8 @@ public actor ComputerUseSessionGrantBroker {
             runID: request.runID,
             runCallID: request.runCallID,
             runGeneration: request.runGeneration,
+            executionSurface: request.executionSurface,
+            executionSurfaceSessionId: request.executionSurfaceSessionId,
             grantChallengeId: request.grantChallengeId,
             desktopOwnerAuthorizationRequest: request.desktopOwnerAuthorizationRequest,
             localAuthProof: grant.proof,
@@ -543,7 +545,9 @@ public actor ComputerUseSessionGrantBroker {
         guard request.localAuthProof == nil,
               request.sourceDeviceId == nil,
               request.intentHashHex == nil,
-              request.localAuthGrantBinding == nil else {
+              request.localAuthGrantBinding == nil,
+              request.executionSurface != .safariExtension,
+              request.executionSurfaceSessionId == nil else {
             throw BrokerError.rendererProofFieldsRejected
         }
     }
@@ -564,6 +568,8 @@ public actor ComputerUseSessionGrantBroker {
             runID: request.runID,
             runCallID: request.runCallID,
             runGeneration: request.runGeneration,
+            executionSurface: request.executionSurface,
+            executionSurfaceSessionId: request.executionSurfaceSessionId,
             grantChallengeId: grantChallengeID,
             desktopOwnerAuthorizationRequest: request.desktopOwnerAuthorizationRequest
         )
