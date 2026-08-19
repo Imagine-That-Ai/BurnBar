@@ -104,6 +104,56 @@ Do not use the factory to launder sloppy work into main.
 Good attempts go in. Finished outcomes come out.
 ```
 
+## When Codex cannot review
+
+Codex is the approval gate, but it is not always reachable: it enforces per-account
+usage limits on code reviews, and it is **not a repository collaborator**, so the
+reviewer API rejects it.
+
+- Requesting a re-review through `gh api .../requested_reviewers` returns `422`.
+  Trigger a re-review by posting a comment containing `@codex review` instead.
+- When Codex answers `You have reached your Codex usage limits for code reviews`,
+  the review did not happen. Say so.
+
+`main` does **not** require an approving review (`required_pull_request_reviews`
+is null). It requires `required_conversation_resolution` plus the required
+contexts. **Branch protection is therefore weaker than the agent contract**: the
+mechanical gate will let a never-reviewed PR through, while `AGENTS.md` names
+Codex the independent reviewer and approval gate. An unavailable reviewer does
+not lower that bar, and the absence of a mechanical block is not evidence that
+anything was reviewed.
+
+So when Codex is unreachable, the PR does not become mergeable-by-agent. It
+becomes `OPEN_WITH_NAMED_BLOCKER`, with the blocker named as "no independent
+review available". Only Alberto can waive the review gate, and he has to do it
+explicitly on the PR. An agent may not infer the waiver from CI, from a `CLEAN`
+merge state, or from the urgency of the change.
+
+What an agent *should* do is leave the PR in a state where that decision is cheap
+to make:
+
+1. Reply on every open review thread with its disposition: fixed (name the
+   commit), deferred (link the tracking issue), or rejected (say why).
+2. File one issue for everything deferred, linking back to each thread, so
+   resolving a thread never erases the finding.
+3. Resolve the threads (`resolveReviewThread` via the GraphQL API) only after
+   1 and 2, since resolution is the mechanical gate.
+4. Post a review-gate note recording that Codex was unavailable, what was
+   validated locally instead, and that the PR is waiting on a review waiver.
+
+Steps 1–4 record the state of the work. They do not substitute for the review,
+and finishing them is not permission to merge. Do not quietly re-request until
+the limit resets while the PR looks reviewed.
+
+Two mechanical notes that cost real time when unknown:
+
+- The merge strategy is owned by the merge queue. `gh pr merge --squash` is
+  rejected; use `gh pr merge --merge` and then watch the
+  `gh-readonly-queue/main/pr-<number>-*` branch for the queue's own CI run.
+- `gh api -f body=...` from a shell heredoc breaks on apostrophes and can post a
+  truncated comment. Build the JSON (`python3 -c 'import json,sys; ...'`) and
+  pipe it to `--input -`.
+
 ## Local Machine Notes
 
 On the always-on automation machine:

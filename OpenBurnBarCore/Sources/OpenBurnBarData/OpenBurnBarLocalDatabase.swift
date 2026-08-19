@@ -513,10 +513,11 @@ public final class OpenBurnBarLocalDatabase: @unchecked Sendable {
                 """,
                 arguments: [query, limit]
             ).map { row in
-                OpenBurnBarSearchHit(
+                let rank: Double = row["rank"] ?? 0
+                return OpenBurnBarSearchHit(
                     chunkID: row["chunkID"] as? String ?? "",
                     documentID: row["documentID"] as? String ?? "",
-                    rank: (row["rank"] as? Double) ?? 0,
+                    rank: rank,
                     snippet: row["snippet"] as? String ?? "",
                     text: row["text"] as? String ?? ""
                 )

@@ -131,7 +131,8 @@ extension ControlPlaneStore {
                     guard let id = row["id"] as? String, id.isEmpty == false else { return nil }
                     let modifiedEpoch = OpenBurnBarDatabase.parseDateValue(row["fileModifiedAt"])
                         .map { String(Int($0.timeIntervalSince1970)) } ?? "0"
-                    let messageCount = (row["messageCount"] as? Int64).map(String.init) ?? "0"
+                    let messageCountValue: Int64? = row["messageCount"]
+                    let messageCount = messageCountValue.map(String.init) ?? "0"
                     let stateMarker = "state-\(modifiedEpoch)-\(messageCount)"
                     let threadID = AgentConversationExtractionSource.threadID(forConversationID: id)
                     return HarvestRow(

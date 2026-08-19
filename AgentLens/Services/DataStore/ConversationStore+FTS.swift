@@ -48,7 +48,7 @@ extension ConversationStore {
                 let rows = try Row.fetchAll(db, sql: sql, arguments: StatementArguments(args))
                 var results = rows.compactMap { row -> SearchResult? in
                     guard let conv = Self.conversation(from: row) else { return nil }
-                    let rank = (row["rank"] as? Double) ?? Double(row["rank"] as? Int64 ?? 0)
+                    let rank: Double = row["rank"] ?? 0
                     let snip = (row["snip"] as? String) ?? ""
                     return SearchResult(conversation: conv, snippet: snip, rank: rank)
                 }

@@ -10,7 +10,7 @@ const DOC_END = "<!-- END GENERATED MIGRATION CATALOG -->";
 
 // These are reviewed, semantic platform adaptations, not blanket exclusions.
 // Both fingerprints are pinned so any edit on either side requires review.
-const INTENTIONAL_DIVERGENCES = {
+export const INTENTIONAL_DIVERGENCES = {
   v21_multifield_fts: {
     app: "da820ee7efc0ae17440cc7032743f27c7d525d3a92f44e0aec0649941e907531",
     shared: "393f4396428b91eb0a5dd3d2d02c7d06b2f0e7ce939ca45e37a99ce8931711e0",

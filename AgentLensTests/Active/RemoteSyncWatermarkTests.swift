@@ -391,7 +391,7 @@ final class RemoteSyncWatermarkTests: XCTestCase {
             try Row.fetchAll(db, sql: "SELECT * FROM token_usage WHERE sessionId = ?", arguments: [sessionId])
         }
         XCTAssertEqual(rows.count, 1, "Should still have one canonical row")
-        let inputTokens = (rows[0]["inputTokens"] as? Int) ?? Int(rows[0]["inputTokens"] as? Int64 ?? 0)
+        let inputTokens: Int = rows[0]["inputTokens"] ?? 0
         XCTAssertEqual(inputTokens, 2000, "Corrected values should be persisted")
         XCTAssertEqual(rows[0]["projectName"] as? String, "CorrectedProject")
     }
@@ -449,7 +449,7 @@ final class RemoteSyncWatermarkTests: XCTestCase {
         }
         XCTAssertEqual(rows.count, 1)
         XCTAssertEqual(rows[0]["provenanceConfidence"] as? String, "exact")
-        let inputTokens = (rows[0]["inputTokens"] as? Int) ?? Int(rows[0]["inputTokens"] as? Int64 ?? 0)
+        let inputTokens: Int = rows[0]["inputTokens"] ?? 0
         XCTAssertEqual(inputTokens, 2000, "Exact remote should override lower confidence")
     }
 
@@ -504,7 +504,7 @@ final class RemoteSyncWatermarkTests: XCTestCase {
         }
         XCTAssertEqual(rows.count, 1)
         XCTAssertEqual(rows[0]["provenanceConfidence"] as? String, "exact")
-        let inputTokens = (rows[0]["inputTokens"] as? Int) ?? Int(rows[0]["inputTokens"] as? Int64 ?? 0)
+        let inputTokens: Int = rows[0]["inputTokens"] ?? 0
         XCTAssertEqual(inputTokens, 5000, "Exact local must not be downgraded by remote estimate")
     }
 

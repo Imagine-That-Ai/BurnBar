@@ -457,7 +457,7 @@ final class ChartFactRowSQLTests: XCTestCase {
         let provenanceConfidence = (row["provenanceConfidence"] as? String)
             .flatMap(UsageProvenanceConfidence.init(rawValue:)) ?? .unknown
         let estimatorVersion = row["estimatorVersion"] as? String ?? ""
-        let cost = (row["cost"] as? Double) ?? ((row["cost"] as? NSNumber)?.doubleValue) ?? 0
+        let cost: Double = row["cost"] ?? 0
         let startTime = OpenBurnBarDatabase.parseDateValue(row["startTime"])
         let endTime = OpenBurnBarDatabase.parseDateValue(row["endTime"])
         let createdAt = OpenBurnBarDatabase.parseDateValue(row["createdAt"]) ?? Date()

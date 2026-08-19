@@ -185,7 +185,8 @@ final class OpenBurnBarDataFTSRowidMigrationTests: XCTestCase {
         XCTAssertEqual(ftsRows.count, 1, "orphan and stale duplicate FTS rows must be swept")
         XCTAssertEqual(ftsRows.first?["chunkID"] as? String, "chunk-1")
         XCTAssertEqual(ftsRows.first?["chunkText"] as? String, "hello world")
-        XCTAssertEqual(ftsRows.first?["ftsRowid"] as? Int64, backfilledRowid)
+        let survivingRowid: Int64? = ftsRows.first?["ftsRowid"]
+        XCTAssertEqual(survivingRowid, backfilledRowid)
     }
 
     // MARK: - Documents FTS trigger only fires on content change

@@ -438,16 +438,19 @@ final class AIInboxMirrorCodecTests: XCTestCase {
 
     /// `feedback` is a constrained vocabulary, not free text — otherwise it
     /// becomes an unreviewed channel for arbitrary strings into the user's cloud.
-    func test_itemStateRejectsArbitraryFeedbackValue() {
+    func test_itemStateRejectsArbitraryFeedbackValue() throws {
         let state = AIInboxMirrorItemState(id: documentID, feedback: "<script>alert(1)</script>")
         let encoded = AIInboxMirrorCodec.encodeItemState(state, documentID: documentID)
         XCTAssertNil(encoded["feedback"])
 
-        let decoded = AIInboxMirrorCodec.decodeItemState(
+        // Unwrapped, not optional-chained: the point is that the document still
+        // decodes and only the unlisted feedback value is dropped. A nil decode
+        // would satisfy an optional-chained assertion while proving nothing.
+        let decoded = try XCTUnwrap(AIInboxMirrorCodec.decodeItemState(
             documentID: documentID,
             data: ["id": documentID, "updatedAt": Date(), "feedback": "totally-made-up"]
-        )
-        XCTAssertNil(decoded?.feedback)
+        ))
+        XCTAssertNil(decoded.feedback)
     }
 
     func test_expiredSnoozeDoesNotSuppress() {

@@ -249,8 +249,7 @@ extension ConversationStore {
                         return nil
                     }
 
-                    let messageCount = row["messageCount"] as? Int
-                        ?? Int((row["messageCount"] as? Int64) ?? 0)
+                    let messageCount: Int = row["messageCount"] ?? 0
                     let lastMessageAt = OpenBurnBarDatabase.parseDateValue(row["lastMessageAt"])
                     let firstUserMessage = (row["firstUserMessage"] as? String)?
                         .trimmingCharacters(in: .whitespacesAndNewlines)

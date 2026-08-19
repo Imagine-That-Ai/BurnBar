@@ -18,9 +18,10 @@ final class DeviceStore: Sendable {
             return rows.compactMap { row -> DeviceRecord? in
                 guard let deviceId = row["deviceId"] as? String,
                       let deviceName = row["deviceName"] as? String else { return nil }
+                let isLocal: Bool = row["isLocal"] ?? false
                 return DeviceRecord(
                     deviceId: deviceId, deviceName: deviceName,
-                    isLocal: ((row["isLocal"] as? Int) ?? 0) != 0,
+                    isLocal: isLocal,
                     lastSeenAt: OpenBurnBarDatabase.parseDateValue(row["lastSeenAt"]),
                     createdAt: OpenBurnBarDatabase.parseDateValue(row["createdAt"]) ?? Date(),
                     hardwareModel: row["hardwareModel"] as? String,
@@ -66,13 +67,21 @@ final class DeviceStore: Sendable {
                 ORDER BY isLocal DESC, totalCost DESC
                 """)
             return rows.compactMap { row -> DeviceUsageSummary? in
-                DeviceUsageSummary(
+                // `isLocal` arrives as a CASE WHEN integer, so it must be read
+                // through the typed subscript: SQLite hands INTEGER back as
+                // Int64 and an `as? Int` cast would silently make every device
+                // remote while the SQL still sorted the local one first.
+                let isLocal: Bool = row["isLocal"] ?? false
+                let totalCost: Double = row["totalCost"] ?? 0
+                let totalTokens: Int = row["totalTokens"] ?? 0
+                let sessionCount: Int = row["sessionCount"] ?? 0
+                return DeviceUsageSummary(
                     deviceId: row["deviceId"] as? String,
                     deviceName: (row["deviceName"] as? String) ?? "Unknown",
-                    isLocal: ((row["isLocal"] as? Int) ?? 0) != 0,
-                    totalCost: (row["totalCost"] as? Double) ?? 0,
-                    totalTokens: (row["totalTokens"] as? Int) ?? Int(row["totalTokens"] as? Int64 ?? 0),
-                    sessionCount: (row["sessionCount"] as? Int) ?? Int(row["sessionCount"] as? Int64 ?? 0),
+                    isLocal: isLocal,
+                    totalCost: totalCost,
+                    totalTokens: totalTokens,
+                    sessionCount: sessionCount,
                     hardwareModel: row["hardwareModel"] as? String,
                     customIcon: row["customIcon"] as? String
                 )
