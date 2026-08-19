@@ -26,6 +26,7 @@ function parseArguments(argv) {
     "--tag",
     "--profile-receipt",
     "--release-gate",
+    "--domain-core-inactive",
     "--output",
     "--verify",
   ]);
@@ -42,6 +43,12 @@ function parseArguments(argv) {
   }
   for (const flag of ["--consumer", "--commit", "--profile-receipt"]) {
     if (!values.has(flag)) throw new Error(`${flag} is required`);
+  }
+  if (
+    values.has("--domain-core-inactive") &&
+    !new Set(["true", "false"]).has(values.get("--domain-core-inactive"))
+  ) {
+    throw new Error("--domain-core-inactive must be true or false");
   }
   if (values.has("--output") === values.has("--verify")) {
     throw new Error("exactly one of --output or --verify is required");
@@ -150,6 +157,7 @@ export function buildDeploymentIdentity({
   tag = null,
   profileReceiptPath,
   releaseGatePath,
+  domainCoreInactive = false,
 }) {
   if (consumer !== "console")
     throw new Error("only the console deployment identity is supported");
@@ -171,15 +179,28 @@ export function buildDeploymentIdentity({
       )
     : null;
   const requiresGate =
-    tag !== null ||
+    (!domainCoreInactive && tag !== null) ||
     profile.name === "public-production-rollback" ||
     profile.modes.cloudVault === "rust";
+  if (
+    domainCoreInactive &&
+    (profile.name === "public-production-rollback" ||
+      profile.modes.cloudVault !== "legacy")
+  ) {
+    throw new Error(
+      "inactive domain-core mode is only valid for the legacy public-production profile",
+    );
+  }
   if (requiresGate && gate === null) {
     throw new Error(
       "tagged, rollback, and Rust-authoritative Console deploys require a protected release gate",
     );
   }
-  if (gate === null && candidate.candidateCommit !== commit) {
+  if (
+    gate === null &&
+    candidate.candidateCommit !== commit &&
+    !domainCoreInactive
+  ) {
     throw new Error(
       "ungated legacy deployment candidate must equal the deployment commit",
     );
@@ -217,6 +238,7 @@ export function run(argv) {
     tag: args.get("--tag") ?? null,
     profileReceiptPath: args.get("--profile-receipt"),
     releaseGatePath: args.get("--release-gate"),
+    domainCoreInactive: args.get("--domain-core-inactive") === "true",
   });
   if (args.has("--verify")) {
     assert.deepEqual(

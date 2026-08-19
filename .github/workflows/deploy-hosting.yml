@@ -88,7 +88,7 @@ jobs:
       release_tag: ${{ steps.ref.outputs.release_tag }}
       stable_release: ${{ steps.ref.outputs.stable_release }}
       domain_core_profile: ${{ steps.ref.outputs.domain_core_profile }}
-      requires_proof: ${{ steps.ref.outputs.requires_proof }}
+      requires_proof: ${{ steps.proof_gate.outputs.proof_required }}
       source_run_id: ${{ steps.proof.outputs.source_run_id }}
       source_run_attempt: ${{ steps.proof.outputs.source_run_attempt }}
       protected_signer_run_id: ${{ steps.proof.outputs.protected_signer_run_id }}
@@ -174,8 +174,30 @@ jobs:
           RELEASE_COMMIT: ${{ steps.ref.outputs.commit }}
         run: node scripts/ci/resolve-domain-core-activation.mjs --release-commit "$RELEASE_COMMIT" --format github-output >> "$GITHUB_OUTPUT"
 
+      # gen-3 was annulled in #2173, so the resolver reports `active: false` and
+      # no protected signer proof exists to resolve. #2322 taught the native
+      # release gate that lane; hosting kept demanding a signer artifact for a
+      # candidate no promotion-proof run ever signed, which failed closed on
+      # every deploy. Honor the same inactive lane here.
+      - name: Resolve whether a protected proof is required
+        id: proof_gate
+        env:
+          REQUIRES_PROOF: ${{ steps.ref.outputs.requires_proof }}
+          RUST_ACTIVE: ${{ steps.activation.outputs.active }}
+        run: |
+          set -euo pipefail
+          proof_required=false
+          if [[ "$REQUIRES_PROOF" == "true" ]]; then
+            case "$RUST_ACTIVE" in
+              true) proof_required=true ;;
+              false) echo "::notice::Domain core is inactive; hosting deploys without a protected signer proof." ;;
+              *) echo "::error::Activation resolver did not report an active flag."; exit 1 ;;
+            esac
+          fi
+          echo "proof_required=$proof_required" >> "$GITHUB_OUTPUT"
+
       - name: Resolve exact protected signer and source proof
-        if: ${{ steps.ref.outputs.requires_proof == 'true' }}
+        if: ${{ steps.proof_gate.outputs.proof_required == 'true' }}
         id: proof
         env:
           CANDIDATE_COMMIT: ${{ steps.activation.outputs.candidate_commit }}
@@ -244,7 +266,7 @@ jobs:
             "$source_run_id" "$source_run_attempt" "$signer_run_id" "$signer_run_attempt" >> "$GITHUB_OUTPUT"
 
       - name: Download and cryptographically verify exact release proof
-        if: ${{ steps.ref.outputs.requires_proof == 'true' }}
+        if: ${{ steps.proof_gate.outputs.proof_required == 'true' }}
         env:
           CANDIDATE_COMMIT: ${{ steps.activation.outputs.candidate_commit }}
           RELEASE_COMMIT: ${{ steps.ref.outputs.commit }}
@@ -333,7 +355,8 @@ jobs:
         env:
           RELEASE_COMMIT: ${{ steps.ref.outputs.commit }}
           RELEASE_TAG: ${{ steps.ref.outputs.release_tag }}
-          REQUIRES_PROOF: ${{ steps.ref.outputs.requires_proof }}
+          REQUIRES_PROOF: ${{ steps.proof_gate.outputs.proof_required }}
+          DOMAIN_CORE_ACTIVE: ${{ steps.activation.outputs.active }}
         run: |
           set -euo pipefail
           args=(
@@ -345,6 +368,9 @@ jobs:
           [[ -z "$RELEASE_TAG" ]] || args+=(--tag "$RELEASE_TAG")
           [[ "$REQUIRES_PROOF" != "true" ]] \
             || args+=(--release-gate "$RUNNER_TEMP/domain-core-release-inputs/domain-core-release-gate.json")
+          if [[ "$DOMAIN_CORE_ACTIVE" == "false" ]]; then
+            args+=(--domain-core-inactive true)
+          fi
           node scripts/ci/create-domain-core-deployment-identity.mjs "${args[@]}"
 
       - name: Install hosting dependencies
@@ -379,7 +405,7 @@ jobs:
           CANDIDATE_COMMIT: ${{ steps.activation.outputs.candidate_commit || steps.ref.outputs.commit }}
           RELEASE_COMMIT: ${{ steps.ref.outputs.commit }}
           RELEASE_TAG: ${{ steps.ref.outputs.release_tag }}
-          REQUIRES_PROOF: ${{ steps.ref.outputs.requires_proof }}
+          REQUIRES_PROOF: ${{ steps.proof_gate.outputs.proof_required }}
         run: |
           set -euo pipefail
           rm -rf "$ARTIFACT_ROOT"
