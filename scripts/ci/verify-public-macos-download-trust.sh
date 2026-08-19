@@ -126,6 +126,11 @@ site_metadata="$(read_site_metadata)"
 download_url="$(printf '%s\n' "$site_metadata" | sed -n '1p')"
 expected_version="$(printf '%s\n' "$site_metadata" | sed -n '2p')"
 mac_release_file="$(printf '%s\n' "$site_metadata" | sed -n '3p')"
+# SemVer build metadata identifies the immutable release tag, but Apple does
+# not permit '+' metadata in CFBundleShortVersionString.  Compare the mounted
+# app against the Apple-visible base version while keeping the full tagged
+# version bound in the public feed and asset names.
+apple_expected_version="${expected_version%%+*}"
 
 expected_team_id="${OPENBURNBAR_EXPECTED_APPLE_TEAM_ID:-}"
 if [[ -z "$expected_team_id" ]]; then
@@ -221,8 +226,8 @@ fi
 info_plist="$app_path/Contents/Info.plist"
 app_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$info_plist" 2>/dev/null || true)"
 app_build="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$info_plist" 2>/dev/null || true)"
-if [[ "$app_version" != "$expected_version" ]]; then
-  echo "::error::Public DMG app version ($app_version build $app_build) does not match SITE.macReleaseLatest ($expected_version) for $mac_release_file." >&2
+if [[ "$app_version" != "$apple_expected_version" ]]; then
+  echo "::error::Public DMG app version ($app_version build $app_build) does not match Apple-visible release version ($apple_expected_version) derived from SITE.macReleaseLatest ($expected_version) for $mac_release_file." >&2
   exit 1
 fi
 
@@ -303,4 +308,4 @@ fi
 fail_gate "Gatekeeper app execution assessment" \
   spctl -a -vv --type execute "$app_path"
 
-echo "PASS: public macOS download is Developer ID signed by team $expected_team_id, version $expected_version, notarized, stapled, Firebase-configured, App-Check-clean, Firebase-Keychain-profiled, and Gatekeeper accepted."
+echo "PASS: public macOS download is Developer ID signed by team $expected_team_id, version $expected_version (Apple $apple_expected_version), notarized, stapled, Firebase-configured, App-Check-clean, Firebase-Keychain-profiled, and Gatekeeper accepted."
