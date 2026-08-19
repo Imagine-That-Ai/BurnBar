@@ -106,6 +106,9 @@ struct GrokDTurnHandle: Equatable, Sendable {
     let agentID: String
     let prompt: String
     let acceptedAt: Date
+    /// `MAX(rowid)` of `store.db` immediately before `sendPrompt`. Follow only
+    /// classifies newer rows so a repeated prompt cannot complete on history.
+    let afterRowID: Int64
 }
 
 struct GrokDTurnFollowResult: Equatable, Sendable {

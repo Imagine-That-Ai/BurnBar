@@ -12,7 +12,7 @@ Default **off**. Mac App Store builds do not show the pane (no `~/.grok` without
 
    `SELECT entry FROM transcript_entries ORDER BY rowid DESC LIMIT n` with a short `busy_timeout` (well under the 1s poll).
 
-   Success is the newest user line whose content equals (or is a truncation of) this prompt **and** a strictly newer **assistant** / `send-message` line. `SQLITE_BUSY` skips that poll. A missing or locked db falls back to `lastMessagePreview` follow. Never INSERT / UPDATE / DELETE. An exact/truncated preview of the prompt is the user line; a different later preview (including an echo such as `"<token> pong"`) is a completed turn.
+   Success is the newest user line whose content equals (or is a truncation of) this prompt **and** a strictly newer **assistant** / `send-message` line, using only rows after the send-time `MAX(rowid)` watermark. Non-JSON sqlite stdout (PRAGMA `80`) is ignored. `SQLITE_BUSY` skips that poll. A missing or locked db falls back to `lastMessagePreview` follow. Never INSERT / UPDATE / DELETE. An exact/truncated preview of the prompt is the user line; a different later preview (including an echo such as `"<token> pong"`) is a completed turn.
 
 ## Ports (always `127.0.0.1`, never `localhost`)
 

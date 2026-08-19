@@ -11,7 +11,14 @@ enum GrokDTranscriptRead: Equatable, Sendable {
 }
 
 protocol GrokDTranscriptReading: Sendable {
-    func read(path: String, agentID: String, token: String) async -> GrokDTranscriptRead
+    func maxRowID(path: String, agentID: String) async -> Int64?
+    func read(path: String, agentID: String, token: String, afterRowID: Int64) async -> GrokDTranscriptRead
+}
+
+extension GrokDTranscriptReading {
+    func read(path: String, agentID: String, token: String) async -> GrokDTranscriptRead {
+        await read(path: path, agentID: agentID, token: token, afterRowID: 0)
+    }
 }
 
 /// CLI sqlite3 so the SQLCipher dylib never opens plaintext `store.db`.
@@ -33,13 +40,42 @@ struct GrokDReadonlyTranscriptReader: GrokDTranscriptReading, Sendable {
         self.waitNanoseconds = waitNanoseconds
     }
 
-    func read(path: String, agentID: String, token: String) async -> GrokDTranscriptRead {
+    func maxRowID(path: String, agentID: String) async -> Int64? {
+        guard let canonical = Self.canonicalStorePath(path: path, agentID: agentID) else { return nil }
+        let result = await runCLI(
+            path: canonical,
+            sql: "SELECT IFNULL(MAX(rowid), 0) FROM transcript_entries;"
+        )
+        switch result {
+        case .unavailable, .skippedBusy:
+            return nil
+        case .ok(let stdout):
+            let lines = stdout.split(whereSeparator: \.isNewline).map(String.init)
+            let numbers = lines.compactMap { Int64($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
+            return numbers.last
+        }
+    }
+
+    func read(path: String, agentID: String, token: String, afterRowID: Int64) async -> GrokDTranscriptRead {
         let needle = token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !needle.isEmpty, let canonical = Self.canonicalStorePath(path: path, agentID: agentID) else {
             return .unavailable
         }
+        let floor = max(afterRowID, 0)
+        let sql = "SELECT entry FROM transcript_entries WHERE rowid > \(floor) ORDER BY rowid DESC LIMIT \(limit);"
+        let result = await runCLI(path: canonical, sql: sql)
+        switch result {
+        case .unavailable:
+            return .unavailable
+        case .skippedBusy:
+            return .skippedBusy
+        case .ok(let stdout):
+            return Self.interpret(entriesNewestFirst: Self.jsonEntryLines(stdout), token: needle)
+        }
+    }
+
+    private func runCLI(path: String, sql: String) async -> CLIResult {
         let timeout = busyTimeoutMilliseconds
-        let rowLimit = limit
         let tool = sqlite3URL
         let waitNs = waitNanoseconds
         let pidBox = OSAllocatedUnfairLock(initialState: Int32(0))
@@ -47,10 +83,9 @@ struct GrokDReadonlyTranscriptReader: GrokDTranscriptReading, Sendable {
             await Task.detached(priority: .utility) {
                 Self.runReadonlySelect(
                     sqlite3URL: tool,
-                    path: canonical,
+                    path: path,
                     busyTimeoutMilliseconds: timeout,
-                    limit: rowLimit,
-                    token: needle,
+                    sql: sql,
                     waitNanoseconds: waitNs,
                     pidBox: pidBox
                 )
@@ -104,15 +139,26 @@ struct GrokDReadonlyTranscriptReader: GrokDTranscriptReading, Sendable {
         return .noEvidence
     }
 
+    private enum CLIResult {
+        case ok(String)
+        case skippedBusy
+        case unavailable
+    }
+
+    static func jsonEntryLines(_ out: String) -> [String] {
+        out.split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { $0.first == "{" }
+    }
+
     private static func runReadonlySelect(
         sqlite3URL: URL,
         path: String,
         busyTimeoutMilliseconds: Int32,
-        limit: Int,
-        token: String,
+        sql: String,
         waitNanoseconds: UInt64,
         pidBox: OSAllocatedUnfairLock<Int32>
-    ) -> GrokDTranscriptRead {
+    ) -> CLIResult {
         let process = Process()
         process.executableURL = sqlite3URL
         process.arguments = [
@@ -122,7 +168,7 @@ struct GrokDReadonlyTranscriptReader: GrokDTranscriptReading, Sendable {
             "-cmd",
             "PRAGMA busy_timeout=\(busyTimeoutMilliseconds)",
             path,
-            "SELECT entry FROM transcript_entries ORDER BY rowid DESC LIMIT \(limit);"
+            sql
         ]
         let stdout = Pipe()
         let stderr = Pipe()
@@ -146,7 +192,7 @@ struct GrokDReadonlyTranscriptReader: GrokDTranscriptReading, Sendable {
         do {
             try process.run()
         } catch {
-            return .unavailable
+            return CLIResult.unavailable
         }
         pidBox.withLock { $0 = process.processIdentifier }
         let started = DispatchTime.now()
@@ -179,8 +225,7 @@ struct GrokDReadonlyTranscriptReader: GrokDTranscriptReading, Sendable {
             return .skippedBusy
         }
         let out = String(data: outBox.withLock { $0 }, encoding: .utf8) ?? ""
-        let entries = out.split(whereSeparator: \.isNewline).map(String.init).filter { !$0.isEmpty }
-        return interpret(entriesNewestFirst: entries, token: token)
+        return .ok(out)
     }
 
     private static func isBusyMessage(_ raw: String) -> Bool {
@@ -199,11 +244,8 @@ struct GrokDReadonlyTranscriptReader: GrokDTranscriptReading, Sendable {
         if fields.kind == "send-message" || fields.role == "assistant" {
             return .assistant
         }
-        let hay = fields.parsed ? fields.content : raw
-        guard contentMatchesPrompt(hay, token: token) else { return .other }
-        if !fields.parsed {
-            return .user
-        }
+        guard fields.parsed else { return .other }
+        guard contentMatchesPrompt(fields.content, token: token) else { return .other }
         if fields.role == "user" || fields.kind == "message" || fields.type == "prompt" {
             return .user
         }

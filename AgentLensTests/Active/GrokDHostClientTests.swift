@@ -506,6 +506,15 @@ final class GrokDHostClientTests: XCTestCase {
             ),
             .promptLanded
         )
+        let eightyUser = #"{"kind":"message","role":"user","content":"80"}"#
+        XCTAssertEqual(
+            GrokDReadonlyTranscriptReader.interpret(entriesNewestFirst: ["80", assistant, eightyUser], token: "80"),
+            .completed
+        )
+        XCTAssertEqual(
+            GrokDReadonlyTranscriptReader.interpret(entriesNewestFirst: ["80"], token: "80"),
+            .noEvidence
+        )
     }
 
     func testReadonlySqliteFollowSucceedsWhenPreviewStillLooksLikeThePrompt() async throws {
@@ -641,6 +650,177 @@ final class GrokDHostClientTests: XCTestCase {
         XCTAssertEqual(result.outcome, .promptLandedNoReply)
     }
 
+    func testPragmaStdoutDoesNotStealPromptEighty() async throws {
+        let token = "80"
+        let db = try Self.makeTempStoreDB(entries: [
+            #"{"kind":"message","role":"user","content":"80"}"#,
+            #"{"kind":"send-message","message":{"type":"text","content":"pong"}}"#
+        ])
+        GrokDStubURLProtocol.handler = { request in
+            Self.json(request, 200, Self.agentJSON(running: false, preview: token, path: db.path))
+        }
+        let result = await makeClient(ports: [1337, 1338, 8787]).followTurn(
+            agentID: Self.benchID,
+            prompt: token,
+            baselinePreview: "old",
+            maxPolls: 2,
+            pollNanoseconds: 0
+        )
+        XCTAssertEqual(result.outcome, .completed)
+    }
+
+    func testWatermarkIgnoresOldCompletedTurn() async throws {
+        let token = "hi"
+        let db = try Self.makeTempStoreDB(entries: [
+            #"{"kind":"message","role":"user","content":"hi"}"#,
+            #"{"kind":"send-message","message":{"type":"text","content":"pong"}}"#
+        ])
+        let reader = GrokDReadonlyTranscriptReader(busyTimeoutMilliseconds: 0)
+        let watermark = await reader.maxRowID(path: db.path, agentID: Self.benchID)
+        XCTAssertNotNil(watermark)
+        XCTAssertGreaterThan(watermark ?? 0, 0)
+        GrokDStubURLProtocol.handler = { request in
+            Self.json(request, 200, Self.agentJSON(running: false, preview: "old", path: db.path))
+        }
+        let stale = await makeClient(ports: [1337, 1338, 8787]).followTurn(
+            agentID: Self.benchID,
+            prompt: token,
+            baselinePreview: "old",
+            afterRowID: watermark ?? 0,
+            maxPolls: 2,
+            pollNanoseconds: 0
+        )
+        XCTAssertNotEqual(stale.outcome, .completed)
+        let insert = Self.sqliteStatus(
+            db,
+            #"INSERT INTO transcript_entries (id, entry) VALUES ('new', '{"kind":"message","role":"user","content":"hi"}');"#,
+            readonly: false
+        )
+        XCTAssertEqual(insert, 0)
+        let landed = await makeClient(ports: [1337, 1338, 8787]).followTurn(
+            agentID: Self.benchID,
+            prompt: token,
+            baselinePreview: "old",
+            afterRowID: watermark ?? 0,
+            maxPolls: 2,
+            pollNanoseconds: 0
+        )
+        XCTAssertEqual(landed.outcome, .promptLandedNoReply)
+    }
+
+    func testSqlitePromptLandedDoesNotCompleteOnToolPreview() async throws {
+        let token = "user-only-token"
+        let db = try Self.makeTempStoreDB(entries: [
+            #"{"kind":"message","role":"user","content":"\#(token)"}"#
+        ])
+        GrokDStubURLProtocol.handler = { request in
+            Self.json(
+                request,
+                200,
+                Self.agentJSON(running: false, preview: "assistant pong", path: db.path)
+            )
+        }
+        let result = await makeClient(ports: [1337, 1338, 8787]).followTurn(
+            agentID: Self.benchID,
+            prompt: token,
+            baselinePreview: "old",
+            maxPolls: 2,
+            pollNanoseconds: 0
+        )
+        XCTAssertEqual(result.outcome, .promptLandedNoReply)
+    }
+
+    func testBusySqliteStillCompletesViaPreviewLaterReply() async throws {
+        let token = "busy-later-token"
+        let db = try Self.makeTempStoreDB(entries: [
+            #"{"kind":"message","role":"user","content":"\#(token)"}"#
+        ])
+        let locked = try Self.makeSqliteShim(mode: "locked")
+        let reader = GrokDReadonlyTranscriptReader(
+            busyTimeoutMilliseconds: 0,
+            sqlite3URL: locked.script
+        )
+        GrokDStubURLProtocol.handler = { request in
+            Self.json(request, 200, Self.agentJSON(running: false, preview: "\(token) pong", path: db.path))
+        }
+        let client = GrokDHostClient(
+            config: GrokDHostConfig(
+                loopbackHost: "127.0.0.1",
+                shimPort: 1337,
+                hostPort: 1338,
+                inferencePort: 8787,
+                bearerToken: self.token,
+                guiMode: "local"
+            ),
+            session: session,
+            portProbe: GrokDStubPortProbe(open: [1337, 1338, 8787]),
+            transcriptReader: reader
+        )
+        let result = await client.followTurn(
+            agentID: Self.benchID,
+            prompt: token,
+            baselinePreview: "old",
+            maxPolls: 2,
+            pollNanoseconds: 0
+        )
+        XCTAssertEqual(result.outcome, .completed)
+    }
+
+    func testMissingDbStillCompletesViaPreviewLaterReply() async throws {
+        let token = "missing-later-token"
+        let missing = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokd-miss-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("box-data", isDirectory: true)
+            .appendingPathComponent("agents", isDirectory: true)
+            .appendingPathComponent(Self.benchID, isDirectory: true)
+            .appendingPathComponent("store.db")
+        GrokDStubURLProtocol.handler = { request in
+            Self.json(request, 200, Self.agentJSON(running: false, preview: "\(token) pong", path: missing.path))
+        }
+        let result = await makeClient(ports: [1337, 1338, 8787]).followTurn(
+            agentID: Self.benchID,
+            prompt: token,
+            baselinePreview: "old",
+            maxPolls: 2,
+            pollNanoseconds: 0
+        )
+        XCTAssertEqual(result.outcome, .completed)
+    }
+
+    func testCanonicalStorePathRejectsJailEscapes() throws {
+        let id = Self.benchID
+        let other = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "grokd-jail-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        let jailDir = tmp
+            .appendingPathComponent("box-data", isDirectory: true)
+            .appendingPathComponent("agents", isDirectory: true)
+            .appendingPathComponent(id, isDirectory: true)
+        try FileManager.default.createDirectory(at: jailDir, withIntermediateDirectories: true)
+        XCTAssertNil(
+            GrokDReadonlyTranscriptReader.canonicalStorePath(
+                path: jailDir.appendingPathComponent("store.db").path,
+                agentID: other
+            )
+        )
+        XCTAssertNil(
+            GrokDReadonlyTranscriptReader.canonicalStorePath(
+                path: "~/box-data/agents/\(id)/store.db",
+                agentID: id
+            )
+        )
+        let outside = tmp.appendingPathComponent("outside.db")
+        try Data("not-a-store".utf8).write(to: outside)
+        let link = jailDir.appendingPathComponent("store.db")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: outside)
+        XCTAssertNil(GrokDReadonlyTranscriptReader.canonicalStorePath(path: link.path, agentID: id))
+        try FileManager.default.removeItem(at: link)
+        try FileManager.default.createDirectory(at: link, withIntermediateDirectories: false)
+        XCTAssertNil(GrokDReadonlyTranscriptReader.canonicalStorePath(path: link.path, agentID: id))
+    }
+
     func testBoxViewEnableEmptyRosterSendDisabledAndSearchAnchor() async {
         XCTAssertTrue(SettingsManifest.visibleAnchorIDs.contains(SettingsAnchor.agentsLocalDBox))
         let offDefaults = UserDefaults(suiteName: "GrokDBoxView.off.\(UUID().uuidString)")!
@@ -764,8 +944,9 @@ final class GrokDHostClientTests: XCTestCase {
         }
         let token = "BBLOCALD-AUDIT-\(Int(Date().timeIntervalSince1970))-\(UUID().uuidString.prefix(8))"
         let started = Date()
+        let handle: GrokDTurnHandle
         do {
-            _ = try await client.sendPrompt(agentID: bot.id, prompt: token)
+            handle = try await client.sendPrompt(agentID: bot.id, prompt: token)
         } catch let error as GrokDHostError {
             switch error {
             case .agentBusy, .sendRefused:
@@ -778,6 +959,7 @@ final class GrokDHostClientTests: XCTestCase {
             agentID: bot.id,
             prompt: token,
             baselinePreview: bot.lastMessagePreview,
+            afterRowID: handle.afterRowID,
             maxPolls: 30,
             pollNanoseconds: 1_000_000_000
         )

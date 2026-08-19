@@ -106,7 +106,7 @@ final class GrokDBoxModel {
                 : "D’s GUI is not on a local profile. This pane is the Local D box, not the Cursor seat."
             health = await client.health()
             guard generation == refreshGeneration else { return }
-            if health == .cannotList && !client.portProbe.isListening(host: client.config.loopbackHost, port: client.config.shimPort) {
+            if health == .cannotList {
                 agents = []
                 if !preservingStatus {
                     lastMessage = health.userMessage
@@ -153,7 +153,7 @@ final class GrokDBoxModel {
         do {
             let client = try makeClient()
             let baseline = selectedAgent?.lastMessagePreview
-            _ = try await client.sendPrompt(agentID: agentID, prompt: text)
+            let handle = try await client.sendPrompt(agentID: agentID, prompt: text)
             promptText = ""
             lastMessage = "Sent. Waiting for the box to run the turn…"
             statusTone = .info
@@ -162,6 +162,7 @@ final class GrokDBoxModel {
                 agentID: agentID,
                 prompt: text,
                 baselinePreview: baseline,
+                afterRowID: handle.afterRowID,
                 maxPolls: followMaxPolls,
                 pollNanoseconds: followPollNanoseconds
             )

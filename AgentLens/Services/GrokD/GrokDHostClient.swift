@@ -93,8 +93,17 @@ struct GrokDHostClient: Sendable {
             "prompt": trimmed,
             "awaitTurn": false
         ]
+        var afterRowID: Int64 = 0
+        if let path = agent.path {
+            afterRowID = await transcriptReader.maxRowID(path: path, agentID: agentID) ?? 0
+        }
         _ = try await post(method: "sendPrompt", body: body)
-        return GrokDTurnHandle(agentID: agentID, prompt: trimmed, acceptedAt: Date())
+        return GrokDTurnHandle(
+            agentID: agentID,
+            prompt: trimmed,
+            acceptedAt: Date(),
+            afterRowID: afterRowID
+        )
     }
 
     /// Preview later-reply is used only when sqlite is busy or the db cannot be opened.
@@ -102,6 +111,7 @@ struct GrokDHostClient: Sendable {
         agentID: String,
         prompt: String,
         baselinePreview: String?,
+        afterRowID: Int64 = 0,
         maxPolls: Int = 30,
         pollNanoseconds: UInt64 = 1_000_000_000
     ) async -> GrokDTurnFollowResult {
@@ -134,7 +144,12 @@ struct GrokDHostClient: Sendable {
             lastPreview = preview
             var trustPreviewReply = true
             if let path = agent.path {
-                switch await transcriptReader.read(path: path, agentID: agentID, token: needle) {
+                switch await transcriptReader.read(
+                    path: path,
+                    agentID: agentID,
+                    token: needle,
+                    afterRowID: afterRowID
+                ) {
                 case .completed:
                     return GrokDTurnFollowResult(outcome: .completed, lastPreview: preview)
                 case .promptLanded:
