@@ -1,6 +1,6 @@
 import Darwin
 import Foundation
-import OpenBurnBarKernel
+import OpenBurnBarComputerUseCore
 import OpenBurnBarMedia
 
 /// Lands a verified attachment into a workspace / Drop / `.burnbar/attachments` prefix.

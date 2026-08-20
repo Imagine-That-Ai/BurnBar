@@ -1,5 +1,6 @@
 import XCTest
 @testable import OpenBurnBar
+import OpenBurnBarComputerUseCore
 import OpenBurnBarKernel
 
 final class CLIAgentMissionClaimCallableTests: XCTestCase {

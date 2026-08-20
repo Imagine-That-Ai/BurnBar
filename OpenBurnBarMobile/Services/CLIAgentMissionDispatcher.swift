@@ -3,6 +3,7 @@ import FirebaseCore
 import FirebaseFirestore
 import FirebaseFunctions
 import Foundation
+import OpenBurnBarComputerUseCore
 import OpenBurnBarCore
 import OpenBurnBarSignalCore
 import os

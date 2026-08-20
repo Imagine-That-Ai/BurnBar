@@ -1,5 +1,6 @@
 import XCTest
 import Foundation
+import OpenBurnBarComputerUseCore
 import OpenBurnBarCore
 import OpenBurnBarSignalCore
 @testable import OpenBurnBarMobile

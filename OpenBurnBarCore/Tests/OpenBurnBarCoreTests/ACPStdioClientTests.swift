@@ -1,5 +1,5 @@
 import XCTest
-import OpenBurnBarKernel
+import OpenBurnBarComputerUseCore
 
 final class ACPStdioClientTests: XCTestCase {
     func testGrokAndKimiLaunchArgvMatchDecisionRecord() {

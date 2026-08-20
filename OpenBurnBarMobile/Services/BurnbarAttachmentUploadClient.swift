@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarKernel
+import OpenBurnBarComputerUseCore
 import OpenBurnBarMedia
 
 /// Product path: begin → mint part URLs → PUT with signed headers → compose → finalize.

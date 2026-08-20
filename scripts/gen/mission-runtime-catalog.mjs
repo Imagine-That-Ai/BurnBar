@@ -422,7 +422,7 @@ export function isKnownMissionRuntime(token: string): boolean {
 `;
 
 emitOrCheck(
-  "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/MissionRuntimeCatalog.generated.swift",
+  "OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/MissionRuntimeCatalog.generated.swift",
   swift,
 );
 emitOrCheck(
