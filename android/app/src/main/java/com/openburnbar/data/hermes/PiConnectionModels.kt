@@ -140,8 +140,7 @@ enum class RuntimeConnectionPreferenceKind(val token: String) {
     ;
 
     companion object {
-        fun fromToken(value: String?): RuntimeConnectionPreferenceKind? =
-            values().firstOrNull { it.token == value }
+        fun fromToken(value: String?): RuntimeConnectionPreferenceKind? = values().firstOrNull { it.token == value }
     }
 }
 
