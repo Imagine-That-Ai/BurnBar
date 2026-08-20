@@ -308,7 +308,7 @@ private struct TextExpansionTile: View {
                 // Routed through the ladder so a dashboard toggle cannot be the
                 // first thing a user hears about screen control.
                 Task { @MainActor in
-                    await FirstRunPermissionLadder.shared.request(.accessibility)
+                    await AppCommandRouter.shared.permissionLadder.request(.accessibility)
                     model.refreshSynchronousFacts()
                 }
             }
@@ -337,7 +337,7 @@ private struct TextExpansionTile: View {
                 help: "Opens System Settings → Privacy & Security → Accessibility. macOS grants the permission, not OpenBurnBar."
             ) {
                 Task { @MainActor in
-                    await FirstRunPermissionLadder.shared.request(.accessibility)
+                    await AppCommandRouter.shared.permissionLadder.request(.accessibility)
                     model.refreshSynchronousFacts()
                 }
             }

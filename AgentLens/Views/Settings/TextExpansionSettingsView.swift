@@ -454,7 +454,7 @@ struct TextExpansionSettingsView: View {
 
     private func requestAccessibilityPermission() {
         Task { @MainActor in
-            await FirstRunPermissionLadder.shared.request(.accessibility)
+            await AppCommandRouter.shared.permissionLadder.request(.accessibility)
             accessibilityTrusted = MacAccessibilityPermissionRequester.isTrusted()
         }
     }

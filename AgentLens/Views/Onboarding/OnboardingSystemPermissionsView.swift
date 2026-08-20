@@ -345,7 +345,7 @@ final class PermissionsOnboardingCoordinator: ObservableObject {
 
     init(
         monitor: any SystemPermissionMonitoring = SystemPermissionMonitor.shared,
-        permissionLadder: FirstRunPermissionLadder = .shared
+        permissionLadder: FirstRunPermissionLadder = AppCommandRouter.shared.permissionLadder
     ) {
         self.monitor = monitor
         self.permissionLadder = permissionLadder
