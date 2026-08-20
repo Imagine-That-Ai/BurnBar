@@ -8,6 +8,7 @@ import {
   copyFileSync,
   mkdirSync,
   mkdtempSync,
+  realpathSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -181,7 +182,7 @@ function captureRun(root) {
 }
 
 const runnerFixtureRoot = mkdtempSync(
-  join(tmpdir(), "openburnbar-rules-size-runner-"),
+  join(realpathSync(tmpdir()), "openburnbar-rules-size-runner-"),
 );
 try {
   writeFileSync(
@@ -219,8 +220,13 @@ try {
 
 // 5) The executable CLI must propagate a failing rules check to the process
 //    status that CI observes, not merely print an error.
+//    realpathSync(tmpdir()) matters: on macOS tmpdir() is /var/folders/... while
+//    the real path is /private/var/folders/..., so the CLI's
+//    resolve(argv[1]) === fileURLToPath(import.meta.url) main-check never
+//    matched, main() never ran, and it exited 0. Linux CI has no such symlink,
+//    so this self-test was simply unrunnable on a Mac.
 const cliFixtureRoot = mkdtempSync(
-  join(tmpdir(), "openburnbar-rules-size-cli-"),
+  join(realpathSync(tmpdir()), "openburnbar-rules-size-cli-"),
 );
 try {
   const cliDirectory = resolve(cliFixtureRoot, "scripts/ci");

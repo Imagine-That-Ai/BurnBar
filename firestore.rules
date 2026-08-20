@@ -2788,7 +2788,7 @@ service cloud.firestore {
           );
       }
 
-      allow create: if false;
+      // Creates are Admin-SDK only; Firestore's default deny covers clients.
       allow update: if ownerWritableNonSecret(userId)
         && validCliAgentMissionUpdateEnvelope()
         && (
@@ -2828,7 +2828,6 @@ service cloud.firestore {
         // Client event writes are denied. Admin SDK
         // (createCliAgentMission / appendCliAgentMissionEvent) owns 000001
         // and later events.
-        allow create: if false;
         allow update: if validCliAgentMissionEventRewrapUpdate();
       }
     }
@@ -2836,17 +2835,16 @@ service cloud.firestore {
     // burnbar_attachments: Admin-SDK callables own writes. Clients may read metadata.
     match /users/{userId}/burnbar_attachments/{attachmentId} {
       allow read: if ownsUserNamespace(userId);
-      allow create, update, delete: if false;
     }
 
     match /users/{userId}/mission_approval_answers/{answerId} {
       allow read: if ownsUserNamespace(userId);
-      allow create, update, delete: if false;
+      // Writes are Admin-SDK only; Firestore's default deny covers clients.
     }
 
     match /users/{userId}/mission_approval_ceilings/{requestId} {
       allow read: if ownsUserNamespace(userId);
-      allow create, update, delete: if false;
+      // Writes are Admin-SDK only; Firestore's default deny covers clients.
     }
 
     // Mobile-triggered agent history imports. Phones create pending jobs;
