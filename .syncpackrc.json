@@ -3,6 +3,7 @@
     "package.json",
     "functions/package.json",
     "extensions/openburnbar/package.json",
+    "extensions/safari/package.json",
     "website/package.json",
     "firestore-rules-tests/package.json",
     "quota-runner/package.json",

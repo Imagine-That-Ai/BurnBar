@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Google / Gemini family mark">
+  <title>Google / Gemini</title>
+  <rect x="1" y="1" width="62" height="62" rx="14" fill="#0c0a0f" stroke="#2a2030" stroke-width="1.25"/>
+  <!-- four-point star (Gemini glyph) -->
+  <path d="M 32 12 L 36 28 L 52 32 L 36 36 L 32 52 L 28 36 L 12 32 L 28 28 Z" fill="#f6f1e7"/>
+</svg>

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://unpkg.com/knip@latest/schema.json",
+  "entry": [
+    "scripts/build.mjs",
+    "scripts/clean.mjs",
+    "scripts/validate-manifest.mjs",
+    "src/background/index.ts",
+    "src/content/index.ts",
+    "src/content/pageWorldRunner.js",
+    "src/popup/index.ts",
+    "test/**/*.test.ts"
+  ],
+  "project": ["scripts/**/*.mjs", "src/**/*.{ts,js}", "test/**/*.ts"]
+}

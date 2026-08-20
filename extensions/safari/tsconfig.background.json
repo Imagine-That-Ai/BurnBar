@@ -1,0 +1,13 @@
+{
+  // The MV3 background runs as a service worker (see manifest.json). Typecheck
+  // it and everything it can import against the WebWorker lib, where `window`,
+  // `document`, `localStorage`, etc. do not exist. This is the compile-time
+  // guard that keeps DOM-only globals out of the streaming/bridge code path.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "WebWorker", "WebWorker.Iterable"],
+    "types": [],
+    "noEmit": true
+  },
+  "include": ["src/background/**/*.ts", "src/shared/**/*.ts"]
+}
