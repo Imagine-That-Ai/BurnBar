@@ -316,42 +316,59 @@ extension CLIAgentMissionRequestListener {
             return
         }
 
-        logger.info("claiming mission id=\(document.documentID, privacy: .public) kind=\(missionKind, privacy: .public) requested=\(requestedRuntime, privacy: .public) selected=\(backend.rawValue, privacy: .public) model=\(requestedModelID ?? "auto", privacy: .public)")
-        do {
-            let baseClaimSummary = requestedModelID.map { "\(backend.displayName) claimed the mission on this Mac with model \($0)." }
-                ?? "\(backend.displayName) claimed the mission on this Mac."
-            let claimSummary = wandRoutingSelection.map {
-                "\(baseClaimSummary) \($0.claimSummaryFragment)"
-            } ?? baseClaimSummary
-            let sealed = try await sealedStateUpdate(
-                uid: uid,
-                requestID: document.documentID,
-                payload: [:],
-                liveSummary: claimSummary
-            )
-            guard let sealedState = sealed["sealedStatePayload"] as? [String: Any] else {
-                logger.error("mission claim missing sealed state id=\(document.documentID, privacy: .public)")
+        let claimDecision = CLIAgentMissionClaimDecision.make(
+            thisDeviceId: accountManager.deviceId,
+            claimedBy: data["claimedBy"] as? String,
+            status: data["status"] as? String,
+            hasLocalHandle: claimedMissions[document.documentID] != nil,
+            inFlight: inFlightExecutions.contains(document.documentID)
+        )
+        switch claimDecision {
+        case .skip:
+            logger.info("mission id=\(document.documentID, privacy: .public) skip duplicate in-flight handle")
+            return
+        case .continueWithoutClaim:
+            logger.info("mission id=\(document.documentID, privacy: .public) continue-after-approve without a second claim")
+        case .claim:
+            logger.info("claiming mission id=\(document.documentID, privacy: .public) kind=\(missionKind, privacy: .public) requested=\(requestedRuntime, privacy: .public) selected=\(backend.rawValue, privacy: .public) model=\(requestedModelID ?? "auto", privacy: .public)")
+            do {
+                let baseClaimSummary = requestedModelID.map { "\(backend.displayName) claimed the mission on this Mac with model \($0)." }
+                    ?? "\(backend.displayName) claimed the mission on this Mac."
+                let claimSummary = wandRoutingSelection.map {
+                    "\(baseClaimSummary) \($0.claimSummaryFragment)"
+                } ?? baseClaimSummary
+                let sealed = try await sealedStateUpdate(
+                    uid: uid,
+                    requestID: document.documentID,
+                    payload: [:],
+                    liveSummary: claimSummary
+                )
+                guard let sealedState = sealed["sealedStatePayload"] as? [String: Any] else {
+                    logger.error("mission claim missing sealed state id=\(document.documentID, privacy: .public)")
+                    return
+                }
+                let hostWriteNonce = try await ComputerUseSecurityCallableClient.claimCliAgentMission(
+                    requestId: document.documentID,
+                    deviceId: accountManager.deviceId,
+                    nextStatus: "accepted",
+                    selectedRuntime: backend.rawValue,
+                    selectedRuntimeName: backend.displayName,
+                    selectedModelID: requestedModelID,
+                    approvalRequestId: nil,
+                    sealedStatePayload: sealedState
+                )
+                claimedMissions[document.documentID] = .init(hostWriteNonce: hostWriteNonce, deviceId: accountManager.deviceId)
+                if missionEventSequences[document.documentID] == nil {
+                    missionEventSequences[document.documentID] = 1
+                }
+                logger.info("claimed mission id=\(document.documentID, privacy: .public)")
+            } catch {
+                logger.error("mission claim failed id=\(document.documentID, privacy: .public): \(error.localizedDescription, privacy: .public)")
                 return
             }
-            let hostWriteNonce = try await ComputerUseSecurityCallableClient.claimCliAgentMission(
-                requestId: document.documentID,
-                deviceId: accountManager.deviceId,
-                nextStatus: "accepted",
-                selectedRuntime: backend.rawValue,
-                selectedRuntimeName: backend.displayName,
-                selectedModelID: requestedModelID,
-                approvalRequestId: nil,
-                sealedStatePayload: sealedState
-            )
-            claimedMissions[document.documentID] = .init(hostWriteNonce: hostWriteNonce, deviceId: accountManager.deviceId)
-            if missionEventSequences[document.documentID] == nil {
-                missionEventSequences[document.documentID] = 1
-            }
-            logger.info("claimed mission id=\(document.documentID, privacy: .public)")
-        } catch {
-            logger.error("mission claim failed id=\(document.documentID, privacy: .public): \(error.localizedDescription, privacy: .public)")
-            return
         }
+        inFlightExecutions.insert(document.documentID)
+        defer { inFlightExecutions.remove(document.documentID) }
 
         if let preClaimFailure = data["_preClaimFailure"] as? String {
             await fail(document: document, message: preClaimFailure)
@@ -709,4 +726,56 @@ extension CLIAgentMissionRequestListener {
 
 private extension String {
     var nilIfEmpty: String? { isEmpty ? nil : self }
+}
+
+enum CLIAgentMissionClaimDecision: Equatable {
+    case claim
+    case continueWithoutClaim
+    case skip
+
+    static func make(
+        thisDeviceId: String,
+        claimedBy: String?,
+        status: String?,
+        hasLocalHandle: Bool,
+        inFlight: Bool
+    ) -> CLIAgentMissionClaimDecision {
+        if inFlight { return .skip }
+        let status = (status ?? "").lowercased()
+        let live = ["waiting_for_approval", "accepted", "starting", "running"].contains(status)
+        if claimedBy == thisDeviceId, live {
+            return hasLocalHandle ? .continueWithoutClaim : .skip
+        }
+        return .claim
+    }
+}
+
+enum CLIAgentMissionClaimThenEvaluate {
+    enum Failure: Error { case failedPrecondition }
+
+    static func run(
+        decision: CLIAgentMissionClaimDecision,
+        claim: () async throws -> String,
+        evaluate: () async throws -> Void,
+        fail: () async throws -> Void
+    ) async throws {
+        switch decision {
+        case .skip:
+            return
+        case .continueWithoutClaim:
+            break
+        case .claim:
+            do {
+                _ = try await claim()
+            } catch Failure.failedPrecondition {
+                return
+            }
+        }
+        do {
+            try await evaluate()
+        } catch {
+            try await fail()
+            throw error
+        }
+    }
 }

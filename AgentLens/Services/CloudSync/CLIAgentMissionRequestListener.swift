@@ -24,6 +24,7 @@ final class CLIAgentMissionRequestListener {
         var deviceId: String
     }
     var claimedMissions: [String: ClaimedMissionHandle] = [:]
+    var inFlightExecutions: Set<String> = []
     init(
         accountManager: AccountManaging,
         settingsManager: SettingsManager,

@@ -25,24 +25,112 @@ final class CLIAgentMissionClaimCallableTests: XCTestCase {
         XCTAssertEqual(completed.kind, .completed)
     }
 
-    func testWinnerClaimEvaluatesOnceLoserDoesNot() {
-        final class ClaimBox: @unchecked Sendable {
-            var evaluate = 0
-            var failStatus = 0
-            func winner() -> Bool {
-                evaluate += 1
-                return true
-            }
-            func loser() -> Bool {
-                failStatus += 1
-                return false
-            }
+    func testWinnerClaimEvaluatesOnceLoserDoesNot() async throws {
+        let functions = FakeClaimCliAgentMission()
+        var evaluate = 0
+        var failStatus = 0
+        try await CLIAgentMissionClaimThenEvaluate.run(
+            decision: .claim,
+            claim: { try functions.claim(deviceId: "mac-winner") },
+            evaluate: { evaluate += 1 },
+            fail: { failStatus += 1 }
+        )
+        do {
+            try await CLIAgentMissionClaimThenEvaluate.run(
+                decision: .claim,
+                claim: { try functions.claim(deviceId: "mac-loser") },
+                evaluate: { evaluate += 1 },
+                fail: { failStatus += 1 }
+            )
+        } catch CLIAgentMissionClaimThenEvaluate.Failure.failedPrecondition {
+            XCTFail("failed-precondition must not evaluate or fail()")
         }
-        let box = ClaimBox()
-        XCTAssertTrue(box.winner())
-        XCTAssertFalse(box.loser())
-        XCTAssertEqual(box.evaluate, 1)
-        XCTAssertEqual(box.failStatus, 1)
+        XCTAssertEqual(functions.claimedBy, "mac-winner")
+        XCTAssertEqual(evaluate, 1)
+        XCTAssertEqual(failStatus, 0)
         XCTAssertTrue(MissionRuntimeCatalog.loadFixture().covers(ChatBackendID.allCases.map(\.rawValue)))
+    }
+
+    func testContinueAfterApproveSkipsSecondClaim() async throws {
+        let functions = FakeClaimCliAgentMission()
+        _ = try functions.claim(deviceId: "mac-1")
+        var evaluate = 0
+        var failStatus = 0
+        let decision = CLIAgentMissionClaimDecision.make(
+            thisDeviceId: "mac-1",
+            claimedBy: "mac-1",
+            status: "waiting_for_approval",
+            hasLocalHandle: true,
+            inFlight: false
+        )
+        XCTAssertEqual(decision, .continueWithoutClaim)
+        try await CLIAgentMissionClaimThenEvaluate.run(
+            decision: decision,
+            claim: { try functions.claim(deviceId: "mac-1") },
+            evaluate: { evaluate += 1 },
+            fail: { failStatus += 1 }
+        )
+        XCTAssertEqual(functions.claimCount, 1)
+        XCTAssertEqual(evaluate, 1)
+        XCTAssertEqual(failStatus, 0)
+    }
+
+    func testInFlightHandleSkipsClaimAndEvaluate() async throws {
+        let functions = FakeClaimCliAgentMission()
+        var evaluate = 0
+        let decision = CLIAgentMissionClaimDecision.make(
+            thisDeviceId: "mac-1",
+            claimedBy: "mac-1",
+            status: "waiting_for_approval",
+            hasLocalHandle: true,
+            inFlight: true
+        )
+        XCTAssertEqual(decision, .skip)
+        try await CLIAgentMissionClaimThenEvaluate.run(
+            decision: decision,
+            claim: { try functions.claim(deviceId: "mac-1") },
+            evaluate: { evaluate += 1 },
+            fail: { }
+        )
+        XCTAssertEqual(functions.claimCount, 0)
+        XCTAssertEqual(evaluate, 0)
+    }
+
+    func testApprovedWithoutApproverFailsClosed() {
+        let data: [String: Any] = [
+            "requestedRuntime": "hermes",
+            "approvalStatus": "approved",
+        ]
+        let ctx = MissionRemoteAuthorizationShadow.ShadowContext.fromMissionData(
+            data,
+            missionID: "m1",
+            prompt: "hi",
+            fanOutCount: 1
+        )
+        XCTAssertTrue(ctx.approverDeviceID?.isEmpty ?? true)
+        XCTAssertEqual(
+            MissionRemoteAuthorizationShadow.reduceGUIDecision(
+                approvalStatus: ctx.approvalStatus,
+                willPauseForApproval: false,
+                approverDeviceID: ctx.approverDeviceID
+            ),
+            .deny
+        )
+    }
+}
+
+final class FakeClaimCliAgentMission {
+    var status = "pending"
+    var claimedBy: String?
+    var claimCount = 0
+
+    func claim(deviceId: String) throws -> String {
+        claimCount += 1
+        guard status == "pending", claimedBy == nil else {
+            throw CLIAgentMissionClaimThenEvaluate.Failure.failedPrecondition
+        }
+        claimedBy = deviceId
+        status = "accepted"
+        return "nonce-winner"
     }
 }
