@@ -48,6 +48,16 @@ jobs:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
       # Fails if the accepted-advisory set is hand-duplicated in this workflow
       # instead of derived from crates/openburnbar-iroh/deny.toml (the one source).
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        with:
+          node-version: 22
+
+      # Positive control: prove the audit gate still fails an unaccepted yank
+      # and still refuses to let a policy entry silence a vulnerability, before
+      # trusting its verdict on the real crates.
+      - name: Self-test the cargo-audit gate
+        run: node --test scripts/ci/check-cargo-audit-fail-closed.test.mjs
+
       - name: Verify advisory ignores are single-sourced from deny.toml
         run: bash scripts/ci/check-advisory-ignore-single-source.sh
 
@@ -94,26 +104,49 @@ jobs:
             sleep $((attempt * 10))
           done
 
-      # Fail closed on advisories (RR-16). `--deny warnings` escalates every
-      # advisory class — vulnerabilities AND unmaintained/yanked — to a hard
-      # failure, EXCEPT the four unmaintained transitive deps already accepted
-      # (with no safe upgrade path) in crates/openburnbar-iroh/deny.toml. Any new
-      # advisory, or a change that drops one of these transitive deps, turns the
-      # lane red. Keep this --ignore list in sync with that deny.toml. The DB is
-      # fetched fresh each run (the weekly schedule catches newly-disclosed
-      # advisories against already-merged deps).
+      # Fail closed on advisories (RR-16), through a gate rather than raw flags.
+      #
+      # `cargo audit --deny warnings` is the right posture — it escalates
+      # unmaintained AND yanked crates, not just vulnerabilities — but its only
+      # escape hatch is `--ignore <RUSTSEC-id>`, and a YANKED crate has no
+      # advisory id (cargo-audit reports `advisory: null`). So a dependency
+      # yanked with no upgrade path left exactly two options: drop
+      # `--deny warnings` and lose the unmaintained signal too, or disable the
+      # job. BurnBar hit that on 2026-08-20 when arrayref 0.3.5-0.3.9 were
+      # yanked while blake3 still required ^0.3.5.
+      #
+      # The gate keeps the strict posture and adds the missing granularity.
+      # Advisory acceptances still come from crates/openburnbar-iroh/deny.toml
+      # (the one source, shared with cargo-deny); yanks with no upgrade path are
+      # time-boxed with rationale in config/rust-supply-chain-policy.json and
+      # expire on their own. Execution failures stay failures.
       - name: cargo audit (${{ matrix.crate }})
-        working-directory: ${{ matrix.path }}
-        run: |
-          # Accepted-advisory set is single-sourced from
-          # crates/openburnbar-iroh/deny.toml (with per-id rationale); derive the
-          # --ignore flags so cargo-audit and cargo-deny can never drift apart.
-          args=(--deny warnings)
-          while IFS= read -r id; do
-            [[ -n "$id" ]] && args+=(--ignore "$id")
-          done < <("${GITHUB_WORKSPACE}/scripts/ci/rust-advisory-ignores.sh")
-          echo "cargo audit ${args[*]}"
-          cargo audit "${args[@]}"
+        run: node scripts/ci/check-cargo-audit-fail-closed.mjs "${{ matrix.path }}"
+
+  # Catches the attack class cargo-audit structurally cannot see: a dependency
+  # on a crate that does not exist. Advisory scanners answer "does a published
+  # advisory match something I already resolved?" — so they are blind to a
+  # malicious version until someone writes the CVE, and blind to the upgrade
+  # path entirely. This reads the registry directly and reports phantom
+  # dependencies on versions above what we pin. See docs/RUST_SUPPLY_CHAIN.md.
+  dependency-confusion:
+    name: Rust dependency confusion (registry facts)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        with:
+          node-version: 22
+
+      # Positive control first: prove the gate still fails on the real attack
+      # shape before trusting its verdict on our actual lockfiles.
+      - name: Self-test the dependency-confusion gate
+        run: node --test scripts/ci/check-cargo-dependency-confusion.test.mjs
+
+      - name: Scan every Cargo.lock upgrade path
+        run: node scripts/ci/check-cargo-dependency-confusion.mjs
 
   clippy-security:
     name: clippy security lints (${{ matrix.crate }})
