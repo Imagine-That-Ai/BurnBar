@@ -1435,7 +1435,6 @@ let firstPartyTargetsBase: [Target] = [
                 "OpenBurnBarCore",
                 "OpenBurnBarDomainCoreRuntime",
                 "OpenBurnBarKernel",
-                "OpenBurnBarComputerUseCore",
                 "OpenBurnBarLogParsers",
                 "OpenBurnBarSQLiteReader",
                 "OpenBurnBarFirestoreModels",

@@ -1,6 +1,6 @@
 import XCTest
-import OpenBurnBarAssistantModels
-import OpenBurnBarComputerUseCore
+import OpenBurnBarCore
+@testable import OpenBurnBarComputerUseCore
 
 final class MissionRuntimeCatalogTests: XCTestCase {
     func testCatalogCoversEverySwiftEnum() {
