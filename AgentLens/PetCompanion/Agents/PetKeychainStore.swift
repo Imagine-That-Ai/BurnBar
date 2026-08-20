@@ -38,6 +38,8 @@ struct PetKeychainStore: Sendable {
         case antigravity = "Antigravity"
         case cursorAgent = "CursorAgent"
         case junie = "Junie"
+        case grok = "Grok"
+        case kimi = "Kimi"
 
         /// The full Keychain service string for this slot.
         var service: String { "BurnBar.PetCompanion.\(rawValue)" }
@@ -57,7 +59,8 @@ struct PetKeychainStore: Sendable {
             case .antigravity: self = .antigravity
             case .cursorAgent: self = .cursorAgent
             case .junie: self = .junie
-            case .grok, .kimi: self = .xAI
+            case .grok: self = .grok
+            case .kimi: self = .kimi
             }
         }
     }

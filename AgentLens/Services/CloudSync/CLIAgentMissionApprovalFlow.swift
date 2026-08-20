@@ -6,8 +6,6 @@ import OpenBurnBarCore
 import OpenBurnBarSignalCore
 import OSLog
 
-private typealias UntypedJSONObject = [String: Any]
-
 // Mission cancellation, approval, and failure state flow.
 // Extracted from CLIAgentMissionRequestListener.swift (god-file decomposition) — same module, verbatim.
 
@@ -42,7 +40,7 @@ extension CLIAgentMissionRequestListener {
                 deviceId: handle.deviceId,
                 status: releaseClaim ? "pending" : wireStatus,
                 hostWriteNonce: handle.hostWriteNonce,
-                sealedStatePayload: sealedState,
+                sealedStatePayload: ComputerUseSecurityCallableClient.sendableJSONPayload(sealedState),
                 approvalRequestId: approvalRequestId,
                 releaseClaim: releaseClaim
             )
@@ -124,7 +122,7 @@ extension CLIAgentMissionRequestListener {
                 deviceId: handle.deviceId,
                 status: "failed",
                 hostWriteNonce: handle.hostWriteNonce,
-                sealedStatePayload: sealedState
+                sealedStatePayload: ComputerUseSecurityCallableClient.sendableJSONPayload(sealedState)
             )
             await recordEvent(
                 reference: document.reference,
@@ -170,7 +168,7 @@ extension CLIAgentMissionRequestListener {
                 deviceId: handle.deviceId,
                 status: "failed",
                 hostWriteNonce: handle.hostWriteNonce,
-                sealedStatePayload: sealedState
+                sealedStatePayload: ComputerUseSecurityCallableClient.sendableJSONPayload(sealedState)
             )
             await recordEvent(
                 reference: document.reference,
@@ -230,7 +228,7 @@ extension CLIAgentMissionRequestListener {
                 deviceId: handle.deviceId,
                 status: "waiting_for_approval",
                 hostWriteNonce: handle.hostWriteNonce,
-                sealedStatePayload: sealedState,
+                sealedStatePayload: ComputerUseSecurityCallableClient.sendableJSONPayload(sealedState),
                 approvalRequestId: approvalID
             )
             await recordEvent(

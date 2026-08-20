@@ -213,7 +213,8 @@ extension ChatSessionController {
             return PromptTokenArbiter.estimateProseTokens(HermesSystemPromptBuilder.atomDirective)
         case .piAgent:
             return PromptTokenArbiter.estimateProseTokens(piSystemPromptWrapper(instanceID: piAgentInstanceID))
-        case .openclaw, .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp, .junie:
+        case .openclaw, .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp, .junie,
+             .grok, .kimi:
             return 0
         }
     }
@@ -226,7 +227,8 @@ extension ChatSessionController {
             return openClawGatewayModels
         case .piAgent:
             return piAgentGatewayModels
-        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp, .junie:
+        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp, .junie,
+             .grok, .kimi:
             return []
         }
     }
