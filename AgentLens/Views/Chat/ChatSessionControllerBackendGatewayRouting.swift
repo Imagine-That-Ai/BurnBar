@@ -221,7 +221,7 @@ extension ChatSessionController {
             return PromptTokenArbiter.estimateProseTokens(HermesSystemPromptBuilder.atomDirective)
         case .piAgent:
             return PromptTokenArbiter.estimateProseTokens(piSystemPromptWrapper(instanceID: piAgentInstanceID))
-        case .openclaw, .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp, .junie, .fx:
+        case .openclaw, .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp, .junie, .fx, .grok, .kimi:
             return 0
         }
     }

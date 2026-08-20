@@ -680,7 +680,10 @@ extension ChatSessionController {
                             resumeSessionID: self.fxResumeSessionID
                         )
                     case .grok, .kimi:
-                        return nil
+                        let backendName = self.chatBackend.displayName
+                        return AsyncThrowingStream<CLIChatStreamEvent, Error> { continuation in
+                            continuation.finish(throwing: CLIBridgeError.acpChatUnavailable(backendName))
+                        }
                     }
                 }
                 let consumption = try await Self.consumeChatStream(
