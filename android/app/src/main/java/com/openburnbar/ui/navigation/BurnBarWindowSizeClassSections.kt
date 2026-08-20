@@ -18,7 +18,8 @@ import androidx.compose.ui.unit.dp
 enum class BurnBarWindowWidthClass {
     COMPACT,
     MEDIUM,
-    EXPANDED;
+    EXPANDED,
+    ;
 
     val isCompact: Boolean get() = this == COMPACT
     val isMedium: Boolean get() = this == MEDIUM

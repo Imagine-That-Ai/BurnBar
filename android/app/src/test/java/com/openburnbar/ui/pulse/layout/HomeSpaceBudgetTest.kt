@@ -34,12 +34,7 @@ class HomeSpaceBudgetTest {
         spans = spans,
     )
 
-    private fun appetite(
-        available: Int,
-        baseline: Int = 0,
-        unit: Float = 20f,
-        ceiling: Int = 99,
-    ): HomeSlot.RowAppetite = HomeSlot.RowAppetite(
+    private fun appetite(available: Int, baseline: Int = 0, unit: Float = 20f, ceiling: Int = 99): HomeSlot.RowAppetite = HomeSlot.RowAppetite(
         available = available,
         baseline = baseline,
         unit = unit,
@@ -270,12 +265,20 @@ class HomeSpaceBudgetTest {
         )
 
         val stacked = HomeSpaceBudget.resolve(
-            canvasWidth = 900f, canvasHeight = 500f, slots = slots, gutter = 12f, columns = 1,
+            canvasWidth = 900f,
+            canvasHeight = 500f,
+            slots = slots,
+            gutter = 12f,
+            columns = 1,
         )
         assertTrue(stacked.overflows)
 
         val sideBySide = HomeSpaceBudget.resolve(
-            canvasWidth = 1400f, canvasHeight = 500f, slots = slots, gutter = 12f, columns = 2,
+            canvasWidth = 1400f,
+            canvasHeight = 500f,
+            slots = slots,
+            gutter = 12f,
+            columns = 2,
         )
         assertFalse(sideBySide.overflows)
         assertEquals(500f, sideBySide.height("a") ?: 0f, 0.01f)

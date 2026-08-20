@@ -324,12 +324,7 @@ private fun PulseHeroBurnCardGlass(metrics: PulseHeroCardMetrics, derived: Pulse
 }
 
 @Composable
-private fun PulseHeroBurnCardMainColumn(
-    metrics: PulseHeroCardMetrics,
-    derived: PulseHeroDerivedState,
-    burnRateText: String?,
-    topProvider: RollupSummary?,
-) {
+private fun PulseHeroBurnCardMainColumn(metrics: PulseHeroCardMetrics, derived: PulseHeroDerivedState, burnRateText: String?, topProvider: RollupSummary?) {
     Column(
         modifier = Modifier.fillMaxWidth(),
     ) {

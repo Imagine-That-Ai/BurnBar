@@ -1,7 +1,7 @@
 {
-  "nonisolatedDataStoreMembers": 8,
+  "nonisolatedDataStoreMembers": 10,
   "syncDbQueueAccesses": 19,
-  "total": 27,
+  "total": 29,
   "generatedAt": "2026-07-10T23:17:10Z",
-  "note": "Baseline for scripts/debt/check-datastore-isolation-budget.sh after the launch-readiness isolation cleanup. Counts code-line nonisolated members on AgentLens/Services/DataStore/{DataStore.swift,DataStoreCoordinator.swift,DataStore+*.swift} plus synchronous try dbQueue.read/write/writeWithoutTransaction sites under AgentLens/Services/DataStore, excluding database infrastructure and query tracer docs. The cleanup lowered nonisolated members from 28 to 8 and synchronous queue accesses from 21 to 19, for a total of 27. Lower this baseline only by removing direct-store exposure or migrating sync GRDB call sites to async slices."
+  "note": "Baseline for scripts/debt/check-datastore-isolation-budget.sh after the launch-readiness isolation cleanup. Counts code-line nonisolated members on AgentLens/Services/DataStore/{DataStore.swift,DataStoreCoordinator.swift,DataStore+*.swift} plus synchronous try dbQueue.read/write/writeWithoutTransaction sites under AgentLens/Services/DataStore, excluding database infrastructure and query tracer docs. The cleanup lowered nonisolated members from 28 to 8 and synchronous queue accesses from 21 to 19, for a total of 27. Lower this baseline only by removing direct-store exposure or migrating sync GRDB call sites to async slices. reason: raised 8 -> 10 (total 27 -> 29) for the SQLCipher termination fix in DataStore.swift \u2014 `closeForTermination()` and its `didCloseForTermination` lock. These cannot be actor-isolated by construction: an isolated close queues behind `fetchDashboardUsageSnapshot`, which is the exact in-flight read `exit()` was racing to produce a SIGSEGV inside `sqlite3Codec`. Isolating them would reinstate the crash, so this is not deferred debt and does not pay down. Shrink-only rule unchanged for every other member; the next raise must justify itself the same way."
 }

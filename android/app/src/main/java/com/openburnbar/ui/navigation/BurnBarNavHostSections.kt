@@ -581,12 +581,7 @@ private fun androidx.navigation.NavGraphBuilder.burnBarDashboardRedirectRoute(na
 }
 
 @Composable
-internal fun BurnBarNavigationRail(
-    currentTab: BurnBarTab,
-    onSelect: (BurnBarTab) -> Unit,
-    modifier: Modifier = Modifier,
-    isExpanded: Boolean = false,
-) {
+internal fun BurnBarNavigationRail(currentTab: BurnBarTab, onSelect: (BurnBarTab) -> Unit, modifier: Modifier = Modifier, isExpanded: Boolean = false) {
     val railWidth = if (isExpanded) 96.dp else 80.dp
     Column(
         modifier =

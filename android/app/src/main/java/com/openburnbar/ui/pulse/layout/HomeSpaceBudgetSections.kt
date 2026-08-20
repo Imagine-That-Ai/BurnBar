@@ -56,8 +56,7 @@ data class HomeSlot(
             return result
         }
 
-        override fun toString(): String =
-            "RowAppetite(available=$available, baseline=$baseline, unit=$unit, ceiling=$ceiling)"
+        override fun toString(): String = "RowAppetite(available=$available, baseline=$baseline, unit=$unit, ceiling=$ceiling)"
     }
 }
 
@@ -138,13 +137,7 @@ object HomeSpaceBudget {
         return min(target, ceiling)
     }
 
-    fun resolve(
-        canvasWidth: Float,
-        canvasHeight: Float,
-        slots: List<HomeSlot>,
-        gutter: Float,
-        columns: Int = 1,
-    ): HomeSpacePlan {
+    fun resolve(canvasWidth: Float, canvasHeight: Float, slots: List<HomeSlot>, gutter: Float, columns: Int = 1): HomeSpacePlan {
         if (slots.isEmpty()) return HomeSpacePlan.EMPTY
 
         val requested = max(1, columns)
@@ -246,11 +239,7 @@ object HomeSpaceBudget {
         val isVisible: Boolean,
     )
 
-    private fun resolveColumn(
-        slots: List<HomeSlot>,
-        height: Float,
-        gutter: Float,
-    ): ColumnResult {
+    private fun resolveColumn(slots: List<HomeSlot>, height: Float, gutter: Float): ColumnResult {
         val kept = slots.toMutableList()
         var chrome = gutter * max(0, kept.size - 1)
         var floors = kept.sumOf { it.floor.toDouble() }.toFloat()

@@ -44,40 +44,36 @@ object PensieveMotion {
      * Settle animation spec: Used when layout elements change size or position.
      * Damped harder than arrive to prevent wobble on plate edges.
      */
-    fun <T> settleSpec(reduceMotion: Boolean = false): FiniteAnimationSpec<T> =
-        if (reduceMotion) {
-            tween(durationMillis = reducedMs, easing = FastOutSlowInEasing)
-        } else {
-            spring(dampingRatio = settleDamping, stiffness = settleStiffness)
-        }
+    fun <T> settleSpec(reduceMotion: Boolean = false): FiniteAnimationSpec<T> = if (reduceMotion) {
+        tween(durationMillis = reducedMs, easing = FastOutSlowInEasing)
+    } else {
+        spring(dampingRatio = settleDamping, stiffness = settleStiffness)
+    }
 
     /**
      * Arrive animation spec: Used for entering content.
      */
-    fun <T> arriveSpec(reduceMotion: Boolean = false): FiniteAnimationSpec<T> =
-        if (reduceMotion) {
-            tween(durationMillis = reducedMs, easing = FastOutSlowInEasing)
-        } else {
-            spring(dampingRatio = arriveDamping, stiffness = arriveStiffness)
-        }
+    fun <T> arriveSpec(reduceMotion: Boolean = false): FiniteAnimationSpec<T> = if (reduceMotion) {
+        tween(durationMillis = reducedMs, easing = FastOutSlowInEasing)
+    } else {
+        spring(dampingRatio = arriveDamping, stiffness = arriveStiffness)
+    }
 
     /**
      * Depart animation spec: Fast exit.
      */
-    fun <T> departSpec(reduceMotion: Boolean = false): FiniteAnimationSpec<T> =
-        tween(
-            durationMillis = if (reduceMotion) reducedMs else departMs,
-            easing = FastOutLinearInEasing,
-        )
+    fun <T> departSpec(reduceMotion: Boolean = false): FiniteAnimationSpec<T> = tween(
+        durationMillis = if (reduceMotion) reducedMs else departMs,
+        easing = FastOutLinearInEasing,
+    )
 
     /**
      * Tick spec: Numeric or value transitions inside stationary frames.
      */
-    fun <T> tickSpec(reduceMotion: Boolean = false): FiniteAnimationSpec<T> =
-        tween(
-            durationMillis = if (reduceMotion) reducedMs else tickMs,
-            easing = FastOutSlowInEasing,
-        )
+    fun <T> tickSpec(reduceMotion: Boolean = false): FiniteAnimationSpec<T> = tween(
+        durationMillis = if (reduceMotion) reducedMs else tickMs,
+        easing = FastOutSlowInEasing,
+    )
 
     /**
      * Stagger delay for index, capped at staggerCapMs. Under reduceMotion, delay is 0ms.

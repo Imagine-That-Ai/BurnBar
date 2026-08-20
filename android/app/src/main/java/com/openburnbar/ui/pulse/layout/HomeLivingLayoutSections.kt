@@ -103,11 +103,7 @@ fun HomeLivingLayout(
 }
 
 @Composable
-private fun LivingLayoutComposition(
-    plan: HomeSpacePlan,
-    gutter: Dp,
-    slotContent: @Composable (String, HomeSpacePlan.Placement) -> Unit,
-) {
+private fun LivingLayoutComposition(plan: HomeSpacePlan, gutter: Dp, slotContent: @Composable (String, HomeSpacePlan.Placement) -> Unit) {
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(gutter),
@@ -161,12 +157,7 @@ private fun LivingLayoutComposition(
 }
 
 @Composable
-private fun LivingLayoutSlotWrapper(
-    id: String,
-    plan: HomeSpacePlan,
-    staggerIndex: Int,
-    slotContent: @Composable (String, HomeSpacePlan.Placement) -> Unit,
-) {
+private fun LivingLayoutSlotWrapper(id: String, plan: HomeSpacePlan, staggerIndex: Int, slotContent: @Composable (String, HomeSpacePlan.Placement) -> Unit) {
     val placement = plan.placement(id) ?: return
     if (!placement.isVisible) return
 

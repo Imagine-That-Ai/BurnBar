@@ -457,11 +457,7 @@ fun BreathingDot(color: Color = AuroraColors.ember, size: Int = 10, modifier: Mo
 // + 18px Y offset + staggerStepMs (60ms) / staggerCapMs (240ms).
 // Respects the reduce-motion composition local.
 @Composable
-fun StaggeredEntrance(
-    index: Int = 0,
-    reduceMotion: Boolean = LocalAuroraReduceMotion.current,
-    content: @Composable () -> Unit,
-) {
+fun StaggeredEntrance(index: Int = 0, reduceMotion: Boolean = LocalAuroraReduceMotion.current, content: @Composable () -> Unit) {
     var visible by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
