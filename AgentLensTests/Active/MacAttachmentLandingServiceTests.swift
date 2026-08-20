@@ -44,6 +44,31 @@ final class MacAttachmentLandingServiceTests: XCTestCase {
         )
         XCTAssertEqual(first.url, second.url)
         XCTAssertEqual(first.contentBlake3, digest)
+        let pending = MacAttachmentLandingService.takePending()
+        XCTAssertFalse(pending.isEmpty)
+        XCTAssertEqual(pending.first?.contentBlake3, digest)
+        XCTAssertTrue(MacAttachmentLandingService.takePending().isEmpty)
+    }
+
+    func testTakePendingSurfacesLandedAttachmentForReceiver() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let source = root.appendingPathComponent("plain.bin")
+        try Data("hello-land".utf8).write(to: source)
+        let digest = ContentBlake3.hash(Data("hello-land".utf8))
+        _ = try MacAttachmentLandingService.land(
+            plaintextURL: source,
+            declaredContentBlake3: digest,
+            filename: "note.txt",
+            roots: [root],
+            contentKey: Data(repeating: 7, count: 32),
+            verifiedDigest: digest
+        )
+        let pending = MacAttachmentLandingService.takePending()
+        XCTAssertEqual(pending.count, 1)
+        XCTAssertEqual(pending[0].displayName, "note.txt")
+        XCTAssertTrue(MacAttachmentLandingService.takePending().isEmpty)
     }
 
     func testMissingKeyFailsClosed() {

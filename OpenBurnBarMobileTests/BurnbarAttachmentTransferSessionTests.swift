@@ -18,4 +18,22 @@ final class BurnbarAttachmentTransferSessionTests: XCTestCase {
         XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Length"), "128")
         XCTAssertEqual(request.value(forHTTPHeaderField: "x-goog-if-generation-match"), "0")
     }
+
+    func testProcessPendingConsumesInboxAfterSuccess() async {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try! FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let file = dir.appendingPathComponent("share.bin")
+        try! Data("inbox".utf8).write(to: file)
+        var begins = 0
+        await BurnbarShareInboxProcessor.processPending(deviceId: "iphone-1", inbox: dir) { _, _ in
+            begins += 1
+        }
+        XCTAssertEqual(begins, 1)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: file.path))
+        await BurnbarShareInboxProcessor.processPending(deviceId: "iphone-1", inbox: dir) { _, _ in
+            begins += 1
+        }
+        XCTAssertEqual(begins, 1)
+    }
 }
