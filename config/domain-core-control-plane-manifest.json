@@ -148,7 +148,7 @@
     "scripts/ci/test-storage-rules.sh": ["6bc991e27a244a8d","03b5baeca098665e","ab2630911c802496","b702c9b943d49841"],
     "scripts/ci/update-submodules-with-retry.sh": ["08917b27074b6b60","95918e4a0c246427","b701c1d25eb375b8","ca9c1611452ba3d3"],
     "scripts/ci/verify-android-firebase-release-config.mjs": ["d0d3264a9289f603","67467d7d55128b48","12258a57bc378598","97da1fd11d95aad0"],
-    "scripts/ci/verify-apple-appcheck-release-artifact.sh": ["ae8c20d9fda07847","38c18f6d8c09dffe","3340df7509658319","764838c54b50f5b6"],
+    "scripts/ci/verify-apple-appcheck-release-artifact.sh": ["a1141d294f3065d3","c6a5855d2563395c","aa92de8d4266972e","6b0e00bb328e4a0d"],
     "scripts/ci/verify-apple-appcheck-release-env.sh": ["f9b951d668c4697d","751d32dbacf2d691","ef3dd0665a667390","b3e0c475174f87ae"],
     "scripts/ci/verify-apple-release-firebase-config.sh": ["f2b65dc787117261","568eb7c042e385bb","f69900d7a120e6f0","2a9315bf767aa51c"],
     "scripts/ci/verify-callable-logging.sh": ["2099c0564d639684","0262b44fc69c9367","a15501b89ac340ce","85470321c8a6507f"],
