@@ -114,6 +114,7 @@ import {
   cancelCliAgentMission,
   claimCliAgentMission,
   createCliAgentMission,
+  isLegalHostStatusTransition,
   updateCliAgentMissionStatus,
 } from "../callables/cliAgentMissions.js";
 import { writeSignalAtRestDocument } from "../callables/writeSignalAtRestDocument.js";
@@ -371,6 +372,33 @@ describe("updateCliAgentMissionStatus", () => {
         }),
       ),
     ).resolves.toMatchObject({ status: "starting" });
+  });
+
+  it("allows running → park → running → completed and a second park", async () => {
+    const sealedState = sealed(ALICE_UID, "cli_agent_mission_requests", "owned", "sealedStatePayload");
+    const body = (status: string, extra: Record<string, unknown> = {}) =>
+      authed({
+        requestId: "owned",
+        deviceId: "mac-winner",
+        nonce: "nonce-status",
+        actionProof: { ok: true },
+        status,
+        hostWriteNonce,
+        sealedStatePayload: sealedState,
+        ...extra,
+      });
+    await runStatus(body("starting"));
+    await runStatus(body("running"));
+    await runStatus(body("waiting_for_approval", { approvalRequestId: "acp-1" }));
+    await expect(runStatus(body("completed"))).rejects.toMatchObject({ code: "failed-precondition" });
+    await runStatus(body("running"));
+    await runStatus(body("waiting_for_approval", { approvalRequestId: "acp-2" }));
+    await runStatus(body("running"));
+    await expect(runStatus(body("completed"))).resolves.toMatchObject({ status: "completed" });
+    expect(isLegalHostStatusTransition("waiting_for_approval", "completed")).toBe(false);
+    expect(isLegalHostStatusTransition("waiting_for_approval", "running")).toBe(true);
+    expect(isLegalHostStatusTransition("running", "waiting_for_approval")).toBe(true);
+    expect(isLegalHostStatusTransition("running", "completed")).toBe(true);
   });
 });
 

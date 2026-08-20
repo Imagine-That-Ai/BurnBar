@@ -45,12 +45,16 @@ const CREATE_PLATFORMS = new Set([...PHONE_CONTROL_ESCROW_PLATFORMS, "macOS"]);
 const CREATE_TOKENS = new Set<string>(MISSION_RUNTIME_CREATE_TOKENS);
 const EVENT_TOKENS = new Set<string>(MISSION_RUNTIME_EVENT_TOKENS);
 
-const HOST_STATUS_TRANSITIONS: Record<string, ReadonlySet<string>> = {
+export const HOST_STATUS_TRANSITIONS: Record<string, ReadonlySet<string>> = {
   accepted: new Set(["starting", "waiting_for_approval", "failed", "canceled"]),
   starting: new Set(["running", "failed", "canceled"]),
   running: new Set(["completed", "failed", "canceled", "waiting_for_approval"]),
   waiting_for_approval: new Set(["accepted", "starting", "running", "canceled", "failed"]),
 };
+
+export function isLegalHostStatusTransition(from: string, to: string): boolean {
+  return HOST_STATUS_TRANSITIONS[from]?.has(to) === true;
+}
 
 type MissionCallableRequest = {
   requestId?: unknown;
