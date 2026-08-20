@@ -40,7 +40,7 @@ extension CLIAgentMissionRequestListener {
                 deviceId: handle.deviceId,
                 status: releaseClaim ? "pending" : wireStatus,
                 hostWriteNonce: handle.hostWriteNonce,
-                sealedStatePayload: sealedState,
+                sealedStatePayload: ComputerUseSecurityCallableClient.sendableJSONPayload(sealedState),
                 approvalRequestId: approvalRequestId,
                 releaseClaim: releaseClaim
             )
@@ -122,7 +122,7 @@ extension CLIAgentMissionRequestListener {
                 deviceId: handle.deviceId,
                 status: "failed",
                 hostWriteNonce: handle.hostWriteNonce,
-                sealedStatePayload: sealedState
+                sealedStatePayload: ComputerUseSecurityCallableClient.sendableJSONPayload(sealedState)
             )
             await recordEvent(
                 reference: document.reference,
@@ -168,7 +168,7 @@ extension CLIAgentMissionRequestListener {
                 deviceId: handle.deviceId,
                 status: "failed",
                 hostWriteNonce: handle.hostWriteNonce,
-                sealedStatePayload: sealedState
+                sealedStatePayload: ComputerUseSecurityCallableClient.sendableJSONPayload(sealedState)
             )
             await recordEvent(
                 reference: document.reference,
@@ -228,7 +228,7 @@ extension CLIAgentMissionRequestListener {
                 deviceId: handle.deviceId,
                 status: "waiting_for_approval",
                 hostWriteNonce: handle.hostWriteNonce,
-                sealedStatePayload: sealedState,
+                sealedStatePayload: ComputerUseSecurityCallableClient.sendableJSONPayload(sealedState),
                 approvalRequestId: approvalID
             )
             await recordEvent(

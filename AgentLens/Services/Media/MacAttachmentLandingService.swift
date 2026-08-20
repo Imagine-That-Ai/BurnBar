@@ -259,7 +259,7 @@ enum MacBurnbarAttachmentUploadClient {
         let length = (try? FileManager.default.attributesOfItem(atPath: fileURL.path)[.size] as? NSNumber)?.int64Value ?? 0 // try?-ok(Content-Length is advisory)
         request.setValue(String(length), forHTTPHeaderField: "Content-Length")
         request.setValue("0", forHTTPHeaderField: "x-goog-if-generation-match")
-        let (_, response) = try await URLSession.shared.upload(fromFile: fileURL, for: request)
+        let (_, response) = try await URLSession.shared.upload(for: request, fromFile: fileURL)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             throw NSError(
                 domain: "OpenBurnBar.MacBurnbarAttachmentUpload",

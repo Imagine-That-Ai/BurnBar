@@ -1157,7 +1157,10 @@ enum ComputerUseSecurityCallableClient {
         )
     }
 
-    static func createCliAgentMission(payload: [String: Any], deviceId: String) async throws -> String {
+    // `any Sendable` for the same reason as updateCliAgentMissionStatus: the
+    // caller's mission payload crosses into this async call under Swift 6
+    // region isolation; require provably-Sendable values at the boundary.
+    static func createCliAgentMission(payload: [String: any Sendable], deviceId: String) async throws -> String {
         let requestId = payload["requestId"] as? String ?? ""
         let result = try await callHighRiskOwnerAction(
             "createCliAgentMission",
@@ -1216,7 +1219,10 @@ enum ComputerUseSecurityCallableClient {
         deviceId: String,
         status: String,
         hostWriteNonce: String,
-        sealedStatePayload: [String: Any],
+        // `any Sendable` values: callers hold `[String: Any]` mission state that
+        // crosses into this async call; requiring provably-Sendable values here
+        // (via `sendableJSONPayload`) is what satisfies Swift 6 region isolation.
+        sealedStatePayload: [String: any Sendable],
         approvalRequestId: String? = nil,
         releaseClaim: Bool = false
     ) async throws {

@@ -244,7 +244,6 @@ extension CLIAgentMissionRequestListener {
                 onPermission: { request in
                     await self.resolveACPPermission(
                         request,
-                        data: data,
                         document: reference,
                         requestID: requestID,
                         backend: backend
@@ -327,7 +326,6 @@ extension CLIAgentMissionRequestListener {
 
     func resolveACPPermission(
         _ request: ACPStdioClient.PermissionRequest,
-        data _: UntypedJSONObject,
         document: DocumentReference,
         requestID: String,
         backend: CLIAgentMissionBackend
@@ -364,7 +362,7 @@ extension CLIAgentMissionRequestListener {
                 deviceId: handle.deviceId,
                 status: "waiting_for_approval",
                 hostWriteNonce: handle.hostWriteNonce,
-                sealedStatePayload: sealedState,
+                sealedStatePayload: ComputerUseSecurityCallableClient.sendableJSONPayload(sealedState),
                 approvalRequestId: approvalID
             )
             await recordEvent(
@@ -417,7 +415,7 @@ extension CLIAgentMissionRequestListener {
             deviceId: handle.deviceId,
             status: "running",
             hostWriteNonce: handle.hostWriteNonce,
-            sealedStatePayload: sealedState
+            sealedStatePayload: ComputerUseSecurityCallableClient.sendableJSONPayload(sealedState)
         )
     }
 

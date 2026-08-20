@@ -59,7 +59,8 @@ struct PetKeychainStore: Sendable {
             case .antigravity: self = .antigravity
             case .cursorAgent: self = .cursorAgent
             case .junie: self = .junie
-            case .grok, .kimi: self = .xAI
+            case .grok: self = .grok
+            case .kimi: self = .kimi
             }
         }
     }

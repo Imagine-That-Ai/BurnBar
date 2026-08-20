@@ -197,7 +197,7 @@ struct MacWandMissionDispatcher {
                 parent["siblings"] = Array(slice.dropFirst())
             }
             _ = try await ComputerUseSecurityCallableClient.createCliAgentMission(
-                payload: parent,
+                payload: ComputerUseSecurityCallableClient.sendableJSONPayload(parent),
                 deviceId: accountManager.deviceId
             )
         }

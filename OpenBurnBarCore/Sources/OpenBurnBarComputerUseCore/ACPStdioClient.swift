@@ -68,9 +68,12 @@ public enum ACPStdioClient {
         extraEnvironment: [String: String] = [:],
         workingDirectory: URL? = nil,
         timeoutSeconds: TimeInterval = 180,
-        onPermission: @escaping (PermissionRequest) async -> Bool,
-        onUpdate: @escaping (String) -> Void = { _ in },
-        interruptFlag: () -> Bool = { false }
+        // @Sendable: these closures cross the caller's isolation region into
+        // this async session (Swift 6 region isolation). Callers capture actor
+        // references, which are themselves Sendable.
+        onPermission: @escaping @Sendable (PermissionRequest) async -> Bool,
+        onUpdate: @escaping @Sendable (String) -> Void = { _ in },
+        interruptFlag: @Sendable () -> Bool = { false }
     ) async throws -> String {
         let banned = CLIArgumentBuilderForbiddenFlags.hits(in: arguments)
         if !banned.isEmpty {
