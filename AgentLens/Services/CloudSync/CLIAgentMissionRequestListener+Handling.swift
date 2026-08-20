@@ -1,5 +1,6 @@
 import Foundation
 @preconcurrency import FirebaseFirestore
+import FirebaseFunctions
 import OpenBurnBarComputerUseCore
 import OpenBurnBarCore
 import OSLog
@@ -323,166 +324,346 @@ extension CLIAgentMissionRequestListener {
             hasLocalHandle: claimedMissions[document.documentID] != nil,
             inFlight: inFlightExecutions.contains(document.documentID)
         )
-        switch claimDecision {
-        case .skip:
-            logger.info("mission id=\(document.documentID, privacy: .public) skip duplicate in-flight handle")
-            return
-        case .continueWithoutClaim:
-            logger.info("mission id=\(document.documentID, privacy: .public) continue-after-approve without a second claim")
-        case .claim:
+
+        func performExclusiveClaim() async throws -> String {
             logger.info("claiming mission id=\(document.documentID, privacy: .public) kind=\(missionKind, privacy: .public) requested=\(requestedRuntime, privacy: .public) selected=\(backend.rawValue, privacy: .public) model=\(requestedModelID ?? "auto", privacy: .public)")
-            do {
-                let baseClaimSummary = requestedModelID.map { "\(backend.displayName) claimed the mission on this Mac with model \($0)." }
-                    ?? "\(backend.displayName) claimed the mission on this Mac."
-                let claimSummary = wandRoutingSelection.map {
-                    "\(baseClaimSummary) \($0.claimSummaryFragment)"
-                } ?? baseClaimSummary
-                let sealed = try await sealedStateUpdate(
-                    uid: uid,
-                    requestID: document.documentID,
-                    payload: [:],
-                    liveSummary: claimSummary
-                )
-                guard let sealedState = sealed["sealedStatePayload"] as? [String: Any] else {
-                    logger.error("mission claim missing sealed state id=\(document.documentID, privacy: .public)")
-                    return
-                }
-                let hostWriteNonce = try await ComputerUseSecurityCallableClient.claimCliAgentMission(
-                    requestId: document.documentID,
-                    deviceId: accountManager.deviceId,
-                    nextStatus: "accepted",
-                    selectedRuntime: backend.rawValue,
-                    selectedRuntimeName: backend.displayName,
-                    selectedModelID: requestedModelID,
-                    approvalRequestId: nil,
-                    sealedStatePayload: sealedState
-                )
-                claimedMissions[document.documentID] = .init(hostWriteNonce: hostWriteNonce, deviceId: accountManager.deviceId)
-                if missionEventSequences[document.documentID] == nil {
-                    missionEventSequences[document.documentID] = 1
-                }
-                logger.info("claimed mission id=\(document.documentID, privacy: .public)")
-            } catch {
-                logger.error("mission claim failed id=\(document.documentID, privacy: .public): \(error.localizedDescription, privacy: .public)")
-                return
-            }
-        }
-        inFlightExecutions.insert(document.documentID)
-        defer { inFlightExecutions.remove(document.documentID) }
-
-        if let preClaimFailure = data["_preClaimFailure"] as? String {
-            await fail(document: document, message: preClaimFailure)
-            return
-        }
-        guard !prompt.isEmpty else {
-            await fail(document: document, message: "Mission prompt was empty.")
-            return
-        }
-
-        // The daemon is the sole mission authority (M4). Exclusive claim happens
-        // first so a losing Mac never evaluates.
-        switch await resolveRemoteMissionAuthorization(
-            document: document, data: data, backend: backend, uid: uid, prompt: prompt,
-            executorTrustState: executorTrustState, missionGroupContext: missionGroupContext
-        ) {
-        case .stop:
-            return
-        case let .proceed(grantCeiling):
-            data["commandsAllowed"] = grantCeiling.commandsAllowed
-            data["fileEditsAllowed"] = grantCeiling.fileEditsAllowed
-        }
-
-        // Execution-side local-privacy gate (NOT remote authorization): this Mac
-        // spawns a CLI assistant only when the operator enabled Mac CLI assistants.
-        if CLIAgentMissionRuntimePlanner.requiresMacCLIAssistantConsentForRemoteMission(backend: backend),
-           !settingsManager.cliAssistantAllowed {
-            await failAfterTrustedClaim(
-                document: document,
-                backend: backend,
-                message: "Mac CLI assistants are off. Enable Mac CLI assistants in Settings -> Privacy & Indexing before this Mac can run remote agent missions."
-            )
-            return
-        }
-
-        if cancellationTracker.isCancelled {
-            await handleCancellation(document: document, backend: backend)
-            return
-        }
-
-        if chatController.isStreaming {
-            logger.warning("mission id=\(document.documentID, privacy: .public) blocked because chat controller is already streaming")
-            await fail(document: document, message: "Mac chat controller is already running another mission.")
-            return
-        }
-
-        if cancellationTracker.isCancelled {
-            await handleCancellation(document: document, backend: backend)
-            return
-        }
-
-        logger.info("starting mission id=\(document.documentID, privacy: .public) backend=\(backend.rawValue, privacy: .public)")
-        do {
-            let summary = requestedModelID.map { "Starting \(backend.displayName) with model \($0)." }
-                ?? "Starting \(backend.displayName) with the mission prompt."
-            guard let handle = claimedMissions[document.documentID] else { return }
+            let baseClaimSummary = requestedModelID.map { "\(backend.displayName) claimed the mission on this Mac with model \($0)." }
+                ?? "\(backend.displayName) claimed the mission on this Mac."
+            let claimSummary = wandRoutingSelection.map {
+                "\(baseClaimSummary) \($0.claimSummaryFragment)"
+            } ?? baseClaimSummary
             let sealed = try await sealedStateUpdate(
                 uid: uid,
                 requestID: document.documentID,
                 payload: [:],
-                liveSummary: summary
+                liveSummary: claimSummary
             )
-            if let sealedState = sealed["sealedStatePayload"] as? [String: Any] {
-                try await ComputerUseSecurityCallableClient.updateCliAgentMissionStatus(
-                    requestId: document.documentID,
-                    deviceId: handle.deviceId,
-                    status: "starting",
-                    hostWriteNonce: handle.hostWriteNonce,
-                    sealedStatePayload: sealedState
-                )
+            guard let sealedState = sealed["sealedStatePayload"] as? [String: Any] else {
+                throw CLIAgentMissionClaimThenEvaluate.Failure.missingSealedState
             }
-        } catch {
-            logger.error("mission starting update failed id=\(document.documentID, privacy: .public): \(error.localizedDescription, privacy: .public)")
-        }
-        await recordEvent(
-            reference: document.reference,
-            requestID: document.documentID,
-            phase: "starting",
-            kind: "status",
-            title: "Starting",
-            message: requestedModelID.map { "Starting \(backend.displayName) with model \($0)." }
-                ?? "Starting \(backend.displayName) with the mission prompt.",
-            backend: backend
-        )
-
-        if cancellationTracker.isCancelled {
-            await handleCancellation(document: document, backend: backend)
-            return
-        }
-
-        let missionWorkingDirectoryURL = workingDirectoryURL(from: data)
-        let changedFilesBefore = await gitChangedFiles(in: missionWorkingDirectoryURL)
-        do {
-            let summary = requestedModelID.map { "\(backend.displayName) is running \($0) on this Mac." }
-                ?? "\(backend.displayName) is running on this Mac."
-            await applyHostStatus(
-                document: document,
-                status: "running",
-                liveSummary: summary
+            let hostWriteNonce = try await ComputerUseSecurityCallableClient.claimCliAgentMission(
+                requestId: document.documentID,
+                deviceId: accountManager.deviceId,
+                nextStatus: "accepted",
+                selectedRuntime: backend.rawValue,
+                selectedRuntimeName: backend.displayName,
+                selectedModelID: requestedModelID,
+                approvalRequestId: nil,
+                sealedStatePayload: sealedState
             )
-        } catch {
-            logger.error("mission running update failed id=\(document.documentID, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            claimedMissions[document.documentID] = .init(hostWriteNonce: hostWriteNonce, deviceId: accountManager.deviceId)
+            if missionEventSequences[document.documentID] == nil {
+                missionEventSequences[document.documentID] = 1
+            }
+            logger.info("claimed mission id=\(document.documentID, privacy: .public)")
+            return hostWriteNonce
         }
 
-        if cancellationTracker.isCancelled {
-            await handleCancellation(document: document, backend: backend)
-            return
-        }
+        func evaluateAfterExclusiveClaim() async {
+            inFlightExecutions.insert(document.documentID)
+            defer { inFlightExecutions.remove(document.documentID) }
+            if let preClaimFailure = data["_preClaimFailure"] as? String {
+                await fail(document: document, message: preClaimFailure)
+                return
+            }
+            guard !prompt.isEmpty else {
+                await fail(document: document, message: "Mission prompt was empty.")
+                return
+            }
 
-        if let directResult = await runDirectCLIMissionIfNeeded(title: title, prompt: prompt, backend: backend, data: data, reference: document.reference, requestID: document.documentID, cancellationTracker: cancellationTracker) {
+            // The daemon is the sole mission authority (M4). Exclusive claim happens
+            // first so a losing Mac never evaluates.
+            switch await resolveRemoteMissionAuthorization(
+                document: document, data: data, backend: backend, uid: uid, prompt: prompt,
+                executorTrustState: executorTrustState, missionGroupContext: missionGroupContext
+            ) {
+            case .stop:
+                return
+            case let .proceed(grantCeiling):
+                data["commandsAllowed"] = grantCeiling.commandsAllowed
+                data["fileEditsAllowed"] = grantCeiling.fileEditsAllowed
+            }
+
+            // Execution-side local-privacy gate (NOT remote authorization): this Mac
+            // spawns a CLI assistant only when the operator enabled Mac CLI assistants.
+            if CLIAgentMissionRuntimePlanner.requiresMacCLIAssistantConsentForRemoteMission(backend: backend),
+               !settingsManager.cliAssistantAllowed {
+                await failAfterTrustedClaim(
+                    document: document,
+                    backend: backend,
+                    message: "Mac CLI assistants are off. Enable Mac CLI assistants in Settings -> Privacy & Indexing before this Mac can run remote agent missions."
+                )
+                return
+            }
+
             if cancellationTracker.isCancelled {
                 await handleCancellation(document: document, backend: backend)
                 return
             }
+
+            if chatController.isStreaming {
+                logger.warning("mission id=\(document.documentID, privacy: .public) blocked because chat controller is already streaming")
+                await fail(document: document, message: "Mac chat controller is already running another mission.")
+                return
+            }
+
+            if cancellationTracker.isCancelled {
+                await handleCancellation(document: document, backend: backend)
+                return
+            }
+
+            logger.info("starting mission id=\(document.documentID, privacy: .public) backend=\(backend.rawValue, privacy: .public)")
+            do {
+                let summary = requestedModelID.map { "Starting \(backend.displayName) with model \($0)." }
+                    ?? "Starting \(backend.displayName) with the mission prompt."
+                guard let handle = claimedMissions[document.documentID] else { return }
+                let sealed = try await sealedStateUpdate(
+                    uid: uid,
+                    requestID: document.documentID,
+                    payload: [:],
+                    liveSummary: summary
+                )
+                if let sealedState = sealed["sealedStatePayload"] as? [String: Any] {
+                    try await ComputerUseSecurityCallableClient.updateCliAgentMissionStatus(
+                        requestId: document.documentID,
+                        deviceId: handle.deviceId,
+                        status: "starting",
+                        hostWriteNonce: handle.hostWriteNonce,
+                        sealedStatePayload: sealedState
+                    )
+                }
+            } catch {
+                logger.error("mission starting update failed id=\(document.documentID, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            }
+            await recordEvent(
+                reference: document.reference,
+                requestID: document.documentID,
+                phase: "starting",
+                kind: "status",
+                title: "Starting",
+                message: requestedModelID.map { "Starting \(backend.displayName) with model \($0)." }
+                    ?? "Starting \(backend.displayName) with the mission prompt.",
+                backend: backend
+            )
+
+            if cancellationTracker.isCancelled {
+                await handleCancellation(document: document, backend: backend)
+                return
+            }
+
+            let missionWorkingDirectoryURL = workingDirectoryURL(from: data)
+            let changedFilesBefore = await gitChangedFiles(in: missionWorkingDirectoryURL)
+            do {
+                let summary = requestedModelID.map { "\(backend.displayName) is running \($0) on this Mac." }
+                    ?? "\(backend.displayName) is running on this Mac."
+                await applyHostStatus(
+                    document: document,
+                    status: "running",
+                    liveSummary: summary
+                )
+            } catch {
+                logger.error("mission running update failed id=\(document.documentID, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            }
+
+            if cancellationTracker.isCancelled {
+                await handleCancellation(document: document, backend: backend)
+                return
+            }
+
+            if let directResult = await runDirectCLIMissionIfNeeded(title: title, prompt: prompt, backend: backend, data: data, reference: document.reference, requestID: document.documentID, cancellationTracker: cancellationTracker) {
+                if cancellationTracker.isCancelled {
+                    await handleCancellation(document: document, backend: backend)
+                    return
+                }
+                await recordChangedFileEvents(
+                    before: changedFilesBefore,
+                    after: await gitChangedFiles(in: missionWorkingDirectoryURL),
+                    reference: document.reference,
+                    requestID: document.documentID,
+                    backend: backend
+                )
+                let safeDirectOutput = CLIAgentMissionEventFactory.mobileSafeText(directResult.output)
+                let directFailure = directResult.errorMessage.map {
+                    modelAwareFailureMessage(
+                        backend: backend,
+                        requestedModelID: requestedModelID,
+                        errorMessage: $0
+                    )
+                }
+                var payload: [String: Any] = [
+                    "status": directResult.status == "failed" ? "agent_launch_failed" : directResult.status,
+                    "selectedRuntime": backend.rawValue,
+                    "selectedRuntimeName": backend.displayName,
+                    "sessionId": directResult.sessionID,
+                    "completedAt": ISO8601DateFormatter().string(from: Date()),
+                    "updatedAt": FieldValue.serverTimestamp()
+                ]
+                if let requestedModelID {
+                    payload["selectedModelID"] = requestedModelID
+                }
+                let liveSummary = directResult.status == "completed"
+                    ? modelAwareSuccessMessage(backend: backend, requestedModelID: requestedModelID, fallback: safeDirectOutput)
+                    : directFailure ?? modelAwareFailureMessage(backend: backend, requestedModelID: requestedModelID, errorMessage: nil)
+                var sealedErrorMessage: String?
+                if let errorMessage = directResult.errorMessage {
+                    sealedErrorMessage = CLIAgentMissionEventFactory.mobileSafeText(
+                        modelAwareFailureMessage(
+                            backend: backend,
+                            requestedModelID: requestedModelID,
+                            errorMessage: errorMessage
+                        )
+                    )
+                }
+                await applyHostStatus(
+                    document: document,
+                    status: directResult.status == "failed" ? "failed" : directResult.status,
+                    liveSummary: liveSummary,
+                    errorMessage: sealedErrorMessage,
+                    resultPreview: safeDirectOutput
+                )
+                logger.info("finished direct CLI mission id=\(document.documentID, privacy: .public) status=\(directResult.status, privacy: .public)")
+                await recordEvent(
+                    reference: document.reference,
+                    requestID: document.documentID,
+                    phase: directResult.status == "completed" ? "completed" : "agent_launch_failed",
+                    kind: directResult.status == "completed" ? "final_answer" : "error",
+                    title: directResult.status == "completed" ? "Completed" : "Agent launch failed",
+                    message: directResult.status == "completed"
+                        ? resultSummary(from: directResult.output)
+                        : (directFailure ?? modelAwareFailureMessage(backend: backend, requestedModelID: requestedModelID, errorMessage: nil)),
+                    backend: backend,
+                    isError: directResult.status != "completed"
+                )
+                return
+            }
+
+            if cancellationTracker.isCancelled {
+                await handleCancellation(document: document, backend: backend)
+                return
+            }
+
+            guard let chatBackend = backend.chatBackend else {
+                await fail(document: document, message: "\(backend.displayName) is not available through the interactive Mac chat controller.")
+                return
+            }
+            guard !chatController.isSendBusy else {
+                await fail(
+                    document: document,
+                    message: modelAwareFailureMessage(
+                        backend: backend,
+                        requestedModelID: requestedModelID,
+                        errorMessage: "A Mac CLI agent is already responding. Wait for the current reply to finish, then send again."
+                    )
+                )
+                return
+            }
+
+            chatController.setChatBackend(chatBackend)
+            if let requestedModelID {
+                chatController.setChatModelSelection(requestedModelID, for: chatBackend)
+            }
+            if let clientThreadID = CLIAgentMissionRuntimePlanner.mobileChatClientThreadID(from: data) {
+                chatController.openOrCreateChatThread(id: clientThreadID)
+            } else {
+                chatController.startNewChatThread()
+            }
+            let threadID = chatController.activeThreadID
+            chatController.inputText = missionPrompt(title: title, prompt: prompt, backend: backend, data: data)
+
+            if cancellationTracker.isCancelled {
+                await handleCancellation(document: document, backend: backend)
+                return
+            }
+
+            await chatController.send()
+
+            var lastStreamingEvent = Date.distantPast
+            var mirroredTranscriptPieceIDs = Set<String>()
+            while chatController.isStreaming {
+                if cancellationTracker.isCancelled {
+                    logger.warning("cancelling active streaming chat generation for mission id=\(document.documentID, privacy: .public)")
+                    chatController.cancelGeneration()
+                    break
+                }
+                let assistantMessage = chatController.messages.last(where: { $0.role == .assistant })
+                await mirrorTranscriptPieces(
+                    assistantMessage?.displayTranscript ?? [],
+                    mirroredPieceIDs: &mirroredTranscriptPieceIDs,
+                    reference: document.reference,
+                    requestID: document.documentID,
+                    backend: backend
+                )
+                if Date().timeIntervalSince(lastStreamingEvent) >= 2 {
+                    lastStreamingEvent = Date()
+                    let streamingMessage = Self.deriveStreamingStatusMessage(
+                        assistantMessage: assistantMessage,
+                        backend: backend
+                    )
+                    await recordEvent(
+                        reference: document.reference,
+                        requestID: document.documentID,
+                        phase: "streaming",
+                        kind: "status",
+                        title: "Streaming",
+                        message: streamingMessage,
+                        backend: backend
+                    )
+                }
+                try? await Task.sleep(nanoseconds: 500_000_000) // try?-ok(cancellation only)
+            }
+
+            if cancellationTracker.isCancelled {
+                await handleCancellation(document: document, backend: backend)
+                return
+            }
+
+            await mirrorTranscriptPieces(
+                chatController.messages.last(where: { $0.role == .assistant })?.displayTranscript ?? [],
+                mirroredPieceIDs: &mirroredTranscriptPieceIDs,
+                reference: document.reference,
+                requestID: document.documentID,
+                backend: backend
+            )
+
+            let status = chatController.streamError == nil ? "completed" : "failed"
+            let finalSummary = chatController.messages.last(where: { $0.role == .assistant })?.content ?? ""
+            let safeFinalSummary = CLIAgentMissionEventFactory.mobileSafeText(finalSummary)
+            let liveSummary = status == "completed"
+                ? modelAwareSuccessMessage(backend: backend, requestedModelID: requestedModelID, fallback: safeFinalSummary)
+                : modelAwareFailureMessage(backend: backend, requestedModelID: requestedModelID, errorMessage: chatController.streamError)
+            var payload: [String: Any] = [
+                "status": status,
+                "selectedRuntime": backend.rawValue,
+                "selectedRuntimeName": backend.displayName,
+                "sessionId": threadID,
+                "completedAt": ISO8601DateFormatter().string(from: Date()),
+                "updatedAt": FieldValue.serverTimestamp()
+            ]
+            if let requestedModelID {
+                payload["selectedModelID"] = requestedModelID
+            }
+            var sealedErrorMessage: String?
+            var sealedResultPreview: String?
+            if let streamError = chatController.streamError {
+                sealedErrorMessage = CLIAgentMissionEventFactory.mobileSafeText(
+                    modelAwareFailureMessage(
+                        backend: backend,
+                        requestedModelID: requestedModelID,
+                        errorMessage: streamError
+                    )
+                )
+            } else {
+                sealedResultPreview = safeFinalSummary
+            }
+            await applyHostStatus(
+                document: document,
+                status: status,
+                liveSummary: liveSummary,
+                errorMessage: sealedErrorMessage,
+                resultPreview: sealedResultPreview
+            )
+            logger.info("finished mission id=\(document.documentID, privacy: .public) status=\(status, privacy: .public)")
+
             await recordChangedFileEvents(
                 before: changedFilesBefore,
                 after: await gitChangedFiles(in: missionWorkingDirectoryURL),
@@ -490,207 +671,31 @@ extension CLIAgentMissionRequestListener {
                 requestID: document.documentID,
                 backend: backend
             )
-            let safeDirectOutput = CLIAgentMissionEventFactory.mobileSafeText(directResult.output)
-            let directFailure = directResult.errorMessage.map {
-                modelAwareFailureMessage(
-                    backend: backend,
-                    requestedModelID: requestedModelID,
-                    errorMessage: $0
-                )
-            }
-            var payload: [String: Any] = [
-                "status": directResult.status == "failed" ? "agent_launch_failed" : directResult.status,
-                "selectedRuntime": backend.rawValue,
-                "selectedRuntimeName": backend.displayName,
-                "sessionId": directResult.sessionID,
-                "completedAt": ISO8601DateFormatter().string(from: Date()),
-                "updatedAt": FieldValue.serverTimestamp()
-            ]
-            if let requestedModelID {
-                payload["selectedModelID"] = requestedModelID
-            }
-            let liveSummary = directResult.status == "completed"
-                ? modelAwareSuccessMessage(backend: backend, requestedModelID: requestedModelID, fallback: safeDirectOutput)
-                : directFailure ?? modelAwareFailureMessage(backend: backend, requestedModelID: requestedModelID, errorMessage: nil)
-            var sealedErrorMessage: String?
-            if let errorMessage = directResult.errorMessage {
-                sealedErrorMessage = CLIAgentMissionEventFactory.mobileSafeText(
-                    modelAwareFailureMessage(
-                        backend: backend,
-                        requestedModelID: requestedModelID,
-                        errorMessage: errorMessage
-                    )
-                )
-            }
-            await applyHostStatus(
-                document: document,
-                status: directResult.status == "failed" ? "failed" : directResult.status,
-                liveSummary: liveSummary,
-                errorMessage: sealedErrorMessage,
-                resultPreview: safeDirectOutput
-            )
-            logger.info("finished direct CLI mission id=\(document.documentID, privacy: .public) status=\(directResult.status, privacy: .public)")
             await recordEvent(
                 reference: document.reference,
                 requestID: document.documentID,
-                phase: directResult.status == "completed" ? "completed" : "agent_launch_failed",
-                kind: directResult.status == "completed" ? "final_answer" : "error",
-                title: directResult.status == "completed" ? "Completed" : "Agent launch failed",
-                message: directResult.status == "completed"
-                    ? resultSummary(from: directResult.output)
-                    : (directFailure ?? modelAwareFailureMessage(backend: backend, requestedModelID: requestedModelID, errorMessage: nil)),
+                phase: status == "completed" ? "completed" : "failed",
+                kind: status == "completed" ? "final_answer" : "error",
+                title: status == "completed" ? "Completed" : "Failed",
+                message: status == "completed"
+                    ? resultSummary(from: finalSummary)
+                    : modelAwareFailureMessage(backend: backend, requestedModelID: requestedModelID, errorMessage: chatController.streamError),
                 backend: backend,
-                isError: directResult.status != "completed"
+                isError: status != "completed"
             )
-            return
         }
 
-        if cancellationTracker.isCancelled {
-            await handleCancellation(document: document, backend: backend)
-            return
-        }
-
-        guard let chatBackend = backend.chatBackend else {
-            await fail(document: document, message: "\(backend.displayName) is not available through the interactive Mac chat controller.")
-            return
-        }
-        guard !chatController.isSendBusy else {
-            await fail(
-                document: document,
-                message: modelAwareFailureMessage(
-                    backend: backend,
-                    requestedModelID: requestedModelID,
-                    errorMessage: "A Mac CLI agent is already responding. Wait for the current reply to finish, then send again."
-                )
+        do {
+            try await CLIAgentMissionClaimThenEvaluate.run(
+                decision: claimDecision,
+                claim: { try await performExclusiveClaim() },
+                evaluate: { await evaluateAfterExclusiveClaim() },
+                fail: { }
             )
-            return
+        } catch {
+            logger.error("mission claim-then-evaluate failed id=\(document.documentID, privacy: .public): \(error.localizedDescription, privacy: .public)")
         }
 
-        chatController.setChatBackend(chatBackend)
-        if let requestedModelID {
-            chatController.setChatModelSelection(requestedModelID, for: chatBackend)
-        }
-        if let clientThreadID = CLIAgentMissionRuntimePlanner.mobileChatClientThreadID(from: data) {
-            chatController.openOrCreateChatThread(id: clientThreadID)
-        } else {
-            chatController.startNewChatThread()
-        }
-        let threadID = chatController.activeThreadID
-        chatController.inputText = missionPrompt(title: title, prompt: prompt, backend: backend, data: data)
-
-        if cancellationTracker.isCancelled {
-            await handleCancellation(document: document, backend: backend)
-            return
-        }
-
-        await chatController.send()
-
-        var lastStreamingEvent = Date.distantPast
-        var mirroredTranscriptPieceIDs = Set<String>()
-        while chatController.isStreaming {
-            if cancellationTracker.isCancelled {
-                logger.warning("cancelling active streaming chat generation for mission id=\(document.documentID, privacy: .public)")
-                chatController.cancelGeneration()
-                break
-            }
-            let assistantMessage = chatController.messages.last(where: { $0.role == .assistant })
-            await mirrorTranscriptPieces(
-                assistantMessage?.displayTranscript ?? [],
-                mirroredPieceIDs: &mirroredTranscriptPieceIDs,
-                reference: document.reference,
-                requestID: document.documentID,
-                backend: backend
-            )
-            if Date().timeIntervalSince(lastStreamingEvent) >= 2 {
-                lastStreamingEvent = Date()
-                let streamingMessage = Self.deriveStreamingStatusMessage(
-                    assistantMessage: assistantMessage,
-                    backend: backend
-                )
-                await recordEvent(
-                    reference: document.reference,
-                    requestID: document.documentID,
-                    phase: "streaming",
-                    kind: "status",
-                    title: "Streaming",
-                    message: streamingMessage,
-                    backend: backend
-                )
-            }
-            try? await Task.sleep(nanoseconds: 500_000_000) // try?-ok(cancellation only)
-        }
-
-        if cancellationTracker.isCancelled {
-            await handleCancellation(document: document, backend: backend)
-            return
-        }
-
-        await mirrorTranscriptPieces(
-            chatController.messages.last(where: { $0.role == .assistant })?.displayTranscript ?? [],
-            mirroredPieceIDs: &mirroredTranscriptPieceIDs,
-            reference: document.reference,
-            requestID: document.documentID,
-            backend: backend
-        )
-
-        let status = chatController.streamError == nil ? "completed" : "failed"
-        let finalSummary = chatController.messages.last(where: { $0.role == .assistant })?.content ?? ""
-        let safeFinalSummary = CLIAgentMissionEventFactory.mobileSafeText(finalSummary)
-        let liveSummary = status == "completed"
-            ? modelAwareSuccessMessage(backend: backend, requestedModelID: requestedModelID, fallback: safeFinalSummary)
-            : modelAwareFailureMessage(backend: backend, requestedModelID: requestedModelID, errorMessage: chatController.streamError)
-        var payload: [String: Any] = [
-            "status": status,
-            "selectedRuntime": backend.rawValue,
-            "selectedRuntimeName": backend.displayName,
-            "sessionId": threadID,
-            "completedAt": ISO8601DateFormatter().string(from: Date()),
-            "updatedAt": FieldValue.serverTimestamp()
-        ]
-        if let requestedModelID {
-            payload["selectedModelID"] = requestedModelID
-        }
-        var sealedErrorMessage: String?
-        var sealedResultPreview: String?
-        if let streamError = chatController.streamError {
-            sealedErrorMessage = CLIAgentMissionEventFactory.mobileSafeText(
-                modelAwareFailureMessage(
-                    backend: backend,
-                    requestedModelID: requestedModelID,
-                    errorMessage: streamError
-                )
-            )
-        } else {
-            sealedResultPreview = safeFinalSummary
-        }
-        await applyHostStatus(
-            document: document,
-            status: status,
-            liveSummary: liveSummary,
-            errorMessage: sealedErrorMessage,
-            resultPreview: sealedResultPreview
-        )
-        logger.info("finished mission id=\(document.documentID, privacy: .public) status=\(status, privacy: .public)")
-
-        await recordChangedFileEvents(
-            before: changedFilesBefore,
-            after: await gitChangedFiles(in: missionWorkingDirectoryURL),
-            reference: document.reference,
-            requestID: document.documentID,
-            backend: backend
-        )
-        await recordEvent(
-            reference: document.reference,
-            requestID: document.documentID,
-            phase: status == "completed" ? "completed" : "failed",
-            kind: status == "completed" ? "final_answer" : "error",
-            title: status == "completed" ? "Completed" : "Failed",
-            message: status == "completed"
-                ? resultSummary(from: finalSummary)
-                : modelAwareFailureMessage(backend: backend, requestedModelID: requestedModelID, errorMessage: chatController.streamError),
-            backend: backend,
-            isError: status != "completed"
-        )
     }
 
     /// `nonisolated` so the blocking `git status` runs off the main actor
@@ -751,7 +756,20 @@ enum CLIAgentMissionClaimDecision: Equatable {
 }
 
 enum CLIAgentMissionClaimThenEvaluate {
-    enum Failure: Error { case failedPrecondition }
+    enum Failure: Error, Equatable { case failedPrecondition, missingSealedState }
+
+    static func isFailedPrecondition(_ error: Error) -> Bool {
+        if let failure = error as? Failure {
+            return failure == .failedPrecondition
+        }
+        let nsError = error as NSError
+        if nsError.domain == FunctionsErrorDomain,
+           FunctionsErrorCode(rawValue: nsError.code) == .failedPrecondition {
+            return true
+        }
+        let text = error.localizedDescription.lowercased()
+        return text.contains("failed-precondition") || text.contains("failed_precondition")
+    }
 
     static func run(
         decision: CLIAgentMissionClaimDecision,
@@ -767,8 +785,9 @@ enum CLIAgentMissionClaimThenEvaluate {
         case .claim:
             do {
                 _ = try await claim()
-            } catch Failure.failedPrecondition {
-                return
+            } catch {
+                if isFailedPrecondition(error) { return }
+                throw error
             }
         }
         do {
