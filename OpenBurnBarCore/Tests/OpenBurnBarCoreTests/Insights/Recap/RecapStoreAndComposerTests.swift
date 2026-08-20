@@ -126,11 +126,13 @@ final class RecapStoreAndComposerTests: XCTestCase {
         encoder.dateEncodingStrategy = .iso8601
 
         // Hand-write a snapshot carrying a future fold version.
-        var object = try JSONSerialization.jsonObject(
-            with: encoder.encode(RecapHistoryStore.Snapshot(months: [august.key: stale]))
-        ) as! [String: Any]
-        var months = object["months"] as! [String: Any]
-        var month = months[august.key] as! [String: Any]
+        var object = try XCTUnwrap(
+            JSONSerialization.jsonObject(
+                with: encoder.encode(RecapHistoryStore.Snapshot(months: [august.key: stale]))
+            ) as? [String: Any]
+        )
+        var months = try XCTUnwrap(object["months"] as? [String: Any])
+        var month = try XCTUnwrap(months[august.key] as? [String: Any])
         month["schemaVersion"] = RecapFacts.currentSchemaVersion + 1
         months[august.key] = month
         object["months"] = months
@@ -211,14 +213,16 @@ final class RecapStoreAndComposerTests: XCTestCase {
         let collected = await events(composer.build(window: august, now: now))
 
         guard case let .deterministic(first) = collected.first else {
-            return XCTFail("the deterministic deck must arrive first, always")
+            XCTFail("the deterministic deck must arrive first, always")
+            return
         }
         XCTAssertFalse(first.cards.isEmpty)
         XCTAssertFalse(first.isVoiceAuthored)
 
         // With no author configured, a finished month seals on its own copy.
         guard case let .deterministic(last) = collected.last else {
-            return XCTFail("expected a sealing event")
+            XCTFail("expected a sealing event")
+            return
         }
         XCTAssertEqual(last.sealState, .sealedWithoutVoice)
 
@@ -244,7 +248,8 @@ final class RecapStoreAndComposerTests: XCTestCase {
         let collected = await events(composer.build(window: august, now: midMonth))
 
         guard case let .deterministic(recap) = collected.last else {
-            return XCTFail("expected a deck")
+            XCTFail("expected a deck")
+            return
         }
         XCTAssertEqual(recap.sealState, .preview, "a month still running must never seal")
     }
@@ -261,7 +266,8 @@ final class RecapStoreAndComposerTests: XCTestCase {
         let collected = await events(composer.build(window: august, now: now))
 
         guard case .notEnoughData = collected.last else {
-            return XCTFail("a month below the substance floor must say so, not ship a padded deck")
+            XCTFail("a month below the substance floor must say so, not ship a padded deck")
+            return
         }
     }
 
@@ -284,7 +290,8 @@ final class RecapStoreAndComposerTests: XCTestCase {
         let collected = await events(composer.build(window: august, now: now))
 
         guard case let .voiced(voiced) = collected.last else {
-            return XCTFail("expected a voiced deck")
+            XCTFail("expected a voiced deck")
+            return
         }
         XCTAssertTrue(voiced.isVoiceAuthored)
         XCTAssertEqual(voiced.title, "August was your builder month")
@@ -317,7 +324,8 @@ final class RecapStoreAndComposerTests: XCTestCase {
         let collected = await events(composer.build(window: august, now: now))
 
         guard case let .deterministic(served) = collected.first else {
-            return XCTFail("expected the stored deck")
+            XCTFail("expected the stored deck")
+            return
         }
         XCTAssertEqual(served.title, "Sealed")
         XCTAssertTrue(source.singleRequests.isEmpty, "a sealed month must not re-read the database")

@@ -72,7 +72,8 @@ final class RecapVoiceGuardTests: XCTestCase {
         )
 
         guard case let .accepted(outcome, report) = result else {
-            return XCTFail("expected acceptance with a fallback card")
+            XCTFail("expected acceptance with a fallback card")
+            return
         }
         XCTAssertEqual(report.cardsVoiced, 0)
         XCTAssertEqual(report.cardsFellBack, 1)
@@ -97,7 +98,8 @@ final class RecapVoiceGuardTests: XCTestCase {
         )
 
         guard case let .accepted(outcome, report) = result else {
-            return XCTFail("expected acceptance")
+            XCTFail("expected acceptance")
+            return
         }
         XCTAssertEqual(report.cardsVoiced, 1)
         XCTAssertTrue(outcome.cards.first?.isVoiceAuthored ?? false)
@@ -136,7 +138,8 @@ final class RecapVoiceGuardTests: XCTestCase {
             fallbackClosing: "A steady month.",
             mapping: .identity
         )
-        guard case let .accepted(_, report) = result else { return XCTFail("expected acceptance") }
+        guard case let .accepted(_, report) = result else { XCTFail("expected acceptance")
+ return }
         XCTAssertEqual(report.cardsFellBack, 1)
         XCTAssertFalse(report.bannedPhraseHits.isEmpty)
     }
@@ -151,7 +154,8 @@ final class RecapVoiceGuardTests: XCTestCase {
             fallbackClosing: "A steady month.",
             mapping: .identity
         )
-        guard case let .accepted(outcome, report) = result else { return XCTFail("expected acceptance") }
+        guard case let .accepted(outcome, report) = result else { XCTFail("expected acceptance")
+ return }
         XCTAssertEqual(report.unknownIDs, 1)
         // The real card is still there — omission is not a decision.
         XCTAssertEqual(outcome.cards.map(\.id), [subject.id])
@@ -176,7 +180,8 @@ final class RecapVoiceGuardTests: XCTestCase {
             mapping: .identity
         )
         guard case .rejected(let reason, _) = result else {
-            return XCTFail("a model must not be able to empty the recap")
+            XCTFail("a model must not be able to empty the recap")
+            return
         }
         XCTAssertEqual(reason, .nothingSurvived)
     }
@@ -203,7 +208,8 @@ final class RecapVoiceGuardTests: XCTestCase {
             fallbackClosing: "A steady month.",
             mapping: .identity
         )
-        guard case let .accepted(outcome, _) = result else { return XCTFail("expected acceptance") }
+        guard case let .accepted(outcome, _) = result else { XCTFail("expected acceptance")
+ return }
         XCTAssertEqual(outcome.cards.first?.size, .hero)
     }
 
@@ -236,7 +242,8 @@ final class RecapVoiceGuardTests: XCTestCase {
             fallbackClosing: "A steady month.",
             mapping: RecapPromptMapping(redaction: redaction, idByToken: [:])
         )
-        guard case let .accepted(outcome, report) = result else { return XCTFail("expected acceptance") }
+        guard case let .accepted(outcome, report) = result else { XCTFail("expected acceptance")
+ return }
         XCTAssertEqual(report.unresolvedTokenHits, 1)
         XCTAssertFalse(outcome.cards.first?.body.contains("{project") ?? true)
     }
