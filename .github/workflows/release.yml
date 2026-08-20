@@ -1405,6 +1405,14 @@ jobs:
         with:
           packages: "platforms;android-35 build-tools;36.0.0"
 
+      # The runner image periodically gains preview SDK components whose
+      # licenses nobody has accepted; sdkmanager then exits 64 mid-release
+      # (2026-08-20: an "Android SDK Preview" license appeared and killed the
+      # AAR byte-compare step). Accept all licenses non-interactively so an
+      # image rollout cannot fail a release at 2 a.m.
+      - name: Accept Android SDK licenses
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+
       - name: Rebuild and byte-compare checked-in Android AAR
         env:
           OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: 0000000000000000000000000000000000000000
