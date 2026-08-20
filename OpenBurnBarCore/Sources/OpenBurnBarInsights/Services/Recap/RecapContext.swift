@@ -73,9 +73,8 @@ public struct RecapContext: Sendable {
         var best: (value: Double, window: RecapWindow)?
         for month in comparableHistory {
             let value = metric(month)
-            if best == nil || value > best!.value {
-                best = (value, month.window)
-            }
+            if let current = best, value <= current.value { continue }
+            best = (value, month.window)
         }
         return best
     }
