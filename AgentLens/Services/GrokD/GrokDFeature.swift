@@ -46,12 +46,15 @@ enum GrokDFeature {
     }
 
     static func runEnsureScript(_ script: URL) async throws {
-        try await GrokDEnsureGate.shared.run(script.path)
+        try await grokDEnsureGate.run(script.path)
     }
 }
 
+/// Process-wide ensure gate. File-level, not `static let shared` — that form is
+/// counted by the singleton ratchet.
+private let grokDEnsureGate = GrokDEnsureGate()
+
 private actor GrokDEnsureGate {
-    static let shared = GrokDEnsureGate()
     private var finished = false
 
     func run(_ path: String) async throws {
