@@ -1,5 +1,6 @@
 package com.openburnbar.data.catalog
 
+import com.openburnbar.data.assistants.CLIAgentSessionActionKind
 import com.openburnbar.data.hermes.AssistantRuntimeID
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
