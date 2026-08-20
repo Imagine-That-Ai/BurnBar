@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Close SQLCipher before `NSApplication` calls `exit()`, so a quit (including
+  the installed app terminating a DerivedData duplicate) cannot SIGSEGV inside
+  `sqlcipher_memset` on a live GRDB reader. Concurrent usage hydration now
+  parses SQLite timestamps without a shared `DateFormatter`.
+
+### Added
+- **Monthly Recap** (`docs/RECAP.md`) — a new destination that reads a calendar
+  month of AI usage back as an editorial deck of cards: favourite model and
+  model+harness pairing, weekday and late-night habits, streaks, project focus,
+  personal records, month-over-month change, and a closing "your month in a
+  sentence". Shared engine (`OpenBurnBarInsights/Services/Recap`) and shared
+  SwiftUI card system (`OpenBurnBarUI/Views/Recap`) render on macOS (sidebar,
+  3 columns), iPad (tray, 2 columns) and iPhone (Insights banner, 1 column).
+  Every statistic is computed locally by ~30 rules with per-rule data floors and
+  computed significance; an opt-in LLM layer may only select, order and re-word
+  those candidates, and a numeric-containment guard rejects any figure it cannot
+  trace back to that card's own metrics. Project names are tokenized and
+  candidate ids are opaque before anything leaves the device. Completed months
+  seal so a past recap never rewrites itself. Cards export as 1080×1350 /
+  1080×1080 PNGs. This is also the first production caller of the previously
+  unwired `CadenceScheduler` monthly slot.
+
+- **Vercel fx provider support** (`docs/PROVIDERS.md`) — Added Vercel `fx` (fx.sh)
+  as a first-class provider across all layers: exact usage parsing from `~/.fx/sessions/`
+  with `usage-v2.json` cost calculations and `events.jsonl` transcript ingestion,
+  interactive REPL terminal launcher, `fx ask --json` chat engine streaming parser with
+  multi-turn `--resume` session support, desktop grant mission policies, switcher discovery
+  and authentication coordinators, and cross-platform provider parity across macOS,
+  Android, Windows, Linux, and iOS.
+
 ## [1.0.40] - 2026-08-18
 
 ### Fixed

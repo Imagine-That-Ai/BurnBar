@@ -240,7 +240,10 @@ struct DashboardView: View {
         case .overview, .insights, .charts, .provider, .model:
             return true
         case .home, .database, .projects, .missions, .sessionLogs, .memoryReview, .inbox, .chat,
-             .quota, .controlDeck, .fleet:
+             .quota, .controlDeck, .fleet, .recap:
+            // Recap is a full-width editorial page — its own deck already fills
+            // the width, and a provider rail beside it would be a third column
+            // competing with the cards.
             // The Control Deck is a full-width workspace like Inbox and Quota:
             // it is *not* about the provider/model breakdown, so the provider
             // rail would be a third redundant column.
@@ -309,6 +312,7 @@ struct DashboardView: View {
         case .home: route = .home
         case .overview: route = .overview
         case .charts: route = .charts
+        case .recap: route = .recap
         case .database: route = .database
         case .projects: route = .projects
         case .sessionLogs: route = .sessionLogs
@@ -331,25 +335,10 @@ struct DashboardView: View {
         return "Back to Home"
     }
 
+    /// Titling lives on the route itself; this is the one caller-side alias so
+    /// a new route cannot be named twice and differently.
     func routeTitle(_ route: DashboardMainRoute) -> String {
-        switch route {
-        case .home: return "Home"
-        case .overview: return "Overview"
-        case .insights: return "Insights"
-        case .charts: return "Charts"
-        case .database: return "Database"
-        case .projects: return "Projects"
-        case .missions: return "Missions"
-        case .sessionLogs: return "Session Logs"
-        case .memoryReview: return "Memory"
-        case .inbox: return "Inbox"
-        case .chat: return "Chat"
-        case .quota: return "Quota"
-        case .controlDeck: return "Control Deck"
-        case .fleet: return "Fleet"
-        case .provider(let provider): return provider.displayName
-        case .model(let modelName): return modelName
-        }
+        route.title(activeChatBackend: chatController.chatBackend)
     }
 
     func openBurnBarCursorExtension() {
@@ -837,6 +826,13 @@ struct DashboardView: View {
                     overviewRouteView
                 case .insights:
                     MacAgentInsightsWorkspace(
+                        dataStore: dataStore,
+                        settingsManager: settingsManager,
+                        chatController: chatController
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                case .recap:
+                    RecapPageView(
                         dataStore: dataStore,
                         settingsManager: settingsManager,
                         chatController: chatController

@@ -54,7 +54,7 @@ enum ChartInsightParser {
     }
 
     static func parse(_ text: String) -> ChartInsightResult? {
-        guard let json = extractJSONObject(from: text),
+        guard let json = RecapJSON.extractFirstObject(from: text),
               let data = json.data(using: .utf8) else {
             return nil
         }
@@ -79,34 +79,6 @@ enum ChartInsightParser {
         }
         guard !insights.isEmpty || !suggestions.isEmpty else { return nil }
         return ChartInsightResult(insights: insights, suggestedCharts: suggestions)
-    }
-
-    /// Pulls the first balanced `{ … }` object out of a response that may be
-    /// wrapped in code fences or prefixed with prose.
-    static func extractJSONObject(from text: String) -> String? {
-        guard let start = text.firstIndex(of: "{") else { return nil }
-        var depth = 0
-        var inString = false
-        var previous: Character = " "
-        for index in text.indices[start...] {
-            let char = text[index]
-            if inString {
-                if char == "\"" && previous != "\\" { inString = false }
-            } else {
-                switch char {
-                case "\"": inString = true
-                case "{": depth += 1
-                case "}":
-                    depth -= 1
-                    if depth == 0 {
-                        return String(text[start...index])
-                    }
-                default: break
-                }
-            }
-            previous = char
-        }
-        return nil
     }
 }
 
@@ -240,7 +212,8 @@ final class ChartInsightEngine {
     private(set) var state: State = .idle
 
     /// Backends tried in order; the first `.ready` one wins.
-    static let preferredOrder: [ChatBackendID] = [.hermes, .claude, .codex]
+    /// The order itself lives with the shared one-shot collector.
+    static var preferredOrder: [ChatBackendID] { CLIOneShotChat.preferredOrder }
 
     private struct CacheEntry {
         let key: ChartsDataService.SnapshotKey
@@ -334,8 +307,7 @@ final class ChartInsightEngine {
         bridge: CLIBridge,
         enabledBackends: [ChatBackendID]
     ) async -> State {
-        let candidates = preferredOrder.filter { enabledBackends.contains($0) }
-            + enabledBackends.filter { !preferredOrder.contains($0) }
+        let candidates = CLIOneShotChat.candidates(from: enabledBackends)
         guard !candidates.isEmpty else {
             return .unavailable("No chat backends enabled. Connect one in Settings → Agents.")
         }
@@ -344,88 +316,29 @@ final class ChartInsightEngine {
             metricsJSON: ChartInsightMetrics.compactJSON(from: snapshot)
         )
 
-        for backend in candidates {
-            let provider = PetChatProviders.provider(for: backend, bridge: bridge)
-            guard await provider.checkAuth() == .ready else { continue }
-
-            // First attempt, then a single "JSON only" retry.
-            for attempt in 0..<2 {
-                if Task.isCancelled { return .idle }
-                let message = attempt == 0
-                    ? prompt
-                    : prompt + "\n\nREMINDER: respond with ONLY the JSON object. No other text."
-                guard let text = await collectResponse(
-                    backend: backend, bridge: bridge, message: message
-                ), !text.isEmpty else { break }
-                if let parsed = ChartInsightParser.parse(text) {
-                    return .loaded(parsed, backend: backend.displayName, isLocal: backend == .hermes)
-                }
+        // First attempt, then a single "JSON only" retry.
+        var parsed: ChartInsightResult?
+        let answer = await CLIOneShotChat.firstAnswer(
+            backends: candidates,
+            bridge: bridge,
+            systemPrompt: "You are a precise analytics engine. You respond only with valid JSON.",
+            attempts: [
+                prompt,
+                prompt + "\n\nREMINDER: respond with ONLY the JSON object. No other text."
+            ]
+        ) { text in
+            if let result = ChartInsightParser.parse(text) {
+                parsed = result
+                return true
             }
+            return false
         }
+
+        if let answer, let parsed {
+            return .loaded(parsed, backend: answer.backend.displayName, isLocal: answer.backend == .hermes)
+        }
+        if Task.isCancelled { return .idle }
         return .unavailable("Insights unavailable — no connected backend produced a readable answer.")
     }
 
-    /// Accumulates a full one-shot response, bounded by a hard timeout so a
-    /// wedged CLI can never pin the loading state.
-    private static func collectResponse(
-        backend: ChatBackendID,
-        bridge: CLIBridge,
-        message: String,
-        timeout: TimeInterval = 90
-    ) async -> String? {
-        let systemPrompt = "You are a precise analytics engine. You respond only with valid JSON."
-        let stream: AsyncThrowingStream<CLIChatStreamEvent, Error>
-        switch backend {
-        case .hermes:
-            let bearerToken: String?
-            do {
-                bearerToken = try PetKeychainStore().get(.hermes)
-            } catch {
-                bearerToken = nil
-            }
-            let history = [ChatMessageRecord(role: .user, content: message)]
-            stream = bridge.chatHermes(
-                systemPrompt: systemPrompt,
-                history: history,
-                bearerToken: bearerToken
-            )
-        case .claude:
-            stream = bridge.chatClaudeStream(
-                systemPrompt: systemPrompt, userMessage: message, workspaceDirectory: nil
-            )
-        case .codex:
-            stream = bridge.chatCodexStream(
-                systemPrompt: systemPrompt, userMessage: message, workspaceDirectory: nil
-            )
-        default:
-            return nil
-        }
-
-        return await withTaskGroup(of: String?.self) { group in
-            group.addTask {
-                var collected = ""
-                do {
-                    for try await event in stream {
-                        if case let .text(chunk) = event {
-                            collected += chunk
-                        }
-                    }
-                } catch {
-                    return collected.isEmpty ? nil : collected
-                }
-                return collected
-            }
-            group.addTask {
-                do {
-                    try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
-                } catch {
-                    return nil
-                }
-                return nil
-            }
-            let first = await group.next() ?? nil
-            group.cancelAll()
-            return first
-        }
-    }
 }

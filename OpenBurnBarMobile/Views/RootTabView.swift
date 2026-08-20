@@ -67,6 +67,9 @@ struct RootTabView: View {
     @StateObject private var liveStagePresenter = AgentLiveStagePresenter()
     @StateObject private var skillRunPiPController = SkillRunTextPiPController()
 
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @State private var showRecap = false
+
     // Per-tab navigation paths
     @State private var pulsePath = NavigationPath()
     @State private var burnPath = NavigationPath()
@@ -74,7 +77,11 @@ struct RootTabView: View {
     @State private var hermesPath = NavigationPath()
     @State private var youPath = NavigationPath()
 
-    private let destinations = AuroraNavDestination.allCases
+    /// Recap joins the tray only where there is room for a seventh
+    /// destination; on iPhone it is reached from the Insights banner.
+    private var destinations: [AuroraNavDestination] {
+        AuroraNavDestination.trayDestinations(compact: horizontalSizeClass == .compact)
+    }
 
     var body: some View {
         ZStack {
@@ -275,6 +282,7 @@ struct RootTabView: View {
         case .streams:  streamsStack
         case .hermes:   hermesStack
         case .you:      youStack
+        case .recap:    MobileRecapScreen()
         }
     }
 
@@ -367,10 +375,23 @@ struct RootTabView: View {
     @State private var streamsInboxStore = AIInboxStore()
 
     private var insightsStack: some View {
-        AgentInsightsTabScreen(
-            dashboardStore: insightsDashboardStore,
-            hermesService: hermesService
-        )
+        VStack(spacing: 0) {
+            // iPhone's route into the recap. On iPad it is a tray destination
+            // instead, so the banner would be a second door to the same room.
+            if horizontalSizeClass == .compact {
+                RecapEntryBanner(window: .mostRecentCompleted()) { showRecap = true }
+                    .padding(.horizontal, MobileTheme.Spacing.lg)
+                    .padding(.top, MobileTheme.Spacing.sm)
+                    .padding(.bottom, MobileTheme.Spacing.xs)
+            }
+            AgentInsightsTabScreen(
+                dashboardStore: insightsDashboardStore,
+                hermesService: hermesService
+            )
+        }
+        .fullScreenCover(isPresented: $showRecap) {
+            MobileRecapScreen(onDismiss: { showRecap = false })
+        }
     }
 
     // MARK: - Stacks

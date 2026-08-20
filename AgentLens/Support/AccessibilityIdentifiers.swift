@@ -11,6 +11,9 @@ enum OBBAccessibilityID {
     static let dashboardOverflowButton = "dashboard.overflowButton"
     static let dashboardSettingsButton = "dashboard.settingsButton"
     static let dashboardRefreshButton = "dashboard.refreshButton"
+    static let dashboardBackButton = "dashboard.backButton"
+    static let dashboardCommandPaletteButton = "dashboard.commandPaletteButton"
+    static let dashboardChatRailToggle = "dashboard.chat.railToggle"
     static let settingsRoot = "settings.root"
     static let settingsSidebar = "settings.sidebar"
     static let settingsCommandBar = "settings.commandBar"
@@ -19,6 +22,11 @@ enum OBBAccessibilityID {
     static let chatPanelMinimized = "chat.panel.minimized"
     static let chartsPage = "charts.page"
     static let chartsAIToggle = "charts.aiToggle"
+
+    // Recap page
+    static let recapPage = "recap.page"
+    static let recapMonthPicker = "recap.monthPicker"
+    static let recapEditorialToggle = "recap.editorialToggle"
     static let dashboardDeckChartButton = "dashboard.deckChartButton"
 
     // Control Deck
@@ -40,6 +48,10 @@ enum OBBAccessibilityID {
     static let dashboardHomeInboxSwitcher = "dashboardHome.inboxSwitcher"
     static let dashboardHomeQuotaSwitcher = "dashboardHome.quotaSwitcher"
     static let dashboardHomeFleetSwitcher = "dashboardHome.fleetSwitcher"
+    /// Focus shell's single call to action.
+    static let homeFocusPrimaryAction = "dashboardHome.focus.primaryAction"
+    /// Ask shell's question box.
+    static let homeAskField = "dashboardHome.ask.field"
 
     static func dashboardHomeRailPanel(_ panel: String) -> String {
         "dashboardHome.rail.panel.\(normalized(panel))"

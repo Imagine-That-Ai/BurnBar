@@ -36,6 +36,9 @@ final class NavigationCoordinator {
         case home
         case overview
         case charts
+        /// The monthly recap. Reached from `openburnbar://recap` and from the
+        /// "your recap is ready" notification.
+        case recap
         case database
         case projects
         case sessionLogs
@@ -104,6 +107,10 @@ final class NavigationCoordinator {
             return true
         case "home":
             setDashboardRoute(.home)
+            pendingNavigation = .dashboard
+            return true
+        case "recap":
+            setDashboardRoute(.recap)
             pendingNavigation = .dashboard
             return true
         default:
