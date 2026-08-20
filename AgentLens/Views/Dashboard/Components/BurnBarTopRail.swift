@@ -1040,6 +1040,10 @@ struct BurnRailAppearanceQuickMenu: View {
     var scale: CGFloat = 1
     @AppStorage(KernelBackdropPreferences.enabledKey) private var useKernelBackdrop = false
     @AppStorage(KernelBackdropPreferences.kernelKey) private var backdropKernel = KernelCatalog.defaultID
+    /// The particle overlay the backdrop renders on top of the kernel. Read by
+    /// `DashboardBackdrop.kernelSubstrateOverlay`; until now it had no control
+    /// anywhere in the quick menu.
+    @AppStorage(SwarmSubstratePreferences.enabledKey) private var swarmSubstrateEnabled = false
 
     var body: some View {
         Menu {
@@ -1079,20 +1083,25 @@ struct BurnRailAppearanceQuickMenu: View {
                 }
             }
 
+            // One list, because these are mutually exclusive in the renderer:
+            // the kernel is checked before constellation and swarm, so offering
+            // them as two independent controls meant whichever lost silently did
+            // nothing.
             Section("Background") {
                 quickBackgroundOption(.off)
                 quickBackgroundOption(.swarm)
                 quickBackgroundOption(.constellation)
+                quickBackgroundOption(.kernel)
             }
 
-            Section("Live Backdrop") {
-                Toggle("Animated kernel", isOn: $useKernelBackdrop)
-
-                Menu("Theme · \(KernelCatalog.label(for: backdropKernel))") {
+            // Flat buttons rather than a `Picker`: a Picker nested in a Menu
+            // renders as a submenu that dismisses itself the moment the pointer
+            // crosses into it, which made the theme list unusable.
+            if useKernelBackdrop {
+                Section("Kernel theme") {
                     ForEach(KernelCatalog.all) { kernel in
                         Button {
                             backdropKernel = kernel.id
-                            useKernelBackdrop = true
                             Analytics.shared.track(.settingsChanged, [
                                 "setting_key": "window_backdrop_kernel_quick_menu",
                                 "new_value": .string(kernel.id)
@@ -1106,6 +1115,10 @@ struct BurnRailAppearanceQuickMenu: View {
                         }
                     }
                 }
+            }
+
+            Section("Overlay") {
+                Toggle("Swarm particles", isOn: $swarmSubstrateEnabled)
             }
 
             Section {
@@ -1148,9 +1161,15 @@ struct BurnRailAppearanceQuickMenu: View {
         case off
         case swarm
         case constellation
+        /// The animated WebGL kernel field. Part of this list rather than a
+        /// separate toggle because the renderer treats all four as one choice.
+        case kernel
     }
 
     private var currentBackgroundState: QuickBackgroundState {
+        // Mirrors the renderer's precedence: kernel first, then constellation,
+        // then swarm. Anything else reports a selection the window is not showing.
+        if useKernelBackdrop { return .kernel }
         if !settingsManager.useWebsiteBackground { return .off }
         return settingsManager.useConstellationBackground ? .constellation : .swarm
     }
@@ -1162,12 +1181,17 @@ struct BurnRailAppearanceQuickMenu: View {
             case .off:
                 settingsManager.useWebsiteBackground = false
                 settingsManager.useConstellationBackground = false
+                useKernelBackdrop = false
             case .swarm:
                 settingsManager.useWebsiteBackground = true
                 settingsManager.useConstellationBackground = false
+                useKernelBackdrop = false
             case .constellation:
                 settingsManager.useWebsiteBackground = true
                 settingsManager.useConstellationBackground = true
+                useKernelBackdrop = false
+            case .kernel:
+                useKernelBackdrop = true
             }
             Analytics.shared.track(.settingsChanged, [
                 "setting_key": "appearance_background_quick_menu",
@@ -1187,6 +1211,7 @@ struct BurnRailAppearanceQuickMenu: View {
         case .off: return "moon.zzz"
         case .swarm: return "sparkles"
         case .constellation: return "star.circle"
+        case .kernel: return "waveform"
         }
     }
 
@@ -1195,6 +1220,7 @@ struct BurnRailAppearanceQuickMenu: View {
             return KernelCatalog.label(for: backdropKernel)
         }
         switch currentBackgroundState {
+        case .kernel: return KernelCatalog.label(for: backdropKernel)
         case .swarm: return "Swarm"
         case .constellation: return "Constellation"
         case .off: return settingsManager.appearanceSkin == .aurora ? "Aurora" : "Editorial"
@@ -1227,6 +1253,7 @@ private extension BurnRailAppearanceQuickMenu.QuickBackgroundState {
         case .off: return "Off"
         case .swarm: return "Swarm"
         case .constellation: return "Constellation"
+        case .kernel: return "Animated kernel"
         }
     }
 }
