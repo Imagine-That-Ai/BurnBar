@@ -1,5 +1,6 @@
 package com.openburnbar.ui.share
 
+import com.openburnbar.ui.share.BurnbarShareInboxProcessor.UploadOnceResult
 import java.io.File
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -35,13 +36,60 @@ class BurnbarShareInboxProcessorTest {
         file.writeText("inbox")
         var begins = 0
         assertTrue(BurnbarShareInboxProcessor.tryAcquireUploadLock(file))
-        BurnbarShareInboxProcessor.uploadOnce(file, "android-1") { _, _ -> begins += 1 }
+        val locked =
+            BurnbarShareInboxProcessor.uploadOnce(file, "android-1") { _, _ -> begins += 1 }
+        assertEquals(UploadOnceResult.LockedFresh, locked)
         assertEquals(0, begins)
         BurnbarShareInboxProcessor.releaseUploadLock(file)
-        BurnbarShareInboxProcessor.uploadOnce(file, "android-1") { _, _ -> begins += 1 }
+        val first =
+            BurnbarShareInboxProcessor.uploadOnce(file, "android-1") { _, _ -> begins += 1 }
+        assertEquals(UploadOnceResult.Uploaded, first)
         assertEquals(1, begins)
-        BurnbarShareInboxProcessor.uploadOnce(file, "android-1") { _, _ -> begins += 1 }
+        val second =
+            BurnbarShareInboxProcessor.uploadOnce(file, "android-1") { _, _ -> begins += 1 }
+        assertEquals(UploadOnceResult.Missing, second)
         assertEquals(1, begins)
+    }
+
+    @Test
+    fun staleUploadingLockIsStolenAndUploads() = runBlocking {
+        val root = tempInbox()
+        val file = File(root, "share.bin")
+        file.writeText("inbox")
+        val lock = BurnbarShareInboxProcessor.lockFile(file)
+        assertTrue(lock.createNewFile())
+        val now = System.currentTimeMillis()
+        assertTrue(lock.setLastModified(now - BurnbarShareInboxProcessor.STALE_LOCK_MS - 1_000L))
+        var begins = 0
+        val outcome =
+            BurnbarShareInboxProcessor.uploadOnce(
+                file = file,
+                deviceId = "android-1",
+                nowMs = now,
+            ) { _, _ -> begins += 1 }
+        assertEquals(UploadOnceResult.Uploaded, outcome)
+        assertEquals(1, begins)
+        assertFalse(file.exists())
+        assertFalse(lock.exists())
+    }
+
+    @Test
+    fun uniqueWorkerForceStealsLeftoverLock() = runBlocking {
+        val root = tempInbox()
+        val file = File(root, "share.bin")
+        file.writeText("inbox")
+        val lock = BurnbarShareInboxProcessor.lockFile(file)
+        assertTrue(lock.createNewFile())
+        var begins = 0
+        val outcome =
+            BurnbarShareInboxProcessor.uploadOnce(
+                file = file,
+                deviceId = "android-1",
+                forceSteal = true,
+            ) { _, _ -> begins += 1 }
+        assertEquals(UploadOnceResult.Uploaded, outcome)
+        assertEquals(1, begins)
+        assertFalse(file.exists())
     }
 
     @Test
@@ -66,4 +114,5 @@ class BurnbarShareInboxProcessorTest {
             BurnbarShareInboxProcessor.uniqueWorkName(file),
         )
     }
+
 }

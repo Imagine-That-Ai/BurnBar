@@ -25,10 +25,21 @@ class BurnbarShareUploadWorker(
         if (!file.isFile) return Result.success()
         val deviceId = AndroidCloudVaultDeviceKeypair.loadOrCreate().deviceId
         return runCatching {
-            BurnbarShareInboxProcessor.uploadOnce(file, deviceId) { dest, id ->
-                BurnbarAttachmentUploadClient().uploadFile(applicationContext, dest, id)
+            val outcome =
+                BurnbarShareInboxProcessor.uploadOnce(
+                    file = file,
+                    deviceId = deviceId,
+                    forceSteal = true,
+                ) { dest, id ->
+                    BurnbarAttachmentUploadClient().uploadFile(applicationContext, dest, id)
+                }
+            when (outcome) {
+                BurnbarShareInboxProcessor.UploadOnceResult.Uploaded,
+                BurnbarShareInboxProcessor.UploadOnceResult.Missing,
+                -> Result.success()
+                BurnbarShareInboxProcessor.UploadOnceResult.LockedFresh,
+                -> Result.retry()
             }
-            Result.success()
         }.getOrElse { Result.retry() }
     }
 
