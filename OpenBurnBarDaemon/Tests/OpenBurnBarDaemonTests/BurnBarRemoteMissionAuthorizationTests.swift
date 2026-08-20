@@ -22,7 +22,7 @@ final class BurnBarRemoteMissionAuthorizationTests: XCTestCase {
         requestedModelID: String? = nil,
         approvalMode: String? = "existing_policy",
         approvalStatus: String? = nil,
-        approverDeviceID: String? = nil,
+        approverDeviceID: String? = "iphone-trusted-1",
         entitlementTier: String = "ultra",
         requestedFanOutCount: Int = 1,
         trustedFanOutCap: Int? = nil
