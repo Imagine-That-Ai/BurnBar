@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- Mission create, claim, host status, cancel, and event append are server-owned
+  Admin-SDK callables. Client creates and host merges of
+  `cli_agent_mission_requests` are denied. The server trusts the attested Mac
+  and never re-evaluates daemon policy.
+- `burnbar_attachments` finalize-once against GCS generation, quotas from
+  `getMetadata`, and OBFS1 chunked AEAD with stored random 12-byte IVs.
+- Mac-signed mission pre-auth answers/ceilings; grok-bot input requires a peer
+  credential or a 0600 token. Unauthenticated loopback is rejected.
+
 ### Added
 - **Local D box (Developer ID, default off)** — Settings → Agents lists live Grok Bot D box agents by UUID and can send one a prompt over `127.0.0.1`. Send is refused unless shim `:1337`, host `:1338`, and inference `:8787` are up. Turn follow uses `listAgents` plus a read-only `store.db` window when the roster includes `path`. See [`docs/GROK_D_LOCAL_BOX.md`](docs/GROK_D_LOCAL_BOX.md).
 - **The Safari web extension is buildable again** (`docs/SAFARI_EXTENSION.md`) — the
@@ -19,6 +29,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `window.*` call in the service worker fails at compile time instead of silently
   truncating every streamed Ask answer, and CI asserts the built bundle stays free of
   `window.` references.
+- Catalog-generated mission runtime allowlists; grok ACP, kimi ACP, and
+  Antigravity argv launch paths per `docs/decisions/2026-08-19-acp-vs-argv.md`.
+- Per-session `interrupt` distinct from Computer Use `panicHalt`.
+- Agent Control composer (`AgentLiveStageChatPuck` + `AgentPermissionGrantSheet`)
+  with file-attachment chips.
 
 ### Fixed
 - The cloud screenshot disclosure is honored as a **session** acknowledgement again. It
@@ -37,7 +52,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   access was rejected as a page change after Safari had already granted it.
 - The Safari extension version tracks `MARKETING_VERSION`; it had drifted to 1.0.34 while
   the app shipped 1.0.40, and all three version surfaces are now gated.
-
 
 ## [1.0.40] - 2026-08-18
 

@@ -1,0 +1,490 @@
+#!/usr/bin/env node
+/**
+ * Emit mission-runtime allowlists from tools/schema-sync/fixtures/mission-runtime-catalog.json.
+ *
+ * Usage:
+ *   node scripts/gen/mission-runtime-catalog.mjs
+ *   node scripts/gen/mission-runtime-catalog.mjs --check
+ */
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+const fixturePath = path.join(repoRoot, "tools/schema-sync/fixtures/mission-runtime-catalog.json");
+const checkOnly = process.argv.includes("--check");
+
+const SURFACES = new Set([
+  "switcher",
+  "assistant",
+  "fleet",
+  "chat_backend",
+  "cli_runtime",
+  "resume_target",
+  "mission_create",
+  "mission_event",
+  "mission_mirror",
+  "mission_receipt",
+  "grant_runtime",
+]);
+const LAUNCH = new Set(["none", "argv", "acp"]);
+const PLATFORMS = new Set(["macos", "ios", "android", "windows", "linux"]);
+const TOKEN_RE = /^[A-Za-z0-9][A-Za-z0-9_.:-]*$/;
+
+const catalog = JSON.parse(readFileSync(fixturePath, "utf8"));
+if (catalog.schemaVersion !== 1 || !Array.isArray(catalog.rows) || catalog.rows.length === 0) {
+  throw new Error("mission-runtime-catalog.json must use schemaVersion 1 with a non-empty rows array");
+}
+
+const ids = new Set();
+const aliases = new Map();
+for (const [index, row] of catalog.rows.entries()) {
+  if (typeof row.id !== "string" || !TOKEN_RE.test(row.id)) {
+    throw new Error(`rows[${index}].id is invalid`);
+  }
+  if (ids.has(row.id)) throw new Error(`duplicate catalog id ${row.id}`);
+  ids.add(row.id);
+  if (!Array.isArray(row.wireAliases) || row.wireAliases.length === 0) {
+    throw new Error(`rows[${index}] (${row.id}) missing wireAliases`);
+  }
+  if (typeof row.displayName !== "string" || row.displayName.length === 0) {
+    throw new Error(`rows[${index}] (${row.id}) missing displayName`);
+  }
+  if (!LAUNCH.has(row.launch)) throw new Error(`rows[${index}] (${row.id}) has invalid launch`);
+  if (!Array.isArray(row.surfaces) || row.surfaces.some((s) => !SURFACES.has(s))) {
+    throw new Error(`rows[${index}] (${row.id}) has invalid surfaces`);
+  }
+  if (!Array.isArray(row.platforms) || row.platforms.some((p) => !PLATFORMS.has(p))) {
+    throw new Error(`rows[${index}] (${row.id}) has invalid platforms`);
+  }
+  for (const alias of row.wireAliases) {
+    if (typeof alias !== "string" || !TOKEN_RE.test(alias)) {
+      throw new Error(`rows[${index}] (${row.id}) has invalid alias ${JSON.stringify(alias)}`);
+    }
+    if (aliases.has(alias)) {
+      throw new Error(`duplicate alias ${alias} on ${row.id} and ${aliases.get(alias)}`);
+    }
+    aliases.set(alias, row.id);
+  }
+}
+
+const requiredCursorAliases = ["cursorAgent", "cursoragent", "cursor_agent", "cursor"];
+for (const alias of requiredCursorAliases) {
+  if (!aliases.has(alias)) {
+    throw new Error(`catalog must list Cursor alias ${alias} as first-class`);
+  }
+}
+
+function aliasesFor(...surfaces) {
+  const wanted = new Set(surfaces);
+  const tokens = [];
+  const seen = new Set();
+  for (const row of catalog.rows) {
+    if (!row.surfaces.some((s) => wanted.has(s))) continue;
+    for (const alias of row.wireAliases) {
+      if (seen.has(alias)) continue;
+      seen.add(alias);
+      tokens.push(alias);
+    }
+  }
+  return tokens.sort((a, b) => a.localeCompare(b));
+}
+
+const createTokens = aliasesFor("mission_create");
+const eventTokens = aliasesFor("mission_event");
+const mirrorTokens = aliasesFor("mission_mirror");
+const receiptTokens = aliasesFor("mission_receipt");
+const grantTokens = aliasesFor("grant_runtime");
+const switcherTokens = aliasesFor("switcher");
+
+function rulesList(tokens, indent) {
+  return tokens.map((t, i) => `${indent}"${t}"${i === tokens.length - 1 ? "" : ","}`).join("\n");
+}
+
+function replaceGeneratedRegion(source, name, body, { required = true } = {}) {
+  const begin = `// BEGIN GENERATED MISSION_RUNTIMES: ${name}`;
+  const end = `// END GENERATED MISSION_RUNTIMES: ${name}`;
+  const start = source.indexOf(begin);
+  const stop = source.indexOf(end);
+  if (start < 0 || stop < 0 || stop < start) {
+    if (!required) return source;
+    throw new Error(`missing generated region ${name} in firestore.rules`);
+  }
+  const before = source.slice(0, start);
+  const after = source.slice(stop + end.length);
+  return `${before}${begin}\n${body}\n      ${end}${after}`;
+}
+
+function emitOrCheck(relPath, contents) {
+  const abs = path.join(repoRoot, relPath);
+  mkdirSync(path.dirname(abs), { recursive: true });
+  if (checkOnly) {
+    if (!existsSync(abs)) {
+      throw new Error(`missing generated file ${relPath}`);
+    }
+    const current = readFileSync(abs, "utf8");
+    if (current !== contents) {
+      throw new Error(`drift in ${relPath}; run node scripts/gen/mission-runtime-catalog.mjs`);
+    }
+    return;
+  }
+  writeFileSync(abs, contents);
+}
+
+const banner = `Generated by scripts/gen/mission-runtime-catalog.mjs from tools/schema-sync/fixtures/mission-runtime-catalog.json. Do not edit.`;
+
+const swiftRows = catalog.rows
+  .map((row) => {
+    const aliasesLit = row.wireAliases.map((a) => `"${a}"`).join(", ");
+    const surfacesLit = row.surfaces.map((s) => `.${surfaceSwift(s)}`).join(", ");
+    const platformsLit = row.platforms.map((p) => `.${p}`).join(", ");
+    return `        Row(
+            id: "${row.id}",
+            wireAliases: [${aliasesLit}],
+            displayName: "${escapeSwift(row.displayName)}",
+            surfaces: [${surfacesLit}],
+            launch: .${row.launch},
+            platforms: [${platformsLit}]
+        )`;
+  })
+  .join(",\n");
+
+function surfaceSwift(s) {
+  return s.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+}
+
+function escapeSwift(value) {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+const swift = `// ${banner}
+
+import Foundation
+
+public struct MissionRuntimeCatalog: Sendable, Equatable {
+    public enum Surface: String, Sendable, Equatable {
+        case switcher
+        case assistant
+        case fleet
+        case chatBackend = "chat_backend"
+        case cliRuntime = "cli_runtime"
+        case resumeTarget = "resume_target"
+        case missionCreate = "mission_create"
+        case missionEvent = "mission_event"
+        case missionMirror = "mission_mirror"
+        case missionReceipt = "mission_receipt"
+        case grantRuntime = "grant_runtime"
+    }
+
+    public enum Launch: String, Sendable, Equatable {
+        case none
+        case argv
+        case acp
+    }
+
+    public enum Platform: String, Sendable, Equatable {
+        case macos
+        case ios
+        case android
+        case windows
+        case linux
+    }
+
+    public struct Row: Sendable, Equatable {
+        public var id: String
+        public var wireAliases: [String]
+        public var displayName: String
+        public var surfaces: [Surface]
+        public var launch: Launch
+        public var platforms: [Platform]
+    }
+
+    public let rows: [Row]
+    private let aliasToID: [String: String]
+
+    public init(rows: [Row]) {
+        self.rows = rows
+        var map: [String: String] = [:]
+        for row in rows {
+            for alias in row.wireAliases {
+                map[alias] = row.id
+            }
+        }
+        self.aliasToID = map
+    }
+
+    public static let generated = MissionRuntimeCatalog(rows: [
+${swiftRows}
+    ])
+
+    public static func loadFixture() -> MissionRuntimeCatalog { generated }
+
+    public func canonicalID(for token: String) -> String? { aliasToID[token] }
+
+    public func contains(_ token: String) -> Bool { aliasToID[token] != nil }
+
+    public func covers(_ tokens: [String]) -> Bool {
+        tokens.allSatisfy { contains($0) }
+    }
+}
+`;
+
+const kotlinRows = catalog.rows
+  .map((row) => {
+    const aliasesLit = row.wireAliases.map((a) => `"${a}"`).join(", ");
+    const surfacesLit = row.surfaces.map((s) => `Surface.${surfaceKotlin(s)}`).join(", ");
+    const platformsLit = row.platforms.map((p) => `Platform.${p.toUpperCase()}`).join(", ");
+    return `        Row(
+            id = "${row.id}",
+            wireAliases = listOf(${aliasesLit}),
+            displayName = "${escapeKotlin(row.displayName)}",
+            surfaces = setOf(${surfacesLit}),
+            launch = Launch.${row.launch.toUpperCase()},
+            platforms = setOf(${platformsLit}),
+        )`;
+  })
+  .join(",\n");
+
+function surfaceKotlin(s) {
+  return s.toUpperCase();
+}
+
+function escapeKotlin(value) {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+const kotlin = `// ${banner}
+package com.openburnbar.data.catalog
+
+data class MissionRuntimeCatalog(
+    val rows: List<Row>,
+) {
+    enum class Surface { SWITCHER, ASSISTANT, FLEET, CHAT_BACKEND, CLI_RUNTIME, RESUME_TARGET, MISSION_CREATE, MISSION_EVENT, MISSION_MIRROR, MISSION_RECEIPT, GRANT_RUNTIME }
+    enum class Launch { NONE, ARGV, ACP }
+    enum class Platform { MACOS, IOS, ANDROID, WINDOWS, LINUX }
+
+    data class Row(
+        val id: String,
+        val wireAliases: List<String>,
+        val displayName: String,
+        val surfaces: Set<Surface>,
+        val launch: Launch,
+        val platforms: Set<Platform>,
+    )
+
+    private val aliasToId: Map<String, String> =
+        rows.flatMap { row -> row.wireAliases.map { it to row.id } }.toMap()
+
+    fun canonicalId(token: String): String? = aliasToId[token]
+
+    fun contains(token: String): Boolean = aliasToId.containsKey(token)
+
+    fun covers(tokens: Collection<String>): Boolean = tokens.all { contains(it) }
+
+    companion object {
+        @JvmField
+        val generated: MissionRuntimeCatalog = MissionRuntimeCatalog(
+            rows = listOf(
+${kotlinRows}
+            ),
+        )
+
+        @JvmStatic
+        fun loadFixture(): MissionRuntimeCatalog = generated
+    }
+}
+`;
+
+const csharpRows = catalog.rows
+  .map((row) => {
+    const aliasesLit = row.wireAliases.map((a) => `"${a}"`).join(", ");
+    const surfacesLit = row.surfaces.map((s) => `MissionRuntimeSurface.${surfaceCSharp(s)}`).join(", ");
+    const platformsLit = row.platforms.map((p) => `MissionRuntimePlatform.${capitalize(p)}`).join(", ");
+    return `        new MissionRuntimeRow(
+            "${row.id}",
+            new[] { ${aliasesLit} },
+            "${escapeCSharp(row.displayName)}",
+            new[] { ${surfacesLit} },
+            MissionRuntimeLaunch.${capitalize(row.launch === "none" ? "None" : row.launch === "argv" ? "Argv" : "Acp")},
+            new[] { ${platformsLit} })`;
+  })
+  .join(",\n");
+
+function surfaceCSharp(s) {
+  return s
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join("");
+}
+
+function capitalize(s) {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function escapeCSharp(value) {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+const csharp = `// ${banner}
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace OpenBurnBar.App.Presentation.Catalog;
+
+public enum MissionRuntimeSurface
+{
+    Switcher,
+    Assistant,
+    Fleet,
+    ChatBackend,
+    CliRuntime,
+    ResumeTarget,
+    MissionCreate,
+    MissionEvent,
+    MissionMirror,
+    MissionReceipt,
+    GrantRuntime,
+}
+
+public enum MissionRuntimeLaunch
+{
+    None,
+    Argv,
+    Acp,
+}
+
+public enum MissionRuntimePlatform
+{
+    Macos,
+    Ios,
+    Android,
+    Windows,
+    Linux,
+}
+
+public sealed record MissionRuntimeRow(
+    string Id,
+    IReadOnlyList<string> WireAliases,
+    string DisplayName,
+    IReadOnlyList<MissionRuntimeSurface> Surfaces,
+    MissionRuntimeLaunch Launch,
+    IReadOnlyList<MissionRuntimePlatform> Platforms);
+
+public sealed class MissionRuntimeCatalog
+{
+    public IReadOnlyList<MissionRuntimeRow> Rows { get; }
+    private readonly Dictionary<string, string> _aliasToId;
+
+    public MissionRuntimeCatalog(IReadOnlyList<MissionRuntimeRow> rows)
+    {
+        Rows = rows;
+        _aliasToId = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var row in rows)
+        {
+            foreach (var alias in row.WireAliases)
+            {
+                _aliasToId[alias] = row.Id;
+            }
+        }
+    }
+
+    public static MissionRuntimeCatalog Generated { get; } = new(
+        new[]
+        {
+${csharpRows}
+        });
+
+    public static MissionRuntimeCatalog LoadFixture() => Generated;
+
+    public string? CanonicalId(string token) =>
+        _aliasToId.TryGetValue(token, out var id) ? id : null;
+
+    public bool Contains(string token) => _aliasToId.ContainsKey(token);
+
+    public bool Covers(IEnumerable<string> tokens) => tokens.All(Contains);
+}
+`;
+
+const ts = `// ${banner}
+
+export const MISSION_RUNTIME_CREATE_TOKENS = ${JSON.stringify(createTokens, null, 2)} as const;
+
+export const MISSION_RUNTIME_EVENT_TOKENS = ${JSON.stringify(eventTokens, null, 2)} as const;
+
+export const MISSION_RUNTIME_MIRROR_TOKENS = ${JSON.stringify(mirrorTokens, null, 2)} as const;
+
+export const MISSION_RUNTIME_RECEIPT_TOKENS = ${JSON.stringify(receiptTokens, null, 2)} as const;
+
+export const ALLOWED_GRANT_RUNTIMES = new Set<string>(${JSON.stringify(grantTokens, null, 2)});
+
+export const MISSION_RUNTIME_SWITCHER_TOKENS = ${JSON.stringify(switcherTokens, null, 2)} as const;
+
+const ALIAS_TO_ID: Record<string, string> = ${JSON.stringify(Object.fromEntries(aliases), null, 2)};
+
+export function missionRuntimeCanonicalId(token: string): string | undefined {
+  return ALIAS_TO_ID[token];
+}
+
+export function isKnownMissionRuntime(token: string): boolean {
+  return token in ALIAS_TO_ID;
+}
+`;
+
+emitOrCheck(
+  "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/MissionRuntimeCatalog.generated.swift",
+  swift,
+);
+emitOrCheck(
+  "android/app/src/main/java/com/openburnbar/data/catalog/MissionRuntimeCatalog.kt",
+  kotlin,
+);
+emitOrCheck(
+  "windows/app/OpenBurnBar.App.Presentation/Catalog/MissionRuntimeCatalog.generated.cs",
+  csharp,
+);
+emitOrCheck("functions/src/generated/missionRuntimeCatalog.generated.ts", ts);
+
+const rulesPath = path.join(repoRoot, "firestore.rules");
+let rules = readFileSync(rulesPath, "utf8");
+const createBody = `      function validCliMissionRuntime(value) {
+        return validCliMissionMetadataToken(value, 80)
+          && value in [
+${rulesList(createTokens, "            ")}
+          ];
+      }`;
+rules = replaceGeneratedRegion(rules, "create", createBody);
+
+function inlineListRegion(source, name, tokens) {
+  const body = `        ${rulesList(tokens, "          ").replace(/^          /, "")}`;
+  // Keep the surrounding `in [` / `]` owned by the hand-written rules.
+  const begin = `// BEGIN GENERATED MISSION_RUNTIMES: ${name}`;
+  const end = `// END GENERATED MISSION_RUNTIMES: ${name}`;
+  const start = source.indexOf(begin);
+  const stop = source.indexOf(end);
+  if (start < 0 || stop < 0 || stop < start) {
+    throw new Error(`missing generated region ${name} in firestore.rules`);
+  }
+  const before = source.slice(0, start);
+  const after = source.slice(stop + end.length);
+  return `${before}${begin}\n${rulesList(tokens, "          ")}\n          ${end}${after}`;
+}
+
+rules = inlineListRegion(rules, "mirror_chats", mirrorTokens);
+rules = inlineListRegion(rules, "mirror_sessions", mirrorTokens);
+rules = inlineListRegion(rules, "events", eventTokens);
+rules = inlineListRegion(rules, "notification_replies", mirrorTokens);
+rules = inlineListRegion(rules, "receipts", receiptTokens);
+
+if (checkOnly) {
+  const current = readFileSync(rulesPath, "utf8");
+  if (current !== rules) {
+    throw new Error("drift in firestore.rules generated mission-runtime regions");
+  }
+} else {
+  writeFileSync(rulesPath, rules);
+}
+
+if (!checkOnly) {
+  console.log("mission-runtime-catalog: wrote Swift/Kotlin/C#/TS allowlists and firestore.rules regions");
+}

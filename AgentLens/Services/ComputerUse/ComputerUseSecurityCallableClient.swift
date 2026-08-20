@@ -1084,6 +1084,97 @@ enum ComputerUseSecurityCallableClient {
         return try await functions.httpsCallable(callableName).call(merged)
     }
 
+    static func claimCliAgentMission(
+        requestId: String,
+        deviceId: String,
+        nextStatus: String,
+        selectedRuntime: String,
+        selectedRuntimeName: String,
+        selectedModelID: String?,
+        approvalRequestId: String?,
+        sealedStatePayload: [String: Any]
+    ) async throws -> String {
+        var payload: [String: Any] = [
+            "requestId": requestId,
+            "deviceId": deviceId,
+            "nextStatus": nextStatus,
+            "selectedRuntime": selectedRuntime,
+            "selectedRuntimeName": selectedRuntimeName,
+            "sealedStatePayload": sealedStatePayload
+        ]
+        if let selectedModelID { payload["selectedModelID"] = selectedModelID }
+        if let approvalRequestId { payload["approvalRequestId"] = approvalRequestId }
+        let result = try await callHighRiskOwnerAction(
+            "claimCliAgentMission",
+            deviceId: deviceId,
+            actionKind: "cli_agent_mission_claim",
+            subjectId: requestId,
+            payload: payload
+        )
+        guard let dict = result.data as? [String: Any],
+              dict["ok"] as? Bool == true,
+              let nonce = dict["hostWriteNonce"] as? String
+        else {
+            throw ClientError.invalidResponse("Mission claim failed.")
+        }
+        return nonce
+    }
+
+    static func updateCliAgentMissionStatus(
+        requestId: String,
+        deviceId: String,
+        status: String,
+        hostWriteNonce: String,
+        sealedStatePayload: [String: Any],
+        approvalRequestId: String? = nil
+    ) async throws {
+        var payload: [String: Any] = [
+            "requestId": requestId,
+            "deviceId": deviceId,
+            "status": status,
+            "hostWriteNonce": hostWriteNonce,
+            "sealedStatePayload": sealedStatePayload
+        ]
+        if let approvalRequestId { payload["approvalRequestId"] = approvalRequestId }
+        let result = try await callHighRiskOwnerAction(
+            "updateCliAgentMissionStatus",
+            deviceId: deviceId,
+            actionKind: "cli_agent_mission_status",
+            subjectId: requestId,
+            payload: payload
+        )
+        guard let dict = result.data as? [String: Any], dict["ok"] as? Bool == true else {
+            throw ClientError.invalidResponse("Mission status update failed.")
+        }
+    }
+
+    static func appendCliAgentMissionEvent(
+        requestId: String,
+        deviceId: String,
+        hostWriteNonce: String,
+        eventId: String,
+        sealedEvent: [String: Any],
+        publicEventShape: [String: Any]
+    ) async throws {
+        let result = try await callHighRiskOwnerAction(
+            "appendCliAgentMissionEvent",
+            deviceId: deviceId,
+            actionKind: "cli_agent_mission_append_event",
+            subjectId: requestId,
+            payload: [
+                "requestId": requestId,
+                "deviceId": deviceId,
+                "hostWriteNonce": hostWriteNonce,
+                "eventId": eventId,
+                "sealedEvent": sealedEvent,
+                "publicEventShape": publicEventShape
+            ]
+        )
+        guard let dict = result.data as? [String: Any], dict["ok"] as? Bool == true else {
+            throw ClientError.invalidResponse("Mission event append failed.")
+        }
+    }
+
     static func respondMissionApproval(requestId: String, approve: Bool, deviceId: String) async throws {
         let result = try await callHighRiskOwnerAction(
             "respondMissionApproval",

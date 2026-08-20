@@ -198,10 +198,15 @@ extension CLIAgentMissionDispatcher {
             vaultKey: resolvedKey.keyData,
             vaultKeyID: resolvedKey.vaultKeyID
         )
-        try await db
-            .collection("users").document(uid)
-            .collection("cli_agent_mission_requests").document(requestID)
-            .setData(update, merge: true)
+        let deviceId = await MainActor.run { MobileDeviceIdentity.loadOrCreateDeviceId() }
+        guard let sealedState = update["sealedStatePayload"] as? [String: Any] else {
+            throw DispatchError.firebaseUnavailable
+        }
+        try await ComputerUseSecurityCallableClient.cancelCliAgentMission(
+            requestId: requestID,
+            deviceId: deviceId,
+            sealedStatePayload: sealedState
+        )
     }
 
     /// Build the sealed cancel update. `status` flips to `cancelled` and the

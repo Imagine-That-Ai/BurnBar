@@ -1869,6 +1869,7 @@ service cloud.firestore {
         "usage", "budgetRules", "budgetEvents", "conversations",
         "chat_threads", "text_snippets", "mobile_assistant_chats",
         "cli_sessions", "cli_agent_mission_requests", "agent_import_jobs",
+        "burnbar_attachments", "mission_approval_answers", "mission_approval_ceilings",
         "ai_inbox_items", "ai_inbox_item_state",
         "mission_groups", "approval_policies", "rollback_requests",
         "agent_identities", "subscription_topics", "session_logs",
@@ -2173,7 +2174,64 @@ service cloud.firestore {
           "lastAssistantMessageID"
         ])
         && d.id == threadId
-        && d.runtime in ["hermes", "pi", "piagent", "pi_agent", "codex", "claude", "openclaw", "antigravity", "droid", "factory", "forge", "grok", "cursorAgent", "cursoragent", "cursor_agent"]
+        && d.runtime in [
+          // BEGIN GENERATED MISSION_RUNTIMES: mirror_chats
+          "agy",
+          "antigravity",
+          "claude",
+          "claude_code",
+          "claude-code",
+          "claudecode",
+          "codex",
+          "cursor",
+          "cursor_agent",
+          "cursor-agent",
+          "cursoragent",
+          "cursorAgent",
+          "droid",
+          "factory",
+          "factory-droid",
+          "factorydroid",
+          "forge",
+          "forge-dev",
+          "forgedev",
+          "fx",
+          "gemini",
+          "gemini-cli",
+          "geminicli",
+          "google-antigravity",
+          "googleantigravity",
+          "grok",
+          "grok-agent",
+          "grok-build",
+          "grok-cli",
+          "hermes",
+          "jetbrains-junie",
+          "jetbrainsjunie",
+          "junie",
+          "kimi",
+          "oh-my-pi",
+          "ohmypi",
+          "ollama",
+          "omp",
+          "open-claude",
+          "open-claw",
+          "openclaude",
+          "openClaude",
+          "openclaw",
+          "openClaw",
+          "opencode",
+          "pi",
+          "pi_agent",
+          "pi-agent",
+          "piagent",
+          "piAgent",
+          "prime-agent",
+          "primeagent",
+          "primeAgent",
+          "xai"
+          // END GENERATED MISSION_RUNTIMES: mirror_chats
+        ]
         && d.messageCount is int
         && d.messageCount >= 0
         && d.messageCount <= 5000
@@ -2219,7 +2277,64 @@ service cloud.firestore {
           "priorityOrder"
         ])
         && d.id == sessionId
-        && d.agent in ["codex", "claude", "openclaw", "antigravity", "droid", "forge", "grok", "cursorAgent", "cursoragent", "cursor_agent"]
+        && d.agent in [
+          // BEGIN GENERATED MISSION_RUNTIMES: mirror_sessions
+          "agy",
+          "antigravity",
+          "claude",
+          "claude_code",
+          "claude-code",
+          "claudecode",
+          "codex",
+          "cursor",
+          "cursor_agent",
+          "cursor-agent",
+          "cursoragent",
+          "cursorAgent",
+          "droid",
+          "factory",
+          "factory-droid",
+          "factorydroid",
+          "forge",
+          "forge-dev",
+          "forgedev",
+          "fx",
+          "gemini",
+          "gemini-cli",
+          "geminicli",
+          "google-antigravity",
+          "googleantigravity",
+          "grok",
+          "grok-agent",
+          "grok-build",
+          "grok-cli",
+          "hermes",
+          "jetbrains-junie",
+          "jetbrainsjunie",
+          "junie",
+          "kimi",
+          "oh-my-pi",
+          "ohmypi",
+          "ollama",
+          "omp",
+          "open-claude",
+          "open-claw",
+          "openclaude",
+          "openClaude",
+          "openclaw",
+          "openClaw",
+          "opencode",
+          "pi",
+          "pi_agent",
+          "pi-agent",
+          "piagent",
+          "piAgent",
+          "prime-agent",
+          "primeagent",
+          "primeAgent",
+          "xai"
+          // END GENERATED MISSION_RUNTIMES: mirror_sessions
+        ]
         && (!("sourceKind" in d) || d.sourceKind in ["live_chat", "archived_log"])
         && d.schemaVersion is int
         && d.contentSealed == true
@@ -2367,9 +2482,68 @@ service cloud.firestore {
         return validCliMissionMetadataToken(value, 64);
       }
 
+      // BEGIN GENERATED MISSION_RUNTIMES: create
       function validCliMissionRuntime(value) {
-        return validCliMissionMetadataToken(value, 80);
+        return validCliMissionMetadataToken(value, 80)
+          && value in [
+            "agy",
+            "antigravity",
+            "auto",
+            "claude",
+            "claude_code",
+            "claude-code",
+            "claudecode",
+            "codex",
+            "cursor",
+            "cursor_agent",
+            "cursor-agent",
+            "cursoragent",
+            "cursorAgent",
+            "droid",
+            "factory",
+            "factory-droid",
+            "factorydroid",
+            "forge",
+            "forge-dev",
+            "forgedev",
+            "fx",
+            "gemini",
+            "gemini-cli",
+            "geminicli",
+            "google-antigravity",
+            "googleantigravity",
+            "grok",
+            "grok-agent",
+            "grok-build",
+            "grok-cli",
+            "hermes",
+            "jetbrains-junie",
+            "jetbrainsjunie",
+            "junie",
+            "kimi",
+            "oh-my-pi",
+            "ohmypi",
+            "ollama",
+            "omp",
+            "open-claude",
+            "open-claw",
+            "openclaude",
+            "openClaude",
+            "openclaw",
+            "openClaw",
+            "opencode",
+            "pi",
+            "pi_agent",
+            "pi-agent",
+            "piagent",
+            "piAgent",
+            "prime-agent",
+            "primeagent",
+            "primeAgent",
+            "xai"
+          ];
       }
+      // END GENERATED MISSION_RUNTIMES: create
 
       function validCliMissionSource(value) {
         return value in [
@@ -2670,7 +2844,14 @@ service cloud.firestore {
       // summary into sealedStatePayload — never a plaintext liveSummary). Any
       // other key change (or a plaintext summary) falls through and is denied.
       function validMobileMissionCancel() {
-        return request.resource.data.status == "cancelled"
+        return resource.data.status in [
+          "pending",
+          "accepted",
+          "starting",
+          "running",
+          "waiting_for_approval"
+        ]
+          && request.resource.data.status == "cancelled"
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             "status",
             "contentSealed",
@@ -2712,15 +2893,11 @@ service cloud.firestore {
           );
       }
 
-      allow create: if ownerWritableNonSecret(userId)
-        && validCliAgentMissionRequest()
-        && validCliAgentMissionCreate();
+      allow create: if false;
       allow update: if ownerWritableNonSecret(userId)
         && validCliAgentMissionUpdateEnvelope()
         && (
-          validTrustedMissionHostUpdate(userId)
-          || validMobileMissionApprovalResponse()
-          || validMissionRefusalOrFailureUpdate()
+          validMobileMissionApprovalResponse()
           || validMobileMissionCancel()
         );
 
@@ -2753,7 +2930,11 @@ service cloud.firestore {
         }
 
         allow read: if ownsUserNamespace(userId);
-        allow create: if ownerWritableNonSecret(userId)
+        // Client event writes are denied. Admin SDK (createCliAgentMission /
+        // appendCliAgentMissionEvent) owns 000001 and later events. Keep the
+        // generated runtime list below so catalog emit still has a region.
+        allow create: if false
+          && ownerWritableNonSecret(userId)
           && request.resource.data.keys().hasOnly([
             "sequence",
             "timestamp",
@@ -2810,10 +2991,84 @@ service cloud.firestore {
           && (!("skillStepID" in request.resource.data) || (request.resource.data.skillStepID is string && request.resource.data.skillStepID.size() <= 80))
           && validCliAgentMissionEventSource(userId, requestId, eventId)
           && request.resource.data.isError is bool
-          && (!("runtime" in request.resource.data) || request.resource.data.runtime in ["codex", "claude", "hermes", "openclaw", "piAgent", "pi", "opencode", "ollama", "auto", "antigravity", "droid", "forge", "grok", "cursorAgent", "cursoragent", "cursor_agent"])
+          && (!("runtime" in request.resource.data) || request.resource.data.runtime in [
+          // BEGIN GENERATED MISSION_RUNTIMES: events
+          "agy",
+          "antigravity",
+          "auto",
+          "claude",
+          "claude_code",
+          "claude-code",
+          "claudecode",
+          "codex",
+          "cursor",
+          "cursor_agent",
+          "cursor-agent",
+          "cursoragent",
+          "cursorAgent",
+          "droid",
+          "factory",
+          "factory-droid",
+          "factorydroid",
+          "forge",
+          "forge-dev",
+          "forgedev",
+          "fx",
+          "gemini",
+          "gemini-cli",
+          "geminicli",
+          "google-antigravity",
+          "googleantigravity",
+          "grok",
+          "grok-agent",
+          "grok-build",
+          "grok-cli",
+          "hermes",
+          "jetbrains-junie",
+          "jetbrainsjunie",
+          "junie",
+          "kimi",
+          "oh-my-pi",
+          "ohmypi",
+          "ollama",
+          "omp",
+          "open-claude",
+          "open-claw",
+          "openclaude",
+          "openClaude",
+          "openclaw",
+          "openClaw",
+          "opencode",
+          "pi",
+          "pi_agent",
+          "pi-agent",
+          "piagent",
+          "piAgent",
+          "prime-agent",
+          "primeagent",
+          "primeAgent",
+          "xai"
+          // END GENERATED MISSION_RUNTIMES: events
+          ])
           ;
         allow update: if validCliAgentMissionEventRewrapUpdate();
       }
+    }
+
+    // burnbar_attachments: Admin-SDK callables own writes. Clients may read metadata.
+    match /users/{userId}/burnbar_attachments/{attachmentId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create, update, delete: if false;
+    }
+
+    match /users/{userId}/mission_approval_answers/{answerId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create, update, delete: if false;
+    }
+
+    match /users/{userId}/mission_approval_ceilings/{requestId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create, update, delete: if false;
     }
 
     // Mobile-triggered agent history imports. Phones create pending jobs;
@@ -3572,7 +3827,64 @@ service cloud.firestore {
         && request.resource.data.threadId is string
         && request.resource.data.threadId.size() <= 512
         && request.resource.data.threadId == get(/databases/$(database)/documents/users/$(userId)/agent_notification_events/$(request.resource.data.eventId)).data.threadId
-        && request.resource.data.runtime in ["hermes", "pi", "piagent", "pi_agent", "codex", "claude", "openclaw", "antigravity", "droid", "factory", "forge", "grok", "cursorAgent", "cursoragent", "cursor_agent"]
+        && request.resource.data.runtime in [
+          // BEGIN GENERATED MISSION_RUNTIMES: notification_replies
+          "agy",
+          "antigravity",
+          "claude",
+          "claude_code",
+          "claude-code",
+          "claudecode",
+          "codex",
+          "cursor",
+          "cursor_agent",
+          "cursor-agent",
+          "cursoragent",
+          "cursorAgent",
+          "droid",
+          "factory",
+          "factory-droid",
+          "factorydroid",
+          "forge",
+          "forge-dev",
+          "forgedev",
+          "fx",
+          "gemini",
+          "gemini-cli",
+          "geminicli",
+          "google-antigravity",
+          "googleantigravity",
+          "grok",
+          "grok-agent",
+          "grok-build",
+          "grok-cli",
+          "hermes",
+          "jetbrains-junie",
+          "jetbrainsjunie",
+          "junie",
+          "kimi",
+          "oh-my-pi",
+          "ohmypi",
+          "ollama",
+          "omp",
+          "open-claude",
+          "open-claw",
+          "openclaude",
+          "openClaude",
+          "openclaw",
+          "openClaw",
+          "opencode",
+          "pi",
+          "pi_agent",
+          "pi-agent",
+          "piagent",
+          "piAgent",
+          "prime-agent",
+          "primeagent",
+          "primeAgent",
+          "xai"
+          // END GENERATED MISSION_RUNTIMES: notification_replies
+        ]
         && request.resource.data.runtime == get(/databases/$(database)/documents/users/$(userId)/agent_notification_events/$(request.resource.data.eventId)).data.runtime
         && request.resource.data.sourceKind in ["cli_session", "mobile_assistant_chat"]
         && request.resource.data.sourceKind == get(/databases/$(database)/documents/users/$(userId)/agent_notification_events/$(request.resource.data.eventId)).data.sourceKind
@@ -4011,7 +4323,64 @@ service cloud.firestore {
           && receipt.receiptId is string
           && receipt.receiptId.size() <= 160
           && receipt.requestId == requestId
-          && receipt.runtime in ["hermes", "pi", "codex", "claude", "openclaw", "antigravity", "droid", "forge", "grok", "cursorAgent", "cursoragent", "cursor_agent"]
+          && receipt.runtime in [
+          // BEGIN GENERATED MISSION_RUNTIMES: receipts
+          "agy",
+          "antigravity",
+          "claude",
+          "claude_code",
+          "claude-code",
+          "claudecode",
+          "codex",
+          "cursor",
+          "cursor_agent",
+          "cursor-agent",
+          "cursoragent",
+          "cursorAgent",
+          "droid",
+          "factory",
+          "factory-droid",
+          "factorydroid",
+          "forge",
+          "forge-dev",
+          "forgedev",
+          "fx",
+          "gemini",
+          "gemini-cli",
+          "geminicli",
+          "google-antigravity",
+          "googleantigravity",
+          "grok",
+          "grok-agent",
+          "grok-build",
+          "grok-cli",
+          "hermes",
+          "jetbrains-junie",
+          "jetbrainsjunie",
+          "junie",
+          "kimi",
+          "oh-my-pi",
+          "ohmypi",
+          "ollama",
+          "omp",
+          "open-claude",
+          "open-claw",
+          "openclaude",
+          "openClaude",
+          "openclaw",
+          "openClaw",
+          "opencode",
+          "pi",
+          "pi_agent",
+          "pi-agent",
+          "piagent",
+          "piAgent",
+          "prime-agent",
+          "primeagent",
+          "primeAgent",
+          "xai"
+          // END GENERATED MISSION_RUNTIMES: receipts
+          ]
           && receipt.threadId is string
           && receipt.threadId.size() <= 240
           && receipt.status in ["queued", "applied", "revoked", "denied", "expired"]

@@ -19,6 +19,11 @@ final class CLIAgentMissionRequestListener {
     private var isStarted = false
     var lastAttachState: String?
     var missionEventSequences: [String: Int] = [:]
+    struct ClaimedMissionHandle {
+        var hostWriteNonce: String
+        var deviceId: String
+    }
+    var claimedMissions: [String: ClaimedMissionHandle] = [:]
     init(
         accountManager: AccountManaging,
         settingsManager: SettingsManager,
@@ -56,6 +61,7 @@ final class CLIAgentMissionRequestListener {
         listenerUID = nil
         processingQueue.stop()
         missionEventSequences.removeAll()
+        claimedMissions.removeAll()
     }
     func attachIfPossible() {
         guard isStarted else { return }

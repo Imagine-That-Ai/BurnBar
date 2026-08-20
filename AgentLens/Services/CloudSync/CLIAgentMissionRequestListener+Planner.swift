@@ -34,8 +34,12 @@ enum CLIAgentMissionRuntimePlanner {
                 return CLIAgentMissionBackend(chatBackend: .antigravity)
             case "cursoragent", "cursor-agent":
                 return CLIAgentMissionBackend(chatBackend: .cursorAgent)
-            case "grok", "grok-build", "xai", "grok-agent":
-                return CLIAgentMissionBackend(rawValue: "grok", displayName: "Grok Build")
+            case "grok", "grok-build", "xai", "grok-agent", "grok-cli":
+                return CLIAgentMissionBackend(chatBackend: .grok)
+            case "kimi", "kimi-code", "kimi-cli":
+                return CLIAgentMissionBackend(chatBackend: .kimi)
+            case "gemini", "gemini-cli", "geminicli":
+                return CLIAgentMissionBackend(chatBackend: .antigravity)
             case "opencode":
                 return CLIAgentMissionBackend(rawValue: "opencode", displayName: "OpenCode")
             case "ollama":
@@ -44,6 +48,9 @@ enum CLIAgentMissionRuntimePlanner {
                 if let direct = ChatBackendID(rawValue: normalizedRuntime) {
                     return CLIAgentMissionBackend(chatBackend: direct)
                 }
+                // Fail closed: unknown tokens (including kimi/gemini until they launch)
+                // must not remap onto the first enabled backend.
+                return CLIAgentMissionBackend(rawValue: normalizedRuntime, displayName: requestedRuntime)
             }
         }
 
@@ -444,6 +451,18 @@ enum CLIAgentMissionRuntimePlanner {
                 ),
                 extraEnvironment: [:]
             )
+        case ChatBackendID.grok.rawValue, "grok", "grok-build", "xai", "grok-agent":
+            return CLIAgentMissionDirectLaunchPlan(
+                executableName: "grok",
+                arguments: CLIArgumentBuilder.grokACPArguments(),
+                extraEnvironment: ["OPENBURNBAR_MISSION_PROMPT": hostPrompt]
+            )
+        case ChatBackendID.kimi.rawValue, "kimi", "kimi-code":
+            return CLIAgentMissionDirectLaunchPlan(
+                executableName: "kimi",
+                arguments: CLIArgumentBuilder.kimiACPArguments(),
+                extraEnvironment: ["OPENBURNBAR_MISSION_PROMPT": hostPrompt]
+            )
         case ChatBackendID.cursorAgent.rawValue:
             return CLIAgentMissionDirectLaunchPlan(
                 executableName: "cursor-agent",
@@ -479,7 +498,7 @@ enum CLIAgentMissionRuntimePlanner {
             capabilities.insert(.workspaceWrite)
         }
         return AgentCapabilityGrant.sessionGrant(
-            runtimeID: assistantRuntimeID(for: backend),
+            runtimeID: assistantRuntimeID(for: backend) ?? .hermes,
             threadID: (data["clientThreadID"] as? String)?.nilIfEmpty ?? "visible-terminal-\(UUID().uuidString)",
             capabilities: capabilities,
             trustMode: .manual,
@@ -488,7 +507,7 @@ enum CLIAgentMissionRuntimePlanner {
         )
     }
 
-    static func assistantRuntimeID(for backend: CLIAgentMissionBackend) -> AssistantRuntimeID {
+    static func assistantRuntimeID(for backend: CLIAgentMissionBackend) -> AssistantRuntimeID? {
         if let chatBackend = backend.chatBackend {
             switch chatBackend {
             case .codex: return .codex
@@ -503,6 +522,8 @@ enum CLIAgentMissionRuntimePlanner {
             case .hermes: return .hermes
             case .piAgent: return .pi
             case .junie: return .junie
+            case .grok: return .grok
+            case .kimi: return .grok
             }
         }
         switch backend.rawValue {
@@ -516,7 +537,8 @@ enum CLIAgentMissionRuntimePlanner {
         case "grok", "grok-build", "xai", "grok-agent": return .grok
         case "pi", "piagent", "pi-agent": return .pi
         case "junie", "jetbrains-junie", "jetbrainsjunie", "jetbrains junie": return .junie
-        default: return .codex
+        default:
+            return AssistantRuntimeID(rawValue: backend.rawValue)
         }
     }
 

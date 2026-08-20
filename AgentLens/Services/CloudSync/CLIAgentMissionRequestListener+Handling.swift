@@ -324,12 +324,48 @@ extension CLIAgentMissionRequestListener {
             }
         } catch {
             logger.warning("mission id=\(document.documentID, privacy: .public) refused before claim: \(error.localizedDescription, privacy: .public)")
-            await fail(document: document, message: error.localizedDescription)
             return
         }
-        // The daemon is the sole mission authority (M4). It may attenuate the
-        // requested grant, so its ceiling replaces the Firestore-requested
-        // capabilities before any launch planner reads them.
+
+        logger.info("claiming mission id=\(document.documentID, privacy: .public) kind=\(missionKind, privacy: .public) requested=\(requestedRuntime, privacy: .public) selected=\(backend.rawValue, privacy: .public) model=\(requestedModelID ?? "auto", privacy: .public)")
+        do {
+            let baseClaimSummary = requestedModelID.map { "\(backend.displayName) claimed the mission on this Mac with model \($0)." }
+                ?? "\(backend.displayName) claimed the mission on this Mac."
+            let claimSummary = wandRoutingSelection.map {
+                "\(baseClaimSummary) \($0.claimSummaryFragment)"
+            } ?? baseClaimSummary
+            let sealed = try await sealedStateUpdate(
+                uid: uid,
+                requestID: document.documentID,
+                payload: [:],
+                liveSummary: claimSummary
+            )
+            guard let sealedState = sealed["sealedStatePayload"] as? [String: Any] else {
+                logger.error("mission claim missing sealed state id=\(document.documentID, privacy: .public)")
+                return
+            }
+            let hostWriteNonce = try await ComputerUseSecurityCallableClient.claimCliAgentMission(
+                requestId: document.documentID,
+                deviceId: accountManager.deviceId,
+                nextStatus: "accepted",
+                selectedRuntime: backend.rawValue,
+                selectedRuntimeName: backend.displayName,
+                selectedModelID: requestedModelID,
+                approvalRequestId: nil,
+                sealedStatePayload: sealedState
+            )
+            claimedMissions[document.documentID] = .init(hostWriteNonce: hostWriteNonce, deviceId: accountManager.deviceId)
+            if missionEventSequences[document.documentID] == nil {
+                missionEventSequences[document.documentID] = 1
+            }
+            logger.info("claimed mission id=\(document.documentID, privacy: .public)")
+        } catch {
+            logger.error("mission claim failed id=\(document.documentID, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            return
+        }
+
+        // The daemon is the sole mission authority (M4). Exclusive claim happens
+        // first so a losing Mac never evaluates.
         switch await resolveRemoteMissionAuthorization(
             document: document, data: data, backend: backend, uid: uid, prompt: prompt,
             executorTrustState: executorTrustState, missionGroupContext: missionGroupContext
@@ -358,50 +394,6 @@ extension CLIAgentMissionRequestListener {
             return
         }
 
-        logger.info("claiming mission id=\(document.documentID, privacy: .public) kind=\(missionKind, privacy: .public) requested=\(requestedRuntime, privacy: .public) selected=\(backend.rawValue, privacy: .public) model=\(requestedModelID ?? "auto", privacy: .public)")
-        do {
-            let baseClaimSummary = requestedModelID.map { "\(backend.displayName) claimed the mission on this Mac with model \($0)." }
-                ?? "\(backend.displayName) claimed the mission on this Mac."
-            let claimSummary = wandRoutingSelection.map {
-                "\(baseClaimSummary) \($0.claimSummaryFragment)"
-            } ?? baseClaimSummary
-            var claimPayload: [String: Any] = [
-                "status": "accepted",
-                "claimedBy": accountManager.deviceId,
-                "selectedRuntime": backend.rawValue,
-                "selectedRuntimeName": backend.displayName,
-                "lastEventSequence": FieldValue.increment(Int64(1)),
-                "startedAt": ISO8601DateFormatter().string(from: Date()),
-                "updatedAt": FieldValue.serverTimestamp()
-            ]
-            if let requestedModelID {
-                claimPayload["selectedModelID"] = requestedModelID
-            }
-            try await document.reference.setData(
-                try await sealedStateUpdate(
-                    uid: uid,
-                    requestID: document.documentID,
-                    payload: claimPayload,
-                    liveSummary: claimSummary
-                ),
-                merge: true
-            )
-            await recordEvent(
-                reference: document.reference,
-                requestID: document.documentID,
-                phase: "accepted",
-                kind: "status",
-                title: "Accepted",
-                message: claimSummary,
-                backend: backend
-            )
-            logger.info("claimed mission id=\(document.documentID, privacy: .public)")
-        } catch {
-            logger.error("mission claim failed id=\(document.documentID, privacy: .public): \(error.localizedDescription, privacy: .public)")
-            await fail(document: document, message: "Mac could not claim the mission: \(error.localizedDescription)")
-            return
-        }
-
         if chatController.isStreaming {
             logger.warning("mission id=\(document.documentID, privacy: .public) blocked because chat controller is already streaming")
             await fail(document: document, message: "Mac chat controller is already running another mission.")
@@ -417,18 +409,22 @@ extension CLIAgentMissionRequestListener {
         do {
             let summary = requestedModelID.map { "Starting \(backend.displayName) with model \($0)." }
                 ?? "Starting \(backend.displayName) with the mission prompt."
-            try await document.reference.setData(
-                try await sealedStateUpdate(
-                    uid: uid,
-                    requestID: document.documentID,
-                    payload: [
-                        "status": "starting",
-                        "updatedAt": FieldValue.serverTimestamp()
-                    ],
-                    liveSummary: summary
-                ),
-                merge: true
+            guard let handle = claimedMissions[document.documentID] else { return }
+            let sealed = try await sealedStateUpdate(
+                uid: uid,
+                requestID: document.documentID,
+                payload: [:],
+                liveSummary: summary
             )
+            if let sealedState = sealed["sealedStatePayload"] as? [String: Any] {
+                try await ComputerUseSecurityCallableClient.updateCliAgentMissionStatus(
+                    requestId: document.documentID,
+                    deviceId: handle.deviceId,
+                    status: "starting",
+                    hostWriteNonce: handle.hostWriteNonce,
+                    sealedStatePayload: sealedState
+                )
+            }
         } catch {
             logger.error("mission starting update failed id=\(document.documentID, privacy: .public): \(error.localizedDescription, privacy: .public)")
         }

@@ -1184,6 +1184,45 @@ enum ComputerUseSecurityCallableClient {
         return try await functions.httpsCallable(callableName).call(merged)
     }
 
+    static func createCliAgentMission(payload: [String: Any], deviceId: String) async throws -> String {
+        let requestId = payload["requestId"] as? String ?? ""
+        let result = try await callHighRiskOwnerAction(
+            "createCliAgentMission",
+            deviceId: deviceId,
+            actionKind: "cli_agent_mission_create",
+            subjectId: requestId,
+            payload: payload.merging(["deviceId": deviceId]) { _, new in new }
+        )
+        guard let dict = result.data as? [String: Any],
+              dict["ok"] as? Bool == true,
+              let id = dict["requestId"] as? String
+        else {
+            throw ClientError.invalidResponse("Mission create failed.")
+        }
+        return id
+    }
+
+    static func cancelCliAgentMission(
+        requestId: String,
+        deviceId: String,
+        sealedStatePayload: [String: Any]
+    ) async throws {
+        let result = try await callHighRiskOwnerAction(
+            "cancelCliAgentMission",
+            deviceId: deviceId,
+            actionKind: "cli_agent_mission_cancel",
+            subjectId: requestId,
+            payload: [
+                "requestId": requestId,
+                "deviceId": deviceId,
+                "sealedStatePayload": sealedStatePayload
+            ]
+        )
+        guard let dict = result.data as? [String: Any], dict["ok"] as? Bool == true else {
+            throw ClientError.invalidResponse("Mission cancel failed.")
+        }
+    }
+
     /// Bind a CLI-agent mission approve/reject decision to this trusted native
     /// escrow device via the App-Check-enforced `respondMissionApproval` callable.
     static func respondMissionApproval(requestId: String, approve: Bool, deviceId: String) async throws {

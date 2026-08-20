@@ -51,26 +51,12 @@ import {
   requireTrustedDeviceActionProof,
   requireTrustedEscrowDevice,
 } from "./computerUseSecurityFirestore.js";
+import { ALLOWED_GRANT_RUNTIMES } from "../generated/missionRuntimeCatalog.generated.js";
 
 // Internal shapes derived from the relocated parsers/verifiers so the split adds
 // no new exported type to the public surface.
 type AgentGrantLocalAuthProof = NonNullable<ReturnType<typeof parseAgentGrantLocalAuthProof>>;
 type PhoneControlSigningKeyKind = ReturnType<typeof parsePhoneControlSigningKeyKind>;
-
-const ALLOWED_GRANT_RUNTIMES = new Set([
-  "hermes",
-  "pi",
-  "codex",
-  "claude",
-  "openclaw",
-  "antigravity",
-  "droid",
-  "forge",
-  "grok",
-  "cursorAgent",
-  "cursoragent",
-  "cursor_agent",
-]);
 
 const ALLOWED_GRANT_CAPABILITIES = new Set([
   "desktop_browser",

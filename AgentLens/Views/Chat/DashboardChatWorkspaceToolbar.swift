@@ -55,6 +55,7 @@ extension ChatBackendID {
         case .antigravity: return "6C63FF"
         case .cursorAgent: return "00E5FF"
         case .junie: return "48E054"
+        case .grok, .kimi: return "48E054"
         }
     }
 

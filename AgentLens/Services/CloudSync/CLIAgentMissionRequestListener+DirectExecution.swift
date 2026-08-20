@@ -91,7 +91,19 @@ extension CLIAgentMissionRequestListener {
         }
         // Fail closed: Junie has no enforceable read-only/no-shell flags (CLIAgentJunieMissionPolicy).
         if let junieRefusal = CLIAgentJunieMissionPolicy.directExecutionRefusal(backend: backend, grant: CLIAgentMissionRuntimePlanner.capabilityGrant(for: backend, data: data)) { return junieRefusal }
-        if CLIAgentMissionRuntimePlanner.presentationMode(from: data) == .macVisibleCLI {
+        if let rawMode = (data["presentationMode"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nilIfEmpty,
+           CLIAgentChatPresentationMode(rawValue: rawMode) == nil {
+            return DirectCLIMissionResult(
+                status: "failed",
+                output: "",
+                errorMessage: "unknown or unsupported presentationMode '\(rawMode)'",
+                sessionID: "presentation-\(backend.rawValue)-\(UUID().uuidString)"
+            )
+        }
+        switch CLIAgentMissionRuntimePlanner.presentationMode(from: data) {
+        case .macVisibleCLI:
             guard let plan = CLIAgentMissionRuntimePlanner.visibleTerminalLaunchPlan(
                 title: title,
                 prompt: prompt,
@@ -117,6 +129,28 @@ extension CLIAgentMissionRequestListener {
                 requestID: requestID,
                 cancellationTracker: cancellationTracker
             )
+        case .macInteractiveCLI:
+            do {
+                _ = try await InteractiveTerminalLauncher.launchInteractive(
+                    runtimeId: backend.rawValue,
+                    workingDirectory: workingDirectoryURL
+                )
+                return DirectCLIMissionResult(
+                    status: "running",
+                    output: "",
+                    errorMessage: nil,
+                    sessionID: "interactive-\(backend.rawValue)-\(UUID().uuidString)"
+                )
+            } catch {
+                return DirectCLIMissionResult(
+                    status: "failed",
+                    output: "",
+                    errorMessage: "Interactive terminal launch failed: \(error.localizedDescription)",
+                    sessionID: "interactive-\(backend.rawValue)-\(UUID().uuidString)"
+                )
+            }
+        case .nativeChat:
+            break
         }
 
         if let plan = CLIAgentMissionRuntimePlanner.directLaunchPlan(title: title, prompt: prompt, backend: backend, data: data) {

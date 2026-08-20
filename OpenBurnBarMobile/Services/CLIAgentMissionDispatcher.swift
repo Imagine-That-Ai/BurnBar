@@ -110,50 +110,43 @@ final class CLIAgentMissionDispatcher {
             state: signalState,
             domainID: "conversations_chat"
         )
-        let signalWrite = signalState != .off && payload["signalEnvelope"] != nil
-        if signalWrite {
-            var callablePayload = payload
-            callablePayload["updatedAt"] = ISO8601DateFormatter().string(from: Date())
-            _ = try await Functions.functions()
-                .httpsCallable("writeSignalAtRestDocument")
-                .call([
-                    "collection": "cli_agent_mission_requests",
-                    "docId": id,
-                    "data": callablePayload
-                ])
-        }
-        let requestRef = db
-            .collection("users").document(uid)
-            .collection("cli_agent_mission_requests").document(id)
-        let batch = db.batch()
-        if !signalWrite {
-            batch.setData(
-                payload,
-                forDocument: requestRef,
-                merge: false
-            )
-        }
-        batch.setData(
-            try CLIAgentMissionRequestPayloadFactory.initialQueuedEventSealed(
-                label: isChatRequest ? "Chat" : "Mission",
-                source: Self.initialQueuedEventSource(
-                    missionKind: missionKind,
-                    sourceSurface: queuedEventSource ?? sourceSurface
-                ),
-                sourceSkillID: sourceSkillID,
-                deliveryMode: deliveryMode,
-                now: Date(),
-                uid: uid,
-                requestID: id,
-                eventID: "000001",
-                vaultKey: resolvedKey.keyData,
-                vaultKeyID: resolvedKey.vaultKeyID
+        let deviceId = await MainActor.run { MobileDeviceIdentity.loadOrCreateDeviceId() }
+        let initialEvent = try CLIAgentMissionRequestPayloadFactory.initialQueuedEventSealed(
+            label: isChatRequest ? "Chat" : "Mission",
+            source: Self.initialQueuedEventSource(
+                missionKind: missionKind,
+                sourceSurface: queuedEventSource ?? sourceSurface
             ),
-            forDocument: requestRef.collection("events").document("000001"),
-            merge: false
+            sourceSkillID: sourceSkillID,
+            deliveryMode: deliveryMode,
+            now: Date(),
+            uid: uid,
+            requestID: id,
+            eventID: "000001",
+            vaultKey: resolvedKey.keyData,
+            vaultKeyID: resolvedKey.vaultKeyID
         )
-        try await batch.commit()
-        return id
+        var publicFields = payload
+        publicFields.removeValue(forKey: "sealedPayload")
+        publicFields.removeValue(forKey: "signalEnvelope")
+        publicFields.removeValue(forKey: "status")
+        var createPayload: [String: Any] = [
+            "requestId": id,
+            "remoteCommandID": id,
+            "deviceId": deviceId,
+            "publicFields": publicFields,
+            "initialEvent": initialEvent["sealedPayload"] as Any
+        ]
+        if let sealed = payload["sealedPayload"] {
+            createPayload["sealedPayload"] = sealed
+        }
+        if let envelope = payload["signalEnvelope"] {
+            createPayload["signalEnvelope"] = envelope
+        }
+        return try await ComputerUseSecurityCallableClient.createCliAgentMission(
+            payload: createPayload,
+            deviceId: deviceId
+        )
     }
 
     static func initialQueuedEventSource(

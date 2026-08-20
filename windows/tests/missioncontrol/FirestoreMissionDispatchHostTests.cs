@@ -16,8 +16,21 @@ public sealed class FirestoreMissionDispatchHostTests
     private const string Uid = "test-user";
     private const string CollectionPath = $"users/{Uid}/cli_agent_mission_requests";
 
+    private sealed class RecordingApprovalCallable : IMissionApprovalCallable
+    {
+        public string? RequestId { get; private set; }
+        public bool? Approve { get; private set; }
+
+        public Task RespondAsync(string requestId, bool approve, CancellationToken cancellationToken = default)
+        {
+            RequestId = requestId;
+            Approve = approve;
+            return Task.CompletedTask;
+        }
+    }
+
     [Fact]
-    public async Task Dispatch_refresh_and_approval_round_trip_via_fake_gateway()
+    public async Task Dispatch_does_not_write_cli_agent_mission_requests()
     {
         var gateway = new FakeCloudSyncGateway(() => FixedNow);
         var host = new FirestoreMissionDispatchHost(gateway, Uid, () => FixedNow);
@@ -35,20 +48,21 @@ public sealed class FirestoreMissionDispatchHostTests
             sourceSurface: "mission-control-test");
 
         MissionDispatchOutcome dispatch = await host.DispatchAsync(request);
-        Assert.True(dispatch.Dispatched);
-        Assert.False(string.IsNullOrWhiteSpace(dispatch.MissionId));
+        Assert.False(dispatch.Dispatched);
+        Assert.Contains("createCliAgentMission", dispatch.FailureMessage);
+        Assert.Empty(gateway.DocumentsUnder(CollectionPath));
+    }
 
-        string docPath = $"{CollectionPath}/{dispatch.MissionId}";
-        CloudSyncFields? stored = gateway.DocumentData(docPath);
-        Assert.NotNull(stored);
-        Assert.Equal("pending", ReadString(stored!, "status"));
-        Assert.Equal(request.Prompt, ReadString(stored!, "prompt"));
+    [Fact]
+    public async Task RespondToApproval_calls_respondMissionApproval_and_does_not_merge_approved()
+    {
+        var gateway = new FakeCloudSyncGateway(() => FixedNow);
+        var callable = new RecordingApprovalCallable();
+        var host = new FirestoreMissionDispatchHost(gateway, Uid, () => FixedNow, callable);
 
-        MissionConsoleSnapshot afterDispatch = await host.RefreshAsync();
-        Assert.Contains(afterDispatch.ActiveTiles, t => t.Id == dispatch.MissionId);
-
-        // Simulate listener claim → waiting for approval
-        await gateway.Collection(CollectionPath).Document(dispatch.MissionId!).SetDataAsync(
+        string missionId = "mission-1";
+        string docPath = $"{CollectionPath}/{missionId}";
+        await gateway.Collection(CollectionPath).Document(missionId).SetDataAsync(
             CloudSyncFields.From(new[]
             {
                 new KeyValuePair<string, CloudSyncValue>("status", CloudSyncValue.Of("waiting_for_approval")),
@@ -59,14 +73,14 @@ public sealed class FirestoreMissionDispatchHostTests
 
         MissionConsoleSnapshot awaiting = await host.RefreshAsync();
         MissionApprovalAsk ask = Assert.Single(awaiting.ApprovalAsks);
-        Assert.Equal(dispatch.MissionId, ask.MissionId);
-
         await host.RespondToApprovalAsync(ask, approve: true);
 
+        Assert.Equal(missionId, callable.RequestId);
+        Assert.True(callable.Approve);
         CloudSyncFields? patched = gateway.DocumentData(docPath);
         Assert.NotNull(patched);
-        Assert.Equal("running", ReadString(patched!, "status"));
-        Assert.Equal("approved", ReadString(patched!, "approvalStatus"));
+        Assert.Equal("waiting_for_approval", ReadString(patched!, "status"));
+        Assert.Equal("pending", ReadString(patched!, "approvalStatus"));
     }
 
     private static string? ReadString(CloudSyncFields data, string key) =>

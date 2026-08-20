@@ -61,7 +61,8 @@ extension MissionRemoteAuthorizationShadow.ShadowContext {
             personaScopeJSON: (data["personaScopeJSON"] as? String)?.nilIfBlank,
             approvalMode: (data["approvalMode"] as? String)?.nilIfBlank,
             approvalStatus: (data["approvalStatus"] as? String) ?? "",
-            approverDeviceID: (data["approverDeviceID"] as? String)?.nilIfBlank,
+            approverDeviceID: (data["approvedByDeviceId"] as? String)?.nilIfBlank
+                ?? (data["approverDeviceID"] as? String)?.nilIfBlank,
             entitlementTier: (data["entitlementTier"] as? String)?.nilIfBlank ?? "none",
             workingDirectory: (data["workingDirectory"] as? String)?.nilIfBlank,
             fanOutCount: fanOutCount,

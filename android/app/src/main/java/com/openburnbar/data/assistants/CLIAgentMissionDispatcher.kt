@@ -90,12 +90,17 @@ private data class AndroidMissionEventPrivatePayload(
     val changedFilePath: String? = null,
 )
 
-private fun sealedMissionPayloadMap(payload: AndroidMissionPrivatePayload, key: AndroidCloudVaultResolvedKey): Map<String, Any> =
+private fun sealedMissionPayloadMap(
+    payload: AndroidMissionPrivatePayload,
+    key: AndroidCloudVaultResolvedKey,
+    aadContext: CloudVaultAADContext? = null,
+): Map<String, Any> =
     CloudVaultCrypto.sealedPayloadMap(
         CloudVaultCrypto.sealPayload(
             missionCloudJson.encodeToString(payload).toByteArray(Charsets.UTF_8),
             key.keyData,
             key.vaultKeyID,
+            aadContext,
         ),
     )
 
@@ -169,6 +174,7 @@ private suspend fun sealedMissionStateUpdate(
     errorMessage: String? = null,
     approvalTitle: String? = null,
     approvalMessage: String? = null,
+    requestID: String? = null,
 ): Map<String, Any> {
     val key = AndroidCloudVaultKeyAccess.keyForWriting(uid = uid, firestore = firestore)
     val sanitized = payload.toMutableMap()
@@ -184,7 +190,11 @@ private suspend fun sealedMissionStateUpdate(
     sanitized["contentSealed"] = true
     sanitized["sealedStateSchemaVersion"] = 1
     sanitized["sealedStateVaultKeyID"] = key.vaultKeyID
-    sanitized["sealedStatePayload"] = sealedMissionPayloadMap(privatePayload, key)
+    sanitized["sealedStatePayload"] = sealedMissionPayloadMap(
+        privatePayload,
+        key,
+        requestID?.let { missionStateAadContext(uid, it) },
+    )
     return sanitized
 }
 
@@ -623,6 +633,7 @@ class CLIAgentMissionDispatcher(
                         "updatedAt" to FieldValue.serverTimestamp(),
                     ),
                     liveSummary = "Mission cancelled by user.",
+                    requestID = requestID,
                 ),
                 com.google.firebase.firestore.SetOptions.merge(),
             )

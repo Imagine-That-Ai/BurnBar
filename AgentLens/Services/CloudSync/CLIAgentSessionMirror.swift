@@ -264,6 +264,7 @@ final class CLIAgentSessionMirror: Sendable {
         case .cursorAgent: return .cursorAgent
         case .openClaude: return .openClaude
         case .junie:    return .junie
+        case .grok, .kimi:    return .junie
         case .omp: return .omp
         case .hermes, .piAgent: return nil
         }
@@ -369,6 +370,7 @@ final class CLIAgentSessionMirror: Sendable {
         case .omp: return .omp
         case .xAI: return .grok
         case .junie: return .junie
+        case .grok, .kimi: return .junie
         default: return nil
         }
     }

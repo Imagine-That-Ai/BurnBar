@@ -70,22 +70,28 @@ extension CLIAgentMissionRequestListener {
     }
 
     func fail(document: QueryDocumentSnapshot, message: String) async {
+        guard claimedMissions[document.documentID] != nil else {
+            logger.warning("refusing unclaimed fail() for \(document.documentID, privacy: .public)")
+            return
+        }
         let safeMessage = CLIAgentMissionEventFactory.mobileSafeText(message, limit: 2048)
         do {
             guard let uid = accountManager.currentUID else { return }
-            try await document.reference.setData(
-                try await sealedStateUpdate(
-                    uid: uid,
-                    requestID: document.documentID,
-                    payload: [
-                        "status": "failed",
-                        "completedAt": ISO8601DateFormatter().string(from: Date()),
-                        "updatedAt": FieldValue.serverTimestamp()
-                    ],
-                    liveSummary: safeMessage,
-                    errorMessage: safeMessage
-                ),
-                merge: true
+            guard let handle = claimedMissions[document.documentID] else { return }
+            let sealed = try await sealedStateUpdate(
+                uid: uid,
+                requestID: document.documentID,
+                payload: [:],
+                liveSummary: safeMessage,
+                errorMessage: safeMessage
+            )
+            guard let sealedState = sealed["sealedStatePayload"] as? [String: Any] else { return }
+            try await ComputerUseSecurityCallableClient.updateCliAgentMissionStatus(
+                requestId: document.documentID,
+                deviceId: handle.deviceId,
+                status: "failed",
+                hostWriteNonce: handle.hostWriteNonce,
+                sealedStatePayload: sealedState
             )
             await recordEvent(
                 reference: document.reference,
@@ -114,21 +120,24 @@ extension CLIAgentMissionRequestListener {
     func failAfterTrustedClaim(document: QueryDocumentSnapshot, backend: CLIAgentMissionBackend, message: String) async {
         do {
             guard let uid = accountManager.currentUID else { return }
-            try await document.reference.setData(
-                try await sealedStateUpdate(
-                    uid: uid,
-                    requestID: document.documentID,
-                    payload: [
-                        "status": "failed",
-                        "claimedBy": accountManager.deviceId,
-                        "selectedRuntime": backend.rawValue,
-                        "selectedRuntimeName": backend.displayName,
-                        "updatedAt": FieldValue.serverTimestamp()
-                    ],
-                    liveSummary: message,
-                    errorMessage: message
-                ),
-                merge: true
+            guard let handle = claimedMissions[document.documentID] else {
+                logger.warning("refusing unclaimed failAfterTrustedClaim for \(document.documentID, privacy: .public)")
+                return
+            }
+            let sealed = try await sealedStateUpdate(
+                uid: uid,
+                requestID: document.documentID,
+                payload: [:],
+                liveSummary: message,
+                errorMessage: message
+            )
+            guard let sealedState = sealed["sealedStatePayload"] as? [String: Any] else { return }
+            try await ComputerUseSecurityCallableClient.updateCliAgentMissionStatus(
+                requestId: document.documentID,
+                deviceId: handle.deviceId,
+                status: "failed",
+                hostWriteNonce: handle.hostWriteNonce,
+                sealedStatePayload: sealedState
             )
             await recordEvent(
                 reference: document.reference,
@@ -151,7 +160,7 @@ extension CLIAgentMissionRequestListener {
         data: [String: Any],
         backend: CLIAgentMissionBackend
     ) async {
-        let approvalID = (data["approvalRequestId"] as? String)?.nilIfEmpty ?? "approval-\(UUID().uuidString)"
+        let approvalID = "approval-\(UUID().uuidString)"
         let title = (data["title"] as? String)?.nilIfEmpty ?? "Mobile mission"
         let approvalMode = (data["approvalMode"] as? String)?.nilIfEmpty ?? "existing_policy"
         let commandsAllowed = ((data["commandsAllowed"] as? Bool) ?? false) ? "commands" : nil
@@ -161,25 +170,26 @@ extension CLIAgentMissionRequestListener {
         let message = "\(backend.displayName) is waiting for approval before \(scope). Approval mode: \(approvalMode)."
         do {
             guard let uid = accountManager.currentUID else { return }
-            try await document.reference.setData(
-                try await sealedStateUpdate(
-                    uid: uid,
-                    requestID: document.documentID,
-                    payload: [
-                        "status": "waiting_for_approval",
-                        "claimedBy": accountManager.deviceId,
-                        "approvalRequestId": approvalID,
-                        "approvalStatus": "pending",
-                        "approvalRequestedAt": ISO8601DateFormatter().string(from: Date()),
-                        "selectedRuntime": backend.rawValue,
-                        "selectedRuntimeName": backend.displayName,
-                        "updatedAt": FieldValue.serverTimestamp()
-                    ],
-                    liveSummary: message,
-                    approvalTitle: "Approve \(title)",
-                    approvalMessage: message
-                ),
-                merge: true
+            guard let handle = claimedMissions[document.documentID] else {
+                logger.warning("refusing unclaimed requestApproval for \(document.documentID, privacy: .public)")
+                return
+            }
+            let sealed = try await sealedStateUpdate(
+                uid: uid,
+                requestID: document.documentID,
+                payload: [:],
+                liveSummary: message,
+                approvalTitle: "Approve \(title)",
+                approvalMessage: message
+            )
+            guard let sealedState = sealed["sealedStatePayload"] as? [String: Any] else { return }
+            try await ComputerUseSecurityCallableClient.updateCliAgentMissionStatus(
+                requestId: document.documentID,
+                deviceId: handle.deviceId,
+                status: "waiting_for_approval",
+                hostWriteNonce: handle.hostWriteNonce,
+                sealedStatePayload: sealedState,
+                approvalRequestId: approvalID
             )
             await recordEvent(
                 reference: document.reference,
