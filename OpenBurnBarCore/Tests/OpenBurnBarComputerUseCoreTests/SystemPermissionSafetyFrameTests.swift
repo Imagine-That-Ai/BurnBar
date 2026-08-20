@@ -66,6 +66,69 @@ final class SystemPermissionSafetyFrameTests: XCTestCase {
         }
     }
 
+    /// Avoiding "stays on this Mac" is not enough: silence about the destination is its
+    /// own kind of overclaim. Every kind whose captured content is handed to the model
+    /// provider must *say so*.
+    ///
+    /// Added after review caught the accessibility frame describing only the local audit
+    /// log, while AX labels, window titles and URLs are returned as tool results and sent
+    /// onward exactly like a screenshot.
+    func test_kindsThatReachTheModelProviderSaySo() {
+        let reachesProvider: Set<SystemPermissionKind> = [
+            .screenRecording, .accessibility, .automation, .fullDiskAccess
+        ]
+        for kind in reachesProvider {
+            let text = kind.safetyFrame.whereItGoes.lowercased()
+            XCTAssertTrue(
+                text.contains("provider"),
+                "\(kind).safetyFrame.whereItGoes must name the model provider: content this "
+                + "permission exposes is returned as a tool result and sent to whichever "
+                + "provider the user configured, so describing only the local log implies "
+                + "it stays here."
+            )
+        }
+    }
+
+    /// Per-action approval is a property of the *session mode*, not of the permission.
+    /// Manual stops for everything; Step lets one approval cover a burst of up to ten
+    /// similar actions or thirty seconds; Trusted dispatches scoped actions without
+    /// asking. Promising unconditional approval on a consent surface is false for two of
+    /// the three modes.
+    func test_noFrameClaimsUnconditionalPerActionApproval() {
+        let bannedPhrases = [
+            "every action stops for your approval",
+            "every action needs your approval",
+            "every click and keystroke stops",
+            "every action requires your approval"
+        ]
+        for kind in allKinds {
+            let text = kind.safetyFrame.whoDrives.lowercased()
+            for phrase in bannedPhrases {
+                XCTAssertFalse(
+                    text.contains(phrase),
+                    "\(kind).safetyFrame.whoDrives promises \"\(phrase)\", which is false in "
+                    + "Step and Trusted modes. Describe the modes instead of promising an "
+                    + "absolute the product does not guarantee."
+                )
+            }
+        }
+    }
+
+    /// Full Disk Access has no per-folder form. A consent surface that implies otherwise
+    /// materially understates what the user is handing over.
+    func test_fullDiskAccessDisclosesTheGrantIsOSWide() {
+        let frame = SystemPermissionKind.fullDiskAccess.safetyFrame
+        let text = (frame.whoWatches + " " + frame.whoDrives).lowercased()
+        XCTAssertFalse(
+            text.contains("a specific folder macos keeps fenced off"),
+            "FDA copy must not imply the grant is scoped to one folder"
+        )
+        XCTAssertTrue(
+            text.contains("all of your protected data") || text.contains("not just the folder"),
+            "FDA copy must say the macOS grant is broader than OpenBurnBar's use of it"
+        )
+    }
+
     /// The safety frame must add information rather than restate the sales copy, or the
     /// pre-prompt sheet is just the wizard again with a different heading.
     func test_safetyFrameIsNotACopyOfTheExistingCapabilityCopy() {

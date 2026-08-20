@@ -134,8 +134,8 @@ private struct PermissionsTrustOverviewCard: View {
               title: "Nothing starts on its own",
               detail: "An agent only sees or touches your Mac inside a session you start."),
         Point(symbol: "checkmark.shield",
-              title: "You approve each action",
-              detail: "Every click and keystroke stops for your yes. That is the default and it does not expire."),
+              title: "You choose how much it does on its own",
+              detail: "Manual stops for every action and is the default. Step lets one approval cover a short burst; Trusted runs actions matching rules you wrote. You pick per session."),
         Point(symbol: "externaldrive",
               title: "No BurnBar server is in the loop",
               detail: "Nobody here can see your screen. What the agent reads goes to the model provider you already chose."),
@@ -146,7 +146,7 @@ private struct PermissionsTrustOverviewCard: View {
 
     private let cannotDo: [String] = [
         "Run when you have not started something.",
-        "Take an action you rejected.",
+        "Take an action you rejected, or exceed the session mode you chose.",
         "Send your screen to BurnBar."
     ]
 

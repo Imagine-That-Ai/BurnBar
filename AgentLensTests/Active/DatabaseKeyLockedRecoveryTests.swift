@@ -131,5 +131,26 @@ final class DatabaseKeyLockedRecoveryTests: XCTestCase {
                       "copy should reassure that the database is intact: \(text)")
         XCTAssertNotNil(error.recoverySuggestion)
     }
+
+    /// Review caught this one: `lookUpKey()` classified correctly, but the caller that
+    /// actually opens an existing encrypted database used `getKey()`, which collapses
+    /// `.unreadable` back to nil. A locked key was therefore reported as *missing*, and
+    /// the recovery screen offered archive-and-reset -- discarding an intact database --
+    /// instead of the one-click Unlock that resolves it. The classification is only
+    /// useful if it survives to the caller.
+    func test_lockedAndMissingKeysProduceDifferentDiagnoses() {
+        let locked = DataStoreStartupFailure.make(
+            error: DatabaseEncryptionError.keychainKeyUnreadable(status: errSecInteractionNotAllowed)
+        )
+        let missing = DataStoreStartupFailure.make(
+            error: DatabaseEncryptionError.existingEncryptedDatabaseKeyMissing(path: "/tmp/x.sqlite")
+        )
+        XCTAssertTrue(locked.isKeychainLocked, "a locked key must offer Unlock")
+        XCTAssertFalse(missing.isKeychainLocked, "a genuinely missing key has no key to unlock")
+        XCTAssertNotEqual(
+            locked.errorSummary, missing.errorSummary,
+            "the two states must not read identically to the user"
+        )
+    }
 }
 #endif

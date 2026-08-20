@@ -101,6 +101,19 @@ verified by injecting the claim and watching it go red.
 > A trust surface that overclaims is worse than no trust surface. The one user who
 > checks and finds a gap stops believing all of it.
 
+Independent review then caught three more overclaims that the first guard did not cover,
+which is the useful lesson: *one* honesty rule is not a honesty policy. Each became its
+own test.
+
+| Overclaim | Why it was false | Guard |
+|---|---|---|
+| Accessibility said data went only to a local audit log | AX labels, window titles and URLs are returned as tool results and sent to the model provider, exactly like a screenshot | `test_kindsThatReachTheModelProviderSaySo` |
+| "Every action stops for your approval" | True in Manual only. Step lets one approval cover up to ten similar actions or thirty seconds; Trusted dispatches scoped actions without asking | `test_noFrameClaimsUnconditionalPerActionApproval` |
+| Full Disk Access described as opening "a specific folder" | macOS has no per-folder form: the grant covers Mail, Messages, Safari, Time Machine and more at once, and file contents an agent reads become tool results | `test_fullDiskAccessDisclosesTheGrantIsOSWide` |
+
+**Per-action approval is a property of the session mode, not of the permission.** Any copy
+that promises it unconditionally is wrong for two of the three modes. Describe the modes.
+
 The same instinct is why `.remoteDesktop` and `.systemExtension` tell the user it is fine
 to decline. Saying "say no" once is what makes the reassurance elsewhere credible.
 
@@ -127,6 +140,13 @@ enum KeyLookup { case found(String); case absent; case unreadable(OSStatus) }
 
 Only `.absent` may create a key. `.unreadable` throws
 `DatabaseEncryptionError.keychainKeyUnreadable`.
+
+**The classification has to survive to the caller.** `DataStoreCoordinator` opens an
+existing encrypted database and originally called `getKey()`, which collapses
+`.unreadable` back to `nil` — so a locked key was reported as *missing* and the recovery
+screen offered archive-and-reset, discarding an intact database. It calls `lookUpKey()`
+and switches on all three cases. Anything else that needs to tell these states apart must
+do the same; `getKey()` is only for callers where "no usable key" is the whole answer.
 
 Failing closed alone would have been a regression: before, a user could type their
 password and continue; after, they would hit a dead end. So the recovery screen now
