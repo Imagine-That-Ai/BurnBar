@@ -191,6 +191,18 @@ final class SwarmSubstrateContractTests: XCTestCase {
             KernelCinematicPresent.bootMaxFpsQueryValue(isPerformanceGateLaunch: false, refreshHz: 144),
             "36"
         )
+        XCTAssertEqual(KernelCinematicPresent.presentFps(refreshHz: 0), 30)
+        XCTAssertEqual(KernelCinematicPresent.presentFps(refreshHz: -120), 30)
+        XCTAssertEqual(KernelCinematicPresent.presentFps(refreshHz: .nan), 30)
+        XCTAssertEqual(KernelCinematicPresent.presentFps(refreshHz: 48), 24)
+        XCTAssertEqual(KernelCinematicPresent.presentFps(refreshHz: 50), 25)
+        XCTAssertEqual(KernelCinematicPresent.presentFps(refreshHz: 23), 30)
+        XCTAssertEqual(
+            KernelCinematicPresent.bootMaxFpsQueryValue(isPerformanceGateLaunch: false, refreshHz: 48),
+            "24"
+        )
+        XCTAssertTrue(KernelWebViewOpacityPolicy.isOpaque(clarity: -1))
+        XCTAssertTrue(KernelContentOcclusionPolicy.isKernelExposed(opaqueCoverage: 0.94))
     }
 
     func testKernelContentOcclusionAndOpacityPolicies() {
