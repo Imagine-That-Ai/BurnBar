@@ -1,6 +1,7 @@
 import XCTest
 @testable import OpenBurnBarCore
 @testable import OpenBurnBarInsights
+@testable import OpenBurnBarRecap
 
 /// The guard that makes model-written prose safe to ship.
 final class RecapVoiceGuardTests: XCTestCase {
@@ -326,7 +327,7 @@ final class RecapVoiceGuardTests: XCTestCase {
         {"monthTitle": "August {was} your month", "cards": []}
         ```
         """
-        let extracted = RecapJSON.extractFirstObject(from: text)
+        let extracted = ModelResponseJSON.extractFirstObject(from: text)
         XCTAssertEqual(extracted, #"{"monthTitle": "August {was} your month", "cards": []}"#)
     }
 }

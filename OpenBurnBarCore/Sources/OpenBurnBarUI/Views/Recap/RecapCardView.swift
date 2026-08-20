@@ -1,5 +1,6 @@
 import SwiftUI
 import OpenBurnBarInsights
+import OpenBurnBarRecap
 
 /// Picks a card's layout from its resolved size and wraps it in the shared plate.
 ///

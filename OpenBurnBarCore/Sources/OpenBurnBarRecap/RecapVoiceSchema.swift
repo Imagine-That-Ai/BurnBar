@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarInsights
 
 /// The contract the editorial model is held to.
 ///

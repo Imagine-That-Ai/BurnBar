@@ -2,6 +2,7 @@ import ImageIO
 import SwiftUI
 import UniformTypeIdentifiers
 import OpenBurnBarInsights
+import OpenBurnBarRecap
 #if canImport(UIKit)
 import UIKit
 #endif

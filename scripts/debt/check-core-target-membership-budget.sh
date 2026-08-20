@@ -54,6 +54,7 @@ const siblingTargets = [
   "OpenBurnBarQuota",
   "OpenBurnBarVectorKit",
   "OpenBurnBarInsights",
+  "OpenBurnBarRecap",
   "OpenBurnBarHermes",
   "OpenBurnBarPretext",
   "OpenBurnBarTextExpansion",

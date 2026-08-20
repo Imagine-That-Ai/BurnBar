@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import OpenBurnBarCore
+import OpenBurnBarRecap
 
 /// Defines cross-platform layout destinations for the primary tabs and sidebar.
 enum AppDestination: String, Hashable, Identifiable, Codable, CaseIterable {

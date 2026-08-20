@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarInsights
 
 /// The only value permitted to leave the device.
 ///

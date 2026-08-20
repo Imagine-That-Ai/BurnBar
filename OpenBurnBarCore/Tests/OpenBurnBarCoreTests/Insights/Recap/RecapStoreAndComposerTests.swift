@@ -1,6 +1,7 @@
 import XCTest
 @testable import OpenBurnBarCore
 @testable import OpenBurnBarInsights
+@testable import OpenBurnBarRecap
 
 // MARK: - Stubs
 

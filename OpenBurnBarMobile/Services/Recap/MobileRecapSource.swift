@@ -1,6 +1,8 @@
 import Foundation
 import FirebaseFirestore
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarRecap
 
 /// Reads a true calendar month out of Firestore for the recap engine.
 ///

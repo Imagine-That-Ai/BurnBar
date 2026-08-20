@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarRecap
 import OpenBurnBarUI
 
 // MARK: - Recap Page

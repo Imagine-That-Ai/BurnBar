@@ -3,9 +3,14 @@ import Foundation
 /// Fence- and chatter-tolerant extraction of the first balanced JSON object
 /// from a model response.
 ///
+/// Lives in Insights rather than beside its first caller: both the Charts
+/// insight strip and the monthly recap ask a model for JSON and get prose,
+/// fences, or a preamble back, and the Charts strip must not depend on the
+/// recap module to parse its own reply.
+///
 /// String-aware: a brace inside a quoted string does not change nesting depth,
 /// which a naive depth counter gets wrong the moment a headline contains one.
-public enum RecapJSON {
+public enum ModelResponseJSON {
 
     public static func extractFirstObject(from text: String) -> String? {
         guard let start = text.firstIndex(of: "{") else { return nil }

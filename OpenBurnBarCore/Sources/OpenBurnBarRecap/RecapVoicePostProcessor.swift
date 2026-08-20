@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarInsights
 
 /// Validates model-authored prose before any of it reaches a card.
 ///

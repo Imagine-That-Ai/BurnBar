@@ -1,5 +1,6 @@
 import SwiftUI
 import OpenBurnBarInsights
+import OpenBurnBarRecap
 
 /// Draws whatever visual a card asked for, from the payload it carries.
 ///

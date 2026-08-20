@@ -1,5 +1,6 @@
 import XCTest
 @testable import OpenBurnBarCore
+@testable import OpenBurnBarRecap
 
 final class RecapFactsTests: XCTestCase {
 

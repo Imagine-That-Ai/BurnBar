@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarInsights
 
 /// Builds a month's recap, deterministically first and editorially second.
 ///
@@ -202,7 +203,7 @@ public actor RecapComposer {
             guard !Task.isCancelled else { return nil }
             let outbound = attempt == 0 ? request : request.jsonOnlyRetry
             guard let response = try? await author.author(outbound) else { return nil }
-            guard let parsed = RecapJSON.decode(RecapVoiceResponse.self, from: response.text) else {
+            guard let parsed = ModelResponseJSON.decode(RecapVoiceResponse.self, from: response.text) else {
                 continue
             }
             let processed = postProcessor.process(

@@ -1,6 +1,7 @@
 import Foundation
 import GRDB
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
 
 // MARK: - Recap projection
 //

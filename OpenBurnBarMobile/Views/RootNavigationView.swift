@@ -1,5 +1,6 @@
 import SwiftUI
 import OpenBurnBarCore
+import OpenBurnBarRecap
 #if DEBUG
 import OSLog
 #endif

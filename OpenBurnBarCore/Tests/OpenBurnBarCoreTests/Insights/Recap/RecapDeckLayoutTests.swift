@@ -2,6 +2,7 @@ import XCTest
 import SwiftUI
 @testable import OpenBurnBarCore
 @testable import OpenBurnBarInsights
+@testable import OpenBurnBarRecap
 @testable import OpenBurnBarUI
 
 final class RecapDeckLayoutTests: XCTestCase {
