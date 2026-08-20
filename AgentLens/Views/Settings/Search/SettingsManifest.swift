@@ -594,19 +594,6 @@ enum SettingsManifest {
             ],
             logoProviders: [.codex, .claudeCode, .openCode, .factory]
         ),
-        SettingsItem(
-            id: "agents.localDBox",
-            tab: .agents,
-            pageRoute: .agentsRoot,
-            anchorID: SettingsAnchor.agentsLocalDBox,
-            title: "Local D box",
-            subtitle: "List live Grok Bot D local-box agents by UUID and send one a prompt. Default off. Developer ID only.",
-            keywords: [
-                "agent", "agents",
-                "local d", "local d box", "grok bot d", "grokd", "box",
-                "1337", "1338", "8787", "uuid", "listagents", "sendprompt"
-            ]
-        ),
 
         // MARK: Alerts
 
@@ -1022,6 +1009,19 @@ enum SettingsManifest {
 
 #if !DISTRIBUTION_MAS
     private static let localDBoxItems: [SettingsItem] = [
+        SettingsItem(
+            id: "agents.localDBox",
+            tab: .agents,
+            pageRoute: .agentsRoot,
+            anchorID: SettingsAnchor.agentsLocalDBox,
+            title: "Local D box",
+            subtitle: "List live Grok Bot D local-box agents by UUID and send one a prompt. Default off. Developer ID only.",
+            keywords: [
+                "agent", "agents",
+                "local d", "local d box", "grok bot d", "grokd", "box",
+                "1337", "1338", "8787", "uuid", "listagents", "sendprompt"
+            ]
+        )
     ]
     private static let localDBoxAnchors: Set<String> = [SettingsAnchor.agentsLocalDBox]
 #else
