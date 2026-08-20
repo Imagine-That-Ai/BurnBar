@@ -20,6 +20,10 @@ import com.openburnbar.data.cloud.CloudVaultCrypto
 import com.openburnbar.data.cloud.CloudVaultSignalRecipient
 import com.openburnbar.data.cloud.SignalAtRestFallbackPolicy
 import com.openburnbar.data.computeruse.ComputerUseSecurityCallableClient
+import com.openburnbar.data.computeruse.cancelCliAgentMission
+import com.openburnbar.data.computeruse.createCliAgentMission
+import com.openburnbar.data.computeruse.redeemMissionApprovalAnswer
+import com.openburnbar.data.computeruse.respondMissionApproval
 import java.time.Instant
 import java.util.UUID
 import kotlinx.coroutines.channels.awaitClose
@@ -32,6 +36,9 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 private const val MISSION_REQUEST_SCHEMA_VERSION = 3
+
+/** Leaves per `createCliAgentMission` call (parent + siblings), matching the callable's batch ceiling. */
+private const val MISSION_CREATE_CALLABLE_BATCH = 16
 
 /** Data-domain id whose sealingScheme gates at-rest Signal sealing for CLI missions. */
 private const val SIGNAL_CLI_DOMAIN = "conversations_chat"
@@ -313,25 +320,17 @@ class CLIAgentMissionDispatcher(
         val batch = firestore.batch()
         batch.set(
             groupRef,
-            CLIAgentMissionRequestPayloadFactory.sealGroupPayload(
-                fanOutGroupPayload(
-                    plan = plan,
-                    missionKind = missionKind,
-                    targetProject = targetProject,
-                    runtimeTokens = runtimeTokens,
-                    parallelismLimit = parallelismLimit,
-                    mergeStrategy = mergeStrategy,
-                ),
-                title = plan.trimmedTitle,
-                prompt = plan.trimmedPrompt,
+            sealedFanOutGroupPayload(
+                plan = plan,
+                missionKind = missionKind,
                 targetProject = targetProject,
-                key = resolvedKey,
+                runtimeTokens = runtimeTokens,
+                parallelismLimit = parallelismLimit,
+                mergeStrategy = mergeStrategy,
+                resolvedKey = resolvedKey,
             ),
         )
-        val fanOutSignal = resolveSignalContext(uid = uid, docId = plan.groupID)
-        if (fanOutSignal != null && runtimeTokens.size > 100) {
-            throw DispatchException("Signal fan-out supports at most 100 agents per dispatch.")
-        }
+        val fanOutSignal = resolveFanOutSignalContext(uid = uid, groupID = plan.groupID, runtimeTokens = runtimeTokens)
         val leaves = buildFanOutChildLeaves(
             FanOutChildWriteRequest(
                 batch = batch,
@@ -357,6 +356,44 @@ class CLIAgentMissionDispatcher(
         )
         batch.commit().await()
         val deviceId = AndroidCloudVaultDeviceKeypair.loadOrCreate().deviceId
+        createMissionLeavesOrFailGroup(leaves, groupRef, deviceId)
+        return FanOutDispatchResult(groupID = plan.groupID, childMissionIDs = plan.childMissionIDs)
+    }
+
+    private fun sealedFanOutGroupPayload(
+        plan: FanOutDispatchPlan,
+        missionKind: String,
+        targetProject: String?,
+        runtimeTokens: List<String>,
+        parallelismLimit: Int?,
+        mergeStrategy: String,
+        resolvedKey: AndroidCloudVaultResolvedKey,
+    ): Map<String, Any> = CLIAgentMissionRequestPayloadFactory.sealGroupPayload(
+        fanOutGroupPayload(
+            plan = plan,
+            missionKind = missionKind,
+            targetProject = targetProject,
+            runtimeTokens = runtimeTokens,
+            parallelismLimit = parallelismLimit,
+            mergeStrategy = mergeStrategy,
+        ),
+        title = plan.trimmedTitle,
+        prompt = plan.trimmedPrompt,
+        targetProject = targetProject,
+        key = resolvedKey,
+    )
+
+    /** Resolves the group's at-rest Signal context and enforces the Signal fan-out size cap. */
+    private suspend fun resolveFanOutSignalContext(uid: String, groupID: String, runtimeTokens: List<String>): CLISignalSealContext? {
+        val fanOutSignal = resolveSignalContext(uid = uid, docId = groupID)
+        if (fanOutSignal != null && runtimeTokens.size > 100) {
+            throw DispatchException("Signal fan-out supports at most 100 agents per dispatch.")
+        }
+        return fanOutSignal
+    }
+
+    @Suppress("TooGenericExceptionCaught") // reason: ANY create-callable failure must mark the fan-out group failed, mirroring the iOS dispatcher.
+    private suspend fun createMissionLeavesOrFailGroup(leaves: List<MissionCreateLeaf>, groupRef: DocumentReference, deviceId: String) {
         try {
             createMissionLeaves(leaves, deviceId)
         } catch (error: Exception) {
@@ -368,12 +405,11 @@ class CLIAgentMissionDispatcher(
             }
             throw DispatchException("Fan-out createCliAgentMission failed: ${error.message ?: "callable failed"}", error)
         }
-        return FanOutDispatchResult(groupID = plan.groupID, childMissionIDs = plan.childMissionIDs)
     }
 
     private suspend fun createMissionLeaves(leaves: List<MissionCreateLeaf>, deviceId: String) {
         if (leaves.isEmpty()) return
-        leaves.chunked(16).forEach { chunk ->
+        leaves.chunked(MISSION_CREATE_CALLABLE_BATCH).forEach { chunk ->
             val parent = chunk.first()
             val payload = parent.toCallableMap(deviceId).toMutableMap()
             if (chunk.size > 1) {
@@ -470,11 +506,7 @@ class CLIAgentMissionDispatcher(
                 signal = signalContext,
                 uid = uid,
             )
-        if (signalContext != null && payload["signalEnvelope"] == null) {
-            throw DispatchException("Signal at-rest activation produced no mission envelope for $id.")
-        }
-        val sealed = payload["sealedPayload"] as? Map<*, *>
-            ?: throw DispatchException("Mission payload is missing sealedPayload.")
+        val sealed = requireSealedMissionPayload(payload, signalContext, id)
         val event = dispatchQueuedEventSealed(
             missionKind,
             sourceSurface,
@@ -498,6 +530,14 @@ class CLIAgentMissionDispatcher(
             createPayload["signalEnvelope"] = mapAny(envelope)
         }
         return securityClient.createCliAgentMission(createPayload, deviceId)
+    }
+
+    private fun requireSealedMissionPayload(payload: Map<String, Any>, signalContext: CLISignalSealContext?, id: String): Map<*, *> {
+        if (signalContext != null && payload["signalEnvelope"] == null) {
+            throw DispatchException("Signal at-rest activation produced no mission envelope for $id.")
+        }
+        return payload["sealedPayload"] as? Map<*, *>
+            ?: throw DispatchException("Mission payload is missing sealedPayload.")
     }
 
     private fun dispatchQueuedEventSealed(
