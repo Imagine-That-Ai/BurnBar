@@ -28,7 +28,9 @@ public sealed partial class MissionControlPage : Page
         _viewModel = new MissionConsoleViewModel(MissionDispatchHostFactory.Create(
             gateway: root?.Gateway,
             credentials: root?.Credentials,
-            firebaseUid: root?.FirebaseUid));
+            firebaseUid: root?.FirebaseUid,
+            callable: root?.Callable,
+            deviceId: root?.FirebaseUid));
 
         Hero.ViewModel = _viewModel;
         Composer.ViewModel = _viewModel;

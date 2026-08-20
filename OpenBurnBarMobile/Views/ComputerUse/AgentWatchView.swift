@@ -162,7 +162,7 @@ public struct AgentWatchView<Placeholder: View>: View {
     private var topHairline: some View {
         HStack(spacing: 12) {
             Text("Watching · \(state.liveTrustMode.rawValue.capitalized) · \(timeAgo)")
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .font(MobileScaledFont.system(size: 12, weight: .medium, design: .monospaced))
                 .foregroundStyle(.white.opacity(0.7))
             Spacer()
             Button {
@@ -184,10 +184,10 @@ public struct AgentWatchView<Placeholder: View>: View {
                 .frame(height: 1)
             HStack(spacing: 16) {
                 Text(String(format: "Spent  $%.2f", state.dailySpentUSD))
-                    .font(.system(size: 12, design: .monospaced))
+                    .font(MobileScaledFont.system(size: 12, design: .monospaced))
                     .foregroundStyle(.white.opacity(0.75))
                 Text("\(state.actionsExecuted) actions")
-                    .font(.system(size: 12, design: .monospaced))
+                    .font(MobileScaledFont.system(size: 12, design: .monospaced))
                     .foregroundStyle(.white.opacity(0.75))
                 Spacer()
             }
@@ -201,10 +201,10 @@ public struct AgentWatchView<Placeholder: View>: View {
                         .lineLimit(2)
                     Spacer()
                     Image(systemName: "chevron.up")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(MobileScaledFont.system(size: 13, weight: .bold))
                     }
                 }
-                .font(.system(size: 13))
+                .font(MobileScaledFont.system(size: 13))
                 .foregroundStyle(.white)
                 .buttonStyle(.plain)
             }
@@ -214,7 +214,7 @@ public struct AgentWatchView<Placeholder: View>: View {
                         rejectAction(pending, true)
                     } label: {
                         Text("Reject + Halt")
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(MobileScaledFont.system(size: 13, weight: .semibold))
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(.red)
@@ -223,7 +223,7 @@ public struct AgentWatchView<Placeholder: View>: View {
                         rejectAction(pending, false)
                     } label: {
                         Text("Reject")
-                            .font(.system(size: 13))
+                            .font(MobileScaledFont.system(size: 13))
                     }
                     .buttonStyle(.bordered)
 
@@ -233,7 +233,7 @@ public struct AgentWatchView<Placeholder: View>: View {
                         approveAction(pending)
                     } label: {
                         Text("Approve")
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(MobileScaledFont.system(size: 13, weight: .semibold))
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(.green)
@@ -322,7 +322,7 @@ public struct AgentWatchDefaultPlaceholder: View {
                 .frame(width: 96, height: 96)
                 .foregroundStyle(.white.opacity(0.2))
             Text(state.sessionId == nil ? "Waiting for Mac session" : "Live control stream ready")
-                .font(.system(size: 13, weight: .medium, design: .monospaced))
+                .font(MobileScaledFont.system(size: 13, weight: .medium, design: .monospaced))
                 .foregroundStyle(.white.opacity(0.55))
         }
     }

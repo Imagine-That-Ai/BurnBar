@@ -22,6 +22,7 @@ final class BurnBarRemoteMissionAuthorizationTests: XCTestCase {
         requestedModelID: String? = nil,
         approvalMode: String? = "existing_policy",
         approvalStatus: String? = nil,
+        approverDeviceID: String? = nil,
         entitlementTier: String = "ultra",
         requestedFanOutCount: Int = 1,
         trustedFanOutCap: Int? = nil
@@ -43,7 +44,7 @@ final class BurnBarRemoteMissionAuthorizationTests: XCTestCase {
             personaScope: personaScope,
             approvalMode: approvalMode,
             approvalStatus: approvalStatus,
-            approverDeviceID: nil,
+            approverDeviceID: approverDeviceID,
             entitlementTier: entitlementTier,
             requestedFanOutCount: requestedFanOutCount,
             trustedFanOutCap: trustedFanOutCap,
@@ -143,12 +144,14 @@ final class BurnBarRemoteMissionAuthorizationTests: XCTestCase {
                 expected: .requiresApproval, expectedReason: nil, note: "unknown status + manual_all pauses")
         ]
         for row in rows {
+            let approved = (row.status ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "approved"
             let response = BurnBarRemoteMissionAuthorizationPolicy.evaluate(
                 makeRequest(
                     commandsAllowed: row.commands,
                     fileEditsAllowed: row.fileEdits,
                     approvalMode: row.mode,
-                    approvalStatus: row.status
+                    approvalStatus: row.status,
+                    approverDeviceID: approved ? "iphone-trusted-1" : nil
                 )
             )
             XCTAssertEqual(response.verdict, row.expected, row.note)
@@ -164,6 +167,18 @@ final class BurnBarRemoteMissionAuthorizationTests: XCTestCase {
                 )
             }
         }
+    }
+
+    func testApprovedWithoutApproverFailsClosed() {
+        let response = BurnBarRemoteMissionAuthorizationPolicy.evaluate(
+            makeRequest(
+                approvalMode: "existing_policy",
+                approvalStatus: "approved",
+                approverDeviceID: nil
+            )
+        )
+        XCTAssertEqual(response.verdict, .denied)
+        XCTAssertEqual(response.deniedReason, .approvalRejected)
     }
 
     func testMacCLIAssistantBackendsRequireConsentBeforeAuthorization() {
@@ -257,6 +272,20 @@ final class BurnBarRemoteMissionAuthorizationTests: XCTestCase {
         XCTAssertFalse(ceiling.commandsAllowed)
         XCTAssertFalse(ceiling.fileEditsAllowed)
         XCTAssertEqual(ceiling.additionalCapabilities, [])
+    }
+
+    func testGrokBotInputCapabilityIsRecognized() throws {
+        XCTAssertTrue(
+            BurnBarRemoteMissionAuthorizationPolicy.recognizedAdditionalCapabilities.contains("input.grok_bot")
+        )
+        let response = BurnBarRemoteMissionAuthorizationPolicy.evaluate(
+            makeRequest(
+                additionalCapabilities: ["input.grok_bot"],
+                approvalStatus: "approved"
+            )
+        )
+        XCTAssertEqual(response.verdict, .authorized)
+        XCTAssertEqual(response.grantCeiling?.additionalCapabilities, ["input.grok_bot"])
     }
 
     // MARK: - (d) Daemon-trusted fan-out cap, fail-closed

@@ -18,6 +18,7 @@ Agent workflow: see [AGENTS.md](../../AGENTS.md) — search before building; ADR
 | [014-shared-rust-domain-core.md](014-shared-rust-domain-core.md) | Pure duplicated business logic shared through Rust adapters |
 | [015-adaptive-backdrop-foreground.md](015-adaptive-backdrop-foreground.md) | Rendered-frame contrast sampling and semantic foregrounds for macOS and Linux |
 | [015-windows-tpm-app-check.md](015-windows-tpm-app-check.md) | Windows lower-trust TPM custom App Check and verifier boundary |
+| [016-remote-mission-integrity.md](016-remote-mission-integrity.md) | Server-owned mission create/claim/cancel; daemon evaluate never-widens |
 
 Related operational docs:
 

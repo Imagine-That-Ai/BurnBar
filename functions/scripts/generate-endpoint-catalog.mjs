@@ -1104,6 +1104,90 @@ CATALOG_OVERRIDES.writeSignalAtRestDocument = {
   highRiskComputerUse: false,
 };
 
+function runtimeOwned(exportedName, file, test, extra = {}) {
+  return {
+    authMethod: "Firebase Auth with callable-level ownership checks",
+    appCheck: "required",
+    tenantSource: "request.auth.uid",
+    ownershipCheck: "handler derives uid from request.auth.uid and validates object path before Admin SDK access",
+    bolaCoverage: [
+      {
+        file,
+        test,
+        kind: "runtime-cross-user",
+        covers: [exportedName],
+        expectedOutcome: "throws",
+        expectedCode: extra.expectedCode ?? "not-found",
+      },
+    ],
+    highRiskComputerUse: true,
+    ...extra,
+  };
+}
+
+for (const name of [
+  "beginBurnbarAttachment",
+  "mintBurnbarAttachmentPartURL",
+  "composeBurnbarAttachment",
+  "finalizeBurnbarAttachment",
+  "deleteBurnbarAttachment",
+  "ticketBurnbarAttachmentDownload",
+]) {
+  CATALOG_OVERRIDES[name] = runtimeOwned(
+    name,
+    "functions/src/__tests__/bola/burnbarAttachments.bola.test.ts",
+    `${name} rejects cross-user object access`,
+    { objectIdsFromClient: ["id"], handlerModule: "callables/burnbarAttachments.ts" },
+  );
+}
+
+for (const [name, ids] of [
+  ["createCliAgentMission", ["requestId", "remoteCommandID"]],
+  ["cancelCliAgentMission", ["requestId"]],
+  ["claimCliAgentMission", ["requestId"]],
+  ["appendCliAgentMissionEvent", ["requestId", "eventId"]],
+  ["updateCliAgentMissionStatus", ["requestId"]],
+]) {
+  CATALOG_OVERRIDES[name] = runtimeOwned(
+    name,
+    "functions/src/__tests__/bola/cliAgentMissions.bola.test.ts",
+    `${name} rejects cross-user object access`,
+    { objectIdsFromClient: ids, handlerModule: "callables/cliAgentMissions.ts" },
+  );
+}
+
+CATALOG_OVERRIDES.publishMissionApprovalCeiling = runtimeOwned(
+  "publishMissionApprovalCeiling",
+  "functions/src/__tests__/bola/missionApprovalAnswers.bola.test.ts",
+  "publishMissionApprovalCeiling rejects cross-user object access",
+  { objectIdsFromClient: ["requestId"], handlerModule: "callables/missionApprovalAnswers.ts" },
+);
+CATALOG_OVERRIDES.redeemMissionApprovalAnswer = runtimeOwned(
+  "redeemMissionApprovalAnswer",
+  "functions/src/__tests__/bola/missionApprovalAnswers.bola.test.ts",
+  "redeemMissionApprovalAnswer rejects cross-user object access",
+  { objectIdsFromClient: ["requestId"], handlerModule: "callables/missionApprovalAnswers.ts" },
+);
+
+CATALOG_OVERRIDES.reapBurnbarAttachments = {
+  trigger: "scheduled",
+  authMethod: "Cloud Scheduler / platform trigger",
+  appCheck: "not-applicable",
+  tenantSource: "job-owned collection scans",
+  objectIdsFromClient: [],
+  ownershipCheck: "server-side collection filters and per-document uid fields",
+  handlerModule: "scheduled/reapBurnbarAttachments.ts",
+  bolaCoverage: [
+    {
+      file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+      test: "platform triggers are not client-callable",
+      kind: "platform-trigger",
+      covers: ["reapBurnbarAttachments"],
+    },
+  ],
+  highRiskComputerUse: false,
+};
+
 function defaultEntry(exportedName) {
   return {
     exportedName,

@@ -332,4 +332,22 @@ final class HermesRelayContractTests: XCTestCase {
         )
         XCTAssertEqual(mismatched.resumeLookupID, "archive:codex:sess-2")
     }
+
+    func testRelayEventUnknownKindDoesNotThrow() throws {
+        let data = Data(#"{"kind":"notAKind","text":"ok"}"#.utf8)
+        let event = try JSONDecoder().decode(CLIAgentRelayChatEvent.self, from: data)
+        XCTAssertEqual(event.kind, .unknown)
+        let known = try JSONDecoder().decode(
+            CLIAgentRelayChatEvent.self,
+            from: Data(#"{"kind":"approvalRequest"}"#.utf8)
+        )
+        XCTAssertEqual(known.kind, .approvalRequest)
+        XCTAssertFalse(event.isTerminal)
+        XCTAssertThrowsError(try JSONDecoder().decode(CLIAgentRelayChatEvent.self, from: Data("{".utf8)))
+    }
+
+    func testSessionActionKindIncludesInterruptDistinctFromPanic() {
+        XCTAssertEqual(CLIAgentSessionActionKind.interrupt.rawValue, "interrupt")
+        XCTAssertNotEqual(CLIAgentSessionActionKind.interrupt.rawValue, "panicHalt")
+    }
 }

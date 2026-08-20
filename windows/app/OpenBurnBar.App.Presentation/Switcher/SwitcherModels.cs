@@ -46,6 +46,9 @@ public enum SwitcherCLIProfileType
     Gemini,
     Kimi,
     Pi,
+    Junie,
+    PrimeAgent,
+    Fx,
 }
 
 /// <summary>Detected web-service provider inside a browser profile. Swift: <c>BrowserServiceProvider</c>.</summary>
@@ -106,7 +109,11 @@ public static class SwitcherEnumMetadata
         SwitcherCLIProfileType.Omp => "omp",
         SwitcherCLIProfileType.Gemini => "gemini",
         SwitcherCLIProfileType.Kimi => "kimi",
-        _ => "pi",
+        SwitcherCLIProfileType.Pi => "pi",
+        SwitcherCLIProfileType.Junie => "junie",
+        SwitcherCLIProfileType.PrimeAgent => "prime-agent",
+        SwitcherCLIProfileType.Fx => "fx",
+        _ => throw new ArgumentOutOfRangeException(nameof(type), type, "Unknown SwitcherCLIProfileType."),
     };
 
     public static string DisplayName(this SwitcherCLIProfileType type) => type switch
@@ -122,7 +129,11 @@ public static class SwitcherEnumMetadata
         SwitcherCLIProfileType.Omp => "OMP",
         SwitcherCLIProfileType.Gemini => "Gemini CLI",
         SwitcherCLIProfileType.Kimi => "Kimi",
-        _ => "Pi",
+        SwitcherCLIProfileType.Pi => "Pi",
+        SwitcherCLIProfileType.Junie => "Junie",
+        SwitcherCLIProfileType.PrimeAgent => "Prime Agent",
+        SwitcherCLIProfileType.Fx => "Fx",
+        _ => throw new ArgumentOutOfRangeException(nameof(type), type, "Unknown SwitcherCLIProfileType."),
     };
 
     public static string ExecutableName(this SwitcherCLIProfileType type) => type switch
@@ -138,7 +149,11 @@ public static class SwitcherEnumMetadata
         SwitcherCLIProfileType.Omp => "omp",
         SwitcherCLIProfileType.Gemini => "gemini",
         SwitcherCLIProfileType.Kimi => "kimi",
-        _ => "pi",
+        SwitcherCLIProfileType.Pi => "pi",
+        SwitcherCLIProfileType.Junie => "junie",
+        SwitcherCLIProfileType.PrimeAgent => "prime-agent",
+        SwitcherCLIProfileType.Fx => "fx",
+        _ => throw new ArgumentOutOfRangeException(nameof(type), type, "Unknown SwitcherCLIProfileType."),
     };
 
     /// <summary>
@@ -159,7 +174,11 @@ public static class SwitcherEnumMetadata
         SwitcherCLIProfileType.Omp => "omp",
         SwitcherCLIProfileType.Gemini => "geminicli",
         SwitcherCLIProfileType.Kimi => "kimi",
-        _ => "piagent",
+        SwitcherCLIProfileType.Pi => "piagent",
+        SwitcherCLIProfileType.Junie => "junie",
+        SwitcherCLIProfileType.PrimeAgent => "prime-agent",
+        SwitcherCLIProfileType.Fx => "fx",
+        _ => throw new ArgumentOutOfRangeException(nameof(type), type, "Unknown SwitcherCLIProfileType."),
     };
 }
 

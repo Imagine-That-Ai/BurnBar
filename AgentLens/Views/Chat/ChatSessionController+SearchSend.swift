@@ -667,6 +667,8 @@ extension ChatSessionController {
                             model: requestModel,
                             capabilityGrant: activeDesktopGrant
                         )
+                    case .grok, .kimi:
+                        return nil
                     }
                 }
                 let consumption = try await Self.consumeChatStream(

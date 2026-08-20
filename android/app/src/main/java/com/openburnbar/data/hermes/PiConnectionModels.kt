@@ -140,7 +140,7 @@ enum class RuntimeConnectionPreferenceKind(val token: String) {
     ;
 
     companion object {
-        fun fromToken(value: String?): RuntimeConnectionPreferenceKind = values().firstOrNull { it.token == value } ?: HERMES
+        fun fromToken(value: String?): RuntimeConnectionPreferenceKind? = values().firstOrNull { it.token == value }
     }
 }
 
@@ -166,6 +166,7 @@ data class RuntimeConnectionPreferenceRecord(
 ) {
     val resolvedRuntimeKind: RuntimeConnectionPreferenceKind
         get() = RuntimeConnectionPreferenceKind.fromToken(runtimeKind)
+            ?: error("unknown runtimeKind '$runtimeKind'")
 }
 
 enum class PiAgentRelayOperation(val token: String) {
@@ -200,6 +201,8 @@ enum class AssistantRuntimeID(val token: String, val displayName: String, val gl
     CODEX("codex", "Codex", "\u21BB"),
     CLAUDE("claude", "Claude", "\u2726"),
     OPEN_CLAW("openclaw", "OpenClaw", "\u26A1"),
+    OPEN_CLAUDE("openclaude", "OpenClaude", "\u2738"),
+    OMP("omp", "OMP", "\u2318"),
     DROID("droid", "Droid", "\u25C6"),
     FORGE("forge", "Forge", "\u25B0"),
     ANTIGRAVITY("antigravity", "Antigravity", "\u2727"),
@@ -212,7 +215,7 @@ enum class AssistantRuntimeID(val token: String, val displayName: String, val gl
     val hasMobileChatSurface: Boolean get() = true
 
     companion object {
-        fun fromToken(value: String?): AssistantRuntimeID = values().firstOrNull { it.token == value } ?: HERMES
+        fun fromToken(value: String?): AssistantRuntimeID? = values().firstOrNull { it.token == value }
 
         /** Default-visible tiles for a fresh install. */
         val defaultEnabledTiles: Set<AssistantRuntimeID> = values().toSet()

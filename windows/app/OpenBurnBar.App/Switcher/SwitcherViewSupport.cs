@@ -32,6 +32,8 @@ public static class SwitcherViewSupport
         SwitcherCLIProfileType.Gemini => AgentProviderBrand.GeminiCLI,
         SwitcherCLIProfileType.Kimi => AgentProviderBrand.Kimi,
         SwitcherCLIProfileType.Pi => AgentProviderBrand.PiAgent,
+        SwitcherCLIProfileType.Junie => AgentProviderBrand.Junie,
+        SwitcherCLIProfileType.PrimeAgent => AgentProviderBrand.PrimeAgent,
         _ => AgentProviderBrand.OpenBurnBar,
     };
 

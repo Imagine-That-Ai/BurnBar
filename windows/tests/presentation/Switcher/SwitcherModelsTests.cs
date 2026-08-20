@@ -34,9 +34,37 @@ public sealed class SwitcherModelsTests
     [Theory]
     [InlineData(SwitcherCLIProfileType.CursorAgent, "cursoragent")]
     [InlineData(SwitcherCLIProfileType.Claude, "claude")]
+    [InlineData(SwitcherCLIProfileType.Junie, "junie")]
+    [InlineData(SwitcherCLIProfileType.PrimeAgent, "prime-agent")]
+    [InlineData(SwitcherCLIProfileType.Fx, "fx")]
     public void CliRawValue_MatchesSwiftRawValue(SwitcherCLIProfileType type, string expected)
     {
         Assert.Equal(expected, type.RawValue());
+    }
+
+    [Fact]
+    public void SwitcherCLIProfileType_ContainsJuniePrimeAgentFxAfterPi()
+    {
+        var names = Enum.GetNames(typeof(SwitcherCLIProfileType));
+        Assert.Contains("Junie", names);
+        Assert.Contains("PrimeAgent", names);
+        Assert.Contains("Fx", names);
+        var pi = Array.IndexOf(names, "Pi");
+        Assert.True(pi >= 0);
+        Assert.Equal("Junie", names[pi + 1]);
+        Assert.Equal("PrimeAgent", names[pi + 2]);
+        Assert.Equal("Fx", names[pi + 3]);
+    }
+
+    [Theory]
+    [InlineData(SwitcherCLIProfileType.Junie, "junie")]
+    [InlineData(SwitcherCLIProfileType.PrimeAgent, "prime-agent")]
+    [InlineData(SwitcherCLIProfileType.Fx, "fx")]
+    public void ProviderKey_NewCasesDoNotFallThroughToPi(SwitcherCLIProfileType type, string expected)
+    {
+        Assert.Equal(expected, type.ProviderKey());
+        Assert.NotEqual("piagent", type.ProviderKey());
+        Assert.NotEqual("pi", type.RawValue());
     }
 
     [Fact]
