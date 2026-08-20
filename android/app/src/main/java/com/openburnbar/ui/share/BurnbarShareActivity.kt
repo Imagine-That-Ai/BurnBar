@@ -19,6 +19,7 @@ class BurnbarShareActivity : ComponentActivity() {
             contentResolver.openInputStream(uri)?.use { input ->
                 dest.outputStream().use { output -> input.copyTo(output) }
             }
+            File(dest.parentFile, "${dest.name}.pending").writeText(dest.absolutePath)
         }
         finish()
     }

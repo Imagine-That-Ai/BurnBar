@@ -46,6 +46,10 @@ vi.mock("../appCheckAttestation.js", () => ({
 vi.mock("../callables/computerUseSecurityFirestore.js", () => ({
   requireTrustedDeviceActionProof: vi.fn(async () => ({ deviceId: "dev", platform: "iOS", signalIdentityKeyId: "s" })),
 }));
+vi.mock("../callables/shared.js", async () => {
+  const actual = await vi.importActual<typeof import("../callables/shared.js")>("../callables/shared.js");
+  return { ...actual, assertActiveBurnBarCloudProEntitlement: vi.fn(async () => undefined) };
+});
 
 import { callableRunner } from "./bola/callableBolaHarness.js";
 import {
@@ -57,6 +61,7 @@ import {
   memoryStoragePort,
   planComposeHierarchy,
   COMPOSE_FANIN,
+  setBurnbarStoragePort,
   takeComposeLog,
 } from "../callables/burnbarAttachments.js";
 
@@ -77,6 +82,7 @@ describe("burnbarAttachments", () => {
   beforeEach(() => {
     hoisted.store.clear();
     takeComposeLog();
+    setBurnbarStoragePort(memoryStoragePort);
   });
 
   it("caps files at 10GiB", () => {
@@ -127,6 +133,18 @@ describe("burnbarAttachments", () => {
     expect(second).toMatchObject({ ok: true, idempotent: true });
     await memoryStoragePort.mintPutUrl(finalPath, 99, 60);
     await expect(runFinalize(authed({ id: begun.id }))).rejects.toMatchObject({
+      code: "failed-precondition",
+    });
+  });
+
+  it("refuses compose after finalize", async () => {
+    const begun = (await runBegin(
+      authed({ byteCount: 64, contentBlake3: "c".repeat(64) }),
+    )) as { id: string };
+    const finalPath = `users/alice-bola-uid/burnbar_attachments/${begun.id}/final`;
+    await memoryStoragePort.mintPutUrl(finalPath, 64, 60);
+    await runFinalize(authed({ id: begun.id }));
+    await expect(runCompose(authed({ id: begun.id }))).rejects.toMatchObject({
       code: "failed-precondition",
     });
   });

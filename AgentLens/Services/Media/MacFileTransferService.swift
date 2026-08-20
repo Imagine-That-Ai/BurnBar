@@ -30,7 +30,7 @@ import OSLog
 @MainActor
 final class MacFileTransferService: ObservableObject {
     private static let log = Logger(subsystem: "com.openburnbar.app", category: "Mercury")
-    private static let maxAtRestSealPlaintextBytes: Int64 = FileSealAEAD.maxPlaintextBytes
+    private static let maxAtRestSealPlaintextBytes: Int64 = Int64(IrohBlobTransferLimits.maxExpectedFetchBytes)
     private static let maxAtRestSealEnvelopeBytes: Int64 = maxAtRestSealPlaintextBytes + 64
     private static func debugTrace(_ message: String) {
         #if DEBUG
@@ -488,6 +488,17 @@ final class MacFileTransferService: ObservableObject {
             // quarantined even if sealing fails, then re-apply after the atomic
             // replace so the sealed file carries the xattr that survives.
             if let sealKey {
+                let attachmentsRoot = FileManager.default.homeDirectoryForCurrentUser
+                    .appendingPathComponent(".burnbar/attachments", isDirectory: true)
+                try FileManager.default.createDirectory(at: attachmentsRoot, withIntermediateDirectories: true)
+                _ = try MacAttachmentLandingService.land(
+                    plaintextURL: result.destinationURL,
+                    declaredContentBlake3: manifest.blobHash,
+                    filename: manifest.filename,
+                    roots: [attachmentsRoot],
+                    contentKey: PlatformCrypto.symmetricKeyData(sealKey),
+                    verifiedDigest: manifest.blobHash
+                )
                 try sealReceivedFileAtRest(at: result.destinationURL, manifest: manifest, key: sealKey)
                 try Self.applyInboundQuarantine(to: result.destinationURL, manifest: manifest)
             }

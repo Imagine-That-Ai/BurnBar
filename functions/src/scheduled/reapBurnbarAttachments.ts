@@ -3,10 +3,10 @@ import { onSchedule } from "firebase-functions/v2/scheduler";
 import { db } from "../adminRuntime.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 import { logInfo } from "../logging.js";
-import { memoryStoragePort, type BurnbarStoragePort } from "../callables/burnbarAttachments.js";
+import { activeBurnbarStoragePort } from "../callables/burnbarAttachments.js";
 
-let reaperPort: BurnbarStoragePort = memoryStoragePort;
-export function setReaperStoragePort(port: BurnbarStoragePort): void {
+let reaperPort = activeBurnbarStoragePort();
+export function setReaperStoragePort(port: typeof reaperPort): void {
   reaperPort = port;
 }
 
@@ -25,7 +25,12 @@ export const reapBurnbarAttachments = onSchedule(
       const millis = typeof updated?.toMillis === "function" ? updated.toMillis() : 0;
       if (millis && millis < cutoff) {
         const path = doc.get("storagePath");
-        if (typeof path === "string") await reaperPort.delete(path);
+        if (typeof path === "string") {
+          await reaperPort.delete(path);
+          const prefix = path.replace(/\/final$/, "");
+          await reaperPort.revokePuts(`${prefix}/parts/`);
+          await reaperPort.revokePuts(`${prefix}/mid/`);
+        }
         await doc.ref.set({ state: "expired" }, { merge: true });
         reaped += 1;
       }

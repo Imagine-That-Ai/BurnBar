@@ -14,7 +14,7 @@ object FileSealAEAD {
     const val CHUNK_PLAINTEXT_BYTES = 32 * 1024 * 1024
     const val NONCE_SIZE = 12
     const val TAG_SIZE = 16
-    const val MAX_PLAINTEXT_BYTES = 2L * 1024L * 1024L * 1024L
+    const val MAX_PLAINTEXT_BYTES = 10L * 1024L * 1024L * 1024L
 
     data class Header(
         val attachmentId: String,

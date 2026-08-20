@@ -53,15 +53,37 @@ final class MacAttachmentLandingServiceTests: XCTestCase {
                 declaredContentBlake3: "00",
                 filename: "x",
                 roots: [FileManager.default.temporaryDirectory],
-                contentKey: nil
+                contentKey: nil,
+                verifiedDigest: "00"
             )
         ) { error in
             XCTAssertEqual(error as? MacAttachmentLandingService.Error, .missingContentKey)
         }
     }
 
-    func testCapsAre2GiB() {
-        XCTAssertEqual(FileSealAEAD.maxPlaintextBytes, 2 * 1024 * 1024 * 1024)
+    func testDigestMismatchDoesNotLand() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let source = root.appendingPathComponent("plain.bin")
+        try Data("hello-land".utf8).write(to: source)
+        XCTAssertThrowsError(
+            try MacAttachmentLandingService.land(
+                plaintextURL: source,
+                declaredContentBlake3: "aa".padding(toLength: 64, withPad: "a", startingAt: 0),
+                filename: "note.txt",
+                roots: [root],
+                contentKey: Data(repeating: 7, count: 32),
+                verifiedDigest: "bb".padding(toLength: 64, withPad: "b", startingAt: 0)
+            )
+        ) { error in
+            XCTAssertEqual(error as? MacAttachmentLandingService.Error, .digestMismatch)
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("note.txt").path))
+    }
+
+    func testFileSealCloudCapIs10GiBAndP2PCapIs2GiB() {
+        XCTAssertEqual(FileSealAEAD.maxPlaintextBytes, 10 * 1024 * 1024 * 1024)
         XCTAssertEqual(IrohBlobTransferLimits.maxExpectedFetchBytes, 2 * 1024 * 1024 * 1024)
     }
 }

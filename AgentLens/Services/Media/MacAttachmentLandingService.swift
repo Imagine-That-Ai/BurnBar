@@ -1,4 +1,3 @@
-import CryptoKit
 import Darwin
 import Foundation
 import OpenBurnBarMedia
@@ -56,18 +55,6 @@ enum MacAttachmentLandingService {
         return candidate
     }
 
-    static func sha256Hex(ofFile url: URL) throws -> String {
-        let handle = try FileHandle(forReadingFrom: url)
-        defer { try? handle.close() }
-        var hasher = SHA256()
-        while true {
-            let chunk = handle.readData(ofLength: 1024 * 1024)
-            if chunk.isEmpty { break }
-            hasher.update(data: chunk)
-        }
-        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
-    }
-
     static func land(
         plaintextURL: URL,
         declaredContentBlake3: String,
@@ -80,14 +67,15 @@ enum MacAttachmentLandingService {
                 setxattr(url.path, "com.apple.quarantine", cstr, token.utf8.count, 0, 0)
             }
         },
-        verifiedDigest: String? = nil
+        verifiedDigest: String
     ) throws -> LandedFile {
         guard contentKey != nil else { throw Error.missingContentKey }
         guard FileManager.default.fileExists(atPath: plaintextURL.path) else { throw Error.missingSource }
-        let digest = try verifiedDigest ?? sha256Hex(ofFile: plaintextURL)
-        guard digest == declaredContentBlake3 else { throw Error.digestMismatch }
-        if let existing = landedByDigest[digest], FileManager.default.fileExists(atPath: existing.path) {
-            return LandedFile(url: existing, contentBlake3: digest, displayName: sanitizeFilename(filename))
+        let declared = declaredContentBlake3.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let verified = verifiedDigest.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !declared.isEmpty, declared == verified else { throw Error.digestMismatch }
+        if let existing = landedByDigest[verified], FileManager.default.fileExists(atPath: existing.path) {
+            return LandedFile(url: existing, contentBlake3: verified, displayName: sanitizeFilename(filename))
         }
         let dest = try containedURL(filename: filename, roots: roots)
         if dest.path != plaintextURL.path {
@@ -95,8 +83,8 @@ enum MacAttachmentLandingService {
             try FileManager.default.copyItem(at: plaintextURL, to: dest)
         }
         try applyQuarantine(dest)
-        landedByDigest[digest] = dest
-        let landed = LandedFile(url: dest, contentBlake3: digest, displayName: sanitizeFilename(filename))
+        landedByDigest[verified] = dest
+        let landed = LandedFile(url: dest, contentBlake3: verified, displayName: sanitizeFilename(filename))
         pending.append(landed)
         return landed
     }

@@ -7,7 +7,7 @@ public enum FileSealAEAD {
     public static let chunkPlaintextBytes = 32 * 1024 * 1024
     public static let nonceSize = 12
     public static let tagSize = 16
-    public static let maxPlaintextBytes: Int64 = 2 * 1024 * 1024 * 1024
+    public static let maxPlaintextBytes: Int64 = 10 * 1024 * 1024 * 1024
 
     public enum Error: Swift.Error, Equatable {
         case invalidNonce

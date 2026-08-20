@@ -28,6 +28,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Catalog-generated mission runtime allowlists. Grok/kimi catalog tokens exist;
   remote-mission launch for those runtimes stays nil until the Agent Control PR.
 
+### Added (file plane)
+- OBFS1 chunked AEAD with stored random 12-byte IVs. Cloud attachments cap at
+  10GiB; P2P iroh landing stays 2GiB. Production GCS storage port; compose
+  cannot un-finalize. Mac landing requires a verified blake3 (never SHA-256
+  compared to contentBlake3).
+
+### Known blockers
+- iOS Share Extension + App Group inbound share is not in this train.
+
 ### Fixed
 - The cloud screenshot disclosure is honored as a **session** acknowledgement again. It
   had begun persisting to `storage.local`, so acknowledging once let screenshots reach a

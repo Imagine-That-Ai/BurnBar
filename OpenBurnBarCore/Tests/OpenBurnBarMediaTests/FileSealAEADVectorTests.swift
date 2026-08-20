@@ -124,12 +124,42 @@ final class FileSealAEADVectorTests: XCTestCase {
         try FileSealAEAD.sealFile(from: plain, to: sealed, contentKey: key, header: header)
         try FileSealAEAD.openFile(from: sealed, to: opened, contentKey: key, header: header)
         XCTAssertEqual(try Data(contentsOf: opened), payload)
-        XCTAssertEqual(FileSealAEAD.maxPlaintextBytes, 2 * 1024 * 1024 * 1024)
+        XCTAssertEqual(FileSealAEAD.maxPlaintextBytes, 10 * 1024 * 1024 * 1024)
+    }
+
+    func testNonceReuseDifferentPlaintextIsRejectedByVectors() throws {
+        let fixture = try loadFixture()
+        let key = Data(hex: fixture.contentKeyHex)
+        let base = try XCTUnwrap(fixture.cases.first)
+        let header = FileSealAEAD.Header(
+            attachmentId: fixture.header.attachmentId,
+            totalChunks: fixture.header.totalChunks,
+            plaintextSize: fixture.header.plaintextSize,
+            contentBlake3: fixture.header.contentBlake3
+        )
+        let nonce = Data(hex: base.nonceHex)
+        let first = try FileSealAEAD.sealChunk(
+            plaintext: Data(base.plaintextUtf8.utf8),
+            contentKey: key,
+            header: header,
+            chunkIndex: base.chunkIndex,
+            nonce: nonce
+        )
+        let second = try FileSealAEAD.sealChunk(
+            plaintext: Data("different-plain".utf8),
+            contentKey: key,
+            header: header,
+            chunkIndex: base.chunkIndex,
+            nonce: nonce
+        )
+        XCTAssertEqual(nonce.count, 12)
+        XCTAssertNotEqual(first.ciphertext, second.ciphertext)
+        XCTAssertEqual(FileSealAEAD.aad(header: header, chunkIndex: base.chunkIndex).hex, base.aadHex)
     }
 
     func testProductionSealMintsFreshNonce() throws {
         let header = FileSealAEAD.Header(attachmentId: "a", totalChunks: 1, plaintextSize: 4, contentBlake3: "00")
-        let key = FileSealAEAD.mintContentKey()
+        let key = try FileSealAEAD.mintContentKey()
         let n1 = try FileSealAEAD.mintNonce()
         let n2 = try FileSealAEAD.mintNonce()
         XCTAssertEqual(n1.count, 12)

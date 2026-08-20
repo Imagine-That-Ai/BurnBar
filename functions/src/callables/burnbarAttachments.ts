@@ -6,6 +6,7 @@
 import { randomBytes } from "node:crypto";
 
 import { FieldValue } from "firebase-admin/firestore";
+import { getStorage } from "firebase-admin/storage";
 import { HttpsError, type CallableRequest } from "firebase-functions/v2/https";
 
 import { db } from "../adminRuntime.js";
@@ -14,16 +15,17 @@ import { logInfo, onCallProduction } from "../logging.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 import { boundedFirestoreDocumentId } from "./computerUseSecurityCodecs.js";
 import { requireTrustedDeviceActionProof } from "./computerUseSecurityFirestore.js";
-import { boundedTrimmedString } from "./shared.js";
+import { assertActiveBurnBarCloudProEntitlement, boundedTrimmedString } from "./shared.js";
 import { enforceHighRiskComputerUseCallableWithNonce } from "../appCheckAttestation.js";
 
 export const FILE_CAP_BYTES = 10 * 1024 * 1024 * 1024;
+export const PRO_WITHOUT_MEDIA_SYNC_CAP_BYTES = 200 * 1024 * 1024;
 export const COMPOSE_FANIN = 32;
 const MAC_OR_PHONE = new Set(["macOS", "iOS", "iPadOS", "Android"]);
 
-export type ComposeCall = { sources: string[]; destination: string; ifGenerationMatch: number };
+type ComposeCall = { sources: string[]; destination: string; ifGenerationMatch: number };
 
-export interface BurnbarStoragePort {
+interface BurnbarStoragePort {
   getMetadata(path: string): Promise<{ size: number; generation: string }>;
   compose(sources: string[], destination: string, ifGenerationMatch: number): Promise<{ size: number; generation: string }>;
   delete(path: string): Promise<void>;
@@ -53,7 +55,7 @@ export const memoryStoragePort: BurnbarStoragePort = {
     if (sources.length > COMPOSE_FANIN) {
       throw new HttpsError("invalid-argument", "compose exceeds 32 sources.");
     }
-    if (ifGenerationMatch !== 0 && memoryObjects.has(destination)) {
+    if (ifGenerationMatch === 0 && memoryObjects.has(destination)) {
       throw new HttpsError("failed-precondition", "generation mismatch.");
     }
     let size = 0;
@@ -70,7 +72,10 @@ export const memoryStoragePort: BurnbarStoragePort = {
     memoryObjects.delete(path);
   },
   async mintPutUrl(path, contentLength, ttlSeconds) {
-    memoryObjects.set(path, { size: contentLength, generation: "0" });
+    const existing = memoryObjects.get(path);
+    if (existing?.revoked) throw new HttpsError("permission-denied", "Part URL revoked.");
+    const generation = existing ? String(Number(existing.generation || "0") + 1) : "1";
+    memoryObjects.set(path, { size: contentLength, generation });
     return { url: `https://storage.test/${path}?ttl=${ttlSeconds}&len=${contentLength}`, expiresAt: Date.now() + ttlSeconds * 1000 };
   },
   async mintGetUrl(path, generation) {
@@ -80,14 +85,68 @@ export const memoryStoragePort: BurnbarStoragePort = {
   },
   async revokePuts(prefix) {
     for (const key of [...memoryObjects.keys()]) {
-      if (key.startsWith(prefix) && key.includes("/parts/")) memoryObjects.delete(key);
+      if (key.startsWith(prefix) && (key.includes("/parts/") || key.includes("/mid/"))) {
+        const obj = memoryObjects.get(key);
+        if (obj) obj.revoked = true;
+      }
     }
   },
 };
 
-let storagePort: BurnbarStoragePort = memoryStoragePort;
+export const gcsStoragePort: BurnbarStoragePort = {
+  async getMetadata(path) {
+    const [metadata] = await getStorage().bucket().file(path).getMetadata();
+    return { size: Number(metadata.size ?? 0), generation: String(metadata.generation ?? "") };
+  },
+  async compose(sources, destination, ifGenerationMatch) {
+    if (sources.length > COMPOSE_FANIN) {
+      throw new HttpsError("invalid-argument", "compose exceeds 32 sources.");
+    }
+    const dest = getStorage().bucket().file(destination, {
+      generation: ifGenerationMatch === 0 ? 0 : undefined,
+    });
+    const [metadata] = await dest.compose(sources.map((src) => getStorage().bucket().file(src)));
+    return { size: Number(metadata.size ?? 0), generation: String(metadata.generation ?? "") };
+  },
+  async delete(path) {
+    await getStorage().bucket().file(path).delete({ ignoreNotFound: true });
+  },
+  async mintPutUrl(path, contentLength, ttlSeconds) {
+    const expires = Date.now() + ttlSeconds * 1000;
+    const [url] = await getStorage().bucket().file(path).getSignedUrl({
+      version: "v4",
+      action: "write",
+      expires,
+      contentType: "application/octet-stream",
+      extensionHeaders: {
+        "content-length": String(contentLength),
+        "x-goog-if-generation-match": "0",
+      },
+    });
+    return { url, expiresAt: expires };
+  },
+  async mintGetUrl(path, generation) {
+    const [url] = await getStorage().bucket().file(path).getSignedUrl({
+      version: "v4",
+      action: "read",
+      expires: Date.now() + 15 * 60 * 1000,
+      queryParams: { generation },
+    });
+    return { url };
+  },
+  async revokePuts(prefix) {
+    const [files] = await getStorage().bucket().getFiles({ prefix });
+    await Promise.all(files.map((file) => file.delete({ ignoreNotFound: true })));
+  },
+};
+
+let storagePort: BurnbarStoragePort = gcsStoragePort;
 export function setBurnbarStoragePort(port: BurnbarStoragePort): void {
   storagePort = port;
+}
+
+export function activeBurnbarStoragePort(): BurnbarStoragePort {
+  return storagePort;
 }
 
 function objectPath(uid: string, id: string, name: string): string {
@@ -175,9 +234,18 @@ export const beginBurnbarAttachment = onCallProduction(
   async (request: CallableRequest<Record<string, unknown>>) => {
     const id = randomBytes(16).toString("hex");
     const { uid } = await requireActor(request, "burnbar_attachment_begin", id);
+    await assertActiveBurnBarCloudProEntitlement(uid);
     const byteCount = Number(request.data.byteCount);
     if (!Number.isFinite(byteCount) || byteCount <= 0 || byteCount > FILE_CAP_BYTES) {
       throw new HttpsError("invalid-argument", "byteCount exceeds the 10GiB file cap.");
+    }
+    const mediaSnap = await db.doc(`users/${uid}/entitlements/hosted_media_sync`).get();
+    const mediaActive = mediaSnap.exists && mediaSnap.get("active") === true;
+    if (!mediaActive && byteCount > PRO_WITHOUT_MEDIA_SYNC_CAP_BYTES) {
+      throw new HttpsError(
+        "permission-denied",
+        "Files over 200MB require the hosted_media_sync entitlement.",
+      );
     }
     const chunkCount = Math.max(1, Math.ceil(byteCount / (32 * 1024 * 1024)));
     const quota = quotaRef(uid, "in");
@@ -198,6 +266,7 @@ export const beginBurnbarAttachment = onCallProduction(
         state: "pending_upload",
         storagePath: objectPath(uid, id, "final"),
         reservedBytes: byteCount,
+        wrappedKeySlot: typeof request.data.wrappedKeySlot === "string" ? request.data.wrappedKeySlot : null,
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       });
@@ -222,6 +291,13 @@ export const mintBurnbarAttachmentPartURL = onCallProduction(
     if (!snap.exists || snap.get("state") !== "pending_upload") {
       throw new HttpsError("failed-precondition", "Attachment is not accepting parts.");
     }
+    const chunkCount = Number(snap.get("chunkCount") ?? 0);
+    if (partIndex >= chunkCount) throw new HttpsError("invalid-argument", "partIndex out of range.");
+    const reserved = Number(snap.get("reservedBytes") ?? snap.get("byteCount") ?? 0);
+    const maxSealedPart = 32 * 1024 * 1024 + 12 + 16 + 1024;
+    if (contentLength > maxSealedPart || contentLength > reserved + maxSealedPart) {
+      throw new HttpsError("invalid-argument", "contentLength exceeds reserved sealed size.");
+    }
     const path = objectPath(uid, id, `parts/${partIndex}`);
     const minted = await storagePort.mintPutUrl(path, contentLength, 10 * 60);
     return { ok: true, url: minted.url, path, ttlSeconds: 600 };
@@ -234,10 +310,20 @@ export const composeBurnbarAttachment = onCallProduction(
   async (request: CallableRequest<Record<string, unknown>>) => {
     const id = boundedFirestoreDocumentId(request.data.id, "id", 64);
     const { uid } = await requireActor(request, "burnbar_attachment_compose", id);
-    const snap = await attachRef(uid, id).get();
-    if (!snap.exists) throw new HttpsError("not-found", "Attachment not found.");
-    const chunkCount = Number(snap.get("chunkCount") ?? 0);
-    await attachRef(uid, id).set({ state: "composing", updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    const chunkCount = await db.runTransaction(async (tx) => {
+      const snap = await tx.get(attachRef(uid, id));
+      if (!snap.exists) throw new HttpsError("not-found", "Attachment not found.");
+      const state = snap.get("state");
+      if (state === "uploaded") {
+        throw new HttpsError("failed-precondition", "Finalized attachments cannot be recomposed.");
+      }
+      if (state !== "pending_upload" && state !== "composing") {
+        throw new HttpsError("failed-precondition", "Attachment is not composable.");
+      }
+      const count = Number(snap.get("chunkCount") ?? 0);
+      tx.set(attachRef(uid, id), { state: "composing", updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+      return count;
+    });
     await composeParts(uid, id, chunkCount);
     return { ok: true, id, composeGroups: Math.max(planComposeHierarchy(chunkCount).length, 1) };
   },

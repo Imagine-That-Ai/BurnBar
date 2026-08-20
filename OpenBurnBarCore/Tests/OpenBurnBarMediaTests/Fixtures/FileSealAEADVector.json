@@ -45,6 +45,11 @@
       "name": "truncated_tag",
       "base": "chunk0_hello",
       "truncateTagBytes": 1
+    },
+    {
+      "name": "nonce_reuse_different_plaintext",
+      "base": "chunk0_hello",
+      "reuseNonceWithPlaintext": "other-plain"
     }
   ]
 }

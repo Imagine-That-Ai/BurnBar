@@ -7,6 +7,7 @@ final class BurnbarAttachmentTransferSession: NSObject, URLSessionDelegate, URLS
 
     private(set) var resumeDataByPart: [String: Data] = [:]
     private var session: URLSession!
+    private var backgroundCompletion: (() -> Void)?
 
     override init() {
         super.init()
@@ -34,7 +35,13 @@ final class BurnbarAttachmentTransferSession: NSObject, URLSessionDelegate, URLS
             completionHandler()
             return
         }
-        completionHandler()
+        backgroundCompletion = completionHandler
+    }
+
+    func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
+        let handler = backgroundCompletion
+        backgroundCompletion = nil
+        handler?()
     }
 
     func urlSession(
@@ -42,8 +49,11 @@ final class BurnbarAttachmentTransferSession: NSObject, URLSessionDelegate, URLS
         task: URLSessionTask,
         didCompleteWithError error: Error?
     ) {
-        guard let resume = (error as? URLError)?.userInfo[NSURLSessionDownloadTaskResumeData] as? Data,
-              let key = task.taskDescription else { return }
+        guard let error else { return }
+        let nsError = error as NSError
+        let resume = nsError.userInfo[NSURLSessionUploadTaskResumeData] as? Data
+            ?? nsError.userInfo[NSURLSessionDownloadTaskResumeData] as? Data
+        guard let resume, let key = task.taskDescription else { return }
         storeResumeData(resume, partKey: key)
     }
 }
