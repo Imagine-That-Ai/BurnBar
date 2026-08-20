@@ -34,10 +34,28 @@ const DEFAULT_GATEWAY_PORT = 8317;
 const CATALOG_RELATIVE = "OpenBurnBarCore/Sources/OpenBurnBarKernel/Resources/catalog.json";
 const PRIME_MODELS_PATH = path.join(os.homedir(), ".prime", "agent", "models.json");
 
+/**
+ * Shell command prime-agent runs to resolve the gateway bearer token at request
+ * time, so models.json never holds a secret. Rungs: `$OPENBURNBAR_GATEWAY_AUTH_TOKEN`
+ * -> the daemon LaunchAgent plist -> the `openburnbar-local` placeholder. Every
+ * rung is non-interactive, which is the point: SSH sessions, CI runners, and
+ * background agents resolve the same token a GUI session does.
+ *
+ * There is deliberately no `security find-generic-password` rung. The app stores
+ * the token under service `com.openburnbar.chat-gateway-secrets` / account
+ * `settings.gateway.http.authToken` with an app-scoped ACL, so reading it from a
+ * foreign binary either blocks on a GUI authorization prompt or fails with
+ * errSecInteractionNotAllowed. The plist carries the same token by construction —
+ * OpenBurnBarDaemonManager writes it into EnvironmentVariables whenever gateway
+ * auth is enabled, which is the fail-closed default.
+ *
+ * `printf '%s\n'` rather than `echo`: POSIX `echo` expands backslash escapes, so
+ * `echo` silently corrupts any token containing one.
+ */
 function apiKeyShellCommand() {
-  // Resolves at request time; never stores secret on disk.
-  // Priority: env var -> LaunchAgent plist -> Keychain fallback -> default placeholder.
-  return `![ -n "$OPENBURNBAR_GATEWAY_AUTH_TOKEN" ] && echo "$OPENBURNBAR_GATEWAY_AUTH_TOKEN" || plutil -extract EnvironmentVariables.OPENBURNBAR_GATEWAY_AUTH_TOKEN raw ~/Library/LaunchAgents/com.openburnbar.daemon.plist 2>/dev/null || security find-generic-password -a $USER -s com.openburnbar.daemon.gatewayAuthToken -w 2>/dev/null || echo openburnbar-local`;
+  // Leading `!` is prime-agent's "run this as a shell command" marker (see
+  // resolveConfigValue); it is stripped before exec, not shell negation.
+  return `![ -n "$OPENBURNBAR_GATEWAY_AUTH_TOKEN" ] && printf '%s\\n' "$OPENBURNBAR_GATEWAY_AUTH_TOKEN" || plutil -extract EnvironmentVariables.OPENBURNBAR_GATEWAY_AUTH_TOKEN raw ~/Library/LaunchAgents/com.openburnbar.daemon.plist 2>/dev/null || printf '%s\\n' openburnbar-local`;
 }
 
 function contextWindowFor(providerId, modelId) {
@@ -131,14 +149,14 @@ async function fetchLiveModels(gatewayHost, gatewayPort, explicitToken) {
   const t = setTimeout(() => controller.abort(), 3500);
   try {
     const headers = {};
-    // Priority: explicit token -> env var -> LaunchAgent plist -> keychain
+    // Same rungs as apiKeyShellCommand(), plus the explicit flag ahead of them.
     let token = explicitToken || process.env.OPENBURNBAR_GATEWAY_AUTH_TOKEN;
     if (!token) {
       try {
         const { execSync } = await import("node:child_process");
         token = execSync(
-          "plutil -extract EnvironmentVariables.OPENBURNBAR_GATEWAY_AUTH_TOKEN raw ~/Library/LaunchAgents/com.openburnbar.daemon.plist 2>/dev/null || security find-generic-password -a $USER -s com.openburnbar.daemon.gatewayAuthToken -w 2>/dev/null || echo",
-          // Bounded: a hung keychain prompt must not outlive the 3.5s fetch budget.
+          "plutil -extract EnvironmentVariables.OPENBURNBAR_GATEWAY_AUTH_TOKEN raw ~/Library/LaunchAgents/com.openburnbar.daemon.plist 2>/dev/null || true",
+          // Bounded so a slow plist read cannot outlive the 3.5s fetch budget.
           { encoding: "utf8", timeout: 4000 }
         ).trim();
       } catch {}
@@ -239,10 +257,12 @@ function readModelsJson(modelsPath) {
 }
 
 /**
- * Placeholder shown in preview output instead of a user-supplied static token.
- * The literal token is argv-derived taint; printing it is the exact clear-text
- * credential sink CodeQL blocked in #2192. The marker proves `--print`/
- * `--status` inspected the right field without ever echoing the secret.
+ * Stands in for a user-supplied static token in `--print` output. The literal is
+ * argv-derived taint, and printing it is the clear-text credential sink CodeQL
+ * blocked in #2192 — `codeql-pr.yml` analyses `javascript-typescript` with no
+ * path filter, so this file is in scope on every PR. The marker keeps the field
+ * visible for inspection without putting the secret on stdout. (`--status` takes
+ * the stricter route and omits the field entirely; see redactProviderForDisplay.)
  */
 const REDACTED_API_KEY_MARKER = "<redacted: static gateway token>";
 
@@ -290,13 +310,16 @@ async function main() {
     gatewayPort: DEFAULT_GATEWAY_PORT,
     token: undefined,
   };
-  // Both `--flag value` and `--flag=value` spellings are accepted.
+  // Both `--flag value` and `--flag=value` spellings are accepted. A separated
+  // value may not itself look like a flag, so `--token --print` leaves the token
+  // unset instead of silently swallowing `--print` as credential material.
+  const valueAt = (i) => (args[i + 1]?.startsWith("--") ? undefined : args[i + 1]);
   for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--gateway-host" && args[i+1]) opts.gatewayHost = args[++i];
+    if (args[i] === "--gateway-host" && valueAt(i)) opts.gatewayHost = args[++i];
     else if (args[i].startsWith("--gateway-host=")) opts.gatewayHost = args[i].slice("--gateway-host=".length);
-    else if (args[i] === "--gateway-port" && args[i+1]) opts.gatewayPort = parseInt(args[++i], 10);
+    else if (args[i] === "--gateway-port" && valueAt(i)) opts.gatewayPort = parseInt(args[++i], 10);
     else if (args[i].startsWith("--gateway-port=")) opts.gatewayPort = parseInt(args[i].slice("--gateway-port=".length), 10);
-    else if ((args[i] === "--token" || args[i] === "--api-key") && args[i+1]) opts.token = args[++i];
+    else if ((args[i] === "--token" || args[i] === "--api-key") && valueAt(i)) opts.token = args[++i];
     else if (args[i].startsWith("--token=")) opts.token = args[i].slice("--token=".length);
     else if (args[i].startsWith("--api-key=")) opts.token = args[i].slice("--api-key=".length);
   }
@@ -366,14 +389,21 @@ async function main() {
   };
 
   if (opts.print) {
-    // --print is the preview surface: it must show what models.json will hold.
-    // The default apiKey is the env→plist→keychain shell resolver (no secret in
-    // the string), so it prints verbatim; a --token literal is redacted in place
-    // instead, because it is user-typed credential material.
+    // Two constraints on this surface: stdout stays pipeable into models.json,
+    // and stdout never carries credential material. The default apiKey is the
+    // shell resolver — no secret in the string — so it satisfies both. A --token
+    // literal cannot, so it prints as a marker and the preview stops being a
+    // usable config; that trade is announced on stderr rather than handing back
+    // a file whose bearer token is the placeholder text.
     const printable = {
       ...providerEntry,
       apiKey: opts.token ? REDACTED_API_KEY_MARKER : providerEntry.apiKey,
     };
+    if (opts.token) {
+      console.warn("Note: --print redacts --token, so this preview is NOT a usable config.");
+      console.warn("      Re-run without --print to install the static token.");
+      console.warn("      For a pipeable secret-free config, drop --token and export OPENBURNBAR_GATEWAY_AUTH_TOKEN.");
+    }
     console.log(JSON.stringify({ providers: { openburnbar: printable } }, null, 2));
     process.exit(0);
   }
@@ -386,7 +416,7 @@ async function main() {
   console.log(`  source: ${source}`);
   console.log(`  models: ${models.length} (was ${existingCount})`);
   console.log(`  gateway: http://${opts.gatewayHost}:${opts.gatewayPort}`);
-  console.log(`  apiKey: ${opts.token ? "static token (passed via CLI)" : "shell command (resolves at request time from env/LaunchAgent/keychain)"}`);
+  console.log(`  apiKey: ${opts.token ? "static token (passed via CLI)" : "shell command (resolves at request time from env/LaunchAgent plist)"}`);
   console.log(`\nVerify: prime-agent model list openburnbar | head`);
   console.log(`Try:     prime-agent --provider openburnbar --model ${models[0]?.id ?? "claude-sonnet-4-6"} -p "hello via burnbar"`);
 }

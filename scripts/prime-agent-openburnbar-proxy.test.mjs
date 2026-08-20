@@ -6,11 +6,11 @@
  * must be the env-var-first shell resolver, --token/--api-key must embed a
  * static token without ever printing it, and --status must stay redacted.
  * The resolver string is additionally executed under a real POSIX sh so the
- * env → plist → keychain → placeholder fallback chain is proven, not assumed.
+ * env → plist → placeholder fallback chain is proven, not assumed.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
@@ -30,20 +30,13 @@ function tempDir() {
 }
 
 function run(args, env = {}) {
-  try {
-    const stdout = execFileSync("node", [SCRIPT, ...args], {
-      encoding: "utf8",
-      env: { ...process.env, ...env },
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    return { status: 0, stdout, stderr: "" };
-  } catch (error) {
-    return {
-      status: error.status ?? 1,
-      stdout: error.stdout?.toString() ?? "",
-      stderr: error.stderr?.toString() ?? "",
-    };
-  }
+  const result = spawnSync("node", [SCRIPT, ...args], {
+    encoding: "utf8",
+    env: { ...process.env, ...env },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  if (result.error) throw result.error;
+  return { status: result.status ?? 1, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
 }
 
 function printFragment(args, env = {}) {
@@ -51,8 +44,13 @@ function printFragment(args, env = {}) {
   assert.equal(result.status, 0, `--print ${args.join(" ")} failed: ${result.stderr}`);
   const fragment = JSON.parse(result.stdout);
   assert.ok(fragment.providers?.openburnbar, "fragment must carry the openburnbar provider");
-  return { fragment, raw: result.stdout };
+  return { fragment, raw: result.stdout, stderr: result.stderr };
 }
+
+/** Rung 1 of the resolver, spelled exactly as the script must emit it. */
+const ENV_RUNG = String.raw`![ -n "$OPENBURNBAR_GATEWAY_AUTH_TOKEN" ] && printf '%s\n' "$OPENBURNBAR_GATEWAY_AUTH_TOKEN"`;
+const PLIST_RUNG = "plutil -extract EnvironmentVariables.OPENBURNBAR_GATEWAY_AUTH_TOKEN";
+const PLACEHOLDER_RUNG = String.raw`printf '%s\n' openburnbar-local`;
 
 /**
  * Runs the emitted apiKey shell command through a real POSIX sh and returns
@@ -60,6 +58,8 @@ function printFragment(args, env = {}) {
  * starting with `!` is treated as a command — the marker is stripped
  * (`config.slice(1)`) and the remainder runs through execSync at request
  * time. It must work in interactive, SSH/CI, and stripped-env shells.
+ * execFileSync throws on a non-zero exit, which also asserts the chain always
+ * terminates in a successful rung.
  */
 function resolveViaShell(apiKey, env = {}) {
   assert.ok(apiKey.startsWith("!"), "stored apiKey must carry the prime-agent !command marker");
@@ -75,18 +75,24 @@ test("default --print emits the env-var-first shell resolver", () => {
   const { fragment, raw } = printFragment([]);
   const apiKey = fragment.providers.openburnbar.apiKey;
   assert.equal(typeof apiKey, "string");
-  assert.ok(
-    apiKey.startsWith('![ -n "$OPENBURNBAR_GATEWAY_AUTH_TOKEN" ] && echo "$OPENBURNBAR_GATEWAY_AUTH_TOKEN"'),
-    `resolver must check $OPENBURNBAR_GATEWAY_AUTH_TOKEN first, got: ${apiKey}`,
-  );
+  assert.ok(apiKey.startsWith(ENV_RUNG), `resolver must check $OPENBURNBAR_GATEWAY_AUTH_TOKEN first, got: ${apiKey}`);
   const envIdx = apiKey.indexOf("$OPENBURNBAR_GATEWAY_AUTH_TOKEN");
-  const plistIdx = apiKey.indexOf("plutil -extract EnvironmentVariables.OPENBURNBAR_GATEWAY_AUTH_TOKEN");
-  const keychainIdx = apiKey.indexOf("security find-generic-password -a $USER -s com.openburnbar.daemon.gatewayAuthToken");
-  const fallbackIdx = apiKey.indexOf("echo openburnbar-local");
-  assert.ok(envIdx < plistIdx && plistIdx < keychainIdx && keychainIdx < fallbackIdx,
-    `resolution order must be env → plist → keychain → placeholder, got: ${apiKey}`);
+  const plistIdx = apiKey.indexOf(PLIST_RUNG);
+  const fallbackIdx = apiKey.indexOf(PLACEHOLDER_RUNG);
+  assert.ok(envIdx < plistIdx && plistIdx < fallbackIdx,
+    `resolution order must be env → plist → placeholder, got: ${apiKey}`);
   assert.ok(apiKey.includes("2>/dev/null"), "noisy tools must have stderr suppressed for headless shells");
   assert.ok(!raw.includes("undefined"), "fragment must not leak undefined placeholders");
+
+  // Every rung must be non-interactive. `security find-generic-password -w`
+  // is not: the app writes the token under service
+  // com.openburnbar.chat-gateway-secrets / account settings.gateway.http.authToken
+  // with an app-scoped ACL, so a foreign binary either blocks on a GUI
+  // authorization prompt or fails with errSecInteractionNotAllowed.
+  assert.ok(!apiKey.includes("security find-generic-password"),
+    `the resolver must not query the Keychain, got: ${apiKey}`);
+  // POSIX echo expands backslash escapes and corrupts tokens containing them.
+  assert.ok(!/\becho\b/.test(apiKey), `use printf '%s\\n' instead of echo, got: ${apiKey}`);
 });
 
 test("resolver string is POSIX-safe across shell environments", () => {
@@ -96,8 +102,13 @@ test("resolver string is POSIX-safe across shell environments", () => {
   // Non-interactive shell with the env var exported wins over every other source.
   assert.equal(resolveViaShell(apiKey, { OPENBURNBAR_GATEWAY_AUTH_TOKEN: "env-token" }), "env-token");
 
-  // Stripped headless shell (SSH/CI-style): no plist, no keychain access —
-  // must land on the harmless placeholder with no stderr noise.
+  // Tokens are passed through verbatim. `echo "$VAR"` expands the \b here and
+  // silently hands the gateway `ac-token` under both /bin/sh and dash.
+  const escaped = String.raw`a\bc-token`;
+  assert.equal(resolveViaShell(apiKey, { OPENBURNBAR_GATEWAY_AUTH_TOKEN: escaped }), escaped);
+
+  // Stripped headless shell (SSH/CI-style): no env var, no plist — must land on
+  // the harmless placeholder with no stderr noise.
   const isolated = tempDir();
   assert.equal(
     resolveViaShell(apiKey, {
@@ -117,12 +128,34 @@ test("--token and --api-key embed a static token without echoing it", () => {
     ["--api-key=alt-equals-token"],
   ]) {
     const literal = args[args.length - 1].replace(/^--(token|api-key)=?/, "");
-    const { fragment, raw } = printFragment(args);
+    const { fragment, raw, stderr } = printFragment(args);
     const entry = fragment.providers.openburnbar;
     assert.equal(entry.apiKey, "<redacted: static gateway token>",
       `--print must redact the static token for ${args.join(" ")}`);
     assert.ok(!raw.includes(literal), `the literal token must never reach stdout (${args.join(" ")})`);
+    assert.ok(!stderr.includes(literal), `the literal token must never reach stderr (${args.join(" ")})`);
+    // A redacted preview is not a usable config, so piping it must not look safe.
+    assert.match(stderr, /NOT a usable config/,
+      `--print --token must warn that the preview is unusable (${args.join(" ")})`);
   }
+});
+
+test("plain --print stays pipeable and warns about nothing", () => {
+  const { fragment, stderr } = printFragment([]);
+  assert.ok(fragment.providers.openburnbar.apiKey.startsWith("!["),
+    "plain --print must emit the resolver so `--print > models.json` works");
+  assert.equal(stderr, "", "plain --print is a working config and needs no warning");
+});
+
+test("a flag-shaped --token value is not swallowed as a credential", () => {
+  // `--token --print` used to set the token to the literal string "--print".
+  const { fragment } = printFragment(["--token"]);
+  assert.ok(fragment.providers.openburnbar.apiKey.startsWith("!["),
+    "a missing --token value must leave the shell resolver in place");
+  const chained = run(["--token", "--print"]);
+  assert.equal(chained.status, 0, chained.stderr);
+  const apiKey = JSON.parse(chained.stdout).providers.openburnbar.apiKey;
+  assert.ok(apiKey.startsWith("!["), `--token must not consume the following flag, got: ${apiKey}`);
 });
 
 test("whitespace-only --token falls back to the shell resolver", () => {

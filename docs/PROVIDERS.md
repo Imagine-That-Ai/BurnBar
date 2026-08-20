@@ -333,14 +333,23 @@ node scripts/prime-agent-openburnbar-proxy.mjs --token <tok> # embed static auth
 
 This merges an `openburnbar` provider into `~/.prime/agent/models.json`
 (`baseUrl: http://127.0.0.1:8317/v1`, `api: openai-completions`, `apiKey`
-resolved at request time from `$OPENBURNBAR_GATEWAY_AUTH_TOKEN` → daemon LaunchAgent
-plist → macOS Keychain → `openburnbar-local`).
+resolved at request time from `$OPENBURNBAR_GATEWAY_AUTH_TOKEN` → the daemon
+LaunchAgent plist → the `openburnbar-local` placeholder).
 
-In non-interactive environments (SSH, CI, background subagents) where macOS
-Keychain access is unavailable (`errSecInteractionNotAllowed`), set
-`export OPENBURNBAR_GATEWAY_AUTH_TOKEN="<token>"` or pass `--token <token>` to
-embed the token directly. Prefer the env var: `--token` writes the literal token
-into `models.json`, while the default shell command keeps it off disk.
+Every rung is non-interactive, so SSH sessions, CI runners, and background
+subagents resolve the same token a GUI session does. The chain deliberately does
+**not** read the macOS Keychain: the app stores the token under service
+`com.openburnbar.chat-gateway-secrets` / account `settings.gateway.http.authToken`
+with an app-scoped ACL, so `security find-generic-password -w` from another binary
+either blocks on a GUI authorization prompt or fails with
+`errSecInteractionNotAllowed`. The LaunchAgent plist holds the same token by
+construction — the daemon manager writes it into `EnvironmentVariables` whenever
+gateway auth is enabled, which is the fail-closed default.
+
+If the plist is unavailable (daemon never installed, or a non-macOS host), set
+`export OPENBURNBAR_GATEWAY_AUTH_TOKEN="<token>"`. Prefer the env var over
+`--token <token>`: `--token` writes the literal token into `models.json`, while
+the default shell command keeps it off disk entirely.
 
 All 150+ BurnBar catalog models appear as `openburnbar/<model-id>` in `prime-agent /model`
 and `prime-agent model list openburnbar`:
@@ -369,7 +378,7 @@ prime-agent --provider openburnbar --model gpt-5.6-luna -p "hello via burnbar"
       "name": "OpenBurnBar Gateway",
       "baseUrl": "http://127.0.0.1:8317/v1",
       "api": "openai-completions",
-      "apiKey": "![ -n \"$OPENBURNBAR_GATEWAY_AUTH_TOKEN\" ] && echo \"$OPENBURNBAR_GATEWAY_AUTH_TOKEN\" || plutil -extract EnvironmentVariables.OPENBURNBAR_GATEWAY_AUTH_TOKEN raw ~/Library/LaunchAgents/com.openburnbar.daemon.plist 2>/dev/null || security find-generic-password -a $USER -s com.openburnbar.daemon.gatewayAuthToken -w 2>/dev/null || echo openburnbar-local",
+      "apiKey": "![ -n \"$OPENBURNBAR_GATEWAY_AUTH_TOKEN\" ] && printf '%s\\n' \"$OPENBURNBAR_GATEWAY_AUTH_TOKEN\" || plutil -extract EnvironmentVariables.OPENBURNBAR_GATEWAY_AUTH_TOKEN raw ~/Library/LaunchAgents/com.openburnbar.daemon.plist 2>/dev/null || printf '%s\\n' openburnbar-local",
       "models": [
         { "id": "claude-sonnet-4-6", "name": "Claude Sonnet 4.6 (via OpenBurnBar)", "reasoning": true, "input": ["text", "image"], "contextWindow": 200000, "maxTokens": 64000, "cost": { "input": 3, "output": 15, "cacheRead": 0.3, "cacheWrite": 3.75 } }
       ]
@@ -385,15 +394,24 @@ environment-variable name with a literal fallback. Strip the `!` before
 hand-testing the chain — `[ -n "$OPENBURNBAR_GATEWAY_AUTH_TOKEN" ] && ...`
 is what prime-agent actually executes.
 
+The chain uses `printf '%s\n'` rather than `echo` because POSIX `echo` expands
+backslash escapes, which silently corrupts any token containing one (`a\bc` →
+`ac` under both `/bin/sh` and `dash`).
+
 The script preserves other providers in `models.json` (e.g., `meta`) and is
 idempotent. Use `--status` to inspect, `--print` to preview the JSON fragment
 without writing, `--remove` to detach, `--token <tok>`/`--api-key <tok>` for
 static authentication, and `--gateway-host`/`--gateway-port` when the daemon
-runs on a non-default interface. `--print` shows the `apiKey` field verbatim
-when it is the shell resolver and as `<redacted: static gateway token>` when a
-`--token` literal was supplied, so credential material never reaches stdout.
-Re-run after updating BurnBar or rotating the gateway token; `--live` reflects
-the gateway's currently advertised set.
+runs on a non-default interface. Re-run after updating BurnBar or rotating the
+gateway token; `--live` reflects the gateway's currently advertised set.
+
+`--print` is a preview surface, and its stdout never carries credential material.
+Plain `--print` emits the shell resolver verbatim, so `--print > models.json`
+produces a working config. `--print --token <tok>` prints
+`<redacted: static gateway token>` in place of the literal and warns on stderr,
+because that preview is **not** a usable config — re-run without `--print` to
+install a static token, or drop `--token` and export
+`OPENBURNBAR_GATEWAY_AUTH_TOKEN` to get a pipeable secret-free fragment.
 
 Gateway execution source for these turns is `primeAgent`/`prime-agent`, so
 BurnBar's ledger attributes spend correctly and the PrimeAgent parser's cost

@@ -10,16 +10,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Prime Agent gateway proxy resolves the auth token headlessly
   (`scripts/prime-agent-openburnbar-proxy.mjs`) — non-interactive shells (SSH,
-  CI, subagents) hit the macOS Keychain with `errSecInteractionNotAllowed` and
-  fell through to the placeholder. The emitted `apiKey` resolver now checks
+  CI, subagents) fell through to the `openburnbar-local` placeholder and got 401s
+  from the gateway. The emitted `apiKey` resolver now checks
   `$OPENBURNBAR_GATEWAY_AUTH_TOKEN` first, then the daemon LaunchAgent plist,
-  then the Keychain, then `openburnbar-local`; a new `--token <tok>` /
-  `--api-key <tok>` flag embeds a static token directly into `models.json`, and
-  `--live` probes follow the same priority. `--print` previews the resolver
-  verbatim and redacts literal tokens (`<redacted: static gateway token>`);
-  `--status` never shows the credential field. Locked by
-  `scripts/prime-agent-openburnbar-proxy.test.mjs` in fast-feedback. Docs:
-  `docs/PROVIDERS.md` → Prime Agent via OpenBurnBar Gateway.
+  then `openburnbar-local`, and `--live` probes follow the same order. The
+  Keychain rung was **removed rather than reordered**: it had been querying a
+  service/account pair the app never writes (dead since it was added), and
+  querying the real pair (`com.openburnbar.chat-gateway-secrets` /
+  `settings.gateway.http.authToken`) either blocks on a GUI authorization prompt
+  or fails with `errSecInteractionNotAllowed`, because the item's ACL is
+  app-scoped. The plist carries the same token by construction. Each rung also
+  emits `printf '%s\n'` instead of `echo`, which was corrupting any token
+  containing a backslash. A new `--token <tok>` / `--api-key <tok>` flag embeds a
+  static token directly into `models.json`. `--print` previews the resolver
+  verbatim (so `--print > models.json` works) and, with `--token`, redacts the
+  literal to `<redacted: static gateway token>` plus a stderr warning that the
+  preview is not a usable config; `--status` never shows the credential field.
+  Locked by `scripts/prime-agent-openburnbar-proxy.test.mjs` in fast-feedback.
+  Docs: `docs/PROVIDERS.md` → Prime Agent via OpenBurnBar Gateway.
 - Close SQLCipher before `NSApplication` calls `exit()`, so a quit (including
   the installed app terminating a DerivedData duplicate) cannot SIGSEGV inside
   `sqlcipher_memset` on a live GRDB reader. Concurrent usage hydration now
