@@ -1,0 +1,1250 @@
+/* ============================================================
+   ARENA SKIN: neural — "Neural Split"  (v4, gallery elevation)
+
+   One prompt enters a filament network and forks. A bright
+   convergence node sits high centre; an ember tree fans down
+   the left (path A), a teal tree down the right (path B),
+   fading into a near-black instrument field. Two thin bezels
+   hold the live artifacts over a perspective grid floor, a
+   split-ring VS medallion floats on the seam, and a chrome
+   hairline of mono labels caps the poster.
+
+   Craft notes (what v4 elevates over v3):
+     · Field gains a second depth layer — a grain wash + a top
+       radial that lifts the node without torching the artifacts.
+     · Filaments: 9 strands/side (was 7), three luminance passes
+       (bright / mid / hairline), retuned mask beading so nodes
+       sit exactly on traces and breathe with motes.
+     · Node: 4px core, 14px specular, twin 96px chromatic halos
+       + fan washes that meet at the seam — reads as one optic.
+     · Panes become instrument bezels: corner graticule ticks,
+       inner highlight, hover lift with accent inner glow.
+     · Grid floor gets a centre-aisle highlight (ember→teal) and
+       alternating line alpha for real perspective falloff.
+     · Motion: drift 13.5s + breathe 4.6s, both ease-in-out,
+       reduced-motion still yields a full static constellation.
+     · Trust/reveal/CTA get drawn-glyph and filament refinements
+       so the ballot feels like one instrument, not four skins.
+
+   Layers (all pointer-events: none):
+     .bb-arena::before ......... filament trees (conic rays,
+                                 beaded + faded by one radial mask).
+                                 Under the particle canvas.
+     .bb-arena__net ............ live motes (screen / multiply).
+     .bb-arena::after .......... node, halos, fan wash, vignette.
+                                 Over the canvas, under content.
+     .bb-arena__frames::after .. grid floor (z-index:-1 behind panes).
+
+   Scope EVERY rule under html[data-arena-variant="neural"].
+   Tokens + frozen DOM contract live in arena-variants.css.
+   ============================================================ */
+
+/* ---------- skin tokens ---------- */
+html[data-arena-variant="neural"] {
+  --nn-slab: rgba(9, 11, 14, 0.62);
+  --nn-plate: rgba(6, 8, 11, 0.72);
+  --nn-line: rgba(255, 255, 255, 0.1);
+  --nn-line-strong: rgba(255, 255, 255, 0.14);
+  --nn-x: 50%;
+  --nn-y: 3.2%;
+  --nn-fil-a: color-mix(in oklab, var(--core-fire) 66%, transparent);
+  --nn-fil-a-mid: color-mix(in oklab, var(--core-amber) 30%, transparent);
+  --nn-fil-a-hair: color-mix(in oklab, var(--core-amber) 16%, transparent);
+  --nn-fil-b: rgba(47, 216, 196, 0.64);
+  --nn-fil-b-mid: rgba(98, 232, 218, 0.28);
+  --nn-fil-b-hair: rgba(143, 245, 230, 0.15);
+  --nn-node: rgba(255, 246, 232, 0.98);
+  --nn-node-spec: rgba(255, 255, 255, 0.95);
+}
+html[data-arena-variant="neural"][data-theme="light"] {
+  --nn-slab: rgba(255, 255, 255, 0.72);
+  --nn-plate: rgba(255, 255, 255, 0.84);
+  --nn-line: rgba(22, 19, 14, 0.13);
+  --nn-line-strong: rgba(22, 19, 14, 0.18);
+  --nn-fil-a: rgba(176, 66, 6, 0.52);
+  --nn-fil-a-mid: rgba(138, 95, 0, 0.28);
+  --nn-fil-a-hair: rgba(138, 95, 0, 0.14);
+  --nn-fil-b: rgba(10, 118, 108, 0.48);
+  --nn-fil-b-mid: rgba(12, 124, 105, 0.22);
+  --nn-fil-b-hair: rgba(12, 124, 105, 0.12);
+  --nn-node: rgba(60, 44, 24, 0.74);
+  --nn-node-spec: rgba(60, 44, 24, 0.9);
+}
+
+/* ============================================================
+   THE FIELD
+   ============================================================ */
+html[data-arena-variant="neural"] .bb-arena {
+  background:
+    radial-gradient(90% 70% at 50% 0%, rgba(22, 24, 32, 0.95), transparent 60%),
+    radial-gradient(130% 90% at 50% 0%, rgba(18, 20, 26, 0.9), transparent 55%),
+    linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--ink-base) 94%, transparent),
+      color-mix(in oklab, var(--ink-void) 98%, transparent)
+    );
+  padding-block: var(--s-6) var(--s-8);
+}
+/* Subtle grain — one extra radial that never competes with artifacts */
+html[data-arena-variant="neural"] .bb-arena::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    conic-gradient(
+      from 0deg at var(--nn-x) var(--nn-y),
+      transparent 0 196.4deg,
+      var(--nn-fil-a) 196.4deg 196.72deg,
+      transparent 196.72deg 211.8deg,
+      var(--nn-fil-a) 211.8deg 212.14deg,
+      transparent 212.14deg 228.2deg,
+      var(--nn-fil-a) 228.2deg 228.48deg,
+      transparent 228.48deg 239.8deg,
+      var(--nn-fil-a) 239.8deg 240.08deg,
+      transparent 240.08deg 246.2deg,
+      var(--nn-fil-a) 246.2deg 246.44deg,
+      transparent 246.44deg 360deg
+    ),
+    conic-gradient(
+      from 0deg at var(--nn-x) var(--nn-y),
+      transparent 0 203.2deg,
+      var(--nn-fil-a-mid) 203.2deg 203.42deg,
+      transparent 203.42deg 218.6deg,
+      var(--nn-fil-a-mid) 218.6deg 218.82deg,
+      transparent 218.82deg 234.2deg,
+      var(--nn-fil-a-mid) 234.2deg 234.42deg,
+      transparent 234.42deg 251.2deg,
+      var(--nn-fil-a-mid) 251.2deg 251.42deg,
+      transparent 251.42deg 262.6deg,
+      var(--nn-fil-a-mid) 262.6deg 262.82deg,
+      transparent 262.82deg 360deg
+    ),
+    conic-gradient(
+      from 0deg at var(--nn-x) var(--nn-y),
+      transparent 0 199.2deg,
+      var(--nn-fil-a-hair) 199.2deg 199.32deg,
+      transparent 199.32deg 224.6deg,
+      var(--nn-fil-a-hair) 224.6deg 224.72deg,
+      transparent 224.72deg 245deg,
+      var(--nn-fil-a-hair) 245deg 245.12deg,
+      transparent 245.12deg 360deg
+    ),
+    conic-gradient(
+      from 0deg at var(--nn-x) var(--nn-y),
+      transparent 0 119.6deg,
+      var(--nn-fil-b) 119.6deg 119.88deg,
+      transparent 119.88deg 146.2deg,
+      var(--nn-fil-b) 146.2deg 146.52deg,
+      transparent 146.52deg 161.8deg,
+      var(--nn-fil-b) 161.8deg 162.1deg,
+      transparent 162.1deg 172.4deg,
+      var(--nn-fil-b) 172.4deg 172.68deg,
+      transparent 172.68deg 360deg
+    ),
+    conic-gradient(
+      from 0deg at var(--nn-x) var(--nn-y),
+      transparent 0 96.8deg,
+      var(--nn-fil-b-mid) 96.8deg 97.02deg,
+      transparent 97.02deg 107.4deg,
+      var(--nn-fil-b-mid) 107.4deg 107.62deg,
+      transparent 107.62deg 132.8deg,
+      var(--nn-fil-b-mid) 132.8deg 133.02deg,
+      transparent 133.02deg 155deg,
+      var(--nn-fil-b-mid) 155deg 155.22deg,
+      transparent 155.22deg 166.2deg,
+      var(--nn-fil-b-mid) 166.2deg 166.42deg,
+      transparent 166.42deg 360deg
+    ),
+    conic-gradient(
+      from 0deg at var(--nn-x) var(--nn-y),
+      transparent 0 112deg,
+      var(--nn-fil-b-hair) 112deg 112.12deg,
+      transparent 112.12deg 138deg,
+      var(--nn-fil-b-hair) 138deg 138.12deg,
+      transparent 138.12deg 159deg,
+      var(--nn-fil-b-hair) 159deg 159.12deg,
+      transparent 159.12deg 360deg
+    );
+  mask-image: radial-gradient(
+    96% 124% at var(--nn-x) var(--nn-y),
+    rgba(0, 0, 0, 0.98) 0 4.5%,
+    rgba(0, 0, 0, 0.42) 11%,
+    rgba(0, 0, 0, 0.94) 17%,
+    rgba(0, 0, 0, 0.34) 25.5%,
+    rgba(0, 0, 0, 0.88) 32%,
+    rgba(0, 0, 0, 0.28) 44%,
+    rgba(0, 0, 0, 0.72) 53%,
+    rgba(0, 0, 0, 0.22) 66%,
+    rgba(0, 0, 0, 0.46) 74%,
+    rgba(0, 0, 0, 0.12) 87%,
+    transparent 97%
+  );
+  -webkit-mask-image: radial-gradient(
+    96% 124% at var(--nn-x) var(--nn-y),
+    rgba(0, 0, 0, 0.98) 0 4.5%,
+    rgba(0, 0, 0, 0.42) 11%,
+    rgba(0, 0, 0, 0.94) 17%,
+    rgba(0, 0, 0, 0.34) 25.5%,
+    rgba(0, 0, 0, 0.88) 32%,
+    rgba(0, 0, 0, 0.28) 44%,
+    rgba(0, 0, 0, 0.72) 53%,
+    rgba(0, 0, 0, 0.22) 66%,
+    rgba(0, 0, 0, 0.46) 74%,
+    rgba(0, 0, 0, 0.12) 87%,
+    transparent 97%
+  );
+}
+html[data-arena-variant="neural"] .bb-arena::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle 4px at var(--nn-x) var(--nn-y), var(--nn-node-spec), transparent 100%),
+    radial-gradient(circle 3.2px at var(--nn-x) var(--nn-y), var(--nn-node), transparent 100%),
+    radial-gradient(
+      circle 14px at var(--nn-x) var(--nn-y),
+      color-mix(in oklab, var(--nn-node) 42%, transparent),
+      transparent 100%
+    ),
+    radial-gradient(
+      circle 96px at calc(var(--nn-x) - 36px) var(--nn-y),
+      color-mix(in oklab, var(--acc-a) 28%, transparent),
+      transparent 72%
+    ),
+    radial-gradient(
+      circle 96px at calc(var(--nn-x) + 36px) var(--nn-y),
+      color-mix(in oklab, var(--acc-b) 24%, transparent),
+      transparent 72%
+    ),
+    radial-gradient(
+      42% 48% at 30% 34%,
+      color-mix(in oklab, var(--acc-a) 10%, transparent),
+      transparent 72%
+    ),
+    radial-gradient(
+      42% 48% at 70% 34%,
+      color-mix(in oklab, var(--acc-b) 9%, transparent),
+      transparent 72%
+    ),
+    radial-gradient(
+      118% 96% at 50% 22%,
+      transparent 52%,
+      color-mix(in oklab, var(--ink-void) 74%, transparent)
+    );
+}
+html[data-arena-variant="neural"] .bb-arena > .bb-arena__net {
+  opacity: 0.88;
+  mix-blend-mode: screen;
+}
+@keyframes bb-nn-drift {
+  0%,
+  100% {
+    opacity: 0.76;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+@keyframes bb-nn-shimmer {
+  0%,
+  100% {
+    opacity: 0.82;
+    filter: brightness(1);
+  }
+  33% {
+    opacity: 1;
+    filter: brightness(1.08);
+  }
+  66% {
+    opacity: 0.88;
+    filter: brightness(0.98);
+  }
+}
+@keyframes bb-nn-node-breathe {
+  0%,
+  100% {
+    opacity: 1;
+    scale: 1;
+  }
+  50% {
+    opacity: 0.94;
+    scale: 1.04;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  html[data-arena-variant="neural"] .bb-arena::before {
+    animation:
+      bb-nn-drift 13.5s var(--ease) infinite,
+      bb-nn-shimmer 7.5s ease-in-out infinite;
+  }
+  html[data-arena-variant="neural"] .bb-arena::after {
+    animation: bb-nn-node-breathe 4.2s ease-in-out infinite;
+  }
+}
+
+/* ============================================================
+   HERO — hairline rule, serif headline, terminal lead
+   ============================================================ */
+html[data-arena-variant="neural"] .bb-arena-hero__kicker {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-4);
+  flex-wrap: wrap;
+  margin: var(--s-3) 0 var(--s-6);
+  padding-block: 0.55rem;
+  border-top: 1px solid var(--nn-line);
+  border-bottom: 1px solid var(--nn-line);
+  color: var(--text-dim);
+  font-size: 0.6rem;
+  letter-spacing: 0.26em;
+}
+html[data-arena-variant="neural"] .bb-arena-hero__kicker::before {
+  content: "◇ divergence trial — blind pairwise";
+  color: var(--ember-bright);
+  letter-spacing: 0.26em;
+}
+html[data-arena-variant="neural"] .bb-arena-hero .bb-hero__inner {
+  padding: 0 var(--s-4) var(--s-2);
+  border: 0;
+  background: none;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+html[data-arena-variant="neural"] .bb-arena-hero__title {
+  max-width: 22ch;
+  margin-inline: auto;
+  text-align: center;
+  font-weight: var(--wght-display);
+  line-height: 1;
+  color: var(--text-bright);
+}
+html[data-arena-variant="neural"] .bb-arena-hero__l1,
+html[data-arena-variant="neural"] .bb-arena-hero__l3 {
+  color: var(--text-bright);
+  text-transform: none;
+}
+@supports (-webkit-text-stroke: 1px black) {
+  html[data-arena-variant="neural"] .bb-arena-hero__l3 {
+    color: var(--text-bright);
+    -webkit-text-stroke: 0;
+  }
+}
+html[data-arena-variant="neural"] .bb-arena-hero__l2 em {
+  background: none;
+  -webkit-background-clip: border-box;
+  background-clip: border-box;
+  color: var(--text-bright);
+  font-weight: var(--wght-semibold);
+  letter-spacing: -0.015em;
+}
+html[data-arena-variant="neural"] .bb-arena-hero__lead {
+  margin-inline: auto;
+  margin-bottom: var(--s-2);
+  text-align: center;
+  color: var(--text-mute);
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+}
+html[data-arena-variant="neural"] .bb-arena-hero__cursor {
+  color: var(--status-exact);
+}
+html[data-arena-variant="neural"] .bb-arena-hero__sub {
+  max-width: 54ch;
+  margin-inline: auto;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 0.88rem;
+}
+
+/* ============================================================
+   STATUS + BRIEF
+   ============================================================ */
+html[data-arena-variant="neural"] .bb-arena__status {
+  color: var(--text-mute);
+  font-size: 0.62rem;
+  letter-spacing: 0.22em;
+}
+html[data-arena-variant="neural"] .bb-arena__status::before {
+  width: 8px;
+  height: 8px;
+  border-radius: 1px;
+  background: linear-gradient(90deg, var(--acc-a), var(--acc-b));
+  box-shadow: 0 0 12px color-mix(in oklab, var(--acc-a) 40%, transparent);
+}
+html[data-arena-variant="neural"] .bb-arena__brief {
+  max-width: 44rem;
+  margin-inline: 0 auto;
+  padding: var(--s-4) var(--s-5);
+  border: 1px solid var(--nn-line);
+  border-radius: 4px;
+  background: var(--nn-slab);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 24px 60px -40px rgba(0, 0, 0, 0.9);
+  position: relative;
+}
+html[data-arena-variant="neural"] .bb-arena__brief::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 1px;
+  border-radius: 4px 4px 0 0;
+  background: linear-gradient(
+    90deg,
+    color-mix(in oklab, var(--acc-a) 70%, transparent),
+    color-mix(in oklab, var(--acc-b) 70%, transparent)
+  );
+  opacity: 0.85;
+}
+html[data-arena-variant="neural"] .bb-arena__brief-eyebrow {
+  color: var(--acc-a-hi, var(--core-amber));
+  font-size: 0.58rem;
+  letter-spacing: 0.26em;
+}
+html[data-arena-variant="neural"] .bb-arena__brief-title {
+  font-size: 1.22rem;
+  font-weight: var(--wght-semibold);
+  color: var(--text-bright);
+  letter-spacing: -0.01em;
+  --opsz: var(--opsz-lead);
+}
+html[data-arena-variant="neural"] .bb-arena__brief-text {
+  color: var(--text-dim);
+  font-size: 0.86rem;
+  max-width: 62ch;
+  line-height: 1.55;
+}
+html[data-arena-variant="neural"] .bb-arena__judge {
+  color: var(--text-mute);
+  font-size: 0.6rem;
+  letter-spacing: 0.2em;
+}
+
+/* ============================================================
+   THE TWO PATHS
+   ============================================================ */
+html[data-arena-variant="neural"] .bb-versus {
+  perspective: none;
+}
+html[data-arena-variant="neural"] .bb-arena__frames {
+  gap: var(--s-5);
+  margin-top: var(--s-6);
+}
+html[data-arena-variant="neural"] .bb-arena__frames::after {
+  content: "";
+  position: absolute;
+  left: -8%;
+  right: -8%;
+  bottom: -1rem;
+  height: 13rem;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    linear-gradient(
+      90deg,
+      transparent 49.6%,
+      color-mix(in oklab, var(--acc-a) 18%, transparent) 49.6% 50.1%,
+      color-mix(in oklab, var(--acc-b) 18%, transparent) 50.1% 50.6%,
+      transparent 50.6%
+    ),
+    repeating-linear-gradient(90deg, transparent 0 3.25rem, var(--nn-line) 3.25rem 3.3rem),
+    repeating-linear-gradient(180deg, transparent 0 1.9rem, var(--nn-line) 1.9rem 1.95rem);
+  transform: perspective(440px) rotateX(66deg);
+  transform-origin: 50% 100%;
+  mask-image: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.85) 45%, transparent 96%);
+  -webkit-mask-image: linear-gradient(
+    180deg,
+    transparent,
+    rgba(0, 0, 0, 0.85) 45%,
+    transparent 96%
+  );
+}
+@media (min-width: 720px) {
+  html[data-arena-variant="neural"] .bb-arena__frames {
+    padding-bottom: 2.5rem;
+  }
+  html[data-arena-variant="neural"] .bb-arena__pane--a,
+  html[data-arena-variant="neural"] .bb-arena__pane--b {
+    transform: none;
+  }
+  html[data-arena-variant="neural"] .bb-arena__pane--a:hover,
+  html[data-arena-variant="neural"] .bb-arena__pane--b:hover {
+    transform: translateY(-2px);
+  }
+  html[data-arena-variant="neural"] .bb-versus::before {
+    top: 0;
+    bottom: 2.5rem;
+    width: 1px;
+    background: linear-gradient(
+      180deg,
+      transparent,
+      color-mix(in oklab, var(--acc-a) 30%, transparent) 30%,
+      color-mix(in oklab, var(--acc-b) 30%, transparent) 70%,
+      transparent
+    );
+    transform: translateX(-50%);
+  }
+}
+html[data-arena-variant="neural"] .bb-arena__pane {
+  gap: var(--s-3);
+  padding: var(--s-4);
+  border: 1px solid color-mix(in oklab, var(--pane-acc) 42%, transparent);
+  border-radius: 5px;
+  background: var(--nn-slab);
+  box-shadow:
+    inset 0 0 26px -12px color-mix(in oklab, var(--pane-acc) 55%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 30px 70px -46px rgba(0, 0, 0, 0.95);
+  transition:
+    transform var(--dur-base) var(--ease),
+    border-color var(--dur-base) var(--ease),
+    box-shadow var(--dur-base) var(--ease);
+  position: relative;
+}
+html[data-arena-variant="neural"] .bb-arena__pane:hover {
+  border-color: color-mix(in oklab, var(--pane-acc) 78%, transparent);
+  box-shadow:
+    inset 0 0 30px -10px color-mix(in oklab, var(--pane-acc) 65%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    0 30px 70px -44px rgba(0, 0, 0, 0.95);
+}
+/* Whimsical spark — the top graticule tick glows briefly when you hover the pane */
+@media (prefers-reduced-motion: no-preference) {
+  html[data-arena-variant="neural"] .bb-arena__pane:hover::before {
+    animation: bb-nn-tick-spark 520ms ease-out;
+  }
+}
+@keyframes bb-nn-tick-spark {
+  0% {
+    opacity: 0.55;
+    filter: brightness(1);
+  }
+  35% {
+    opacity: 1;
+    filter: brightness(1.35)
+      drop-shadow(0 0 6px color-mix(in oklab, var(--pane-acc) 60%, transparent));
+  }
+  100% {
+    opacity: 0.55;
+    filter: brightness(1);
+  }
+}
+/* Corner graticule — 4 hairline ticks at the bezel corners */
+html[data-arena-variant="neural"] .bb-arena__pane::before {
+  content: "";
+  position: absolute;
+  inset: 6px;
+  border-radius: 4px;
+  pointer-events: none;
+  background:
+    linear-gradient(var(--nn-line-strong), var(--nn-line-strong)) left top / 14px 1px no-repeat,
+    linear-gradient(var(--nn-line-strong), var(--nn-line-strong)) left top / 1px 14px no-repeat,
+    linear-gradient(var(--nn-line-strong), var(--nn-line-strong)) right top / 14px 1px no-repeat,
+    linear-gradient(var(--nn-line-strong), var(--nn-line-strong)) right top / 1px 14px no-repeat,
+    linear-gradient(var(--nn-line-strong), var(--nn-line-strong)) left bottom / 14px 1px no-repeat,
+    linear-gradient(var(--nn-line-strong), var(--nn-line-strong)) left bottom / 1px 14px no-repeat,
+    linear-gradient(var(--nn-line-strong), var(--nn-line-strong)) right bottom / 14px 1px no-repeat,
+    linear-gradient(var(--nn-line-strong), var(--nn-line-strong)) right bottom / 1px 14px no-repeat;
+  opacity: 0.55;
+}
+html[data-arena-variant="neural"] .bb-arena__ghost {
+  top: 0.5rem;
+  font-family: var(--font-mono);
+  font-weight: var(--wght-medium);
+  font-size: 2.6rem;
+  line-height: 1;
+  color: color-mix(in oklab, var(--pane-acc) 11%, transparent);
+  transition:
+    transform 420ms var(--ease),
+    opacity 300ms var(--ease);
+}
+@supports (-webkit-text-stroke: 1px black) {
+  html[data-arena-variant="neural"] .bb-arena__ghost {
+    color: transparent;
+    -webkit-text-stroke: 1px color-mix(in oklab, var(--pane-acc) 24%, transparent);
+  }
+}
+html[data-arena-variant="neural"] .bb-arena__pane--a .bb-arena__ghost {
+  right: 0.6rem;
+}
+html[data-arena-variant="neural"] .bb-arena__pane--b .bb-arena__ghost {
+  left: 0.6rem;
+}
+@keyframes bb-nn-ghost-float {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+  50% {
+    translate: 0 -4px;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  html[data-arena-variant="neural"] .bb-arena__pane--a .bb-arena__ghost {
+    animation: bb-nn-ghost-float 3.8s ease-in-out infinite;
+  }
+  html[data-arena-variant="neural"] .bb-arena__pane--b .bb-arena__ghost {
+    animation: bb-nn-ghost-float 4.2s ease-in-out 0.6s infinite;
+  }
+}
+html[data-arena-variant="neural"] .bb-arena__pane:hover .bb-arena__ghost {
+  transform: scale(1.08) rotate(-2deg);
+  opacity: 0.9;
+}
+html[data-arena-variant="neural"] .bb-arena__pane--b:hover .bb-arena__ghost {
+  transform: scale(1.08) rotate(2deg);
+}
+html[data-arena-variant="neural"] .bb-arena__tag {
+  align-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.38rem 0.7rem;
+  border: 1px solid color-mix(in oklab, var(--pane-acc) 38%, transparent);
+  border-radius: 3px;
+  background: var(--nn-plate);
+  color: var(--pane-acc-hi);
+  font-size: 0.58rem;
+  letter-spacing: 0.24em;
+}
+html[data-arena-variant="neural"] .bb-arena__tag::before {
+  content: "";
+  width: 2px;
+  height: 0.8rem;
+  border-radius: 0;
+  background: var(--pane-acc);
+  box-shadow: 0 0 8px color-mix(in oklab, var(--pane-acc) 60%, transparent);
+}
+html[data-arena-variant="neural"] .bb-arena__tag::after {
+  content: "· unknown";
+  color: var(--text-dim);
+  letter-spacing: 0.2em;
+}
+
+/* ---------- screen ---------- */
+html[data-arena-variant="neural"] .bb-arena__framewrap {
+  overflow: hidden;
+  border: 1px solid color-mix(in oklab, var(--pane-acc) 30%, transparent);
+  border-radius: 4px;
+  background: color-mix(in oklab, var(--ink-void) 55%, transparent);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+}
+html[data-arena-variant="neural"] .bb-arena__framewrap::after {
+  content: none;
+}
+html[data-arena-variant="neural"] .bb-arena__frame {
+  display: block;
+  width: 100%;
+  min-height: 220px;
+  border: 0;
+  border-radius: 2px;
+  background: color-mix(in oklab, var(--ink-void) 40%, transparent);
+}
+@media (min-width: 720px) {
+  html[data-arena-variant="neural"] .bb-arena__frame {
+    min-height: 260px;
+  }
+}
+html[data-arena-variant="neural"] .bb-arena__play {
+  gap: 0.5rem;
+  background:
+    radial-gradient(120% 90% at 50% 42%, rgba(6, 8, 11, 0.62), rgba(4, 6, 9, 0.88)),
+    linear-gradient(180deg, transparent 58%, rgba(4, 6, 9, 0.5));
+  backdrop-filter: blur(1px);
+  -webkit-backdrop-filter: blur(1px);
+}
+html[data-arena-variant="neural"] .bb-arena__play-disc {
+  width: 2.8rem;
+  height: 2.8rem;
+  border: 1px solid color-mix(in oklab, var(--pane-acc) 70%, transparent);
+  background: radial-gradient(
+    circle at 50% 34%,
+    color-mix(in oklab, var(--pane-acc) 22%, transparent),
+    rgba(6, 8, 11, 0.66)
+  );
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.04),
+    0 0 26px -10px color-mix(in oklab, var(--pane-acc) 70%, transparent);
+}
+html[data-arena-variant="neural"] .bb-arena__play-label {
+  color: var(--text-bright);
+  font-size: 0.62rem;
+  letter-spacing: 0.24em;
+}
+html[data-arena-variant="neural"] .bb-arena__play-hint {
+  color: var(--text-dim);
+  font-size: 0.68rem;
+  max-width: 24ch;
+}
+html[data-arena-variant="neural"] .bb-arena__play:focus-visible {
+  outline: 1px solid var(--pane-acc);
+  outline-offset: -2px;
+}
+html[data-arena-variant="neural"] .bb-arena__tool {
+  border: 1px solid color-mix(in oklab, var(--pane-acc) 40%, transparent);
+  border-radius: 3px;
+  background: var(--nn-plate);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: none;
+  color: var(--text-base);
+  font-size: 0.58rem;
+  letter-spacing: 0.18em;
+}
+html[data-arena-variant="neural"] .bb-arena__tool:hover {
+  background: color-mix(in oklab, var(--pane-acc) 16%, transparent);
+  border-color: color-mix(in oklab, var(--pane-acc) 80%, transparent);
+  color: var(--pane-acc-hi);
+  translate: 0 0;
+}
+html[data-arena-variant="neural"] .bb-arena__tool:focus-visible {
+  outline: 1px solid var(--pane-acc);
+  outline-offset: 2px;
+}
+html[data-arena-variant="neural"] .bb-arena__live {
+  border: 1px solid color-mix(in oklab, var(--pane-acc) 45%, transparent);
+  border-radius: 3px;
+  background: var(--nn-plate);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  color: var(--text-base);
+  font-size: 0.55rem;
+  letter-spacing: 0.2em;
+}
+/* Zoombar as instrument pill — matches the tool language */
+html[data-arena-variant="neural"] .bb-arena__zoombar,
+html[data-arena-variant="neural"] .bb-stage__zoombar {
+  background: var(--nn-plate);
+  border: 1px solid color-mix(in oklab, var(--pane-acc, var(--acc-a)) 30%, transparent);
+  box-shadow: 0 8px 24px -12px rgba(0, 0, 0, 0.6);
+}
+html[data-arena-variant="neural"] .bb-zoom-btn {
+  border-color: color-mix(in oklab, var(--pane-acc, var(--acc-a)) 24%, transparent);
+  background: transparent;
+}
+html[data-arena-variant="neural"] .bb-zoom-btn:hover {
+  background: color-mix(in oklab, var(--pane-acc, var(--acc-a)) 14%, transparent);
+}
+html[data-arena-variant="neural"] .bb-zoom-level {
+  color: var(--text-base);
+}
+
+/* ---------- VS medallion ---------- */
+html[data-arena-variant="neural"] .bb-arena__versus,
+html[data-arena-variant="neural"] .bb-arena__vs {
+  width: 3.1rem;
+  height: 3.1rem;
+  border: 1px solid transparent;
+  background:
+    linear-gradient(
+        color-mix(in oklab, var(--ink-void) 88%, transparent),
+        color-mix(in oklab, var(--ink-void) 88%, transparent)
+      )
+      padding-box,
+    linear-gradient(90deg, var(--acc-a), var(--acc-b)) border-box;
+  color: var(--text-bright);
+  font-size: 0.66rem;
+  font-weight: var(--wght-bold);
+  letter-spacing: 0.18em;
+  box-shadow:
+    0 0 0 5px color-mix(in oklab, var(--ink-void) 65%, transparent),
+    -11px 0 26px -12px color-mix(in oklab, var(--acc-a) 70%, transparent),
+    11px 0 26px -12px color-mix(in oklab, var(--acc-b) 70%, transparent);
+  animation: none;
+}
+html[data-arena-variant="neural"] .bb-arena__versus {
+  rotate: 0deg;
+  cursor: pointer;
+  transition:
+    transform 360ms cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 300ms var(--ease);
+}
+html[data-arena-variant="neural"] .bb-arena__versus:hover {
+  transform: scale(1.1) rotate(8deg);
+  box-shadow:
+    0 0 0 5px color-mix(in oklab, var(--ink-void) 65%, transparent),
+    -14px 0 30px -10px color-mix(in oklab, var(--acc-a) 80%, transparent),
+    14px 0 30px -10px color-mix(in oklab, var(--acc-b) 80%, transparent);
+}
+html[data-arena-variant="neural"] .bb-arena__versus:active {
+  transform: scale(0.95) rotate(-4deg);
+}
+html[data-arena-variant="neural"] .bb-arena__vs {
+  transform: translateX(-50%);
+}
+@keyframes bb-nn-breathe {
+  0%,
+  100% {
+    scale: 1;
+  }
+  50% {
+    scale: 1.055;
+  }
+}
+@keyframes bb-nn-vs-wiggle {
+  0%,
+  100% {
+    rotate: 0deg;
+  }
+  25% {
+    rotate: 1.2deg;
+  }
+  75% {
+    rotate: -1.2deg;
+  }
+}
+@media (prefers-reduced-motion: no-preference) and (min-width: 720px) {
+  html[data-arena-variant="neural"] .bb-arena__versus {
+    animation:
+      bb-nn-breathe 4.6s var(--ease) infinite,
+      bb-nn-vs-wiggle 6s ease-in-out 1.5s infinite;
+  }
+}
+
+/* ---------- vote controls ---------- */
+html[data-arena-variant="neural"] .bb-arena__voteui {
+  margin-top: var(--s-1);
+}
+html[data-arena-variant="neural"] .bb-arena__votebar {
+  padding: 0.9rem 1.1rem;
+  border: 1px solid color-mix(in oklab, var(--pane-acc) 50%, transparent);
+  border-radius: 4px;
+  background: color-mix(in oklab, var(--pane-acc) 8%, transparent);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  color: var(--text-bright);
+  font-size: 0.68rem;
+  letter-spacing: 0.2em;
+}
+html[data-arena-variant="neural"] .bb-arena__votebar:hover {
+  background: color-mix(in oklab, var(--pane-acc) 18%, transparent);
+  border-color: color-mix(in oklab, var(--pane-acc) 90%, transparent);
+  transform: translateY(-1px);
+  box-shadow:
+    0 0 30px -18px color-mix(in oklab, var(--pane-acc) 90%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+html[data-arena-variant="neural"] .bb-arena__votebar:active {
+  transform: translateY(0) scale(0.99);
+}
+html[data-arena-variant="neural"] .bb-arena__votebar:focus-visible {
+  outline: 1px solid var(--pane-acc);
+  outline-offset: 2px;
+}
+html[data-arena-variant="neural"] .bb-arena__votearrow {
+  color: var(--pane-acc);
+}
+html[data-arena-variant="neural"] .bb-arena__votebar:hover .bb-arena__votearrow {
+  color: var(--pane-acc-hi);
+}
+/* Optional rubric: a slab, not a card — it sits between the vote bars and the
+   tie link and must not compete with either for attention. */
+html[data-arena-variant="neural"] .bb-arena__rubric {
+  margin-top: var(--s-4);
+  border: 1px solid var(--nn-line);
+  border-radius: 4px;
+  background: var(--nn-slab);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+html[data-arena-variant="neural"] .bb-arena__rubric-rows {
+  gap: 0;
+}
+html[data-arena-variant="neural"] .bb-arena__rubric-row {
+  padding: 0.55rem 0;
+  border-top: 1px solid var(--nn-line);
+}
+html[data-arena-variant="neural"] .bb-arena__rubric-row:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+html[data-arena-variant="neural"] .bb-arena__rubric-label {
+  font-size: 0.78rem;
+  letter-spacing: 0.02em;
+}
+html[data-arena-variant="neural"] .bb-arena__rubric-optlabel {
+  border: 1px solid var(--nn-line-strong);
+  border-radius: 3px;
+  font-size: 0.62rem;
+  letter-spacing: 0.2em;
+}
+html[data-arena-variant="neural"]
+  .bb-arena__rubric-opt--a
+  .bb-arena__rubric-input:checked
+  + .bb-arena__rubric-optlabel {
+  box-shadow: 0 0 22px -14px color-mix(in oklab, var(--acc-a) 90%, transparent);
+}
+html[data-arena-variant="neural"]
+  .bb-arena__rubric-opt--b
+  .bb-arena__rubric-input:checked
+  + .bb-arena__rubric-optlabel {
+  box-shadow: 0 0 22px -14px color-mix(in oklab, var(--acc-b) 90%, transparent);
+}
+html[data-arena-variant="neural"]
+  .bb-arena__rubric-input:focus-visible
+  + .bb-arena__rubric-optlabel {
+  outline: 1px solid var(--acc-a);
+  outline-offset: 2px;
+}
+html[data-arena-variant="neural"] .bb-arena__rubric-clear:focus-visible {
+  outline: 1px solid var(--acc-a);
+  outline-offset: 3px;
+}
+html[data-arena-variant="neural"] .bb-arena__tiewrap {
+  margin: var(--s-3) 0 var(--s-6);
+}
+html[data-arena-variant="neural"] .bb-arena__tie {
+  border-bottom: 1px dashed var(--nn-line);
+  color: var(--text-mute);
+  font-size: 0.62rem;
+  letter-spacing: 0.2em;
+}
+html[data-arena-variant="neural"] .bb-arena__tie:hover {
+  color: var(--text-bright);
+  border-color: color-mix(in oklab, var(--acc-b) 60%, transparent);
+}
+html[data-arena-variant="neural"] .bb-arena__tie:focus-visible {
+  outline: 1px solid var(--acc-a);
+  outline-offset: 3px;
+}
+
+/* ============================================================
+   TRUST CELLS
+   ============================================================ */
+html[data-arena-variant="neural"] .bb-arena__trust {
+  gap: var(--s-3);
+  margin-top: var(--s-6);
+}
+html[data-arena-variant="neural"] .bb-arena__trust li {
+  gap: 0.3rem;
+  min-width: 11.5rem;
+  padding: var(--s-4) var(--s-4) 0.9rem;
+  border: 1px solid var(--nn-line);
+  border-radius: 4px;
+  background: var(--nn-slab);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+html[data-arena-variant="neural"] .bb-arena__trust li::before {
+  content: "";
+  width: 1.9rem;
+  height: 1.9rem;
+  margin-bottom: 0.35rem;
+  border: 1px solid color-mix(in oklab, var(--acc-a) 45%, transparent);
+  border-radius: 50%;
+  background-repeat: no-repeat;
+  background-position: center;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+html[data-arena-variant="neural"] .bb-arena__trust li:nth-child(1)::before {
+  background-image: conic-gradient(
+    from 0deg,
+    color-mix(in oklab, var(--acc-b) 42%, transparent) 0 50%,
+    color-mix(in oklab, var(--acc-a) 42%, transparent) 50% 100%
+  );
+}
+html[data-arena-variant="neural"] .bb-arena__trust li:nth-child(2)::before {
+  background-image: linear-gradient(
+    180deg,
+    transparent 44%,
+    color-mix(in oklab, var(--acc-a) 65%, transparent) 44% 56%,
+    transparent 56%
+  );
+  background-size: 62% 100%;
+}
+html[data-arena-variant="neural"] .bb-arena__trust li:nth-child(3)::before {
+  background-image:
+    radial-gradient(circle 3px at 50% 50%, var(--acc-a-hi), transparent 100%),
+    radial-gradient(
+      circle 9px at 50% 50%,
+      transparent 0 68%,
+      color-mix(in oklab, var(--acc-b) 55%, transparent) 68% 78%,
+      transparent 78%
+    );
+}
+@media (prefers-reduced-motion: no-preference) {
+  html[data-arena-variant="neural"] .bb-arena__trust li {
+    transition:
+      transform 280ms var(--ease),
+      box-shadow 280ms var(--ease);
+  }
+  html[data-arena-variant="neural"] .bb-arena__trust li:hover {
+    transform: translateY(-3px) rotate(0.4deg);
+    box-shadow: 0 12px 28px -16px rgba(0, 0, 0, 0.5);
+  }
+  html[data-arena-variant="neural"] .bb-arena__trust li:nth-child(2):hover {
+    transform: translateY(-3px) rotate(-0.4deg);
+  }
+}
+html[data-arena-variant="neural"] .bb-arena__trust strong {
+  font-size: 0.62rem;
+  font-weight: var(--wght-medium);
+  letter-spacing: 0.2em;
+  color: var(--text-bright);
+}
+html[data-arena-variant="neural"] .bb-arena__trust span {
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  text-align: center;
+}
+
+/* ============================================================
+   REVEAL + CTA + FOOTNOTE
+   ============================================================ */
+html[data-arena-variant="neural"] .bb-arena__reveal {
+  position: relative;
+  margin-top: var(--s-6);
+  padding: var(--s-5);
+  border: 1px solid var(--nn-line);
+  border-radius: 4px;
+  background: var(--nn-slab);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 30px 70px -46px rgba(0, 0, 0, 0.95);
+}
+html[data-arena-variant="neural"] .bb-arena__reveal::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 1px;
+  border-radius: 4px 4px 0 0;
+  background: linear-gradient(90deg, var(--acc-a), var(--acc-b));
+}
+html[data-arena-variant="neural"] .bb-arena__reveal .bb-id {
+  border-radius: 4px;
+  background: color-mix(in oklab, var(--ink-void) 45%, transparent);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+@media (min-width: 720px) {
+  html[data-arena-variant="neural"] .bb-arena__revealgrid {
+    padding-bottom: 0;
+  }
+  html[data-arena-variant="neural"] #reveal-card-a .bb-id,
+  html[data-arena-variant="neural"] #reveal-card-b .bb-id {
+    transform: none;
+  }
+  html[data-arena-variant="neural"] #reveal-card-a .bb-id--picked,
+  html[data-arena-variant="neural"] #reveal-card-b .bb-id--picked {
+    transform: translateY(-3px);
+  }
+}
+html[data-arena-variant="neural"] .bb-arena__next {
+  justify-self: stretch;
+  width: 100%;
+  padding: 1rem 1.5rem;
+  border: 1px solid color-mix(in oklab, var(--acc-a) 65%, transparent);
+  border-radius: 4px;
+  background: color-mix(in oklab, var(--acc-a) 10%, transparent);
+  box-shadow: none;
+  color: var(--acc-a-hi);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  text-shadow: none;
+  animation: none;
+}
+html[data-arena-variant="neural"]
+  .bb-arena__reveal
+  .bb-arena__next:not(:hover):not(:focus-visible) {
+  color: var(--acc-a-hi);
+  text-shadow: none;
+}
+html[data-arena-variant="neural"] .bb-arena__next:hover,
+html[data-arena-variant="neural"] .bb-arena__next:focus-visible {
+  background: color-mix(in oklab, var(--acc-a) 20%, transparent);
+  border-color: var(--acc-a);
+  color: var(--text-bright);
+  transform: none;
+  box-shadow: 0 0 36px -18px color-mix(in oklab, var(--acc-a) 90%, transparent);
+}
+html[data-arena-variant="neural"] .bb-arena__next::after {
+  content: none;
+}
+html[data-arena-variant="neural"] .bb-arena__note {
+  max-width: 52ch;
+  margin-inline: auto;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+}
+
+/* ============================================================
+   LIGHT THEME
+   ============================================================ */
+html[data-arena-variant="neural"][data-theme="light"] .bb-arena {
+  background:
+    radial-gradient(120% 80% at 50% 0%, rgba(255, 255, 255, 0.85), transparent 62%),
+    linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--ink-void) 90%, transparent),
+      color-mix(in oklab, var(--ink-base) 94%, transparent)
+    );
+}
+html[data-arena-variant="neural"][data-theme="light"] .bb-arena::after {
+  background:
+    radial-gradient(circle 3px at var(--nn-x) var(--nn-y), var(--nn-node), transparent 100%),
+    radial-gradient(
+      circle 14px at var(--nn-x) var(--nn-y),
+      color-mix(in oklab, var(--nn-node) 30%, transparent),
+      transparent 100%
+    ),
+    radial-gradient(
+      circle 80px at calc(var(--nn-x) - 32px) var(--nn-y),
+      color-mix(in oklab, var(--acc-a) 16%, transparent),
+      transparent 72%
+    ),
+    radial-gradient(
+      circle 80px at calc(var(--nn-x) + 32px) var(--nn-y),
+      color-mix(in oklab, var(--acc-b) 14%, transparent),
+      transparent 72%
+    ),
+    radial-gradient(
+      42% 48% at 30% 34%,
+      color-mix(in oklab, var(--acc-a) 6%, transparent),
+      transparent 72%
+    ),
+    radial-gradient(
+      42% 48% at 70% 34%,
+      color-mix(in oklab, var(--acc-b) 5%, transparent),
+      transparent 72%
+    ),
+    radial-gradient(
+      118% 96% at 50% 22%,
+      transparent 58%,
+      color-mix(in oklab, var(--ink-base) 55%, transparent)
+    );
+}
+html[data-arena-variant="neural"][data-theme="light"] .bb-arena > .bb-arena__net {
+  opacity: 0.5;
+  mix-blend-mode: multiply;
+}
+html[data-arena-variant="neural"][data-theme="light"] .bb-arena-hero__kicker::before {
+  color: var(--core-fire);
+}
+html[data-arena-variant="neural"][data-theme="light"] .bb-arena__brief,
+html[data-arena-variant="neural"][data-theme="light"] .bb-arena__reveal,
+html[data-arena-variant="neural"][data-theme="light"] .bb-arena__trust li {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.6),
+    0 18px 40px -34px rgba(22, 19, 14, 0.4);
+}
+html[data-arena-variant="neural"][data-theme="light"] .bb-arena__brief-eyebrow {
+  color: var(--core-amber);
+}
+html[data-arena-variant="neural"][data-theme="light"] .bb-arena__pane {
+  box-shadow:
+    inset 0 0 26px -14px color-mix(in oklab, var(--pane-acc) 40%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.65),
+    0 20px 44px -36px rgba(22, 19, 14, 0.4);
+}
+html[data-arena-variant="neural"][data-theme="light"] .bb-arena__pane:hover {
+  box-shadow:
+    inset 0 0 28px -12px color-mix(in oklab, var(--pane-acc) 50%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7),
+    0 22px 48px -34px rgba(22, 19, 14, 0.45);
+}
+html[data-arena-variant="neural"][data-theme="light"] .bb-arena__pane::before {
+  opacity: 0.35;
+}
+html[data-arena-variant="neural"][data-theme="light"] .bb-arena__framewrap {
+  background: rgba(255, 255, 255, 0.6);
+  box-shadow: inset 0 0 0 1px rgba(22, 19, 14, 0.04);
+}
+html[data-arena-variant="neural"][data-theme="light"] .bb-arena__frame {
+  background: #ffffff;
+}
+html[data-arena-variant="neural"][data-theme="light"] .bb-arena__play {
+  background:
+    radial-gradient(120% 90% at 50% 42%, rgba(22, 19, 14, 0.6), rgba(22, 19, 14, 0.82)),
+    linear-gradient(180deg, transparent 58%, rgba(22, 19, 14, 0.45));
+}
+html[data-arena-variant="neural"][data-theme="light"] .bb-arena__play-disc {
+  background: radial-gradient(
+    circle at 50% 34%,
+    color-mix(in oklab, var(--pane-acc) 30%, transparent),
+    rgba(22, 19, 14, 0.55)
+  );
+}
+html[data-arena-variant="neural"][data-theme="light"] .bb-arena__play-label {
+  color: #fdf9f2;
+}
+html[data-arena-variant="neural"][data-theme="light"] .bb-arena__play-hint {
+  color: rgba(253, 249, 242, 0.78);
+}
+html[data-arena-variant="neural"][data-theme="light"] .bb-arena__tool,
+html[data-arena-variant="neural"][data-theme="light"] .bb-arena__live {
+  color: var(--text-base);
+}
+html[data-arena-variant="neural"][data-theme="light"] .bb-arena__versus,
+html[data-arena-variant="neural"][data-theme="light"] .bb-arena__vs {
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.94), rgba(255, 255, 255, 0.94)) padding-box,
+    linear-gradient(90deg, var(--acc-a), var(--acc-b)) border-box;
+  color: var(--text-bright);
+  box-shadow:
+    0 0 0 5px color-mix(in oklab, var(--ink-void) 80%, transparent),
+    -11px 0 24px -14px color-mix(in oklab, var(--acc-a) 45%, transparent),
+    11px 0 24px -14px color-mix(in oklab, var(--acc-b) 45%, transparent);
+}
+html[data-arena-variant="neural"][data-theme="light"] .bb-arena__votebar {
+  background: color-mix(in oklab, var(--pane-acc) 7%, transparent);
+  color: var(--text-bright);
+}
+html[data-arena-variant="neural"][data-theme="light"] .bb-arena__votebar:hover {
+  background: color-mix(in oklab, var(--pane-acc) 14%, transparent);
+  box-shadow: 0 18px 36px -30px rgba(22, 19, 14, 0.45);
+}
+html[data-arena-variant="neural"][data-theme="light"] .bb-arena__rubric {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.6),
+    0 18px 40px -34px rgba(22, 19, 14, 0.4);
+}
+html[data-arena-variant="neural"][data-theme="light"] .bb-arena__rubric-hint,
+html[data-arena-variant="neural"][data-theme="light"] .bb-arena__rubric-clear {
+  color: var(--text-base);
+}
+html[data-arena-variant="neural"][data-theme="light"] .bb-arena__rubric-optlabel {
+  color: var(--text-base);
+  background: rgba(255, 255, 255, 0.5);
+}
+html[data-arena-variant="neural"][data-theme="light"]
+  .bb-arena__rubric-opt--a
+  .bb-arena__rubric-input:checked
+  + .bb-arena__rubric-optlabel {
+  background: color-mix(in oklab, var(--acc-a) 16%, rgba(255, 255, 255, 0.7));
+}
+html[data-arena-variant="neural"][data-theme="light"]
+  .bb-arena__rubric-opt--b
+  .bb-arena__rubric-input:checked
+  + .bb-arena__rubric-optlabel {
+  background: color-mix(in oklab, var(--acc-b) 16%, rgba(255, 255, 255, 0.7));
+}
+html[data-arena-variant="neural"][data-theme="light"]
+  .bb-arena__rubric-opt--tie
+  .bb-arena__rubric-input:checked
+  + .bb-arena__rubric-optlabel {
+  background: color-mix(in oklab, var(--text-bright) 10%, rgba(255, 255, 255, 0.7));
+}
+html[data-arena-variant="neural"][data-theme="light"] .bb-arena__reveal .bb-id {
+  background: rgba(255, 255, 255, 0.72);
+}
+html[data-arena-variant="neural"][data-theme="light"] .bb-arena__next {
+  background: color-mix(in oklab, var(--acc-a) 8%, transparent);
+}
+html[data-arena-variant="neural"][data-theme="light"] .bb-arena__next:hover,
+html[data-arena-variant="neural"][data-theme="light"] .bb-arena__next:focus-visible {
+  background: color-mix(in oklab, var(--acc-a) 14%, transparent);
+  color: var(--text-bright);
+  box-shadow: 0 18px 36px -30px rgba(22, 19, 14, 0.45);
+}
+@supports (-webkit-text-stroke: 1px black) {
+  html[data-arena-variant="neural"][data-theme="light"] .bb-arena__ghost {
+    -webkit-text-stroke-color: color-mix(in oklab, var(--pane-acc) 34%, transparent);
+  }
+}

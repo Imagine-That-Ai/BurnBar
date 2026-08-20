@@ -309,5 +309,26 @@ node_modules/
 # Transient AppImage extraction dir from package smoke (--appimage-extract)
 squashfs-root/
 
+# BurnBench Arena deploy staging: content-addressed artifact bundles are
+# regenerated from the bench results tree at publish time; never commit them.
+arena-public/bundles/
+
+# The arena is a BLIND comparison. These three files are its de-anonymisation
+# key: every record maps a matchup_id to the exact harness/model that produced
+# each side (e.g. "hermes/muse-spark-1-2-contributor/46_game_2048/trial-01").
+# Publishing any of them lets a voter — or a scraper — read off the answer
+# before voting, which does not merely leak data, it invalidates the ratings
+# those votes produce. This repo is PUBLIC. Never commit them.
+arena-public/arena_matchups.jsonl
+arena-public/seed_docs.json
+arena-public/publish_manifest.json
+
+# `firebase deploy` debug logs. No secret VALUES, but they enumerate every
+# Secret Manager secret NAME on the project plus the GCP project number —
+# a complete reconnaissance inventory of the secret store.
+# Note: the existing `.tmp-*` rule above uses a HYPHEN and does not match
+# `.tmp.driveupload` (dot) or `website/.tmp/`.
+.tmp.driveupload/
+website/.tmp/
 # Agent-owned goal ledgers are working notes, not public artifacts.
 .factory/goals/

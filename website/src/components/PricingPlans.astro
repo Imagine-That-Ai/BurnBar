@@ -391,7 +391,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
     padding: 0.6rem 1rem;
     border-radius: var(--r-pill);
     font-size: 0.92rem;
-    font-weight: 650;
+    font-weight: var(--wght-bold);
     letter-spacing: -0.01em;
     color: var(--text-base);
     transition:
@@ -441,7 +441,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
   }
   .billing__note strong {
     color: var(--status-exact);
-    font-weight: 700;
+    font-weight: var(--wght-black);
   }
   .billing.is-annual + .billing__note {
     color: var(--text-base);
@@ -759,7 +759,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
     border-color: transparent;
     background: linear-gradient(135deg, var(--core-amber), var(--core-fire));
     box-shadow: 0 6px 18px -6px rgba(250, 107, 6, 0.55);
-    font-weight: 700;
+    font-weight: var(--wght-black);
   }
   .plan__title {
     display: flex;
@@ -819,9 +819,8 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
     font-family: var(--font-display);
     color: var(--plan-text-bright);
     font-size: clamp(1.5rem, 1.2rem + 1vw, 1.9rem);
-    font-variation-settings:
-      "opsz" 80,
-      "wght" 540;
+    font-weight: var(--wght-semibold);
+    --opsz: var(--opsz-h3);
     letter-spacing: -0.02em;
   }
 
@@ -837,9 +836,8 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
     font-size: clamp(2.6rem, 2rem + 2.2vw, 3.7rem);
     color: var(--plan-text-bright);
     line-height: 0.95;
-    font-variation-settings:
-      "opsz" 144,
-      "wght" 560;
+    font-weight: var(--wght-semibold);
+    --opsz: var(--opsz-h1);
     letter-spacing: -0.04em;
   }
   .plan__amount--ember {
@@ -855,6 +853,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
     color: var(--plan-text-mute);
     margin-left: 0.25rem;
     -webkit-text-fill-color: var(--plan-text-mute);
+    --opsz: var(--opsz-body);
   }
   .plan__per {
     display: grid;
@@ -1011,7 +1010,7 @@ const headlineSave = Math.max(cloudSave, proSave, ultraSave);
   .topup__price {
     color: var(--status-exact);
     font-size: 0.86rem;
-    font-weight: 600;
+    font-weight: var(--wght-bold);
   }
   .topup__note {
     flex: 1 1 16rem;

@@ -1,20 +1,6 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800">
-  <path fill="#FFFFFF" fill-rule="evenodd" d="
-    M165.29 165.29
-    H517.36
-    V400
-    H400
-    V517.36
-    H282.65
-    V634.72
-    H165.29
-    Z
-    M282.65 282.65
-    V400
-    H400
-    V282.65
-    Z
-  "/>
-  <path fill="#FFFFFF" d="M517.36 400 H634.72 V634.72 H517.36 Z"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Pi agent mark">
+  <title>Pi</title>
+  <rect x="1" y="1" width="62" height="62" rx="14" fill="#0c0a0f" stroke="#2a2030" stroke-width="1.25"/>
+  <path fill="#FFFFFF" fill-rule="evenodd" d="M13.2 13.2 H41.4 V32 H32 V41.4 H22.6 V50.8 H13.2 Z M22.6 22.6 V32 H32 V22.6 Z"/>
+  <path fill="#FFFFFF" d="M41.4 32 H50.8 V50.8 H41.4 Z"/>
 </svg>

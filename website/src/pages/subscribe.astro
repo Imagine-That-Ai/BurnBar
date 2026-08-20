@@ -249,9 +249,8 @@ const subscriptionCatalog = Object.fromEntries(
     color: var(--text-bright);
     font-family: var(--font-display);
     font-size: clamp(2.6rem, 7vw, 4.8rem);
-    font-variation-settings:
-      "opsz" 100,
-      "wght" 560;
+    font-weight: var(--wght-semibold);
+    --opsz: var(--opsz-display);
     line-height: 0.96;
     letter-spacing: -0.04em;
   }
@@ -314,6 +313,7 @@ const subscriptionCatalog = Object.fromEntries(
     font-family: var(--font-display);
     font-size: 1.5rem;
     letter-spacing: -0.02em;
+    --opsz: var(--opsz-h3);
   }
 
   .plan-summary p,
@@ -335,9 +335,8 @@ const subscriptionCatalog = Object.fromEntries(
     color: var(--checkout-text-bright);
     font-family: var(--font-display);
     font-size: clamp(2rem, 8vw, 3rem);
-    font-variation-settings:
-      "opsz" 100,
-      "wght" 560;
+    font-weight: var(--wght-semibold);
+    --opsz: var(--opsz-h2);
     line-height: 1;
   }
 
@@ -359,7 +358,7 @@ const subscriptionCatalog = Object.fromEntries(
     min-height: 42px;
     border-radius: var(--r-pill);
     color: var(--checkout-text-mute);
-    font-weight: 650;
+    font-weight: var(--wght-bold);
     transition:
       color var(--dur-base) var(--ease),
       background var(--dur-base) var(--ease),
@@ -490,7 +489,7 @@ const subscriptionCatalog = Object.fromEntries(
     border-radius: 50%;
     color: var(--core-amber);
     background: rgba(250, 107, 6, 0.1);
-    font-weight: 800;
+    font-weight: var(--wght-black);
   }
 
   .status-mark--success {

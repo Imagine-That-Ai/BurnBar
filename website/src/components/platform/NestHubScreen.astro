@@ -417,7 +417,8 @@ const TONE_HEX: Record<string, string> = {
     color: #f6f1e7;
     font-family: var(--font-display);
     font-size: clamp(0.55rem, 0.7vw, 0.72rem);
-    font-variation-settings: "wght" 800;
+    font-weight: var(--wght-black);
+    --opsz: var(--opsz-caption);
   }
   .ncard__logo img {
     width: 84%;
@@ -433,9 +434,8 @@ const TONE_HEX: Record<string, string> = {
     color: #f6f1e7;
     font-family: var(--font-display);
     font-size: clamp(0.7rem, 0.95vw, 0.95rem);
-    font-variation-settings:
-      "wght" 720,
-      "opsz" 60;
+    font-weight: var(--wght-black);
+    --opsz: var(--opsz-caption);
     line-height: 1.05;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -474,16 +474,15 @@ const TONE_HEX: Record<string, string> = {
     font-family: var(--font-mono);
     font-size: clamp(0.45rem, 0.55vw, 0.55rem);
     line-height: 1.4;
-    font-variation-settings: "wght" 580;
+    font-weight: var(--wght-semibold);
     white-space: nowrap;
   }
 
   .ncard__total {
     color: #f6f1e7;
     font-family: var(--font-display);
-    font-variation-settings:
-      "wght" 800,
-      "opsz" 144;
+    font-weight: var(--wght-black);
+    --opsz: var(--opsz-lead);
     font-size: clamp(1.05rem, 1.85vw, 1.6rem);
     line-height: 1;
     letter-spacing: -0.02em;
@@ -494,7 +493,7 @@ const TONE_HEX: Record<string, string> = {
     font-family: var(--font-mono);
     font-size: clamp(0.42rem, 0.5vw, 0.55rem);
     letter-spacing: 0.1em;
-    font-variation-settings: "wght" 700;
+    font-weight: var(--wght-black);
   }
   .ncard__rule {
     border: none;
@@ -519,11 +518,12 @@ const TONE_HEX: Record<string, string> = {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    --opsz: var(--opsz-caption);
   }
   .bucket__headline {
     color: #f6f1e7;
     font-size: clamp(0.5rem, 0.6vw, 0.62rem);
-    font-variation-settings: "wght" 700;
+    font-weight: var(--wght-black);
     font-variant-numeric: tabular-nums;
   }
   .bucket__track {
@@ -581,7 +581,7 @@ const TONE_HEX: Record<string, string> = {
   .ncard__cost {
     color: #f6f1e7;
     font-family: var(--font-mono);
-    font-variation-settings: "wght" 700;
+    font-weight: var(--wght-black);
     font-variant-numeric: tabular-nums;
   }
 
@@ -601,15 +601,14 @@ const TONE_HEX: Record<string, string> = {
     font-family: var(--font-mono);
     color: #ffb547;
     letter-spacing: 0.1em;
-    font-variation-settings: "wght" 580;
+    font-weight: var(--wght-semibold);
     text-transform: uppercase;
   }
   .nesthub-screen__footer-model {
     color: #f6f1e7;
     font-family: var(--font-display);
-    font-variation-settings:
-      "wght" 640,
-      "opsz" 80;
+    font-weight: var(--wght-bold);
+    --opsz: var(--opsz-caption);
   }
   .nesthub-screen__footer-score {
     margin-left: auto;

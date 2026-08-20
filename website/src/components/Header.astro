@@ -1,8 +1,59 @@
 ---
-import { NAV_PRIMARY, SITE } from "@data/site";
+import { SITE } from "@data/site";
 import Brandmark from "./Brandmark.astro";
 
 const path = Astro.url.pathname.replace(/\/$/, "");
+
+/* Elegantly consolidated header: the full NAV_PRIMARY (11 items) wrapped
+   into 5 pills + one "More" so the bar never wraps or feels flea-market.
+   Footer keeps the flat list; header groups for scan. */
+const PRODUCT_DROPDOWN = [
+  { href: "/product", label: "Overview" },
+  { href: "/platforms", label: "Platforms" },
+  { href: "/providers", label: "Providers" },
+  { href: "/benefits", label: "Why it matters" }
+];
+const MORE_DROPDOWN = [
+  { href: "/trust", label: "Trust" },
+  { href: "/privacy", label: "Privacy" },
+  { href: "/security", label: "Security" },
+  { href: "/mcp", label: "MCP" },
+  { href: "/support", label: "Support" },
+  { href: "/faq", label: "FAQ" }
+];
+
+interface NavItem {
+  href: string;
+  label: string;
+  dropdown?: { href: string; label: string }[];
+}
+const HEADER_NAV: NavItem[] = [
+  { href: "/product", label: "Product", dropdown: PRODUCT_DROPDOWN },
+  { href: "/router", label: "Router" },
+  { href: "/bench", label: "Bench" },
+  { href: "/floo", label: "Floo" },
+  { href: "/control", label: "Control" },
+  { href: "/pricing", label: "Pricing" },
+  { href: "/trust", label: "More", dropdown: MORE_DROPDOWN }
+];
+const MOBILE_NAV = [
+  { href: "/product", label: "Product" },
+  { href: "/router", label: "Router" },
+  { href: "/bench", label: "Bench" },
+  { href: "/floo", label: "Floo" },
+  { href: "/control", label: "Agent Control" },
+  { href: "/platforms", label: "Platforms" },
+  { href: "/providers", label: "Providers" },
+  { href: "/pricing", label: "Pricing" },
+  { href: "/trust", label: "Trust" },
+  { href: "/faq", label: "FAQ" },
+  { href: "/download", label: "Download" }
+];
+
+function isActive(href: string): boolean {
+  const itemPath = href.replace(/\/$/, "");
+  return path === itemPath || (itemPath !== "" && path.startsWith(itemPath));
+}
 ---
 
 <header class="site-header" data-elevated="false">
@@ -13,9 +64,50 @@ const path = Astro.url.pathname.replace(/\/$/, "");
     <nav class="site-nav" aria-label="Primary">
       <ul>
         {
-          NAV_PRIMARY.map((item) => {
-            const itemPath = item.href.replace(/\/$/, "");
-            const active = path === itemPath || (itemPath !== "" && path.startsWith(itemPath));
+          HEADER_NAV.map((item) => {
+            const active = isActive(item.href);
+            const dd = item.dropdown;
+            if (dd) {
+              const ddActive = dd.some((d) => isActive(d.href)) || active;
+              return (
+                <li class="site-nav__drop">
+                  <a
+                    href={item.href}
+                    class="site-nav__trigger"
+                    aria-current={ddActive ? "page" : undefined}
+                    data-active={ddActive}
+                    aria-haspopup="true"
+                  >
+                    {item.label}
+                    <svg
+                      class="site-nav__chev"
+                      viewBox="0 0 12 12"
+                      width="10"
+                      height="10"
+                      aria-hidden="true"
+                    >
+                      <path
+                        d="M3 4.5L6 7.5L9 4.5"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.4"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      />
+                    </svg>
+                  </a>
+                  <ul class="site-nav__menu" role="menu">
+                    {dd.map((d) => (
+                      <li role="none">
+                        <a role="menuitem" href={d.href} data-active={isActive(d.href)}>
+                          {d.label}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </li>
+              );
+            }
             return (
               <li>
                 <a href={item.href} aria-current={active ? "page" : undefined} data-active={active}>
@@ -94,7 +186,7 @@ const path = Astro.url.pathname.replace(/\/$/, "");
   <div id="mobile-nav" class="mobile-nav" hidden>
     <ul>
       {
-        NAV_PRIMARY.map((item) => (
+        MOBILE_NAV.map((item) => (
           <li>
             <a href={item.href}>{item.label}</a>
           </li>
@@ -212,10 +304,12 @@ const path = Astro.url.pathname.replace(/\/$/, "");
   .site-nav ul {
     display: flex;
     gap: 0.1rem;
+    align-items: center;
   }
   .site-nav a {
     display: inline-flex;
     align-items: center;
+    gap: 0.28rem;
     padding: 0.4rem 0.65rem;
     border-radius: var(--r-3);
     font-size: 0.85rem;
@@ -231,6 +325,58 @@ const path = Astro.url.pathname.replace(/\/$/, "");
   }
   .site-nav a[data-active="true"] {
     color: var(--text-bright);
+    background: var(--ink-surface);
+  }
+  .site-nav__chev {
+    opacity: 0.5;
+    transition:
+      opacity var(--dur-fast) var(--ease-out),
+      transform var(--dur-fast) var(--ease-out);
+  }
+  .site-nav__drop:hover .site-nav__chev {
+    opacity: 0.95;
+  }
+  .site-nav__drop {
+    position: relative;
+  }
+  .site-nav__menu {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%) translateY(4px);
+    min-width: 180px;
+    display: grid;
+    gap: 1px;
+    padding: 6px;
+    background: var(--glass-bg-elevated);
+    backdrop-filter: blur(28px) saturate(180%);
+    -webkit-backdrop-filter: blur(28px) saturate(180%);
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-md);
+    box-shadow:
+      0 12px 40px -16px rgba(0, 0, 0, 0.55),
+      0 1px 0 var(--ink-line-soft);
+    opacity: 0;
+    pointer-events: none;
+    transition:
+      opacity var(--dur-fast) var(--ease-out),
+      transform var(--dur-fast) var(--ease-out);
+    z-index: 30;
+  }
+  .site-nav__drop:hover .site-nav__menu,
+  .site-nav__drop:focus-within .site-nav__menu {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateX(-50%) translateY(0);
+  }
+  .site-nav__menu a {
+    display: flex;
+    width: 100%;
+    padding: 0.55rem 0.75rem;
+    border-radius: var(--r-3);
+    font-size: 0.84rem;
+  }
+  .site-nav__menu a:hover {
     background: var(--ink-surface);
   }
   .site-header__cta {

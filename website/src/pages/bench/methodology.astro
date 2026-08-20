@@ -1,0 +1,603 @@
+---
+/**
+ * /bench/methodology — the rigour.
+ *
+ * Pre-registration, the scoring contract, the statistical treatment, and the
+ * full amendment log. Split out of the dashboard so the safeguards are
+ * findable rather than buried at scroll position 22,903.
+ */
+import BaseLayout from "@layouts/BaseLayout.astro";
+import "@styles/bench.css";
+import "@styles/bench-instrument.css";
+import BenchNav from "@components/bench/BenchNav.astro";
+import {
+  BENCH,
+  TRIALS_MEASURED,
+  TASK_CELLS,
+  EXCLUDED_MEASURED,
+  MODEL_CLASS,
+  classFor,
+  modelDisplay,
+  harnessDisplay,
+  fmtInt,
+  fmtGeneratedAt,
+  EVIDENCE,
+  noopStats,
+  reportStats,
+  reportCoverage
+} from "@data/bench";
+
+const mcls = (id: string): string => classFor(MODEL_CLASS, id);
+
+const generatedAt = fmtGeneratedAt(BENCH.generated_at_utc);
+const shaShort = BENCH.source.runs_sha256.slice(0, 12);
+
+const stats = reportStats();
+const noop = noopStats();
+const coverage = reportCoverage();
+
+const params = EVIDENCE.params as {
+  ci?: string;
+  high_n?: number;
+  medium_n?: number;
+  prior_strength?: number;
+};
+
+const AMENDMENTS: [string, string, string][] = [
+  [
+    "Pilot oracle-path fix",
+    "2026-08-06",
+    "Tasks 24–26 verify.sh resolved oracle test files at the wrong bundle path; fixed and re-piloted 6/6 pass. Calibration gate closed."
+  ],
+  [
+    "Image provenance",
+    "2026-08-06",
+    "The v2 image adds TypeScript, uv, and the prime kernel venv — additive, harness-orthogonal; per-cell image digests recorded for review."
+  ],
+  [
+    "Hard-task expansion",
+    "2026-08-06",
+    "Tasks 15–26 passed at ~97% field-wide — a floor, not a signal. Six hard tasks (27–32) authored; every cell topped up to 5 trials."
+  ],
+  [
+    "Timeout enforcement fix",
+    "2026-08-06",
+    "Detached grandchildren held pipes past the cap; the agent now runs in its own process group (SIGKILL on timeout) and verify.sh is bounded to 600s. Scoring-neutral."
+  ],
+  [
+    "Multi-model expansion",
+    "2026-08-06",
+    "GLM 5.2, GPT 5.6 Luna Pro, and Muse Spark 1.2 join — a full 32-task × 8-harness × 5-trial matrix per model on the sealed image."
+  ],
+  [
+    "Adversarial-audit response",
+    "2026-08-07",
+    "split-phase-v1 isolation (agent and verifier in separate containers); hermes rerun on a lean tool surface; freeze cells quarantined; stats red-team fixes."
+  ],
+  [
+    "Infrastructure hardening",
+    "2026-08-07",
+    "Container memory caps (1500m), Docker VM raised to 16 GiB, concurrency capped at 9 after OOM freeze events."
+  ],
+  [
+    "Mid-run audit",
+    "2026-08-08",
+    "Task 03 invalidated everywhere (190 cells); the seal verified (0/2,602 contaminated); verify re-execution 12/12; Prime Agent found genuine; GUI exclusion bug fixed."
+  ],
+  [
+    "Solution-quality endpoint",
+    "2026-08-08",
+    "The workspace verdict at budget end (verify_exit_code == 0) reported alongside strict; timeout-while-passing cells flip between the two."
+  ],
+  [
+    "Experiential family + Arena",
+    "2026-08-08",
+    "Visual, game, sim, and UI tasks judged by blind human pairwise vote; registry v2 / meta v4; Bradley-Terry ratings published at 30+ votes per stack."
+  ],
+  [
+    "Cost derivation disclosure",
+    "2026-08-08",
+    "Token-derived list-price costs labeled cost_source: derived, never presented as measured; cached input tokens billed at the full input rate."
+  ],
+  [
+    "Standard-tier cost equivalent",
+    "2026-08-08",
+    "The contributor tier of muse-spark is free under data-sharing; every contributor cell is repriced at the standard non-contributor rates (meta/muse-spark-1.2, $1.25/$4.25 per M) and published as cost_standard_usd_median alongside the $0.00."
+  ],
+  [
+    "Comparative quality judging",
+    "2026-08-09",
+    "Kimi K3 judges every measured cell on a 4-dimension rubric (correctness, invariant coverage, code quality, performance awareness) with per-trial rationales. Hard tasks 33-37 added to break saturation; reference-solution anchors calibrate the judge on those tasks. Judge timeouts root-caused and fixed (chunk 8, 900s)."
+  ],
+  [
+    "Verifier audit + offline re-verification",
+    "2026-08-10",
+    "A field review of easy/mid task rates found five broken verifiers: 01's test-detection glob never expands inside bash [[ ]] (only tests/ dirs passed; root-level test files were invisible), and 11/12/13/14 ran structural AST gates that rejected oracle-passing refactors (type-annotated registries invisible, class-based decompositions uncounted, 14 failed the textbook commit-after-loop while exempting context-manager transactions). Structural gates dropped — behavior is the spec, matching ungated refactor tasks 03/21. All 1,265 preserved trials of the five tasks were re-verified offline against the archived diffs (no agent re-runs); 676 false failures corrected. 06_async_bug audited and found legitimately hard (cancellation-absorption trap); its rate is honest signal. Original meta.json artifacts are untouched; corrected verdicts live in per-trial reverify.json overlays with verifier SHA-256 provenance."
+  ]
+];
+---
+
+<BaseLayout
+  title="BurnBench methodology & amendments"
+  description="Pre-registration, the scoring contract, statistical treatment, and every amendment to the BurnBench analysis plan."
+>
+  <div class="ins">
+    <section class="ins-section ins-hero" aria-labelledby="meth-hero-h">
+      <div class="ins-wrap ins-hero__inner">
+        <p class="ins-eyebrow ins-rise ins-rise-1">Rigour</p>
+        <h1 id="meth-hero-h" class="ins-hero__h ins-rise ins-rise-2">
+          How the numbers
+          <em>were earned.</em>
+        </h1>
+        <p class="ins-lede ins-hero__lede ins-rise ins-rise-3">
+          The pre-registered plan, the scoring contract, the statistical treatment, and all
+          {AMENDMENTS.length} amendments — each dated, each with the reason it was made.
+        </p>
+        <div class="ins-prov ins-rise ins-rise-4">
+          <span class="ins-prov__item"
+            ><span class="ins-prov__dot" aria-hidden="true"></span>generated {generatedAt}</span
+          >
+          <span class="ins-prov__item"
+            ><span class="ins-prov__dot" aria-hidden="true"></span>runs sha {shaShort}…</span
+          >
+          <span class="ins-prov__item"
+            ><span class="ins-prov__dot" aria-hidden="true"></span>{AMENDMENTS.length} amendments</span
+          >
+        </div>
+      </div>
+    </section>
+    <BenchNav current="methodology" />
+  </div>
+  <section class="bb-section bb-section--mercury" id="methodology" aria-labelledby="method-h">
+    <div class="container container--wide">
+      <header class="bb-sec-head">
+        <span class="eyebrow eyebrow--mercury">Reproducibility</span>
+        <h2 id="method-h" class="bb-sec-h">Methodology &amp; amendments.</h2>
+        <p class="bb-sec-lead">
+          Pre-registered before the v2 matrix ran; the plan's SHA-256 is embedded in every report so
+          post-hoc deviation is detectable. {AMENDMENTS.length} logged amendments track every mid-flight
+          change. Questions, concerns, issues, or suggestions?
+          <a href="mailto:bench@burnbar.ai">bench@burnbar.ai</a>
+        </p>
+      </header>
+
+      <div class="bb-methgrid">
+        <div class="bb-methcard">
+          <h3>The pre-registered plan.</h3>
+          <ul class="bb-facts">
+            <li>
+              <span class="bb-facts__k">Unit of inference</span>
+              <span>
+                the <strong>task cluster</strong> — trials within a task are averaged, never treated as
+                independent
+              </span>
+            </li>
+            <li>
+              <span class="bb-facts__k">Primary test</span>
+              <span>
+                two-sided <strong>sign-flip permutation</strong> on paired task-cluster means; exact enumeration
+                ≤20 clusters, Monte Carlo <strong>200,000</strong> reps otherwise (seed 20260806)
+              </span>
+            </li>
+            <li>
+              <span class="bb-facts__k">Multiplicity</span>
+              <span>
+                <strong>Holm step-down</strong> within pre-registered families: pooled harness, coding
+                subgroup, model pairs
+              </span>
+            </li>
+            <li>
+              <span class="bb-facts__k">Confidence</span>
+              <span>
+                <strong
+                  >{params.ci === "wilson-95" ? "Wilson 95%" : (params.ci ?? "Wilson 95")}</strong
+                >
+                intervals on every published rate; n &lt; {params.medium_n ?? 10} ⇒ low confidence, ineligible
+                for top rank
+              </span>
+            </li>
+            <li>
+              <span class="bb-facts__k">Shrinkage</span>
+              <span>
+                slices with n &lt; {params.high_n ?? 40} pool toward the stack overall, then the global
+                rate (prior strength {params.prior_strength ?? 10}) — labeled
+                <strong> inferred</strong>, never presented as measured
+              </span>
+            </li>
+            <li>
+              <span class="bb-facts__k">Isolation</span>
+              <span>
+                <strong>split-phase-v1</strong>: agent and verifier run in separate containers; the
+                oracle bundle mounts read-only only in the verify phase
+              </span>
+            </li>
+            <li>
+              <span class="bb-facts__k">Wall-clock caps</span>
+              <span>
+                1,500s hard batch · 1,800s standard; strict rule <code>timed_out ⇒ fail</code>
+              </span>
+            </li>
+            <li>
+              <span class="bb-facts__k">Provenance</span>
+              <span>
+                per-cell image digests in meta.json; runs <code>{shaShort}…</code>;
+                {" "}{fmtInt(stats.excluded)} excluded by policy, {fmtInt(stats.trials)} trials measured
+                across {fmtInt(stats.cells)} task cells
+              </span>
+            </li>
+          </ul>
+        </div>
+
+        <div class="bb-methcard">
+          <h3>Amendment log.</h3>
+          <ol class="bb-amend">
+            {
+              AMENDMENTS.map(([title, date, body], i) => (
+                <li class="bb-amend__item">
+                  <h4>
+                    Amendment {i + 1} — {title}
+                    <span class="mono">{date}</span>
+                  </h4>
+                  <p>{body}</p>
+                </li>
+              ))
+            }
+          </ol>
+        </div>
+      </div>
+
+      <div class="bb-method bb-method--spaced">
+        <article class="bb-methcard">
+          <h3>The suite.</h3>
+          <p>
+            Tasks follow the <code>NN_name</code> convention and are tagged by family, language, framework,
+            platform, and difficulty. Thirteen families span the work agents actually get asked to do:
+            <code>refactor</code>, <code>bugfix</code>, <code>feature</code>,
+            <code>performance</code>, <code>systems</code>, <code>parser</code>,
+            <code>agentic-ops</code>, and the experiential families — <code>visual-svg</code>,
+            <code>visual-canvas</code>, <code>visual-3d</code>, <code>game</code>,
+            <code>sim-game</code>, <code>ui-build</code>.
+          </p>
+        </article>
+
+        <article class="bb-methcard">
+          <h3>Two validators.</h3>
+          <p>
+            <strong>Script-validated</strong> tasks run a <code>verify.sh</code> pass/fail gate.
+            <strong>Human-validated</strong> tasks (every experiential family) run mechanical packaging
+            checks, then go to the <a href="/bench/arena">Arena</a> for blind pairwise judgment — a script
+            can't grade whether a game feels finished.
+          </p>
+        </article>
+
+        <article class="bb-methcard">
+          <h3>Strict rate vs solution rate.</h3>
+          <p>
+            The <strong>solution rate</strong> credits a cell when the deliverable solves the task under
+            the suite's solution checks. The <strong>strict rate</strong> is the harsher gate: every mechanical
+            check green, no partial credit, no packaging exceptions. The gap between them is visible on
+            every leaderboard bar — a wide gap means a stack ships almost-right work.
+          </p>
+        </article>
+
+        <article class="bb-methcard">
+          <h3>Statistics you can audit.</h3>
+          <ul>
+            <li>
+              Every rate carries a <strong>Wilson 95% confidence interval</strong> at the cell's n.
+            </li>
+            <li>
+              <code>n &lt; 10</code> ⇒ <strong>low confidence</strong>, and the stack may not be
+              ranked first.
+            </li>
+            <li>
+              <strong>Inferred</strong> cells are shrinkage-pooled estimates — shown dashed, never presented
+              as measured.
+            </li>
+            <li>
+              Arena ratings are <strong>Bradley-Terry</strong> with bootstrap CIs, published only at 30+
+              votes per stack.
+            </li>
+          </ul>
+        </article>
+
+        <article class="bb-methcard">
+          <h3>Provenance &amp; freshness.</h3>
+          <p>
+            Each export pins <code>generated_at_utc</code> and a <code>runs_sha256</code> over the underlying
+            run set, so consumers can reject stale files. This build:
+            <strong>{generatedAt}</strong>, runs <code>{shaShort}…</code>,
+            {fmtInt(TRIALS_MEASURED)} trials measured across {fmtInt(TASK_CELLS)} task cells,
+            {fmtInt(EXCLUDED_MEASURED)} excluded (superseded or invalid), trees
+            <code>{BENCH.source.trees.map((t) => t.split("/").pop()).join(", ")}</code>.
+          </p>
+          <p>
+            One caveat on the export's own field names: <code>source.cells_measured</code> counts
+            <strong> trials</strong>, not cells — it equals <code>evidence.global.n</code>, the sum
+            of every cell's <code>n</code>. The distinct
+            <strong> (harness × model × task)</strong> cell count is {fmtInt(TASK_CELLS)}, the row
+            count of <code>evidence.json</code>. These pages say "trials" for the first and "cells"
+            for the second.
+          </p>
+        </article>
+
+        <article class="bb-methcard">
+          <h3>How medians are computed.</h3>
+          <p>
+            <code>wall_seconds_median</code>, <code>cost_usd_median</code>, and
+            <code>tokens_median</code> are
+            <strong>n-weighted medians of per-task medians</strong> (<code
+              >params.scope_medians</code
+            >): each task contributes its own median, weighted by its trial count, so the mix of
+            fast and slow tasks doesn't drag the number. A pooled run-level median will differ — pi
+            × GLM 5.2 shows 43.9s task-weighted against 52.7s pooled.
+          </p>
+        </article>
+
+        <article class="bb-methcard">
+          <h3>Cost &amp; speed.</h3>
+          <p>
+            <code>cost_usd_median</code> is the median per-task dollar cost at configured list prices;
+            <code>wall_seconds_median</code> and <code>tokens_median</code> are medians over the same
+            cells. Every row declares <code>cost_source</code>:
+            <strong> measured</strong> when the harness reported a monetary figure (or the model is configured
+            free), <strong> derived</strong> when cost was computed from token counts × per-million list
+            prices — cached input tokens billed at the full input rate, a disclosed upper bound for cache-heavy
+            stacks — and <strong> none</strong> when no cost evidence exists. Derived costs are estimates,
+            never receipts. Subsidized models additionally carry <code
+              >cost_standard_usd_median</code
+            >: the muse-spark contributor tier is free under a data-sharing agreement, so every
+            contributor cell is repriced at the standard non-contributor rates (<code
+              >meta/muse-spark-1.2</code
+            >, $1.25/M input, $4.25/M output) and shown alongside the $0.00 — the subsidy is
+            disclosed, never presented as the model's price. The
+            <a href="/bench#pareto">Pareto view</a> plots cost against quality so a cheap stack that almost
+            ships is priced honestly against an expensive one that does.
+          </p>
+        </article>
+
+        <article class="bb-methcard">
+          <h3>Run integrity.</h3>
+          <ul>
+            <li>
+              <strong>Timeouts.</strong> Every task runs against a per-task wall cap; timed-out runs count
+              as failures and stay in the wall medians — a median is robust to them.
+            </li>
+            <li>
+              <strong>No-op runs.</strong> A run whose final diff touches only harness scaffolding — zero
+              source edits — is a no-op, counted as a failure and flagged wherever its cell surfaces.
+              {
+                noop && noop.runs > 0 && (
+                  <>
+                    {" "}
+                    {fmtInt(noop.runs)} {noop.runs === 1 ? "run" : "runs"} across {noop.cells}
+                    {noop.cells === 1 ? "cell" : "cells"} ended with no source edits — counted as
+                    failures, flagged for transparency.
+                  </>
+                )
+              }
+            </li>
+            <li>
+              <strong>Token accounting.</strong> 2026-08-08: fixed an opencode step-usage parser that
+              could undercount output tokens; two historical runs were repaired from event logs. Published
+              token medians use <code>task_total_tokens</code> and were unaffected.
+            </li>
+          </ul>
+        </article>
+
+        <article class="bb-methcard">
+          <h3>Reasoning effort parity.</h3>
+          <p>
+            Every run requests reasoning effort <code>high</code>. Delivery differs by harness:
+            claude, pi, omp, and prime-agent carry an explicit flag; the others reach it through
+            config or alias. opencode had no explicit delivery path, so on 2026-08-09 its three
+            weakest glm-5-2 cells (18, 21, 22) were rerun with the effort pin enforced at the proxy;
+            those 15 runs replace the originals here. Under parity, opencode engaged on every task
+            (aggregate on the three cells rose 13% → 27%), though three of five task-21 runs still
+            ended without source edits — flagged as no-ops on that cell. Treat residual
+            cross-harness effort differences as a known limitation.
+          </p>
+        </article>
+
+        <article class="bb-methcard">
+          <h3>Comparative quality judging.</h3>
+          <p>
+            Binary pass/fail saturates: on easy tasks every stack passes, and the signal is gone.
+            The <strong>Kimi K3 judge</strong> adds a differentiation layer — every measured cell's diff
+            is bytecode-stripped, anonymized, and shown to the judge as an anonymous candidate alongside
+            every other candidate for that task. The judge scores four 1-5 rubric dimensions (<strong
+              >correctness strategy</strong
+            >, <strong>invariant coverage</strong>,
+            <strong>code quality</strong>, <strong>performance awareness</strong>) and produces a
+            total-order ranking with a per-trial rationale.
+          </p>
+          <ul>
+            <li>
+              <strong>Blind judging.</strong> Candidates are anonymized (C01, C02, ...) — the judge never
+              sees harness or model names.
+            </li>
+            <li>
+              <strong>Reference anchors.</strong> Hard tasks (33-37) ship a hidden reference solution
+              mixed in as one more anonymous candidate. A judge that scores the reference low is drifting;
+              per-task anchor scores are recorded for exactly that audit.
+            </li>
+            <li>
+              <strong>Integrity filter.</strong> Cells with <code>infra_failure</code> status or empty
+              diffs are excluded from judging — the judge never sees a non-run.
+            </li>
+            <li>
+              <strong>Timeout hardening.</strong> Judge calls use a 900s timeout with chunked rounds (max
+              8 candidates per round) plus a merge round for large pools. A round that fails twice is
+              recorded as <code>judge_error</code>; the batch never crashes.
+            </li>
+            <li>
+              <strong>Resumable.</strong> Per-task atomic writes mean a crash mid-batch costs at most
+              the in-flight task; rerunning the same command resumes where it left off.
+            </li>
+            <li>
+              <strong>Meta-synthesis.</strong> A second pass asks the judge to synthesize patterns per
+              harness×model combo, per harness (across models), and per model (across harnesses). Each
+              synthesis goes through three rounds of self-critique: the judge re-reads the source data,
+              flags overclaims and missed patterns, then produces a corrected version.
+            </li>
+          </ul>
+        </article>
+
+        <article class="bb-methcard">
+          <h3>Data pipeline safeguards.</h3>
+          <ul>
+            <li>
+              <strong>Incremental atomic writes.</strong> Every intermediate artifact (meta.json, quality_scores.json,
+              synthesis.json) is written to a temp file then renamed — a crash never leaves a corrupt
+              file.
+            </li>
+            <li>
+              <strong>Skip-existing semantics.</strong> Every pipeline stage checks what's already done
+              and only processes the remainder. Rerunning any command is safe and idempotent.
+            </li>
+            <li>
+              <strong>Provenance chain.</strong> Per-cell image digests in meta.json, a
+              <code>runs_sha256</code> over the full run set in every export, and
+              <code>generated_at_utc</code> timestamps let consumers reject stale or tampered data.
+            </li>
+            <li>
+              <strong>Seal verification.</strong> The pre-registered plan's SHA-256 is embedded in every
+              report. 0/2,602 cells contaminated at the mid-run audit.
+            </li>
+            <li>
+              <strong>Superseded cell quarantine.</strong> Runs replaced by corrections (e.g. the opencode
+              effort-parity rerun) are marked <code>superseded</code> and excluded from all rates, but
+              retained in the tree for audit.
+            </li>
+            <li>
+              <strong>Docker crash recovery.</strong> Two Docker Desktop crashes (resource saver + memory
+              pressure) were recovered with zero data loss via resume semantics.
+            </li>
+          </ul>
+        </article>
+      </div>
+
+      {
+        /* Suite coverage + excluded tasks — render only once the export ships
+           its coverage block; older exports hide the whole block cleanly. */
+        coverage && (
+          <div class="bb-cov">
+            <article class="bb-methcard">
+              <h3>Suite coverage.</h3>
+              <p>
+                Each model's measured task set, from the export's <code>coverage</code> block.
+                {coverage.commonCount > 0 &&
+                  `${coverage.commonCount} tasks are common to all ${coverage.models.length} models — the like-for-like comparison scope.`}
+                Harness gaps list tasks the model ran on other harnesses but not that one.
+              </p>
+              <div class="bb-cov__wrap">
+                <table class="bb-data bb-cov__table">
+                  <thead>
+                    <tr>
+                      <th scope="col">model</th>
+                      <th scope="col">tasks</th>
+                      <th scope="col">families</th>
+                      <th scope="col">harness gaps</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {coverage.models.map((m) => (
+                      <tr>
+                        <td class={`d-model m--${mcls(m.id)}`}>{modelDisplay(m.id)}</td>
+                        <td>{m.tasks}</td>
+                        <td class="d-sub bb-cov__fams">{m.families.join(", ")}</td>
+                        <td class="d-sub bb-cov__gaps">
+                          {m.gaps.length === 0
+                            ? "none"
+                            : m.gaps
+                                .map(
+                                  (g) =>
+                                    `${harnessDisplay(g.harness)} missing ${g.missing.join(", ")}`
+                                )
+                                .join(" · ")}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {coverage.minTasks !== coverage.maxTasks && (
+                <p class="bb-note bb-cov__note">
+                  <strong>Cross-model overall rates pool different suites.</strong>
+                  {`${coverage.maxModels.map(modelDisplay).join(" and ")} ran ${coverage.maxTasks} tasks${coverage.extraFamilies.length > 0 ? ` (families incl. ${coverage.extraFamilies.join("/")})` : ""}; ${coverage.minModels.map(modelDisplay).join(" and ")} ran the ${coverage.minTasks}-task systems suite. Use the`}
+                  <strong>Systems family</strong>
+                  {`scope — common to all ${coverage.models.length} models — for apples-to-apples model comparison.`}
+                </p>
+              )}
+            </article>
+
+            {coverage.excluded.length > 0 && (
+              <article class="bb-methcard">
+                <h3>Excluded tasks.</h3>
+                <div class="bb-cov__wrap">
+                  <table class="bb-data bb-cov__table bb-cov__table--excl">
+                    <thead>
+                      <tr>
+                        <th scope="col">task</th>
+                        <th scope="col">reason</th>
+                        <th scope="col">disposition</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {coverage.excluded.map((x) => (
+                        <tr>
+                          <td>{x.task}</td>
+                          <td class="d-sub bb-cov__reason">{x.reason}</td>
+                          <td class="d-sub">excluded from rates, retained in coverage</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </article>
+            )}
+          </div>
+        )
+      }
+
+      <p class="bb-note bb-note--spaced">
+        <strong>The pipeline's self-contained report.</strong> The BurnBench pipeline also emits a single-file
+        interactive HTML report from the same evidence store. This page is that report's native port —
+        same export, every number recomputed at build time, rendered inside burnbar.ai's hash-locked CSP
+        with zero inline runtime. The raw artifact stays in the pipeline repo for offline reading; the
+        JSON projections behind this page are served at
+        <a href="/data/bench-report.json"><code>/data/bench-report.json</code></a> and
+        <a href="/data/bench-cells.json"><code>/data/bench-cells.json</code></a>.
+      </p>
+
+      <p class="bb-note bb-note--spaced" style="text-align: center; margin-top: 2rem;">
+        Questions, concerns, issues, or suggestions about the benchmark?
+        <a href="mailto:bench@burnbar.ai"><strong>bench@burnbar.ai</strong></a>
+      </p>
+    </div>
+  </section>
+
+  {/* ──────────────── 9 · CELL EXPLORER ──────────────── */}
+
+  <div class="ins">
+    <section class="ins-section">
+      <div class="ins-wrap">
+        <p class="ins-key">
+          Questions, concerns, or corrections about the benchmark?
+          <a href="mailto:bench@burnbar.ai">bench@burnbar.ai</a>
+        </p>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    import "../../scripts/bench-report";
+  </script>
+  {
+    /* Drives the scroll-linked atmosphere fade; every other initialiser
+      no-ops when its hooks are absent from the page. */
+  }
+  <script>
+    import "../../scripts/bench-instrument.ts";
+  </script>
+</BaseLayout>

@@ -552,6 +552,19 @@ jobs:
           if set(config.keys()) != {"hosting"}:
               raise SystemExit("::error::firebase-hosting.ci.json must contain only hosting")
           targets = {entry.get("target"): entry.get("public") for entry in config["hosting"]}
+          # Exactly the two targets CI may publish. This is deliberately an
+          # independent restatement of the allowlist in
+          # scripts/ci/write-firebase-hosting-ci-config.mjs, so a widened
+          # allowlist there still has to be widened here too.
+          #
+          # firebase.json also declares an arena-artifacts target
+          # (public: arena-public). It is hand-deployed on purpose and the
+          # generator drops it before this point -- do NOT "fix" a mismatch by
+          # adding it here. The CI hosting deployer uploads every file under the
+          # public dir and never reads the entry's `ignore`, so admitting
+          # arena-artifacts would publish the arena's de-anonymisation key with
+          # its publish allowlist silently bypassed. See the ciExcludedPublicDirs
+          # comment in the generator for the full argument.
           expected = {"marketing": "website/dist", "console": "apps/console/out"}
           if targets != expected:
               raise SystemExit(f"::error::unexpected hosting public dirs: {targets!r}")

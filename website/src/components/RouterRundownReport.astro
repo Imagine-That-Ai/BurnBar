@@ -357,7 +357,8 @@ const archive = archiveDates.filter((d) => d !== rundown.date).slice(0, 6);
   .rundown__h {
     font-family: var(--font-display);
     font-size: clamp(1.6rem, 1.2rem + 1.4vw, 2.4rem);
-    font-variation-settings: "opsz" 80, "wght" 460;
+    font-weight: var(--wght-display);
+    --opsz: var(--opsz-h2);
     letter-spacing: -0.022em;
     margin-top: var(--s-3);
     color: var(--text-bright);
@@ -399,7 +400,9 @@ const archive = archiveDates.filter((d) => d !== rundown.date).slice(0, 6);
     padding: 2px;
     object-fit: contain;
   }
-  .srctag__name { color: var(--text-bright); display: block; font-size: 0.82rem; }
+  .srctag__name { color: var(--text-bright); display: block; font-size: 0.82rem;
+    --opsz: var(--opsz-body);
+  }
   .srctag__age { color: var(--text-mute); font-size: 0.7rem; letter-spacing: 0.04em; }
   .srctag__dot { width: 8px; height: 8px; border-radius: var(--r-pill); }
   .srctag--fresh { border-color: color-mix(in oklab, var(--status-exact) 35%, var(--ink-line)); }
@@ -421,7 +424,7 @@ const archive = archiveDates.filter((d) => d !== rundown.date).slice(0, 6);
       linear-gradient(90deg, rgba(255, 106, 26, 0.06), transparent);
     font-size: 0.86rem;
   }
-  .rundown__advisory strong { color: var(--ember-bright); font-variation-settings: "wght" 540; }
+  .rundown__advisory strong { color: var(--ember-bright); font-weight: var(--wght-semibold); }
 
   .rundown__empty {
     padding: var(--s-5);
@@ -456,7 +459,8 @@ const archive = archiveDates.filter((d) => d !== rundown.date).slice(0, 6);
   .taskcard__lede {
     color: var(--text-bright);
     font-family: var(--font-display);
-    font-variation-settings: "opsz" 60, "wght" 380, "ital" 1;
+    font-weight: var(--wght-light);
+    --opsz: var(--opsz-body);
     font-style: italic;
     font-size: 1.05rem;
     line-height: 1.4;
@@ -476,7 +480,7 @@ const archive = archiveDates.filter((d) => d !== rundown.date).slice(0, 6);
     font-size: 0.74rem;
     letter-spacing: 0.16em;
     text-transform: uppercase;
-    font-variation-settings: "wght" 500;
+    font-weight: var(--wght-medium);
   }
   .pill--terminal { border-color: color-mix(in oklab, var(--mercury-bright) 35%, var(--ink-line)); background: color-mix(in oklab, var(--mercury-bright) 12%, var(--ink-base)); color: var(--mercury-bright); }
   .pill--design { border-color: color-mix(in oklab, var(--status-exact) 35%, var(--ink-line)); background: color-mix(in oklab, var(--status-exact) 12%, var(--ink-base)); color: var(--status-exact); }
@@ -553,7 +557,8 @@ const archive = archiveDates.filter((d) => d !== rundown.date).slice(0, 6);
     display: block;
     color: var(--text-bright);
     font-family: var(--font-display);
-    font-variation-settings: "opsz" 60, "wght" 480;
+    font-weight: var(--wght-medium);
+    --opsz: var(--opsz-lead);
     font-size: 1.18rem;
     letter-spacing: -0.014em;
     line-height: 1.15;
@@ -577,7 +582,8 @@ const archive = archiveDates.filter((d) => d !== rundown.date).slice(0, 6);
   .rankrow__scorenum {
     font-family: var(--font-display);
     font-size: clamp(2rem, 1.6rem + 1.4vw, 2.6rem);
-    font-variation-settings: "opsz" 144, "wght" 420;
+    font-weight: var(--wght-regular);
+    --opsz: var(--opsz-h2);
     color: var(--text-bright);
     line-height: 1;
     letter-spacing: -0.04em;
@@ -624,7 +630,7 @@ const archive = archiveDates.filter((d) => d !== rundown.date).slice(0, 6);
   }
   .chip__v {
     color: var(--text-bright);
-    font-variation-settings: "wght" 520;
+    font-weight: var(--wght-semibold);
   }
   .chip--off { opacity: 0.55; }
   .chip--off .chip__v { color: var(--text-mute); }
@@ -692,8 +698,9 @@ const archive = archiveDates.filter((d) => d !== rundown.date).slice(0, 6);
     display: block;
     color: var(--text-bright);
     font-size: 0.82rem;
-    font-variation-settings: "wght" 500;
+    font-weight: var(--wght-medium);
     text-decoration: none;
+    --opsz: var(--opsz-body);
   }
   .cite__name:hover { color: var(--ember-bright); }
   .cite__meta {
@@ -731,7 +738,7 @@ const archive = archiveDates.filter((d) => d !== rundown.date).slice(0, 6);
     gap: var(--s-3);
     color: var(--text-mute);
     font-size: 0.86rem;
-    font-variation-settings: "wght" 460;
+    font-weight: var(--wght-display);
   }
   .rejects summary::-webkit-details-marker { display: none; }
   .rejects summary::before {

@@ -156,7 +156,7 @@ const LOGOS: Record<string, string> = {
     text-transform: uppercase;
     letter-spacing: 0.16em;
     color: var(--text-mute);
-    font-variation-settings: "wght" 500;
+    font-weight: var(--wght-medium);
     border-bottom: 1px solid var(--ink-line);
   }
   td {
@@ -193,9 +193,8 @@ const LOGOS: Record<string, string> = {
     align-items: center;
     justify-content: center;
     font-family: var(--font-display);
-    font-variation-settings:
-      "opsz" 36,
-      "wght" 540;
+    font-weight: var(--wght-semibold);
+    --opsz: var(--opsz-body);
     color: var(--text-mute);
     font-size: 1.05rem;
   }
@@ -206,7 +205,7 @@ const LOGOS: Record<string, string> = {
   }
   .pcell strong {
     color: var(--text-bright);
-    font-variation-settings: "wght" 540;
+    font-weight: var(--wght-semibold);
   }
   .pcell__blurb {
     font-size: 0.82rem;

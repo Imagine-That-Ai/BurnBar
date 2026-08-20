@@ -1,0 +1,350 @@
+/* ============================================================
+   BurnBench Arena — neural skin (sole look)
+
+   The vote page (/bench/arena/vote) ships in one look:
+     neural  ("neural split": one prompt forking down two paths)
+   Set pre-paint by the inline bootstrap in vote.astro and exposed on
+   <html data-arena-variant="neural">. The skin lives in
+   arena-variant-neural.css. Capsule and arcade are retired; their
+   stylesheets have been removed.
+
+   This file holds only variant-agnostic additions:
+     1. the trust row (.bb-arena__trust)
+     2. the neural particle canvas plumbing (.bb-arena__net)
+
+   ────────────────────────────────────────────────────────────
+   FROZEN DOM CONTRACT (variant skins must target these hooks;
+   do not request markup changes — ids/classes below are stable):
+
+   section.bb-hero.bb-arena-hero
+     .container.container--wide.bb-hero__inner
+       nav.bb-bread.mono
+       p.bb-arena-hero__kicker.mono          // "[ burnbench · arena · blind pairwise ]"
+       h1#vote-hero-h.bb-arena-hero__title
+         span.bb-arena-hero__l1              // "Which one"
+         span.bb-arena-hero__l2 > em         // "shipped it"
+         span.bb-arena-hero__l3              // "better?"
+       p.bb-arena-hero__lead.mono            // terminal readout + .bb-arena-hero__cursor ▌
+       p.bb-arena-hero__sub
+
+   section.bb-section.bb-arena
+     canvas#arena-net.bb-arena__net          // decorative; neural-only
+     .container.container--wide
+       p#arena-status.bb-arena__status.mono
+       div#arena-brief.bb-arena__brief.glass-pane[hidden]
+         span.bb-arena__brief-eyebrow.mono   // "// mission brief — …"
+         h2#brief-title.bb-arena__brief-title
+         p#brief-text.bb-arena__brief-text
+         p.bb-arena__judge.mono > span + span#brief-judge
+       div.bb-arena__frames.bb-versus
+         figure.bb-arena__pane.bb-arena__pane--a.glass-pane
+           span.bb-arena__ghost              // giant "A"
+           figcaption.bb-arena__tag.mono     // "Artifact A"
+           div#wrap-a.bb-arena__framewrap[data-live="false"|"true"]
+             iframe#frame-a.bb-arena__frame        // LIVE app once handed over
+             button#play-a.bb-arena__play          // shield; hidden when live
+               span.bb-arena__play-disc            // drawn ▶ disc
+               span.bb-arena__play-label.mono      // "Press to play A"
+               span#play-a-hint.bb-arena__play-hint
+             div.bb-arena__tools                   // quiet chips, bottom right
+               button#reload-a.bb-arena__tool.mono       "restart ↺"
+               button#expand-a.bb-arena__tool.bb-arena__expand.mono "full screen ⤢"
+             p#live-a.bb-arena__live.mono[role=status]   // JS fills when live
+           div.bb-arena__voteui
+             button#vote-a.bb-arena__votebar
+               span "A shipped it better" + span.bb-arena__votearrow "→"
+         span.bb-arena__versus.mono          // "vs" medallion
+         figure.bb-arena__pane.bb-arena__pane--b.glass-pane   (same shape)
+       form#arena-rubric.bb-arena__rubric.bb-arena__voteui
+         // OPTIONAL per-dimension rubric. The overall pick above is the
+         // required action and submits on click; this only refines it.
+         // Every row starts unset — an untouched rubric sends nothing.
+         .bb-arena__rubric-head
+           span#rubric-h.bb-arena__brief-eyebrow.mono   // "// optional rubric — …"
+           button#rubric-clear.bb-arena__rubric-clear.mono[hidden]  // "clear"
+         .bb-arena__rubric-rows
+           div.bb-arena__rubric-row[role=radiogroup][data-dimension]  (×4)
+             // data-dimension ∈ visual_polish | interaction_quality |
+             //                   accessibility | code_quality
+             span#rubric-label-{dimension}.bb-arena__rubric-legend
+               span.bb-arena__rubric-label + span.bb-arena__rubric-hint
+             .bb-arena__rubric-seg
+               label.bb-arena__rubric-opt.bb-arena__rubric-opt--{a|tie|b}  (×3)
+                 input.bb-arena__rubric-input[type=radio][value=A|tie|B]
+                 span.bb-arena__rubric-optlabel.mono
+       div.bb-arena__tiewrap.bb-arena__voteui
+         button#vote-tie.bb-arena__tie.mono  // "or call it a tie"
+       ul.bb-arena__trust > li > strong.mono + span   (×3)
+       div#arena-reveal.bb-arena__reveal.glass-pane[hidden]
+         span.bb-arena__brief-eyebrow.mono   // "// identities declassified"
+         div.bb-arena__revealgrid
+           div#reveal-card-a   (JS builds .bb-id identity cards inside)
+           span.bb-arena__vs.mono
+           div#reveal-card-b
+         button#arena-next.btn.btn--ember.bb-arena__next
+       p.bb-arena__note
+     dialog#arena-stage.bb-stage …           // full-screen inspector
+
+   THEME: html[data-theme="dark"] is default; every skin MUST also
+   style html[data-theme="light"] explicitly (scoped overrides).
+
+   ACCENTS: .bb-arena scopes --acc-a/--acc-a-hi (ember, side A) and
+   --acc-b/--acc-b-hi (teal, side B); panes re-read them as
+   --pane-acc/--pane-acc-hi. Skins may re-declare these on .bb-arena.
+
+   TOKENS (tokens.css): --font-display (Fraunces), --font-body,
+   --font-mono (JetBrains Mono), --s-1..--s-8, --r-sm/--r-md/--r-lg/
+   --r-xl/--r-pill, --dur-fast/--dur-base/--dur-slow, --ease/--ease-out,
+   --glass-bg, --ink-*, --ember-*, --core-*, --text/--text-base/
+   --text-bright/--text-dim/--text-mute (defined in globals).
+
+   RULES for skins:
+   - Scope EVERY rule: html[data-arena-variant="<name>"] …
+   - Provide [data-theme="light"] overrides for every surface.
+   - Respect prefers-reduced-motion for anything animated.
+   - No new fonts, images, or scripts. CSS only.
+   - The artifact must stay USABLE: never cover .bb-arena__frame with a
+     decorative layer that eats pointer events. Overlays inside
+     .bb-arena__framewrap need `pointer-events: none`, and any CRT/glass
+     dressing must keep the artifact legible (that is what is being judged).
+     Skins may restyle the shield (.bb-arena__play) freely — it disappears at
+     [data-live="true"] — and should dress the frame's live state instead of
+     obscuring it.
+   ============================================================ */
+
+/* ---------- Trust row (all skins; base look included) ---------- */
+
+.bb-arena__trust {
+  list-style: none;
+  margin: var(--s-5, 2.5rem) auto 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--s-3);
+}
+
+.bb-arena__trust li {
+  display: grid;
+  gap: 0.15rem;
+  justify-items: center;
+  min-width: 10.5rem;
+  padding: 0.7rem 1.1rem;
+  border: 1px solid color-mix(in oklab, var(--text-bright) 14%, transparent);
+  border-radius: var(--r-md);
+  background: color-mix(in oklab, var(--text-bright) 3%, transparent);
+}
+
+.bb-arena__trust strong {
+  font-size: 0.72rem;
+  font-weight: var(--wght-bold);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-bright);
+}
+
+.bb-arena__trust span {
+  font-size: 0.74rem;
+  color: var(--text-dim);
+}
+
+/* ---------- Optional rubric (all skins; base look included) ----------
+
+   Deliberately quieter than the vote bars above it. The overall pick is the
+   required action and must stay the loudest thing on the ballot; this block
+   reads as an aside a voter can scan past in one beat. Each row is a real
+   <fieldset> of real radios, so keyboard and screen-reader behaviour is the
+   platform's, not ours — the only scripted affordance is click-to-unset,
+   which native radios do not provide and an optional control needs.
+
+   The A / B options borrow the panes' own accents (--acc-a ember, --acc-b
+   teal), so a rubric row is visually the same decision as the vote bar it
+   refines; "tie" stays neutral. */
+
+.bb-arena__rubric {
+  margin: var(--s-3) auto 0;
+  max-width: 62rem;
+  padding: var(--s-3) var(--s-4) var(--s-4);
+  border: 1px solid color-mix(in oklab, var(--text-bright) 12%, transparent);
+  border-radius: var(--r-md);
+  background: color-mix(in oklab, var(--text-bright) 2.5%, transparent);
+}
+
+.bb-arena__rubric-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-2);
+  margin-bottom: var(--s-3);
+}
+
+.bb-arena__rubric-clear {
+  background: none;
+  border: 0;
+  border-bottom: 1px dashed var(--ink-line-bright);
+  color: var(--text-mute);
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  padding: 0 2px 2px;
+  cursor: pointer;
+  transition:
+    color var(--dur-base) var(--ease),
+    border-color var(--dur-base) var(--ease);
+}
+.bb-arena__rubric-clear[hidden] {
+  display: none;
+}
+.bb-arena__rubric-clear:hover {
+  color: var(--text-bright);
+  border-color: var(--text-bright);
+}
+.bb-arena__rubric-clear:focus-visible {
+  outline: 2px solid var(--ember-bright);
+  outline-offset: 3px;
+}
+
+.bb-arena__rubric-rows {
+  display: grid;
+  gap: var(--s-2);
+}
+
+.bb-arena__rubric-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2) var(--s-3);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.bb-arena__rubric-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.2rem 0.55rem;
+  min-width: 0;
+}
+
+.bb-arena__rubric-label {
+  font-size: 0.82rem;
+  font-weight: var(--wght-bold);
+  color: var(--text-bright);
+}
+
+.bb-arena__rubric-hint {
+  font-size: 0.72rem;
+  color: var(--text-mute);
+}
+
+.bb-arena__rubric-seg {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.bb-arena__rubric-opt {
+  position: relative;
+  display: inline-flex;
+}
+
+/* The radio itself stays in the accessibility tree and keeps focus; the
+   visible chip is its label. Never display:none — that would drop it from
+   tab order and from assistive tech. */
+.bb-arena__rubric-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.bb-arena__rubric-optlabel {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 3.1rem;
+  padding: 0.34rem 0.6rem;
+  border: 1px solid color-mix(in oklab, var(--text-bright) 16%, transparent);
+  border-radius: var(--r-sm);
+  font-size: 0.66rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  transition:
+    background var(--dur-base) var(--ease),
+    border-color var(--dur-base) var(--ease),
+    color var(--dur-base) var(--ease);
+}
+
+.bb-arena__rubric-opt:hover .bb-arena__rubric-optlabel {
+  color: var(--text-bright);
+  border-color: color-mix(in oklab, var(--text-bright) 34%, transparent);
+}
+
+.bb-arena__rubric-input:focus-visible + .bb-arena__rubric-optlabel {
+  outline: 2px solid var(--ember-bright);
+  outline-offset: 2px;
+}
+
+.bb-arena__rubric-opt--a .bb-arena__rubric-input:checked + .bb-arena__rubric-optlabel {
+  color: var(--text-bright);
+  border-color: color-mix(in oklab, var(--acc-a) 70%, transparent);
+  background: color-mix(in oklab, var(--acc-a) 20%, transparent);
+}
+.bb-arena__rubric-opt--b .bb-arena__rubric-input:checked + .bb-arena__rubric-optlabel {
+  color: var(--text-bright);
+  border-color: color-mix(in oklab, var(--acc-b) 70%, transparent);
+  background: color-mix(in oklab, var(--acc-b) 20%, transparent);
+}
+.bb-arena__rubric-opt--tie .bb-arena__rubric-input:checked + .bb-arena__rubric-optlabel {
+  color: var(--text-bright);
+  border-color: color-mix(in oklab, var(--text-bright) 42%, transparent);
+  background: color-mix(in oklab, var(--text-bright) 12%, transparent);
+}
+
+@media (max-width: 560px) {
+  .bb-arena__rubric-row {
+    justify-content: flex-start;
+  }
+  .bb-arena__rubric-seg {
+    margin-left: 0;
+    width: 100%;
+  }
+  .bb-arena__rubric-opt {
+    flex: 1;
+  }
+  .bb-arena__rubric-optlabel {
+    width: 100%;
+  }
+}
+
+/* ---------- Neural particle canvas (hidden outside neural) ---------- */
+
+.bb-arena__net {
+  display: none;
+}
+
+html[data-arena-variant="neural"] .bb-arena {
+  position: relative;
+  overflow: clip;
+}
+
+html[data-arena-variant="neural"] .bb-arena__net {
+  display: block;
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+html[data-arena-variant="neural"] .bb-arena > .container {
+  position: relative;
+  z-index: 1;
+}

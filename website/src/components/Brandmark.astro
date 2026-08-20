@@ -39,9 +39,8 @@ const { size = 28, withWordmark = true } = Astro.props;
     letter-spacing: -0.018em;
     color: var(--text-bright);
     font-size: 1.08rem;
-    font-variation-settings:
-      "opsz" 24,
-      "wght" 540;
+    font-weight: var(--wght-semibold);
+    --opsz: var(--opsz-body);
   }
   .brand:hover {
     color: var(--text-bright);
@@ -63,14 +62,12 @@ const { size = 28, withWordmark = true } = Astro.props;
   }
   .wordmark__pre {
     color: var(--text-mute);
-    font-variation-settings:
-      "opsz" 24,
-      "wght" 420;
+    font-weight: var(--wght-regular);
+    --opsz: var(--opsz-body);
   }
   .wordmark__post {
     color: var(--text-bright);
-    font-variation-settings:
-      "opsz" 24,
-      "wght" 540;
+    font-weight: var(--wght-semibold);
+    --opsz: var(--opsz-body);
   }
 </style>

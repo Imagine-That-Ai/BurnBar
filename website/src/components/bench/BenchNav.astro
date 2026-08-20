@@ -1,0 +1,38 @@
+---
+/**
+ * Sub-navigation across the four bench surfaces. The dashboard answers the
+ * question; these three carry the evidence, the rigour, and the raw cells.
+ * Sticky so you never lose your place in a long page.
+ */
+interface Props {
+  current: "bench" | "report" | "methodology" | "data" | "arena";
+}
+const { current } = Astro.props;
+
+const LINKS: [Props["current"], string, string][] = [
+  ["bench", "/bench", "Verdict"],
+  ["report", "/bench/report", "Evidence"],
+  ["methodology", "/bench/methodology", "Methodology"],
+  ["data", "/bench/data", "Full data"],
+  ["arena", "/bench/arena", "Arena"]
+];
+---
+
+<nav class="ins-subnav" aria-label="Bench sections">
+  <div class="ins-wrap ins-subnav__inner">
+    <div class="ins-segment ins-scroll-x">
+      {
+        LINKS.map(([id, href, label]) => (
+          <a
+            class="ins-segment__btn"
+            href={href}
+            aria-current={id === current ? "page" : undefined}
+            aria-selected={id === current ? "true" : "false"}
+          >
+            {label}
+          </a>
+        ))
+      }
+    </div>
+  </div>
+</nav>
