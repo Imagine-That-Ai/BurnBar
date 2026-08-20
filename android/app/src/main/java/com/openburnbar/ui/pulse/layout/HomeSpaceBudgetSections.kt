@@ -137,10 +137,15 @@ object HomeSpaceBudget {
         return min(target, ceiling)
     }
 
-    // / `canvasWidth` is unused here on purpose: column count is resolved separately by
-    // / `resolveColumns(forWidth:)`, but the parameter stays so this signature matches its
-    // / Swift (`LivingSpaceBudget`), C# and TypeScript twins. Dropping it on one platform
-    // / only is how the four ports quietly diverge.
+    /**
+     * Resolve a full plan for a canvas.
+     *
+     * reason: `canvasWidth` is deliberately unread — column count is resolved separately
+     * by `resolveColumns(forWidth:)`. The parameter stays so this signature matches its
+     * Swift (`LivingSpaceBudget`), C# and TypeScript twins; dropping it on one platform
+     * only is how the four ports quietly diverge.
+     */
+    // reason: canvasWidth is intentionally unread — kept for signature parity with the Swift/C#/TS twins.
     @Suppress("UnusedParameter")
     fun resolve(canvasWidth: Float, canvasHeight: Float, slots: List<HomeSlot>, gutter: Float, columns: Int = 1): HomeSpacePlan {
         if (slots.isEmpty()) return HomeSpacePlan.EMPTY
