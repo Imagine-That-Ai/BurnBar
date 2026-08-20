@@ -126,8 +126,16 @@ signature. When that drifts, macOS asks for the login keychain password. Users c
 tell that apart from a request for their computer password.
 
 The daemon always wrapped these reads in `withKeychainUserInteractionDisabled`; the app
-never did. It does now (promoted to `OpenBurnBarKernel`, so `DataStore` does not import a
-Computer Use module), paired with `kSecUseAuthenticationUI: kSecUseAuthenticationUIFail`.
+never did. It does now, paired with `kSecUseAuthenticationUI: kSecUseAuthenticationUIFail`.
+
+The gate lives in `OpenBurnBarComputerUseCore` (made `public`) rather than in a new
+`OpenBurnBarKernel` file. Kernel sits exactly on the 190-file ceiling that
+`check-unchecked-sendable-budget`'s sibling check enforces, and that ratchet exists to
+stop files accreting there — adding one and raising the ceiling would be exactly the
+move it is designed to resist. `DatabaseEncryptionService` is an app-target file, and
+100 other AgentLens files already import `OpenBurnBarComputerUseCore`, so there is no
+new dependency edge; reusing the existing gate also removes a duplicate rather than
+adding a third copy.
 
 **Suppressing the dialog created a data-loss path that had to be closed in the same
 change.** `getKey()` collapsed every failure into `nil`, and `getOrCreatePersistedKey()`
