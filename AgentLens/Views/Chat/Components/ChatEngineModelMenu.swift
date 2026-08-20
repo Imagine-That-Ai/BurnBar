@@ -282,7 +282,9 @@ struct ChatEngineModelRows: View {
     private var perRowQuotaSuffix: String {
         let backend = controller.chatBackend
         switch backend {
-        case .codex, .claude, .droid, .antigravity, .cursorAgent, .openClaude, .omp, .junie:
+        // `.kimi` has no agentProvider, so the guard below yields "" for it naturally.
+        case .codex, .claude, .droid, .antigravity, .cursorAgent, .openClaude, .omp, .junie,
+             .grok, .kimi:
             guard let provider = backend.agentProvider,
                   let resolution = ProviderQuotaChip.resolve(
                     provider: provider,

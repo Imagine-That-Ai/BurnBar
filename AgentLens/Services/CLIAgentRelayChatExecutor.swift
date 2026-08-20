@@ -32,19 +32,52 @@ typealias CLIAgentSessionActionHaltHandler = @MainActor @Sendable () async -> Vo
 
 typealias CLIAgentSessionActionInterruptRunner = @MainActor @Sendable (_ sessionID: String) async -> Bool
 
-enum CLIAgentSessionInterruptBus {
-    private static var handlers: [String: () -> Void] = [:]
+// AUDIT(@unchecked Sendable): the handler table is guarded by `lock` on every access;
+// the stored closures capture a `Process`, which is not Sendable, so the box owns the
+// isolation rather than the closure type. sendable-allowlist: foundation-sdk-shim
+private final class CLIAgentSessionInterruptHandlerBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var handlers: [String: () -> Void] = [:]
 
-    static func register(sessionID: String, handler: @escaping () -> Void) {
+    func register(sessionID: String, handler: @escaping () -> Void) {
+        lock.lock()
+        defer { lock.unlock() }
         handlers[sessionID] = handler
     }
 
-    static func unregister(sessionID: String) {
+    func unregister(sessionID: String) {
+        lock.lock()
+        defer { lock.unlock() }
         handlers.removeValue(forKey: sessionID)
     }
 
+    /// Removes and returns the handler so a racing second interrupt cannot run it twice.
+    func take(sessionID: String) -> (() -> Void)? {
+        lock.lock()
+        defer { lock.unlock() }
+        return handlers.removeValue(forKey: sessionID)
+    }
+}
+
+/// Routes "stop this session" from any thread to the process that is running it.
+///
+/// Registration happens on the nonisolated process-spawn path and interruption arrives
+/// from UI and relay callers, so the table is genuinely concurrent. It used to be a
+/// bare `static var`, which Swift 6 rejects as nonisolated global mutable state -- and
+/// it was a real race, not just a diagnostic.
+enum CLIAgentSessionInterruptBus {
+    private static let box = CLIAgentSessionInterruptHandlerBox()
+
+    static func register(sessionID: String, handler: @escaping () -> Void) {
+        box.register(sessionID: sessionID, handler: handler)
+    }
+
+    static func unregister(sessionID: String) {
+        box.unregister(sessionID: sessionID)
+    }
+
     static func interrupt(sessionID: String) -> Bool {
-        guard let handler = handlers.removeValue(forKey: sessionID) else { return false }
+        guard let handler = box.take(sessionID: sessionID) else { return false }
         handler()
         return true
     }

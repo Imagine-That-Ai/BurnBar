@@ -1,6 +1,8 @@
 import Darwin
 import Foundation
 import OpenBurnBarComputerUseCore
+// `HermesAttachment` lives in OpenBurnBarCore's assistant models, re-exported here.
+import OpenBurnBarCore
 import OpenBurnBarMedia
 
 /// Lands a verified attachment into a workspace / Drop / `.burnbar/attachments` prefix.
@@ -20,18 +22,57 @@ enum MacAttachmentLandingService {
         var displayName: String
     }
 
-    private static var landedByDigest: [String: URL] = [:]
-    private static var pending: [LandedFile] = []
+    // AUDIT(@unchecked Sendable): both tables are guarded by `lock` on every access.
+    // Landing runs off the main actor from the attachment receive path while the UI
+    // drains `pending`, so this is genuinely concurrent, not just a diagnostic.
+    // sendable-allowlist: foundation-sdk-shim
+    private final class LandingStateBox: @unchecked Sendable {
+        private let lock = NSLock()
+        private var landedByDigest: [String: URL] = [:]
+        private var pending: [LandedFile] = []
+
+        func landedURL(forDigest digest: String) -> URL? {
+            lock.lock(); defer { lock.unlock() }
+            return landedByDigest[digest]
+        }
+
+        func recordLanded(digest: String, url: URL) {
+            lock.lock(); defer { lock.unlock() }
+            landedByDigest[digest] = url
+        }
+
+        func appendPending(_ file: LandedFile) {
+            lock.lock(); defer { lock.unlock() }
+            pending.append(file)
+        }
+
+        func drainPending() -> [LandedFile] {
+            lock.lock(); defer { lock.unlock() }
+            let drained = pending
+            pending.removeAll()
+            return drained
+        }
+
+        func snapshotPending() -> [LandedFile] {
+            lock.lock(); defer { lock.unlock() }
+            return pending
+        }
+
+        func removeAll() {
+            lock.lock(); defer { lock.unlock() }
+            landedByDigest.removeAll()
+            pending.removeAll()
+        }
+    }
+
+    private static let state = LandingStateBox()
 
     static func resetForTests() {
-        landedByDigest.removeAll()
-        pending.removeAll()
+        state.removeAll()
     }
 
     static func takePending() -> [LandedFile] {
-        let copy = pending
-        pending.removeAll()
-        return copy
+        state.drainPending()
     }
 
     static func sanitizeFilename(_ raw: String) -> String {
@@ -125,7 +166,7 @@ enum MacAttachmentLandingService {
             try? FileManager.default.removeItem(at: plaintextURL) // try?-ok(best-effort digest-mismatch cleanup)
             throw Error.digestMismatch
         }
-        if let existing = landedByDigest[verified], FileManager.default.fileExists(atPath: existing.path) {
+        if let existing = state.landedURL(forDigest: verified), FileManager.default.fileExists(atPath: existing.path) {
             return LandedFile(url: existing, contentBlake3: verified, displayName: sanitizeFilename(filename))
         }
         let dest = try containedURL(filename: filename, roots: roots)
@@ -134,9 +175,9 @@ enum MacAttachmentLandingService {
             try FileManager.default.copyItem(at: plaintextURL, to: dest)
         }
         try applyQuarantine(dest)
-        landedByDigest[verified] = dest
+        state.recordLanded(digest: verified, url: dest)
         let landed = LandedFile(url: dest, contentBlake3: verified, displayName: sanitizeFilename(filename))
-        pending.append(landed)
+        state.appendPending(landed)
         return landed
     }
 

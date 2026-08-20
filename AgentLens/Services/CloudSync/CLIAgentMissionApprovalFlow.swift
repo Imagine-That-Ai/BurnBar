@@ -6,8 +6,6 @@ import OpenBurnBarCore
 import OpenBurnBarSignalCore
 import OSLog
 
-private typealias UntypedJSONObject = [String: Any]
-
 // Mission cancellation, approval, and failure state flow.
 // Extracted from CLIAgentMissionRequestListener.swift (god-file decomposition) — same module, verbatim.
 
