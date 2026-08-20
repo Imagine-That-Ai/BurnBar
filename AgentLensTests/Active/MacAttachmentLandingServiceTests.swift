@@ -1,4 +1,3 @@
-import CryptoKit
 import XCTest
 import OpenBurnBarIrohRelay
 import OpenBurnBarMedia
@@ -15,6 +14,8 @@ final class MacAttachmentLandingServiceTests: XCTestCase {
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
         XCTAssertThrowsError(try MacAttachmentLandingService.containedURL(filename: "../etc/passwd", roots: [root]))
+        XCTAssertThrowsError(try MacAttachmentLandingService.containedExistingFile(path: "../etc/passwd", roots: [root]))
+        XCTAssertThrowsError(try MacAttachmentLandingService.containedExistingFile(path: "/etc/passwd", roots: [root]))
     }
 
     func testDoubleDeliveryDedupeByVerifiedDigest() throws {
@@ -23,7 +24,7 @@ final class MacAttachmentLandingServiceTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: root) }
         let source = root.appendingPathComponent("plain.bin")
         try Data("hello-land".utf8).write(to: source)
-        let digest = SHA256.hash(data: Data("hello-land".utf8)).map { String(format: "%02x", $0) }.joined()
+        let digest = ContentBlake3.hash(Data("hello-land".utf8))
         let key = Data(repeating: 7, count: 32)
         let first = try MacAttachmentLandingService.land(
             plaintextURL: source,

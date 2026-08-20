@@ -7,18 +7,21 @@ public struct CLIAgentMissionAttachmentRef: Codable, Sendable, Equatable, Identi
     public var displayName: String
     public var byteCount: Int64
     public var transport: String
+    public var contentKeyBase64: String?
 
     public init(
         id: String,
         contentBlake3: String,
         displayName: String,
         byteCount: Int64,
-        transport: String
+        transport: String,
+        contentKeyBase64: String? = nil
     ) {
         self.id = id
         self.contentBlake3 = contentBlake3
         self.displayName = displayName
         self.byteCount = byteCount
         self.transport = transport
+        self.contentKeyBase64 = contentKeyBase64
     }
 }

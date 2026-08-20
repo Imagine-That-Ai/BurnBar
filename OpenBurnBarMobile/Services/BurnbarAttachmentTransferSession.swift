@@ -35,6 +35,20 @@ final class BurnbarAttachmentTransferSession: NSObject, URLSessionDelegate, URLS
         return task
     }
 
+    /// Await a signed PUT before compose/finalize. Uses the ephemeral session so
+    /// the product path does not fire-and-forget a background task.
+    func uploadAwaiting(fileURL: URL, signedURL: URL) async throws {
+        let request = Self.signedPutRequest(fileURL: fileURL, signedURL: signedURL)
+        let (_, response) = try await URLSession.shared.upload(fromFile: fileURL, for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw NSError(
+                domain: "OpenBurnBar.BurnbarAttachmentTransfer",
+                code: (response as? HTTPURLResponse)?.statusCode ?? 1,
+                userInfo: [NSLocalizedDescriptionKey: "Attachment part PUT failed."]
+            )
+        }
+    }
+
     func storeResumeData(_ data: Data, partKey: String) {
         resumeDataByPart[partKey] = data
     }

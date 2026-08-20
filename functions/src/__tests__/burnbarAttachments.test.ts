@@ -61,6 +61,7 @@ import {
   combineWithGenerationPin,
   memoryStoragePort,
   mintBurnbarAttachmentPartURL,
+  putMemoryObject,
   planComposeHierarchy,
   COMPOSE_FANIN,
   setBurnbarStoragePort,
@@ -105,7 +106,9 @@ describe("burnbarAttachments", () => {
     const uid = "alice-bola-uid";
     const id = "att-33";
     for (let i = 0; i < 33; i += 1) {
-      await memoryStoragePort.mintPutUrl(`users/${uid}/burnbar_attachments/${id}/parts/${i}`, 10, 60);
+      const path = `users/${uid}/burnbar_attachments/${id}/parts/${i}`;
+      await memoryStoragePort.mintPutUrl(path, 10, 60);
+      await putMemoryObject(path, 10);
     }
     await composeParts(uid, id, 33, memoryStoragePort);
     const log = takeComposeLog();
@@ -121,6 +124,7 @@ describe("burnbarAttachments", () => {
     )) as { id: string };
     const path = `users/alice-bola-uid/burnbar_attachments/${begun.id}/final`;
     await memoryStoragePort.mintPutUrl(path, 500, 60);
+    await putMemoryObject(path, 500);
     const result = await runFinalize(authed({ id: begun.id }));
     expect(result).toMatchObject({ ok: true, size: 500 });
     const quota = [...hoisted.store.entries()].find(([k]) => k.includes("burnbar_attach_") && k.endsWith("_in"));
@@ -133,11 +137,13 @@ describe("burnbarAttachments", () => {
     )) as { id: string };
     const finalPath = `users/alice-bola-uid/burnbar_attachments/${begun.id}/final`;
     await memoryStoragePort.mintPutUrl(finalPath, 64, 60);
+    await putMemoryObject(finalPath, 64);
     const first = await runFinalize(authed({ id: begun.id }));
     expect(first).toMatchObject({ ok: true });
     const second = await runFinalize(authed({ id: begun.id }));
     expect(second).toMatchObject({ ok: true, idempotent: true });
     await memoryStoragePort.mintPutUrl(finalPath, 99, 60);
+    await putMemoryObject(finalPath, 99);
     await expect(runFinalize(authed({ id: begun.id }))).rejects.toMatchObject({
       code: "failed-precondition",
     });
@@ -161,7 +167,9 @@ describe("burnbarAttachments", () => {
     const finalPath = `users/alice-bola-uid/burnbar_attachments/${begun.id}/final`;
     const partPath = `users/alice-bola-uid/burnbar_attachments/${begun.id}/parts/0`;
     await memoryStoragePort.mintPutUrl(partPath, 64, 60);
+    await putMemoryObject(partPath, 64);
     await memoryStoragePort.mintPutUrl(finalPath, 64, 60);
+    await putMemoryObject(finalPath, 64);
     await runFinalize(authed({ id: begun.id }));
     await expect(runMint(authed({ id: begun.id, partIndex: 0, contentLength: 64 }))).rejects.toMatchObject({
       code: "failed-precondition",
@@ -177,6 +185,7 @@ describe("burnbarAttachments", () => {
     )) as { id: string };
     const finalPath = `users/alice-bola-uid/burnbar_attachments/${begun.id}/final`;
     await memoryStoragePort.mintPutUrl(finalPath, 64, 60);
+    await putMemoryObject(finalPath, 64);
     await runFinalize(authed({ id: begun.id }));
     const ticket = await runTicket(authed({ id: begun.id }));
     expect(ticket).toMatchObject({ ok: true });
@@ -188,6 +197,7 @@ describe("burnbarAttachments", () => {
     setReaperStoragePort(memoryStoragePort);
     const stalePath = "users/alice-bola-uid/burnbar_attachments/old/final";
     await memoryStoragePort.mintPutUrl(stalePath, 8, 60);
+    await putMemoryObject(stalePath, 8);
     hoisted.store.set("users/alice-bola-uid/burnbar_attachments/old", {
       state: "pending_upload",
       storagePath: stalePath,
@@ -223,12 +233,27 @@ describe("burnbarAttachments", () => {
     hoisted.db.collectionGroup = original;
   });
 
+  it("mint does not materialize bytes; compose-before-PUT fails", async () => {
+    const uid = "alice-bola-uid";
+    const id = "att-mint-only";
+    const partPath = `users/${uid}/burnbar_attachments/${id}/parts/0`;
+    await memoryStoragePort.mintPutUrl(partPath, 10, 60);
+    await expect(memoryStoragePort.compose([partPath], `users/${uid}/burnbar_attachments/${id}/final`, 0)).rejects.toMatchObject({
+      code: "not-found",
+    });
+    await putMemoryObject(partPath, 10);
+    await expect(memoryStoragePort.compose([partPath], `users/${uid}/burnbar_attachments/${id}/final`, 0)).resolves.toMatchObject({
+      size: 10,
+    });
+  });
+
   it("refuses compose after finalize", async () => {
     const begun = (await runBegin(
       authed({ byteCount: 64, contentBlake3: "c".repeat(64) }),
     )) as { id: string };
     const finalPath = `users/alice-bola-uid/burnbar_attachments/${begun.id}/final`;
     await memoryStoragePort.mintPutUrl(finalPath, 64, 60);
+    await putMemoryObject(finalPath, 64);
     await runFinalize(authed({ id: begun.id }));
     await expect(runCompose(authed({ id: begun.id }))).rejects.toMatchObject({
       code: "failed-precondition",

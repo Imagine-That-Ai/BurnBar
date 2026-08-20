@@ -1,6 +1,8 @@
 import Foundation
 
-/// Content-addressed blake3 helpers. Ticket strings are not hashes.
+/// Content-addressed BLAKE3. Ticket strings are not hashes.
+/// P2P publish/land uses iroh `ticket.hash()` / `stats.blake3Hash`.
+/// Cloud FileSeal hashes opened plaintext with this official-reference hasher.
 public enum ContentBlake3 {
     public enum Error: Swift.Error, Equatable {
         case notAContentHash
@@ -30,170 +32,215 @@ public enum ContentBlake3 {
             if chunk.isEmpty { break }
             hasher.update(chunk)
         }
-        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+        return hasher.finalizeHex()
     }
 
     public static func hash(_ data: Data) -> String {
         var hasher = Hasher()
         hasher.update(data)
-        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+        return hasher.finalizeHex()
     }
 
-    /// Compact BLAKE3 (RFC-draft / official reference). Hashing only.
-    struct Hasher {
-        private static let outLen = 32
-        private static let blockLen = 64
-        private static let chunkLen = 1024
-        private static let iv: [UInt32] = [
+    /// Official BLAKE3 reference (hashing only).
+    /// https://github.com/BLAKE3-team/BLAKE3/blob/master/reference_impl/reference_impl.rs
+    public struct Hasher {
+        static let outLen = 32
+        static let blockLen = 64
+        static let chunkLen = 1024
+        static let chunkStart: UInt32 = 1 << 0
+        static let chunkEnd: UInt32 = 1 << 1
+        static let parent: UInt32 = 1 << 2
+        static let root: UInt32 = 1 << 3
+        static let iv: [UInt32] = [
             0x6A09E667, 0xBB67AE85, 0x3C6EF372, 0xA54FF53A,
             0x510E527F, 0x9B05688C, 0x1F83D9AB, 0x5BE0CD19,
         ]
-        private static let schedule: [[Int]] = [
-            [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
-            [2, 6, 3, 10, 7, 0, 4, 13, 1, 11, 12, 5, 9, 14, 15, 8],
-            [3, 4, 10, 12, 13, 2, 7, 14, 6, 5, 9, 0, 11, 15, 8, 1],
-            [10, 7, 12, 9, 14, 3, 13, 15, 4, 0, 11, 2, 5, 8, 1, 6],
-            [12, 13, 9, 11, 15, 10, 14, 8, 7, 2, 5, 3, 0, 1, 6, 4],
-            [9, 14, 11, 5, 8, 12, 15, 1, 13, 3, 0, 10, 2, 6, 4, 7],
-            [11, 15, 5, 0, 1, 9, 8, 6, 14, 10, 2, 12, 3, 4, 7, 13],
-        ]
+        static let msgPermutation: [Int] = [2, 6, 3, 10, 7, 0, 4, 13, 1, 11, 12, 5, 9, 14, 15, 8]
 
-        private var cv = iv
+        private var chunkState: ChunkState
+        private var keyWords: [UInt32]
         private var cvStack: [[UInt32]] = []
-        private var chunkCounter: UInt64 = 0
-        private var chunkBlockCounter: UInt32 = 0
-        private var chunkBuf = [UInt8]()
-        private var flags: UInt32 = 1 // CHUNK_START
+        private var flags: UInt32 = 0
 
-        mutating func update(_ data: Data) {
-            for byte in data {
-                if chunkBuf.count == Self.blockLen {
-                    compressBlock(end: false)
-                    chunkBuf.removeAll(keepingCapacity: true)
-                    flags = 0
-                    chunkBlockCounter += 1
+        public init() {
+            keyWords = Self.iv
+            chunkState = ChunkState(keyWords: Self.iv, chunkCounter: 0, flags: 0)
+        }
+
+        public mutating func update(_ data: Data) {
+            var input = [UInt8](data)
+            while !input.isEmpty {
+                if chunkState.len == Self.chunkLen {
+                    let chunkCV = chunkState.output().chainingValue()
+                    let totalChunks = chunkState.chunkCounter + 1
+                    addChunkChainingValue(chunkCV, totalChunks: totalChunks)
+                    chunkState = ChunkState(keyWords: keyWords, chunkCounter: totalChunks, flags: flags)
                 }
-                if chunkBuf.isEmpty && chunkBlockCounter == 0 { flags = 1 }
-                chunkBuf.append(byte)
-                if chunkBlockCounter == 15 && chunkBuf.count == Self.blockLen {
-                    compressBlock(end: true)
-                    chunkBuf.removeAll(keepingCapacity: true)
-                    chunkBlockCounter = 0
-                    chunkCounter += 1
-                    flags = 1
-                }
+                let want = Self.chunkLen - chunkState.len
+                let take = min(want, input.count)
+                chunkState.update(Array(input.prefix(take)))
+                input.removeFirst(take)
             }
         }
 
-        func finalize() -> [UInt8] {
-            var copy = self
-            return copy.finalizeMutating()
+        public func finalizeHex() -> String {
+            finalize().map { String(format: "%02x", $0) }.joined()
         }
 
-        private mutating func finalizeMutating() -> [UInt8] {
-            flags |= 2 // CHUNK_END
-            if cvStack.isEmpty { flags |= 8 } // ROOT
-            compressBlock(end: true)
-            if flags & 8 == 8 {
-                return wordsToBytes(Array(cv.prefix(8)))
-            }
-            var parent = cv
-            while let left = cvStack.popLast() {
-                let chaining = parent
-                parent = compress(
-                    chainingValue: left,
-                    blockWords: left + chaining,
-                    blockLen: 64,
-                    counter: 0,
-                    flags: cvStack.isEmpty ? 4 | 8 : 4
+        public func finalize() -> [UInt8] {
+            var output = chunkState.output()
+            var remaining = cvStack.count
+            while remaining > 0 {
+                remaining -= 1
+                output = Self.parentOutput(
+                    left: cvStack[remaining],
+                    right: output.chainingValue(),
+                    keyWords: keyWords,
+                    flags: flags
                 )
             }
-            return wordsToBytes(Array(parent.prefix(8)))
+            return output.rootOutputBytes()
         }
 
-        private mutating func compressBlock(end: Bool) {
-            var block = [UInt32](repeating: 0, count: 16)
-            var buf = chunkBuf
-            buf.append(contentsOf: repeatElement(0, count: Self.blockLen - buf.count))
+        private mutating func addChunkChainingValue(_ newCV: [UInt32], totalChunks: UInt64) {
+            var cv = newCV
+            var total = totalChunks
+            while total & 1 == 0 {
+                guard let left = cvStack.popLast() else { break }
+                cv = Self.parentOutput(left: left, right: cv, keyWords: keyWords, flags: flags).chainingValue()
+                total >>= 1
+            }
+            cvStack.append(cv)
+        }
+
+        private struct ChunkState {
+            var chainingValue: [UInt32]
+            var chunkCounter: UInt64
+            var block: [UInt8]
+            var blockLen: Int
+            var blocksCompressed: Int
+            var flags: UInt32
+
+            init(keyWords: [UInt32], chunkCounter: UInt64, flags: UInt32) {
+                self.chainingValue = keyWords
+                self.chunkCounter = chunkCounter
+                self.block = [UInt8](repeating: 0, count: Hasher.blockLen)
+                self.blockLen = 0
+                self.blocksCompressed = 0
+                self.flags = flags
+            }
+
+            var len: Int { Hasher.blockLen * blocksCompressed + blockLen }
+
+            var startFlag: UInt32 { blocksCompressed == 0 ? Hasher.chunkStart : 0 }
+
+            mutating func update(_ input: [UInt8]) {
+                var remaining = input
+                while !remaining.isEmpty {
+                    if blockLen == Hasher.blockLen {
+                        chainingValue = Hasher.first8(
+                            Hasher.compress(
+                                chainingValue: chainingValue,
+                                blockWords: Hasher.wordsFrom(block),
+                                counter: chunkCounter,
+                                blockLen: UInt32(Hasher.blockLen),
+                                flags: flags | startFlag
+                            )
+                        )
+                        blocksCompressed += 1
+                        block = [UInt8](repeating: 0, count: Hasher.blockLen)
+                        blockLen = 0
+                    }
+                    let take = min(Hasher.blockLen - blockLen, remaining.count)
+                    for i in 0..<take {
+                        block[blockLen + i] = remaining[i]
+                    }
+                    blockLen += take
+                    remaining.removeFirst(take)
+                }
+            }
+
+            func output() -> Output {
+                Output(
+                    inputChainingValue: chainingValue,
+                    blockWords: Hasher.wordsFrom(block),
+                    counter: chunkCounter,
+                    blockLen: UInt32(blockLen),
+                    flags: flags | startFlag | Hasher.chunkEnd
+                )
+            }
+        }
+
+        private struct Output {
+            var inputChainingValue: [UInt32]
+            var blockWords: [UInt32]
+            var counter: UInt64
+            var blockLen: UInt32
+            var flags: UInt32
+
+            func chainingValue() -> [UInt32] {
+                Hasher.first8(
+                    Hasher.compress(
+                        chainingValue: inputChainingValue,
+                        blockWords: blockWords,
+                        counter: counter,
+                        blockLen: blockLen,
+                        flags: flags
+                    )
+                )
+            }
+
+            func rootOutputBytes() -> [UInt8] {
+                let words = Hasher.compress(
+                    chainingValue: inputChainingValue,
+                    blockWords: blockWords,
+                    counter: 0,
+                    blockLen: blockLen,
+                    flags: flags | Hasher.root
+                )
+                return Hasher.wordsToBytes(Array(words.prefix(8)))
+            }
+        }
+
+        private static func parentOutput(
+            left: [UInt32],
+            right: [UInt32],
+            keyWords: [UInt32],
+            flags: UInt32
+        ) -> Output {
+            var block = left
+            block.append(contentsOf: right)
+            while block.count < 16 { block.append(0) }
+            return Output(
+                inputChainingValue: keyWords,
+                blockWords: block,
+                counter: 0,
+                blockLen: UInt32(blockLen),
+                flags: flags | parent
+            )
+        }
+
+        private static func first8(_ words: [UInt32]) -> [UInt32] {
+            Array(words.prefix(8))
+        }
+
+        private static func wordsFrom(_ bytes: [UInt8]) -> [UInt32] {
+            var block = bytes
+            if block.count < blockLen {
+                block.append(contentsOf: repeatElement(0, count: blockLen - block.count))
+            }
+            var words = [UInt32](repeating: 0, count: 16)
             for i in 0..<16 {
                 let o = i * 4
-                block[i] = UInt32(buf[o])
-                    | UInt32(buf[o + 1]) << 8
-                    | UInt32(buf[o + 2]) << 16
-                    | UInt32(buf[o + 3]) << 24
+                words[i] = UInt32(block[o])
+                    | UInt32(block[o + 1]) << 8
+                    | UInt32(block[o + 2]) << 16
+                    | UInt32(block[o + 3]) << 24
             }
-            var f = flags
-            if end { f |= 2 }
-            let out = compress(
-                chainingValue: cv,
-                blockWords: block,
-                blockLen: UInt32(min(chunkBuf.count, Self.blockLen)),
-                counter: chunkCounter,
-                flags: f
-            )
-            if end && (chunkBlockCounter == 0 && flags & 1 == 1 || true) && chunkBuf.count <= Self.blockLen && chunkBlockCounter == 0 && flags & 2 == 2 {
-                cv = out
-                if flags & 8 != 8 {
-                    cvStack.append(cv)
-                    cv = Self.iv
-                }
-            } else if end {
-                cv = out
-                cvStack.append(Array(cv.prefix(8)))
-                cv = Self.iv
-            } else {
-                cv = out
-            }
+            return words
         }
 
-        private func compress(
-            chainingValue: [UInt32],
-            blockWords: [UInt32],
-            blockLen: UInt32,
-            counter: UInt64,
-            flags: UInt32
-        ) -> [UInt32] {
-            var state = chainingValue
-            state.append(contentsOf: Self.iv.prefix(4))
-            state.append(UInt32(truncatingIfNeeded: counter))
-            state.append(UInt32(truncatingIfNeeded: counter >> 32))
-            state.append(blockLen)
-            state.append(flags)
-            var block = blockWords
-            for r in 0..<7 {
-                let s = Self.schedule[r]
-                g(&state, 0, 4, 8, 12, block[s[0]], block[s[1]])
-                g(&state, 1, 5, 9, 13, block[s[2]], block[s[3]])
-                g(&state, 2, 6, 10, 14, block[s[4]], block[s[5]])
-                g(&state, 3, 7, 11, 15, block[s[6]], block[s[7]])
-                g(&state, 0, 5, 10, 15, block[s[8]], block[s[9]])
-                g(&state, 1, 6, 11, 12, block[s[10]], block[s[11]])
-                g(&state, 2, 7, 8, 13, block[s[12]], block[s[13]])
-                g(&state, 3, 4, 9, 14, block[s[14]], block[s[15]])
-            }
-            var out = [UInt32](repeating: 0, count: 8)
-            for i in 0..<8 {
-                out[i] = state[i] ^ state[i + 8]
-            }
-            return out
-        }
-
-        private func g(_ state: inout [UInt32], _ a: Int, _ b: Int, _ c: Int, _ d: Int, _ mx: UInt32, _ my: UInt32) {
-            state[a] = state[a] &+ state[b] &+ mx
-            state[d] = rotate(state[d] ^ state[a], 16)
-            state[c] = state[c] &+ state[d]
-            state[b] = rotate(state[b] ^ state[c], 12)
-            state[a] = state[a] &+ state[b] &+ my
-            state[d] = rotate(state[d] ^ state[a], 8)
-            state[c] = state[c] &+ state[d]
-            state[b] = rotate(state[b] ^ state[c], 7)
-        }
-
-        private func rotate(_ x: UInt32, _ n: UInt32) -> UInt32 {
-            (x >> n) | (x << (32 - n))
-        }
-
-        private func wordsToBytes(_ words: [UInt32]) -> [UInt8] {
+        private static func wordsToBytes(_ words: [UInt32]) -> [UInt8] {
             var out = [UInt8]()
             out.reserveCapacity(words.count * 4)
             for w in words {
@@ -203,6 +250,75 @@ public enum ContentBlake3 {
                 out.append(UInt8(truncatingIfNeeded: w >> 24))
             }
             return out
+        }
+
+        private static func compress(
+            chainingValue: [UInt32],
+            blockWords: [UInt32],
+            counter: UInt64,
+            blockLen: UInt32,
+            flags: UInt32
+        ) -> [UInt32] {
+            var state = [UInt32](repeating: 0, count: 16)
+            for i in 0..<8 { state[i] = chainingValue[i] }
+            for i in 0..<4 { state[8 + i] = iv[i] }
+            state[12] = UInt32(truncatingIfNeeded: counter)
+            state[13] = UInt32(truncatingIfNeeded: counter >> 32)
+            state[14] = blockLen
+            state[15] = flags
+            var block = blockWords
+            if block.count < 16 {
+                block.append(contentsOf: repeatElement(0, count: 16 - block.count))
+            }
+            for _ in 0..<7 {
+                round(&state, block)
+                permute(&block)
+            }
+            for i in 0..<8 {
+                state[i] ^= state[i + 8]
+                state[i + 8] ^= chainingValue[i]
+            }
+            return state
+        }
+
+        private static func round(_ state: inout [UInt32], _ m: [UInt32]) {
+            g(&state, 0, 4, 8, 12, m[0], m[1])
+            g(&state, 1, 5, 9, 13, m[2], m[3])
+            g(&state, 2, 6, 10, 14, m[4], m[5])
+            g(&state, 3, 7, 11, 15, m[6], m[7])
+            g(&state, 0, 5, 10, 15, m[8], m[9])
+            g(&state, 1, 6, 11, 12, m[10], m[11])
+            g(&state, 2, 7, 8, 13, m[12], m[13])
+            g(&state, 3, 4, 9, 14, m[14], m[15])
+        }
+
+        private static func permute(_ m: inout [UInt32]) {
+            var next = [UInt32](repeating: 0, count: 16)
+            for i in 0..<16 { next[i] = m[msgPermutation[i]] }
+            m = next
+        }
+
+        private static func g(
+            _ state: inout [UInt32],
+            _ a: Int,
+            _ b: Int,
+            _ c: Int,
+            _ d: Int,
+            _ mx: UInt32,
+            _ my: UInt32
+        ) {
+            state[a] = state[a] &+ state[b] &+ mx
+            state[d] = rotateRight(state[d] ^ state[a], 16)
+            state[c] = state[c] &+ state[d]
+            state[b] = rotateRight(state[b] ^ state[c], 12)
+            state[a] = state[a] &+ state[b] &+ my
+            state[d] = rotateRight(state[d] ^ state[a], 8)
+            state[c] = state[c] &+ state[d]
+            state[b] = rotateRight(state[b] ^ state[c], 7)
+        }
+
+        private static func rotateRight(_ x: UInt32, _ n: UInt32) -> UInt32 {
+            (x >> n) | (x << (32 - n))
         }
     }
 }

@@ -42,12 +42,25 @@ export function takeComposeLog(): ComposeCall[] {
   return copy;
 }
 
-const memoryObjects = new Map<string, { size: number; generation: string; revoked?: boolean }>();
+type MemoryObject = { size: number; generation: string; revoked?: boolean; pending?: boolean };
+
+const memoryObjects = new Map<string, MemoryObject>();
+
+export function resetMemoryStorage(): void {
+  memoryObjects.clear();
+}
+
+/** Simulate a successful signed PUT. Mint only reserves; compose cannot see pending objects. */
+export async function putMemoryObject(path: string, size: number): Promise<void> {
+  const existing = memoryObjects.get(path);
+  if (existing?.revoked) throw new HttpsError("permission-denied", "Part URL revoked.");
+  memoryObjects.set(path, { size, generation: String(Date.now()), pending: false });
+}
 
 export const memoryStoragePort: BurnbarStoragePort = {
   async getMetadata(path) {
     const obj = memoryObjects.get(path);
-    if (!obj) throw new HttpsError("not-found", "Object missing.");
+    if (!obj || obj.pending) throw new HttpsError("not-found", "Object missing.");
     return { size: obj.size, generation: obj.generation };
   },
   async compose(sources, destination, ifGenerationMatch) {
@@ -55,13 +68,13 @@ export const memoryStoragePort: BurnbarStoragePort = {
     if (sources.length > COMPOSE_FANIN) {
       throw new HttpsError("invalid-argument", "compose exceeds 32 sources.");
     }
-    if (ifGenerationMatch === 0 && memoryObjects.has(destination)) {
+    if (ifGenerationMatch === 0 && memoryObjects.has(destination) && !memoryObjects.get(destination)?.pending) {
       throw new HttpsError("failed-precondition", "generation mismatch.");
     }
     let size = 0;
     for (const src of sources) {
       const obj = memoryObjects.get(src);
-      if (!obj) throw new HttpsError("not-found", `Missing compose source ${src}`);
+      if (!obj || obj.pending) throw new HttpsError("not-found", `Missing compose source ${src}`);
       size += obj.size;
     }
     const generation = String(Date.now());
@@ -74,8 +87,8 @@ export const memoryStoragePort: BurnbarStoragePort = {
   async mintPutUrl(path, contentLength, ttlSeconds) {
     const existing = memoryObjects.get(path);
     if (existing?.revoked) throw new HttpsError("permission-denied", "Part URL revoked.");
-    const generation = existing ? String(Number(existing.generation || "0") + 1) : "1";
-    memoryObjects.set(path, { size: contentLength, generation });
+    // Reserve only. Do not materialize compose-visible bytes; a PUT must follow.
+    memoryObjects.set(path, { size: 0, generation: existing?.generation ?? "0", pending: true });
     return { url: `https://storage.test/${path}?ttl=${ttlSeconds}&len=${contentLength}`, expiresAt: Date.now() + ttlSeconds * 1000 };
   },
   async mintGetUrl(path, generation) {

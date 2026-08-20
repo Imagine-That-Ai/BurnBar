@@ -1195,6 +1195,80 @@ enum ComputerUseSecurityCallableClient {
         }
     }
 
+    static func beginBurnbarAttachment(
+        byteCount: Int64,
+        contentBlake3: String,
+        deviceId: String,
+        transport: String = "cloud"
+    ) async throws -> (id: String, chunkCount: Int) {
+        let result = try await callHighRiskOwnerAction(
+            "beginBurnbarAttachment",
+            deviceId: deviceId,
+            actionKind: "burnbar_attachment_begin",
+            subjectId: "begin",
+            payload: [
+                "byteCount": byteCount,
+                "contentBlake3": contentBlake3,
+                "transport": transport,
+                "deviceId": deviceId
+            ]
+        )
+        guard let dict = result.data as? [String: Any],
+              let id = dict["id"] as? String,
+              let chunkCount = dict["chunkCount"] as? Int
+        else {
+            throw ClientError.invalidResponse("beginBurnbarAttachment failed.")
+        }
+        return (id, chunkCount)
+    }
+
+    static func mintBurnbarAttachmentPartURL(
+        id: String,
+        partIndex: Int,
+        contentLength: Int64,
+        deviceId: String
+    ) async throws -> URL {
+        let result = try await callHighRiskOwnerAction(
+            "mintBurnbarAttachmentPartURL",
+            deviceId: deviceId,
+            actionKind: "burnbar_attachment_part",
+            subjectId: id,
+            payload: [
+                "id": id,
+                "partIndex": partIndex,
+                "contentLength": contentLength,
+                "deviceId": deviceId
+            ]
+        )
+        guard let dict = result.data as? [String: Any],
+              let urlString = dict["url"] as? String,
+              let url = URL(string: urlString)
+        else {
+            throw ClientError.invalidResponse("mintBurnbarAttachmentPartURL failed.")
+        }
+        return url
+    }
+
+    static func composeBurnbarAttachment(id: String, deviceId: String) async throws {
+        _ = try await callHighRiskOwnerAction(
+            "composeBurnbarAttachment",
+            deviceId: deviceId,
+            actionKind: "burnbar_attachment_compose",
+            subjectId: id,
+            payload: ["id": id, "deviceId": deviceId]
+        )
+    }
+
+    static func finalizeBurnbarAttachment(id: String, deviceId: String) async throws {
+        _ = try await callHighRiskOwnerAction(
+            "finalizeBurnbarAttachment",
+            deviceId: deviceId,
+            actionKind: "burnbar_attachment_finalize",
+            subjectId: id,
+            payload: ["id": id, "deviceId": deviceId]
+        )
+    }
+
     static func respondMissionApproval(requestId: String, approve: Bool, deviceId: String) async throws {
         let result = try await callHighRiskOwnerAction(
             "respondMissionApproval",
