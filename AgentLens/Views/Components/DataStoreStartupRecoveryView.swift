@@ -37,6 +37,9 @@ struct DataStoreStartupRecoveryView: View {
     let onArchiveAndReset: () -> Void
     let onCopyDiagnostics: () -> Bool
     let onQuit: () -> Void
+    /// Present only when the failure is a locked keychain item. Optional so every
+    /// existing call site is unaffected.
+    var onUnlockKeychain: (() -> Void)?
 
     @State private var isConfirmingReset = false
     @State private var copyStatus: DataStoreStartupRecoveryCopyStatus?
@@ -52,7 +55,8 @@ struct DataStoreStartupRecoveryView: View {
         onRevealSupportFolder: @escaping () -> Void,
         onArchiveAndReset: @escaping () -> Void,
         onCopyDiagnostics: @escaping () -> Bool,
-        onQuit: @escaping () -> Void
+        onQuit: @escaping () -> Void,
+        onUnlockKeychain: (() -> Void)? = nil
     ) {
         self.failure = failure
         self.isRetrying = isRetrying
@@ -64,6 +68,7 @@ struct DataStoreStartupRecoveryView: View {
         self.onArchiveAndReset = onArchiveAndReset
         self.onCopyDiagnostics = onCopyDiagnostics
         self.onQuit = onQuit
+        self.onUnlockKeychain = onUnlockKeychain
         _copyStatus = State(initialValue: initialCopyStatus)
     }
 
@@ -105,10 +110,12 @@ struct DataStoreStartupRecoveryView: View {
                 .frame(width: compact ? 28 : 36)
 
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-                Text("Database needs attention")
+                Text(failure.isKeychainLocked ? "Your data is locked, not lost" : "Database needs attention")
                     .font(compact ? DesignSystem.Typography.headline : DesignSystem.Typography.title)
                     .foregroundStyle(DesignSystem.Colors.textPrimary)
-                Text("OpenBurnBar started in recovery mode.")
+                Text(failure.isKeychainLocked
+                     ? "Everything is still on this Mac."
+                     : "OpenBurnBar started in recovery mode.")
                     .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
             }
@@ -116,7 +123,7 @@ struct DataStoreStartupRecoveryView: View {
     }
 
     private var explanation: some View {
-        Text("The local database could not be opened. This can happen when disk space is exhausted, file permissions change, or SQLite detects a damaged migration state. Background sync and parsing are paused until storage is healthy again.")
+        Text(failure.isKeychainLocked ? Self.keychainLockedExplanation : Self.genericExplanation)
             .font(DesignSystem.Typography.body)
             .foregroundStyle(DesignSystem.Colors.textSecondary)
             .fixedSize(horizontal: false, vertical: true)
@@ -184,6 +191,7 @@ struct DataStoreStartupRecoveryView: View {
         Group {
             if compact {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                    unlockButton
                     retryButton
                     archiveButton
                     revealSupportFolderButton
@@ -193,6 +201,7 @@ struct DataStoreStartupRecoveryView: View {
             } else {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
                     HStack(spacing: DesignSystem.Spacing.sm) {
+                        unlockButton
                         retryButton
                         archiveButton
                     }
@@ -204,6 +213,39 @@ struct DataStoreStartupRecoveryView: View {
                     }
                 }
             }
+        }
+    }
+
+    /// Deliberately says what macOS is about to ask for, *before* it asks. The same
+    /// rule the permission ladder follows: BurnBar speaks first, the OS speaks second.
+    /// A password box that arrives unannounced is indistinguishable from malware.
+    private static let keychainLockedExplanation =
+        "OpenBurnBar keeps your database encrypted with a key stored in your Mac's keychain. "
+        + "macOS will not hand that key over right now -- usually because the app was updated "
+        + "or re-signed and the keychain still remembers the previous version.\n\n"
+        + "Your database has not been touched, and no new key has been created. "
+        + "Choosing Unlock asks macOS for the key; macOS will ask you to confirm with your "
+        + "login password. That is macOS's own dialog, not ours, and it is the same password "
+        + "you use to log in to this Mac."
+
+    private static let genericExplanation =
+        "The local database could not be opened. This can happen when disk space is exhausted, "
+        + "file permissions change, or SQLite detects a damaged migration state. Background sync "
+        + "and parsing are paused until storage is healthy again."
+
+    @ViewBuilder
+    private var unlockButton: some View {
+        if failure.isKeychainLocked, let onUnlockKeychain {
+            recoveryButton(
+                title: "Unlock\u{2026}",
+                systemImage: "key.fill",
+                isProminent: true,
+                isDisabled: isRetrying || isArchivingReset,
+                action: {
+                    copyStatus = nil
+                    onUnlockKeychain()
+                }
+            )
         }
     }
 
