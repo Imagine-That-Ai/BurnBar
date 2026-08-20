@@ -260,8 +260,12 @@ BUILD_RUSTFLAGS="${RUSTFLAGS:-} ${REMAP_FLAGS} ${RUSTFLAGS_16KB}"
 CARGO_NDK_ARGS=()
 for abi in "${ABIS[@]}"; do
   target="$(abi_to_target "${abi}")"
-  if ! "${RUSTUP_BIN}" target list --installed | grep -qx "${target}"; then
-    "${RUSTUP_BIN}" target add "${target}"
+  # Scope target queries/installs to the PINNED toolchain. The unscoped form
+  # acts on rustup's default toolchain, while cargo resolves the crate's
+  # rust-toolchain.toml pin — on a host whose default differs, the std for
+  # these targets lands in the wrong toolchain and the build dies with E0463.
+  if ! "${RUSTUP_BIN}" target list --installed --toolchain "${RUST_TOOLCHAIN}" | grep -qx "${target}"; then
+    "${RUSTUP_BIN}" target add --toolchain "${RUST_TOOLCHAIN}" "${target}"
   fi
   CARGO_NDK_ARGS+=(-t "${abi}")
 done
