@@ -83,7 +83,13 @@ public struct BurnBarFleetGrokBotInputListener: Sendable {
     /// Bind a loopback TCP listener. Callers must still `accept()` each
     /// connection through the peer-credential / token policy.
     public static func bindLoopback(port: UInt16 = 0) throws -> (fd: Int32, port: UInt16) {
-        let fd = socket(AF_INET, SOCK_STREAM, 0)
+        // Glibc types SOCK_* as `__socket_type`; Darwin types them as Int32.
+        #if canImport(Glibc)
+        let streamType = Int32(SOCK_STREAM.rawValue)
+        #else
+        let streamType = SOCK_STREAM
+        #endif
+        let fd = socket(AF_INET, streamType, 0)
         guard fd >= 0 else { throw Error.unauthenticatedLoopback }
         var reuse: Int32 = 1
         _ = setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuse, socklen_t(MemoryLayout<Int32>.size))

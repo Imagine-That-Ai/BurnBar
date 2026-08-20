@@ -6,8 +6,6 @@ import OpenBurnBarKernel
 import OpenBurnBarSignalCore
 import OSLog
 
-private typealias UntypedJSONObject = [String: Any]
-
 // Direct CLI mission launch and hidden process execution.
 // Extracted from CLIAgentMissionRequestListener.swift (god-file decomposition) — same module, verbatim.
 
@@ -246,7 +244,6 @@ extension CLIAgentMissionRequestListener {
                 onPermission: { request in
                     await self.resolveACPPermission(
                         request,
-                        data: data,
                         document: reference,
                         requestID: requestID,
                         backend: backend
@@ -329,7 +326,6 @@ extension CLIAgentMissionRequestListener {
 
     func resolveACPPermission(
         _ request: ACPStdioClient.PermissionRequest,
-        data _: UntypedJSONObject,
         document: DocumentReference,
         requestID: String,
         backend: CLIAgentMissionBackend
@@ -366,7 +362,7 @@ extension CLIAgentMissionRequestListener {
                 deviceId: handle.deviceId,
                 status: "waiting_for_approval",
                 hostWriteNonce: handle.hostWriteNonce,
-                sealedStatePayload: sealedState,
+                sealedStatePayload: ComputerUseSecurityCallableClient.sendableJSONPayload(sealedState),
                 approvalRequestId: approvalID
             )
             await recordEvent(
@@ -419,7 +415,7 @@ extension CLIAgentMissionRequestListener {
             deviceId: handle.deviceId,
             status: "running",
             hostWriteNonce: handle.hostWriteNonce,
-            sealedStatePayload: sealedState
+            sealedStatePayload: ComputerUseSecurityCallableClient.sendableJSONPayload(sealedState)
         )
     }
 
@@ -453,12 +449,9 @@ extension CLIAgentMissionRequestListener {
         let identity = try OpenBurnBarSignalIdentityKeyStore().loadOrCreate(uid: uid, deviceId: deviceId)
         let signature = try MissionApprovalCeiling.signCanonical(canonical, identity: identity)
         parkedCeilingByRequest[requestID] = (digest, grant)
-        var sendable: [String: any Sendable] = [:]
-        for (key, value) in canonical {
-            if let sendableValue = value as? any Sendable {
-                sendable[key] = sendableValue
-            }
-        }
+        // `as? any Sendable` does not compile: Sendable is a marker protocol and cannot
+        // appear in a conditional cast. The callable boundary owns this conversion.
+        let sendable = ComputerUseSecurityCallableClient.sendableJSONPayload(canonical)
         try await ComputerUseSecurityCallableClient.publishMissionApprovalCeiling(
             requestId: requestID,
             deviceId: deviceId,
@@ -504,6 +497,7 @@ extension CLIAgentMissionRequestListener {
                 extraEnvironment: extraEnvironment,
                 workingDirectoryURL: workingDirectoryURL,
                 cancellationTracker: cancellationTracker,
+                requestID: requestID,
                 eventSink: { [weak self] event in
                     Task { @MainActor [weak self] in
                         await self?.recordEvent(
@@ -543,6 +537,9 @@ extension CLIAgentMissionRequestListener {
         extraEnvironment: [String: String],
         workingDirectoryURL: URL?,
         cancellationTracker: MissionCancellationTracker,
+        // Registered on the interrupt bus alongside the synthetic session id so a
+        // cancel addressed to the mission request also terminates this process.
+        requestID: String,
         eventSink: @escaping @Sendable (DirectCLIStreamEvent) -> Void
     ) async throws -> String {
         let process = Process()

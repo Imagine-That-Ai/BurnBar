@@ -370,7 +370,8 @@ final class CLIAgentSessionMirror: Sendable {
         case .omp: return .omp
         case .xAI: return .grok
         case .junie: return .junie
-        case .grok, .kimi: return .junie
+        // AgentProvider spells xAI `.xAI`, mapped above. `.kimi` has no CLIAgentRuntime
+        // counterpart, so it falls through to nil rather than being mis-attributed.
         default: return nil
         }
     }

@@ -369,17 +369,17 @@ private suspend fun dispatchMissionFallback(
     }
 }
 
+/** Relay failures that mean "retry the relay path", never "fall back to a mission". */
+private val RELAY_NO_FALLBACK_MARKERS =
+    listOf("timeout", "timed out", "already responding", "unsupported runtime", "cannot send an empty")
+
+/** Relay failures that mean the Mac is unreachable, so a queued mission is the right fallback. */
+private val RELAY_OFFLINE_MARKERS = listOf("not connected", "mac offline", "offline")
+
 internal fun shouldFallBackToMissionAfterRelayError(error: Throwable): Boolean {
     val lower = (error.localizedMessage ?: error.message ?: "").lowercase()
-    if (lower.contains("timeout") ||
-        lower.contains("timed out") ||
-        lower.contains("already responding") ||
-        lower.contains("unsupported runtime") ||
-        lower.contains("cannot send an empty")
-    ) {
-        return false
-    }
-    return lower.contains("not connected") || lower.contains("mac offline") || lower.contains("offline")
+    if (RELAY_NO_FALLBACK_MARKERS.any(lower::contains)) return false
+    return RELAY_OFFLINE_MARKERS.any(lower::contains)
 }
 
 internal fun applyRelayEvent(

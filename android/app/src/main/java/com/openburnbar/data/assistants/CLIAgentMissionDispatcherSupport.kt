@@ -108,10 +108,8 @@ internal data class MissionCreateLeaf(
 internal fun publicFieldsForCreate(payload: Map<String, Any>, requestId: String): Map<String, Any> {
     val out = linkedMapOf<String, Any>("id" to requestId)
     for (key in MISSION_CREATE_PUBLIC_KEYS) {
-        if (key == "id") continue
-        val value = payload[key] ?: continue
-        if (value is FieldValue) continue
-        out[key] = value
+        val value = payload[key]
+        if (key != "id" && value != null && value !is FieldValue) out[key] = value
     }
     return out
 }
@@ -248,9 +246,4 @@ internal fun buildFanOutChildLeaves(request: FanOutChildWriteRequest): List<Miss
             initialEvent = mapAny(initialEvent),
         )
     }
-}
-
-/** @deprecated Use [buildFanOutChildLeaves]; children persist only through createCliAgentMission. */
-internal fun appendFanOutChildMissionWrites(request: FanOutChildWriteRequest): List<SignalMissionWrite> {
-    return emptyList()
 }
