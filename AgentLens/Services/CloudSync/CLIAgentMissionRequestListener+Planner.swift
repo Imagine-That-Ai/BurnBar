@@ -48,8 +48,7 @@ enum CLIAgentMissionRuntimePlanner {
                 if let direct = ChatBackendID(rawValue: normalizedRuntime) {
                     return CLIAgentMissionBackend(chatBackend: direct)
                 }
-                // Fail closed: unknown tokens (including kimi/gemini until they launch)
-                // must not remap onto the first enabled backend.
+                // Fail closed: unknown tokens must not remap onto the first enabled backend.
                 return CLIAgentMissionBackend(rawValue: normalizedRuntime, displayName: requestedRuntime)
             }
         }
@@ -136,7 +135,7 @@ enum CLIAgentMissionRuntimePlanner {
             switch chatBackend {
             case .hermes:
                 return false
-            case .codex, .claude, .openclaw, .piAgent, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp, .junie:
+            case .codex, .claude, .openclaw, .piAgent, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp, .junie, .grok, .kimi:
                 return true
             }
         }
@@ -234,7 +233,7 @@ enum CLIAgentMissionRuntimePlanner {
                 }
                 let dedupedTools = (Array(NSOrderedSet(array: tools)) as? [String] ?? tools)
                     .joined(separator: ",")
-                arguments += ["--tools", dedupedTools, "--auto-approve"]
+                arguments += ["--tools", dedupedTools]
             } else {
                 arguments.append("--no-tools")
             }
@@ -450,18 +449,6 @@ enum CLIAgentMissionRuntimePlanner {
                     capabilityGrant: grant
                 ),
                 extraEnvironment: [:]
-            )
-        case ChatBackendID.grok.rawValue, "grok", "grok-build", "xai", "grok-agent":
-            return CLIAgentMissionDirectLaunchPlan(
-                executableName: "grok",
-                arguments: CLIArgumentBuilder.grokACPArguments(),
-                extraEnvironment: ["OPENBURNBAR_MISSION_PROMPT": hostPrompt]
-            )
-        case ChatBackendID.kimi.rawValue, "kimi", "kimi-code":
-            return CLIAgentMissionDirectLaunchPlan(
-                executableName: "kimi",
-                arguments: CLIArgumentBuilder.kimiACPArguments(),
-                extraEnvironment: ["OPENBURNBAR_MISSION_PROMPT": hostPrompt]
             )
         case ChatBackendID.cursorAgent.rawValue:
             return CLIAgentMissionDirectLaunchPlan(

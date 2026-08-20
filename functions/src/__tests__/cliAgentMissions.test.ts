@@ -215,6 +215,47 @@ describe("createCliAgentMission", () => {
     expect(second).toMatchObject({ ok: true, requestId: "first", idempotent: true });
     expect(store.get(`users/${ALICE_UID}/cli_agent_mission_requests/second`)).toBeUndefined();
   });
+
+  it("drops plaintext public fields", async () => {
+    const id = "no-plain";
+    await runCreate(
+      authed(
+        createPayload(id, {
+          publicFields: {
+            missionKind: "chat",
+            requestedRuntime: "codex",
+            source: "ios",
+            schemaVersion: 2,
+            title: "leak",
+            prompt: "secret",
+            liveSummary: "nope",
+          },
+        }),
+      ),
+    );
+    const doc = store.get(`users/${ALICE_UID}/cli_agent_mission_requests/${id}`);
+    expect(doc?.title).toBeUndefined();
+    expect(doc?.prompt).toBeUndefined();
+    expect(doc?.liveSummary).toBeUndefined();
+  });
+
+  it("rejects FieldValue sentinels in publicFields", async () => {
+    await expect(
+      runCreate(
+        authed(
+          createPayload("fv", {
+            publicFields: {
+              missionKind: "chat",
+              requestedRuntime: "codex",
+              source: "ios",
+              schemaVersion: 2,
+              depth: { _methodName: "serverTimestamp" },
+            },
+          }),
+        ),
+      ),
+    ).rejects.toMatchObject({ code: "invalid-argument" });
+  });
 });
 
 describe("claimCliAgentMission", () => {
@@ -457,8 +498,8 @@ describe("requireTrustedDeviceActionProof platforms", () => {
     await runCreate(authed(createPayload("plat")));
     const createCall = mocked.mock.calls[0]?.[0] as { allowedPlatforms: Set<string>; actionKind: string };
     expect(createCall.actionKind).toBe("cli_agent_mission_create");
-    expect([...createCall.allowedPlatforms]).toEqual(expect.arrayContaining(["iOS", "Android"]));
-    expect(createCall.allowedPlatforms.has("macOS")).toBe(false);
+    expect([...createCall.allowedPlatforms]).toEqual(expect.arrayContaining(["iOS", "Android", "macOS"]));
+    expect(createCall.allowedPlatforms.has("macOS")).toBe(true);
 
     await runClaim(
       authed({

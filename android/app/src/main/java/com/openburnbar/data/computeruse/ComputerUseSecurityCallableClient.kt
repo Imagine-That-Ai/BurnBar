@@ -564,6 +564,38 @@ class ComputerUseSecurityCallableClient(
         return requireOk(result.getData(), "$callableName failed.")
     }
 
+    suspend fun createCliAgentMission(payload: Map<String, Any>, deviceId: String): String {
+        val requestId = payload["requestId"] as? String ?: error("createCliAgentMission requires requestId.")
+        val result =
+            callHighRiskOwnerAction(
+                callableName = "createCliAgentMission",
+                deviceId = deviceId,
+                actionKind = "cli_agent_mission_create",
+                subjectId = requestId,
+                payload = payload + ("deviceId" to deviceId),
+            )
+        return (result["requestId"] as? String)?.takeIf { it.isNotBlank() } ?: requestId
+    }
+
+    suspend fun cancelCliAgentMission(
+        requestId: String,
+        deviceId: String,
+        sealedStatePayload: Map<String, Any>,
+    ) {
+        callHighRiskOwnerAction(
+            callableName = "cancelCliAgentMission",
+            deviceId = deviceId,
+            actionKind = "cli_agent_mission_cancel",
+            subjectId = requestId,
+            payload =
+            mapOf(
+                "requestId" to requestId,
+                "deviceId" to deviceId,
+                "sealedStatePayload" to sealedStatePayload,
+            ),
+        )
+    }
+
     /**
      * Bind a CLI-agent mission approve/reject decision to this trusted native
      * escrow device via the App-Check-enforced `respondMissionApproval` callable.

@@ -21,6 +21,22 @@ function authed(data: Record<string, unknown>) {
 }
 
 describe("writeSignalAtRestDocument", () => {
+  it("refuses a claimed mission without mutating it", async () => {
+    const claimed = { id: "claimed-mission", status: "accepted", claimedBy: "mac-1" };
+    await expect(
+      run(
+        authed({
+          collection: "cli_agent_mission_requests",
+          docId: "claimed-mission",
+          data: { ...claimed, status: "failed", claimedBy: "attacker" },
+        }),
+      ),
+    ).rejects.toMatchObject({
+      code: "failed-precondition",
+      message: expect.stringMatching(/createCliAgentMission/),
+    });
+  });
+
   it("refuses cli_agent_mission_requests in favor of createCliAgentMission", async () => {
     await expect(
       run(

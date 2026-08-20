@@ -253,19 +253,10 @@ extension CLIAgentMissionRequestListener {
             )
         } catch {
             logger.error("mission id=\(document.documentID, privacy: .public) cannot be opened with this Mac vault key: \(error.localizedDescription, privacy: .public)")
-            do {
-                try await document.reference.setData([
-                    "status": "vault_key_unavailable",
-                    "claimedBy": accountManager.deviceId,
-                    "updatedAt": FieldValue.serverTimestamp()
-                ], merge: true)
-            } catch {
-                logger.warning("mission id=\(document.documentID, privacy: .public) failed to mark vault key unavailable: \(error.localizedDescription, privacy: .public)")
-            }
             return
         }
         var data = mergePrivateMissionPayload(privatePayload, into: rawData)
-        let missionGroupContext: MissionGroupClaimContext?
+        var missionGroupContext: MissionGroupClaimContext?
         do {
             missionGroupContext = try await validateMissionGroupClaimIfNeeded(
                 data: data, uid: uid, requestID: document.documentID)
@@ -276,15 +267,13 @@ extension CLIAgentMissionRequestListener {
                 ctx: .fromMissionData(data, missionID: document.documentID, prompt: "", fanOutCount: 1),
                 executorTrustState: "trusted")
             // cov:ignore-end
-            await fail(document: document, message: error.localizedDescription)
-            return
+            data["_preClaimFailure"] = error.localizedDescription
         }
         let title = (data["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
             ?? "Insights mission"
-        guard let prompt = (data["prompt"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !prompt.isEmpty else {
-            await fail(document: document, message: "Mission prompt was empty.")
-            return
+        let prompt = (data["prompt"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if prompt.isEmpty {
+            data["_preClaimFailure"] = "Mission prompt was empty."
         }
 
         var requestedRuntime = (data["requestedRuntime"] as? String) ?? "auto"
@@ -361,6 +350,15 @@ extension CLIAgentMissionRequestListener {
             logger.info("claimed mission id=\(document.documentID, privacy: .public)")
         } catch {
             logger.error("mission claim failed id=\(document.documentID, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            return
+        }
+
+        if let preClaimFailure = data["_preClaimFailure"] as? String {
+            await fail(document: document, message: preClaimFailure)
+            return
+        }
+        guard !prompt.isEmpty else {
+            await fail(document: document, message: "Mission prompt was empty.")
             return
         }
 
@@ -449,17 +447,10 @@ extension CLIAgentMissionRequestListener {
         do {
             let summary = requestedModelID.map { "\(backend.displayName) is running \($0) on this Mac." }
                 ?? "\(backend.displayName) is running on this Mac."
-            try await document.reference.setData(
-                try await sealedStateUpdate(
-                    uid: uid,
-                    requestID: document.documentID,
-                    payload: [
-                        "status": "running",
-                        "updatedAt": FieldValue.serverTimestamp()
-                    ],
-                    liveSummary: summary
-                ),
-                merge: true
+            await applyHostStatus(
+                document: document,
+                status: "running",
+                liveSummary: summary
             )
         } catch {
             logger.error("mission running update failed id=\(document.documentID, privacy: .public): \(error.localizedDescription, privacy: .public)")
@@ -514,22 +505,14 @@ extension CLIAgentMissionRequestListener {
                     )
                 )
             }
-            do {
-                try await document.reference.setData(
-                    try await sealedStateUpdate(
-                        uid: uid,
-                        requestID: document.documentID,
-                        payload: payload,
-                        liveSummary: liveSummary,
-                        resultPreview: safeDirectOutput,
-                        errorMessage: sealedErrorMessage
-                    ),
-                    merge: true
-                )
-                logger.info("finished direct CLI mission id=\(document.documentID, privacy: .public) status=\(directResult.status, privacy: .public)")
-            } catch {
-                logger.error("direct CLI mission update failed id=\(document.documentID, privacy: .public): \(error.localizedDescription, privacy: .public)")
-            }
+            await applyHostStatus(
+                document: document,
+                status: directResult.status == "failed" ? "failed" : directResult.status,
+                liveSummary: liveSummary,
+                errorMessage: sealedErrorMessage,
+                resultPreview: safeDirectOutput
+            )
+            logger.info("finished direct CLI mission id=\(document.documentID, privacy: .public) status=\(directResult.status, privacy: .public)")
             await recordEvent(
                 reference: document.reference,
                 requestID: document.documentID,
@@ -663,22 +646,14 @@ extension CLIAgentMissionRequestListener {
         } else {
             sealedResultPreview = safeFinalSummary
         }
-        do {
-            try await document.reference.setData(
-                try await sealedStateUpdate(
-                    uid: uid,
-                    requestID: document.documentID,
-                    payload: payload,
-                    liveSummary: liveSummary,
-                    resultPreview: sealedResultPreview,
-                    errorMessage: sealedErrorMessage
-                ),
-                merge: true
-            )
-            logger.info("finished mission id=\(document.documentID, privacy: .public) status=\(status, privacy: .public)")
-        } catch {
-            logger.error("mission final update failed id=\(document.documentID, privacy: .public): \(error.localizedDescription, privacy: .public)")
-        }
+        await applyHostStatus(
+            document: document,
+            status: status,
+            liveSummary: liveSummary,
+            errorMessage: sealedErrorMessage,
+            resultPreview: sealedResultPreview
+        )
+        logger.info("finished mission id=\(document.documentID, privacy: .public) status=\(status, privacy: .public)")
 
         await recordChangedFileEvents(
             before: changedFilesBefore,

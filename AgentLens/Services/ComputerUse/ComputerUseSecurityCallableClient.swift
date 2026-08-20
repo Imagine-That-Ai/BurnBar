@@ -1084,6 +1084,24 @@ enum ComputerUseSecurityCallableClient {
         return try await functions.httpsCallable(callableName).call(merged)
     }
 
+    static func createCliAgentMission(payload: [String: Any], deviceId: String) async throws -> String {
+        let requestId = payload["requestId"] as? String ?? ""
+        let result = try await callHighRiskOwnerAction(
+            "createCliAgentMission",
+            deviceId: deviceId,
+            actionKind: "cli_agent_mission_create",
+            subjectId: requestId,
+            payload: payload.merging(["deviceId": deviceId]) { _, new in new }
+        )
+        guard let dict = result.data as? [String: Any],
+              dict["ok"] as? Bool == true,
+              let id = dict["requestId"] as? String
+        else {
+            throw ClientError.invalidResponse("Mission create failed.")
+        }
+        return id
+    }
+
     static func claimCliAgentMission(
         requestId: String,
         deviceId: String,
@@ -1126,7 +1144,8 @@ enum ComputerUseSecurityCallableClient {
         status: String,
         hostWriteNonce: String,
         sealedStatePayload: [String: Any],
-        approvalRequestId: String? = nil
+        approvalRequestId: String? = nil,
+        releaseClaim: Bool = false
     ) async throws {
         var payload: [String: Any] = [
             "requestId": requestId,
@@ -1136,6 +1155,7 @@ enum ComputerUseSecurityCallableClient {
             "sealedStatePayload": sealedStatePayload
         ]
         if let approvalRequestId { payload["approvalRequestId"] = approvalRequestId }
+        if releaseClaim { payload["releaseClaim"] = true }
         let result = try await callHighRiskOwnerAction(
             "updateCliAgentMissionStatus",
             deviceId: deviceId,

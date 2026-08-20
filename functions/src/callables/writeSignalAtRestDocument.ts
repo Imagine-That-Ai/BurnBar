@@ -19,7 +19,10 @@ function parseSignalDocument(raw: unknown): never {
   if (input.collection === MISSION_COLLECTION) {
     throw new HttpsError("failed-precondition", "use createCliAgentMission");
   }
-  throw new HttpsError("invalid-argument", "Unsupported Signal at-rest collection.");
+  // This callable only ever wrote cli_agent_mission_requests. Other collections
+  // are not a supported write path; the callable is retired except for the
+  // explicit mission refuse above.
+  throw new HttpsError("failed-precondition", "writeSignalAtRestDocument is retired.");
 }
 
 export const writeSignalAtRestDocument = onCallProduction<SignalAtRestDocumentRequest, { ok: true }>(

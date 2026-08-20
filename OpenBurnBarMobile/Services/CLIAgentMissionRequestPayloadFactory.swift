@@ -12,6 +12,68 @@ import os
 // structural decomposition). Pure move — no behavior change.
 
 enum CLIAgentMissionRequestPayloadFactory {
+    static let createPublicKeys: Set<String> = [
+        "id",
+        "missionKind",
+        "requestedRuntime",
+        "requestedModelID",
+        "depth",
+        "approvalMode",
+        "commandsAllowed",
+        "fileEditsAllowed",
+        "source",
+        "sourceSkillID",
+        "sourceSurface",
+        "deliveryMode",
+        "presentationMode",
+        "parentHermesThreadID",
+        "schemaVersion",
+        "groupID",
+        "siblingIndex",
+        "siblingCount",
+        "isGroupChild",
+        "personaID",
+        "clientThreadID",
+        "parentSessionID",
+        "resumeAction",
+        "originatorKind",
+        "originatorRef",
+        "targetBodyID"
+    ]
+
+    static func publicFields(from payload: [String: Any], requestId: String) -> [String: Any] {
+        var out: [String: Any] = ["id": requestId]
+        for key in createPublicKeys where key != "id" {
+            guard let value = payload[key] else { continue }
+            if value is FieldValue { continue }
+            out[key] = value
+        }
+        return out
+    }
+
+    static func createLeafPayload(
+        requestId: String,
+        remoteCommandID: String,
+        deviceId: String,
+        payload: [String: Any],
+        initialEvent: [String: Any]
+    ) -> [String: Any] {
+        var leaf: [String: Any] = [
+            "requestId": requestId,
+            "remoteCommandID": remoteCommandID,
+            "deviceId": deviceId,
+            "publicFields": publicFields(from: payload, requestId: requestId),
+            "initialEvent": initialEvent["sealedPayload"] ?? initialEvent
+        ]
+        if let sealed = payload["sealedPayload"] {
+            leaf["sealedPayload"] = sealed
+        }
+        if let envelope = payload["signalEnvelope"] {
+            leaf["signalEnvelope"] = envelope
+        }
+        return leaf
+    }
+
     static func buildSealed(
         id: String,
         title: String,

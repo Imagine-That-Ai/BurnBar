@@ -172,7 +172,7 @@ public sealed class MissionRuntimeCatalog
             new[] { MissionRuntimePlatform.Macos, MissionRuntimePlatform.Ios, MissionRuntimePlatform.Android, MissionRuntimePlatform.Windows, MissionRuntimePlatform.Linux }),
         new MissionRuntimeRow(
             "kimi",
-            new[] { "kimi" },
+            new[] { "kimi", "kimi-code", "kimi-cli" },
             "Kimi",
             new[] { MissionRuntimeSurface.Switcher, MissionRuntimeSurface.Fleet, MissionRuntimeSurface.MissionCreate, MissionRuntimeSurface.MissionEvent, MissionRuntimeSurface.MissionMirror, MissionRuntimeSurface.MissionReceipt, MissionRuntimeSurface.GrantRuntime, MissionRuntimeSurface.ChatBackend, MissionRuntimeSurface.CliRuntime },
             MissionRuntimeLaunch.Acp,

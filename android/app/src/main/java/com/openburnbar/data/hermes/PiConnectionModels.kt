@@ -140,7 +140,8 @@ enum class RuntimeConnectionPreferenceKind(val token: String) {
     ;
 
     companion object {
-        fun fromToken(value: String?): RuntimeConnectionPreferenceKind = values().firstOrNull { it.token == value } ?: HERMES
+        fun fromToken(value: String?): RuntimeConnectionPreferenceKind? =
+            values().firstOrNull { it.token == value }
     }
 }
 
@@ -166,6 +167,7 @@ data class RuntimeConnectionPreferenceRecord(
 ) {
     val resolvedRuntimeKind: RuntimeConnectionPreferenceKind
         get() = RuntimeConnectionPreferenceKind.fromToken(runtimeKind)
+            ?: error("unknown runtimeKind '$runtimeKind'")
 }
 
 enum class PiAgentRelayOperation(val token: String) {

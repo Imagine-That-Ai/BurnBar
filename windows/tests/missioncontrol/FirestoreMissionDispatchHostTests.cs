@@ -54,6 +54,35 @@ public sealed class FirestoreMissionDispatchHostTests
     }
 
     [Fact]
+    public async Task Factory_built_host_invokes_approval_callable()
+    {
+        var gateway = new FakeCloudSyncGateway(() => FixedNow);
+        var callable = new RecordingApprovalCallable();
+        var credentials = new StaticCredentialsProvider(new CloudSyncCredentials("id-token", "app-check"));
+        IMissionDispatchHost host = MissionDispatchHostFactory.Create(
+            gateway,
+            credentials,
+            Uid,
+            approvalCallable: callable);
+
+        string missionId = "mission-factory";
+        await gateway.Collection(CollectionPath).Document(missionId).SetDataAsync(
+            CloudSyncFields.From(new[]
+            {
+                new KeyValuePair<string, CloudSyncValue>("status", CloudSyncValue.Of("waiting_for_approval")),
+                new KeyValuePair<string, CloudSyncValue>("approvalStatus", CloudSyncValue.Of("pending")),
+                new KeyValuePair<string, CloudSyncValue>("approvalSummary", CloudSyncValue.Of("Approve this")),
+            }),
+            merge: true);
+
+        MissionConsoleSnapshot awaiting = await host.RefreshAsync();
+        MissionApprovalAsk ask = Assert.Single(awaiting.ApprovalAsks);
+        await host.RespondToApprovalAsync(ask, approve: true);
+        Assert.Equal(missionId, callable.RequestId);
+        Assert.True(callable.Approve);
+    }
+
+    [Fact]
     public async Task RespondToApproval_calls_respondMissionApproval_and_does_not_merge_approved()
     {
         var gateway = new FakeCloudSyncGateway(() => FixedNow);

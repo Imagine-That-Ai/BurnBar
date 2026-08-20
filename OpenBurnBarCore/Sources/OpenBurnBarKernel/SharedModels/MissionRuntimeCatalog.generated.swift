@@ -177,7 +177,7 @@ public struct MissionRuntimeCatalog: Sendable, Equatable {
         ),
         Row(
             id: "kimi",
-            wireAliases: ["kimi"],
+            wireAliases: ["kimi", "kimi-code", "kimi-cli"],
             displayName: "Kimi",
             surfaces: [.switcher, .fleet, .missionCreate, .missionEvent, .missionMirror, .missionReceipt, .grantRuntime, .chatBackend, .cliRuntime],
             launch: .acp,

@@ -24,6 +24,7 @@ class MobileMissionConsoleHostTest {
         events: List<CLIAgentMissionEvent> = emptyList(),
         selectedRuntime: String? = null,
         approvalStatus: String? = null,
+        approvalRequestId: String? = null,
     ) = CLIAgentMissionSnapshot(
         id = id,
         title = "Mission $id",
@@ -37,7 +38,7 @@ class MobileMissionConsoleHostTest {
         resultPreview = null,
         errorMessage = null,
         sessionID = null,
-        approvalRequestId = null,
+        approvalRequestId = approvalRequestId,
         approvalStatus = approvalStatus,
         approvalTitle = null,
         approvalMessage = null,
@@ -86,6 +87,35 @@ class MobileMissionConsoleHostTest {
         val snap = snapshot(id = "m-3", status = "pending")
         val mission = snap.toActiveMission()
         assertTrue(mission.phase == ActiveMission.Phase.QUEUED || mission.phase == ActiveMission.Phase.MAC_OFFLINE)
+    }
+
+    @Test
+    fun secondApprovalRequestIdReShowsAsk() {
+        val first = snapshot(
+            id = "m-dup",
+            status = "waiting_for_approval",
+            approvalStatus = "pending",
+            approvalRequestId = "approval-1",
+        )
+        val second = snapshot(
+            id = "m-dup",
+            status = "waiting_for_approval",
+            approvalStatus = "pending",
+            approvalRequestId = "approval-2",
+        )
+        val hiddenFirst = buildMissionConsoleSnapshotParts(
+            listOf(first),
+            ::runtimeIDGuess,
+            hiddenApprovalKeys = setOf("m-dup|approval-1"),
+        )
+        assertTrue(hiddenFirst.approvalAsks.isEmpty())
+        val newAsk = buildMissionConsoleSnapshotParts(
+            listOf(second),
+            ::runtimeIDGuess,
+            hiddenApprovalKeys = setOf("m-dup|approval-1"),
+        )
+        assertEquals(1, newAsk.approvalAsks.size)
+        assertEquals("m-dup", newAsk.approvalAsks.single().missionID)
     }
 
     @Test

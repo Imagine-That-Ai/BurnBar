@@ -8,26 +8,55 @@ import OSLog
 // Extracted from CLIAgentMissionRequestListener.swift (god-file decomposition) — same module, verbatim.
 
 extension CLIAgentMissionRequestListener {
+    func applyHostStatus(
+        document: QueryDocumentSnapshot,
+        status: String,
+        liveSummary: String,
+        errorMessage: String? = nil,
+        resultPreview: String? = nil,
+        approvalRequestId: String? = nil,
+        releaseClaim: Bool = false
+    ) async {
+        guard let uid = accountManager.currentUID else { return }
+        guard let handle = claimedMissions[document.documentID] else {
+            logger.warning("refusing unclaimed host status \(status, privacy: .public) for \(document.documentID, privacy: .public)")
+            return
+        }
+        do {
+            let sealed = try await sealedStateUpdate(
+                uid: uid,
+                requestID: document.documentID,
+                payload: [:],
+                liveSummary: liveSummary,
+                resultPreview: resultPreview,
+                errorMessage: errorMessage
+            )
+            guard let sealedState = sealed["sealedStatePayload"] as? [String: Any] else { return }
+            let wireStatus = status == "agent_launch_failed" ? "failed" : status
+            try await ComputerUseSecurityCallableClient.updateCliAgentMissionStatus(
+                requestId: document.documentID,
+                deviceId: handle.deviceId,
+                status: releaseClaim ? "pending" : wireStatus,
+                hostWriteNonce: handle.hostWriteNonce,
+                sealedStatePayload: sealedState,
+                approvalRequestId: approvalRequestId,
+                releaseClaim: releaseClaim
+            )
+            if releaseClaim {
+                claimedMissions.removeValue(forKey: document.documentID)
+            }
+        } catch {
+            logger.error("host status \(status, privacy: .public) failed id=\(document.documentID, privacy: .public): \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
     func handleCancellation(document: QueryDocumentSnapshot, backend: CLIAgentMissionBackend) async {
         logger.warning("handling cancellation for mission id=\(document.documentID, privacy: .public)")
-        do {
-            guard let uid = accountManager.currentUID else { return }
-            try await document.reference.setData(
-                try await sealedStateUpdate(
-                    uid: uid,
-                    requestID: document.documentID,
-                    payload: [
-                        "status": "cancelled",
-                        "completedAt": ISO8601DateFormatter().string(from: Date()),
-                        "updatedAt": FieldValue.serverTimestamp()
-                    ],
-                    liveSummary: "Mission cancelled by user."
-                ),
-                merge: true
-            )
-        } catch {
-            logger.error("failed to update cancellation status in firestore: \(error.localizedDescription, privacy: .public)")
-        }
+        await applyHostStatus(
+            document: document,
+            status: "canceled",
+            liveSummary: "Mission cancelled by user."
+        )
         await recordEvent(
             reference: document.reference,
             requestID: document.documentID,
@@ -222,19 +251,11 @@ extension CLIAgentMissionRequestListener {
             : "Mission approval was canceled from mobile."
         do {
             guard let uid = accountManager.currentUID else { return }
-            try await document.reference.setData(
-                try await sealedStateUpdate(
-                    uid: uid,
-                    requestID: document.documentID,
-                    payload: [
-                        "status": "canceled",
-                        "completedAt": ISO8601DateFormatter().string(from: Date()),
-                        "updatedAt": FieldValue.serverTimestamp()
-                    ],
-                    liveSummary: message,
-                    errorMessage: message
-                ),
-                merge: true
+            await applyHostStatus(
+                document: document,
+                status: "canceled",
+                liveSummary: message,
+                errorMessage: message
             )
             await recordEvent(
                 reference: document.reference,

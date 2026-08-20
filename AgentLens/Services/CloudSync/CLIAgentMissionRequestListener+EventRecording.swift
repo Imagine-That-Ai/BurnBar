@@ -93,7 +93,7 @@ extension CLIAgentMissionRequestListener {
     }
 
     func recordEvent(
-        reference: DocumentReference,
+        reference _: DocumentReference,
         requestID: String,
         phase: String,
         kind: String,
@@ -153,7 +153,6 @@ extension CLIAgentMissionRequestListener {
                     "isError": isError
                 ]
             )
-            _ = reference
         } catch {
             logger.warning("mission event update failed: \(error.localizedDescription, privacy: .public)")
         }

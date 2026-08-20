@@ -3,9 +3,9 @@
  * Firestore is a courier; daemon evaluate() remains the only attenuation authority.
  */
 
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 
-import { FieldValue } from "firebase-admin/firestore";
+import { FieldValue, type Transaction } from "firebase-admin/firestore";
 import { HttpsError, type CallableRequest } from "firebase-functions/v2/https";
 
 import { enforceHighRiskComputerUseCallableWithNonce } from "../appCheckAttestation.js";
@@ -41,6 +41,7 @@ const LIVE_CANCEL_STATUSES = new Set([
 ]);
 const TERMINAL_STATUSES = new Set(["completed", "failed", "canceled", "cancelled"]);
 const MAC_PLATFORMS = new Set(["macOS"]);
+const CREATE_PLATFORMS = new Set([...PHONE_CONTROL_ESCROW_PLATFORMS, "macOS"]);
 const CREATE_TOKENS = new Set<string>(MISSION_RUNTIME_CREATE_TOKENS);
 const EVENT_TOKENS = new Set<string>(MISSION_RUNTIME_EVENT_TOKENS);
 
@@ -70,6 +71,7 @@ type MissionCallableRequest = {
   sealedStatePayload?: unknown;
   status?: unknown;
   hostWriteNonce?: unknown;
+  releaseClaim?: unknown;
   eventId?: unknown;
   sealedEvent?: unknown;
   publicEventShape?: unknown;
@@ -86,6 +88,10 @@ function mintHostWriteNonce(): { raw: string; hash: string } {
 
 function missionRef(uid: string, requestId: string) {
   return db.doc(`users/${uid}/${MISSION_COLLECTION}/${requestId}`);
+}
+
+function commandLockRef(uid: string, remoteCommandID: string) {
+  return db.doc(`users/${uid}/_mission_command_locks/${remoteCommandID}`);
 }
 
 function eventRef(uid: string, requestId: string, eventId: string) {
@@ -158,39 +164,63 @@ function requireSealed(
   return requirePathBoundCloudVaultSealedPayload(raw, uid, collection, docId, field);
 }
 
-const CREATE_FORBIDDEN = new Set([
-  "startedAt",
-  "completedAt",
-  "claimedBy",
-  "selectedRuntime",
-  "selectedRuntimeName",
-  "selectedModelID",
-  "sessionId",
-  "approvalRequestId",
-  "approvalStatus",
-  "approvalRequestedAt",
-  "approvalRespondedAt",
-  "approvedByDeviceId",
-  "lastEventSequence",
-  "sealedStatePayload",
-  "sealedStateSchemaVersion",
-  "sealedStateVaultKeyID",
-  "hostWriteNonceHash",
-  "status",
+const CREATE_PUBLIC_KEYS = new Set([
+  "id",
+  "missionKind",
+  "requestedRuntime",
+  "requestedModelID",
+  "depth",
+  "approvalMode",
+  "commandsAllowed",
+  "fileEditsAllowed",
+  "source",
+  "sourceSkillID",
+  "sourceSurface",
+  "deliveryMode",
+  "presentationMode",
+  "parentHermesThreadID",
+  "schemaVersion",
+  "groupID",
+  "siblingIndex",
+  "siblingCount",
+  "isGroupChild",
+  "personaID",
+  "clientThreadID",
+  "parentSessionID",
+  "resumeAction",
+  "originatorKind",
+  "originatorRef",
+  "targetBodyID",
+]);
+
+const PLAINTEXT_PUBLIC_KEYS = new Set([
+  "title",
+  "prompt",
+  "liveSummary",
+  "resultPreview",
+  "errorMessage",
+  "approvalTitle",
+  "approvalMessage",
+  "synthesisSummary",
+  "targetProject",
 ]);
 
 function parsePublicFields(raw: unknown, requestId: string): Record<string, unknown> {
   const fields = recordOrUndefined(raw);
   if (!fields) throw new HttpsError("invalid-argument", "publicFields must be an object.");
-  for (const key of Object.keys(fields)) {
-    if (CREATE_FORBIDDEN.has(key)) {
-      throw new HttpsError("invalid-argument", `publicFields must not include ${key}.`);
+  const out: Record<string, unknown> = { id: requestId };
+  for (const [key, value] of Object.entries(fields)) {
+    if (PLAINTEXT_PUBLIC_KEYS.has(key)) continue;
+    if (!CREATE_PUBLIC_KEYS.has(key)) continue;
+    if (value && typeof value === "object" && "_methodName" in (value as object)) {
+      throw new HttpsError("invalid-argument", `publicFields.${key} must not be a FieldValue sentinel.`);
     }
+    out[key] = value;
   }
   if (fields.id !== undefined && fields.id !== requestId) {
     throw new HttpsError("invalid-argument", "publicFields.id must match requestId.");
   }
-  return fields;
+  return out;
 }
 
 type ParsedCreate = {
@@ -259,38 +289,14 @@ function isNonTerminal(status: unknown): boolean {
   return typeof status === "string" && !TERMINAL_STATUSES.has(status);
 }
 
-async function findByRemoteCommandID(
-  uid: string,
-  remoteCommandID: string,
-): Promise<{ requestId: string; status: unknown } | undefined> {
-  const snap = await db
-    .collection(`users/${uid}/${MISSION_COLLECTION}`)
-    .where("remoteCommandID", "==", remoteCommandID)
-    .limit(16)
-    .get();
-  for (const doc of snap.docs ?? []) {
-    const status = doc.get?.("status") ?? doc.data?.()?.status;
-    if (isNonTerminal(status)) {
-      return { requestId: doc.id, status };
-    }
-  }
-  return undefined;
-}
-
-async function writePendingMission(uid: string, parsed: ParsedCreate): Promise<void> {
-  const ref = missionRef(uid, parsed.requestId);
-  const existing = await ref.get();
-  if (existing.exists) {
-    const data = existing.data() ?? {};
-    if (data.remoteCommandID === parsed.remoteCommandID && isNonTerminal(data.status)) {
-      return;
-    }
-    throw new HttpsError("already-exists", "Mission requestId is already used.");
-  }
+function pendingMissionDocument(parsed: ParsedCreate): Record<string, unknown> {
   const now = FieldValue.serverTimestamp();
   const doc: Record<string, unknown> = {
-    ...parsed.publicFields,
     id: parsed.requestId,
+    missionKind: parsed.publicFields.missionKind ?? "chat",
+    requestedRuntime: parsed.publicFields.requestedRuntime,
+    source: parsed.publicFields.source ?? "ios",
+    schemaVersion: typeof parsed.publicFields.schemaVersion === "number" ? parsed.publicFields.schemaVersion : 2,
     remoteCommandID: parsed.remoteCommandID,
     status: "pending",
     lastEventSequence: 1,
@@ -300,11 +306,47 @@ async function writePendingMission(uid: string, parsed: ParsedCreate): Promise<v
     sealedPayload: parsed.sealedPayload,
     createdAt: now,
     updatedAt: now,
-    schemaVersion: 2,
   };
+  for (const key of CREATE_PUBLIC_KEYS) {
+    if (key === "id") continue;
+    if (parsed.publicFields[key] !== undefined) doc[key] = parsed.publicFields[key];
+  }
   if (parsed.signalEnvelope) doc.signalEnvelope = parsed.signalEnvelope;
-  await ref.set(doc);
-  await eventRef(uid, parsed.requestId, "000001").set(parsed.initialEvent);
+  return doc;
+}
+
+async function writePendingMissionInTransaction(
+  tx: Transaction,
+  uid: string,
+  parsed: ParsedCreate,
+): Promise<{ requestId: string; idempotent: boolean }> {
+  const lock = commandLockRef(uid, parsed.remoteCommandID);
+  const mission = missionRef(uid, parsed.requestId);
+  const [lockSnap, missionSnap] = await Promise.all([tx.get(lock), tx.get(mission)]);
+  if (lockSnap.exists) {
+    const lockedId = String(lockSnap.get("requestId") ?? "");
+    if (lockedId) {
+      const lockedMission = await tx.get(missionRef(uid, lockedId));
+      if (lockedMission.exists && isNonTerminal(lockedMission.get("status"))) {
+        return { requestId: lockedId, idempotent: true };
+      }
+    }
+  }
+  if (missionSnap.exists) {
+    const data = missionSnap.data() ?? {};
+    if (data.remoteCommandID === parsed.remoteCommandID && isNonTerminal(data.status)) {
+      return { requestId: parsed.requestId, idempotent: true };
+    }
+    throw new HttpsError("already-exists", "Mission requestId is already used.");
+  }
+  tx.create(mission, pendingMissionDocument(parsed));
+  tx.create(eventRef(uid, parsed.requestId, "000001"), parsed.initialEvent);
+  tx.set(lock, {
+    requestId: parsed.requestId,
+    remoteCommandID: parsed.remoteCommandID,
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+  return { requestId: parsed.requestId, idempotent: false };
 }
 
 export const createCliAgentMission = onCallProduction<
@@ -322,13 +364,16 @@ export const createCliAgentMission = onCallProduction<
     const nonce = boundedTrimmedString(request.data.nonce, "nonce", 256, true);
     const deviceId = boundedFirestoreDocumentId(request.data.deviceId, "deviceId", 160);
     const parent = parseCreateLeaf(recordOrUndefined(request.data) ?? {}, uid);
-    await requirePhoneProof({
-      request,
+    await enforceHighRiskComputerUseCallableWithNonce(request, uid, nonce);
+    await requireTrustedDeviceActionProof({
       uid,
       deviceId,
       actionKind: "cli_agent_mission_create",
       subjectId: parent.requestId,
+      approve: true,
       nonce,
+      proofRaw: request.data.actionProof,
+      allowedPlatforms: CREATE_PLATFORMS,
     });
 
     const siblingRaw = request.data.siblings;
@@ -347,28 +392,24 @@ export const createCliAgentMission = onCallProduction<
       throw new HttpsError("invalid-argument", "fan-out may include at most 16 missions.");
     }
 
-    const existing = await findByRemoteCommandID(uid, parent.remoteCommandID);
-    if (existing) {
-      return { ok: true, requestId: existing.requestId, idempotent: true };
-    }
-
     for (let i = 0; i < 1 + siblings.length; i += 1) {
       await checkMissionCreateRateLimit(uid);
     }
 
-    await writePendingMission(uid, parent);
-    for (const sibling of siblings) {
-      const hit = await findByRemoteCommandID(uid, sibling.remoteCommandID);
-      if (hit) continue;
-      await writePendingMission(uid, sibling);
-    }
+    const written = await db.runTransaction(async (tx) => {
+      const parentWrite = await writePendingMissionInTransaction(tx, uid, parent);
+      for (const sibling of siblings) {
+        await writePendingMissionInTransaction(tx, uid, sibling);
+      }
+      return parentWrite;
+    });
     logInfo({
       event: "callable_info",
       message: "cli_agent_mission_created",
-      request_id: parent.requestId,
+      request_id: written.requestId,
       sibling_count: siblings.length,
     });
-    return { ok: true, requestId: parent.requestId };
+    return { ok: true, requestId: written.requestId, idempotent: written.idempotent };
   },
 );
 
@@ -462,7 +503,12 @@ export const claimCliAgentMission = onCallProduction<
 );
 
 function assertHostNonce(storedHash: unknown, presented: string): void {
-  if (typeof storedHash !== "string" || storedHash.length !== 64 || storedHash !== hashNonce(presented)) {
+  if (typeof storedHash !== "string" || storedHash.length !== 64) {
+    throw new HttpsError("permission-denied", "hostWriteNonce does not match the claiming Mac.");
+  }
+  const expected = Buffer.from(storedHash, "hex");
+  const actual = Buffer.from(hashNonce(presented), "hex");
+  if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) {
     throw new HttpsError("permission-denied", "hostWriteNonce does not match the claiming Mac.");
   }
 }
@@ -482,8 +528,52 @@ export const updateCliAgentMissionStatus = onCallProduction<
     const nonce = boundedTrimmedString(request.data.nonce, "nonce", 256, true);
     const requestId = boundedFirestoreDocumentId(request.data.requestId, "requestId", 160);
     const deviceId = boundedFirestoreDocumentId(request.data.deviceId, "deviceId", 160);
-    const status = boundedTrimmedString(request.data.status, "status", 80, true);
     const hostWriteNonce = boundedTrimmedString(request.data.hostWriteNonce, "hostWriteNonce", 128, true);
+    if (request.data.releaseClaim === true) {
+      const sealedStatePayload = requireSealed(
+        request.data.sealedStatePayload,
+        uid,
+        MISSION_COLLECTION,
+        requestId,
+        "sealedStatePayload",
+      );
+      await requireMacProof({
+        request,
+        uid,
+        deviceId,
+        actionKind: "cli_agent_mission_status",
+        subjectId: requestId,
+        nonce,
+      });
+      const ref = missionRef(uid, requestId);
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(ref);
+        if (!snap.exists) throw new HttpsError("not-found", "Mission request was not found.");
+        if (snap.get("claimedBy") !== deviceId) {
+          throw new HttpsError("permission-denied", "Only the claiming Mac may release the claim.");
+        }
+        assertHostNonce(snap.get("hostWriteNonceHash"), hostWriteNonce);
+        const current = snap.get("status");
+        if (current !== "accepted") {
+          throw new HttpsError("failed-precondition", "Only an accepted unstarted claim can be released.");
+        }
+        tx.set(
+          ref,
+          {
+            status: "pending",
+            claimedBy: FieldValue.delete(),
+            hostWriteNonceHash: FieldValue.delete(),
+            selectedRuntime: FieldValue.delete(),
+            selectedRuntimeName: FieldValue.delete(),
+            sealedStatePayload,
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true },
+        );
+      });
+      return { ok: true, requestId, status: "pending" };
+    }
+    const status = boundedTrimmedString(request.data.status, "status", 80, true);
     if (!["starting", "running", "completed", "failed", "canceled", "waiting_for_approval"].includes(status)) {
       throw new HttpsError("invalid-argument", "status is not a legal host transition.");
     }

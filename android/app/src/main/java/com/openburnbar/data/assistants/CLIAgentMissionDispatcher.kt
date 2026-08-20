@@ -309,7 +309,7 @@ class CLIAgentMissionDispatcher(
         if (fanOutSignal != null && runtimeTokens.size > 100) {
             throw DispatchException("Signal fan-out supports at most 100 agents per dispatch.")
         }
-        val signalWrites = appendFanOutChildMissionWrites(
+        val leaves = buildFanOutChildLeaves(
             FanOutChildWriteRequest(
                 batch = batch,
                 firestore = firestore,
@@ -332,9 +332,32 @@ class CLIAgentMissionDispatcher(
                 signalRecipients = fanOutSignal?.otherRecipients ?: emptyList(),
             ),
         )
-
-        commitFanOutWrites(uid = uid, groupRef = groupRef, batch = batch, signalWrites = signalWrites)
+        batch.commit().await()
+        val deviceId = AndroidCloudVaultDeviceKeypair.loadOrCreate().deviceId
+        try {
+            createMissionLeaves(leaves, deviceId)
+        } catch (error: Exception) {
+            runCatching {
+                groupRef.set(
+                    mapOf("phase" to "failed", "updatedAt" to FieldValue.serverTimestamp()),
+                    SetOptions.merge(),
+                ).await()
+            }
+            throw DispatchException("Fan-out createCliAgentMission failed: ${error.message ?: "callable failed"}", error)
+        }
         return FanOutDispatchResult(groupID = plan.groupID, childMissionIDs = plan.childMissionIDs)
+    }
+
+    private suspend fun createMissionLeaves(leaves: List<MissionCreateLeaf>, deviceId: String) {
+        if (leaves.isEmpty()) return
+        leaves.chunked(16).forEach { chunk ->
+            val parent = chunk.first()
+            val payload = parent.toCallableMap(deviceId).toMutableMap()
+            if (chunk.size > 1) {
+                payload["siblings"] = chunk.drop(1).map { it.toCallableMap(deviceId) }
+            }
+            securityClient.createCliAgentMission(payload, deviceId)
+        }
     }
 
     private fun requireSignedInUid(): String = auth.currentUser?.uid
@@ -391,12 +414,14 @@ class CLIAgentMissionDispatcher(
         deliveryMode: SkillRunDeliveryMode = SkillRunDeliveryMode.ACTION_ONLY,
         parentHermesThreadID: String? = null,
         presentationMode: CLIAgentChatPresentationMode = CLIAgentChatPresentationMode.NATIVE_CHAT,
+        remoteCommandID: String? = null,
     ): String {
         val uid = requireSignedInUid()
         val trimmedPrompt = prompt.trim()
         if (trimmedPrompt.isBlank()) throw DispatchException("Mission prompt was empty.")
 
         val id = UUID.randomUUID().toString()
+        val commandId = remoteCommandID?.trim()?.takeIf { it.isNotEmpty() } ?: id
         val resolvedKey = AndroidCloudVaultKeyAccess.keyForWriting(uid = uid, firestore = firestore)
         val signalContext = resolveSignalContext(uid = uid, docId = id)
         val payloadInput =
@@ -421,27 +446,26 @@ class CLIAgentMissionDispatcher(
                 key = resolvedKey,
                 signal = signalContext,
             )
-        val signalWrite = signalCallablePayload(payload)
-        if (signalContext != null && signalWrite == null) {
+        if (signalContext != null && payload["signalEnvelope"] == null) {
             throw DispatchException("Signal at-rest activation produced no mission envelope for $id.")
         }
-        val requestRef =
-            firestore.collection("users").document(uid)
-                .collection("cli_agent_mission_requests").document(id)
-        firestore.batch()
-            .apply {
-                if (signalWrite == null) set(requestRef, payload)
-            }
-            .set(
-                requestRef.collection("events").document("000001"),
-                dispatchQueuedEventSealed(missionKind, sourceSurface, sourceSkillID, deliveryMode, resolvedKey),
-            )
-            .commit()
-            .await()
-        if (signalWrite != null) {
-            commitSignalMissionWrite(requestRef = requestRef, missionID = id, payload = signalWrite)
+        val sealed = payload["sealedPayload"] as? Map<*, *>
+            ?: throw DispatchException("Mission payload is missing sealedPayload.")
+        val event = dispatchQueuedEventSealed(missionKind, sourceSurface, sourceSkillID, deliveryMode, resolvedKey)
+        val initialEvent = event["sealedPayload"] as? Map<*, *> ?: event
+        val deviceId = AndroidCloudVaultDeviceKeypair.loadOrCreate().deviceId
+        val createPayload = linkedMapOf<String, Any>(
+            "requestId" to id,
+            "remoteCommandID" to commandId,
+            "deviceId" to deviceId,
+            "publicFields" to publicFieldsForCreate(payload, id),
+            "sealedPayload" to sealed.entries.associate { it.key.toString() to it.value as Any },
+            "initialEvent" to initialEvent.entries.associate { it.key.toString() to it.value as Any },
+        )
+        (payload["signalEnvelope"] as? Map<*, *>)?.let { envelope ->
+            createPayload["signalEnvelope"] = envelope.entries.associate { it.key.toString() to it.value as Any }
         }
-        return id
+        return securityClient.createCliAgentMission(createPayload, deviceId)
     }
 
     private fun dispatchQueuedEventSealed(
@@ -621,23 +645,30 @@ class CLIAgentMissionDispatcher(
 
     suspend fun cancelMission(requestID: String) {
         val uid = auth.currentUser?.uid ?: throw DispatchException("Sign in before cancelling Mac agent missions.")
-        firestore.collection("users").document(uid)
-            .collection("cli_agent_mission_requests").document(requestID)
-            .set(
-                sealedMissionStateUpdate(
-                    uid = uid,
-                    firestore = firestore,
-                    payload =
-                    mapOf(
-                        "status" to "cancelled",
-                        "updatedAt" to FieldValue.serverTimestamp(),
-                    ),
-                    liveSummary = "Mission cancelled by user.",
-                    requestID = requestID,
-                ),
-                com.google.firebase.firestore.SetOptions.merge(),
+        val requestRef =
+            firestore.collection("users").document(uid)
+                .collection("cli_agent_mission_requests").document(requestID)
+        val snapshot = requestRef.get().await()
+        val status = snapshot.getString("status").orEmpty()
+        if (status in setOf("completed", "failed", "canceled", "cancelled", "unauthorized", "agent_launch_failed")) {
+            return
+        }
+        val sealed =
+            sealedMissionStateUpdate(
+                uid = uid,
+                firestore = firestore,
+                payload = emptyMap(),
+                liveSummary = "Mission cancelled by user.",
+                requestID = requestID,
             )
-            .await()
+        val sealedState = sealed["sealedStatePayload"] as? Map<*, *>
+            ?: throw DispatchException("Cancel payload is missing sealedStatePayload.")
+        val deviceId = AndroidCloudVaultDeviceKeypair.loadOrCreate().deviceId
+        securityClient.cancelCliAgentMission(
+            requestId = requestID,
+            deviceId = deviceId,
+            sealedStatePayload = sealedState.entries.associate { it.key.toString() to it.value as Any },
+        )
     }
 
     suspend fun createImportJob(selectedHarnesses: List<String>, source: String = "android-import"): String {

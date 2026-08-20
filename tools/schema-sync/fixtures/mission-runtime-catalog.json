@@ -124,7 +124,7 @@
     },
     {
       "id": "kimi",
-      "wireAliases": ["kimi"],
+      "wireAliases": ["kimi", "kimi-code", "kimi-cli"],
       "displayName": "Kimi",
       "surfaces": ["switcher", "fleet", "mission_create", "mission_event", "mission_mirror", "mission_receipt", "grant_runtime", "chat_backend", "cli_runtime"],
       "launch": "acp",

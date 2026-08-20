@@ -83,6 +83,19 @@ export {
   cancelCliAgentMission,
   appendCliAgentMissionEvent,
 } from "./callables/cliAgentMissions.js";
+export { reapBurnbarAttachments } from "./scheduled/reapBurnbarAttachments.js";
+export {
+  beginBurnbarAttachment,
+  mintBurnbarAttachmentPartURL,
+  composeBurnbarAttachment,
+  finalizeBurnbarAttachment,
+  ticketBurnbarAttachmentDownload,
+  deleteBurnbarAttachment,
+} from "./callables/burnbarAttachments.js";
+export {
+  publishMissionApprovalCeiling,
+  redeemMissionApprovalAnswer,
+} from "./callables/missionApprovalAnswers.js";
 
 export {
   createPiAgentPairing,

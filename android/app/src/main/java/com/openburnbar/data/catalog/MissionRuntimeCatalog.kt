@@ -152,7 +152,7 @@ data class MissionRuntimeCatalog(
         ),
         Row(
             id = "kimi",
-            wireAliases = listOf("kimi"),
+            wireAliases = listOf("kimi", "kimi-code", "kimi-cli"),
             displayName = "Kimi",
             surfaces = setOf(Surface.SWITCHER, Surface.FLEET, Surface.MISSION_CREATE, Surface.MISSION_EVENT, Surface.MISSION_MIRROR, Surface.MISSION_RECEIPT, Surface.GRANT_RUNTIME, Surface.CHAT_BACKEND, Surface.CLI_RUNTIME),
             launch = Launch.ACP,

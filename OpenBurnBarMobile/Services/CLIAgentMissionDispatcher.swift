@@ -126,25 +126,14 @@ final class CLIAgentMissionDispatcher {
             vaultKey: resolvedKey.keyData,
             vaultKeyID: resolvedKey.vaultKeyID
         )
-        var publicFields = payload
-        publicFields.removeValue(forKey: "sealedPayload")
-        publicFields.removeValue(forKey: "signalEnvelope")
-        publicFields.removeValue(forKey: "status")
-        var createPayload: [String: Any] = [
-            "requestId": id,
-            "remoteCommandID": id,
-            "deviceId": deviceId,
-            "publicFields": publicFields,
-            "initialEvent": initialEvent["sealedPayload"] as Any
-        ]
-        if let sealed = payload["sealedPayload"] {
-            createPayload["sealedPayload"] = sealed
-        }
-        if let envelope = payload["signalEnvelope"] {
-            createPayload["signalEnvelope"] = envelope
-        }
         return try await ComputerUseSecurityCallableClient.createCliAgentMission(
-            payload: createPayload,
+            payload: CLIAgentMissionRequestPayloadFactory.createLeafPayload(
+                requestId: id,
+                remoteCommandID: id,
+                deviceId: deviceId,
+                payload: payload,
+                initialEvent: initialEvent
+            ),
             deviceId: deviceId
         )
     }

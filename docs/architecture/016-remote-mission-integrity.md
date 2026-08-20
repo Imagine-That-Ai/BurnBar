@@ -32,8 +32,23 @@ policy replica of daemon `grantCeiling`.
   catalog row is not a launch path.
 - Device proofs are possession of a trusted device key, not presence.
 
+## Residuals (in scope)
+
+- App Check on these callables is **config-gated** (`enforceAppCheck`). Staging
+  can run with it off; production must keep it on.
+- Host status writes are Admin-SDK only. A leftover client merge is denied
+  (T13/T14). Mac listeners must call `updateCliAgentMissionStatus` and unclaim
+  (`releaseClaim`) when evaluate leaves the mission pending.
+- File landing compares a **verified blake3** (iroh) to `contentBlake3`. SHA-256
+  is never compared to a blake3 hex.
+- Mixed `canceled` / `cancelled` spellings remain distinct. Mac host status uses
+  `canceled`; phone cancel callable writes `cancelled`.
+- A compromised trusted Mac is **in scope**: the server trusts attested Mac
+  identity, not the honesty of that Mac's local policy replica.
+
 ## Consequences
 
 - Old clients that `setDoc` missions are denied (hard cut).
 - Mixed `canceled` / `cancelled` spellings remain distinct.
-- grok/kimi/gemini launch waits on the ACP decision record (PR-C).
+- grok/kimi use an ACP stdio JSON-RPC client (not argv-only hang). Gemini remote
+  missions stay on Antigravity argv.

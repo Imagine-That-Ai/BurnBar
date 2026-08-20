@@ -371,13 +371,15 @@ private suspend fun dispatchMissionFallback(
 
 internal fun shouldFallBackToMissionAfterRelayError(error: Throwable): Boolean {
     val lower = (error.localizedMessage ?: error.message ?: "").lowercase()
-    if (lower.contains("already responding") ||
+    if (lower.contains("timeout") ||
+        lower.contains("timed out") ||
+        lower.contains("already responding") ||
         lower.contains("unsupported runtime") ||
         lower.contains("cannot send an empty")
     ) {
         return false
     }
-    return true
+    return lower.contains("not connected") || lower.contains("mac offline") || lower.contains("offline")
 }
 
 internal fun applyRelayEvent(

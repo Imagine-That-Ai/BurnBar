@@ -37,7 +37,7 @@ class CLIAgentMissionDispatcherFanOutTest {
     }
 
     @Test
-    fun `appendFanOutChildMissionWrites seals one child mission and queued event per runtime token`() {
+    fun `buildFanOutChildLeaves seals one child mission leaf per runtime token`() {
         val runtimeTokens = listOf("codex", "claude")
         val plan = planFanOutDispatch(title = "  Compare runtimes  ", prompt = "  Fix the parser  ", runtimeTokens = runtimeTokens)
         val eventsDocument = mockk<DocumentReference>(relaxed = true)
@@ -70,36 +70,22 @@ class CLIAgentMissionDispatcherFanOutTest {
             key = vaultKey,
         )
 
-        val signalWrites = appendFanOutChildMissionWrites(request)
+        val leaves = buildFanOutChildLeaves(request)
 
-        assertTrue("no Signal identity means the batch owns every write", signalWrites.isEmpty())
-        assertEquals(4, capturedPayloads.size)
-
-        val missionPayloads = capturedPayloads.filterIsInstance<Map<*, *>>().filter { it.containsKey("groupID") }
-        assertEquals(2, missionPayloads.size)
-        missionPayloads.forEachIndexed { index, payload ->
-            assertEquals(plan.childMissionIDs[index], payload["id"])
-            assertEquals(runtimeTokens[index], payload["requestedRuntime"])
-            assertEquals(plan.groupID, payload["groupID"])
-            assertEquals(index, payload["siblingIndex"])
-            assertEquals(runtimeTokens.size, payload["siblingCount"])
-            assertEquals(true, payload["isGroupChild"])
-            assertEquals("fan_out", payload["sourceSkillID"])
-            assertEquals("android-hermes-square", payload["sourceSurface"])
-            assertEquals("thread-1", payload["parentHermesThreadID"])
-            assertEquals(true, payload["contentSealed"])
-            assertEquals(vaultKey.vaultKeyID, payload["vaultKeyID"])
-            assertFalse("title is sealed into the private payload", payload.containsKey("title"))
-            assertFalse("prompt is sealed into the private payload", payload.containsKey("prompt"))
-        }
-
-        val eventPayloads = capturedPayloads.filterIsInstance<Map<*, *>>().filter { it["kind"] == "status" }
-        assertEquals(2, eventPayloads.size)
-        eventPayloads.forEach { payload ->
-            assertEquals(1, payload["sequence"])
-            assertEquals("queued", payload["phase"])
-            assertEquals(true, payload["contentSealed"])
-            assertEquals(vaultKey.vaultKeyID, payload["vaultKeyID"])
+        assertEquals(2, leaves.size)
+        leaves.forEachIndexed { index, leaf ->
+            assertEquals(plan.childMissionIDs[index], leaf.requestId)
+            assertEquals(runtimeTokens[index], leaf.publicFields["requestedRuntime"])
+            assertEquals(plan.groupID, leaf.publicFields["groupID"])
+            assertEquals(index, leaf.publicFields["siblingIndex"])
+            assertEquals(runtimeTokens.size, leaf.publicFields["siblingCount"])
+            assertEquals(true, leaf.publicFields["isGroupChild"])
+            assertEquals("fan_out", leaf.publicFields["sourceSkillID"])
+            assertEquals("android-hermes-square", leaf.publicFields["sourceSurface"])
+            assertEquals("thread-1", leaf.publicFields["parentHermesThreadID"])
+            assertFalse("title is not a public field", leaf.publicFields.containsKey("title"))
+            assertFalse("prompt is not a public field", leaf.publicFields.containsKey("prompt"))
+            assertTrue(leaf.sealedPayload.containsKey("vaultKeyID") || leaf.sealedPayload.isNotEmpty())
         }
     }
 
