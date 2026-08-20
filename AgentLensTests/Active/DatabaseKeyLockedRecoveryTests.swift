@@ -79,7 +79,7 @@ final class DatabaseKeyLockedRecoveryTests: XCTestCase {
 
         try DatabaseEncryptionService.withKeychainClientForTesting(
             client(status: errSecInteractionNotAllowed, onAdd: { _ in adds.count += 1; return errSecSuccess })
-        ) { () -> Void in
+        ) {
             XCTAssertThrowsError(try DatabaseEncryptionService.getOrCreatePersistedKey()) { error in
                 guard case DatabaseEncryptionError.keychainKeyUnreadable = error else {
                     return XCTFail("expected .keychainKeyUnreadable, got \(error)")
