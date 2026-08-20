@@ -17,6 +17,7 @@ export const AUDIT_DIRS = [
   "apps/console",
   "apps/linux-desktop",
   "extensions/openburnbar",
+  "extensions/safari",
   "firestore-rules-tests",
   "functions",
   "packages/design-tokens",
