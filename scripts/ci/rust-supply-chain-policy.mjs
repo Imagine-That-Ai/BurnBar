@@ -66,7 +66,10 @@ export function loadPolicy(root = REPO_ROOT) {
     if (typeof entry.expires !== "string" || !ISO_DATE.test(entry.expires)) {
       throw new Error(`${where}: expires must be a YYYY-MM-DD date`);
     }
-    if (Number.isNaN(Date.parse(entry.expires))) {
+    // `Date.parse` is not a real-date check: Node silently normalises overflow,
+    // so `2026-02-31` becomes March 3 and quietly extends a suppression two days
+    // past the date a reviewer signed off on. Round-trip the components instead.
+    if (!isRealCalendarDate(entry.expires)) {
       throw new Error(`${where}: expires is not a real date`);
     }
   });
@@ -82,7 +85,7 @@ export function loadPolicy(root = REPO_ROOT) {
  * survive a patch bump without going stale on the day it matters most.
  */
 export function findAcceptance(finding, policy, now = new Date()) {
-  const candidate = (policy.acceptances ?? []).find(
+  const matches = (policy.acceptances ?? []).filter(
     (entry) =>
       entry.kind === finding.kind &&
       entry.crate.toLowerCase() === String(finding.crate).toLowerCase() &&
@@ -90,11 +93,38 @@ export function findAcceptance(finding, policy, now = new Date()) {
       (entry.dependency === undefined ||
         entry.dependency.toLowerCase() === String(finding.dependency ?? "").toLowerCase()),
   );
-  if (!candidate) return { status: "unaccepted" };
-  if (new Date(candidate.expires) <= now) {
-    return { status: "expired", acceptance: candidate };
+  if (matches.length === 0) return { status: "unaccepted" };
+  // Consider EVERY match before declaring expiry. Taking the first and then
+  // checking its date means that when an expired entry is followed by a renewed
+  // one for the same crate/version/dependency — which validation permits — the
+  // live approval is never seen and the gate stays red until somebody works out
+  // that array order decided it.
+  const live = matches.filter((entry) => new Date(entry.expires) > now);
+  if (live.length > 0) {
+    // Latest expiry wins, so a renewal supersedes the entry it replaces rather
+    // than depending on where it was appended.
+    const acceptance = live.reduce((a, b) => (new Date(b.expires) > new Date(a.expires) ? b : a));
+    return { status: "accepted", acceptance };
   }
-  return { status: "accepted", acceptance: candidate };
+  const acceptance = matches.reduce((a, b) => (new Date(b.expires) > new Date(a.expires) ? b : a));
+  return { status: "expired", acceptance };
+}
+
+/**
+ * True only when `value` is a date that actually exists.
+ *
+ * `Date.parse("2026-02-31")` succeeds and normalises to March 3, so the regex
+ * plus `Date.parse` pair this replaces would accept a typo and silently grant a
+ * longer suppression than anyone approved.
+ */
+export function isRealCalendarDate(value) {
+  const [year, month, day] = String(value).split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+  );
 }
 
 /** Split findings into what still fails and what a live acceptance covers. */

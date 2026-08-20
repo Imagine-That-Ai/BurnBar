@@ -8,6 +8,7 @@ import {
   dependencyCrateName,
   editDistance,
   indexPathFor,
+  isCompatibleUpgrade,
   isNearMiss,
   parseCargoLock,
 } from "./check-cargo-dependency-confusion.mjs";
@@ -312,4 +313,65 @@ test("an expired acceptance stops silencing and re-reds the gate", () => {
   assert.equal(accepted.length, 0);
   assert.equal(live.length, 1);
   assert.match(live[0].detail, /acceptance expired/u);
+});
+
+// --- Review findings on this gate, pinned so they cannot silently return -----
+
+test("prerelease identifiers compare by SemVer, not lexicographically", () => {
+  // The bug this pins: a string compare puts `pre.10` BELOW `pre.6`, so a
+  // phantom dependency introduced in a pre.10 build of an already-prerelease pin
+  // sorts under the pin and is skipped — a false negative in a security gate.
+  assert.equal(compareVersions("5.0.0-pre.10", "5.0.0-pre.6"), 1);
+  assert.equal(compareVersions("5.0.0-pre.2", "5.0.0-pre.10"), -1);
+  // Numeric identifiers sort below alphanumeric ones (SemVer §11.4.3).
+  assert.equal(compareVersions("1.0.0-alpha", "1.0.0-1"), 1);
+  // More identifiers wins when every shared field ties (§11.4.4).
+  assert.equal(compareVersions("1.0.0-alpha.1", "1.0.0-alpha"), 1);
+  // A prerelease still sorts below its own release.
+  assert.equal(compareVersions("1.0.0-rc", "1.0.0"), -1);
+});
+
+test("only versions a plain cargo update could select are scanned", () => {
+  // Scanning every numerically-newer release ignores the manifest requirement,
+  // so a phantom dependency first appearing in a SemVer-breaking major would
+  // fail every run even though nothing short of `--breaking` can reach it.
+  assert.equal(isCompatibleUpgrade("1.2.3", "1.9.0"), true);
+  assert.equal(isCompatibleUpgrade("1.2.3", "2.0.0"), false);
+  // 0.x treats the minor as the compatibility boundary.
+  assert.equal(isCompatibleUpgrade("0.3.1", "0.3.9"), true);
+  assert.equal(isCompatibleUpgrade("0.3.1", "0.4.0"), false);
+});
+
+test("every sighting of one phantom name becomes its own finding", async () => {
+  // Collapsing sightings meant an acceptance written for the first crate also
+  // swallowed a later, unrelated crate declaring the same phantom name — the
+  // second sighting never reached applyPolicy, turning one reviewed exception
+  // into a blanket bypass.
+  const lock = parseCargoLock(`
+[[package]]
+name = "alpha"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
+name = "beta"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+`);
+  const findings = await analyzeLock({
+    packages: lock,
+    readIndex: registry({
+      alpha: [
+        { vers: "1.0.0", deps: [] },
+        { vers: "1.1.0", deps: [{ name: "ghost-crate", kind: "normal" }] },
+      ],
+      beta: [
+        { vers: "1.0.0", deps: [] },
+        { vers: "1.1.0", deps: [{ name: "ghost-crate", kind: "normal" }] },
+      ],
+    }),
+  });
+  const phantoms = findings.filter((f) => f.kind === "phantom" && f.dependency === "ghost-crate");
+  assert.equal(phantoms.length, 2);
+  assert.deepEqual(phantoms.map((f) => f.crate).sort(), ["alpha", "beta"]);
 });

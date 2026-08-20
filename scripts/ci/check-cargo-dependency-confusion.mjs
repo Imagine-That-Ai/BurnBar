@@ -136,7 +136,55 @@ export function compareVersions(a, b) {
   if (left.pre === right.pre) return 0;
   if (left.pre === null) return 1;
   if (right.pre === null) return -1;
-  return left.pre < right.pre ? -1 : 1;
+  return comparePrerelease(left.pre, right.pre);
+}
+
+/**
+ * SemVer §11.4 prerelease ordering.
+ *
+ * A plain string compare gets this wrong in a way that matters here: it puts
+ * `pre.10` BELOW `pre.6`, so a phantom dependency introduced in a `pre.10` build
+ * of an already-prerelease pin sorts under the pin and is skipped by the
+ * `<= 0` filter — a silent false negative in a security gate. Identifiers are
+ * dot-separated; numeric ones compare numerically, numeric sorts below
+ * alphanumeric, and a longer identifier list wins when every shared field ties.
+ */
+function comparePrerelease(a, b) {
+  const left = a.split(".");
+  const right = b.split(".");
+  const numeric = (value) => /^\d+$/u.test(value);
+  for (let index = 0; index < Math.max(left.length, right.length); index += 1) {
+    const l = left[index];
+    const r = right[index];
+    if (l === undefined) return -1;
+    if (r === undefined) return 1;
+    const ln = numeric(l);
+    const rn = numeric(r);
+    if (ln && rn) {
+      const diff = Number(l) - Number(r);
+      if (diff !== 0) return diff < 0 ? -1 : 1;
+      continue;
+    }
+    if (ln !== rn) return ln ? -1 : 1;
+    if (l !== r) return l < r ? -1 : 1;
+  }
+  return 0;
+}
+
+/**
+ * Whether `to` is a version a plain `cargo update` could select given `from`.
+ *
+ * Mirrors Cargo's default caret semantics: 1.x may move within major 1, 0.y may
+ * move within minor y, and 0.0.z is pinned exactly. `--breaking` is out of
+ * scope on purpose — this gate models what an unattended update can reach.
+ */
+export function isCompatibleUpgrade(from, to) {
+  const parse = (value) => String(value).split("-", 1)[0].split(".").map((part) => Number.parseInt(part, 10) || 0);
+  const [fMajor, fMinor] = parse(from);
+  const [tMajor, tMinor] = parse(to);
+  if (fMajor !== tMajor) return false;
+  if (fMajor === 0) return fMinor === tMinor;
+  return true;
 }
 
 /** Damerau-style edit distance, capped — we only ever care about "is it 1?". */
@@ -226,9 +274,16 @@ export async function analyzeLock({ packages, readIndex, now = new Date() }) {
     }
 
     // The upgrade path: only versions ABOVE what we pin can introduce a name
-    // cargo has not already proven resolvable.
+    // cargo has not already proven resolvable — and only those a plain
+    // `cargo update` could actually select. Scanning every numerically-newer
+    // release ignores the manifest's requirement, so a phantom dependency that
+    // first appears in a SemVer-breaking major would fail every PR and every
+    // scheduled run even though nothing short of `cargo update --breaking`
+    // could ever pull it in. A gate that cries wolf on unreachable versions
+    // gets switched off, which costs more than the coverage it buys.
     for (const version of index.versions) {
       if (compareVersions(version.vers, entry.version) <= 0) continue;
+      if (!isCompatibleUpgrade(entry.version, version.vers)) continue;
       if (version.yanked) continue;
       for (const dependency of version.deps ?? []) {
         // Dev-dependencies never reach a consumer's build graph.
@@ -248,22 +303,29 @@ export async function analyzeLock({ packages, readIndex, now = new Date() }) {
   for (const [depName, sightings] of candidateNames) {
     const index = await readIndex(depName);
     knownExists.set(depName, index.exists);
-    const first = sightings[0];
     if (!index.exists) {
       const neighbour = [...lockedNames].find((known) => isNearMiss(depName, known));
-      findings.push({
-        kind: "phantom",
-        crate: first.crate,
-        version: first.offeredIn,
-        dependency: depName,
-        neighbour: neighbour ?? null,
-        detail:
-          `${first.crate} ${first.offeredIn} (we pin ${first.pinned}) declares a dependency on ` +
-          `'${depName}', which does not exist on the registry` +
-          (neighbour
-            ? ` and is one edit from '${neighbour}', a crate we already depend on.`
-            : ". An unregistered dependency name is claimable by anyone."),
-      });
+      // One finding per SIGHTING, not per dependency name. Policy acceptances
+      // match on crate + version + dependency, so collapsing every sighting of
+      // `foo` into the first one means an acceptance written for the first
+      // crate also swallows a later, unrelated crate declaring the same
+      // phantom name — the second sighting never reaches `applyPolicy` at all.
+      // That turns one reviewed exception into a blanket bypass.
+      for (const sighting of sightings) {
+        findings.push({
+          kind: "phantom",
+          crate: sighting.crate,
+          version: sighting.offeredIn,
+          dependency: depName,
+          neighbour: neighbour ?? null,
+          detail:
+            `${sighting.crate} ${sighting.offeredIn} (we pin ${sighting.pinned}) declares a dependency on ` +
+            `'${depName}', which does not exist on the registry` +
+            (neighbour
+              ? ` and is one edit from '${neighbour}', a crate we already depend on.`
+              : ". An unregistered dependency name is claimable by anyone."),
+        });
+      }
       continue;
     }
     // A dependency that EXISTS is deliberately not flagged on name similarity
