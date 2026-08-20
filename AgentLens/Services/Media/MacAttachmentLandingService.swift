@@ -1,8 +1,7 @@
 import Darwin
 import Foundation
 import OpenBurnBarComputerUseCore
-// `HermesAttachment` lives in OpenBurnBarCore's assistant models, re-exported here.
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import OpenBurnBarMedia
 
 /// Lands a verified attachment into a workspace / Drop / `.burnbar/attachments` prefix.
