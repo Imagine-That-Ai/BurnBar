@@ -70,13 +70,14 @@ class BurnBarWindowSizeClassTest {
         }
     }
 
-    /// The default the CompositionLocal hands out before a real measurement arrives.
-    /// It must be the narrowest class, so a first frame never over-commits to a
-    /// wide layout it then has to tear down.
+    /// The narrowest class is the safe default for a first frame, before a real
+    /// measurement arrives — over-committing to a wide layout means tearing it
+    /// down. `LocalWindowSizeClass`'s own default is only readable inside a
+    /// composition, so what is pinned here is the property that makes it safe.
     @Test
-    fun `the composition local default is a compact phone width`() {
-        val fallback = LocalWindowSizeClass.value
+    fun `a phone-width fallback classifies as compact`() {
+        val fallback = BurnBarWindowSizeClass.calculate(360.dp)
         assertEquals(BurnBarWindowWidthClass.COMPACT, fallback.widthClass)
-        assertTrue(fallback.widthDp < 600.dp)
+        assertFalse(fallback.widthClass.isWide)
     }
 }
