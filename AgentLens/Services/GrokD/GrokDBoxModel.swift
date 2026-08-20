@@ -19,8 +19,11 @@ final class GrokDBoxModel {
     var guiWarning: String?
     var isRefreshing: Bool = false
     var isSending: Bool = false
-    var followMaxPolls: Int = 30
-    var followPollNanoseconds: UInt64 = 1_000_000_000
+    var isFollowing: Bool = false
+    var followMaxPolls: Int = GrokDHostClient.defaultFollowMaxPolls
+    var followPollNanoseconds: UInt64 = GrokDHostClient.defaultFollowPollNanoseconds
+    var completionWatchMaxPolls: Int = 30
+    var completionWatchNanoseconds: UInt64 = 2_000_000_000
 
     var enabled: Bool {
         didSet { defaults.set(enabled, forKey: GrokDFeature.DefaultsKey.enabled) }
@@ -38,6 +41,7 @@ final class GrokDBoxModel {
             && GrokDHostClient.isAgentUUID(selectedAgentID ?? "")
             && !promptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !isSending
+            && !isFollowing
             && !(selectedAgent?.isBusy ?? false)
     }
 
@@ -52,6 +56,7 @@ final class GrokDBoxModel {
         if selectedAgent?.isBusy == true { return "That agent is already running a turn." }
         if promptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "Type a message first." }
         if isSending { return "Send in progress." }
+        if isFollowing { return "Waiting for the current turn." }
         return "Ready to send."
     }
 
@@ -78,11 +83,13 @@ final class GrokDBoxModel {
         if isSending && !preservingStatus { return }
         refreshGeneration += 1
         let generation = refreshGeneration
+        let keepStatus = preservingStatus || isFollowing
         let preservedMessage = lastMessage
         let preservedTone = statusTone
         let preservedPhase = phase
         guard enabled else {
             busyPollTask?.cancel()
+            isFollowing = false
             agents = []
             health = .cannotList
             phase = .off
@@ -90,7 +97,7 @@ final class GrokDBoxModel {
             statusTone = .info
             return
         }
-        if !preservingStatus {
+        if !keepStatus {
             phase = .listing
         }
         if autoStart {
@@ -108,7 +115,7 @@ final class GrokDBoxModel {
             guard generation == refreshGeneration else { return }
             if health == .cannotList {
                 agents = []
-                if !preservingStatus {
+                if !keepStatus {
                     lastMessage = health.userMessage
                     statusTone = .error
                     phase = .refused
@@ -120,7 +127,7 @@ final class GrokDBoxModel {
             if selectedAgentID == nil || !agents.contains(where: { $0.id == selectedAgentID }) {
                 selectedAgentID = agents.first(where: { !$0.isBusy })?.id ?? agents.first?.id
             }
-            if preservingStatus {
+            if keepStatus {
                 lastMessage = preservedMessage
                 statusTone = preservedTone
                 phase = preservedPhase
@@ -131,7 +138,7 @@ final class GrokDBoxModel {
             }
         } catch {
             guard generation == refreshGeneration else { return }
-            if preservingStatus {
+            if keepStatus {
                 lastMessage = preservedMessage
                 statusTone = preservedTone
                 phase = preservedPhase
@@ -148,16 +155,19 @@ final class GrokDBoxModel {
     func send() async {
         let text = promptText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let agentID = selectedAgentID, canSend else { return }
+        busyPollTask?.cancel()
         isSending = true
-        defer { isSending = false }
+        isFollowing = false
         do {
             let client = try makeClient()
             let baseline = selectedAgent?.lastMessagePreview
             let handle = try await client.sendPrompt(agentID: agentID, prompt: text)
             promptText = ""
-            lastMessage = "Sent. Waiting for the box to run the turn…"
+            lastMessage = "Sent. Waiting for the box to run the turn — this can take about a minute."
             statusTone = .info
             phase = .sent
+            isSending = false
+            isFollowing = true
             let result = await client.followTurn(
                 agentID: agentID,
                 prompt: text,
@@ -166,43 +176,101 @@ final class GrokDBoxModel {
                 maxPolls: followMaxPolls,
                 pollNanoseconds: followPollNanoseconds
             )
-            lastMessage = result.userMessage
-            statusTone = result.tone
-            switch result.outcome {
-            case .completed:
-                phase = .assistantDone
-            case .promptLandedNoReply:
-                phase = .userLanded
-            case .stillRunning:
-                phase = .stillRunning
-            case .agentMissing:
-                phase = .refused
-            case .cancelled:
-                phase = .stillRunning
+            guard enabled else {
+                isFollowing = false
+                return
             }
+            applyFollowResult(result)
             await refresh(preservingStatus: true)
-            if selectedAgent?.isBusy == true {
-                startBusyPoll()
+            switch result.outcome {
+            case .completed, .agentMissing, .cancelled:
+                isFollowing = false
+            case .promptLandedNoReply, .stillRunning:
+                startCompletionWatch(
+                    agentID: agentID,
+                    prompt: text,
+                    afterRowID: handle.afterRowID,
+                    baseline: baseline
+                )
             }
         } catch {
+            isSending = false
+            isFollowing = false
             lastMessage = (error as? GrokDHostError)?.userMessage ?? "Send failed."
             statusTone = .error
             phase = .refused
         }
     }
 
-    private func startBusyPoll() {
+    private func applyFollowResult(_ result: GrokDTurnFollowResult) {
+        lastMessage = result.userMessage
+        statusTone = result.tone
+        switch result.outcome {
+        case .completed:
+            phase = .assistantDone
+        case .promptLandedNoReply:
+            phase = .userLanded
+        case .stillRunning, .cancelled:
+            phase = .stillRunning
+        case .agentMissing:
+            phase = .refused
+        }
+    }
+
+    /// After the primary follow window, keep polling until sqlite/preview shows
+    /// this turn completed (or the agent goes idle with no later reply).
+    private func startCompletionWatch(
+        agentID: String,
+        prompt: String,
+        afterRowID: Int64,
+        baseline: String?
+    ) {
         busyPollTask?.cancel()
-        busyPollTask = Task { [weak self] in
-            for _ in 0..<30 {
-                do {
-                    try await Task.sleep(nanoseconds: 2_000_000_000)
-                } catch {
-                    return
+        isFollowing = true
+        let watchMax = max(1, completionWatchMaxPolls)
+        let watchNs = completionWatchNanoseconds
+        busyPollTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.isFollowing = false }
+            var idleTicks = 0
+            for _ in 0..<watchMax {
+                if watchNs > 0 {
+                    do {
+                        try await Task.sleep(nanoseconds: watchNs)
+                    } catch {
+                        return
+                    }
                 }
-                guard let self, !Task.isCancelled else { return }
-                await self.refresh(preservingStatus: true)
-                if self.selectedAgent?.isBusy != true { return }
+                guard !Task.isCancelled, self.enabled else { return }
+                do {
+                    let client = try self.makeClient()
+                    let tick = await client.followTurn(
+                        agentID: agentID,
+                        prompt: prompt,
+                        baselinePreview: baseline,
+                        afterRowID: afterRowID,
+                        maxPolls: 1,
+                        pollNanoseconds: 0
+                    )
+                    if tick.outcome == .completed {
+                        self.applyFollowResult(tick)
+                        await self.refresh(preservingStatus: true)
+                        return
+                    }
+                    if tick.outcome == .agentMissing {
+                        self.applyFollowResult(tick)
+                        return
+                    }
+                    await self.refresh(preservingStatus: true)
+                    if self.selectedAgent?.isBusy == true {
+                        idleTicks = 0
+                    } else {
+                        idleTicks += 1
+                        if idleTicks >= 3 { return }
+                    }
+                } catch {
+                    await self.refresh(preservingStatus: true)
+                }
             }
         }
     }

@@ -1,3 +1,4 @@
+import os
 import XCTest
 @preconcurrency import OpenBurnBarCore
 @testable import OpenBurnBar
@@ -26,6 +27,11 @@ final class GrokDHostClientTests: XCTestCase {
     func testBoxTitleCopy() {
         XCTAssertEqual(GrokDFeature.boxTitle(liveCount: 7), "Local D box (7 live agents)")
         XCTAssertFalse(GrokDFeature.isEnabled(defaults: UserDefaults(suiteName: "GrokDHostClientTests.flag")!))
+    }
+
+    func testFollowDefaultPollsCoverSlowProbeBot() {
+        XCTAssertGreaterThanOrEqual(GrokDHostClient.defaultFollowMaxPolls, 90)
+        XCTAssertEqual(GrokDHostClient.defaultFollowPollNanoseconds, 1_000_000_000)
     }
 
     func testConfigNeverUsesLocalhostAndRedactsToken() throws {
@@ -336,7 +342,74 @@ final class GrokDHostClientTests: XCTestCase {
         XCTAssertEqual(model.lastMessage, "Turn completed.")
         XCTAssertEqual(model.statusTone, .success)
         XCTAssertEqual(model.phase, .assistantDone)
+        XCTAssertFalse(model.isFollowing)
         XCTAssertTrue(GrokDStubURLProtocol.requests.contains(where: { $0.url?.path == "/api/sendPrompt" }))
+    }
+
+    func testBoxModelCompletionWatchUpgradesPromptLanded() async throws {
+        let defaults = UserDefaults(suiteName: "GrokDBoxModel.watch.\(UUID().uuidString)")!
+        defaults.set(true, forKey: GrokDFeature.DefaultsKey.enabled)
+        let sent = Locked(0)
+        let listsAfterSend = Locked(0)
+        let token = "watch-upgrade-token"
+        GrokDStubURLProtocol.handler = { request in
+            if request.url?.path == "/api/sendPrompt" {
+                sent.withLock { $0 += 1 }
+                return Self.json(request, 200, #"{"accepted":true}"#)
+            }
+            if sent.read() == 0 {
+                return Self.json(request, 200, Self.agentJSON(running: false, preview: "old"))
+            }
+            let n = listsAfterSend.withLock { value -> Int in
+                value += 1
+                return value
+            }
+            if n <= 3 {
+                return Self.json(request, 200, Self.agentJSON(running: true, preview: token))
+            }
+            return Self.json(request, 200, Self.agentJSON(running: false, preview: "\(token) pong"))
+        }
+        let session = self.session!
+        let bearer = self.token
+        let model = GrokDBoxModel(
+            defaults: defaults,
+            makeClient: {
+                GrokDHostClient(
+                    config: GrokDHostConfig(
+                        loopbackHost: "127.0.0.1",
+                        shimPort: 1337,
+                        hostPort: 1338,
+                        inferencePort: 8787,
+                        bearerToken: bearer,
+                        guiMode: "local"
+                    ),
+                    session: session,
+                    portProbe: GrokDStubPortProbe(open: [1337, 1338, 8787])
+                )
+            },
+            startBox: { false }
+        )
+        model.followMaxPolls = 1
+        model.followPollNanoseconds = 0
+        model.completionWatchMaxPolls = 8
+        model.completionWatchNanoseconds = 0
+        await model.refresh()
+        model.selectedAgentID = Self.benchID
+        model.promptText = token
+        XCTAssertTrue(model.canSend)
+        await model.send()
+        XCTAssertTrue(
+            model.phase == .userLanded || model.phase == .assistantDone,
+            "primary follow should land the prompt (or complete if the watch won the race)"
+        )
+        let deadline = Date().addingTimeInterval(2)
+        while model.phase != .assistantDone, Date() < deadline {
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+        XCTAssertEqual(model.phase, .assistantDone)
+        XCTAssertEqual(model.lastMessage, "Turn completed.")
+        XCTAssertEqual(model.statusTone, .success)
+        XCTAssertFalse(model.isFollowing)
     }
 
     func testCursorModeMissingTokenUsesLoopbackBearerAndWarns() throws {
@@ -960,12 +1033,96 @@ final class GrokDHostClientTests: XCTestCase {
             prompt: token,
             baselinePreview: bot.lastMessagePreview,
             afterRowID: handle.afterRowID,
-            maxPolls: 30,
-            pollNanoseconds: 1_000_000_000
+            maxPolls: GrokDHostClient.defaultFollowMaxPolls,
+            pollNanoseconds: GrokDHostClient.defaultFollowPollNanoseconds
         )
-        XCTAssertLessThan(Date().timeIntervalSince(started), 35)
+        XCTAssertLessThan(Date().timeIntervalSince(started), 120)
         XCTAssertEqual(result.outcome, .completed)
-        XCTAssertTrue((result.lastPreview ?? "").contains(token))
+        if let path = bot.path {
+            let sqlite = await GrokDReadonlyTranscriptReader().read(
+                path: path,
+                agentID: bot.id,
+                token: token,
+                afterRowID: handle.afterRowID
+            )
+            XCTAssertEqual(sqlite, .completed)
+        }
+    }
+
+    func testUnknownWatermarkSkipsSqliteHistoryComplete() async throws {
+        GrokDStubURLProtocol.handler = { request in
+            if request.url?.path == "/api/sendPrompt" {
+                return Self.json(request, 200, #"{"accepted":true}"#)
+            }
+            return Self.json(
+                request,
+                200,
+                Self.agentJSON(
+                    running: false,
+                    preview: "old-history-hi",
+                    path: "/tmp/box-data/agents/\(Self.benchID)/store.db"
+                )
+            )
+        }
+        let session = self.session!
+        let token = self.token
+        let client = GrokDHostClient(
+            config: GrokDHostConfig(
+                loopbackHost: "127.0.0.1",
+                shimPort: 1337,
+                hostPort: 1338,
+                inferencePort: 8787,
+                bearerToken: token,
+                guiMode: "local"
+            ),
+            session: session,
+            portProbe: GrokDStubPortProbe(open: [1337, 1338, 8787]),
+            transcriptReader: GrokDUnknownWatermarkReader()
+        )
+        let handle = try await client.sendPrompt(agentID: Self.benchID, prompt: "hi")
+        XCTAssertEqual(handle.afterRowID, GrokDTurnHandle.unknownWatermark)
+        let result = await client.followTurn(
+            agentID: Self.benchID,
+            prompt: "hi",
+            baselinePreview: "old-history-hi",
+            afterRowID: handle.afterRowID,
+            maxPolls: 2,
+            pollNanoseconds: 0
+        )
+        XCTAssertEqual(result.outcome, .stillRunning)
+    }
+
+    func testWatermarkRetrySucceedsAfterTransientMaxRowIDMiss() async throws {
+        GrokDStubURLProtocol.handler = { request in
+            if request.url?.path == "/api/sendPrompt" {
+                return Self.json(request, 200, #"{"accepted":true}"#)
+            }
+            return Self.json(
+                request,
+                200,
+                Self.agentJSON(
+                    running: false,
+                    path: "/tmp/box-data/agents/\(Self.benchID)/store.db"
+                )
+            )
+        }
+        let reader = GrokDFlakyMaxReader(fails: 2, then: 18)
+        let client = GrokDHostClient(
+            config: GrokDHostConfig(
+                loopbackHost: "127.0.0.1",
+                shimPort: 1337,
+                hostPort: 1338,
+                inferencePort: 8787,
+                bearerToken: token,
+                guiMode: "local"
+            ),
+            session: session,
+            portProbe: GrokDStubPortProbe(open: [1337, 1338, 8787]),
+            transcriptReader: reader
+        )
+        let handle = try await client.sendPrompt(agentID: Self.benchID, prompt: "hello")
+        XCTAssertEqual(handle.afterRowID, 18)
+        XCTAssertEqual(reader.calls, 3)
     }
 
     // MARK: - Helpers
@@ -1111,6 +1268,44 @@ final class GrokDHostClientTests: XCTestCase {
             return buffer as Data
         })
         return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    }
+}
+
+private struct GrokDUnknownWatermarkReader: GrokDTranscriptReading {
+    func maxRowID(path: String, agentID: String) async -> Int64? { nil }
+    func read(path: String, agentID: String, token: String, afterRowID: Int64) async -> GrokDTranscriptRead {
+        .completed
+    }
+}
+
+private final class GrokDFlakyMaxReader: GrokDTranscriptReading, @unchecked Sendable {
+    private struct State {
+        var remainingFails: Int
+        var calls: Int
+        let value: Int64
+    }
+
+    private let box: OSAllocatedUnfairLock<State>
+
+    init(fails: Int, then value: Int64) {
+        box = OSAllocatedUnfairLock(initialState: State(remainingFails: fails, calls: 0, value: value))
+    }
+
+    var calls: Int { box.withLock { $0.calls } }
+
+    func maxRowID(path: String, agentID: String) async -> Int64? {
+        box.withLock { state in
+            state.calls += 1
+            if state.remainingFails > 0 {
+                state.remainingFails -= 1
+                return nil
+            }
+            return state.value
+        }
+    }
+
+    func read(path: String, agentID: String, token: String, afterRowID: Int64) async -> GrokDTranscriptRead {
+        .noEvidence
     }
 }
 

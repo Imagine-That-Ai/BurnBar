@@ -95,7 +95,7 @@ struct GrokDHostClient: Sendable {
         ]
         var afterRowID: Int64 = 0
         if let path = agent.path {
-            afterRowID = await transcriptReader.maxRowID(path: path, agentID: agentID) ?? 0
+            afterRowID = await snapshotWatermark(path: path, agentID: agentID)
         }
         _ = try await post(method: "sendPrompt", body: body)
         return GrokDTurnHandle(
@@ -106,14 +106,22 @@ struct GrokDHostClient: Sendable {
         )
     }
 
+    /// Probe Bot unique-token pongs have been measured at 42–52s. Each poll also
+    /// runs `listAgents` plus optional sqlite CLI, so 45 one-second polls ended
+    /// around 49s wall — short of a later assistant line. 90 polls is the
+    /// product follow window (~90–100s wall) and returns as soon as sqlite or
+    /// preview shows this turn completed.
+    static let defaultFollowMaxPolls = 90
+    static let defaultFollowPollNanoseconds: UInt64 = 1_000_000_000
+
     /// Preview later-reply is used only when sqlite is busy or the db cannot be opened.
     func followTurn(
         agentID: String,
         prompt: String,
         baselinePreview: String?,
         afterRowID: Int64 = 0,
-        maxPolls: Int = 30,
-        pollNanoseconds: UInt64 = 1_000_000_000
+        maxPolls: Int = GrokDHostClient.defaultFollowMaxPolls,
+        pollNanoseconds: UInt64 = GrokDHostClient.defaultFollowPollNanoseconds
     ) async -> GrokDTurnFollowResult {
         let needle = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         var sawPrompt = false
@@ -143,7 +151,7 @@ struct GrokDHostClient: Sendable {
             let preview = agent.lastMessagePreview
             lastPreview = preview
             var trustPreviewReply = true
-            if let path = agent.path {
+            if let path = agent.path, afterRowID >= 0 {
                 switch await transcriptReader.read(
                     path: path,
                     agentID: agentID,
@@ -191,6 +199,25 @@ struct GrokDHostClient: Sendable {
             return GrokDTurnFollowResult(outcome: .promptLandedNoReply, lastPreview: lastPreview)
         }
         return GrokDTurnFollowResult(outcome: .stillRunning, lastPreview: lastPreview)
+    }
+
+    /// Nil `MAX(rowid)` must not become 0: that classifies the last-40 history
+    /// as this send. A single `SQLITE_BUSY` at send time also must not disable
+    /// sqlite follow for the whole turn, so the snapshot is retried briefly.
+    private func snapshotWatermark(path: String, agentID: String) async -> Int64 {
+        for attempt in 0..<3 {
+            if let maxID = await transcriptReader.maxRowID(path: path, agentID: agentID) {
+                return maxID
+            }
+            if attempt < 2 {
+                do {
+                    try await Task.sleep(nanoseconds: 50_000_000)
+                } catch {
+                    break
+                }
+            }
+        }
+        return GrokDTurnHandle.unknownWatermark
     }
 
     /// User line: exact prompt, or a truncation of it. A longer preview that

@@ -108,7 +108,10 @@ struct GrokDTurnHandle: Equatable, Sendable {
     let acceptedAt: Date
     /// `MAX(rowid)` of `store.db` immediately before `sendPrompt`. Follow only
     /// classifies newer rows so a repeated prompt cannot complete on history.
+    /// `unknownWatermark` means the snapshot failed; sqlite follow is skipped.
     let afterRowID: Int64
+
+    static let unknownWatermark: Int64 = -1
 }
 
 struct GrokDTurnFollowResult: Equatable, Sendable {

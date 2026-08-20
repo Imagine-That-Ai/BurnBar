@@ -1,5 +1,4 @@
 import Foundation
-import os
 
 /// Local D box feature flags. Defaults OFF. No catalog / Hermes / quota identity.
 enum GrokDFeature {
@@ -47,8 +46,16 @@ enum GrokDFeature {
     }
 
     static func runEnsureScript(_ script: URL) async throws {
-        if GrokDEnsureOnce.ran.withLock({ $0 }) { return }
-        let path = script.path
+        try await GrokDEnsureGate.shared.run(script.path)
+    }
+}
+
+private actor GrokDEnsureGate {
+    static let shared = GrokDEnsureGate()
+    private var finished = false
+
+    func run(_ path: String) async throws {
+        if finished { return }
         try await Task.detached(priority: .utility) {
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/bin/bash")
@@ -66,10 +73,6 @@ enum GrokDFeature {
                 throw GrokDHostError.transport("ensure-local-box \(status)")
             }
         }.value
-        GrokDEnsureOnce.ran.withLock { $0 = true }
+        finished = true
     }
-}
-
-private enum GrokDEnsureOnce {
-    static let ran = OSAllocatedUnfairLock(initialState: false)
 }

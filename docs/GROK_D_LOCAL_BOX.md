@@ -10,9 +10,11 @@ Default **off**. Mac App Store builds do not show the pane (no `~/.grok` without
 2. Sends **one UUID** a prompt with `awaitTurn: false`.
 3. Follows the turn by polling `listAgents` and, when the roster includes a `path` to that agent’s `store.db`, a **read-only** sqlite window:
 
-   `SELECT entry FROM transcript_entries ORDER BY rowid DESC LIMIT n` with a short `busy_timeout` (well under the 1s poll).
+   `SELECT entry FROM transcript_entries WHERE rowid > :watermark ORDER BY rowid DESC LIMIT n` with a short `busy_timeout` (well under the 1s poll). The watermark is `MAX(rowid)` taken immediately before `sendPrompt`. If that snapshot fails, sqlite follow is skipped and preview follow is used instead.
 
    Success is the newest user line whose content equals (or is a truncation of) this prompt **and** a strictly newer **assistant** / `send-message` line, using only rows after the send-time `MAX(rowid)` watermark. Non-JSON sqlite stdout (PRAGMA `80`) is ignored. `SQLITE_BUSY` skips that poll. A missing or locked db falls back to `lastMessagePreview` follow. Never INSERT / UPDATE / DELETE. An exact/truncated preview of the prompt is the user line; a different later preview (including an echo such as `"<token> pong"`) is a completed turn.
+
+   The pane waits up to ~90 one-second polls (Probe Bot pongs have been measured at 42–52s; a 45s cap returned `promptLandedNoReply` while the assistant line was still in flight). If that window ends without a later reply, a background watch keeps polling until sqlite/preview shows this turn completed or the agent goes idle.
 
 ## Ports (always `127.0.0.1`, never `localhost`)
 

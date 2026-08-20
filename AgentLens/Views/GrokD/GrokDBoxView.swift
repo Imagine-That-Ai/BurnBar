@@ -72,10 +72,12 @@ struct GrokDBoxView: View {
             }
             Spacer(minLength: 8)
             phaseChip
-            if model.isRefreshing || model.isSending {
+            if model.isRefreshing || model.isSending || model.isFollowing {
                 ProgressView()
                     .controlSize(.small)
-                    .accessibilityLabel(model.isSending ? "Sending" : "Refreshing")
+                    .accessibilityLabel(
+                        model.isSending ? "Sending" : model.isFollowing ? "Waiting for the box" : "Refreshing"
+                    )
             }
             Button("Refresh") {
                 Task { await model.refresh() }
@@ -225,9 +227,9 @@ struct GrokDBoxView: View {
 
     private var composer: some View {
         HStack(spacing: DesignSystem.Spacing.sm) {
-            TextField("Message the selected UUID", text: $model.promptText)
+            TextField("Message the selected agent", text: $model.promptText)
                 .textFieldStyle(.roundedBorder)
-                .disabled(!model.health.allowsSend || model.isSending)
+                .disabled(!model.health.allowsSend || model.isSending || model.isFollowing)
                 .opacity(model.health.allowsSend ? 1 : 0.55)
                 .focused($composerFocused)
                 .onSubmit {
