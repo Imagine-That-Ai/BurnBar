@@ -6,6 +6,8 @@ import OpenBurnBarCore
 import OpenBurnBarSignalCore
 import os
 
+private typealias UntypedJSONObject = [String: Any]
+
 // MARK: - Mission group observation, merge, approval + cancel
 //
 // Split out of `CLIAgentMissionDispatcher.swift` (audit wave 4, item 14
@@ -98,7 +100,7 @@ extension CLIAgentMissionDispatcher {
         guard FirebaseApp.app() != nil else { throw DispatchError.firebaseUnavailable }
         guard let uid = Auth.auth().currentUser?.uid else { throw DispatchError.notSignedIn }
         let db = firestoreProvider()
-        let update: [String: Any]
+        let update: UntypedJSONObject
         if let synthesisSummary {
             // Sealing the synthesis requires the writable vault key; mirror the
             // dispatch path so a merge after dispatch always re-seals locally.
@@ -120,8 +122,8 @@ extension CLIAgentMissionDispatcher {
 
     /// Build the merge update WITHOUT a synthesis summary (no seal needed).
     /// Writes only non-private fields: `phase`, `winnerMissionID`, `updatedAt`.
-    static func mergeMissionGroupUpdate(winnerMissionID: String?) -> [String: Any] {
-        var update: [String: Any] = [
+    static func mergeMissionGroupUpdate(winnerMissionID: String?) -> UntypedJSONObject {
+        var update: UntypedJSONObject = [
             "phase": MissionGroupPhase.merged.rawValue,
             "updatedAt": FieldValue.serverTimestamp()
         ]
@@ -138,7 +140,7 @@ extension CLIAgentMissionDispatcher {
         synthesisSummary: String,
         vaultKey: Data,
         vaultKeyID: String
-    ) throws -> [String: Any] {
+    ) throws -> UntypedJSONObject {
         var update = mergeMissionGroupUpdate(winnerMissionID: winnerMissionID)
         let privatePayload = CLIAgentMissionPrivatePayload(synthesisSummary: synthesisSummary)
         update["contentSealed"] = true
@@ -173,6 +175,26 @@ extension CLIAgentMissionDispatcher {
             approve: approve,
             deviceId: deviceId
         )
+        if approve, let uid = Auth.auth().currentUser?.uid {
+            let ceiling = try? await firestoreProvider()
+                .collection("users").document(uid)
+                .collection("mission_approval_ceilings").document(requestID)
+                .getDocument()
+            if let digest = ceiling?.get("ceilingDigest") as? String, !digest.isEmpty {
+                let canonical = ceiling?.get("canonical") as? UntypedJSONObject ?? [:]
+                let requestedGrant = (canonical["grantCeiling"] as? UntypedJSONObject) ?? [
+                    "commandsAllowed": false,
+                    "fileEditsAllowed": false,
+                    "additionalCapabilities": [] as [String]
+                ]
+                try await ComputerUseSecurityCallableClient.redeemMissionApprovalAnswer(
+                    requestId: requestID,
+                    deviceId: deviceId,
+                    ceilingDigest: digest,
+                    requestedGrant: requestedGrant
+                )
+            }
+        }
     }
 
     func cancelMission(requestID: String) async throws {
@@ -198,10 +220,15 @@ extension CLIAgentMissionDispatcher {
             vaultKey: resolvedKey.keyData,
             vaultKeyID: resolvedKey.vaultKeyID
         )
-        try await db
-            .collection("users").document(uid)
-            .collection("cli_agent_mission_requests").document(requestID)
-            .setData(update, merge: true)
+        let deviceId = await MainActor.run { MobileDeviceIdentity.loadOrCreateDeviceId() }
+        guard let sealedState = update["sealedStatePayload"] as? UntypedJSONObject else {
+            throw DispatchError.firebaseUnavailable
+        }
+        try await ComputerUseSecurityCallableClient.cancelCliAgentMission(
+            requestId: requestID,
+            deviceId: deviceId,
+            sealedStatePayload: sealedState
+        )
     }
 
     /// Build the sealed cancel update. `status` flips to `cancelled` and the
@@ -213,7 +240,7 @@ extension CLIAgentMissionDispatcher {
         requestID: String? = nil,
         vaultKey: Data,
         vaultKeyID: String
-    ) throws -> [String: Any] {
+    ) throws -> UntypedJSONObject {
         let privatePayload = CLIAgentMissionPrivatePayload(liveSummary: "Mission cancelled by user.")
         let aadContext: CloudVaultAADContext?
         if let uid, let requestID {

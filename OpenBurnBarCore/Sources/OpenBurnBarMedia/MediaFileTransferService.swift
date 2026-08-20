@@ -117,9 +117,12 @@ public actor MediaFileTransferService {
         let attributes = (try? FileManager.default.attributesOfItem(atPath: fileURL.path)) ?? [:]
         let size = (attributes[.size] as? NSNumber)?.int64Value ?? Int64(0)
         let mime = Self.inferMime(for: fileURL)
+        // iroh tickets are not content hashes. Advertise the official blake3 of
+        // the opened plaintext, which matches iroh `ticket.hash()`.
+        let blobHash = try ContentBlake3.hashFile(at: fileURL)
         let manifest = HermesRealtimeRelayAttachmentManifest(
             manifestId: "att_" + UUID().uuidString.lowercased(),
-            blobHash: ticketText,
+            blobHash: blobHash,
             filename: fileURL.lastPathComponent,
             mime: mime,
             size: size,

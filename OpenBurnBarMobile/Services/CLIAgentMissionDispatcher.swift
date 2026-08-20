@@ -3,6 +3,7 @@ import FirebaseCore
 import FirebaseFirestore
 import FirebaseFunctions
 import Foundation
+import OpenBurnBarComputerUseCore
 import OpenBurnBarCore
 import OpenBurnBarSignalCore
 import os
@@ -38,7 +39,8 @@ final class CLIAgentMissionDispatcher {
         queuedEventSource: String? = nil,
         deliveryMode: SkillRunDeliveryMode = .actionOnly,
         parentHermesThreadID: String? = nil,
-        presentationMode: CLIAgentChatPresentationMode = .nativeChat
+        presentationMode: CLIAgentChatPresentationMode = .nativeChat,
+        attachments: [CLIAgentMissionAttachmentRef] = []
     ) async throws -> String {
         guard FirebaseApp.app() != nil else {
             throw DispatchError.firebaseUnavailable
@@ -79,6 +81,7 @@ final class CLIAgentMissionDispatcher {
             deliveryMode: deliveryMode,
             parentHermesThreadID: parentHermesThreadID,
             presentationMode: presentationMode,
+            attachments: attachments,
             uid: uid,
             vaultKey: resolvedKey.keyData,
             vaultKeyID: resolvedKey.vaultKeyID
@@ -110,50 +113,34 @@ final class CLIAgentMissionDispatcher {
             state: signalState,
             domainID: "conversations_chat"
         )
-        let signalWrite = signalState != .off && payload["signalEnvelope"] != nil
-        if signalWrite {
-            var callablePayload = payload
-            callablePayload["updatedAt"] = ISO8601DateFormatter().string(from: Date())
-            _ = try await Functions.functions()
-                .httpsCallable("writeSignalAtRestDocument")
-                .call([
-                    "collection": "cli_agent_mission_requests",
-                    "docId": id,
-                    "data": callablePayload
-                ])
-        }
-        let requestRef = db
-            .collection("users").document(uid)
-            .collection("cli_agent_mission_requests").document(id)
-        let batch = db.batch()
-        if !signalWrite {
-            batch.setData(
-                payload,
-                forDocument: requestRef,
-                merge: false
-            )
-        }
-        batch.setData(
-            try CLIAgentMissionRequestPayloadFactory.initialQueuedEventSealed(
-                label: isChatRequest ? "Chat" : "Mission",
-                source: Self.initialQueuedEventSource(
-                    missionKind: missionKind,
-                    sourceSurface: queuedEventSource ?? sourceSurface
-                ),
-                sourceSkillID: sourceSkillID,
-                deliveryMode: deliveryMode,
-                now: Date(),
-                uid: uid,
-                requestID: id,
-                eventID: "000001",
-                vaultKey: resolvedKey.keyData,
-                vaultKeyID: resolvedKey.vaultKeyID
+        let deviceId = await MainActor.run { MobileDeviceIdentity.loadOrCreateDeviceId() }
+        let initialEvent = try CLIAgentMissionRequestPayloadFactory.initialQueuedEventSealed(
+            label: isChatRequest ? "Chat" : "Mission",
+            source: Self.initialQueuedEventSource(
+                missionKind: missionKind,
+                sourceSurface: queuedEventSource ?? sourceSurface
             ),
-            forDocument: requestRef.collection("events").document("000001"),
-            merge: false
+            sourceSkillID: sourceSkillID,
+            deliveryMode: deliveryMode,
+            now: Date(),
+            uid: uid,
+            requestID: id,
+            eventID: "000001",
+            vaultKey: resolvedKey.keyData,
+            vaultKeyID: resolvedKey.vaultKeyID
         )
-        try await batch.commit()
-        return id
+        let created = try await ComputerUseSecurityCallableClient.createCliAgentMission(
+            payload: CLIAgentMissionRequestPayloadFactory.createLeafPayload(
+                requestId: id,
+                remoteCommandID: id,
+                deviceId: deviceId,
+                payload: payload,
+                initialEvent: initialEvent
+            ),
+            deviceId: deviceId
+        )
+        CLIAgentControlSession.bind(requestID: created, attachments: attachments)
+        return created
     }
 
     static func initialQueuedEventSource(

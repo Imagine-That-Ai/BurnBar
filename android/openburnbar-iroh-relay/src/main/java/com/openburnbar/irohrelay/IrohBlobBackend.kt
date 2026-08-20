@@ -68,7 +68,7 @@ sealed class IrohBlobBackendError(message: String) : RuntimeException(message) {
 }
 
 object IrohBlobTransferLimits {
-    const val MAX_EXPECTED_FETCH_BYTES: Long = 512L * 1024L * 1024L
+    const val MAX_EXPECTED_FETCH_BYTES: Long = 2L * 1024L * 1024L * 1024L
 
     fun validateExpectedFetchSize(expectedSizeBytes: Long) {
         if (expectedSizeBytes < 0) {

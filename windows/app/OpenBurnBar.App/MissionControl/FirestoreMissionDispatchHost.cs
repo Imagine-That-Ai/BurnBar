@@ -17,6 +17,11 @@ namespace OpenBurnBar.App.MissionControl;
 /// <c>users/{uid}/cli_agent_mission_requests</c> — the same envelope the phone writes.
 /// Writes go through <see cref="OfflineWriteQueue"/> for latency compensation.
 /// </summary>
+public interface IMissionApprovalCallable
+{
+    Task RespondAsync(string requestId, bool approve, CancellationToken cancellationToken = default);
+}
+
 public sealed class FirestoreMissionDispatchHost : IMissionDispatchHost
 {
     public const string MissionRequestsCollection = "cli_agent_mission_requests";
@@ -25,11 +30,13 @@ public sealed class FirestoreMissionDispatchHost : IMissionDispatchHost
     private readonly OfflineWriteQueue _writeQueue;
     private readonly string _userRootPath;
     private readonly Func<DateTimeOffset> _clock;
+    private readonly IMissionApprovalCallable? _approvalCallable;
 
     public FirestoreMissionDispatchHost(
         ICloudSyncGateway gateway,
         string firebaseUid,
-        Func<DateTimeOffset>? clock = null)
+        Func<DateTimeOffset>? clock = null,
+        IMissionApprovalCallable? approvalCallable = null)
     {
         if (string.IsNullOrWhiteSpace(firebaseUid))
         {
@@ -40,12 +47,13 @@ public sealed class FirestoreMissionDispatchHost : IMissionDispatchHost
         _writeQueue = new OfflineWriteQueue(gateway, startOnline: true);
         _userRootPath = $"users/{firebaseUid.Trim()}";
         _clock = clock ?? (() => DateTimeOffset.UtcNow);
+        _approvalCallable = approvalCallable;
     }
 
     /// <summary>Exposed for unit tests.</summary>
     internal OfflineWriteQueue WriteQueue => _writeQueue;
 
-    public async Task<MissionDispatchOutcome> DispatchAsync(MissionDispatchRequest request)
+    public Task<MissionDispatchOutcome> DispatchAsync(MissionDispatchRequest request)
     {
         if (request is null)
         {
@@ -54,32 +62,13 @@ public sealed class FirestoreMissionDispatchHost : IMissionDispatchHost
 
         if (string.IsNullOrWhiteSpace(request.Prompt))
         {
-            return MissionDispatchOutcome.Failed("Prompt is required.");
+            return Task.FromResult(MissionDispatchOutcome.Failed("Prompt is required."));
         }
 
-        string missionId = Guid.NewGuid().ToString("N");
-        DateTimeOffset now = _clock();
-        string createdAt = now.ToString("O", CultureInfo.InvariantCulture);
-        string title = string.IsNullOrWhiteSpace(request.Title)
-            ? $"Mission · {MissionKindInfo.DisplayName(request.Kind)}"
-            : request.Title.Trim();
-
-        CloudSyncFields fields = MissionFirestoreMapping.ToDispatchFields(
-            request,
-            missionId,
-            title,
-            createdAt);
-
-        string documentPath = $"{_userRootPath}/{MissionRequestsCollection}/{missionId}";
-        try
-        {
-            await _writeQueue.SetAsync(documentPath, fields, merge: false).ConfigureAwait(false);
-            return MissionDispatchOutcome.Success(missionId);
-        }
-        catch (Exception ex)
-        {
-            return MissionDispatchOutcome.Failed(ex.Message);
-        }
+        // Windows is not a writer of cli_agent_mission_requests. Create is
+        // server-owned (`createCliAgentMission`) from a trusted phone.
+        return Task.FromResult(MissionDispatchOutcome.Failed(
+            "Windows does not write cli_agent_mission_requests; dispatch from a trusted phone via createCliAgentMission."));
     }
 
     public async Task RespondToApprovalAsync(MissionApprovalAsk ask, bool approve)
@@ -89,19 +78,12 @@ public sealed class FirestoreMissionDispatchHost : IMissionDispatchHost
             throw new ArgumentNullException(nameof(ask));
         }
 
-        string status = approve ? "running" : "rejected";
-        string approvalStatus = approve ? "approved" : "rejected";
-        string updatedAt = _clock().ToString("O", CultureInfo.InvariantCulture);
-
-        CloudSyncFields patch = CloudSyncFields.From(new[]
+        if (_approvalCallable is null)
         {
-            new KeyValuePair<string, CloudSyncValue>("status", CloudSyncValue.Of(status)),
-            new KeyValuePair<string, CloudSyncValue>("approvalStatus", CloudSyncValue.Of(approvalStatus)),
-            new KeyValuePair<string, CloudSyncValue>("updatedAt", CloudSyncValue.Of(updatedAt)),
-        });
+            throw new InvalidOperationException("respondMissionApproval callable is required; client merges of approvalStatus are denied.");
+        }
 
-        string documentPath = $"{_userRootPath}/{MissionRequestsCollection}/{ask.MissionId}";
-        await _writeQueue.SetAsync(documentPath, patch, merge: true).ConfigureAwait(false);
+        await _approvalCallable.RespondAsync(ask.MissionId, approve).ConfigureAwait(false);
     }
 
     public async Task<MissionConsoleSnapshot> RefreshAsync()

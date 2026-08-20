@@ -271,6 +271,15 @@ function sealedMissionStatePatch(ownerUid, id, overrides = {}) {
   };
 }
 
+async function seedMission(uid, id, overrides = {}) {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(
+      doc(context.firestore(), `users/${uid}/cli_agent_mission_requests/${id}`),
+      sealedMissionBase(uid, id, overrides)
+    );
+  });
+}
+
 // Canonical at-rest CloudVault Signal envelope fixture, mirroring
 // packages/signal-envelope-contracts at-rest wire shape. Exact owner-scoped
 // documents are accepted; per-coordinate overrides prove relocation and
@@ -1250,7 +1259,7 @@ test("Wand dispatch accepts established presentation modes and platform group so
   await seedCloudVaultState(uid);
 
   const paretoChildID = "005CA603-3B30-407F-8EA6-D95B55D0AC41";
-  await assertSucceeds(
+  await assertFails(
     setDoc(
       doc(db, `users/${uid}/cli_agent_mission_requests/${paretoChildID}`),
       sealedMissionBase(uid, paretoChildID, {
@@ -1272,7 +1281,7 @@ test("Wand dispatch accepts established presentation modes and platform group so
 
   for (const presentationMode of ["native_chat", "mac_visible_cli", "mac_interactive_cli"]) {
     const id = `mission-${presentationMode}`;
-    await assertSucceeds(
+    await assertFails(
       setDoc(doc(db, `users/${uid}/cli_agent_mission_requests/${id}`), sealedMissionBase(uid, id, {
         presentationMode,
       }))
@@ -1287,7 +1296,7 @@ test("Wand dispatch accepts established presentation modes and platform group so
 
   // War Room — the Flame's routing target. Advisory and owner-written; the
   // executing Mac still decides whether to claim the mission.
-  await assertSucceeds(
+  await assertFails(
     setDoc(
       doc(db, `users/${uid}/cli_agent_mission_requests/mission-flame-routed`),
       sealedMissionBase(uid, "mission-flame-routed", {
@@ -1589,15 +1598,36 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
   const otherDb = authedDb("mallory");
   const requestPath = "users/ivy/cli_agent_mission_requests/mission-1";
   await seedCloudVaultState("ivy");
+  await seedMission("ivy", "mission-1");
+  await seedMission("ivy", "mission-android", {
+    missionKind: "custom",
+    requestedRuntime: "opencode",
+    depth: "light",
+    approvalMode: "read_only",
+    source: "android-insights",
+  });
+  await seedMission("ivy", "chat-ios", {
+    missionKind: "chat",
+    requestedRuntime: "codex",
+    requestedModelID: "gpt-5.5",
+    source: "ios-chat",
+    clientThreadID: "mobile-thread-1",
+    resumeAction: "new",
+  });
+  await seedMission("ivy", "mission-lifecycle", {
+    missionKind: "custom",
+    requestedRuntime: "codex",
+    approvalMode: "read_only",
+  });
 
-  await assertSucceeds(
+  await assertFails(
     setDoc(doc(phoneDb, requestPath), sealedMissionBase("ivy", "mission-1"))
   );
-  await assertSucceeds(
+  await assertFails(
     setDoc(doc(phoneDb, `${requestPath}/events/000001`), sealedMissionEvent("ivy", "mission-1"))
   );
   const androidRequestPath = "users/ivy/cli_agent_mission_requests/mission-android";
-  await assertSucceeds(
+  await assertFails(
     setDoc(doc(phoneDb, androidRequestPath), sealedMissionBase("ivy", "mission-android", {
       missionKind: "custom",
       requestedRuntime: "opencode",
@@ -1618,13 +1648,13 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
       fileEditsAllowed: true,
     }))
   );
-  await assertSucceeds(
+  await assertFails(
     setDoc(doc(phoneDb, `${androidRequestPath}/events/000001`), sealedMissionEvent("ivy", "mission-android", {
       source: "android",
     }))
   );
   const chatRequestPath = "users/ivy/cli_agent_mission_requests/chat-ios";
-  await assertSucceeds(
+  await assertFails(
     setDoc(doc(phoneDb, chatRequestPath), sealedMissionBase("ivy", "chat-ios", {
       missionKind: "chat",
       requestedRuntime: "codex",
@@ -1634,7 +1664,7 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
       resumeAction: "new",
     }))
   );
-  await assertSucceeds(
+  await assertFails(
     setDoc(doc(phoneDb, `${chatRequestPath}/events/000001`), sealedMissionEvent("ivy", "chat-ios", {
       source: "ios-chat",
     }))
@@ -1857,7 +1887,7 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
     )
   );
   const lifecyclePath = "users/ivy/cli_agent_mission_requests/mission-lifecycle";
-  await assertSucceeds(
+  await assertFails(
     setDoc(doc(phoneDb, lifecyclePath), sealedMissionBase("ivy", "mission-lifecycle", {
       missionKind: "custom",
       requestedRuntime: "codex",
@@ -1881,10 +1911,10 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
       { merge: true }
     )
   );
-  await assertSucceeds(
+  await assertFails(
     setDoc(doc(phoneDb, `${lifecyclePath}/events/000001`), sealedMissionEvent("ivy", "mission-lifecycle"))
   );
-  await assertSucceeds(
+  await assertFails(
     setDoc(
       doc(phoneDb, lifecyclePath),
       sealedMissionStatePatch("ivy", "mission-lifecycle", {
@@ -1899,7 +1929,7 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
       { merge: true }
     )
   );
-  await assertSucceeds(
+  await assertFails(
     setDoc(doc(phoneDb, `${lifecyclePath}/events/000002`), sealedMissionEvent("ivy", "mission-lifecycle", {
       sequence: 2,
       timestamp: "2026-05-13T00:00:01.000Z",
@@ -1908,7 +1938,7 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
       source: "mac",
     }))
   );
-  await assertSucceeds(
+  await assertFails(
     setDoc(
       doc(phoneDb, lifecyclePath),
       sealedMissionStatePatch("ivy", "mission-lifecycle", {
@@ -1921,7 +1951,7 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
       { merge: true }
     )
   );
-  await assertSucceeds(
+  await assertFails(
     setDoc(doc(phoneDb, `${lifecyclePath}/events/000003`), sealedMissionEvent("ivy", "mission-lifecycle", {
       sequence: 3,
       timestamp: "2026-05-13T00:00:02.000Z",
@@ -1930,7 +1960,7 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
       source: "mac",
     }))
   );
-  await assertSucceeds(
+  await assertFails(
     setDoc(
       doc(phoneDb, lifecyclePath),
       sealedMissionStatePatch("ivy", "mission-lifecycle", {
@@ -1943,7 +1973,7 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
       { merge: true }
     )
   );
-  await assertSucceeds(
+  await assertFails(
     setDoc(doc(phoneDb, `${lifecyclePath}/events/000004`), sealedMissionEvent("ivy", "mission-lifecycle", {
       sequence: 4,
       timestamp: "2026-05-13T00:00:03.000Z",
@@ -2085,7 +2115,7 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
       isError: false,
     })
   );
-  await assertSucceeds(
+  await assertFails(
     setDoc(
       doc(phoneDb, requestPath),
       sealedMissionStatePatch("ivy", "mission-1", {
@@ -2101,7 +2131,7 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
       { merge: true }
     )
   );
-  await assertSucceeds(
+  await assertFails(
     setDoc(doc(phoneDb, `${requestPath}/events/000002`), sealedMissionEvent("ivy", "mission-1", {
       sequence: 2,
       timestamp: "2026-05-13T00:00:03.000Z",
@@ -2192,7 +2222,7 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
     })
   );
 
-  await assertSucceeds(
+  await assertFails(
     setDoc(
       doc(phoneDb, requestPath),
       sealedMissionStatePatch("ivy", "mission-1", {
@@ -2207,7 +2237,7 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
       { merge: true }
     )
   );
-  await assertSucceeds(
+  await assertFails(
     setDoc(doc(phoneDb, `${requestPath}/events/000003`), sealedMissionEvent("ivy", "mission-1", {
       sequence: 3,
       timestamp: "2026-05-13T00:00:05.000Z",
@@ -4677,10 +4707,7 @@ test("T10 cli_agent_mission_requests accept sealed mobile cancel, deny plaintext
   const phoneDb = authedDb(ownerUid);
   const requestPath = `users/${ownerUid}/cli_agent_mission_requests/mission-1`;
   await seedCloudVaultState(ownerUid);
-
-  await assertSucceeds(
-    setDoc(doc(phoneDb, requestPath), sealedMissionBase(ownerUid, "mission-1"))
-  );
+  await seedMission(ownerUid, "mission-1");
 
   // Cancel with only sealed state fields is allowed.
   await assertSucceeds(
@@ -4705,6 +4732,237 @@ test("T10 cli_agent_mission_requests accept sealed mobile cancel, deny plaintext
         updatedAt: serverTimestamp(),
       },
       { merge: true }
+    )
+  );
+});
+
+test("T10a cancel from pending succeeds", async () => {
+  const uid = "cancel-pending";
+  const db = authedDb(uid);
+  await seedCloudVaultState(uid);
+  await seedMission(uid, "m-pending");
+  await assertSucceeds(
+    setDoc(
+      doc(db, `users/${uid}/cli_agent_mission_requests/m-pending`),
+      sealedMissionStatePatch(uid, "m-pending", { status: "cancelled", updatedAt: serverTimestamp() }),
+      { merge: true }
+    )
+  );
+});
+
+test("T10b cancel from running succeeds", async () => {
+  const uid = "cancel-running";
+  const db = authedDb(uid);
+  await seedCloudVaultState(uid);
+  await seedMission(uid, "m-running", { status: "running", claimedBy: "mac-1" });
+  await assertSucceeds(
+    setDoc(
+      doc(db, `users/${uid}/cli_agent_mission_requests/m-running`),
+      sealedMissionStatePatch(uid, "m-running", { status: "cancelled", updatedAt: serverTimestamp() }),
+      { merge: true }
+    )
+  );
+});
+
+test("T10c cancel from starting succeeds", async () => {
+  const uid = "cancel-starting";
+  const db = authedDb(uid);
+  await seedCloudVaultState(uid);
+  await seedMission(uid, "m-starting", { status: "starting", claimedBy: "mac-1" });
+  await assertSucceeds(
+    setDoc(
+      doc(db, `users/${uid}/cli_agent_mission_requests/m-starting`),
+      sealedMissionStatePatch(uid, "m-starting", { status: "cancelled", updatedAt: serverTimestamp() }),
+      { merge: true }
+    )
+  );
+});
+
+test("T10d cancel after completed denied", async () => {
+  const uid = "cancel-completed";
+  const db = authedDb(uid);
+  await seedCloudVaultState(uid);
+  await seedMission(uid, "m-completed", { status: "completed", claimedBy: "mac-1" });
+  await assertFails(
+    setDoc(
+      doc(db, `users/${uid}/cli_agent_mission_requests/m-completed`),
+      sealedMissionStatePatch(uid, "m-completed", { status: "cancelled", updatedAt: serverTimestamp() }),
+      { merge: true }
+    )
+  );
+});
+
+test("T10e cancel after failed denied", async () => {
+  const uid = "cancel-failed";
+  const db = authedDb(uid);
+  await seedCloudVaultState(uid);
+  await seedMission(uid, "m-failed", { status: "failed", claimedBy: "mac-1" });
+  await assertFails(
+    setDoc(
+      doc(db, `users/${uid}/cli_agent_mission_requests/m-failed`),
+      sealedMissionStatePatch(uid, "m-failed", { status: "cancelled", updatedAt: serverTimestamp() }),
+      { merge: true }
+    )
+  );
+});
+
+test("T10f cancel after canceled/cancelled denied", async () => {
+  const uid = "cancel-already";
+  const db = authedDb(uid);
+  await seedCloudVaultState(uid);
+  await seedMission(uid, "m-canceled", { status: "canceled", claimedBy: "mac-1" });
+  await seedMission(uid, "m-cancelled", { status: "cancelled", claimedBy: "mac-1" });
+  await assertFails(
+    setDoc(
+      doc(db, `users/${uid}/cli_agent_mission_requests/m-canceled`),
+      sealedMissionStatePatch(uid, "m-canceled", { status: "cancelled", updatedAt: serverTimestamp() }),
+      { merge: true }
+    )
+  );
+  await assertFails(
+    setDoc(
+      doc(db, `users/${uid}/cli_agent_mission_requests/m-cancelled`),
+      sealedMissionStatePatch(uid, "m-cancelled", { status: "cancelled", updatedAt: serverTimestamp() }),
+      { merge: true }
+    )
+  );
+});
+
+test("T10g cancel with global or missing AAD denied", async () => {
+  const uid = "cancel-aad";
+  const db = authedDb(uid);
+  await seedCloudVaultState(uid);
+  await seedMission(uid, "m-aad");
+  await assertFails(
+    setDoc(
+      doc(db, `users/${uid}/cli_agent_mission_requests/m-aad`),
+      {
+        contentSealed: true,
+        sealedStatePayload: sealedPayload(TEST_VAULT_KEY_ID, "c2VhbGVkLXN0YXRl", "global-aad"),
+        sealedStateSchemaVersion: 1,
+        sealedStateVaultKeyID: TEST_VAULT_KEY_ID,
+        status: "cancelled",
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    )
+  );
+  await assertFails(
+    setDoc(
+      doc(db, `users/${uid}/cli_agent_mission_requests/m-aad`),
+      {
+        contentSealed: true,
+        sealedStatePayload: {
+          schemaVersion: 2,
+          algorithm: "AES-256-GCM",
+          keyVersion: 1,
+          vaultKeyID: TEST_VAULT_KEY_ID,
+          sealedBoxBase64: "c2VhbGVkLXN0YXRl",
+        },
+        sealedStateSchemaVersion: 1,
+        sealedStateVaultKeyID: TEST_VAULT_KEY_ID,
+        status: "cancelled",
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    )
+  );
+});
+
+test("T12 cli_agent_mission_requests client create denied", async () => {
+  const uid = "mission-create-deny";
+  const db = authedDb(uid);
+  await seedCloudVaultState(uid);
+  await assertFails(
+    setDoc(doc(db, `users/${uid}/cli_agent_mission_requests/client-create`), sealedMissionBase(uid, "client-create"))
+  );
+});
+
+test("T13 client host claim denied", async () => {
+  const uid = "mission-claim-deny";
+  const db = authedDb(uid);
+  await seedCloudVaultState(uid);
+  await seedMission(uid, "m-claim");
+  await assertFails(
+    setDoc(
+      doc(db, `users/${uid}/cli_agent_mission_requests/m-claim`),
+      sealedMissionStatePatch(uid, "m-claim", {
+        status: "accepted",
+        claimedBy: "mac-1",
+        selectedRuntime: "codex",
+        selectedRuntimeName: "Codex",
+        updatedAt: serverTimestamp(),
+      }),
+      { merge: true }
+    )
+  );
+});
+
+test("T14 client fail() after claimed denied", async () => {
+  const uid = "mission-fail-deny";
+  const db = authedDb(uid);
+  await seedCloudVaultState(uid);
+  await seedMission(uid, "m-fail", { status: "accepted", claimedBy: "mac-winner" });
+  await assertFails(
+    setDoc(
+      doc(db, `users/${uid}/cli_agent_mission_requests/m-fail`),
+      sealedMissionStatePatch(uid, "m-fail", {
+        status: "failed",
+        updatedAt: serverTimestamp(),
+      }),
+      { merge: true }
+    )
+  );
+});
+
+test("T15 kimi / gemini / openclaude mirrors persist", async () => {
+  const uid = "mission-runtime-persist";
+  const db = authedDb(uid);
+  await seedCloudVaultState(uid);
+  for (const runtime of ["kimi", "gemini", "openclaude"]) {
+    await assertSucceeds(
+      setDoc(doc(db, `users/${uid}/mobile_assistant_chats/${runtime}-thread`), {
+        id: `${runtime}-thread`,
+        runtime,
+        createdAt: "2026-08-19T00:00:00.000Z",
+        updatedAt: "2026-08-19T00:00:00.000Z",
+        messageCount: 1,
+        contentSealed: true,
+        sealedSchemaVersion: 2,
+        vaultKeyID: TEST_VAULT_KEY_ID,
+        sealedPayload: sealedPayload(
+          TEST_VAULT_KEY_ID,
+          "c2VhbGVk",
+          cloudVaultAAD(uid, "mobile_assistant_chats", `${runtime}-thread`, "sealedPayload")
+        ),
+      })
+    );
+  }
+});
+
+test("T16 unknown runtime event denied", async () => {
+  const uid = "mission-event-unknown";
+  const db = authedDb(uid);
+  await seedCloudVaultState(uid);
+  await seedMission(uid, "m-event", { status: "running", claimedBy: "mac-1" });
+  await assertFails(
+    setDoc(doc(db, `users/${uid}/cli_agent_mission_requests/m-event/events/000002`), sealedMissionEvent(uid, "m-event", {
+      sequence: 2,
+      runtime: "not-a-runtime",
+      source: "mac",
+    }))
+  );
+});
+
+test("T17 client event create denied", async () => {
+  const uid = "mission-event-deny";
+  const db = authedDb(uid);
+  await seedCloudVaultState(uid);
+  await seedMission(uid, "m-event-deny");
+  await assertFails(
+    setDoc(
+      doc(db, `users/${uid}/cli_agent_mission_requests/m-event-deny/events/000001`),
+      sealedMissionEvent(uid, "m-event-deny")
     )
   );
 });

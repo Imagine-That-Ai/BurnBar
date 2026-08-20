@@ -506,11 +506,16 @@ enum MissionRemoteAuthorizationShadow {
     static func reduceGUIDecision(
         approvalStatus: String,
         willPauseForApproval: Bool,
-        isTerminalDenial: Bool = false
+        isTerminalDenial: Bool = false,
+        approverDeviceID: String? = nil
     ) -> GUIMissionAuthorizationDecision {
         let normalized = approvalStatus.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if normalized == "rejected" || normalized == "canceled" || normalized == "cancelled" {
             return .deny
+        }
+        if normalized == "approved" {
+            let approver = (approverDeviceID ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if approver.isEmpty { return .deny }
         }
         if isTerminalDenial {
             return .deny
@@ -616,7 +621,8 @@ enum MissionRemoteAuthorizationShadow {
             : reduceGUIDecision(
                 approvalStatus: ctx.approvalStatus,
                 willPauseForApproval: willPauseForApproval,
-                isTerminalDenial: isTerminalDenial
+                isTerminalDenial: isTerminalDenial,
+                approverDeviceID: ctx.approverDeviceID
             )
         fireAndForget(ctx: ctx, guiDecision: decision, executorTrustState: "trusted")
     }
@@ -647,7 +653,8 @@ enum MissionRemoteAuthorizationShadow {
                 : reduceGUIDecision(
                     approvalStatus: ctx.approvalStatus,
                     willPauseForApproval: willPauseForApproval,
-                    isTerminalDenial: isTerminalDenial
+                    isTerminalDenial: isTerminalDenial,
+                    approverDeviceID: ctx.approverDeviceID
                 )
             guard let response = await requestDaemonAuthorization(
                 ctx: ctx,

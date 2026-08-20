@@ -63,6 +63,10 @@ final class AgentLiveStagePresenter: ObservableObject {
     /// User-facing reason the stage collapsed (panic, session-end,
     /// dismissed). Cleared on the next dock entry.
     @Published private(set) var collapseReason: CollapseReason?
+    /// CLI/ACP interrupt bus id (`acp-…` / `direct-…` / mission request id).
+    /// Computer Use `sessionId` is a different namespace.
+    @Published var cliInterruptSessionID: String?
+    @Published var missionAttachments: [CLIAgentMissionAttachmentRef] = []
 
     enum CollapseReason: Equatable, Sendable {
         case sessionEnded
@@ -250,5 +254,30 @@ final class AgentLiveStagePresenter: ObservableObject {
 
     var isOverlayVisible: Bool { mode != .hidden }
     var isInteractive: Bool { mode == .split || mode == .maximize }
+
+    func bindCLIInterruptSession(_ id: String?) {
+        cliInterruptSessionID = id?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        if id == nil {
+            missionAttachments = []
+        }
+    }
+
+    func interruptTarget(computerUseSessionId: String?) -> String? {
+        cliInterruptSessionID ?? computerUseSessionId
+    }
+}
+
+private extension String {
+    var nilIfEmpty: String? { isEmpty ? nil : self }
+}
+
+@MainActor
+enum CLIAgentControlSession {
+    static weak var presenter: AgentLiveStagePresenter?
+
+    static func bind(requestID: String, attachments: [CLIAgentMissionAttachmentRef] = []) {
+        presenter?.bindCLIInterruptSession(requestID)
+        presenter?.missionAttachments = attachments
+    }
 }
 #endif

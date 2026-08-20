@@ -3,6 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using OpenBurnBar.App.Configuration;
 using OpenBurnBar.App.Presentation.MissionControl;
+using OpenBurnBar.CloudSync.Callable;
 using OpenBurnBar.CloudSync.Gateway;
 
 namespace OpenBurnBar.App.MissionControl;
@@ -21,8 +22,15 @@ public static class MissionDispatchHostFactory
     public static IMissionDispatchHost Create(
         ICloudSyncGateway? gateway,
         ICloudSyncCredentialsProvider? credentials,
-        string? firebaseUid)
+        string? firebaseUid,
+        CallableClient? callable = null,
+        string? deviceId = null,
+        IMissionApprovalCallable? approvalCallable = null)
     {
+        IMissionApprovalCallable? injected = approvalCallable
+            ?? (callable is null || string.IsNullOrWhiteSpace(firebaseUid)
+                ? null
+                : new CallableMissionApproval(callable, deviceId ?? firebaseUid));
         if (gateway is null || credentials is null || string.IsNullOrWhiteSpace(firebaseUid))
         {
             return Fallback();
@@ -41,7 +49,10 @@ public static class MissionDispatchHostFactory
             return Fallback();
         }
 
-        return new FirestoreMissionDispatchHost(gateway, firebaseUid);
+        return new FirestoreMissionDispatchHost(
+            gateway,
+            firebaseUid,
+            approvalCallable: injected);
     }
 
     /// <summary>Async variant for callers that already resolved credentials on a background thread.</summary>
@@ -49,8 +60,15 @@ public static class MissionDispatchHostFactory
         ICloudSyncGateway? gateway,
         ICloudSyncCredentialsProvider? credentials,
         string? firebaseUid,
+        CallableClient? callable = null,
+        string? deviceId = null,
+        IMissionApprovalCallable? approvalCallable = null,
         CancellationToken cancellationToken = default)
     {
+        IMissionApprovalCallable? injected = approvalCallable
+            ?? (callable is null || string.IsNullOrWhiteSpace(firebaseUid)
+                ? null
+                : new CallableMissionApproval(callable, deviceId ?? firebaseUid));
         if (gateway is null || credentials is null || string.IsNullOrWhiteSpace(firebaseUid))
         {
             return Fallback();
@@ -69,7 +87,10 @@ public static class MissionDispatchHostFactory
             return Fallback();
         }
 
-        return new FirestoreMissionDispatchHost(gateway, firebaseUid);
+        return new FirestoreMissionDispatchHost(
+            gateway,
+            firebaseUid,
+            approvalCallable: injected);
     }
 
     private static IMissionDispatchHost Fallback() =>

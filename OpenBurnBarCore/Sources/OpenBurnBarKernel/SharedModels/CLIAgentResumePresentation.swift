@@ -250,6 +250,9 @@ extension CLIAgentSessionActionStatus {
         case .error:
             return .init(title: "Couldn’t restart", shortLabel: "Error",
                          systemImageName: "exclamationmark.triangle.fill", isSuccess: false)
+        case .interrupted:
+            return .init(title: "Session interrupted", shortLabel: "Interrupted",
+                         systemImageName: "stop.circle", isSuccess: true)
         }
     }
 
