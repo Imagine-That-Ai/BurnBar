@@ -3,39 +3,41 @@ package com.openburnbar.ui.share
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
-import androidx.work.Data
-import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.WorkManager
-import java.io.File
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
- * ACTION_SEND is an Activity. Copy the grantor's URI into durable app storage
- * before returning; temporary share URIs die with the grantor. Enqueue the
- * full begin→PUT→compose→finalize pipeline on WorkManager so compose cannot
- * die with the activity.
+ * ACTION_SEND is an Activity. Copy the grantor URI into a contained inbox
+ * path off the main thread, then enqueue unique WorkManager work. WorkManager
+ * is the only begin() owner (KEEP); process start only re-enqueues leftovers.
  */
 class BurnbarShareActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val uri = intent?.getParcelableExtra<android.net.Uri>(Intent.EXTRA_STREAM)
-        if (uri != null) {
-            val dest = File(filesDir, "share-inbox/${System.currentTimeMillis()}-${uri.lastPathSegment ?: "file"}")
-            dest.parentFile?.mkdirs()
-            contentResolver.openInputStream(uri)?.use { input ->
-                dest.outputStream().use { output -> input.copyTo(output) }
-            }
-            if (dest.isFile && dest.length() > 0) {
-                val request =
-                    OneTimeWorkRequestBuilder<BurnbarShareUploadWorker>()
-                        .setInputData(
-                            Data.Builder()
-                                .putString(BurnbarShareUploadWorker.KEY_FILE_PATH, dest.absolutePath)
-                                .build(),
-                        )
-                        .build()
-                WorkManager.getInstance(applicationContext).enqueue(request)
-            }
+        if (uri == null) {
+            finish()
+            return
         }
-        finish()
+        lifecycleScope.launch {
+            val dest =
+                withContext(Dispatchers.IO) {
+                    val inbox = BurnbarShareInboxProcessor.inboxDirectory(this@BurnbarShareActivity)
+                    val dest = BurnbarShareInboxProcessor.containedDest(
+                        inbox,
+                        uri.lastPathSegment ?: "file",
+                    )
+                    contentResolver.openInputStream(uri)?.use { input ->
+                        dest.outputStream().use { output -> input.copyTo(output) }
+                    }
+                    dest.takeIf { it.isFile && it.length() > 0 }
+                }
+            if (dest != null) {
+                BurnbarShareInboxProcessor.enqueueUnique(applicationContext, dest)
+            }
+            finish()
+        }
     }
 }

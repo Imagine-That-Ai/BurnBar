@@ -11,7 +11,7 @@ import com.openburnbar.data.cloud.AndroidCloudVaultDeviceKeypair
 import com.openburnbar.data.media.BurnbarAttachmentUploadClient
 import java.io.File
 
-/** Durable begin→PUT→compose→finalize for ACTION_SEND copies. */
+/** Durable begin→PUT→compose→finalize for ACTION_SEND copies. Sole begin owner. */
 class BurnbarShareUploadWorker(
     context: Context,
     params: WorkerParameters,
@@ -20,11 +20,14 @@ class BurnbarShareUploadWorker(
         setForeground(createForegroundInfo())
         val path = inputData.getString(KEY_FILE_PATH) ?: return Result.failure()
         val file = File(path)
+        val inbox = BurnbarShareInboxProcessor.inboxDirectory(applicationContext)
+        if (!BurnbarShareInboxProcessor.isContained(file, inbox)) return Result.failure()
         if (!file.isFile) return Result.success()
         val deviceId = AndroidCloudVaultDeviceKeypair.loadOrCreate().deviceId
         return runCatching {
-            BurnbarAttachmentUploadClient().uploadFile(applicationContext, file, deviceId)
-            BurnbarShareInboxProcessor.consume(file)
+            BurnbarShareInboxProcessor.uploadOnce(file, deviceId) { dest, id ->
+                BurnbarAttachmentUploadClient().uploadFile(applicationContext, dest, id)
+            }
             Result.success()
         }.getOrElse { Result.retry() }
     }

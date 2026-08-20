@@ -228,7 +228,7 @@ class BurnBarApplication : Application() {
         installAppCheckProvider()
         installComputerUseSessionGrantReceiver()
         applicationScope.launch(Dispatchers.IO) {
-            runCatching { com.openburnbar.ui.share.BurnbarShareInboxProcessor.processPending(this@BurnBarApplication) }
+            runCatching { com.openburnbar.ui.share.BurnbarShareInboxProcessor.enqueuePending(this@BurnBarApplication) }
         }
         val domainCoreEvidenceChannel = com.openburnbar.data.DomainCoreBuildProfile.evidenceChannel()
         runCatching {
