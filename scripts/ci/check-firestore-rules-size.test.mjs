@@ -9,6 +9,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -219,8 +220,11 @@ try {
 
 // 5) The executable CLI must propagate a failing rules check to the process
 //    status that CI observes, not merely print an error.
-const cliFixtureRoot = mkdtempSync(
-  join(tmpdir(), "openburnbar-rules-size-cli-"),
+// realpath: on macOS tmpdir() returns a /var symlink; Node realpaths
+// import.meta.url but not argv, so the CLI's run-as-main guard would silently
+// not fire inside the fixture and the spawn would exit 0 with no output.
+const cliFixtureRoot = realpathSync(
+  mkdtempSync(join(tmpdir(), "openburnbar-rules-size-cli-")),
 );
 try {
   const cliDirectory = resolve(cliFixtureRoot, "scripts/ci");

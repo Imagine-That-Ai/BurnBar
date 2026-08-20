@@ -543,6 +543,17 @@ public enum CloudVaultTrustedDeviceActionProof {
         throw OpenBurnBarSignalCoreError.libSignalUnavailable
     }
 
+    /// Mirrors the libsignal-backed overload so callers compile against either
+    /// build. Signing needs a real private key, so the unavailable variant fails
+    /// closed exactly like `sign(_:identity:)` rather than returning a value that
+    /// would not verify.
+    public static func signRawMessage(
+        _ message: Data,
+        identity: OpenBurnBarSignalIdentityKeypair
+    ) throws -> String {
+        throw OpenBurnBarSignalCoreError.libSignalUnavailable
+    }
+
     public static func verify(
         _ payload: CloudVaultTrustedDeviceActionProofPayload,
         signatureBase64: String,

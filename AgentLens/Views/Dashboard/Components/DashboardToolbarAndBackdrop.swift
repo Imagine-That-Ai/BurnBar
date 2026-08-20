@@ -156,19 +156,18 @@ struct DashboardBackdrop: View {
             // picking a kernel theme on the paper skin rendered nothing at all —
             // the theme was chosen, stored, and then never consulted.
             if shouldUseKernelBackdrop {
-                // Full-window WebGL2 kernel field (the bottom-most backdrop
-                // layer). Reuses the same clear-surface plumbing as the swarm, so
-                // dashboard content composites on top. Keep the normal fallback
-                // static; add the native swarm only when the substrate layer is
-                // explicitly enabled so the substrate picker still has a live host
-                // in kernel mode.
+                // Full-window WebGL2 kernel field (the living backdrop).
+                // Native swarm mounts only for an explicit substrate — see
+                // `KernelSwarmOverlayPolicy`. Provider glyphs tint the kernel;
+                // they do not spawn a second particle simulator.
                 Group {
                     staticKernelFallback
                     KernelBackdropView(
                         colorSchemeOverride: kernelColorScheme,
                         onReadabilityChange: { profile in
                             onReadabilityChange?(profile)
-                        }
+                        },
+                        wantsOpaqueLayer: KernelWebViewOpacityPolicy.isOpaque(clarity: clarity)
                     )
                         .ignoresSafeArea()
                     kernelSubstrateOverlay
@@ -204,20 +203,25 @@ struct DashboardBackdrop: View {
     @ViewBuilder
     private var kernelSubstrateOverlay: some View {
         let enabledProviderGlyphs = settingsManager.desktopWallpaperProviderGlyphs
-        if substrateEnabled || !enabledProviderGlyphs.isEmpty {
+        if KernelSwarmOverlayPolicy.shouldMountCanvas(
+            substrateEnabled: substrateEnabled,
+            substrateID: substrateID
+        ) {
             SwarmCanvasView(
                 accent: DesignSystem.Colors.ember,
                 pace: .cinematic,
+                particleCount: max(96, SwarmCanvasView.adaptiveParticleCount / 3),
                 isTransparent: true,
                 motionSpeedMultiplier: 0.6,
                 enabledProviderGlyphs: enabledProviderGlyphs,
                 enableSwarmSparkles: false,
                 excludeBrandShapesFromSwarm: !enabledProviderGlyphs.isEmpty || settingsManager.excludeBrandShapesFromSwarm,
+                maxFrameRate: 15,
                 rendersAsynchronously: true,
-                substrate: substrateEnabled ? substrate : nil
+                substrate: substrate
             )
             .ignoresSafeArea()
-            .opacity(substrateEnabled ? 0.58 : 0.5)
+            .opacity(0.58)
             .allowsHitTesting(false)
         }
     }

@@ -1062,6 +1062,37 @@ enum ComputerUseSecurityCallableClient {
         ]
     }
 
+    /// Narrows an untyped JSON object to a provably `Sendable` one.
+    ///
+    /// Mission payloads arrive from Firestore as `[String: Any]`, but
+    /// `callHighRiskOwnerAction` deliberately requires `Sendable` (tightened by the
+    /// high-risk-owner-action security work). `as? any Sendable` cannot express that --
+    /// `Sendable` is a marker protocol and Swift rejects it in a conditional cast -- so
+    /// recognise the JSON value types instead. Anything unrecognised is dropped rather
+    /// than force-cast: a payload reaching the wire while carrying a non-Sendable
+    /// reference is exactly the race the requirement exists to prevent.
+    static func sendableJSONPayload(_ object: [String: Any]) -> [String: any Sendable] {
+        object.reduce(into: [String: any Sendable]()) { result, entry in
+            if let value = sendableJSONValue(entry.value) {
+                result[entry.key] = value
+            }
+        }
+    }
+
+    private static func sendableJSONValue(_ value: Any) -> (any Sendable)? {
+        switch value {
+        case let value as String: return value
+        case let value as Bool: return value
+        case let value as Int: return value
+        case let value as Double: return value
+        case let value as NSNumber: return value.doubleValue
+        case is NSNull: return nil
+        case let value as [Any]: return value.compactMap(sendableJSONValue)
+        case let value as [String: Any]: return sendableJSONPayload(value)
+        default: return nil
+        }
+    }
+
     @discardableResult
     static func callHighRiskOwnerAction(
         _ callableName: String,
@@ -1082,6 +1113,239 @@ enum ComputerUseSecurityCallableClient {
             merged[key] = value
         }
         return try await functions.httpsCallable(callableName).call(merged)
+    }
+
+    static func publishMissionApprovalCeiling(
+        requestId: String,
+        deviceId: String,
+        canonical: [String: any Sendable],
+        ceilingDigest: String,
+        signature: String
+    ) async throws {
+        _ = try await callHighRiskOwnerAction(
+            "publishMissionApprovalCeiling",
+            deviceId: deviceId,
+            actionKind: "mission_approval_ceiling_publish",
+            subjectId: requestId,
+            payload: [
+                "requestId": requestId,
+                "deviceId": deviceId,
+                "canonical": canonical,
+                "ceilingDigest": ceilingDigest,
+                "signature": signature
+            ]
+        )
+    }
+
+    static func redeemMissionApprovalAnswer(
+        requestId: String,
+        deviceId: String,
+        ceilingDigest: String,
+        requestedGrant: [String: any Sendable]
+    ) async throws {
+        _ = try await callHighRiskOwnerAction(
+            "redeemMissionApprovalAnswer",
+            deviceId: deviceId,
+            actionKind: "mission_approval_answer_redeem",
+            subjectId: "\(requestId):\(ceilingDigest):approve",
+            payload: [
+                "requestId": requestId,
+                "deviceId": deviceId,
+                "ceilingDigest": ceilingDigest,
+                "requestedGrant": requestedGrant
+            ]
+        )
+    }
+
+    // `any Sendable` for the same reason as updateCliAgentMissionStatus: the
+    // caller's mission payload crosses into this async call under Swift 6
+    // region isolation; require provably-Sendable values at the boundary.
+    static func createCliAgentMission(payload: [String: any Sendable], deviceId: String) async throws -> String {
+        let requestId = payload["requestId"] as? String ?? ""
+        let result = try await callHighRiskOwnerAction(
+            "createCliAgentMission",
+            deviceId: deviceId,
+            actionKind: "cli_agent_mission_create",
+            subjectId: requestId,
+            payload: sendableJSONPayload(payload.merging(["deviceId": deviceId]) { _, new in new })
+        )
+        guard let dict = result.data as? [String: Any],
+              dict["ok"] as? Bool == true,
+              let id = dict["requestId"] as? String
+        else {
+            throw ClientError.invalidResponse("Mission create failed.")
+        }
+        return id
+    }
+
+    static func claimCliAgentMission(
+        requestId: String,
+        deviceId: String,
+        nextStatus: String,
+        selectedRuntime: String,
+        selectedRuntimeName: String,
+        selectedModelID: String?,
+        approvalRequestId: String?,
+        sealedStatePayload: [String: Any]
+    ) async throws -> String {
+        var payload: [String: Any] = [
+            "requestId": requestId,
+            "deviceId": deviceId,
+            "nextStatus": nextStatus,
+            "selectedRuntime": selectedRuntime,
+            "selectedRuntimeName": selectedRuntimeName,
+            "sealedStatePayload": sealedStatePayload
+        ]
+        if let selectedModelID { payload["selectedModelID"] = selectedModelID }
+        if let approvalRequestId { payload["approvalRequestId"] = approvalRequestId }
+        let result = try await callHighRiskOwnerAction(
+            "claimCliAgentMission",
+            deviceId: deviceId,
+            actionKind: "cli_agent_mission_claim",
+            subjectId: requestId,
+            payload: sendableJSONPayload(payload)
+        )
+        guard let dict = result.data as? [String: Any],
+              dict["ok"] as? Bool == true,
+              let nonce = dict["hostWriteNonce"] as? String
+        else {
+            throw ClientError.invalidResponse("Mission claim failed.")
+        }
+        return nonce
+    }
+
+    static func updateCliAgentMissionStatus(
+        requestId: String,
+        deviceId: String,
+        status: String,
+        hostWriteNonce: String,
+        // `any Sendable` values: callers hold `[String: Any]` mission state that
+        // crosses into this async call; requiring provably-Sendable values here
+        // (via `sendableJSONPayload`) is what satisfies Swift 6 region isolation.
+        sealedStatePayload: [String: any Sendable],
+        approvalRequestId: String? = nil,
+        releaseClaim: Bool = false
+    ) async throws {
+        var payload: [String: Any] = [
+            "requestId": requestId,
+            "deviceId": deviceId,
+            "status": status,
+            "hostWriteNonce": hostWriteNonce,
+            "sealedStatePayload": sealedStatePayload
+        ]
+        if let approvalRequestId { payload["approvalRequestId"] = approvalRequestId }
+        if releaseClaim { payload["releaseClaim"] = true }
+        let result = try await callHighRiskOwnerAction(
+            "updateCliAgentMissionStatus",
+            deviceId: deviceId,
+            actionKind: "cli_agent_mission_status",
+            subjectId: requestId,
+            payload: sendableJSONPayload(payload)
+        )
+        guard let dict = result.data as? [String: Any], dict["ok"] as? Bool == true else {
+            throw ClientError.invalidResponse("Mission status update failed.")
+        }
+    }
+
+    static func appendCliAgentMissionEvent(
+        requestId: String,
+        deviceId: String,
+        hostWriteNonce: String,
+        eventId: String,
+        sealedEvent: [String: Any],
+        publicEventShape: [String: Any]
+    ) async throws {
+        let result = try await callHighRiskOwnerAction(
+            "appendCliAgentMissionEvent",
+            deviceId: deviceId,
+            actionKind: "cli_agent_mission_append_event",
+            subjectId: requestId,
+            payload: sendableJSONPayload([
+                "requestId": requestId,
+                "deviceId": deviceId,
+                "hostWriteNonce": hostWriteNonce,
+                "eventId": eventId,
+                "sealedEvent": sealedEvent,
+                "publicEventShape": publicEventShape
+            ])
+        )
+        guard let dict = result.data as? [String: Any], dict["ok"] as? Bool == true else {
+            throw ClientError.invalidResponse("Mission event append failed.")
+        }
+    }
+
+    static func beginBurnbarAttachment(
+        byteCount: Int64,
+        contentBlake3: String,
+        deviceId: String,
+        transport: String = "cloud"
+    ) async throws -> (id: String, chunkCount: Int) {
+        let result = try await callHighRiskOwnerAction(
+            "beginBurnbarAttachment",
+            deviceId: deviceId,
+            actionKind: "burnbar_attachment_begin",
+            subjectId: "begin",
+            payload: [
+                "byteCount": byteCount,
+                "contentBlake3": contentBlake3,
+                "transport": transport,
+                "deviceId": deviceId
+            ]
+        )
+        guard let dict = result.data as? [String: Any],
+              let id = dict["id"] as? String,
+              let chunkCount = dict["chunkCount"] as? Int
+        else {
+            throw ClientError.invalidResponse("beginBurnbarAttachment failed.")
+        }
+        return (id, chunkCount)
+    }
+
+    static func mintBurnbarAttachmentPartURL(
+        id: String,
+        partIndex: Int,
+        contentLength: Int64,
+        deviceId: String
+    ) async throws -> URL {
+        let result = try await callHighRiskOwnerAction(
+            "mintBurnbarAttachmentPartURL",
+            deviceId: deviceId,
+            actionKind: "burnbar_attachment_part",
+            subjectId: id,
+            payload: [
+                "id": id,
+                "partIndex": partIndex,
+                "contentLength": contentLength,
+                "deviceId": deviceId
+            ]
+        )
+        guard let dict = result.data as? [String: Any],
+              let urlString = dict["url"] as? String,
+              let url = URL(string: urlString)
+        else {
+            throw ClientError.invalidResponse("mintBurnbarAttachmentPartURL failed.")
+        }
+        return url
+    }
+
+    static func composeBurnbarAttachment(id: String, deviceId: String) async throws {
+        _ = try await callHighRiskOwnerAction(
+            "composeBurnbarAttachment",
+            deviceId: deviceId,
+            actionKind: "burnbar_attachment_compose",
+            subjectId: id,
+            payload: ["id": id, "deviceId": deviceId]
+        )
+    }
+
+    static func finalizeBurnbarAttachment(id: String, deviceId: String) async throws {
+        _ = try await callHighRiskOwnerAction(
+            "finalizeBurnbarAttachment",
+            deviceId: deviceId,
+            actionKind: "burnbar_attachment_finalize",
+            subjectId: id,
+            payload: ["id": id, "deviceId": deviceId]
+        )
     }
 
     static func respondMissionApproval(requestId: String, approve: Bool, deviceId: String) async throws {

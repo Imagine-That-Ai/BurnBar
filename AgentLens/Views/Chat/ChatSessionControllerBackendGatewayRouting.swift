@@ -37,6 +37,7 @@ extension ChatSessionController {
         case .openClaude: return chatModelOpenClaude
         case .omp: return chatModelOMP
         case .junie: return chatModelJunie
+        case .grok, .kimi: return chatModelJunie
         }
     }
 
@@ -54,6 +55,7 @@ extension ChatSessionController {
         case .openClaude: chatModelOpenClaude = value
         case .omp: chatModelOMP = value
         case .junie: chatModelJunie = value
+        case .grok, .kimi: chatModelJunie = value
         }
     }
 
@@ -101,6 +103,8 @@ extension ChatSessionController {
         case .openClaude: return .openClaude
         case .omp: return .omp
         case .junie: return .junie
+        case .grok: return .grok
+        case .kimi: return .grok
         }
     }
 
@@ -158,7 +162,7 @@ extension ChatSessionController {
             return chatModelOpenClaude.trimmingCharacters(in: .whitespacesAndNewlines)
         case .omp:
             return chatModelOMP.trimmingCharacters(in: .whitespacesAndNewlines)
-        case .junie:
+        case .junie, .grok, .kimi:
             return chatModelJunie.trimmingCharacters(in: .whitespacesAndNewlines)
         }
     }
@@ -209,7 +213,8 @@ extension ChatSessionController {
             return PromptTokenArbiter.estimateProseTokens(HermesSystemPromptBuilder.atomDirective)
         case .piAgent:
             return PromptTokenArbiter.estimateProseTokens(piSystemPromptWrapper(instanceID: piAgentInstanceID))
-        case .openclaw, .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp, .junie:
+        case .openclaw, .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp, .junie,
+             .grok, .kimi:
             return 0
         }
     }
@@ -222,7 +227,8 @@ extension ChatSessionController {
             return openClawGatewayModels
         case .piAgent:
             return piAgentGatewayModels
-        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp, .junie:
+        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp, .junie,
+             .grok, .kimi:
             return []
         }
     }

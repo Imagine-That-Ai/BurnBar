@@ -30,6 +30,14 @@ import type { SwarmEmberKernelOptions } from "./kernels/swarmEmberKernel";
 // import is only reached when swarmEmberOptions is set (linux-desktop dashboard).
 import { createSwarmEmberKernel } from "./kernels/swarmEmberKernel";
 import {
+  advanceCinematicPresent,
+  dtScaledDecay,
+  dtScaledMix,
+  newCinematicClockState,
+  type CinematicClockState,
+} from "./cinematicClock";
+import { ShutterPass } from "./gl/shutterPass";
+import {
   DEFAULT_KERNEL_ID,
   getKernelDescriptor,
   resolveKernelResolution,
@@ -169,7 +177,14 @@ export class BackdropEngine {
   private hostVisible = true;
   private reducedMotion = false;
   private maxFps = 0;
-  private lastFrameAdvanceAt = 0;
+  private clock: CinematicClockState = newCinematicClockState();
+  private shutter = new ShutterPass();
+  private cinematicDebug = {
+    lastDt: 0,
+    lastAlpha: 1,
+    presentCount: 0,
+    skipCount: 0,
+  };
 
   private pointer = { x: 0, y: 0, active: false };
 
@@ -351,6 +366,17 @@ export class BackdropEngine {
     };
   }
 
+  /** Present-loop truth for the cinematic-30 harness. Not part of the native handshake. */
+  getCinematicDebug(): {
+    lastDt: number;
+    lastAlpha: number;
+    presentCount: number;
+    skipCount: number;
+    maxFps: number;
+  } {
+    return { ...this.cinematicDebug, maxFps: this.maxFps };
+  }
+
   /**
    * Native embedders (the macOS/iOS WKWebView backdrop) call this when the
    * hosting window's occlusion state changes. `document.hidden` never fires
@@ -384,7 +410,7 @@ export class BackdropEngine {
   /** Cap native/embedded previews without changing the browser default. */
   setMaxFps(fps: number): void {
     this.maxFps = Number.isFinite(fps) && fps > 0 ? Math.min(fps, 60) : 0;
-    this.lastFrameAdvanceAt = performance.now();
+    this.clock.lastFrameAdvanceAt = performance.now();
   }
 
   /** A foreground glyph was dragged/thrown through the field — forward to the
@@ -441,6 +467,7 @@ export class BackdropEngine {
     this.readabilityWorkerPending.clear();
     this.readabilityWorker = null;
     this.readabilityWorkerURL = null;
+    this.shutter.dispose();
   }
 
   // ── Slot lifecycle ─────────────────────────────────────────
@@ -677,22 +704,28 @@ export class BackdropEngine {
       this.raf = requestAnimationFrame(loop);
       if (!this.visible || !this.pageVisible || !this.hostVisible) {
         this.lastNow = now;
-        this.lastFrameAdvanceAt = now;
+        this.clock.lastNow = now;
+        this.clock.lastFrameAdvanceAt = now;
         return;
       }
-      if (this.maxFps > 0) {
-        const minimumInterval = 1000 / this.maxFps;
-        if (now - this.lastFrameAdvanceAt < minimumInterval) return;
-        this.lastFrameAdvanceAt = now;
+      const step = advanceCinematicPresent(this.clock, now, this.maxFps);
+      if (!step.presented) {
+        this.cinematicDebug.skipCount += 1;
+        return;
       }
-      const dt = Math.min(now - this.lastNow, this.maxFps > 0 ? 100 : 32);
+      const dt = step.dt;
       this.lastNow = now;
       this.tMs += dt;
+      this.cinematicDebug.lastDt = dt;
+      this.cinematicDebug.lastAlpha = step.alpha;
+      this.cinematicDebug.presentCount += 1;
 
       // Fold raw scroll delta into a smoothed, clamped velocity, then decay.
-      // When scrolling stops the velocity trails off over ~130ms for a funky
-      // afterglow without lagging the wind itself.
-      this.scroll.vy = this.scroll.vy * 0.82 + this.scrollDelta * 0.18;
+      // Mix/decay were tuned at 60 Hz; scale by dt so 30 fps has the same
+      // ~130ms afterglow instead of twice the hang.
+      this.scroll.vy =
+        this.scroll.vy * dtScaledDecay(0.82, dt) +
+        this.scrollDelta * dtScaledMix(0.18, dt);
       this.scrollDelta = 0;
       if (this.scroll.vy > 120) this.scroll.vy = 120;
       else if (this.scroll.vy < -120) this.scroll.vy = -120;
@@ -710,12 +743,30 @@ export class BackdropEngine {
 
       for (const slot of this.slots) {
         slot.kernel.frame(this.tMs, dt);
+        this.applyShutter(slot, step.alpha);
       }
       if (now - this.lastReadabilitySample >= READABILITY_SAMPLE_INTERVAL_MS) {
         void this.emitReadability(now);
       }
     };
     this.raf = requestAnimationFrame(loop);
+  }
+
+  private applyShutter(slot: Slot, alpha: number): void {
+    if (alpha >= 1) return;
+    try {
+      if (slot.substrate === "2d" && slot.context) {
+        this.shutter.apply2d(
+          slot.canvas,
+          slot.context as CanvasRenderingContext2D,
+          alpha,
+        );
+      } else if (slot.substrate === "webgl2" && slot.context) {
+        this.shutter.applyWebgl(slot.context as WebGL2RenderingContext, alpha);
+      }
+    } catch {
+      /* mock canvases and lost contexts skip the mix; the live frame still shows */
+    }
   }
 
   // ── Adaptive foreground sampling ──────────────────────────

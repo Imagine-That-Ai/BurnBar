@@ -54,6 +54,7 @@ class MobileMissionConsoleHost private constructor(
 
     @Volatile private var observedOrder: List<String> = emptyList()
     private val dismissedTerminalIDs = ConcurrentHashMap.newKeySet<String>()
+    private val localApprovalResolutions = ConcurrentHashMap<String, String>()
 
     fun start() {
         if (authListener != null) return
@@ -122,13 +123,23 @@ class MobileMissionConsoleHost private constructor(
 
     suspend fun respond(ask: ApprovalAsk, approve: Boolean) {
         try {
-            dispatcher.respondToApproval(requestID = ask.missionID, approve = approve)
+            applyMissionApprovalResponse(
+                ask = ask,
+                approve = approve,
+                observedMissions = observedMissions,
+                respond = { id, decision -> dispatcher.respondToApproval(requestID = id, approve = decision) },
+            ) { key, resolution ->
+                localApprovalResolutions[key] = resolution
+            }
+            rebuildSnapshot()
         } catch (e: IllegalStateException) {
             _inlineError.value = e.localizedMessage ?: "Approval response failed."
         }
     }
 
     suspend fun cancelMission(id: String) {
+        val snapshot = observedMissions[id]
+        if (snapshot?.isTerminal == true) return
         try {
             dispatcher.cancelMission(id)
         } catch (e: IllegalStateException) {
@@ -222,7 +233,11 @@ class MobileMissionConsoleHost private constructor(
         val orderedMissions =
             observedOrder.mapNotNull { observedMissions[it] }
                 .filter { it.id !in dismissedTerminalIDs }
-        val parts = buildMissionConsoleSnapshotParts(orderedMissions, ::runtimeIDGuess)
+        val parts = buildMissionConsoleSnapshotParts(
+            orderedMissions,
+            ::runtimeIDGuess,
+            hiddenApprovalKeys = localApprovalResolutions.keys.toSet(),
+        )
         _snapshot.value =
             MissionConsoleSnapshot(
                 activeMissions = parts.activeTiles,
@@ -245,4 +260,19 @@ class MobileMissionConsoleHost private constructor(
             instance ?: MobileMissionConsoleHost().also { instance = it }
         }
     }
+}
+
+internal suspend fun applyMissionApprovalResponse(
+    ask: ApprovalAsk,
+    approve: Boolean,
+    observedMissions: Map<String, CLIAgentMissionSnapshot>,
+    respond: suspend (String, Boolean) -> Unit,
+    record: (String, String) -> Unit,
+) {
+    respond(ask.missionID, approve)
+    val current = observedMissions[ask.missionID]
+    record(
+        "${ask.missionID}|${current?.approvalRequestId.orEmpty()}",
+        if (approve) "approved" else "rejected",
+    )
 }

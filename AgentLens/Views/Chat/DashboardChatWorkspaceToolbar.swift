@@ -55,6 +55,7 @@ extension ChatBackendID {
         case .antigravity: return "6C63FF"
         case .cursorAgent: return "00E5FF"
         case .junie: return "48E054"
+        case .grok, .kimi: return "48E054"
         }
     }
 
@@ -99,6 +100,10 @@ extension ChatBackendID {
         case .openclaw: return "Gateway agent"
         case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp, .junie:
             return "CLI agent"
+        case .grok, .kimi:
+            // Hosted API backends (#2362): no CLI invocation, probed like
+            // gateway agents once an execution path exists.
+            return "Cloud agent"
         }
     }
 

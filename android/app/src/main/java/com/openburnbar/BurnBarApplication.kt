@@ -8,7 +8,6 @@ import com.google.firebase.appcheck.AppCheckProviderFactory
 import com.google.firebase.appcheck.FirebaseAppCheck
 import com.google.firebase.appcheck.playintegrity.PlayIntegrityAppCheckProviderFactory
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.crashlytics.FirebaseCrashlytics
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
@@ -31,13 +30,11 @@ import com.openburnbar.data.media.RetainedIrohControlTransportPool
 import com.openburnbar.data.text.TextExpansionSyncWorker
 import com.openburnbar.data.widget.BurnBarWidgetSnapshotStore
 import com.openburnbar.data.widget.BurnBarWidgetSyncWorker
-import com.openburnbar.diagnostics.CrashReportingConsentStore
 import com.openburnbar.irohrelay.IrohDialTarget
 import com.openburnbar.irohrelay.IrohPairingPublisher
 import com.openburnbar.irohrelay.IrohRelayStream
 import com.openburnbar.irohrelay.OpenBurnBarIrohFfiBackend
 import com.openburnbar.irohrelay.OpenBurnBarIrohNativeContext
-import com.openburnbar.remote.BurnBarRemoteBridge
 import com.openburnbar.services.media.AgentReplyNotificationState
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CancellationException
@@ -213,12 +210,7 @@ class BurnBarApplication : Application() {
         super.onCreate()
         appContext = applicationContext
         OpenBurnBarIrohNativeContext.install(applicationContext)
-        val remoteReadiness = BurnBarRemoteBridge.readiness()
-        Log.i(
-            "BurnBar",
-            "BurnBar remote engine readiness: protocol=${remoteReadiness.protocolVersion}, " +
-                "native=${remoteReadiness.nativeBridgeAvailable}",
-        )
+        logRemoteEngineReadiness()
         // T-AND-06: install the Sentry privacy scrubber BEFORE anything can capture a crash/ANR,
         // so no payload or breadcrumb can ship prompt/credential fragments off device. This reads
         // the manifest-configured DSN/options and adds beforeSend/beforeBreadcrumb on top.
@@ -227,63 +219,17 @@ class BurnBarApplication : Application() {
         FirebaseApp.initializeApp(this)
         installAppCheckProvider()
         installComputerUseSessionGrantReceiver()
-        val domainCoreEvidenceChannel = com.openburnbar.data.DomainCoreBuildProfile.evidenceChannel()
-        runCatching {
-            if (domainCoreEvidenceChannel == null) {
-                com.openburnbar.data.AndroidDomainCoreShadowEvidence.discardStoredSamples(this)
-            } else {
-                com.openburnbar.data.AndroidDomainCoreShadowEvidence.install(this, domainCoreEvidenceChannel)
-            }
-        }.onFailure { Log.w("BurnBar", "Domain-core evidence uploader disabled: ${it.message}") }
+        applicationScope.launch(Dispatchers.IO) {
+            runCatching { com.openburnbar.ui.share.BurnbarShareInboxProcessor.enqueuePending(this@BurnBarApplication) }
+        }
+        installDomainCoreShadowEvidence()
         // F2/F7/F10: land remote kill-switch values so the default-ON
         // protection flags can be remotely disabled (the flags default ON via
         // the source-aware reader; this makes the override reachable). iOS
         // does this in MobileMediaBudgetStatusStore.
         com.openburnbar.data.computeruse.RemoteConfigBootstrap.activate()
-        // Signal at-rest activation: AND the registry scheme with per-domain
-        // Remote Config enabled/required flags, mirroring iOS
-        // `MobileCloudVaultSignalPayloads.signalActivationState`. Source-aware
-        // and DEFAULT-OFF: a STATIC value (no remote value fetched, no in-app
-        // default registered) resolves false, so the producer path only emits
-        // Signal envelopes once an operator explicitly flips the flag true. The
-        // global (`signal_at_rest_v1_hard_kill`) and per-domain
-        // (`signal_at_rest_<id>_hard_kill`) hard-kill flags win over the enabled
-        // flag, matching the iOS/macOS activation readers — a hard kill flips
-        // every Android producer off without touching the per-domain ramp. Any
-        // Firebase failure also resolves OFF — Android stays fail-closed.
-        com.openburnbar.data.cloud.AndroidCloudVaultSignalPayloads.signalAtRestActivationProvider = { domainID ->
-            runCatching {
-                val config = com.google.firebase.remoteconfig.FirebaseRemoteConfig.getInstance()
-                val hardKill = config.getValue("signal_at_rest_v1_hard_kill").asBoolean() ||
-                    config.getValue("signal_at_rest_${domainID}_hard_kill").asBoolean()
-                val enabledValue = config.getValue("signal_at_rest_${domainID}_enabled")
-                val enabledValueIsStatic =
-                    enabledValue.source == com.google.firebase.remoteconfig.FirebaseRemoteConfig.VALUE_SOURCE_STATIC
-                com.openburnbar.data.cloud.AndroidCloudVaultSignalPayloads.remoteActivationState(
-                    enabled = enabledValue.asBoolean(),
-                    required = config.getValue("signal_at_rest_${domainID}_required").asBoolean(),
-                    hardKill = hardKill,
-                    enabledValueIsStatic = enabledValueIsStatic,
-                )
-            }.getOrDefault(com.openburnbar.data.cloud.AndroidCloudVaultSignalPayloads.ActivationState.OFF)
-        }
-        // Crash reports are a separate diagnostics consent surface from opt-in
-        // usage analytics. Default dark: a fresh install must not start
-        // Crashlytics until the user turns on diagnostic crash reports.
-        val crashlyticsEnabled = CrashReportingConsentStore.fromContext(this).isEnabled
-        FirebaseCrashlytics.getInstance().setCrashlyticsCollectionEnabled(crashlyticsEnabled)
-        // Opt-in analytics: construct the consent-gated recorder and resume a
-        // previously-consented session (no grant re-emit). Stays fully dark
-        // until the user opts in AND an Amplitude key is configured — no SDK
-        // construction, no network. Emits the session-start spine only when
-        // already consented; first-run grant fires it from the consent prompt.
-        runCatching {
-            com.openburnbar.analytics.AnalyticsManager.initialize(this)
-            val isFirstLaunch = detectFirstLaunch()
-            com.openburnbar.analytics.AnalyticsManager.rememberLaunchContext(isFirstLaunch)
-            com.openburnbar.analytics.AnalyticsManager.trackSessionStartIfConsented(isFirstLaunch)
-            installAnalyticsIdentity()
-        }.onFailure { Log.w("BurnBar", "Analytics init failed: ${it.message}") }
+        installSignalAtRestActivationProvider()
+        installCrashReportingAndAnalytics()
         // Widget snapshot: hydrate from disk + schedule the 15-min refresh.
         BurnBarWidgetSnapshotStore.bind(this)
         BurnBarWidgetSyncWorker.enqueuePeriodic(this)
@@ -594,39 +540,6 @@ class BurnBarApplication : Application() {
                 )
             },
         )
-    }
-
-    /**
-     * First-launch detection for `app.session.started`'s `is_first_launch`.
-     * A boolean marker in a private prefs file; flips to false after the first
-     * read. Independent of analytics consent so the marker is correct whenever
-     * the user eventually opts in. No PII — a single boolean.
-     */
-    private fun detectFirstLaunch(): Boolean {
-        val prefs = getSharedPreferences("burnbar.analytics.lifecycle", MODE_PRIVATE)
-        val seen = prefs.getBoolean("has_launched_before", false)
-        if (!seen) prefs.edit().putBoolean("has_launched_before", true).apply()
-        return !seen
-    }
-
-    /**
-     * Identify the signed-in user to analytics with a **hashed** account uid
-     * (SHA-256, hex) — never the raw Firebase uid, email, or display name. The
-     * recorder no-ops the call entirely until consent is granted, so nothing
-     * leaks pre-opt-in. Cleared (`setUserId(null)`) on sign-out so a shared
-     * device doesn't attribute one user's anonymous events to another.
-     */
-    private fun installAnalyticsIdentity() {
-        val listener = FirebaseAuth.AuthStateListener { auth ->
-            val uid = auth.currentUser?.uid
-            com.openburnbar.analytics.AnalyticsManager.setUserId(uid?.let { hashedAccountId(it) })
-        }
-        FirebaseAuth.getInstance().addAuthStateListener(listener)
-    }
-
-    private fun hashedAccountId(uid: String): String {
-        val digest = java.security.MessageDigest.getInstance("SHA-256").digest(uid.toByteArray(Charsets.UTF_8))
-        return digest.joinToString("") { "%02x".format(it) }
     }
 
     private fun registerFcmToken() {

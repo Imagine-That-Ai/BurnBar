@@ -76,7 +76,8 @@ extension ChatSessionController {
                 )
                 return false
             }
-        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp, .junie:
+        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp, .junie,
+             .grok, .kimi:
             guard settingsManager.cliAssistantAllowed else {
                 await appendAndPersistAssistantError(
                     "Mac CLI assistants are off. Use the Enable button above the chat composer, or turn on Settings → Privacy & Indexing → Mac CLI Assistants.",
@@ -133,6 +134,18 @@ extension ChatSessionController {
                 "junie",
                 "Junie CLI was not found. Install JetBrains Junie and ensure `junie` is on your PATH.",
                 "Junie not found"
+            )
+        case .grok:
+            requirement = (
+                "grok",
+                "Grok CLI was not found. Install grok and ensure `grok` is on your PATH.",
+                "Grok not found"
+            )
+        case .kimi:
+            requirement = (
+                "kimi",
+                "Kimi CLI was not found. Install kimi-code and ensure `kimi` is on your PATH.",
+                "Kimi not found"
             )
         case .codex:
             requirement = (

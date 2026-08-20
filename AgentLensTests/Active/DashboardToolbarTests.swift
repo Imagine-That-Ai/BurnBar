@@ -1,3 +1,4 @@
+import OpenBurnBarKernel
 import XCTest
 import SwiftUI
 import ViewInspector
@@ -14,7 +15,7 @@ import GRDB
 final class DashboardToolbarTests: XCTestCase {
 
     func test_usageModeToolbarPickerRendersCurrencyAndTokenModes() throws {
-        var selection: UsageDisplayMode = .currency
+        var selection: OpenBurnBar.UsageDisplayMode = .currency
         let picker = UsageModeToolbarPicker(selection: Binding(
             get: { selection },
             set: { selection = $0 }
@@ -72,6 +73,105 @@ final class DashboardToolbarTests: XCTestCase {
             .environment(settings)
             .frame(width: 640, height: 420)
             .inspect())
+    }
+
+    func test_kernelBackdropFramePolicyCapsDashboardAndLeavesGateAt60() {
+        XCTAssertEqual(
+            KernelBackdropFramePolicy.maxFrameRate(isPerformanceGateLaunch: false),
+            30
+        )
+        XCTAssertEqual(
+            KernelBackdropFramePolicy.maxFrameRate(isPerformanceGateLaunch: true),
+            60
+        )
+        XCTAssertEqual(
+            KernelBackdropFramePolicy.maxFrameRate(isPerformanceGateLaunch: false, refreshHz: 120),
+            30
+        )
+        XCTAssertEqual(
+            KernelBackdropFramePolicy.cinematicPresentFrameRate(refreshHz: 144),
+            36
+        )
+        XCTAssertNotEqual(
+            KernelBackdropFramePolicy.cinematicPresentFrameRate(refreshHz: 144),
+            30,
+            "30 on 144 Hz strobes; present fps must divide refresh"
+        )
+        XCTAssertEqual(
+            KernelBackdropFramePolicy.maxFrameRate(isPerformanceGateLaunch: true, refreshHz: 144),
+            60,
+            "performance-gate launches keep 60 even on 144 Hz"
+        )
+    }
+
+    func test_kernelContentOcclusionFreezesWhenChromeCoversTheField() {
+        XCTAssertTrue(KernelContentOcclusionPolicy.isKernelExposed(opaqueCoverage: 0))
+        XCTAssertTrue(KernelContentOcclusionPolicy.isKernelExposed(opaqueCoverage: 0.5))
+        XCTAssertFalse(KernelContentOcclusionPolicy.isKernelExposed(opaqueCoverage: 0.95))
+        XCTAssertFalse(KernelContentOcclusionPolicy.isKernelExposed(opaqueCoverage: 1))
+
+        XCTAssertTrue(
+            KernelBackdropActivityPolicy.shouldBackdropBeActive(
+                isVisible: true,
+                isMiniaturized: false,
+                occlusionState: .visible,
+                opaqueCoverage: 0,
+                windowHasSheet: false
+            )
+        )
+        XCTAssertFalse(
+            KernelBackdropActivityPolicy.shouldBackdropBeActive(
+                isVisible: true,
+                isMiniaturized: false,
+                occlusionState: .visible,
+                opaqueCoverage: 1,
+                windowHasSheet: false
+            ),
+            "opaque chrome covering the kernel must freeze the living field"
+        )
+        XCTAssertFalse(
+            KernelBackdropActivityPolicy.shouldBackdropBeActive(
+                isVisible: true,
+                isMiniaturized: false,
+                occlusionState: .visible,
+                opaqueCoverage: 0,
+                windowHasSheet: true
+            ),
+            "an attached sheet is content occlusion"
+        )
+        XCTAssertTrue(
+            KernelBackdropActivityPolicy.shouldBackdropBeActive(
+                isVisible: true,
+                isMiniaturized: false,
+                occlusionState: [],
+                opaqueCoverage: 1,
+                windowHasSheet: true,
+                performanceGateOverride: true
+            ),
+            "performance-gate override still wins"
+        )
+    }
+
+    func test_kernelWebViewIsOpaqueWhenClarityIsZero() {
+        XCTAssertTrue(KernelWebViewOpacityPolicy.isOpaque(clarity: 0))
+        XCTAssertFalse(KernelWebViewOpacityPolicy.isOpaque(clarity: 0.01))
+        XCTAssertFalse(KernelWebViewOpacityPolicy.isOpaque(clarity: 1))
+    }
+
+    func test_kernelSwarmOverlayIgnoresDefaultProviderGlyphRoster() {
+        XCTAssertFalse(
+            OpenBurnBarKernel.KernelSwarmOverlayPolicy.shouldMountCanvas(
+                substrateEnabled: false,
+                substrateID: "plain"
+            ),
+            "kernel mode must not mount SwarmCanvas for the default glyph roster"
+        )
+        XCTAssertTrue(
+            OpenBurnBarKernel.KernelSwarmOverlayPolicy.shouldMountCanvas(
+                substrateEnabled: true,
+                substrateID: "constellation.starfire"
+            )
+        )
     }
 
     func test_liveBackdropVisibilityIncludesKernelAndEditorialWithoutWebsiteToggle() {
@@ -174,6 +274,19 @@ final class DashboardToolbarTests: XCTestCase {
             onOpenAppearanceSettings: {}
         )
         XCTAssertNoThrow(try menu.inspect())
+    }
+
+    func test_kernelCatalogCategoriesCoverAllKernels() {
+        XCTAssertEqual(KernelCatalog.all.count, 32)
+        XCTAssertFalse(KernelCatalog.curated.isEmpty)
+        XCTAssertFalse(KernelCatalog.atmospheric.isEmpty)
+        XCTAssertFalse(KernelCatalog.geometry.isEmpty)
+        XCTAssertFalse(KernelCatalog.organic.isEmpty)
+
+        let combined = Set(KernelCatalog.atmospheric.map(\.id))
+            .union(KernelCatalog.geometry.map(\.id))
+            .union(KernelCatalog.organic.map(\.id))
+        XCTAssertEqual(combined.count, KernelCatalog.all.count, "All 32 kernels must be categorized into submenus")
     }
 
     func test_appearancePreviewCardRendersForAuroraDark() throws {

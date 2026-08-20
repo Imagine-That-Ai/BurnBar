@@ -1,5 +1,6 @@
 import XCTest
 import Foundation
+import OpenBurnBarComputerUseCore
 import OpenBurnBarCore
 import OpenBurnBarSignalCore
 @testable import OpenBurnBarMobile
@@ -136,6 +137,8 @@ final class CLIAgentMissionDispatcherSealTests: XCTestCase {
         let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: key)
 
         let update = try CLIAgentMissionDispatcher.cancelMissionUpdate(
+            uid: "uid-1",
+            requestID: "req-cancel",
             vaultKey: key,
             vaultKeyID: vaultKeyID
         )
@@ -146,6 +149,13 @@ final class CLIAgentMissionDispatcherSealTests: XCTestCase {
         XCTAssertEqual(update["sealedStateSchemaVersion"] as? Int, 1)
         XCTAssertEqual(update["sealedStateVaultKeyID"] as? String, vaultKeyID)
         XCTAssertNotNil(update["sealedStatePayload"])
+        let sealedState = try XCTUnwrap(update["sealedStatePayload"] as? [String: Any])
+        let expectedAAD = try CLIAgentMissionCloudSealer.missionAADContext(
+            uid: "uid-1",
+            documentID: "req-cancel",
+            field: "sealedStatePayload"
+        )
+        XCTAssertEqual(sealedState["aad"] as? String, expectedAAD.stringValue)
 
         // Critically: NO plaintext private text leaks top-level.
         XCTAssertNil(update["liveSummary"])
@@ -1006,6 +1016,36 @@ final class CLIAgentMissionDispatcherSealTests: XCTestCase {
         XCTAssertEqual(host.inlineError, host.approvalResponseError)
     }
 
+    func testTransportConsumeStreamUnknownThenCompletedAndMalformedFails() throws {
+        var events: [CLIAgentRelayChatEvent] = []
+        try CLIAgentRelayChatTransport.dispatchStreamEvents(
+            [#"{"kind":"futureKind"}"#, #"{"kind":"completed"}"#]
+        ) { events.append($0) }
+        XCTAssertEqual(events.count, 2)
+        XCTAssertEqual(events[0].kind, .unknown)
+        XCTAssertEqual(events[1].kind, .completed)
+        XCTAssertThrowsError(
+            try CLIAgentRelayChatTransport.dispatchStreamEvents(["not-json"]) { _ in }
+        )
+    }
+
+    func test_absorbApproval1RespondThenApproval2ShowsNewCard() async throws {
+        let responder = StubMissionApprovalResponder()
+        let host = MobileMissionConsoleHost(approvalResponder: responder)
+        let first = try Self.waitingApprovalMission(id: "m-dup", approvalRequestId: "approval-1")
+        host.absorbMissionSnapshots([first], documentCount: 1, hasResolvedKey: true)
+        XCTAssertEqual(host.snapshot.approvalAsks.map(\.missionID), [first.id])
+
+        await host.respond(to: first.id, approve: true)
+        XCTAssertEqual(responder.calls.map(\.approve), [true])
+        XCTAssertTrue(host.snapshot.approvalAsks.isEmpty)
+
+        let second = try Self.waitingApprovalMission(id: "m-dup", approvalRequestId: "approval-2")
+        host.absorbMissionSnapshots([second], documentCount: 1, hasResolvedKey: true)
+        XCTAssertEqual(host.snapshot.approvalAsks.map(\.missionID), [first.id])
+        XCTAssertEqual(second.approvalRequestId, "approval-2")
+    }
+
     func test_rejectedOrCanceledMissionIsNotWaitingForApproval() throws {
         let rejected = try XCTUnwrap(CLIAgentMissionSnapshot(documentID: "denied-1", data: [
             "id": "denied-1",
@@ -1031,7 +1071,7 @@ final class CLIAgentMissionDispatcherSealTests: XCTestCase {
         XCTAssertTrue(canceled.isTerminal)
     }
 
-    private static func waitingApprovalMission(id: String) throws -> CLIAgentMissionSnapshot {
+    private static func waitingApprovalMission(id: String, approvalRequestId: String? = nil) throws -> CLIAgentMissionSnapshot {
         try XCTUnwrap(CLIAgentMissionSnapshot(documentID: id, data: [
             "id": id,
             "title": "Waiting mission",
@@ -1039,7 +1079,7 @@ final class CLIAgentMissionDispatcherSealTests: XCTestCase {
             "requestedRuntime": "codex",
             "selectedRuntime": "codex",
             "selectedRuntimeName": "Codex",
-            "approvalRequestId": "approval-\(id)",
+            "approvalRequestId": approvalRequestId ?? "approval-\(id)",
             "approvalStatus": "pending",
             "approvalTitle": "Approve \(id)",
             "approvalMessage": "Codex is waiting for approval.",
@@ -1067,5 +1107,32 @@ private final class StubMissionApprovalResponder: MobileMissionApprovalRespondin
     func respondToApproval(requestID: String, approve: Bool) async throws {
         calls.append((requestID, approve))
         try result.get()
+    }
+
+    func testSealedPayloadCarriesAttachmentRefs() throws {
+        let key = Data(repeating: 7, count: 32)
+        let ref = CLIAgentMissionAttachmentRef(
+            id: "att-1",
+            contentBlake3: String(repeating: "ab", count: 32),
+            displayName: "note.txt",
+            byteCount: 12,
+            transport: "cloud"
+        )
+        let payload = try CLIAgentMissionRequestPayloadFactory.buildSealed(
+            id: "req-att",
+            title: "t",
+            prompt: "p",
+            missionKind: "chat",
+            requestedRuntime: "codex",
+            targetProject: nil,
+            depth: "standard",
+            approvalMode: "existing_policy",
+            commandsAllowed: false,
+            fileEditsAllowed: false,
+            attachments: [ref],
+            vaultKey: key,
+            vaultKeyID: "vk"
+        )
+        XCTAssertNotNil(payload["sealedPayload"])
     }
 }

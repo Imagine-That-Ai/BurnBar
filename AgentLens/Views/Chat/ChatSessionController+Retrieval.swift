@@ -95,6 +95,15 @@ extension ChatSessionController {
             case .junie:
                 let m = chatModelJunie.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "junie"
                 return (.junie, "OpenBurnBar Junie Chat", m)
+            case .grok:
+                // AgentProvider spells xAI's provider `.xAI`; `.grok` is the
+                // ChatBackendID. Honour an explicitly requested model like the
+                // other backends rather than always reporting the default.
+                let m = requestModel.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "grok"
+                return (.xAI, "OpenBurnBar Grok Chat", m)
+            case .kimi:
+                let m = requestModel.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "kimi"
+                return (.kimi, "OpenBurnBar Kimi Chat", m)
             }
         }()
 

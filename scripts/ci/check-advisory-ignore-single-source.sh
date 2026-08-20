@@ -30,4 +30,51 @@ for id in "${IDS[@]}"; do
   [[ "$id" =~ ^RUSTSEC-[0-9]{4}-[0-9]{4}$ ]] || fail "malformed advisory id from deny.toml: '${id}'"
 done
 
-echo "PASS: advisory ignore set is single-sourced from deny.toml (${#IDS[@]} ids: ${IDS[*]})."
+# 3. Two readers now derive the accepted-advisory set from deny.toml: this shell
+#    helper and scripts/ci/check-cargo-audit-fail-closed.mjs (which the SAST
+#    lane actually runs). Two readers of one source is fine; two readers that
+#    disagree is the exact drift this guard exists to prevent, so assert they
+#    extract the identical set.
+NODE_IDS=()
+while IFS= read -r id; do
+  [[ -n "$id" ]] && NODE_IDS+=("$id")
+# Both paths come from ROOT_DIR, never from the caller's cwd. A bare
+# `./scripts/...` import resolves against wherever the script was invoked from,
+# so running this from /tmp would try to import /tmp/scripts/... and fail —
+# while the repo's convention is that these checks work from anywhere.
+done < <(ROOT_DIR="$ROOT_DIR" node -e '
+const root = process.env.ROOT_DIR;
+const { pathToFileURL } = await import("node:url");
+const { join } = await import("node:path");
+const m = await import(pathToFileURL(join(root, "scripts/ci/check-cargo-audit-fail-closed.mjs")).href);
+const { readFileSync } = await import("node:fs");
+for (const id of m.acceptedAdvisoryIds(readFileSync(join(root, "crates/openburnbar-iroh/deny.toml"), "utf8"))) {
+  console.log(id);
+}
+' --input-type=module)
+if [[ "${IDS[*]}" != "${NODE_IDS[*]}" ]]; then
+  echo "Shell derivation: ${IDS[*]}" >&2
+  echo "Gate derivation:  ${NODE_IDS[*]}" >&2
+  fail "the two deny.toml readers disagree; they must extract the same advisory set."
+fi
+
+# 4. The supply-chain policy carries the findings that have NO advisory id
+#    (yanked crates, phantom dependencies). It must stay structurally valid and
+#    every acceptance must still be time-boxed, or a suppression could rot into
+#    permanent blindness.
+ROOT_DIR="$ROOT_DIR" node -e '
+const root = process.env.ROOT_DIR;
+const { pathToFileURL } = await import("node:url");
+const { join } = await import("node:path");
+import(pathToFileURL(join(root, "scripts/ci/rust-supply-chain-policy.mjs")).href).then((m) => {
+  const policy = m.loadPolicy();
+  const stale = policy.acceptances.filter((entry) => new Date(entry.expires) <= new Date());
+  for (const entry of stale) {
+    console.error(`EXPIRED acceptance still committed: ${entry.kind} ${entry.crate} (expired ${entry.expires})`);
+  }
+  if (stale.length > 0) process.exit(1);
+  console.log(`policy OK: ${policy.acceptances.length} time-boxed acceptance(s).`);
+});
+' --input-type=module || fail "config/rust-supply-chain-policy.json is invalid or carries an expired acceptance."
+
+echo "PASS: advisory ignore set is single-sourced from deny.toml (${#IDS[@]} ids: ${IDS[*]}), both readers agree, and the supply-chain policy is valid."

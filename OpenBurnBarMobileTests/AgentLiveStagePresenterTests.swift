@@ -16,6 +16,20 @@ final class AgentLiveStagePresenterTests: XCTestCase {
         AgentLiveStagePresenter(sessionEndGrace: sessionEndGrace)
     }
 
+    func testComposerInterruptPrefersACPBusIdOverComputerUseSession() {
+        let presenter = makePresenter()
+        presenter.bindCLIInterruptSession("acp-grok-test")
+        XCTAssertEqual(
+            presenter.interruptTarget(computerUseSessionId: "cu-session"),
+            "acp-grok-test"
+        )
+        presenter.bindCLIInterruptSession(nil)
+        XCTAssertEqual(
+            presenter.interruptTarget(computerUseSessionId: "cu-session"),
+            "cu-session"
+        )
+    }
+
     // MARK: - Auto-open
 
     func test_autoOpens_to_dock_on_session_start() async throws {

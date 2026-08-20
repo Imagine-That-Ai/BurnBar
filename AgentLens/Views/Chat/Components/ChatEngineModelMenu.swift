@@ -112,6 +112,8 @@ struct ChatEngineModelMenu: View {
         case .omp: return .omp
         case .openClaude: return .openClaude
         case .junie: return .junie
+        case .grok: return .grok
+        case .kimi: return .grok
         case .hermes, .openclaw, .piAgent: return nil
         }
     }
@@ -229,6 +231,10 @@ struct ChatEngineModelRows: View {
             return liveCLIRows(for: .openClaude, defaultTitle: "Default (OpenClaude profile)")
         case .junie:
             return liveCLIRows(for: .junie, defaultTitle: "Default (Junie profile)")
+        case .grok:
+            return liveCLIRows(for: .grok, defaultTitle: "Default (Grok profile)")
+        case .kimi:
+            return liveCLIRows(for: .grok, defaultTitle: "Default (Kimi profile)")
         }
     }
 
@@ -276,7 +282,9 @@ struct ChatEngineModelRows: View {
     private var perRowQuotaSuffix: String {
         let backend = controller.chatBackend
         switch backend {
-        case .codex, .claude, .droid, .antigravity, .cursorAgent, .openClaude, .omp, .junie:
+        // `.kimi` has no agentProvider, so the guard below yields "" for it naturally.
+        case .codex, .claude, .droid, .antigravity, .cursorAgent, .openClaude, .omp, .junie,
+             .grok, .kimi:
             guard let provider = backend.agentProvider,
                   let resolution = ProviderQuotaChip.resolve(
                     provider: provider,

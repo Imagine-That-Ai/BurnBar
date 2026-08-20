@@ -1,5 +1,6 @@
 package com.openburnbar.data.assistants
 
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.WriteBatch
 import com.openburnbar.data.cloud.AndroidCloudVaultResolvedKey
@@ -7,6 +8,14 @@ import com.openburnbar.data.cloud.AndroidSignalIdentityKeypair
 import com.openburnbar.data.cloud.CloudVaultSignalRecipient
 import java.time.Instant
 import java.util.UUID
+
+internal fun mapAny(source: Map<*, *>): Map<String, Any> {
+    val out = LinkedHashMap<String, Any>(source.size)
+    for ((key, value) in source) {
+        if (value != null) out[key.toString()] = value
+    }
+    return out
+}
 
 internal data class FanOutDispatchPlan(
     val groupID: String,
@@ -44,6 +53,66 @@ internal data class SignalMissionWrite(
     val missionID: String,
     val payload: Map<String, Any>,
 )
+
+internal val MISSION_CREATE_PUBLIC_KEYS = setOf(
+    "id",
+    "missionKind",
+    "requestedRuntime",
+    "requestedModelID",
+    "depth",
+    "approvalMode",
+    "commandsAllowed",
+    "fileEditsAllowed",
+    "source",
+    "sourceSkillID",
+    "sourceSurface",
+    "deliveryMode",
+    "presentationMode",
+    "parentHermesThreadID",
+    "schemaVersion",
+    "groupID",
+    "siblingIndex",
+    "siblingCount",
+    "isGroupChild",
+    "personaID",
+    "clientThreadID",
+    "parentSessionID",
+    "resumeAction",
+    "originatorKind",
+    "originatorRef",
+    "targetBodyID",
+)
+
+internal data class MissionCreateLeaf(
+    val requestId: String,
+    val remoteCommandID: String,
+    val publicFields: Map<String, Any>,
+    val sealedPayload: Map<String, Any>,
+    val signalEnvelope: Map<String, Any>?,
+    val initialEvent: Map<String, Any>,
+) {
+    fun toCallableMap(deviceId: String): Map<String, Any> {
+        val out = linkedMapOf<String, Any>(
+            "requestId" to requestId,
+            "remoteCommandID" to remoteCommandID,
+            "deviceId" to deviceId,
+            "publicFields" to publicFields,
+            "sealedPayload" to sealedPayload,
+            "initialEvent" to initialEvent,
+        )
+        if (signalEnvelope != null) out["signalEnvelope"] = signalEnvelope
+        return out
+    }
+}
+
+internal fun publicFieldsForCreate(payload: Map<String, Any>, requestId: String): Map<String, Any> {
+    val out = linkedMapOf<String, Any>("id" to requestId)
+    for (key in MISSION_CREATE_PUBLIC_KEYS) {
+        val value = payload[key]
+        if (key != "id" && value != null && value !is FieldValue) out[key] = value
+    }
+    return out
+}
 
 /**
  * The Signal callable owns the mission document write when at-rest Signal is
@@ -131,9 +200,8 @@ private fun fanOutChildPayloadInput(request: FanOutChildWriteRequest, missionID:
     experience = CLIMissionPayloadExperience(deliveryMode = request.deliveryMode),
 )
 
-internal fun appendFanOutChildMissionWrites(request: FanOutChildWriteRequest): List<SignalMissionWrite> {
-    val signalWrites = mutableListOf<SignalMissionWrite>()
-    request.runtimeTokens.forEachIndexed { index, runtimeToken ->
+internal fun buildFanOutChildLeaves(request: FanOutChildWriteRequest): List<MissionCreateLeaf> {
+    return request.runtimeTokens.mapIndexed { index, runtimeToken ->
         val missionID = request.plan.childMissionIDs[index]
         val payloadInput = fanOutChildPayloadInput(request = request, missionID = missionID, runtimeToken = runtimeToken)
         val childPayload =
@@ -150,32 +218,32 @@ internal fun appendFanOutChildMissionWrites(request: FanOutChildWriteRequest): L
                         otherRecipients = request.signalRecipients,
                     )
                 },
+                uid = request.uid,
             ).toMutableMap().apply {
                 put("groupID", request.plan.groupID)
                 put("siblingIndex", index)
                 put("siblingCount", request.runtimeTokens.size)
                 put("isGroupChild", true)
             }
-        val requestRef =
-            request.firestore.collection("users").document(request.uid)
-                .collection("cli_agent_mission_requests").document(missionID)
-        val signalPayload = signalCallablePayload(childPayload)
-        if (request.signalIdentity != null && signalPayload == null) {
-            throw DispatchException("Signal at-rest activation produced no mission envelope for $missionID.")
-        }
-        if (signalPayload != null) {
-            signalWrites += SignalMissionWrite(missionID = missionID, payload = signalPayload)
-        } else {
-            request.batch.set(requestRef, childPayload.toMap())
-        }
-        request.batch.set(
-            requestRef.collection("events").document("000001"),
+        val sealed = childPayload["sealedPayload"] as? Map<*, *>
+            ?: throw DispatchException("Fan-out child $missionID is missing sealedPayload.")
+        val event =
             CLIAgentMissionRequestPayloadFactory.initialQueuedEventSealed(
                 sourceSkillID = request.sourceSkillID,
                 deliveryMode = request.deliveryMode,
                 key = request.key,
-            ),
+                uid = request.uid,
+                requestID = missionID,
+                eventID = "000001",
+            )
+        val initialEvent = event["sealedPayload"] as? Map<*, *> ?: event
+        MissionCreateLeaf(
+            requestId = missionID,
+            remoteCommandID = missionID,
+            publicFields = publicFieldsForCreate(childPayload, missionID),
+            sealedPayload = mapAny(sealed),
+            signalEnvelope = (childPayload["signalEnvelope"] as? Map<*, *>)?.let(::mapAny),
+            initialEvent = mapAny(initialEvent),
         )
     }
-    return signalWrites
 }

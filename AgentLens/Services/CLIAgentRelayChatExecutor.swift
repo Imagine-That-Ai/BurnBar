@@ -30,6 +30,59 @@ typealias CLIAgentSessionActionResumeRunner = @MainActor @Sendable (
 
 typealias CLIAgentSessionActionHaltHandler = @MainActor @Sendable () async -> Void
 
+typealias CLIAgentSessionActionInterruptRunner = @MainActor @Sendable (_ sessionID: String) async -> Bool
+
+// AUDIT(@unchecked Sendable): the handler table is guarded by `lock` on every access;
+// the stored closures capture a `Process`, which is not Sendable, so the box owns the
+// isolation rather than the closure type. sendable-allowlist: foundation-sdk-shim
+private final class CLIAgentSessionInterruptHandlerBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var handlers: [String: () -> Void] = [:]
+
+    func register(sessionID: String, handler: @escaping () -> Void) {
+        lock.lock()
+        defer { lock.unlock() }
+        handlers[sessionID] = handler
+    }
+
+    func unregister(sessionID: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        handlers.removeValue(forKey: sessionID)
+    }
+
+    /// Removes and returns the handler so a racing second interrupt cannot run it twice.
+    func take(sessionID: String) -> (() -> Void)? {
+        lock.lock()
+        defer { lock.unlock() }
+        return handlers.removeValue(forKey: sessionID)
+    }
+}
+
+/// Routes "stop this session" from any thread to the process that is running it.
+///
+/// Registration happens on the nonisolated process-spawn path and interruption arrives
+/// from UI and relay callers, so the table is genuinely concurrent. It used to be a
+/// bare `static var`, which Swift 6 rejects as nonisolated global mutable state -- and
+/// it was a real race, not just a diagnostic.
+enum CLIAgentSessionInterruptBus {
+    private static let box = CLIAgentSessionInterruptHandlerBox()
+
+    static func register(sessionID: String, handler: @escaping () -> Void) {
+        box.register(sessionID: sessionID, handler: handler)
+    }
+
+    static func unregister(sessionID: String) {
+        box.unregister(sessionID: sessionID)
+    }
+
+    static func interrupt(sessionID: String) -> Bool {
+        guard let handler = box.take(sessionID: sessionID) else { return false }
+        handler()
+        return true
+    }
+}
+
 private enum CLIAgentSessionActionApprovalDecision {
     case approve
     case reject
@@ -41,11 +94,13 @@ struct CLIAgentSessionActionDaemonDispatcher {
     private let resumeRunner: CLIAgentSessionActionResumeRunner
     private let approvalPresenter: CLIAgentSessionActionApprovalPresenter?
     private let haltHandler: CLIAgentSessionActionHaltHandler?
+    private let interruptRunner: CLIAgentSessionActionInterruptRunner
 
     init(
         daemonManager: OpenBurnBarDaemonManager = .shared,
         approvalPresenter: CLIAgentSessionActionApprovalPresenter? = nil,
-        haltHandler: CLIAgentSessionActionHaltHandler? = nil
+        haltHandler: CLIAgentSessionActionHaltHandler? = nil,
+        interruptRunner: CLIAgentSessionActionInterruptRunner? = nil
     ) {
         self.init(
             resumeRunner: { sessionID, targetHarness, targetModel, mode in
@@ -57,18 +112,23 @@ struct CLIAgentSessionActionDaemonDispatcher {
                 )
             },
             approvalPresenter: approvalPresenter,
-            haltHandler: haltHandler
+            haltHandler: haltHandler,
+            interruptRunner: interruptRunner
         )
     }
 
     init(
         resumeRunner: @escaping CLIAgentSessionActionResumeRunner,
         approvalPresenter: CLIAgentSessionActionApprovalPresenter? = nil,
-        haltHandler: CLIAgentSessionActionHaltHandler? = nil
+        haltHandler: CLIAgentSessionActionHaltHandler? = nil,
+        interruptRunner: CLIAgentSessionActionInterruptRunner? = nil
     ) {
         self.resumeRunner = resumeRunner
         self.approvalPresenter = approvalPresenter
         self.haltHandler = haltHandler
+        self.interruptRunner = interruptRunner ?? { sessionID in
+            CLIAgentSessionInterruptBus.interrupt(sessionID: sessionID)
+        }
     }
 
     func perform(
@@ -77,6 +137,16 @@ struct CLIAgentSessionActionDaemonDispatcher {
     ) async throws -> CLIAgentSessionActionResponse {
         let mode: BurnBarResumeMode
         switch request.action {
+        case .interrupt:
+            let stopped = await interruptRunner(request.sessionID)
+            return CLIAgentSessionActionResponse(
+                status: stopped ? .interrupted : .error,
+                note: stopped
+                    ? "Interrupted session \(request.sessionID)."
+                    : "No running session \(request.sessionID) to interrupt.",
+                errorCode: stopped ? nil : "session_not_running",
+                errorRecovery: stopped ? nil : "The session may have already finished."
+            )
         case .packageOnly:
             mode = .open
         case .resume, .handoff:
@@ -167,6 +237,8 @@ struct CLIAgentSessionActionDaemonDispatcher {
             actionTitle = "Handoff CLI session"
         case .packageOnly:
             actionTitle = "Prepare CLI session package"
+        case .interrupt:
+            actionTitle = "Interrupt CLI session"
         }
         let summary = "\(actionTitle)\(targetText)"
         return HermesRealtimeRelayApprovalRequest(
@@ -692,6 +764,10 @@ final class ChatSessionControllerCLIAgentRelayChatExecutor: CLIAgentRelayChatExe
             return .junie
         case "omp", "ohmypi", "oh-my-pi", "oh my pi":
             return .omp
+        case "grok", "grok-build", "xai", "grok-agent", "grok-cli":
+            return .grok
+        case "kimi", "kimi-code", "kimi-cli":
+            return .kimi
         default:
             return nil
         }

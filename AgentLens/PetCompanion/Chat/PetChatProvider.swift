@@ -159,6 +159,8 @@ final class CLIBridgeChatProvider: AgentChatProvider {
             // never plumbs one — advertising "Ready" here would offer a pet
             // that silently answers from the local fallback instead of Junie.
             return .unavailable
+        case .grok, .kimi:
+            return .unavailable
         case .omp:
             return await bridge.isExecutableAvailable(named: "omp") ? .ready : .needsLogin
         }
@@ -233,6 +235,14 @@ final class CLIBridgeChatProvider: AgentChatProvider {
             return bridge.chatOpenClaudeStream(systemPrompt: persona, userMessage: userMessage, workspaceDirectory: workspace)
         case .junie:
             return bridge.chatJunieStream(systemPrompt: persona, userMessage: userMessage, workspaceDirectory: workspace)
+        case .grok, .kimi:
+            // No CLI bridge stream exists for these backends yet — #2362 added
+            // the pickers without an execution path, and status() already
+            // reports .unavailable for both, so this arm is defensive. Fail
+            // closed with an actionable error instead of a hang or fallback.
+            return AsyncThrowingStream { continuation in
+                continuation.finish(throwing: CLIBridgeError.noCLI)
+            }
         case .omp:
             return bridge.chatOMPStream(systemPrompt: persona, userMessage: userMessage, workspaceDirectory: workspace)
         }

@@ -564,42 +564,6 @@ class ComputerUseSecurityCallableClient(
         return requireOk(result.getData(), "$callableName failed.")
     }
 
-    /**
-     * Bind a CLI-agent mission approve/reject decision to this trusted native
-     * escrow device via the App-Check-enforced `respondMissionApproval` callable.
-     */
-    suspend fun respondMissionApproval(requestId: String, approve: Boolean, deviceId: String) {
-        callHighRiskOwnerAction(
-            callableName = "respondMissionApproval",
-            deviceId = deviceId,
-            actionKind = "computer_use_mission_approval",
-            subjectId = requestId,
-            payload =
-            mapOf(
-                "requestId" to requestId,
-                "approve" to approve,
-                "deviceId" to deviceId,
-            ),
-            approve = approve,
-        )
-    }
-
-    suspend fun respondHermesGatewayApproval(approvalId: String, approve: Boolean, deviceId: String) {
-        callHighRiskOwnerAction(
-            callableName = "respondHermesGatewayApproval",
-            deviceId = deviceId,
-            actionKind = "hermes_gateway_approval",
-            subjectId = approvalId,
-            payload =
-            mapOf(
-                "approvalId" to approvalId,
-                "approve" to approve,
-                "deviceId" to deviceId,
-            ),
-            approve = approve,
-        )
-    }
-
     private suspend fun refreshAuthClaimsAfterBind(expectedUid: String) {
         val user =
             FirebaseAuth.getInstance().currentUser
