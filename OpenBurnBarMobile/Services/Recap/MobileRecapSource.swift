@@ -13,11 +13,14 @@ import OpenBurnBarCore
 struct MobileRecapSource: RecapSource {
 
     /// Loads one month, reporting whether it managed to read all of it.
+    /// Throws when the month could not be read at all. That distinction is the
+    /// point: a failed first page must never reach the fold, because an empty
+    /// batch is indistinguishable from a genuinely quiet month.
     typealias MonthLoader = @Sendable (
         _ interval: DateInterval,
         _ pageSize: Int,
         _ pageBudget: Int
-    ) async -> (rows: [TokenUsage], isPartial: Bool)
+    ) async throws -> (rows: [TokenUsage], isPartial: Bool)
 
     let pageSize: Int
     /// Ceiling on pages per month. A heavy month must not turn opening the
@@ -42,7 +45,7 @@ struct MobileRecapSource: RecapSource {
     func rows(for window: RecapWindow) async throws -> RecapRowBatch {
         let calendar = Calendar.current
         let interval = window.interval(calendar: calendar)
-        let result = await loadMonth(interval, pageSize, pageBudget)
+        let result = try await loadMonth(interval, pageSize, pageBudget)
 
         // Compare against the bounds already computed above; `contains`
         // rebuilds the month per row, and a month can be thousands of rows.
@@ -90,8 +93,8 @@ struct MobileRecapSource: RecapSource {
         interval: DateInterval,
         pageSize: Int,
         pageBudget: Int
-    ) async -> (rows: [TokenUsage], isPartial: Bool) {
-        await paginate(interval: interval, pageSize: pageSize, pageBudget: pageBudget)
+    ) async throws -> (rows: [TokenUsage], isPartial: Bool) {
+        try await paginate(interval: interval, pageSize: pageSize, pageBudget: pageBudget)
     }
 
     /// The cursor is a Firestore reference type, so the whole walk stays on the
@@ -101,7 +104,7 @@ struct MobileRecapSource: RecapSource {
         interval: DateInterval,
         pageSize: Int,
         pageBudget: Int
-    ) async -> (rows: [TokenUsage], isPartial: Bool) {
+    ) async throws -> (rows: [TokenUsage], isPartial: Bool) {
         var collected: [TokenUsage] = []
         var cursor: DocumentSnapshot?
 
@@ -124,9 +127,14 @@ struct MobileRecapSource: RecapSource {
                 }
                 cursor = next
             } catch {
-                // A page that failed mid-month leaves an incomplete read, which
-                // is precisely what `isPartial` exists to declare.
-                return (collected, !collected.isEmpty)
+                // Nothing read at all — an auth failure, no network, a bad
+                // token. Returning an empty batch here would be folded into a
+                // recap that says the month was quiet, so it propagates as an
+                // error and the surface reports a failure instead.
+                if collected.isEmpty { throw error }
+                // Some pages did land: an incomplete read, which is exactly what
+                // `isPartial` exists to declare.
+                return (collected, true)
             }
         }
         // Budget exhausted with the cursor still live: more month than we read.

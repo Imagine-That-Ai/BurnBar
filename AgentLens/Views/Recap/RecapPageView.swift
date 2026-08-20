@@ -132,7 +132,7 @@ struct RecapPageView: View {
     private func deck(_ recap: MonthlyRecap, environment: MacRecapEnvironment) -> some View {
         RecapDeckView(
             recap: recap,
-            onShareCard: { card in export(card: card, window: recap.window) },
+            onShareCard: { card in export(card: card, window: recap.window, isPartial: recap.isPartial) },
             onShareRecap: { export(recap: recap) }
         )
         .animation(reduceMotion ? nil : DesignSystem.Animation.gentle, value: recap.isVoiceAuthored)
@@ -168,9 +168,11 @@ struct RecapPageView: View {
 
     // MARK: Export
 
-    private func export(card: RecapCard, window: RecapWindow) {
+    private func export(card: RecapCard, window: RecapWindow, isPartial: Bool) {
         let renderer = RecapShareCardRenderer()
-        guard let data = renderer.png(card: card, window: window) else { return }
+        guard let data = renderer.png(
+            card: card, window: window, isPartial: isPartial
+        ) else { return }
         save(data, suggested: renderer.suggestedFilename(for: window, cardID: card.id))
     }
 

@@ -50,8 +50,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   trace back to that card's own metrics. Project names are tokenized and
   candidate ids are opaque before anything leaves the device. Completed months
   seal so a past recap never rewrites itself. Cards export as 1080×1350 /
-  1080×1080 PNGs. This is also the first production caller of the previously
-  unwired `CadenceScheduler` monthly slot.
+  1080×1080 PNGs. The recap builds when the page is opened; scheduled monthly
+  delivery via `CadenceScheduler` is not wired yet.
 
 - **Vercel fx provider support** (`docs/PROVIDERS.md`) — Added Vercel `fx` (fx.sh)
   as a first-class provider across all layers: exact usage parsing from `~/.fx/sessions/`

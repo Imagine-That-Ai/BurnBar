@@ -97,12 +97,19 @@ public actor RecapComposer {
         // one-time upgrade that keeps the AI toggle from looking broken.
         if !forceRegenerate, let existing = await recapStore.recap(for: window) {
             continuation.yield(.deterministic(existing))
-            guard existing.sealState == .sealedWithoutVoice,
-                  !(author is RecapVoiceAuthorUnavailable) else { return }
-            if let upgraded = await voiceUpgrade(for: existing, window: window, now: now) {
-                continuation.yield(.voiced(upgraded))
+            // A preview describes a month still in progress, so a stored one is
+            // stale the moment anything else happens that day. Paint it for
+            // instant feedback, then fall through and rebuild.
+            if existing.sealState == .preview {
+                // fall through to the rebuild below
+            } else {
+                guard existing.sealState == .sealedWithoutVoice,
+                      !(author is RecapVoiceAuthorUnavailable) else { return }
+                if let upgraded = await voiceUpgrade(for: existing, window: window, now: now) {
+                    continuation.yield(.voiced(upgraded))
+                }
+                return
             }
-            return
         }
 
         let facts: RecapFacts
@@ -118,7 +125,11 @@ public actor RecapComposer {
             return
         }
 
-        let history = await historyStore.history(before: window, limit: historyDepth)
+        // Every stored month, not just `historyDepth`: records claim "ever", and
+        // a context that only saw the last twelve months would call a mediocre
+        // month a lifetime best. `historyDepth` bounds what we *fetch*, not what
+        // we compare against.
+        let history = await historyStore.allFacts().filter { $0.window < window }
         let context = RecapContext(facts: facts, history: history, calendar: calendar)
         let candidates = RecapCandidateGenerator.candidates(for: context)
         let cards = RecapRanker.rank(candidates: candidates, limits: limits)
@@ -225,7 +236,7 @@ public actor RecapComposer {
         now: Date
     ) async -> MonthlyRecap? {
         guard let facts = await historyStore.facts(for: window) else { return nil }
-        let history = await historyStore.history(before: window, limit: historyDepth)
+        let history = await historyStore.allFacts().filter { $0.window < window }
         let context = RecapContext(facts: facts, history: history, calendar: calendar)
         let candidates = RecapCandidateGenerator.candidates(for: context)
 

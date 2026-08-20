@@ -36,6 +36,11 @@ plausible, well-written, and computed by nobody.
 **With the editorial layer off, the recap is still complete.** The toggle changes
 the prose, not the presence.
 
+The editorial layer is **macOS-only today**. `MobileRecapEnvironment` accepts an
+author but no iOS caller supplies one, so the phone and iPad always render the
+deterministic deck. The toggle is not shown there rather than offered and
+ignored.
+
 ## What leaves the device
 
 Only `RecapPromptPayload`, and only when the editorial toggle is on.
@@ -138,11 +143,16 @@ someone seeing it in a group chat has none of the surrounding app, so it carries
 the month, the claim, the number and the source by itself. macOS exports through
 `NSSavePanel`; iOS shows the rendered image first, then a share sheet.
 
-## Scheduling
+## Scheduling — not wired yet
 
-`CadenceScheduler` already carried a monthly slot (1st, 08:00 local, 28-day
-minimum gap) and `CadenceArtifact` a `.monthly` case; both were written and had
-no production caller. The recap is that caller.
+`CadenceScheduler` carries a monthly slot (1st, 08:00 local, 28-day minimum
+gap) and `CadenceArtifact` a `.monthly` case, both written and still without a
+production caller.
+
+**The recap does not generate itself.** It builds when you open the page, and
+nothing notifies you when a month is ready. Wiring the scheduler — a background
+task, a notification, and a delivery record so a month is announced once — is
+the obvious next step and is deliberately not in this change.
 
 ## Testing
 

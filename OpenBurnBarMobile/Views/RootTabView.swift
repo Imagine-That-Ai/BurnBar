@@ -282,7 +282,7 @@ struct RootTabView: View {
         case .streams:  streamsStack
         case .hermes:   hermesStack
         case .you:      youStack
-        case .recap:    MobileRecapScreen()
+        case .recap:    MobileRecapScreen(accountID: authStore.currentIdentity?.uid)
         }
     }
 
@@ -390,7 +390,7 @@ struct RootTabView: View {
             )
         }
         .fullScreenCover(isPresented: $showRecap) {
-            MobileRecapScreen(onDismiss: { showRecap = false })
+            MobileRecapScreen(accountID: authStore.currentIdentity?.uid, onDismiss: { showRecap = false })
         }
     }
 

@@ -4,7 +4,7 @@ import OpenBurnBarCore
 
 /// Defines cross-platform layout destinations for the primary tabs and sidebar.
 enum AppDestination: String, Hashable, Identifiable, Codable, CaseIterable {
-    case pulse, burn, insights, streams, agents, you, settings, devices, providers
+    case pulse, burn, insights, streams, agents, you, settings, devices, providers, recap
 
     var id: String { rawValue }
 
@@ -19,6 +19,7 @@ enum AppDestination: String, Hashable, Identifiable, Codable, CaseIterable {
         case .settings: return "Settings"
         case .devices:  return "Devices"
         case .providers: return "Providers"
+        case .recap:    return "Recap"
         }
     }
 
@@ -28,6 +29,7 @@ enum AppDestination: String, Hashable, Identifiable, Codable, CaseIterable {
         case .settings:  return "gearshape.fill"
         case .devices:   return "macbook.and.iphone"
         case .providers: return "externaldrive.connected.to.line.below"
+        case .recap:     return "calendar.badge.clock"
         case .pulse:     return "waveform.path.ecg"
         case .burn:      return "flame.fill"
         case .streams:   return "list.bullet.rectangle.portrait.fill"
@@ -54,11 +56,13 @@ enum AppDestination: String, Hashable, Identifiable, Codable, CaseIterable {
         case .settings: return MobileTheme.amber
         case .devices:  return MobileTheme.whimsy
         case .providers: return MobileTheme.ember
+        case .recap:    return MobileTheme.amber
         }
     }
 
     var asAuroraDestination: AuroraNavDestination? {
         switch self {
+        case .recap:    return .recap
         case .pulse:    return .pulse
         case .burn:     return .burn
         case .insights: return .insights
