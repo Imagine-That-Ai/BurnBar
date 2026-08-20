@@ -93,6 +93,7 @@ object BurnbarShareInboxProcessor {
         return text.contains("missing") || text.contains("not found") || text.contains("invalid")
     }
 
+    @Suppress("TooGenericExceptionCaught") // reason: permanent-failure classification must see every upload error; all paths rethrow (fail closed).
     suspend fun uploadOnce(
         file: File,
         deviceId: String,
@@ -110,10 +111,7 @@ object BurnbarShareInboxProcessor {
             consume(file)
             return UploadOnceResult.Uploaded
         } catch (error: Exception) {
-            if (isPermanentFailure(error)) {
-                consume(file)
-                throw error
-            }
+            if (isPermanentFailure(error)) consume(file)
             throw error
         } finally {
             releaseUploadLock(file)

@@ -16,6 +16,12 @@ object FileSealAEAD {
     const val TAG_SIZE = 16
     const val MAX_PLAINTEXT_BYTES = 10L * 1024L * 1024L * 1024L
 
+    private const val CONTENT_KEY_BYTES = 32
+    private const val TAG_SIZE_BITS = TAG_SIZE * Byte.SIZE_BITS
+
+    /** AAD suffix after the attachment id: chunkIndex + totalChunks + plaintextSize, all big-endian longs. */
+    private const val AAD_SUFFIX_BYTES = 3 * Long.SIZE_BYTES
+
     data class Header(
         val attachmentId: String,
         val totalChunks: Int,
@@ -23,13 +29,13 @@ object FileSealAEAD {
         val contentBlake3: String,
     )
 
-    fun mintContentKey(): ByteArray = ByteArray(32).also { SecureRandom().nextBytes(it) }
+    fun mintContentKey(): ByteArray = ByteArray(CONTENT_KEY_BYTES).also { SecureRandom().nextBytes(it) }
 
     fun mintNonce(): ByteArray = ByteArray(NONCE_SIZE).also { SecureRandom().nextBytes(it) }
 
     fun aad(header: Header, chunkIndex: Long): ByteArray {
         val id = header.attachmentId.toByteArray(Charsets.UTF_8)
-        val buf = ByteBuffer.allocate(id.size + 24).order(ByteOrder.BIG_ENDIAN)
+        val buf = ByteBuffer.allocate(id.size + AAD_SUFFIX_BYTES).order(ByteOrder.BIG_ENDIAN)
         buf.put(id)
         buf.putLong(chunkIndex)
         buf.putLong(header.totalChunks.toLong())
@@ -39,9 +45,9 @@ object FileSealAEAD {
 
     fun sealChunk(plaintext: ByteArray, contentKey: ByteArray, header: Header, chunkIndex: Long, nonce: ByteArray): Pair<ByteArray, ByteArray> {
         require(nonce.size == NONCE_SIZE)
-        require(contentKey.size == 32)
+        require(contentKey.size == CONTENT_KEY_BYTES)
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(contentKey, "AES"), GCMParameterSpec(TAG_SIZE * 8, nonce))
+        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(contentKey, "AES"), GCMParameterSpec(TAG_SIZE_BITS, nonce))
         cipher.updateAAD(aad(header, chunkIndex))
         val combined = cipher.doFinal(plaintext)
         val ciphertext = combined.copyOfRange(0, combined.size - TAG_SIZE)
@@ -51,9 +57,9 @@ object FileSealAEAD {
 
     fun openChunk(ciphertext: ByteArray, tag: ByteArray, contentKey: ByteArray, header: Header, chunkIndex: Long, nonce: ByteArray): ByteArray {
         require(nonce.size == NONCE_SIZE)
-        require(contentKey.size == 32)
+        require(contentKey.size == CONTENT_KEY_BYTES)
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(contentKey, "AES"), GCMParameterSpec(TAG_SIZE * 8, nonce))
+        cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(contentKey, "AES"), GCMParameterSpec(TAG_SIZE_BITS, nonce))
         cipher.updateAAD(aad(header, chunkIndex))
         return cipher.doFinal(ciphertext + tag)
     }

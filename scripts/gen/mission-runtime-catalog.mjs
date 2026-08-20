@@ -229,18 +229,30 @@ ${swiftRows}
 }
 `;
 
+// detekt MaxLineLength caps generated Kotlin at 200 columns; wrap any element
+// list that would push its `name = fn(...)` line past that.
+const KOTLIN_MAX_LINE = 200;
+
+function kotlinList(name, fn, elements, indent) {
+  const singleLine = `${indent}${name} = ${fn}(${elements.join(", ")}),`;
+  if (singleLine.length <= KOTLIN_MAX_LINE) return singleLine;
+  const inner = elements.map((e) => `${indent}    ${e},`).join("\n");
+  return `${indent}${name} = ${fn}(\n${inner}\n${indent}),`;
+}
+
 const kotlinRows = catalog.rows
   .map((row) => {
-    const aliasesLit = row.wireAliases.map((a) => `"${a}"`).join(", ");
-    const surfacesLit = row.surfaces.map((s) => `Surface.${surfaceKotlin(s)}`).join(", ");
-    const platformsLit = row.platforms.map((p) => `Platform.${p.toUpperCase()}`).join(", ");
+    const indent = "            ";
+    const aliases = row.wireAliases.map((a) => `"${a}"`);
+    const surfaces = row.surfaces.map((s) => `Surface.${surfaceKotlin(s)}`);
+    const platforms = row.platforms.map((p) => `Platform.${p.toUpperCase()}`);
     return `        Row(
-            id = "${row.id}",
-            wireAliases = listOf(${aliasesLit}),
-            displayName = "${escapeKotlin(row.displayName)}",
-            surfaces = setOf(${surfacesLit}),
-            launch = Launch.${row.launch.toUpperCase()},
-            platforms = setOf(${platformsLit}),
+${indent}id = "${row.id}",
+${kotlinList("wireAliases", "listOf", aliases, indent)}
+${indent}displayName = "${escapeKotlin(row.displayName)}",
+${kotlinList("surfaces", "setOf", surfaces, indent)}
+${indent}launch = Launch.${row.launch.toUpperCase()},
+${kotlinList("platforms", "setOf", platforms, indent)}
         )`;
   })
   .join(",\n");

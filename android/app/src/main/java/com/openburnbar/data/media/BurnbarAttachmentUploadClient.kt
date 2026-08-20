@@ -2,11 +2,13 @@ package com.openburnbar.data.media
 
 import android.content.Context
 import com.openburnbar.data.computeruse.ComputerUseSecurityCallableClient
+import com.openburnbar.data.computeruse.beginBurnbarAttachment
+import com.openburnbar.data.computeruse.composeBurnbarAttachment
+import com.openburnbar.data.computeruse.finalizeBurnbarAttachment
+import com.openburnbar.data.computeruse.mintBurnbarAttachmentPartURL
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
-import java.net.HttpURLConnection
-import java.net.URL
 
 /** Product path: stream FileSeal chunks, await each PUT, then compose/finalize. */
 class BurnbarAttachmentUploadClient(
@@ -73,22 +75,7 @@ class BurnbarAttachmentUploadClient(
     }
 
     private fun putAwaiting(file: File, signedUrl: String) {
-        val connection = URL(signedUrl).openConnection()
-        if (connection !is HttpURLConnection) {
-            error("signed URL did not open as HTTP")
-        }
-        connection.requestMethod = "PUT"
-        connection.doOutput = true
-        connection.setRequestProperty("Content-Type", "application/octet-stream")
-        connection.setRequestProperty("Content-Length", file.length().toString())
-        connection.setRequestProperty("x-goog-if-generation-match", "0")
-        connection.connectTimeout = 30_000
-        connection.readTimeout = 120_000
-        file.inputStream().use { input ->
-            connection.outputStream.use { output -> input.copyTo(output) }
-        }
-        val code = connection.responseCode
-        connection.disconnect()
-        require(code in 200..299) { "Attachment part PUT failed: $code" }
+        val code = BurnbarSignedUrlPut.put(file, signedUrl)
+        require(BurnbarSignedUrlPut.isSuccess(code)) { "Attachment part PUT failed: $code" }
     }
 }

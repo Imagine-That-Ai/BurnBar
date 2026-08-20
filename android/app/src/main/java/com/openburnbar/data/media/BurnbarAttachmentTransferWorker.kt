@@ -8,8 +8,6 @@ import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
 import java.io.File
-import java.net.HttpURLConnection
-import java.net.URL
 
 /**
  * Short retryable parts stay on WorkManager. Multi-GB user-started transfers
@@ -33,25 +31,7 @@ class BurnbarAttachmentTransferWorker(
 
     override suspend fun getForegroundInfo(): ForegroundInfo = createForegroundInfo()
 
-    private fun putFile(file: File, signedUrl: String): Boolean {
-        val connection = URL(signedUrl).openConnection()
-        if (connection !is HttpURLConnection) {
-            error("signed URL did not open as HTTP")
-        }
-        connection.requestMethod = "PUT"
-        connection.doOutput = true
-        connection.setRequestProperty("Content-Type", "application/octet-stream")
-        connection.setRequestProperty("Content-Length", file.length().toString())
-        connection.setRequestProperty("x-goog-if-generation-match", "0")
-        connection.connectTimeout = 30_000
-        connection.readTimeout = 120_000
-        file.inputStream().use { input ->
-            connection.outputStream.use { output -> input.copyTo(output) }
-        }
-        val code = connection.responseCode
-        connection.disconnect()
-        return code in 200..299
-    }
+    private fun putFile(file: File, signedUrl: String): Boolean = BurnbarSignedUrlPut.isSuccess(BurnbarSignedUrlPut.put(file, signedUrl))
 
     internal fun createForegroundInfo(): ForegroundInfo {
         val notification =
@@ -60,10 +40,10 @@ class BurnbarAttachmentTransferWorker(
                 .setSmallIcon(android.R.drawable.stat_sys_upload)
                 .setOngoing(true)
                 .build()
-        return if (Build.VERSION.SDK_INT >= 34) {
-            ForegroundInfo(4101, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            ForegroundInfo(TRANSFER_NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
         } else {
-            ForegroundInfo(4101, notification)
+            ForegroundInfo(TRANSFER_NOTIFICATION_ID, notification)
         }
     }
 
@@ -71,6 +51,9 @@ class BurnbarAttachmentTransferWorker(
         const val KEY_FILE_PATH = "filePath"
         const val KEY_SIGNED_URL = "signedUrl"
 
-        fun requiredForegroundServiceType(): Int = if (Build.VERSION.SDK_INT >= 34) ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC else 0
+        private const val TRANSFER_NOTIFICATION_ID = 4101
+
+        fun requiredForegroundServiceType(): Int =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC else 0
     }
 }
