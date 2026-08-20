@@ -1425,7 +1425,10 @@ jobs:
 
       - name: Rebuild and byte-compare checked-in Android AAR
         env:
-          OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: 0000000000000000000000000000000000000000
+          # Quoted: YAML parses an unquoted all-digit scalar as an integer, which
+          # collapses the 40-zero placeholder to "0" and fails the build.rs
+          # 40-hex-character validation.
+          OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: "0000000000000000000000000000000000000000"
           # The AAR script's DOMAIN_CORE_BUILD_PROFILE is a cargo profile
           # (debug|release), not an identity profile like the job-level
           # public-production; PR CI (domain-core.yml) runs this same command
