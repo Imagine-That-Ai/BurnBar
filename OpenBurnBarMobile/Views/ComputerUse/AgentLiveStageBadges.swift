@@ -13,9 +13,9 @@ struct AgentLiveStageDrivingPill: View {
     var body: some View {
         HStack(spacing: 6) {
             Image(systemName: "hand.tap.fill")
-                .font(.system(size: 12, weight: .bold))
+                .font(MobileScaledFont.system(size: 12, weight: .bold))
             Text("YOU ARE DRIVING")
-                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                .font(MobileScaledFont.system(size: 12, weight: .bold, design: .monospaced))
                 .tracking(0.5)
         }
         .foregroundStyle(.white)
@@ -53,26 +53,26 @@ struct AgentLiveStageTelemetryCapsule: View {
                 .frame(width: 6, height: 6)
                 .shadow(color: MobileTheme.success.opacity(0.45), radius: 3, y: 0)
             Text("LIVE")
-                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                .font(MobileScaledFont.system(size: 12, weight: .bold, design: .monospaced))
                 .tracking(0.6)
                 .foregroundStyle(MobileTheme.success)
             Text(elapsedString)
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .font(MobileScaledFont.system(size: 12, weight: .medium, design: .monospaced))
                 .foregroundStyle(.white.opacity(0.78))
             Divider()
                 .frame(height: 9)
                 .background(Color.white.opacity(0.18))
             Text("\(actionsExecuted)")
-                .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                .font(MobileScaledFont.system(size: 12, weight: .semibold, design: .monospaced))
                 .foregroundStyle(.white.opacity(0.85))
             Text("acts")
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .font(MobileScaledFont.system(size: 12, weight: .medium, design: .monospaced))
                 .foregroundStyle(.white.opacity(0.55))
             Divider()
                 .frame(height: 9)
                 .background(Color.white.opacity(0.18))
             Text(trustMode.rawValue.uppercased())
-                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                .font(MobileScaledFont.system(size: 12, weight: .bold, design: .monospaced))
                 .foregroundStyle(trustTint)
                 .tracking(0.5)
         }
@@ -159,17 +159,17 @@ struct AgentLiveStageApprovalStripe: View {
         VStack(alignment: .leading, spacing: style == .compact ? 6 : 10) {
             HStack(spacing: 6) {
                 Image(systemName: "hand.raised.fill")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(MobileScaledFont.system(size: 12, weight: .bold))
                     .foregroundStyle(MobileTheme.warning)
                 Text("APPROVAL NEEDED")
-                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                    .font(MobileScaledFont.system(size: 12, weight: .bold, design: .monospaced))
                     .tracking(0.5)
                     .foregroundStyle(MobileTheme.warning)
                 Spacer(minLength: 0)
             }
 
             Text(request.actionSummary)
-                .font(.system(size: style == .compact ? 11.5 : 13, weight: .medium, design: .rounded))
+                .font(MobileScaledFont.system(size: style == .compact ? 11.5 : 13, weight: .medium, design: .rounded))
                 .foregroundStyle(.white)
                 .lineLimit(style == .compact ? 2 : 4)
                 .multilineTextAlignment(.leading)
@@ -177,7 +177,7 @@ struct AgentLiveStageApprovalStripe: View {
             HStack(spacing: 8) {
                 Button(action: onRejectHalt) {
                     Text(style == .compact ? "Halt" : "Reject + Halt")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(MobileScaledFont.system(size: 12, weight: .semibold))
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
@@ -185,7 +185,7 @@ struct AgentLiveStageApprovalStripe: View {
 
                 Button(action: onReject) {
                     Text("Reject")
-                        .font(.system(size: 12, weight: .medium))
+                        .font(MobileScaledFont.system(size: 12, weight: .medium))
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
@@ -193,7 +193,7 @@ struct AgentLiveStageApprovalStripe: View {
 
                 Button(action: onApprove) {
                     Text("Approve")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(MobileScaledFont.system(size: 12, weight: .semibold))
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
@@ -223,7 +223,7 @@ struct AgentLiveStageActionTicker: View {
         HStack(spacing: 8) {
             statusDot
             Text(entry?.summary ?? "Waiting for the agent…")
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .font(MobileScaledFont.system(size: 12, weight: .medium, design: .monospaced))
                 .foregroundStyle(.white.opacity(entry == nil ? 0.55 : 0.95))
                 .lineLimit(1)
                 .truncationMode(.tail)

@@ -371,13 +371,15 @@ private suspend fun dispatchMissionFallback(
 
 internal fun shouldFallBackToMissionAfterRelayError(error: Throwable): Boolean {
     val lower = (error.localizedMessage ?: error.message ?: "").lowercase()
-    if (lower.contains("already responding") ||
+    if (lower.contains("timeout") ||
+        lower.contains("timed out") ||
+        lower.contains("already responding") ||
         lower.contains("unsupported runtime") ||
         lower.contains("cannot send an empty")
     ) {
         return false
     }
-    return true
+    return lower.contains("not connected") || lower.contains("mac offline") || lower.contains("offline")
 }
 
 internal fun applyRelayEvent(
@@ -515,6 +517,8 @@ internal fun providerFor(runtime: AssistantRuntimeID): AgentProvider = when (run
     AssistantRuntimeID.CODEX -> AgentProvider.CODEX
     AssistantRuntimeID.CLAUDE -> AgentProvider.CLAUDE_CODE
     AssistantRuntimeID.OPEN_CLAW -> AgentProvider.OPEN_CLAW
+    AssistantRuntimeID.OPEN_CLAUDE -> AgentProvider.OPEN_CLAUDE
+    AssistantRuntimeID.OMP -> AgentProvider.OMP
     AssistantRuntimeID.DROID -> AgentProvider.FACTORY
     AssistantRuntimeID.FORGE -> AgentProvider.FORGE_DEV
     AssistantRuntimeID.ANTIGRAVITY -> AgentProvider.ANTIGRAVITY
@@ -529,6 +533,8 @@ internal fun readyTagline(runtime: AssistantRuntimeID): String = when (runtime) 
     AssistantRuntimeID.CODEX -> "Ask Codex to plan, edit, or run code on your paired Mac."
     AssistantRuntimeID.CLAUDE -> "Claude Code is wired to your Mac. Ask for a refactor, a test, or a review."
     AssistantRuntimeID.OPEN_CLAW -> "OpenClaw runs locally on your paired Mac. Long-form tasks welcome."
+    AssistantRuntimeID.OPEN_CLAUDE -> "OpenClaude is wired to your Mac. Ask for a refactor, a test, or a review."
+    AssistantRuntimeID.OMP -> "OMP is wired to your Mac. Ask it to inspect, plan, or work in your repo."
     AssistantRuntimeID.DROID -> "Droid is wired to your Mac. Ask it to inspect, plan, or work in your repo."
     AssistantRuntimeID.FORGE -> "Forge is wired to your Mac. Ask it for coding help, review, or implementation plans."
     AssistantRuntimeID.ANTIGRAVITY -> "Antigravity is wired to your Mac. Ask it to inspect, plan, or work in your repo."
@@ -559,6 +565,20 @@ internal fun quickPromptsFor(runtime: AssistantRuntimeID): List<String> = when (
             "Migrate this to Compose",
             "Audit my dependencies",
             "Suggest a release plan",
+        )
+    AssistantRuntimeID.OPEN_CLAUDE ->
+        listOf(
+            "Review my last commit",
+            "Draft a PR description",
+            "Find the bug in…",
+            "Summarize this file",
+        )
+    AssistantRuntimeID.OMP ->
+        listOf(
+            "Inspect the current repo",
+            "Plan an implementation",
+            "Review this change",
+            "Explain this error",
         )
     AssistantRuntimeID.DROID ->
         listOf(

@@ -134,6 +134,18 @@ extension ChatSessionController {
                 "Junie CLI was not found. Install JetBrains Junie and ensure `junie` is on your PATH.",
                 "Junie not found"
             )
+        case .grok:
+            requirement = (
+                "grok",
+                "Grok CLI was not found. Install grok and ensure `grok` is on your PATH.",
+                "Grok not found"
+            )
+        case .kimi:
+            requirement = (
+                "kimi",
+                "Kimi CLI was not found. Install kimi-code and ensure `kimi` is on your PATH.",
+                "Kimi not found"
+            )
         case .codex:
             requirement = (
                 "codex",

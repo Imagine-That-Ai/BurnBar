@@ -38,6 +38,37 @@ export const BOLA_VICTIM_SEEDS: Record<string, BolaVictimSeed[]> = {
       },
     },
   ],
+  appendCliAgentMissionEvent: [
+    {
+      path: "users/__BOB_UID__/escrow_devices/bob-device",
+      data: {
+        trustRoot: "__BOB_UID__",
+        status: "trusted",
+      },
+    },
+    {
+      path: "users/__BOB_UID__/agent_notification_events/bob-event",
+      data: {
+        status: "open",
+      },
+    },
+    {
+      path: "users/__BOB_UID__/bola_victim/requestId/bob-request",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+    {
+      path: "users/__BOB_UID__/bola_victim/eventId/bob-event",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+  ],
   approveEscrowDeviceTrust: [
     {
       path: "users/__BOB_UID__/escrow_devices/bob-device",
@@ -129,6 +160,16 @@ export const BOLA_VICTIM_SEEDS: Record<string, BolaVictimSeed[]> = {
     },
     {
       path: "users/__BOB_UID__/bola_victim/approverDeviceId/bob-approverDeviceId",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+  ],
+  beginBurnbarAttachment: [
+    {
+      path: "users/__BOB_UID__/bola_victim/id/bob-id",
       data: {
         ownerUid: "__BOB_UID__",
         status: "active",
@@ -263,6 +304,23 @@ export const BOLA_VICTIM_SEEDS: Record<string, BolaVictimSeed[]> = {
       },
     },
   ],
+  cancelCliAgentMission: [
+    {
+      path: "users/__BOB_UID__/escrow_devices/bob-device",
+      data: {
+        trustRoot: "__BOB_UID__",
+        status: "trusted",
+      },
+    },
+    {
+      path: "users/__BOB_UID__/bola_victim/requestId/bob-request",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+  ],
   cancelCredentialTransfer: [
     {
       path: "credential_transfers/ct_bbbbbbbbbbbbbbbbbbbbbbbb",
@@ -276,6 +334,23 @@ export const BOLA_VICTIM_SEEDS: Record<string, BolaVictimSeed[]> = {
     },
     {
       path: "users/__BOB_UID__/bola_victim/transferId/ct_bbbbbbbbbbbbbbbbbbbbbbbb",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+  ],
+  claimCliAgentMission: [
+    {
+      path: "users/__BOB_UID__/escrow_devices/bob-device",
+      data: {
+        trustRoot: "__BOB_UID__",
+        status: "trusted",
+      },
+    },
+    {
+      path: "users/__BOB_UID__/bola_victim/requestId/bob-request",
       data: {
         ownerUid: "__BOB_UID__",
         status: "active",
@@ -626,6 +701,16 @@ export const BOLA_VICTIM_SEEDS: Record<string, BolaVictimSeed[]> = {
       },
     },
   ],
+  composeBurnbarAttachment: [
+    {
+      path: "users/__BOB_UID__/bola_victim/id/bob-id",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+  ],
   configureKnowledgeSource: [
     {
       path: "users/__BOB_UID__/escrow_devices/bob-device",
@@ -863,6 +948,31 @@ export const BOLA_VICTIM_SEEDS: Record<string, BolaVictimSeed[]> = {
       },
     },
   ],
+  createCliAgentMission: [
+    {
+      path: "users/__BOB_UID__/escrow_devices/bob-device",
+      data: {
+        trustRoot: "__BOB_UID__",
+        status: "trusted",
+      },
+    },
+    {
+      path: "users/__BOB_UID__/bola_victim/requestId/bob-request",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+    {
+      path: "users/__BOB_UID__/bola_victim/remoteCommandID/bob-remoteCommandID",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+  ],
   createCredentialTransfer: [
     {
       path: "credential_transfers/ct_bbbbbbbbbbbbbbbbbbbbbbbb",
@@ -944,6 +1054,16 @@ export const BOLA_VICTIM_SEEDS: Record<string, BolaVictimSeed[]> = {
     },
     {
       path: "users/__BOB_UID__/bola_victim/sessionId/bob-session",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+  ],
+  deleteBurnbarAttachment: [
+    {
+      path: "users/__BOB_UID__/bola_victim/id/bob-id",
       data: {
         ownerUid: "__BOB_UID__",
         status: "active",
@@ -1221,6 +1341,16 @@ export const BOLA_VICTIM_SEEDS: Record<string, BolaVictimSeed[]> = {
     },
     {
       path: "users/__BOB_UID__/bola_victim/attachmentId/bob-att",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+  ],
+  finalizeBurnbarAttachment: [
+    {
+      path: "users/__BOB_UID__/bola_victim/id/bob-id",
       data: {
         ownerUid: "__BOB_UID__",
         status: "active",
@@ -1514,6 +1644,16 @@ export const BOLA_VICTIM_SEEDS: Record<string, BolaVictimSeed[]> = {
       },
     },
   ],
+  mintBurnbarAttachmentPartURL: [
+    {
+      path: "users/__BOB_UID__/bola_victim/id/bob-id",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+  ],
   mintLinuxAppCheckToken: [
     {
       path: "users/__BOB_UID__/bola_victim/attestation.deviceId/bob-attestation.deviceId",
@@ -1666,6 +1806,47 @@ export const BOLA_VICTIM_SEEDS: Record<string, BolaVictimSeed[]> = {
     },
     {
       path: "users/__BOB_UID__/bola_victim/connectionId/bob-conn",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+    {
+      path: "users/__BOB_UID__/bola_victim/requestId/bob-request",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+  ],
+  publishMissionApprovalCeiling: [
+    {
+      path: "users/__BOB_UID__/escrow_devices/bob-device",
+      data: {
+        trustRoot: "__BOB_UID__",
+        status: "trusted",
+      },
+    },
+    {
+      path: "users/__BOB_UID__/agent_capability_grant_requests/bob-request",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+    {
+      path: "users/__BOB_UID__/cli_agent_mission_requests/bob-request",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+    {
+      path: "users/__BOB_UID__/agent_grant_authorities/bob-device",
       data: {
         ownerUid: "__BOB_UID__",
         status: "active",
@@ -1932,6 +2113,47 @@ export const BOLA_VICTIM_SEEDS: Record<string, BolaVictimSeed[]> = {
     },
     {
       path: "users/__BOB_UID__/bola_victim/identityKeyId/bob-id",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+  ],
+  redeemMissionApprovalAnswer: [
+    {
+      path: "users/__BOB_UID__/escrow_devices/bob-device",
+      data: {
+        trustRoot: "__BOB_UID__",
+        status: "trusted",
+      },
+    },
+    {
+      path: "users/__BOB_UID__/agent_capability_grant_requests/bob-request",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+    {
+      path: "users/__BOB_UID__/cli_agent_mission_requests/bob-request",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+    {
+      path: "users/__BOB_UID__/agent_grant_authorities/bob-device",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+    {
+      path: "users/__BOB_UID__/bola_victim/requestId/bob-request",
       data: {
         ownerUid: "__BOB_UID__",
         status: "active",
@@ -2646,6 +2868,16 @@ export const BOLA_VICTIM_SEEDS: Record<string, BolaVictimSeed[]> = {
       },
     },
   ],
+  ticketBurnbarAttachmentDownload: [
+    {
+      path: "users/__BOB_UID__/bola_victim/id/bob-id",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+  ],
   triggerVoIPCall: [
     {
       path: "users/__BOB_UID__/devices/bob-paired",
@@ -2655,6 +2887,23 @@ export const BOLA_VICTIM_SEEDS: Record<string, BolaVictimSeed[]> = {
     },
     {
       path: "users/__BOB_UID__/bola_victim/pairedDeviceId/bob-paired",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+  ],
+  updateCliAgentMissionStatus: [
+    {
+      path: "users/__BOB_UID__/escrow_devices/bob-device",
+      data: {
+        trustRoot: "__BOB_UID__",
+        status: "trusted",
+      },
+    },
+    {
+      path: "users/__BOB_UID__/bola_victim/requestId/bob-request",
       data: {
         ownerUid: "__BOB_UID__",
         status: "active",

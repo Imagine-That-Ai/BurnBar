@@ -58,7 +58,7 @@
     "functions/vendor/openburnbar/domain-core-wasm/package.json": ["80ef14a211db1c24","d2299c739c5e4d4c","f4a0001f1ef20825","4ab102a89739a966"],
     "governance/burnbar-ci-gate.fast.json": ["946501199f66442c","99c659b7b0315ab4","2df172d684edd98c","2f10d3c847853b26"],
     "governance/burnbar-ci-gate.json": ["fd0aaaf2480a2f97","72e6c5a512b92043","3f8e73ad74066f47","5967b7b2633814ec"],
-    "scripts/build-domain-core-android-aar.sh": ["86f81c77867597ac","3686a837cf7f4849","0c7e821d831f7a2a","4f0252c2b425fb23"],
+    "scripts/build-domain-core-android-aar.sh": ["5df59462b071efad","0ded229f2b3736b4","e2e3c89053e89fcb","6050a2d8b78c0e64"],
     "scripts/build-domain-core-python.sh": ["c754e97e3db79524","9c43640783c337b2","59caeb3a4242a324","b5ab8a96a61b4ba0"],
     "scripts/build-domain-core-wasm.sh": ["b56722d24572873c","d41d44ac731929cd","50b304534341ee0a","8612d60f0d1935cd"],
     "scripts/build-domain-core-xcframework.sh": ["e4717073d3a6aa96","33f8045cb6f04ca1","a3122638e12a74d1","a9de2798e7aca696"],

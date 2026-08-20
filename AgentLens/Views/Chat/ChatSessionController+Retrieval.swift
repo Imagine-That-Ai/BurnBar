@@ -95,6 +95,10 @@ extension ChatSessionController {
             case .junie:
                 let m = chatModelJunie.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "junie"
                 return (.junie, "OpenBurnBar Junie Chat", m)
+            case .grok:
+                return (.grok, "OpenBurnBar Grok Chat", "grok")
+            case .kimi:
+                return (.grok, "OpenBurnBar Kimi Chat", "kimi")
             }
         }()
 

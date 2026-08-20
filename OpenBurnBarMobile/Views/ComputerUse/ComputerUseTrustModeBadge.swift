@@ -7,7 +7,7 @@ struct ComputerUseTrustModeBadge: View {
 
     var body: some View {
         Label(mode.rawValue.capitalized, systemImage: icon)
-            .font(.system(size: 12, weight: .semibold, design: .rounded))
+            .font(MobileScaledFont.system(size: 12, weight: .semibold, design: .rounded))
             .foregroundStyle(tint)
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
