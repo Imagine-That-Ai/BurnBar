@@ -17,9 +17,9 @@
     "@openburnbar/entitlements": "file:../../packages/entitlements",
     "@openburnbar/signal-envelope-contracts": "file:../../packages/signal-envelope-contracts",
     "firebase-admin": "14.2.0",
-    "ioredis": "^5.4.2",
-    "protobufjs": "8.7.1",
-    "ws": "8.21.1"
+    "ioredis": "^6.0.0",
+    "protobufjs": "8.7.2",
+    "ws": "8.21.3"
   },
   "devDependencies": {
     "@eslint/js": "9.39.4",
