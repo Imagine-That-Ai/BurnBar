@@ -319,7 +319,7 @@ final class BurnBarProviderRouterTests: XCTestCase {
                 providerID: "ollama",
                 isEnabled: true,
                 baseURL: "https://ollama.com/api",
-                preferredModelIDs: ["kimi-k2.7-code", "glm-5.2"]
+                preferredModelIDs: ["kimi-k2.7-code", "kimi-k3", "glm-5.2"]
             )
         )
 
@@ -337,6 +337,15 @@ final class BurnBarProviderRouterTests: XCTestCase {
         XCTAssertEqual(documentedAliasRoute.resolvedModelID, "kimi-k2.7-code")
         XCTAssertEqual(documentedAliasRoute.canonicalModelID, "kimi-k2.7-code:cloud")
         XCTAssertEqual(documentedAliasRoute.modelCapabilityClassID, "kimi-k2.7-code")
+
+        let kimiK3Route = try await harness.router.route(
+            modelName: "kimi-k3:cloud",
+            preferredProviderID: "ollama"
+        )
+        XCTAssertEqual(kimiK3Route.providerID, "ollama")
+        XCTAssertEqual(kimiK3Route.resolvedModelID, "kimi-k3")
+        XCTAssertEqual(kimiK3Route.canonicalModelID, "kimi-k3")
+        XCTAssertEqual(kimiK3Route.modelCapabilityClassID, "kimi-k3")
     }
 
     func testRouterRoutesLocalOllamaModelWithoutCredential() async throws {

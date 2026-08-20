@@ -18,6 +18,7 @@ final class CursorConnectorTests: XCTestCase {
         XCTAssertEqual(ConnectorProvider.ollama.displayName, "Ollama Cloud")
         XCTAssertEqual(ConnectorProvider.ollama.defaultBaseURL, "https://ollama.com/api")
         XCTAssertEqual(Array(ConnectorProvider.ollama.suggestedModels.prefix(3)), ["deepseek-v4-flash", "qwen3.6:27b-coding-nvfp4", "kimi-k2.7-code"])
+        XCTAssertTrue(ConnectorProvider.ollama.suggestedModels.contains("kimi-k3"))
         XCTAssertTrue(ConnectorProvider.ollama.suggestedModels.contains("gpt-oss:120b"))
     }
 
@@ -26,6 +27,7 @@ final class CursorConnectorTests: XCTestCase {
         XCTAssertTrue(CursorConnectorManager.supportedModel("MiniMax-M2.7-highspeed"))
         XCTAssertTrue(CursorConnectorManager.supportedModel("MiniMax-M3-pro"))
         XCTAssertTrue(CursorConnectorManager.supportedModel("deepseek-v4-flash:cloud"))
+        XCTAssertTrue(CursorConnectorManager.supportedModel("kimi-k3:cloud"))
         XCTAssertFalse(CursorConnectorManager.supportedModel("kimi-for-coding"))
         XCTAssertFalse(CursorConnectorManager.supportedModel("pony-alpha-2"))
         XCTAssertFalse(CursorConnectorManager.supportedModel("claude-3-7-sonnet"))

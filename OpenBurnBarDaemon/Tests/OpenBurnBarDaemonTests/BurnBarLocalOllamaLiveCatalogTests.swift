@@ -23,6 +23,7 @@ final class BurnBarLocalOllamaLiveCatalogTests: XCTestCase {
     <html>
       <body>
         <a href="/library/kimi-k2.7-code">Kimi K2.7 Code</a>
+        <a href="/library/kimi-k3">Kimi K3</a>
         <a href="/library/glm-5.2%3Acloud">GLM-5.2</a>
         <a href="/library/qwen3-coder%3A480b">Qwen3 Coder 480B</a>
         <a href="/library/deepseek-v4-flash%2Fshadow">Injected slash</a>
@@ -139,7 +140,7 @@ final class BurnBarLocalOllamaLiveCatalogTests: XCTestCase {
         let configSnapshot = try await harness.configStore.snapshot()
         var ollama = try XCTUnwrap(configSnapshot.providers.first { $0.providerID == "ollama" })
         ollama.isEnabled = true
-        ollama.preferredModelIDs = ["kimi-k2.7-code", "glm-5.2", "qwen3-coder:480b"]
+        ollama.preferredModelIDs = ["kimi-k2.7-code", "kimi-k3", "glm-5.2", "qwen3-coder:480b"]
         _ = try await harness.configStore.upsertProvider(ollama)
         try await harness.configStore.setSecret("ollama-cloud-token", for: "ollama")
 
@@ -174,15 +175,22 @@ final class BurnBarLocalOllamaLiveCatalogTests: XCTestCase {
         let cloudRows = snapshot.models.filter { $0.providerID == "ollama" }
         let cloudIDs = Set(cloudRows.map(\.id))
         XCTAssertTrue(cloudIDs.contains("kimi-k2.7-code:cloud"))
+        XCTAssertTrue(cloudIDs.contains("kimi-k3:cloud"))
         XCTAssertTrue(cloudIDs.contains("glm-5.2:cloud"))
         XCTAssertTrue(cloudIDs.contains("qwen3-coder:480b:cloud"))
         XCTAssertFalse(cloudIDs.contains { $0.contains("/") })
         XCTAssertFalse(cloudIDs.contains { $0.contains("\n") })
         XCTAssertFalse(cloudIDs.contains { $0.contains("?") })
         XCTAssertEqual(cloudRows.first { $0.id == "kimi-k2.7-code:cloud" }?.routeEligible, true)
+        XCTAssertEqual(cloudRows.first { $0.id == "kimi-k3:cloud" }?.routeEligible, true)
         XCTAssertEqual(cloudRows.first { $0.id == "glm-5.2:cloud" }?.routeEligible, true)
         XCTAssertEqual(cloudRows.first { $0.id == "qwen3-coder:480b:cloud" }?.routeEligible, true)
         XCTAssertEqual(cloudRows.first { $0.id == "kimi-k2.7-code:cloud" }?.modelCapabilities?.supportsImageInput, true)
+        XCTAssertEqual(cloudRows.first { $0.id == "kimi-k3:cloud" }?.modelCapabilities?.supportsImageInput, true)
+        XCTAssertEqual(
+            cloudRows.first { $0.id == "kimi-k3:cloud" }?.modelCapabilities?.contextWindowTokens,
+            1_048_576
+        )
         XCTAssertEqual(
             cloudRows.first { $0.id == "glm-5.2:cloud" }?.modelCapabilities?.contextWindowTokens,
             976_000
