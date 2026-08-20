@@ -372,6 +372,7 @@ jobs:
             --lockfile=apps/console/package-lock.json
             --lockfile=apps/linux-desktop/package-lock.json
             --lockfile=extensions/openburnbar/package-lock.json
+            --lockfile=extensions/safari/package-lock.json
             --lockfile=firestore-rules-tests/package-lock.json
             --lockfile=functions/package-lock.json
             --lockfile=packages/design-tokens/package-lock.json

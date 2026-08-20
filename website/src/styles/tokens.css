@@ -49,13 +49,77 @@
   --mercury-core: rgba(255, 255, 255, 0.7);
   --mercury-wash: rgba(255, 255, 255, 0.05);
 
-  /* ---------- typography (Fraunces + Geist) ---------- */
-  --font-display:
-    "Fraunces Variable", "Geist Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui,
-    sans-serif;
+  /* ============================================================
+     TYPOGRAPHY
+     Three families, two axes, two scales. Everything type-related on
+     this site resolves to a token below — there are no free-hand font
+     stacks, weights, or optical sizes anywhere in the codebase, and
+     scripts/test-typography.mjs fails the build if one appears.
+
+     The three rules that keep it that way:
+
+       1. Weight is ALWAYS set with `font-weight`, never with
+          `font-variation-settings: "wght" …`. The low-level property
+          overrides the high-level one AND inherits, so a single stray
+          "wght" pins every descendant to that weight and silently
+          voids their `font-weight` declarations.
+       2. Optical size is ALWAYS set by assigning `--opsz`, never by
+          declaring `font-variation-settings` directly. One low-specificity
+          rule in globals.css feeds `--opsz` into the font.
+       3. Both values come from the scales below. Never type a literal.
+
+     A section may re-point --font-display at a different face (bench does
+     this on `.ins`, deliberately, to run on the grotesque instead of the
+     serif). That is a scoped override of the family token and stays legal;
+     what is not legal is a raw font stack that answers to nothing.
+     ============================================================ */
+
+  /* ---------- families ----------
+     --font-display falls back to a SERIF, not to --font-body's sans.
+     Fraunces is preloaded but still swaps in; degrading serif→serif keeps
+     the swap (and any load failure) from restyling headings into body type. */
+  --font-display: "Fraunces Variable", Georgia, "Times New Roman", Times, serif;
   --font-body:
     "Geist Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-  --font-mono: "JetBrains Mono Variable", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --font-mono:
+    "JetBrains Mono Variable", ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono",
+    monospace;
+
+  /* ---------- weight scale (wght axis) ----------
+     Seven steps, replacing the twenty ad-hoc values this site used to carry.
+     Fraunces, Geist and JetBrains Mono all cover 380–800, so a token means
+     the same thing in all three faces. Assign with `font-weight`.
+
+     --wght-display is the odd one and is deliberate: Fraunces gains a lot of
+     optical weight as opsz climbs, so headline sizes need a LIGHTER wght than
+     body text to sit at the same apparent heft. Large type going lighter is
+     the intended behaviour, not a mistake — it is what gives the hero its
+     high-contrast Didone look. */
+  --wght-light: 380; /* oversized quiet type, ghost numerals */
+  --wght-regular: 400; /* body copy — the default */
+  --wght-display: 460; /* --t-h1 / --t-display headlines (optically compensated) */
+  --wght-medium: 500; /* mono labels, eyebrows, table keys */
+  --wght-semibold: 560; /* card titles, h2/h3/h4, emphasized UI text */
+  --wght-bold: 660; /* buttons, strong, stat figures */
+  --wght-black: 800; /* reserved: single-word marks, the 404 numeral */
+
+  /* ---------- optical size scale (opsz axis) ----------
+     Fraunces' opsz is a SHAPE axis, not a hint: at 9 it is a sturdy,
+     low-contrast serif; at 144 it is a hairline Didone. Two headings set
+     to the same size but different opsz genuinely read as two different
+     typefaces, which is what made type across this site look unstable.
+
+     So opsz is not a style choice — it tracks the rendered size, one token
+     per step of the --t-* scale below. Pick the token that matches the size
+     you are rendering at and nothing else. (Geist and JetBrains Mono have no
+     opsz axis and ignore these per spec, so bench surfaces are unaffected.) */
+  --opsz-caption: 16; /* --t-eyebrow, --t-caption */
+  --opsz-body: 24; /* --t-body — the inherited default */
+  --opsz-lead: 32; /* --t-lead, --t-h4 */
+  --opsz-h3: 48; /* --t-h3 */
+  --opsz-h2: 72; /* --t-h2 */
+  --opsz-h1: 108; /* --t-h1 */
+  --opsz-display: 144; /* --t-display — hero only */
 
   --leading-tight: 0.95;
   --leading-snug: 1.1;

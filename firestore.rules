@@ -1836,6 +1836,22 @@ service cloud.firestore {
       allow read: if isSignedIn();
     }
 
+    // --- BurnBench Arena (server-only) ---
+    // arena_matchups stores competitor identities server-side so the blind
+    // pairwise vote stays blind; the arenaVote callable reveals identities only
+    // after a vote is committed. arena_serves holds the single-use serve tickets
+    // that record which left/right orientation the server actually showed a
+    // voter — the orientation is never sent to the client, and arenaVote reads
+    // it back off the ticket instead of trusting the caller. arena_votes is
+    // append-only. All three are written solely by the callables (Admin SDK
+    // bypasses these rules). None has any client access: reads would leak
+    // identities before the reveal (arena_matchups) or hand back the hidden
+    // orientation and let a caller invert the meaning of its own ballot
+    // (arena_serves), and direct writes would bypass the callables' validation,
+    // single-use ticket accounting, and rate limiting.
+    // Deliberately unmatched: an absent rule is Firestore's default deny, and
+    // it costs no source or compiler budget the way a dead allow clause does.
+
     // --- User-scoped data ---
 
     match /users/{userId} {

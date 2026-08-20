@@ -1,0 +1,8 @@
+{
+  "_note": "Live Arena vote state, read client-side by /bench so votes surface without a site rebuild. Rewrite this file from runner/arena_ratings.py (or a scheduled Firestore export) as votes land; the page falls back to the numbers baked into bench.json when it is absent or stale.",
+  "schema_version": 1,
+  "generated_at_utc": "2026-08-10T23:46:21.353692+00:00",
+  "votes": 0,
+  "min_votes_per_stack": 30,
+  "ratings": []
+}

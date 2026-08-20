@@ -32,6 +32,7 @@ audit_npm() {
 
 audit_npm "$repo_root/functions" "Cloud Functions"
 audit_npm "$repo_root/extensions/openburnbar" "VS Code extension"
+audit_npm "$repo_root/extensions/safari" "Safari web extension"
 audit_npm "$repo_root/website" "Website"
 audit_npm "$repo_root/apps/console" "Operator console"
 
@@ -40,6 +41,7 @@ if command -v osv-scanner >/dev/null 2>&1; then
     if ! osv-scanner \
         --lockfile="$repo_root/functions/package-lock.json" \
         --lockfile="$repo_root/extensions/openburnbar/package-lock.json" \
+        --lockfile="$repo_root/extensions/safari/package-lock.json" \
         --lockfile="$repo_root/website/package-lock.json" \
         --lockfile="$repo_root/apps/console/package-lock.json"; then
         failed=1

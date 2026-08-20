@@ -540,7 +540,3 @@ enum CLIAgentPresentationModePreferences {
         UserDefaults.standard.set(mode.rawValue, forKey: key(for: runtime))
     }
 }
-
-private extension String {
-    var nilIfEmpty: String? { isEmpty ? nil : self }
-}

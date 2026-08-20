@@ -17,7 +17,7 @@ import OpenBurnBarCore
 ///    `@FocusState` in the destination.
 enum SettingsManifest {
 
-    static let all: [SettingsItem] = baseItems + providerItems
+    static let all: [SettingsItem] = baseItems + localDBoxItems + providerItems
 
     private static let baseItems: [SettingsItem] = [
         // MARK: Home
@@ -991,7 +991,29 @@ enum SettingsManifest {
         SettingsAnchor.hermesPiRelay,
         SettingsAnchor.analysisConfigurator,
         SettingsAnchor.fusionImpact
-    ]).union(providerItems.map(\.anchorID))
+    ]).union(providerItems.map(\.anchorID)).union(localDBoxAnchors)
+
+#if !DISTRIBUTION_MAS
+    private static let localDBoxItems: [SettingsItem] = [
+        SettingsItem(
+            id: "agents.localDBox",
+            tab: .agents,
+            pageRoute: .agentsRoot,
+            anchorID: SettingsAnchor.agentsLocalDBox,
+            title: "Local D box",
+            subtitle: "List live Grok Bot D local-box agents by UUID and send one a prompt. Default off. Developer ID only.",
+            keywords: [
+                "agent", "agents",
+                "local d", "local d box", "grok bot d", "grokd", "box",
+                "1337", "1338", "8787", "uuid", "listagents", "sendprompt"
+            ]
+        )
+    ]
+    private static let localDBoxAnchors: Set<String> = [SettingsAnchor.agentsLocalDBox]
+#else
+    private static let localDBoxItems: [SettingsItem] = []
+    private static let localDBoxAnchors: Set<String> = []
+#endif
 
     private static let providerItems: [SettingsItem] = {
         AgentProvider.allCases

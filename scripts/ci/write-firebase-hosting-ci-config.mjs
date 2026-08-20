@@ -163,10 +163,90 @@ function buildHostingConfig(firebaseJson) {
     );
   }
 
+  // Hosting targets the credentialed CI deploy lane is permitted to publish.
+  // This is a security control, not a schema: the WIF/OIDC service account that
+  // runs the production hosting deploy can push bytes to any site named here,
+  // so an addition to this map is a decision about what CI may put on the
+  // public internet.
   const expectedPublicDirs = new Map([
     ["marketing", "website/dist"],
     ["console", "apps/console/out"],
   ]);
+
+  // Hosting targets that exist in firebase.json but are deliberately OUTSIDE
+  // the CI deploy lane. They are recognised (so the allowlist above keeps its
+  // fail-closed property for genuinely unknown targets) and then dropped from
+  // the generated config, so CI never deploys them.
+  //
+  // arena-artifacts / arena-public: deployed BY HAND, and it must stay that
+  // way. Three independent reasons, each sufficient on its own:
+  //
+  //   1. The CI deployer does not honour `ignore`. scripts/ci/deploy-firebase-
+  //      hosting-rest.mjs listFiles() walks the public dir and uploads every
+  //      regular file it finds; it never reads the hosting entry's `ignore`
+  //      array. The allowlist-shaped ignore that keeps arena_matchups.jsonl,
+  //      seed_docs.json and publish_manifest.json off the site is enforced by
+  //      the firebase-tools matcher on the hand-deploy path only. Admitting
+  //      arena-artifacts here would therefore publish the arena's
+  //      de-anonymisation key on every push to main, with the protection
+  //      silently bypassed.
+  //
+  //   2. CI has no source for the content. arena-public/bundles/ and the three
+  //      key files are gitignored (this repo is public), so a CI checkout
+  //      contains only arena-public/index.html. A CI deploy would replace the
+  //      ~3.9k hand-published files with a single page — a destructive
+  //      "successful" deploy.
+  //
+  //   3. The directory's whole purpose is blind-comparison material. Widening a
+  //      credentialed-lane allowlist to cover it is the wrong direction on a
+  //      control whose entire job is limiting what CI may publish.
+  //
+  // The public dir is still pinned below, so a rename or repoint of the
+  // arena-artifacts target fails this gate instead of drifting unobserved.
+  const ciExcludedPublicDirs = new Map([["arena-artifacts", "arena-public"]]);
+
+  // The reviewed allowlist-shaped `ignore` for arena-artifacts, pinned so it
+  // cannot be quietly loosened back into a denylist.
+  //
+  // arena-public/ is a regenerated deploy staging tree, not a curated web root:
+  // the arena publisher drops new top-level files there whenever the bench
+  // pipeline changes. Under a denylist ("deny these three names") the next
+  // generated file is published by default — and because the arena is a BLIND
+  // pairwise comparison whose votes produce published model ratings, one leaked
+  // index file does not merely leak data, it invalidates every rating those
+  // votes produce. So the list denies everything and re-admits exactly
+  // index.html and bundles/**.
+  //
+  // Verified against the pinned firebase-tools matcher (lib/listFiles.js ->
+  // glob.sync("**\/*", { ignore })):
+  //   "!(index.html|bundles)"    ignores every top-level entry that is not one
+  //                              of the two admitted names.
+  //   "!(index.html|bundles)/**" ignores those entries' subtrees. In glob v10 an
+  //                              "X/**" ignore also drops X itself, so the
+  //                              admitted names must be repeated here; the
+  //                              shorter "!(bundles)/**" silently drops
+  //                              index.html as well.
+  // Naive negation ("**" plus "!bundles/**") publishes ZERO files — glob's
+  // ignore is a pure OR of deny patterns with no re-admit semantics.
+  //
+  // The three literal filenames are defence in depth: they keep the
+  // de-anonymisation key denied even under a matcher without extglob support.
+  // Measured on the real tree: 3874 files published before (all three key files
+  // among them), 3871 after, zero key files.
+  const arenaArtifactsIgnore = [
+    "firebase.json",
+    "**/.*",
+    "**/node_modules/**",
+    "!(index.html|bundles)",
+    "!(index.html|bundles)/**",
+    "arena_matchups.jsonl",
+    "seed_docs.json",
+    "publish_manifest.json",
+  ];
+  const pinnedIgnoreLists = new Map([
+    ["arena-artifacts", arenaArtifactsIgnore],
+  ]);
+
   const allowedHostingKeys = new Set([
     "target",
     "public",
@@ -205,7 +285,9 @@ function buildHostingConfig(firebaseJson) {
     }
 
     const target = entry.target;
-    if (!expectedPublicDirs.has(target)) {
+    const ciDeployable = expectedPublicDirs.has(target);
+    const ciExcluded = ciExcludedPublicDirs.has(target);
+    if (!ciDeployable && !ciExcluded) {
       throw new Error(`unexpected hosting target ${target ?? "<missing>"}`);
     }
     if (seenTargets.has(target)) {
@@ -213,11 +295,29 @@ function buildHostingConfig(firebaseJson) {
     }
     seenTargets.add(target);
 
-    const expectedPublic = expectedPublicDirs.get(target);
+    const expectedPublic = ciDeployable
+      ? expectedPublicDirs.get(target)
+      : ciExcludedPublicDirs.get(target);
     if (entry.public !== expectedPublic) {
       throw new Error(
         `hosting target ${target} public dir drifted: ${entry.public ?? "<missing>"} != ${expectedPublic}`,
       );
+    }
+
+    const pinnedIgnore = pinnedIgnoreLists.get(target);
+    if (
+      pinnedIgnore &&
+      JSON.stringify(entry.ignore) !== JSON.stringify(pinnedIgnore)
+    ) {
+      throw new Error(
+        `hosting target ${target} ignore list drifted from the reviewed publish allowlist: ${JSON.stringify(entry.ignore ?? null)} != ${JSON.stringify(pinnedIgnore)}`,
+      );
+    }
+
+    if (ciExcluded) {
+      // Recognised, validated, and then deliberately not emitted: the CI deploy
+      // lane must never see this target. See ciExcludedPublicDirs above.
+      continue;
     }
 
     ciHosting.push(copyDefined(entry, preservedKeys));

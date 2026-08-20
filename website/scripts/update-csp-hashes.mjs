@@ -143,8 +143,33 @@ function expectedMarketingCsps(hashes) {
     ],
     formAction: ["https://accounts.google.com", "https://appleid.apple.com"],
   };
+  // The BurnBench Arena vote page embeds anonymized artifacts in cross-origin
+  // iframes served from the dedicated arena-artifacts hosting site (locked CSP,
+  // CORP cross-origin). frame-src must allow that origin site-wide so the vote
+  // page can frame artifacts; the artifacts site's own CSP disables their
+  // network access, so this does not widen the marketing site's attack surface.
+  const arenaArtifactFrameSrc = [
+    "https://burnbar-arena-artifacts.web.app",
+    "https://burnbar-arena-artifacts.firebaseapp.com",
+  ];
+  // The vote page also calls the two Arena callables (arenaMatchup, arenaVote)
+  // directly from the client, and now requires Firebase Auth sign-in (Google +
+  // Apple) via a soft gate. It needs the full auth-capable CSP (identity toolkit,
+  // securetoken, popup/redirect frames, provider form-actions) merged with the
+  // arena-artifacts frame-src and the callable connect-src.
+  const arenaVotePage = {
+    imgSrc: firebaseAuthSources.imgSrc,
+    scriptSrc: firebaseAuthSources.scriptSrc,
+    frameSrc: [...arenaArtifactFrameSrc, ...firebaseAuthSources.frameSrc],
+    connectSrc: [
+      "https://us-central1-burnbar.cloudfunctions.net",
+      ...firebaseAuthSources.connectSrc,
+    ],
+    formAction: firebaseAuthSources.formAction,
+  };
   return new Map([
-    ["**", buildMarketingCsp(hashes)],
+    ["**", buildMarketingCsp(hashes, { frameSrc: arenaArtifactFrameSrc })],
+    ["/bench/arena/vote", buildMarketingCsp(hashes, arenaVotePage)],
     ["/link", buildMarketingCsp(hashes, firebaseAuthSources)],
     ["/hermes/connect", buildMarketingCsp(hashes, firebaseAuthSources)],
     ["/subscribe", buildMarketingCsp(hashes, firebaseAuthSources)],

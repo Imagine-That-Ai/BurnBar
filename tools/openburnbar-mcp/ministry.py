@@ -23,6 +23,14 @@ from pathlib import Path
 from typing import Any
 from collections.abc import Callable
 
+try:
+    # Optional BurnBench evidence (bench.json). The Ministry must behave
+    # identically when the module or the data is missing, stale, or broken, so
+    # the import is guarded and every tie-break lookup is wrapped in try/except.
+    import bench as _bench_evidence
+except Exception:  # pragma: no cover - defensive optional dependency
+    _bench_evidence = None
+
 
 _THIS_DIR = Path(__file__).resolve().parent
 REPO_ROOT = _THIS_DIR.parent.parent
@@ -914,6 +922,66 @@ def _is_known_headless_candidate(candidate: dict[str, Any]) -> bool:
     return (provider, model) in KNOWN_HEADLESS_MODELS
 
 
+def _tie_group_key(candidate: dict[str, Any]) -> tuple[int, int]:
+    return (_quota_sort_tier(candidate), int(candidate.get("capabilityClassRank") or 0))
+
+
+def _apply_bench_tiebreak(
+    ranked: list[dict[str, Any]], mission_family: str | None
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Optionally reorder adjacent equal-(quota tier, capability rank) groups.
+
+    Within each tied group, candidates are stably reordered by the fresh,
+    adequately-powered bench.json solution_rate for their default ("droid")
+    harness pairing in the mission's family (falling back to overall scope).
+    Candidates without usable evidence sink to the bottom of their tied group
+    in their original relative order. Returns the input list untouched whenever
+    bench evidence is unavailable, stale, or errors — the existing quota /
+    capability / price ordering is always the fallback. Never raises.
+    """
+    info: dict[str, Any] = {"applied": False, "family": mission_family or None, "harness": "droid"}
+    if _bench_evidence is None or len(ranked) < 2:
+        return ranked, info
+    try:
+        groups: list[tuple[int, int]] = []
+        start = 0
+        for index in range(1, len(ranked) + 1):
+            if index == len(ranked) or _tie_group_key(ranked[index]) != _tie_group_key(ranked[start]):
+                if index - start > 1:
+                    groups.append((start, index))
+                start = index
+        if not groups:
+            return ranked, info
+        ordered = list(ranked)
+        moved = False
+        for start, end in groups:
+            group = ordered[start:end]
+            scored = [
+                (
+                    position,
+                    _bench_evidence.solution_rate_for_model(
+                        "droid", candidate.get("model") or candidate.get("arg"), mission_family
+                    ),
+                )
+                for position, candidate in enumerate(group)
+            ]
+            if all(rate is None for _position, rate in scored):
+                continue
+            # Stable sort: unknown evidence (-inf proxy 1.0) keeps its relative
+            # order below every known rate in [0, 1].
+            scored.sort(key=lambda item: (0.0 - item[1]) if item[1] is not None else 1.0)
+            reordered = [group[position] for position, _rate in scored]
+            if [id(row) for row in reordered] != [id(row) for row in group]:
+                moved = True
+                ordered[start:end] = reordered
+        if not moved:
+            return ranked, info
+        info["applied"] = True
+        return ordered, info
+    except Exception:  # pragma: no cover - defensive: evidence must never break selection
+        return ranked, {"applied": False, "family": mission_family or None, "harness": "droid"}
+
+
 def _wand_by_id(wands_payload: dict[str, Any], wand_id: str | None) -> dict[str, Any] | None:
     wands = wands_payload.get("wands") or []
     if wand_id:
@@ -935,6 +1003,7 @@ def select_model_for_wand(
     max_probes: int = 2,
     probe_ttl: int = 3600,
     probe_runner: Callable[[str, str, int], dict[str, Any]] | None = None,
+    mission_family: str | None = None,
 ) -> dict[str, Any]:
     wands_payload = load_wands(store_path)
     wand = _wand_by_id(wands_payload, wand_id)
@@ -962,16 +1031,24 @@ def select_model_for_wand(
             "wand": wand,
             "candidateCount": len(launchable["candidates"]),
         }
+    ranked, bench_tiebreak = _apply_bench_tiebreak(ranked, mission_family)
+
+    def _annotate(payload: dict[str, Any]) -> dict[str, Any]:
+        if bench_tiebreak.get("applied"):
+            payload["benchTieBreak"] = bench_tiebreak
+        return payload
 
     if not prove_headless:
-        return {
-            "status": "ok",
-            "selected": ranked[0],
-            "wand": wand,
-            "proofStatus": "unproven",
-            "rankedCount": len(ranked),
-            "rankedPreview": ranked[:10],
-        }
+        return _annotate(
+            {
+                "status": "ok",
+                "selected": ranked[0],
+                "wand": wand,
+                "proofStatus": "unproven",
+                "rankedCount": len(ranked),
+                "rankedPreview": ranked[:10],
+            }
+        )
 
     runner = probe_runner or smoke_probe
     probe_failures: list[dict[str, Any]] = []
@@ -981,24 +1058,28 @@ def select_model_for_wand(
         if probe.get("landsCommit"):
             selected = dict(candidate)
             selected["smokeProbe"] = probe
-            return {
-                "status": "ok",
-                "selected": selected,
-                "wand": wand,
-                "proofStatus": "proven_headless",
-                "probeOrdering": "known_headless_first",
-                "rankedCount": len(ranked),
-                "rankedPreview": ranked[:10],
-            }
+            return _annotate(
+                {
+                    "status": "ok",
+                    "selected": selected,
+                    "wand": wand,
+                    "proofStatus": "proven_headless",
+                    "probeOrdering": "known_headless_first",
+                    "rankedCount": len(ranked),
+                    "rankedPreview": ranked[:10],
+                }
+            )
         probe_failures.append({"arg": candidate.get("arg"), "probe": probe})
-    return {
-        "status": "ok",
-        "selected": None,
-        "reason": "probe_failed_for_ranked_candidates",
-        "wand": wand,
-        "probeFailures": probe_failures,
-        "rankedCount": len(ranked),
-    }
+    return _annotate(
+        {
+            "status": "ok",
+            "selected": None,
+            "reason": "probe_failed_for_ranked_candidates",
+            "wand": wand,
+            "probeFailures": probe_failures,
+            "rankedCount": len(ranked),
+        }
+    )
 
 
 def select_models_for_wand(
@@ -1011,6 +1092,7 @@ def select_models_for_wand(
     max_probes: int = 4,
     probe_ttl: int = 3600,
     probe_runner: Callable[[str, str, int], dict[str, Any]] | None = None,
+    mission_family: str | None = None,
 ) -> dict[str, Any]:
     count = max(1, min(int(count), resolved_wand_parallel_max()))
     wands_payload = load_wands(store_path)
@@ -1031,6 +1113,7 @@ def select_models_for_wand(
     ]
     selector = str(wand.get("selector") or "best")
     ranked = sorted(candidates, key=lambda candidate: _candidate_sort_key(candidate, selector))
+    ranked, bench_tiebreak = _apply_bench_tiebreak(ranked, mission_family)
     ordered = sorted(ranked, key=lambda candidate: _probe_sort_key(candidate, selector)) if prove_headless else ranked
 
     selected: list[dict[str, Any]] = []
@@ -1088,7 +1171,7 @@ def select_models_for_wand(
     reason = None
     if len(selected) < count:
         reason = "insufficient_proven_candidates" if prove_headless else "insufficient_route_eligible_candidates"
-    return {
+    payload = {
         "status": "ok",
         "selected": selected,
         "requestedCount": count,
@@ -1105,6 +1188,9 @@ def select_models_for_wand(
         "rankedCount": len(ranked),
         "rankedPreview": ranked[:10],
     }
+    if bench_tiebreak.get("applied"):
+        payload["benchTieBreak"] = bench_tiebreak
+    return payload
 
 
 def _run(cmd: list[str], cwd: Path, timeout: int = 120) -> subprocess.CompletedProcess[str]:

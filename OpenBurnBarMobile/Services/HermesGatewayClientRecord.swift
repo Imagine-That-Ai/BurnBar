@@ -523,7 +523,3 @@ struct HermesGatewayQueuedEvent: Decodable, Hashable, Sendable {
     let sequence: Int
     let targetClientId: String?
 }
-
-private extension String {
-    var nilIfEmpty: String? { isEmpty ? nil : self }
-}

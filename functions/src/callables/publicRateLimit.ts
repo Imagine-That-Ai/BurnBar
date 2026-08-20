@@ -135,9 +135,118 @@ const HOSTED_INSIGHTS_LIMITS: Record<HostedInsightsRateLimitAction, { windowSeco
   insights_hosted_answer_daily: { windowSeconds: 86_400, maxAttempts: 200 },
 };
 
+// Public BurnBench assistant (`benchAssistant` callable): unauthenticated
+// website traffic, and each answer bills input tokens to the owner's
+// OpenRouter budget. There is no uid to key on, so the limit follows the
+// client IP; a short burst window plus a daily ceiling keeps a single source
+// from looping answers to drain that budget while leaving normal browsing
+// unthrottled. Mirrors the hosted-Insights burst + daily pair shape.
+type BenchAssistantRateLimitAction = "bench_assistant_burst" | "bench_assistant_daily";
+
+const BENCH_ASSISTANT_LIMITS: Record<BenchAssistantRateLimitAction, { windowSeconds: number; maxAttempts: number }> = {
+  bench_assistant_burst: { windowSeconds: 60, maxAttempts: 10 },
+  bench_assistant_daily: { windowSeconds: 86_400, maxAttempts: 60 },
+};
+
+// Public BurnBench Arena vote (`arenaVote` callable): website traffic writing
+// append-only human-judgment votes that feed published model ratings.
+//
+// KEYED ON uid, NOT IP — and that is load-bearing, not stylistic.
+// `arenaVote` DOES require Firebase Auth (see the `assertAuth` /
+// `unauthenticated` throw at the top of the handler in `arenaVote.ts`), so a
+// uid is always available. An earlier version of this comment claimed "there
+// is no uid to key on"; that was simply wrong, and it justified an IP-keyed
+// limit that cannot work on this deployment in either configuration:
+//   - with Express `trust proxy` ON, `req.ip` is the leftmost X-Forwarded-For
+//     entry, which the caller writes — so every IP bucket is one header away
+//     from being a fresh bucket, i.e. a no-op;
+//   - with `trust proxy` OFF, `req.ip` is the Google front end, so ALL
+//     internet traffic collapses into ONE bucket and a 120/day ceiling
+//     throttles every voter on earth.
+// Ballot-box stuffing is the abuse to bound: a single identity must not be
+// able to dominate the pairwise-vote distribution, so the daily ceiling is a
+// small multiple of what a genuine human voter plausibly casts in a day.
+type ArenaVoteRateLimitAction = "arena_vote_burst" | "arena_vote_daily" | "arena_vote_ip_burst" | "arena_vote_ip_daily";
+
+const ARENA_VOTE_LIMITS: Record<ArenaVoteRateLimitAction, { windowSeconds: number; maxAttempts: number }> = {
+  // Primary, per-uid. One account, this many judgments.
+  arena_vote_burst: { windowSeconds: 60, maxAttempts: 12 },
+  arena_vote_daily: { windowSeconds: 86_400, maxAttempts: 120 },
+  // SECONDARY ONLY, and only when a client IP can actually be attributed (see
+  // `attributableClientIp`). Deliberately far looser than the per-uid bound: a
+  // single NAT/VPN egress can legitimately carry many distinct voters, so this
+  // must never be the bound a real person hits. It exists to blunt one host
+  // driving a farm of throwaway accounts, nothing more.
+  arena_vote_ip_burst: { windowSeconds: 60, maxAttempts: 120 },
+  arena_vote_ip_daily: { windowSeconds: 86_400, maxAttempts: 2_000 },
+};
+
+// Public BurnBench Arena matchup serving (`arenaMatchup` callable): read-only,
+// with OPTIONAL auth (browse freely, sign in only to vote) plus one small
+// serve-ticket write that binds the served orientation server-side.
+//
+// Keyed on uid when the caller is signed in, else on an attributable client IP
+// when the deployment can produce one. When neither exists the request falls
+// back to a GLOBAL CAPACITY GUARD — named as such because a shared bucket is
+// exactly what it is. The previous code applied the per-client ceilings
+// (30/min, 600/day) to that shared bucket, which is an availability bug: it
+// caps the whole internet at 600 matchup serves a day. The capacity guard is
+// therefore sized against total service cost, not against one caller's
+// behaviour, and `maxInstances` remains the real backstop.
+type ArenaMatchupRateLimitAction =
+  | "arena_matchup_burst"
+  | "arena_matchup_daily"
+  | "arena_matchup_global_burst"
+  | "arena_matchup_global_daily";
+
+const ARENA_MATCHUP_LIMITS: Record<ArenaMatchupRateLimitAction, { windowSeconds: number; maxAttempts: number }> = {
+  arena_matchup_burst: { windowSeconds: 60, maxAttempts: 30 },
+  arena_matchup_daily: { windowSeconds: 86_400, maxAttempts: 600 },
+  arena_matchup_global_burst: { windowSeconds: 60, maxAttempts: 600 },
+  arena_matchup_global_daily: { windowSeconds: 86_400, maxAttempts: 100_000 },
+};
+
 function rateLimitDocId(keyMaterial: string, action: string): string {
   const hash = createHash("sha256").update(`${keyMaterial}:${action}`).digest("hex");
   return `${action}_${hash.slice(0, 40)}`;
+}
+
+/** Shape of the raw HTTP request the callable runtime hands to a limiter. */
+type RateLimitRequestLike = {
+  headers?: Record<string, unknown>;
+  ip?: string;
+  socket?: { remoteAddress?: string };
+};
+
+/**
+ * Best-effort client IP, for SECONDARY defence-in-depth limits only.
+ *
+ * Never use this as a primary key. `req.ip` is deliberately not consulted:
+ * behind the Google front end it is either the caller-written leftmost
+ * X-Forwarded-For entry (a one-header bypass) or the front end's own address
+ * (one bucket for the whole internet). Both make an IP-keyed control useless
+ * or actively harmful, so this helper reads the forwarded chain directly and
+ * fails CLOSED — returning `undefined` rather than a guess — unless the
+ * deployment has explicitly declared a trusted proxy chain via
+ * `OPENBURNBAR_TRUST_X_FORWARDED_FOR=1`.
+ *
+ * When trusted, the client address is the SECOND-FROM-RIGHT hop: the Google
+ * load balancer appends its own address last and preserves whatever the caller
+ * sent to the left of the address it observed. Every entry left of that is
+ * attacker-controlled and must never be keyed on. A chain with fewer than two
+ * hops cannot be disambiguated from a forged one, so it yields `undefined`.
+ */
+function attributableClientIp(req: RateLimitRequestLike | undefined): string | undefined {
+  if (process.env.OPENBURNBAR_TRUST_X_FORWARDED_FOR !== "1") return undefined;
+  const forwarded = req?.headers?.["x-forwarded-for"];
+  const raw = Array.isArray(forwarded) ? forwarded.join(",") : forwarded;
+  if (typeof raw !== "string") return undefined;
+  const hops = raw
+    .split(",")
+    .map((hop) => hop.trim())
+    .filter((hop) => hop.length > 0 && hop.length <= 64);
+  if (hops.length < 2) return undefined;
+  return hops[hops.length - 2];
 }
 
 export function clientIpFromHttpRequest(req: {
@@ -240,6 +349,138 @@ export async function checkHostedInsightsAnswerRateLimit(uid: string): Promise<v
     "insights_hosted_answer_daily",
     HOSTED_INSIGHTS_LIMITS.insights_hosted_answer_daily,
   );
+}
+
+/**
+ * Per-IP rate limit for the public BurnBench assistant callable
+ * (`benchAssistant`). Enforces both a short burst window and a daily ceiling
+ * in a single transaction so a single source cannot loop calls to drain the
+ * owner's OpenRouter budget. Falls back to a constant "unknown-ip" bucket
+ * when the platform supplies no client IP. Throws `resource-exhausted` when
+ * either bound is hit.
+ */
+export async function checkBenchAssistantRateLimit(req: {
+  headers?: Record<string, unknown>;
+  ip?: string;
+  socket?: { remoteAddress?: string };
+}): Promise<void> {
+  const ip = clientIpFromHttpRequest(req);
+  const keyMaterial = ip === "unknown" ? "unknown-ip" : ip;
+  await incrementRateLimitsAtomically([
+    {
+      docId: rateLimitDocId(keyMaterial, "bench_assistant_burst"),
+      action: "bench_assistant_burst",
+      limit: BENCH_ASSISTANT_LIMITS.bench_assistant_burst,
+    },
+    {
+      docId: rateLimitDocId(keyMaterial, "bench_assistant_daily"),
+      action: "bench_assistant_daily",
+      limit: BENCH_ASSISTANT_LIMITS.bench_assistant_daily,
+    },
+  ]);
+}
+
+/**
+ * Per-uid rate limit for the Arena vote callable (`arenaVote`).
+ *
+ * The uid key is the whole point. Arena votes produce published model ratings,
+ * so the bound that matters is "how much can ONE identity move the numbers" —
+ * and only Firebase Auth gives us an identity that a caller cannot mint for
+ * free with a header. `arenaVote` requires auth, so the uid is always present;
+ * passing it is not optional and there is no IP-only fallback path.
+ *
+ * The optional `req` adds a SECONDARY per-IP bound, and only when
+ * `attributableClientIp` can actually attribute one (it will not, unless the
+ * deployment declares a trusted proxy chain). It is deliberately much looser
+ * than the per-uid bound so it can never be the ceiling a real voter hits, and
+ * it is not relied upon: if it is absent the per-uid bound still holds.
+ *
+ * Throws `resource-exhausted` when any bound is hit. Both uid bounds are
+ * incremented in one transaction so a rejection cannot half-advance a window.
+ */
+export async function checkArenaVoteRateLimit(uid: string, req?: RateLimitRequestLike): Promise<void> {
+  if (typeof uid !== "string" || uid.length === 0) {
+    // Fail closed. A missing uid here means a caller reached the limiter
+    // without authenticating, which the callable is supposed to make
+    // impossible; degrading to an unkeyed bucket would silently unbound votes.
+    throw new HttpsError("unauthenticated", "Request must be authenticated with Firebase Auth.");
+  }
+  await incrementRateLimitsAtomically([
+    {
+      docId: rateLimitDocId(uid, "arena_vote_burst"),
+      action: "arena_vote_burst",
+      limit: ARENA_VOTE_LIMITS.arena_vote_burst,
+    },
+    {
+      docId: rateLimitDocId(uid, "arena_vote_daily"),
+      action: "arena_vote_daily",
+      limit: ARENA_VOTE_LIMITS.arena_vote_daily,
+    },
+  ]);
+
+  const ip = attributableClientIp(req);
+  if (ip === undefined) return;
+  await incrementRateLimitsAtomically([
+    {
+      docId: rateLimitDocId(ip, "arena_vote_ip_burst"),
+      action: "arena_vote_ip_burst",
+      limit: ARENA_VOTE_LIMITS.arena_vote_ip_burst,
+    },
+    {
+      docId: rateLimitDocId(ip, "arena_vote_ip_daily"),
+      action: "arena_vote_ip_daily",
+      limit: ARENA_VOTE_LIMITS.arena_vote_ip_daily,
+    },
+  ]);
+}
+
+/**
+ * Rate limit for the Arena matchup-serving callable (`arenaMatchup`).
+ *
+ * Auth is optional here (the vote page lets anyone browse and only gates the
+ * vote itself), so the key degrades in order of how much it can actually
+ * attribute:
+ *   1. `uid` — a real identity, when the browser is signed in;
+ *   2. an attributable client IP — only when the deployment declares a trusted
+ *      proxy chain, and still only a coarse signal;
+ *   3. a global capacity guard — an explicitly shared bucket, sized against
+ *      total service cost. It is NOT a per-client limit and must never be
+ *      given per-client ceilings, because every anonymous visitor on earth
+ *      shares it.
+ * Throws `resource-exhausted` when a bound is hit.
+ */
+export async function checkArenaMatchupRateLimit(options: { uid?: string; req?: RateLimitRequestLike }): Promise<void> {
+  const keyMaterial =
+    typeof options.uid === "string" && options.uid.length > 0
+      ? `uid:${options.uid}`
+      : attributableClientIp(options.req);
+  if (keyMaterial !== undefined) {
+    await incrementRateLimitsAtomically([
+      {
+        docId: rateLimitDocId(keyMaterial, "arena_matchup_burst"),
+        action: "arena_matchup_burst",
+        limit: ARENA_MATCHUP_LIMITS.arena_matchup_burst,
+      },
+      {
+        docId: rateLimitDocId(keyMaterial, "arena_matchup_daily"),
+        action: "arena_matchup_daily",
+        limit: ARENA_MATCHUP_LIMITS.arena_matchup_daily,
+      },
+    ]);
+    return;
+  }
+  await incrementRateLimitsAtomically([
+    {
+      docId: rateLimitDocId("global", "arena_matchup_global_burst"),
+      action: "arena_matchup_global_burst",
+      limit: ARENA_MATCHUP_LIMITS.arena_matchup_global_burst,
+    },
+    {
+      docId: rateLimitDocId("global", "arena_matchup_global_daily"),
+      action: "arena_matchup_global_daily",
+      limit: ARENA_MATCHUP_LIMITS.arena_matchup_global_daily,
+    },
+  ]);
 }
 
 /**

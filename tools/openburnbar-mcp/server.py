@@ -3621,6 +3621,118 @@ def burnbar_inbox_plans_get(plan_id: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# BurnBench evidence tools
+# ---------------------------------------------------------------------------
+# Read-only readers over bench.json (recommendation-platform-contracts §3).
+# They mirror the ministry_* tool pattern but return the contract §4 envelope
+# {"ok", "data", "evidence", "error"}. Reading local benchmark evidence needs
+# no capability gate; nothing here writes, spawns, or decrypts.
+
+import bench as bench_core  # noqa: E402
+
+
+def _bench_envelope_error(exc: Exception) -> str:
+    return bench_core.json_dumps({"ok": False, "data": None, "evidence": {}, "error": str(exc)})
+
+
+@mcp.tool()
+def bench_status() -> str:
+    """Report bench.json freshness, stack/cell counts, and arena vote totals."""
+    try:
+        payload = bench_core.status()
+    except Exception as exc:
+        return _bench_envelope_error(exc)
+    return bench_core.json_dumps(payload)
+
+
+@mcp.tool()
+def bench_recommend_stack(intent_json: str | None = None, constraints_json: str | None = None) -> str:
+    """
+    Recommend harness+model stacks for an intent under optional constraints.
+
+    `intent_json` keys: family, language, framework, platform, tags, free_text.
+    `constraints_json` keys: max_cost_usd, max_wall_seconds, min_confidence.
+    Low-confidence stacks (n < 10) are disclosed and never ranked first.
+    """
+    intent = _json_arg(intent_json, {})
+    if not isinstance(intent, dict):
+        intent = {}
+    constraints = _json_arg(constraints_json, {})
+    if not isinstance(constraints, dict):
+        constraints = {}
+    try:
+        payload = bench_core.recommend(intent, constraints)
+    except Exception as exc:
+        return _bench_envelope_error(exc)
+    return bench_core.json_dumps(payload)
+
+
+@mcp.tool()
+def bench_compare_stacks(a_json: str, b_json: str) -> str:
+    """
+    Compare two stacks on solution_rate, cost, and wall time with CI overlap.
+
+    `a_json` / `b_json` are {"harness": ..., "model": ..., "scope": {...}?}.
+    """
+    a = _json_arg(a_json, {})
+    if not isinstance(a, dict):
+        a = {}
+    b = _json_arg(b_json, {})
+    if not isinstance(b, dict):
+        b = {}
+    try:
+        payload = bench_core.compare(a, b)
+    except Exception as exc:
+        return _bench_envelope_error(exc)
+    return bench_core.json_dumps(payload)
+
+
+@mcp.tool()
+def bench_model_profile(model: str) -> str:
+    """Aggregate every bench.json stack row for one model across harnesses."""
+    try:
+        payload = bench_core.model_profile(model)
+    except Exception as exc:
+        return _bench_envelope_error(exc)
+    return bench_core.json_dumps(payload)
+
+
+@mcp.tool()
+def bench_harness_profile(harness: str) -> str:
+    """Aggregate every bench.json stack row for one harness across models."""
+    try:
+        payload = bench_core.harness_profile(harness)
+    except Exception as exc:
+        return _bench_envelope_error(exc)
+    return bench_core.json_dumps(payload)
+
+
+@mcp.tool()
+def bench_frontier(scope_json: str | None = None) -> str:
+    """Return the cost/performance frontier, optionally narrowed by scope."""
+    scope = _json_arg(scope_json, {})
+    if not isinstance(scope, dict):
+        scope = {}
+    try:
+        payload = bench_core.frontier(scope)
+    except Exception as exc:
+        return _bench_envelope_error(exc)
+    return bench_core.json_dumps(payload)
+
+
+@mcp.tool()
+def bench_explain(stack_json: str) -> str:
+    """Explain one {"harness", "model", "scope"?} stack: rank, CI, disclosure, frontier."""
+    stack = _json_arg(stack_json, {})
+    if not isinstance(stack, dict):
+        stack = {}
+    try:
+        payload = bench_core.explain(stack)
+    except Exception as exc:
+        return _bench_envelope_error(exc)
+    return bench_core.json_dumps(payload)
+
+
 # Toolsets
 #
 # One process, two personas. The full registry costs ~11k tokens of standing

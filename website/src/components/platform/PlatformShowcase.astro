@@ -130,9 +130,7 @@ const defaultLede = `Your menu bar is one surface. Your Nest Hub on the kitchen 
   .platform__h {
     font-family: var(--font-display);
     font-size: clamp(2rem, 1.4rem + 2.6vw, 3.4rem);
-    font-variation-settings:
-      "opsz" 144,
-      "wght" 460;
+    font-weight: var(--wght-display);
     letter-spacing: -0.024em;
     margin-top: var(--s-3);
     color: var(--text-bright);
@@ -175,14 +173,13 @@ const defaultLede = `Your menu bar is one surface. Your Nest Hub on the kitchen 
     font-size: 0.68rem;
     letter-spacing: 0.14em;
     text-transform: uppercase;
-    font-variation-settings: "wght" 540;
+    font-weight: var(--wght-semibold);
   }
   .platform__cardh {
     font-family: var(--font-display);
     font-size: clamp(1.4rem, 1.1rem + 1vw, 1.85rem);
-    font-variation-settings:
-      "opsz" 80,
-      "wght" 520;
+    font-weight: var(--wght-semibold);
+    --opsz: var(--opsz-h3);
     color: var(--text-bright);
     letter-spacing: -0.018em;
     margin: 0;

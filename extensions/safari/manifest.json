@@ -1,0 +1,37 @@
+{
+  "manifest_version": 3,
+  "name": "OpenBurnBar",
+  "short_name": "OpenBurnBar",
+  "description": "Ask, act, and approve with OpenBurnBar in your real Safari session.",
+  "version": "1.0.40",
+  "browser_specific_settings": {
+    "safari": {
+      "strict_min_version": "15.4"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Open OpenBurnBar",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "128": "icons/app-icon-128.png"
+    }
+  },
+  "icons": {
+    "128": "icons/app-icon-128.png"
+  },
+  "permissions": ["activeTab", "alarms", "nativeMessaging", "scripting", "storage", "tabs"],
+  "host_permissions": ["http://127.0.0.1/*", "http://localhost/*", "http://[::1]/*"],
+  "optional_host_permissions": ["http://*/*", "https://*/*"],
+  "web_accessible_resources": [
+    {
+      "resources": ["page-world-runner.js"],
+      "matches": ["http://*/*", "https://*/*"]
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'none'; base-uri 'none'"
+  }
+}

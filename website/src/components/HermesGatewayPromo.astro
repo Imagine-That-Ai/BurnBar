@@ -325,8 +325,9 @@ const steps = [
     color: var(--text-bright);
     font-family: var(--font-display);
     font-size: 0.95rem;
-    font-weight: 600;
+    font-weight: var(--wght-bold);
     line-height: 1.1;
+    --opsz: var(--opsz-body);
   }
 
   .hgw__partysub {
@@ -447,7 +448,7 @@ const steps = [
     color: var(--text-mute);
     font-family: var(--font-mono);
     font-size: 0.72rem;
-    font-weight: 600;
+    font-weight: var(--wght-bold);
   }
 
   .hgw__rowname {
@@ -489,7 +490,7 @@ const steps = [
 
   .hgw__row--active .hgw__rowname {
     color: var(--text-bright);
-    font-weight: 600;
+    font-weight: var(--wght-bold);
   }
 
   .hgw__approved {
@@ -499,7 +500,7 @@ const steps = [
     flex-shrink: 0;
     color: var(--core-amber);
     font-size: 0.72rem;
-    font-weight: 600;
+    font-weight: var(--wght-bold);
     letter-spacing: 0.02em;
   }
 
@@ -549,7 +550,7 @@ const steps = [
     border: 1px solid color-mix(in oklab, var(--core-fire) 45%, var(--ink-line));
     color: var(--core-amber);
     font-size: 0.82rem;
-    font-weight: 700;
+    font-weight: var(--wght-black);
     background: var(--ember-wash);
   }
 
@@ -557,9 +558,10 @@ const steps = [
     margin: 0 0 0.35rem;
     color: var(--text-bright);
     font-size: 1.02rem;
-    font-weight: 600;
+    font-weight: var(--wght-semibold);
     line-height: 1.2;
     letter-spacing: -0.01em;
+    --opsz: var(--opsz-body);
   }
 
   .hgw__stepbody {

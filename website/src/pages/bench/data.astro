@@ -1,0 +1,296 @@
+---
+/**
+ * /bench/data — the raw cells.
+ *
+ * The cell explorer and the full per-stack tables. This was 27,850px of
+ * appendix inlined into the dashboard; on its own page it can be as long as
+ * it needs to be without burying the answer.
+ */
+import BaseLayout from "@layouts/BaseLayout.astro";
+import "@styles/bench.css";
+import "@styles/bench-instrument.css";
+import BenchNav from "@components/bench/BenchNav.astro";
+import {
+  BENCH,
+  TRIALS_MEASURED,
+  TASK_CELLS,
+  EXCLUDED_MEASURED,
+  ALL_STACKS,
+  MODEL_CLASS,
+  HARNESS_CLASS,
+  classFor,
+  modelDisplay,
+  harnessDisplay,
+  scopeLabel,
+  fmtPct,
+  fmtCost,
+  fmtInt,
+  fmtWall,
+  fmtTokens,
+  fmtGeneratedAt,
+  reportStats
+} from "@data/bench";
+
+const mcls = (id: string): string => classFor(MODEL_CLASS, id);
+const hcls = (id: string): string => classFor(HARNESS_CLASS, id);
+
+const generatedAt = fmtGeneratedAt(BENCH.generated_at_utc);
+const shaShort = BENCH.source.runs_sha256.slice(0, 12);
+
+const stats = reportStats();
+---
+
+<BaseLayout
+  title="BurnBench full data — every measured cell"
+  description="The cell explorer, per-stack tables, coverage, excluded tasks, and the JSON projections behind the BurnBench pages."
+>
+  <div class="ins">
+    <section class="ins-section ins-hero" aria-labelledby="data-hero-h">
+      <div class="ins-wrap ins-hero__inner">
+        <p class="ins-eyebrow ins-rise ins-rise-1">Raw</p>
+        <h1 id="data-hero-h" class="ins-hero__h ins-rise ins-rise-2">
+          Every cell,
+          <em>nothing rounded away.</em>
+        </h1>
+        <p class="ins-lede ins-hero__lede ins-rise ins-rise-3">
+          {fmtInt(ALL_STACKS.length)} published stack slices and {fmtInt(TRIALS_MEASURED)} measured trials
+          across {fmtInt(TASK_CELLS)} task cells, with the exports behind every page.
+        </p>
+        <div class="ins-prov ins-rise ins-rise-4">
+          <span class="ins-prov__item"
+            ><span class="ins-prov__dot" aria-hidden="true"></span>generated {generatedAt}</span
+          >
+          <span class="ins-prov__item"
+            ><span class="ins-prov__dot" aria-hidden="true"></span>runs sha {shaShort}…</span
+          >
+          <span class="ins-prov__item"
+            ><span class="ins-prov__dot" aria-hidden="true"></span>{fmtInt(EXCLUDED_MEASURED)} excluded
+            by policy</span
+          >
+        </div>
+        <div class="ins-hero__nav ins-rise ins-rise-5">
+          <a class="ins-cta" href="/data/bench.json">bench.json</a>
+          <a class="ins-cta" href="/data/evidence.json">evidence.json</a>
+        </div>
+      </div>
+    </section>
+    <BenchNav current="data" />
+  </div>
+  <section class="bb-section" id="explorer" aria-labelledby="explorer-h">
+    <div class="container container--wide">
+      <header class="bb-sec-head">
+        <span class="eyebrow eyebrow--ember">Raw data</span>
+        <h2 id="explorer-h" class="bb-sec-h">Cell explorer.</h2>
+        <p class="bb-sec-lead">
+          All {fmtInt(stats.cells)} measured task cells, client-side. Search by name, filter by harness,
+          model, family, or verdict — including the {stats.flipTrials}
+          timeout-while-passing flips. The dataset loads only when you reach this section.
+        </p>
+      </header>
+
+      <div class="bb-explorer" data-br-explorer>
+        <div class="bb-explorer__controls">
+          <input
+            type="search"
+            data-br-q
+            placeholder="Search task, harness, or model…"
+            autocomplete="off"
+            aria-label="Search cells"
+          />
+          <select data-br-h aria-label="Filter by harness">
+            <option value="">All harnesses</option>
+          </select>
+          <select data-br-m aria-label="Filter by model">
+            <option value="">All models</option>
+          </select>
+          <select data-br-f aria-label="Filter by family">
+            <option value="">All families</option>
+          </select>
+          <select data-br-v aria-label="Filter by verdict">
+            <option value="">All verdicts</option>
+            <option value="pass">Fully passing</option>
+            <option value="partial">Partial</option>
+            <option value="fail">Fully failing</option>
+            <option value="flip">Timeout while passing</option>
+          </select>
+          <button class="bb-explorer__reset" data-br-reset type="button">Reset</button>
+        </div>
+        <p class="bb-explorer__count mono" data-br-count aria-live="polite"></p>
+        <div class="bb-explorer__wrap">
+          <table class="bb-data bb-explorer__table">
+            <thead>
+              <tr>
+                <th scope="col">#</th>
+                <th scope="col" data-sort="h" tabindex="0" aria-sort="none" title="Sort by harness"
+                  >harness</th
+                >
+                <th scope="col" data-sort="m" tabindex="0" aria-sort="none" title="Sort by model"
+                  >model</th
+                >
+                <th scope="col" data-sort="t" tabindex="0" aria-sort="none" title="Sort by task"
+                  >task</th
+                >
+                <th
+                  scope="col"
+                  data-sort="n"
+                  tabindex="0"
+                  aria-sort="none"
+                  title="Sort by trial count">trials</th
+                >
+                <th
+                  scope="col"
+                  data-sort="sol"
+                  tabindex="0"
+                  aria-sort="none"
+                  title="Sort by solution rate">solution</th
+                >
+                <th
+                  scope="col"
+                  data-sort="str"
+                  tabindex="0"
+                  aria-sort="none"
+                  title="Sort by strict rate">strict</th
+                >
+                <th
+                  scope="col"
+                  data-sort="cost"
+                  tabindex="0"
+                  aria-sort="none"
+                  title="Sort by cost per task">cost/task</th
+                >
+                <th
+                  scope="col"
+                  data-sort="wall"
+                  tabindex="0"
+                  aria-sort="none"
+                  title="Sort by wall time">wall</th
+                >
+                <th scope="col" data-sort="tok" tabindex="0" aria-sort="none" title="Sort by tokens"
+                  >tokens</th
+                >
+                <th scope="col">flags</th>
+              </tr>
+            </thead>
+            <tbody data-br-body></tbody>
+          </table>
+          <p class="bb-explorer__idle" data-br-idle>
+            The explorer fetches {fmtInt(stats.cells)} cells from
+            <a href="/data/bench-cells.json"><code>/data/bench-cells.json</code></a> the moment you scroll
+            here or touch a control — the page you already downloaded stays lean. Without JavaScript,
+            the same projection is readable at that link, and the full stack table is below.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  {/* ──────────────── 10 · FULL DATA TABLE ──────────────── */}
+  <section class="bb-section" id="data" aria-labelledby="data-h">
+    <div class="container container--wide">
+      <header class="bb-sec-head">
+        <span class="eyebrow eyebrow--ember">Full data</span>
+        <h2 id="data-h" class="bb-sec-h">Every published cell, as exported.</h2>
+        <p class="bb-sec-lead">
+          The complete table from <code>bench.json</code> — {BENCH.stacks.length} stack-scope rows (overall,
+          per-family, per-language, per-platform), grouped by scope and sorted by solution rate within
+          each scope.
+        </p>
+      </header>
+
+      <div class="bb-data-wrap">
+        <table class="bb-data">
+          <thead>
+            <tr>
+              <th scope="col">harness</th>
+              <th scope="col">model</th>
+              <th scope="col">scope</th>
+              <th scope="col">solution</th>
+              <th scope="col">strict</th>
+              <th scope="col">CI 95%</th>
+              <th scope="col">n</th>
+              <th scope="col">cost/task</th>
+              <th scope="col">wall</th>
+              <th scope="col">tokens</th>
+              <th scope="col">quality</th>
+              <th scope="col">confidence</th>
+              <th scope="col">evidence</th>
+            </tr>
+          </thead>
+          <tbody>
+            {
+              ALL_STACKS.map((s) => (
+                <tr class={s.evidence === "inferred" ? "d-row--inferred" : undefined}>
+                  <td class={`d-name h--${hcls(s.harness)}`}>{harnessDisplay(s.harness)}</td>
+                  <td class={`d-model m--${mcls(s.model)}`}>{modelDisplay(s.model)}</td>
+                  <td class="d-sub">{scopeLabel(s)}</td>
+                  <td class="d-sol">{fmtPct(s.solution_rate)}</td>
+                  <td>{fmtPct(s.strict_rate)}</td>
+                  <td class="d-sub">
+                    {fmtPct(s.ci95[0])}–{fmtPct(s.ci95[1])}
+                  </td>
+                  <td>{s.n}</td>
+                  <td>
+                    {fmtCost(s.cost_usd_median)}
+                    {s.cost_source === "derived" && (
+                      <span class="d-sub" title="token-derived list-price estimate">
+                        *
+                      </span>
+                    )}
+                    {s.cost_standard_usd_median != null && (
+                      <span
+                        class="d-sub"
+                        title={`standard non-contributor tier: ${fmtCost(s.cost_standard_usd_median)}/task`}
+                      >
+                        {" "}
+                        (std {fmtCost(s.cost_standard_usd_median)})
+                      </span>
+                    )}
+                  </td>
+                  <td>{fmtWall(s.wall_seconds_median)}</td>
+                  <td>{fmtTokens(s.tokens_median)}</td>
+                  <td class="d-sub">
+                    {s.quality_mean != null ? (
+                      <a
+                        class="d-qlink"
+                        href={`#qlq-${s.harness}-${s.model}`}
+                        title={`Kimi quality ${s.quality_mean.toFixed(2)}/5 over ${s.quality_n} judged trials — tap for the component scores`}
+                      >
+                        {`${s.quality_mean.toFixed(2)}${s.quality_n > 0 ? ` (${s.quality_n})` : ""}`}
+                      </a>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
+                  <td class="d-sub">{s.confidence}</td>
+                  <td class="d-sub">{s.evidence}</td>
+                </tr>
+              ))
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <div class="ins">
+    <section class="ins-section">
+      <div class="ins-wrap">
+        <p class="ins-key">
+          Questions, concerns, or corrections about the benchmark?
+          <a href="mailto:bench@burnbar.ai">bench@burnbar.ai</a>
+        </p>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    import "../../scripts/bench-report";
+  </script>
+  {
+    /* Drives the scroll-linked atmosphere fade; every other initialiser
+      no-ops when its hooks are absent from the page. */
+  }
+  <script>
+    import "../../scripts/bench-instrument.ts";
+  </script>
+</BaseLayout>

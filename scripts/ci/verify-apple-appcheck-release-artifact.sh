@@ -94,6 +94,15 @@ def inspect_release_feeds(value: Any, path: Path) -> None:
     global failed
     if not isinstance(value, dict) or value.get("CFBundleIdentifier") != "com.openburnbar.app":
         return
+    # The iOS app shares this bundle identifier but has no Sparkle feed keys.
+    # Built plists carry platform markers: skip anything that is provably not
+    # a macOS product (DTPlatformName iphoneos/..., or the iOS-only
+    # MinimumOSVersion key). Source plists carry neither and stay enforced.
+    platform_name = value.get("DTPlatformName")
+    if isinstance(platform_name, str) and platform_name != "macosx":
+        return
+    if "MinimumOSVersion" in value:
+        return
     expected = {
         direct_feed_key: expected_direct_feed,
         sparkle_feed_key: expected_sparkle_feed,

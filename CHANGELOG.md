@@ -7,9 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Local D box (Developer ID, default off)** — Settings → Agents lists live Grok Bot D box agents by UUID and can send one a prompt over `127.0.0.1`. Send is refused unless shim `:1337`, host `:1338`, and inference `:8787` are up. Turn follow uses `listAgents` plus a read-only `store.db` window when the roster includes `path`. See [`docs/GROK_D_LOCAL_BOX.md`](docs/GROK_D_LOCAL_BOX.md).
+- **The Safari web extension is buildable again** (`docs/SAFARI_EXTENSION.md`) — the
+  committed `extensions/safari/dist/` bundle had no source in the repo, so it could only
+  be replaced by hand. Its TypeScript project is restored: `npm run build` reproduces the
+  bundle byte for byte, and CI fails a source change that lands without its rebuilt
+  output. The restored build also supersedes a stale snapshot that predated twelve fixes
+  and shipped without its provider assets.
+- The MV3 background is typechecked with no DOM lib (`tsconfig.background.json`), so a
+  `window.*` call in the service worker fails at compile time instead of silently
+  truncating every streamed Ask answer, and CI asserts the built bundle stays free of
+  `window.` references.
+
 ### Changed
 - Bump the separately versioned `openburnbar` npm CLI to 0.1.3. The CLI's
   macOS installer continues to resolve the signed app from the live feed.
+
+### Fixed
+- The cloud screenshot disclosure is honored as a **session** acknowledgement again. It
+  had begun persisting to `storage.local`, so acknowledging once let screenshots reach a
+  cloud model from every later Safari session, contradicting the disclosure's own "for
+  this session" wording. Acknowledgements now clear with the native session, and one
+  stored by an earlier build is ignored.
+- Safari content scripts validate only the API surface Safari actually gives them.
+  Requiring the privileged `tabs`, `scripting`, and `permissions` namespaces threw before
+  the content listener registered, disabling page extraction, screenshots, and every page
+  action.
+- A failed native attach no longer latches the extension offline until Safari restarts —
+  the next popup open retries `bridge.hello`.
+- Answering Safari's permission sheet slowly no longer fails the request. A scheduled
+  refresh could advance the controller state version while the modal sheet was open, so
+  access was rejected as a page change after Safari had already granted it.
+- The Safari extension version tracks `MARKETING_VERSION`; it had drifted to 1.0.34 while
+  the app shipped 1.0.40, and all three version surfaces are now gated.
 
 ## [1.0.40] - 2026-08-18
 

@@ -230,7 +230,3 @@ struct HermesGatewayAttachmentManifest: Hashable, Sendable {
         self.destinationId = destinationId
     }
 }
-
-private extension String {
-    var nilIfEmpty: String? { isEmpty ? nil : self }
-}

@@ -141,9 +141,8 @@ const { class: className = "" } = Astro.props;
   .licard__title {
     margin: 0;
     font-family: var(--font-display);
-    font-variation-settings:
-      "opsz" 80,
-      "wght" 480;
+    font-weight: var(--wght-semibold);
+    --opsz: var(--opsz-h3);
     font-size: var(--t-h3);
     letter-spacing: -0.022em;
     line-height: var(--leading-tight);

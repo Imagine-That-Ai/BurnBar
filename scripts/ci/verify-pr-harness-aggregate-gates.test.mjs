@@ -569,6 +569,7 @@ check("Rust path detector is mandatory and only a proven unchanged path may skip
     RUST_CHANGED:
       "${{ needs.fast-feedback-path-filter.outputs.rust_changed }}",
     FUNCTIONS_REQUIRED: "${{ needs.classify.outputs.functions }}",
+    MACOS_REQUIRED: "${{ needs.classify.outputs.macos }}",
     WEB_REQUIRED: "${{ needs.classify.outputs.web }}",
     CONSOLE_REQUIRED: "${{ needs.classify.outputs.console }}",
   });

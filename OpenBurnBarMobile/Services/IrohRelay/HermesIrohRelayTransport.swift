@@ -822,7 +822,15 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
              .remoteUnlockInput,
              .remoteUnlockCredential,
              .remoteUnlockResult,
-             .remoteUnlockDenied:
+             .remoteUnlockDenied,
+             .warHello,
+             .warHelloAck,
+             .warFleetSnapshot,
+             .warDispatch,
+             .warDispatchAck,
+             .warStreamChunk,
+             .warStreamComplete,
+             .warDenied:
             return .ignore
         }
     }

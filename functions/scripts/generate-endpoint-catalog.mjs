@@ -965,6 +965,125 @@ for (const exportedName of SIGNAL_MIGRATION_TRIGGER_NAMES) {
   };
 }
 
+CATALOG_OVERRIDES.benchAssistant = {
+  trigger: "callable",
+  authMethod:
+    "none — public website callable bounded by product-layer IP rate limits (bench_assistant_burst + bench_assistant_daily) enforced before any OpenRouter call",
+  appCheck: "not-applicable",
+  tenantSource: "none — answers only from the caller-supplied public BurnBench digest; no tenant objects are read",
+  objectIdsFromClient: [],
+  ownershipCheck:
+    "handler reads no Firestore tenant data; it validates the payload, enforces the IP rate limits, and proxies the digest to OpenRouter",
+  handlerModule: "benchAssistant.ts",
+  bolaCoverage: [
+    {
+      file: "functions/src/__tests__/benchAssistant.test.ts",
+      test: "public benchmark assistant answers only from the supplied digest and exposes no tenant objects",
+      kind: "not-applicable-public",
+      covers: ["benchAssistant"],
+    },
+  ],
+  highRiskComputerUse: false,
+};
+
+CATALOG_OVERRIDES.arenaVote = {
+  trigger: "callable",
+  authMethod:
+    "Firebase Auth required; one vote per uid per matchup via create() on {uid}__{matchupId} doc id; PRIMARY rate limits are uid-keyed (arena_vote_burst + arena_vote_daily), with a deliberately looser IP-keyed pair (arena_vote_ip_burst + arena_vote_ip_daily) as a secondary that stays inert unless the deployment sets OPENBURNBAR_TRUST_X_FORWARDED_FOR=1",
+  appCheck: "not-applicable",
+  tenantSource:
+    "request.auth.uid — stored as voter_uid for one-vote-per-matchup dedup; no tenant objects are read",
+  objectIdsFromClient: [],
+  ownershipCheck:
+    "handler requires Firebase Auth, validates the payload (serveId is required; a client-sent servedSwap is parsed and discarded), enforces the uid-keyed rate limits before any write, redeems the single-use arena_serves/{serveId} ticket — rejecting a ticket that names a different matchupId, was issued to a different uid, was already consumed, or has expired — and takes the served left/right orientation from that server-written ticket rather than from the request, resolves the matchup registry entry, normalizes the choice and rubric verdicts into stored left_cell/right_cell orientation, writes the vote with a deterministic {uid}__{matchupId} doc id via create() (race-proof dedup), and only then reveals competitor identities, in the orientation the voter actually saw",
+  handlerModule: "arenaVote.ts",
+  bolaCoverage: [
+    {
+      file: "functions/src/__tests__/arenaVote.test.ts",
+      test: "writes the vote and reveals identities only after the write",
+      kind: "not-applicable-public",
+      covers: ["arenaVote"],
+    },
+    {
+      file: "functions/src/__tests__/arenaVote.test.ts",
+      test: "rejects a vote without Firebase Auth",
+      kind: "not-applicable-public",
+      covers: ["arenaVote"],
+    },
+    {
+      file: "functions/src/__tests__/arenaVote.test.ts",
+      test: "rejects a duplicate vote from the same uid on the same matchup",
+      kind: "not-applicable-public",
+      covers: ["arenaVote"],
+    },
+    {
+      file: "functions/src/__tests__/arenaVote.test.ts",
+      test: "ignores a client-supplied servedSwap that contradicts the served orientation",
+      kind: "not-applicable-public",
+      covers: ["arenaVote"],
+    },
+    {
+      file: "functions/src/__tests__/arenaVote.test.ts",
+      test: "cannot be used to look up a matchup the caller was never served",
+      kind: "not-applicable-public",
+      covers: ["arenaVote"],
+    },
+    {
+      file: "functions/src/__tests__/arenaVote.test.ts",
+      test: "rate-limits a burst per uid even when every request comes from a new IP",
+      kind: "not-applicable-public",
+      covers: ["arenaVote"],
+    },
+  ],
+  highRiskComputerUse: false,
+};
+
+CATALOG_OVERRIDES.arenaMatchup = {
+  trigger: "callable",
+  authMethod:
+    "optional Firebase Auth; signed-in voters get previously-judged matchups excluded from the pool; rate limits (arena_matchup_burst + arena_matchup_daily) enforced before any read, keyed on the uid when signed in, else on a client IP only when OPENBURNBAR_TRUST_X_FORWARDED_FOR=1 makes one attributable, else falling back to an explicitly shared global capacity guard (arena_matchup_global_burst + arena_matchup_global_daily)",
+  appCheck: "not-applicable",
+  tenantSource:
+    "optional request.auth.uid — used to key the rate limit, to exclude already-voted matchups via a point read on arena_votes/{uid}__{matchupId}, and to bind the issued serve ticket to that voter; no tenant objects are read",
+  objectIdsFromClient: [],
+  ownershipCheck:
+    "handler reads arena_matchups (a collection Firestore rules deny to all clients) with a BOUNDED read — a random cursor into the id-ordered registry, a select() projection that deliberately omits left_cell/right_cell so identities are never loaded on the serving path, limit 12, plus one wrap-around page — skips matchups the caller already judged, picks the left/right orientation with a CSPRNG, records that orientation in a single-use arena_serves/{serveId} ticket bound to the matchup and (when signed in) to the uid, and returns only content-hash bundle ids, sanitized entry paths, the matchupId, and the opaque serveId — never the competitor cell identities and never the orientation itself",
+  handlerModule: "arenaVote.ts",
+  bolaCoverage: [
+    {
+      file: "functions/src/__tests__/arenaVote.test.ts",
+      test: "returns anonymized bundles and no identities without auth",
+      kind: "not-applicable-public",
+      covers: ["arenaMatchup"],
+    },
+    {
+      file: "functions/src/__tests__/arenaVote.test.ts",
+      test: "excludes matchups the signed-in voter already judged",
+      kind: "not-applicable-public",
+      covers: ["arenaMatchup"],
+    },
+    {
+      file: "functions/src/__tests__/arenaVote.test.ts",
+      test: "never loads the competitor identity columns on the serving path",
+      kind: "not-applicable-public",
+      covers: ["arenaMatchup"],
+    },
+    {
+      file: "functions/src/__tests__/arenaVote.test.ts",
+      test: "persists the served orientation and never discloses it to the caller",
+      kind: "not-applicable-public",
+      covers: ["arenaMatchup"],
+    },
+    {
+      file: "functions/src/__tests__/arenaVote.test.ts",
+      test: "reads a bounded slice of the registry rather than the whole thing",
+      kind: "not-applicable-public",
+      covers: ["arenaMatchup"],
+    },
+  ],
+  highRiskComputerUse: false,
+};
+
 CATALOG_OVERRIDES.writeSignalAtRestDocument = {
   authMethod: "Firebase Auth with callable-level user-path and Signal-envelope validation",
   appCheck: "required",

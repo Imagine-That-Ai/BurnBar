@@ -1,0 +1,94 @@
+{
+  "//": [
+    "HAND-DEPLOY ONLY - arena artifacts Hosting site (burnbar-arena-artifacts).",
+    "",
+    "WHY THIS FILE EXISTS SEPARATELY FROM firebase.json",
+    "The credentialed CI hosting lane resolves every site it publishes through a",
+    "hosting TARGET ALIAS in .firebaserc, and scripts/ci/deploy-firebase-hosting-rest.mjs",
+    "asserts .firebaserc holds the exact reviewed two-target map (marketing plus",
+    "console, production plus staging) and nothing else. The arena site must never be",
+    "reachable from that lane, so it has no alias there at all. This config names the",
+    "site DIRECTLY via the site key instead of the target key, which makes it",
+    "hand-deployable with zero .firebaserc involvement - and leaves it undeployable by",
+    "CI, which only ever passes a generated firebase-hosting.ci.json.",
+    "",
+    "HAND-DEPLOY, run from the repository root",
+    "This config must sit beside firebase.json: firebase-tools resolves the public dir",
+    "relative to the config file directory, not the working directory.",
+    "  firebase deploy --only hosting:burnbar-arena-artifacts --config firebase.arena.json --project burnbar --non-interactive",
+    "",
+    "Do NOT run firebase target:apply hosting arena-artifacts ... to make this site",
+    "alias-addressable again. That rewrites .firebaserc and breaks the production",
+    "hosting deploy at the assertion described above.",
+    "",
+    "DRIFT",
+    "The hosting entry below is a VERBATIM copy of the reviewed arena-artifacts entry",
+    "in firebase.json with the target key swapped for the site key. firebase.json",
+    "stays the single reviewed definition: scripts/ci/write-firebase-hosting-ci-config.mjs",
+    "validates its public dir, pins its publish allowlist, then deliberately drops it",
+    "from every generated CI config. The copy is kept honest by",
+    "scripts/ci/deploy-firebase-hosting-rest.test.mjs, which fails on any drift.",
+    "",
+    "PUBLISH ALLOWLIST",
+    "The ignore list is an allowlist, not a denylist: it denies every top-level entry",
+    "and every subtree except index.html and bundles, then denies the three arena",
+    "de-anonymisation key files by literal name as defence in depth. It encodes a glob",
+    "gotcha - an ignore pattern of the form DIR-slash-star-star also drops DIR itself,",
+    "so BOTH admitted names must be repeated in the subtree pattern; a shortened",
+    "bang-paren-bundles subtree pattern would silently stop publishing index.html.",
+    "Measured with the pinned firebase-tools 15.23.0 listFiles matcher: 3876 files on",
+    "disk under arena-public, 3871 published, zero key files.",
+    "",
+    "EDITING THIS COMMENT",
+    "firebase-tools loads config through cjson, which strips comments before parsing.",
+    "Its stripper tracks strings by hand and treats any quote preceded by a backslash",
+    "as escaped. So keep this array free of backslashes, of double quotes, and of",
+    "slash-star sequences - any one of them desynchronises the stripper and the whole",
+    "file then fails to load with a confusing error pointing somewhere else entirely."
+  ],
+  "hosting": [
+    {
+      "site": "burnbar-arena-artifacts",
+      "public": "arena-public",
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**",
+        "!(index.html|bundles)",
+        "!(index.html|bundles)/**",
+        "arena_matchups.jsonl",
+        "seed_docs.json",
+        "publish_manifest.json"
+      ],
+      "cleanUrls": false,
+      "trailingSlash": false,
+      "headers": [
+        {
+          "source": "**",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public, max-age=31536000, immutable"
+            },
+            {
+              "key": "X-Content-Type-Options",
+              "value": "nosniff"
+            },
+            {
+              "key": "Cross-Origin-Resource-Policy",
+              "value": "cross-origin"
+            },
+            {
+              "key": "Content-Security-Policy",
+              "value": "default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'none'; frame-ancestors https://burnbar.ai https://www.burnbar.ai https://burnbar.web.app https://burnbar.firebaseapp.com http://127.0.0.1:5500 http://localhost:5500; base-uri 'none'; form-action 'none'"
+            },
+            {
+              "key": "Referrer-Policy",
+              "value": "no-referrer"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
