@@ -17,6 +17,13 @@
 
 import { BackdropEngine } from "../../packages/gl-engine/src/engine/BackdropEngine";
 import {
+  advanceCinematicPresent,
+  cinematicPresentFps,
+  frameDeltaMs,
+  shutterAlpha,
+  shouldAdvancePresent,
+} from "../../packages/gl-engine/src/engine/cinematicClock";
+import {
   KERNELS,
   isKernelId,
 } from "../../packages/gl-engine/src/engine/registry";
@@ -71,6 +78,21 @@ declare global {
     __setBackdropActive?: (active: boolean) => void;
     /** Set once the bridge above is callable; natives poll this before driving. */
     __backdropReady?: boolean;
+    /** Pure cinematic clock — the Node harness drives these shipped functions. */
+    __cinematicClock?: {
+      cinematicPresentFps: typeof cinematicPresentFps;
+      shouldAdvancePresent: typeof shouldAdvancePresent;
+      frameDeltaMs: typeof frameDeltaMs;
+      shutterAlpha: typeof shutterAlpha;
+      advanceCinematicPresent: typeof advanceCinematicPresent;
+    };
+    __getCinematicDebug?: () => {
+      lastDt: number;
+      lastAlpha: number;
+      presentCount: number;
+      skipCount: number;
+      maxFps: number;
+    };
   }
 }
 
@@ -142,6 +164,14 @@ function mount(): void {
   window.__setBackdropActive = (active: boolean): void => {
     engine.setHostVisible(active === true);
   };
+  window.__cinematicClock = {
+    cinematicPresentFps,
+    shouldAdvancePresent,
+    frameDeltaMs,
+    shutterAlpha,
+    advanceCinematicPresent,
+  };
+  window.__getCinematicDebug = () => engine.getCinematicDebug();
   window.__kernels = KERNELS.map((k): KernelBridgeMeta => ({
     id: k.id,
     label: k.label,
