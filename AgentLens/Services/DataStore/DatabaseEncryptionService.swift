@@ -1,6 +1,7 @@
 import CryptoKit
 import Foundation
 import GRDB
+import OpenBurnBarKernel
 import Security
 #if canImport(Darwin)
 import Darwin
@@ -54,6 +55,12 @@ enum DatabaseEncryptionError: Error, CustomStringConvertible, LocalizedError {
     /// Startup must preserve the file and must not generate a replacement key.
     case existingEncryptedDatabaseKeyMissing(path: String)
 
+    /// The Keychain item exists but this binary is not allowed to read it --
+    /// typically a legacy login-keychain ACL still bound to a previous code
+    /// signature. Critically distinct from "absent": minting a replacement key
+    /// here would orphan a database that is merely locked, not lost.
+    case keychainKeyUnreadable(status: OSStatus)
+
     /// The stored key did not unlock an existing encrypted database. This can
     /// mean the key belongs to another database or the file is damaged.
     case existingEncryptedDatabaseKeyRejected(path: String)
@@ -81,6 +88,11 @@ enum DatabaseEncryptionError: Error, CustomStringConvertible, LocalizedError {
                 + "The database was preserved and may require its original key or recovery from damage."
         case let .plaintextMigrationFailed(path, detail):
             return "Failed to migrate plaintext database at \(path) to SQLCipher: \(detail)"
+        case let .keychainKeyUnreadable(status):
+            return "The database encryption key exists in the Keychain but could not be read "
+                + "(OSStatus \(status)). The item's access control most likely still refers to a "
+                + "previous signature of this app. The database was preserved and no replacement "
+                + "key was created."
         }
     }
 
@@ -90,6 +102,8 @@ enum DatabaseEncryptionError: Error, CustomStringConvertible, LocalizedError {
             return "The encryption key for this database is missing. OpenBurnBar preserved the database."
         case .existingEncryptedDatabaseKeyRejected:
             return "The stored encryption key cannot open this database. OpenBurnBar preserved the database."
+        case .keychainKeyUnreadable:
+            return "macOS would not let OpenBurnBar read its own encryption key. Your data is safe and untouched."
         default:
             return description
         }
@@ -99,6 +113,10 @@ enum DatabaseEncryptionError: Error, CustomStringConvertible, LocalizedError {
         switch self {
         case .existingEncryptedDatabaseKeyMissing, .existingEncryptedDatabaseKeyRejected:
             return "Restore the original key from a recovery bundle, or archive and reset to rebuild local data."
+        case .keychainKeyUnreadable:
+            return "Quit OpenBurnBar and open it again. If this keeps happening, open Keychain Access, "
+                + "delete the \"com.openburnbar.database-encryption\" item's stale access control, "
+                + "or archive and reset to rebuild local data."
         default:
             return nil
         }
@@ -209,17 +227,41 @@ enum DatabaseEncryptionService {
     }
     private static let allowedKeyCharacters = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "+/=-"))
 
+
+    /// Every keychain call in this file goes through this seam, so suppressing
+    /// interaction here covers all of them at once.
+    ///
+    /// This read happens inside `OpenBurnBarApp.init` -- before any window exists --
+    /// because `DataStoreCoordinator` needs the SQLCipher key to open the database.
+    /// The item lives in the legacy login keychain, whose ACL is bound to this
+    /// binary's code signature, so any signature drift (a Sparkle update, a re-sign)
+    /// used to raise "OpenBurnBar wants to use your confidential information ...
+    /// enter the login keychain password" before the user had seen a single pixel of
+    /// the app. Failing closed is strictly better: the app can then explain itself
+    /// in its own words instead of macOS asking for a password on its behalf.
+    ///
+    /// Belt and braces, matching what the daemon has always done
+    /// (`BurnBarDaemonDatabaseCipher.resolveKey`): `kSecUseAuthenticationUIFail`
+    /// covers the modern path, `withKeychainUserInteractionDisabled` the legacy one.
     private static let keychainClient = DatabaseEncryptionKeychainClientBox(DatabaseEncryptionKeychainClient(
         copyMatching: { query in
+            var query = query
+            query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
             var result: AnyObject?
-            let status = SecItemCopyMatching(query as CFDictionary, &result)
+            let status = withKeychainUserInteractionDisabled {
+                SecItemCopyMatching(query as CFDictionary, &result)
+            }
             return (status, result)
         },
         add: { query in
-            SecItemAdd(query as CFDictionary, nil)
+            withKeychainUserInteractionDisabled {
+                SecItemAdd(query as CFDictionary, nil)
+            }
         },
         delete: { query in
-            SecItemDelete(query as CFDictionary)
+            withKeychainUserInteractionDisabled {
+                SecItemDelete(query as CFDictionary)
+            }
         }
     ))
 
@@ -282,11 +324,25 @@ enum DatabaseEncryptionService {
     }
     #endif
 
-    /// Returns the stored encryption key if one exists, nil otherwise.
-    static func getKey() -> String? {
+    /// Outcome of a key lookup, keeping "there is no key" apart from "there is a
+    /// key and macOS will not let us read it".
+    ///
+    /// Collapsing these two into `nil` is a data-loss bug waiting to happen:
+    /// `getOrCreatePersistedKey` reads absence as permission to mint a fresh key,
+    /// and a fresh key makes an existing encrypted database unopenable forever.
+    /// Since keychain UI is now suppressed on this path, a stale ACL surfaces as a
+    /// failure status rather than a password dialog, so the distinction is load-bearing.
+    enum KeyLookup {
+        case found(String)
+        case absent
+        case unreadable(OSStatus)
+    }
+
+    /// Reads the stored key, reporting *why* a read failed.
+    static func lookUpKey() -> KeyLookup {
         #if DEBUG
         if let testKey = uiTestDatabaseKey() {
-            return testKey
+            return .found(testKey)
         }
         #endif
         let query: [String: Any] = [
@@ -297,12 +353,34 @@ enum DatabaseEncryptionService {
             kSecMatchLimit as String: kSecMatchLimitOne
         ]
         let lookup = keychainClient.copyMatching(query)
-        let status = lookup.status
-        let result = lookup.result
-        guard status == errSecSuccess, let data = result as? Data else {
-            return nil
+        switch lookup.status {
+        case errSecSuccess:
+            guard let data = lookup.result as? Data,
+                  let key = String(data: data, encoding: .utf8) else {
+                // Present but not decodable as UTF-8: corrupt, not absent.
+                return .unreadable(errSecDecode)
+            }
+            return .found(key)
+        case errSecItemNotFound:
+            return .absent
+        default:
+            // errSecInteractionNotAllowed (-25308) and errSecAuthFailed (-25293) are
+            // the expected stale-ACL statuses now that we never show keychain UI.
+            AppLogger.dataStore.error(
+                "database_key_unreadable",
+                metadata: ["status": "\(lookup.status)"]
+            )
+            return .unreadable(lookup.status)
         }
-        return String(data: data, encoding: .utf8)
+    }
+
+    /// Returns the stored encryption key if one exists and is readable, nil otherwise.
+    ///
+    /// Prefer ``lookUpKey()`` anywhere the difference between "absent" and
+    /// "unreadable" changes what the caller should do.
+    static func getKey() -> String? {
+        if case let .found(key) = lookUpKey() { return key }
+        return nil
     }
 
     /// DEBUG-ONLY: writes the current SQLCipher key to an owner-only file so an
@@ -376,8 +454,16 @@ enum DatabaseEncryptionService {
     /// cannot be reopened on next launch, so callers must abort.
     /// Closes FINDING-008.
     static func getOrCreatePersistedKey() throws -> String {
-        if let existing = getKey() {
+        switch lookUpKey() {
+        case let .found(existing):
             return existing
+        case let .unreadable(status):
+            // Refuse to mint a replacement. The key is there; we just cannot read it
+            // right now. Generating one here would silently orphan the user's entire
+            // encrypted database to work around what is usually a stale ACL.
+            throw DatabaseEncryptionError.keychainKeyUnreadable(status: status)
+        case .absent:
+            break
         }
         // Generate a 256-bit random key encoded as base64.
         // Using 32 bytes = 256 bits of entropy.

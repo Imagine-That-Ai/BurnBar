@@ -264,13 +264,29 @@ struct MediaPermissionsView: View {
 
     // MARK: - Permission requests
 
+    // On direct-download builds these go through `FirstRunPermissionLadder`, so BurnBar
+    // explains the grant before macOS asks. `FirstRunPermissionLadder` depends on
+    // `SystemPermissionMonitor`, which is compiled out of Mac App Store builds along
+    // with the rest of the Computer Use surface -- and this file is NOT, so the MAS path
+    // keeps the direct request. That is acceptable here and only here: these requests
+    // already start from a capability card the user clicked, which says what the
+    // permission unlocks in plain language.
+
     private func openScreenRecordingSettings() {
-        // Asking for screen recording is a one-way trip to System Settings;
-        // macOS does not expose a programmatic prompt.
+        // macOS does not expose a real prompt for screen recording, so this is a trip
+        // to System Settings either way -- but only once the user has agreed to go.
+        #if !DISTRIBUTION_MAS
+        Task { @MainActor in
+            let didProceed = await FirstRunPermissionLadder.shared.request(.screenRecording)
+            guard didProceed else { return }
+            openSystemSettings(deepLink: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")
+        }
+        #else
         #if canImport(CoreGraphics)
         _ = CGRequestScreenCaptureAccess()
         #endif
         openSystemSettings(deepLink: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")
+        #endif
     }
 
     private func requestMicAccess() async {
@@ -278,14 +294,10 @@ struct MediaPermissionsView: View {
             openSystemSettings(deepLink: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")
             return
         }
-        #if canImport(AVFoundation)
         isRequestingMic = true
-        let granted = await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
-            AVCaptureDevice.requestAccess(for: .audio) { cont.resume(returning: $0) }
-        }
+        await requestAVAccess(for: .audio)
         isRequestingMic = false
-        mic = granted ? .allowed : .denied
-        #endif
+        mic = await currentAVPermissionStatus(for: .audio)
     }
 
     private func requestCameraAccess() async {
@@ -293,13 +305,21 @@ struct MediaPermissionsView: View {
             openSystemSettings(deepLink: "x-apple.systempreferences:com.apple.preference.security?Privacy_Camera")
             return
         }
-        #if canImport(AVFoundation)
         isRequestingCamera = true
-        let granted = await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
-            AVCaptureDevice.requestAccess(for: .video) { cont.resume(returning: $0) }
-        }
+        await requestAVAccess(for: .video)
         isRequestingCamera = false
-        camera = granted ? .allowed : .denied
+        camera = await currentAVPermissionStatus(for: .video)
+    }
+
+    private func requestAVAccess(for mediaType: AVMediaType) async {
+        #if !DISTRIBUTION_MAS
+        _ = await FirstRunPermissionLadder.shared.request(mediaType == .audio ? .microphone : .camera)
+        #else
+        #if canImport(AVFoundation)
+        _ = await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
+            AVCaptureDevice.requestAccess(for: mediaType) { cont.resume(returning: $0) }
+        }
+        #endif
         #endif
     }
 
