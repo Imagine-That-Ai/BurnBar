@@ -24,4 +24,19 @@ final class ContentBlake3KATTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: url) }
         XCTAssertEqual(try ContentBlake3.hashFile(at: url), ContentBlake3.hash(Data("abc".utf8)))
     }
+
+    func testParseBlake3PrefixAndMultiChunkInput() throws {
+        let digest = ContentBlake3.hash(Data("abc".utf8))
+        XCTAssertEqual(try ContentBlake3.parse("blake3:" + digest), digest)
+        XCTAssertEqual(try ContentBlake3.parse(digest.uppercased()), digest)
+        let missing = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        XCTAssertThrowsError(try ContentBlake3.hashFile(at: missing))
+        let chunked = Data(repeating: 0x61, count: 2500)
+        let fromMemory = ContentBlake3.hash(chunked)
+        XCTAssertEqual(fromMemory.count, 64)
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try chunked.write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        XCTAssertEqual(try ContentBlake3.hashFile(at: url), fromMemory)
+    }
 }

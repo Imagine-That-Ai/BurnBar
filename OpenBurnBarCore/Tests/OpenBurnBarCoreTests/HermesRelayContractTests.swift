@@ -344,6 +344,15 @@ final class HermesRelayContractTests: XCTestCase {
         XCTAssertEqual(known.kind, .approvalRequest)
         XCTAssertFalse(event.isTerminal)
         XCTAssertThrowsError(try JSONDecoder().decode(CLIAgentRelayChatEvent.self, from: Data("{".utf8)))
+        var consumed: [CLIAgentRelayChatEvent] = []
+        try CLIAgentRelayChatEvent.consumeStream(
+            rawEvents: [#"{"kind":"interrupted","text":"stop"}"#],
+            onEvent: { consumed.append($0) }
+        )
+        XCTAssertEqual(consumed.first?.kind, .interrupted)
+        XCTAssertEqual(consumed.first?.text, "stop")
+        let encoded = try JSONEncoder().encode(CLIAgentRelayChatEventKind.sessionStatus)
+        XCTAssertEqual(String(data: encoded, encoding: .utf8), "\"sessionStatus\"")
     }
 
     func testSessionActionKindIncludesInterruptDistinctFromPanic() {
