@@ -13,9 +13,12 @@ scheme="${OPENBURNBAR_SCHEME:-OpenBurnBar}"
 project="${OPENBURNBAR_PROJECT:-OpenBurnBar.xcodeproj}"
 destination="${OPENBURNBAR_DESTINATION:-platform=macOS,arch=arm64}"
 entitlements="AgentLens/Resources/OpenBurnBarRelease.entitlements"
-# Attenuated on purpose: sandbox + loopback client only, so the appex needs no
-# provisioning profile of its own. See the entitlements file for the full reasoning.
+# The appex claims App Groups and Keychain Sharing, both profile-restricted for
+# Developer ID, so it carries its own MAC_APP_DIRECT profile. See the
+# entitlements file for the full reasoning.
 safari_extension_entitlements="OpenBurnBarSafariExtension/Resources/OpenBurnBarSafariExtension.entitlements"
+safari_extension_profile="${OPENBURNBAR_SAFARI_EXTENSION_PROFILE:-build/safari-extension-profile/OpenBurnBarSafariExtension-MAC_APP_DIRECT.provisionprofile}"
+safari_extension_bundle_id="com.openburnbar.app.safari-extension"
 app_profile="${OPENBURNBAR_APP_PROFILE:-build/app-direct-profile/OpenBurnBar-MAC_APP_DIRECT.provisionprofile}"
 privileged_input_entitlements="OpenBurnBarDaemon/Resources/PrivilegedInputExecution/OpenBurnBarPrivilegedInputExecution.entitlements"
 privileged_input_profile="${OPENBURNBAR_PRIVILEGED_INPUT_PROFILE:-build/hid-managed-profile/OpenBurnBarPrivilegedInputExecution-MAC_APP_DIRECT.provisionprofile}"
@@ -71,6 +74,10 @@ source_archive_path="$release_dir/$source_archive_name"
 
 if [[ ! -f "$entitlements" ]]; then
   echo "ERROR: Missing release entitlements at $entitlements" >&2
+  exit 1
+fi
+if [[ ! -f "$safari_extension_profile" ]]; then
+  echo "ERROR: Missing Safari extension provisioning profile at $safari_extension_profile. Set OPENBURNBAR_SAFARI_EXTENSION_PROFILE to the MAC_APP_DIRECT profile for $safari_extension_bundle_id." >&2
   exit 1
 fi
 if [[ ! -f "$safari_extension_entitlements" ]]; then
@@ -248,6 +255,44 @@ if ! grep -q "${app_profile_team_id}\\.\\*\\|${expected_app_identifier}" <<<"$ap
   printf '%s\n' "$app_profile_keychain_groups" >&2
   exit 1
 fi
+# The appex profile must authorize exactly what its entitlements claim. Verifying
+# the claims against the profile here means a mismatch fails the release rather
+# than shipping a signature macOS refuses to launch.
+safari_extension_profile_plist="$release_dir/safari-extension-profile.plist"
+security cms -D -i "$safari_extension_profile" > "$safari_extension_profile_plist"
+if [[ "$(/usr/libexec/PlistBuddy -c "Print :ProvisionsAllDevices" "$safari_extension_profile_plist" 2>/dev/null || true)" != "true" ]]; then
+  echo "ERROR: Safari extension profile must be a Developer ID / MAC_APP_DIRECT all-devices profile." >&2
+  exit 1
+fi
+safari_extension_profile_team_id="$(/usr/libexec/PlistBuddy -c "Print :TeamIdentifier:0" "$safari_extension_profile_plist" 2>/dev/null || true)"
+safari_extension_profile_identifier="$(/usr/libexec/PlistBuddy -c "Print :Entitlements:com.apple.application-identifier" "$safari_extension_profile_plist" 2>/dev/null || true)"
+expected_safari_extension_identifier="${safari_extension_profile_team_id}.${safari_extension_bundle_id}"
+if [[ "$safari_extension_profile_team_id" != "$app_profile_team_id" ]]; then
+  echo "ERROR: Safari extension profile team '${safari_extension_profile_team_id:-<missing>}' does not match the app profile team '$app_profile_team_id'; the appex could not share the app's group or Keychain." >&2
+  exit 1
+fi
+if [[ "$safari_extension_profile_identifier" != "$expected_safari_extension_identifier" ]]; then
+  echo "ERROR: Safari extension profile must authorize $safari_extension_bundle_id; found application identifier '${safari_extension_profile_identifier:-missing}'." >&2
+  exit 1
+fi
+safari_extension_profile_groups="$(/usr/libexec/PlistBuddy -c "Print :Entitlements:com.apple.security.application-groups" "$safari_extension_profile_plist" 2>/dev/null || true)"
+# Exact match on purpose. A team-prefixed wildcard (${team}.*) is a DIFFERENT
+# application-group namespace and does not authorize the unprefixed group the
+# appex claims, so accepting it would sign an extension macOS rejects at
+# runtime — the failure this gate exists to prevent.
+if ! grep -qx "[[:space:]]*group\.com\.openburnbar\.app[[:space:]]*" <<<"$safari_extension_profile_groups"; then
+  echo "ERROR: Safari extension profile does not authorize the group.com.openburnbar.app App Group (a ${safari_extension_profile_team_id}.* wildcard does not count)." >&2
+  printf '%s\n' "$safari_extension_profile_groups" >&2
+  exit 1
+fi
+safari_extension_profile_keychain_groups="$(/usr/libexec/PlistBuddy -c "Print :Entitlements:keychain-access-groups" "$safari_extension_profile_plist" 2>/dev/null || true)"
+if ! grep -q "${safari_extension_profile_team_id}\.\*\|${expected_app_identifier}" <<<"$safari_extension_profile_keychain_groups"; then
+  echo "ERROR: Safari extension profile does not authorize the $expected_app_identifier Keychain access group the appex shares with the host app." >&2
+  printf '%s\n' "$safari_extension_profile_keychain_groups" >&2
+  exit 1
+fi
+safari_extension_signing_entitlements="$release_dir/safari-extension-entitlements.plist"
+
 python3 - "$entitlements" "$app_signing_entitlements" "$app_profile_team_id" "$bundle_id" <<'PY'
 import plistlib
 import sys
@@ -268,6 +313,35 @@ def expand(value):
     if isinstance(value, dict):
         return {key: expand(item) for key, item in value.items()}
     return value
+
+with Path(source).open("rb") as file:
+    entitlements = plistlib.load(file)
+with Path(destination).open("wb") as file:
+    plistlib.dump(expand(entitlements), file)
+PY
+
+python3 - "$safari_extension_entitlements" "$safari_extension_signing_entitlements" "$app_profile_team_id" "$safari_extension_bundle_id" <<'PY'
+import plistlib
+import sys
+from pathlib import Path
+
+source, destination, team_id, bundle_id = sys.argv[1:5]
+
+
+def expand(value):
+    if isinstance(value, str):
+        return (
+            value
+            .replace("$(AppIdentifierPrefix)", f"{team_id}.")
+            .replace("$(TeamIdentifierPrefix)", team_id)
+            .replace("$(PRODUCT_BUNDLE_IDENTIFIER)", bundle_id)
+        )
+    if isinstance(value, list):
+        return [expand(item) for item in value]
+    if isinstance(value, dict):
+        return {key: expand(item) for key, item in value.items()}
+    return value
+
 
 with Path(source).open("rb") as file:
     entitlements = plistlib.load(file)
@@ -417,11 +491,15 @@ if [[ ! -f "$safari_extension_appex/Contents/Resources/manifest.json" ]]; then
   echo "ERROR: Safari extension at $safari_extension_appex has no Contents/Resources/manifest.json; the extensions/safari/dist copy did not run." >&2
   exit 1
 fi
+# An appex claiming profile-restricted entitlements must carry the profile that
+# authorizes them, or macOS refuses to load the extension at runtime.
+cp "$safari_extension_profile" "$safari_extension_appex/Contents/embedded.provisionprofile"
 sign_one_with_entitlements \
   "$safari_extension_appex" \
-  "$safari_extension_entitlements" \
+  "$safari_extension_signing_entitlements" \
   "runtime,library" \
-  "com.openburnbar.app.safari-extension"
+  "$safari_extension_bundle_id"
+bash scripts/ci/verify-signing-profile-certificate.sh "$safari_extension_appex" "$safari_extension_profile"
 
 cp "$app_profile" "$app_path/Contents/embedded.provisionprofile"
 codesign --force --timestamp --options runtime,library \

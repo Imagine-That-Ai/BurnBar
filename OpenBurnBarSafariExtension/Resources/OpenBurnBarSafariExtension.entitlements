@@ -3,16 +3,23 @@
 <plist version="1.0">
 <dict>
 	<!--
-		Attenuated on purpose. A Safari Web Extension appex must be sandboxed, and
-		the loopback client grant is what the bridge will need to reach
-		OpenBurnBarDaemon on 127.0.0.1.
+		A Safari Web Extension appex must be sandboxed. The loopback client grant
+		is how the bridge reaches OpenBurnBarDaemon on 127.0.0.1.
 
-		App Groups and Keychain Sharing are deliberately NOT here. Both are
-		profile-restricted for Developer ID distribution, so claiming them would
-		require a dedicated MAC_APP_DIRECT provisioning profile for
-		com.openburnbar.app.safari-extension that does not exist yet — and the
-		website release lane would fail closed the moment it could not find one.
-		They land together with the native bridge and its profile, not before.
+		App Groups and Keychain Sharing were held back because both are
+		profile-restricted for Developer ID distribution and no MAC_APP_DIRECT
+		profile existed for com.openburnbar.app.safari-extension — claiming them
+		would have made the website release lane fail closed. That profile now
+		exists and the release lane validates it, so they land here.
+
+		Both are authorized by the profile:
+		  application-groups   group.com.openburnbar.app, <team>.*
+		  keychain-access-groups <team>.*
+
+		The keychain group deliberately matches the host app's
+		($(AppIdentifierPrefix)com.openburnbar.app in
+		AgentLens/Resources/OpenBurnBarRelease.entitlements) — a group only
+		shares if both sides name the same one.
 
 		No network.server: the appex is a loopback client and must never listen
 		for inbound traffic.
@@ -21,5 +28,13 @@
 	<true/>
 	<key>com.apple.security.network.client</key>
 	<true/>
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.com.openburnbar.app</string>
+	</array>
+	<key>keychain-access-groups</key>
+	<array>
+		<string>$(AppIdentifierPrefix)com.openburnbar.app</string>
+	</array>
 </dict>
 </plist>
