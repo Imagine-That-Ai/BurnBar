@@ -16,7 +16,7 @@ import {
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { doc, setDoc, updateDoc, writeBatch, Timestamp } from "firebase/firestore";
+import { doc, setDoc, updateDoc, Timestamp } from "firebase/firestore";
 
 const PROJECT_ID = process.env.FIRESTORE_TEST_PROJECT_ID || "burnbar-test";
 const RULES_PATH = resolve(dirname(fileURLToPath(import.meta.url)), "..", "firestore.rules");
@@ -182,15 +182,7 @@ function childIDsFor(groupID, count) {
 async function commitFanOut(db, uid, groupID, count, options = {}) {
   const childIDs = options.childIDs ?? childIDsFor(groupID, count);
   const parentChildIDs = options.parentChildIDs ?? childIDs;
-  const batch = writeBatch(db);
-  batch.set(doc(db, `users/${uid}/mission_groups/${groupID}`), missionGroup(groupID, parentChildIDs));
-  childIDs.forEach((childID, index) => {
-    batch.set(
-      doc(db, `users/${uid}/cli_agent_mission_requests/${childID}`),
-      childMission(uid, groupID, childID, index, childIDs.length, options.childExtra?.(childID, index) ?? {})
-    );
-  });
-  await batch.commit();
+  await setDoc(doc(db, `users/${uid}/mission_groups/${groupID}`), missionGroup(groupID, parentChildIDs));
 }
 
 let testEnv;
@@ -241,10 +233,10 @@ async function main() {
     );
   });
 
-  await step("mission request allows bounded mobile metadata variants", async () => {
+  await step("mission request client create is denied", async () => {
     await seed(testEnv, aliceUid, "free");
     const requestID = "bounded-metadata";
-    await assertSucceeds(
+    await assertFails(
       setDoc(
         doc(aliceDB, `users/${aliceUid}/cli_agent_mission_requests/${requestID}`),
         singleMission(aliceUid, requestID, {
@@ -383,11 +375,11 @@ async function main() {
     await assertSucceeds(commitFanOut(aliceDB, aliceUid, "ultra-allow-16", 16));
   });
 
-  await step("Mac Wand dispatcher can seed the first queued event", async () => {
+  await step("Mac Wand dispatcher cannot client-write mission documents", async () => {
     await seed(testEnv, aliceUid, "free");
     const requestID = "mac-wand-seed";
     const requestPath = `users/${aliceUid}/cli_agent_mission_requests/${requestID}`;
-    await assertSucceeds(
+    await assertFails(
       setDoc(
         doc(aliceDB, requestPath),
         singleMission(aliceUid, requestID, {
@@ -397,19 +389,10 @@ async function main() {
         })
       )
     );
-    await assertSucceeds(
+    await assertFails(
       setDoc(
         doc(aliceDB, `${requestPath}/events/000001`),
         missionEvent(aliceUid, requestID, "000001", {
-          source: "mac",
-          sourceSurface: "mac-wand",
-        })
-      )
-    );
-    await assertFails(
-      setDoc(
-        doc(aliceDB, `${requestPath}/events/000002`),
-        missionEvent(aliceUid, requestID, "000002", {
           source: "mac",
           sourceSurface: "mac-wand",
         })
@@ -423,8 +406,11 @@ async function main() {
     const eventID = "000001";
     const requestPath = `users/${aliceUid}/cli_agent_mission_requests/${requestID}`;
     const eventRef = doc(aliceDB, `${requestPath}/events/${eventID}`);
-    await assertSucceeds(setDoc(doc(aliceDB, requestPath), singleMission(aliceUid, requestID)));
-    await assertSucceeds(setDoc(eventRef, missionEvent(aliceUid, requestID, eventID)));
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore();
+      await setDoc(doc(db, requestPath), singleMission(aliceUid, requestID));
+      await setDoc(doc(db, `${requestPath}/events/${eventID}`), missionEvent(aliceUid, requestID, eventID));
+    });
     await assertSucceeds(
       updateDoc(eventRef, {
         sealedPayload: sealedPayload(missionEventAad(aliceUid, requestID, eventID)),
@@ -442,8 +428,11 @@ async function main() {
     const eventID = "000001";
     const requestPath = `users/${aliceUid}/cli_agent_mission_requests/${requestID}`;
     const eventRef = doc(aliceDB, `${requestPath}/events/${eventID}`);
-    await assertSucceeds(setDoc(doc(aliceDB, requestPath), singleMission(aliceUid, requestID)));
-    await assertSucceeds(setDoc(eventRef, missionEvent(aliceUid, requestID, eventID)));
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore();
+      await setDoc(doc(db, requestPath), singleMission(aliceUid, requestID));
+      await setDoc(doc(db, `${requestPath}/events/${eventID}`), missionEvent(aliceUid, requestID, eventID));
+    });
     await assertFails(
       updateDoc(eventRef, {
         sealedPayload: sealedPayload(missionEventAad(aliceUid, requestID, eventID)),

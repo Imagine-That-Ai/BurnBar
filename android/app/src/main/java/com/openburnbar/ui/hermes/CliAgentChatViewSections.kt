@@ -648,6 +648,8 @@ internal fun toolbarGradientColors(runtime: AssistantRuntimeID): List<Color> = w
     AssistantRuntimeID.CODEX -> listOf(Color(0xFF1ABC9C), Color(0xFF2ECC71), Color(0xFF7EE8C4))
     AssistantRuntimeID.CLAUDE -> listOf(Color(0xFFD58A4F), Color(0xFFC76A2C), Color(0xFFF5B971))
     AssistantRuntimeID.OPEN_CLAW -> listOf(Color(0xFF6E56CF), Color(0xFF4F44C6), Color(0xFF9B8CFF))
+    AssistantRuntimeID.OPEN_CLAUDE -> listOf(Color(0xFFD58A4F), Color(0xFFC76A2C), Color(0xFFF5B971))
+    AssistantRuntimeID.OMP -> listOf(Color(0xFF7C3AED), Color(0xFFA78BFA), Color(0xFFC4B5FD))
     AssistantRuntimeID.DROID -> listOf(Color(0xFF8B5CF6), Color(0xFF6D5DF6), Color(0xFFC084FC))
     AssistantRuntimeID.FORGE -> listOf(Color(0xFFF97316), Color(0xFFEA580C), Color(0xFFFDBA74))
     AssistantRuntimeID.ANTIGRAVITY -> listOf(Color(0xFF6C63FF), Color(0xFF8F8AFF), Color(0xFFC4B5FD))

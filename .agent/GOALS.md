@@ -26,6 +26,7 @@ This file is the project-level index of active and completed agent goals. It rec
 | `product-truth-activation-2026-08-16` | active | none | `.agent/runs/product-truth-activation-2026-08-16/` | 2026-08-17T01:36:55Z |
 | `burnbar-glass-system-2026-08-19` | active | none | `.agent/runs/burnbar-glass-system-2026-08-19/` | 2026-08-20T04:09:47Z |
 | `first-launch-permission-trust-2026-08-20` | active | none | `.agent/runs/first-launch-permission-trust-2026-08-20/` | 2026-08-20T05:29:18Z |
+| `merge-all-open-prs-20260820` | active | none | `.agent/runs/merge-all-open-prs-20260820/` | 2026-08-20T12:31:22Z |
 
 ## first-launch-permission-trust-2026-08-20 — in progress
 Remove every uninvited macOS dialog from first launch and make BurnBar explain agent

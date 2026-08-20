@@ -333,4 +333,31 @@ final class HermesRelayContractTests: XCTestCase {
         )
         XCTAssertEqual(mismatched.resumeLookupID, "archive:codex:sess-2")
     }
+
+    func testRelayEventUnknownKindDoesNotThrow() throws {
+        let data = Data(#"{"kind":"notAKind","text":"ok"}"#.utf8)
+        let event = try JSONDecoder().decode(CLIAgentRelayChatEvent.self, from: data)
+        XCTAssertEqual(event.kind, .unknown)
+        let known = try JSONDecoder().decode(
+            CLIAgentRelayChatEvent.self,
+            from: Data(#"{"kind":"approvalRequest"}"#.utf8)
+        )
+        XCTAssertEqual(known.kind, .approvalRequest)
+        XCTAssertFalse(event.isTerminal)
+        XCTAssertThrowsError(try JSONDecoder().decode(CLIAgentRelayChatEvent.self, from: Data("{".utf8)))
+        var consumed: [CLIAgentRelayChatEvent] = []
+        try CLIAgentRelayChatEvent.consumeStream(
+            rawEvents: [#"{"kind":"interrupted","text":"stop"}"#],
+            onEvent: { consumed.append($0) }
+        )
+        XCTAssertEqual(consumed.first?.kind, .interrupted)
+        XCTAssertEqual(consumed.first?.text, "stop")
+        let encoded = try JSONEncoder().encode(CLIAgentRelayChatEventKind.sessionStatus)
+        XCTAssertEqual(String(data: encoded, encoding: .utf8), "\"sessionStatus\"")
+    }
+
+    func testSessionActionKindIncludesInterruptDistinctFromPanic() {
+        XCTAssertEqual(CLIAgentSessionActionKind.interrupt.rawValue, "interrupt")
+        XCTAssertNotEqual(CLIAgentSessionActionKind.interrupt.rawValue, "panicHalt")
+    }
 }

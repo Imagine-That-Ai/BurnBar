@@ -265,6 +265,7 @@ final class CLIAgentSessionMirror: Sendable {
         case .openClaude: return .openClaude
         case .junie:    return .junie
         case .fx:       return .fx
+        case .grok, .kimi:    return .junie
         case .omp: return .omp
         case .hermes, .piAgent: return nil
         }
@@ -371,6 +372,10 @@ final class CLIAgentSessionMirror: Sendable {
         case .xAI: return .grok
         case .junie: return .junie
         case .fx: return .fx
+        // `.grok` is not an `AgentProvider` member — the provider spelling is `.xAI`,
+        // already mapped to `.grok` above. This arm arrived from the `ChatBackendID`
+        // switch further up, where `.grok, .kimi` is valid, and does not compile here.
+        case .kimi: return .junie
         default: return nil
         }
     }

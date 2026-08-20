@@ -1,0 +1,55 @@
+{
+  "format": "OBFS1",
+  "nonceSize": 12,
+  "tagSize": 16,
+  "note": "Random IVs stored with the chunk. KATs freeze the nonce. Do not HKDF-derive AES-GCM nonces.",
+  "header": {
+    "attachmentId": "att-kat-1",
+    "totalChunks": 2,
+    "plaintextSize": 11,
+    "contentBlake3": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "contentKeyHex": "00112233 44556677 8899aabb ccddeeff 00112233 44556677 8899aabb ccddeeff",
+  "cases": [
+    {
+      "name": "chunk0_hello",
+      "chunkIndex": 0,
+      "nonceHex": "0102030405060708090a0b0c",
+      "plaintextUtf8": "hello-obfs1",
+      "aadHex": "6174742d6b61742d3100000000000000000000000000000002000000000000000b",
+      "ciphertextHex": "121769cc873aca238c8b8a",
+      "tagHex": "6e88f8c352f09aa37671676b6195b184"
+    },
+    {
+      "name": "chunk1_ok",
+      "chunkIndex": 1,
+      "nonceHex": "1112131415161718191a1b1c",
+      "plaintextUtf8": "chunk-one-ok",
+      "aadHex": "6174742d6b61742d3100000000000000010000000000000002000000000000000b",
+      "ciphertextHex": "424b10c012edaafba604e407",
+      "tagHex": "3cebc2c5793d38a4cf856b033614a90f"
+    }
+  ],
+  "negatives": [
+    {
+      "name": "flipped_chunkIndex",
+      "base": "chunk0_hello",
+      "chunkIndex": 1
+    },
+    {
+      "name": "flipped_attachmentId",
+      "base": "chunk0_hello",
+      "attachmentId": "att-kat-2"
+    },
+    {
+      "name": "truncated_tag",
+      "base": "chunk0_hello",
+      "truncateTagBytes": 1
+    },
+    {
+      "name": "nonce_reuse_different_plaintext",
+      "base": "chunk0_hello",
+      "reuseNonceWithPlaintext": "other-plain"
+    }
+  ]
+}

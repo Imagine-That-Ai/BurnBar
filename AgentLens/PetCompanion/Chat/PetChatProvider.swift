@@ -164,6 +164,8 @@ final class CLIBridgeChatProvider: AgentChatProvider {
             // running unresolved sensitive calls), so it can answer from the
             // pet surface without a desktop grant.
             return await bridge.isExecutableAvailable(named: "fx") ? .ready : .needsLogin
+        case .grok, .kimi:
+            return .unavailable
         case .omp:
             return await bridge.isExecutableAvailable(named: "omp") ? .ready : .needsLogin
         }
@@ -240,6 +242,8 @@ final class CLIBridgeChatProvider: AgentChatProvider {
             return bridge.chatJunieStream(systemPrompt: persona, userMessage: userMessage, workspaceDirectory: workspace)
         case .fx:
             return bridge.chatFxStream(systemPrompt: persona, userMessage: userMessage, workspaceDirectory: workspace)
+        case .grok, .kimi:
+            return nil
         case .omp:
             return bridge.chatOMPStream(systemPrompt: persona, userMessage: userMessage, workspaceDirectory: workspace)
         }

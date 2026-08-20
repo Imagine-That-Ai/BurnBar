@@ -38,6 +38,7 @@ extension ChatSessionController {
         case .omp: return chatModelOMP
         case .junie: return chatModelJunie
         case .fx: return chatModelFx
+        case .grok, .kimi: return chatModelJunie
         }
     }
 
@@ -56,6 +57,7 @@ extension ChatSessionController {
         case .omp: chatModelOMP = value
         case .junie: chatModelJunie = value
         case .fx: chatModelFx = value
+        case .grok, .kimi: chatModelJunie = value
         }
     }
 
@@ -104,6 +106,8 @@ extension ChatSessionController {
         case .omp: return .omp
         case .junie: return .junie
         case .fx: return .fx
+        case .grok: return .grok
+        case .kimi: return .grok
         }
     }
 
@@ -161,7 +165,7 @@ extension ChatSessionController {
             return chatModelOpenClaude.trimmingCharacters(in: .whitespacesAndNewlines)
         case .omp:
             return chatModelOMP.trimmingCharacters(in: .whitespacesAndNewlines)
-        case .junie:
+        case .junie, .grok, .kimi:
             return chatModelJunie.trimmingCharacters(in: .whitespacesAndNewlines)
         case .fx:
             // fx has no `--model` flag; the selection is only a picker

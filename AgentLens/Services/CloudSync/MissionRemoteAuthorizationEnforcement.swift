@@ -61,7 +61,8 @@ extension MissionRemoteAuthorizationShadow.ShadowContext {
             personaScopeJSON: (data["personaScopeJSON"] as? String)?.nilIfBlank,
             approvalMode: (data["approvalMode"] as? String)?.nilIfBlank,
             approvalStatus: (data["approvalStatus"] as? String) ?? "",
-            approverDeviceID: (data["approverDeviceID"] as? String)?.nilIfBlank,
+            approverDeviceID: (data["approvedByDeviceId"] as? String)?.nilIfBlank
+                ?? (data["approverDeviceID"] as? String)?.nilIfBlank,
             entitlementTier: (data["entitlementTier"] as? String)?.nilIfBlank ?? "none",
             workingDirectory: (data["workingDirectory"] as? String)?.nilIfBlank,
             fanOutCount: fanOutCount,
@@ -169,6 +170,12 @@ extension CLIAgentMissionRequestListener {
             switch reason {
             case .some(.untrustedDevice), .some(.unknownTrustState):
                 logger.info("mission id=\(document.documentID, privacy: .public) remains pending for another trusted executor")
+                await applyHostStatus(
+                    document: document,
+                    status: "pending",
+                    liveSummary: "Released claim so another trusted Mac can take this mission.",
+                    releaseClaim: true
+                )
                 return .stop
             default:
                 await failDaemonDenied(document: document, backend: backend, reason: reason, detail: detail)
@@ -176,6 +183,12 @@ extension CLIAgentMissionRequestListener {
             }
         case let .daemonUnreachable(detail):
             logger.warning("mission id=\(document.documentID, privacy: .public) remains pending while local daemon is unavailable: \(detail, privacy: .public)")
+            await applyHostStatus(
+                document: document,
+                status: "pending",
+                liveSummary: "Released claim while this Mac's daemon is unreachable.",
+                releaseClaim: true
+            )
             return .stop
         }
     }

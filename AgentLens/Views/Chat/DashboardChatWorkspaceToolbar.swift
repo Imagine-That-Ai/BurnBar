@@ -56,6 +56,7 @@ extension ChatBackendID {
         case .cursorAgent: return "00E5FF"
         case .junie: return "48E054"
         case .fx: return "A1A1AA"
+        case .grok, .kimi: return "48E054"
         }
     }
 

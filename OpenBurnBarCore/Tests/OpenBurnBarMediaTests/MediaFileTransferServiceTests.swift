@@ -23,6 +23,8 @@ final class MediaFileTransferServiceTests: XCTestCase {
         XCTAssertEqual(result.manifest.peerDeviceId, "peer123")
         XCTAssertTrue(result.manifest.manifestId.hasPrefix("att_"))
         XCTAssertEqual(backend.publishedPaths.last, inputURL.path)
+        XCTAssertNoThrow(try ContentBlake3.parse(result.manifest.blobHash))
+        XCTAssertNotEqual(result.manifest.blobHash, result.ticketText)
     }
 
     func testFetchWritesIntoInbox() async throws {
@@ -31,7 +33,7 @@ final class MediaFileTransferServiceTests: XCTestCase {
 
         let manifest = HermesRealtimeRelayAttachmentManifest(
             manifestId: "att_xyz",
-            blobHash: "blake3:deadbeef",
+            blobHash: String(repeating: "de", count: 32),
             filename: "log.txt",
             mime: "text/plain",
             size: 32,
@@ -202,7 +204,7 @@ private final class FakeBlobBackend: IrohBlobBackend, @unchecked Sendable {
             try? Data(repeating: 0xDE, count: 32).write(to: url)
             return BlobTransferStats(
                 bytesTotal: 32,
-                blake3Hash: "blake3:deadbeef",
+                blake3Hash: String(repeating: "ab", count: 32),
                 durationMillis: 12,
                 didResume: false
             )

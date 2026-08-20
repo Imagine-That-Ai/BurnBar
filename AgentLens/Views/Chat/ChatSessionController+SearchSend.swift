@@ -679,6 +679,8 @@ extension ChatSessionController {
                             capabilityGrant: activeDesktopGrant,
                             resumeSessionID: self.fxResumeSessionID
                         )
+                    case .grok, .kimi:
+                        return nil
                     }
                 }
                 let consumption = try await Self.consumeChatStream(

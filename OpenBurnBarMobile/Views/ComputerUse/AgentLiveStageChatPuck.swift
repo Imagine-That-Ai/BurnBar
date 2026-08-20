@@ -89,7 +89,7 @@ struct AgentLiveStageChatPuck: View {
 
             VStack(spacing: 0) {
                 Text("\u{263F}") // ☿ caduceus
-                    .font(.system(size: 22, weight: .bold, design: .rounded))
+                    .font(MobileScaledFont.system(size: 22, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
                     .shadow(color: .black.opacity(0.35), radius: 2, y: 1)
                 if hermesService.isStreaming {
@@ -102,7 +102,7 @@ struct AgentLiveStageChatPuck: View {
 
             if unreadDelta > 0, !presenter.chatPuckExpanded {
                 Text("\(unreadDelta)")
-                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                    .font(MobileScaledFont.system(size: 12, weight: .bold, design: .monospaced))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 5)
                     .padding(.vertical, 1.5)
@@ -151,10 +151,10 @@ struct AgentLiveStageChatPuck: View {
     private var header: some View {
         HStack(spacing: 8) {
             Text("\u{263F}")
-                .font(.system(size: 13, weight: .bold, design: .rounded))
+                .font(MobileScaledFont.system(size: 13, weight: .bold, design: .rounded))
                 .foregroundStyle(MobileTheme.mercuryGradient)
             Text("Hermes")
-                .font(.system(size: 12.5, weight: .semibold, design: .rounded))
+                .font(MobileScaledFont.system(size: 12.5, weight: .semibold, design: .rounded))
                 .foregroundStyle(.white)
             if hermesService.isStreaming {
                 HermesThinkingSpinner()
@@ -166,7 +166,7 @@ struct AgentLiveStageChatPuck: View {
                 presenter.toggleChatPuck()
             } label: {
                 Image(systemName: "chevron.down")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(MobileScaledFont.system(size: 12, weight: .bold))
                     .foregroundStyle(.white.opacity(0.8))
                     .padding(6)
                     .background(Circle().fill(Color.white.opacity(0.08)))
@@ -186,10 +186,10 @@ struct AgentLiveStageChatPuck: View {
                     if visibleMessages.isEmpty {
                         VStack(spacing: 6) {
                             Image(systemName: "bubble.left.and.bubble.right")
-                                .font(.system(size: 22, weight: .medium))
+                                .font(MobileScaledFont.system(size: 22, weight: .medium))
                                 .foregroundStyle(.white.opacity(0.32))
                             Text("Type to brief Hermes while the agent works.")
-                                .font(.system(size: 12, weight: .medium, design: .rounded))
+                                .font(MobileScaledFont.system(size: 12, weight: .medium, design: .rounded))
                                 .foregroundStyle(.white.opacity(0.6))
                                 .multilineTextAlignment(.center)
                                 .padding(.horizontal, 16)
@@ -222,7 +222,7 @@ struct AgentLiveStageChatPuck: View {
             if message.role == .user { Spacer(minLength: 28) }
             VStack(alignment: .leading, spacing: 2) {
                 Text(message.text)
-                    .font(.system(size: 12, weight: .regular, design: .rounded))
+                    .font(MobileScaledFont.system(size: 12, weight: .regular, design: .rounded))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 7)
@@ -251,7 +251,7 @@ struct AgentLiveStageChatPuck: View {
         HStack(spacing: 8) {
             TextField("Brief Hermes…", text: $inputText, axis: .vertical)
                 .textFieldStyle(.plain)
-                .font(.system(size: 12.5, weight: .regular, design: .rounded))
+                .font(MobileScaledFont.system(size: 12.5, weight: .regular, design: .rounded))
                 .foregroundStyle(.white)
                 .lineLimit(1...3)
                 .focused($inputFocused)
@@ -266,7 +266,7 @@ struct AgentLiveStageChatPuck: View {
                 send()
             } label: {
                 Image(systemName: "arrow.up")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(MobileScaledFont.system(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                     .padding(8)
                     .background(

@@ -386,6 +386,8 @@ struct ChatEnginesDetailView: View {
         case .cursorAgent: return "Local Cursor Agent CLI session"
         case .junie: return "Local Junie CLI session"
         case .fx: return "Local fx CLI session"
+        case .grok: return "Local Grok ACP session"
+        case .kimi: return "Local Kimi ACP session"
         }
     }
 }

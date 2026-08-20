@@ -113,6 +113,8 @@ struct ChatEngineModelMenu: View {
         case .openClaude: return .openClaude
         case .junie: return .junie
         case .fx: return .fx
+        case .grok: return .grok
+        case .kimi: return .grok
         case .hermes, .openclaw, .piAgent: return nil
         }
     }
@@ -234,6 +236,10 @@ struct ChatEngineModelRows: View {
             // fx has no `--model` flag — the model is fx-configured. The menu
             // shows a single non-interactive default row instead of a dead picker.
             return [ModelMenuRow(id: "fx-default", title: "Default (fx-configured)")]
+        case .grok:
+            return liveCLIRows(for: .grok, defaultTitle: "Default (Grok profile)")
+        case .kimi:
+            return liveCLIRows(for: .grok, defaultTitle: "Default (Kimi profile)")
         }
     }
 
@@ -281,7 +287,7 @@ struct ChatEngineModelRows: View {
     private var perRowQuotaSuffix: String {
         let backend = controller.chatBackend
         switch backend {
-        case .codex, .claude, .droid, .antigravity, .cursorAgent, .openClaude, .omp, .junie:
+        case .codex, .claude, .droid, .antigravity, .cursorAgent, .openClaude, .omp, .junie, .fx, .grok, .kimi:
             guard let provider = backend.agentProvider,
                   let resolution = ProviderQuotaChip.resolve(
                     provider: provider,

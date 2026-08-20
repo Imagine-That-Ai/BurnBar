@@ -16,6 +16,8 @@ enum ChatBackendID: String, Identifiable, Codable {
     case cursorAgent
     case junie
     case fx
+    case grok
+    case kimi
 
     var id: String { rawValue }
 
@@ -34,6 +36,8 @@ enum ChatBackendID: String, Identifiable, Codable {
         backends.append(.cursorAgent)
         backends.append(.junie)
         backends.append(.fx)
+        backends.append(.grok)
+        backends.append(.kimi)
         return backends
     }
 
@@ -52,6 +56,8 @@ enum ChatBackendID: String, Identifiable, Codable {
         case .cursorAgent: return "Cursor Agent"
         case .junie: return "Junie"
         case .fx: return "fx"
+        case .grok: return "Grok"
+        case .kimi: return "Kimi"
         }
     }
 
@@ -71,6 +77,8 @@ enum ChatBackendID: String, Identifiable, Codable {
         case .cursorAgent: return "Cursor"
         case .junie: return "Junie"
         case .fx: return "fx"
+        case .grok: return "Grok"
+        case .kimi: return "Kimi"
         }
     }
 
@@ -92,6 +100,8 @@ enum ChatBackendID: String, Identifiable, Codable {
         case .cursorAgent: return "\u{27A4}"
         case .junie:     return "\u{273D}"
         case .fx:        return "\u{0192}"
+        case .grok:      return "\u{26A1}"
+        case .kimi:      return "\u{263E}"
         }
     }
 
@@ -102,7 +112,7 @@ enum ChatBackendID: String, Identifiable, Codable {
             return DesignSystem.Colors.mercuryGradient
         case .piAgent:
             return DesignSystem.Colors.piGradient
-        case .codex, .claude, .openclaw, .openClaude, .omp, .droid, .forge, .antigravity, .cursorAgent, .junie, .fx:
+        case .codex, .claude, .openclaw, .openClaude, .omp, .droid, .forge, .antigravity, .cursorAgent, .junie, .fx, .grok, .kimi:
             return DesignSystem.Colors.accentGradient
         }
     }
@@ -131,13 +141,15 @@ enum ChatBackendID: String, Identifiable, Codable {
         case .cursorAgent: return .cursorAgent
         case .junie: return .junie
         case .fx: return .fx
+        case .grok: return .xAI
+        case .kimi: return nil
         }
     }
 
     /// Whether this backend uses the local Codex/Claude CLIs (privacy-gated).
     var requiresCLIAssistantConsent: Bool {
         switch self {
-        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .junie, .fx: return true
+        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .junie, .fx, .grok, .kimi: return true
         case .openClaude, .omp: return true
         case .hermes, .openclaw, .piAgent: return false
         }

@@ -288,14 +288,13 @@ static id DBT_HitTestView(UIWindow *window, CGPoint point) {
 
 #else // Release or !TARGET_OS_IOS
 
-// Release and non-iOS builds use a public-API-only no-op implementation.
-// This keeps the module resolvable without carrying any of the private UIKit
-// or IOKit selectors used by the live-device Debug build.
-@implementation DebugBridgeTouch
-+ (BOOL)sendTapAtPoint:(CGPoint)point inWindow:(UIWindow *)window {
-    (void)point; (void)window;
-    return NO;
-}
-@end
+// Release and non-iOS builds compile an intentionally empty translation unit.
+// A public-API no-op class is not enough: Objective-C class metadata always
+// survives linking, and the shipping guard
+// (scripts/ci/verify-ios-debug-bridge-release.sh) nm-scans the Release
+// executable for the DebugBridge* names themselves. Module resolution only
+// needs the headers, and every caller is DEBUG-gated, so nothing references
+// the class in Release builds.
+typedef int DebugBridgeTouchReleaseTranslationUnitIsIntentionallyEmpty;
 
 #endif // defined(DEBUG) && TARGET_OS_IOS
