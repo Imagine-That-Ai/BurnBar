@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Prime Agent gateway proxy resolves the auth token headlessly
+  (`scripts/prime-agent-openburnbar-proxy.mjs`) — non-interactive shells (SSH,
+  CI, subagents) hit the macOS Keychain with `errSecInteractionNotAllowed` and
+  fell through to the placeholder. The emitted `apiKey` resolver now checks
+  `$OPENBURNBAR_GATEWAY_AUTH_TOKEN` first, then the daemon LaunchAgent plist,
+  then the Keychain, then `openburnbar-local`; a new `--token <tok>` /
+  `--api-key <tok>` flag embeds a static token directly into `models.json`, and
+  `--live` probes follow the same priority. `--print` previews the resolver
+  verbatim and redacts literal tokens (`<redacted: static gateway token>`);
+  `--status` never shows the credential field. Locked by
+  `scripts/prime-agent-openburnbar-proxy.test.mjs` in fast-feedback. Docs:
+  `docs/PROVIDERS.md` → Prime Agent via OpenBurnBar Gateway.
 - Close SQLCipher before `NSApplication` calls `exit()`, so a quit (including
   the installed app terminating a DerivedData duplicate) cannot SIGSEGV inside
   `sqlcipher_memset` on a live GRDB reader. Concurrent usage hydration now

@@ -12,11 +12,12 @@
  * Droid, Forge, and OpenCode — this adds prime-agent to that set.
  *
  * Usage:
- *   node scripts/prime-agent-openburnbar-proxy.mjs              # sync static catalog -> models.json
- *   node scripts/prime-agent-openburnbar-proxy.mjs --live       # try live gateway /v1/models first, fall back to catalog
- *   node scripts/prime-agent-openburnbar-proxy.mjs --remove     # remove openburnbar entry
- *   node scripts/prime-agent-openburnbar-proxy.mjs --status     # show current openburnbar entry
- *   node scripts/prime-agent-openburnbar-proxy.mjs --print      # print JSON fragment to stdout (no write)
+ *   node scripts/prime-agent-openburnbar-proxy.mjs                      # sync static catalog -> models.json
+ *   node scripts/prime-agent-openburnbar-proxy.mjs --live               # try live gateway /v1/models first, fall back to catalog
+ *   node scripts/prime-agent-openburnbar-proxy.mjs --token <token>      # embed static auth token (or --api-key <token>)
+ *   node scripts/prime-agent-openburnbar-proxy.mjs --remove             # remove openburnbar entry
+ *   node scripts/prime-agent-openburnbar-proxy.mjs --status             # show current openburnbar entry
+ *   node scripts/prime-agent-openburnbar-proxy.mjs --print              # print JSON fragment to stdout (no write)
  *   node scripts/prime-agent-openburnbar-proxy.mjs --gateway-host 127.0.0.1 --gateway-port 8317
  *
  * Idempotent: re-running with same catalog produces same models.json.
@@ -35,8 +36,8 @@ const PRIME_MODELS_PATH = path.join(os.homedir(), ".prime", "agent", "models.jso
 
 function apiKeyShellCommand() {
   // Resolves at request time; never stores secret on disk.
-  // Tries LaunchAgent plist, then keychain, then env var, then harmless placeholder.
-  return "!plutil -extract EnvironmentVariables.OPENBURNBAR_GATEWAY_AUTH_TOKEN raw ~/Library/LaunchAgents/com.openburnbar.daemon.plist 2>/dev/null || security find-generic-password -a $USER -s com.openburnbar.daemon.gatewayAuthToken -w 2>/dev/null || echo $OPENBURNBAR_GATEWAY_AUTH_TOKEN || echo openburnbar-local";
+  // Priority: env var -> LaunchAgent plist -> Keychain fallback -> default placeholder.
+  return `![ -n "$OPENBURNBAR_GATEWAY_AUTH_TOKEN" ] && echo "$OPENBURNBAR_GATEWAY_AUTH_TOKEN" || plutil -extract EnvironmentVariables.OPENBURNBAR_GATEWAY_AUTH_TOKEN raw ~/Library/LaunchAgents/com.openburnbar.daemon.plist 2>/dev/null || security find-generic-password -a $USER -s com.openburnbar.daemon.gatewayAuthToken -w 2>/dev/null || echo openburnbar-local`;
 }
 
 function contextWindowFor(providerId, modelId) {
@@ -124,21 +125,25 @@ function buildModelsFromCatalog(catalog) {
   return models;
 }
 
-async function fetchLiveModels(gatewayHost, gatewayPort) {
+async function fetchLiveModels(gatewayHost, gatewayPort, explicitToken) {
   const url = `http://${gatewayHost}:${gatewayPort}/v1/models`;
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(), 3500);
   try {
     const headers = {};
-    // Try to recover gateway token from same sources prime-agent uses
-    try {
-      const { execSync } = await import("node:child_process");
-      const token = execSync(
-        "plutil -extract EnvironmentVariables.OPENBURNBAR_GATEWAY_AUTH_TOKEN raw ~/Library/LaunchAgents/com.openburnbar.daemon.plist 2>/dev/null || echo",
-        { encoding: "utf8" }
-      ).trim();
-      if (token) headers["authorization"] = `Bearer ${token}`;
-    } catch {}
+    // Priority: explicit token -> env var -> LaunchAgent plist -> keychain
+    let token = explicitToken || process.env.OPENBURNBAR_GATEWAY_AUTH_TOKEN;
+    if (!token) {
+      try {
+        const { execSync } = await import("node:child_process");
+        token = execSync(
+          "plutil -extract EnvironmentVariables.OPENBURNBAR_GATEWAY_AUTH_TOKEN raw ~/Library/LaunchAgents/com.openburnbar.daemon.plist 2>/dev/null || security find-generic-password -a $USER -s com.openburnbar.daemon.gatewayAuthToken -w 2>/dev/null || echo",
+          // Bounded: a hung keychain prompt must not outlive the 3.5s fetch budget.
+          { encoding: "utf8", timeout: 4000 }
+        ).trim();
+      } catch {}
+    }
+    if (token) headers["authorization"] = `Bearer ${token}`;
     const res = await fetch(url, { signal: controller.signal, headers });
     if (!res.ok) return null;
     const body = await res.json();
@@ -234,6 +239,14 @@ function readModelsJson(modelsPath) {
 }
 
 /**
+ * Placeholder shown in preview output instead of a user-supplied static token.
+ * The literal token is argv-derived taint; printing it is the exact clear-text
+ * credential sink CodeQL blocked in #2192. The marker proves `--print`/
+ * `--status` inspected the right field without ever echoing the secret.
+ */
+const REDACTED_API_KEY_MARKER = "<redacted: static gateway token>";
+
+/**
  * Strip credential material from any console/JSON output.
  * Do not log apiKey or any value derived from it — CodeQL taints those sinks.
  */
@@ -275,14 +288,22 @@ async function main() {
     help: args.includes("--help") || args.includes("-h"),
     gatewayHost: DEFAULT_GATEWAY_HOST,
     gatewayPort: DEFAULT_GATEWAY_PORT,
+    token: undefined,
   };
+  // Both `--flag value` and `--flag=value` spellings are accepted.
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--gateway-host" && args[i+1]) opts.gatewayHost = args[++i];
-    if (args[i] === "--gateway-port" && args[i+1]) opts.gatewayPort = parseInt(args[++i], 10);
+    else if (args[i].startsWith("--gateway-host=")) opts.gatewayHost = args[i].slice("--gateway-host=".length);
+    else if (args[i] === "--gateway-port" && args[i+1]) opts.gatewayPort = parseInt(args[++i], 10);
+    else if (args[i].startsWith("--gateway-port=")) opts.gatewayPort = parseInt(args[i].slice("--gateway-port=".length), 10);
+    else if ((args[i] === "--token" || args[i] === "--api-key") && args[i+1]) opts.token = args[++i];
+    else if (args[i].startsWith("--token=")) opts.token = args[i].slice("--token=".length);
+    else if (args[i].startsWith("--api-key=")) opts.token = args[i].slice("--api-key=".length);
   }
+  opts.token = opts.token?.trim() || undefined;
   if (opts.help) {
     console.log(fs.readFileSync(fileURLToPath(import.meta.url), "utf8").split("\n").slice(0,30).join("\n"));
-    console.log("\nOptions: --live --remove --status --print --gateway-host <host> --gateway-port <port>");
+    console.log("\nOptions: --live --remove --status --print --token <token> --api-key <token> --gateway-host <host> --gateway-port <port>");
     process.exit(0);
   }
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -324,7 +345,7 @@ async function main() {
   let models;
   let source = "catalog";
   if (opts.live) {
-    const liveIds = await fetchLiveModels(opts.gatewayHost, opts.gatewayPort);
+    const liveIds = await fetchLiveModels(opts.gatewayHost, opts.gatewayPort, opts.token);
     if (liveIds && liveIds.length > 0) {
       models = buildModelsFromLiveIds(liveIds, catalog);
       source = `live gateway http://${opts.gatewayHost}:${opts.gatewayPort}/v1/models (${liveIds.length} models)`;
@@ -340,18 +361,20 @@ async function main() {
     name: "OpenBurnBar Gateway",
     baseUrl: `http://${opts.gatewayHost}:${opts.gatewayPort}/v1`,
     api: "openai-completions",
-    apiKey: apiKeyShellCommand(),
+    apiKey: opts.token ?? apiKeyShellCommand(),
     models,
   };
 
   if (opts.print) {
-    console.log(
-      JSON.stringify(
-        { providers: { openburnbar: redactProviderForDisplay(providerEntry) } },
-        null,
-        2
-      )
-    );
+    // --print is the preview surface: it must show what models.json will hold.
+    // The default apiKey is the env→plist→keychain shell resolver (no secret in
+    // the string), so it prints verbatim; a --token literal is redacted in place
+    // instead, because it is user-typed credential material.
+    const printable = {
+      ...providerEntry,
+      apiKey: opts.token ? REDACTED_API_KEY_MARKER : providerEntry.apiKey,
+    };
+    console.log(JSON.stringify({ providers: { openburnbar: printable } }, null, 2));
     process.exit(0);
   }
 
@@ -363,7 +386,7 @@ async function main() {
   console.log(`  source: ${source}`);
   console.log(`  models: ${models.length} (was ${existingCount})`);
   console.log(`  gateway: http://${opts.gatewayHost}:${opts.gatewayPort}`);
-  console.log(`  apiKey: shell command (resolves at request time from LaunchAgent/keychain/env)`);
+  console.log(`  apiKey: ${opts.token ? "static token (passed via CLI)" : "shell command (resolves at request time from env/LaunchAgent/keychain)"}`);
   console.log(`\nVerify: prime-agent model list openburnbar | head`);
   console.log(`Try:     prime-agent --provider openburnbar --model ${models[0]?.id ?? "claude-sonnet-4-6"} -p "hello via burnbar"`);
 }

@@ -326,16 +326,24 @@ as `.exact` (including `usage.cost.total` when the gateway records it).
 ### One-liner (recommended)
 
 ```bash
-node scripts/prime-agent-openburnbar-proxy.mjs        # static catalog -> ~/.prime/agent/models.json
-node scripts/prime-agent-openburnbar-proxy.mjs --live # live gateway /v1/models first, then catalog fallback
+node scripts/prime-agent-openburnbar-proxy.mjs               # static catalog -> ~/.prime/agent/models.json
+node scripts/prime-agent-openburnbar-proxy.mjs --live        # live gateway /v1/models first, then catalog fallback
+node scripts/prime-agent-openburnbar-proxy.mjs --token <tok> # embed static auth token (or --api-key <tok>)
 ```
 
 This merges an `openburnbar` provider into `~/.prime/agent/models.json`
 (`baseUrl: http://127.0.0.1:8317/v1`, `api: openai-completions`, `apiKey`
-resolved at request time from the daemon LaunchAgent plist → keychain →
-`$OPENBURNBAR_GATEWAY_AUTH_TOKEN` → `openburnbar-local`). All 150+ BurnBar
-catalog models appear as `openburnbar/<model-id>` in `prime-agent /model` and
-`prime-agent model list openburnbar`:
+resolved at request time from `$OPENBURNBAR_GATEWAY_AUTH_TOKEN` → daemon LaunchAgent
+plist → macOS Keychain → `openburnbar-local`).
+
+In non-interactive environments (SSH, CI, background subagents) where macOS
+Keychain access is unavailable (`errSecInteractionNotAllowed`), set
+`export OPENBURNBAR_GATEWAY_AUTH_TOKEN="<token>"` or pass `--token <token>` to
+embed the token directly. Prefer the env var: `--token` writes the literal token
+into `models.json`, while the default shell command keeps it off disk.
+
+All 150+ BurnBar catalog models appear as `openburnbar/<model-id>` in `prime-agent /model`
+and `prime-agent model list openburnbar`:
 
 ```
 openburnbar  claude-opus-4-8         200K  64K  yes  yes
@@ -361,7 +369,7 @@ prime-agent --provider openburnbar --model gpt-5.6-luna -p "hello via burnbar"
       "name": "OpenBurnBar Gateway",
       "baseUrl": "http://127.0.0.1:8317/v1",
       "api": "openai-completions",
-      "apiKey": "!plutil -extract EnvironmentVariables.OPENBURNBAR_GATEWAY_AUTH_TOKEN raw ~/Library/LaunchAgents/com.openburnbar.daemon.plist 2>/dev/null || security find-generic-password -a $USER -s com.openburnbar.daemon.gatewayAuthToken -w 2>/dev/null || echo $OPENBURNBAR_GATEWAY_AUTH_TOKEN || echo openburnbar-local",
+      "apiKey": "![ -n \"$OPENBURNBAR_GATEWAY_AUTH_TOKEN\" ] && echo \"$OPENBURNBAR_GATEWAY_AUTH_TOKEN\" || plutil -extract EnvironmentVariables.OPENBURNBAR_GATEWAY_AUTH_TOKEN raw ~/Library/LaunchAgents/com.openburnbar.daemon.plist 2>/dev/null || security find-generic-password -a $USER -s com.openburnbar.daemon.gatewayAuthToken -w 2>/dev/null || echo openburnbar-local",
       "models": [
         { "id": "claude-sonnet-4-6", "name": "Claude Sonnet 4.6 (via OpenBurnBar)", "reasoning": true, "input": ["text", "image"], "contextWindow": 200000, "maxTokens": 64000, "cost": { "input": 3, "output": 15, "cacheRead": 0.3, "cacheWrite": 3.75 } }
       ]
@@ -370,11 +378,22 @@ prime-agent --provider openburnbar --model gpt-5.6-luna -p "hello via burnbar"
 }
 ```
 
+The leading `!` in that `apiKey` is prime-agent's command marker, not shell
+negation: `resolveConfigValue()` treats any apiKey starting with `!` as
+"run the rest as a shell command and use stdout", and anything else as an
+environment-variable name with a literal fallback. Strip the `!` before
+hand-testing the chain — `[ -n "$OPENBURNBAR_GATEWAY_AUTH_TOKEN" ] && ...`
+is what prime-agent actually executes.
+
 The script preserves other providers in `models.json` (e.g., `meta`) and is
-idempotent. Use `--status` to inspect, `--print` to preview without writing,
-`--remove` to detach, and `--gateway-host`/`--gateway-port` when the daemon
-runs on a non-default interface. Re-run after updating BurnBar or rotating the
-gateway token; `--live` reflects the gateway's currently advertised set.
+idempotent. Use `--status` to inspect, `--print` to preview the JSON fragment
+without writing, `--remove` to detach, `--token <tok>`/`--api-key <tok>` for
+static authentication, and `--gateway-host`/`--gateway-port` when the daemon
+runs on a non-default interface. `--print` shows the `apiKey` field verbatim
+when it is the shell resolver and as `<redacted: static gateway token>` when a
+`--token` literal was supplied, so credential material never reaches stdout.
+Re-run after updating BurnBar or rotating the gateway token; `--live` reflects
+the gateway's currently advertised set.
 
 Gateway execution source for these turns is `primeAgent`/`prime-agent`, so
 BurnBar's ledger attributes spend correctly and the PrimeAgent parser's cost
