@@ -8,9 +8,15 @@
 # this script emits one advisory id per line, read straight from deny.toml — no
 # second hand-maintained list to drift out of lockstep.
 #
+# STILL LOAD-BEARING, despite the SAST lane no longer calling it directly.
+# scripts/ci/check-cargo-audit-fail-closed.mjs is what CI runs now, and it reads
+# deny.toml itself. Two readers of one source is fine; two readers that DISAGREE
+# is the drift this file exists to prevent — so
+# scripts/ci/check-advisory-ignore-single-source.sh asserts both extract an
+# identical set. Deleting this script would remove that cross-check.
+#
 # Usage:
 #   mapfile -t IDS < <(scripts/ci/rust-advisory-ignores.sh)   # ids, one per line
-#   args=(--deny warnings); for id in "${IDS[@]}"; do args+=(--ignore "$id"); done
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
