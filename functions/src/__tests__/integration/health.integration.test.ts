@@ -22,6 +22,12 @@ function readStringField(body: unknown, field: string): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
+function readNumberField(body: unknown, field: string): number | undefined {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return undefined;
+  const value = Object.getOwnPropertyDescriptor(body, field)?.value;
+  return typeof value === "number" ? value : undefined;
+}
+
 describeIf(EMULATOR_ENABLED)("Health Endpoint Integration Tests", () => {
   describe("GET /healthLive", () => {
     it("returns 200 with alive status", async () => {
@@ -54,8 +60,8 @@ describeIf(EMULATOR_ENABLED)("Health Endpoint Integration Tests", () => {
       const body = await res.json();
       expect(readStringField(body, "status")).toBe("ok");
       expect(readStringField(body, "timestamp")).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
-      expect(typeof (body as Record<string, unknown>).uptime_ms).toBe("number");
-      expect((body as Record<string, unknown>).uptime_ms).toBeGreaterThanOrEqual(0);
+      expect(typeof readNumberField(body, "uptime_ms")).toBe("number");
+      expect(readNumberField(body, "uptime_ms")).toBeGreaterThanOrEqual(0);
     });
   });
 });
