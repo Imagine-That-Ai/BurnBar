@@ -668,7 +668,23 @@ extension ChatSessionController {
                             capabilityGrant: activeDesktopGrant
                         )
                     case .grok, .kimi:
-                        return nil
+                        // These backends were added to ChatBackendID and the engine picker,
+                        // but no cliBridge.chatGrokStream / chatKimiStream exists yet. Fail
+                        // immediately with something the user can act on; silently emitting
+                        // no events would present as a hang.
+                        return AsyncThrowingStream { continuation in
+                            continuation.finish(
+                                throwing: NSError(
+                                    domain: "OpenBurnBar.Chat",
+                                    code: 501,
+                                    userInfo: [
+                                        NSLocalizedDescriptionKey:
+                                            "\(self.chatBackend.displayName) chat is not wired up in this "
+                                            + "build yet. Pick another engine from the switcher."
+                                    ]
+                                )
+                            )
+                        }
                     }
                 }
                 let consumption = try await Self.consumeChatStream(
