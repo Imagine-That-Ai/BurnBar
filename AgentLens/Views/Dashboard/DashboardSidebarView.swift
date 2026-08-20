@@ -1,5 +1,6 @@
 import AppKit
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarUI
 import SwiftUI
 
 // MARK: - Sidebar

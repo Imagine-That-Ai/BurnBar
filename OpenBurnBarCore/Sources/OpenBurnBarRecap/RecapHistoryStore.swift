@@ -1,4 +1,6 @@
 import Foundation
+import OpenBurnBarInsights
+import OpenBurnBarKernel
 
 /// Per-month `RecapFacts`, persisted so comparisons are cheap.
 ///

@@ -1,4 +1,4 @@
-import OpenBurnBarCore
+import OpenBurnBarUI
 import SwiftUI
 
 // MARK: - Ledger (storage id `classic`)

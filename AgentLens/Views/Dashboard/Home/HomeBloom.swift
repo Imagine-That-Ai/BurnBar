@@ -1,7 +1,8 @@
 #if canImport(AppKit)
 import AppKit
 #endif
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarUI
 import SwiftUI
 
 // MARK: - Bloom, chart, and orb glass

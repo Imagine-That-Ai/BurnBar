@@ -571,6 +571,79 @@ final class CursorConnectorTests: XCTestCase {
         XCTAssertTrue(service.isFactoryGatewayConfigPresent())
     }
 
+    func test_routedClientSync_preservesExtraArgsOnResyncedGatewayModels() throws {
+        let home = try makeTemporaryHome()
+        let factoryDirectory = home.appendingPathComponent(".factory", isDirectory: true)
+        try FileManager.default.createDirectory(at: factoryDirectory, withIntermediateDirectories: true)
+        let settingsURL = factoryDirectory.appendingPathComponent("settings.json")
+        let configURL = factoryDirectory.appendingPathComponent("config.json")
+        // A reasoning level set on a gateway model, as factory-reasoning writes it.
+        try Data("""
+        {
+          "customModels": [
+            {
+              "model": "glm-5.2",
+              "id": "custom:OpenBurnBar-glm-5.2-0",
+              "baseUrl": "http://127.0.0.1:8317/v1",
+              "provider": "generic-chat-completion-api",
+              "extraArgs": {"reasoning_effort": "high"}
+            },
+            {
+              "model": "retired-model",
+              "id": "custom:OpenBurnBar-retired-model-1",
+              "baseUrl": "http://127.0.0.1:8317/v1",
+              "provider": "generic-chat-completion-api",
+              "extraArgs": {"reasoning_effort": "low"}
+            }
+          ]
+        }
+        """.utf8).write(to: settingsURL)
+        try Data("""
+        {
+          "custom_models": [
+            {
+              "model": "glm-5.2",
+              "base_url": "http://127.0.0.1:8317/v1",
+              "model_display_name": "OpenBurnBar glm-5.2",
+              "provider": "generic-chat-completion-api",
+              "extra_args": {"reasoning_effort": "high"}
+            }
+          ]
+        }
+        """.utf8).write(to: configURL)
+
+        let service = RoutedClientConfigSyncService(homeDirectory: home)
+        try service.applyFactoryGatewayConfig(
+            RoutedClientGatewayConfig(
+                baseURL: "http://127.0.0.1:8317/v1",
+                bearerToken: "gateway-token",
+                models: ["glm-5.2", "minimax-m2.7"]
+            )
+        )
+
+        let settings = try XCTUnwrap(readJSON(settingsURL)["customModels"] as? [[String: Any]])
+        let resynced = try XCTUnwrap(settings.first { $0["model"] as? String == "glm-5.2" })
+        XCTAssertEqual(
+            resynced["extraArgs"] as? [String: String],
+            ["reasoning_effort": "high"],
+            "Regenerating a gateway entry must not drop the reasoning level it was carrying."
+        )
+        let fresh = try XCTUnwrap(settings.first { $0["model"] as? String == "minimax-m2.7" })
+        XCTAssertNil(fresh["extraArgs"], "A newly routed model has nothing to preserve.")
+        XCTAssertFalse(
+            settings.contains { $0["model"] as? String == "retired-model" },
+            "A model that left the routed list stays removed rather than being resurrected by its extraArgs."
+        )
+
+        let factoryConfig = try XCTUnwrap(readJSON(configURL)["custom_models"] as? [[String: Any]])
+        let resyncedLegacy = try XCTUnwrap(factoryConfig.first { $0["model"] as? String == "glm-5.2" })
+        XCTAssertEqual(
+            resyncedLegacy["extra_args"] as? [String: String],
+            ["reasoning_effort": "high"],
+            "The legacy surface is merged too, so it must carry the same level."
+        )
+    }
+
     func test_routedClientSync_writesOpenCodeProviderConfig() throws {
         let home = try makeTemporaryHome()
         let configDirectory = home.appendingPathComponent(".config/opencode", isDirectory: true)

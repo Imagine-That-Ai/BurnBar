@@ -142,7 +142,7 @@ enum ChatBackendID: String, Identifiable, Codable {
         case .junie: return .junie
         case .fx: return .fx
         case .grok: return .xAI
-        case .kimi: return nil
+        case .kimi: return .kimi
         }
     }
 

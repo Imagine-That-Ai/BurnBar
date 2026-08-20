@@ -80,7 +80,7 @@ RecapDeckView              macOS 3-col · iPad 2-col · iPhone 1-col
 RecapShareCardRenderer     ImageRenderer → 1080×1350 / 1080×1080 PNG
 ```
 
-Engine and models: `OpenBurnBarCore/Sources/OpenBurnBarInsights/Services/Recap/`.
+Engine and models: `OpenBurnBarCore/Sources/OpenBurnBarRecap/` — its own target, carved out of `OpenBurnBarInsights` once the feature landed whole.
 Card system: `OpenBurnBarCore/Sources/OpenBurnBarUI/Views/Recap/`.
 Both shells consume the same implementation.
 

@@ -236,6 +236,10 @@ extension CLIAgentMissionRequestListener {
                 message: "Launching \(backend.displayName) ACP stdio session.",
                 backend: backend
             )
+            // The permission callback is `@Sendable` (it runs on the stdio pump), so it
+            // cannot capture the untyped `data` dictionary. Snapshot the JSON subset
+            // once, up front — the callback only ever reads it.
+            let permissionData = Self.sendableJSON(data)
             let output = try await ACPStdioClient.runSession(
                 executable: executable,
                 arguments: arguments,
@@ -244,7 +248,7 @@ extension CLIAgentMissionRequestListener {
                 onPermission: { request in
                     await self.resolveACPPermission(
                         request,
-                        data: data,
+                        data: permissionData,
                         document: reference,
                         requestID: requestID,
                         backend: backend
@@ -349,7 +353,7 @@ extension CLIAgentMissionRequestListener {
                 approvalTitle: "Approve \(request.toolName ?? "tool")",
                 approvalMessage: message
             )
-            guard let sealedState = sealed["sealedStatePayload"] as? UntypedJSONObject else { return false }
+            guard let sealedState = sealed["sealedStatePayload"] as? [String: any Sendable] else { return false }
             try await publishParkedCeiling(
                 requestID: requestID,
                 deviceId: handle.deviceId,
@@ -411,7 +415,7 @@ extension CLIAgentMissionRequestListener {
             payload: [:],
             liveSummary: liveSummary
         )
-        guard let sealedState = sealed["sealedStatePayload"] as? UntypedJSONObject else { return }
+        guard let sealedState = sealed["sealedStatePayload"] as? [String: any Sendable] else { return }
         try await ComputerUseSecurityCallableClient.updateCliAgentMissionStatus(
             requestId: requestID,
             deviceId: handle.deviceId,
@@ -451,12 +455,13 @@ extension CLIAgentMissionRequestListener {
         let identity = try OpenBurnBarSignalIdentityKeyStore().loadOrCreate(uid: uid, deviceId: deviceId)
         let signature = try MissionApprovalCeiling.signCanonical(canonical, identity: identity)
         parkedCeilingByRequest[requestID] = (digest, grant)
-        var sendable: [String: any Sendable] = [:]
-        for (key, value) in canonical {
-            if let sendableValue = value as? any Sendable {
-                sendable[key] = sendableValue
-            }
-        }
+        // `Sendable` is a marker protocol: it carries no runtime witness, so
+        // `value as? any Sendable` cannot compile — there is nothing to test at run
+        // time. The canonical dictionary is JSON by construction, so name the JSON
+        // primitives explicitly. That is also stricter than the cast would have been:
+        // anything that is not a JSON value is dropped here rather than smuggled
+        // across the callable boundary as an opaque `Any`.
+        let sendable = Self.sendableJSON(canonical)
         try await ComputerUseSecurityCallableClient.publishMissionApprovalCeiling(
             requestId: requestID,
             deviceId: deviceId,
@@ -502,6 +507,7 @@ extension CLIAgentMissionRequestListener {
                 extraEnvironment: extraEnvironment,
                 workingDirectoryURL: workingDirectoryURL,
                 cancellationTracker: cancellationTracker,
+                requestID: requestID,
                 eventSink: { [weak self] event in
                     Task { @MainActor [weak self] in
                         await self?.recordEvent(
@@ -534,6 +540,32 @@ extension CLIAgentMissionRequestListener {
         }
     }
 
+    /// The JSON-representable subset of an untyped dictionary, as `Sendable` values.
+    ///
+    /// Nested containers recurse so a payload cannot smuggle a reference type through
+    /// an array or sub-object. Anything unrecognised is dropped, which keeps the
+    /// callable boundary typed instead of merely cast.
+    private static func sendableJSON(_ value: [String: Any]) -> [String: any Sendable] {
+        var out: [String: any Sendable] = [:]
+        for (key, raw) in value {
+            if let narrowed = sendableJSONValue(raw) { out[key] = narrowed }
+        }
+        return out
+    }
+
+    private static func sendableJSONValue(_ raw: Any) -> (any Sendable)? {
+        switch raw {
+        case let text as String: return text
+        case let number as Int: return number
+        case let number as Double: return number
+        case let flag as Bool: return flag
+        case let nested as [String: Any]: return sendableJSON(nested)
+        case let list as [Any]: return list.compactMap(sendableJSONValue)
+        case is NSNull: return nil
+        default: return nil
+        }
+    }
+
     private nonisolated func runProcess(
         executable: String,
         arguments: [String],
@@ -541,6 +573,10 @@ extension CLIAgentMissionRequestListener {
         extraEnvironment: [String: String],
         workingDirectoryURL: URL?,
         cancellationTracker: MissionCancellationTracker,
+        // Threaded in rather than captured: the body registers an interrupt handler
+        // under the mission's request id so a remote cancel can reach this process,
+        // and that id is only known to the caller.
+        requestID: String,
         eventSink: @escaping @Sendable (DirectCLIStreamEvent) -> Void
     ) async throws -> String {
         let process = Process()

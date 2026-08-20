@@ -1,4 +1,6 @@
 import Foundation
+import OpenBurnBarInsights
+import OpenBurnBarKernel
 
 /// Shared formatting and phrasing for the deterministic copy every rule ships.
 ///

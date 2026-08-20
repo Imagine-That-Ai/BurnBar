@@ -56,11 +56,14 @@ extension ChatBackendID {
         case .cursorAgent: return "00E5FF"
         case .junie: return "48E054"
         case .fx: return "A1A1AA"
-        case .grok, .kimi: return "48E054"
+        // xAI and Moonshot, not a second copy of Junie's green: three agents
+        // sharing one tint is three agents the deck cannot tell apart.
+        case .grok: return "1A1A1A"
+        case .kimi: return "6366F1"
         }
     }
 
-    /// Identity tint for chat surfaces. Total over `allCases` — a thirteenth
+    /// Identity tint for chat surfaces. Total over `allCases` — a fifteenth
     /// backend cannot ship colourless.
     var sigilTint: Color {
         switch self {
@@ -99,7 +102,8 @@ extension ChatBackendID {
         case .hermes: return "Agent harness"
         case .piAgent: return "Empathy agent"
         case .openclaw: return "Gateway agent"
-        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp, .junie, .fx:
+        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp, .junie, .fx,
+             .grok, .kimi:
             return "CLI agent"
         }
     }

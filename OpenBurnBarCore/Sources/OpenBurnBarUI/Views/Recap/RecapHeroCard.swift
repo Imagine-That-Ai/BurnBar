@@ -1,4 +1,5 @@
 import SwiftUI
+import OpenBurnBarRecap
 import OpenBurnBarInsights
 
 /// The oversized moments: the opener and the one or two insights the ranker

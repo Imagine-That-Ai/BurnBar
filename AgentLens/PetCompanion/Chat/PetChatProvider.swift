@@ -243,7 +243,23 @@ final class CLIBridgeChatProvider: AgentChatProvider {
         case .fx:
             return bridge.chatFxStream(systemPrompt: persona, userMessage: userMessage, workspaceDirectory: workspace)
         case .grok, .kimi:
-            return nil
+            // These backends were introduced without a CLI execution path — there is no
+            // `chatGrokStream` / `chatKimiStream` on the bridge to call. The return type
+            // is non-optional, and an empty stream would read to the user as "the agent
+            // replied with nothing", so finish with an explicit error the chat surface
+            // can render as unsupported.
+            return AsyncThrowingStream { continuation in
+                continuation.finish(
+                    throwing: NSError(
+                        domain: "OpenBurnBar.PetChatProvider",
+                        code: 2,
+                        userInfo: [
+                            NSLocalizedDescriptionKey:
+                                "\(id.displayName) has no local CLI backend yet."
+                        ]
+                    )
+                )
+            }
         case .omp:
             return bridge.chatOMPStream(systemPrompt: persona, userMessage: userMessage, workspaceDirectory: workspace)
         }

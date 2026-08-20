@@ -1,4 +1,5 @@
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarUI
 import SwiftUI
 
 // MARK: - Atlas (storage id `atlas`)

@@ -1,4 +1,5 @@
 import SwiftUI
+import OpenBurnBarRecap
 import OpenBurnBarInsights
 
 /// The workhorse layout for `.wide` and `.medium` cards.

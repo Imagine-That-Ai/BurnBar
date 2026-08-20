@@ -1,4 +1,4 @@
-import OpenBurnBarCore
+import OpenBurnBarUI
 import SwiftUI
 
 // MARK: - The field, as something a plate can ask about

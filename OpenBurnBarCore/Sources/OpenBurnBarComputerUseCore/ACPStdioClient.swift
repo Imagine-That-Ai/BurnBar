@@ -68,9 +68,13 @@ public enum ACPStdioClient {
         extraEnvironment: [String: String] = [:],
         workingDirectory: URL? = nil,
         timeoutSeconds: TimeInterval = 180,
-        onPermission: @escaping (PermissionRequest) async -> Bool,
-        onUpdate: @escaping (String) -> Void = { _ in },
-        interruptFlag: () -> Bool = { false }
+        // `@Sendable` because these are called from the stdio pump, not from the
+        // caller's actor: `onUpdate` fires per streamed line and `interruptFlag` is
+        // polled between reads. Without it, handing them across the isolation
+        // boundary is a data race Swift 6 correctly refuses to compile.
+        onPermission: @escaping @Sendable (PermissionRequest) async -> Bool,
+        onUpdate: @escaping @Sendable (String) -> Void = { _ in },
+        interruptFlag: @Sendable () -> Bool = { false }
     ) async throws -> String {
         let banned = CLIArgumentBuilderForbiddenFlags.hits(in: arguments)
         if !banned.isEmpty {

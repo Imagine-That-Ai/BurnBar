@@ -1,4 +1,6 @@
 import Foundation
+import OpenBurnBarInsights
+import OpenBurnBarKernel
 
 /// Everything a rule is allowed to look at: the month in question, and whatever
 /// history the device has accumulated.

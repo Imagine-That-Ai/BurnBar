@@ -1126,7 +1126,7 @@ enum ComputerUseSecurityCallableClient {
         )
     }
 
-    static func createCliAgentMission(payload: [String: Any], deviceId: String) async throws -> String {
+    static func createCliAgentMission(payload: [String: any Sendable], deviceId: String) async throws -> String {
         let requestId = payload["requestId"] as? String ?? ""
         let result = try await callHighRiskOwnerAction(
             "createCliAgentMission",
@@ -1152,9 +1152,9 @@ enum ComputerUseSecurityCallableClient {
         selectedRuntimeName: String,
         selectedModelID: String?,
         approvalRequestId: String?,
-        sealedStatePayload: [String: Any]
+        sealedStatePayload: [String: any Sendable]
     ) async throws -> String {
-        var payload: [String: Any] = [
+        var payload: [String: any Sendable] = [
             "requestId": requestId,
             "deviceId": deviceId,
             "nextStatus": nextStatus,
@@ -1185,11 +1185,11 @@ enum ComputerUseSecurityCallableClient {
         deviceId: String,
         status: String,
         hostWriteNonce: String,
-        sealedStatePayload: [String: Any],
+        sealedStatePayload: [String: any Sendable],
         approvalRequestId: String? = nil,
         releaseClaim: Bool = false
     ) async throws {
-        var payload: [String: Any] = [
+        var payload: [String: any Sendable] = [
             "requestId": requestId,
             "deviceId": deviceId,
             "status": status,
@@ -1215,8 +1215,8 @@ enum ComputerUseSecurityCallableClient {
         deviceId: String,
         hostWriteNonce: String,
         eventId: String,
-        sealedEvent: [String: Any],
-        publicEventShape: [String: Any]
+        sealedEvent: [String: any Sendable],
+        publicEventShape: [String: any Sendable]
     ) async throws {
         let result = try await callHighRiskOwnerAction(
             "appendCliAgentMissionEvent",

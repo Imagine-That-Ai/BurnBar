@@ -28,9 +28,12 @@ final class DashboardLayoutSettingsTests: XCTestCase {
 
     // MARK: Persistence
 
-    func test_dashboardLayout_defaultsToAtelier() {
+    /// Focus, not Canvas: Canvas is the ambient second-display surface and its
+    /// thesis is to show almost nothing, which makes a poor first impression on a
+    /// primary monitor. Focus opens on the one thing needing a decision.
+    func test_dashboardLayout_defaultsToFocus() {
         let settings = makeSettingsManager()
-        XCTAssertEqual(settings.dashboardLayout, .atelier)
+        XCTAssertEqual(settings.dashboardLayout, .aurora)
     }
 
     func test_dashboardLayout_setter_persistsToStandardDefaults() {

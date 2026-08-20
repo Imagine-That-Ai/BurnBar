@@ -1,4 +1,5 @@
 import ImageIO
+import OpenBurnBarRecap
 import SwiftUI
 import UniformTypeIdentifiers
 import OpenBurnBarInsights

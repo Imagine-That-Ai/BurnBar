@@ -1,4 +1,3 @@
-import OpenBurnBarCore
 import OpenBurnBarInboxModels
 import OpenBurnBarUI
 import SwiftUI

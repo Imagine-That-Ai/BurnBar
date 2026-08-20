@@ -140,7 +140,7 @@
     },
     {
       "id": "fx",
-      "wireAliases": ["fx"],
+      "wireAliases": ["fx", "vercel-fx", "vercelfx"],
       "displayName": "Fx",
       "surfaces": ["switcher", "mission_create", "mission_event", "mission_mirror", "mission_receipt", "grant_runtime"],
       "launch": "none",

@@ -1,4 +1,6 @@
 import Foundation
+import OpenBurnBarInsights
+import OpenBurnBarKernel
 
 /// The JSON-on-disk bootstrap shared by the recap's two persisted snapshots.
 ///

@@ -193,7 +193,7 @@ public struct MissionRuntimeCatalog: Sendable, Equatable {
         ),
         Row(
             id: "fx",
-            wireAliases: ["fx"],
+            wireAliases: ["fx", "vercel-fx", "vercelfx"],
             displayName: "Fx",
             surfaces: [.switcher, .missionCreate, .missionEvent, .missionMirror, .missionReceipt, .grantRuntime],
             launch: .none,

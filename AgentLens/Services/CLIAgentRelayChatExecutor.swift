@@ -1,4 +1,5 @@
 import Foundation
+import os
 import OpenBurnBarCore
 
 typealias CLIAgentRelayChatDispatcher = @Sendable (
@@ -32,19 +33,30 @@ typealias CLIAgentSessionActionHaltHandler = @MainActor @Sendable () async -> Vo
 
 typealias CLIAgentSessionActionInterruptRunner = @MainActor @Sendable (_ sessionID: String) async -> Bool
 
+/// Routes an interrupt to whoever owns a running session.
+///
+/// Genuinely concurrent by construction: handlers are registered on the actor that
+/// launched the process and fired from cancellation paths, timeout tasks and process
+/// termination — none of which share an executor. The table is therefore guarded by a
+/// lock rather than pinned to an actor, because pinning it would make `interrupt`
+/// `async` and put a hop between "user pressed stop" and "process receives SIGTERM",
+/// which is the one place latency is the whole feature.
+///
+/// `removeValue` inside the lock is also what makes interruption exactly-once: two
+/// racing callers cannot both take the same handler.
 enum CLIAgentSessionInterruptBus {
-    private static var handlers: [String: () -> Void] = [:]
+    private static let handlers = OSAllocatedUnfairLock<[String: @Sendable () -> Void]>(initialState: [:])
 
-    static func register(sessionID: String, handler: @escaping () -> Void) {
-        handlers[sessionID] = handler
+    static func register(sessionID: String, handler: @escaping @Sendable () -> Void) {
+        handlers.withLock { $0[sessionID] = handler }
     }
 
     static func unregister(sessionID: String) {
-        handlers.removeValue(forKey: sessionID)
+        _ = handlers.withLock { $0.removeValue(forKey: sessionID) }
     }
 
     static func interrupt(sessionID: String) -> Bool {
-        guard let handler = handlers.removeValue(forKey: sessionID) else { return false }
+        guard let handler = handlers.withLock({ $0.removeValue(forKey: sessionID) }) else { return false }
         handler()
         return true
     }

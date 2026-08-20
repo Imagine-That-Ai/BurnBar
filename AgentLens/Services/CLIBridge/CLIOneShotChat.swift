@@ -1,5 +1,4 @@
 import Foundation
-import OpenBurnBarCore
 
 /// One prompt in, one complete answer out, over whichever backend the user has
 /// already connected.

@@ -284,6 +284,12 @@ packageProductsBase.append(
         targets: ["OpenBurnBarInsights"]
     )
 )
+packageProductsBase.append(
+    .library(
+        name: "OpenBurnBarRecap",
+        targets: ["OpenBurnBarRecap"]
+    )
+)
 if buildApplePrunedDecompositionTargets {
     // Apple-only presentation products remain pruned off the non-Apple graph.
     packageProductsBase.append(contentsOf: [
@@ -1045,8 +1051,7 @@ let applePrunedDecompositionTargets: [Target] = buildApplePrunedDecompositionTar
             "OpenBurnBarInsights",
             "OpenBurnBarHermes",
             "OpenBurnBarPretext",
-            "OpenBurnBarLogParsers"
-        ],
+            "OpenBurnBarLogParsers", "OpenBurnBarRecap"],
         exclude: openBurnBarUIExcludes
     )
 ] : []
@@ -1213,6 +1218,16 @@ let firstPartyTargetsBase: [Target] = [
             name: "OpenBurnBarInsights",
             dependencies: ["OpenBurnBarKernel"],
             exclude: openBurnBarInsightsExcludes
+        ),
+        // Recap (the monthly "Your Month with AI" deck) is a cohesive feature that
+        // arrived whole: composer, stores, craft rules, voice author, card model.
+        // It lives beside Insights rather than inside it because folding 5.3k lines
+        // into Insights pushed that target past its decomposition ceiling, and
+        // nothing in Insights depends on Recap — the dependency runs one way.
+        // Foundation-only, so it stays on the non-Apple graph like Insights.
+        .target(
+            name: "OpenBurnBarRecap",
+            dependencies: ["OpenBurnBarKernel", "OpenBurnBarInsights"]
         ),
         // OpenBurnBarEngine (S16) — UI-free umbrella the daemon/CLI/parity
         // executables link. Its single source file `@_exported import`s the leaf

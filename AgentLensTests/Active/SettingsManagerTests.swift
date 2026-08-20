@@ -2004,7 +2004,7 @@ final class SettingsManagerTests: XCTestCase {
     // MARK: - ChatBackendID Tests
 
     func test_chatBackendID_allCases() {
-        XCTAssertEqual(ChatBackendID.allCases.count, 13)
+        XCTAssertEqual(ChatBackendID.allCases.count, 15)
         XCTAssertTrue(ChatBackendID.allCases.contains(.codex))
         XCTAssertTrue(ChatBackendID.allCases.contains(.claude))
         XCTAssertTrue(ChatBackendID.allCases.contains(.hermes))
@@ -2018,6 +2018,8 @@ final class SettingsManagerTests: XCTestCase {
         XCTAssertTrue(ChatBackendID.allCases.contains(.cursorAgent))
         XCTAssertTrue(ChatBackendID.allCases.contains(.junie))
         XCTAssertTrue(ChatBackendID.allCases.contains(.fx))
+        XCTAssertTrue(ChatBackendID.allCases.contains(.grok))
+        XCTAssertTrue(ChatBackendID.allCases.contains(.kimi))
     }
 
     func test_chatBackendID_displayNames() {

@@ -1,4 +1,5 @@
 import CoreGraphics
+import OpenBurnBarRecap
 import OpenBurnBarInsights
 
 /// Resolves card sizes against the width actually available.

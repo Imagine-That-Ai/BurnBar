@@ -1,4 +1,5 @@
 import SwiftUI
+import OpenBurnBarRecap
 import OpenBurnBarInsights
 
 /// What the recap surface shows when there is no deck worth showing.

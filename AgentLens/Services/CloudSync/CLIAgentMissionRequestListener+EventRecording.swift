@@ -128,7 +128,7 @@ extension CLIAgentMissionRequestListener {
             let sealed = try CLIAgentMissionEventFactory.sealedEvent(
                 event, uid: uid, requestID: requestID, eventID: eventID, vaultKey: key.keyData, vaultKeyID: key.vaultKeyID
             )
-            guard let sealedEvent = sealed["sealedPayload"] as? [String: Any] else { return }
+            guard let sealedEvent = sealed["sealedPayload"] as? [String: any Sendable] else { return }
             try await ComputerUseSecurityCallableClient.appendCliAgentMissionEvent(
                 requestId: requestID, deviceId: handle.deviceId, hostWriteNonce: handle.hostWriteNonce, eventId: eventID,
                 sealedEvent: sealedEvent,

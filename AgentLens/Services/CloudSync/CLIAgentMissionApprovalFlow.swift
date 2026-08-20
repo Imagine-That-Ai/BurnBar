@@ -33,7 +33,7 @@ extension CLIAgentMissionRequestListener {
                 resultPreview: resultPreview,
                 errorMessage: errorMessage
             )
-            guard let sealedState = sealed["sealedStatePayload"] as? UntypedJSONObject else { return }
+            guard let sealedState = sealed["sealedStatePayload"] as? [String: any Sendable] else { return }
             let wireStatus = status == "agent_launch_failed" ? "failed" : status
             try await ComputerUseSecurityCallableClient.updateCliAgentMissionStatus(
                 requestId: document.documentID,
@@ -116,7 +116,7 @@ extension CLIAgentMissionRequestListener {
                 liveSummary: safeMessage,
                 errorMessage: safeMessage
             )
-            guard let sealedState = sealed["sealedStatePayload"] as? UntypedJSONObject else { return }
+            guard let sealedState = sealed["sealedStatePayload"] as? [String: any Sendable] else { return }
             try await ComputerUseSecurityCallableClient.updateCliAgentMissionStatus(
                 requestId: document.documentID,
                 deviceId: handle.deviceId,
@@ -162,7 +162,7 @@ extension CLIAgentMissionRequestListener {
                 liveSummary: message,
                 errorMessage: message
             )
-            guard let sealedState = sealed["sealedStatePayload"] as? UntypedJSONObject else { return }
+            guard let sealedState = sealed["sealedStatePayload"] as? [String: any Sendable] else { return }
             try await ComputerUseSecurityCallableClient.updateCliAgentMissionStatus(
                 requestId: document.documentID,
                 deviceId: handle.deviceId,
@@ -213,7 +213,7 @@ extension CLIAgentMissionRequestListener {
                 approvalTitle: "Approve \(title)",
                 approvalMessage: message
             )
-            guard let sealedState = sealed["sealedStatePayload"] as? UntypedJSONObject else { return }
+            guard let sealedState = sealed["sealedStatePayload"] as? [String: any Sendable] else { return }
             try await publishParkedCeiling(
                 requestID: document.documentID,
                 deviceId: handle.deviceId,

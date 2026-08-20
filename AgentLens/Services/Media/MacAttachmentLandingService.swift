@@ -1,6 +1,8 @@
 import Darwin
 import Foundation
+import os
 import OpenBurnBarComputerUseCore
+import OpenBurnBarAssistantModels
 import OpenBurnBarMedia
 
 /// Lands a verified attachment into a workspace / Drop / `.burnbar/attachments` prefix.
@@ -20,17 +22,31 @@ enum MacAttachmentLandingService {
         var displayName: String
     }
 
-    private static var landedByDigest: [String: URL] = [:]
-    private static var pending: [LandedFile] = []
+    /// Landed files, keyed by verified content digest, plus the queue waiting to be
+    /// handed to a chat turn.
+    ///
+    /// Held under one lock rather than two so a landing is atomic: `landedByDigest`
+    /// and `pending` are written together in `land`, and a reader that saw the digest
+    /// but not the queue entry would report a file as already-landed while it was
+    /// still invisible to `takePending`. Attachments arrive from URLSession delegate
+    /// queues and the mission executor, so this is genuinely concurrent.
+    private struct LandingTable: Sendable {
+        var byDigest: [String: URL] = [:]
+        var pending: [LandedFile] = []
+    }
+
+    private static let table = OSAllocatedUnfairLock(initialState: LandingTable())
 
     static func resetForTests() {
-        landedByDigest.removeAll()
-        pending.removeAll()
+        table.withLock { $0 = LandingTable() }
     }
 
     static func takePending() -> [LandedFile] {
-        let copy = pending
-        pending.removeAll()
+        let copy = table.withLock { state -> [LandedFile] in
+            let drained = state.pending
+            state.pending.removeAll()
+            return drained
+        }
         return copy
     }
 
@@ -125,7 +141,8 @@ enum MacAttachmentLandingService {
             try? FileManager.default.removeItem(at: plaintextURL) // try?-ok(best-effort digest-mismatch cleanup)
             throw Error.digestMismatch
         }
-        if let existing = landedByDigest[verified], FileManager.default.fileExists(atPath: existing.path) {
+        if let existing = table.withLock({ $0.byDigest[verified] }),
+           FileManager.default.fileExists(atPath: existing.path) {
             return LandedFile(url: existing, contentBlake3: verified, displayName: sanitizeFilename(filename))
         }
         let dest = try containedURL(filename: filename, roots: roots)
@@ -134,9 +151,11 @@ enum MacAttachmentLandingService {
             try FileManager.default.copyItem(at: plaintextURL, to: dest)
         }
         try applyQuarantine(dest)
-        landedByDigest[verified] = dest
         let landed = LandedFile(url: dest, contentBlake3: verified, displayName: sanitizeFilename(filename))
-        pending.append(landed)
+        table.withLock {
+            $0.byDigest[verified] = dest
+            $0.pending.append(landed)
+        }
         return landed
     }
 
@@ -218,7 +237,7 @@ enum MacBurnbarAttachmentUploadClient {
         let length = (try? FileManager.default.attributesOfItem(atPath: fileURL.path)[.size] as? NSNumber)?.int64Value ?? 0 // try?-ok(Content-Length is advisory)
         request.setValue(String(length), forHTTPHeaderField: "Content-Length")
         request.setValue("0", forHTTPHeaderField: "x-goog-if-generation-match")
-        let (_, response) = try await URLSession.shared.upload(fromFile: fileURL, for: request)
+        let (_, response) = try await URLSession.shared.upload(for: request, fromFile: fileURL)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             throw NSError(
                 domain: "OpenBurnBar.MacBurnbarAttachmentUpload",

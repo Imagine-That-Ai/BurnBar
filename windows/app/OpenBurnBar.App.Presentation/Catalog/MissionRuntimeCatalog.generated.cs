@@ -187,7 +187,7 @@ public sealed class MissionRuntimeCatalog
             new[] { MissionRuntimePlatform.Macos, MissionRuntimePlatform.Windows, MissionRuntimePlatform.Linux }),
         new MissionRuntimeRow(
             "fx",
-            new[] { "fx" },
+            new[] { "fx", "vercel-fx", "vercelfx" },
             "Fx",
             new[] { MissionRuntimeSurface.Switcher, MissionRuntimeSurface.MissionCreate, MissionRuntimeSurface.MissionEvent, MissionRuntimeSurface.MissionMirror, MissionRuntimeSurface.MissionReceipt, MissionRuntimeSurface.GrantRuntime },
             MissionRuntimeLaunch.None,

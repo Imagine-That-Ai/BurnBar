@@ -1,4 +1,5 @@
 import CoreGraphics
+import OpenBurnBarRecap
 
 // MARK: - Card Row Packer
 //

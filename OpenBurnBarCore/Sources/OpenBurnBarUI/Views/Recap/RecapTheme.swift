@@ -1,4 +1,5 @@
 import SwiftUI
+import OpenBurnBarRecap
 import OpenBurnBarInsights
 
 /// Recap-specific type and colour, layered on `UnifiedDesignSystem` rather than

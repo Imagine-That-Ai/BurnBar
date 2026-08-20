@@ -147,6 +147,8 @@ service cloud.firestore {
           "prime-agent",
           "primeagent",
           "primeAgent",
+          "vercel-fx",
+          "vercelfx",
           "xai"
         ];
     }

@@ -1,6 +1,7 @@
 import AppKit
 import Metal
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarUI
 import SwiftUI
 
 // MARK: - The usage field, as SwiftUI content

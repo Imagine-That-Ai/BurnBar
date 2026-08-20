@@ -1,5 +1,6 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarRecap
+import OpenBurnBarInsights
 
 /// Routes the recap's editorial pass through whichever chat backend the user has
 /// already connected — local-first, exactly as the Charts insight strip does.

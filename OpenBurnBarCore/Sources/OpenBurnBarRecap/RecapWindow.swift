@@ -1,4 +1,6 @@
 import Foundation
+import OpenBurnBarInsights
+import OpenBurnBarKernel
 
 /// Identity of one calendar month — the unit the monthly recap is built for.
 ///

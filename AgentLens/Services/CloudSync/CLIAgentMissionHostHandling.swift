@@ -338,7 +338,7 @@ extension CLIAgentMissionRequestListener {
                 payload: [:],
                 liveSummary: claimSummary
             )
-            guard let sealedState = sealed["sealedStatePayload"] as? [String: Any] else {
+            guard let sealedState = sealed["sealedStatePayload"] as? [String: any Sendable] else {
                 throw CLIAgentMissionClaimThenEvaluate.Failure.missingSealedState
             }
             let hostWriteNonce = try await ComputerUseSecurityCallableClient.claimCliAgentMission(
@@ -459,7 +459,7 @@ extension CLIAgentMissionRequestListener {
                     payload: [:],
                     liveSummary: summary
                 )
-                if let sealedState = sealed["sealedStatePayload"] as? [String: Any] {
+                if let sealedState = sealed["sealedStatePayload"] as? [String: any Sendable] {
                     try await ComputerUseSecurityCallableClient.updateCliAgentMissionStatus(
                         requestId: document.documentID,
                         deviceId: handle.deviceId,
@@ -807,8 +807,15 @@ enum CLIAgentMissionClaimThenEvaluate {
         return text.contains("failed-precondition") || text.contains("failed_precondition")
     }
 
+    /// Runs in the caller's isolation domain.
+    ///
+    /// The three closures capture the caller's actor-isolated state, so a `nonisolated`
+    /// helper would have to *send* them across a boundary — which region isolation
+    /// rightly rejects. `#isolation` means no boundary is crossed at all: this is an
+    /// algorithm over the caller's own state, not a hop off it.
     static func run(
         decision: CLIAgentMissionClaimDecision,
+        isolation: isolated (any Actor)? = #isolation,
         claim: () async throws -> String,
         evaluate: () async throws -> Void,
         fail: () async throws -> Void

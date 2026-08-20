@@ -1,4 +1,5 @@
 import Charts
+import OpenBurnBarRecap
 import SwiftUI
 import OpenBurnBarInsights
 

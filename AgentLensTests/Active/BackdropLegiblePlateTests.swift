@@ -449,15 +449,28 @@ final class BackdropLegiblePlateTests: XCTestCase {
         XCTAssertGreaterThan(BackdropSubstrate.liveElevated, BackdropSubstrate.live)
     }
 
-    /// Chrome sits at the top of the window, so it takes the top of the range.
+    /// Chrome is the *most* glass of the three, not the least.
     ///
-    /// It is named apart from `liveElevated` because the constraints differ (a
-    /// bar crosses the whole kernel gradient rather than one band of it), but it
-    /// still has to live inside the same glass window — an opaque bar is a
-    /// titlebar, not glass.
-    func testChromeSubstrateSitsAtTheTopOfTheGlassWindow() {
-        XCTAssertGreaterThanOrEqual(BackdropSubstrate.chrome, BackdropSubstrate.live)
-        XCTAssertLessThanOrEqual(BackdropSubstrate.chrome, 0.88)
+    /// The 0.65–0.88 window above exists for one reason: before the native field,
+    /// a plate could not reproduce what sat behind it, so a thin slab let ~40% of
+    /// an unreproducible gradient through and two tiles in one band picked up
+    /// visibly different hues. Hiding the backdrop was the only way to keep a band
+    /// coherent.
+    ///
+    /// `BurnBarFieldInterior` removed that constraint. A plate now redraws the
+    /// exact patch of field it covers, so coherence comes from every plate drawing
+    /// the *same* field rather than from washing it out — and chrome, a bar that
+    /// crosses the whole gradient, is where refraction reads best. It can be as
+    /// thin as its contrast floor allows.
+    ///
+    /// The bounds that remain are the ones that still mean something: above the
+    /// floor there is a base for crisp type — asserted for real, against measured
+    /// contrast, in `testChromeInkClearsContrastOverWorstCaseBackdropInBothAppearances`
+    /// — and below the ceiling it is still glass rather than a titlebar.
+    func testChromeIsTheMostTransparentSubstrate() {
+        XCTAssertLessThan(BackdropSubstrate.chrome, BackdropSubstrate.live)
+        XCTAssertGreaterThanOrEqual(BackdropSubstrate.chrome, 0.30)
+        XCTAssertLessThanOrEqual(BackdropSubstrate.chrome, 0.50)
     }
 
     /// The command deck and status rail contract, in both appearances.

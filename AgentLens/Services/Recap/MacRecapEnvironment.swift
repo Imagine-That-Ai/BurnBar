@@ -1,7 +1,7 @@
 import Foundation
-import SwiftUI
+import OpenBurnBarRecap
 import Observation
-import OpenBurnBarCore
+import OpenBurnBarInsights
 
 /// Owns the recap's stores and composer for the macOS app, and drives one
 /// month's state for the page.
@@ -110,9 +110,12 @@ final class MacRecapEnvironment {
                     self.phase = .ready
                     self.isPolishing = self.isEditorialEnabled && !deck.sealState.isSealed
                 case let .voiced(deck):
-                    withAnimation(DesignSystem.Animation.gentle) {
-                        self.recap = deck
-                    }
+                    // No `withAnimation` here: the deck's cross-fade belongs to the
+                    // view, which already animates on `recap.isVoiceAuthored` *and*
+                    // honours Reduce Motion. Animating from the service both broke
+                    // the Services-layer SwiftUI boundary and forced motion on users
+                    // who had asked for none.
+                    self.recap = deck
                     self.phase = .ready
                     self.isPolishing = false
                 case let .notEnoughData(month):

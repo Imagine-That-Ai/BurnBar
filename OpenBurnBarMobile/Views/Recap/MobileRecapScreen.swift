@@ -1,5 +1,6 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarRecap
+import OpenBurnBarInsights
 import OpenBurnBarUI
 
 /// The monthly recap on iPhone and iPad.

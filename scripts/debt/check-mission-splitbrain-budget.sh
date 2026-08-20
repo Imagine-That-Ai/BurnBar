@@ -9,14 +9,16 @@
 # a transport/relay. This gate freezes the GUI cluster so it can only shrink:
 #
 # Fails CI if EITHER:
-#   - a NEW file matching AgentLens/Services/CloudSync/CLIAgentMissionRequestListener*.swift
+#   - a NEW file matching AgentLens/Services/CloudSync/CLIAgentMission*.swift
 #     appears that is not in the baseline, or
 #   - a baselined file GROWS beyond its recorded line count.
 #
-# Renaming a file out of the cluster prefix to dodge the glob is a review-time
-# offense, not something this gate can catch — reviewers should treat any move
-# of mission trust/approval/execution logic to a non-matching GUI file as a
-# gate evasion.
+# The prefix is CLIAgentMission, not CLIAgentMissionRequestListener, because the
+# narrower glob was in fact evaded: PR #2362 renamed +ApprovalFlow, +DirectExecution
+# and +Handling out of the `RequestListener` prefix, and the gate then reported their
+# 1387 baselined lines as a 1387-line IMPROVEMENT while the same code grew to 2076
+# lines under the new names. A rename is no longer a way out of the cluster; only
+# actually moving authority to the daemon is.
 #
 # Baselined files may only shrink or disappear. Regenerate to ratchet down:
 #   scripts/debt/check-mission-splitbrain-budget.sh --update
@@ -37,7 +39,7 @@ const path = require("node:path");
 
 const [repoRoot, baselinePath, mode] = process.argv.slice(2);
 const clusterDir = path.join(repoRoot, "AgentLens", "Services", "CloudSync");
-const clusterPrefix = "CLIAgentMissionRequestListener";
+const clusterPrefix = "CLIAgentMission";
 
 function scanCluster() {
   if (!fs.existsSync(clusterDir)) return [];
@@ -59,7 +61,7 @@ const liveTotal = live.reduce((sum, f) => sum + f.lines, 0);
 
 if (mode === "update") {
   const baseline = {
-    note: "GUI-side mission-authority cluster (audit 2026-06-30 finding #5, split-brain mission execution). Shrink-only: files may only shrink or disappear as authority moves to the daemon BurnBarMissionControlService. Regenerate via scripts/debt/check-mission-splitbrain-budget.sh --update.",
+    note: "GUI-side mission-authority cluster (audit 2026-06-30 finding #5, split-brain mission execution). Shrink-only: files may only shrink or disappear as authority moves to the daemon BurnBarMissionControlService. Regenerate via scripts/debt/check-mission-splitbrain-budget.sh --update. RE-BASELINED 2026-08-20: the glob was widened from CLIAgentMissionRequestListener to CLIAgentMission after PR #2362 renamed +ApprovalFlow/+DirectExecution/+Handling out of the narrower prefix, which the gate then scored as a 1387-line improvement while the same code grew to 2076 lines under the new names. This baseline records the cluster's TRUE size for the first time; the jump from 3506 to 4320 is previously-hidden debt plus #2362's new backends, not debt this PR added.",
     totalLines: liveTotal,
     files: live,
   };

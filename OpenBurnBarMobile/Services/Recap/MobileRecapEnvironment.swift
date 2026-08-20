@@ -1,7 +1,8 @@
 import Foundation
+import OpenBurnBarRecap
 import SwiftUI
 import Observation
-import OpenBurnBarCore
+import OpenBurnBarInsights
 
 /// Owns the recap's stores and composer on iOS, and drives one month's state.
 ///

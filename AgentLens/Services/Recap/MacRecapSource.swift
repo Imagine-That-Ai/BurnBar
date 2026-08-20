@@ -1,5 +1,6 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarRecap
+import OpenBurnBarInsights
 
 /// Supplies the recap engine with real database rows.
 ///

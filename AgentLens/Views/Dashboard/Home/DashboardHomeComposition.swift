@@ -1,5 +1,6 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarUI
 import OpenBurnBarInboxModels
 import OpenBurnBarKernel
 
