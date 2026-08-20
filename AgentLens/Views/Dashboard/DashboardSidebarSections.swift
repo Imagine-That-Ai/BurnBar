@@ -113,11 +113,6 @@ struct DashboardSidebarSectionState: Codable, Equatable {
     var collapsed: Bool = false
     var isVisible: Bool = true
 
-    init(collapsed: Bool = false, isVisible: Bool = true) {
-        self.collapsed = collapsed
-        self.isVisible = isVisible
-    }
-
     static func decode(_ raw: String) -> [String: DashboardSidebarSectionState] {
         guard let data = raw.data(using: .utf8),
               let decoded = try? JSONDecoder().decode([String: DashboardSidebarSectionState].self, from: data)

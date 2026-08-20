@@ -287,7 +287,7 @@ struct ChatEngineModelRows: View {
     private var perRowQuotaSuffix: String {
         let backend = controller.chatBackend
         switch backend {
-        case .codex, .claude, .droid, .antigravity, .cursorAgent, .openClaude, .omp, .junie, .fx, .grok, .kimi:
+        case .codex, .claude, .droid, .antigravity, .cursorAgent, .openClaude, .omp, .junie, .grok, .kimi:
             guard let provider = backend.agentProvider,
                   let resolution = ProviderQuotaChip.resolve(
                     provider: provider,
