@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Local D box (Developer ID, default off)** — Settings → Agents lists live Grok Bot D box agents by UUID and can send one a prompt over `127.0.0.1`. Send is refused unless shim `:1337`, host `:1338`, and inference `:8787` are up. Turn follow uses `listAgents` plus a read-only `store.db` window when the roster includes `path`. See [`docs/GROK_D_LOCAL_BOX.md`](docs/GROK_D_LOCAL_BOX.md).
+
 ## [1.0.40] - 2026-08-18
 
 ### Fixed
