@@ -45,6 +45,13 @@ struct OpenBurnBarDaemonRuntimePaths: Hashable {
         daemonDirectory.appendingPathComponent("openburnbar-daemon.heartbeat.json", isDirectory: false)
     }
 
+    /// Atomically replaced sibling of `daemon.fleet.snapshot`. The app reads
+    /// this file when the control socket returns an empty or undecodable body
+    /// so a live fleet tick is not stranded behind a peer-auth or decode miss.
+    var fleetSnapshotFileURL: URL {
+        supportDirectory.appendingPathComponent("fleet-snapshot.json", isDirectory: false)
+    }
+
     /// Resolves the daemon's Application Support root, running the hardening
     /// migration first.
     ///

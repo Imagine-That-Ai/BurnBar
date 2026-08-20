@@ -1,5 +1,6 @@
 import SwiftUI
 import OpenBurnBarKernel
+import OpenBurnBarUI
 
 // MARK: - Live agent fleet panel
 //
@@ -26,9 +27,31 @@ struct LiveAgentFleetPanel: View {
     let ink: BackdropInk
     let onOpenAgent: ((AgentProvider) -> Void)?
 
-    /// Rows shown before overflowing into a "+N" chip. Keeps the panel from
-    /// pushing quota off the rail when a user has a dozen agents configured.
-    private static let visibleRowLimit = 6
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// Rows shown before overflowing into a "+N" chip.
+    ///
+    /// The floor, not the answer. This was a flat `6`, which meant a rail panel
+    /// dragged to 700pt showed six agents above 400pt of nothing while a 200pt
+    /// one clipped — the panel's height was already known and simply not asked.
+    /// `visibleRowLimit(forHeight:)` asks it.
+    private static let minimumVisibleRows = 3
+    /// One `FleetRowView` plus its gap.
+    private static let rowUnit: CGFloat = 28
+    /// Header, footer, and the panel's own gutters.
+    private static let rowsChrome: CGFloat = 52
+
+    /// How many agent rows this panel height can honestly hold.
+    ///
+    /// Pure and `static` so it can be pinned by a test without mounting a rail,
+    /// the same contract every rule in `DashboardHomeRailMetrics` keeps.
+    static func visibleRowLimit(forHeight height: CGFloat) -> Int {
+        // The first layout pass can report zero before the rail has a frame;
+        // answering 0 there would flash an empty panel on every launch.
+        guard height > 0 else { return minimumVisibleRows }
+        let usable = height - rowsChrome
+        return max(minimumVisibleRows, Int(usable / rowUnit))
+    }
 
     var body: some View {
         Group {
@@ -48,21 +71,27 @@ struct LiveAgentFleetPanel: View {
             if model.rows.isEmpty {
                 emptyState
             } else {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-                        ForEach(model.rows.prefix(Self.visibleRowLimit)) { row in
-                            FleetRowView(row: row, ink: ink, onOpen: onOpenAgent)
+                GeometryReader { geo in
+                    let limit = Self.visibleRowLimit(forHeight: geo.size.height)
+                    let hidden = model.rows.count - limit
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                            ForEach(model.rows.prefix(limit)) { row in
+                                FleetRowView(row: row, ink: ink, onOpen: onOpenAgent)
+                                    .transition(MotionTokens.flow(reduceMotion: reduceMotion))
+                            }
+                            if hidden > 0 {
+                                Text("+\(hidden) more")
+                                    .font(DesignSystem.Typography.tiny)
+                                    .foregroundStyle(ink.subtle)
+                                    .padding(.horizontal, DesignSystem.Spacing.xs)
+                                    .padding(.top, DesignSystem.Spacing.xxs)
+                            }
                         }
-                        if model.rows.count > Self.visibleRowLimit {
-                            Text("+\(model.rows.count - Self.visibleRowLimit) more")
-                                .font(DesignSystem.Typography.tiny)
-                                .foregroundStyle(ink.subtle)
-                                .padding(.horizontal, DesignSystem.Spacing.xs)
-                                .padding(.top, DesignSystem.Spacing.xxs)
-                        }
+                        .padding(.horizontal, DesignSystem.Spacing.md)
+                        .padding(.vertical, DesignSystem.Spacing.sm)
                     }
-                    .padding(.horizontal, DesignSystem.Spacing.md)
-                    .padding(.vertical, DesignSystem.Spacing.sm)
+                    .animation(MotionTokens.settle(reduceMotion: reduceMotion), value: limit)
                 }
             }
             footer
@@ -203,8 +232,8 @@ struct FleetStatusDot: View {
             }
         }
         .frame(width: size, height: size)
-        .opacity(shouldPulse && pulsing ? 0.45 : 1)
-        .animation(shouldPulse ? DesignSystem.Animation.mercuryPulse : nil, value: pulsing)
+        .opacity(shouldPulse && pulsing ? MotionTokens.pulseFloor : MotionTokens.pulseCeiling)
+        .animation(shouldPulse ? MotionTokens.pulse(reduceMotion: reduceMotion) : nil, value: pulsing)
         .onAppear { pulsing = shouldPulse }
         .onChange(of: shouldPulse) { _, active in pulsing = active }
         .accessibilityHidden(true)

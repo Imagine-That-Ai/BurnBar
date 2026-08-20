@@ -36,6 +36,25 @@ enum FleetLoadState: Equatable {
     }
 }
 
+/// Reader for the daemon's well-known `fleet-snapshot.json`.
+///
+/// Same payload as `daemon.fleet.snapshot` (`docs/fleet/BURNBAR_FLEET_API.md`).
+/// Used when the control socket accepts and then returns an empty or
+/// undecodable body, so a live tick already on disk is not stranded.
+enum BurnBarFleetSnapshotFile {
+    static func readIfPresent(at url: URL) throws -> BurnBarFleetSnapshot? {
+        let data: Data
+        do {
+            data = try Data(contentsOf: url)
+        } catch let error as NSError
+            where error.domain == NSCocoaErrorDomain && error.code == NSFileReadNoSuchFileError {
+            return nil
+        }
+        guard data.isEmpty == false else { return nil }
+        return try JSONDecoder().decode(BurnBarFleetSnapshot.self, from: data)
+    }
+}
+
 // MARK: - Fleet Service
 
 /// App-side fleet client (M3). Owns the single polling loop that reads
@@ -103,7 +122,7 @@ final class FleetService {
     init(
         socketURL: URL,
         fetchSnapshot: @escaping (URL) throws -> BurnBarFleetSnapshot = { url in
-            try OpenBurnBarDaemonSocketClient.fleetSnapshot(at: url)
+            try FleetService.fetchSnapshotWithFileFallback(at: url)
         },
         fetchOrchestratorState: @escaping (URL) throws -> BurnBarOrchestratorState = { url in
             try OpenBurnBarDaemonSocketClient.fleetOrchestratorGet(at: url)
@@ -124,6 +143,23 @@ final class FleetService {
     /// app support directory).
     static func defaultSocketURL() -> URL {
         OpenBurnBarDaemonRuntimePaths.live().socketURL
+    }
+
+    /// Live fetch: RPC first, then the well-known snapshot file. An empty
+    /// socket body used to surface as Cocoa's "data isn't in the correct
+    /// format" and blank the board while `fleet-snapshot.json` was current.
+    static func fetchSnapshotWithFileFallback(
+        at socketURL: URL,
+        fileURL: URL = OpenBurnBarDaemonRuntimePaths.live().fleetSnapshotFileURL
+    ) throws -> BurnBarFleetSnapshot {
+        do {
+            return try OpenBurnBarDaemonSocketClient.fleetSnapshot(at: socketURL)
+        } catch {
+            if let fileSnapshot = try BurnBarFleetSnapshotFile.readIfPresent(at: fileURL) {
+                return fileSnapshot
+            }
+            throw error
+        }
     }
 
     /// Starts the single polling loop. Idempotent: calling start while a

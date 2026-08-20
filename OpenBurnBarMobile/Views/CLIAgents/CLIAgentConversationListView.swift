@@ -545,6 +545,8 @@ struct CLIAgentConversationListView: View {
             return "Start an OpenClaude chat here. The Mac streams replies back into this mobile thread."
         case .omp:
             return "Start an OMP chat here. The Mac streams replies back into this mobile thread."
+        case .fx:
+            return "Start an fx chat here. The Mac streams replies back into this mobile thread."
         }
     }
 
@@ -561,6 +563,7 @@ struct CLIAgentConversationListView: View {
         case .grok: return Color(hex: "111111")
         case .cursorAgent: return Color(hex: "00E5FF")
         case .junie:    return Color(hex: "48E054")
+        case .fx:       return Color(hex: "A1A1AA")
         }
     }
 
@@ -935,6 +938,7 @@ struct CLIAgentChatThreadView: View {
         case .grok: return Color(hex: "111111")
         case .cursorAgent: return Color(hex: "00E5FF")
         case .junie: return Color(hex: "48E054")
+        case .fx:    return Color(hex: "A1A1AA")
         }
     }
 }
@@ -1111,6 +1115,7 @@ private extension CLIAgentRuntime {
         case .grok:        return .xAI
         case .cursorAgent: return .cursorAgent
         case .junie:       return .junie
+        case .fx:          return .fx
         }
     }
 }

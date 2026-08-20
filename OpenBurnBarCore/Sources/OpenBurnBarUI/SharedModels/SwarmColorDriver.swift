@@ -191,6 +191,8 @@ public struct SwarmColorDriver: Equatable, Sendable {
             return RGBA(r: 0.45, g: 0.40, b: 1.00, a: base.a)
         case .muse:
             return RGBA(r: 0.02, g: 0.41, b: 0.88, a: base.a)
+        case .fx:
+            return RGBA(r: 0.63, g: 0.63, b: 0.67, a: base.a)
         }
     }
 }

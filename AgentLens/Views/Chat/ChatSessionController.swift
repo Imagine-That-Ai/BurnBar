@@ -129,6 +129,27 @@ final class ChatSessionController {
         didSet { if persistsViewState { UserDefaults.standard.set(chatModelJunie, forKey: Self.udChatModelJunie) } }
     }
 
+    var chatModelFx: String = "" {
+        didSet { if persistsViewState { UserDefaults.standard.set(chatModelFx, forKey: Self.udChatModelFx) } }
+    }
+
+    /// The fx session id returned by the last `fx ask --json` reply. The next
+    /// fx send passes it as `--resume <id>` so multi-turn chat continues the
+    /// same fx session instead of starting a fresh one. Persisted per the
+    /// spec's `udThreadIDFx` key; cleared when the thread is cleared or
+    /// switched.
+    var fxResumeSessionID: String? {
+        didSet {
+            if persistsViewState {
+                if let fxResumeSessionID {
+                    UserDefaults.standard.set(fxResumeSessionID, forKey: Self.udThreadIDFx)
+                } else {
+                    UserDefaults.standard.removeObject(forKey: Self.udThreadIDFx)
+                }
+            }
+        }
+    }
+
     var hermesAvailable: Bool = false
 
     /// Mirror of `CLIBridge.hermesCatalogAuthRejected`: the gateway is up but
@@ -243,9 +264,9 @@ final class ChatSessionController {
     /// Cumulative offset from the default bottom-trailing anchor (drag to reposition).
     var panelFloatOffset: CGSize = .zero
 
-    var panelWidth: CGFloat = 400
+    var panelWidth: CGFloat = ChatPanelGeometry.defaultSize.width
 
-    var panelHeight: CGFloat = 440
+    var panelHeight: CGFloat = ChatPanelGeometry.defaultSize.height
 
     /// When true, the chat panel collapses to a small dockable pill.
     var isMinimized = false
@@ -306,6 +327,10 @@ final class ChatSessionController {
     static let udChatModelOpenClaude = "chatPanel.model.openclaude"
     static let udChatModelOMP = "chatPanel.model.omp"
     static let udChatModelJunie = "chatPanel.model.junie"
+    static let udChatModelFx = "chatPanel.model.fx"
+
+    /// fx multi-turn session id slot (spec: `udThreadIDFx`).
+    static let udThreadIDFx = "chatPanelThreadIDFx"
 
     /// Legacy keys (migrated once into per-backend keys).
     static let udThreadIDLocalIndex = "chatPanelThreadIDLocalIndex"
@@ -432,12 +457,16 @@ final class ChatSessionController {
         chatModelOpenClaude = UserDefaults.standard.string(forKey: Self.udChatModelOpenClaude) ?? ""
         chatModelOMP = UserDefaults.standard.string(forKey: Self.udChatModelOMP) ?? ""
         chatModelJunie = UserDefaults.standard.string(forKey: Self.udChatModelJunie) ?? ""
+        chatModelFx = UserDefaults.standard.string(forKey: Self.udChatModelFx) ?? ""
+        fxResumeSessionID = UserDefaults.standard.string(forKey: Self.udThreadIDFx)
         loadPersonaState()
 
-        let w = UserDefaults.standard.double(forKey: Self.udPanelW)
-        if w >= 260 && w <= 800 { panelWidth = CGFloat(w) }
-        let h = UserDefaults.standard.double(forKey: Self.udPanelH)
-        if h >= 200 && h <= 900 { panelHeight = CGFloat(h) }
+        let restored = ChatPanelGeometry.restored(
+            width: UserDefaults.standard.double(forKey: Self.udPanelW),
+            height: UserDefaults.standard.double(forKey: Self.udPanelH)
+        )
+        panelWidth = restored.width
+        panelHeight = restored.height
         let ox = UserDefaults.standard.double(forKey: Self.udOffsetX)
         let oy = UserDefaults.standard.double(forKey: Self.udOffsetY)
         // Validate offset is within reasonable bounds (-500 to 500 pixels)
@@ -450,6 +479,13 @@ final class ChatSessionController {
         }
 
         refreshRetrievalHealth(sharedFeaturesAvailable: sharedFeaturesAvailable)
+
+        // Retire landscape geometry left behind by earlier builds so the stored
+        // size stops fighting the portrait column on every launch.
+        if restored.width != CGFloat(UserDefaults.standard.double(forKey: Self.udPanelW))
+            || restored.height != CGFloat(UserDefaults.standard.double(forKey: Self.udPanelH)) {
+            persistPanelGeometry()
+        }
     }
 
     isolated deinit {
@@ -461,4 +497,45 @@ final class ChatSessionController {
         textExpansionLookupTask?.cancel()
     }
 
+}
+
+/// Size rules for the floating chat panel.
+///
+/// The panel is a portrait reading column in the iOS/ChatGPT idiom, so width is
+/// capped well below height and every resize is clamped back into that shape. A
+/// landscape size can therefore never be produced by dragging, and one restored
+/// from an older build is discarded rather than honored.
+enum ChatPanelGeometry {
+    static let defaultSize = CGSize(width: 380, height: 640)
+
+    static let widthRange: ClosedRange<CGFloat> = 300...520
+
+    static let heightRange: ClosedRange<CGFloat> = 420...980
+
+    /// Widest the column may get relative to its height. Below 1 by construction:
+    /// at the limit the panel is still visibly taller than it is wide.
+    static let maxWidthToHeightRatio: CGFloat = 0.72
+
+    static func isPortrait(_ size: CGSize) -> Bool {
+        size.width <= size.height * maxWidthToHeightRatio + 0.5
+    }
+
+    /// Pulls any proposed size back into the portrait envelope. Height settles
+    /// first, then width, so the ratio cap is measured against a final height.
+    static func clamp(_ size: CGSize) -> CGSize {
+        let height = min(max(size.height, heightRange.lowerBound), heightRange.upperBound)
+        let widthCeiling = min(widthRange.upperBound, height * maxWidthToHeightRatio)
+        let width = min(max(size.width, widthRange.lowerBound), widthCeiling)
+        return CGSize(width: width, height: height)
+    }
+
+    /// Resolves persisted geometry. Missing values fall back to the default, and
+    /// a stored landscape slab is retired outright instead of being squeezed into
+    /// a near-square column.
+    static func restored(width: Double, height: Double) -> CGSize {
+        let stored = CGSize(width: CGFloat(width), height: CGFloat(height))
+        guard stored.width > 0, stored.height > 0 else { return defaultSize }
+        guard isPortrait(stored) else { return defaultSize }
+        return clamp(stored)
+    }
 }

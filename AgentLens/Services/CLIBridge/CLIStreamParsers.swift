@@ -357,6 +357,88 @@ struct GenericCLIJSONOrTextParser {
     }
 }
 
+/// Parses the single structured JSON object emitted by `fx ask --json`.
+///
+/// fx prints one JSON object per invocation (fields: `output`, `exit_code`,
+/// `model`, `session_id`, `steps`, `tool_calls`, and an `error` field on
+/// failure). The object may span multiple stdout lines, so this parser
+/// accumulates raw lines until the buffer parses as a complete JSON object,
+/// then emits the whole payload at once. Anything that never parses is
+/// surfaced as plain text so a human-readable fx message still reaches the
+/// chat bubble.
+struct FxAskJSONParser {
+    private var buffer = ""
+    private var emitted = false
+
+    mutating func events(fromLine line: String) -> (events: [CLIChatStreamEvent], error: CLIBridgeError?) {
+        guard !emitted else { return ([], nil) }
+
+        if !buffer.isEmpty {
+            buffer += "\n"
+        }
+        buffer += line
+
+        guard let data = buffer.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? UntypedJSONObject else { // try?-ok(incomplete object, keep buffering)
+            return ([], nil)
+        }
+
+        emitted = true
+        var events: [CLIChatStreamEvent] = []
+
+        if let error = Self.errorMessage(from: obj) {
+            return (events, .fxError(error))
+        }
+
+        if let sessionID = (obj["session_id"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines), !sessionID.isEmpty {
+            events.append(.sessionID(sessionID))
+        }
+
+        if let output = (obj["output"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines), !output.isEmpty {
+            events.append(contentsOf: CodexExecJSONLParser.chunkedText(output).map(CLIChatStreamEvent.text))
+        }
+
+        if let toolCalls = obj["tool_calls"] as? [UntypedJSONObject] {
+            for call in toolCalls {
+                let name = (call["name"] as? String)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                guard let name, !name.isEmpty else { continue }
+                let status = (call["status"] as? String)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .lowercased()
+                let detail = (call["detail"] as? String)
+                    ?? (call["command"] as? String)
+                    ?? (call["path"] as? String)
+                if status == "error" || status == "failed" {
+                    events.append(.toolResult(name: name, detail: detail))
+                } else {
+                    events.append(.toolUse(name: name, detail: detail))
+                }
+            }
+        }
+
+        if events.isEmpty {
+            // Structured but empty: fall back to the raw payload so the user
+            // still sees something rather than a silent bubble.
+            events.append(.text(buffer))
+        }
+        return (events, nil)
+    }
+
+    private static func errorMessage(from obj: UntypedJSONObject) -> String? {
+        if let error = obj["error"] as? String, !error.isEmpty {
+            return error
+        }
+        if let error = obj["error"] as? UntypedJSONObject {
+            if let message = error["message"] as? String, !message.isEmpty { return message }
+            if let text = error["text"] as? String, !text.isEmpty { return text }
+        }
+        return nil
+    }
+}
+
 enum OpenAICompatibleUsageParser {
     static func usage(from obj: UntypedJSONObject) -> CLIUsageSnapshot? {
         let usage = (obj["usage"] as? UntypedJSONObject) ?? obj

@@ -180,11 +180,13 @@ struct WebsiteBackgroundView: View {
             MobileWebGLKernelBackdropView(kernelID: kernel.rawValue, theme: theme)
                 .ignoresSafeArea()
 
-            // Transparent swarm + substrate over the kernel, like macOS
-            // DashboardBackdrop.kernelSubstrateOverlay. Provider glyphs are an
-            // independent wallpaper control, so a non-empty selection gets an
-            // overlay even when the substrate itself is disabled.
-            if substrateSelected || providerGlyphsSelected {
+            // Transparent swarm over the kernel only for an explicit substrate.
+            // Provider glyphs default to the full roster; they must not mount a
+            // second particle simulator on the living WebGL kernel.
+            if KernelSwarmOverlayPolicy.shouldMountCanvas(
+                substrateEnabled: substrateEnabled,
+                substrateID: substrateID
+            ) {
                 SwarmCanvasView(
                     accent: accent,
                     pace: .cinematic,

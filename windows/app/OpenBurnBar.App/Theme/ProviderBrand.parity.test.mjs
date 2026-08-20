@@ -34,6 +34,8 @@ const SYMBOLS = {
   "Colors.blaze": "E86100",
   "Color.primary": "FFFFFF",
   "DesignSystem.Colors.textSecondary": "8B949E",
+  'Color.adaptive(light: "171717", dark: "FFFFFF")': "FFFFFF",
+  'Color.adaptive(light: "4A4A4A", dark: "D4D4D8")': "D4D4D8",
 };
 
 // Swift enum case → C# enum member.
@@ -45,7 +47,8 @@ const PROVIDER_MAP = {
   hermes: "Hermes", piAgent: "PiAgent", geminiCLI: "GeminiCLI", antigravity: "Antigravity",
   goose: "Goose", openClaw: "OpenClaw", openClaude: "OpenClaude", omp: "Omp",
   ollama: "Ollama", windsurf: "Windsurf", warp: "Warp", xAI: "XAI", mimo: "Mimo",
-  cursorAgent: "CursorAgent", openBurnBar: "OpenBurnBar",
+  cursorAgent: "CursorAgent", openBurnBar: "OpenBurnBar", fx: "Fx",
+  junie: "Junie", primeAgent: "PrimeAgent", muse: "Muse", devin: "Devin",
 };
 
 const BRAND_MAP = {
@@ -106,24 +109,24 @@ function assertArmsEqual(swiftMap, csMap, label) {
   return keys.size;
 }
 
-test("primary(for:) — all 32 providers match Swift", () => {
+test("primary(for:) — all 37 providers match Swift", () => {
   const sw = swiftArms(
     region(designSwift, "static func primary(for provider: AgentProvider) -> Color {", "static func accent(for provider"),
     PROVIDER_MAP
   );
   const cs = csArms(region(providerCs, "public static string PrimaryHex", "// MARK: accent"), "AgentProviderBrand");
   const n = assertArmsEqual(sw, cs, "primary");
-  assert.equal(n, 32, `expected 32 providers, got ${n}`);
+  assert.equal(n, 37, `expected 37 providers, got ${n}`);
 });
 
-test("accent(for:) — all 32 providers match Swift", () => {
+test("accent(for:) — all 37 providers match Swift", () => {
   const sw = swiftArms(
     region(designSwift, "static func accent(for provider: AgentProvider) -> Color {", "static func chartPalette"),
     PROVIDER_MAP
   );
   const cs = csArms(region(providerCs, "public static string AccentHex", "// MARK: colorForModel"), "AgentProviderBrand");
   const n = assertArmsEqual(sw, cs, "accent");
-  assert.equal(n, 32, `expected 32 providers, got ${n}`);
+  assert.equal(n, 37, `expected 37 providers, got ${n}`);
 });
 
 test("LLMModelBrand.emblemColor — every brand matches Swift", () => {

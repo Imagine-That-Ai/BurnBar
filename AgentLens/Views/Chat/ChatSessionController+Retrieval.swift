@@ -95,6 +95,9 @@ extension ChatSessionController {
             case .junie:
                 let m = chatModelJunie.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "junie"
                 return (.junie, "OpenBurnBar Junie Chat", m)
+            case .fx:
+                let m = chatModelFx.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "fx"
+                return (.fx, "OpenBurnBar fx Chat", m)
             }
         }()
 

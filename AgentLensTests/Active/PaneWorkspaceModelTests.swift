@@ -772,7 +772,7 @@ final class AgentDeckIdentityTests: XCTestCase {
             seen[hex] = backend
         }
         XCTAssertEqual(seen.count, ChatBackendID.allCases.count)
-        XCTAssertEqual(ChatBackendID.allCases.count, 12)
+        XCTAssertEqual(ChatBackendID.allCases.count, 13)
     }
 
     func test_sigilTint_reusesTheDesignSystemPrimaries_andInventsNoNewHexes() throws {

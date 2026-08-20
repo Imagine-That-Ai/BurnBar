@@ -97,7 +97,7 @@ public sealed class SettingsTabTests
         var cases = AgentProviderMetadata.AllCases;
         Assert.Equal(AgentProvider.Factory, cases[0]);
         Assert.Equal(AgentProvider.OpenBurnBar, cases[6]);   // 7th case in the Swift enum
-        Assert.Equal(AgentProvider.Muse, cases[^1]);  // last case
+        Assert.Equal(AgentProvider.Fx, cases[^1]);  // last case
     }
 
     [Theory]

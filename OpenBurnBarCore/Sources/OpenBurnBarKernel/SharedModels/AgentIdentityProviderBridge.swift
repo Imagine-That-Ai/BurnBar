@@ -50,6 +50,7 @@ extension AgentIdentity {
         case .grok: return .xAI
         case .cursorAgent: return .cursorAgent
         case .junie:    return .junie
+        case .fx:       return .fx
         }
     }
 }

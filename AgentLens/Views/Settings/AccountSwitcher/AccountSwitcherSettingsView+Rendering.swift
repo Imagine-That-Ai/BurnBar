@@ -543,6 +543,7 @@ extension AccountSwitcherSettingsView {
             (.kimi, "Kimi", "terminal.fill", Color(hex: "6366F1")),
             (.pi, "Pi", "terminal.fill", Color(hex: "7C3AED")),
             (.junie, "Junie", "terminal.fill", Color(hex: "48E054")),
+            (.fx, "fx", "terminal.fill", Color.adaptive(light: "171717", dark: "FFFFFF")),
             (.primeAgent, "Prime Agent", "terminal.fill", Color(hex: "582CFF"))
         ]
 
@@ -564,6 +565,7 @@ extension AccountSwitcherSettingsView {
                 case .kimi: "KimiLogo"
                 case .pi: "PiAgentLogo"
                 case .junie: "JunieLogo"
+                case .fx: "FxLogo"
                 case .omp: "OMPLogo"
                 case .primeAgent: "PrimeAgentLogo"
                 }

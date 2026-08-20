@@ -2,7 +2,7 @@
  * @fileoverview Provider quota refresh callables (account-scoped and legacy)
  */
 
-import { onCall, type CallableRequest } from "firebase-functions/v2/https";
+import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/https";
 
 import { getConfig } from "../config.js";
 import { enforceAuthAndAppCheck } from "../auth.js";
@@ -22,7 +22,7 @@ import { isDemoProviderAccountRecord } from "../providerAccountIsolation.js";
 async function rateLimitProviderForAccountRefresh(uid: string, accountID: string): Promise<void> {
   const accountSnap = await db.doc(`users/${uid}/provider_accounts/${accountID}`).get();
   if (!accountSnap.exists) {
-    throw new Error(`No provider account doc found for ${accountID}`);
+    throw new HttpsError("not-found", `No provider account found for ${accountID}.`);
   }
 
   const accountData = accountSnap.data();
@@ -32,7 +32,7 @@ async function rateLimitProviderForAccountRefresh(uid: string, accountID: string
 
   const account = requireProviderAccountDoc(accountData);
   if (account.id !== accountID) {
-    throw new Error(`Provider account ID mismatch for ${accountID}`);
+    throw new HttpsError("invalid-argument", `Provider account ID mismatch for ${accountID}.`);
   }
 
   assertProvider(account.providerID);
@@ -49,7 +49,7 @@ export const refreshProviderAccountQuota = onCall(
   wrapCallableHandler("refreshProviderAccountQuota", async (request: CallableRequest<{ accountID: string }>) => {
     const uid = request.auth?.uid;
     if (!uid) {
-      throw new Error("unauthenticated");
+      throw new HttpsError("unauthenticated", "Sign in before refreshing provider quota.");
     }
     enforceAuthAndAppCheck(request, uid);
 
@@ -57,7 +57,7 @@ export const refreshProviderAccountQuota = onCall(
     await rateLimitProviderForAccountRefresh(uid, accountID);
     const snapshot = await refreshUserProviderAccountQuota(db, uid, accountID);
     if (!snapshot) {
-      throw new Error("failed-precondition: quota refresh returned no snapshot.");
+      throw new HttpsError("failed-precondition", "Quota refresh returned no snapshot. Please try again.");
     }
     return snapshot;
   }),
@@ -79,7 +79,7 @@ export const refreshProviderQuota = onCall(
     const uid = request.auth?.uid;
 
     if (!uid) {
-      throw new Error("unauthenticated");
+      throw new HttpsError("unauthenticated", "Sign in before refreshing provider quota.");
     }
     enforceAuthAndAppCheck(request, uid);
     assertProvider(provider);
@@ -99,7 +99,7 @@ export const refreshProviderQuota = onCall(
     assertProvider(provider);
     const snapshot = await refreshUserProviderQuota(db, uid, provider);
     if (!snapshot) {
-      throw new Error("failed-precondition: legacy quota refresh returned no snapshot.");
+      throw new HttpsError("failed-precondition", "Quota refresh returned no snapshot. Please try again.");
     }
 
     return {

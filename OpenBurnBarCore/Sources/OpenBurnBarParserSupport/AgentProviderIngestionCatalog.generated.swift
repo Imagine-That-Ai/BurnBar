@@ -493,6 +493,19 @@ public enum AgentProviderIngestionCatalog {
             ingestion: .localParser,
             coverageNote: "Local parser registered in ParserRegistry.",
             quotaSignal: false
+        ),
+        Entry(
+            provider: .fx,
+            agentProviderCase: "fx",
+            providerID: "fx",
+            displayLabel: "fx",
+            aliases: ["vercel-fx"],
+            linuxLogicalPath: "~/.fx/sessions",
+            macOSLogicalPath: "~/.fx/sessions",
+            filePattern: "*.json",
+            ingestion: .localParser,
+            coverageNote: "Local parser registered in ParserRegistry.",
+            quotaSignal: false
         )
     ]
 

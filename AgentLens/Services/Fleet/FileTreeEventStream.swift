@@ -86,7 +86,14 @@ final class FileTreeEventStream {
             copyDescription: nil
         )
 
-        let flags = UInt32(kFSEventStreamCreateFlagFileEvents)
+        // `UseCFTypes` is not optional here, it is load-bearing. Without it
+        // FSEvents delivers `eventPaths` as a C `char **`, and the callback
+        // bitcasts that pointer to `NSArray` and sends it a message — which is
+        // an objc_msgSend into raw path bytes, and exactly why the crash
+        // address (`0x656e756f3674`) reads as ASCII. With the flag set, the
+        // parameter really is a `CFArray` of `CFString` and the bridge in
+        // `fileTreeEventCallback` is sound.
+        let flags = UInt32(kFSEventStreamCreateFlagFileEvents | kFSEventStreamCreateFlagUseCFTypes)
         guard let created = FSEventStreamCreate(
             kCFAllocatorDefault,
             fileTreeEventCallback,

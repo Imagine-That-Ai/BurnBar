@@ -36,6 +36,18 @@ enum PlasmaShade {
         blended(color, with: .white, fraction: fraction)
     }
 
+    /// A halo's opacity for the current theme.
+    ///
+    /// A wide, soft halo that reads as *light* against a dark surface reads as
+    /// a smudge against a white one: the blur is identical, but on white there
+    /// is no headroom above the background left for it to glow into. Every
+    /// halo in these selectors is attenuated by the same factor rather than
+    /// each surface choosing its own, so the persona orb and the model orb
+    /// cannot drift apart as either is retuned.
+    static func halo(_ darkOpacity: Double, in colorScheme: ColorScheme) -> Double {
+        colorScheme == .dark ? darkOpacity : darkOpacity * 0.64
+    }
+
     private static func blended(_ color: Color, with other: NSColor, fraction: CGFloat) -> Color {
         guard let base = NSColor(color).usingColorSpace(.sRGB),
               let target = other.usingColorSpace(.sRGB),
@@ -71,6 +83,7 @@ struct PlasmaOrb<Content: View>: View {
     @ViewBuilder var content: () -> Content
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
 
     private var animates: Bool { isAnimating && !reduceMotion }
 
@@ -114,7 +127,7 @@ struct PlasmaOrb<Content: View>: View {
 
             // The plasma spins; the mark inside it does not. A tumbling
             // provider logo reads as a bug, not as life.
-            mark.allowsHitTesting(false)
+            PlasmaEmissiveMark(size: size, isDimmed: isDormant) { mark }
         }
         .frame(width: size, height: size)
         .offset(x: offset.width, y: offset.height)
@@ -170,9 +183,11 @@ struct PlasmaOrb<Content: View>: View {
             // ±0.06·size the two are indistinguishable.
             .blur(radius: size * 0.19)
             .scaleEffect(0.98 + 0.08 * breath)
-            .opacity((0.60 + 0.10 * breath) * (isDormant ? 0.2 : 1))
+            .opacity((auraBase + 0.10 * breath) * (isDormant ? 0.2 : 1))
             .allowsHitTesting(false)
     }
+
+    private var auraBase: Double { PlasmaShade.halo(0.60, in: colorScheme) }
 
     private var gradient: RadialGradient {
         RadialGradient(
@@ -219,6 +234,52 @@ extension PlasmaOrb where Content == EmptyView {
             phaseOffset: phaseOffset
         ) { EmptyView() }
     }
+}
+
+// MARK: - Emissive mark
+
+/// A brand mark lit *from inside* the glass.
+///
+/// The asset's orbs do not paste their logo on top of the sphere — the mark
+/// sits in the plasma and glows with it, which is what stops a 52pt orb reading
+/// as a sticker with an icon on it. The asset gets this from a `filter:
+/// drop-shadow()` stack in the mark's own colour.
+///
+/// The translation is a blurred copy of the mark's *own pixels* composited
+/// underneath it, so every logo blooms in its own hue with no per-brand colour
+/// table to keep in sync: the flame glows orange, the bolt blue, and a brand
+/// that reskins its asset reskins its glow with it.
+struct PlasmaEmissiveMark<Mark: View>: View {
+    /// The host orb's diameter. The bloom is a fraction of it, so one mark
+    /// renders correctly in a 52pt constellation orb and a 24pt trigger.
+    var size: CGFloat
+    /// Drops the bloom entirely for an orb that is dormant or impaired — a
+    /// glowing mark on a dimmed orb would announce exactly the wrong state.
+    var isDimmed: Bool = false
+    @ViewBuilder var mark: () -> Mark
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        // Built once and drawn twice. `mark()` re-resolves a provider logo's
+        // asset candidates on every call, and this view is rebuilt on every
+        // tick of the host's clock.
+        let built = mark()
+        return ZStack {
+            built
+                .blur(radius: size * 0.09)
+                .opacity(isDimmed ? 0 : bloomOpacity)
+                .blendMode(colorScheme == .dark ? .plusLighter : .normal)
+            built
+        }
+        .allowsHitTesting(false)
+    }
+
+    /// Additive light is only additive where there is room above the backdrop
+    /// to add to. On a light surface `plusLighter` drives the bloom straight to
+    /// white and eats the logo it is supposed to be lighting, so light mode
+    /// composites a softer halo normally instead.
+    private var bloomOpacity: Double { colorScheme == .dark ? 0.85 : 0.40 }
 }
 
 // MARK: - Ghostly liquid glass bubble

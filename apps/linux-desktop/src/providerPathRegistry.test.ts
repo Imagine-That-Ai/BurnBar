@@ -44,7 +44,8 @@ const REQUIRED_PROVIDER_IDS = [
   'junie',
   'prime-agent',
   'muse',
-  'devin'
+  'devin',
+  'fx'
 ] as const;
 
 describe('providerPathRegistry', () => {
@@ -59,8 +60,8 @@ describe('providerPathRegistry', () => {
 
   it('makes non-parser coverage explicit instead of implying local ingestion', () => {
     expect(providerCoverageCounts()).toEqual({
-      total: 36,
-      localParser: 31,
+      total: 37,
+      localParser: 32,
       apiBacked: 4,
       unavailable: 1
     });
@@ -68,11 +69,12 @@ describe('providerPathRegistry', () => {
     expect(providerPathById('omp')?.coverage).toBe('local-parser');
     expect(providerPathById('prime-agent')?.coverage).toBe('local-parser');
     expect(providerPathById('muse')?.coverage).toBe('local-parser');
+    expect(providerPathById('fx')?.coverage).toBe('local-parser');
     expect(providerPathById('openai')?.coverage).toBe('api-backed');
     expect(providerPathById('mimo')?.coverage).toBe('api-backed');
     expect(providerPathById('devin')?.coverage).toBe('unavailable');
     expect(providerCoverageSummary()).toBe(
-      '31 local parsers, 4 API-backed sources, 1 unavailable local sources (36 canonical providers)'
+      '32 local parsers, 4 API-backed sources, 1 unavailable local sources (37 canonical providers)'
     );
   });
 
@@ -125,7 +127,7 @@ describe('providerPathRegistry', () => {
     expect(paths.length).toBe(LINUX_PROVIDER_PATH_REGISTRY.length);
   });
 
-  it('table-driven golden resolutions for all 36 providers under custom XDG', () => {
+  it('table-driven golden resolutions for all 37 providers under custom XDG', () => {
     const home = '/home/alice';
     const env = { XDG_CONFIG_HOME: '/xdg/config', XDG_DATA_HOME: '/xdg/data' };
     const expected: Record<string, string> = {
@@ -164,7 +166,8 @@ describe('providerPathRegistry', () => {
       'cursor-agent': '/home/alice/.cursor-agent/sessions',
       junie: '/home/alice/.junie/sessions',
       'prime-agent': '/home/alice/.prime/agent/sessions',
-      muse: '/xdg/data/muse/sessions'
+      muse: '/xdg/data/muse/sessions',
+      fx: '/home/alice/.fx/sessions'
     };
     for (const row of LINUX_PROVIDER_PATH_REGISTRY) {
       expect(resolveProviderLogicalPath(row.logicalPath, home, env)).toBe(expected[row.providerId]);

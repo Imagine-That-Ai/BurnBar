@@ -97,6 +97,8 @@ struct StreamEventContractRecord: Codable, Equatable, Hashable {
         case .usage(let snapshot):
             kind = "usage"; text = nil; toolName = nil; detail = nil
             usage = StreamUsageContractRecord(snapshot)
+        case .sessionID(let sessionID):
+            kind = "sessionID"; text = sessionID; toolName = nil; detail = nil; usage = nil
         }
     }
 }

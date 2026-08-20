@@ -317,16 +317,18 @@ public sealed partial class DashboardCommandSidebar : UserControl
     private void RaiseSelection(DashboardCommandSelection selection) =>
         SelectionChanged?.Invoke(this, selection);
 
-    private Brush? ResourceBrush(string key) => key switch
+    private Brush? ResourceBrush(string key)
     {
-        "AuroraGlassTintBaseBrush" => AuroraGlassTintBaseBrushProbe.Background,
-        "AuroraGlassTintElevatedBrush" => AuroraGlassTintElevatedBrushProbe.Background,
-        "AuroraGlassStrokeBrush" => AuroraGlassStrokeBrushProbe.Background,
-        "AuroraTextBrush" => AuroraTextBrushProbe.Background,
-        "AuroraTextSecondaryBrush" => AuroraTextSecondaryBrushProbe.Background,
-        "AuroraTextMutedBrush" => AuroraTextMutedBrushProbe.Background,
-        _ => null,
-    };
+        if (Application.Current?.Resources.TryGetValue(key, out object res) == true && res is Brush brush)
+        {
+            return brush;
+        }
+        if (Resources.TryGetValue(key, out object localRes) && localRes is Brush localBrush)
+        {
+            return localBrush;
+        }
+        return null;
+    }
 }
 
 /// <summary>Selection payload from the Command sidebar.</summary>

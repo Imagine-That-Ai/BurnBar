@@ -1,6 +1,7 @@
 import { findProviderGlyph } from '../../providerGlyphs.js';
 import { colorForProviderID } from '../../providerColors.js';
 import type { MixEntry, UsageInsights, UsageSummary } from '../../tauriBridge.js';
+import { overviewFixturesAllowed } from './overviewHomeModel.js';
 
 export type OverviewProviderRow = {
   id: string;
@@ -76,7 +77,7 @@ export function providerRowsFromInsights(
   totalCostUsd: number,
   fixtureMode: boolean
 ): OverviewProviderRow[] {
-  if (fixtureMode) return ATELIER_FIXTURE_PROVIDER_ROWS;
+  if (overviewFixturesAllowed(fixtureMode)) return ATELIER_FIXTURE_PROVIDER_ROWS;
   if (!mix.length || totalCostUsd <= 0) return [];
   return mix
     .map((m) => {
@@ -124,7 +125,7 @@ export function buildSpendCurveModel(
     legend: []
   };
 
-  if (fixtureMode && insights?.weekly?.length) {
+  if (overviewFixturesAllowed(fixtureMode) && insights?.weekly?.length) {
     const weekly = insights.weekly;
     const mix = insights.providerMix;
     const start = new Date('2026-05-31T00:00:00Z');

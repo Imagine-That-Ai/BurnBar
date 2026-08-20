@@ -259,14 +259,14 @@ test("default feed URL is the desktop updater URL and is not a pinned old versio
   assert.match(source, /downloads\.burnbar\.ai\/latest-macos\.json/);
 });
 
-test("package is 0.1.2 and never downloads the Mac app during npm install", () => {
+test("package version is current and npm install never downloads the Mac app", () => {
   const pkg = JSON.parse(readFileSync(join(PKG_ROOT, "package.json"), "utf8")) as {
     name: string;
     version: string;
     scripts?: Record<string, string>;
   };
   assert.equal(pkg.name, "openburnbar");
-  assert.equal(pkg.version, "0.1.2");
+  assert.equal(pkg.version, "0.1.3");
   assert.equal(pkg.scripts?.postinstall, undefined);
   assert.equal(pkg.scripts?.install, undefined);
   assert.equal(pkg.scripts?.prepare, undefined);

@@ -356,6 +356,95 @@ final class AgentSecurityPolicyTests: XCTestCase {
         }
     }
 
+    // MARK: - fx permission flags (T-TOOL-02(a))
+
+    func test_fxArguments_neverEmitYoloAndGateAutoOnFullGrant() {
+        let full = AgentCapabilityGrant.sessionGrant(
+            runtimeID: .fx,
+            threadID: "t",
+            capabilities: Set(AgentDesktopCapability.allCases),
+            trustMode: .trusted,
+            now: Date(),
+            duration: 60
+        )
+        let fullArgs = CLIArgumentBuilder.fxArguments(
+            prompt: "Ship it",
+            capabilityGrant: full
+        )
+        XCTAssertEqual(Array(fullArgs.prefix(2)), ["ask", "--json"])
+        XCTAssertTrue(fullArgs.contains("--auto"), "a full desktop grant may pass --auto")
+        XCTAssertFalse(fullArgs.contains("--yolo"), "--yolo must never be passed")
+        XCTAssertEqual(fullArgs.last, "Ship it")
+
+        let readOnly = AgentCapabilityGrant.sessionGrant(
+            runtimeID: .fx,
+            threadID: "t",
+            capabilities: [.workspaceRead],
+            trustMode: .step,
+            now: Date(),
+            duration: 60
+        )
+        let readOnlyArgs = CLIArgumentBuilder.fxArguments(
+            prompt: "Inspect this",
+            capabilityGrant: readOnly
+        )
+        XCTAssertFalse(readOnlyArgs.contains("--auto"), "a read-only grant must not pass --auto")
+        XCTAssertFalse(readOnlyArgs.contains("--yolo"), "--yolo must never be passed")
+
+        let noGrant = CLIArgumentBuilder.fxArguments(prompt: "Inspect this")
+        XCTAssertFalse(noGrant.contains("--auto"), "no grant must not pass --auto")
+        XCTAssertFalse(noGrant.contains("--yolo"), "--yolo must never be passed")
+    }
+
+    func test_fxArguments_resumeSessionIDAndNoModelFlag() {
+        let args = CLIArgumentBuilder.fxArguments(
+            prompt: "Continue",
+            model: "sonnet",
+            resumeSessionID: "1770000000000-1770000000000000000-a1b2c3d4e5f60718"
+        )
+        XCTAssertEqual(Array(args.prefix(2)), ["ask", "--json"])
+        XCTAssertEqual(value(after: "--resume", in: args), "1770000000000-1770000000000000000-a1b2c3d4e5f60718")
+        XCTAssertFalse(args.contains("--model"), "fx has no --model flag")
+        XCTAssertFalse(args.contains("sonnet"), "the model must not leak into fx arguments")
+        XCTAssertEqual(args.last, "Continue")
+    }
+
+    func test_fxMissionPolicy_autoReviewPermittedMirrorsArgumentGate() {
+        let now = Date()
+        let full = AgentCapabilityGrant.sessionGrant(
+            runtimeID: .fx,
+            threadID: "t",
+            capabilities: Set(AgentDesktopCapability.allCases),
+            trustMode: .trusted,
+            now: now,
+            duration: 60
+        )
+        XCTAssertTrue(CLIAgentFxMissionPolicy.autoReviewPermitted(full, now: now))
+        XCTAssertTrue(CLIAgentFxMissionPolicy.hasFullDesktopCapabilities(full))
+
+        let readOnly = AgentCapabilityGrant.sessionGrant(
+            runtimeID: .fx,
+            threadID: "t",
+            capabilities: [.workspaceRead],
+            trustMode: .step,
+            now: now,
+            duration: 60
+        )
+        XCTAssertFalse(CLIAgentFxMissionPolicy.autoReviewPermitted(readOnly, now: now))
+        XCTAssertFalse(CLIAgentFxMissionPolicy.hasFullDesktopCapabilities(readOnly))
+
+        let expired = AgentCapabilityGrant.sessionGrant(
+            runtimeID: .fx,
+            threadID: "t",
+            capabilities: Set(AgentDesktopCapability.allCases),
+            trustMode: .trusted,
+            now: now.addingTimeInterval(-120),
+            duration: 60
+        )
+        XCTAssertFalse(CLIAgentFxMissionPolicy.autoReviewPermitted(expired, now: now))
+        XCTAssertFalse(CLIAgentFxMissionPolicy.autoReviewPermitted(nil, now: now))
+    }
+
     // MARK: - T-TOOL-10: restricted shell home-data deny
 
     func test_restrictedShellProfile_deniesHomeDataByDefaultWithExplicitWorkspaceAndToolchainReads() {

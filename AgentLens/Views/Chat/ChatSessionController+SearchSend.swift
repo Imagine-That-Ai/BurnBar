@@ -127,6 +127,9 @@ extension ChatSessionController {
                         usageSnapshot = usage
                     }
                     continue
+                case .sessionID:
+                    await onStructuralEvent(event)
+                    continue
                 }
 
                 await throttle.record(force: forceCommit)
@@ -667,6 +670,15 @@ extension ChatSessionController {
                             model: requestModel,
                             capabilityGrant: activeDesktopGrant
                         )
+                    case .fx:
+                        return self.cliBridge.chatFxStream(
+                            systemPrompt: augmentedSystem,
+                            userMessage: trimmed,
+                            workspaceDirectory: self.chatWorkspaceURL,
+                            model: requestModel,
+                            capabilityGrant: activeDesktopGrant,
+                            resumeSessionID: self.fxResumeSessionID
+                        )
                     }
                 }
                 let consumption = try await Self.consumeChatStream(
@@ -694,6 +706,10 @@ extension ChatSessionController {
                                     "backend": .string(self.chatBackend.rawValue)
                                 ])
                             }
+                        case .sessionID(let sessionID):
+                            // fx multi-turn: remember the provider session so
+                            // the next send continues it via `--resume`.
+                            self.fxResumeSessionID = sessionID
                         case .toolResult(let name, let detail):
                             #if canImport(AppKit) && !DISTRIBUTION_MAS
                             if let detail {

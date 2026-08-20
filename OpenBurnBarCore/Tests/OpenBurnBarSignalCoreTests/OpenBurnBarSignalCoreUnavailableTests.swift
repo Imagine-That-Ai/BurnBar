@@ -122,8 +122,10 @@ final class OpenBurnBarSignalCoreUnavailableTests: XCTestCase {
 }
 #else
 final class OpenBurnBarSignalCoreUnavailableTests: XCTestCase {
-    func testLibSignalBuildUsesBackedImplementation() {
-        XCTAssertTrue(true)
+    func testLibSignalBuildUsesBackedImplementation() throws {
+        let identity = OpenBurnBarSignalIdentityKeypair.generateInMemory(deviceId: "test-device")
+        XCTAssertFalse(identity.identityKeyId.isEmpty)
+        XCTAssertFalse(identity.publicKeyData.isEmpty)
     }
 }
 #endif

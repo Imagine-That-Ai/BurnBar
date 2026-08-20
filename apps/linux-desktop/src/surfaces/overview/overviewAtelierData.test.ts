@@ -20,6 +20,12 @@ describe('overviewAtelierData', () => {
     expect(rows[0].costUsd).toBe(252.43);
   });
 
+  it('never lets the screenshot rail reach a live Home', () => {
+    const rows = providerRowsFromInsights([], 680.94, false);
+    expect(rows).toEqual([]);
+    expect(rows.map((row) => row.label)).not.toContain('MiMo');
+  });
+
   it('buildSpendCurveModel produces stacked bands and legend in fixture mode', () => {
     const model = buildSpendCurveModel(fixtureUsageInsights(), fixtureUsageSummary(), true);
     expect(model.isEmpty).toBe(false);

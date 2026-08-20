@@ -217,6 +217,20 @@
   --glass-theme-rim: var(--macos-frost);
 }
 
+:root[data-dashboard-glass='stream'] {
+  --glass-theme-tint: var(--macos-frost);
+  --glass-theme-wash-top: var(--macos-frost);
+  --glass-theme-wash-bottom: var(--macos-whimsy);
+  --glass-theme-rim: var(--macos-whimsy);
+}
+
+:root[data-dashboard-glass='atlas'] {
+  --glass-theme-tint: var(--macos-ember);
+  --glass-theme-wash-top: var(--macos-blaze);
+  --glass-theme-wash-bottom: var(--macos-ember);
+  --glass-theme-rim: var(--macos-ember);
+}
+
 :root[data-wallpaper='macosDesktop'] { --wallpaper-base: radial-gradient(ellipse 85% 70% at 16% 12%, #2e74ed 0%, transparent 58%), radial-gradient(ellipse 72% 64% at 86% 76%, #fa5053 0%, transparent 58%), radial-gradient(ellipse 58% 48% at 56% 46%, #ffa800 0%, transparent 62%), #0d1117; }
 :root[data-wallpaper='midnight'] { --wallpaper-base: radial-gradient(ellipse 90% 74% at 20% 10%, #0f2d64 0%, transparent 58%), radial-gradient(ellipse 72% 60% at 86% 82%, #1d4c91 0%, transparent 62%), #050816; }
 :root[data-wallpaper='amoledBlack'] { --wallpaper-base: #000; }

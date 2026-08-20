@@ -1,4 +1,4 @@
-using System;
+using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -17,16 +17,27 @@ public sealed partial class AtelierLayoutView : UserControl
     public AtelierLayoutView()
     {
         InitializeComponent();
-        Loaded += OnLoaded;
+        this.BindUsageRefresh(RefreshAsync);
     }
 
-    private async void OnLoaded(object sender, RoutedEventArgs e)
+    private async Task RefreshAsync()
     {
-        Loaded -= OnLoaded;
         var summary = await DashboardUsageProvider.LoadAsync();
         SpendTile.Value = DashboardUsageSummaryFormatter.Spend(summary);
         TokensTile.Value = DashboardUsageSummaryFormatter.Tokens(summary);
         ProvidersTile.Value = DashboardUsageSummaryFormatter.Providers(summary);
+
+        if (summary.HasData)
+        {
+            HeadlineText.Text = "A living substrate,\ntuned to your spend.";
+            SubheadText.Text = $"{DashboardUsageSummaryFormatter.Spend(summary)} across {summary.SessionCount} sessions. Provider logos emerge from the kernel and dissolve back into it.";
+        }
+        else
+        {
+            HeadlineText.Text = "A living substrate,\nwaiting for its first session.";
+            SubheadText.Text = "Provider logos will emerge from the kernel as sessions land. Connect a data source to begin.";
+        }
+
         PopulateProviderRail();
     }
 

@@ -1803,6 +1803,15 @@ public actor BurnBarDaemonServer {
                     "peer_pid": peerPID.map(String.init) ?? "unknown"
                 ]
             )
+            // Fail closed, but do not leave the client staring at Cocoa's
+            // empty-body decode string. The envelope is unauthorized; the
+            // app can then fall back to fleet-snapshot.json.
+            let rejection = await server.encodeErrorResponse(
+                id: "peer-rejected",
+                code: BurnBarRPCErrorCode.unauthorized,
+                message: "OpenBurnBar RPC peer failed first-party code-signature verification."
+            ) + Data([0x0A])
+            try? BurnBarUnixDomainSocket.writeAll(rejection, to: clientFileDescriptor)
             return
         }
 

@@ -53,7 +53,7 @@ final class VisualCaptureSourceToggleTests: XCTestCase {
         XCTAssertFalse(prefs.isToggleEligible(.antigravity))
         XCTAssertEqual(prefs.visualCaptureSource(for: .antigravity), .cliPTY)
         // Additional CLI-only providers (no desktop twin)
-        for provider in [AgentProvider.geminiCLI, .kimi, .copilot, .aider, .goose, .openClaw, .openClaude, .omp, .xAI, .mimo, .piAgent, .forgeDev, .primeAgent, .muse] {
+        for provider in [AgentProvider.geminiCLI, .kimi, .copilot, .aider, .goose, .openClaw, .openClaude, .omp, .xAI, .mimo, .piAgent, .forgeDev, .primeAgent, .muse, .fx] {
             XCTAssertFalse(prefs.isToggleEligible(provider), "\(provider.rawValue) CLI-only should not be eligible")
             XCTAssertEqual(prefs.visualCaptureSource(for: provider), .cliPTY)
         }

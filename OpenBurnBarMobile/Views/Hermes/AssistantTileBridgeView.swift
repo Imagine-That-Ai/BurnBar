@@ -77,6 +77,8 @@ struct AssistantTileBridgeView: View {
             return "OpenClaude runs through OpenBurnBar on your Mac. Pair your Mac to start a session here."
         case .omp:
             return "OMP runs through OpenBurnBar on your Mac. Pair your Mac to start a session here."
+        case .fx:
+            return "fx runs through OpenBurnBar on your Mac. Pair your Mac to start a session here."
         case .hermes, .pi:
             return ""
         }

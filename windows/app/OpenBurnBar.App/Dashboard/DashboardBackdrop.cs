@@ -10,6 +10,7 @@ using OpenBurnBar.App.Particles;
 using OpenBurnBar.Particles.Math;
 using OpenBurnBar.Particles.Model;
 using OpenBurnBar.Particles.Substrates;
+using Windows.UI.ViewManagement;
 
 namespace OpenBurnBar.App.Dashboard;
 
@@ -33,6 +34,7 @@ namespace OpenBurnBar.App.Dashboard;
 public sealed class DashboardBackdrop : IDisposable
 {
     private readonly SwarmCanvasHost _host = new();
+    private readonly UISettings _uiSettings = new();
     private SwarmSubstrateDot[] _dots = Array.Empty<SwarmSubstrateDot>();
     private double _fieldWidth;
     private double _fieldHeight;
@@ -119,6 +121,8 @@ public sealed class DashboardBackdrop : IDisposable
         DashboardLayout.Aurora => SubstrateFamily.Aurora,
         DashboardLayout.Cockpit => SubstrateFamily.Flow,
         DashboardLayout.Classic => SubstrateFamily.Constellation,
+        DashboardLayout.Stream => SubstrateFamily.Flow,
+        DashboardLayout.Atlas => SubstrateFamily.Mesh,
         _ => SubstrateFamily.Constellation,
     };
 
@@ -140,8 +144,9 @@ public sealed class DashboardBackdrop : IDisposable
         }
 
         double t = elapsed.TotalSeconds;
+        bool reduced = !_uiSettings.AnimationsEnabled;
         return new SwarmSubstrateFrame(
-            width: w, height: h, dark: _isDark, reduced: false, batteryThrottled: false,
+            width: w, height: h, dark: _isDark, reduced: reduced, batteryThrottled: false,
             uiMode: UIMode.Standard, isShapeMode: false, formed: false, settleProgress: 0.0,
             t: t, dt: 1.0, stage: _stage,
             backdrop: _isDark ? new Rgba(0.03, 0.04, 0.08, 1.0) : new Rgba(0.96, 0.97, 1.0, 1.0),

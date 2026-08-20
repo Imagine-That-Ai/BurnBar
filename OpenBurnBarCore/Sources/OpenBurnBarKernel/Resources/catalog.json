@@ -5192,6 +5192,76 @@
           }
         },
         {
+          "id": "kimi-k3",
+          "displayName": "Kimi K3",
+          "visibility": "public",
+          "aliases": [
+            "kimi-k3:cloud",
+            "kimi-k3-cloud",
+            "kimi-k3"
+          ],
+          "matchers": [
+            {
+              "all": [
+                "kimi",
+                "k3"
+              ],
+              "any": [],
+              "none": []
+            },
+            {
+              "all": [
+                "kimi",
+                "k",
+                "3"
+              ],
+              "any": [],
+              "none": []
+            }
+          ],
+          "pricing": {
+            "inputPerMToken": 0,
+            "outputPerMToken": 0,
+            "cacheReadPerMToken": 0
+          },
+          "canonicalModelID": "kimi-k3:cloud",
+          "capabilityClassID": "kimi-k3",
+          "capabilityClassRank": 100,
+          "modelCapabilities": {
+            "schemaVersion": 1,
+            "inputModalities": [
+              "text",
+              "image"
+            ],
+            "outputModalities": [
+              "text"
+            ],
+            "supportedParameters": [
+              "max_tokens",
+              "reasoning",
+              "reasoning_effort",
+              "temperature",
+              "tool_choice",
+              "tools",
+              "top_p"
+            ],
+            "contextWindowTokens": 1048576,
+            "acceptedInputMimeTypes": [
+              "image/*"
+            ],
+            "sourceRefs": [
+              {
+                "label": "Ollama kimi-k3",
+                "url": "https://ollama.com/library/kimi-k3"
+              },
+              {
+                "label": "Ollama kimi-k3 tags",
+                "url": "https://ollama.com/library/kimi-k3/tags"
+              }
+            ]
+          }
+        },
+        {
           "id": "glm-5.2",
           "displayName": "GLM-5.2",
           "visibility": "public",

@@ -18,7 +18,7 @@ enum BurnBarFleetClientError: Error, LocalizedError, Equatable {
         case .rpcError(let code, let message):
             return "BurnBar daemon RPC error (\(code)): \(message)"
         case .emptyResponse:
-            return "BurnBar daemon returned an empty fleet response."
+            return "BurnBar daemon closed the fleet socket without a response."
         }
     }
 }

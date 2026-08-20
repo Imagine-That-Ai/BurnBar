@@ -1,9 +1,6 @@
 #if canImport(AppKit) && !DISTRIBUTION_MAS
 import SwiftUI
 import AppKit
-import AVFoundation
-import ApplicationServices
-import CoreGraphics
 import OpenBurnBarComputerUseCore
 
 /// Phase 14 — Step-by-step Mac permissions wizard. Walks the user
@@ -342,16 +339,16 @@ final class PermissionsOnboardingCoordinator: ObservableObject {
 
     private var pollTask: Task<Void, Never>?
     private let monitor: any SystemPermissionMonitoring
-    private let automationPromptRunner: @MainActor @Sendable (String) -> Void
+    /// Injectable so tests can assert the wizard asks through the ladder rather than
+    /// reaching macOS directly. Production uses the shared instance.
+    private let permissionLadder: FirstRunPermissionLadder
 
     init(
         monitor: any SystemPermissionMonitoring = SystemPermissionMonitor.shared,
-        automationPromptRunner: (@MainActor @Sendable (String) -> Void)? = nil
+        permissionLadder: FirstRunPermissionLadder = .shared
     ) {
         self.monitor = monitor
-        self.automationPromptRunner = automationPromptRunner ?? { bundleId in
-            PermissionsOnboardingCoordinator.triggerAutomationPrompt(bundleId: bundleId)
-        }
+        self.permissionLadder = permissionLadder
 
         var ordered: [Step] = [
             Step(id: "microphone", kind: .microphone, bundleId: nil, titleForCard: "Microphone"),
@@ -419,34 +416,37 @@ final class PermissionsOnboardingCoordinator: ObservableObject {
         pollTask = nil
     }
 
+    /// Asks for the current step's permission, via the ladder so BurnBar's own
+    /// explanation is always shown before macOS's dialog.
+    ///
+    /// The raw OS calls used to live inline here, which made this view the only thing
+    /// that knew how to ask -- and meant every other surface that wanted a permission
+    /// re-implemented the prompt without the explanation. They now live in
+    /// `SystemPermissionPromptRunner`, behind `FirstRunPermissionLadder`.
     func requestCurrent() async {
         guard let step = currentStep else { return }
-        switch step.kind {
-        case .camera:
-            _ = await AVCaptureDevice.requestAccess(for: .video)
-        case .microphone:
-            _ = await AVCaptureDevice.requestAccess(for: .audio)
-        case .screenRecording:
-            #if canImport(CoreGraphics)
-            _ = CGRequestScreenCaptureAccess()
-            #endif
-            openSystemSettings(for: step)
-        case .accessibility:
-            _ = MacAccessibilityPermissionRequester.promptAndOpenSettings()
-        case .remoteDesktop:
-            openSystemSettings(for: step)
-        case .systemExtension:
-            await RemoteUnlockVirtualHIDBridgeInstaller.shared.installOrRepair()
-            if RemoteUnlockVirtualHIDBridgeInstaller.shared.lastError != nil {
+
+        let didProceed = await permissionLadder.request(
+            step.kind,
+            bundleId: step.bundleId
+        )
+
+        // Buckets macOS will not prompt for, plus the ones where the native dialog is
+        // only half the journey, still need the user pointed at the right pane -- but
+        // only once they have agreed to continue.
+        if didProceed {
+            switch step.kind {
+            case .screenRecording, .remoteDesktop, .fullDiskAccess:
                 openSystemSettings(for: step)
-            }
-        case .fullDiskAccess:
-            openSystemSettings(for: step)
-        case .automation:
-            if let bundleId = step.bundleId {
-                automationPromptRunner(bundleId)
+            case .systemExtension:
+                if RemoteUnlockVirtualHIDBridgeInstaller.shared.lastError != nil {
+                    openSystemSettings(for: step)
+                }
+            case .camera, .microphone, .accessibility, .automation:
+                break
             }
         }
+
         await refreshCurrentPermissionState()
     }
 
@@ -514,26 +514,6 @@ final class PermissionsOnboardingCoordinator: ObservableObject {
         }
     }
 
-    private static func triggerAutomationPrompt(bundleId: String) {
-        guard NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) != nil || bundleId == "com.apple.finder" else {
-            if let link = SystemPermissionKind.automation.systemSettingsDeepLink, let url = URL(string: link) {
-                NSWorkspace.shared.open(url)
-            }
-            return
-        }
-        let target = NSAppleEventDescriptor(bundleIdentifier: bundleId)
-        _ = AEDeterminePermissionToAutomateTarget(target.aeDesc, kAECoreSuite, kAEGetData, true)
-        runAutomationProbe(bundleId: bundleId)
-    }
-
-    private static func runAutomationProbe(bundleId: String) {
-        let escapedBundleId = bundleId
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-        let source = "tell application id \"\(escapedBundleId)\" to get name"
-        var error: NSDictionary?
-        _ = NSAppleScript(source: source)?.executeAndReturnError(&error)
-    }
 }
 
 enum OnboardingAutomationTargets {

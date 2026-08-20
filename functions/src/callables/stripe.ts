@@ -8,8 +8,12 @@ import { Timestamp } from "firebase-admin/firestore";
 import { getConfig } from "../config.js";
 import { enforceAuthAndAppCheck } from "../auth.js";
 import { db } from "../adminRuntime.js";
-import { logError, wrapCallableHandler } from "../logging.js";
-import { externalApiWithResilience, googlePlayConsumeWithResilience, stripeWithResilience } from "../resilienceHelpers.js";
+import { logError, logWarn, wrapCallableHandler } from "../logging.js";
+import {
+  externalApiWithResilience,
+  googlePlayConsumeWithResilience,
+  stripeWithResilience,
+} from "../resilienceHelpers.js";
 import {
   BURNBAR_PRO_ENTITLEMENT_ID,
   BURNBAR_PRO_MAX_ENTITLEMENT_ID,
@@ -33,7 +37,7 @@ import {
 } from "./shared.js";
 import Stripe from "stripe";
 import { parseGooglePlayProSubscriptionInput, parseGooglePlayTopUpInput } from "./stripeInputSchemas.js";
-import { jsonObject, stripUndefinedObject } from "../guards.js";
+import { errorMessage, jsonObject, stripUndefinedObject } from "../guards.js";
 import {
   allowanceDocPath,
   cloudProTopUpReceiptDocPath,
@@ -460,8 +464,12 @@ export const verifyGooglePlayBurnBarProSubscription = onCall(
         isActive: active,
         expiresInSeconds: Math.max(0, Math.round((expiresAtMillis - Date.now()) / 1000)),
         dedupeKey: `gp_sub_${tokenHash}`, // idempotent across client retries
-      }).catch(() => {
-        /* analytics is best-effort; never fail the verified purchase on it */
+      }).catch((err: unknown) => {
+        logWarn({
+          event: "subscription_analytics_emission_failed",
+          user_id_hash: uid.slice(0, 8),
+          detail: errorMessage(err),
+        });
       });
 
       return { entitlement, subscriptionState, active, expiresAt: new Date(expiresAtMillis).toISOString() };

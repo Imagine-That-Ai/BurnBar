@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  AtlasLayoutView — comparison ladders split across the window.
+  Windows peer of AtlasLayoutView.swift.
+-->
+<UserControl
+    x:Class="OpenBurnBar.App.Dashboard.Layouts.AtlasLayoutView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:components="using:OpenBurnBar.App.Components"
+    xmlns:layouts="using:OpenBurnBar.App.Dashboard.Layouts"
+    xmlns:theme="using:OpenBurnBar.App.Theme"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Grid Padding="24" RowSpacing="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Window Comparison Header Card -->
+        <components:UnifiedGlassCard Grid.Row="0">
+            <Grid ColumnSpacing="20">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Spacing="4">
+                    <TextBlock Text="FIRST HALF" FontSize="11" FontWeight="Bold" CharacterSpacing="80"
+                               Foreground="{StaticResource PensieveColorMercuryCoreBrush}" />
+                    <TextBlock Text="—" FontSize="20" FontWeight="Bold" FontFamily="{StaticResource OBBMonoFontFamily}" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Spacing="4">
+                    <TextBlock Text="SECOND HALF" FontSize="11" FontWeight="Bold" CharacterSpacing="80"
+                               Foreground="{StaticResource PensieveColorBrassBrightBrush}" />
+                    <TextBlock Text="—" FontSize="20" FontWeight="Bold" FontFamily="{StaticResource OBBMonoFontFamily}" />
+                </StackPanel>
+                <StackPanel Grid.Column="2" Spacing="4">
+                    <TextBlock Text="WHOLE WINDOW" FontSize="11" FontWeight="Bold" CharacterSpacing="80"
+                               Foreground="{StaticResource PensieveColorBrassCoreBrush}" />
+                    <TextBlock x:Name="WholeWindowText" Text="—" FontSize="20" FontWeight="Bold" FontFamily="{StaticResource OBBMonoFontFamily}" />
+                </StackPanel>
+                <Border Grid.Column="3" Background="{ThemeResource AuroraGlassSelectionFillBrush}"
+                        CornerRadius="999" Padding="12,6" VerticalAlignment="Center">
+                    <TextBlock Text="±0% Δ" FontSize="12" FontWeight="Bold" Foreground="{StaticResource OBBAccentBrush}" />
+                </Border>
+            </Grid>
+        </components:UnifiedGlassCard>
+
+        <!-- Paired Ranked Comparison Ladders -->
+        <Grid Grid.Row="1" ColumnSpacing="20">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Providers comparison ladder -->
+            <Border Grid.Column="0"
+                    Style="{StaticResource LiquidGlassSurfaceStyle}"
+                    theme:LiquidGlass.Surface="True"
+                    CornerRadius="{StaticResource PensieveRadiusMdCorner}"
+                    Padding="16">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <Grid Grid.Row="0" Margin="0,0,0,12">
+                        <TextBlock Text="PROVIDERS" FontSize="11" FontWeight="Bold" CharacterSpacing="80"
+                                   Foreground="{StaticResource PensieveColorBrassBrightBrush}" />
+                        <TextBlock Text="Δ 2ND HALF" FontSize="11" FontWeight="SemiBold" HorizontalAlignment="Right" Opacity="0.6" />
+                    </Grid>
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                        <StackPanel Spacing="10">
+                            <TextBlock Text="No provider rankings yet" FontSize="12" Opacity="0.6" Margin="0,8" />
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+
+            <!-- Models comparison ladder -->
+            <Border Grid.Column="1"
+                    Style="{StaticResource LiquidGlassSurfaceStyle}"
+                    theme:LiquidGlass.Surface="True"
+                    CornerRadius="{StaticResource PensieveRadiusMdCorner}"
+                    Padding="16">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <Grid Grid.Row="0" Margin="0,0,0,12">
+                        <TextBlock Text="MODELS" FontSize="11" FontWeight="Bold" CharacterSpacing="80"
+                                   Foreground="{StaticResource PensieveColorBrassBrightBrush}" />
+                        <TextBlock Text="Δ 2ND HALF" FontSize="11" FontWeight="SemiBold" HorizontalAlignment="Right" Opacity="0.6" />
+                    </Grid>
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                        <StackPanel Spacing="10">
+                            <TextBlock Text="No model rankings yet" FontSize="12" Opacity="0.6" Margin="0,8" />
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- Bottom KPI row: star columns distribute slack across full width -->
+        <Grid Grid.Row="2" ColumnSpacing="16" HorizontalAlignment="Stretch">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <layouts:ConceptStatTile Grid.Column="0" x:Name="SpendTile" Value="—" Caption="Spend"
+                                     AccentBrush="{StaticResource PensieveColorBrassCoreBrush}" />
+            <layouts:ConceptStatTile Grid.Column="1" x:Name="TokensTile" Value="—" Caption="Tokens"
+                                     AccentBrush="{StaticResource PensieveColorMercuryCoreBrush}" />
+            <layouts:ConceptStatTile Grid.Column="2" x:Name="SessionsTile" Value="—" Caption="Sessions"
+                                     AccentBrush="{StaticResource OBBAccentBrush}" />
+        </Grid>
+    </Grid>
+</UserControl>

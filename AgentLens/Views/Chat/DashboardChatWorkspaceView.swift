@@ -43,6 +43,13 @@ struct DashboardChatWorkspaceView: View {
 
     @State private var showClearChatPrompt = false
 
+    /// The thread rail starts hidden so the chat route opens as one vertical
+    /// reading column rather than a side-by-side landscape split. History is a
+    /// keystroke away (⌃⌘L) and the choice persists once made.
+    @AppStorage(Self.railVisibleStorageKey) private var threadRailVisible = false
+
+    static let railVisibleStorageKey = "dashboardChat.threadRailVisible"
+
     /// The pane-tiling workspace for the right-side viewer. Built lazily on first appear
     /// from the persisted layout (or a single primary pane bound to `controller`).
     @State private var workspace: PaneWorkspaceModel?
@@ -63,6 +70,7 @@ struct DashboardChatWorkspaceView: View {
                 // The old `showsEnginePickers: !isTiled` gate is gone: splitting
                 // a pane must never make the top of the window anonymous.
                 workspace: workspace,
+                threadRailVisible: $threadRailVisible,
                 onNewChat: { activeController.clearChat() },
                 onShowClearChatPrompt: { showClearChatPrompt = true },
                 onPopOut: onPopOut,
@@ -71,12 +79,17 @@ struct DashboardChatWorkspaceView: View {
             )
 
             HStack(spacing: 0) {
-                threadRail
-                    .frame(width: railWidth)
-                    .background(DesignSystem.Colors.surface.opacity(0.45))
-                    .overlay(alignment: .trailing) {
-                        Divider().opacity(0.4)
-                    }
+                if threadRailVisible {
+                    threadRail
+                        .frame(width: railWidth)
+                        .background(.ultraThinMaterial)
+                        .overlay(alignment: .trailing) {
+                            Rectangle()
+                                .fill(Color.primary.opacity(0.10))
+                                .frame(width: 1)
+                        }
+                        .transition(.move(edge: .leading).combined(with: .opacity))
+                }
 
                 Group {
                     if let workspace {
@@ -186,7 +199,6 @@ struct DashboardChatWorkspaceView: View {
                 )
             }
             .buttonStyle(.plain)
-            .keyboardShortcut("n", modifiers: [.command])
 
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass")

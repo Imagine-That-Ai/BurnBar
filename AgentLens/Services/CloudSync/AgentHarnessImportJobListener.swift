@@ -263,6 +263,7 @@ final class AgentHarnessImportJobListener {
         case "warp": return .warp
         case "kimi": return .kimi
         case "ollama": return .ollama
+        case "fx": return .fx
         default:
             return AgentProvider.fromPersistedToken(harness) ?? AgentProvider.fromCatalogProviderID(harness)
         }

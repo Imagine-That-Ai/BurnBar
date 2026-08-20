@@ -1,5 +1,6 @@
 import SwiftUI
 import OpenBurnBarCore
+import OpenBurnBarUI
 
 // MARK: - Pulse View
 //
@@ -79,92 +80,10 @@ struct PulseView: View {
                             .transition(.opacity.combined(with: .move(edge: .top)))
                         }
 
-                        HStack(alignment: .center, spacing: MobileTheme.Spacing.sm) {
-                            TimelineScopePicker(selection: $timelineScope)
-                            Spacer(minLength: MobileTheme.Spacing.sm)
-                            PulseDisplayModeToggle(displayMode: $displayMode)
+                        PulseFeedLayout(spans: feedCards.map(\.span)) { index in
+                            feedCard(feedCards[index], index: index)
                         }
                         .padding(.horizontal, AuroraDesign.Layout.cardInset)
-                        .staggeredEntrance(delay: 0.0)
-
-                        // The hero owns the 1Hz live clock (TimelineView inside
-                        // PulseHeroBurnCard) so ticking never invalidates the
-                        // rest of the feed.
-                        PulseHeroBurnCard(
-                            rollupTotals: dashboard.windowTotals,
-                            dailyPoints: dashboard.dailyPoints,
-                            liveUsages: liveUsagesForPulse,
-                            topProvider: topProvider,
-                            displayMode: displayMode,
-                            scope: timelineScope,
-                            clockPaused: !shouldRunLivePulseClock
-                        )
-                        .padding(.horizontal, AuroraDesign.Layout.cardInset)
-                        .staggeredEntrance(delay: 0.05)
-
-                        VelocityForecastCard(
-                            todayTotals: dashboard.windowTotals[.today],
-                            trailingTotals: dashboard.windowTotals[.sevenDays],
-                            displayMode: displayMode,
-                            liveUsages: liveUsagesForPulse
-                        )
-                        .padding(.horizontal, AuroraDesign.Layout.cardInset)
-                        .staggeredEntrance(delay: 0.10)
-
-                        // Pro vocabulary — forecast moment. Free users see a
-                        // foil band hinting at the extended cloud forecast.
-                        if shouldShowForecastBand {
-                            MembershipBand(
-                                title: "30-day forecast, on every device",
-                                detail: "Cloud syncs your full burn history — see your spend curve a month out, anywhere you sign in.",
-                                variant: .upsell,
-                                icon: "chart.line.uptrend.xyaxis",
-                                ctaLabel: "UNLOCK"
-                            ) {
-                                showCloudStore = true
-                            }
-                            .padding(.horizontal, AuroraDesign.Layout.cardInset)
-                            .staggeredEntrance(delay: 0.12)
-                        }
-
-                        QuotaPulseCard(
-                            snapshots: quotaStore.snapshots,
-                            onSelect: { providerKey in
-                                router.openBurn(focus: providerKey)
-                            },
-                            onOpenBurn: { router.openBurn(focus: nil) }
-                        )
-                        .padding(.horizontal, AuroraDesign.Layout.cardInset)
-                        .staggeredEntrance(delay: 0.15)
-
-                        TrendAtlasCard(
-                            dailyPoints: dashboard.dailyPoints,
-                            displayMode: displayMode,
-                            windowTotals: dashboard.windowTotals,
-                            providerSummaries: dashboard.topProviders,
-                            modelSummaries: dashboard.topModels,
-                            deviceSummaries: dashboard.topDevices,
-                            recentUsages: sessionsStore.rawUsages.isEmpty ? sessionsStore.usages : sessionsStore.rawUsages,
-                            hermesService: hermesService
-                        )
-                        .padding(.horizontal, AuroraDesign.Layout.cardInset)
-                        .staggeredEntrance(delay: 0.20)
-
-                        HermesQuickAskCard(
-                            service: hermesService,
-                            suggestedPrompts: suggestedPrompts,
-                            onOpenHermes: { router.openHermes() }
-                        )
-                        .padding(.horizontal, AuroraDesign.Layout.cardInset)
-                        .staggeredEntrance(delay: 0.25)
-
-                        RecentSessionsStripCard(
-                            sessions: sessionsStore.usages,
-                            onSelect: { router.openSession($0) },
-                            onSeeAll: { router.openStreams() }
-                        )
-                        .padding(.horizontal, AuroraDesign.Layout.cardInset)
-                        .staggeredEntrance(delay: 0.30)
                     }
                     .padding(.top, MobileTheme.Spacing.sm)
                     .padding(.bottom, MobileTheme.Spacing.xxl)
@@ -251,6 +170,118 @@ struct PulseView: View {
     }
 
     // MARK: - Loading
+
+    // MARK: - Feed
+
+    /// The Pulse feed, in order, as it actually exists this render.
+    ///
+    /// An explicit list rather than a `VStack` of literals because the feed is
+    /// no longer a single column: `PulseFeedLayout` needs to know how many
+    /// cards there are and how wide each one wants to be *before* it can pack
+    /// them into rows, and the membership band only exists for some users.
+    private enum PulseCard: Hashable {
+        case controls, hero, velocity, membership, quota, atlas, hermes, recents
+
+        /// How much of the feed this card wants when there is room for columns.
+        ///
+        /// Full-width for the three that are read *across*: the scope controls,
+        /// the hero that carries the thesis, and the horizontally-scrolling
+        /// session strip. Everything else pairs up on iPad.
+        var span: PulseCardSpan {
+            switch self {
+            case .controls, .hero, .recents: return .full
+            case .velocity, .membership, .quota, .atlas, .hermes: return .single
+            }
+        }
+    }
+
+    private var feedCards: [PulseCard] {
+        var cards: [PulseCard] = [.controls, .hero, .velocity]
+        if shouldShowForecastBand { cards.append(.membership) }
+        cards.append(contentsOf: [.quota, .atlas, .hermes, .recents])
+        return cards
+    }
+
+    @ViewBuilder
+    private func feedCard(_ card: PulseCard, index: Int) -> some View {
+        Group {
+            switch card {
+            case .controls:
+                HStack(alignment: .center, spacing: MobileTheme.Spacing.sm) {
+                    TimelineScopePicker(selection: $timelineScope)
+                    Spacer(minLength: MobileTheme.Spacing.sm)
+                    PulseDisplayModeToggle(displayMode: $displayMode)
+                }
+            case .hero:
+                // The hero owns the 1Hz live clock (TimelineView inside
+                // PulseHeroBurnCard) so ticking never invalidates the rest of
+                // the feed.
+                PulseHeroBurnCard(
+                    rollupTotals: dashboard.windowTotals,
+                    dailyPoints: dashboard.dailyPoints,
+                    liveUsages: liveUsagesForPulse,
+                    topProvider: topProvider,
+                    displayMode: displayMode,
+                    scope: timelineScope,
+                    clockPaused: !shouldRunLivePulseClock
+                )
+            case .velocity:
+                VelocityForecastCard(
+                    todayTotals: dashboard.windowTotals[.today],
+                    trailingTotals: dashboard.windowTotals[.sevenDays],
+                    displayMode: displayMode,
+                    liveUsages: liveUsagesForPulse
+                )
+            case .membership:
+                // Pro vocabulary — forecast moment. Free users see a foil band
+                // hinting at the extended cloud forecast.
+                MembershipBand(
+                    title: "30-day forecast, on every device",
+                    detail: "Cloud syncs your full burn history — see your spend curve a month out, anywhere you sign in.",
+                    variant: .upsell,
+                    icon: "chart.line.uptrend.xyaxis",
+                    ctaLabel: "UNLOCK"
+                ) {
+                    showCloudStore = true
+                }
+            case .quota:
+                QuotaPulseCard(
+                    snapshots: quotaStore.snapshots,
+                    onSelect: { providerKey in
+                        router.openBurn(focus: providerKey)
+                    },
+                    onOpenBurn: { router.openBurn(focus: nil) }
+                )
+            case .atlas:
+                TrendAtlasCard(
+                    dailyPoints: dashboard.dailyPoints,
+                    displayMode: displayMode,
+                    windowTotals: dashboard.windowTotals,
+                    providerSummaries: dashboard.topProviders,
+                    modelSummaries: dashboard.topModels,
+                    deviceSummaries: dashboard.topDevices,
+                    recentUsages: sessionsStore.rawUsages.isEmpty ? sessionsStore.usages : sessionsStore.rawUsages,
+                    hermesService: hermesService
+                )
+            case .hermes:
+                HermesQuickAskCard(
+                    service: hermesService,
+                    suggestedPrompts: suggestedPrompts,
+                    onOpenHermes: { router.openHermes() }
+                )
+            case .recents:
+                RecentSessionsStripCard(
+                    sessions: sessionsStore.usages,
+                    onSelect: { router.openSession($0) },
+                    onSeeAll: { router.openStreams() }
+                )
+            }
+        }
+        // Was eight hand-tuned delays (0.0/0.05/0.10/0.12/0.15/0.20/0.25/0.30)
+        // that drifted every time a card was inserted. One token, one rule, and
+        // Reduce Motion collapses the whole group to simultaneous.
+        .staggeredEntrance(delay: MotionTokens.stagger(index: index, reduceMotion: reduceMotion))
+    }
 
     private func initialLoad() async {
         // The injected stores survive tab swaps, but this view's @State

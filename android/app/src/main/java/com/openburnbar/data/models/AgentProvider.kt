@@ -35,6 +35,7 @@ enum class AgentProvider(val key: String, val displayName: String, val brandColo
     MIMO("mimo", "MiMo", 0xFFFF6900, 0xFFFF8533),
     ANTIGRAVITY("antigravity", "Antigravity", 0xFF6C63FF, 0xFF8F8AFF),
     MUSE("muse", "Muse", 0xFF7A5CFF, 0xFF9A85FF),
+    FX("fx", "fx", 0xFFA1A1AA, 0xFFD4D4D8),
     ;
 
     companion object {
@@ -72,6 +73,7 @@ enum class AgentProvider(val key: String, val displayName: String, val brandColo
                 DEVIN,
                 WARP,
                 MUSE,
+                FX,
             )
 
         /**
@@ -153,6 +155,11 @@ enum class AgentProvider(val key: String, val displayName: String, val brandColo
                 "muse" to MUSE,
                 "musecode" to MUSE,
                 "meta-muse" to MUSE,
+                // Vercel fx
+                "vercel-fx" to FX,
+                "vercelfx" to FX,
+                "vercel fx" to FX,
+                "fxcli" to FX,
                 // Devin (Cognition) — mirrors the Swift alias switch in
                 // OpenBurnBarKernel/SharedModels/AgentProvider.fromCatalogProviderID.
                 "devindesktop" to DEVIN,

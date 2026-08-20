@@ -8,7 +8,8 @@ export function ProviderListPanel({
   subtitle,
   logoSize = 40,
   skeleton,
-  onSelect
+  onSelect,
+  rowCount
 }: {
   rows: OverviewProviderRow[];
   title?: string;
@@ -16,6 +17,8 @@ export function ProviderListPanel({
   logoSize?: number;
   skeleton?: boolean;
   onSelect?: (id: string) => void;
+  /** Rows granted by Fit/Feed/Breathe. Omit to show the whole list. */
+  rowCount?: number;
 }) {
   if (skeleton) {
     return (
@@ -41,7 +44,7 @@ export function ProviderListPanel({
         <p className="provider-list-panel-empty muted">No provider activity yet.</p>
       ) : (
         <ul className="provider-list-panel-list">
-          {rows.map((row, index) => (
+          {(typeof rowCount === 'number' ? rows.slice(0, Math.max(0, rowCount)) : rows).map((row, index) => (
             <li key={`${row.id}-${index}`}>
               <button
                 type="button"

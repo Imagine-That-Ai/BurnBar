@@ -469,7 +469,7 @@ extension CLIAgentMissionDispatcher {
         case .openClaw:
             return try OpenClawService.shared.validatedModelIDForMissionDispatch()
                 ?? CLIAgentModelPreferences.preferredModelID(for: .openClaw)?.nonEmpty
-        case .codex, .claude, .droid, .forge, .antigravity, .grok, .cursorAgent, .openClaude, .omp, .junie:
+        case .codex, .claude, .droid, .forge, .antigravity, .grok, .cursorAgent, .openClaude, .omp, .junie, .fx:
             return try CLIAgentModelPreferences.validatedPreferredModelID(for: runtime)?.nonEmpty
         }
     }
@@ -573,6 +573,8 @@ extension CLIAgentMissionDispatcher {
             return .omp
         case "junie", "jetbrains-junie", "jetbrainsjunie", "jetbrains junie":
             return .junie
+        case "fx", "vercel-fx", "vercelfx":
+            return .fx
         default:
             return nil
         }

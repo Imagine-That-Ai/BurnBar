@@ -45,7 +45,10 @@ public final class SystemPermissionMonitor {
             self.lastChangedAt = lastChangedAt
         }
 
-        fileprivate var key: String { "\(kind.rawValue)|\(bundleId ?? "")" }
+        /// Stable identity for a (kind, target app) pair. Internal rather than
+        /// fileprivate so `FirstRunPermissionLadder` can look a grant up without
+        /// duplicating the key format.
+        var key: String { "\(kind.rawValue)|\(bundleId ?? "")" }
     }
 
     public static let shared = SystemPermissionMonitor()

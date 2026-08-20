@@ -2,39 +2,6 @@ import Foundation
 import OpenBurnBarAnalytics
 import OpenBurnBarKernel
 
-/// Process-local stash for mission / Mercury-call routes that fire before the
-/// signed-in root has mounted. Same shape as `AssistantPendingThread` and
-/// Android `OsPendingNavigation`: stash first, then post. The root claims the
-/// leftover on appear if `NotificationCenter` had no observer.
-enum MobilePendingOsRoute: Equatable {
-    case mercuryCall(connectionId: String?)
-    case mission(missionId: String?)
-}
-
-@MainActor
-final class MobilePendingOsRouteStore {
-    static let shared = MobilePendingOsRouteStore()
-
-    private var pending: MobilePendingOsRoute?
-
-    private init() {}
-
-    func stash(_ route: MobilePendingOsRoute) {
-        pending = route
-    }
-
-    /// Read and clear so one tap opens one surface once.
-    func consume() -> MobilePendingOsRoute? {
-        let value = pending
-        pending = nil
-        return value
-    }
-
-    func clear() {
-        pending = nil
-    }
-}
-
 /// Applies an already-routed BurnBar destination in-process.
 /// Never opens an arbitrary payload URL.
 @MainActor
@@ -75,12 +42,10 @@ enum MobileOsDeepLinkApplier {
         case .inbox:
             AIInboxDeepLink.open(itemID: routed.itemId)
         case .mercuryCall:
-            MobilePendingOsRouteStore.shared.stash(.mercuryCall(connectionId: routed.connectionId))
             var userInfo: [AnyHashable: Any] = [:]
             if let connection = routed.connectionId { userInfo["connectionId"] = connection }
             NotificationCenter.default.post(name: .init("ShowMercuryCall"), object: nil, userInfo: userInfo)
         case .mission:
-            MobilePendingOsRouteStore.shared.stash(.mission(missionId: routed.missionId))
             var userInfo: [AnyHashable: Any] = [:]
             if let mission = routed.missionId { userInfo["missionId"] = mission }
             NotificationCenter.default.post(name: .init("ShowMissionConsole"), object: nil, userInfo: userInfo)

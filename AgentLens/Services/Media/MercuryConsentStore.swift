@@ -95,19 +95,28 @@ final class MercuryConsentStore: ObservableObject {
         pruneExpired(now: clock())
         defaultsObserver = NotificationCenter.default
             .publisher(for: UserDefaults.didChangeNotification, object: defaults)
-            .sink { [weak self] _ in
-                // UserDefaults posts this on whichever thread mutated the
-                // defaults. Main-thread posts (this store's own persists, the
-                // Settings surface toggling the opt-in) synchronize inline so
-                // callers never observe a window where the defaults write has
-                // landed but the store still reports stale consent; off-main
-                // posts hop onto the main actor first.
-                if Thread.isMainThread {
-                    MainActor.assumeIsolated { self?.synchronizeFromDefaults() }
-                } else {
-                    Task { @MainActor [weak self] in
-                        self?.synchronizeFromDefaults()
-                    }
+            .sink { _ in
+                // Always hop. The previous form branched on `Thread.isMainThread`
+                // and called `MainActor.assumeIsolated` on the true side, on the
+                // theory that the main thread implies the main actor. It does not:
+                // `isMainThread` answers *which thread*, `assumeIsolated` asserts
+                // *which executor*, and those diverge whenever the poster is a
+                // nonisolated synchronous context that merely happens to be running
+                // on the main thread — which is exactly what SwiftUI's `@AppStorage`
+                // setter is. Dragging the Liquid Glass slider writes defaults on
+                // every frame, so the thread check passed, the executor check
+                // failed, and the app trapped in `_assertionFailure` (crash
+                // 2026-08-20 04:01, `UserDefaultLocation.set` →
+                // `postNotificationName` → here).
+                //
+                // The inline-synchronous path existed to close a consent window,
+                // not for speed. That window is now closed at the read site
+                // instead — see `canAutoAccept`, which reads the opt-in straight
+                // from `defaults` and therefore cannot serve a revoked grant while
+                // this hop is still pending. That is strictly stronger than the old
+                // form, which only closed the window for main-thread writers.
+                Task { @MainActor [weak self] in
+                    self?.synchronizeFromDefaults()
                 }
             }
     }
@@ -130,6 +139,14 @@ final class MercuryConsentStore: ObservableObject {
         // Auto-accept is only valid while the user is opted in to remembered
         // peers; a stored grant without a live opt-in must not bypass the
         // approval UI.
+        //
+        // Read from `defaults`, not the mirrored property. The property is
+        // refreshed by an asynchronous hop off `UserDefaults.didChangeNotification`,
+        // so between a revoke landing on disk and that hop running, the mirror
+        // still says "opted in". Consent must fail closed on the stored truth, and
+        // this read is what lets the observer be a plain async hop rather than the
+        // executor-asserting branch that used to crash.
+        guard defaults.bool(forKey: Self.rememberAcceptedPeersKey) else { return false }
         guard rememberAcceptedMirrorPeers else { return false }
         guard Self.peerNodeIDsMatch(
             declaredPeerNodeId: controlAuthorityPeerNodeId,

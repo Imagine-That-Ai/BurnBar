@@ -91,7 +91,7 @@ final class CLILaunchInvokerTests: XCTestCase {
 
         switch result {
         case .success:
-            XCTAssertTrue(true)
+            break
         case .failure(let error):
             XCTFail("Expected success, got \(error)")
         }

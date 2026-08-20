@@ -72,7 +72,7 @@ export function accountIDFor(provider: string, requestedAccountID?: string): str
     .replace(/-+/g, "-")
     .replace(/^-|-$/g, "");
   if (!safe) {
-    throw new Error("invalid-argument: accountID must contain letters or numbers.");
+    throw new HttpsError("invalid-argument", "Account ID must contain letters or numbers.");
   }
   return safe;
 }

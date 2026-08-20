@@ -23,3 +23,17 @@ This file is the project-level index of active and completed agent goals. It rec
 | `burnbar-accretive-pr-merge-2026-08-07` | complete — #2191/#2172/#2125/#2088/#2054/#2186 MERGED; main@20ec5aba4e | none | `.agent/runs/burnbar-accretive-pr-merge-2026-08-07/` | 2026-08-08T07:38:18Z |
 | `windows-macos-parity-completion-2026-08-09` | active | windows-parity-100-2026-07-06 | `.agent/runs/windows-macos-parity-completion-2026-08-09/` | 2026-08-09T21:43:11Z |
 | `product-truth-activation-2026-08-16` | active | none | `.agent/runs/product-truth-activation-2026-08-16/` | 2026-08-17T01:36:55Z |
+| `burnbar-glass-system-2026-08-19` | active | none | `.agent/runs/burnbar-glass-system-2026-08-19/` | 2026-08-20T04:09:47Z |
+| `first-launch-permission-trust-2026-08-20` | active | none | `.agent/runs/first-launch-permission-trust-2026-08-20/` | 2026-08-20T05:29:18Z |
+
+## first-launch-permission-trust-2026-08-20 — in progress
+Remove every uninvited macOS dialog from first launch and make BurnBar explain agent
+permissions in its own voice before macOS ever asks.
+- Ledger: `.agent/runs/first-launch-permission-trust-2026-08-20/`
+- Done: A1 (non-interactive keychain reads + unreadable-key guard), A3, B1 (notification /
+  local-network / accessibility launch prompts removed), B2 (`FirstRunPermissionLadder`),
+  B3 (permissions step off the onboarding path), C1/C1b (`SafetyFrame` + honesty guard),
+  C2 (pre-prompt trust sheet, nine sites rewired).
+- Incomplete: A2 (data-protection keychain migration — needs app+daemon sequencing).
+- Todo: C3 trust-overview card, C4–C6, MAS configuration build.
+- Parent goal: none. Source plan: `~/.claude/plans/but-when-users-first-modular-hanrahan.md`.

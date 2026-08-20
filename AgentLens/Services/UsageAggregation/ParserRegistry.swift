@@ -95,6 +95,7 @@ enum ParserRegistry {
         parsers[.junie] = RegisteredLogParser(JunieParser())
         parsers[.primeAgent] = RegisteredLogParser(PrimeAgentParser())
         parsers[.muse] = RegisteredLogParser(MuseParser())
+        parsers[.fx] = RegisteredLogParser(FxParser())
         // MiMo quota is API-backed via Token Plan credentials. Do not attach it
         // to the shared Factory sessions tree, or Factory sessions can be counted
         // twice: once as Factory usage and again as MiMo local usage.

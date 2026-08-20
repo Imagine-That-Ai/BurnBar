@@ -25,34 +25,56 @@
 
         <!-- Provider list panel. -->
         <components:UnifiedGlassCard Grid.Row="0" Grid.Column="0">
-            <StackPanel Spacing="10">
+            <StackPanel Spacing="12">
                 <TextBlock Text="Data source" FontSize="13" Opacity="0.6" FontWeight="SemiBold" />
                 <TextBlock x:Name="ProviderStatusText"
                            Text="No SQLCipher database connected"
                            TextWrapping="Wrap"
-                           FontSize="14" />
+                           FontSize="13" />
+                <Border Height="1" Background="{ThemeResource AuroraGlassStrokeBrush}" Margin="0,4" />
+                <TextBlock Text="Active providers" FontSize="12" Opacity="0.6" FontWeight="SemiBold" />
+                <TextBlock x:Name="ActiveProvidersCountText" Text="—" FontSize="18" FontWeight="Bold" />
             </StackPanel>
         </components:UnifiedGlassCard>
 
-        <!-- Open hero swarm field: transparent so the DashboardBackdrop reads through. -->
-        <Grid Grid.Row="0" Grid.Column="1">
-            <TextBlock Text="Aurora"
-                       VerticalAlignment="Top"
-                       HorizontalAlignment="Left"
-                       FontSize="15"
-                       Opacity="0.6"
-                       FontWeight="SemiBold" />
-        </Grid>
+        <!-- Focus Hero answer card: exactly one number above the fold. -->
+        <components:UnifiedGlassCard Grid.Row="0" Grid.Column="1" Interactive="True">
+            <StackPanel Spacing="16" VerticalAlignment="Center" HorizontalAlignment="Stretch" Padding="8">
+                <TextBlock Text="BURN · FOCUS"
+                           FontSize="12"
+                           FontWeight="Bold"
+                           CharacterSpacing="80"
+                           Foreground="{StaticResource PensieveColorBrassBrightBrush}" />
+                <TextBlock x:Name="HeroBurnText"
+                           Text="—"
+                           FontSize="54"
+                           FontWeight="Bold"
+                           FontFamily="{StaticResource OBBMonoFontFamily}"
+                           Foreground="{StaticResource PensieveColorBrassBrightBrush}" />
+                <TextBlock x:Name="FocusSentenceText"
+                           Text="No spend recorded in this window yet."
+                           FontSize="15"
+                           Opacity="0.8"
+                           TextWrapping="Wrap"
+                           MaxWidth="620"
+                           HorizontalAlignment="Left"
+                           Foreground="{ThemeResource AuroraTextSecondaryBrush}" />
+            </StackPanel>
+        </components:UnifiedGlassCard>
 
-        <!-- Bottom data band. -->
-        <StackPanel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
-                    Orientation="Horizontal" Spacing="16">
-            <layouts:ConceptStatTile x:Name="SpendTile" Value="—" Caption="Spend"
+        <!-- Bottom data band: star columns distribute slack across full width. -->
+        <Grid Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" ColumnSpacing="16" HorizontalAlignment="Stretch">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <layouts:ConceptStatTile Grid.Column="0" x:Name="SpendTile" Value="—" Caption="Spend"
                                      AccentBrush="{StaticResource PensieveColorBrassCoreBrush}" />
-            <layouts:ConceptStatTile x:Name="TokensTile" Value="—" Caption="Tokens"
+            <layouts:ConceptStatTile Grid.Column="1" x:Name="TokensTile" Value="—" Caption="Tokens"
                                      AccentBrush="{StaticResource PensieveColorMercuryCoreBrush}" />
-            <layouts:ConceptStatTile x:Name="SessionsTile" Value="—" Caption="Sessions"
+            <layouts:ConceptStatTile Grid.Column="2" x:Name="SessionsTile" Value="—" Caption="Sessions"
                                      AccentBrush="{StaticResource OBBAccentBrush}" />
-        </StackPanel>
+        </Grid>
     </Grid>
 </UserControl>

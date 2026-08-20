@@ -26,13 +26,31 @@ struct ChatInputRow: View {
         case .antigravity: return "Ask Antigravity\u{2026}"
         case .cursorAgent: return "Ask Cursor Agent\u{2026}"
         case .junie: return "Ask Junie\u{2026}"
+        case .fx: return "Ask fx\u{2026}"
         }
     }
 
+    /// The composer's silhouette. Declared once: it is painted four times
+    /// (fill, material, clip, rim) and four literals drift apart.
+    private static let fieldShape = RoundedRectangle(
+        cornerRadius: DesignSystem.Radius.xl,
+        style: .continuous
+    )
+
+    /// A neutral specular hairline — lit along the top-leading edge, faded
+    /// along the bottom-trailing one, the way an Apple material catches light.
+    ///
+    /// This used to be an identity gradient, with a 3pt tinted bar beside it.
+    /// Both competed with the prose directly above them, and neither carried
+    /// information the model pill was not already stating outright. Identity
+    /// now lives in the orb, where a colour means something. `Color.primary`
+    /// inverts with the theme, so one declaration is right on both grounds.
     private var inputStrokeGradient: LinearGradient {
-        chatBackend == .hermes
-            ? LinearGradient(colors: [DesignSystem.Colors.hermesMercury.opacity(0.4), DesignSystem.Colors.hermesAureate.opacity(0.3)], startPoint: .topLeading, endPoint: .bottomTrailing)
-            : LinearGradient(colors: [DesignSystem.Colors.whimsy.opacity(0.3), DesignSystem.Colors.border.opacity(0.3)], startPoint: .topLeading, endPoint: .bottomTrailing)
+        LinearGradient(
+            colors: [Color.primary.opacity(0.14), Color.primary.opacity(0.06)],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
     }
 
     private var sendDisabled: Bool {
@@ -104,17 +122,6 @@ struct ChatInputRow: View {
                 cliPermissionPrompt
             }
             HStack(alignment: .bottom, spacing: DesignSystem.Spacing.sm) {
-                // The identity that survives the first keystroke. The placeholder
-                // ("Ask Codex…") dies the moment you type; this 3pt leading bar
-                // does not. Containment law: a 3pt bar is the widest fill the
-                // per-agent tint is ever allowed (§6.1).
-                RoundedRectangle(cornerRadius: 1.5, style: .continuous)
-                    .fill(chatBackend.sigilTint.opacity(0.85))
-                    .frame(width: 3)
-                    .frame(maxHeight: .infinity)
-                    .padding(.vertical, 2)
-                    .accessibilityHidden(true)
-                    .animation(DesignSystem.Animation.standard, value: chatBackend)
                 attachmentMenu
                 TextField(inputPlaceholder, text: $controller.inputText, axis: .vertical)
                     .textFieldStyle(.plain)
@@ -125,14 +132,11 @@ struct ChatInputRow: View {
                     .onSubmit { submitOrRequestPermission() }
                     .padding(DesignSystem.Spacing.sm)
                     .background {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous).fill(DesignSystem.Colors.surface.opacity(0.3))
-                        }
+                        Self.fieldShape.fill(DesignSystem.Colors.surface.opacity(0.3))
                     }
-                    .liquidGlassSurface(in: RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous), fallback: .ultraThinMaterial)
-                    .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous).strokeBorder(inputStrokeGradient, lineWidth: 0.75))
-                    .animation(DesignSystem.Animation.snappy, value: chatBackend)
+                    .liquidGlassSurface(in: Self.fieldShape, fallback: .ultraThinMaterial)
+                    .clipShape(Self.fieldShape)
+                    .overlay(Self.fieldShape.strokeBorder(inputStrokeGradient, lineWidth: 0.75))
                     .onChange(of: controller.inputText) { _, _ in
                         controller.handleTextExpansionDraftChange()
                     }

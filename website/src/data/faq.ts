@@ -63,7 +63,7 @@ export const FAQ: FAQItem[] = [
     category: "router",
     question: "What is Exact Model Failover?",
     answer:
-      "It's the opt-in wider failover mode. BurnBar may try another provider or account after a quota, rate-limit, or availability failure — but only when that destination proves it serves the same canonical model ID as the request.\n\nThat means a request for gpt-5.4 can fail over to another route that truly serves canonical gpt-5.4. It cannot become gpt-5.4-mini, gpt-5.4-pro, a broad gpt-5-family wrapper, or a generic openai:standard substitute.\n\nIf the router cannot prove the exact identity, it fails closed with a structured 503. The audit event records the attempted model, canonical model, original route, destination route, reason, and whether the exact-model invariant passed."
+      "It's the opt-in wider failover mode. BurnBar may try another provider or account after a quota, rate-limit, or availability failure — but only when that destination proves it serves the same canonical model ID as the request.\n\nThat means a request for gpt-5.6 can fail over to another route that truly serves canonical gpt-5.6. It cannot become gpt-5.6-mini, gpt-5.6-pro, a broad gpt-5-family wrapper, or a generic openai:standard substitute.\n\nIf the router cannot prove the exact identity, it fails closed with a structured 503. The audit event records the attempted model, canonical model, original route, destination route, reason, and whether the exact-model invariant passed."
   },
   {
     id: "router-model-board",

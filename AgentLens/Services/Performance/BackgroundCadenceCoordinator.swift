@@ -196,6 +196,14 @@ final class BackgroundCadenceCoordinator {
         boxes.removeValue(forKey: id)
     }
 
+    /// Cancel every registered cadence. Used on quit so timer loops cannot
+    /// start a new SQLCipher read after the database has been interrupted.
+    func unregisterAll() {
+        for id in Array(boxes.keys) {
+            unregister(id: id)
+        }
+    }
+
     /// Notify the coordinator that an observer-driven source has just
     /// emitted a fresh value for the given id. The next poll will use the
     /// `observerActiveInterval` (or pause entirely if nil).

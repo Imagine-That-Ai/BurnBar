@@ -66,6 +66,7 @@ final class DataStoreCoordinator {
     /// Coalesces simultaneous first-open requests from the tray, dashboard,
     /// deep links, or automation into one aggregate query.
     @ObservationIgnored private var usagePresentationLoadTask: Task<Void, Never>?
+    @ObservationIgnored private var didPrepareForTermination = false
     /// Usage-table write marker observed by the most recent
     /// `reloadUsagesIfChanged()` pass or explicit presentation hydration (see
     /// `UsageTableWriteMarker`). Background-only launches record the marker
@@ -519,6 +520,30 @@ final class DataStoreCoordinator {
         usagePresentationLoadTask = task
         await task.value
         usagePresentationLoadTask = nil
+    }
+
+    /// Stop dashboard reads and close SQLCipher before `NSApplication` calls `exit()`.
+    ///
+    /// Quit used to run `applicationWillTerminate` and then `exit()` while GRDB
+    /// reader queues were still in `sqlite3Codec` / `sqlcipher_memset`. That is
+    /// the SIGSEGV in the crash report (thread `GRDB.DatabasePool.reader.3`).
+    func interruptDatabaseReaders() {
+        actor.dbQueue.interrupt()
+    }
+
+    func prepareForTermination() async {
+        guard !didPrepareForTermination else { return }
+        didPrepareForTermination = true
+        refreshGeneration += 1
+        usagePresentationLoadTask?.cancel()
+        usagePresentationLoadTask = nil
+        let actor = self.actor
+        // Close off the main actor. `DatabasePool.close()` waits on a reader
+        // barrier; doing that on MainActor can deadlock a reader that still
+        // needs to hop back, and would also freeze quit.
+        await Task.detached(priority: .userInitiated) {
+            actor.closeForTermination()
+        }.value
     }
 
     func deleteAll() async throws {

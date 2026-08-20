@@ -136,7 +136,7 @@ struct ResumeConversationSheet: View {
 
                 HStack(spacing: DesignSystem.Spacing.xs) {
                     Text(record.provider.rawValue)
-                    Text("->")
+                    Text("→")
                     Text(targetHarness.rawValue)
                     if let workingDirectory = record.workingDirectory?.nonEmpty {
                         Text("·")
@@ -181,7 +181,6 @@ struct ResumeConversationSheet: View {
     private func loadPreview() async {
         isLoading = true
         errorMessage = nil
-        openedPath = nil
         do {
             let result = try await daemonManager.runResume(
                 sessionID: record.id,
@@ -189,11 +188,10 @@ struct ResumeConversationSheet: View {
                 mode: .print
             )
             response = result
-            if result.kind == "error" {
-                errorMessage = result.errorRecovery
+            if let error = result.errorRecovery ?? result.errorCode {
+                errorMessage = error
             }
         } catch {
-            response = nil
             errorMessage = error.localizedDescription
         }
         isLoading = false
@@ -215,9 +213,9 @@ struct ResumeConversationSheet: View {
             case "ported":
                 openedPath = result.briefingPath
             case "error":
-                errorMessage = result.errorRecovery ?? result.errorCode
+                errorMessage = result.errorRecovery ?? result.errorCode.map { "The resume operation failed (\($0))." } ?? "The resume operation failed."
             default:
-                errorMessage = "Unknown response kind '\(result.kind)'."
+                errorMessage = "Unexpected response kind '\(result.kind)'."
             }
         } catch {
             errorMessage = error.localizedDescription
@@ -239,7 +237,7 @@ struct ResumeConversationSheet: View {
             case "spawned":
                 openedPath = "Spawned \(result.targetHarness ?? "target") pid=\(result.pid.map(String.init) ?? "unknown")"
             case "error":
-                errorMessage = result.errorRecovery ?? result.errorCode
+                errorMessage = result.errorRecovery ?? result.errorCode.map { "The spawn operation failed (\($0))." } ?? "The spawn operation failed."
             default:
                 errorMessage = "Expected spawned response, got '\(result.kind)'."
             }

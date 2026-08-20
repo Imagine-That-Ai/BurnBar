@@ -58,6 +58,7 @@ public enum AgentProviderBrand
     Junie,
     PrimeAgent,
     Muse,
+    Fx,
     OpenBurnBar,
 }
 
@@ -131,7 +132,8 @@ public static class ProviderBrand
         AgentProviderBrand.CursorAgent => "#00E5FF",
         AgentProviderBrand.Junie => "#48E054",
         AgentProviderBrand.PrimeAgent => "#582CFF",
-        AgentProviderBrand.Muse => "#7A5CFF",
+        AgentProviderBrand.Muse => "#0668E1",
+        AgentProviderBrand.Fx => "#A1A1AA",
         AgentProviderBrand.OpenBurnBar => "#FA5053", // Colors.ember (dark)
         _ => "#8B5CF6",
     };
@@ -172,8 +174,9 @@ public static class ProviderBrand
         AgentProviderBrand.Mimo => "#FF8533",
         AgentProviderBrand.CursorAgent => "#33ECFF",
         AgentProviderBrand.Junie => "#6FE87F",
-        AgentProviderBrand.PrimeAgent => "#7C5CFF",
-        AgentProviderBrand.Muse => "#9A85FF",
+        AgentProviderBrand.PrimeAgent => "#9370FF",
+        AgentProviderBrand.Muse => "#3B82F6",
+        AgentProviderBrand.Fx => "#D4D4D8", // Color.adaptive (dark)
         AgentProviderBrand.OpenBurnBar => "#FF7578",
         _ => "#FA5053",
     };

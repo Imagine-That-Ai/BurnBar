@@ -46,4 +46,9 @@ class ProviderLogoViewTest {
         assertEquals(R.drawable.logo_meta, ProviderLogo.drawableFor(AgentProvider.MUSE))
         assertEquals(R.drawable.logo_meta, AgentProvider.MUSE.logoRes)
     }
+    @Test
+    fun fxResolvesDedicatedLogoAssetOnBothLookupSurfaces() {
+        assertEquals(R.drawable.logo_fx, ProviderLogo.drawableFor(AgentProvider.FX))
+        assertEquals(R.drawable.logo_fx, AgentProvider.FX.logoRes)
+    }
 }

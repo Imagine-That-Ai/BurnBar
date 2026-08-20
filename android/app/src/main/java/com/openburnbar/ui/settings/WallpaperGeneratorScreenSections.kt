@@ -1031,9 +1031,11 @@ internal suspend fun saveStillWallpaper(view: View, context: Context) {
             withContext(Dispatchers.Main) {
                 Toast.makeText(context, "Wallpaper saved to Photos", Toast.LENGTH_SHORT).show()
             }
-        } catch (e: IllegalStateException) {
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            android.util.Log.e("WallpaperGenerator", "Failed to save wallpaper bitmap", e)
             withContext(Dispatchers.Main) {
-                Toast.makeText(context, "Failed to save: ${e.message}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Unable to save wallpaper. Please try again.", Toast.LENGTH_SHORT).show()
             }
         }
     }

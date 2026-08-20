@@ -1083,10 +1083,7 @@ struct BurnRailAppearanceQuickMenu: View {
                 }
             }
 
-            // One list, because these are mutually exclusive in the renderer:
-            // the kernel is checked before constellation and swarm, so offering
-            // them as two independent controls meant whichever lost silently did
-            // nothing.
+            // Mutually exclusive background choices
             Section("Background") {
                 quickBackgroundOption(.off)
                 quickBackgroundOption(.swarm)
@@ -1094,31 +1091,37 @@ struct BurnRailAppearanceQuickMenu: View {
                 quickBackgroundOption(.kernel)
             }
 
-            // Flat buttons rather than a `Picker`: a Picker nested in a Menu
-            // renders as a submenu that dismisses itself the moment the pointer
-            // crosses into it, which made the theme list unusable.
+            // Structured submenus for shaders to keep the menu compact and legible
             if useKernelBackdrop {
-                Section("Kernel theme") {
-                    ForEach(KernelCatalog.all) { kernel in
-                        Button {
-                            backdropKernel = kernel.id
-                            Analytics.shared.track(.settingsChanged, [
-                                "setting_key": "window_backdrop_kernel_quick_menu",
-                                "new_value": .string(kernel.id)
-                            ])
-                        } label: {
-                            if backdropKernel == kernel.id {
-                                Label(kernel.label, systemImage: "checkmark")
-                            } else {
-                                Text(kernel.label)
-                            }
+                Menu("Kernel theme (\(KernelCatalog.label(for: backdropKernel)))") {
+                    Section("Curated") {
+                        ForEach(KernelCatalog.curated) { kernel in
+                            kernelOptionButton(kernel)
+                        }
+                    }
+
+                    Section("Atmospheric & Flow") {
+                        ForEach(KernelCatalog.atmospheric) { kernel in
+                            kernelOptionButton(kernel)
+                        }
+                    }
+
+                    Section("Lattice & Geometry") {
+                        ForEach(KernelCatalog.geometry) { kernel in
+                            kernelOptionButton(kernel)
+                        }
+                    }
+
+                    Section("Living & Organic") {
+                        ForEach(KernelCatalog.organic) { kernel in
+                            kernelOptionButton(kernel)
                         }
                     }
                 }
-            }
 
-            Section("Overlay") {
-                Toggle("Swarm particles", isOn: $swarmSubstrateEnabled)
+                Section("Overlay") {
+                    Toggle("Swarm particles", isOn: $swarmSubstrateEnabled)
+                }
             }
 
             Section {
@@ -1172,6 +1175,22 @@ struct BurnRailAppearanceQuickMenu: View {
         if useKernelBackdrop { return .kernel }
         if !settingsManager.useWebsiteBackground { return .off }
         return settingsManager.useConstellationBackground ? .constellation : .swarm
+    }
+
+    private func kernelOptionButton(_ kernel: KernelCatalogEntry) -> some View {
+        Button {
+            backdropKernel = kernel.id
+            Analytics.shared.track(.settingsChanged, [
+                "setting_key": "window_backdrop_kernel_quick_menu",
+                "new_value": .string(kernel.id)
+            ])
+        } label: {
+            if backdropKernel == kernel.id {
+                Label(kernel.label, systemImage: "checkmark")
+            } else {
+                Text(kernel.label)
+            }
+        }
     }
 
     private func quickBackgroundOption(_ state: QuickBackgroundState) -> some View {

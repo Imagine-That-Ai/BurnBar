@@ -255,10 +255,10 @@ describe("health endpoint runtime artifact manifest and production identity", ()
     // Pre-fix: readFileSync at module top-level throws ENOENT.
     // Post-fix: import succeeds; absence is reported as null.
     const health = await loadHealth();
-    expect(health).toBeDefined();
-    expect(health.healthLive).toBeDefined();
-    expect(health.healthReady).toBeDefined();
-    expect(health.healthCheck).toBeDefined();
+    expect(health).toBeTypeOf("object");
+    expect(typeof health.healthLive).toBe("function");
+    expect(typeof health.healthReady).toBe("function");
+    expect(typeof health.healthCheck).toBe("function");
   });
 
   // ---- Valid manifest → real sha256 ----

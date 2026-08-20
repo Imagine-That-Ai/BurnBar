@@ -483,6 +483,11 @@ extension AgentIdentity {
             tagline = "JetBrains Junie via your Mac."
             capabilities = [.fullCLI, .codeExecution, .mcpUI]
             dispatchTransport = .macRelay(runtime: "junie")
+        case .fx:
+            paletteHex = "A1A1AA"
+            tagline = "Vercel fx via your Mac."
+            capabilities = [.fullCLI, .codeExecution, .mcpUI]
+            dispatchTransport = .macRelay(runtime: "fx")
         }
 
         return AgentIdentity(

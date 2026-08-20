@@ -28,8 +28,8 @@ import {
   sha256Hex,
 } from "./shared.js";
 import type { ProjectMemorySnapshotDoc } from "../types.js";
-import { stripUndefinedObject } from "../guards.js";
-import { wrapCallableHandler } from "../logging.js";
+import { errorMessage, stripUndefinedObject } from "../guards.js";
+import { logWarn, wrapCallableHandler } from "../logging.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 
 export const commitEncryptedProjectMemorySnapshot = onCall(
@@ -129,8 +129,12 @@ export const commitEncryptedProjectMemorySnapshot = onCall(
         await db
           .doc(`users/${uid}/project_memory_snapshots/${legacyDocID}`)
           .delete()
-          .catch(() => {
-            /* best-effort cleanup; the scheduled privacy backfill is the backstop */
+          .catch((err: unknown) => {
+            logWarn({
+              event: "legacy_project_memory_delete_failed",
+              user_id_hash: uid.slice(0, 8),
+              detail: errorMessage(err),
+            });
           });
       }
       return {

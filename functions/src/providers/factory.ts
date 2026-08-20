@@ -16,7 +16,7 @@
  */
 
 import type { ProviderAdapter, CredentialTestResult, QuotaRefreshResult, QuotaBucket } from "../types.js";
-import { isRecord, stringField } from "../guards.js";
+import { errorMessage, isRecord, stringField } from "../guards.js";
 import { providerFetch } from "./httpClient.js";
 
 const PROVIDER = "factory" as const;
@@ -58,7 +58,7 @@ async function factoryFetch(url: string, token: string): Promise<FactoryFetchRes
       },
     });
   } catch (err) {
-    return { ok: false, error: String(err), errorCode: "network_error" };
+    return { ok: false, error: errorMessage(err), errorCode: "network_error" };
   }
 
   let payload: unknown;

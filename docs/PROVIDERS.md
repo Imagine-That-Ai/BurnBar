@@ -43,6 +43,7 @@
 | **OMP** | `OMPQuotaAdapter` | `.exact` | `omp usage --json --redact` | Oh My Pi local CLI quota reports by provider/account/window |
 | **Prime Agent (Prime Intellect)** | `PrimeAgentParser` (local) | `.exact` | `~/.prime/agent/sessions/*.jsonl` (local jsonl: `message.usage` + `cost`) | Recursive Language Model + Continual Harness sessions; per-turn input/output/cacheRead/cacheWrite + exact USD cost; provider auto-detects underlying model (e.g. `muse-spark-1.2`, `gpt-5.6-luna`) |
 | **Muse (Meta)** | `MuseParser` (local) | `.exact` | `~/.local/share/muse/sessions/**/*.jsonl` (envelope JSONL, `model_completed` usage, `tool_batch` tools, `started` prompts; microsecond `recorded_at`) | Local session tokens + cached/read/write + reasoning + exact USD via catalog (`muse-spark-1.2` standard $1.25/$4.25/$0.15 or contributor $0.10/$0.20/$0.002); auto-detects workspace + subagent sessions |
+| **Vercel fx** | `FxParser.swift` | `.exact` | `~/.fx/sessions/<sessionId>/` (`session.json`, `usage-v2.json`, `events.jsonl`, `display.json`) | Local session exact token counts and exact USD cost via `usage-v2.json`; transcript and tool lifecycle via `events.jsonl`; chat bridge via `fx ask --json` / `--resume` |
 | **OpenRouter** | Routed via API key | `.exact` | `GET openrouter.ai/v1/activity` | Per-call exact cost in USD (no quota limits) |
 | **Anthropic** | Admin API key | `.estimated` | `GET api.anthropic.com/v1/organizations` | Org-wide messages usage report (~24h lag) |
 
@@ -104,6 +105,7 @@ without durable source evidence stay `unknown`.
 | `roo-code` | Roo Code | `.ide` | Roo Code | Plugin-only |
 | `augment` | Augment | `.ide` | Augment | Plugin-only |
 | `junie` | Junie | `.ide` | Junie | Plugin-only |
+| `fx` | fx | `.cli` | fx | CLI-only |
 
 > **Audit-corrected 2026-05-09:** Both = 11 active: `codex`, `claude`, `cursor`, `factory`, `minimax`, `z.ai`, `devin`, `hermes`, `warp`, `opencode`, `ollama` (Windsurf is LEGACY → Devin). Plugin-only (no toggle): `cline`, `kilo`, `roo`, `augment`, `junie`. Toggle eligibility = `visualSurfaces` contains both `cli` and `desktop` in `catalog.json`.
 
@@ -130,6 +132,7 @@ without durable source evidence stay `unknown`.
 | **Kimi** | Browser cookie / JWT | KIMI_AUTH_TOKEN | `Authorization: Bearer {token}` | Custom bearer token from kimi.com session |
 | **Hermes** | None | N/A (local file) | N/A | Offline JSONL telemetry scraper |
 | **Pi Agent** | None | N/A (local file) | N/A | Offline workspace interaction logger |
+| **Vercel fx** | CLI auth | N/A (local session files + CLI auth) | N/A | Reads `~/.fx/sessions/` (`session.json`, `usage-v2.json`, `events.jsonl`) |
 | **xAI (Grok)** | API key / Management key | `xai-…` inference key; `xai-mgmt-…` for GrokBuild balance | `Authorization: Bearer {key}` | SuperGrok pacing log + Management API; daemon gateway emits pacing events on routed xAI traffic |
 | **Grok Build CLI** | Local CLI + optional `XAI_API_KEY` | `grok` binary; sessions under `~/.grok/` | OpenBurnBar gateway block in `config.toml` | Switcher profile `Grok Build`; vendor identity stays `AgentProvider.xAI` |
 | **OMP** | Local CLI | `omp` binary | N/A | Uses installed Oh My Pi CLI; OpenBurnBar stores no provider credential |

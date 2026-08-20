@@ -5,10 +5,14 @@ import { runResumeCli, type ResumeMode } from "./resume.js";
 import { runStdioShim } from "./shim.js";
 import { writeAccessToken } from "./oauth.js";
 import { parseAppCliOptions, runAppCommand, type AppCommand } from "./appInstall.js";
+import { runProxyCli } from "./proxy.js";
 import { basename } from "node:path";
 import { readFileSync } from "node:fs";
 
-const USAGE = "Usage: openburnbar mcp <serve|install|doctor|login> [token] | memory <install|run|sync> | resume <sessionId>|--query <memory> [--as <harness>] [--model <model>] [--print|--copy|--open|--spawn] | app <install|update> [--dry-run] | obbresume <memory> [--as <harness>] | OBB Resume <memory>\n";
+const USAGE = `Usage: openburnbar proxy [--port 8320] [--host 127.0.0.1] [--allow-local-key] [--token <token>] | proxy <status|stop> [--port 8320] | app <install|update> [--dry-run] | mcp <serve|install|doctor|login> [token] | memory <install|run|sync> | resume <sessionId>|--query <memory> [--as <harness>] [--model <model>] [--print|--copy|--open|--spawn] | obbresume <memory> [--as <harness>] | OBB Resume <memory>
+
+app install puts OpenBurnBar.app on disk; proxy starts the local OpenAI gateway; npm i never starts either. No postinstall, no DMG, no open -a, no Swift.
+`;
 const APP_USAGE = "Usage: openburnbar app <install|update> [--dry-run] [--feed-url <https-url>] [--applications-dir <path>]\n";
 
 function looksLikeSessionId(s: string | undefined): boolean {
@@ -23,6 +27,9 @@ async function main(): Promise<void> {
   if (first === "--help" || first === "-h") {
     process.stdout.write(USAGE);
     return;
+  }
+  if (first === "proxy") {
+    process.exit(await runProxyCli(process.argv.slice(3)));
   }
   if (first === "app") {
     process.exit(await runAppCli(second, process.argv.slice(4)));

@@ -1,7 +1,7 @@
 {
   "name": "openburnbar",
-  "version": "0.1.2",
-  "description": "OpenBurnBar Node CLI — MCP stdio shim to the hosted BurnBar MCP, session resume (obbresume), the Pensieve memory hook, and explicit macOS app install/update from the public notarized DMG feed.",
+  "version": "0.1.3",
+  "description": "OpenBurnBar Node CLI — loopback OpenAI gateway, hosted MCP stdio shim, session resume, Pensieve memory, and explicit macOS app install/update.",
   "keywords": [
     "openburnbar",
     "mcp",

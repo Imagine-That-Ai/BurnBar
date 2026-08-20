@@ -28,13 +28,24 @@ final class BurnBarDaemonServerPeerAuthEnforcementTests: XCTestCase {
         try await server.start()
         defer { Task { await server.stop() } }
 
-        // The server accepts the TCP connection then closes it after the peer
-        // check fails, so the client reads EOF with zero bytes — no JSON response.
+        // Fail closed: the RPC is not honored. The client still gets a typed
+        // unauthorized envelope so it does not decode an empty body as
+        // "data isn't in the correct format."
         let bytes = try roundTripRawBytes(
             request: BurnBarRPCRequestEnvelope(id: "health-x", method: .health, authToken: "test-token"),
             socketPath: socketPath
         )
-        XCTAssertTrue(bytes.isEmpty, "enforced server must close the connection without honoring the RPC")
+        XCTAssertFalse(bytes.isEmpty, "rejected peer must still receive a typed unauthorized envelope")
+        let response = try JSONDecoder().decode(
+            BurnBarRPCResponseEnvelope<BurnBarHealthResponse>.self,
+            from: bytes
+        )
+        XCTAssertNil(response.result)
+        XCTAssertEqual(response.error?.code, BurnBarRPCErrorCode.unauthorized)
+        XCTAssertEqual(
+            response.error?.message,
+            "OpenBurnBar RPC peer failed first-party code-signature verification."
+        )
 
         await server.stop()
     }

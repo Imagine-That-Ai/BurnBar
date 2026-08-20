@@ -204,6 +204,9 @@ public struct OpenBurnBarAppPaths: Sendable {
     public var museParserCacheURL: URL {
         supportDirectory.appendingPathComponent("muse_parser_cache.json")
     }
+    public var fxParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("fx_parser_cache.json")
+    }
 
     public var kimiParserCacheURL: URL {
         supportDirectory.appendingPathComponent("kimi_parser_cache.json")

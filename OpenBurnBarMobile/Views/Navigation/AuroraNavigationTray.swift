@@ -57,11 +57,11 @@ struct AuroraNavigationTray: View {
 
     // Floating-pill geometry. Labels stay visible so core routes such as
     // Store are discoverable without relying on icon interpretation.
-    private let pillHeight: CGFloat = 62
+    private let pillHeight: CGFloat = MobileTrayMetrics.pillHeight
     private let iconSize: CGFloat = 24
     private let tabWidth: CGFloat = 56
     private let pillSidePadding: CGFloat = 6
-    private let pillBottomInset: CGFloat = 14
+    private let pillBottomInset: CGFloat = MobileTrayMetrics.pillBottomInset
 
     /// Effective pill content width (sum of all tab widths + side padding).
     private var trayContentWidth: CGFloat {

@@ -8,7 +8,7 @@ import { buildDashboardCycle } from '@openburnbar/gl-engine/engine/kernels/swarm
 
 describe('swarm provider glyph catalog', () => {
   it('keeps the settings order stable and rejects stale IDs', () => {
-    expect(SWARM_PROVIDER_GLYPH_OPTIONS).toHaveLength(33);
+    expect(SWARM_PROVIDER_GLYPH_OPTIONS).toHaveLength(34);
     expect(SWARM_PROVIDER_GLYPH_OPTIONS.map(({ id }) => id)).toEqual([...SWARM_PROVIDER_GLYPH_IDS]);
     expect(normalizeSwarmProviderGlyphs(['windsurf', 'unknown', 'windsurf', 'codex'])).toEqual([
       'codex',

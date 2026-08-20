@@ -87,6 +87,14 @@ struct DashboardBackdrop: View {
     @AppStorage(SwarmSubstratePreferences.enabledKey) private var substrateEnabled: Bool = false
     @AppStorage(SwarmSubstratePreferences.substrateKey) private var substrateID: String = OpenBurnBarUI.SubstrateCatalog.plainID
     @AppStorage(SwarmSubstratePreferences.backdropKernelKey) private var backdropKernel: String = KernelCatalog.defaultID
+    /// Draw the living backdrop with Metal rather than the WebGL2 bundle.
+    ///
+    /// Defaults on, because it is the precondition for glass: only a natively-drawn
+    /// field can be re-synthesised behind a plate and refracted. Turning it off restores
+    /// the 32 named WebGL kernels — and, necessarily, the flat glass that comes with a
+    /// backdrop nothing can sample.
+    @AppStorage(BurnBarGlassFieldPreferences.nativeFieldKey) private var useNativeGlassField: Bool = true
+    @Environment(\.burnBarFleetDriver) private var fleetDriver
 
     /// Clear-side adjustment (0…1). Toward 1 the window's own plates fade so
     /// the blurred desktop shows through — the felt payoff of the preference
@@ -155,20 +163,39 @@ struct DashboardBackdrop: View {
             // background. Editorial used to short-circuit above this, which meant
             // picking a kernel theme on the paper skin rendered nothing at all —
             // the theme was chosen, stored, and then never consulted.
-            if shouldUseKernelBackdrop {
-                // Full-window WebGL2 kernel field (the bottom-most backdrop
-                // layer). Reuses the same clear-surface plumbing as the swarm, so
-                // dashboard content composites on top. Keep the normal fallback
-                // static; add the native swarm only when the substrate layer is
-                // explicitly enabled so the substrate picker still has a live host
-                // in kernel mode.
+            if shouldUseKernelBackdrop, useNativeGlassField {
+                // The living backdrop, drawn by Metal as ordinary SwiftUI content.
+                //
+                // The WebGL2 path below still works and still owns the 32 named kernels,
+                // but it is a `WKWebView` — a sealed rectangle in the compositor that
+                // nothing can sample. Every glass plate in the app was floating above a
+                // field it could not see, which is the entire reason the material read as
+                // frost no matter how good the optics were. Drawn natively, the field is
+                // ordinary content, so a plate can re-synthesise its own patch of it and
+                // genuinely refract it.
+                //
+                // No `staticKernelFallback` under this branch: the field is opaque by
+                // construction (`BurnBarKernel.metal` returns alpha 1), so a substrate
+                // beneath it would only ever be dead pixels.
+                Group {
+                    BurnBarKernelField(driver: fleetDriver)
+                        .ignoresSafeArea()
+                    kernelSubstrateOverlay
+                }
+                .opacity(1 - 0.82 * clarity)
+            } else if shouldUseKernelBackdrop {
+                // Full-window WebGL2 kernel field (the living backdrop).
+                // Native swarm mounts only for an explicit substrate — see
+                // `KernelSwarmOverlayPolicy`. Provider glyphs tint the kernel;
+                // they do not spawn a second particle simulator.
                 Group {
                     staticKernelFallback
                     KernelBackdropView(
                         colorSchemeOverride: kernelColorScheme,
                         onReadabilityChange: { profile in
                             onReadabilityChange?(profile)
-                        }
+                        },
+                        wantsOpaqueLayer: KernelWebViewOpacityPolicy.isOpaque(clarity: clarity)
                     )
                         .ignoresSafeArea()
                     kernelSubstrateOverlay
@@ -204,20 +231,25 @@ struct DashboardBackdrop: View {
     @ViewBuilder
     private var kernelSubstrateOverlay: some View {
         let enabledProviderGlyphs = settingsManager.desktopWallpaperProviderGlyphs
-        if substrateEnabled || !enabledProviderGlyphs.isEmpty {
+        if KernelSwarmOverlayPolicy.shouldMountCanvas(
+            substrateEnabled: substrateEnabled,
+            substrateID: substrateID
+        ) {
             SwarmCanvasView(
                 accent: DesignSystem.Colors.ember,
                 pace: .cinematic,
+                particleCount: max(96, SwarmCanvasView.adaptiveParticleCount / 3),
                 isTransparent: true,
                 motionSpeedMultiplier: 0.6,
                 enabledProviderGlyphs: enabledProviderGlyphs,
                 enableSwarmSparkles: false,
                 excludeBrandShapesFromSwarm: !enabledProviderGlyphs.isEmpty || settingsManager.excludeBrandShapesFromSwarm,
+                maxFrameRate: 15,
                 rendersAsynchronously: true,
-                substrate: substrateEnabled ? substrate : nil
+                substrate: substrate
             )
             .ignoresSafeArea()
-            .opacity(substrateEnabled ? 0.58 : 0.5)
+            .opacity(0.58)
             .allowsHitTesting(false)
         }
     }

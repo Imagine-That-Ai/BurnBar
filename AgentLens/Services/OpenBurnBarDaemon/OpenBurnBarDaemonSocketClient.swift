@@ -56,10 +56,18 @@ enum OpenBurnBarDaemonSocketClient {
     }
 
     static func fleetSnapshot(at socketURL: URL) throws -> BurnBarFleetSnapshot {
-        let envelope: BurnBarRPCResponseEnvelope<BurnBarFleetSnapshotResponse> = try send(
-            BurnBarRPCRequestEnvelope(method: .fleetSnapshot),
-            socketURL: socketURL
-        )
+        let envelope: BurnBarRPCResponseEnvelope<BurnBarFleetSnapshotResponse>
+        do {
+            envelope = try send(
+                BurnBarRPCRequestEnvelope(method: .fleetSnapshot),
+                socketURL: socketURL
+            )
+        } catch let error as OpenBurnBarDaemonManagerError {
+            if case .emptyResponse = error {
+                throw BurnBarFleetClientError.emptyResponse
+            }
+            throw BurnBarFleetClientError.daemonUnavailable(error.localizedDescription)
+        }
         if let error = envelope.error {
             throw classifyFleetError(error)
         }
@@ -1446,7 +1454,17 @@ enum OpenBurnBarDaemonSocketClient {
             response.removeLast()
         }
 
-        return try JSONDecoder().decode(BurnBarRPCResponseEnvelope<Response>.self, from: response)
+        guard response.isEmpty == false else {
+            throw OpenBurnBarDaemonManagerError.emptyResponse
+        }
+
+        do {
+            return try JSONDecoder().decode(BurnBarRPCResponseEnvelope<Response>.self, from: response)
+        } catch is DecodingError {
+            throw OpenBurnBarDaemonManagerError.rpcError(
+                "The daemon response did not match the expected OpenBurnBar RPC envelope."
+            )
+        }
     }
 
     private static func configureIOTimeouts(for fileDescriptor: Int32, seconds: Int = 30) {

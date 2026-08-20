@@ -385,6 +385,7 @@ struct ChatEnginesDetailView: View {
         case .antigravity: return "Local Antigravity CLI session"
         case .cursorAgent: return "Local Cursor Agent CLI session"
         case .junie: return "Local Junie CLI session"
+        case .fx: return "Local fx CLI session"
         }
     }
 }

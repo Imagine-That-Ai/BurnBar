@@ -218,7 +218,7 @@ export async function applyProviderAccountUpdate(
   const accountRef = db.doc(`users/${uid}/provider_accounts/${accountID}`);
   const snap = await accountRef.get();
   if (!snap.exists) {
-    throw new Error("not-found: provider account does not exist.");
+    throw new HttpsError("not-found", "Provider account not found.");
   }
   const current = requireProviderAccountDoc(snap.data());
   const now = nowISO();
@@ -275,7 +275,7 @@ export async function applyProviderAccountDelete(
   const accountRef = db.doc(`users/${uid}/provider_accounts/${accountID}`);
   const accountSnap = await accountRef.get();
   if (!accountSnap.exists) {
-    throw new Error("not-found: provider account does not exist.");
+    throw new HttpsError("not-found", "Provider account not found.");
   }
   const account = requireProviderAccountDoc(accountSnap.data());
 

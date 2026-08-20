@@ -118,6 +118,21 @@ public enum SwarmSubstratePreferences {
     }
 }
 
+/// When the WebGL kernel is the living backdrop, the native SwarmCanvas is only
+/// the host for an explicitly chosen substrate. It is not a second wallpaper.
+///
+/// Provider glyphs default to the full roster, so treating a non-empty glyph
+/// list as a mount trigger always stacked a 900-particle `TimelineView` on top
+/// of WebGL. Glyphs belong in `SwarmColorDriver` (environmental light), not a
+/// second simulator.
+public enum KernelSwarmOverlayPolicy {
+    public static func shouldMountCanvas(substrateEnabled: Bool, substrateID: String) -> Bool {
+        substrateEnabled
+            && !substrateID.isEmpty
+            && substrateID != SubstrateCatalog.plainID
+    }
+}
+
 // MARK: - Family accent ramp (ported from _family/defaults.ts FAMILY_ACCENT)
 
 /// Per-family accent pair used by picker tiles and as the substrate `stage`

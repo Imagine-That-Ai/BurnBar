@@ -215,15 +215,13 @@ struct StreamsView: View {
             streamSearchHits: activity.searchHits,
             cloudSearchHits: activity.cloudSearchHits,
             isSearching: activity.isSearching,
-            searchFailed: activity.searchFailed,
             isEntitled: isCloudEntitled,
             bottomPadding: listBottomPadding,
             onSelectRow: { selectedCockpitRow = $0 },
             onSelectCloudHit: selectCloudConversation,
             onOpenFilters: { showCockpitFilters = true },
             onSaveQuery: { showSaveQuery = true },
-            onOpenStore: { showCloudStore = true },
-            onRetrySearch: { Task { await activity.updateSearch(query: searchText) } }
+            onOpenStore: { showCloudStore = true }
         )
     }
 
@@ -289,21 +287,11 @@ struct StreamsView: View {
                         .tint(MobileTheme.ember)
                         .frame(maxWidth: .infinity, minHeight: 220)
                         .padding(.vertical, 28)
-                } else if searchResultMode == .failed {
-                    AuroraStatePane(
-                        kind: .error,
-                        icon: "exclamationmark.icloud.fill",
-                        title: "Search failed",
-                        message: activity.error ?? "Could not search sessions. Try again.",
-                        ctaLabel: "Try Again",
-                        onCTA: { Task { await activity.updateSearch(query: searchText) } }
-                    )
-                    .frame(minHeight: 320)
                 } else if let loadError = activity.error, activity.usages.isEmpty {
                     AuroraStatePane(
                         kind: .error,
                         icon: "exclamationmark.icloud.fill",
-                        title: "Couldn't load streams",
+                        title: activity.searchFailed ? "Search failed" : "Couldn't load streams",
                         message: loadError,
                         ctaLabel: "Try Again",
                         onCTA: { Task { await activity.refresh() } }

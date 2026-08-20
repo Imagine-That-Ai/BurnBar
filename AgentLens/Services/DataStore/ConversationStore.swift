@@ -112,7 +112,7 @@ final class ConversationStore: Sendable {
     static func conversation(from row: Row) -> OpenBurnBarCore.ConversationRecord? {
         guard let id = row["id"] as? String,
               let providerRaw = row["provider"] as? String,
-              let provider = AgentProvider(rawValue: providerRaw),
+              let provider = AgentProvider.resolve(providerRaw),
               let sessionId = row["sessionId"] as? String,
               let projectName = row["projectName"] as? String else {
             return nil

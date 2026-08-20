@@ -1520,16 +1520,17 @@ final class GeminiCLIParserTests: XCTestCase {
     }
 
     func test_accumulateUsage_withStandardKeys() {
-        var acc = GeminiSessionAccumulator()
         let usage: [String: Any] = [
             "input_tokens": 100,
             "output_tokens": 50,
             "cached_tokens": 25
         ]
 
-        TokenExtractionUtility.extractUsageTokens(usage) // Just to show it works
+        let extracted = TokenExtractionUtility.extractUsageTokens(usage)
 
-        XCTAssertTrue(true) // Placeholder for structure validation
+        XCTAssertEqual(extracted.inputTokens, 100)
+        XCTAssertEqual(extracted.outputTokens, 50)
+        XCTAssertEqual(extracted.cacheReadTokens, 25)
     }
 }
 

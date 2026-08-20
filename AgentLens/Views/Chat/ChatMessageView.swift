@@ -3,38 +3,31 @@ import OpenBurnBarCore
 
 // MARK: - Chat Message View
 
+// The surface is deliberately close to nothing.
+//
+// Every message used to carry five layers of chrome — a lopsided speech-bubble
+// silhouette, a surface fill, a tinted gradient wash, a glass material, a 1pt
+// identity-coloured border and a coloured shadow — on *both* roles. Stacked
+// down a transcript that reads as a wall of outlined cards competing with the
+// prose inside them, and the assistant's identity hue (`F45B69`) framed every
+// answer in a colour the eye reads as an error state.
+//
+// So the assistant turn has no container at all. It is prose on the canvas,
+// which is what lets a long answer read as a document instead of a receipt.
+// Only the user turn keeps a bubble: it is short, it is the thing you scan
+// back for, and a shape is how you find it in a wall of text.
 private enum ChatBubbleStyle {
-    static let userStroke = DesignSystem.Colors.chatUserStroke
-    static let assistantStroke = DesignSystem.Colors.chatAssistantStroke
-
-    static func userShape() -> UnevenRoundedRectangle {
-        UnevenRoundedRectangle(
-            topLeadingRadius: 22,
-            bottomLeadingRadius: 20,
-            bottomTrailingRadius: 7,
-            topTrailingRadius: 18,
-            style: .continuous
-        )
+    /// Symmetric. A lopsided silhouette reads as a speech tail at one corner
+    /// and as a mistake at the other three.
+    static func userShape() -> RoundedRectangle {
+        RoundedRectangle(cornerRadius: 18, style: .continuous)
     }
 
-    static func assistantShape() -> UnevenRoundedRectangle {
-        UnevenRoundedRectangle(
-            topLeadingRadius: 8,
-            bottomLeadingRadius: 20,
-            bottomTrailingRadius: 22,
-            topTrailingRadius: 20,
-            style: .continuous
-        )
-    }
-
-    static func toolShape() -> UnevenRoundedRectangle {
-        UnevenRoundedRectangle(
-            topLeadingRadius: 10,
-            bottomLeadingRadius: 8,
-            bottomTrailingRadius: 12,
-            topTrailingRadius: 6,
-            style: .continuous
-        )
+    /// Neutral by design. An identity tint here competes with the prose it is
+    /// wrapping, and `Color.primary` inverts with the theme on its own, so one
+    /// declaration is correct in both.
+    static func userFill(_ colorScheme: ColorScheme) -> Color {
+        Color.primary.opacity(colorScheme == .dark ? 0.10 : 0.055)
     }
 }
 
@@ -59,6 +52,8 @@ struct ChatMessageView: View {
     /// gutter so the reading column keeps a usable minimum on narrow panels
     /// (e.g. the 260pt floating chat) instead of losing 36pt to the gutter.
     @State private var agentRowWidth: CGFloat = 0
+
+    @Environment(\.colorScheme) private var colorScheme
 
     private var transcript: [ChatTranscriptPiece] {
         message.displayTranscript
@@ -202,12 +197,27 @@ struct ChatMessageView: View {
             } else {
                 HStack(alignment: .top, spacing: DesignSystem.Spacing.sm) {
                     if let raw = assistantModelKey?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty {
-                        ModelProviderLogoView(
-                            modelKey: raw,
-                            size: 24,
-                            fallbackSymbolColor: isHermes ? DesignSystem.Colors.hermesMercury : nil
-                        )
-                        .padding(.top, 2)
+                        // The one piece of plasma the transcript keeps. It is
+                        // the only thing naming the speaker now that the turn
+                        // has no container, so it earns the glass — and it is
+                        // deliberately *still*: a drifting orb beside every
+                        // message would be one animation clock per turn, and a
+                        // transcript that never settles.
+                        PlasmaOrb(
+                            tint: isHermes
+                                ? DesignSystem.Colors.hermesMercury
+                                : DesignSystem.Colors.colorForModel(raw),
+                            size: 26,
+                            motion: .orbPrimary,
+                            isAnimating: false
+                        ) {
+                            ModelProviderLogoView(
+                                modelKey: raw,
+                                size: 11,
+                                fallbackSymbolColor: isHermes ? DesignSystem.Colors.hermesMercury : nil
+                            )
+                        }
+                        .padding(.top, 1)
                     }
                     assistantTranscriptColumn
                 }
@@ -402,8 +412,6 @@ struct ChatMessageView: View {
 
     @ViewBuilder
     private func proseBubble(isUser: Bool, text: String, appendCaret: Bool) -> some View {
-        let shape = isUser ? ChatBubbleStyle.userShape() : ChatBubbleStyle.assistantShape()
-        let stroke = isUser ? ChatBubbleStyle.userStroke : (isHermes ? DesignSystem.Colors.hermesMercury : ChatBubbleStyle.assistantStroke)
         let alignment: HorizontalAlignment = isUser ? .trailing : .leading
         // Use atom-aware Hermes rendering for assistant turns even while the
         // stream is live; the caret is appended inside the rich text so we
@@ -411,50 +419,33 @@ struct ChatMessageView: View {
         let useHermesRichRendering = !isUser && isHermes && !text.isEmpty
 
         if !text.isEmpty || appendCaret {
-            proseBubbleBody(
+            let prose = proseBubbleBody(
                 isUser: isUser,
                 text: text,
                 useHermesRichRendering: useHermesRichRendering,
                 appendCaret: appendCaret,
                 alignment: alignment
             )
-                .padding(.horizontal, DesignSystem.Spacing.md + 2)
-                .padding(.vertical, DesignSystem.Spacing.md)
-                .background {
-                    ZStack {
-                        shape
-                            .fill(DesignSystem.Colors.surface.opacity(0.35))
-                        shape
-                            .fill(
-                                LinearGradient(
-                                    colors: [
-                                        stroke.opacity(isUser ? 0.10 : 0.12),
-                                        Color.white.opacity(0.03),
-                                        stroke.opacity(0.03)
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
+
+            if isUser {
+                prose
+                    .padding(.horizontal, DesignSystem.Spacing.md)
+                    .padding(.vertical, DesignSystem.Spacing.sm + 2)
+                    .background {
+                        ChatBubbleStyle.userShape().fill(ChatBubbleStyle.userFill(colorScheme))
                     }
-                }
-                .liquidGlassSurface(in: shape, fallback: .ultraThinMaterial)
-                .overlay(
-                    shape
-                        .strokeBorder(
-                            LinearGradient(
-                                colors: [
-                                    stroke.opacity(0.7),
-                                    Color.white.opacity(0.1),
-                                    stroke.opacity(0.4)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            lineWidth: 1
-                        )
-                )
-                .shadow(color: stroke.opacity(0.12), radius: 10, y: 4)
+            } else {
+                // No container — but it still needs a bound. The bubble's
+                // padding used to be what stopped the text reporting its full
+                // unwrapped width; with the bubble gone, `fixedSize` is what
+                // makes it wrap to the row instead of overflowing it, which is
+                // why the narrow panels were clipping mid-sentence.
+                prose
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.trailing, DesignSystem.Spacing.sm)
+                    .padding(.vertical, 2)
+            }
         }
     }
 

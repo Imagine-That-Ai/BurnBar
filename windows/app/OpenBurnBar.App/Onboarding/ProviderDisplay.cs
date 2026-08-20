@@ -51,6 +51,7 @@ public static class ProviderDisplay
         AgentProviderBrand.Junie => "Junie",
         AgentProviderBrand.PrimeAgent => "Prime Agent",
         AgentProviderBrand.Muse => "Muse",
+        AgentProviderBrand.Fx => "fx",
         _ => throw new ArgumentOutOfRangeException(nameof(provider), provider, null),
     };
 }

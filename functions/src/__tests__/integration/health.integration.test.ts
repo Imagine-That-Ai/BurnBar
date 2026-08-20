@@ -43,7 +43,7 @@ describeIf(EMULATOR_ENABLED)("Health Endpoint Integration Tests", () => {
       const res = await fetch(`${BASE_URL}/healthReady`);
       expect([200, 503]).toContain(res.status);
       const body = await res.json();
-      expect(readStringField(body, "status")).toBeDefined();
+      expect(["ready", "degraded"]).toContain(readStringField(body, "status"));
     });
   });
 
@@ -53,8 +53,9 @@ describeIf(EMULATOR_ENABLED)("Health Endpoint Integration Tests", () => {
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(readStringField(body, "status")).toBe("ok");
-      expect(readStringField(body, "timestamp")).toBeDefined();
-      expect(body && typeof body === "object" && !Array.isArray(body) && "uptime_ms" in body).toBe(true);
+      expect(readStringField(body, "timestamp")).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
+      expect(typeof (body as Record<string, unknown>).uptime_ms).toBe("number");
+      expect((body as Record<string, unknown>).uptime_ms).toBeGreaterThanOrEqual(0);
     });
   });
 });

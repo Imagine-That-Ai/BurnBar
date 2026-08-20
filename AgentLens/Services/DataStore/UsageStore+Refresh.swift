@@ -59,7 +59,7 @@ extension UsageStore {
             var totals: [String: Double] = [:]
             for row in rows {
                 guard let providerRaw = row["provider"] as? String,
-                      let provider = AgentProvider(rawValue: providerRaw) else { continue }
+                      let provider = AgentProvider.resolve(providerRaw) else { continue }
                 let providerID = (row["providerID"] as? String).map(ProviderID.init(rawValue:))
                     ?? provider.providerID
                 let accountID = row["providerAccountID"] as? String ?? "default"
@@ -194,7 +194,7 @@ extension UsageStore {
             var result: [AgentProvider: ProviderRunCostTotals] = [:]
             for row in rows {
                 guard let raw = row["provider"] as? String,
-                      let provider = AgentProvider(rawValue: raw) else { continue }
+                      let provider = AgentProvider.resolve(raw) else { continue }
                 result[provider] = ProviderRunCostTotals(
                     sessionCount: Self.intValue(row["sessionCount"]),
                     totalTokens: Self.intValue(row["totalTokens"]),
@@ -272,7 +272,7 @@ extension UsageStore {
             )
             for row in rows {
                 guard let rawProvider = row["provider"] as? String,
-                      let provider = AgentProvider(rawValue: rawProvider) else { continue }
+                      let provider = AgentProvider.resolve(rawProvider) else { continue }
                 for index in dateRanges.indices {
                     let sessionCount = Self.intValue(row["sessionCount_\(index)"])
                     guard sessionCount > 0 else { continue }

@@ -87,6 +87,7 @@ private fun threadInboxCLIRuntimeID(runtime: String): AssistantRuntimeID? = when
     "grok" -> AssistantRuntimeID.GROK
     "cursoragent", "cursor_agent", "cursor-agent" -> AssistantRuntimeID.CURSOR_AGENT
     "junie", "junie-agent", "jetbrains-junie" -> AssistantRuntimeID.JUNIE
+    "fx", "vercel-fx", "vercelfx" -> AssistantRuntimeID.FX
     else -> null
 }
 

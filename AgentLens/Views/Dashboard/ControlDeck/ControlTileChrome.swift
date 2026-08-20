@@ -17,8 +17,9 @@ import SwiftUI
 // `DesignSystem.Colors.textMuted` for the eyebrow and the footer, and that
 // token measures 3.77:1 against the app's own `surface`. It cannot clear 4.5:1
 // on any background this app draws. Every text role here now comes from
-// `\.backdropInk`, which resolves to the sampled adaptive family whenever a
-// live backdrop is on. Both halves are pinned by `BackdropLegiblePlateTests`.
+// `\.backdropInk`. Page chrome keeps kernel-sampled adaptive ink; the plate
+// overrides that to appearance tokens so tile copy contrasts with the
+// `surface` slab. Both halves are pinned by `BackdropLegiblePlateTests`.
 
 // MARK: - Deck ink constants
 

@@ -439,6 +439,7 @@ struct PaneConversationView: View {
         case .openClaude: return "Talk to OpenClaude with your indexed history as grounding."
         case .omp: return "Talk to OMP with your indexed history as grounding."
         case .junie: return "Talk to Junie with your indexed history as grounding."
+        case .fx: return "Talk to fx with your indexed history as grounding."
         }
     }
 

@@ -373,7 +373,7 @@ extension DataStore {
             let rows = try Row.fetchAll(db, sql: sql, arguments: StatementArguments(args))
             return rows.compactMap { row in
                 guard let providerRaw = row["provider"] as? String,
-                      let provider = AgentProvider(rawValue: providerRaw) else { return nil }
+                      let provider = AgentProvider.resolve(providerRaw) else { return nil }
                 let occurrenceCount: Int = row["occurrenceCount"] ?? 0
                 let conversationCount: Int = row["conversationCount"] ?? 0
                 return ConversationProviderOccurrence(

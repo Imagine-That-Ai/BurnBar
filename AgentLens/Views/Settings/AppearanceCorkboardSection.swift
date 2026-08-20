@@ -122,18 +122,27 @@ struct AppearanceCorkboardSection: View {
                         Text("Dashboard Layout")
                             .font(DesignSystem.Typography.body)
                             .foregroundStyle(DesignSystem.Colors.textPrimary)
-                        Text("How the Overview arranges itself over the live backdrop. Atelier is the full-bleed, kernel-forward keeper; Classic is the information-dense scroll. You can also switch instantly from the Overview's top bar.")
+                        Text(
+                            """
+                            How the Overview arranges itself — each layout is a different way of \
+                            reading the same data, not a different backdrop. \
+                            \(settingsManager.dashboardLayout.displayName): \
+                            \(settingsManager.dashboardLayout.tagline.lowercased()). \
+                            The Overview's top bar has a preview gallery for switching.
+                            """
+                        )
                             .font(DesignSystem.Typography.tiny)
-                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                            .foregroundStyle(DesignSystem.Colors.textSecondary)
                     }
                     Spacer()
                     Picker("", selection: $settingsManager.dashboardLayout) {
                         ForEach(DashboardLayout.allCases, id: \.self) { layout in
-                            Label(layout.displayName, systemImage: layout.symbolName).tag(layout)
+                            Label("\(layout.displayName) — \(layout.tagline)", systemImage: layout.symbolName)
+                                .tag(layout)
                         }
                     }
                     .pickerStyle(.menu)
-                    .frame(width: 220)
+                    .frame(width: 240)
                     .onChange(of: settingsManager.dashboardLayout) { _, newValue in
                         Analytics.shared.track(.settingsChanged, [
                             "setting_key": "dashboard_layout",
@@ -173,6 +182,11 @@ struct AppearanceCorkboardSection: View {
 
                 LiquidGlassTransparencyRow()
                     .settingsAnchor(SettingsAnchor.appearanceGlassTransparency)
+
+                Divider().background(DesignSystem.Colors.border)
+
+                LiquidGlassLiquidityRow()
+                    .settingsAnchor(SettingsAnchor.appearanceGlassRefraction)
 
                 Divider().background(DesignSystem.Colors.border)
 
@@ -393,7 +407,8 @@ struct AppearanceCorkboardSection: View {
         switch anchor {
         case SettingsAnchor.appearanceTheme,
              SettingsAnchor.appearanceSkin,
-             SettingsAnchor.appearanceGlassTransparency:
+             SettingsAnchor.appearanceGlassTransparency,
+             SettingsAnchor.appearanceGlassRefraction:
             return .theme
         case SettingsAnchor.appearanceMenuBar,
              SettingsAnchor.appearanceLaunchAtLogin,
@@ -1086,6 +1101,98 @@ private struct LiquidGlassTransparencyRow: View {
         if t == 0 { return "System default" }
         let percent = Int((abs(t) * 100).rounded())
         return t > 0 ? "\(percent) percent clearer" : "\(percent) percent frostier"
+    }
+}
+
+// MARK: - Liquid Glass liquidity
+
+/// The second axis: how much the glass *bends*, as opposed to how much you see through.
+///
+/// Opacity and refraction are independent physical properties — dense clear glass and
+/// thin frosted glass are both real materials — and the app shipped with only the first
+/// one exposed. That is a large part of why the transparency slider felt inert: at the
+/// frosted end it added haze and at the clear end it removed substrate, and neither end
+/// ever touched the optics. This drives `GlassSpec.lensing` / `dispersion` / `thickness`
+/// / `scatter`, which are the terms the Metal lens actually integrates.
+private struct LiquidGlassLiquidityRow: View {
+    @AppStorage(LiquidGlassTransparency.liquidityKey)
+    private var rawLiquidity: Double = LiquidGlassTransparency.liquidityDefault
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    /// Magnetic detent at the authored midpoint, matching the transparency row's feel.
+    private var sliderValue: Binding<Double> {
+        Binding(
+            get: { rawLiquidity },
+            set: { rawLiquidity = abs($0 - LiquidGlassTransparency.liquidityDefault) < 0.03
+                ? LiquidGlassTransparency.liquidityDefault
+                : $0 }
+        )
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            HStack(alignment: .center, spacing: DesignSystem.Spacing.md) {
+                Image(systemName: "drop.halffull")
+                    .foregroundStyle(DesignSystem.Colors.ember)
+                    .frame(width: 20)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Liquid Glass Refraction")
+                        .font(DesignSystem.Typography.body)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    Text(statusText)
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                }
+
+                Spacer(minLength: DesignSystem.Spacing.md)
+
+                if rawLiquidity != LiquidGlassTransparency.liquidityDefault {
+                    Button("Reset") { rawLiquidity = LiquidGlassTransparency.liquidityDefault }
+                        .font(DesignSystem.Typography.tiny.weight(.semibold))
+                        .buttonStyle(.borderless)
+                        .tint(DesignSystem.Colors.ember)
+                }
+            }
+
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                Text("Flat")
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+
+                Slider(value: sliderValue, in: LiquidGlassTransparency.liquidityRange)
+                    .tint(DesignSystem.Colors.ember)
+                    .accessibilityLabel("Glass refraction")
+                    .accessibilityValue(accessibilityDescription)
+
+                Text("Liquid")
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+            }
+            .padding(.leading, 32)
+        }
+    }
+
+    private var multiplier: Double {
+        LiquidGlassTransparency.liquidityMultiplier(rawLiquidity, reduceTransparency: reduceTransparency)
+    }
+
+    private var statusText: String {
+        if reduceTransparency && rawLiquidity > LiquidGlassTransparency.liquidityDefault {
+            return "Reduce transparency is on in System Settings — refraction is held at the theme default."
+        }
+        if rawLiquidity == LiquidGlassTransparency.liquidityDefault {
+            return "Refracting exactly as this theme intends."
+        }
+        let percent = Int((multiplier * 100).rounded())
+        return multiplier < 1
+            ? "\(percent)% of this theme's refraction — flatter, calmer."
+            : "\(percent)% of this theme's refraction — a heavier optical block."
+    }
+
+    private var accessibilityDescription: String {
+        if rawLiquidity == LiquidGlassTransparency.liquidityDefault { return "Theme default" }
+        return "\(Int((multiplier * 100).rounded())) percent of theme refraction"
     }
 }
 

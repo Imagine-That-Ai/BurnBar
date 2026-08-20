@@ -136,6 +136,7 @@ struct SwitcherOnboardingScanAddStep: View {
                     case .kimi: cliKind = .kimiCLI
                     case .pi: cliKind = .piCLI
                     case .junie: cliKind = .junieCLI
+                    case .fx: cliKind = .fxCLI
                     case .omp: cliKind = .ompCLI
                     case .primeAgent: cliKind = .primeAgentCLI
                     }
@@ -410,6 +411,17 @@ struct SwitcherOnboardingScanAddStep: View {
                     await connectJunieProfile()
                 }
 
+            case .fxCLI:
+                differentAccountButton(
+                    title: "Connect fx",
+                    subtitle: "Verify the local fx profile on this Mac",
+                    icon: "link.badge.plus",
+                    color: Color.adaptive(light: "171717", dark: "FFFFFF"),
+                    isLoading: connectingCLIType == .fx
+                ) {
+                    await connectDifferentCLI(.fx)
+                }
+
             case .primeAgentCLI:
                 differentAccountButton(
                     title: "Connect Prime Agent",
@@ -493,6 +505,7 @@ struct SwitcherOnboardingScanAddStep: View {
         case (.kimi, .kimiCLI): return true
         case (.pi, .piCLI): return true
         case (.junie, .junieCLI): return true
+        case (.fx, .fxCLI): return true
         case (.omp, .ompCLI): return true
         default: return false
         }
@@ -596,7 +609,7 @@ struct SwitcherOnboardingScanAddStep: View {
 
     private func signInIdentity(_ identity: DiscoveredIdentity) {
         switch identity.source {
-        case .codex, .claudeCode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie, .primeAgent:
+        case .codex, .claudeCode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie, .primeAgent, .fx:
             if let cliType = identity.source.cliType {
                 Task { await connectDifferentCLI(cliType) }
             }
@@ -615,7 +628,7 @@ struct SwitcherOnboardingScanAddStep: View {
             Task { await signInDifferentGoogle() }
         case .safari:
             Task { await signInDifferentApple() }
-        case .codex, .claudeCode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie, .primeAgent:
+        case .codex, .claudeCode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie, .primeAgent, .fx:
             if let cliType = identity.source.cliType {
                 Task { await connectDifferentCLI(cliType) }
             }
@@ -643,6 +656,7 @@ struct SwitcherOnboardingScanAddStep: View {
         case .kimi: return .kimiCLI
         case .pi: return .piCLI
         case .junie: return .junieCLI
+        case .fx: return .fxCLI
         case .omp: return .ompCLI
         case .primeAgent: return .primeAgentCLI
         }
@@ -689,6 +703,8 @@ struct SwitcherOnboardingScanAddStep: View {
             kind = .piCLI
         case .junie:
             kind = .junieCLI
+        case .fx:
+            kind = .fxCLI
         case .omp:
             kind = .ompCLI
         case .primeAgent:
@@ -939,7 +955,7 @@ private struct IdentityCard: View {
             return "Signed in with a different Google account?"
         case .safari:
             return "Use a different Apple ID?"
-        case .codex, .claudeCode, .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie, .primeAgent:
+        case .codex, .claudeCode, .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie, .primeAgent, .fx:
             return "Connect another account for this provider?"
         }
     }
@@ -1009,6 +1025,10 @@ private struct IdentityCard: View {
             Image(systemName: "terminal.fill")
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(Color(hex: "582CFF"))
+        case .fx:
+            Image(systemName: "terminal.fill")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(Color(hex: "A1A1AA"))
         case .omp:
             Image(systemName: "command")
                 .font(.system(size: 14, weight: .medium))
@@ -1304,7 +1324,7 @@ private extension DiscoveredIdentity {
                 return "Not installed"
             }
 
-        case .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie, .primeAgent:
+        case .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie, .primeAgent, .fx:
             switch authState {
             case .authenticated:
                 return "Logged in"
@@ -1340,7 +1360,8 @@ private extension DiscoveredIdentity {
              .kimi(let executablePath, let configDirectory),
              .pi(let executablePath, let configDirectory),
              .junie(let executablePath, let configDirectory),
-              .primeAgent(let executablePath, let configDirectory):
+             .fx(let executablePath, let configDirectory),
+             .primeAgent(let executablePath, let configDirectory):
             return normalized(executablePath) ?? normalized(configDirectory) ?? subtitle
         }
     }

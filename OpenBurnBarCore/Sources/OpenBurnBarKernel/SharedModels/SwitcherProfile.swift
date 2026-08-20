@@ -58,6 +58,7 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
     case pi
     case junie
     case primeAgent = "prime-agent"
+    case fx
 
     public var displayName: String {
         switch self {
@@ -75,6 +76,7 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
         case .pi: return "Pi"
         case .junie: return "Junie"
         case .primeAgent: return "Prime Agent"
+        case .fx: return "fx"
         }
     }
 
@@ -95,6 +97,7 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
         case .pi: return "PiAgentLogo"
         case .junie: return "JunieLogo"
         case .primeAgent: return "PrimeAgentLogo"
+        case .fx: return "FxLogo"
         }
     }
 
@@ -115,6 +118,7 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
         case .pi: return "pi"
         case .junie: return "junie"
         case .primeAgent: return "prime-agent"
+        case .fx: return "fx"
         }
     }
 
@@ -220,6 +224,12 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
                 "$HOME/.local/bin/prime-agent",
                 "$HOME/.prime/bin/prime-agent"
             ]
+        case .fx:
+            return [
+                "$HOME/.local/bin/fx",
+                "/usr/local/bin/fx",
+                "/opt/homebrew/bin/fx"
+            ]
         }
     }
 
@@ -251,6 +261,7 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
         case .pi: return .piAgent
         case .junie: return .junie
         case .primeAgent: return .primeAgent
+        case .fx: return .fx
         }
     }
 

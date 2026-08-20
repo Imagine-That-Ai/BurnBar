@@ -60,7 +60,8 @@ final class MobileChatHistoryStoreTests: XCTestCase {
             ("grok-1", "grok"),
             ("cursor-1", "cursor-agent"),
             ("openclaude-1", "openclaude"),
-            ("junie-1", "jetbrains-junie")
+            ("junie-1", "jetbrains-junie"),
+            ("fx-1", "vercel-fx")
         ] {
             historyStore.upsert(Self.makeThread(id: id, rawRuntime: runtime, title: runtime))
         }
@@ -78,7 +79,8 @@ final class MobileChatHistoryStoreTests: XCTestCase {
             "cli_mirror:grok-1",
             "cli_mirror:cursor-1",
             "cli_mirror:openclaude-1",
-            "cli_mirror:junie-1"
+            "cli_mirror:junie-1",
+            "cli_mirror:fx-1"
         ])
         XCTAssertTrue(inbox.items.allSatisfy { $0.source == .cliMirror })
     }

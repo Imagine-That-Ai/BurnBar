@@ -630,6 +630,24 @@
       "xdgBehavior": "xdg-data",
       "symlinkBehavior": "identity-on-resolved-path",
       "quotaSignal": false
+    },
+    {
+      "providerId": "fx",
+      "agentProviderCase": "fx",
+      "displayLabel": "fx",
+      "aliases": [
+        "vercel-fx"
+      ],
+      "paths": {
+        "linux": "~/.fx/sessions",
+        "macos": "~/.fx/sessions"
+      },
+      "filePattern": "*.json",
+      "ingestion": "local-parser",
+      "coverageNote": "Local parser registered in ParserRegistry.",
+      "xdgBehavior": "home-relative",
+      "symlinkBehavior": "identity-on-resolved-path",
+      "quotaSignal": false
     }
   ],
   "goldenUsageVectors": [

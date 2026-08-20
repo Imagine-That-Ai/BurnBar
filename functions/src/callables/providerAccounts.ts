@@ -305,7 +305,7 @@ export const updateProviderAccount = onCall(
     ) => {
       const uid = request.auth?.uid;
       if (!uid) {
-        throw new Error("unauthenticated");
+        throw new HttpsError("unauthenticated", "Sign in before updating provider accounts.");
       }
       enforceAuthAndAppCheck(request, uid);
 
@@ -332,7 +332,7 @@ export const deleteProviderAccount = onCall(
   wrapCallableHandler("deleteProviderAccount", async (request: CallableRequest<{ accountID: string }>) => {
     const uid = request.auth?.uid;
     if (!uid) {
-      throw new Error("unauthenticated");
+      throw new HttpsError("unauthenticated", "Sign in before deleting provider accounts.");
     }
     enforceAuthAndAppCheck(request, uid);
 

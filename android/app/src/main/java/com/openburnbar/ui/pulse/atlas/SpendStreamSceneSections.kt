@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -20,7 +21,7 @@ import com.openburnbar.data.derived.TrendDataDigest
 
 @Composable
 internal fun SpendStreamChartArea(daily: List<TrendDataDigest.DailySeries>, selectedIndex: Int?, onSelect: (Int?) -> Unit) {
-    Box(modifier = Modifier.fillMaxWidth().height(180.dp)) {
+    Box(modifier = Modifier.fillMaxWidth().heightIn(min = 140.dp, max = 220.dp)) {
         StreamGraphCanvas(
             series = daily,
             sweepProgress = 1f,

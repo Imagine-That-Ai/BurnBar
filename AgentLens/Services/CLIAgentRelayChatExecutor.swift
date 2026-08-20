@@ -313,6 +313,9 @@ struct CLIRuntimeModelCatalogDiscovery: Sendable {
         case .junie:
             _ = try await executable(named: "junie")
             options = try Self.defaultProfileRows(for: runtime)
+        case .fx:
+            _ = try await executable(named: "fx")
+            options = try Self.defaultProfileRows(for: runtime)
         case .hermes, .pi, .openClaw:
             throw CLIRuntimeModelCatalogDiscoveryError.unsupportedRuntime(request.runtime)
         }
@@ -690,6 +693,8 @@ final class ChatSessionControllerCLIAgentRelayChatExecutor: CLIAgentRelayChatExe
             return .cursorAgent
         case "junie", "jetbrains-junie", "jetbrainsjunie":
             return .junie
+        case "fx", "vercel-fx", "vercelfx":
+            return .fx
         case "omp", "ohmypi", "oh-my-pi", "oh my pi":
             return .omp
         default:

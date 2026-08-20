@@ -134,6 +134,7 @@ final class ThreadInboxStore {
             case .openClaude: runtime = .openClaude
             case .junie:    runtime = .junie
             case .omp: runtime = .omp
+            case .fx:   runtime = .fx
             }
             return ThreadInboxItem(
                 id: "cli:\(record.id)",
@@ -181,6 +182,7 @@ final class ThreadInboxStore {
         case "grok", "grok-build", "xai", "grok-agent": return .grok
         case "cursor", "cursor-agent", "cursoragent": return .cursorAgent
         case "junie", "junie-agent", "jetbrains-junie": return .junie
+        case "fx", "vercel-fx", "vercelfx": return .fx
         default: return nil
         }
     }

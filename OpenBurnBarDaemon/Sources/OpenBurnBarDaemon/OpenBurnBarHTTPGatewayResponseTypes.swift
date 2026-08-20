@@ -623,6 +623,10 @@ extension BurnBarHTTPGatewayServer {
             if model.formatFamily == BurnBarProviderFormatFamily.anthropic.rawValue {
                 return 200_000
             }
+            if id.contains("gpt") || id.contains("codex") || id.contains("luna")
+                || id.contains("sol") || id.contains("terra") {
+                return 1_000_000
+            }
             return 65_536
         }
 

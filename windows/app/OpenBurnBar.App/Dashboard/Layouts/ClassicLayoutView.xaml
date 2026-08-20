@@ -16,15 +16,20 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
-    <StackPanel Padding="24" Spacing="16" MaxWidth="900" HorizontalAlignment="Left">
-        <StackPanel Orientation="Horizontal" Spacing="16">
-            <layouts:ConceptStatTile x:Name="SpendTile" Value="—" Caption="Spend this month"
+    <StackPanel Padding="24" Spacing="16" HorizontalAlignment="Stretch">
+        <Grid ColumnSpacing="16" HorizontalAlignment="Stretch">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <layouts:ConceptStatTile Grid.Column="0" x:Name="SpendTile" Value="—" Caption="Spend this month"
                                      AccentBrush="{StaticResource PensieveColorBrassCoreBrush}" />
-            <layouts:ConceptStatTile x:Name="TokensTile" Value="—" Caption="Tokens"
+            <layouts:ConceptStatTile Grid.Column="1" x:Name="TokensTile" Value="—" Caption="Tokens"
                                      AccentBrush="{StaticResource PensieveColorMercuryCoreBrush}" />
-            <layouts:ConceptStatTile x:Name="SessionsTile" Value="—" Caption="Sessions"
+            <layouts:ConceptStatTile Grid.Column="2" x:Name="SessionsTile" Value="—" Caption="Sessions"
                                      AccentBrush="{StaticResource OBBAccentBrush}" />
-        </StackPanel>
+        </Grid>
 
         <components:UnifiedGlassCard>
             <StackPanel Spacing="6">

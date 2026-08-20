@@ -14,35 +14,103 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
-    <Grid Padding="32">
-        <StackPanel VerticalAlignment="Center"
-                    HorizontalAlignment="Center"
-                    MaxWidth="720"
-                    Spacing="20">
+    <Grid Padding="28" RowSpacing="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
 
-            <!-- Search / Hermes command bar. -->
-            <AutoSuggestBox PlaceholderText="Ask Hermes or search everything…"
-                            QueryIcon="Find"
-                            HorizontalAlignment="Stretch" />
+        <!-- Search / Hermes Ask command bar — first and largest element. -->
+        <Border Grid.Row="0"
+                Style="{StaticResource LiquidGlassSurfaceStyle}"
+                theme:LiquidGlass.Surface="True"
+                CornerRadius="{StaticResource PensieveRadiusLgCorner}"
+                Padding="16,14">
+            <Grid ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Border Grid.Column="0" Background="{ThemeResource AuroraGlassSelectionFillBrush}" CornerRadius="999" Padding="8,4" VerticalAlignment="Center">
+                    <TextBlock Text="HERMES" FontSize="11" FontWeight="Bold" Foreground="{StaticResource OBBAccentBrush}" />
+                </Border>
+                <AutoSuggestBox Grid.Column="1"
+                                x:Name="AskBox"
+                                PlaceholderText="Ask Hermes about spend, models, cache hit rate, or session spikes…"
+                                QueryIcon="Find"
+                                HorizontalAlignment="Stretch"
+                                FontSize="14" />
+                <Border Grid.Column="2" BorderThickness="1" BorderBrush="{ThemeResource AuroraGlassStrokeBrush}" CornerRadius="6" Padding="6,2" VerticalAlignment="Center">
+                    <TextBlock Text="Ctrl+K" FontSize="11" Opacity="0.6" FontFamily="{StaticResource OBBMonoFontFamily}" />
+                </Border>
+            </Grid>
+        </Border>
 
-            <!-- Three stat pills. -->
-            <StackPanel Orientation="Horizontal" Spacing="16" HorizontalAlignment="Center">
-                <layouts:ConceptStatTile x:Name="SpendTile" Value="—" Caption="Spend"
-                                         AccentBrush="{StaticResource PensieveColorBrassCoreBrush}" />
-                <layouts:ConceptStatTile x:Name="TokensTile" Value="—" Caption="Tokens"
-                                         AccentBrush="{StaticResource PensieveColorMercuryCoreBrush}" />
-                <layouts:ConceptStatTile x:Name="ProvidersTile" Value="—" Caption="Data source"
-                                         AccentBrush="{StaticResource OBBAccentBrush}" />
-            </StackPanel>
+        <!-- Suggested questions & Context area. -->
+        <Grid Grid.Row="1" ColumnSpacing="20">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
 
-            <!-- Data readiness. -->
-            <Border Style="{StaticResource LiquidGlassSurfaceStyle}" theme:LiquidGlass.Surface="True" Padding="14,10"
-                    CornerRadius="{StaticResource PensieveRadiusPillCorner}">
-                <TextBlock x:Name="ProviderStatusText"
-                           Text="Connect a SQLCipher database for live provider data"
-                           TextWrapping="Wrap"
-                           FontSize="12" />
+            <!-- Suggested queries. -->
+            <Border Grid.Column="0"
+                    Style="{StaticResource LiquidGlassSurfaceStyle}"
+                    theme:LiquidGlass.Surface="True"
+                    CornerRadius="{StaticResource PensieveRadiusMdCorner}"
+                    Padding="16">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="SUGGESTED QUERIES" FontSize="11" FontWeight="Bold" CharacterSpacing="80"
+                               Foreground="{StaticResource PensieveColorBrassBrightBrush}" />
+                    <Button Content="Where did my spend go this window?"
+                            HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                            Style="{StaticResource LiquidGlassInteractiveStyle}" />
+                    <Button Content="Why is Claude my largest line?"
+                            HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                            Style="{StaticResource LiquidGlassInteractiveStyle}" />
+                    <Button Content="How do I raise my cache hit rate?"
+                            HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                            Style="{StaticResource LiquidGlassInteractiveStyle}" />
+                </StackPanel>
             </Border>
-        </StackPanel>
+
+            <!-- What you're asking about. -->
+            <Border Grid.Column="1"
+                    Style="{StaticResource LiquidGlassSurfaceStyle}"
+                    theme:LiquidGlass.Surface="True"
+                    CornerRadius="{StaticResource PensieveRadiusMdCorner}"
+                    Padding="16">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="WHAT YOU'RE ASKING ABOUT" FontSize="11" FontWeight="Bold" CharacterSpacing="80"
+                               Foreground="{StaticResource PensieveColorBrassBrightBrush}" />
+                    <TextBlock x:Name="ProviderStatusText"
+                               Text="Connect a SQLCipher database for live provider data"
+                               TextWrapping="Wrap"
+                               FontSize="13" />
+                    <TextBlock x:Name="ActiveContextDetail"
+                               Text="Hermes is grounded in your local session ledger."
+                               FontSize="12"
+                               Opacity="0.7"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- Bottom KPI row: star columns distribute slack across entire width. -->
+        <Grid Grid.Row="2" ColumnSpacing="16" HorizontalAlignment="Stretch">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <layouts:ConceptStatTile Grid.Column="0" x:Name="SpendTile" Value="—" Caption="Spend"
+                                     AccentBrush="{StaticResource PensieveColorBrassCoreBrush}" />
+            <layouts:ConceptStatTile Grid.Column="1" x:Name="TokensTile" Value="—" Caption="Tokens"
+                                     AccentBrush="{StaticResource PensieveColorMercuryCoreBrush}" />
+            <layouts:ConceptStatTile Grid.Column="2" x:Name="ProvidersTile" Value="—" Caption="Data source"
+                                     AccentBrush="{StaticResource OBBAccentBrush}" />
+        </Grid>
     </Grid>
 </UserControl>

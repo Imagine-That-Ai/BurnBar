@@ -137,6 +137,42 @@ final class FleetServiceTests: XCTestCase {
         XCTAssertNotNil(service.orchestratorStateError)
     }
 
+    func test_fileFallbackRecoversWhenRPCFails() throws {
+        let snapshot = FleetTestFixtures.makeSnapshot()
+        let fileURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fleet-fallback-\(UUID().uuidString).json")
+        try JSONEncoder().encode(snapshot).write(to: fileURL)
+        defer { try? FileManager.default.removeItem(at: fileURL) }
+
+        let recovered = try FleetService.fetchSnapshotWithFileFallback(
+            at: socketURL,
+            fileURL: fileURL
+        )
+        XCTAssertEqual(recovered.runningCount, snapshot.runningCount)
+        XCTAssertEqual(recovered.generatedAt.timeIntervalSince1970, snapshot.generatedAt.timeIntervalSince1970, accuracy: 0.001)
+    }
+
+    func test_fileFallbackAbsentKeepsRPCError() {
+        let missing = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fleet-missing-\(UUID().uuidString).json")
+        XCTAssertThrowsError(
+            try FleetService.fetchSnapshotWithFileFallback(at: socketURL, fileURL: missing)
+        )
+    }
+
+    func test_snapshotFileRoundTrip() throws {
+        let snapshot = FleetTestFixtures.makeSnapshot()
+        let fileURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fleet-file-\(UUID().uuidString).json")
+        try JSONEncoder().encode(snapshot).write(to: fileURL)
+        defer { try? FileManager.default.removeItem(at: fileURL) }
+
+        let read = try XCTUnwrap(BurnBarFleetSnapshotFile.readIfPresent(at: fileURL))
+        XCTAssertEqual(read.schemaVersion, snapshot.schemaVersion)
+        XCTAssertEqual(read.runningCount, snapshot.runningCount)
+        XCTAssertEqual(read.agents.count, snapshot.agents.count)
+    }
+
     func test_setDesignationChangesOnlyAfterDaemonAck() async {
         let prior = BurnBarOrchestratorState(
             designation: .burnBarManaged,

@@ -21,6 +21,7 @@ public sealed partial class DashboardLayoutSwitcher : UserControl
 
     private readonly List<ToggleButton> _segments = new();
     private bool _syncing;
+    private double _availableWidth = double.NaN;
 
     public DashboardLayoutSwitcher()
     {
@@ -142,10 +143,29 @@ public sealed partial class DashboardLayoutSwitcher : UserControl
         return 0;
     }
 
-    private void OnSizeChanged(object sender, SizeChangedEventArgs e)
+    /// <summary>
+    /// Update the switcher with the container's available width so ShouldCollapseToMenu
+    /// is evaluated against the real canvas budget rather than the switcher's own clamped width.
+    /// </summary>
+    public void UpdateAvailableWidth(double availableWidth)
     {
-        bool collapse = State.ShouldCollapseToMenu(e.NewSize.Width, PerSegmentWidth);
+        _availableWidth = availableWidth;
+        ApplyCollapseState();
+    }
+
+    private void ApplyCollapseState()
+    {
+        double widthToEvaluate = !double.IsNaN(_availableWidth) && _availableWidth > 0
+            ? _availableWidth
+            : ActualWidth;
+
+        bool collapse = State.ShouldCollapseToMenu(widthToEvaluate, PerSegmentWidth);
         SegmentedHost.Visibility = collapse ? Visibility.Collapsed : Visibility.Visible;
         MenuBox.Visibility = collapse ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void OnSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        ApplyCollapseState();
     }
 }

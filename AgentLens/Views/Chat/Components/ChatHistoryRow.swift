@@ -17,6 +17,15 @@ struct ChatHistoryRow: View {
     var isOpenInPane: Bool = false
     var paneBadge: PaneRailBadge = .none
     var accent: Color = DesignSystem.Colors.whimsy
+
+    /// Neutral, and correct on both grounds without a branch: `Color.primary`
+    /// inverts with the theme, so these three numbers are a light wash on dark
+    /// and a dark wash on light.
+    private var rowWash: Double {
+        if isActive { return 0.085 }
+        if effectivePaneBadge != .none { return 0.05 }
+        return 0.025
+    }
     let onSelect: () -> Void
 
     private var effectivePaneBadge: PaneRailBadge {
@@ -62,11 +71,19 @@ struct ChatHistoryRow: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(DesignSystem.Spacing.sm)
-            .background(
-                RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
-                    .fill(isActive ? accent.opacity(0.10)
-                        : (effectivePaneBadge != .none ? accent.opacity(0.05) : DesignSystem.Colors.surface.opacity(0.30)))
-            )
+            .background {
+                // Selection reads as a *lit* row, not a tinted one. The old
+                // fill painted the selected thread in the answering agent's
+                // hue, which put up to twelve different colours down one rail
+                // depending on who replied last — the rail became a legend for
+                // a key nobody was reading.
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Color.primary.opacity(rowWash))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .strokeBorder(Color.primary.opacity(isActive ? 0.12 : 0), lineWidth: 1)
+                    }
+            }
         }
         .buttonStyle(.plain)
     }

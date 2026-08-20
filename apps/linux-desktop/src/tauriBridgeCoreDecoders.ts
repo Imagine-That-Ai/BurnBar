@@ -692,7 +692,10 @@ export function stableProviderPrefix(provider: string): string | undefined {
     x_ai: 'xAI',
     mimo: 'MiMo',
     cursor_agent: 'Cursor Agent',
-    junie: 'Junie'
+    junie: 'Junie',
+    fx: 'fx',
+    vercel_fx: 'fx',
+    vercel_fx_agent: 'fx'
   };
   return known[normalized];
 }

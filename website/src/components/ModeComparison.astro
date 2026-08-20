@@ -36,7 +36,7 @@ import LockedModelRelay from "./LockedModelRelay.astro";
       </header>
 
       <div class="modecard__viz">
-        <LockedModelRelay variant="mini" modelID="gpt-5.5" />
+        <LockedModelRelay variant="mini" modelID="gpt-5.6" />
       </div>
 
       <ul class="modecard__bullets">
@@ -78,40 +78,68 @@ import LockedModelRelay from "./LockedModelRelay.astro";
         <div
           class="exactproof"
           role="img"
-          aria-label="Exact Model Failover proof gate: the request requires canonical gpt-5.4. Factory and OpenAI routes pass because they serve canonical gpt-5.4. Mini, Pro, family, and openai standard routes are rejected because they are not exact identity proof."
+          aria-label="Exact Model Failover proof gate: the request requires canonical gpt-5.6. Factory and OpenAI routes pass because they serve canonical gpt-5.6. Mini, Pro, family, and openai standard routes are rejected because they are not exact identity proof."
         >
           <div class="exactproof__request">
             <span class="exactproof__label mono">request</span>
-            <strong class="exactproof__model mono">gpt-5.4</strong>
-            <span class="exactproof__canonical mono">canonical · gpt-5.4</span>
+            <strong class="exactproof__model mono">gpt-5.6</strong>
+            <span class="exactproof__canonical mono">canonical · gpt-5.6</span>
           </div>
           <ol class="exactproof__routes" role="list">
             <li class="exactproof__route exactproof__route--source">
-              <span class="exactproof__logo exactproof__logo--factory">F</span>
+              <img
+                class="exactproof__logo"
+                src="/brand/providers/factory.png"
+                alt="Factory"
+                width="30"
+                height="30"
+                loading="lazy"
+              />
               <span class="exactproof__body">
                 <strong>Factory Standard</strong>
-                <span class="mono">exhausted · canonical gpt-5.4</span>
+                <span class="mono">exhausted · canonical gpt-5.6</span>
               </span>
               <span class="exactproof__verdict exactproof__verdict--pass mono">source</span>
             </li>
             <li class="exactproof__route exactproof__route--pass">
-              <span class="exactproof__logo exactproof__logo--openai">O</span>
+              <img
+                class="exactproof__logo"
+                src="/brand/providers/openai.png"
+                alt="OpenAI"
+                width="30"
+                height="30"
+                loading="lazy"
+              />
               <span class="exactproof__body">
                 <strong>OpenAI</strong>
-                <span class="mono">healthy · canonical gpt-5.4</span>
+                <span class="mono">healthy · canonical gpt-5.6</span>
               </span>
               <span class="exactproof__verdict exactproof__verdict--pass mono">pass</span>
             </li>
             <li class="exactproof__route exactproof__route--fail">
-              <span class="exactproof__logo">m</span>
+              <img
+                class="exactproof__logo"
+                src="/brand/providers/openai.png"
+                alt="OpenAI"
+                width="30"
+                height="30"
+                loading="lazy"
+              />
               <span class="exactproof__body">
-                <strong>gpt-5.4-mini</strong>
+                <strong>gpt-5.6-mini</strong>
                 <span class="mono">similar · not exact</span>
               </span>
               <span class="exactproof__verdict exactproof__verdict--fail mono">reject</span>
             </li>
             <li class="exactproof__route exactproof__route--fail">
-              <span class="exactproof__logo">std</span>
+              <img
+                class="exactproof__logo"
+                src="/brand/providers/openai.png"
+                alt="OpenAI"
+                width="30"
+                height="30"
+                loading="lazy"
+              />
               <span class="exactproof__body">
                 <strong>openai:standard</strong>
                 <span class="mono">capability class · not proof</span>
@@ -126,7 +154,7 @@ import LockedModelRelay from "./LockedModelRelay.astro";
       <ul class="modecard__bullets">
         <li>
           <strong>The request creates a required canonical model ID.</strong> If you ask for
-          <code>gpt-5.4</code>, eligible routes must prove <code>gpt-5.4</code>.
+          <code>gpt-5.6</code>, eligible routes must prove <code>gpt-5.6</code>.
         </li>
         <li>
           <strong>Cross-provider is allowed only after proof.</strong> BurnBar may move from Factory,
@@ -134,7 +162,7 @@ import LockedModelRelay from "./LockedModelRelay.astro";
         </li>
         <li>
           <strong>Similar does not count.</strong>
-          <code>gpt-5.4-mini</code>, <code>gpt-5.4-pro</code>,
+          <code>gpt-5.6-mini</code>, <code>gpt-5.6-pro</code>,
           <code>gpt-5-family</code>, and broad classes like <code>openai:standard</code> are rejected
           as substitutes.
         </li>
@@ -358,23 +386,15 @@ import LockedModelRelay from "./LockedModelRelay.astro";
   .exactproof__logo {
     width: 30px;
     height: 30px;
-    border-radius: 50%;
+    border-radius: 6px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    color: var(--text-bright);
-    font-family: var(--font-mono);
-    font-size: 0.66rem;
     border: 1px solid var(--ink-line);
     background: var(--ink-base);
-  }
-  .exactproof__logo--factory {
-    color: var(--ember-bright);
-    border-color: color-mix(in oklab, var(--ember-core) 36%, var(--ink-line));
-  }
-  .exactproof__logo--openai {
-    color: var(--status-exact);
-    border-color: color-mix(in oklab, var(--status-exact) 38%, var(--ink-line));
+    padding: 3px;
+    object-fit: contain;
+    flex-shrink: 0;
   }
   .exactproof__body {
     min-width: 0;

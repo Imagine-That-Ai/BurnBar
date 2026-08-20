@@ -15,56 +15,108 @@
 
     <Grid Padding="24" ColumnSpacing="16" RowSpacing="16">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="1.1*" />
-            <ColumnDefinition Width="1.4*" />
-            <ColumnDefinition Width="1*" />
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
         <Grid.RowDefinitions>
-            <RowDefinition Height="1.5*" />
-            <RowDefinition Height="1*" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- Provider panel. -->
-        <components:UnifiedGlassCard Grid.Row="0" Grid.Column="0">
-            <StackPanel Spacing="8">
-                <TextBlock Text="Data source" FontSize="13" Opacity="0.6" FontWeight="SemiBold" />
-                <TextBlock x:Name="ProviderStatusText"
-                           Text="No SQLCipher database connected"
-                           TextWrapping="Wrap"
-                           FontSize="14" />
-            </StackPanel>
-        </components:UnifiedGlassCard>
+        <!-- Top bento grid row: 3 equal-weight tiles. -->
+        <Grid Grid.Row="0" Grid.ColumnSpan="3" ColumnSpacing="16" RowSpacing="16">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
 
-        <!-- Big burn card. -->
-        <components:UnifiedGlassCard Grid.Row="0" Grid.Column="1" Interactive="True">
-            <StackPanel Spacing="6" VerticalAlignment="Center">
-                <TextBlock Text="Burn rate" FontSize="13" Opacity="0.6" FontWeight="SemiBold" />
-                <TextBlock x:Name="BurnTile" Text="—" FontSize="34" FontWeight="Bold" />
-                <TextBlock x:Name="BurnDetailText" Text="Connect a usage database for live aggregates" FontSize="13" Opacity="0.7" />
-            </StackPanel>
-        </components:UnifiedGlassCard>
+            <!-- Card 0: Data source / Provider status. -->
+            <components:UnifiedGlassCard Grid.Row="0" Grid.Column="0">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="DATA SOURCE" FontSize="11" FontWeight="Bold" CharacterSpacing="80"
+                               Foreground="{StaticResource PensieveColorBrassBrightBrush}" />
+                    <TextBlock x:Name="ProviderStatusText"
+                               Text="No SQLCipher database connected"
+                               TextWrapping="Wrap"
+                               FontSize="13" />
+                </StackPanel>
+            </components:UnifiedGlassCard>
 
-        <!-- Framed swarm stage (transparent — backdrop reads through the frame). -->
-        <Border Grid.Row="0" Grid.Column="2"
-                CornerRadius="{StaticResource PensieveRadiusLgCorner}"
-                BorderThickness="1"
-                BorderBrush="{StaticResource OBBStrokeBrush}">
-            <TextBlock Text="Swarm"
-                       Margin="12"
-                       VerticalAlignment="Top"
-                       Opacity="0.5"
-                       FontSize="12" />
-        </Border>
+            <!-- Card 1: Burn rate & total spend. -->
+            <components:UnifiedGlassCard Grid.Row="0" Grid.Column="1" Interactive="True">
+                <StackPanel Spacing="6" VerticalAlignment="Center">
+                    <TextBlock Text="BURN RATE" FontSize="11" FontWeight="Bold" CharacterSpacing="80"
+                               Foreground="{StaticResource PensieveColorBrassBrightBrush}" />
+                    <TextBlock x:Name="BurnTile" Text="—" FontSize="32" FontWeight="Bold" FontFamily="{StaticResource OBBMonoFontFamily}" />
+                    <TextBlock x:Name="BurnDetailText" Text="Connect a usage database for live aggregates" FontSize="12" Opacity="0.7" />
+                </StackPanel>
+            </components:UnifiedGlassCard>
 
-        <!-- Bottom row: tokens / sessions / cost-curve. -->
-        <StackPanel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3"
-                    Orientation="Horizontal" Spacing="16">
-            <layouts:ConceptStatTile x:Name="TokensTile" Value="—" Caption="Tokens"
+            <!-- Card 2: Framed swarm substrate stage. -->
+            <Border Grid.Row="0" Grid.Column="2"
+                    CornerRadius="{StaticResource PensieveRadiusLgCorner}"
+                    BorderThickness="1"
+                    BorderBrush="{StaticResource OBBStrokeBrush}"
+                    Padding="14">
+                <StackPanel Spacing="6" VerticalAlignment="Center">
+                    <Border Background="{ThemeResource AuroraGlassSelectionFillBrush}" CornerRadius="999" Padding="8,4" HorizontalAlignment="Left">
+                        <TextBlock Text="forming" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource OBBAccentBrush}" />
+                    </Border>
+                    <TextBlock Text="Swarm Substrate" FontSize="14" FontWeight="SemiBold" />
+                    <TextBlock Text="Live boids field connected to current window" FontSize="12" Opacity="0.7" />
+                </StackPanel>
+            </Border>
+
+            <!-- Card 3: Top Provider leader. -->
+            <components:UnifiedGlassCard Grid.Row="1" Grid.Column="0" Interactive="True">
+                <StackPanel Spacing="6" VerticalAlignment="Center">
+                    <TextBlock Text="TOP PROVIDER" FontSize="11" FontWeight="Bold" CharacterSpacing="80"
+                               Foreground="{StaticResource PensieveColorBrassBrightBrush}" />
+                    <TextBlock x:Name="TopProviderText" Text="—" FontSize="20" FontWeight="SemiBold" />
+                    <TextBlock x:Name="TopProviderShareText" Text="No provider spend yet" FontSize="12" Opacity="0.7" />
+                </StackPanel>
+            </components:UnifiedGlassCard>
+
+            <!-- Card 4: Top Model leader. -->
+            <components:UnifiedGlassCard Grid.Row="1" Grid.Column="1" Interactive="True">
+                <StackPanel Spacing="6" VerticalAlignment="Center">
+                    <TextBlock Text="TOP MODEL" FontSize="11" FontWeight="Bold" CharacterSpacing="80"
+                               Foreground="{StaticResource PensieveColorBrassBrightBrush}" />
+                    <TextBlock x:Name="TopModelText" Text="—" FontSize="20" FontWeight="SemiBold" />
+                    <TextBlock x:Name="TopModelShareText" Text="No model spend yet" FontSize="12" Opacity="0.7" />
+                </StackPanel>
+            </components:UnifiedGlassCard>
+
+            <!-- Card 5: Cache efficiency. -->
+            <components:UnifiedGlassCard Grid.Row="1" Grid.Column="2" Interactive="True">
+                <StackPanel Spacing="6" VerticalAlignment="Center">
+                    <TextBlock Text="CACHE SIGNAL" FontSize="11" FontWeight="Bold" CharacterSpacing="80"
+                               Foreground="{StaticResource PensieveColorBrassBrightBrush}" />
+                    <TextBlock x:Name="CacheEfficiencyText" Text="Live" FontSize="20" FontWeight="SemiBold" />
+                    <TextBlock Text="Active prompt token reuse" FontSize="12" Opacity="0.7" />
+                </StackPanel>
+            </components:UnifiedGlassCard>
+        </Grid>
+
+        <!-- Bottom row: star columns distribute slack evenly across 3 tiles. -->
+        <Grid Grid.Row="1" Grid.ColumnSpan="3" ColumnSpacing="16" HorizontalAlignment="Stretch">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <layouts:ConceptStatTile Grid.Column="0" x:Name="TokensTile" Value="—" Caption="Tokens"
                                      AccentBrush="{StaticResource PensieveColorMercuryCoreBrush}" />
-            <layouts:ConceptStatTile x:Name="SessionsTile" Value="—" Caption="Sessions"
+            <layouts:ConceptStatTile Grid.Column="1" x:Name="SessionsTile" Value="—" Caption="Sessions"
                                      AccentBrush="{StaticResource OBBAccentBrush}" />
-            <layouts:ConceptStatTile x:Name="SpendTile" Value="—" Caption="Cost"
+            <layouts:ConceptStatTile Grid.Column="2" x:Name="SpendTile" Value="—" Caption="Cost"
                                      AccentBrush="{StaticResource PensieveColorBrassCoreBrush}" />
-        </StackPanel>
+        </Grid>
     </Grid>
 </UserControl>

@@ -389,7 +389,6 @@ enum StreamsSearchResultMode: Equatable {
     case cloudConversationHits
     case streamHits
     case searching
-    case failed
     case empty
 }
 
@@ -404,8 +403,7 @@ struct StreamsSearchResultState: Equatable {
         guard query.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2 else {
             return .inactive
         }
-        // Fail independently of cached unfiltered rows or leftover hits.
-        if searchFailed { return .failed }
+        if searchFailed { return .empty }
         if cloudConversationHitCount > 0 { return .cloudConversationHits }
         if streamHitCount > 0 { return .streamHits }
         if isSearching { return .searching }

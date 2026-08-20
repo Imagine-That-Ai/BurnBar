@@ -125,6 +125,26 @@ final class DashboardHomeLayoutTests: XCTestCase {
         XCTAssertTrue(DashboardHomeRailPanelState.decode("").isEmpty)
     }
 
+    // MARK: - Fleet row budget
+
+    /// The rail already knows how tall its fleet panel is; before this it showed
+    /// six rows regardless, so a panel dragged tall held six agents above a field
+    /// of nothing.
+    func test_fleetRowLimitFollowsPanelHeight() {
+        let short = LiveAgentFleetPanel.visibleRowLimit(forHeight: 160)
+        let tall = LiveAgentFleetPanel.visibleRowLimit(forHeight: 700)
+        XCTAssertGreaterThan(tall, short, "A taller panel must show more agents")
+        XCTAssertGreaterThan(tall, 6, "The old flat cap of 6 must no longer bind a tall panel")
+    }
+
+    /// Never fewer than three, or a short panel says less than the collapsed
+    /// stub it is supposed to be an expansion of.
+    func test_fleetRowLimitKeepsAFloor() {
+        XCTAssertEqual(LiveAgentFleetPanel.visibleRowLimit(forHeight: 10), 3)
+        // The first layout pass can report zero before the rail has a frame.
+        XCTAssertEqual(LiveAgentFleetPanel.visibleRowLimit(forHeight: 0), 3)
+    }
+
     // MARK: - Fleet mode availability
 
     /// The timeline is gated out until the watchers are armed rather than

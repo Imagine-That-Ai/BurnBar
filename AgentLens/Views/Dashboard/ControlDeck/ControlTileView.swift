@@ -78,9 +78,12 @@ private struct FleetTile: View {
             )
         }
         .task {
-            let url = OpenBurnBarDaemonRuntimePaths.live().socketURL
+            // Same recover as the Fleet board: peer-auth can close the
+            // socket empty while fleet-snapshot.json is still current.
             do {
-                let snapshot = try OpenBurnBarDaemonSocketClient.fleetSnapshot(at: url)
+                let snapshot = try FleetService.fetchSnapshotWithFileFallback(
+                    at: OpenBurnBarDaemonRuntimePaths.live().socketURL
+                )
                 headline = .resolved(fromSnapshot: snapshot)
             } catch {
                 headline = .resolved(fromError: error)
@@ -305,7 +308,12 @@ private struct TextExpansionTile: View {
             if everywhere, !model.accessibilityTrusted {
                 // Asking is not granting. macOS owns the decision; we only open
                 // the door and re-poll when the app comes back to the front.
-                _ = MacAccessibilityPermissionRequester.promptAndOpenSettings()
+                // Routed through the ladder so a dashboard toggle cannot be the
+                // first thing a user hears about screen control.
+                Task { @MainActor in
+                    await FirstRunPermissionLadder.shared.request(.accessibility)
+                    model.refreshSynchronousFacts()
+                }
             }
             model.refreshSynchronousFacts()
             Analytics.shared.track(.settingsChanged, [
@@ -331,8 +339,10 @@ private struct TextExpansionTile: View {
                 tint: DesignSystem.Colors.warning,
                 help: "Opens System Settings → Privacy & Security → Accessibility. macOS grants the permission, not OpenBurnBar."
             ) {
-                _ = MacAccessibilityPermissionRequester.promptAndOpenSettings()
-                model.refreshSynchronousFacts()
+                Task { @MainActor in
+                    await FirstRunPermissionLadder.shared.request(.accessibility)
+                    model.refreshSynchronousFacts()
+                }
             }
         } else {
             ControlSwitch(

@@ -120,6 +120,8 @@ struct SwitcherCLIFallbackPlanner: CLIFallbackPlanning {
             return .piAgent
         case .junie:
             return .junie
+        case .fx:
+            return .fx
         case .omp:
             return .omp
         case .primeAgent:

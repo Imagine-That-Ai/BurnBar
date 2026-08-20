@@ -135,6 +135,7 @@ public sealed partial class DashboardPage : Page
                 WindowsGeneralSettingsComposition.Load());
             CommandSidebar.ApplySnapshot(_commandSnapshot);
             ApplyDetailChrome();
+            DashboardUsageProvider.NotifyChanged();
             ShowLayout(Switcher.State.Selection);
         });
     }
@@ -247,14 +248,36 @@ public sealed partial class DashboardPage : Page
         MoveCommandSidebar(compact, e.NewSize.Height);
         SidebarColumn.MinWidth = compact ? 0 : 260;
         SidebarColumn.MaxWidth = compact ? 0 : 320;
-        SidebarColumn.Width = compact ? new GridLength(0) : new GridLength(280);
+        SidebarColumn.Width = compact ? new GridLength(0) : new GridLength(Math.Min(320, Math.Max(260, e.NewSize.Width * 0.22)));
         SidebarDividerColumn.Width = compact ? new GridLength(0) : new GridLength(1);
         SidebarDivider.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
         CompactCommandButton.Visibility = compact ? Visibility.Visible : Visibility.Collapsed;
         DetailSubtitle.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
         DetailHost.Padding = compact ? new Thickness(10, 8, 10, 0) : new Thickness(16, 12, 16, 0);
+
+        double detailWidth = compact ? e.NewSize.Width : Math.Max(0, e.NewSize.Width - SidebarColumn.Width.Value);
         Switcher.Width = compact ? 190 : double.NaN;
         Switcher.MaxWidth = compact ? 190 : double.PositiveInfinity;
+        Switcher.UpdateAvailableWidth(detailWidth - 220);
+
+        UpdateContentHostSizing();
+    }
+
+    private void OnContentScrollSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        UpdateContentHostSizing();
+    }
+
+    private void UpdateContentHostSizing()
+    {
+        if (ContentScroll.ActualHeight > 0)
+        {
+            ContentHost.MinHeight = ContentScroll.ActualHeight;
+        }
+        if (ContentScroll.ActualWidth > 0)
+        {
+            ContentHost.MinWidth = ContentScroll.ActualWidth;
+        }
     }
 
     private void MoveCommandSidebar(bool compact, double availableHeight)
@@ -268,7 +291,7 @@ public sealed partial class DashboardPage : Page
                 _compactDashboard = true;
             }
 
-            CommandSidebar.Width = 320;
+            CommandSidebar.Width = Math.Min(340, Math.Max(280, DetailHost.ActualWidth - 32));
             CommandSidebar.MaxHeight = Math.Max(320, Math.Min(640, availableHeight - 96));
             return;
         }
@@ -329,6 +352,8 @@ public sealed partial class DashboardPage : Page
         DashboardLayout.Aurora => "aurora",
         DashboardLayout.Cockpit => "flow",
         DashboardLayout.Classic => "constellation",
+        DashboardLayout.Stream => "flow",
+        DashboardLayout.Atlas => "mesh",
         _ => KernelCatalog.DefaultId,
     };
 
@@ -340,6 +365,8 @@ public sealed partial class DashboardPage : Page
         DashboardLayout.Constellation => new ConstellationLayoutView(),
         DashboardLayout.Cockpit => new CockpitLayoutView(),
         DashboardLayout.Classic => new ClassicLayoutView(),
+        DashboardLayout.Stream => new StreamLayoutView(),
+        DashboardLayout.Atlas => new AtlasLayoutView(),
         _ => new AtelierLayoutView(),
     };
 

@@ -166,6 +166,7 @@ private fun AssistantsRuntimeContent(
         AssistantRuntimeID.GROK,
         AssistantRuntimeID.CURSOR_AGENT,
         AssistantRuntimeID.JUNIE,
+        AssistantRuntimeID.FX,
         ->
             CliAgentChatView(
                 runtime = runtime,
@@ -239,6 +240,7 @@ private fun gradientForRuntime(runtime: AssistantRuntimeID): Brush = when (runti
     AssistantRuntimeID.GROK -> Brush.linearGradient(listOf(Color(0xFF111827), Color(0xFF0EA5E9)))
     AssistantRuntimeID.CURSOR_AGENT -> Brush.linearGradient(listOf(Color(0xFF0F172A), Color(0xFF64748B)))
     AssistantRuntimeID.JUNIE -> Brush.linearGradient(listOf(Color(0xFF48E054), Color(0xFF6FE87F)))
+    AssistantRuntimeID.FX -> Brush.linearGradient(listOf(Color(0xFFA1A1AA), Color(0xFFD4D4D8)))
 }
 private data class AssistantTileBridgeContentState(
     val message: String,
@@ -703,5 +705,6 @@ private fun bridgeCopy(runtime: AssistantRuntimeID): String = when (runtime) {
     AssistantRuntimeID.GROK -> "Grok runs through OpenBurnBar on your Mac. Pair your Mac to chat from here."
     AssistantRuntimeID.CURSOR_AGENT -> "Cursor Agent runs through OpenBurnBar on your Mac. Pair your Mac to chat from here."
     AssistantRuntimeID.JUNIE -> "Junie runs through OpenBurnBar on your Mac. Pair your Mac to chat from here."
+    AssistantRuntimeID.FX -> "fx runs through OpenBurnBar on your Mac. Pair your Mac to chat from here."
     else -> ""
 }

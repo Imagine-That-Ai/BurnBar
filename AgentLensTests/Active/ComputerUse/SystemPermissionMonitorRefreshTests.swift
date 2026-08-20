@@ -1,5 +1,6 @@
 #if canImport(AppKit) && !DISTRIBUTION_MAS
 import XCTest
+import OpenBurnBarComputerUseCore
 @testable import OpenBurnBar
 
 final class SystemPermissionMonitorRefreshTests: XCTestCase {
@@ -47,10 +48,21 @@ final class SystemPermissionMonitorRefreshTests: XCTestCase {
         XCTAssertEqual(targetByBundleId["com.apple.finder"], "Finder")
 
         let monitor = FakeSystemPermissionMonitor()
-        var promptedBundleIds: [String] = []
+        let promptedBundleIds = BundleIdRecorder()
+        // The wizard now asks through the ladder, so the fake ladder both records what
+        // reached macOS and proves the explanation ran first.
+        let ladder = FirstRunPermissionLadder(
+            prompter: { _, bundleId in if let bundleId { promptedBundleIds.append(bundleId) } },
+            statusReader: { _, _ in .needsAccess }
+        )
+        var explainedKinds: [SystemPermissionKind] = []
+        ladder.explainer = { kind, _ in
+            explainedKinds.append(kind)
+            return true
+        }
         let coordinator = PermissionsOnboardingCoordinator(
             monitor: monitor,
-            automationPromptRunner: { bundleId in promptedBundleIds.append(bundleId) }
+            permissionLadder: ladder
         )
         while coordinator.currentStep?.kind != .automation {
             coordinator.skipCurrent()
@@ -61,7 +73,8 @@ final class SystemPermissionMonitorRefreshTests: XCTestCase {
 
         XCTAssertEqual(step.bundleId, "com.todesktop.230313mzl4w4u92")
         XCTAssertEqual(step.targetDisplayName, "Cursor")
-        XCTAssertEqual(promptedBundleIds, ["com.todesktop.230313mzl4w4u92"])
+        XCTAssertEqual(promptedBundleIds.values, ["com.todesktop.230313mzl4w4u92"])
+        XCTAssertEqual(explainedKinds, [.automation], "macOS must not be reached before BurnBar explains")
         XCTAssertEqual(monitor.refreshCalls, [true])
     }
 
@@ -99,3 +112,10 @@ final class SystemPermissionMonitorRefreshTests: XCTestCase {
     }
 }
 #endif
+
+/// Reference box so the `@Sendable` ladder prompter can record without capturing a
+/// mutable local.
+private final class BundleIdRecorder: @unchecked Sendable {
+    private(set) var values: [String] = []
+    func append(_ value: String) { values.append(value) }
+}

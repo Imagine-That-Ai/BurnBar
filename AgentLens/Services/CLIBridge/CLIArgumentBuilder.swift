@@ -242,6 +242,34 @@ enum CLIArgumentBuilder {
         return arguments
     }
 
+    static func fxArguments(
+        prompt: String,
+        model: String = "",
+        workspaceDirectory: URL? = nil,
+        capabilityGrant: AgentCapabilityGrant? = nil,
+        resumeSessionID: String? = nil
+    ) -> [String] {
+        // fx has no `--model` flag — the model is fx-configured. The one-shot
+        // structured form is `fx ask --json "<prompt>"`; `--resume <id>`
+        // continues a saved session for multi-turn chat.
+        var arguments = ["ask", "--json"]
+        if let resumeSessionID, !resumeSessionID.isEmpty {
+            arguments.append(contentsOf: ["--resume", resumeSessionID])
+        }
+        // T-TOOL-02(a): never pass vendor full-autonomy bypass arguments.
+        // `--yolo` is banned outright. `--auto` enables fx's automatic
+        // permission review, which is only safe when the grant carries the
+        // full desktop capability set; otherwise fx's default mode exits
+        // before running unresolved sensitive calls (fail closed).
+        if CLIAgentFxMissionPolicy.autoReviewPermitted(capabilityGrant) {
+            arguments.append("--auto")
+        }
+        _ = model
+        _ = workspaceDirectory
+        arguments.append(sanitizedPrompt(prompt))
+        return arguments
+    }
+
     static func ompArguments(
         prompt: String,
         model: String = "",
@@ -497,6 +525,22 @@ extension CLIBridge {
             model: model,
             workspaceDirectory: workspaceDirectory,
             capabilityGrant: capabilityGrant
+        )
+    }
+
+    nonisolated static func fxArguments(
+        prompt: String,
+        model: String = "",
+        workspaceDirectory: URL? = nil,
+        capabilityGrant: AgentCapabilityGrant? = nil,
+        resumeSessionID: String? = nil
+    ) -> [String] {
+        CLIArgumentBuilder.fxArguments(
+            prompt: prompt,
+            model: model,
+            workspaceDirectory: workspaceDirectory,
+            capabilityGrant: capabilityGrant,
+            resumeSessionID: resumeSessionID
         )
     }
 }

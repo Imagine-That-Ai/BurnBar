@@ -358,6 +358,57 @@ final class BackdropLegiblePlateTests: XCTestCase {
         }
     }
 
+    /// The empty Control Deck: a bright kernel sample publishes `tone: .dark`
+    /// (near-black ink). That ink is readable on Aurora itself — the page
+    /// title stays visible — and invisible on a dark `surface` slab. This is
+    /// the pair the running deck actually painted.
+    func testKernelSampledDarkInkDisappearsOnADarkSurfacePlate() throws {
+        let profile = BackdropReadabilityProfile.lightCanvasFallback
+        let ink = BackdropInk.resolve(liveBackdropActive: true, profile: profile)
+        let surface = try rgb(DesignSystem.Colors.surface, appearance: .darkAqua)
+        let composited = plate(
+            over: canvas(luminance: 0.72),
+            profile: profile,
+            surface: surface,
+            substrate: BackdropSubstrate.liveElevated,
+            accent: try rgb(DesignSystem.Colors.whimsy, appearance: .darkAqua),
+            wash: 0.05
+        )
+        let ratio = BackdropContrast.ratio(
+            try rgb(ink.primary, appearance: .darkAqua),
+            composited
+        )
+        XCTAssertLessThan(
+            ratio,
+            BackdropContrast.normalTextRatio,
+            "kernel-sampled dark ink on a dark plate is the empty-deck bug; got \(ratio):1"
+        )
+    }
+
+    /// The plate override must ignore the kernel sample and use appearance
+    /// tokens, so a bright Aurora still renders readable tile copy.
+    func testPlateLocalInkClearsContrastOnADarkSurfaceEvenWhenSamplerPicksDarkInk() throws {
+        let ink = BackdropInk.resolveForPlate(skin: .aurora, colorScheme: .dark)
+        let surface = try rgb(DesignSystem.Colors.surface, appearance: .darkAqua)
+        let composited = plate(
+            over: canvas(luminance: 0.72),
+            profile: .lightCanvasFallback,
+            surface: surface,
+            substrate: BackdropSubstrate.liveElevated,
+            accent: try rgb(DesignSystem.Colors.whimsy, appearance: .darkAqua),
+            wash: 0.05
+        )
+        for (role, color) in [
+            ("primary", ink.primary), ("secondary", ink.secondary), ("subtle", ink.subtle)
+        ] {
+            let ratio = BackdropContrast.ratio(try rgb(color, appearance: .darkAqua), composited)
+            XCTAssertGreaterThanOrEqual(
+                ratio, BackdropContrast.normalTextRatio,
+                "plate-local \(role) is \(ratio):1 on a dark tile over a bright kernel"
+            )
+        }
+    }
+
     /// The light-canvas profile resolves to the *dark* foreground family, which
     /// has to clear the bar on a light plate. Same contract, opposite polarity —
     /// light ink on paper would be the mirror image of the bug this fixes.
@@ -396,6 +447,236 @@ final class BackdropLegiblePlateTests: XCTestCase {
         // live-backdrop feature is decorative.
         XCTAssertLessThanOrEqual(BackdropSubstrate.liveElevated, 0.88)
         XCTAssertGreaterThan(BackdropSubstrate.liveElevated, BackdropSubstrate.live)
+    }
+
+    /// Chrome sits at the top of the window, so it takes the top of the range.
+    ///
+    /// It is named apart from `liveElevated` because the constraints differ (a
+    /// bar crosses the whole kernel gradient rather than one band of it), but it
+    /// still has to live inside the same glass window — an opaque bar is a
+    /// titlebar, not glass.
+    func testChromeSubstrateSitsAtTheTopOfTheGlassWindow() {
+        XCTAssertGreaterThanOrEqual(BackdropSubstrate.chrome, BackdropSubstrate.live)
+        XCTAssertLessThanOrEqual(BackdropSubstrate.chrome, 0.88)
+    }
+
+    /// The command deck and status rail contract, in both appearances.
+    ///
+    /// The deck previously drew as pure clear glass with no substrate at all —
+    /// `shape.fill(.clear).liquidGlassEffect(...)` — and its eyebrow copy used
+    /// `textMuted`. Both halves are asserted here so the bars cannot regress to
+    /// either one: chrome ink over a chrome plate, at the worst backdrop each
+    /// profile claims to cover.
+    func testChromeInkClearsContrastOverWorstCaseBackdropInBothAppearances() throws {
+        for (label, appearance, profile) in [
+            (
+                "dark",
+                NSAppearance.Name.darkAqua,
+                BackdropReadabilityProfile.nativeFallback(
+                    colorScheme: .dark,
+                    appearanceSkin: .aurora,
+                    liveBackdropActive: true
+                )
+            ),
+            (
+                "light",
+                NSAppearance.Name.aqua,
+                BackdropReadabilityProfile.nativeFallback(
+                    colorScheme: .light,
+                    appearanceSkin: .aurora,
+                    liveBackdropActive: true
+                )
+            )
+        ] {
+            let ink = BackdropInk.resolve(liveBackdropActive: true, profile: profile)
+            let surface = try rgb(DesignSystem.Colors.surface, appearance: appearance)
+            // The chrome plate carries no accent wash, so the composite ends at
+            // the slab. Pass the surface as its own accent at zero wash.
+            let composited = plate(
+                over: canvas(luminance: profile.maxLuminance),
+                profile: profile,
+                surface: surface,
+                substrate: BackdropSubstrate.chrome,
+                accent: surface,
+                wash: 0
+            )
+
+            for (role, color) in [
+                ("primary", ink.primary), ("secondary", ink.secondary), ("subtle", ink.subtle)
+            ] {
+                let ratio = BackdropContrast.ratio(try rgb(color, appearance: appearance), composited)
+                XCTAssertGreaterThanOrEqual(
+                    ratio, BackdropContrast.normalTextRatio,
+                    "\(label) chrome, role \(role): \(ratio):1"
+                )
+            }
+            let iconRatio = BackdropContrast.ratio(
+                try rgb(ink.icon, appearance: appearance),
+                composited
+            )
+            XCTAssertGreaterThanOrEqual(
+                iconRatio, BackdropContrast.largeTextRatio,
+                "\(label) chrome, icon: \(iconRatio):1"
+            )
+        }
+    }
+
+    /// The chrome bars must not fall back to the token that started all of this.
+    ///
+    /// The deck's eyebrow strings ("BURN RATE", "Updated", "Spend is live") were
+    /// `textMuted`, which no plate can rescue. Assert the ink the bars now draw
+    /// with is a different colour from that token in both appearances, so a
+    /// revert to it is a test failure rather than a visual regression somebody
+    /// has to notice.
+    func testChromeSubtleInkIsNotTheHairlineToken() throws {
+        for appearance in [NSAppearance.Name.darkAqua, .aqua] {
+            let muted = try rgb(DesignSystem.Colors.textMuted, appearance: appearance)
+            for live in [true, false] {
+                let ink = BackdropInk.resolve(
+                    liveBackdropActive: live,
+                    profile: BackdropReadabilityProfile.nativeFallback(
+                        colorScheme: appearance == .darkAqua ? .dark : .light,
+                        appearanceSkin: .aurora,
+                        liveBackdropActive: live
+                    )
+                )
+                XCTAssertNotEqual(
+                    try rgb(ink.subtle, appearance: appearance),
+                    muted,
+                    "chrome subtle ink resolved to the hairline token (live: \(live))"
+                )
+            }
+        }
+    }
+
+    // MARK: The section primitive's own recipe
+
+    /// Every `DashboardSection` a layout can build, in both appearances.
+    ///
+    /// The eight layouts are compositions of one container, which means the
+    /// container's plate recipe is the single point where all of them succeed or
+    /// fail together. `DashboardSection` has two substrate rungs (`.comfortable`
+    /// and `.flush` take `live`; `.compact` takes `liveElevated` because it
+    /// carries the smallest type in the app) and three wash rungs, and
+    /// `.featured` at `0.10` is brighter than any wash the Control Deck produces
+    /// — so the existing tile cases above do not cover it.
+    ///
+    /// Asserted at the top of each profile's luminance band, which is the
+    /// worst case for the ink family that profile selects.
+    func testSectionInkClearsContrastAtEveryDensityAndEmphasis() throws {
+        // Mirrors `DashboardSection.substrate` and `DashboardSection.washOpacity`.
+        let densities: [(String, Double)] = [
+            ("comfortable", BackdropSubstrate.live),
+            ("flush", BackdropSubstrate.live),
+            ("compact", BackdropSubstrate.liveElevated)
+        ]
+        let emphases: [(String, Double)] = [
+            ("quiet", 0.03), ("standard", 0.055), ("featured", 0.10)
+        ]
+        // The accents layouts actually pass a section, warm and cool.
+        let accents: [(String, Color)] = [
+            ("ember", DesignSystem.Colors.ember),
+            ("amber", DesignSystem.Colors.amber),
+            ("whimsy", DesignSystem.Colors.whimsy),
+            ("blaze", DesignSystem.Colors.blaze),
+            ("success", DesignSystem.Colors.success),
+            ("warning", DesignSystem.Colors.warning),
+            ("error", DesignSystem.Colors.error)
+        ]
+
+        for skin in [AppSkin.aurora, .editorial] {
+            useSkin(skin)
+            for scheme in [ColorScheme.light, .dark] {
+                let appearance: NSAppearance.Name = scheme == .dark ? .darkAqua : .aqua
+                let profile = BackdropReadabilityProfile.nativeFallback(
+                    colorScheme: scheme,
+                    appearanceSkin: skin,
+                    liveBackdropActive: true
+                )
+                let ink = BackdropInk.resolve(liveBackdropActive: true, profile: profile)
+                let surface = try rgb(DesignSystem.Colors.surface, appearance: appearance)
+                let backdrop = canvas(luminance: profile.maxLuminance)
+
+                for (densityName, substrate) in densities {
+                    for (emphasisName, wash) in emphases {
+                        for (accentName, accent) in accents {
+                            let composited = plate(
+                                over: backdrop,
+                                profile: profile,
+                                surface: surface,
+                                substrate: substrate,
+                                accent: try rgb(accent, appearance: appearance),
+                                wash: wash
+                            )
+                            let where_ = """
+                            \(skin.rawValue)/\(scheme == .dark ? "dark" : "light") \
+                            \(densityName)/\(emphasisName)/\(accentName)
+                            """
+                            for (role, color) in [
+                                ("primary", ink.primary),
+                                ("secondary", ink.secondary),
+                                ("subtle", ink.subtle)
+                            ] {
+                                let ratio = BackdropContrast.ratio(
+                                    try rgb(color, appearance: appearance),
+                                    composited
+                                )
+                                XCTAssertGreaterThanOrEqual(
+                                    ratio, BackdropContrast.normalTextRatio,
+                                    "\(where_), role \(role): \(ratio):1"
+                                )
+                            }
+                            let iconRatio = BackdropContrast.ratio(
+                                try rgb(ink.icon, appearance: appearance),
+                                composited
+                            )
+                            XCTAssertGreaterThanOrEqual(
+                                iconRatio, BackdropContrast.largeTextRatio,
+                                "\(where_), icon: \(iconRatio):1"
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// A section's own hairline has to be visible without competing with its
+    /// content. `DashboardSectionRule` and the share bars in
+    /// `DashboardRankedRow` both draw with `ink.hairline`, so it needs to clear
+    /// the non-text bar on the plate it divides — the previous divider token was
+    /// `textMuted` at a fractional alpha, which on a live backdrop was nothing.
+    func testSectionHairlineIsVisibleOnItsOwnPlate() throws {
+        for scheme in [ColorScheme.light, ColorScheme.dark] {
+            let appearance: NSAppearance.Name = scheme == .dark ? .darkAqua : .aqua
+            let profile = BackdropReadabilityProfile.nativeFallback(
+                colorScheme: scheme,
+                appearanceSkin: .aurora,
+                liveBackdropActive: true
+            )
+            let ink = BackdropInk.resolve(liveBackdropActive: true, profile: profile)
+            let surface = try rgb(DesignSystem.Colors.surface, appearance: appearance)
+            let composited = plate(
+                over: canvas(luminance: profile.maxLuminance),
+                profile: profile,
+                surface: surface,
+                substrate: BackdropSubstrate.live,
+                accent: try rgb(DesignSystem.Colors.ember, appearance: appearance),
+                wash: 0.055
+            )
+            let hairline = try flattened(ink.hairline, over: composited, appearance: appearance)
+            let ratio = BackdropContrast.ratio(hairline, composited)
+            // A rule is decoration, not information, so it is graded well below
+            // the text bar — but it must be a measurable step, not a no-op.
+            XCTAssertGreaterThan(
+                ratio, 1.08,
+                "section hairline is \(ratio):1 on its own plate — invisible"
+            )
+            XCTAssertLessThan(
+                ratio, BackdropContrast.largeTextRatio,
+                "section hairline is \(ratio):1 — loud enough to compete with content"
+            )
+        }
     }
 
     /// The inactive dot tint is non-text, so it is graded at 3:1 — but it still

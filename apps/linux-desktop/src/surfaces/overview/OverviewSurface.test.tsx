@@ -7,13 +7,18 @@ import {
   fixtureUsageSummary
 } from '../../daemonFixture.js';
 import type { LinuxShellBridge, UsageSummary } from '../../tauriBridge.js';
+import { useActivityStore } from '../../state/activityStore.js';
+import { useDashboardLayoutStore } from '../../state/dashboardLayoutStore.js';
 import { useInsightsStore } from '../../state/insightsStore.js';
+import { useMissionsStore } from '../../state/missionsStore.js';
 import { useOverviewStore } from '../../state/overviewStore.js';
 import { useShellStore } from '../../state/shellStore.js';
 import { OverviewSurface } from '../OverviewSurface.js';
 
 const realOverviewLoad = useOverviewStore.getState().load;
 const realInsightsLoad = useInsightsStore.getState().load;
+const realActivityLoad = useActivityStore.getState().load;
+const realMissionsLoad = useMissionsStore.getState().load;
 
 function resetStores(): void {
   localStorage.clear();
@@ -27,8 +32,10 @@ function resetStores(): void {
     skin: 'editorial',
     bridge: null,
     bridgeReady: true,
-    fixtureMode: false
+    fixtureMode: false,
+    dataRevision: 0
   });
+  useDashboardLayoutStore.setState({ layout: 'atelier' });
   useOverviewStore.setState({
     summary: null,
     cacheHitRatePct: null,
@@ -43,6 +50,18 @@ function resetStores(): void {
     error: null,
     load: realInsightsLoad
   });
+  useActivityStore.setState({
+    sessions: [],
+    loading: false,
+    error: null,
+    load: realActivityLoad
+  });
+  useMissionsStore.setState({
+    data: null,
+    loading: false,
+    error: null,
+    load: realMissionsLoad
+  });
 }
 
 function freezeLoads(): { overviewLoad: Mock<() => Promise<void>>; insightsLoad: Mock<() => Promise<void>> } {
@@ -50,6 +69,8 @@ function freezeLoads(): { overviewLoad: Mock<() => Promise<void>>; insightsLoad:
   const insightsLoad = vi.fn(async () => {});
   useOverviewStore.setState({ load: overviewLoad });
   useInsightsStore.setState({ load: insightsLoad });
+  useActivityStore.setState({ load: vi.fn(async () => {}) });
+  useMissionsStore.setState({ load: vi.fn(async () => {}) });
   return { overviewLoad, insightsLoad };
 }
 
@@ -83,7 +104,8 @@ describe('OverviewSurface', () => {
       error: null
     });
     render(<OverviewSurface />);
-    expect(screen.getByText(/living substrate/i)).toBeTruthy();
+    expect(screen.queryByText(/living substrate/i)).toBeNull();
+    expect(screen.getByText(/sessions in the window/i)).toBeTruthy();
     expect(screen.getByText('MiMo')).toBeTruthy();
     expect(screen.getByText('Hermes')).toBeTruthy();
     expect(screen.getByText('Burn · Today')).toBeTruthy();
@@ -181,5 +203,66 @@ describe('OverviewSurface', () => {
     expect(usageSummary).toHaveBeenCalled();
     expect(useOverviewStore.getState().summary?.todayTokens).toBe(1);
     expect(useOverviewStore.getState().cacheHitRatePct).toBe(42);
+  });
+
+  it('re-fires overview load when the daemon data revision advances', async () => {
+    const { overviewLoad } = freezeLoads();
+    useShellStore.setState({ fixtureMode: true, health: fixtureDaemonHealth('/tmp/x.sock') });
+    render(<OverviewSurface />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const afterMount = overviewLoad.mock.calls.length;
+    expect(afterMount).toBeGreaterThanOrEqual(1);
+
+    await act(async () => {
+      useShellStore.setState({ dataRevision: 1 });
+      await Promise.resolve();
+    });
+    expect(overviewLoad.mock.calls.length).toBeGreaterThan(afterMount);
+  });
+
+  it('renders a timestamped stream river for the stream layout', () => {
+    freezeLoads();
+    useDashboardLayoutStore.setState({ layout: 'stream' });
+    useShellStore.setState({
+      fixtureMode: true,
+      health: fixtureDaemonHealth('/tmp/openburnbar.sock')
+    });
+    useOverviewStore.setState({
+      summary: fixtureUsageSummary(),
+      cacheHitRatePct: fixtureUsageInsights().cacheHitRatePct,
+      loading: false,
+      error: null
+    });
+    render(<OverviewSurface />);
+    expect(document.querySelector('.stream-river')).toBeTruthy();
+    expect(document.querySelector('.stream-river__time')).toBeTruthy();
+    expect(screen.queryByText(/living substrate/i)).toBeNull();
+  });
+
+  it('renders needs-you against everything else for the atlas layout', () => {
+    freezeLoads();
+    useDashboardLayoutStore.setState({ layout: 'atlas' });
+    useShellStore.setState({
+      fixtureMode: true,
+      health: fixtureDaemonHealth('/tmp/openburnbar.sock')
+    });
+    useOverviewStore.setState({
+      summary: fixtureUsageSummary(),
+      cacheHitRatePct: fixtureUsageInsights().cacheHitRatePct,
+      loading: false,
+      error: null
+    });
+    useInsightsStore.setState({
+      data: fixtureUsageInsights(),
+      loading: false,
+      error: null
+    });
+    render(<OverviewSurface />);
+    expect(screen.getAllByText('Needs you').length).toBeGreaterThan(0);
+    expect(screen.getByText('Everything else')).toBeTruthy();
+    expect(document.querySelector('.atlas-gap')).toBeTruthy();
+    expect(document.querySelector('.atlas-ladder__comparison')).toBeTruthy();
   });
 });

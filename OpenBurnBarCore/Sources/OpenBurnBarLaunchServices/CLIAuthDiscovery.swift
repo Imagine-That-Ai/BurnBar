@@ -373,6 +373,31 @@ public enum CLIAuthDiscovery {
                 configDirectory: hasConfig ? configDir : normalizedNonEmpty(configDir),
                 accountDescription: hasRecordedSessions ? "Prime Agent local sessions" : nil
             )
+        case .fx:
+            let configDir = normalizedConfigDirectory(
+                configDirectoryOverride,
+                fallback: "\(home)/.fx"
+            )
+            let sessionsDir = "\(configDir)/sessions"
+            let hasConfig = FileManager.default.fileExists(atPath: configDir)
+            let hasRecordedSessions = directoryContainsAnyEntry(atPath: sessionsDir)
+            // fx authenticates through Vercel OAuth (auth.json) or an API key
+            // file; recorded sessions are the strongest local evidence of a
+            // usable login, mirroring the Junie heuristic.
+            let authState: CLIAuthState = {
+                if executablePath == nil { return .notInstalled }
+                if hasRecordedSessions { return .authenticated(lastRefresh: nil) }
+                if hasConfig { return .authenticated(lastRefresh: nil) }
+                return .notAuthenticated
+            }()
+            return CLIAuthInfo(
+                cliType: cliType,
+                isInstalled: executablePath != nil,
+                executablePath: executablePath,
+                authState: authState,
+                configDirectory: hasConfig ? configDir : normalizedNonEmpty(configDir),
+                accountDescription: hasRecordedSessions ? "fx local sessions" : nil
+            )
         }
         #endif
     }

@@ -5,7 +5,7 @@ package com.openburnbar.ui.pulse
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -52,7 +52,7 @@ fun PulseLiveCostCurve(
         modifier =
         modifier
             .fillMaxWidth()
-            .height(120.dp)
+            .heightIn(min = 90.dp, max = 160.dp)
             .padding(top = 4.dp),
     ) {
         PulseLiveCostCurveCanvas(

@@ -2004,7 +2004,7 @@ final class SettingsManagerTests: XCTestCase {
     // MARK: - ChatBackendID Tests
 
     func test_chatBackendID_allCases() {
-        XCTAssertEqual(ChatBackendID.allCases.count, 12)
+        XCTAssertEqual(ChatBackendID.allCases.count, 13)
         XCTAssertTrue(ChatBackendID.allCases.contains(.codex))
         XCTAssertTrue(ChatBackendID.allCases.contains(.claude))
         XCTAssertTrue(ChatBackendID.allCases.contains(.hermes))
@@ -2017,6 +2017,7 @@ final class SettingsManagerTests: XCTestCase {
         XCTAssertTrue(ChatBackendID.allCases.contains(.antigravity))
         XCTAssertTrue(ChatBackendID.allCases.contains(.cursorAgent))
         XCTAssertTrue(ChatBackendID.allCases.contains(.junie))
+        XCTAssertTrue(ChatBackendID.allCases.contains(.fx))
     }
 
     func test_chatBackendID_displayNames() {
@@ -2032,6 +2033,7 @@ final class SettingsManagerTests: XCTestCase {
         XCTAssertEqual(ChatBackendID.antigravity.displayName, "Antigravity")
         XCTAssertEqual(ChatBackendID.cursorAgent.displayName, "Cursor Agent")
         XCTAssertEqual(ChatBackendID.junie.displayName, "Junie")
+        XCTAssertEqual(ChatBackendID.fx.displayName, "fx")
     }
 
     func test_chatBackendID_encodeEnabledList() {

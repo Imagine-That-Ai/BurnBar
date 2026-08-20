@@ -34,6 +34,8 @@ enum CLIAgentMissionRuntimePlanner {
                 return CLIAgentMissionBackend(chatBackend: .antigravity)
             case "cursoragent", "cursor-agent":
                 return CLIAgentMissionBackend(chatBackend: .cursorAgent)
+            case "fx", "vercel-fx", "vercelfx":
+                return CLIAgentMissionBackend(chatBackend: .fx)
             case "grok", "grok-build", "xai", "grok-agent":
                 return CLIAgentMissionBackend(rawValue: "grok", displayName: "Grok Build")
             case "opencode":
@@ -53,11 +55,11 @@ enum CLIAgentMissionRuntimePlanner {
 
         switch missionKind {
         case "diligence", "security":
-            return CLIAgentMissionBackend(chatBackend: firstEnabled([.claude, .codex, .hermes, .piAgent, .openclaw, .droid, .forge, .antigravity, .cursorAgent, .junie]) ?? .codex)
+            return CLIAgentMissionBackend(chatBackend: firstEnabled([.claude, .codex, .hermes, .piAgent, .openclaw, .droid, .forge, .antigravity, .cursorAgent, .junie, .fx]) ?? .codex)
         case "creative", "accretive", "ui_improvement", "custom":
-            return CLIAgentMissionBackend(chatBackend: firstEnabled([.openclaw, .antigravity, .cursorAgent, .codex, .hermes, .piAgent, .claude, .forge, .droid, .junie]) ?? .hermes)
+            return CLIAgentMissionBackend(chatBackend: firstEnabled([.openclaw, .antigravity, .cursorAgent, .codex, .hermes, .piAgent, .claude, .forge, .droid, .junie, .fx]) ?? .hermes)
         case "debt", "modernization", "provider_routing", "cost_efficiency", "project_focus":
-            return CLIAgentMissionBackend(chatBackend: firstEnabled([.codex, .claude, .hermes, .piAgent, .openclaw, .droid, .forge, .antigravity, .cursorAgent, .junie]) ?? .codex)
+            return CLIAgentMissionBackend(chatBackend: firstEnabled([.codex, .claude, .hermes, .piAgent, .openclaw, .droid, .forge, .antigravity, .cursorAgent, .junie, .fx]) ?? .codex)
         default:
             return CLIAgentMissionBackend(chatBackend: enabledBackends.first ?? .codex)
         }
@@ -129,7 +131,7 @@ enum CLIAgentMissionRuntimePlanner {
             switch chatBackend {
             case .hermes:
                 return false
-            case .codex, .claude, .openclaw, .piAgent, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp, .junie:
+            case .codex, .claude, .openclaw, .piAgent, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp, .junie, .fx:
                 return true
             }
         }
@@ -331,6 +333,19 @@ enum CLIAgentMissionRuntimePlanner {
                 arguments: CLIArgumentBuilder.cursorAgentArguments(prompt: hostPrompt, model: requestedModelID ?? ""),
                 extraEnvironment: [:]
             )
+        case ChatBackendID.fx.rawValue:
+            // fx has enforceable permission flags: `--auto` only under the full
+            // desktop grant, never `--yolo`; default mode exits before running
+            // unresolved sensitive calls (fail closed).
+            return CLIAgentMissionDirectLaunchPlan(
+                executableName: "fx",
+                arguments: CLIArgumentBuilder.fxArguments(
+                    prompt: hostPrompt,
+                    model: requestedModelID ?? "",
+                    capabilityGrant: capabilityGrant(for: backend, data: data)
+                ),
+                extraEnvironment: [:]
+            )
         case "opencode":
             return CLIAgentMissionDirectLaunchPlan(
                 executableName: "zsh",
@@ -423,6 +438,17 @@ enum CLIAgentMissionRuntimePlanner {
                 ),
                 extraEnvironment: [:]
             )
+        case ChatBackendID.fx.rawValue:
+            return CLIAgentMissionDirectLaunchPlan(
+                executableName: "fx",
+                arguments: CLIArgumentBuilder.fxArguments(
+                    prompt: hostPrompt,
+                    model: requestedModelID ?? "",
+                    workspaceDirectory: workingDirectory,
+                    capabilityGrant: grant
+                ),
+                extraEnvironment: [:]
+            )
         case ChatBackendID.forge.rawValue:
             return CLIAgentMissionDirectLaunchPlan(
                 executableName: "forge",
@@ -503,6 +529,7 @@ enum CLIAgentMissionRuntimePlanner {
             case .hermes: return .hermes
             case .piAgent: return .pi
             case .junie: return .junie
+            case .fx: return .fx
             }
         }
         switch backend.rawValue {
@@ -516,6 +543,7 @@ enum CLIAgentMissionRuntimePlanner {
         case "grok", "grok-build", "xai", "grok-agent": return .grok
         case "pi", "piagent", "pi-agent": return .pi
         case "junie", "jetbrains-junie", "jetbrainsjunie", "jetbrains junie": return .junie
+        case "fx", "vercel-fx", "vercelfx": return .fx
         default: return .codex
         }
     }

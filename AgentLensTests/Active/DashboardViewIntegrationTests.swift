@@ -67,6 +67,8 @@ final class DashboardViewIntegrationTests: XCTestCase {
         UserDefaults.standard.removeObject(forKey: DashboardLaunchSurface.storageKey)
         let view = try makeDashboardView()
         XCTAssertFalse(view.canGoBack, "Home is the root, so the back button must be inert there")
+        XCTAssertFalse(view.canGoForward, "Forward is empty until you go back")
+        XCTAssertEqual(view.routeForward, [])
     }
 
     func test_backButtonHelpTextOnHome() throws {

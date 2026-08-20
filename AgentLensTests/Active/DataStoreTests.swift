@@ -12,6 +12,58 @@ final class DataStoreTests: XCTestCase {
         XCTAssertEqual(OpenBurnBarDatabase.sqliteDateString(parsed!), "2026-07-03 02:48:41.000")
     }
 
+    func test_parseDateValue_acceptsISO8601AndUnixSeconds() throws {
+        XCTAssertEqual(
+            try XCTUnwrap(OpenBurnBarDatabase.parseDateValue("2026-05-24T00:00:00Z")).timeIntervalSince1970,
+            1_779_580_800,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            try XCTUnwrap(OpenBurnBarDatabase.parseDateValue(1_779_580_800)).timeIntervalSince1970,
+            1_779_580_800,
+            accuracy: 0.001
+        )
+        XCTAssertNotNil(OpenBurnBarDatabase.parseDateValue("2026-05-24"))
+    }
+
+    func test_parseDateValue_isSafeUnderConcurrentReaderLoad() {
+        let samples: [Any] = [
+            "2026-07-03 02:48:41",
+            "2026-07-03 02:48:41.123",
+            "2026-05-24 00:00:00.000",
+            "2026-05-04T08:00:00Z",
+            1_779_580_800
+        ]
+        let expected = samples.map { OpenBurnBarDatabase.parseDateValue($0)?.timeIntervalSince1970 }
+        XCTAssertTrue(expected.allSatisfy { $0 != nil })
+
+        DispatchQueue.concurrentPerform(iterations: 2_000) { index in
+            let sample = samples[index % samples.count]
+            let parsed = OpenBurnBarDatabase.parseDateValue(sample)?.timeIntervalSince1970
+            XCTAssertEqual(parsed ?? -1, expected[index % samples.count] ?? -2, accuracy: 0.001)
+            if let date = OpenBurnBarDatabase.parseDateValue(sample) {
+                let rendered = OpenBurnBarDatabase.sqliteDateString(date)
+                XCTAssertNotNil(OpenBurnBarDatabase.parseDateValue(rendered))
+            }
+        }
+    }
+
+    func test_prepareForTermination_closesWriterSoLaterReadsFail() async throws {
+        let store = try DataStore.makeInMemoryForTesting()
+        await store.prepareForTermination()
+        await store.prepareForTermination()
+
+        do {
+            _ = try await store.actor.fetchUsageTotals(in: nil)
+            XCTFail("A closed database must reject later reads.")
+        } catch let error as DatabaseError {
+            XCTAssertTrue(
+                [.SQLITE_MISUSE, .SQLITE_INTERRUPT].contains(error.resultCode),
+                "Unexpected result code \(error.resultCode)"
+            )
+        }
+    }
+
     func test_unmigratedStoreDoesNotAutoRefreshOnInit() async throws {
         let queue = try DatabaseQueue()
         let store = try DataStore(databaseQueue: queue, runMigrations: false)

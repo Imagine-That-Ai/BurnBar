@@ -9,6 +9,9 @@ enum CLIChatStreamEvent: Hashable {
     case toolUse(name: String, detail: String?)
     case toolResult(name: String, detail: String?)
     case usage(CLIUsageSnapshot)
+    /// A provider-owned session identifier for multi-turn continuation
+    /// (fx `session_id`, passed back as `--resume <id>` on the next send).
+    case sessionID(String)
 
     init?(_ event: HermesStreamEvent) {
         switch event {
@@ -63,6 +66,9 @@ enum CLIChatStreamEvent: Hashable {
             return .toolResult(id: nil, name: name, detail: detail)
         case .usage(let usage):
             return .messageStop(finishReason: nil, outcome: .normal, usage: usage.hermesTokenUsage)
+        case .sessionID:
+            // Hermes has no provider-session continuation concept; drop it.
+            return .notice(level: "info", text: "")
         }
     }
 }
@@ -129,6 +135,8 @@ enum CLIBridgeError: LocalizedError {
     /// without a full interactive grant would leave capability limits as
     /// prompt text only. Fail closed instead.
     case junieRequiresFullGrant
+    /// fx surfaced an error in its structured `ask --json` response.
+    case fxError(String)
 
     var errorDescription: String? {
         switch self {
@@ -159,6 +167,8 @@ enum CLIBridgeError: LocalizedError {
             return "CLI returned an empty response."
         case .junieRequiresFullGrant:
             return "Junie cannot run in read-only mode. Grant file edits and shell access for this thread, or pick a different assistant."
+        case .fxError(let message):
+            return message
         }
     }
 }

@@ -62,6 +62,13 @@ enum BackdropSubstrate {
     /// For surfaces that carry the smallest type (10–11pt eyebrows, dense
     /// ladders) and therefore want more headroom than the shared floor.
     static let liveElevated: Double = 0.82
+
+    /// Window chrome — the command deck and its status rail.
+    ///
+    /// Sized for liquid glass: luminous and translucent so the moving live
+    /// backdrop shines and refracts through the glass body while providing
+    /// the contrast floor needed for crisp typography.
+    static let chrome: Double = 0.38
 }
 
 // MARK: - Ink
@@ -118,6 +125,28 @@ struct BackdropInk {
             icon: adaptive.icon,
             hairline: adaptive.muted.opacity(0.28)
         )
+    }
+
+    /// Ink that contrasts with a `surface` slab, not with the kernel behind it.
+    ///
+    /// Adaptive kernel ink is for text sitting *on the backdrop* (page titles,
+    /// chrome that has no plate). Once `BackdropLegiblePlate` paints a dark
+    /// `surface` slab, that slab is the background that has to clear 4.5:1.
+    /// Using a bright-kernel sample (`tone: .dark`, near-black ink) on that
+    /// slab is how the Control Deck shipped as a wall of empty cards: the
+    /// header stayed readable on Aurora, and every tile headline vanished.
+    static func resolveForPlate(skin: AppSkin, colorScheme: ColorScheme) -> BackdropInk {
+        // Appearance tokens (`textSecondary` / `textMuted`) lose 4.5:1 once
+        // kernel bleed brightens the slab — that is the empty-deck pair,
+        // just with the polarity flipped. Use the adaptive family sized for
+        // the *plate* tone (dark slab → light ink, Editorial paper → dark
+        // ink), never the kernel sample and never the quiet static tokens.
+        let profile = BackdropReadabilityProfile.nativeFallback(
+            colorScheme: colorScheme,
+            appearanceSkin: skin,
+            liveBackdropActive: false
+        )
+        return resolve(liveBackdropActive: true, profile: profile)
     }
 }
 
@@ -188,52 +217,58 @@ struct BackdropLegiblePlate: ViewModifier {
     }
 
     func body(content: Content) -> some View {
-        content
-            .background { plate }
+        plated(content)
+            // Plate-local ink: the slab is `surface`, so the text on it must
+            // contrast with `surface`, not with whatever the kernel sampler
+            // last saw. Page-level adaptive ink stays on the header.
+            .environment(\.backdropInk, BackdropInk.resolveForPlate(skin: skin, colorScheme: colorScheme))
             .overlay(shape.stroke(strokeColor, lineWidth: strokeWidth))
             .clipShape(shape)
     }
 
+    /// Apply glass *to the content*, never as a sibling `Color.clear` layer.
+    ///
+    /// Control Deck wraps every band in `LiquidGlassGroup` (`GlassEffectContainer`).
+    /// A background view that carries its own `glassEffect` is an independent
+    /// glass shape; the container unifies those shapes into one pass that
+    /// composites *above* the tile copy. That is why the deck rendered as empty
+    /// plates with only the nested glass buttons still visible — the buttons
+    /// apply glass to themselves, so they stay the foreground of their own
+    /// shape, while the headline, ladder and footer sit under the unified tile
+    /// glass. Same failure the command-deck chrome had; same fix.
     @ViewBuilder
-    private var plate: some View {
+    private func plated(_ content: Content) -> some View {
         if skin == .editorial {
-            shape
-                .fill(DesignSystem.Colors.surface)
-                .overlay(shape.fill(accent.opacity(washOpacity)))
-        } else if liveBackdropActive {
-            ZStack {
-                // The load-bearing layer. Everything above it is material.
-                shape.fill(DesignSystem.Colors.surface.opacity(substrate))
-                glassLayer
-                shape.fill(accent.opacity(washOpacity))
+            content.background {
+                shape
+                    .fill(DesignSystem.Colors.surface)
+                    .overlay(shape.fill(accent.opacity(washOpacity)))
             }
-        } else {
-            staticPlate
-        }
-    }
-
-    @ViewBuilder
-    private var glassLayer: some View {
-        if #available(macOS 26, *) {
-            Color.clear.liquidGlassEffect(.regular, in: shape)
-        } else {
-            shape.fill(.ultraThinMaterial)
-        }
-    }
-
-    @ViewBuilder
-    private var staticPlate: some View {
-        if #available(macOS 26, *) {
-            shape
-                .fill(accent.opacity(washOpacity))
+        } else if #available(macOS 26, *) {
+            content
                 .liquidGlassEffect(.regular, in: shape)
+                .background { shape.fill(accent.opacity(washOpacity)) }
+                .background {
+                    shape.fill(
+                        DesignSystem.Colors.surface
+                            .opacity(liveBackdropActive ? substrate : staticSubstrate)
+                    )
+                }
         } else {
-            ZStack {
-                shape.fill(.ultraThinMaterial)
-                shape.fill(DesignSystem.Colors.surface.opacity(colorScheme == .dark ? 0.45 : 0.55))
-                shape.fill(accent.opacity(washOpacity))
-            }
+            content
+                .background { shape.fill(.ultraThinMaterial) }
+                .background { shape.fill(accent.opacity(washOpacity)) }
+                .background {
+                    shape.fill(
+                        DesignSystem.Colors.surface
+                            .opacity(liveBackdropActive ? substrate : staticSubstrate)
+                    )
+                }
         }
+    }
+
+    private var staticSubstrate: Double {
+        colorScheme == .dark ? 0.45 : 0.55
     }
 }
 
@@ -254,6 +289,177 @@ extension View {
                 strokeWidth: strokeWidth,
                 cornerRadius: cornerRadius,
                 substrate: substrate
+            )
+        )
+    }
+}
+
+// MARK: - Chrome plate
+
+/// The surface for window chrome that floats over the dashboard backdrop.
+///
+/// A sibling of ``BackdropLegiblePlate`` with three differences, all of which
+/// come from chrome being chrome rather than content:
+///
+///   * **It is generic over its shape.** The deck is a rounded rectangle and the
+///     status rail is effectively a capsule, and both track a user-set height,
+///     so the shape cannot be baked in as a corner radius.
+///   * **It has a specular edge.** Real glass catches light at its top rim. A
+///     uniform hairline all the way around reads as a drawn border; a gradient
+///     that is brightest at the top and fades by the bottom reads as material.
+///     This is the single cheapest thing that makes a bar look like glass
+///     instead of a translucent rectangle.
+///   * **It honours ``LiquidGlassTransparency``.** The preference existed but
+///     never reached the chrome, so dragging the Clear/Frost slider changed the
+///     page and left the bars alone. Clear thins the substrate toward the
+///     desktop; Frost lays a thick-material scrim over it.
+struct BackdropChromePlate<S: Shape>: ViewModifier {
+    let shape: S
+    var substrate: Double = BackdropSubstrate.chrome
+    var strokeOpacity: Double = 0.5
+    var shadowRadius: CGFloat = 18
+    var shadowY: CGFloat = 6
+
+    @Environment(\.dashboardLiveBackdropActive) private var liveBackdropActive
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @AppStorage(AppSkin.storageKey) private var rawSkin: String = AppSkin.aurora.rawValue
+    @AppStorage(LiquidGlassTransparency.storageKey) private var rawGlassTransparency: Double = 0
+
+    private var skin: AppSkin { AppSkin(rawValue: rawSkin) ?? .aurora }
+
+    private var clarity: Double {
+        LiquidGlassTransparency.effective(rawGlassTransparency, reduceTransparency: reduceTransparency)
+    }
+
+    /// The substrate after the Clear/Frost preference has had its say.
+    ///
+    /// Floored rather than allowed to reach zero: at full Clear the bars should
+    /// read as a pane of glass over the desktop, not vanish and leave floating
+    /// glyphs with nothing behind them.
+    private var effectiveSubstrate: Double {
+        guard clarity > 0 else { return substrate }
+        return max(0.24, substrate * LiquidGlassTransparency.fallbackPlateOpacity(clarity))
+    }
+
+    func body(content: Content) -> some View {
+        surfaced(content)
+            .overlay { specularEdge }
+            .clipShape(shape)
+            .shadow(color: shadowColor, radius: shadowRadius, y: shadowY)
+    }
+
+    /// Build the surface by applying glass *to the content*, never as a separate
+    /// layer inside `.background`.
+    ///
+    /// This is load-bearing rather than stylistic. A `Color.clear` view carrying
+    /// its own `glassEffect` is an independent glass shape, and inside a
+    /// `GlassEffectContainer` — which the deck uses so the bars merge — the
+    /// container unifies every glass shape into one pass that composites above
+    /// the container's plain sibling content. A glass background therefore paints
+    /// over the labels and buttons instead of behind them: the bars render as
+    /// blank frosted slabs while the controls are still present and hit-testable.
+    /// Applying the effect to the content, the way `liquidGlassSurface` does,
+    /// keeps the content as the glass's foreground.
+    ///
+    /// The opaque slab then goes *behind* the glass, which is also what makes the
+    /// bars legible: glass refracts what is behind it, so it needs a floor rather
+    /// than the raw kernel.
+    @ViewBuilder
+    private func surfaced(_ content: Content) -> some View {
+        if skin == .editorial {
+            content
+                .background {
+                    shape
+                        .fill(DesignSystem.Colors.surface.opacity(0.92))
+                }
+                .background {
+                    shape
+                        .fill(.ultraThinMaterial)
+                }
+        } else if #available(macOS 26, *) {
+            content
+                .liquidGlassEffect(.regular, in: shape)
+                .background { frostVeil }
+                .background { substrateSlab }
+        } else {
+            content
+                .background { shape.fill(.ultraThinMaterial) }
+                .background { substrateSlab }
+        }
+    }
+
+    private var substrateSlab: some View {
+        shape.fill(
+            DesignSystem.Colors.surface
+                .opacity(liveBackdropActive ? effectiveSubstrate : staticSubstrate)
+        )
+    }
+
+    @ViewBuilder
+    private var frostVeil: some View {
+        if clarity < 0 {
+            shape
+                .fill(.thickMaterial)
+                .opacity(LiquidGlassTransparency.frostScrimOpacity(clarity))
+        }
+    }
+
+    private var shadowColor: Color {
+        // Chrome casts onto the page beneath it with crisp, refined depth.
+        if skin == .editorial {
+            return Color.black.opacity(0.08)
+        }
+        return colorScheme == .dark
+            ? Color.black.opacity(0.35)
+            : Color.black.opacity(0.12)
+    }
+
+    /// On a static canvas the page behind the bar is already the app's own
+    /// background, so the slab only has to lift the bar off it.
+    private var staticSubstrate: Double {
+        colorScheme == .dark ? 0.52 : 0.75
+    }
+
+    /// Brightest at the top rim, fading gracefully — crisp defined border in Light mode,
+    /// luminous specular highlight in Dark mode.
+    private var specularEdge: some View {
+        let isLight = colorScheme == .light || skin == .editorial
+        return shape.stroke(
+            LinearGradient(
+                colors: isLight ? [
+                    DesignSystem.Colors.border.opacity(0.85),
+                    DesignSystem.Colors.border.opacity(0.60),
+                    DesignSystem.Colors.border.opacity(0.40)
+                ] : [
+                    Color.white.opacity(0.38),
+                    DesignSystem.Colors.border.opacity(strokeOpacity),
+                    DesignSystem.Colors.border.opacity(strokeOpacity * 0.4)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            ),
+            lineWidth: isLight ? 1.0 : 0.75
+        )
+    }
+}
+
+extension View {
+    /// Draw this view as window chrome floating over the dashboard backdrop.
+    func backdropChromePlate<S: Shape>(
+        in shape: S,
+        substrate: Double = BackdropSubstrate.chrome,
+        strokeOpacity: Double = 0.5,
+        shadowRadius: CGFloat = 18,
+        shadowY: CGFloat = 6
+    ) -> some View {
+        modifier(
+            BackdropChromePlate(
+                shape: shape,
+                substrate: substrate,
+                strokeOpacity: strokeOpacity,
+                shadowRadius: shadowRadius,
+                shadowY: shadowY
             )
         )
     }

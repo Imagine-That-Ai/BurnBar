@@ -1,23 +1,34 @@
+using System.Threading.Tasks;
 using Microsoft.UI.Xaml.Controls;
 
 namespace OpenBurnBar.App.Dashboard.Layouts;
 
-/// <summary>Centered command column concept. Swift: <c>ConstellationLayoutView.swift</c>.</summary>
+/// <summary>Centered Ask command column concept. Swift: <c>ConstellationLayoutView.swift</c>.</summary>
 public sealed partial class ConstellationLayoutView : UserControl
 {
     public ConstellationLayoutView()
     {
         InitializeComponent();
-        Loaded += OnLoaded;
+        this.BindUsageRefresh(RefreshAsync);
     }
 
-    private async void OnLoaded(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    private async Task RefreshAsync()
     {
-        Loaded -= OnLoaded;
         var summary = await DashboardUsageProvider.LoadAsync();
         SpendTile.Value = DashboardUsageSummaryFormatter.Spend(summary);
         TokensTile.Value = DashboardUsageSummaryFormatter.Tokens(summary);
         ProvidersTile.Value = DashboardUsageSummaryFormatter.Providers(summary);
         ProviderStatusText.Text = DashboardUsageSummaryFormatter.Detail(summary, "SQLCipher usage database");
+
+        if (summary.HasData)
+        {
+            AskBox.PlaceholderText = $"Ask Hermes about {DashboardUsageSummaryFormatter.Spend(summary)} spend, models, or {summary.SessionCount} sessions…";
+            ActiveContextDetail.Text = $"Hermes is grounded in {summary.SessionCount} local sessions across {summary.TotalTokens:N0} tokens.";
+        }
+        else
+        {
+            AskBox.PlaceholderText = "Ask Hermes or search everything…";
+            ActiveContextDetail.Text = "Hermes is grounded in your local session ledger.";
+        }
     }
 }

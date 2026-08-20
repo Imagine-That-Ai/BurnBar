@@ -11,7 +11,7 @@ import { SITE } from "@data/site";
 const faqEntries = [
   {
     q: "Will failover ever change my model?",
-    a: "No. Failover stays inside the model identity you asked for. If you sent `gpt-5.4`, the router must prove the destination route serves canonical model `gpt-5.4`. If no eligible account exists, BurnBar returns a structured 503 — never a silent substitute."
+    a: "No. Failover stays inside the model identity you asked for. If you sent `gpt-5.6`, the router must prove the destination route serves canonical model `gpt-5.6`. If no eligible account exists, BurnBar returns a structured 503 — never a silent substitute."
   },
   {
     q: "What is Provider-Family Failover?",
@@ -19,11 +19,11 @@ const faqEntries = [
   },
   {
     q: "What is Exact Model Failover?",
-    a: "The opt-in mode for wider failover. BurnBar may try another provider or account after quota, rate-limit, or availability failure — but only if that destination proves the same canonical model ID as the request. `gpt-5.4` can move to another route that truly serves `gpt-5.4`; it cannot become `gpt-5.4-mini`, `gpt-5.4-pro`, `gpt-5-family`, or a generic `openai:standard` route."
+    a: "The opt-in mode for wider failover. BurnBar may try another provider or account after quota, rate-limit, or availability failure — but only if that destination proves the same canonical model ID as the request. `gpt-5.6` can move to another route that truly serves `gpt-5.6`; it cannot become `gpt-5.6-mini`, `gpt-5.6-pro`, `gpt-5-family`, or a generic `openai:standard` route."
   },
   {
     q: "What counts as proof of the same model?",
-    a: "Explicit `canonicalModelID` wins. Otherwise BurnBar uses the real catalog model ID for direct models. Wrapper entries only count when they have one unambiguous exact alias, such as `factory-gpt-5.4-family` resolving to `gpt-5.4`. Broad capability labels, benchmark recommendations, and matcher-only similar models do not count."
+    a: "Explicit `canonicalModelID` wins. Otherwise BurnBar uses the real catalog model ID for direct models. Wrapper entries only count when they have one unambiguous exact alias, such as `factory-gpt-5.6-family` resolving to `gpt-5.6`. Broad capability labels, benchmark recommendations, and matcher-only similar models do not count."
   },
   {
     q: "Is the daily model board a failover mode?",
@@ -64,7 +64,7 @@ const faqEntries = [
       </ul>
 
       <div class="pagehead__visual">
-        <LockedModelRelay variant="big" modelID="gpt-5.5" modelTag="model id · invariant" />
+        <LockedModelRelay variant="big" modelID="gpt-5.6" modelTag="model id · invariant" />
       </div>
 
       <div class="pagehead__ctas">
@@ -98,9 +98,9 @@ const faqEntries = [
         <RuleVignette
           idx={1}
           variant="swap-account"
-          model="gpt-5.5"
+          model="gpt-5.6"
           title="Provider-family mode: primary key throttled → backup account, same provider family."
-          eyebrow="01 · gpt-5.5 · 429"
+          eyebrow="01 · gpt-5.6 · 429"
           client={{ name: "Forge", logo: "/brand/providers/forge.png" }}
           primary={{
             name: "OpenAI · personal",
@@ -110,18 +110,18 @@ const faqEntries = [
           fallback={{
             name: "Codex · plus",
             logo: "/brand/providers/codex.png",
-            state: "carries gpt-5.5"
+            state: "carries gpt-5.6"
           }}
           failure="429"
-          swapDetail="account only · gpt-5.5 → gpt-5.5"
+          swapDetail="account only · gpt-5.6 → gpt-5.6"
         />
 
         <RuleVignette
           idx={2}
           variant="swap-auth"
-          model="gpt-5.4"
+          model="gpt-5.6"
           title="Exact mode: Factory Standard exhausted → OpenAI route, same canonical model."
-          eyebrow="02 · gpt-5.4 · exact"
+          eyebrow="02 · gpt-5.6 · exact"
           client={{ name: "Factory Droid", logo: "/brand/providers/factory.png" }}
           primary={{
             name: "Factory Standard",
@@ -136,15 +136,15 @@ const faqEntries = [
             auth: "x-api-key"
           }}
           failure="quota"
-          swapDetail="canonical gpt-5.4 → canonical gpt-5.4"
+          swapDetail="canonical gpt-5.6 → canonical gpt-5.6"
         />
 
         <RuleVignette
           idx={3}
           variant="no-fallback"
-          model="glm-4.6"
+          model="glm-5.2"
           title="No other account carries it → 503, never a swap."
-          eyebrow="03 · glm-4.6 · 503"
+          eyebrow="03 · glm-5.2 · 503"
           client={{ name: "Cursor", logo: "/brand/providers/cursor.png" }}
           primary={{ name: "Z.ai", logo: "/brand/providers/zai.png", state: "exhausted" }}
           fallback={null}
@@ -186,7 +186,7 @@ const faqEntries = [
           <h3>Start with the requested model.</h3>
           <p>
             The incoming request creates a required identity. A direct request for
-            <code>gpt-5.4</code> requires canonical <code>gpt-5.4</code>. The router carries that
+            <code>gpt-5.6</code> requires canonical <code>gpt-5.6</code>. The router carries that
             value through ranking, retry, and audit.
           </p>
         </li>
@@ -196,14 +196,14 @@ const faqEntries = [
           <p>
             Explicit <code>canonicalModelID</code> wins. Otherwise direct catalog IDs count. Wrapper families
             count only when they have one unambiguous exact alias, like
-            <code>factory-gpt-5.4-family</code> resolving to <code>gpt-5.4</code>.
+            <code>factory-gpt-5.6-family</code> resolving to <code>gpt-5.6</code>.
           </p>
         </li>
         <li class="exactstep glass-pane">
           <span class="exactstep__num mono">03</span>
           <h3>Reject anything that merely looks close.</h3>
           <p>
-            <code>gpt-5.4-mini</code>, <code>gpt-5.4-pro</code>, <code>gpt-5-family</code>,
+            <code>gpt-5.6-mini</code>, <code>gpt-5.6-pro</code>, <code>gpt-5-family</code>,
             <code>openai:standard</code>, benchmark picks, and "similar" matcher hits are not exact
             proof. They stay advisory and never open the failover gate.
           </p>
