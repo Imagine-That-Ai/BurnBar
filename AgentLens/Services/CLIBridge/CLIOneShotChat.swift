@@ -69,6 +69,7 @@ enum CLIOneShotChat {
         let stream: AsyncThrowingStream<CLIChatStreamEvent, Error>
         switch backend {
         case .hermes:
+            // try?-ok(no stored token is a normal unauthenticated state; chatHermes takes an Optional bearer)
             let bearerToken = try? PetKeychainStore().get(.hermes)
             stream = bridge.chatHermes(
                 systemPrompt: systemPrompt,

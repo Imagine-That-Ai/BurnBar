@@ -47,8 +47,14 @@ final class FxParserTests: XCTestCase {
     }
 
     private static func json(_ dict: [String: Any]) -> String {
-        let data = try! JSONSerialization.data(withJSONObject: dict, options: [.sortedKeys])
-        return String(data: data, encoding: .utf8)!
+        // A dictionary literal written in this file cannot fail to serialise. If one
+        // ever does, an empty fixture makes the assertion that used it fail loudly,
+        // which is a better failure than a crash that takes the whole suite with it.
+        guard
+            let data = try? JSONSerialization.data(withJSONObject: dict, options: [.sortedKeys]),
+            let text = String(data: data, encoding: .utf8)
+        else { return "" }
+        return text
     }
 
     private func manifest(
@@ -398,7 +404,7 @@ final class FxParserTests: XCTestCase {
         let result = try await FxParser(logDirectoryOverride: dir.path).parse(options: options)
         XCTAssertEqual(result.usages.count, 1)
         XCTAssertEqual(result.conversations.count, 1)
-        XCTAssertTrue(result.conversations.first?.fullText.contains("hi") == true)
+        XCTAssertEqual(result.conversations.first?.fullText.contains("hi"), true)
     }
 
     // MARK: - Cache

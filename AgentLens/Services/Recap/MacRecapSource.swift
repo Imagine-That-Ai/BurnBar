@@ -76,6 +76,7 @@ struct MacRecapSource: RecapSource {
         // Conversation data is a bonus, not a precondition: if the projection
         // fails or the table is empty the recap still has every usage-derived
         // insight, and the tool rules simply do not fire.
+        // try?-ok(conversation data is a bonus, not a precondition — see the note above)
         (try? await dataStore.fetchRecapSessionRows(
             startingIn: interval.start..<interval.end
         )) ?? []
