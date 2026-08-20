@@ -1,5 +1,6 @@
 import XCTest
 @testable import OpenBurnBar
+import OpenBurnBarKernel
 
 @MainActor
 final class CLIAgentSessionInterruptTests: XCTestCase {
