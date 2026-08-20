@@ -32,6 +32,8 @@ interface ControllerHarness {
   gatewayCalls: Array<{ input: RequestInfo | URL; init?: RequestInit }>;
   contentActions: ContentAction[];
   setPopupActionError(action: string, error: Error | undefined): void;
+  setPollError(error: Error | undefined): void;
+  setExtractedSensitive(sensitive: boolean): void;
   setPopupActionNativeErrors(action: string, errors: SerializedError[]): void;
   setPopupActionHandler(
     action: string,
@@ -178,6 +180,8 @@ export function createControllerHarness(): ControllerHarness {
     (payload: Record<string, unknown>) => BridgePopupActionResult | Promise<BridgePopupActionResult>
   >();
   const popupActionResults = new Map<string, BridgePopupActionResult>();
+  let pollError: Error | undefined;
+  let extractedSensitive = false;
   let helloProtocolVersion = 1;
   let helloSessionIds = ['safari-session-1'];
   let helloCount = 0;
@@ -217,7 +221,7 @@ export function createControllerHarness(): ControllerHarness {
             snapshot: '[ref=obb-1] [role=button] [name="Buy"] [box=40,80,120,44]',
             nodes: [],
             truncated: false,
-            sensitive: false,
+            sensitive: extractedSensitive,
             capturedAt: pageState.capturedAt
           },
           pageState
@@ -371,6 +375,9 @@ export function createControllerHarness(): ControllerHarness {
         return nativeSuccess(request, { accepted: true, output: {} });
       }
       case 'bridge.poll':
+        if (pollError) {
+          throw pollError;
+        }
         return nativeSuccess(request, {
           ...(commands.length > 0 ? { command: commands.shift() } : {}),
           leaseExpiresAt: new Date(Date.now() + 60_000).toISOString(),
@@ -422,6 +429,12 @@ export function createControllerHarness(): ControllerHarness {
     commands,
     gatewayCalls,
     contentActions,
+    setPollError(error) {
+      pollError = error;
+    },
+    setExtractedSensitive(sensitive) {
+      extractedSensitive = sensitive;
+    },
     setPopupActionError(action, error) {
       if (error) {
         popupActionErrors.set(action, error);

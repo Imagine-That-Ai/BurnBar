@@ -4,7 +4,7 @@ import type { NativeBridge } from './nativeBridge';
 import { SafariPageAdapter } from './pageAdapter';
 import { SafariPerformanceRecorder } from './performance';
 import { SitePermissionController, type SitePermissionStatus } from './permissions';
-import { SafariSessionStore, type SafariPreferences } from './sessionStore';
+import { SafariSessionStore, type SafariPreferences, type StoredSiteTrust } from './sessionStore';
 import { TabOwnershipRegistry } from './tabOwnership';
 import { activeTab, type BrowserAPI, type BrowserTab } from '../shared/browser';
 import { SafariExtensionError, serializeError } from '../shared/errors';
@@ -86,6 +86,21 @@ function sleep(milliseconds: number): Promise<void> {
 
 function pageURLLooksSensitive(url: string): boolean {
   return /(?:^|[./_-])(bank|billing|checkout|credential|login|oauth|payment|signin)(?:[./_?&=-]|$)/iu.test(url);
+}
+
+/**
+ * An explicit "the daemon refused this origin" trust record.
+ *
+ * Returning `undefined` here would read as "no local override", and
+ * publishCurrentPage()'s `siteTrust ?? preferences.sites[origin]` fallback
+ * would then reload the persisted `allowed: true` entry — reporting the site
+ * as trusted, and letting prepareTurn() capture and send page context, after
+ * native trust was actually rejected. Deny explicitly so the fallback cannot
+ * resurrect it. The sensitive-site override is preserved: it is a user
+ * decision, not a native grant.
+ */
+function deniedSiteTrust(previous: StoredSiteTrust | undefined): StoredSiteTrust {
+  return { allowed: false, sensitiveOverride: previous?.sensitiveOverride ?? false };
 }
 
 function originForURL(url: string | undefined): string | undefined {
@@ -691,6 +706,13 @@ export class SafariBackgroundController {
       });
     } catch (error) {
       this.performanceRecorder.recordElapsed('command_poll', startedAt, performanceOutcome(error));
+      // A daemon or app restart AFTER a successful attach surfaces here, not in
+      // performInitialization(). Leaving the retry flag clear meant the
+      // `initialized && !nativeAttachmentFailed` early return skipped
+      // bridge.hello forever, so the extension stayed offline until the service
+      // worker restarted. This is the detection point for every caller, not
+      // just the poll loop.
+      this.nativeAttachmentFailed = true;
       throw error;
     }
     if (poll.command) {
@@ -1273,6 +1295,21 @@ export class SafariBackgroundController {
     this.assertLocalWorkCurrent(workGeneration);
     const context = await this.pageAdapter.pageContext(tab);
     this.assertLocalWorkCurrent(workGeneration);
+    // The check above only saw the URL heuristic. Extraction is what actually
+    // finds password and payment controls on pages like /account, so re-apply
+    // the override gate here — before any capture or dispatch — or an Agentic
+    // run proceeds on a sensitive page the URL never advertised.
+    if (context.sensitive && mode !== 'ask' && !this.snapshot.trust.sensitiveSiteOverride) {
+      this.mutate((state) => {
+        if (state.page) {
+          state.page.sensitive = true;
+        }
+      });
+      throw new SafariExtensionError(
+        'sensitive_site_blocked',
+        'Agentic actions on credential, banking, billing, or payment pages require an explicit site override.'
+      );
+    }
     const screenshot = await this.captureService.viewport(tab);
     this.assertLocalWorkCurrent(workGeneration);
     this.recordEpoch(context.pageState);
@@ -1378,6 +1415,14 @@ export class SafariBackgroundController {
       });
       if (!response.accepted) {
         throw new SafariExtensionError('kill_switch_rejected', 'OpenBurnBar did not accept the kill-switch change.');
+      }
+      // The daemon can stop issuing new commands, but it cannot cancel work
+      // already executing inside the extension. Without the same local halt the
+      // Stop control uses, "Stop and reject all new Computer Use actions" can
+      // return successfully while a wait_for or approved script keeps running.
+      if (patch.globalKillSwitch) {
+        this.activateLocalHalt(this.bridge.sessionId, 'Computer Use stopped by the global kill switch.');
+        await this.abortOwnedTabs('The global kill switch stopped this Safari session.');
       }
     }
     if (patch.onlyCurrentTab !== undefined) {
@@ -1839,10 +1884,10 @@ export class SafariBackgroundController {
           this.preferences = nextPreferences;
           siteTrust = nextPreferences.sites[origin];
         } else {
-          siteTrust = undefined;
+          siteTrust = deniedSiteTrust(siteTrust);
         }
       } catch {
-        siteTrust = undefined;
+        siteTrust = deniedSiteTrust(siteTrust);
       }
     }
     const base = this.pageStateFromTab(tab);

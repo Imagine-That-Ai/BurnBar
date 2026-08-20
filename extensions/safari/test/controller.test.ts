@@ -1564,6 +1564,104 @@ describe('Safari background controller integration', () => {
     });
   });
 
+  it('re-attaches after the daemon drops mid-session, not only on a failed bootstrap', async () => {
+    // A daemon/app restart AFTER a successful attach fails in the poll loop,
+    // not in performInitialization(). Without invalidating the retry flag the
+    // extension stayed offline until the service worker restarted.
+    const harness = createControllerHarness();
+    await harness.controller.initialize();
+    expect(harness.helloCount()).toBe(1);
+
+    harness.setPollError(new Error('OpenBurnBar stopped responding.'));
+    await expect(harness.controller.pollOnce()).rejects.toThrow();
+    await harness.controller.initialize();
+
+    expect(harness.helloCount()).toBe(2);
+  });
+
+  it('blocks an Agentic run when extraction finds a sensitive page the URL did not advertise', async () => {
+    // The pre-flight gate only sees the URL heuristic. /account with a password
+    // field is exactly the case it misses; extraction is what finds the field.
+    const harness = createControllerHarness();
+    const activeTab = harness.controls.tabs.get(1);
+    if (!activeTab) {
+      throw new Error('Expected the mock active Safari tab.');
+    }
+    activeTab.url = 'https://example.com/account';
+    harness.controls.grantedOrigins.add('https://*/*');
+    harness.controls.storage.set('openburnbar.safari.preferences.v1', {
+      mode: 'agentic',
+      selectedAgentId: 'vision-model',
+      onlyCurrentTab: true,
+      automaticallyTrustInvokedWebsites: true,
+      learningOptedIn: false,
+      learningConsentSeen: false,
+      sites: { 'https://example.com': { allowed: true, sensitiveOverride: false } }
+    });
+    await harness.controller.initialize();
+
+    // Clear the cloud-screenshot gate first so it cannot mask the check under
+    // test; agentic mode requires the cloud agent here.
+    expectSuccess(
+      await harness.controller.handlePopupRequest({
+        type: 'popup.setTrust',
+        patch: { cloudScreenshotAcknowledged: true }
+      })
+    );
+    harness.setExtractedSensitive(true);
+
+    const started = await harness.controller.handlePopupRequest({
+      type: 'popup.startAgentic',
+      prompt: 'fill in the form'
+    });
+
+    expect(started.ok).toBe(false);
+    if (!started.ok) {
+      expect(started.error.code).toBe('sensitive_site_blocked');
+    }
+  });
+
+  it('halts page work already running when the global kill switch is enabled', async () => {
+    // The daemon can refuse new commands but cannot cancel a wait_for or an
+    // approved script already executing inside the extension.
+    const harness = createControllerHarness();
+    await harness.controller.initialize();
+
+    const enabled = await harness.controller.handlePopupRequest({
+      type: 'popup.setTrust',
+      patch: { globalKillSwitch: true }
+    });
+
+    expectSuccess(enabled);
+    const snapshot = harness.controller.currentSnapshot();
+    expect(snapshot.running).toBe(false);
+    expect(snapshot.approvals).toEqual([]);
+    expect(JSON.stringify(snapshot.activity ?? [])).toContain('kill switch');
+  });
+
+  it('fails closed when the daemon rejects re-registering a persisted trusted site', async () => {
+    // After a reconnect clears nativeTrustedOrigins the origin is re-offered to
+    // the daemon. A rejection used to fall back to the persisted allowed:true
+    // entry, so the popup showed the site as trusted and page context could
+    // still be captured and sent.
+    const harness = createControllerHarness();
+    harness.controls.storage.set('openburnbar.safari.preferences.v1', {
+      mode: 'ask',
+      onlyCurrentTab: true,
+      automaticallyTrustInvokedWebsites: true,
+      learningOptedIn: false,
+      learningConsentSeen: false,
+      sites: { 'https://example.com': { allowed: true, sensitiveOverride: false } }
+    });
+    harness.controls.grantedOrigins.add('http://*/*');
+    harness.controls.grantedOrigins.add('https://*/*');
+    harness.setPopupActionResult('trust.update', { accepted: false, output: {} });
+
+    await harness.controller.initialize();
+
+    expect(harness.controller.currentSnapshot().trust.siteAllowed).toBe(false);
+  });
+
   it('retries the native attach after a failed bootstrap instead of latching offline', async () => {
     // performInitialization() swallows attach failures so the popup can still
     // render. Marking the controller initialized anyway left the extension
