@@ -33,11 +33,18 @@ final class MacOSIdleOcclusionGateTests: XCTestCase {
         )
 
         XCTAssertEqual(production.fragment, "boids")
-        XCTAssertNil(URLComponents(url: production, resolvingAgainstBaseURL: false)?.query)
+        XCTAssertEqual(
+            URLComponents(url: production, resolvingAgainstBaseURL: false)?.queryItems,
+            [URLQueryItem(name: "maxFps", value: "30")],
+            "Tahoe rAF is uncapped; the kernel must boot already paced"
+        )
         XCTAssertEqual(certification.fragment, "boids")
         XCTAssertEqual(
             URLComponents(url: certification, resolvingAgainstBaseURL: false)?.queryItems,
-            [URLQueryItem(name: "motion", value: "full")]
+            [
+                URLQueryItem(name: "maxFps", value: "60"),
+                URLQueryItem(name: "motion", value: "full")
+            ]
         )
     }
 
@@ -138,6 +145,27 @@ final class MacOSIdleOcclusionGateTests: XCTestCase {
     }
 
     // MARK: - Guard removal tripwire: policy must exist and be callable
+
+    func testActivityPolicy_contentOcclusionPausesVisibleWindow() {
+        XCTAssertFalse(
+            KernelBackdropActivityPolicy.shouldBackdropBeActive(
+                isVisible: true,
+                isMiniaturized: false,
+                occlusionState: .visible,
+                opaqueCoverage: 0.97,
+                windowHasSheet: false
+            )
+        )
+        XCTAssertTrue(
+            KernelBackdropActivityPolicy.shouldBackdropBeActive(
+                isVisible: true,
+                isMiniaturized: false,
+                occlusionState: .visible,
+                opaqueCoverage: 0,
+                windowHasSheet: false
+            )
+        )
+    }
 
     func testPolicy_existsAndIsCallable() {
         // If OcclusionVisibilityPolicy is removed or renamed, this test fails to compile.

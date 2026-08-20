@@ -166,6 +166,63 @@ final class SwarmSubstrateContractTests: XCTestCase {
 
     // MARK: Persistence round-trip
 
+    func testKernelCinematicPresent_dividesRefreshAndNeverPicks30On144() {
+        XCTAssertEqual(KernelCinematicPresent.presentFps(refreshHz: 60), 30)
+        XCTAssertEqual(KernelCinematicPresent.presentFps(refreshHz: 120), 30)
+        XCTAssertEqual(KernelCinematicPresent.presentFps(refreshHz: 144), 36)
+        XCTAssertNotEqual(KernelCinematicPresent.presentFps(refreshHz: 144), 30)
+        XCTAssertEqual(
+            KernelCinematicPresent.maxFrameRate(isPerformanceGateLaunch: true, refreshHz: 144),
+            60
+        )
+        XCTAssertEqual(
+            KernelCinematicPresent.maxFrameRate(isPerformanceGateLaunch: false, refreshHz: 60),
+            30
+        )
+        XCTAssertEqual(
+            KernelCinematicPresent.bootMaxFpsQueryValue(isPerformanceGateLaunch: false, refreshHz: 60),
+            "30"
+        )
+        XCTAssertEqual(
+            KernelCinematicPresent.bootMaxFpsQueryValue(isPerformanceGateLaunch: true, refreshHz: 144),
+            "60"
+        )
+        XCTAssertEqual(
+            KernelCinematicPresent.bootMaxFpsQueryValue(isPerformanceGateLaunch: false, refreshHz: 144),
+            "36"
+        )
+    }
+
+    func testKernelContentOcclusionAndOpacityPolicies() {
+        XCTAssertTrue(KernelContentOcclusionPolicy.isKernelExposed(opaqueCoverage: 0))
+        XCTAssertFalse(KernelContentOcclusionPolicy.isKernelExposed(opaqueCoverage: 0.95))
+        XCTAssertFalse(KernelContentOcclusionPolicy.isKernelExposed(opaqueCoverage: 1))
+        XCTAssertTrue(KernelWebViewOpacityPolicy.isOpaque(clarity: 0))
+        XCTAssertFalse(KernelWebViewOpacityPolicy.isOpaque(clarity: 0.2))
+    }
+
+    func testKernelSwarmOverlay_mountsOnlyForExplicitSubstrate() {
+        XCTAssertFalse(
+            KernelSwarmOverlayPolicy.shouldMountCanvas(substrateEnabled: false, substrateID: "constellation.starfire"),
+            "disabled substrate must not stack Canvas on the WebGL kernel"
+        )
+        XCTAssertFalse(
+            KernelSwarmOverlayPolicy.shouldMountCanvas(substrateEnabled: true, substrateID: OpenBurnBarUI.SubstrateCatalog.plainID),
+            "plain is a no-op substrate and must not mount a second simulator"
+        )
+        XCTAssertFalse(
+            KernelSwarmOverlayPolicy.shouldMountCanvas(substrateEnabled: true, substrateID: ""),
+            "empty id is not a substrate"
+        )
+        XCTAssertTrue(
+            KernelSwarmOverlayPolicy.shouldMountCanvas(substrateEnabled: true, substrateID: "constellation.starfire")
+        )
+        XCTAssertFalse(
+            KernelSwarmOverlayPolicy.shouldMountCanvas(substrateEnabled: false, substrateID: "plain"),
+            "the default glyph roster must not mount Canvas on the kernel"
+        )
+    }
+
     func testPreferencesDefaultToPlainAndDisabled() {
         let defaults = UserDefaults(suiteName: "substrate-contract-test-\(UUID().uuidString)")!
         // Fresh suite: no values set.
