@@ -212,6 +212,7 @@ internal fun buildFanOutChildLeaves(request: FanOutChildWriteRequest): List<Miss
                         otherRecipients = request.signalRecipients,
                     )
                 },
+                uid = request.uid,
             ).toMutableMap().apply {
                 put("groupID", request.plan.groupID)
                 put("siblingIndex", index)
@@ -225,6 +226,9 @@ internal fun buildFanOutChildLeaves(request: FanOutChildWriteRequest): List<Miss
                 sourceSkillID = request.sourceSkillID,
                 deliveryMode = request.deliveryMode,
                 key = request.key,
+                uid = request.uid,
+                requestID = missionID,
+                eventID = "000001",
             )
         val initialEvent = event["sealedPayload"] as? Map<*, *> ?: event
         MissionCreateLeaf(

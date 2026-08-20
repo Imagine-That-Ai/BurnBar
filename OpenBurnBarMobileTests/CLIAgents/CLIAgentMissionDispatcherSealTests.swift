@@ -136,6 +136,8 @@ final class CLIAgentMissionDispatcherSealTests: XCTestCase {
         let vaultKeyID = try CloudVaultCrypto.vaultKeyID(for: key)
 
         let update = try CLIAgentMissionDispatcher.cancelMissionUpdate(
+            uid: "uid-1",
+            requestID: "req-cancel",
             vaultKey: key,
             vaultKeyID: vaultKeyID
         )
@@ -146,6 +148,13 @@ final class CLIAgentMissionDispatcherSealTests: XCTestCase {
         XCTAssertEqual(update["sealedStateSchemaVersion"] as? Int, 1)
         XCTAssertEqual(update["sealedStateVaultKeyID"] as? String, vaultKeyID)
         XCTAssertNotNil(update["sealedStatePayload"])
+        let sealedState = try XCTUnwrap(update["sealedStatePayload"] as? [String: Any])
+        let expectedAAD = try CLIAgentMissionCloudSealer.missionAADContext(
+            uid: "uid-1",
+            documentID: "req-cancel",
+            field: "sealedStatePayload"
+        )
+        XCTAssertEqual(sealedState["aad"] as? String, expectedAAD.stringValue)
 
         // Critically: NO plaintext private text leaks top-level.
         XCTAssertNil(update["liveSummary"])

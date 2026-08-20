@@ -17,4 +17,32 @@ final class CLIAgentMissionClaimCallableTests: XCTestCase {
         let event = try JSONDecoder().decode(CLIAgentRelayChatEvent.self, from: data)
         XCTAssertEqual(event.kind, .unknown)
     }
+
+    func testUnknownThenCompletedKeepsDecoding() throws {
+        let unknown = try JSONDecoder().decode(CLIAgentRelayChatEvent.self, from: Data(#"{"kind":"futureKind"}"#.utf8))
+        let completed = try JSONDecoder().decode(CLIAgentRelayChatEvent.self, from: Data(#"{"kind":"completed"}"#.utf8))
+        XCTAssertEqual(unknown.kind, .unknown)
+        XCTAssertEqual(completed.kind, .completed)
+    }
+
+    func testWinnerClaimEvaluatesOnceLoserDoesNot() {
+        final class ClaimBox: @unchecked Sendable {
+            var evaluate = 0
+            var failStatus = 0
+            func winner() -> Bool {
+                evaluate += 1
+                return true
+            }
+            func loser() -> Bool {
+                failStatus += 1
+                return false
+            }
+        }
+        let box = ClaimBox()
+        XCTAssertTrue(box.winner())
+        XCTAssertFalse(box.loser())
+        XCTAssertEqual(box.evaluate, 1)
+        XCTAssertEqual(box.failStatus, 1)
+        XCTAssertTrue(MissionRuntimeCatalog.loadFixture().covers(ChatBackendID.allCases.map(\.rawValue)))
+    }
 }

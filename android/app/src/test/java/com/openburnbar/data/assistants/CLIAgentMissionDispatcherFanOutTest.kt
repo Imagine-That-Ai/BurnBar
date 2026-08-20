@@ -86,7 +86,70 @@ class CLIAgentMissionDispatcherFanOutTest {
             assertFalse("title is not a public field", leaf.publicFields.containsKey("title"))
             assertFalse("prompt is not a public field", leaf.publicFields.containsKey("prompt"))
             assertTrue(leaf.sealedPayload.containsKey("vaultKeyID") || leaf.sealedPayload.isNotEmpty())
+            val expectedRequestAad = com.openburnbar.data.cloud.CloudVaultAADContext(
+                uid = "uid-1",
+                collection = "cli_agent_mission_requests",
+                docID = leaf.requestId,
+                field = "sealedPayload",
+            ).stringValue
+            assertEquals(expectedRequestAad, leaf.sealedPayload["aad"])
+            val expectedEventAad = com.openburnbar.data.cloud.CloudVaultAADContext(
+                uid = "uid-1",
+                collection = "cli_agent_mission_requests/events",
+                docID = "${leaf.requestId}/000001",
+                field = "sealedPayload",
+            ).stringValue
+            assertEquals(expectedEventAad, leaf.initialEvent["aad"])
         }
+    }
+
+    @Test
+    fun `buildSealed create envelopes use path-bound AAD`() {
+        val sealed = CLIAgentMissionRequestPayloadFactory.buildSealed(
+            input = CLIAgentMissionRequestPayloadFactory.PayloadInput(
+                core = CLIAgentMissionRequestPayloadFactory.Core(
+                    id = "req-aad",
+                    title = "T",
+                    prompt = "P",
+                    missionKind = "chat",
+                ),
+                execution = CLIAgentMissionRequestPayloadFactory.Execution(
+                    requestedRuntime = "codex",
+                    targetProject = null,
+                    depth = "standard",
+                    approvalMode = "existing_policy",
+                    requestedModelID = null,
+                ),
+                permissions = CLIAgentMissionRequestPayloadFactory.Permissions(
+                    commandsAllowed = false,
+                    fileEditsAllowed = false,
+                ),
+            ),
+            key = vaultKey,
+            uid = "uid-1",
+        )
+        val payload = sealed["sealedPayload"] as Map<*, *>
+        val expected = com.openburnbar.data.cloud.CloudVaultAADContext(
+            uid = "uid-1",
+            collection = "cli_agent_mission_requests",
+            docID = "req-aad",
+            field = "sealedPayload",
+        ).stringValue
+        assertEquals(expected, payload["aad"])
+        val event = CLIAgentMissionRequestPayloadFactory.initialQueuedEventSealed(
+            key = vaultKey,
+            uid = "uid-1",
+            requestID = "req-aad",
+            eventID = "000001",
+        )
+        val eventPayload = event["sealedPayload"] as Map<*, *>
+        val expectedEvent = com.openburnbar.data.cloud.CloudVaultAADContext(
+            uid = "uid-1",
+            collection = "cli_agent_mission_requests/events",
+            docID = "req-aad/000001",
+            field = "sealedPayload",
+        ).stringValue
+        assertEquals(expectedEvent, eventPayload["aad"])
     }
 
     @Test

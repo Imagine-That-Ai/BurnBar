@@ -65,6 +65,12 @@ public sealed class FirestoreMissionDispatchHostTests
             Uid,
             approvalCallable: callable);
 
+        IMissionDispatchHost withoutCallable = MissionDispatchHostFactory.Create(
+            gateway,
+            credentials,
+            Uid);
+        Assert.IsType<FirestoreMissionDispatchHost>(withoutCallable);
+
         string missionId = "mission-factory";
         await gateway.Collection(CollectionPath).Document(missionId).SetDataAsync(
             CloudSyncFields.From(new[]

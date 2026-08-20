@@ -78,6 +78,7 @@ private data class AndroidMissionPrivatePayload(
     val approvalMessage: String? = null,
     val personaScopeJSON: String? = null,
     val synthesisSummary: String? = null,
+    val attachmentsJSON: String? = null,
 )
 
 @Serializable
@@ -104,12 +105,17 @@ private fun sealedMissionPayloadMap(
         ),
     )
 
-private fun sealedMissionEventPayloadMap(payload: AndroidMissionEventPrivatePayload, key: AndroidCloudVaultResolvedKey): Map<String, Any> =
+private fun sealedMissionEventPayloadMap(
+    payload: AndroidMissionEventPrivatePayload,
+    key: AndroidCloudVaultResolvedKey,
+    aadContext: CloudVaultAADContext? = null,
+): Map<String, Any> =
     CloudVaultCrypto.sealedPayloadMap(
         CloudVaultCrypto.sealPayload(
             missionCloudJson.encodeToString(payload).toByteArray(Charsets.UTF_8),
             key.keyData,
             key.vaultKeyID,
+            aadContext,
         ),
     )
 
@@ -445,13 +451,22 @@ class CLIAgentMissionDispatcher(
                 input = payloadInput,
                 key = resolvedKey,
                 signal = signalContext,
+                uid = uid,
             )
         if (signalContext != null && payload["signalEnvelope"] == null) {
             throw DispatchException("Signal at-rest activation produced no mission envelope for $id.")
         }
         val sealed = payload["sealedPayload"] as? Map<*, *>
             ?: throw DispatchException("Mission payload is missing sealedPayload.")
-        val event = dispatchQueuedEventSealed(missionKind, sourceSurface, sourceSkillID, deliveryMode, resolvedKey)
+        val event = dispatchQueuedEventSealed(
+            missionKind,
+            sourceSurface,
+            sourceSkillID,
+            deliveryMode,
+            resolvedKey,
+            uid = uid,
+            requestID = id,
+        )
         val initialEvent = event["sealedPayload"] as? Map<*, *> ?: event
         val deviceId = AndroidCloudVaultDeviceKeypair.loadOrCreate().deviceId
         val createPayload = linkedMapOf<String, Any>(
@@ -474,6 +489,8 @@ class CLIAgentMissionDispatcher(
         sourceSkillID: String?,
         deliveryMode: SkillRunDeliveryMode,
         key: AndroidCloudVaultResolvedKey,
+        uid: String,
+        requestID: String,
     ): Map<String, Any> {
         val isChat = missionKind.trim().equals("chat", ignoreCase = true)
         return CLIAgentMissionRequestPayloadFactory.initialQueuedEventSealed(
@@ -484,6 +501,9 @@ class CLIAgentMissionDispatcher(
             sourceSkillID = sourceSkillID,
             deliveryMode = deliveryMode,
             key = key,
+            uid = uid,
+            requestID = requestID,
+            eventID = "000001",
         )
     }
 
@@ -795,10 +815,17 @@ object CLIAgentMissionRequestPayloadFactory {
         val now: Instant = Instant.now(),
     )
 
-    fun buildSealed(input: PayloadInput, key: AndroidCloudVaultResolvedKey, signal: CLISignalSealContext? = null): Map<String, Any> {
+    fun buildSealed(
+        input: PayloadInput,
+        key: AndroidCloudVaultResolvedKey,
+        signal: CLISignalSealContext? = null,
+        uid: String? = null,
+    ): Map<String, Any> {
         val legacy = build(input)
         val core = input.core
         val isChat = core.missionKind.trim().equals("chat", ignoreCase = true)
+        val aadUid = uid ?: signal?.uid
+        val aadDoc = signal?.docId ?: core.id
         return applySealedPrivatePayload(
             payload = legacy,
             privatePayload =
@@ -815,6 +842,7 @@ object CLIAgentMissionRequestPayloadFactory {
             ),
             key = key,
             signal = signal,
+            aadContext = missionRequestAadContext(aadUid, aadDoc),
         )
     }
 
@@ -911,6 +939,9 @@ object CLIAgentMissionRequestPayloadFactory {
         skillStepID: String = "queued",
         now: Instant = Instant.now(),
         key: AndroidCloudVaultResolvedKey,
+        uid: String? = null,
+        requestID: String? = null,
+        eventID: String = "000001",
     ): Map<String, Any> {
         val legacy =
             initialQueuedEvent(
@@ -936,7 +967,11 @@ object CLIAgentMissionRequestPayloadFactory {
         sealed["contentSealed"] = true
         sealed["sealedSchemaVersion"] = 2
         sealed["vaultKeyID"] = key.vaultKeyID
-        sealed["sealedPayload"] = sealedMissionEventPayloadMap(privatePayload, key)
+        sealed["sealedPayload"] = sealedMissionEventPayloadMap(
+            privatePayload,
+            key,
+            missionEventAadContext(uid, requestID, eventID),
+        )
         return sealed
     }
 
@@ -945,6 +980,7 @@ object CLIAgentMissionRequestPayloadFactory {
         privatePayload: AndroidMissionPrivatePayload,
         key: AndroidCloudVaultResolvedKey,
         signal: CLISignalSealContext? = null,
+        aadContext: CloudVaultAADContext? = null,
     ): Map<String, Any> {
         val sealed = payload.toMutableMap()
         listOf(
@@ -962,7 +998,7 @@ object CLIAgentMissionRequestPayloadFactory {
         sealed["contentSealed"] = true
         sealed["sealedSchemaVersion"] = 2
         sealed["vaultKeyID"] = key.vaultKeyID
-        sealed["sealedPayload"] = sealedMissionPayloadMap(privatePayload, key)
+        sealed["sealedPayload"] = sealedMissionPayloadMap(privatePayload, key, aadContext)
         if (signal != null) {
             // Dual-write the at-rest Signal envelope (same plaintext bytes as the AES-GCM
             // seal above). Gated: signalEnvelopeMapIfEnabled returns null when the domain

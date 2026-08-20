@@ -97,6 +97,7 @@ export const PLATFORM_TRIGGER_ENDPOINTS = [
   "reconcileGooglePlayVoidedPurchasesDaily",
   "backfillPrivacyPlaintextScheduled",
   "reapHermesGatewayApprovals",
+  "reapBurnbarAttachments",
   "onCliSessionAgentReplyNotification",
   "onMobileAssistantAgentReplyNotification",
   "onAIInboxItemNotification",

@@ -10,6 +10,11 @@ final class MissionRuntimeCatalogTests: XCTestCase {
         XCTAssertTrue(catalog.covers(CLIAgentRuntime.allCases.map(\.rawValue)))
         XCTAssertTrue(catalog.covers(CLIAgentResumeTarget.allCases.map(\.rawValue)))
         XCTAssertTrue(catalog.covers(BurnBarFleetAgentID.declaredRoster.map(\.wireValue)))
+        let chatBackends = [
+            "codex", "claude", "hermes", "openclaw", "openclaude", "omp",
+            "piAgent", "droid", "forge", "antigravity", "cursorAgent", "junie", "grok", "kimi",
+        ]
+        XCTAssertTrue(catalog.covers(chatBackends))
     }
 
     func testCursorAliasesAreFirstClass() {

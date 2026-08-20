@@ -52,9 +52,9 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     handlerModule: "callables/cliAgentMissions.ts",
     bolaCoverage: [
       {
-        file: "functions/src/__tests__/cliAgentMissions.test.ts",
-        test: "appendCliAgentMissionEvent rejects a losing Mac",
-        kind: "auth-owned",
+        file: "functions/src/__tests__/bola/cliAgentMissions.bola.test.ts",
+        test: "appendCliAgentMissionEvent rejects cross-user object access",
+        kind: "runtime-cross-user",
         covers: ["appendCliAgentMissionEvent"],
         expectedOutcome: "throws",
         expectedCode: "not-found",
@@ -339,9 +339,9 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     handlerModule: "callables/burnbarAttachments.ts",
     bolaCoverage: [
       {
-        file: "functions/src/__tests__/burnbarAttachments.test.ts",
-        test: "beginBurnbarAttachment caps files at 10GiB",
-        kind: "auth-owned",
+        file: "functions/src/__tests__/bola/burnbarAttachments.bola.test.ts",
+        test: "beginBurnbarAttachment rejects cross-user object access",
+        kind: "runtime-cross-user",
         covers: ["beginBurnbarAttachment"],
         expectedOutcome: "throws",
         expectedCode: "not-found",
@@ -483,9 +483,9 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     handlerModule: "callables/cliAgentMissions.ts",
     bolaCoverage: [
       {
-        file: "functions/src/__tests__/cliAgentMissions.test.ts",
-        test: "cancelCliAgentMission cancels pending and denies cancel-after-completed",
-        kind: "auth-owned",
+        file: "functions/src/__tests__/bola/cliAgentMissions.bola.test.ts",
+        test: "cancelCliAgentMission rejects cross-user object access",
+        kind: "runtime-cross-user",
         covers: ["cancelCliAgentMission"],
         expectedOutcome: "throws",
         expectedCode: "not-found",
@@ -526,9 +526,9 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     handlerModule: "callables/cliAgentMissions.ts",
     bolaCoverage: [
       {
-        file: "functions/src/__tests__/cliAgentMissions.test.ts",
-        test: "claimCliAgentMission lets exactly one Mac claim",
-        kind: "auth-owned",
+        file: "functions/src/__tests__/bola/cliAgentMissions.bola.test.ts",
+        test: "claimCliAgentMission rejects cross-user object access",
+        kind: "runtime-cross-user",
         covers: ["claimCliAgentMission"],
         expectedOutcome: "throws",
         expectedCode: "not-found",
@@ -730,9 +730,9 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     handlerModule: "callables/burnbarAttachments.ts",
     bolaCoverage: [
       {
-        file: "functions/src/__tests__/burnbarAttachments.test.ts",
-        test: "composeParts records ≤32 sources including 33-part fan-in",
-        kind: "auth-owned",
+        file: "functions/src/__tests__/bola/burnbarAttachments.bola.test.ts",
+        test: "composeBurnbarAttachment rejects cross-user object access",
+        kind: "runtime-cross-user",
         covers: ["composeBurnbarAttachment"],
         expectedOutcome: "throws",
         expectedCode: "not-found",
@@ -965,9 +965,9 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     handlerModule: "callables/cliAgentMissions.ts",
     bolaCoverage: [
       {
-        file: "functions/src/__tests__/cliAgentMissions.test.ts",
-        test: "createCliAgentMission writes a pending mission and queued event",
-        kind: "auth-owned",
+        file: "functions/src/__tests__/bola/cliAgentMissions.bola.test.ts",
+        test: "createCliAgentMission rejects cross-user object access",
+        kind: "runtime-cross-user",
         covers: ["createCliAgentMission"],
         expectedOutcome: "throws",
         expectedCode: "not-found",
@@ -1111,9 +1111,9 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     handlerModule: "callables/burnbarAttachments.ts",
     bolaCoverage: [
       {
-        file: "functions/src/__tests__/burnbarAttachments.test.ts",
-        test: "beginBurnbarAttachment caps files at 10GiB",
-        kind: "auth-owned",
+        file: "functions/src/__tests__/bola/burnbarAttachments.bola.test.ts",
+        test: "deleteBurnbarAttachment rejects cross-user object access",
+        kind: "runtime-cross-user",
         covers: ["deleteBurnbarAttachment"],
         expectedOutcome: "throws",
         expectedCode: "not-found",
@@ -1427,9 +1427,9 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     handlerModule: "callables/burnbarAttachments.ts",
     bolaCoverage: [
       {
-        file: "functions/src/__tests__/burnbarAttachments.test.ts",
-        test: "finalize meters metadata.size not the client lie",
-        kind: "auth-owned",
+        file: "functions/src/__tests__/bola/burnbarAttachments.bola.test.ts",
+        test: "finalizeBurnbarAttachment rejects cross-user object access",
+        kind: "runtime-cross-user",
         covers: ["finalizeBurnbarAttachment"],
         expectedOutcome: "throws",
         expectedCode: "not-found",
@@ -2129,9 +2129,9 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     handlerModule: "callables/burnbarAttachments.ts",
     bolaCoverage: [
       {
-        file: "functions/src/__tests__/burnbarAttachments.test.ts",
-        test: "beginBurnbarAttachment caps files at 10GiB",
-        kind: "auth-owned",
+        file: "functions/src/__tests__/bola/burnbarAttachments.bola.test.ts",
+        test: "mintBurnbarAttachmentPartURL rejects cross-user object access",
+        kind: "runtime-cross-user",
         covers: ["mintBurnbarAttachmentPartURL"],
         expectedOutcome: "throws",
         expectedCode: "not-found",
@@ -2591,9 +2591,9 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     handlerModule: "callables/missionApprovalAnswers.ts",
     bolaCoverage: [
       {
-        file: "functions/src/__tests__/missionApprovalAnswers.test.ts",
-        test: "publishes a Mac-signed ceiling and redeems once",
-        kind: "auth-owned",
+        file: "functions/src/__tests__/bola/missionApprovalAnswers.bola.test.ts",
+        test: "publishMissionApprovalCeiling rejects cross-user object access",
+        kind: "runtime-cross-user",
         covers: ["publishMissionApprovalCeiling"],
         expectedOutcome: "throws",
         expectedCode: "not-found",
@@ -2810,21 +2810,19 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
   },
   {
     exportedName: "reapBurnbarAttachments",
-    trigger: "callable",
-    authMethod: "Firebase Auth with callable-level ownership checks",
-    appCheck: "required",
-    tenantSource: "request.auth.uid",
-    objectIdsFromClient: ["accountID"],
-    ownershipCheck: "handler derives uid from request.auth.uid and validates object path before Admin SDK access",
-    handlerModule: "callables/shared.ts",
+    trigger: "scheduled",
+    authMethod: "Cloud Scheduler / platform trigger",
+    appCheck: "not-applicable",
+    tenantSource: "job-owned collection scans",
+    objectIdsFromClient: [],
+    ownershipCheck: "server-side collection filters and per-document uid fields",
+    handlerModule: "scheduled/reapBurnbarAttachments.ts",
     bolaCoverage: [
       {
-        file: "functions/src/__tests__/bola/reapBurnbarAttachments.bola.test.ts",
-        test: "reapBurnbarAttachments rejects cross-user object access",
-        kind: "runtime-cross-user",
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "platform triggers are not client-callable",
+        kind: "platform-trigger",
         covers: ["reapBurnbarAttachments"],
-        expectedOutcome: "throws",
-        expectedCode: "not-found",
       },
     ],
     highRiskComputerUse: false,
@@ -3051,9 +3049,9 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     handlerModule: "callables/missionApprovalAnswers.ts",
     bolaCoverage: [
       {
-        file: "functions/src/__tests__/missionApprovalAnswers.test.ts",
-        test: "refuses a wider grant than the Mac-signed ceiling",
-        kind: "auth-owned",
+        file: "functions/src/__tests__/bola/missionApprovalAnswers.bola.test.ts",
+        test: "redeemMissionApprovalAnswer rejects cross-user object access",
+        kind: "runtime-cross-user",
         covers: ["redeemMissionApprovalAnswer"],
         expectedOutcome: "throws",
         expectedCode: "not-found",
@@ -4127,9 +4125,9 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     handlerModule: "callables/burnbarAttachments.ts",
     bolaCoverage: [
       {
-        file: "functions/src/__tests__/burnbarAttachments.test.ts",
-        test: "beginBurnbarAttachment caps files at 10GiB",
-        kind: "auth-owned",
+        file: "functions/src/__tests__/bola/burnbarAttachments.bola.test.ts",
+        test: "ticketBurnbarAttachmentDownload rejects cross-user object access",
+        kind: "runtime-cross-user",
         covers: ["ticketBurnbarAttachmentDownload"],
         expectedOutcome: "throws",
         expectedCode: "not-found",
@@ -4169,9 +4167,9 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     handlerModule: "callables/cliAgentMissions.ts",
     bolaCoverage: [
       {
-        file: "functions/src/__tests__/cliAgentMissions.test.ts",
-        test: "updateCliAgentMissionStatus denies a loser fail without the winner nonce",
-        kind: "auth-owned",
+        file: "functions/src/__tests__/bola/cliAgentMissions.bola.test.ts",
+        test: "updateCliAgentMissionStatus rejects cross-user object access",
+        kind: "runtime-cross-user",
         covers: ["updateCliAgentMissionStatus"],
         expectedOutcome: "throws",
         expectedCode: "not-found",

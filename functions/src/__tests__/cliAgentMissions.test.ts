@@ -193,6 +193,23 @@ describe("createCliAgentMission", () => {
     expect(store.get(`users/${ALICE_UID}/cli_agent_mission_requests/m-10`)).toBeUndefined();
   });
 
+  it("61st hourly create through the callable is resource-exhausted", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-19T00:00:00.000Z"));
+    for (let i = 0; i < 60; i += 1) {
+      if (i > 0 && i % 10 === 0) {
+        vi.advanceTimersByTime(61_000);
+      }
+      const id = `hourly-${i}`;
+      await expect(runCreate(authed(createPayload(id)))).resolves.toMatchObject({ ok: true, requestId: id });
+    }
+    await expect(runCreate(authed(createPayload("hourly-60")))).rejects.toMatchObject({
+      code: "resource-exhausted",
+    });
+    expect(store.get(`users/${ALICE_UID}/cli_agent_mission_requests/hourly-60`)).toBeUndefined();
+    vi.useRealTimers();
+  });
+
   it("rejects an unknown runtime and does not write", async () => {
     store.clear();
     await expect(
