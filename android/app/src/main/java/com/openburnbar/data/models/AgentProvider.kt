@@ -48,6 +48,8 @@ enum class AgentProvider(val key: String, val displayName: String, val brandColo
                 CODEX,
                 OPENCODE,
                 OPEN_CLAW,
+                OPEN_CLAUDE,
+                OMP,
                 HERMES,
                 PRIME_AGENT,
                 GEMINI_CLI,

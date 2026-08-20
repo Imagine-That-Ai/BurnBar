@@ -5,10 +5,13 @@ import java.io.FileInputStream
 
 /** Content-addressed BLAKE3. Ticket strings are not hashes. */
 object ContentBlake3 {
+    private const val DIGEST_HEX_LENGTH = 64
+    private const val FILE_READ_BUFFER_BYTES = 64 * 1024
+
     fun parse(raw: String): String {
         var value = raw.trim().lowercase()
         if (value.startsWith("blake3:")) value = value.removePrefix("blake3:")
-        require(value.length == 64 && value.all { it in '0'..'9' || it in 'a'..'f' }) {
+        require(value.length == DIGEST_HEX_LENGTH && value.all { it in '0'..'9' || it in 'a'..'f' }) {
             "blobHash must be a 64-hex blake3 digest, not a ticket"
         }
         return value
@@ -20,7 +23,7 @@ object ContentBlake3 {
         require(file.isFile) { "missing file for content hash" }
         val hasher = Hasher()
         FileInputStream(file).use { input ->
-            val buf = ByteArray(64 * 1024)
+            val buf = ByteArray(FILE_READ_BUFFER_BYTES)
             while (true) {
                 val n = input.read(buf)
                 if (n <= 0) break
@@ -59,7 +62,7 @@ object ContentBlake3 {
             return this
         }
 
-        fun finalizeHex(): String = finalize().joinToString("") { "%02x".format(it.toInt() and 0xff) }
+        fun finalizeHex(): String = finalize().joinToString("") { "%02x".format(it.toInt() and BYTE_MASK) }
 
         fun finalize(): ByteArray {
             var output = chunkState.output()
@@ -146,6 +149,20 @@ object ContentBlake3 {
         companion object {
             private const val BLOCK_LEN = 64
             private const val CHUNK_LEN = 1024
+            private const val STATE_WORDS = 16
+            private const val CV_WORDS = 8
+            private const val IV_MIX_WORDS = 4
+            private const val ROUNDS = 7
+            private const val BYTE_MASK = 0xff
+            private const val BYTE_MASK_U = 0xffu
+            private const val STATE_COUNTER_LOW = 12
+            private const val STATE_COUNTER_HIGH = 13
+            private const val STATE_BLOCK_LEN = 14
+            private const val STATE_FLAGS = 15
+            private const val G_ROT_FIRST = 16
+            private const val G_ROT_SECOND = 12
+            private const val G_ROT_THIRD = 8
+            private const val G_ROT_FOURTH = 7
             private val CHUNK_START = 1u shl 0
             private val CHUNK_END = 1u shl 1
             private val PARENT = 1u shl 2
@@ -164,61 +181,64 @@ object ContentBlake3 {
             private val MSG_PERMUTATION = intArrayOf(2, 6, 3, 10, 7, 0, 4, 13, 1, 11, 12, 5, 9, 14, 15, 8)
 
             private fun parentOutput(left: UIntArray, right: UIntArray, keyWords: UIntArray, flags: UInt): Output {
-                val block = UIntArray(16)
-                left.copyInto(block, 0, 0, 8)
-                right.copyInto(block, 8, 0, 8)
+                val block = UIntArray(STATE_WORDS)
+                left.copyInto(block, 0, 0, CV_WORDS)
+                right.copyInto(block, CV_WORDS, 0, CV_WORDS)
                 return Output(keyWords.copyOf(), block, 0u, BLOCK_LEN.toUInt(), flags or PARENT)
             }
 
-            private fun first8(words: UIntArray): UIntArray = words.copyOfRange(0, 8)
+            private fun first8(words: UIntArray): UIntArray = words.copyOfRange(0, CV_WORDS)
 
             private fun wordsFrom(bytes: ByteArray): UIntArray {
                 val block = ByteArray(BLOCK_LEN)
                 bytes.copyInto(block, 0, 0, minOf(bytes.size, BLOCK_LEN))
-                val words = UIntArray(16)
-                for (i in 0 until 16) {
-                    val o = i * 4
-                    words[i] =
-                        (block[o].toUInt() and 0xffu) or
-                        ((block[o + 1].toUInt() and 0xffu) shl 8) or
-                        ((block[o + 2].toUInt() and 0xffu) shl 16) or
-                        ((block[o + 3].toUInt() and 0xffu) shl 24)
+                val words = UIntArray(STATE_WORDS)
+                for (i in words.indices) {
+                    var word = 0u
+                    for (byteIndex in 0 until UInt.SIZE_BYTES) {
+                        val byte = block[i * UInt.SIZE_BYTES + byteIndex].toUInt() and BYTE_MASK_U
+                        word = word or (byte shl (byteIndex * Byte.SIZE_BITS))
+                    }
+                    words[i] = word
                 }
                 return words
             }
 
             private fun wordsToBytes(words: UIntArray): ByteArray {
-                val out = ByteArray(words.size * 4)
+                val out = ByteArray(words.size * UInt.SIZE_BYTES)
                 var i = 0
                 for (w in words) {
-                    out[i++] = (w and 0xffu).toByte()
-                    out[i++] = ((w shr 8) and 0xffu).toByte()
-                    out[i++] = ((w shr 16) and 0xffu).toByte()
-                    out[i++] = ((w shr 24) and 0xffu).toByte()
+                    for (byteIndex in 0 until UInt.SIZE_BYTES) {
+                        out[i++] = ((w shr (byteIndex * Byte.SIZE_BITS)) and BYTE_MASK_U).toByte()
+                    }
                 }
                 return out
             }
 
             private fun compress(chainingValue: UIntArray, blockWords: UIntArray, counter: UInt, blockLen: UInt, flags: UInt): UIntArray {
-                val state = UIntArray(16)
-                for (i in 0 until 8) state[i] = chainingValue[i]
-                for (i in 0 until 4) state[8 + i] = IV[i]
-                state[12] = counter
-                state[13] = 0u
-                state[14] = blockLen
-                state[15] = flags
-                val block = blockWords.copyOf(16)
-                repeat(7) {
+                val state = UIntArray(STATE_WORDS)
+                chainingValue.copyInto(state, 0, 0, CV_WORDS)
+                IV.copyInto(state, CV_WORDS, 0, IV_MIX_WORDS)
+                state[STATE_COUNTER_LOW] = counter
+                state[STATE_COUNTER_HIGH] = 0u
+                state[STATE_BLOCK_LEN] = blockLen
+                state[STATE_FLAGS] = flags
+                val block = blockWords.copyOf(STATE_WORDS)
+                repeat(ROUNDS) {
                     round(state, block)
                     permute(block)
                 }
-                for (i in 0 until 8) {
-                    state[i] = state[i] xor state[i + 8]
-                    state[i + 8] = state[i + 8] xor chainingValue[i]
+                for (i in 0 until CV_WORDS) {
+                    state[i] = state[i] xor state[i + CV_WORDS]
+                    state[i + CV_WORDS] = state[i + CV_WORDS] xor chainingValue[i]
                 }
                 return state
             }
 
+            // Column mixes then diagonal mixes, unrolled in spec order so the hot
+            // per-block loop keeps compile-time-constant indices (no per-round
+            // iterator or table indirection).
+            @Suppress("MagicNumber") // reason: BLAKE3 §2.2 round schedule; the literal indices ARE the spec and are pinned by the official KATs.
             private fun round(state: UIntArray, m: UIntArray) {
                 g(state, 0, 4, 8, 12, m[0], m[1])
                 g(state, 1, 5, 9, 13, m[2], m[3])
@@ -231,23 +251,21 @@ object ContentBlake3 {
             }
 
             private fun permute(m: UIntArray) {
-                val next = UIntArray(16)
-                for (i in 0 until 16) next[i] = m[MSG_PERMUTATION[i]]
+                val next = UIntArray(STATE_WORDS)
+                for (i in next.indices) next[i] = m[MSG_PERMUTATION[i]]
                 next.copyInto(m)
             }
 
             private fun g(state: UIntArray, a: Int, b: Int, c: Int, d: Int, mx: UInt, my: UInt) {
                 state[a] = state[a] + state[b] + mx
-                state[d] = rotateRight(state[d] xor state[a], 16)
+                state[d] = (state[d] xor state[a]).rotateRight(G_ROT_FIRST)
                 state[c] = state[c] + state[d]
-                state[b] = rotateRight(state[b] xor state[c], 12)
+                state[b] = (state[b] xor state[c]).rotateRight(G_ROT_SECOND)
                 state[a] = state[a] + state[b] + my
-                state[d] = rotateRight(state[d] xor state[a], 8)
+                state[d] = (state[d] xor state[a]).rotateRight(G_ROT_THIRD)
                 state[c] = state[c] + state[d]
-                state[b] = rotateRight(state[b] xor state[c], 7)
+                state[b] = (state[b] xor state[c]).rotateRight(G_ROT_FOURTH)
             }
-
-            private fun rotateRight(x: UInt, n: Int): UInt = (x shr n) or (x shl (32 - n))
         }
     }
 }
