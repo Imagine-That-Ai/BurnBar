@@ -151,13 +151,12 @@ struct DashboardBackdrop: View {
                 LiquidGlassWindowBlend()
                     .ignoresSafeArea()
             }
-            if settingsManager.appearanceSkin == .editorial {
-                // Editorial / Paper skin: the light dot-crest (provider logos
-                // drifting from coloured dots on paper), like app.burnbar.ai.
-                WebsiteBackgroundView(accent: DesignSystem.Colors.ember)
-            } else if dynamicBackdropEnabled {
+            // An explicitly chosen live backdrop outranks the skin's default
+            // background. Editorial used to short-circuit above this, which meant
+            // picking a kernel theme on the paper skin rendered nothing at all —
+            // the theme was chosen, stored, and then never consulted.
+            if shouldUseKernelBackdrop {
                 Group {
-                    if shouldUseKernelBackdrop {
                         // Full-window WebGL2 kernel field (the bottom-most
                         // backdrop layer). Reuses the same clear-surface
                         // plumbing as the swarm, so dashboard content composites
@@ -173,7 +172,16 @@ struct DashboardBackdrop: View {
                         )
                             .ignoresSafeArea()
                         kernelSubstrateOverlay
-                    } else if settingsManager.useConstellationBackground {
+                    }
+                }
+                .opacity(1 - 0.82 * clarity)
+            } else if settingsManager.appearanceSkin == .editorial {
+                // Editorial / Paper skin: the light dot-crest (provider logos
+                // drifting from coloured dots on paper), like app.burnbar.ai.
+                WebsiteBackgroundView(accent: DesignSystem.Colors.ember)
+            } else if dynamicBackdropEnabled {
+                Group {
+                    if settingsManager.useConstellationBackground {
                         ConstellationBackgroundView(
                             accent: DesignSystem.Colors.ember,
                             enabledProviderGlyphs: settingsManager.desktopWallpaperProviderGlyphs
