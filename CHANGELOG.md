@@ -28,6 +28,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   preview is not a usable config; `--status` never shows the credential field.
   Locked by `scripts/prime-agent-openburnbar-proxy.test.mjs` in fast-feedback.
   Docs: `docs/PROVIDERS.md` → Prime Agent via OpenBurnBar Gateway.
+- Prime Agent gateway proxy stops reporting success while writing a config that
+  cannot work. A `models.json` whose root was a JSON array — or whose `providers`
+  was an array — took the merge silently, because `JSON.stringify` drops named
+  properties assigned to an array: the run printed `Synced openburnbar provider
+  … models: 155` and wrote the original file straight back. Those shapes are now
+  reported with the path and left untouched. `--gateway-host`/`--gateway-port`
+  are validated before any read or write, so `--gateway-port abc` fails fast
+  instead of embedding `http://127.0.0.1:NaN/v1`; IPv6 literals are bracketed;
+  and the gateway URL is built in one place rather than concatenated at six call
+  sites. `--remove --print` now emits the providers that actually survive the
+  delete (it claimed an empty set) with its prose on stderr, so its stdout is
+  valid JSON like every other `--print` mode. `--help` renders the header as help
+  text instead of spilling `import` statements at the reader.
 - Close SQLCipher before `NSApplication` calls `exit()`, so a quit (including
   the installed app terminating a DerivedData duplicate) cannot SIGSEGV inside
   `sqlcipher_memset` on a live GRDB reader. Concurrent usage hydration now

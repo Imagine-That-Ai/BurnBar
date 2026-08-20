@@ -405,13 +405,21 @@ static authentication, and `--gateway-host`/`--gateway-port` when the daemon
 runs on a non-default interface. Re-run after updating BurnBar or rotating the
 gateway token; `--live` reflects the gateway's currently advertised set.
 
-`--print` is a preview surface, and its stdout never carries credential material.
-Plain `--print` emits the shell resolver verbatim, so `--print > models.json`
-produces a working config. `--print --token <tok>` prints
-`<redacted: static gateway token>` in place of the literal and warns on stderr,
-because that preview is **not** a usable config — re-run without `--print` to
-install a static token, or drop `--token` and export
-`OPENBURNBAR_GATEWAY_AUTH_TOKEN` to get a pipeable secret-free fragment.
+`--print` previews without writing, and its stdout is always exactly the document
+that would be written — every human-readable line goes to stderr — so both
+`--print > models.json` and `--remove --print > models.json` emit valid JSON.
+Credential material never reaches stdout: plain `--print` emits the shell
+resolver verbatim, while `--print --token <tok>` substitutes
+`<redacted: static gateway token>` and warns on stderr that the preview is **not**
+a usable config. Re-run without `--print` to install a static token, or drop
+`--token` and export `OPENBURNBAR_GATEWAY_AUTH_TOKEN` for a pipeable secret-free
+fragment.
+
+Writes are atomic and keep one generation of history: the previous file is copied
+to `models.json.bak` before the replace. An existing `models.json` that is not a
+JSON object — or whose `providers` is an array — is reported and left untouched
+instead of being silently discarded, and an invalid `--gateway-host` /
+`--gateway-port` fails before anything is read or written.
 
 Gateway execution source for these turns is `primeAgent`/`prime-agent`, so
 BurnBar's ledger attributes spend correctly and the PrimeAgent parser's cost

@@ -20,6 +20,13 @@
  *   node scripts/prime-agent-openburnbar-proxy.mjs --print              # print JSON fragment to stdout (no write)
  *   node scripts/prime-agent-openburnbar-proxy.mjs --gateway-host 127.0.0.1 --gateway-port 8317
  *
+ * Auth: the emitted apiKey is a shell command prime-agent runs per request,
+ * resolving $OPENBURNBAR_GATEWAY_AUTH_TOKEN -> the daemon LaunchAgent plist ->
+ * the openburnbar-local placeholder. Every rung is non-interactive, so SSH, CI,
+ * and background agents get the same token a GUI session does. Export the env
+ * var on hosts without the daemon plist; prefer that over --token, which writes
+ * the literal to disk. `--print` never prints a --token literal.
+ *
  * Idempotent: re-running with same catalog produces same models.json.
  * Preserves all other providers in models.json (e.g., meta).
  */
@@ -52,10 +59,41 @@ const PRIME_MODELS_PATH = path.join(os.homedir(), ".prime", "agent", "models.jso
  * `printf '%s\n'` rather than `echo`: POSIX `echo` expands backslash escapes, so
  * `echo` silently corrupts any token containing one.
  */
+const PLIST_TOKEN_COMMAND =
+  "plutil -extract EnvironmentVariables.OPENBURNBAR_GATEWAY_AUTH_TOKEN raw " +
+  "~/Library/LaunchAgents/com.openburnbar.daemon.plist 2>/dev/null";
+
 function apiKeyShellCommand() {
   // Leading `!` is prime-agent's "run this as a shell command" marker (see
   // resolveConfigValue); it is stripped before exec, not shell negation.
-  return `![ -n "$OPENBURNBAR_GATEWAY_AUTH_TOKEN" ] && printf '%s\\n' "$OPENBURNBAR_GATEWAY_AUTH_TOKEN" || plutil -extract EnvironmentVariables.OPENBURNBAR_GATEWAY_AUTH_TOKEN raw ~/Library/LaunchAgents/com.openburnbar.daemon.plist 2>/dev/null || printf '%s\\n' openburnbar-local`;
+  return `![ -n "$OPENBURNBAR_GATEWAY_AUTH_TOKEN" ] && printf '%s\\n' "$OPENBURNBAR_GATEWAY_AUTH_TOKEN" || ${PLIST_TOKEN_COMMAND} || printf '%s\\n' openburnbar-local`;
+}
+
+/**
+ * Single source of truth for the gateway URL, and the validation gate for
+ * `--gateway-host` / `--gateway-port`. `new URL` rejects every malformed
+ * combination — empty host, non-numeric or out-of-range port, a pasted
+ * `http://host` — that would otherwise be concatenated straight into
+ * models.json and resurface later as an opaque request failure. IPv6 literals
+ * need brackets before they parse.
+ */
+function gatewayBaseUrl(host, port) {
+  const raw = String(host);
+  const literal = raw.includes(":") && !raw.startsWith("[") ? `[${raw}]` : raw;
+  const numericPort = Number(String(port).trim());
+  // `new URL` accepts port 0 by normalising it away to the scheme default, and
+  // 0 is not a port a client can connect to, so the range is checked here
+  // rather than left to the parser.
+  const inRange = Number.isInteger(numericPort) && numericPort >= 1 && numericPort <= 65535;
+  if (inRange) {
+    try {
+      return new URL(`http://${literal}:${numericPort}/v1`).href;
+    } catch { /* fall through to the shared diagnostic */ }
+  }
+  throw new Error(
+    `Invalid gateway address: --gateway-host "${host}" --gateway-port "${port}". ` +
+    "Expected a bare host or IP and a port from 1 to 65535.",
+  );
 }
 
 function contextWindowFor(providerId, modelId) {
@@ -143,8 +181,8 @@ function buildModelsFromCatalog(catalog) {
   return models;
 }
 
-async function fetchLiveModels(gatewayHost, gatewayPort, explicitToken) {
-  const url = `http://${gatewayHost}:${gatewayPort}/v1/models`;
+async function fetchLiveModels(gatewayBase, explicitToken) {
+  const url = `${gatewayBase}/models`;
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(), 3500);
   try {
@@ -155,7 +193,7 @@ async function fetchLiveModels(gatewayHost, gatewayPort, explicitToken) {
       try {
         const { execSync } = await import("node:child_process");
         token = execSync(
-          "plutil -extract EnvironmentVariables.OPENBURNBAR_GATEWAY_AUTH_TOKEN raw ~/Library/LaunchAgents/com.openburnbar.daemon.plist 2>/dev/null || true",
+          `${PLIST_TOKEN_COMMAND} || true`,
           // Bounded so a slow plist read cannot outlive the 3.5s fetch budget.
           { encoding: "utf8", timeout: 4000 }
         ).trim();
@@ -248,10 +286,31 @@ function readModelsJson(modelsPath) {
     raw = fs.readFileSync(modelsPath, "utf8").trim();
   } catch (err) {
     if (err?.code === "ENOENT") return { providers: {} };
-    throw err;
+    throw new Error(`Cannot read ${modelsPath}: ${err.message}`);
   }
   if (!raw) return { providers: {} };
-  const parsed = JSON.parse(raw);
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    throw new Error(
+      `${modelsPath} is not valid JSON: ${err.message}. ` +
+      "Move it aside and re-run — prime-agent recreates it on demand.",
+    );
+  }
+  // A non-object root, or a `providers` array, loses the merge silently:
+  // JSON.stringify drops named properties assigned to an array, so the sync
+  // would report success and write the original file straight back.
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(
+      `${modelsPath} must hold a JSON object at the top level, found ` +
+      `${Array.isArray(parsed) ? "an array" : parsed === null ? "null" : typeof parsed}. ` +
+      "Move it aside and re-run.",
+    );
+  }
+  if (Array.isArray(parsed.providers)) {
+    throw new Error(`${modelsPath} has a "providers" array; it must be an object. Move it aside and re-run.`);
+  }
   if (!parsed.providers || typeof parsed.providers !== "object") parsed.providers = {};
   return parsed;
 }
@@ -317,20 +376,27 @@ async function main() {
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--gateway-host" && valueAt(i)) opts.gatewayHost = args[++i];
     else if (args[i].startsWith("--gateway-host=")) opts.gatewayHost = args[i].slice("--gateway-host=".length);
-    else if (args[i] === "--gateway-port" && valueAt(i)) opts.gatewayPort = parseInt(args[++i], 10);
-    else if (args[i].startsWith("--gateway-port=")) opts.gatewayPort = parseInt(args[i].slice("--gateway-port=".length), 10);
+    else if (args[i] === "--gateway-port" && valueAt(i)) opts.gatewayPort = args[++i];
+    else if (args[i].startsWith("--gateway-port=")) opts.gatewayPort = args[i].slice("--gateway-port=".length);
     else if ((args[i] === "--token" || args[i] === "--api-key") && valueAt(i)) opts.token = args[++i];
     else if (args[i].startsWith("--token=")) opts.token = args[i].slice("--token=".length);
     else if (args[i].startsWith("--api-key=")) opts.token = args[i].slice("--api-key=".length);
   }
   opts.token = opts.token?.trim() || undefined;
   if (opts.help) {
-    console.log(fs.readFileSync(fileURLToPath(import.meta.url), "utf8").split("\n").slice(0,30).join("\n"));
-    console.log("\nOptions: --live --remove --status --print --token <token> --api-key <token> --gateway-host <host> --gateway-port <port>");
+    // Render the file header as help text. Bounded by the end of the comment
+    // rather than a line count, so it cannot drift into printing import
+    // statements at the user when the header grows.
+    const source = fs.readFileSync(fileURLToPath(import.meta.url), "utf8");
+    const header = source.slice(0, source.indexOf("*/")).split("\n").slice(2);
+    console.log(header.map((line) => line.replace(/^\s*\* ?/u, "")).join("\n").trimEnd());
+    console.log("\nOptions: --live --remove --status --print --token <token> --api-key <token> --gateway-host <host> --gateway-port <port> --help");
     process.exit(0);
   }
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
   const modelsPath = process.env.PRIME_MODELS_PATH ?? PRIME_MODELS_PATH;
+  // Validate before any read or write, so a bad address never reaches models.json.
+  const gatewayBase = gatewayBaseUrl(opts.gatewayHost, opts.gatewayPort);
 
   if (opts.status) {
     const data = readModelsJson(modelsPath);
@@ -338,7 +404,7 @@ async function main() {
     if (!entry) {
       console.log("openburnbar provider: not configured");
       console.log(`models.json: ${modelsPath}`);
-      console.log(`gateway: http://${opts.gatewayHost}:${opts.gatewayPort}`);
+      console.log(`gateway: ${gatewayBase}`);
       process.exit(1);
     }
     const safe = redactProviderForDisplay(entry);
@@ -353,14 +419,17 @@ async function main() {
 
   if (opts.remove) {
     const data = readModelsJson(modelsPath);
+    // In --print mode stdout carries only the document, so prose goes to stderr
+    // and the preview shows the providers that actually survive the delete.
+    const say = opts.print ? console.warn : console.log;
     if (data.providers["openburnbar"]) {
       delete data.providers["openburnbar"];
       if (!opts.print) writeModelsJson(modelsPath, data);
-      console.log(`Removed openburnbar provider from ${modelsPath}`);
+      say(`Removed openburnbar provider from ${modelsPath}`);
     } else {
-      console.log("openburnbar provider not present — nothing to remove.");
+      say("openburnbar provider not present — nothing to remove.");
     }
-    if (opts.print) console.log(JSON.stringify({ providers: {} }, null, 2));
+    if (opts.print) console.log(JSON.stringify(data, null, 2));
     process.exit(0);
   }
 
@@ -368,12 +437,12 @@ async function main() {
   let models;
   let source = "catalog";
   if (opts.live) {
-    const liveIds = await fetchLiveModels(opts.gatewayHost, opts.gatewayPort, opts.token);
+    const liveIds = await fetchLiveModels(gatewayBase, opts.token);
     if (liveIds && liveIds.length > 0) {
       models = buildModelsFromLiveIds(liveIds, catalog);
-      source = `live gateway http://${opts.gatewayHost}:${opts.gatewayPort}/v1/models (${liveIds.length} models)`;
+      source = `live gateway ${gatewayBase}/models (${liveIds.length} models)`;
     } else {
-      console.warn(`Live gateway not reachable at http://${opts.gatewayHost}:${opts.gatewayPort}/v1/models — falling back to static catalog.`);
+      console.warn(`Live gateway not reachable at ${gatewayBase}/models — falling back to static catalog.`);
       models = buildModelsFromCatalog(catalog);
     }
   } else {
@@ -382,7 +451,7 @@ async function main() {
 
   const providerEntry = {
     name: "OpenBurnBar Gateway",
-    baseUrl: `http://${opts.gatewayHost}:${opts.gatewayPort}/v1`,
+    baseUrl: gatewayBase,
     api: "openai-completions",
     apiKey: opts.token ?? apiKeyShellCommand(),
     models,
@@ -415,7 +484,7 @@ async function main() {
   console.log(`Synced openburnbar provider -> ${modelsPath}`);
   console.log(`  source: ${source}`);
   console.log(`  models: ${models.length} (was ${existingCount})`);
-  console.log(`  gateway: http://${opts.gatewayHost}:${opts.gatewayPort}`);
+  console.log(`  gateway: ${gatewayBase}`);
   console.log(`  apiKey: ${opts.token ? "static token (passed via CLI)" : "shell command (resolves at request time from env/LaunchAgent plist)"}`);
   console.log(`\nVerify: prime-agent model list openburnbar | head`);
   console.log(`Try:     prime-agent --provider openburnbar --model ${models[0]?.id ?? "claude-sonnet-4-6"} -p "hello via burnbar"`);

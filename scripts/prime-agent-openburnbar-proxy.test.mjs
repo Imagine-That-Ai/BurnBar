@@ -11,7 +11,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -200,6 +200,32 @@ test("sync preserves foreign providers and stays idempotent", () => {
   assert.ok(second.stdout.includes(`models: ${firstCount} (was ${firstCount})`));
 });
 
+test("--live falls back to the catalog when the gateway is unreachable", () => {
+  const dir = tempDir();
+  const modelsPath = join(dir, "models.json");
+  // Nothing listens on port 1, so the probe fails fast with ECONNREFUSED rather
+  // than burning the 3.5s abort budget.
+  const result = run(["--live", "--gateway-port", "1"], { PRIME_MODELS_PATH: modelsPath });
+  assert.equal(result.status, 0, `degraded --live must still succeed: ${result.stderr}`);
+  assert.match(result.stderr, /Live gateway not reachable/, "the downgrade must be announced");
+  assert.match(result.stdout, /source: catalog/, "the summary must name the source it actually used");
+  const written = JSON.parse(readFileSync(modelsPath, "utf8"));
+  assert.ok(written.providers.openburnbar.models.length > 100,
+    "a degraded probe must still install the full catalog, not an empty provider");
+  assert.equal(written.providers.openburnbar.baseUrl, "http://127.0.0.1:1/v1");
+});
+
+test("--help documents the flags without leaking source", () => {
+  const result = run(["--help"]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.ok(!result.stdout.includes("import fs from"), "help must stop at the header comment");
+  assert.ok(!result.stdout.includes("/**"), "help must not render comment delimiters");
+  for (const flag of ["--live", "--remove", "--status", "--print", "--token", "--api-key", "--gateway-host", "--gateway-port"]) {
+    assert.ok(result.stdout.includes(flag), `help must document ${flag}`);
+  }
+  assert.match(result.stdout, /OPENBURNBAR_GATEWAY_AUTH_TOKEN/, "help must point headless users at the env var");
+});
+
 test("--status redacts the stored apiKey", () => {
   const dir = tempDir();
   const modelsPath = join(dir, "models.json");
@@ -224,6 +250,60 @@ test("--status redacts the stored apiKey", () => {
 test("--gateway-host and --gateway-port overrides reach baseUrl", () => {
   const { fragment } = printFragment(["--gateway-host", "10.0.0.5", "--gateway-port", "9421"]);
   assert.equal(fragment.providers.openburnbar.baseUrl, "http://10.0.0.5:9421/v1");
+  // An IPv6 literal has to be bracketed or the URL is unparseable.
+  const v6 = printFragment(["--gateway-host", "::1"]);
+  assert.equal(v6.fragment.providers.openburnbar.baseUrl, "http://[::1]:8317/v1");
+});
+
+test("a malformed gateway address fails fast instead of reaching models.json", () => {
+  // Each of these used to be concatenated straight into baseUrl — `:NaN`,
+  // `:-1`, an empty host — and only surfaced later as an opaque request error.
+  for (const args of [
+    ["--gateway-port", "abc"],
+    ["--gateway-port", "-1"],
+    ["--gateway-port", "99999999"],
+    ["--gateway-port", "0"],
+    ["--gateway-host="],
+    ["--gateway-host", "http://127.0.0.1"],
+  ]) {
+    const result = run(["--print", ...args]);
+    assert.equal(result.status, 1, `${args.join(" ")} must exit non-zero`);
+    assert.match(result.stderr, /Invalid gateway address/, `${args.join(" ")} must explain the address`);
+    assert.equal(result.stdout, "", `${args.join(" ")} must not emit a fragment`);
+  }
+});
+
+test("an unusable models.json is reported, never silently discarded", () => {
+  // JSON.stringify drops named properties assigned to an array, so an array
+  // root (or a `providers` array) used to make the merge vanish while the run
+  // still printed "Synced openburnbar provider ... models: 155".
+  const cases = [
+    ['[]', /must hold a JSON object at the top level, found an array/],
+    ['{"providers":[]}', /"providers" array; it must be an object/],
+    ["null", /found null/],
+    ['"hello"', /found string/],
+    ["{ not json", /is not valid JSON/],
+  ];
+  for (const [contents, expected] of cases) {
+    const dir = tempDir();
+    const modelsPath = join(dir, "models.json");
+    writeFileSync(modelsPath, contents, "utf8");
+    const result = run([], { PRIME_MODELS_PATH: modelsPath });
+    assert.equal(result.status, 1, `${contents} must exit non-zero`);
+    assert.match(result.stderr, expected, `${contents} must explain the problem`);
+    assert.ok(!result.stdout.includes("Synced"), `${contents} must not claim success`);
+    assert.match(result.stderr, /models\.json/, `${contents} must name the offending file`);
+    assert.equal(readFileSync(modelsPath, "utf8"), contents, `${contents} must be left untouched`);
+  }
+});
+
+test("an unreadable models.json path names the path", () => {
+  const dir = tempDir();
+  const asDirectory = join(dir, "models.json");
+  mkdirSync(asDirectory);
+  const result = run([], { PRIME_MODELS_PATH: asDirectory });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /Cannot read .*models\.json/);
 });
 
 test("--remove deletes only the openburnbar provider", () => {
@@ -240,4 +320,35 @@ test("--remove deletes only the openburnbar provider", () => {
   const after = JSON.parse(readFileSync(modelsPath, "utf8"));
   assert.equal(after.providers.openburnbar, undefined);
   assert.equal(after.providers.meta.name, "Meta");
+});
+
+test("every --print mode emits only the document it would write", () => {
+  const dir = tempDir();
+  const modelsPath = join(dir, "models.json");
+  const original = JSON.stringify({
+    providers: {
+      openburnbar: { apiKey: "gone", models: [] },
+      meta: { name: "Meta" },
+    },
+  });
+  writeFileSync(modelsPath, original, "utf8");
+
+  const removal = run(["--remove", "--print"], { PRIME_MODELS_PATH: modelsPath });
+  assert.equal(removal.status, 0, removal.stderr);
+  // stdout has to parse on its own: `--remove --print > models.json` is the
+  // documented way to preview a detach, and a prose line ahead of the JSON made
+  // that write a syntax error.
+  const preview = JSON.parse(removal.stdout);
+  assert.equal(preview.providers.openburnbar, undefined, "the preview must show the delete");
+  assert.equal(preview.providers.meta.name, "Meta",
+    "the preview must keep the providers that actually survive, not claim an empty set");
+  assert.match(removal.stderr, /Removed openburnbar provider/, "the prose belongs on stderr");
+  assert.equal(readFileSync(modelsPath, "utf8"), original, "--print must not write");
+
+  // Same contract when there is nothing to remove.
+  writeFileSync(modelsPath, JSON.stringify({ providers: { meta: { name: "Meta" } } }), "utf8");
+  const noop = run(["--remove", "--print"], { PRIME_MODELS_PATH: modelsPath });
+  assert.equal(noop.status, 0, noop.stderr);
+  assert.equal(JSON.parse(noop.stdout).providers.meta.name, "Meta");
+  assert.match(noop.stderr, /nothing to remove/);
 });
