@@ -598,7 +598,3 @@ extension CLIAgentMissionDispatcher {
         let deliveryMode: SkillRunDeliveryMode = .fullStream
     }
 }
-
-private extension String {
-    var nilIfEmpty: String? { isEmpty ? nil : self }
-}

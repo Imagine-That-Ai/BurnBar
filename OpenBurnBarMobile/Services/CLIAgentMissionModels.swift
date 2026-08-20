@@ -268,7 +268,3 @@ struct CLIAgentMissionSnapshot: Equatable, Sendable, Identifiable {
         }.first
     }
 }
-
-private extension String {
-    var nilIfEmpty: String? { isEmpty ? nil : self }
-}

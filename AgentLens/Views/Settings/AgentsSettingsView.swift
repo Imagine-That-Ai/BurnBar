@@ -58,6 +58,9 @@ struct AgentsSettingsView: View {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
                     header
                     drillRows
+#if !DISTRIBUTION_MAS
+                    GrokDBoxView()
+#endif
                 }
                 .padding(DesignSystem.Spacing.lg)
                 .frame(maxWidth: .infinity, alignment: .leading)

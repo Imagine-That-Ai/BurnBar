@@ -1390,123 +1390,6 @@ jobs:
       - name: Verify Mercury Iroh release artifact
         run: bash scripts/ci/verify-iroh-release-artifact.sh
 
-      - name: Archive and export signed iOS app
-        if: needs.release-preflight.outputs.is_prerelease == 'false'
-        id: ios-archive
-        env:
-          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
-          APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          RELEASE_COMMIT: ${{ needs.release-preflight.outputs.release_commit }}
-          VERSION: ${{ needs.release-preflight.outputs.version }}
-        run: |
-          set -euo pipefail
-          archive="$RUNNER_TEMP/OpenBurnBarMobile.xcarchive"
-          export_dir="$RUNNER_TEMP/ios-app-store-export"
-          bundle_dir="$RUNNER_TEMP/ios-release-bundle"
-          archive_zip="$RUNNER_TEMP/OpenBurnBar-${VERSION}-iOS.xcarchive.zip"
-          export_options="$RUNNER_TEMP/OpenBurnBarMobile-ExportOptions.plist"
-          build_number="$GITHUB_RUN_NUMBER"
-          apple_version="${VERSION%%+*}"
-          rm -rf "$archive" "$export_dir" "$bundle_dir" "$archive_zip"
-          mkdir -p "$export_dir" "$bundle_dir"
-
-          cat > "$export_options" <<PLIST
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0"><dict>
-            <key>destination</key><string>export</string>
-            <key>manageAppVersionAndBuildNumber</key><false/>
-            <key>method</key><string>app-store-connect</string>
-            <key>signingStyle</key><string>automatic</string>
-            <key>teamID</key><string>${APPLE_TEAM_ID}</string>
-            <key>uploadSymbols</key><true/>
-          </dict></plist>
-          PLIST
-
-          auth_args=(
-            -allowProvisioningUpdates
-            -authenticationKeyPath "$notary_key_path"
-            -authenticationKeyID "$APPLE_NOTARY_KEY_ID"
-            -authenticationKeyIssuerID "$APPLE_NOTARY_ISSUER_ID"
-          )
-          xcodebuild archive \
-            -project "$PROJECT" \
-            -scheme OpenBurnBarMobile \
-            -configuration "$CONFIG" \
-            -destination 'generic/platform=iOS' \
-            -archivePath "$archive" \
-            -clonedSourcePackagesDirPath "$CACHE_DIR" \
-            -derivedDataPath "$DERIVED_DATA-ios" \
-            "${auth_args[@]}" \
-            CODE_SIGN_STYLE=Automatic \
-            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
-            MARKETING_VERSION="$apple_version" \
-            CURRENT_PROJECT_VERSION="$build_number" \
-            DOMAIN_CORE_BUILD_PROFILE="$DOMAIN_CORE_BUILD_PROFILE" \
-            DOMAIN_CORE_BUILD_AUTHORITY="$DOMAIN_CORE_BUILD_AUTHORITY" \
-            DOMAIN_CORE_DISTRIBUTION="$DOMAIN_CORE_DISTRIBUTION" \
-            DOMAIN_CORE_ROLLOUT_CHANNEL="$DOMAIN_CORE_ROLLOUT_CHANNEL" \
-            DOMAIN_CORE_EVIDENCE_ENABLED="$DOMAIN_CORE_EVIDENCE_ENABLED" \
-            DOMAIN_CORE_CANDIDATE_COMMIT="$DOMAIN_CORE_CANDIDATE_COMMIT" \
-            DOMAIN_CORE_EXPECTED_VERSION="$DOMAIN_CORE_EXPECTED_VERSION" \
-            DOMAIN_CORE_EXPECTED_ABI_VERSION="$DOMAIN_CORE_EXPECTED_ABI_VERSION" \
-            DOMAIN_CORE_EXPECTED_SOURCE_SHA256="$DOMAIN_CORE_EXPECTED_SOURCE_SHA256" \
-            DOMAIN_CORE_QUOTA_MODE="$DOMAIN_CORE_QUOTA_MODE" \
-            DOMAIN_CORE_CLOUDVAULT_MODE="$DOMAIN_CORE_CLOUDVAULT_MODE" \
-            DOMAIN_CORE_CLOUDVAULT_REWRAP_MODE="$DOMAIN_CORE_CLOUDVAULT_REWRAP_MODE" \
-            DOMAIN_CORE_CLOUDVAULT_SEARCH_MODE="$DOMAIN_CORE_CLOUDVAULT_SEARCH_MODE" \
-            DOMAIN_CORE_HERMES_MODE="$DOMAIN_CORE_HERMES_MODE" \
-            DOMAIN_CORE_PRICING_MODE="$DOMAIN_CORE_PRICING_MODE"
-
-          xcodebuild -exportArchive \
-            -archivePath "$archive" \
-            -exportPath "$export_dir" \
-            -exportOptionsPlist "$export_options" \
-            "${auth_args[@]}"
-
-          ipa="$(find "$export_dir" -maxdepth 1 -type f -name '*.ipa' -print -quit)"
-          test -n "$ipa"
-          test -s "$ipa"
-          ipa_unpacked="$RUNNER_TEMP/ios-app-store-ipa"
-          rm -rf "$ipa_unpacked"
-          mkdir -p "$ipa_unpacked"
-          unzip -q "$ipa" -d "$ipa_unpacked"
-          exported_app="$ipa_unpacked/Payload/OpenBurnBarMobile.app"
-          test -d "$exported_app"
-          test -s "$exported_app/embedded.mobileprovision"
-          codesign --verify --deep --strict --verbose=2 "$exported_app"
-          app="$archive/Products/Applications/OpenBurnBarMobile.app"
-          test -d "$app"
-          test -s "$app/embedded.mobileprovision"
-          codesign --verify --deep --strict --verbose=2 "$app"
-          node scripts/ci/verify-domain-core-build-profile-artifact.mjs \
-            --profile "${{ needs.domain-core-native-release-gate.outputs.profile_name }}" \
-            --expected-candidate-commit "$DOMAIN_CORE_CANDIDATE_COMMIT" \
-            --apple-app "$app"
-          node scripts/ci/verify-domain-core-build-profile-artifact.mjs \
-            --profile "${{ needs.domain-core-native-release-gate.outputs.profile_name }}" \
-            --expected-candidate-commit "$DOMAIN_CORE_CANDIDATE_COMMIT" \
-            --apple-app "$exported_app"
-          test "$(/usr/libexec/PlistBuddy -c 'Print :ApplicationProperties:CFBundleShortVersionString' "$archive/Info.plist")" = "$apple_version"
-          test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"
-
-          cp -R "$archive" "$bundle_dir/OpenBurnBarMobile.xcarchive"
-          cp "$ipa" "$bundle_dir/OpenBurnBarMobile.ipa"
-          ditto -c -k --sequesterRsrc "$bundle_dir" "$archive_zip"
-          test -s "$archive_zip"
-          echo "archive_path=$archive_zip" >> "$GITHUB_OUTPUT"
-          echo "artifact_name=OpenBurnBar-${VERSION}-iOS-archive" >> "$GITHUB_OUTPUT"
-
-      - name: Upload signed iOS archive artifact
-        if: needs.release-preflight.outputs.is_prerelease == 'false'
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
-        with:
-          name: ${{ steps.ios-archive.outputs.artifact_name }}
-          path: ${{ steps.ios-archive.outputs.archive_path }}
-          if-no-files-found: error
-          retention-days: 90
-
       - name: Verify OpenBurnBar app SwiftPM lockfile
         run: ./scripts/check-openburnbar-app-swiftpm-lock.sh
 
@@ -1521,6 +1404,24 @@ jobs:
         uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1 (node24-native)
         with:
           packages: "platforms;android-35 build-tools;36.0.0"
+
+      # The runner image periodically gains preview SDK components whose
+      # licenses nobody has accepted; sdkmanager then exits 64 mid-release
+      # (2026-08-20: an "Android SDK Preview" license appeared and killed the
+      # AAR byte-compare step). Accept all licenses non-interactively so an
+      # image rollout cannot fail a release at 2 a.m.
+      - name: Accept Android SDK licenses
+        # `yes` always dies of SIGPIPE when sdkmanager exits, so the pipeline's
+        # own status is meaningless — but sdkmanager's is not: if IT fails (bad
+        # cmdline-tools path, broken license op), this step must fail loudly
+        # rather than hand the next step the same opaque exit-64 death.
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
+          status="${PIPESTATUS[1]}"
+          if [[ "$status" -ne 0 ]]; then
+            echo "::error::sdkmanager --licenses failed (exit $status); Android SDK licenses are NOT accepted."
+            exit "$status"
+          fi
 
       - name: Rebuild and byte-compare checked-in Android AAR
         env:
@@ -2002,6 +1903,28 @@ jobs:
             "runtime,library" \
             "com.openburnbar.privileged-input-killswitch-watchdog"
 
+          # Sign the embedded Safari extension BEFORE the host app (nested-first).
+          # The build ran with CODE_SIGNING_ALLOWED=NO, so the appex arrives
+          # unsigned; skipping it fails `codesign --verify --deep --strict`
+          # below and reproduces the bug the target exists to fix: an extension
+          # that is committed but reaches no release. Mirrors
+          # scripts/build-macos-website-release.sh exactly.
+          SAFARI_EXTENSION_APPEX="$APP_PATH/Contents/PlugIns/OpenBurnBarSafariExtension.appex"
+          SAFARI_EXTENSION_ENTITLEMENTS="OpenBurnBarSafariExtension/Resources/OpenBurnBarSafariExtension.entitlements"
+          if [[ ! -d "$SAFARI_EXTENSION_APPEX" ]]; then
+            echo "::error::Safari extension missing at $SAFARI_EXTENSION_APPEX. The OpenBurnBarSafariExtension target must build and embed into Contents/PlugIns."
+            exit 1
+          fi
+          if [[ ! -f "$SAFARI_EXTENSION_APPEX/Contents/Resources/manifest.json" ]]; then
+            echo "::error::Safari extension at $SAFARI_EXTENSION_APPEX has no Contents/Resources/manifest.json; the extensions/safari/dist copy did not run."
+            exit 1
+          fi
+          sign_one_with_entitlements \
+            "$SAFARI_EXTENSION_APPEX" \
+            "$SAFARI_EXTENSION_ENTITLEMENTS" \
+            "runtime,library" \
+            "com.openburnbar.app.safari-extension"
+
           cp "$APP_PROFILE" "$APP_PATH/Contents/embedded.provisionprofile"
           codesign --force --timestamp --options runtime,library \
             --entitlements "$APP_SIGNING_ENTITLEMENTS" \
@@ -2013,6 +1936,7 @@ jobs:
           assert_peer_signature "$APP_PATH" "com.openburnbar.app"
           assert_peer_signature "$HELPERS_DIR/OpenBurnBarDaemon" "com.openburnbar.app"
           assert_peer_signature "$HELPERS_DIR/OpenBurnBarCLI" "com.openburnbar.cli"
+          assert_peer_signature "$SAFARI_EXTENSION_APPEX" "com.openburnbar.app.safari-extension"
           assert_peer_signature "$HELPERS_DIR/OpenBurnBarPrivilegedInputExecution" "com.openburnbar.privileged-input-execution"
           assert_peer_signature "$HELPERS_DIR/OpenBurnBarVirtualHIDBridge" "com.openburnbar.virtual-hid-bridge"
           assert_peer_signature "$HELPERS_DIR/OpenBurnBarPrivilegedInputKillSwitchWatchdog" "com.openburnbar.privileged-input-killswitch-watchdog"
@@ -2746,13 +2670,18 @@ jobs:
 
   domain-core-ios-release-evidence:
     name: Domain Core iOS release evidence
+    # Follows the iOS job, not the Mac one. `!cancelled()` displaces the
+    # implicit success() guard so a failed iOS build reaches this job and
+    # reports "not enabled" instead of propagating a skip into publication.
+    if: ${{ !cancelled() && needs.release-preflight.result == 'success' }}
     needs:
       - release-preflight
       - domain-core-native-release-gate
-      - build-and-release
+      - build-ios-release
     uses: ./.github/workflows/domain-core-ios-release-evidence.yml
     with:
-      enabled: ${{ needs.release-preflight.outputs.is_prerelease == 'false' }}
+      # No archive exists to gather evidence for when the iOS lane failed.
+      enabled: ${{ needs.release-preflight.outputs.is_prerelease == 'false' && needs.build-ios-release.result == 'success' }}
       version: ${{ needs.release-preflight.outputs.version }}
       release_commit: ${{ needs.release-preflight.outputs.release_commit }}
       archive_artifact_name: OpenBurnBar-${{ needs.release-preflight.outputs.version }}-iOS-archive
@@ -2766,8 +2695,323 @@ jobs:
       gate_rust_active: ${{ needs.domain-core-native-release-gate.outputs.rust_active }}
     secrets: inherit
 
+  # iOS is packaged in its own job so a broken iOS target cannot block a macOS
+  # release. It blocked every macOS release for weeks in August 2026 while the
+  # Mac app itself built and signed cleanly.
+  #
+  # NOTHING depends on this job. Its failure is visible on the run and excludes
+  # iOS from the release; it cannot fail the Mac lane, publication, or promotion.
+  #
+  # The setup below duplicates build-and-release's because both need the same
+  # signed inputs. Source coherence is preserved by construction: both jobs
+  # check out the same `release_commit` and build the FFI from it, and nothing
+  # in the pipeline compares the two FFI builds byte-for-byte — only that each
+  # is built from the pinned release source. See docs/CI_RELEASE_RUNBOOK.md.
+  build-ios-release:
+    if: ${{ always() && needs.release-preflight.result == 'success' && needs.release-preflight.outputs.is_prerelease == 'false' && (needs.authorize-domain-core-rollback.result == 'success' || needs.authorize-domain-core-rollback.result == 'skipped') && needs.domain-core-native-release-gate.result == 'success' }}
+    name: build-ios-release
+    needs:
+      [
+        release-preflight,
+        authorize-domain-core-rollback,
+        domain-core-native-release-gate,
+      ]
+    runs-on: macos-26
+    timeout-minutes: 180
+    environment: release
+    permissions:
+      actions: read
+      attestations: write
+      contents: read
+      id-token: write
+    steps:
+      - name: Check out repository for iOS packaging
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          fetch-depth: 0
+
+      - name: Check out release tag for iOS packaging
+        env:
+          TAG_REF: ${{ needs.release-preflight.outputs.tag_ref }}
+          RELEASE_COMMIT: ${{ needs.release-preflight.outputs.release_commit }}
+        run: |
+          set -euo pipefail
+          git fetch --force --tags origin "+${TAG_REF}:${TAG_REF}"
+          git checkout --detach "$RELEASE_COMMIT"
+          test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"
+          bash scripts/ci/update-submodules-with-retry.sh Vendor/libsignal
+
+      # Runs inside the environment-bound job on purpose: environment-scoped
+      # secrets only resolve for jobs bound to the release environment, so this
+      # fail-hard presence check must live with the signing work it protects.
+      - name: Validate strict release secrets
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+          APPLE_NOTARY_API_KEY_P8: ${{ secrets.APPLE_NOTARY_API_KEY_P8 }}
+          OPENBURNBAR_SPARKLE_PRIVATE_KEY_BASE64: ${{ secrets.OPENBURNBAR_SPARKLE_PRIVATE_KEY_BASE64 }}
+          FIREBASE_PLIST_BASE64: ${{ secrets.FIREBASE_PLIST_BASE64 }}
+        run: |
+          missing=()
+          for var in \
+            APPLE_TEAM_ID \
+            APPLE_SIGNING_IDENTITY \
+            APPLE_CERTIFICATE_P12 \
+            APPLE_CERTIFICATE_PASSWORD \
+            APPLE_NOTARY_KEY_ID \
+            APPLE_NOTARY_ISSUER_ID \
+            APPLE_NOTARY_API_KEY_P8 \
+            OPENBURNBAR_SPARKLE_PRIVATE_KEY_BASE64 \
+            FIREBASE_PLIST_BASE64; do
+            if [[ -z "${!var}" ]]; then
+              missing+=("$var")
+            fi
+          done
+
+          if [[ ${#missing[@]} -gt 0 ]]; then
+            echo "::error::Missing required release secrets: ${missing[*]}"
+            exit 1
+          fi
+          # regularFile() fail-closes on relative paths, so the policy must be
+          # passed absolute or this step can never pass.
+          node scripts/ci/verify-domain-core-apple-signing-identity.mjs \
+            --policy "$GITHUB_WORKSPACE/config/apple-release-signing-policy.json" --environment
+
+      - name: Write Apple API key
+        env:
+          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_API_KEY_P8: ${{ secrets.APPLE_NOTARY_API_KEY_P8 }}
+        run: |
+          set -euo pipefail
+          NOTARY_KEY_PATH="$RUNNER_TEMP/AuthKey_${APPLE_NOTARY_KEY_ID}.p8"
+          export NOTARY_KEY_PATH
+          python3 - <<'PY'
+          import base64
+          import os
+          from pathlib import Path
+
+          payload = "".join(os.environ["APPLE_NOTARY_API_KEY_P8"].split())
+          Path(os.environ["NOTARY_KEY_PATH"]).write_bytes(base64.b64decode(payload, validate=True))
+          PY
+          chmod 600 "$NOTARY_KEY_PATH"
+          echo "notary_key_path=$NOTARY_KEY_PATH" >> "$GITHUB_ENV"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: extensions/openburnbar/package-lock.json
+
+      - name: Download verified Shared Rust release inputs
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        with:
+          name: ${{ needs.domain-core-native-release-gate.outputs.artifact_name }}
+          path: ${{ runner.temp }}/domain-core-native-release-gate
+
+      - name: Resolve signed public domain-core profile
+        env:
+          RELEASE_COMMIT: ${{ needs.release-preflight.outputs.release_commit }}
+        run: |
+          node scripts/ci/resolve-domain-core-build-profile.mjs --profile "${{ needs.domain-core-native-release-gate.outputs.profile_name }}" --expected-candidate-commit "${{ needs.domain-core-native-release-gate.outputs.candidate_commit }}" --expected-release-commit "$RELEASE_COMMIT" --format github-env >> "$GITHUB_ENV"
+          node scripts/ci/resolve-domain-core-build-profile.mjs --profile "${{ needs.domain-core-native-release-gate.outputs.profile_name }}" --expected-candidate-commit "${{ needs.domain-core-native-release-gate.outputs.candidate_commit }}" --expected-release-commit "$RELEASE_COMMIT" --format github-env-apple >> "$GITHUB_ENV"
+
+      - name: Inject Firebase config
+        env:
+          FIREBASE_PLIST_BASE64: ${{ secrets.FIREBASE_PLIST_BASE64 }}
+        run: bash ./scripts/ci/inject-firebase-config.sh
+
+      - name: Inject iOS/macOS Sentry config
+        env:
+          OPENBURNBAR_SENTRY_DSN: ${{ secrets.OPENBURNBAR_SENTRY_DSN }}
+        run: bash ./scripts/ci/inject-sentry-config-ios.sh
+
+      - name: Install Rust toolchain for libsignal Swift FFI
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
+        with:
+          toolchain: stable
+
+      - name: Ensure libsignal native toolchain (protoc + cmake)
+        uses: ./.github/actions/ensure-libsignal-toolchain
+
+      - name: Resolve libsignal revision
+        id: libsignal
+        run: echo "rev=$(git rev-parse HEAD:Vendor/libsignal)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore SwiftPM package cache
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        with:
+          path: .spm-cache
+          key: release-spm-package-${{ runner.os }}-${{ hashFiles('OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved', 'OpenBurnBarDaemon/Package.resolved') }}
+          restore-keys: |
+            release-spm-package-${{ runner.os }}-
+
+      - name: Restore cargo cache for libsignal FFI
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            Vendor/libsignal/target
+          key: release-cargo-${{ runner.os }}-${{ env.SIGNAL_FFI_BUILD_PROFILE }}-${{ steps.libsignal.outputs.rev }}
+          restore-keys: |
+            release-cargo-${{ runner.os }}-${{ env.SIGNAL_FFI_BUILD_PROFILE }}-
+
+      - name: Prepare Signal FFI XCFramework for release app
+        env:
+          SIGNAL_FFI_BUILD_PROFILE: release
+          # The protected release lane packages both the direct-download Mac app
+          # and the App Store iOS archive from one source-coherent FFI build.
+          SIGNAL_FFI_BUILD_TARGETS: "aarch64-apple-darwin x86_64-apple-darwin aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios"
+          CARGO_BUILD_JOBS: "2"
+        run: bash scripts/lib/prepare-signal-ffi-xcframework.sh
+
+      - name: Prepare shared domain core XCFramework for release app
+        env:
+          DOMAIN_CORE_BUILD_PROFILE: release
+        run: bash scripts/build-domain-core-xcframework.sh
+
+      - name: Verify shared domain core release artifact
+        run: test -d Vendor/OpenBurnBarDomainCore.xcframework
+
+      - name: Prepare Mercury Iroh XCFramework for release app
+        env:
+          IROH_BUILD_PROFILE: release
+        run: bash scripts/build-iroh-xcframework.sh
+
+      - name: Verify Mercury Iroh release artifact
+        run: bash scripts/ci/verify-iroh-release-artifact.sh
+      - name: Archive and export signed iOS app
+        if: needs.release-preflight.outputs.is_prerelease == 'false'
+        id: ios-archive
+        env:
+          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          RELEASE_COMMIT: ${{ needs.release-preflight.outputs.release_commit }}
+          VERSION: ${{ needs.release-preflight.outputs.version }}
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/OpenBurnBarMobile.xcarchive"
+          export_dir="$RUNNER_TEMP/ios-app-store-export"
+          bundle_dir="$RUNNER_TEMP/ios-release-bundle"
+          archive_zip="$RUNNER_TEMP/OpenBurnBar-${VERSION}-iOS.xcarchive.zip"
+          export_options="$RUNNER_TEMP/OpenBurnBarMobile-ExportOptions.plist"
+          build_number="$GITHUB_RUN_NUMBER"
+          apple_version="${VERSION%%+*}"
+          rm -rf "$archive" "$export_dir" "$bundle_dir" "$archive_zip"
+          mkdir -p "$export_dir" "$bundle_dir"
+
+          cat > "$export_options" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>destination</key><string>export</string>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+            <key>method</key><string>app-store-connect</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>teamID</key><string>${APPLE_TEAM_ID}</string>
+            <key>uploadSymbols</key><true/>
+          </dict></plist>
+          PLIST
+
+          auth_args=(
+            -allowProvisioningUpdates
+            -authenticationKeyPath "$notary_key_path"
+            -authenticationKeyID "$APPLE_NOTARY_KEY_ID"
+            -authenticationKeyIssuerID "$APPLE_NOTARY_ISSUER_ID"
+          )
+          xcodebuild archive \
+            -project "$PROJECT" \
+            -scheme OpenBurnBarMobile \
+            -configuration "$CONFIG" \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$archive" \
+            -clonedSourcePackagesDirPath "$CACHE_DIR" \
+            -derivedDataPath "$DERIVED_DATA-ios" \
+            "${auth_args[@]}" \
+            CODE_SIGN_STYLE=Automatic \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            MARKETING_VERSION="$apple_version" \
+            CURRENT_PROJECT_VERSION="$build_number" \
+            DOMAIN_CORE_BUILD_PROFILE="$DOMAIN_CORE_BUILD_PROFILE" \
+            DOMAIN_CORE_BUILD_AUTHORITY="$DOMAIN_CORE_BUILD_AUTHORITY" \
+            DOMAIN_CORE_DISTRIBUTION="$DOMAIN_CORE_DISTRIBUTION" \
+            DOMAIN_CORE_ROLLOUT_CHANNEL="$DOMAIN_CORE_ROLLOUT_CHANNEL" \
+            DOMAIN_CORE_EVIDENCE_ENABLED="$DOMAIN_CORE_EVIDENCE_ENABLED" \
+            DOMAIN_CORE_CANDIDATE_COMMIT="$DOMAIN_CORE_CANDIDATE_COMMIT" \
+            DOMAIN_CORE_EXPECTED_VERSION="$DOMAIN_CORE_EXPECTED_VERSION" \
+            DOMAIN_CORE_EXPECTED_ABI_VERSION="$DOMAIN_CORE_EXPECTED_ABI_VERSION" \
+            DOMAIN_CORE_EXPECTED_SOURCE_SHA256="$DOMAIN_CORE_EXPECTED_SOURCE_SHA256" \
+            DOMAIN_CORE_QUOTA_MODE="$DOMAIN_CORE_QUOTA_MODE" \
+            DOMAIN_CORE_CLOUDVAULT_MODE="$DOMAIN_CORE_CLOUDVAULT_MODE" \
+            DOMAIN_CORE_CLOUDVAULT_REWRAP_MODE="$DOMAIN_CORE_CLOUDVAULT_REWRAP_MODE" \
+            DOMAIN_CORE_CLOUDVAULT_SEARCH_MODE="$DOMAIN_CORE_CLOUDVAULT_SEARCH_MODE" \
+            DOMAIN_CORE_HERMES_MODE="$DOMAIN_CORE_HERMES_MODE" \
+            DOMAIN_CORE_PRICING_MODE="$DOMAIN_CORE_PRICING_MODE"
+
+          xcodebuild -exportArchive \
+            -archivePath "$archive" \
+            -exportPath "$export_dir" \
+            -exportOptionsPlist "$export_options" \
+            "${auth_args[@]}"
+
+          ipa="$(find "$export_dir" -maxdepth 1 -type f -name '*.ipa' -print -quit)"
+          test -n "$ipa"
+          test -s "$ipa"
+          ipa_unpacked="$RUNNER_TEMP/ios-app-store-ipa"
+          rm -rf "$ipa_unpacked"
+          mkdir -p "$ipa_unpacked"
+          unzip -q "$ipa" -d "$ipa_unpacked"
+          exported_app="$ipa_unpacked/Payload/OpenBurnBarMobile.app"
+          test -d "$exported_app"
+          test -s "$exported_app/embedded.mobileprovision"
+          codesign --verify --deep --strict --verbose=2 "$exported_app"
+          app="$archive/Products/Applications/OpenBurnBarMobile.app"
+          test -d "$app"
+          test -s "$app/embedded.mobileprovision"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          node scripts/ci/verify-domain-core-build-profile-artifact.mjs \
+            --profile "${{ needs.domain-core-native-release-gate.outputs.profile_name }}" \
+            --expected-candidate-commit "$DOMAIN_CORE_CANDIDATE_COMMIT" \
+            --apple-app "$app"
+          node scripts/ci/verify-domain-core-build-profile-artifact.mjs \
+            --profile "${{ needs.domain-core-native-release-gate.outputs.profile_name }}" \
+            --expected-candidate-commit "$DOMAIN_CORE_CANDIDATE_COMMIT" \
+            --apple-app "$exported_app"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :ApplicationProperties:CFBundleShortVersionString' "$archive/Info.plist")" = "$apple_version"
+          test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"
+
+          cp -R "$archive" "$bundle_dir/OpenBurnBarMobile.xcarchive"
+          cp "$ipa" "$bundle_dir/OpenBurnBarMobile.ipa"
+          ditto -c -k --sequesterRsrc "$bundle_dir" "$archive_zip"
+          test -s "$archive_zip"
+          echo "archive_path=$archive_zip" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=OpenBurnBar-${VERSION}-iOS-archive" >> "$GITHUB_OUTPUT"
+
+      - name: Upload signed iOS archive artifact
+        if: needs.release-preflight.outputs.is_prerelease == 'false'
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: ${{ steps.ios-archive.outputs.artifact_name }}
+          path: ${{ steps.ios-archive.outputs.archive_path }}
+          if-no-files-found: error
+          retention-days: 90
+
   smoke-test:
     needs: build-and-release
+    # `authorize-domain-core-rollback` skips on every non-rollback release, and
+    # a skip propagates transitively through `needs` even across
+    # `build-and-release`, which runs under always() and succeeds. Without a
+    # status-check function here this job is never scheduled, and because
+    # apple-native-prepublication and prepare-release-publication both require
+    # `needs.smoke-test.result == 'success'`, publication could not happen on a
+    # normal release at all. See docs/CI_RELEASE_RUNBOOK.md §1.1.
+    if: ${{ !cancelled() && needs.build-and-release.result == 'success' }}
     runs-on: macos-15
     timeout-minutes: 15
     steps:
@@ -2850,6 +3094,32 @@ jobs:
     # packaging + artifact smoke chain. A skipped gate only occurs through the
     # owner-approved bypass inputs validated in release-preflight; a failed or
     # cancelled gate blocks publication.
+    #
+    # One deliberate exception: when the iOS lane itself failed
+    # (build-ios-release.result != 'success'), a failed release-mobile-gate no
+    # longer blocks publication. The iOS product is already excluded from the
+    # release in that case, so iOS unit tests failing alongside a broken iOS
+    # build is consistent rather than new signal -- and holding the finished,
+    # signed macOS release hostage to it recreates the August 2026 coupling
+    # this workflow was restructured to remove. Every other gate remains
+    # strictly required, and mobile-gate failure still blocks whenever the iOS
+    # build succeeded.
+    if: >-
+      ${{ !cancelled()
+          && needs.release-preflight.result == 'success'
+          && needs.release-swift-gate.result != 'failure'
+          && needs.release-app-gate.result != 'failure'
+          && needs.release-sqlcipher-gate.result != 'failure'
+          && (needs.release-mobile-gate.result != 'failure'
+              || needs.build-ios-release.result != 'success')
+          && needs.release-android-gate.result != 'failure'
+          && needs.release-functions-gate.result != 'failure'
+          && needs.release-extension-gate.result != 'failure'
+          && needs.release-supply-chain-gate.result != 'failure'
+          && needs.build-and-release.result == 'success'
+          && needs.domain-core-ios-release-evidence.result != 'failure'
+          && needs.smoke-test.result == 'success'
+          && needs.apple-native-prepublication.result != 'failure' }}
     needs:
       - release-preflight
       - release-swift-gate
@@ -2861,6 +3131,7 @@ jobs:
       - release-extension-gate
       - release-supply-chain-gate
       - build-and-release
+      - build-ios-release
       - domain-core-ios-release-evidence
       - smoke-test
       - apple-native-prepublication

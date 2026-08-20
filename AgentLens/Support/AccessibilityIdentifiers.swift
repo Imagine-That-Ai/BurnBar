@@ -15,6 +15,17 @@ enum OBBAccessibilityID {
     static let settingsSidebar = "settings.sidebar"
     static let settingsCommandBar = "settings.commandBar"
     static let computerUseSettingsRoot = "computerUse.settings.root"
+    static let localDBoxRoot = "agents.localDBox.root"
+    static let localDBoxEnable = "agents.localDBox.enable"
+    static let localDBoxAutoStart = "agents.localDBox.autoStart"
+    static let localDBoxRefresh = "agents.localDBox.refresh"
+    static let localDBoxComposer = "agents.localDBox.composer"
+    static let localDBoxSend = "agents.localDBox.send"
+    static let localDBoxEmpty = "agents.localDBox.empty"
+
+    static func localDBoxAgent(_ id: String) -> String {
+        "agents.localDBox.agent.\(normalized(id))"
+    }
     static let chatPanel = "chat.panel"
     static let chatPanelMinimized = "chat.panel.minimized"
     static let chartsPage = "charts.page"
