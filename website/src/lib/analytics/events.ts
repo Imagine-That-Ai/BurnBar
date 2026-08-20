@@ -21,10 +21,25 @@ export const EVENT = {
   downloadCtaClicked: "download.cta.clicked",
   pricingPlanViewed: "pricing.plan.viewed",
   pricingCtaClicked: "pricing.cta.clicked",
-  navExternalClicked: "nav.external.clicked"
+  navExternalClicked: "nav.external.clicked",
+
+  // BurnBench Arena — the vote page uses the "neural" skin.
+  // Exposure is emitted once per session; `played` reports that a voter
+  // actually used an artifact (the engagement half of the judgement), and the
+  // vote event carries variant + choice + rubric depth, so engagement,
+  // conversion, and optional-rubric uptake all compare across the single look.
+  // Properties stay a bounded vocabulary — `rubric` is a depth bucket
+  // (none/partial/full), never the per-dimension verdicts themselves.
+  arenaVariantExposed: "arena.variant.exposed",
+  arenaArtifactPlayed: "arena.artifact.played",
+  arenaVoteRecorded: "arena.vote.recorded",
+  arenaAuthGateShown: "arena.auth.gate_shown",
+  arenaSignInCompleted: "arena.sign_in.completed"
 } as const;
 
 export type AnalyticsEventName = (typeof EVENT)[keyof typeof EVENT];
+export const ARENA_SIGN_IN_PROVIDERS = ["google", "apple", "github", "facebook"] as const;
+export type ArenaSignInProvider = (typeof ARENA_SIGN_IN_PROVIDERS)[number];
 
 export type AnalyticsCategory =
   | "lifecycle"

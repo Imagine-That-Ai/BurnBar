@@ -13,6 +13,9 @@ scheme="${OPENBURNBAR_SCHEME:-OpenBurnBar}"
 project="${OPENBURNBAR_PROJECT:-OpenBurnBar.xcodeproj}"
 destination="${OPENBURNBAR_DESTINATION:-platform=macOS,arch=arm64}"
 entitlements="AgentLens/Resources/OpenBurnBarRelease.entitlements"
+# Attenuated on purpose: sandbox + loopback client only, so the appex needs no
+# provisioning profile of its own. See the entitlements file for the full reasoning.
+safari_extension_entitlements="OpenBurnBarSafariExtension/Resources/OpenBurnBarSafariExtension.entitlements"
 app_profile="${OPENBURNBAR_APP_PROFILE:-build/app-direct-profile/OpenBurnBar-MAC_APP_DIRECT.provisionprofile}"
 privileged_input_entitlements="OpenBurnBarDaemon/Resources/PrivilegedInputExecution/OpenBurnBarPrivilegedInputExecution.entitlements"
 privileged_input_profile="${OPENBURNBAR_PRIVILEGED_INPUT_PROFILE:-build/hid-managed-profile/OpenBurnBarPrivilegedInputExecution-MAC_APP_DIRECT.provisionprofile}"
@@ -68,6 +71,10 @@ source_archive_path="$release_dir/$source_archive_name"
 
 if [[ ! -f "$entitlements" ]]; then
   echo "ERROR: Missing release entitlements at $entitlements" >&2
+  exit 1
+fi
+if [[ ! -f "$safari_extension_entitlements" ]]; then
+  echo "ERROR: Missing Safari extension entitlements at $safari_extension_entitlements" >&2
   exit 1
 fi
 if [[ ! -f "$app_profile" ]]; then
@@ -147,6 +154,7 @@ fi
 
 helpers_dir="$app_path/Contents/Helpers"
 frameworks_dir="$app_path/Contents/Frameworks"
+safari_extension_appex="$app_path/Contents/PlugIns/OpenBurnBarSafariExtension.appex"
 mkdir -p "$helpers_dir" "$frameworks_dir"
 
 daemon_bin="OpenBurnBarDaemon/.build/release/OpenBurnBarDaemon"
@@ -395,6 +403,26 @@ wrap_privileged_input_execution_helper \
   "$helpers_dir/OpenBurnBarPrivilegedInputExecution" \
   "$helpers_dir/OpenBurnBarPrivilegedInputExecution.app"
 
+# The Safari web extension. Nested code must be signed before the bundle that
+# contains it, so this runs ahead of the host signature below. The xcodebuild step
+# above ran with CODE_SIGNING_ALLOWED=NO, which means the appex arrives unsigned:
+# skipping it here would fail `codesign --verify --deep --strict` a few lines down
+# and, worse, would reproduce the class of bug this target was added to fix — the
+# extension being committed but reaching no release.
+if [[ ! -d "$safari_extension_appex" ]]; then
+  echo "ERROR: Safari extension missing at $safari_extension_appex. The OpenBurnBarSafariExtension target must build and embed into Contents/PlugIns." >&2
+  exit 1
+fi
+if [[ ! -f "$safari_extension_appex/Contents/Resources/manifest.json" ]]; then
+  echo "ERROR: Safari extension at $safari_extension_appex has no Contents/Resources/manifest.json; the extensions/safari/dist copy did not run." >&2
+  exit 1
+fi
+sign_one_with_entitlements \
+  "$safari_extension_appex" \
+  "$safari_extension_entitlements" \
+  "runtime,library" \
+  "com.openburnbar.app.safari-extension"
+
 cp "$app_profile" "$app_path/Contents/embedded.provisionprofile"
 codesign --force --timestamp --options runtime,library \
   --entitlements "$app_signing_entitlements" \
@@ -410,6 +438,7 @@ assert_peer_signature "$helpers_dir/OpenBurnBarPrivilegedInputExecution" "com.op
 assert_peer_signature \
   "$helpers_dir/OpenBurnBarPrivilegedInputKillSwitchWatchdog" \
   "com.openburnbar.privileged-input-killswitch-watchdog"
+assert_peer_signature "$safari_extension_appex" "com.openburnbar.app.safari-extension"
 
 bash scripts/ci/verify-daemon-release-signing.sh "$app_path" "$app_profile_team_id"
 

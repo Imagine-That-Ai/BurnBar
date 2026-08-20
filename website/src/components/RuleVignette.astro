@@ -209,9 +209,8 @@ const fallbackEndpoint = hasFallback ? fallback : null;
     font-family: var(--font-display);
     font-size: 1.1rem;
     color: var(--text-bright);
-    font-variation-settings:
-      "opsz" 36,
-      "wght" 540;
+    font-weight: var(--wght-semibold);
+    --opsz: var(--opsz-body);
     letter-spacing: -0.014em;
     line-height: 1.22;
     text-wrap: balance;
@@ -441,7 +440,7 @@ const fallbackEndpoint = hasFallback ? fallback : null;
   .vignette__gatemark {
     color: var(--status-burn);
     font-size: 1.6rem;
-    font-variation-settings: "wght" 600;
+    font-weight: var(--wght-bold);
     letter-spacing: 0.08em;
     position: relative;
     z-index: 1;
@@ -530,7 +529,7 @@ const fallbackEndpoint = hasFallback ? fallback : null;
     color: var(--ember-bright);
     font-size: 0.74rem;
     letter-spacing: 0.04em;
-    font-variation-settings: "wght" 540;
+    font-weight: var(--wght-semibold);
   }
 
   /* 3-node packet path (swap-account, swap-auth) */
@@ -662,7 +661,7 @@ const fallbackEndpoint = hasFallback ? fallback : null;
   }
   .vignette__evidence strong {
     color: var(--ember-bright);
-    font-variation-settings: "wght" 540;
+    font-weight: var(--wght-semibold);
   }
   .vignette__swap {
     color: var(--text-mute);

@@ -4,7 +4,7 @@
  * lazy.
  *
  * dotConstellation.ts and easterEggFx.ts together reference ~1.1 MB of
- * provider logos + crests (32 unique files). Eagerly fetched, that cost
+ * provider logos + crests (33 unique files). Eagerly fetched, that cost
  * landed on every page load — including dark-theme visits where the dot
  * constellation never paints, and despite the easter-egg FX idling until a
  * 5-reversal scroll jiggle. Both scripts now defer loading:
@@ -33,8 +33,8 @@ const SCRIPTS = path.join(path.resolve(__dirname, ".."), "src", "scripts");
 const constellationSource = await readFile(path.join(SCRIPTS, "dotConstellation.ts"), "utf8");
 const fxSource = await readFile(path.join(SCRIPTS, "easterEggFx.ts"), "utf8");
 
-// The rosters: 32 unique assets; the two crest SVGs appear in both fx lists.
-const DOT_ASSETS = 32;
+// The rosters: 33 unique assets; the two crest SVGs appear in both fx lists.
+const DOT_ASSETS = 33;
 const FX_ASSETS = 34;
 
 function makeCtx() {

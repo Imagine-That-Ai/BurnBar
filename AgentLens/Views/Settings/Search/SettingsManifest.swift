@@ -17,7 +17,7 @@ import OpenBurnBarCore
 ///    `@FocusState` in the destination.
 enum SettingsManifest {
 
-    static let all: [SettingsItem] = baseItems + providerItems
+    static let all: [SettingsItem] = baseItems + localDBoxItems + providerItems
 
     private static let baseItems: [SettingsItem] = [
         // MARK: Home
@@ -1018,7 +1018,16 @@ enum SettingsManifest {
         SettingsAnchor.hermesPiRelay,
         SettingsAnchor.analysisConfigurator,
         SettingsAnchor.fusionImpact
-    ]).union(providerItems.map(\.anchorID))
+    ]).union(providerItems.map(\.anchorID)).union(localDBoxAnchors)
+
+#if !DISTRIBUTION_MAS
+    private static let localDBoxItems: [SettingsItem] = [
+    ]
+    private static let localDBoxAnchors: Set<String> = [SettingsAnchor.agentsLocalDBox]
+#else
+    private static let localDBoxItems: [SettingsItem] = []
+    private static let localDBoxAnchors: Set<String> = []
+#endif
 
     private static let providerItems: [SettingsItem] = {
         AgentProvider.allCases

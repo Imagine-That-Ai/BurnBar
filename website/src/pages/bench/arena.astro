@@ -1,0 +1,268 @@
+---
+import BaseLayout from "@layouts/BaseLayout.astro";
+import "@styles/bench.css";
+import {
+  BENCH,
+  MODEL_LOGO,
+  HARNESS_LOGO,
+  MODEL_CLASS,
+  HARNESS_CLASS,
+  classFor,
+  monogramFor,
+  modelDisplay,
+  harnessDisplay,
+  fmtGeneratedAt
+} from "@data/bench";
+
+const mcls = (id: string): string => classFor(MODEL_CLASS, id);
+const hcls = (id: string): string => classFor(HARNESS_CLASS, id);
+
+const generatedAt = fmtGeneratedAt(BENCH.generated_at_utc);
+const arena = BENCH.arena;
+const votingOpen = arena.votes > 0;
+const publishedRatings = [...arena.ratings]
+  .filter((r) => r.votes >= 30)
+  .sort((a, b) => b.bt - a.bt);
+
+/* Experiential families (contract §1) — the human-judged slice of the suite. */
+const GALLERY_FAMILIES = [
+  { id: "visual-svg", note: "hand-authored vector scenes" },
+  { id: "visual-canvas", note: "2D canvas renderings" },
+  { id: "visual-3d", note: "three.js scenes" },
+  { id: "game", note: "playable browser games" },
+  { id: "sim-game", note: "seeded simulation policies" },
+  { id: "ui-build", note: "full interface builds" }
+];
+---
+
+<BaseLayout
+  title="BurnBench Arena — blind pairwise judgment"
+  description="The BurnBench Arena: blind pairwise voting on experiential task artifacts — identity hidden until you vote, Bradley-Terry ratings published at 30+ votes."
+>
+  {/* ──────────────── 1 · HERO ──────────────── */}
+  <section class="bb-hero" aria-labelledby="arena-hero-h">
+    <div class="container container--wide bb-hero__inner">
+      <nav class="bb-bread mono" aria-label="Breadcrumbs">
+        <a href="/bench">BurnBench</a>
+        <span aria-hidden="true">→</span>
+        <span>Arena</span>
+      </nav>
+      <span class="eyebrow eyebrow--ember">BurnBench · Arena</span>
+      <h1 id="arena-hero-h" class="bb-hero__h">
+        Two artifacts. One vote.
+        <span class="bb-hero__hb">No logos until you decide.</span>
+      </h1>
+      <p class="bb-hero__lead">
+        Some work can't be graded by a script — a game feel, a 3D scene, an interface that reads
+        right. The Arena pairs two anonymized runs of the same experiential task, you pick the
+        better one, and only then does it reveal which harness × model built which. Ratings are
+        Bradley-Terry with bootstrap confidence intervals, published per stack only after 30 votes.
+      </p>
+
+      <ul class="bb-chips mono" aria-label="Arena status">
+        <li>
+          <span class={`bb-dot${votingOpen ? " bb-dot--exact" : ""}`}></span>
+          {votingOpen ? `${arena.votes} votes cast` : "voting opens soon"}
+        </li>
+        <li><span class="bb-dot bb-dot--mercury"></span> reveal-after-vote</li>
+        <li><span class="bb-dot bb-dot--mercury"></span> export · {generatedAt}</li>
+      </ul>
+
+      <div class="bb-hero__ctas">
+        <a class="btn btn--ember" href="/bench/arena/vote">
+          Cast a blind vote <span class="btn-arrow" aria-hidden="true">→</span>
+        </a>
+        <a class="btn btn--ghost" href="/bench">Back to the leaderboard</a>
+      </div>
+    </div>
+  </section>
+
+  {/* ──────────────── 2 · HOW IT WORKS ──────────────── */}
+  <section class="bb-section bb-section--mercury" aria-labelledby="how-h">
+    <div class="container container--wide">
+      <header class="bb-sec-head">
+        <span class="eyebrow eyebrow--mercury">The protocol</span>
+        <h2 id="how-h" class="bb-sec-h">Blind pairwise judgment, three steps.</h2>
+        <p class="bb-sec-lead">
+          Every matchup is two cells of the same experiential task from different stacks, with
+          presentation order randomized per matchup. Artifacts are served sandboxed — they can run,
+          they can't touch anything.
+        </p>
+      </header>
+
+      <ol class="bb-steps" role="list">
+        <li class="bb-step">
+          <span class="bb-step__num">01 · anonymized</span>
+          <h3>Two artifacts, side by side.</h3>
+          <p>
+            A playable build, a rendered scene, a finished UI — produced by two different harness ×
+            model stacks on the identical task. No names, no logos, no hints. Order is coin-flipped
+            per matchup so position can't leak identity.
+          </p>
+        </li>
+        <li class="bb-step">
+          <span class="bb-step__num">02 · your call</span>
+          <h3>Vote A, B, or honest tie.</h3>
+          <p>
+            Use the artifacts, then judge which one ships. An optional "why" line feeds the
+            qualitative log. The vote is append-only — ballots are never rewritten or deleted.
+          </p>
+        </li>
+        <li class="bb-step">
+          <span class="bb-step__num">03 · reveal</span>
+          <h3>Identities unlock after the vote.</h3>
+          <p>
+            The moment your ballot lands, the matchup reveals which stacks built what. Votes
+            aggregate into Bradley-Terry ratings with bootstrap 95% intervals — published only once
+            a stack clears 30 votes, so small samples never read as verdicts.
+          </p>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  {/* ──────────────── 3 · STANDINGS ──────────────── */}
+  <section class="bb-section" aria-labelledby="standings-h">
+    <div class="container container--wide">
+      <header class="bb-sec-head">
+        <span class="eyebrow eyebrow--ember">Standings</span>
+        <h2 id="standings-h" class="bb-sec-h">Current Arena standings.</h2>
+      </header>
+
+      {
+        votingOpen && publishedRatings.length > 0 ? (
+          <div class="bb-standings-wrap">
+            <table class="bb-standings">
+              <thead>
+                <tr>
+                  <th scope="col">#</th>
+                  <th scope="col">stack</th>
+                  <th scope="col">BT rating</th>
+                  <th scope="col">95% CI</th>
+                  <th scope="col">votes</th>
+                </tr>
+              </thead>
+              <tbody>
+                {publishedRatings.map((r, i) => {
+                  const hLogo = HARNESS_LOGO[r.harness] ?? null;
+                  const mLogo = MODEL_LOGO[r.model] ?? null;
+                  return (
+                    <tr>
+                      <td class="st-votes">{i + 1}</td>
+                      <td>
+                        <span class="mx-rowhead__in">
+                          <span class={`bb-badge bb-badge--sm h--${hcls(r.harness)}`}>
+                            {hLogo ? (
+                              <img
+                                src={hLogo}
+                                alt=""
+                                width="16"
+                                height="16"
+                                loading="lazy"
+                                decoding="async"
+                              />
+                            ) : (
+                              <span class="bb-badge__mono">
+                                {monogramFor(r.harness, harnessDisplay(r.harness))}
+                              </span>
+                            )}
+                          </span>
+                          <span class={`bb-badge bb-badge--sm m--${mcls(r.model)}`}>
+                            {mLogo ? (
+                              <img
+                                src={mLogo}
+                                alt=""
+                                width="16"
+                                height="16"
+                                loading="lazy"
+                                decoding="async"
+                              />
+                            ) : (
+                              <span class="bb-badge__mono">
+                                {monogramFor(r.model, modelDisplay(r.model))}
+                              </span>
+                            )}
+                          </span>
+                          {harnessDisplay(r.harness)} × {modelDisplay(r.model)}
+                        </span>
+                      </td>
+                      <td class="st-bt">{r.bt.toFixed(3)}</td>
+                      <td class="st-ci">
+                        {r.ci95[0].toFixed(3)}–{r.ci95[1].toFixed(3)}
+                      </td>
+                      <td class="st-votes">{r.votes}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div class="bb-empty glass-pane">
+            <span class="bb-empty__pulse" aria-hidden="true">
+              ◌
+            </span>
+            <h3>Voting opens soon.</h3>
+            <p>
+              The first Arena round is being staged: experiential tasks are run, artifacts are
+              captured, and matchups are seeded before the ballot box opens. When it does, standings
+              appear here — Bradley-Terry ratings with bootstrap intervals, published only for
+              stacks with 30+ votes. Until then, the mechanical leaderboard on
+              <a href="/bench">/bench</a> carries the measured picture.
+            </p>
+            <span class="tag tag--estimated">{arena.votes} votes in this export</span>
+          </div>
+        )
+      }
+    </div>
+  </section>
+
+  {/* ──────────────── 4 · VOTE ──────────────── */}
+  <section class="bb-section bb-section--ember" aria-labelledby="console-h">
+    <div class="container container--narrow">
+      <div class="bb-console glass-pane">
+        <span class="eyebrow eyebrow--ember">The ballot box</span>
+        <h2 id="console-h" class="bb-sec-h">Cast a blind vote.</h2>
+        <p class="bb-sec-lead">
+          Two anonymized artifacts from the same experiential task, side by side. Pick the better
+          one — identities reveal only after you vote. Every ballot feeds the Bradley–Terry ratings
+          published above.
+        </p>
+        <a class="btn btn--ember" href="/bench/arena/vote">
+          Open the ballot <span class="btn-arrow" aria-hidden="true">→</span>
+        </a>
+        <span class="bb-console__url"
+          >blind until you vote · reveal-after-write · no sign-in needed</span
+        >
+      </div>
+    </div>
+  </section>
+
+  {/* ──────────────── 5 · ARTIFACT GALLERY ──────────────── */}
+  <section class="bb-section" aria-labelledby="gal-h">
+    <div class="container container--wide">
+      <header class="bb-sec-head">
+        <span class="eyebrow eyebrow--mercury">Artifact gallery</span>
+        <h2 id="gal-h" class="bb-sec-h">What Arena matchups are made of.</h2>
+        <p class="bb-sec-lead">
+          Six experiential families feed the Arena. Thumbnails of real captured artifacts land with
+          the first published round — frames below hold their place.
+        </p>
+      </header>
+
+      <div class="bb-gallery">
+        {
+          GALLERY_FAMILIES.map((fam) => (
+            <article class="bb-thumb">
+              <span class="bb-thumb__frame">artifact pending</span>
+              <span class="bb-thumb__fam">{fam.id}</span>
+              <span class="bb-thumb__note">
+                {fam.note} · human-validated · thumbnails publish with the first Arena round
+              </span>
+            </article>
+          ))
+        }
+      </div>
+    </div>
+  </section>
+</BaseLayout>

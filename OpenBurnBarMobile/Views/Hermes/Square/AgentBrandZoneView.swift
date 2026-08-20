@@ -430,7 +430,7 @@ struct AgentBrandZoneView: View {
         }
         switch identity.dispatchTransport {
         case .macRelay(let runtime):
-            return runtime.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+            return runtime.trimmingCharacters(in: .whitespacesAndNewlines).nilIfBlankPreservingWhitespace
         case .nativeRelay, .httpGateway, .mcpServer:
             return nil
         }
@@ -614,7 +614,7 @@ private struct AgentBrandDispatchSheet: View {
             return runtime.rawValue
         }
         if case .macRelay(let runtime) = identity.dispatchTransport {
-            return runtime.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+            return runtime.trimmingCharacters(in: .whitespacesAndNewlines).nilIfBlankPreservingWhitespace
         }
         return nil
     }
@@ -857,9 +857,6 @@ private struct AgentBrandSubscribeSheet: View {
 }
 
 private extension String {
-    var nilIfEmpty: String? {
-        trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : self
-    }
 
     func trimmedOrFallback(_ fallback: String) -> String {
         let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)

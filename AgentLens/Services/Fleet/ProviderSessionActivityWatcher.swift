@@ -20,6 +20,12 @@ import OpenBurnBarLogParsers
 //
 // Paths come from the generated ingestion catalog rather than a hardcoded list,
 // so this cannot drift from `contracts/provider-ingestion-catalog.json`.
+//
+// A write counts only when the provider *owns* the file. API-backed rows
+// (`*-no-local-logs`, e.g. MiMo) and model-filter piggybacks (MiniMax / Z.ai
+// on Factory's session tree) never get a stream — their activity arrives
+// through parsed usage, not through someone else's mtime. The catalog glob
+// is applied to every event, so `~/.codex/auth.json` is not a session write.
 
 @MainActor
 final class ProviderSessionActivityWatcher {
@@ -77,6 +83,14 @@ final class ProviderSessionActivityWatcher {
         isArmed = false
 #else
         for provider in providers where streams[provider] == nil {
+            // Piggybacks and API-backed providers keep parsed-usage / in-app
+            // presence as their evidence. Marking them unwatchable would
+            // hide those rows behind "Not watched".
+            guard AgentProviderLogDiscovery.shouldArmLiveWatch(
+                for: provider,
+                environment: environment
+            ) else { continue }
+
             let source = AgentProviderLogDiscovery.resolveLogSource(
                 for: provider,
                 environment: environment
@@ -155,8 +169,17 @@ final class ProviderSessionActivityWatcher {
         for path in paths {
             let url = URL(fileURLWithPath: path)
             // try?-ok(session file may vanish between event and stat; skip it)
-            guard let values = try? url.resourceValues(forKeys: [.contentModificationDateKey]),
+            guard let values = try? url.resourceValues(
+                forKeys: [.contentModificationDateKey, .isDirectoryKey]
+            ),
                   let modified = values.contentModificationDate else { continue }
+            let isDirectory = values.isDirectory ?? false
+            guard AgentProviderLogDiscovery.admitsLiveWrite(
+                provider: provider,
+                path: path,
+                isDirectory: isDirectory,
+                environment: environment
+            ) else { continue }
             if let current = newest, current.date >= modified { continue }
             newest = (modified, Self.displayPath(for: url, root: root))
         }

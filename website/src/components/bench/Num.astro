@@ -1,0 +1,124 @@
+---
+/**
+ * A typeset figure.
+ *
+ * Splits a number into integer / decimal / unit so the three parts can carry
+ * different weight and colour. The eye lands on magnitude first, then
+ * precision, then units — which is the order you actually read a measurement
+ * in. Tabular lining figures with a slashed zero come from `.ins-num`, so a
+ * column of these aligns on the decimal without any table markup.
+ *
+ *   93.8%   ->  [93][.8][%]
+ *   $0.0412 ->  [$][0][.0412]
+ *   4.50    ->  [4][.50][/ 5]
+ */
+interface Props {
+  /** The value. Pass null for "not measured" — renders the dash, not a zero. */
+  value: number | null | undefined;
+  /** pct: value is 0-1 and renders as a percentage. */
+  kind?: "pct" | "usd" | "score" | "int" | "raw";
+  /** Decimal places. Defaults per kind. */
+  digits?: number;
+  size?: "hero" | "xl" | "lg" | "md" | "sm" | "xs";
+  /** Trailing unit override, e.g. "/ 5" or "s". */
+  unit?: string;
+  /** Shown when value is null. */
+  empty?: string;
+  class?: string;
+  /** Accessible label read instead of the split glyphs. */
+  label?: string;
+}
+
+const {
+  value,
+  kind = "raw",
+  digits,
+  size = "md",
+  unit,
+  empty = "—",
+  class: cls = "",
+  label
+} = Astro.props;
+
+const DIGITS: Record<string, number> = { pct: 1, usd: 2, score: 2, int: 0, raw: 2 };
+const d = digits ?? DIGITS[kind] ?? 2;
+
+const missing = value == null || !Number.isFinite(value);
+
+/** Split "93.8" into ["93", "8"] without tripping noUncheckedIndexedAccess. */
+function split(s: string): [string, string] {
+  const i = s.indexOf(".");
+  return i === -1 ? [s, ""] : [s.slice(0, i), s.slice(i + 1)];
+}
+
+let intPart = "";
+let decPart = "";
+let unitPart = unit ?? "";
+let prefix = "";
+
+if (!missing) {
+  const v = value as number;
+  if (kind === "pct") {
+    [intPart, decPart] = split((v * 100).toFixed(d));
+    unitPart = unit ?? "%";
+  } else if (kind === "usd") {
+    // Sub-cent costs need four places to stay honest; mirror fmtCost.
+    const places = v !== 0 && Math.abs(v) < 0.01 ? 4 : d;
+    [intPart, decPart] = split(Math.abs(v).toFixed(places));
+    prefix = v < 0 ? "-$" : "$";
+  } else if (kind === "int") {
+    intPart = Math.round(v).toLocaleString("en-US");
+  } else {
+    [intPart, decPart] = split(v.toFixed(d));
+  }
+}
+
+/* Magnitude-first only works when the integer carries the magnitude. On a
+   $0.05 cost the significant digits are all after the point, so dimming them
+   would fade the only part worth reading. Step the decimal back when the
+   integer is 1 or more; give it full ink when it isn't. */
+const leadIsZero = intPart === "0" || intPart === "";
+
+const a11y =
+  label ?? (missing ? empty : `${prefix}${intPart}${decPart ? "." + decPart : ""}${unitPart}`);
+
+/* The glyph markup is assembled here as a string rather than as sibling
+   elements in the template, and it is deliberate.
+
+   Any newline between two adjacent expressions in the template emits a text
+   node, which renders as a real space: "98 .7 %" instead of "98.7%". Writing
+   them on one long line fixes it until the next `prettier --write`, which
+   reflows them and silently breaks every figure on the page again — that has
+   already happened once. A joined string cannot be reformatted into a bug.
+
+   Every part is a number this file formatted itself (toFixed / toLocaleString)
+   or a fixed unit token, so there is no interpolation of caller-controlled
+   text and nothing to escape. */
+const esc = (s: string): string => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+
+const glyphs = missing
+  ? ""
+  : [
+      prefix ? `<span class="ins-num__sign">${esc(prefix)}</span>` : "",
+      leadIsZero ? `<span class="ins-num__lead">${esc(intPart)}</span>` : esc(intPart),
+      decPart
+        ? `<span class="ins-num__dec${leadIsZero ? " ins-num__dec--lead" : ""}">.${esc(decPart)}</span>`
+        : "",
+      unitPart ? `<span class="ins-num__unit">${esc(unitPart)}</span>` : ""
+    ].join("");
+---
+
+{
+  missing ? (
+    <span class:list={["ins-num ins-num--none", cls]} aria-label={a11y}>
+      {empty}
+    </span>
+  ) : (
+    <span class:list={["ins-num", `ins-num--${size}`, cls]}>
+      {/* Screen readers get the whole figure as one string; the split glyphs
+          are decoration for sighted reading. */}
+      <span class="ins-sr">{a11y}</span>
+      <span aria-hidden="true" set:html={glyphs} />
+    </span>
+  )
+}

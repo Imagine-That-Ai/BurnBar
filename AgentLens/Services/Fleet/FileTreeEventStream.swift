@@ -160,7 +160,14 @@ private func fileTreeEventCallback(
 ) {
     guard let info, count > 0 else { return }
     let watcher = Unmanaged<FileTreeEventStream>.fromOpaque(info).takeUnretainedValue()
-    guard let cfPaths = unsafeBitCast(paths, to: NSArray.self) as? [String] else { return }
-    watcher.deliver(paths: cfPaths)
+    let cfArray = Unmanaged<CFArray>.fromOpaque(paths).takeUnretainedValue()
+    let length = min(count, CFArrayGetCount(cfArray))
+    var collected: [String] = []
+    collected.reserveCapacity(length)
+    for index in 0..<length {
+        guard let value = CFArrayGetValueAtIndex(cfArray, index) else { continue }
+        collected.append(Unmanaged<CFString>.fromOpaque(value).takeUnretainedValue() as String)
+    }
+    watcher.deliver(paths: collected)
 }
 #endif

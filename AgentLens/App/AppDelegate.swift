@@ -152,6 +152,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         ) else { return }
 #if !DISTRIBUTION_MAS
         DirectDownloadUpdateChecker.shared.startAutomaticChecks()
+        Task {
+            await GrokDFeature.startLocalBoxIfNeeded()
+        }
 #endif
 
         // Start wallpaper orchestration

@@ -432,9 +432,15 @@ def marketing_version_release_tag(repo_root: Path) -> str:
 def release_tag_sort_key(tag: str) -> tuple[int, ...]:
     if not isinstance(tag, str) or not tag.startswith("v"):
         raise ValueError(f"release tag must start with 'v': {tag!r}")
-    parts = tag[1:].split(".")
+    # SemVer build metadata (`+repair.1`) is explicitly ignored when
+    # determining precedence, and the release workflow already accepts
+    # `v*+build` tags — v1.0.37+repair.1 shipped that way. Parsing the suffix as
+    # part of the version made every repair tag unorderable, which failed the
+    # license posture gate at exactly the moment a repair release was needed.
+    core = tag[1:].split("+", 1)[0]
+    parts = core.split(".")
     if not parts or not all(part.isdigit() for part in parts):
-        raise ValueError(f"release tag must be vMAJOR.MINOR.PATCH: {tag!r}")
+        raise ValueError(f"release tag must be vMAJOR.MINOR.PATCH[+build]: {tag!r}")
     return tuple(int(part) for part in parts)
 
 

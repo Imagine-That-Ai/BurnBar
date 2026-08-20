@@ -36,6 +36,10 @@ on:
       - "scripts/ci/burnbar-turbo-runner-host.test.mjs"
       - "scripts/ci/verify-merge-queue-workflows.mjs"
       - "scripts/ci/verify-merge-queue-workflows.test.mjs"
+      - "scripts/ci/verify-workflow-reachability.mjs"
+      - "scripts/ci/verify-workflow-reachability.test.mjs"
+      - "scripts/lib/github-workflow.mjs"
+      - "governance/workflow-reachability.json"
       - "scripts/ci/verify-libsignal-toolchain-preflight.mjs"
       - "scripts/ci/verify-libsignal-toolchain-preflight.test.mjs"
       - "scripts/ci/verify-ci-cache-warm.test.mjs"
@@ -82,6 +86,13 @@ on:
       - "functions/staging-deploy-targets.json"
       - "scripts/ci/write-firebase-hosting-ci-config.mjs"
       - "scripts/ci/write-firebase-hosting-ci-config.test.mjs"
+      # firebase.json is an INPUT to write-firebase-hosting-ci-config.mjs, not
+      # merely a neighbour of it: a new hosting target, a drifted public dir or
+      # a loosened arena publish allowlist makes the generator throw, and the
+      # generator runs inside the production and staging hosting deploy jobs.
+      # Without this entry such a change skips this job entirely, so the break
+      # lands on main after merge and fails every hosting deploy until reverted.
+      - "firebase.json"
       - "scripts/ci/verify-native-build-workflow-secret-boundary.mjs"
       - "scripts/ci/verify-native-build-workflow-secret-boundary.test.mjs"
       - "scripts/ci/verify-ops-plane-workflow-boundary.mjs"
@@ -153,6 +164,10 @@ on:
       - "scripts/ci/verify-vendored-agent-source.sh"
       - "scripts/ci/verify-libsignal-submodule-delta.sh"
       - "scripts/ci/verify-scanner-governance.test.mjs"
+      - "scripts/ci/verify-xcframework-modulemap-collision.mjs"
+      - "scripts/ci/verify-xcframework-modulemap-collision.test.mjs"
+      - "scripts/build-domain-core-xcframework.sh"
+      - "scripts/build-iroh-xcframework.sh"
       - "scripts/ci/verify-codeowners-security-trees.test.sh"
       - "third_party/hermes-agent/manifest.json"
       - "third_party/libsignal/manifest.json"
@@ -220,6 +235,13 @@ on:
       - "functions/staging-deploy-targets.json"
       - "scripts/ci/write-firebase-hosting-ci-config.mjs"
       - "scripts/ci/write-firebase-hosting-ci-config.test.mjs"
+      # firebase.json is an INPUT to write-firebase-hosting-ci-config.mjs, not
+      # merely a neighbour of it: a new hosting target, a drifted public dir or
+      # a loosened arena publish allowlist makes the generator throw, and the
+      # generator runs inside the production and staging hosting deploy jobs.
+      # Without this entry such a change skips this job entirely, so the break
+      # lands on main after merge and fails every hosting deploy until reverted.
+      - "firebase.json"
       - "scripts/ci/verify-native-build-workflow-secret-boundary.mjs"
       - "scripts/ci/verify-native-build-workflow-secret-boundary.test.mjs"
       - "scripts/ci/verify-ops-plane-workflow-boundary.mjs"
@@ -291,6 +313,14 @@ on:
       - "scripts/ci/verify-vendored-agent-source.sh"
       - "scripts/ci/verify-libsignal-submodule-delta.sh"
       - "scripts/ci/verify-scanner-governance.test.mjs"
+      - "scripts/ci/verify-xcframework-modulemap-collision.mjs"
+      - "scripts/ci/verify-xcframework-modulemap-collision.test.mjs"
+      - "scripts/build-domain-core-xcframework.sh"
+      - "scripts/build-iroh-xcframework.sh"
+      - "scripts/ci/verify-workflow-reachability.mjs"
+      - "scripts/ci/verify-workflow-reachability.test.mjs"
+      - "scripts/lib/github-workflow.mjs"
+      - "governance/workflow-reachability.json"
       - "scripts/ci/verify-codeowners-security-trees.test.sh"
       - "third_party/hermes-agent/manifest.json"
       - "third_party/libsignal/manifest.json"
@@ -326,6 +356,24 @@ jobs:
         run: |
           node scripts/ci/verify-merge-queue-workflows.mjs
           node scripts/ci/verify-merge-queue-workflows.test.mjs
+
+      # Two xcframeworks shipping a bare `Headers/module.modulemap` both claim
+      # `include/module.modulemap` and break every iOS archive, which blocked
+      # all releases in August 2026. One is safe; a second is not.
+      - name: Verify xcframework module map collision limit
+        run: |
+          node scripts/ci/verify-xcframework-modulemap-collision.mjs
+          node --test scripts/ci/verify-xcframework-modulemap-collision.test.mjs
+
+      # Two defects that fail silently rather than red: a job that inherits a
+      # skipped upstream through `needs` and is never scheduled, and a `paths:`
+      # filter that omits a script the workflow runs, so fixing that script
+      # triggers nothing. Both took burnbar.ai down for a month in August 2026
+      # with every check green. See docs/CI_RELEASE_RUNBOOK.md.
+      - name: Verify workflow reachability
+        run: |
+          node scripts/ci/verify-workflow-reachability.mjs
+          node --test scripts/ci/verify-workflow-reachability.test.mjs
 
       # A macOS Swift job that builds libsignal without this preflight fails only
       # on the self-hosted half of the fleet, and only as an opaque cargo panic

@@ -592,7 +592,3 @@ enum HermesGatewayMessageResolver {
         return trimmed
     }
 }
-
-private extension String {
-    var nilIfEmpty: String? { isEmpty ? nil : self }
-}

@@ -387,9 +387,8 @@
   }
   .huge {
     font-family: var(--font-display);
-    font-variation-settings:
-      "opsz" 144,
-      "wght" 460;
+    font-weight: var(--wght-display);
+    --opsz: var(--opsz-h1);
     font-size: 52px;
     line-height: 1;
     color: var(--text-bright);
@@ -397,13 +396,14 @@
   }
   .huge .sign {
     color: var(--ember-bright);
-    font-variation-settings: "wght" 340;
+    font-weight: var(--wght-light);
   }
   .dash-mockup__title-meta {
     display: grid;
     gap: 2px;
     font-size: 12px;
     padding-bottom: 4px;
+    --opsz: var(--opsz-caption);
   }
   .dash-mockup__title-meta .muted {
     color: var(--text-mute);
@@ -456,9 +456,8 @@
     font-family: var(--font-display);
     font-size: 22px;
     color: var(--text-bright);
-    font-variation-settings:
-      "opsz" 36,
-      "wght" 500;
+    font-weight: var(--wght-medium);
+    --opsz: var(--opsz-lead);
     letter-spacing: -0.01em;
   }
   .dcard__bar {
@@ -499,9 +498,8 @@
   .dquota h4 {
     font-size: 13px;
     font-family: var(--font-display);
-    font-variation-settings:
-      "opsz" 36,
-      "wght" 540;
+    font-weight: var(--wght-semibold);
+    --opsz: var(--opsz-body);
     color: var(--text-bright);
     letter-spacing: -0.01em;
   }
@@ -580,9 +578,8 @@
   .dh__name {
     color: var(--mercury-bright);
     font-family: var(--font-display);
-    font-variation-settings:
-      "opsz" 36,
-      "wght" 500;
+    font-weight: var(--wght-medium);
+    --opsz: var(--opsz-lead);
     letter-spacing: -0.01em;
   }
   .dh__msg {
@@ -596,7 +593,7 @@
     border-radius: 4px;
     font-size: 0.92em;
     color: var(--text-bright);
-    font-variation-settings: "wght" 500;
+    font-weight: var(--wght-medium);
   }
   .atom--ember {
     border-color: color-mix(in oklab, var(--ember-core) 40%, var(--ink-line));

@@ -1,0 +1,2960 @@
+/* ============================================================
+   BurnBench — "Instrument"
+   ------------------------------------------------------------
+   A calm laboratory surface for measured data.
+
+   Three rules this file exists to enforce:
+
+     1. Nothing animates behind a number. Atmosphere lives in the
+        hero; data sits on still glass.
+     2. One chart grammar, everywhere. Model = fill colour.
+        Harness = logo chip + stroke. Never two colour channels.
+     3. Numbers are set, not printed. Tabular lining figures,
+        slashed zero, decimal alignment, magnitude-first scale.
+
+   Brand palette (harness/model colours, contract §5b) is owned by
+   bench.css and reused here through --hc / --mc. Colours are set
+   with .h--/.m-- class setters or CSSOM setProperty — never inline
+   style attributes — so the hash-locked CSP stays lean.
+   ============================================================ */
+
+/* ------------------------------------------------------------
+   1. FIELD — the surface everything rests on
+   ------------------------------------------------------------ */
+
+.ins {
+  /* glass material */
+  --ins-glass: rgba(255, 255, 255, 0.045);
+  --ins-glass-hi: rgba(255, 255, 255, 0.075);
+  --ins-rim: rgba(255, 255, 255, 0.1);
+  --ins-rim-lit: rgba(255, 255, 255, 0.34);
+  --ins-blur: 28px;
+  --ins-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.28), 0 8px 24px -12px rgba(0, 0, 0, 0.5),
+    0 24px 64px -32px rgba(0, 0, 0, 0.6);
+
+  /* ink */
+  --ins-ink: rgba(255, 255, 255, 0.96);
+  --ins-ink-2: rgba(255, 255, 255, 0.68);
+  --ins-ink-3: rgba(255, 255, 255, 0.46);
+  --ins-ink-4: rgba(255, 255, 255, 0.3);
+  --ins-rule: rgba(255, 255, 255, 0.08);
+  --ins-rule-2: rgba(255, 255, 255, 0.14);
+
+  /* plotting */
+  --ins-track: rgba(255, 255, 255, 0.07);
+  --ins-grid: rgba(255, 255, 255, 0.055);
+  --ins-ci: rgba(255, 255, 255, 0.2);
+
+  /* rhythm — one 8px spine, no ad-hoc values */
+  --ins-1: 4px;
+  --ins-2: 8px;
+  --ins-3: 12px;
+  --ins-4: 16px;
+  --ins-5: 24px;
+  --ins-6: 32px;
+  --ins-7: 48px;
+  --ins-8: 64px;
+  --ins-9: 96px;
+
+  --ins-r: 14px;
+  --ins-r-lg: 20px;
+  --ins-r-xl: 28px;
+
+  --ins-measure: 62ch;
+  --ins-max: 1180px;
+
+  /* Bench runs on the grotesque, not the serif: with every figure set in
+     mono, the serif was doing purely editorial work and the page read as a
+     magazine rather than an instrument. Geist ships with the site already,
+     so this costs nothing to load. */
+  --font-display:
+    "Geist Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+
+  color: var(--ins-ink-2);
+  font-family: var(--font-body);
+}
+
+:root[data-theme="light"] .ins {
+  --ins-glass: rgba(255, 255, 255, 0.62);
+  --ins-glass-hi: rgba(255, 255, 255, 0.82);
+  --ins-rim: rgba(15, 20, 30, 0.09);
+  --ins-rim-lit: rgba(255, 255, 255, 0.95);
+  --ins-shadow:
+    0 1px 2px rgba(18, 24, 38, 0.06), 0 8px 24px -14px rgba(18, 24, 38, 0.18),
+    0 24px 64px -36px rgba(18, 24, 38, 0.22);
+
+  --ins-ink: rgba(12, 16, 24, 0.94);
+  --ins-ink-2: rgba(12, 16, 24, 0.7);
+  --ins-ink-3: rgba(12, 16, 24, 0.5);
+  --ins-ink-4: rgba(12, 16, 24, 0.34);
+  --ins-rule: rgba(12, 16, 24, 0.1);
+  --ins-rule-2: rgba(12, 16, 24, 0.16);
+
+  --ins-track: rgba(12, 16, 24, 0.07);
+  --ins-grid: rgba(12, 16, 24, 0.07);
+  --ins-ci: rgba(12, 16, 24, 0.24);
+}
+
+/* The ember swarm is atmosphere, not wallpaper: it burns behind the hero and
+   is gone by the time the first number arrives.
+
+   That rule used to live here, scoped to `body:has(.ins)`, because bench was
+   the only surface that couldn't afford a field burning behind its data. It
+   is now the site default — the mask and the scroll-driven `--atmo` live in
+   globals.css, driven by scripts/atmosphere.ts, and every page gets the same
+   backdrop this page had. Nothing bench-specific is left except the line
+   below: on this page reduced motion drops the canvases entirely rather than
+   leaving a static frame, because a still field over a leaderboard is just
+   texture on the numbers. */
+@media (prefers-reduced-motion: reduce) {
+  body:has(.ins) #bgCanvas,
+  body:has(.ins) #bgDots {
+    display: none;
+  }
+}
+
+/* The site-wide furnace underglow is position:fixed at the bottom of the
+   viewport, so at full strength it washes whatever data happens to be down
+   there — permanently, at every scroll position. Keep the tint, lose the
+   wash. */
+body:has(.ins)::before {
+  opacity: 0.14;
+}
+
+/* A soft pool of warmth behind the hero headline, so the display type has
+   something to sit on once the swarm fades out. Static — it never animates. */
+.ins-hero {
+  position: relative;
+}
+.ins-hero::before {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  top: -14vh;
+  height: 92vh;
+  background: radial-gradient(
+    56% 44% at 34% 36%,
+    color-mix(in oklab, var(--ember-core, #ff9f0a) 11%, transparent),
+    transparent 68%
+  );
+  pointer-events: none;
+  z-index: -1;
+}
+:root[data-theme="light"] .ins-hero::before {
+  background: radial-gradient(
+    56% 44% at 34% 36%,
+    color-mix(in oklab, var(--ember-core, #ff9f0a) 7%, transparent),
+    transparent 68%
+  );
+}
+
+/* ------------------------------------------------------------
+   2. GLASS — the material
+   ------------------------------------------------------------
+   Four stacked cues make glass read as glass: a blurred+saturated
+   backdrop, a lit top rim (the specular edge), a hairline border,
+   and a shadow that sits the pane above the field.
+   ------------------------------------------------------------ */
+
+.ins-glass {
+  position: relative;
+  border-radius: var(--ins-r-lg);
+  background: var(--ins-glass);
+  border: 1px solid var(--ins-rim);
+  box-shadow: var(--ins-shadow);
+  -webkit-backdrop-filter: blur(var(--ins-blur)) saturate(180%);
+  backdrop-filter: blur(var(--ins-blur)) saturate(180%);
+  isolation: isolate;
+}
+
+/* Specular edge: a 1px highlight that fades around the top corners —
+   the single detail that separates real glass from a grey box. */
+.ins-glass::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    160deg,
+    var(--ins-rim-lit) 0%,
+    rgba(255, 255, 255, 0.06) 28%,
+    rgba(255, 255, 255, 0) 58%
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Interior bloom — light pooling just under the top edge. */
+.ins-glass::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(120% 70% at 50% -12%, rgba(255, 255, 255, 0.09), transparent 62%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+:root[data-theme="light"] .ins-glass::after {
+  background: radial-gradient(120% 70% at 50% -12%, rgba(255, 255, 255, 0.9), transparent 62%);
+}
+
+.ins-glass > * {
+  position: relative;
+  z-index: 2;
+}
+
+.ins-glass--flush {
+  border-radius: var(--ins-r);
+}
+.ins-glass--tall {
+  border-radius: var(--ins-r-xl);
+}
+
+/* A pane that reacts — used for anything clickable. */
+.ins-glass--live {
+  transition:
+    transform 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 260ms ease,
+    border-color 260ms ease,
+    box-shadow 260ms ease;
+}
+.ins-glass--live:hover,
+.ins-glass--live:focus-visible {
+  background: var(--ins-glass-hi);
+  border-color: var(--ins-rule-2);
+  transform: translateY(-2px);
+}
+.ins-glass--live:active {
+  transform: translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ins-glass--live {
+    transition: none;
+  }
+  .ins-glass--live:hover,
+  .ins-glass--live:focus-visible {
+    transform: none;
+  }
+}
+
+/* Fallback for engines without backdrop-filter: opaque enough to keep
+   contrast, since legibility outranks the effect. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .ins-glass {
+    background: rgba(16, 18, 24, 0.9);
+  }
+  :root[data-theme="light"] .ins-glass {
+    background: rgba(252, 252, 253, 0.94);
+  }
+}
+
+/* ------------------------------------------------------------
+   3. NUMERALS — the mathematical setting
+   ------------------------------------------------------------
+   Every figure on this page is tabular and lining, with a slashed
+   zero, so columns align to the glyph and 0 never reads as O.
+   ------------------------------------------------------------ */
+
+.ins-num,
+.ins table,
+.ins-bar,
+.ins-axis {
+  font-variant-numeric: tabular-nums lining-nums slashed-zero;
+  font-feature-settings:
+    "tnum" 1,
+    "lnum" 1,
+    "zero" 1;
+}
+
+.ins-num {
+  font-family: var(--font-mono);
+  color: var(--ins-ink);
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+/* Magnitude-first scale. The integer carries the weight; the decimal
+   and the unit step back so a column of figures reads as a shape
+   before it reads as digits. */
+.ins-num__dec {
+  color: color-mix(in oklab, var(--ins-ink) 66%, transparent);
+  font-weight: var(--wght-regular);
+}
+/* Values below 1 ($0.05, 0.42) carry their magnitude in the decimals, so the
+   de-emphasis inverts — the leading zero steps back and the decimals get the
+   full ink. */
+.ins-num__dec--lead {
+  color: var(--ins-ink);
+  font-weight: inherit;
+}
+.ins-num__lead {
+  color: var(--ins-ink-4);
+  font-weight: var(--wght-regular);
+}
+.ins-num__unit {
+  color: var(--ins-ink-3);
+  font-size: 0.66em;
+  margin-inline-start: 0.18em;
+  letter-spacing: 0;
+}
+.ins-num__sign {
+  color: var(--ins-ink-3);
+  margin-inline-end: 0.06em;
+}
+
+/* The headline statistic. Mono, so every figure on the page — hero stat
+   down to axis tick — sits on one grid and columns align to the glyph. */
+.ins-num--hero {
+  font-family: var(--font-mono);
+  font-weight: var(--wght-medium);
+  font-size: clamp(3rem, 2rem + 4.4vw, 5.2rem);
+  line-height: 0.92;
+  letter-spacing: -0.045em;
+  color: var(--ins-ink);
+}
+.ins-num--hero .ins-num__dec {
+  font-weight: var(--wght-light);
+}
+.ins-num--hero .ins-num__unit {
+  font-size: 0.38em;
+  vertical-align: 0.5em;
+  letter-spacing: 0.02em;
+}
+
+.ins-num--xl {
+  font-family: var(--font-mono);
+  font-weight: var(--wght-medium);
+  font-size: clamp(2rem, 1.4rem + 2.4vw, 3rem);
+  line-height: 0.94;
+  letter-spacing: -0.03em;
+}
+.ins-num--xl .ins-num__unit {
+  font-size: 0.38em;
+  vertical-align: 0.5em;
+}
+
+.ins-num--lg {
+  font-size: 1.375rem;
+  font-weight: var(--wght-medium);
+  line-height: 1.1;
+}
+.ins-num--md {
+  font-size: 1rem;
+  font-weight: var(--wght-medium);
+}
+.ins-num--sm {
+  font-size: 0.8125rem;
+  color: var(--ins-ink-2);
+}
+.ins-num--xs {
+  font-size: 0.6875rem;
+  color: var(--ins-ink-3);
+  letter-spacing: 0.02em;
+}
+
+/* Right-aligned numeric column with the decimal point on a common
+   axis. Used in every table and row list on the page. */
+.ins-num--col {
+  display: inline-block;
+  text-align: right;
+  font-variant-numeric: tabular-nums lining-nums slashed-zero;
+}
+
+/* Delta colouring is semantic, never decorative. */
+.ins-num--up {
+  color: #3ddc84;
+}
+.ins-num--down {
+  color: #ff6b6b;
+}
+.ins-num--flat {
+  color: var(--ins-ink-3);
+}
+
+/* Values the export could not measure. Never render an empty cell —
+   render the reason. */
+.ins-num--none {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--ins-ink-4);
+  letter-spacing: 0.04em;
+}
+
+/* ------------------------------------------------------------
+   4. TYPE — headings, lede, labels
+   ------------------------------------------------------------ */
+
+.ins-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ins-2);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: var(--wght-medium);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ins-ink-3);
+}
+.ins-eyebrow::before {
+  content: "";
+  width: 18px;
+  height: 1px;
+  background: currentColor;
+  opacity: 0.6;
+}
+
+.ins-h {
+  font-family: var(--font-display);
+  font-weight: var(--wght-bold);
+  font-size: clamp(1.7rem, 1.25rem + 1.8vw, 2.5rem);
+  line-height: 1.1;
+  letter-spacing: -0.035em;
+  color: var(--ins-ink);
+  text-wrap: balance;
+  max-width: 22ch;
+  margin: 0;
+}
+
+.ins-h--sm {
+  font-size: clamp(1.15rem, 1rem + 0.6vw, 1.4rem);
+  letter-spacing: -0.02em;
+  max-width: 30ch;
+}
+
+.ins-lede {
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  color: var(--ins-ink-2);
+  max-width: var(--ins-measure);
+  text-wrap: pretty;
+  margin: 0;
+}
+
+/* A one-line reading key attached to a chart. If a chart needs more
+   than this, the chart is wrong. */
+.ins-key {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--ins-ink-3);
+  letter-spacing: 0.01em;
+  margin: 0;
+}
+.ins-key b {
+  color: var(--ins-ink-2);
+  font-weight: var(--wght-medium);
+}
+
+.ins-label {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--ins-ink-3);
+}
+
+/* ------------------------------------------------------------
+   5. LAYOUT
+   ------------------------------------------------------------ */
+
+.ins-wrap {
+  width: 100%;
+  max-width: var(--ins-max);
+  margin-inline: auto;
+  padding-inline: var(--ins-5);
+}
+@media (max-width: 600px) {
+  .ins-wrap {
+    padding-inline: var(--ins-4);
+  }
+}
+
+.ins-section {
+  padding-block: var(--ins-9);
+  scroll-margin-top: 84px;
+}
+@media (max-width: 700px) {
+  .ins-section {
+    padding-block: var(--ins-8);
+  }
+}
+
+.ins-section__head {
+  display: grid;
+  gap: var(--ins-3);
+  margin-bottom: var(--ins-6);
+}
+
+/* A hairline that carries a label — the section divider. */
+.ins-rule {
+  display: flex;
+  align-items: center;
+  gap: var(--ins-4);
+  margin-block: var(--ins-6);
+}
+.ins-rule::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(to right, var(--ins-rule-2), transparent);
+}
+
+.ins-cols {
+  display: grid;
+  gap: var(--ins-4);
+}
+.ins-cols--2 {
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+.ins-cols--3 {
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+}
+.ins-cols--4 {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+/* ------------------------------------------------------------
+   6. CHART GRAMMAR — the part that has to be obvious
+   ------------------------------------------------------------
+   Model = fill colour (--mc). Harness = logo chip + stroke (--hc).
+   Applied identically in the leaderboard, the tuner, the lens, the
+   heatmap and the scatter, so learning one chart teaches all five.
+   ------------------------------------------------------------ */
+
+/* -- 6a. Identity chip: the logo, at a size you can actually see -- */
+.ins-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--ins-rim);
+  overflow: hidden;
+}
+.ins-chip img {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  display: block;
+}
+.ins-chip--sm {
+  width: 29px;
+  height: 29px;
+  border-radius: 9px;
+}
+.ins-chip--sm img {
+  width: 19px;
+  height: 19px;
+}
+.ins-chip--lg {
+  width: 46px;
+  height: 46px;
+  border-radius: 13px;
+}
+.ins-chip--lg img {
+  width: 30px;
+  height: 30px;
+}
+
+/* Harness chips carry their stroke; model chips carry their fill. */
+.ins-chip--h {
+  border-color: color-mix(in oklab, var(--hc, var(--ins-rim)) 52%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--hc, transparent) 16%, transparent);
+}
+.ins-chip--m {
+  background: color-mix(in oklab, var(--mc, rgba(255, 255, 255, 0.07)) 16%, transparent);
+  border-color: color-mix(in oklab, var(--mc, var(--ins-rim)) 44%, transparent);
+}
+
+.ins-mono {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: var(--wght-bold);
+  letter-spacing: 0.02em;
+  color: var(--ins-ink-2);
+}
+
+/* The paired identity: harness × model, always in that order. */
+.ins-pair {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ins-2);
+}
+.ins-pair__x {
+  color: var(--ins-ink-4);
+  font-size: 0.75rem;
+}
+
+/* -- 6b. Bar: value + confidence interval + secondary tick -- */
+.ins-bar {
+  /* block, not inline: the children are absolutely positioned, so an inline
+     box would collapse to zero width and the whole bar would vanish. */
+  display: block;
+  position: relative;
+  width: 100%;
+  height: 12px;
+  border-radius: 6px;
+  background: var(--ins-track);
+  overflow: visible;
+}
+
+.ins-bar__fill {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  border-radius: 6px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in oklab, var(--mc, #7c5cff) 74%, transparent),
+    var(--mc, #7c5cff)
+  );
+  width: 0;
+  transition: width 700ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* The 95% interval, drawn as a band rather than a whisker. A band
+   reads as "the answer lives in here"; a whisker reads as noise. */
+.ins-bar__ci {
+  position: absolute;
+  inset-block: -3px;
+  border-radius: 3px;
+  border: 1px solid var(--ins-ci);
+  border-inline-width: 1px;
+  background: repeating-linear-gradient(
+    -45deg,
+    rgba(255, 255, 255, 0.07) 0 3px,
+    transparent 3px 6px
+  );
+  pointer-events: none;
+}
+
+/* Strict rate sits under the solution rate as a hairline tick. */
+.ins-bar__tick {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--ins-ink);
+  opacity: 0.85;
+}
+
+.ins-bar--lg {
+  height: 16px;
+  border-radius: 8px;
+}
+.ins-bar--lg .ins-bar__fill {
+  border-radius: 8px;
+}
+.ins-bar--sm {
+  height: 8px;
+  border-radius: 4px;
+}
+.ins-bar--sm .ins-bar__fill {
+  border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ins-bar__fill {
+    transition: none;
+  }
+}
+
+/* Inferred (shrinkage-pooled) values are drawn, never hidden — but
+   they are drawn as estimates. */
+.ins-bar--inferred .ins-bar__fill {
+  background: repeating-linear-gradient(
+    90deg,
+    color-mix(in oklab, var(--mc, #7c5cff) 70%, transparent) 0 6px,
+    transparent 6px 10px
+  );
+}
+
+/* -- 6c. Axis + gridlines -- */
+.ins-axis {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--ins-ink-4);
+  letter-spacing: 0.02em;
+}
+
+.ins-plot {
+  position: relative;
+}
+.ins-plot__grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.ins-gridline {
+  stroke: var(--ins-grid);
+  stroke-width: 1;
+}
+.ins-gridline--major {
+  stroke: var(--ins-rule-2);
+}
+
+/* Truncated axes must announce themselves. A bar chart that starts at
+   86% and doesn't say so is a lie with good posture. */
+.ins-zoomnote {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--ins-ink-4);
+  letter-spacing: 0.02em;
+}
+
+/* -- 6d. Legend, rendered once and obeyed everywhere -- */
+.ins-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ins-2) var(--ins-4);
+}
+.ins-legend__item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ins-2);
+  font-size: 0.75rem;
+  color: var(--ins-ink-2);
+}
+.ins-legend__swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--mc, var(--ins-ink-3));
+  flex: none;
+}
+.ins-legend__swatch--stroke {
+  background: transparent;
+  border: 2px solid var(--hc, var(--ins-ink-3));
+}
+
+/* ------------------------------------------------------------
+   7. CONTROLS
+   ------------------------------------------------------------ */
+
+.ins-segment {
+  display: inline-flex;
+  padding: 3px;
+  gap: 2px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--ins-rim);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  backdrop-filter: blur(18px) saturate(160%);
+}
+:root[data-theme="light"] .ins-segment {
+  background: rgba(12, 16, 24, 0.05);
+}
+
+.ins-segment__btn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--ins-ink-3);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+  padding: 7px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    color 200ms ease,
+    background-color 200ms ease;
+  min-height: 34px;
+}
+.ins-segment__btn:hover {
+  color: var(--ins-ink);
+}
+.ins-segment__btn[aria-pressed="true"],
+.ins-segment__btn[aria-selected="true"] {
+  background: var(--ins-glass-hi);
+  color: var(--ins-ink);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 1px 3px rgba(0, 0, 0, 0.25);
+}
+
+/* Filter pills carry their own identity colour when active. */
+.ins-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ins-2);
+  padding: 6px 12px 6px 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--ins-rim);
+  color: var(--ins-ink-2);
+  font-size: 0.8125rem;
+  cursor: pointer;
+  min-height: 40px;
+  transition:
+    background-color 200ms ease,
+    border-color 200ms ease,
+    color 200ms ease,
+    opacity 200ms ease;
+}
+.ins-pill:hover {
+  color: var(--ins-ink);
+  border-color: var(--ins-rule-2);
+}
+.ins-pill[aria-pressed="false"] {
+  opacity: 0.42;
+}
+.ins-pill[aria-pressed="true"] {
+  border-color: color-mix(in oklab, var(--hc, var(--mc, #fff)) 46%, transparent);
+  background: color-mix(in oklab, var(--hc, var(--mc, #fff)) 12%, transparent);
+  color: var(--ins-ink);
+}
+
+.ins-field {
+  appearance: none;
+  width: 100%;
+  padding: 10px 14px;
+  min-height: 44px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--ins-rim);
+  color: var(--ins-ink);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+}
+:root[data-theme="light"] .ins-field {
+  background: rgba(12, 16, 24, 0.04);
+}
+.ins-field::placeholder {
+  color: var(--ins-ink-4);
+}
+.ins-field:focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--ember-core, #ff9f0a) 70%, transparent);
+  outline-offset: 1px;
+}
+
+/* Every interactive target clears 44px. Alberto reads this on a phone. */
+.ins :is(button, a, select, input, summary):focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--ember-core, #ff9f0a) 78%, transparent);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+/* ------------------------------------------------------------
+   8. ROWS — the leaderboard primitive
+   ------------------------------------------------------------
+   Desktop: a true grid so rank / identity / bar / value line up on
+   shared columns. Mobile: the same data re-flowed, never squeezed.
+   ------------------------------------------------------------ */
+
+.ins-rows {
+  display: grid;
+  gap: var(--ins-1);
+}
+
+.ins-row {
+  display: grid;
+  grid-template-columns: 34px minmax(260px, 1.15fr) minmax(170px, 1.5fr) auto;
+  align-items: center;
+  gap: var(--ins-4);
+  padding: var(--ins-3) var(--ins-4);
+  border-radius: var(--ins-r);
+  border: 1px solid transparent;
+  transition:
+    background-color 200ms ease,
+    border-color 200ms ease;
+}
+.ins-row:hover {
+  background: rgba(255, 255, 255, 0.035);
+  border-color: var(--ins-rule);
+}
+:root[data-theme="light"] .ins-row:hover {
+  background: rgba(12, 16, 24, 0.03);
+}
+
+.ins-row__rank {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  color: var(--ins-ink-4);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.ins-row--lead .ins-row__rank {
+  color: var(--ember-core, #ff9f0a);
+}
+
+.ins-row__id {
+  display: flex;
+  align-items: center;
+  gap: var(--ins-3);
+  min-width: 0;
+}
+.ins-row__name {
+  font-size: 0.9375rem;
+  color: var(--ins-ink);
+  font-weight: var(--wght-medium);
+  letter-spacing: -0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  --opsz: var(--opsz-body);
+}
+.ins-row__meta {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--ins-ink-4);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ins-row__val {
+  text-align: right;
+  min-width: 84px;
+}
+
+@media (max-width: 780px) {
+  .ins-row {
+    grid-template-columns: 26px minmax(0, 1fr) auto;
+    grid-template-areas:
+      "rank id val"
+      ".    bar bar";
+    gap: var(--ins-2) var(--ins-3);
+    padding-block: var(--ins-4);
+  }
+  .ins-row__rank {
+    grid-area: rank;
+  }
+  .ins-row__id {
+    grid-area: id;
+  }
+  .ins-row__val {
+    grid-area: val;
+  }
+  .ins-row__plot {
+    grid-area: bar;
+  }
+  /* Names wrap on a phone instead of turning into "Codex × Muse Spa…" */
+  .ins-row__name {
+    white-space: normal;
+    overflow: visible;
+    line-height: 1.25;
+  }
+}
+
+/* ------------------------------------------------------------
+   9. STAT — the verdict card
+   ------------------------------------------------------------ */
+
+.ins-stat {
+  display: grid;
+  gap: var(--ins-2);
+  padding: var(--ins-5);
+}
+.ins-stat__label {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ins-ink-3);
+}
+.ins-stat__note {
+  font-size: 0.8125rem;
+  color: var(--ins-ink-3);
+  line-height: 1.45;
+}
+
+/* A definition list rendered as an aligned ledger — label left,
+   figure right, hairline between. The most honest way to show
+   a handful of related numbers. */
+.ins-ledger {
+  display: grid;
+  gap: 0;
+  margin: 0;
+}
+.ins-ledger__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--ins-4);
+  padding-block: var(--ins-2);
+  border-bottom: 1px solid var(--ins-rule);
+}
+.ins-ledger__row:last-child {
+  border-bottom: 0;
+}
+.ins-ledger__k {
+  font-size: 0.8125rem;
+  color: var(--ins-ink-3);
+}
+.ins-ledger__v {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  color: var(--ins-ink);
+  font-variant-numeric: tabular-nums lining-nums slashed-zero;
+}
+
+/* ------------------------------------------------------------
+   10. DISCLOSURE — expandable detail, iOS-style
+   ------------------------------------------------------------ */
+
+.ins-disc {
+  border-radius: var(--ins-r);
+}
+.ins-disc > summary {
+  display: flex;
+  align-items: center;
+  gap: var(--ins-3);
+  cursor: pointer;
+  list-style: none;
+  padding: var(--ins-3) var(--ins-4);
+  min-height: 44px;
+}
+.ins-disc > summary::-webkit-details-marker {
+  display: none;
+}
+.ins-disc__caret {
+  margin-inline-start: auto;
+  color: var(--ins-ink-4);
+  transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1);
+  flex: none;
+}
+.ins-disc[open] .ins-disc__caret {
+  transform: rotate(180deg);
+}
+.ins-disc__body {
+  padding: 0 var(--ins-4) var(--ins-4);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ins-disc__caret {
+    transition: none;
+  }
+}
+
+/* ------------------------------------------------------------
+   11. BADGES
+   ------------------------------------------------------------ */
+
+.ins-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border: 1px solid var(--ins-rim);
+  color: var(--ins-ink-3);
+  white-space: nowrap;
+}
+.ins-badge--lead {
+  border-color: color-mix(in oklab, var(--ember-core, #ff9f0a) 44%, transparent);
+  color: var(--ember-core, #ff9f0a);
+  background: color-mix(in oklab, var(--ember-core, #ff9f0a) 10%, transparent);
+}
+.ins-badge--warn {
+  border-color: rgba(255, 159, 10, 0.4);
+  color: #ffb340;
+}
+.ins-badge--muted {
+  color: var(--ins-ink-4);
+}
+
+/* Provenance strip — the chips under the hero. */
+.ins-prov {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ins-2) var(--ins-4);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--ins-ink-3);
+  letter-spacing: 0.01em;
+}
+.ins-prov__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.ins-prov__link {
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px dotted var(--ins-ink-3, currentColor);
+  padding-bottom: 1px;
+  transition:
+    color 160ms ease,
+    border-color 160ms ease;
+}
+.ins-prov__link:hover {
+  color: var(--ins-ink-1, #fff);
+  border-bottom-color: var(--ember-core, #ff9f0a);
+}
+.ins-prov__dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--ember-core, #ff9f0a);
+  flex: none;
+}
+
+/* ------------------------------------------------------------
+   12. MOTION — one orchestrated entrance, then stillness
+   ------------------------------------------------------------ */
+
+@media (prefers-reduced-motion: no-preference) {
+  .ins-rise {
+    animation: ins-rise 760ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .ins-rise-1 {
+    animation-delay: 60ms;
+  }
+  .ins-rise-2 {
+    animation-delay: 130ms;
+  }
+  .ins-rise-3 {
+    animation-delay: 200ms;
+  }
+  .ins-rise-4 {
+    animation-delay: 270ms;
+  }
+  .ins-rise-5 {
+    animation-delay: 340ms;
+  }
+}
+
+@keyframes ins-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ------------------------------------------------------------
+   13. UTILITIES
+   ------------------------------------------------------------ */
+
+.ins-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Wide content scrolls inside its own pane. The page body never
+   scrolls sideways — that is the mobile promise. */
+.ins-scroll-x {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+.ins-stack {
+  display: grid;
+  gap: var(--ins-4);
+}
+.ins-stack--sm {
+  gap: var(--ins-2);
+}
+.ins-stack--lg {
+  gap: var(--ins-6);
+}
+
+.ins-flow > * + * {
+  margin-top: var(--ins-4);
+}
+
+/* ============================================================
+   14. PAGE COMPONENTS — /bench
+   ============================================================ */
+
+/* -- Hero: one screen, then the answer -------------------------------- */
+
+.ins-hero {
+  padding-block: var(--ins-9) var(--ins-8);
+}
+.ins-hero__inner {
+  display: grid;
+  gap: var(--ins-5);
+  justify-items: start;
+}
+/* Cap the measure on the children, never on .ins-hero__inner itself — that
+   element also carries .ins-wrap, and overriding its max-width there
+   un-centres the whole hero while every section below stays centred. */
+.ins-hero__inner > * {
+  max-width: 900px;
+}
+.ins-hero__h {
+  font-family: var(--font-display);
+  font-weight: var(--wght-bold);
+  font-size: clamp(2.5rem, 1.6rem + 4.2vw, 4.6rem);
+  line-height: 1.02;
+  letter-spacing: -0.045em;
+  color: var(--ins-ink);
+  margin: 0;
+  text-wrap: balance;
+}
+.ins-hero__h em {
+  display: block;
+  font-style: normal;
+  color: var(--ember-core, #ff9f0a);
+}
+.ins-hero__lede {
+  font-size: 1.0625rem;
+  max-width: 58ch;
+  --opsz: var(--opsz-body);
+}
+
+.ins-hero__nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ins-2);
+  margin-top: var(--ins-2);
+}
+.ins-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ins-2);
+  min-height: 44px;
+  padding: 0 var(--ins-5);
+  border-radius: 999px;
+  border: 1px solid var(--ins-rim);
+  background: rgba(255, 255, 255, 0.045);
+  -webkit-backdrop-filter: blur(20px) saturate(170%);
+  backdrop-filter: blur(20px) saturate(170%);
+  color: var(--ins-ink);
+  font-size: 0.875rem;
+  text-decoration: none;
+  transition:
+    background-color 220ms ease,
+    border-color 220ms ease,
+    transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.ins-cta:hover {
+  background: var(--ins-glass-hi);
+  border-color: var(--ins-rule-2);
+  transform: translateY(-1px);
+}
+.ins-cta--primary {
+  background: linear-gradient(180deg, #ffb340, var(--ember-core, #ff9f0a));
+  border-color: transparent;
+  color: #1a1206;
+  font-weight: var(--wght-bold);
+  box-shadow: 0 6px 20px -8px rgba(255, 159, 10, 0.7);
+}
+.ins-cta--primary:hover {
+  background: linear-gradient(180deg, #ffc061, #ffa826);
+}
+:root[data-theme="light"] .ins-cta {
+  background: rgba(255, 255, 255, 0.7);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ins-cta {
+    transition: none;
+  }
+  .ins-cta:hover {
+    transform: none;
+  }
+}
+
+/* -- Verdict cards ----------------------------------------------------- */
+
+.ins-verdict {
+  display: grid;
+  gap: var(--ins-4);
+  grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+}
+.ins-vcard {
+  display: grid;
+  gap: var(--ins-3);
+  padding: var(--ins-6) var(--ins-5) var(--ins-5);
+  align-content: start;
+}
+.ins-vcard__top {
+  display: grid;
+  gap: var(--ins-3);
+  justify-items: start;
+}
+.ins-vcard__n {
+  /* the model colour tints the headline figure — the same colour its bar
+     carries in every other chart on the page */
+  color: color-mix(in oklab, var(--mc, #fff) 34%, var(--ins-ink));
+  margin-top: var(--ins-1);
+}
+.ins-vcard__cap {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--ins-ink-3);
+  letter-spacing: 0.02em;
+  margin: 0;
+  line-height: 1.5;
+}
+.ins-vcard .ins-ledger {
+  margin-top: var(--ins-2);
+}
+.ins-verdict__foot {
+  margin-top: var(--ins-5);
+}
+
+/* Identity pair used in verdict headers */
+.ins-pair__names {
+  display: inline-flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.3em;
+  font-size: 0.9375rem;
+  color: var(--ins-ink);
+  letter-spacing: -0.01em;
+  margin-inline-start: var(--ins-1);
+}
+.ins-pair__h {
+  font-weight: var(--wght-semibold);
+}
+.ins-pair__m {
+  color: var(--ins-ink-2);
+}
+
+/* -- Toolbar ----------------------------------------------------------- */
+
+.ins-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ins-3);
+  margin-bottom: var(--ins-4);
+}
+.ins-toolbar__filter {
+  width: auto;
+  flex: 1 1 200px;
+  max-width: 280px;
+}
+@media (max-width: 640px) {
+  .ins-toolbar {
+    gap: var(--ins-2);
+  }
+  .ins-toolbar .ins-segment {
+    width: 100%;
+    overflow-x: auto;
+    justify-content: flex-start;
+  }
+  .ins-toolbar__filter {
+    max-width: none;
+  }
+}
+
+/* -- Reading key ------------------------------------------------------- */
+
+.ins-readkey {
+  display: grid;
+  gap: var(--ins-3);
+  padding: var(--ins-4);
+  margin-bottom: var(--ins-3);
+}
+
+/* -- Leaderboard ------------------------------------------------------- */
+
+.ins-lb {
+  padding: var(--ins-3) var(--ins-3) var(--ins-4);
+}
+.ins-row__text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.ins-row__tie {
+  color: var(--ins-ink-4);
+  margin-inline-start: 1px;
+}
+.ins-row__num {
+  color: var(--ins-ink);
+}
+.ins-row--lead .ins-row__num {
+  color: color-mix(in oklab, var(--mc, #fff) 30%, var(--ins-ink));
+}
+
+.ins-lb__axis {
+  margin-top: var(--ins-4);
+  padding-top: var(--ins-3);
+  padding-inline: var(--ins-4);
+  border-top: 1px solid var(--ins-rule);
+  display: grid;
+  gap: var(--ins-2);
+}
+/* Align the axis under the plot column on desktop; full-width on mobile. */
+@media (min-width: 781px) {
+  .ins-lb__axis {
+    margin-inline-start: calc(34px + var(--ins-4));
+  }
+  .ins-lb__axis .ins-axis {
+    margin-inline-start: calc(50% - var(--ins-4));
+  }
+}
+.ins-lb__note {
+  margin-top: var(--ins-4);
+}
+
+/* -- Model lens -------------------------------------------------------- */
+
+.ins-lens {
+  padding: var(--ins-5) var(--ins-5) var(--ins-4);
+  display: grid;
+  gap: var(--ins-5);
+}
+.ins-lensrow {
+  display: grid;
+  grid-template-columns: minmax(180px, 240px) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--ins-4);
+}
+.ins-lensrow__id {
+  /* fixed two-column shape so every row's identity block is identical,
+     however long the model name is */
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--ins-3);
+  min-width: 0;
+}
+.ins-lensrow__meta {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+.ins-lensrow__name {
+  font-size: 0.875rem;
+  color: var(--ins-ink);
+  font-weight: var(--wght-medium);
+  --opsz: var(--opsz-body);
+}
+.ins-lensrow__spread {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ins-ink-4);
+}
+
+.ins-lensrow__track {
+  position: relative;
+  height: 34px;
+  border-radius: 8px;
+  background: linear-gradient(var(--ins-track), var(--ins-track)) center / 100% 3px no-repeat;
+}
+.ins-lensrow__range {
+  position: absolute;
+  top: 50%;
+  height: 5px;
+  transform: translateY(-50%);
+  border-radius: 3px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in oklab, var(--mc, #7c5cff) 30%, transparent),
+    var(--mc, #7c5cff)
+  );
+}
+.ins-lensrow__dot {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1;
+  transition: transform 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.ins-lensrow__dot:hover {
+  transform: translate(-50%, -50%) scale(1.18);
+  z-index: 2;
+}
+.ins-lensrow__dot .ins-chip {
+  background: #0d0f14;
+}
+:root[data-theme="light"] .ins-lensrow__dot .ins-chip {
+  background: #fff;
+}
+.ins-lensrow__ends {
+  display: flex;
+  align-items: center;
+  gap: var(--ins-2);
+  white-space: nowrap;
+}
+.ins-lensrow__arrow {
+  color: var(--ins-ink-4);
+  font-size: 0.75rem;
+}
+.ins-lens__axis {
+  border-top: 1px solid var(--ins-rule);
+  padding-top: var(--ins-3);
+  display: grid;
+  gap: var(--ins-2);
+}
+.ins-lens__note {
+  margin-top: var(--ins-4);
+}
+
+@media (max-width: 820px) {
+  .ins-lensrow {
+    grid-template-columns: 1fr auto;
+    grid-template-areas:
+      "id ends"
+      "track track";
+    gap: var(--ins-2) var(--ins-3);
+  }
+  .ins-lensrow__id {
+    grid-area: id;
+  }
+  .ins-lensrow__ends {
+    grid-area: ends;
+  }
+  .ins-lensrow__track {
+    grid-area: track;
+  }
+  .ins-lensrow__spread {
+    width: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ins-lensrow__dot {
+    transition: none;
+  }
+}
+
+/* -- Scatter ----------------------------------------------------------- */
+
+.ins-scatter {
+  padding: var(--ins-4);
+  display: grid;
+  gap: var(--ins-3);
+}
+.ins-scatter__stage {
+  border-radius: var(--ins-r);
+}
+.ins-scatter__svg {
+  display: block;
+  width: 100%;
+  min-width: 560px;
+  height: auto;
+  overflow: visible;
+}
+
+.ins-svg-tick {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  fill: var(--ins-ink-4);
+  font-variant-numeric: tabular-nums lining-nums slashed-zero;
+}
+.ins-svg-axis {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  fill: var(--ins-ink-4);
+}
+.ins-gridline--gutter {
+  stroke-dasharray: 3 4;
+}
+
+.ins-frontier {
+  stroke: color-mix(in oklab, var(--ember-core, #ff9f0a) 70%, transparent);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+  stroke-linejoin: round;
+}
+
+.ins-dot {
+  cursor: pointer;
+  transition: opacity 200ms ease;
+}
+.ins-dot__halo {
+  fill: transparent;
+}
+.ins-dot__disc {
+  fill: color-mix(in oklab, var(--mc, #7c5cff) 88%, #05070b);
+  stroke: var(--hc, #fff);
+  stroke-width: 2;
+}
+.ins-dot--frontier .ins-dot__disc {
+  stroke-width: 3;
+}
+.ins-dot--frontier .ins-dot__halo {
+  fill: color-mix(in oklab, var(--ember-core, #ff9f0a) 16%, transparent);
+}
+.ins-dot__logo {
+  pointer-events: none;
+}
+.ins-dot__mono {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: var(--wght-bold);
+  fill: #fff;
+  pointer-events: none;
+}
+.ins-dot.is-dim {
+  opacity: 0.22;
+}
+.ins-dot:focus-visible {
+  outline: none;
+}
+.ins-dot:focus-visible .ins-dot__halo {
+  fill: color-mix(in oklab, var(--ember-core, #ff9f0a) 30%, transparent);
+}
+.ins-scatter__key {
+  padding-inline: var(--ins-2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ins-dot {
+    transition: none;
+  }
+}
+
+/* -- Judged quality ---------------------------------------------------- */
+
+.ins-qual {
+  padding: var(--ins-3) var(--ins-3) var(--ins-4);
+  display: grid;
+  gap: var(--ins-1);
+}
+.ins-qrow > summary {
+  display: grid;
+  grid-template-columns: 34px 34px minmax(0, 1fr) minmax(120px, 1.4fr) auto 14px;
+  align-items: center;
+  gap: var(--ins-3);
+  border-radius: var(--ins-r);
+  transition: background-color 200ms ease;
+}
+.ins-qrow > summary:hover {
+  background: rgba(255, 255, 255, 0.035);
+}
+:root[data-theme="light"] .ins-qrow > summary:hover {
+  background: rgba(12, 16, 24, 0.03);
+}
+.ins-qrow__text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.ins-qrow__val {
+  text-align: right;
+  min-width: 60px;
+}
+.ins-qrow__ledger {
+  margin-top: var(--ins-4);
+}
+
+.ins-qdims {
+  display: grid;
+  gap: var(--ins-2);
+  padding: var(--ins-4);
+  border-radius: var(--ins-r);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--ins-rule);
+}
+:root[data-theme="light"] .ins-qdims {
+  background: rgba(12, 16, 24, 0.03);
+}
+.ins-qdim {
+  display: grid;
+  grid-template-columns: minmax(140px, 190px) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--ins-3);
+}
+.ins-qdim__k {
+  font-size: 0.8125rem;
+  color: var(--ins-ink-2);
+}
+.ins-qdim__v {
+  text-align: right;
+  min-width: 44px;
+}
+
+@media (max-width: 780px) {
+  .ins-qrow > summary {
+    grid-template-columns: 30px 30px minmax(0, 1fr) auto 14px;
+    grid-template-areas:
+      "hchip mchip text val caret"
+      ".     .     plot plot plot";
+    row-gap: var(--ins-2);
+  }
+  .ins-qrow > summary > .ins-chip:first-of-type {
+    grid-area: hchip;
+  }
+  .ins-qrow > summary > .ins-chip:nth-of-type(2) {
+    grid-area: mchip;
+  }
+  .ins-qrow__text {
+    grid-area: text;
+  }
+  .ins-qrow__plot {
+    grid-area: plot;
+  }
+  .ins-qrow__val {
+    grid-area: val;
+  }
+  .ins-qrow .ins-disc__caret {
+    grid-area: caret;
+  }
+  .ins-qdim {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "k v"
+      "bar bar";
+    gap: var(--ins-1) var(--ins-3);
+  }
+  .ins-qdim__k {
+    grid-area: k;
+  }
+  .ins-qdim__v {
+    grid-area: v;
+  }
+  .ins-qdim__bar {
+    grid-area: bar;
+  }
+}
+
+/* -- Synthesis --------------------------------------------------------- */
+
+.ins-synth__group {
+  display: grid;
+  gap: var(--ins-4);
+  margin-bottom: var(--ins-7);
+}
+.ins-synth__pending {
+  display: flex;
+  align-items: center;
+  gap: var(--ins-3);
+  padding: var(--ins-5);
+  font-size: 0.875rem;
+  color: var(--ins-ink-2);
+}
+.ins-synth__spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--ins-rule-2);
+  border-top-color: var(--ember-core, #ff9f0a);
+  animation: ins-spin 900ms linear infinite;
+  flex: none;
+}
+@keyframes ins-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ins-synth__spinner {
+    animation: none;
+  }
+}
+
+.ins-synthcard {
+  display: grid;
+  gap: var(--ins-3);
+  padding: var(--ins-5);
+  align-content: start;
+}
+.ins-synthcard__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--ins-3);
+  padding-bottom: var(--ins-3);
+  border-bottom: 1px solid var(--ins-rule);
+}
+.ins-synthcard__t {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  color: var(--ins-ink);
+  letter-spacing: -0.01em;
+}
+.ins-synthcard__n {
+  white-space: nowrap;
+}
+.ins-synthcard__b {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.62;
+  color: var(--ins-ink-2);
+  text-wrap: pretty;
+}
+
+/* -- Where next -------------------------------------------------------- */
+
+.ins-next {
+  display: grid;
+  gap: var(--ins-2);
+  padding: var(--ins-5);
+  text-decoration: none;
+  align-content: start;
+}
+.ins-next__k {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ember-core, #ff9f0a);
+}
+.ins-next__h {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: var(--wght-bold);
+  letter-spacing: -0.02em;
+  color: var(--ins-ink);
+  --opsz: var(--opsz-lead);
+}
+.ins-next__d {
+  font-size: 0.875rem;
+  line-height: 1.55;
+  color: var(--ins-ink-3);
+}
+.ins-next__foot {
+  margin-top: var(--ins-6);
+}
+.ins-next__foot a {
+  color: var(--ember-core, #ff9f0a);
+}
+
+/* -- Sub-navigation across the bench surfaces -------------------------- */
+
+.ins-subnav {
+  position: sticky;
+  top: 64px;
+  z-index: 20;
+  padding-block: var(--ins-3);
+  background: linear-gradient(
+    to bottom,
+    color-mix(in oklab, var(--surface-base, #07080b) 92%, transparent),
+    transparent
+  );
+}
+.ins-subnav__inner {
+  display: flex;
+  justify-content: center;
+}
+.ins-subnav .ins-segment {
+  max-width: 100%;
+}
+.ins-subnav .ins-segment__btn {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Subsidised-price hint inside a ledger key. */
+.ins-ledger__hint {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ins-ink-4);
+}
+
+/* -- Harness and model on separate tracks ------------------------------
+   The two halves of a stack name are the two things being compared, so they
+   never share a weight or a colour. Harness reads first and brightest; the
+   model follows in the lighter track. The logo pair carries the same split:
+   stroke-coloured chip, then fill-coloured chip. */
+
+.ins-row__name {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: nowrap;
+  gap: 0.34em;
+  min-width: 0;
+}
+.ins-row__h {
+  flex: none;
+}
+.ins-row__m {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 780px) {
+  .ins-row__name {
+    flex-wrap: wrap;
+  }
+  .ins-row__m {
+    overflow: visible;
+    white-space: normal;
+  }
+}
+.ins-row__h {
+  color: var(--ins-ink);
+  font-weight: var(--wght-semibold);
+}
+.ins-row__m {
+  color: var(--ins-ink-2);
+  font-weight: var(--wght-regular);
+}
+.ins-row__name .ins-pair__x {
+  font-size: 0.75em;
+  color: var(--ins-ink-4);
+  --opsz: var(--opsz-caption);
+}
+
+/* A hairline between the harness chip and the model chip, so the pair reads
+   as two fields rather than one blob of logos. */
+.ins-row__id .ins-chip + .ins-chip,
+.ins-qrow > summary .ins-chip + .ins-chip {
+  margin-inline-start: calc(var(--ins-2) * -1 + 6px);
+  position: relative;
+}
+.ins-row__id .ins-chip + .ins-chip::before,
+.ins-qrow > summary .ins-chip + .ins-chip::before {
+  content: "";
+  position: absolute;
+  inset-block: 4px;
+  left: -5px;
+  width: 1px;
+  background: var(--ins-rule-2);
+}
+
+/* Tie marker: two stacks that genuinely tie share a rank. Mark it rather
+   than printing a rank sequence with holes in it. */
+.ins-row__tie {
+  display: inline-block;
+  margin-inline-start: 2px;
+  color: var(--ins-ink-4);
+  font-size: 0.85em;
+}
+
+/* -- Rubric fingerprint -------------------------------------------------
+   Four segments, one per judged dimension: correctness strategy, invariant
+   coverage, code quality, performance awareness. The headline median
+   saturates at 4.50 across a dozen stacks, so the fingerprint is what
+   actually distinguishes them — and it reads as a shape before it reads as
+   four numbers. */
+
+.ins-qrow__plot {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 5px;
+  align-items: center;
+}
+.ins-fp {
+  display: block;
+  position: relative;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--ins-track);
+  overflow: hidden;
+}
+.ins-fp__fill {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: 0;
+  border-radius: 3px;
+  background: var(--mc, #7c5cff);
+  transition: width 700ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .ins-fp__fill {
+    transition: none;
+  }
+}
+
+/* -- Judged-quality distribution ---------------------------------------
+   Twelve stacks share a 4.50 median, so a median ranking is a dead heat.
+   The distribution is the story: what share of a stack's judged cells land
+   flawless, solid, flawed, or poor. Bands are sequential — one hue, four
+   steps — because they are ordered categories, not separate series. */
+
+.ins-band--flawless {
+  --band: #34d399;
+}
+.ins-band--solid {
+  --band: #0ea5a4;
+}
+.ins-band--flawed {
+  --band: #f59e0b;
+}
+.ins-band--poor {
+  --band: #ef4444;
+}
+
+.ins-qdist {
+  display: grid;
+  grid-template-columns: minmax(260px, 1.1fr) minmax(200px, 1.7fr) auto;
+  align-items: center;
+  gap: var(--ins-4);
+  padding: var(--ins-3) var(--ins-4);
+  border-radius: var(--ins-r);
+  transition: background-color 200ms ease;
+}
+.ins-qdist:hover {
+  background: rgba(255, 255, 255, 0.035);
+}
+:root[data-theme="light"] .ins-qdist:hover {
+  background: rgba(12, 16, 24, 0.03);
+}
+.ins-qdist__id {
+  display: flex;
+  align-items: center;
+  gap: var(--ins-3);
+  min-width: 0;
+}
+
+.ins-qdist__bar {
+  display: flex;
+  height: 16px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--ins-track);
+  gap: 1px;
+}
+.ins-qdist__seg {
+  display: block;
+  width: 0;
+  background: var(--band, var(--ins-ink-4));
+  transition: width 700ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .ins-qdist__seg {
+    transition: none;
+  }
+}
+
+.ins-qdist__val {
+  display: grid;
+  justify-items: end;
+  gap: 1px;
+  min-width: 76px;
+}
+.ins-qdist__cap {
+  font-family: var(--font-mono);
+  font-size: 0.5625rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ins-ink-4);
+}
+
+.ins-legend__swatch.ins-band--flawless,
+.ins-legend__swatch.ins-band--solid,
+.ins-legend__swatch.ins-band--flawed,
+.ins-legend__swatch.ins-band--poor {
+  background: var(--band);
+}
+
+@media (max-width: 780px) {
+  .ins-qdist {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "id  val"
+      "bar bar";
+    gap: var(--ins-2) var(--ins-3);
+    padding-block: var(--ins-4);
+  }
+  .ins-qdist__id {
+    grid-area: id;
+  }
+  .ins-qdist__bar {
+    grid-area: bar;
+  }
+  .ins-qdist__val {
+    grid-area: val;
+  }
+}
+
+/* -- Mobile rows --------------------------------------------------------
+   On a phone the identity gets its own full-width line and the two tracks
+   stack: harness above, model below. The × separator is dropped — the two
+   logo chips already say "these are two different things" — and nothing is
+   ellipsised, because a truncated stack name is useless on the surface
+   where people actually read this. */
+
+@media (max-width: 780px) {
+  .ins-row {
+    grid-template-columns: 26px minmax(0, 1fr) auto;
+    grid-template-areas:
+      "rank id  val"
+      "bar  bar bar";
+    column-gap: var(--ins-3);
+    row-gap: var(--ins-3);
+  }
+
+  .ins-row__name {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1px;
+    white-space: normal;
+  }
+  .ins-row__name .ins-pair__x {
+    display: none;
+  }
+  .ins-row__h,
+  .ins-row__m {
+    white-space: normal;
+    overflow: visible;
+    line-height: 1.2;
+  }
+  .ins-row__h {
+    font-size: 0.9375rem;
+    --opsz: var(--opsz-body);
+  }
+  .ins-row__m {
+    font-size: 0.875rem;
+  }
+  .ins-row__meta {
+    white-space: normal;
+    overflow: visible;
+    line-height: 1.35;
+  }
+  .ins-row__val {
+    min-width: 0;
+    align-self: start;
+  }
+
+  /* The identity block keeps its chips beside the names, not above them. */
+  .ins-row__id {
+    align-items: flex-start;
+    gap: var(--ins-2);
+  }
+  .ins-row__id .ins-chip {
+    margin-top: 2px;
+  }
+
+  /* Quality distribution rows follow the same shape. */
+  .ins-qdist__id {
+    align-items: flex-start;
+  }
+  .ins-qdist__id .ins-chip {
+    margin-top: 2px;
+  }
+
+  /* The reading key is a paragraph of mono on a 390px screen — tighten it
+     so it stays a caption rather than becoming a chapter. */
+  .ins-readkey .ins-key {
+    font-size: 0.6875rem;
+    line-height: 1.5;
+  }
+  .ins-legend {
+    gap: var(--ins-1) var(--ins-3);
+  }
+  .ins-legend__item {
+    font-size: 0.6875rem;
+  }
+}
+
+/* Supporting observations under a synthesis summary — the concrete evidence
+   behind the distilled take, capped at two so the card stays a takeaway
+   rather than a transcript. */
+.ins-synthcard__obs {
+  margin: 0;
+  padding-left: 1.1em;
+  display: grid;
+  gap: var(--ins-2);
+  list-style: none;
+}
+.ins-synthcard__obs li {
+  position: relative;
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  color: var(--ins-ink-3);
+  text-wrap: pretty;
+}
+.ins-synthcard__obs li::before {
+  content: "";
+  position: absolute;
+  left: -1.1em;
+  top: 0.6em;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--mc, var(--ins-ink-4));
+}
+
+/* ============================================================
+   15. FIGURE — zoomable, pannable charts and tables
+   ------------------------------------------------------------
+   Shared shell for every chart, table and infographic. Driven by
+   bench-figure.ts; see that file for the gesture contract. The
+   short version: at 1× the page owns scrolling, and zoom is
+   anchored to the pointer so it never throws your place.
+   ============================================================ */
+
+.ins-fig {
+  position: relative;
+  display: grid;
+  gap: var(--ins-3);
+}
+
+.ins-fig__viewport {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--ins-r);
+  background: rgba(255, 255, 255, 0.015);
+  border: 1px solid transparent;
+  /* Overridden by the script: pan-y at 1×, none when zoomed. */
+  touch-action: pan-y pinch-zoom;
+  cursor: default;
+  outline-offset: 2px;
+}
+:root[data-theme="light"] .ins-fig__viewport {
+  background: rgba(12, 16, 24, 0.015);
+}
+.ins-fig.is-zoomed .ins-fig__viewport {
+  cursor: grab;
+  border-color: var(--ins-rule);
+}
+.ins-fig.is-grabbing .ins-fig__viewport {
+  cursor: grabbing;
+}
+
+.ins-fig__stage {
+  transform-origin: 0 0;
+  will-change: transform;
+}
+/* Button and keyboard zooms glide; gesture zooms are driven frame-by-frame
+   and set their own transform, so the easing only shows on discrete steps. */
+.ins-fig__stage--eased {
+  transition: transform 160ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.ins-fig.is-grabbing .ins-fig__stage--eased {
+  transition: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ins-fig__stage {
+    transition: none !important;
+  }
+}
+
+/* -- control bar ------------------------------------------------------- */
+
+.ins-fig__bar {
+  display: flex;
+  align-items: center;
+  gap: var(--ins-2);
+  flex-wrap: wrap;
+}
+.ins-fig__spacer {
+  flex: 1;
+}
+
+.ins-fig__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 40px;
+  min-height: 40px;
+  padding: 0 var(--ins-3);
+  border-radius: 11px;
+  border: 1px solid var(--ins-rim);
+  background: rgba(255, 255, 255, 0.045);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  backdrop-filter: blur(18px) saturate(160%);
+  color: var(--ins-ink-2);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  cursor: pointer;
+  transition:
+    background-color 200ms ease,
+    color 200ms ease,
+    border-color 200ms ease,
+    opacity 200ms ease;
+}
+:root[data-theme="light"] .ins-fig__btn {
+  background: rgba(255, 255, 255, 0.7);
+}
+.ins-fig__btn:hover:not(:disabled) {
+  color: var(--ins-ink);
+  border-color: var(--ins-rule-2);
+  background: var(--ins-glass-hi);
+}
+.ins-fig__btn:disabled {
+  opacity: 0.32;
+  cursor: default;
+}
+
+.ins-fig__level {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--ins-ink-4);
+  min-width: 42px;
+  font-variant-numeric: tabular-nums lining-nums slashed-zero;
+}
+
+.ins-fig__help {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--ins-ink-4);
+  letter-spacing: 0.01em;
+}
+
+/* -- "use ⌘ + scroll" nudge -------------------------------------------- */
+
+.ins-fig__hint {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 220ms ease;
+  z-index: 3;
+  border-radius: inherit;
+  background: rgba(6, 8, 12, 0.42);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+}
+:root[data-theme="light"] .ins-fig__hint {
+  background: rgba(250, 250, 252, 0.5);
+}
+.ins-fig__hint.is-on {
+  opacity: 1;
+}
+.ins-fig__hint span {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  color: var(--ins-ink);
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: var(--ins-glass);
+  border: 1px solid var(--ins-rim);
+}
+@media (prefers-reduced-motion: reduce) {
+  .ins-fig__hint {
+    transition: none;
+  }
+}
+
+/* -- expanded ---------------------------------------------------------- */
+
+.ins-fig:fullscreen,
+.ins-fig.is-expanded {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  margin: 0;
+  padding: var(--ins-4);
+  background: var(--surface-base, #07080b);
+  display: grid;
+  grid-template-rows: 1fr auto;
+  gap: var(--ins-3);
+}
+:root[data-theme="light"] .ins-fig:fullscreen,
+:root[data-theme="light"] .ins-fig.is-expanded {
+  background: #f7f7f9;
+}
+.ins-fig:fullscreen .ins-fig__viewport,
+.ins-fig.is-expanded .ins-fig__viewport {
+  height: 100%;
+  min-height: 0;
+}
+.ins-fig:fullscreen .ins-fig__svg,
+.ins-fig.is-expanded .ins-fig__svg {
+  height: 100%;
+  max-height: none;
+}
+
+/* The scatter fills its viewport rather than scrolling inside it — panning
+   replaces the sideways scrollbar entirely. */
+.ins-fig__svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+@media (max-width: 640px) {
+  .ins-fig__help {
+    display: none;
+  }
+  .ins-fig__bar {
+    gap: 6px;
+  }
+}
+
+/* ============================================================
+   16. SYNTHESIS CAROUSEL — grouped, logo-forward, a dose at a time
+   ------------------------------------------------------------
+   Twenty-five dense cards in one grid read as a wall. The same
+   content grouped by harness or model, paged through a snapping
+   carousel, reads as a briefing. Detail lives behind a tap.
+   ============================================================ */
+
+.ins-synth {
+  display: grid;
+  gap: var(--ins-4);
+}
+.ins-synth__controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ins-3);
+  align-items: center;
+}
+
+/* -- logo rail: the group picker -------------------------------------- */
+
+.ins-synth__rail {
+  display: flex;
+  gap: var(--ins-2);
+  padding-bottom: var(--ins-2);
+  scroll-snap-type: x proximity;
+  /* Fade the trailing edge so an overflowing rail reads as scrollable
+     rather than as a chip that got clipped. */
+  -webkit-mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 40px), transparent 100%);
+  mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 40px), transparent 100%);
+}
+
+.ins-railchip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ins-2);
+  flex: none;
+  padding: 6px 12px 6px 6px;
+  min-height: 48px;
+  border-radius: 999px;
+  border: 1px solid var(--ins-rim);
+  background: rgba(255, 255, 255, 0.035);
+  -webkit-backdrop-filter: blur(20px) saturate(170%);
+  backdrop-filter: blur(20px) saturate(170%);
+  color: var(--ins-ink-3);
+  font-size: 0.875rem;
+  cursor: pointer;
+  scroll-snap-align: start;
+  transition:
+    background-color 240ms ease,
+    border-color 240ms ease,
+    color 240ms ease,
+    transform 240ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+:root[data-theme="light"] .ins-railchip {
+  background: rgba(255, 255, 255, 0.66);
+}
+.ins-railchip:hover {
+  color: var(--ins-ink);
+  border-color: var(--ins-rule-2);
+}
+.ins-railchip[aria-selected="true"] {
+  color: var(--ins-ink);
+  /* The selected group takes its own identity colour — harness stroke or
+     model fill, matching the grammar every chart uses. */
+  border-color: color-mix(in oklab, var(--hc, var(--mc, #fff)) 55%, transparent);
+  background: color-mix(in oklab, var(--hc, var(--mc, #fff)) 14%, transparent);
+  transform: translateY(-1px);
+}
+.ins-railchip__label {
+  white-space: nowrap;
+  font-weight: var(--wght-medium);
+}
+.ins-railchip__n {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  color: var(--ins-ink-4);
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  font-variant-numeric: tabular-nums;
+}
+:root[data-theme="light"] .ins-railchip__n {
+  background: rgba(12, 16, 24, 0.07);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ins-railchip {
+    transition: none;
+  }
+  .ins-railchip[aria-selected="true"] {
+    transform: none;
+  }
+}
+
+/* -- carousel ---------------------------------------------------------- */
+
+.ins-carousel {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--ins-2);
+}
+
+.ins-carousel__track {
+  /* Flex, not grid: a grid track sized minmax(0, ...) lets eight cards
+     squeeze to 127px each instead of overflowing into a scroller. A flex
+     basis with flex-shrink: 0 always overflows, which is what a carousel
+     wants. */
+  display: flex;
+  gap: var(--ins-4);
+  scroll-snap-type: x mandatory;
+  scroll-padding-inline: var(--ins-1);
+  padding: var(--ins-1);
+  /* Native horizontal scrolling keeps touch momentum and never fights the
+     page's vertical scroll — no gesture handling needed. */
+  overscroll-behavior-x: contain;
+}
+.ins-carousel__track > * {
+  scroll-snap-align: start;
+  flex: 0 0 clamp(260px, 82%, 460px);
+}
+.ins-carousel__track:focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--ember-core, #ff9f0a) 78%, transparent);
+  outline-offset: 4px;
+  border-radius: var(--ins-r);
+}
+
+@media (min-width: 900px) {
+  .ins-carousel__track > * {
+    flex-basis: calc(50% - var(--ins-4) / 2);
+  }
+}
+@media (min-width: 1180px) {
+  .ins-carousel__track > * {
+    flex-basis: calc(33.333% - var(--ins-4) * 2 / 3);
+  }
+}
+
+.ins-carousel__nav {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--ins-rim);
+  background: var(--ins-glass);
+  -webkit-backdrop-filter: blur(20px) saturate(170%);
+  backdrop-filter: blur(20px) saturate(170%);
+  color: var(--ins-ink-2);
+  cursor: pointer;
+  transition:
+    background-color 200ms ease,
+    color 200ms ease,
+    opacity 200ms ease;
+}
+.ins-carousel__nav:hover:not(:disabled) {
+  color: var(--ins-ink);
+  background: var(--ins-glass-hi);
+}
+.ins-carousel__nav:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+.ins-carousel.is-static .ins-carousel__nav {
+  display: none;
+}
+.ins-carousel.is-static {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* On a phone the arrows are dead weight — the track swipes. */
+@media (max-width: 700px) {
+  .ins-carousel {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .ins-carousel__nav {
+    display: none;
+  }
+  .ins-carousel__track > * {
+    flex-basis: 88%;
+  }
+}
+
+.ins-carousel__dots {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+}
+.ins-carousel__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ins-rule-2);
+  transition:
+    background-color 240ms ease,
+    transform 240ms ease;
+}
+.ins-carousel__dot.is-on {
+  background: var(--ins-ink-3);
+  transform: scale(1.4);
+}
+@media (prefers-reduced-motion: reduce) {
+  .ins-carousel__dot {
+    transition: none;
+  }
+}
+
+/* -- card -------------------------------------------------------------- */
+
+.ins-synthcard {
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+  gap: var(--ins-3);
+  padding: var(--ins-5);
+  align-content: start;
+  min-height: 100%;
+}
+.ins-synthcard__head {
+  display: grid;
+  gap: var(--ins-3);
+  padding-bottom: var(--ins-3);
+  border-bottom: 1px solid var(--ins-rule);
+}
+.ins-synthcard__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ins-3);
+}
+.ins-synthcard__marks {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+/* The name gets the full card width on its own line — neither half of a
+   pairing should ever ellipsise to "DeepS…". */
+.ins-synthcard__names {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+  line-height: 1.3;
+}
+.ins-synthcard__names .ins-row__h {
+  font-size: 1rem;
+  --opsz: var(--opsz-body);
+}
+.ins-synthcard__names .ins-row__m {
+  font-size: 0.9375rem;
+  white-space: normal;
+  overflow: visible;
+}
+.ins-synthcard__n {
+  white-space: nowrap;
+  align-self: start;
+}
+.ins-synthcard__b {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.62;
+  color: var(--ins-ink-2);
+  text-wrap: pretty;
+}
+
+/* Evidence behind the take — one tap, not always on. */
+.ins-synthcard__more {
+  border-top: 1px solid var(--ins-rule);
+  margin-top: auto;
+}
+.ins-synthcard__more > summary {
+  padding: var(--ins-3) 0 0;
+  min-height: 40px;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ins-ink-3);
+}
+.ins-synthcard__more > summary:hover {
+  color: var(--ins-ink);
+}
+.ins-synthcard__more[open] > summary {
+  color: var(--ins-ink-2);
+}
+
+/* ============================================================
+   17. HOVER STATS — one tooltip for every mark
+   ============================================================ */
+
+.ins-tip {
+  position: fixed;
+  z-index: 300;
+  width: max-content;
+  max-width: min(320px, calc(100vw - 24px));
+  padding: var(--ins-4);
+  display: grid;
+  gap: var(--ins-3);
+  pointer-events: none;
+  animation: ins-tip-in 140ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes ins-tip-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ins-tip {
+    animation: none;
+  }
+}
+
+.ins-tip__head {
+  display: flex;
+  align-items: center;
+  gap: var(--ins-3);
+  padding-bottom: var(--ins-3);
+  border-bottom: 1px solid var(--ins-rule);
+}
+.ins-tip__marks {
+  display: inline-flex;
+  gap: 4px;
+  flex: none;
+}
+.ins-tip__names {
+  display: grid;
+  gap: 0;
+  line-height: 1.25;
+  min-width: 0;
+}
+.ins-tip__names .ins-row__h {
+  font-size: 0.875rem;
+  --opsz: var(--opsz-body);
+}
+.ins-tip__names .ins-row__m {
+  font-size: 0.8125rem;
+  white-space: normal;
+}
+
+.ins-tip__lead {
+  display: grid;
+  gap: 2px;
+}
+.ins-tip__lead .ins-num--xl {
+  color: color-mix(in oklab, var(--mc, #fff) 34%, var(--ins-ink));
+}
+.ins-tip__leadlabel {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ins-ink-4);
+}
+
+.ins-tip__rows .ins-ledger__row {
+  padding-block: 5px;
+}
+.ins-tip__note {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ember-core, #ff9f0a);
+}
+
+/* Marks advertise that they carry more. */
+[data-tip] {
+  cursor: pointer;
+}
+.ins-lensrow__dot[data-tip]:focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--ember-core, #ff9f0a) 78%, transparent);
+  outline-offset: 2px;
+  border-radius: 10px;
+}
+
+/* ============================================================
+   18. INSIGHTS — derived findings
+   ============================================================ */
+
+.ins-insight {
+  display: grid;
+  gap: var(--ins-4);
+  margin-bottom: var(--ins-8);
+}
+.ins-insight__head {
+  display: grid;
+  gap: var(--ins-2);
+}
+
+/* -- slope: rank on one metric vs rank on another --------------------- */
+
+.ins-slope {
+  padding: var(--ins-4) var(--ins-5) var(--ins-5);
+}
+.ins-slope__cols {
+  display: grid;
+  grid-template-columns: minmax(200px, 1.1fr) 42px minmax(80px, 1fr) 42px 52px;
+  gap: var(--ins-3);
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ins-ink-4);
+  padding-bottom: var(--ins-3);
+  border-bottom: 1px solid var(--ins-rule);
+  margin-bottom: var(--ins-2);
+}
+/* The two labels sit over the ends of the wire, not over the 42px rank
+   columns — otherwise "rank by solution rate" wraps into four lines. */
+.ins-slope__cols > :first-child {
+  grid-column: 2 / 4;
+}
+.ins-slope__cols > :last-child {
+  grid-column: 4 / 6;
+  text-align: right;
+}
+
+.ins-slope__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--ins-1);
+}
+.ins-slope__row {
+  display: grid;
+  grid-template-columns: minmax(200px, 1.1fr) 42px minmax(80px, 1fr) 42px 52px;
+  align-items: center;
+  gap: var(--ins-3);
+  padding: var(--ins-2) var(--ins-3);
+  border-radius: var(--ins-r);
+  transition: background-color 200ms ease;
+}
+.ins-slope__row:hover {
+  background: rgba(255, 255, 255, 0.035);
+}
+:root[data-theme="light"] .ins-slope__row:hover {
+  background: rgba(12, 16, 24, 0.03);
+}
+.ins-slope__id {
+  display: flex;
+  align-items: center;
+  gap: var(--ins-2);
+  min-width: 0;
+}
+.ins-slope__name {
+  display: grid;
+  gap: 0;
+  min-width: 0;
+  line-height: 1.2;
+  font-size: 0.8125rem;
+  --opsz: var(--opsz-body);
+}
+.ins-slope__from,
+.ins-slope__to {
+  color: var(--ins-ink-3);
+  text-align: center;
+}
+.ins-slope__wire {
+  display: block;
+  height: 40px;
+}
+.ins-slope__wire svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.ins-slope__wire line {
+  stroke: var(--mc, var(--ins-ink-4));
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+  stroke-linecap: round;
+}
+.ins-slope__delta {
+  text-align: right;
+  font-weight: var(--wght-bold);
+}
+/* Gaining places on quality is the good direction. */
+.ins-slope__row.is-up .ins-slope__delta {
+  color: #3ddc84;
+}
+.ins-slope__row.is-down .ins-slope__delta {
+  color: #ff8f6b;
+}
+
+@media (max-width: 760px) {
+  .ins-slope__cols {
+    display: none;
+  }
+  .ins-slope__row {
+    grid-template-columns: minmax(0, 1fr) 36px minmax(60px, 0.8fr) 36px 44px;
+    gap: var(--ins-2);
+    font-size: 0.75rem;
+  }
+  .ins-slope__id .ins-chip {
+    display: none;
+  }
+  .ins-slope__id .ins-chip:first-child {
+    display: inline-flex;
+  }
+}
+
+/* -- model edge cards -------------------------------------------------- */
+
+.ins-edge {
+  padding: var(--ins-5);
+  display: grid;
+  gap: var(--ins-3);
+  align-content: start;
+}
+.ins-edge__head {
+  display: flex;
+  align-items: center;
+  gap: var(--ins-3);
+  padding-bottom: var(--ins-3);
+  border-bottom: 1px solid var(--ins-rule);
+}
+.ins-edge__name {
+  font-size: 1rem;
+  font-weight: var(--wght-semibold);
+  color: var(--ins-ink);
+  --opsz: var(--opsz-body);
+}
+.ins-edge__edge {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  margin-inline-start: var(--ins-2);
+}
+
+/* -- live human verdict ------------------------------------------------ */
+
+.ins-arena {
+  padding: var(--ins-4);
+  display: grid;
+  gap: var(--ins-3);
+}
+.ins-arena__head {
+  padding-inline: var(--ins-3);
+}
+.ins-arena__pending {
+  display: flex;
+  align-items: center;
+  gap: var(--ins-3);
+  padding: var(--ins-5);
+  font-size: 0.875rem;
+  color: var(--ins-ink-2);
+}
+
+.ins-arena__empty {
+  display: grid;
+  gap: var(--ins-4);
+  padding: var(--ins-6);
+  justify-items: start;
+}
+.ins-arena__lead {
+  display: grid;
+  gap: 2px;
+}
+.ins-arena__bar {
+  width: 100%;
+  max-width: 420px;
+}
+.ins-arena__note {
+  max-width: 60ch;
+}
+.ins-arena__cta {
+  margin-top: var(--ins-1);
+}

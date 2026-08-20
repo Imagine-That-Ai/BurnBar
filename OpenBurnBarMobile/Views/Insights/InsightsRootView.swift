@@ -458,13 +458,13 @@ private struct AdaptiveInsightsLayout: View {
     }
 
     private func missionBannerDetail(for mission: CLIAgentMissionSnapshot) -> String {
-        if mission.status == "failed", let error = mission.errorMessage?.nilIfEmpty {
+        if mission.status == "failed", let error = mission.errorMessage?.nilIfBlank {
             return error
         }
-        if mission.status == "completed", let result = mission.resultPreview?.nilIfEmpty {
+        if mission.status == "completed", let result = mission.resultPreview?.nilIfBlank {
             return result
         }
-        return mission.displayLiveSummary?.nilIfEmpty ?? mission.title
+        return mission.displayLiveSummary?.nilIfBlank ?? mission.title
     }
 
     private func missionBanner(icon: String, tone: Color, title: String, detail: String, feedLines: [String]) -> some View {
@@ -526,13 +526,6 @@ private struct AdaptiveInsightsLayout: View {
         case .idle:
             EmptyView()
         }
-    }
-}
-
-private extension String {
-    var nilIfEmpty: String? {
-        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
     }
 }
 

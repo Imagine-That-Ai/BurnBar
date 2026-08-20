@@ -7,7 +7,7 @@
 import { ConsentStore, type ConsentStorage } from "./consent";
 import { Analytics, type AnalyticsProps } from "./recorder";
 import { AmplitudeTransport } from "./amplitudeTransport";
-import { EVENT, type AnalyticsEventName } from "./events";
+import { EVENT, type AnalyticsEventName, type ArenaSignInProvider } from "./events";
 
 const API_KEY = (import.meta.env.PUBLIC_AMPLITUDE_API_KEY as string | undefined) ?? "";
 const SERVER_ZONE: "US" | "EU" =
@@ -38,7 +38,7 @@ export const analytics = new Analytics({
   })
 });
 
-export { EVENT };
+export { EVENT, type ArenaSignInProvider };
 
 /** Wire names that exist in the registry — guards declarative CTA tracking
  *  against off-taxonomy strings injected via data attributes. */

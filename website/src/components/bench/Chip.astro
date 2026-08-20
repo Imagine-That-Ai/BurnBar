@@ -1,0 +1,56 @@
+---
+/**
+ * Identity chip — a harness or model logo at a size you can actually see and
+ * actually tap. Falls back to a monogram when the roster has no mark.
+ *
+ * Colour discipline (the page's one chart rule):
+ *   kind="harness" -> stroke carries --hc
+ *   kind="model"   -> fill carries --mc
+ */
+import {
+  HARNESS_LOGO,
+  MODEL_LOGO,
+  HARNESS_CLASS,
+  MODEL_CLASS,
+  classFor,
+  monogramFor,
+  harnessDisplay,
+  modelDisplay
+} from "@data/bench";
+
+interface Props {
+  id: string;
+  kind: "harness" | "model";
+  size?: "sm" | "md" | "lg";
+  class?: string;
+}
+
+const { id, kind, size = "md", class: cls = "" } = Astro.props;
+
+const isHarness = kind === "harness";
+const logo = isHarness ? (HARNESS_LOGO[id] ?? null) : (MODEL_LOGO[id] ?? null);
+const setter = isHarness ? `h--${classFor(HARNESS_CLASS, id)}` : `m--${classFor(MODEL_CLASS, id)}`;
+const display = isHarness ? harnessDisplay(id) : modelDisplay(id);
+const mono = monogramFor(id, display);
+---
+
+<span
+  class:list={[
+    "ins-chip",
+    isHarness ? "ins-chip--h" : "ins-chip--m",
+    size !== "md" && `ins-chip--${size}`,
+    setter,
+    cls
+  ]}
+  title={display}
+>
+  {
+    logo ? (
+      <img src={logo} alt="" width="30" height="30" loading="lazy" decoding="async" />
+    ) : (
+      <span class="ins-mono" aria-hidden="true">
+        {mono}
+      </span>
+    )
+  }
+</span>

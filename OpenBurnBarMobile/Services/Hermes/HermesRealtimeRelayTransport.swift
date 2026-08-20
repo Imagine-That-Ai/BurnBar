@@ -145,7 +145,9 @@ final class HermesRealtimeRelayTransport: HermesRelayTransporting {
                     connectionId: payload.connectionID,
                     requestId: requestID
                 ))))
-            case .hostRegister, .hostReady, .requestStart, .requestCancel, .pong, .signalSessionMessage:  // cov:ignore
+            case .hostRegister, .hostReady, .requestStart, .requestCancel, .pong, .signalSessionMessage,
+                 .warHello, .warHelloAck, .warFleetSnapshot, .warDispatch,
+                 .warDispatchAck, .warStreamChunk, .warStreamComplete, .warDenied:  // cov:ignore
                 break
             case .mediaClassify,
                  .mediaBlobAdvertise,

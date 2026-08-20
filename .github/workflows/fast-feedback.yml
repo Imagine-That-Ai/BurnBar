@@ -128,6 +128,64 @@ jobs:
       - name: Unit tests (vitest)
         run: npm run test --prefix extensions/openburnbar
 
+  # ── Safari web extension: the full self-contained npm gate ───────────────
+  # This project builds extensions/safari/dist, which the OpenBurnBarSafariExtension
+  # appex embeds verbatim, so it rides the macos lane (see classify-ci-impact.mjs).
+  # `test:ci` is the project's own door: typecheck (including the no-DOM
+  # background service-worker config), lint, format, knip, dependency-cruiser,
+  # vitest coverage, build, and size-limit.
+  safari-extension-fast:
+    name: Safari extension (types + lint + tests + build)
+    needs: classify
+    if: needs.classify.outputs.macos == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: extensions/safari/package-lock.json
+
+      - name: Install Safari extension dependencies
+        run: npm ci --prefix extensions/safari
+
+      - name: Full check suite (types, lint, knip, deps, tests, build, size)
+        run: npm run test:ci --prefix extensions/safari
+
+      # The committed dist/ is the appex payload. If a source change lands
+      # without its rebuilt bundle, the shipped extension silently diverges
+      # from the reviewed source, so require the tree to be reproducible.
+      - name: Committed dist must match a clean rebuild
+        run: |
+          set -euo pipefail
+          # --porcelain reports modified AND untracked paths, so this catches a
+          # stale bundle and a newly emitted asset that was never committed.
+          if [ -n "$(git status --porcelain -- extensions/safari/dist)" ]; then
+            git status --porcelain -- extensions/safari/dist >&2
+            git diff -- extensions/safari/dist >&2 || true
+            echo "::error::extensions/safari/dist does not match a clean rebuild — run 'npm run build' in extensions/safari and commit the result." >&2
+            exit 1
+          fi
+          echo "dist/ reproduces byte-for-byte from source."
+
+      # The MV3 background runs as a service worker where `window` does not
+      # exist. tsconfig.background.json is the compile-time guard; this is the
+      # belt-and-braces check on the actual shipped bundle (BurnBar PR #2283,
+      # where window.setTimeout truncated every streamed Ask answer).
+      - name: Background bundle must not reference window
+        run: |
+          set -euo pipefail
+          count="$(grep -c 'window\.' extensions/safari/dist/background.js || true)"
+          if [ "$count" != "0" ]; then
+            echo "::error::extensions/safari/dist/background.js has ${count} window.* references; the MV3 service worker has no window." >&2
+            grep -n -o 'window\.[A-Za-z_$]*' extensions/safari/dist/background.js | head -20 >&2
+            exit 1
+          fi
+          echo "background.js has zero window.* references."
+
   # ── Diff coverage: changed TypeScript lines must be ≥80% covered ──────────
   # Re-armed diff-coverage gate for the TS surface (functions + extension),
   # where vitest + @vitest/coverage-v8 already run. It computes REAL per-line
@@ -838,6 +896,9 @@ jobs:
             SECURITY.md
             project.yml
             extensions/openburnbar/package.json
+            extensions/safari/package.json
+            extensions/safari/manifest.json
+            extensions/safari/dist/manifest.json
             homebrew/burnbar.rb
             OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonConfiguration.swift
             windows/app/OpenBurnBar.App/app.manifest
@@ -1484,6 +1545,7 @@ jobs:
       - fast-feedback-path-filter
       - functions-fast
       - extension-fast
+      - safari-extension-fast
       - website-fast
       - plugin-fast
       - typescript-surfaces-lint
@@ -1516,6 +1578,7 @@ jobs:
           NEEDS_JSON: ${{ toJSON(needs) }}
           RUST_CHANGED: ${{ needs.fast-feedback-path-filter.outputs.rust_changed }}
           FUNCTIONS_REQUIRED: ${{ needs.classify.outputs.functions }}
+          MACOS_REQUIRED: ${{ needs.classify.outputs.macos }}
           WEB_REQUIRED: ${{ needs.classify.outputs.web }}
           CONSOLE_REQUIRED: ${{ needs.classify.outputs.console }}
         run: |
@@ -1530,6 +1593,7 @@ jobs:
               'functions-security-fast': True,
               'functions-correctness': os.environ.get('FUNCTIONS_REQUIRED') == 'true',
               'extension-fast': os.environ.get('WEB_REQUIRED') == 'true',
+              'safari-extension-fast': os.environ.get('MACOS_REQUIRED') == 'true',
               'website-fast': os.environ.get('WEB_REQUIRED') == 'true',
               'plugin-fast': os.environ.get('WEB_REQUIRED') == 'true',
               'console-web': os.environ.get('CONSOLE_REQUIRED') == 'true',
