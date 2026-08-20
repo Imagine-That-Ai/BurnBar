@@ -1757,6 +1757,7 @@ jobs:
         env:
           SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           OPENBURNBAR_APP_PROFILE_BASE64: ${{ secrets.OPENBURNBAR_APP_PROFILE_BASE64 }}
+          OPENBURNBAR_SAFARI_EXTENSION_PROFILE_BASE64: ${{ secrets.OPENBURNBAR_SAFARI_EXTENSION_PROFILE_BASE64 }}
         run: |
           APP_PATH="$DERIVED_DATA/Build/Products/$CONFIG/OpenBurnBar.app"
           FRAMEWORKS_DIR="$APP_PATH/Contents/Frameworks"
@@ -1928,11 +1929,91 @@ jobs:
             echo "::error::Safari extension at $SAFARI_EXTENSION_APPEX has no Contents/Resources/manifest.json; the extensions/safari/dist copy did not run."
             exit 1
           fi
+          # The appex claims App Groups and Keychain Sharing, both profile-restricted
+          # for Developer ID, so it needs its own profile embedded and validated.
+          # Signing it without one produces an extension macOS refuses to load.
+          SAFARI_EXTENSION_BUNDLE_ID="com.openburnbar.app.safari-extension"
+          SAFARI_EXTENSION_PROFILE="$RUNNER_TEMP/OpenBurnBarSafariExtension-MAC_APP_DIRECT.provisionprofile"
+          SAFARI_EXTENSION_PROFILE_PLIST="$RUNNER_TEMP/OpenBurnBarSafariExtension-MAC_APP_DIRECT.plist"
+          SAFARI_EXTENSION_SIGNING_ENTITLEMENTS="$RUNNER_TEMP/OpenBurnBarSafariExtension-signing.entitlements"
+          export SAFARI_EXTENSION_PROFILE
+          if [[ -z "${OPENBURNBAR_SAFARI_EXTENSION_PROFILE_BASE64:-}" ]]; then
+            echo "::error::OPENBURNBAR_SAFARI_EXTENSION_PROFILE_BASE64 is required. Store the $SAFARI_EXTENSION_BUNDLE_ID MAC_APP_DIRECT profile as a GitHub Actions secret."
+            exit 1
+          fi
+          python3 - <<'PY'
+          import base64
+          import os
+          from pathlib import Path
+
+          payload = "".join(os.environ["OPENBURNBAR_SAFARI_EXTENSION_PROFILE_BASE64"].split())
+          Path(os.environ["SAFARI_EXTENSION_PROFILE"]).write_bytes(base64.b64decode(payload))
+          PY
+          security cms -D -i "$SAFARI_EXTENSION_PROFILE" > "$SAFARI_EXTENSION_PROFILE_PLIST"
+          if [[ "$(/usr/libexec/PlistBuddy -c "Print :ProvisionsAllDevices" "$SAFARI_EXTENSION_PROFILE_PLIST" 2>/dev/null || true)" != "true" ]]; then
+            echo "::error::Safari extension profile must be a Developer ID / MAC_APP_DIRECT all-devices profile."
+            exit 1
+          fi
+          SAFARI_EXTENSION_PROFILE_TEAM_ID="$(/usr/libexec/PlistBuddy -c "Print :TeamIdentifier:0" "$SAFARI_EXTENSION_PROFILE_PLIST" 2>/dev/null || true)"
+          SAFARI_EXTENSION_PROFILE_IDENTIFIER="$(/usr/libexec/PlistBuddy -c "Print :Entitlements:com.apple.application-identifier" "$SAFARI_EXTENSION_PROFILE_PLIST" 2>/dev/null || true)"
+          if [[ "$SAFARI_EXTENSION_PROFILE_TEAM_ID" != "$APP_PROFILE_TEAM_ID" ]]; then
+            echo "::error::Safari extension profile team '${SAFARI_EXTENSION_PROFILE_TEAM_ID:-<missing>}' does not match the app profile team '$APP_PROFILE_TEAM_ID'; the appex could not share the app's group or Keychain."
+            exit 1
+          fi
+          if [[ "$SAFARI_EXTENSION_PROFILE_IDENTIFIER" != "${SAFARI_EXTENSION_PROFILE_TEAM_ID}.${SAFARI_EXTENSION_BUNDLE_ID}" ]]; then
+            echo "::error::Safari extension profile must authorize $SAFARI_EXTENSION_BUNDLE_ID; found application identifier '${SAFARI_EXTENSION_PROFILE_IDENTIFIER:-missing}'."
+            exit 1
+          fi
+          SAFARI_EXTENSION_PROFILE_GROUPS="$(/usr/libexec/PlistBuddy -c "Print :Entitlements:com.apple.security.application-groups" "$SAFARI_EXTENSION_PROFILE_PLIST" 2>/dev/null || true)"
+          # Exact match on purpose: a team-prefixed wildcard is a DIFFERENT
+          # application-group namespace and does not authorize the unprefixed
+          # group the appex claims.
+          if ! grep -qx "[[:space:]]*group\.com\.openburnbar\.app[[:space:]]*" <<<"$SAFARI_EXTENSION_PROFILE_GROUPS"; then
+            echo "::error::Safari extension profile does not authorize the group.com.openburnbar.app App Group (a ${SAFARI_EXTENSION_PROFILE_TEAM_ID}.* wildcard does not count)."
+            printf '%s\n' "$SAFARI_EXTENSION_PROFILE_GROUPS"
+            exit 1
+          fi
+          SAFARI_EXTENSION_PROFILE_KEYCHAIN_GROUPS="$(/usr/libexec/PlistBuddy -c "Print :Entitlements:keychain-access-groups" "$SAFARI_EXTENSION_PROFILE_PLIST" 2>/dev/null || true)"
+          if ! grep -q "${SAFARI_EXTENSION_PROFILE_TEAM_ID}\.\*\|${EXPECTED_APP_IDENTIFIER}" <<<"$SAFARI_EXTENSION_PROFILE_KEYCHAIN_GROUPS"; then
+            echo "::error::Safari extension profile does not authorize the $EXPECTED_APP_IDENTIFIER Keychain access group the appex shares with the host app."
+            printf '%s\n' "$SAFARI_EXTENSION_PROFILE_KEYCHAIN_GROUPS"
+            exit 1
+          fi
+          python3 - "$SAFARI_EXTENSION_ENTITLEMENTS" "$SAFARI_EXTENSION_SIGNING_ENTITLEMENTS" "$SAFARI_EXTENSION_PROFILE_TEAM_ID" "$SAFARI_EXTENSION_BUNDLE_ID" <<'PY'
+          import plistlib
+          import sys
+          from pathlib import Path
+
+          source, destination, team_id, bundle_id = sys.argv[1:5]
+
+
+          def expand(value):
+              if isinstance(value, str):
+                  return (
+                      value
+                      .replace("$(AppIdentifierPrefix)", f"{team_id}.")
+                      .replace("$(TeamIdentifierPrefix)", team_id)
+                      .replace("$(PRODUCT_BUNDLE_IDENTIFIER)", bundle_id)
+                  )
+              if isinstance(value, list):
+                  return [expand(item) for item in value]
+              if isinstance(value, dict):
+                  return {key: expand(item) for key, item in value.items()}
+              return value
+
+
+          with Path(source).open("rb") as file:
+              entitlements = plistlib.load(file)
+          with Path(destination).open("wb") as file:
+              plistlib.dump(expand(entitlements), file)
+          PY
+          cp "$SAFARI_EXTENSION_PROFILE" "$SAFARI_EXTENSION_APPEX/Contents/embedded.provisionprofile"
           sign_one_with_entitlements \
             "$SAFARI_EXTENSION_APPEX" \
-            "$SAFARI_EXTENSION_ENTITLEMENTS" \
+            "$SAFARI_EXTENSION_SIGNING_ENTITLEMENTS" \
             "runtime,library" \
-            "com.openburnbar.app.safari-extension"
+            "$SAFARI_EXTENSION_BUNDLE_ID"
+          bash scripts/ci/verify-signing-profile-certificate.sh "$SAFARI_EXTENSION_APPEX" "$SAFARI_EXTENSION_PROFILE"
 
           cp "$APP_PROFILE" "$APP_PATH/Contents/embedded.provisionprofile"
           codesign --force --timestamp --options runtime,library \
