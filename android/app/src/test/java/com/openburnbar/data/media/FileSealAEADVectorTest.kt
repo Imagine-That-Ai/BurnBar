@@ -70,6 +70,65 @@ class FileSealAEADVectorTest {
         }
     }
 
+    @Test
+    fun fixtureNegativesFailOpenIncludingNonceReuse() {
+        val headerJson = fixture.getJSONObject("header")
+        val key = hex(fixture.getString("contentKeyHex"))
+        val cases = fixture.getJSONArray("cases")
+        val negatives = fixture.getJSONArray("negatives")
+        for (i in 0 until negatives.length()) {
+            val negative = negatives.getJSONObject(i)
+            val baseName = negative.getString("base")
+            var base: org.json.JSONObject? = null
+            for (j in 0 until cases.length()) {
+                val item = cases.getJSONObject(j)
+                if (item.getString("name") == baseName) base = item
+            }
+            requireNotNull(base)
+            val header = FileSealAEAD.Header(
+                attachmentId = negative.optString("attachmentId", headerJson.getString("attachmentId")),
+                totalChunks = headerJson.getInt("totalChunks"),
+                plaintextSize = headerJson.getLong("plaintextSize"),
+                contentBlake3 = headerJson.getString("contentBlake3"),
+            )
+            val chunkIndex = if (negative.has("chunkIndex")) negative.getLong("chunkIndex") else base.getLong("chunkIndex")
+            if (negative.has("reuseNonceWithPlaintext")) {
+                val reused = FileSealAEAD.sealChunk(
+                    negative.getString("reuseNonceWithPlaintext").toByteArray(Charsets.UTF_8),
+                    key,
+                    header,
+                    chunkIndex,
+                    hex(base.getString("nonceHex")),
+                )
+                assertThrows(Exception::class.java) {
+                    FileSealAEAD.openChunk(
+                        reused.first,
+                        hex(base.getString("tagHex")),
+                        key,
+                        header,
+                        chunkIndex,
+                        hex(base.getString("nonceHex")),
+                    )
+                }
+                continue
+            }
+            var tag = hex(base.getString("tagHex"))
+            if (negative.has("truncateTagBytes")) {
+                tag = tag.copyOf(tag.size - negative.getInt("truncateTagBytes"))
+            }
+            assertThrows(Exception::class.java) {
+                FileSealAEAD.openChunk(
+                    hex(base.getString("ciphertextHex")),
+                    tag,
+                    key,
+                    header,
+                    chunkIndex,
+                    hex(base.getString("nonceHex")),
+                )
+            }
+        }
+    }
+
     private fun hex(value: String): ByteArray {
         val clean = value.replace(" ", "")
         return ByteArray(clean.length / 2) { i ->

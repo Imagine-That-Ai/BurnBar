@@ -12,10 +12,8 @@ export function setReaperStoragePort(port: typeof reaperPort): void {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-export const reapBurnbarAttachments = onSchedule(
-  { schedule: "every 60 minutes", region: FUNCTIONS_REGION },
-  async () => {
-    const cutoff = Date.now() - DAY_MS;
+export async function reapExpiredBurnbarAttachments(nowMs: number = Date.now()): Promise<{ reaped: number; gatewayReaped: number }> {
+    const cutoff = nowMs - DAY_MS;
     const pending = await db.collectionGroup("burnbar_attachments").get();
     let reaped = 0;
     for (const doc of pending.docs ?? []) {
@@ -40,7 +38,7 @@ export const reapBurnbarAttachments = onSchedule(
     for (const doc of gateway.docs ?? []) {
       const expiresAt = doc.get("expiresAt");
       const millis = typeof expiresAt?.toMillis === "function" ? expiresAt.toMillis() : Date.parse(String(expiresAt ?? ""));
-      if (Number.isFinite(millis) && millis < Date.now()) {
+      if (Number.isFinite(millis) && millis < nowMs) {
         const path = doc.get("storagePath");
         if (typeof path === "string") await reaperPort.delete(path);
         await doc.ref.delete();
@@ -48,5 +46,12 @@ export const reapBurnbarAttachments = onSchedule(
       }
     }
     logInfo({ event: "callable_info", message: "burnbar_attachments_reaped", reaped, gatewayReaped });
+    return { reaped, gatewayReaped };
+}
+
+export const reapBurnbarAttachments = onSchedule(
+  { schedule: "every 60 minutes", region: FUNCTIONS_REGION },
+  async () => {
+    await reapExpiredBurnbarAttachments();
   },
 );

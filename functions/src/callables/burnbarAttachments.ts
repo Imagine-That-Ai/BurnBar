@@ -93,6 +93,23 @@ export const memoryStoragePort: BurnbarStoragePort = {
   },
 };
 
+export async function combineWithGenerationPin(
+  bucket: {
+    combine: (
+      sources: string[],
+      destination: string,
+      options: { ifGenerationMatch: number },
+    ) => Promise<[{ getMetadata: () => Promise<[{ size?: unknown; generation?: unknown }]> }]>;
+  },
+  sources: string[],
+  destination: string,
+  ifGenerationMatch: number,
+): Promise<{ size: number; generation: string }> {
+  const [file] = await bucket.combine(sources, destination, { ifGenerationMatch });
+  const [metadata] = await file.getMetadata();
+  return { size: Number(metadata.size ?? 0), generation: String(metadata.generation ?? "") };
+}
+
 export const gcsStoragePort: BurnbarStoragePort = {
   async getMetadata(path) {
     const [metadata] = await getStorage().bucket().file(path).getMetadata();
@@ -102,11 +119,8 @@ export const gcsStoragePort: BurnbarStoragePort = {
     if (sources.length > COMPOSE_FANIN) {
       throw new HttpsError("invalid-argument", "compose exceeds 32 sources.");
     }
-    const dest = getStorage().bucket().file(destination, {
-      generation: ifGenerationMatch === 0 ? 0 : undefined,
-    });
-    const [metadata] = await dest.compose(sources.map((src) => getStorage().bucket().file(src)));
-    return { size: Number(metadata.size ?? 0), generation: String(metadata.generation ?? "") };
+    composeLog.push({ sources: [...sources], destination, ifGenerationMatch });
+    return combineWithGenerationPin(getStorage().bucket(), sources, destination, ifGenerationMatch);
   },
   async delete(path) {
     await getStorage().bucket().file(path).delete({ ignoreNotFound: true });
@@ -135,8 +149,20 @@ export const gcsStoragePort: BurnbarStoragePort = {
     return { url };
   },
   async revokePuts(prefix) {
+    // Tombstone, do not delete. A delete returns the object to generation 0
+    // (unborn), which lets a still-live v4 PUT with ifGenerationMatch:0 recreate
+    // the part. Overwriting pins a non-zero generation so those PUTs 412.
     const [files] = await getStorage().bucket().getFiles({ prefix });
-    await Promise.all(files.map((file) => file.delete({ ignoreNotFound: true })));
+    await Promise.all(
+      files.map((file) =>
+        file.save(Buffer.from("revoked"), {
+          resumable: false,
+          validation: false,
+          contentType: "application/octet-stream",
+          metadata: { metadata: { burnbarRevoked: "1" } },
+        }),
+      ),
+    );
   },
 };
 
@@ -404,6 +430,21 @@ export const ticketBurnbarAttachmentDownload = onCallProduction(
       throw new HttpsError("failed-precondition", "Attachment is not downloaded.");
     }
     const generation = String(snap.get("storageGeneration") ?? "");
+    const size = Number(snap.get("meteredBytes") ?? 0);
+    const quota = quotaRef(uid, "out");
+    await db.runTransaction(async (tx) => {
+      const q = await tx.get(quota);
+      const reserved = typeof q.get("reservedBytes") === "number" ? q.get("reservedBytes") : 0;
+      const metered = typeof q.get("meteredBytes") === "number" ? q.get("meteredBytes") : 0;
+      if (reserved + metered + size > FILE_CAP_BYTES) {
+        throw new HttpsError("resource-exhausted", "Daily outbound attachment budget exceeded.");
+      }
+      tx.set(
+        quota,
+        { meteredBytes: metered + size, updatedAt: FieldValue.serverTimestamp() },
+        { merge: true },
+      );
+    });
     const minted = await storagePort.mintGetUrl(objectPath(uid, id, "final"), generation);
     return { ok: true, url: minted.url };
   },

@@ -24,6 +24,7 @@ final class FileSealAEADVectorTests: XCTestCase {
             var chunkIndex: UInt64?
             var attachmentId: String?
             var truncateTagBytes: Int?
+            var reuseNonceWithPlaintext: String?
         }
         var header: Header
         var contentKeyHex: String
@@ -84,7 +85,28 @@ final class FileSealAEADVectorTests: XCTestCase {
             let chunkIndex = negative.chunkIndex ?? base.chunkIndex
             var tag = Data(hex: base.tagHex)
             if let trim = negative.truncateTagBytes {
-                tag = tag.prefix(tag.count - trim)
+                tag = Data(tag.prefix(tag.count - trim))
+            }
+            if let other = negative.reuseNonceWithPlaintext {
+                let reused = try FileSealAEAD.sealChunk(
+                    plaintext: Data(other.utf8),
+                    contentKey: key,
+                    header: header,
+                    chunkIndex: chunkIndex,
+                    nonce: Data(hex: base.nonceHex)
+                )
+                XCTAssertThrowsError(
+                    try FileSealAEAD.openChunk(
+                        ciphertext: reused.ciphertext,
+                        tag: Data(hex: base.tagHex),
+                        contentKey: key,
+                        header: header,
+                        chunkIndex: chunkIndex,
+                        nonce: Data(hex: base.nonceHex)
+                    ),
+                    negative.name
+                )
+                continue
             }
             XCTAssertThrowsError(
                 try FileSealAEAD.openChunk(
@@ -112,18 +134,21 @@ final class FileSealAEADVectorTests: XCTestCase {
         let plain = dir.appendingPathComponent("plain.bin")
         let sealed = dir.appendingPathComponent("sealed.bin")
         let opened = dir.appendingPathComponent("opened.bin")
-        let payload = Data(repeating: 7, count: 64 * 1024 + 17)
+        let chunkBytes = 64 * 1024
+        let payload = Data(repeating: 7, count: 64 * 1024 * 1024 + 17)
         try payload.write(to: plain)
         let key = try FileSealAEAD.mintContentKey()
+        let totalChunks = Int(ceil(Double(payload.count) / Double(chunkBytes)))
         let header = FileSealAEAD.Header(
             attachmentId: "stream-1",
-            totalChunks: 1,
+            totalChunks: totalChunks,
             plaintextSize: Int64(payload.count),
             contentBlake3: "00"
         )
-        try FileSealAEAD.sealFile(from: plain, to: sealed, contentKey: key, header: header)
-        try FileSealAEAD.openFile(from: sealed, to: opened, contentKey: key, header: header)
+        try FileSealAEAD.sealFile(from: plain, to: sealed, contentKey: key, header: header, chunkBytes: chunkBytes)
+        try FileSealAEAD.openFile(from: sealed, to: opened, contentKey: key, header: header, chunkBytes: chunkBytes)
         XCTAssertEqual(try Data(contentsOf: opened), payload)
+        XCTAssertGreaterThan(payload.count, 64 * 1024 * 1024)
         XCTAssertEqual(FileSealAEAD.maxPlaintextBytes, 10 * 1024 * 1024 * 1024)
     }
 

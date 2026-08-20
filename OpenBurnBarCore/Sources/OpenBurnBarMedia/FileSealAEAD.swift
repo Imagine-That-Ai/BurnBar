@@ -93,7 +93,8 @@ public enum FileSealAEAD {
         from source: URL,
         to destination: URL,
         contentKey: Data,
-        header: Header
+        header: Header,
+        chunkBytes: Int = chunkPlaintextBytes
     ) throws {
         guard header.plaintextSize <= maxPlaintextBytes else { throw Error.plaintextTooLarge }
         let inHandle = try FileHandle(forReadingFrom: source)
@@ -103,7 +104,7 @@ public enum FileSealAEAD {
         defer { try? outHandle.close() }
         var index: UInt64 = 0
         while true {
-            let chunk = inHandle.readData(ofLength: chunkPlaintextBytes)
+            let chunk = inHandle.readData(ofLength: chunkBytes)
             if chunk.isEmpty { break }
             let nonce = try mintNonce()
             let sealed = try sealChunk(
@@ -127,7 +128,8 @@ public enum FileSealAEAD {
         from source: URL,
         to destination: URL,
         contentKey: Data,
-        header: Header
+        header: Header,
+        chunkBytes: Int = chunkPlaintextBytes
     ) throws {
         let inHandle = try FileHandle(forReadingFrom: source)
         defer { try? inHandle.close() }
@@ -136,7 +138,7 @@ public enum FileSealAEAD {
         defer { try? outHandle.close() }
         var remaining = header.plaintextSize
         for index in 0..<header.totalChunks {
-            let plaintextLen = Int(min(Int64(chunkPlaintextBytes), remaining))
+            let plaintextLen = Int(min(Int64(chunkBytes), remaining))
             let wireLen = nonceSize + plaintextLen + tagSize
             let wire = inHandle.readData(ofLength: wireLen)
             guard wire.count == wireLen else { throw Error.truncatedChunk }

@@ -58,16 +58,22 @@ import {
   composeParts,
   FILE_CAP_BYTES,
   finalizeBurnbarAttachment,
+  combineWithGenerationPin,
   memoryStoragePort,
+  mintBurnbarAttachmentPartURL,
   planComposeHierarchy,
   COMPOSE_FANIN,
   setBurnbarStoragePort,
   takeComposeLog,
+  ticketBurnbarAttachmentDownload,
 } from "../callables/burnbarAttachments.js";
+import { reapExpiredBurnbarAttachments, setReaperStoragePort } from "../scheduled/reapBurnbarAttachments.js";
 
 const runBegin = callableRunner(beginBurnbarAttachment);
 const runCompose = callableRunner(composeBurnbarAttachment);
 const runFinalize = callableRunner(finalizeBurnbarAttachment);
+const runMint = callableRunner(mintBurnbarAttachmentPartURL);
+const runTicket = callableRunner(ticketBurnbarAttachmentDownload);
 
 function authed(data: Record<string, unknown>) {
   return {
@@ -135,6 +141,86 @@ describe("burnbarAttachments", () => {
     await expect(runFinalize(authed({ id: begun.id }))).rejects.toMatchObject({
       code: "failed-precondition",
     });
+  });
+
+  it("gcs compose adapter passes ifGenerationMatch into Bucket.combine", async () => {
+    const combine = vi.fn(async () => [
+      {
+        getMetadata: async () => [{ size: 10, generation: "7" }],
+      },
+    ]);
+    const result = await combineWithGenerationPin({ combine }, ["a", "b"], "dest", 0);
+    expect(combine).toHaveBeenCalledWith(["a", "b"], "dest", { ifGenerationMatch: 0 });
+    expect(result).toEqual({ size: 10, generation: "7" });
+  });
+
+  it("mint/PUT of a part after finalize is denied", async () => {
+    const begun = (await runBegin(
+      authed({ byteCount: 64, contentBlake3: "d".repeat(64) }),
+    )) as { id: string };
+    const finalPath = `users/alice-bola-uid/burnbar_attachments/${begun.id}/final`;
+    const partPath = `users/alice-bola-uid/burnbar_attachments/${begun.id}/parts/0`;
+    await memoryStoragePort.mintPutUrl(partPath, 64, 60);
+    await memoryStoragePort.mintPutUrl(finalPath, 64, 60);
+    await runFinalize(authed({ id: begun.id }));
+    await expect(runMint(authed({ id: begun.id, partIndex: 0, contentLength: 64 }))).rejects.toMatchObject({
+      code: "failed-precondition",
+    });
+    await expect(memoryStoragePort.mintPutUrl(partPath, 64, 60)).rejects.toMatchObject({
+      code: "permission-denied",
+    });
+  });
+
+  it("ticket download meters outbound quota", async () => {
+    const begun = (await runBegin(
+      authed({ byteCount: 64, contentBlake3: "e".repeat(64) }),
+    )) as { id: string };
+    const finalPath = `users/alice-bola-uid/burnbar_attachments/${begun.id}/final`;
+    await memoryStoragePort.mintPutUrl(finalPath, 64, 60);
+    await runFinalize(authed({ id: begun.id }));
+    const ticket = await runTicket(authed({ id: begun.id }));
+    expect(ticket).toMatchObject({ ok: true });
+    const quota = [...hoisted.store.entries()].find(([k]) => k.includes("burnbar_attach_") && k.endsWith("_out"));
+    expect(quota?.[1].meteredBytes).toBe(64);
+  });
+
+  it("reaper deletes stale pending attachments and expired gateway docs", async () => {
+    setReaperStoragePort(memoryStoragePort);
+    const stalePath = "users/alice-bola-uid/burnbar_attachments/old/final";
+    await memoryStoragePort.mintPutUrl(stalePath, 8, 60);
+    hoisted.store.set("users/alice-bola-uid/burnbar_attachments/old", {
+      state: "pending_upload",
+      storagePath: stalePath,
+      updatedAt: { toMillis: () => Date.now() - 48 * 60 * 60 * 1000 },
+    });
+    hoisted.store.set("users/alice-bola-uid/hermes_gateway_attachments/gw1", {
+      expiresAt: { toMillis: () => Date.now() - 1000 },
+      storagePath: "users/alice-bola-uid/hermes_gateway_attachments/gw1/obj",
+    });
+    const original = hoisted.db.collectionGroup;
+    hoisted.db.collectionGroup = (name: string) => ({
+      get: async () => {
+        const docs = [...hoisted.store.entries()]
+          .filter(([path]) => path.includes(`/${name}/`) && !path.split(`/${name}/`)[1]?.includes("/"))
+          .map(([path, data]) => ({
+            get: (f: string) => data[f],
+            ref: {
+              set: async (next: Record<string, unknown>, options?: { merge?: boolean }) => {
+                hoisted.store.set(path, options?.merge ? { ...data, ...next } : next);
+              },
+              delete: async () => {
+                hoisted.store.delete(path);
+              },
+            },
+          }));
+        return { docs };
+      },
+    });
+    const result = await reapExpiredBurnbarAttachments(Date.now());
+    expect(result.reaped).toBe(1);
+    expect(result.gatewayReaped).toBe(1);
+    expect(hoisted.store.get("users/alice-bola-uid/burnbar_attachments/old")?.state).toBe("expired");
+    hoisted.db.collectionGroup = original;
   });
 
   it("refuses compose after finalize", async () => {

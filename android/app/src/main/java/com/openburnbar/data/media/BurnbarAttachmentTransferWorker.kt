@@ -50,7 +50,7 @@ class BurnbarAttachmentTransferWorker(
         return code in 200..299
     }
 
-    private fun createForegroundInfo(): ForegroundInfo {
+    internal fun createForegroundInfo(): ForegroundInfo {
         val notification =
             NotificationCompat.Builder(applicationContext, "burnbar-transfers")
                 .setContentTitle("Uploading attachment")
@@ -67,5 +67,8 @@ class BurnbarAttachmentTransferWorker(
     companion object {
         const val KEY_FILE_PATH = "filePath"
         const val KEY_SIGNED_URL = "signedUrl"
+
+        fun requiredForegroundServiceType(): Int =
+            if (Build.VERSION.SDK_INT >= 34) ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC else 0
     }
 }

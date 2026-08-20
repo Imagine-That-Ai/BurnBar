@@ -2265,6 +2265,10 @@
 		D0C89A34E2CE5B811414FFAB /* AgentWatchAudioSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BBCC65A5671646C42C99C63 /* AgentWatchAudioSession.swift */; };
 		D0F384E58E62ACC98DC5291C /* ChatSessionControllerPaneModeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE2BEC6F70573442F1B66DFF /* ChatSessionControllerPaneModeTests.swift */; };
 		D0FE154FBE08C66C59D482DC /* CLIAgentMissionDispatcherSealTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD33C8170121C45122CA501E /* CLIAgentMissionDispatcherSealTests.swift */; };
+		E11B22C33D44E55F66778899 /* BurnbarAttachmentTransferSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11B22C33D44E55F66778899 /* BurnbarAttachmentTransferSession.swift */; };
+		F11B22C33D44E55F66778899 /* BurnbarAttachmentUploadClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = B11B22C33D44E55F66778899 /* BurnbarAttachmentUploadClient.swift */; };
+		A21B22C33D44E55F66778899 /* BurnbarShareInboxProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = C11B22C33D44E55F66778899 /* BurnbarShareInboxProcessor.swift */; };
+		B21B22C33D44E55F66778899 /* BurnbarAttachmentTransferSessionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D11B22C33D44E55F66778899 /* BurnbarAttachmentTransferSessionTests.swift */; };
 		D10B2E54BD14F5A9A7465B6D /* DashboardNavigationModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 497030ED0D4862927A741E4F /* DashboardNavigationModel.swift */; };
 		D166E15EBB5431036DBBE26A /* MercuryRouter+RoutingRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36C3EA08FC80BA65EEAD1740 /* MercuryRouter+RoutingRuntime.swift */; };
 		D1AB7BE23215F6F3B7816967 /* InsightBriefSnapshotAsyncTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 812CA479C8EB01651ED732B6 /* InsightBriefSnapshotAsyncTests.swift */; };
@@ -3110,6 +3114,10 @@
 		12BF701AE09198494183C7E3 /* ParserFixtureExtractionParityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ParserFixtureExtractionParityTests.swift; sourceTree = "<group>"; };
 		12D9A3D71F225C73EB2D72E0 /* BurnBarDaemonPeerAuthenticator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarDaemonPeerAuthenticator.swift; sourceTree = "<group>"; };
 		12F8251025E1FFF060AD109B /* CLIAgentMissionDispatcher+Sealing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "CLIAgentMissionDispatcher+Sealing.swift"; sourceTree = "<group>"; };
+		A11B22C33D44E55F66778899 /* BurnbarAttachmentTransferSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnbarAttachmentTransferSession.swift; sourceTree = "<group>"; };
+		B11B22C33D44E55F66778899 /* BurnbarAttachmentUploadClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnbarAttachmentUploadClient.swift; sourceTree = "<group>"; };
+		C11B22C33D44E55F66778899 /* BurnbarShareInboxProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnbarShareInboxProcessor.swift; sourceTree = "<group>"; };
+		D11B22C33D44E55F66778899 /* BurnbarAttachmentTransferSessionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnbarAttachmentTransferSessionTests.swift; sourceTree = "<group>"; };
 		130848B348AA88497A38A0FC /* OpenBurnBarToolingProxyService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBurnBarToolingProxyService.swift; sourceTree = "<group>"; };
 		131EF6424A3B43B45833D538 /* OnboardingProviderConnectStep.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingProviderConnectStep.swift; sourceTree = "<group>"; };
 		132B066F8FFBFB32C9F631D0 /* FirestoreIrohInboundPeerAllowlist.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirestoreIrohInboundPeerAllowlist.swift; sourceTree = "<group>"; };
@@ -8852,6 +8860,9 @@
 				BE3A2B13A76C2D041A659B0A /* CLIAgentMissionDispatcher+FanOut.swift */,
 				A6944AFE63CD00D90313D0D5 /* CLIAgentMissionDispatcher+MissionControl.swift */,
 				12F8251025E1FFF060AD109B /* CLIAgentMissionDispatcher+Sealing.swift */,
+				A11B22C33D44E55F66778899 /* BurnbarAttachmentTransferSession.swift */,
+				B11B22C33D44E55F66778899 /* BurnbarAttachmentUploadClient.swift */,
+				C11B22C33D44E55F66778899 /* BurnbarShareInboxProcessor.swift */,
 				23EAB103998B96617E725BC8 /* CLIAgentMissionModels.swift */,
 				59626D9C2B663B6DB0CD064D /* CLIAgentMissionRequestPayloadFactory.swift */,
 				0FFEE73018C1776A6B80BA51 /* CLIAgentMobileChatService.swift */,
@@ -9077,6 +9088,7 @@
 				3AA48D1DF6ABE4AB9E34C24F /* OnboardingWizardFlowTests.swift */,
 				918DAC395C6541876063177D /* OpenBurnBarCoreTypeIdentityTests.swift */,
 				410E6901BC25CC608197CB5E /* OpenBurnBarMobileTests.swift */,
+				D11B22C33D44E55F66778899 /* BurnbarAttachmentTransferSessionTests.swift */,
 				CEEB86BE776CCDFA553EC2F6 /* OpenClawServiceTests.swift */,
 				AA2AAAB2C10146667E028D81 /* P16PhysicalIPadTrustCycleTests.swift */,
 				FBEA32AF5E3F72DE7B83E5AA /* PensieveMemorySearchSignalTests.swift */,
@@ -11637,6 +11649,7 @@
 				0E5E84E72E60D842D618C910 /* BurnLayoutStyleTests.swift in Sources */,
 				F19A27FB5CD94ADF6544952C /* CLIAgentChatReaderTests.swift in Sources */,
 				D0FE154FBE08C66C59D482DC /* CLIAgentMissionDispatcherSealTests.swift in Sources */,
+				B21B22C33D44E55F66778899 /* BurnbarAttachmentTransferSessionTests.swift in Sources */,
 				E8A521DADE07CDB3D3733F9E /* CLIAgentSessionCodecTests.swift in Sources */,
 				95C99E8AC1FD0B253249A97B /* ChartSpecAccessibilityTests.swift in Sources */,
 				75D4E6DEF55EADE24D20948E /* ChartSpecRendererTests.swift in Sources */,
@@ -12074,6 +12087,9 @@
 				86EFEEA6BFE1D96D574D982F /* CLIAgentMissionDispatcher+FanOut.swift in Sources */,
 				E1D78AB54E3690CE6FF8CE91 /* CLIAgentMissionDispatcher+MissionControl.swift in Sources */,
 				FE4A5670790C32AE505811DD /* CLIAgentMissionDispatcher+Sealing.swift in Sources */,
+				E11B22C33D44E55F66778899 /* BurnbarAttachmentTransferSession.swift in Sources */,
+				F11B22C33D44E55F66778899 /* BurnbarAttachmentUploadClient.swift in Sources */,
+				A21B22C33D44E55F66778899 /* BurnbarShareInboxProcessor.swift in Sources */,
 				630976916D60049249DDC021 /* CLIAgentMissionDispatcher.swift in Sources */,
 				540548425AE8920C0AFD8D21 /* CLIAgentMissionModels.swift in Sources */,
 				ACEAAE11BE785D831D86E0EA /* CLIAgentMissionRequestPayloadFactory.swift in Sources */,

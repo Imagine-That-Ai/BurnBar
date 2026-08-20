@@ -645,7 +645,7 @@ private actor QuarantineBlobBackend: IrohBlobBackend {
         try payload.write(to: url)
         return BlobTransferStats(
             bytesTotal: 10,
-            blake3Hash: "blake3:quarantine",
+            blake3Hash: String(repeating: "aa", count: 32),
             durationMillis: 5,
             didResume: false
         )
@@ -695,7 +695,7 @@ private actor OversizedSparseBlobBackend: IrohBlobBackend {
         try? handle.close()
         return BlobTransferStats(
             bytesTotal: UInt64(byteCount),
-            blake3Hash: "blake3:oversized",
+            blake3Hash: String(repeating: "bb", count: 32),
             durationMillis: 5,
             didResume: false
         )

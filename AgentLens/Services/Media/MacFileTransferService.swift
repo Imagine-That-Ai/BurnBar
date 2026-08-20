@@ -480,6 +480,7 @@ final class MacFileTransferService: ObservableObject {
             let result = try await service.fetch(ticketText: ticket, manifest: manifest)
             fetchedDestinationURL = result.destinationURL
             try Self.applyInboundQuarantine(to: result.destinationURL, manifest: manifest)
+            let verified = try ContentBlake3.parse(result.stats.blake3Hash)
             // RR-18 — seal the received bytes at rest under the media session
             // key when one is negotiated, so the file is not plaintext in the
             // sandbox Caches inbox. No key ⇒ keep the prior quarantine-only
@@ -497,7 +498,7 @@ final class MacFileTransferService: ObservableObject {
                     filename: manifest.filename,
                     roots: [attachmentsRoot],
                     contentKey: PlatformCrypto.symmetricKeyData(sealKey),
-                    verifiedDigest: manifest.blobHash
+                    verifiedDigest: verified
                 )
                 try sealReceivedFileAtRest(at: result.destinationURL, manifest: manifest, key: sealKey)
                 try Self.applyInboundQuarantine(to: result.destinationURL, manifest: manifest)

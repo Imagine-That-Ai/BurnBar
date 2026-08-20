@@ -71,9 +71,21 @@ enum MacAttachmentLandingService {
     ) throws -> LandedFile {
         guard contentKey != nil else { throw Error.missingContentKey }
         guard FileManager.default.fileExists(atPath: plaintextURL.path) else { throw Error.missingSource }
-        let declared = declaredContentBlake3.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let verified = verifiedDigest.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !declared.isEmpty, declared == verified else { throw Error.digestMismatch }
+        let declared: String
+        let verified: String
+        do {
+            declared = try ContentBlake3.parse(declaredContentBlake3)
+            verified = try ContentBlake3.parse(verifiedDigest)
+        } catch {
+            try? FileManager.default.removeItem(at: plaintextURL)
+            throw Error.digestMismatch
+        }
+        // iroh export is content-addressed: `verifiedDigest` is ticket.hash()
+        // (blake3 of opened plaintext), never the ticket text.
+        guard declared == verified else {
+            try? FileManager.default.removeItem(at: plaintextURL)
+            throw Error.digestMismatch
+        }
         if let existing = landedByDigest[verified], FileManager.default.fileExists(atPath: existing.path) {
             return LandedFile(url: existing, contentBlake3: verified, displayName: sanitizeFilename(filename))
         }

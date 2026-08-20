@@ -17,9 +17,18 @@ final class BurnbarAttachmentTransferSession: NSObject, URLSessionDelegate, URLS
         session = URLSession(configuration: config, delegate: self, delegateQueue: nil)
     }
 
-    func uploadFile(fileURL: URL, signedURL: URL, partKey: String) -> URLSessionUploadTask {
+    static func signedPutRequest(fileURL: URL, signedURL: URL) -> URLRequest {
         var request = URLRequest(url: signedURL)
         request.httpMethod = "PUT"
+        request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+        let length = (try? FileManager.default.attributesOfItem(atPath: fileURL.path)[.size] as? NSNumber)?.int64Value ?? 0
+        request.setValue(String(length), forHTTPHeaderField: "Content-Length")
+        request.setValue("0", forHTTPHeaderField: "x-goog-if-generation-match")
+        return request
+    }
+
+    func uploadFile(fileURL: URL, signedURL: URL, partKey: String) -> URLSessionUploadTask {
+        let request = Self.signedPutRequest(fileURL: fileURL, signedURL: signedURL)
         let task = session.uploadTask(with: request, fromFile: fileURL)
         task.taskDescription = partKey
         task.resume()

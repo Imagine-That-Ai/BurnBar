@@ -8,11 +8,11 @@ import org.junit.Test
 class BurnbarAttachmentTransferWorkerTest {
     @Test
     fun foregroundServiceTypeIsDataSyncOnApi34() {
+        val type = BurnbarAttachmentTransferWorker.requiredForegroundServiceType()
         if (Build.VERSION.SDK_INT >= 34) {
-            assertEquals(
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
-            )
+            assertEquals(ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC, type)
+        } else {
+            assertEquals(0, type)
         }
     }
 }
