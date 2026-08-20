@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Ollama Cloud Kimi K3** — Added `kimi-k3` (`kimi-k3:cloud`) to the bundled
+  Ollama Cloud catalog with its 1M-token context window and native image input,
+  so the model is advertised and route-eligible through the local gateway for
+  Droid, Codex CLI, Pi Agent, and every other routed client.
+
 ## [1.0.40] - 2026-08-18
 
 ### Fixed

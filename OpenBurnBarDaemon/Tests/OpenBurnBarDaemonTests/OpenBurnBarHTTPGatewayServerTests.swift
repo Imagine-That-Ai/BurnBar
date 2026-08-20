@@ -1316,6 +1316,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
     func testGatewayModelsUsesOllamaCloudCatalogPageWhenAvailable() async throws {
         enqueueOllamaCloudCatalog([
             "kimi-k2.7-code",
+            "kimi-k3",
             "glm-5.2-cloud",
             "deepseek-v4-flash",
             "minimax-m2.7",
@@ -1324,7 +1325,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         ])
         let harness = try GatewayHarness()
         try await harness.configureOllamaProviderForGateway(
-            preferredModelIDs: ["glm-5.2", "deepseek-v4-flash"]
+            preferredModelIDs: ["glm-5.2", "deepseek-v4-flash", "kimi-k3"]
         )
         _ = try await harness.configStore.upsertProvider(
             BurnBarProviderSettings(
@@ -1357,12 +1358,14 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         let data = try XCTUnwrap(object["data"] as? [[String: Any]])
         let advertisedIDs = Set(data.compactMap { $0["id"] as? String })
         XCTAssertTrue(advertisedIDs.contains("kimi-k2.7-code:cloud"))
+        XCTAssertTrue(advertisedIDs.contains("kimi-k3:cloud"))
         XCTAssertTrue(advertisedIDs.contains("glm-5.2:cloud"))
         XCTAssertTrue(advertisedIDs.contains("deepseek-v4-flash:cloud"))
         XCTAssertTrue(advertisedIDs.contains("minimax-m2.7:cloud"))
         XCTAssertTrue(advertisedIDs.contains("deepseek-v3.2:cloud"))
         XCTAssertTrue(advertisedIDs.contains("minimax-m2.1:cloud"))
         XCTAssertFalse(advertisedIDs.contains("kimi-k2.7-code"))
+        XCTAssertFalse(advertisedIDs.contains("kimi-k3"))
         XCTAssertFalse(advertisedIDs.contains("glm-5.2"))
         XCTAssertFalse(advertisedIDs.contains("glm-5.2-cloud"))
 
@@ -1373,6 +1376,11 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertEqual(discovered["route_eligible"] as? Bool, true)
         XCTAssertEqual(discovered["format_family"] as? String, "openai_compat")
         XCTAssertTrue((discovered["served_endpoints"] as? [String] ?? []).contains("/v1/chat/completions"))
+        let discoveredKimiK3 = try XCTUnwrap(data.first { ($0["id"] as? String) == "kimi-k3:cloud" })
+        XCTAssertEqual(discoveredKimiK3["route_eligible"] as? Bool, true)
+        let kimiK3Capabilities = try XCTUnwrap(discoveredKimiK3["model_capabilities"] as? [String: Any])
+        XCTAssertEqual(kimiK3Capabilities["contextWindowTokens"] as? Int, 1_048_576)
+        XCTAssertTrue((kimiK3Capabilities["inputModalities"] as? [String] ?? []).contains("image"))
         XCTAssertEqual(GatewayUpstreamURLProtocol.recordedRequests().map(\.path), ["/search"])
         XCTAssertEqual(GatewayUpstreamURLProtocol.recordedRequests().map(\.query), ["c=cloud"])
         XCTAssertNil(GatewayUpstreamURLProtocol.recordedRequests().first?.authorization)

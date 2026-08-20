@@ -248,10 +248,15 @@ final class BurnBarCatalogTests: XCTestCase {
         let catalog = BurnBarCatalogLoader.bundledCatalog
 
         XCTAssertTrue(catalog.supportsModel(named: "kimi-k2.7-code:cloud", providerID: "ollama"))
+        XCTAssertTrue(catalog.supportsModel(named: "kimi-k3:cloud", providerID: "ollama"))
         XCTAssertTrue(catalog.supportsModel(named: "glm-5.2:cloud", providerID: "ollama"))
         XCTAssertEqual(
             catalog.canonicalModelID(forModelName: "kimi-k2.7-code:cloud", providerID: "ollama"),
             "kimi-k2.7-code:cloud"
+        )
+        XCTAssertEqual(
+            catalog.canonicalModelID(forModelName: "kimi-k3:cloud", providerID: "ollama"),
+            "kimi-k3:cloud"
         )
         XCTAssertEqual(
             catalog.canonicalModelID(forModelName: "glm-5.2:cloud", providerID: "ollama"),
@@ -260,9 +265,12 @@ final class BurnBarCatalogTests: XCTestCase {
 
         let ollama = try XCTUnwrap(catalog.provider(id: "ollama"))
         let kimi = try XCTUnwrap(ollama.models.first { $0.id == "kimi-k2.7-code" })
+        let kimiK3 = try XCTUnwrap(ollama.models.first { $0.id == "kimi-k3" })
         let glm = try XCTUnwrap(ollama.models.first { $0.id == "glm-5.2" })
         XCTAssertEqual(kimi.modelCapabilities?.contextWindowTokens, 262_144)
         XCTAssertEqual(kimi.modelCapabilities?.supportsImageInput, true)
+        XCTAssertEqual(kimiK3.modelCapabilities?.contextWindowTokens, 1_048_576)
+        XCTAssertEqual(kimiK3.modelCapabilities?.supportsImageInput, true)
         XCTAssertEqual(glm.modelCapabilities?.contextWindowTokens, 976_000)
         XCTAssertEqual(glm.modelCapabilities?.supportsImageInput, false)
     }
