@@ -1,7 +1,7 @@
 {
   "settingsAccountSharedReferences": 1,
-  "staticSharedSingletons": 55,
-  "total": 56,
+  "staticSharedSingletons": 56,
+  "total": 57,
   "generatedAt": "2026-07-10T20:20:00Z",
-  "note": "Baseline for scripts/debt/check-singleton-budget.sh after the PR #1435 repair removed the AgentToolBroker revocation registry, Computer Use quota usage store, and Computer Use cloud metering service static shared owners. Counts production AgentLens SettingsManager.shared and AccountManager.shared references plus total static let shared singletons, excluding the runtime-context construction site. Lower as singleton paths move to runtime-context injection; staticSharedSingletons remains a guard against adding new global singleton owners."
+  "note": "Baseline for scripts/debt/check-singleton-budget.sh after the PR #1435 repair removed the AgentToolBroker revocation registry, Computer Use quota usage store, and Computer Use cloud metering service static shared owners. Counts production AgentLens SettingsManager.shared and AccountManager.shared references plus total static let shared singletons, excluding the runtime-context construction site. Lower as singleton paths move to runtime-context injection; staticSharedSingletons remains a guard against adding new global singleton owners. reason: raised 55 -> 56 (total 56 -> 57) for AgentLens/Services/FirstRun/FirstRunPermissionLadder.swift. Its whole job is to ensure a given OS permission is explained and requested exactly once per process, across five unrelated call sites (TextExpansion settings, two Control Deck tiles, Computer Use settings, Media permissions). Deduplication that must hold across the whole process is what a singleton is actually for; threading one instance through five unrelated view environments would give every one of them the chance to hold a different ladder and double-prompt, which is the bug the type exists to prevent. Every other singleton stays under the shrink-only rule."
 }
