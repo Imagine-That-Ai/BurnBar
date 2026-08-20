@@ -10,7 +10,10 @@ enum RecapFixtures {
 
     static func calendar(_ identifier: String = "America/Los_Angeles") -> Calendar {
         var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: identifier)!
+        // A fixed zone, not the machine's: the fold buckets by local day and
+        // hour, so a floating zone would make these tests pass or fail by
+        // geography. Falling back to UTC keeps the fixture total.
+        calendar.timeZone = TimeZone(identifier: identifier) ?? TimeZone(secondsFromGMT: 0) ?? .current
         calendar.locale = Locale(identifier: "en_US_POSIX")
         return calendar
     }
@@ -26,7 +29,7 @@ enum RecapFixtures {
         parts.day = day
         parts.hour = hour
         parts.minute = minute
-        return calendar.date(from: parts)!
+        return calendar.date(from: parts) ?? Date(timeIntervalSince1970: 0)
     }
 
     static func usage(
