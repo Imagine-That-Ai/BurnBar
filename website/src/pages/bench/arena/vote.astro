@@ -1,0 +1,611 @@
+---
+import BaseLayout from "@layouts/BaseLayout.astro";
+import "@styles/bench.css";
+import "@styles/arena-variants.css";
+import "@styles/arena-variant-neural.css";
+---
+
+<BaseLayout
+  title="BurnBench Arena — cast a blind vote"
+  description="Vote on a blind BurnBench Arena matchup: two anonymized experiential artifacts side by side, identities revealed only after you vote."
+>
+  {
+    /* Neural Split is the sole Arena skin. Set BEFORE paint so it never
+      flashes. bench-arena.ts reports exposure, plays and votes with the
+      variant attached. */
+  }
+  <script slot="head" is:inline>
+    (function () {
+      try {
+        document.documentElement.setAttribute("data-arena-variant", "neural");
+      } catch {}
+    })();
+  </script>
+  <section class="bb-hero bb-arena-hero" aria-labelledby="vote-hero-h">
+    <div class="container container--wide bb-hero__inner">
+      <nav class="bb-bread mono" aria-label="Breadcrumbs">
+        <a href="/bench">BurnBench</a>
+        <span aria-hidden="true">→</span>
+        <a href="/bench/arena">Arena</a>
+        <span aria-hidden="true">→</span>
+        <span>Vote</span>
+      </nav>
+      <p class="bb-arena-hero__kicker mono">[ burnbench · arena · blind pairwise ]</p>
+      <h1 id="vote-hero-h" class="bb-arena-hero__title">
+        <span class="bb-arena-hero__l1">Which one</span>
+        <span class="bb-arena-hero__l2"><em>shipped it</em></span>
+        <span class="bb-arena-hero__l3">better?</span>
+      </h1>
+      <p class="bb-arena-hero__lead mono">
+        &gt; two agents · same brief · anonymized · order randomized<span
+          class="bb-arena-hero__cursor"
+          aria-hidden="true">▌</span
+        >
+      </p>
+      <p class="bb-arena-hero__sub">
+        No logos until you decide — only after you vote do we reveal which harness × model built
+        which.
+      </p>
+    </div>
+  </section>
+
+  <section class="bb-section bb-arena" aria-labelledby="ballot-h">
+    {
+      /* Neural-variant particle field (decorative; CSS shows it only under
+        [data-arena-variant="neural"], JS animates it only for that variant). */
+    }
+    <canvas id="arena-net" class="bb-arena__net" aria-hidden="true"></canvas>
+    <div class="container container--wide">
+      <h2 id="ballot-h" class="bb-sec-h" style="position:absolute;left:-9999px">The ballot</h2>
+      <p id="arena-status" class="bb-arena__status mono" role="status" aria-live="polite">
+        Dealing a blind matchup…
+      </p>
+
+      <div id="arena-auth-chip" class="bb-arena__authchip mono" hidden></div>
+      <button id="arena-signout" class="bb-arena__signout mono" type="button" hidden
+        >sign out</button
+      >
+
+      <div id="arena-brief" class="bb-arena__brief glass-pane" hidden>
+        <span class="bb-arena__brief-eyebrow mono"
+          >// mission brief — identical prompt, both cells</span
+        >
+        <h2 id="brief-title" class="bb-arena__brief-title"></h2>
+        <p id="brief-text" class="bb-arena__brief-text"></p>
+        <p class="bb-arena__judge mono"><span>Judge on</span> <span id="brief-judge"></span></p>
+      </div>
+
+      <div class="bb-arena__frames bb-versus">
+        <figure class="bb-arena__pane bb-arena__pane--a glass-pane">
+          <span class="bb-arena__ghost" aria-hidden="true">A</span>
+          <figcaption class="bb-arena__tag mono">Artifact A</figcaption>
+          <div id="wrap-a" class="bb-arena__framewrap" data-live="false">
+            <div
+              id="zoomwrap-a"
+              class="bb-arena__zoomwrap"
+              tabindex="0"
+              aria-label="Artifact A zoom and pan viewport"
+              aria-keyshortcuts="+ - 0"
+            >
+              <div id="zoomer-a" class="bb-arena__zoomer">
+                <iframe
+                  id="frame-a"
+                  class="bb-arena__frame"
+                  title="Anonymized artifact A"
+                  sandbox="allow-scripts allow-forms allow-modals allow-pointer-lock"
+                  referrerpolicy="no-referrer"
+                  loading="lazy"
+                  tabindex="-1"></iframe>
+              </div>
+            </div>
+            {
+              /* The shield keeps the artifact inert until the voter opts in, so a
+                scroll past the ballot never gets captured by a live canvas. One
+                click hands pointer + keyboard to the artifact in place. */
+            }
+            <button id="play-a" class="bb-arena__play" type="button" aria-describedby="play-a-hint">
+              <span class="bb-arena__play-disc" aria-hidden="true"></span>
+              <span class="bb-arena__play-label mono">Press to play A</span>
+              <span id="play-a-hint" class="bb-arena__play-hint">Use it for real — then judge</span>
+            </button>
+            <div class="bb-arena__tools">
+              <button
+                id="reload-a"
+                class="bb-arena__tool mono"
+                type="button"
+                aria-label="Restart artifact A"
+              >
+                restart ↺
+              </button>
+              <button
+                id="expand-a"
+                class="bb-arena__tool bb-arena__expand mono"
+                type="button"
+                aria-label="Open artifact A full screen"
+              >
+                full screen ⤢
+              </button>
+            </div>
+            <div
+              id="zoombar-a"
+              class="bb-arena__zoombar"
+              role="toolbar"
+              aria-label="Zoom artifact A"
+            >
+              <button
+                id="zoomout-a"
+                class="bb-zoom-btn"
+                type="button"
+                aria-label="Zoom out artifact A">−</button
+              >
+              <span id="zoomlevel-a" class="bb-zoom-level" aria-live="polite">100%</span>
+              <button
+                id="zoomin-a"
+                class="bb-zoom-btn"
+                type="button"
+                aria-label="Zoom in artifact A">+</button
+              >
+              <button
+                id="zoomreset-a"
+                class="bb-zoom-btn bb-zoom-reset"
+                type="button"
+                aria-label="Reset zoom for artifact A">↺</button
+              >
+            </div>
+            {/* Filled by JS on handover so the state change is announced. */}
+            <p id="live-a" class="bb-arena__live mono" role="status"></p>
+            <span id="zoomlive-a" class="sr-only" aria-live="polite"></span>
+          </div>
+          <div class="bb-arena__voteui">
+            <button id="vote-a" class="bb-arena__votebar" type="button">
+              <span>A shipped it better</span>
+              <span class="bb-arena__votearrow" aria-hidden="true">→</span>
+            </button>
+          </div>
+        </figure>
+        <span class="bb-arena__versus mono" aria-hidden="true">vs</span>
+        <figure class="bb-arena__pane bb-arena__pane--b glass-pane">
+          <span class="bb-arena__ghost" aria-hidden="true">B</span>
+          <figcaption class="bb-arena__tag mono">Artifact B</figcaption>
+          <div id="wrap-b" class="bb-arena__framewrap" data-live="false">
+            <div
+              id="zoomwrap-b"
+              class="bb-arena__zoomwrap"
+              tabindex="0"
+              aria-label="Artifact B zoom and pan viewport"
+              aria-keyshortcuts="+ - 0"
+            >
+              <div id="zoomer-b" class="bb-arena__zoomer">
+                <iframe
+                  id="frame-b"
+                  class="bb-arena__frame"
+                  title="Anonymized artifact B"
+                  sandbox="allow-scripts allow-forms allow-modals allow-pointer-lock"
+                  referrerpolicy="no-referrer"
+                  loading="lazy"
+                  tabindex="-1"></iframe>
+              </div>
+            </div>
+            <button id="play-b" class="bb-arena__play" type="button" aria-describedby="play-b-hint">
+              <span class="bb-arena__play-disc" aria-hidden="true"></span>
+              <span class="bb-arena__play-label mono">Press to play B</span>
+              <span id="play-b-hint" class="bb-arena__play-hint">Use it for real — then judge</span>
+            </button>
+            <div class="bb-arena__tools">
+              <button
+                id="reload-b"
+                class="bb-arena__tool mono"
+                type="button"
+                aria-label="Restart artifact B"
+              >
+                restart ↺
+              </button>
+              <button
+                id="expand-b"
+                class="bb-arena__tool bb-arena__expand mono"
+                type="button"
+                aria-label="Open artifact B full screen"
+              >
+                full screen ⤢
+              </button>
+            </div>
+            <div
+              id="zoombar-b"
+              class="bb-arena__zoombar"
+              role="toolbar"
+              aria-label="Zoom artifact B"
+            >
+              <button
+                id="zoomout-b"
+                class="bb-zoom-btn"
+                type="button"
+                aria-label="Zoom out artifact B">−</button
+              >
+              <span id="zoomlevel-b" class="bb-zoom-level" aria-live="polite">100%</span>
+              <button
+                id="zoomin-b"
+                class="bb-zoom-btn"
+                type="button"
+                aria-label="Zoom in artifact B">+</button
+              >
+              <button
+                id="zoomreset-b"
+                class="bb-zoom-btn bb-zoom-reset"
+                type="button"
+                aria-label="Reset zoom for artifact B">↺</button
+              >
+            </div>
+            <p id="live-b" class="bb-arena__live mono" role="status"></p>
+            <span id="zoomlive-b" class="sr-only" aria-live="polite"></span>
+          </div>
+          <div class="bb-arena__voteui">
+            <button id="vote-b" class="bb-arena__votebar" type="button">
+              <span>B shipped it better</span>
+              <span class="bb-arena__votearrow" aria-hidden="true">→</span>
+            </button>
+          </div>
+        </figure>
+      </div>
+
+      {
+        /* Optional rubric. The overall pick above is the required, one-click
+          action and submits on its own; this only refines a vote that is
+          already being cast. Every row starts unset, so a voter who ignores
+          the whole block sends exactly the payload the page sent before the
+          rubric existed. Rendered server-side and static: no JS is needed to
+          fill it in, and bench-arena.ts only reads it at submit time. */
+      }
+      <form id="arena-rubric" class="bb-arena__rubric bb-arena__voteui" aria-labelledby="rubric-h">
+        <div class="bb-arena__rubric-head">
+          <span id="rubric-h" class="bb-arena__brief-eyebrow mono"
+            >// optional rubric — skip it, your pick still counts</span
+          >
+          <button id="rubric-clear" class="bb-arena__rubric-clear mono" type="button" hidden
+            >clear</button
+          >
+        </div>
+        <div class="bb-arena__rubric-rows">
+          {
+            [
+              {
+                key: "visual_polish",
+                label: "Visual polish",
+                hint: "craft, hierarchy, typography"
+              },
+              {
+                key: "interaction_quality",
+                label: "Interaction quality",
+                hint: "feel, responsiveness, motion"
+              },
+              {
+                key: "accessibility",
+                label: "Accessibility",
+                hint: "keyboard, contrast, semantics"
+              },
+              {
+                key: "code_quality",
+                label: "Code quality",
+                hint: "structure, restraint, no slop"
+              }
+            ].map((dimension) => (
+              // role=radiogroup rather than fieldset/legend: a rendered <legend>
+              // is not a flex item, so a fieldset cannot put its label and its
+              // controls on one line without UA-specific hacks. The radios are
+              // still native, so grouping, arrow-key navigation and state all
+              // come from the platform; the group only supplies the name.
+              <div
+                class="bb-arena__rubric-row"
+                role="radiogroup"
+                aria-labelledby={`rubric-label-${dimension.key}`}
+                data-dimension={dimension.key}
+              >
+                <span class="bb-arena__rubric-legend" id={`rubric-label-${dimension.key}`}>
+                  <span class="bb-arena__rubric-label">{dimension.label}</span>
+                  <span class="bb-arena__rubric-hint">{dimension.hint}</span>
+                </span>
+                <div class="bb-arena__rubric-seg">
+                  {[
+                    { value: "A", label: "A", name: "Artifact A" },
+                    { value: "tie", label: "tie", name: "Tie" },
+                    { value: "B", label: "B", name: "Artifact B" }
+                  ].map((option) => (
+                    <label
+                      class={`bb-arena__rubric-opt bb-arena__rubric-opt--${option.value.toLowerCase()}`}
+                    >
+                      <input
+                        class="bb-arena__rubric-input"
+                        type="radio"
+                        name={`rubric-${dimension.key}`}
+                        value={option.value}
+                        aria-label={option.name}
+                      />
+                      <span class="bb-arena__rubric-optlabel mono" aria-hidden="true">
+                        {option.label}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ))
+          }
+        </div>
+      </form>
+
+      <div class="bb-arena__tiewrap bb-arena__voteui">
+        <button id="vote-tie" class="bb-arena__tie mono" type="button">or call it a tie</button>
+      </div>
+
+      <ul class="bb-arena__trust" aria-label="How the blind test works">
+        <li>
+          <strong class="mono">Two agents</strong>
+          <span>same prompt, same rubric</span>
+        </li>
+        <li>
+          <strong class="mono">Blind test</strong>
+          <span>order randomized per matchup</span>
+        </li>
+        <li>
+          <strong class="mono">Fair reveal</strong>
+          <span>identities shown only after you vote</span>
+        </li>
+      </ul>
+
+      <div id="arena-reveal" class="bb-arena__reveal glass-pane" hidden>
+        <span class="bb-arena__brief-eyebrow mono">// identities declassified</span>
+        <div class="bb-arena__revealgrid">
+          <div id="reveal-card-a"></div>
+          <span class="bb-arena__vs mono" aria-hidden="true">vs</span>
+          <div id="reveal-card-b"></div>
+        </div>
+        <button id="arena-next" class="btn btn--ember bb-arena__next" type="button">
+          Next matchup <span class="btn-arrow" aria-hidden="true">→</span>
+        </button>
+      </div>
+
+      <p class="bb-arena__note">
+        Votes feed a Firth-corrected Bradley–Terry model with bootstrap confidence intervals,
+        published per stack only after 30 votes. Rubric rows are rated the same way, one model per
+        dimension, and gated separately — a dimension publishes only once it has been judged enough
+        on its own. A skipped row is treated as missing, never as a tie. The method is
+        pre-registered; see the <a href="/bench#report">report</a> for the full methodology.
+      </p>
+    </div>
+  </section>
+
+  <dialog id="arena-stage" class="bb-stage" aria-label="Artifact inspector">
+    <div class="bb-stage__shell glass-pane">
+      <div class="bb-stage__bar">
+        <div class="bb-stage__switch" role="tablist" aria-label="Pick an artifact">
+          <button
+            id="stage-tab-a"
+            class="bb-stage__tab mono"
+            type="button"
+            role="tab"
+            aria-selected="true"
+          >
+            Artifact A
+          </button>
+          <button
+            id="stage-tab-b"
+            class="bb-stage__tab mono"
+            type="button"
+            role="tab"
+            aria-selected="false"
+          >
+            Artifact B
+          </button>
+        </div>
+        <div class="bb-stage__actions">
+          <button
+            id="stage-vote-a"
+            class="btn btn--ghost bb-stage__vote"
+            type="button"
+            aria-label="Vote for artifact A">A is better</button
+          >
+          <button
+            id="stage-vote-b"
+            class="btn btn--ghost bb-stage__vote"
+            type="button"
+            aria-label="Vote for artifact B">B is better</button
+          >
+          <button
+            id="stage-close"
+            class="bb-stage__close mono"
+            type="button"
+            aria-label="Close inspector"
+          >
+            esc ✕
+          </button>
+        </div>
+      </div>
+      <p class="bb-stage__brief">
+        <strong id="stage-brief-title"></strong>
+        <span id="stage-brief-text"></span>
+        <span class="bb-stage__judge mono">Judge on: <span id="stage-brief-judge"></span></span>
+      </p>
+      <div class="bb-stage__viewport">
+        <div
+          id="stage-zoomwrap-a"
+          class="bb-stage__zoomwrap"
+          tabindex="0"
+          aria-label="Artifact A full-screen zoom and pan viewport"
+          aria-keyshortcuts="+ - 0"
+        >
+          <div id="stage-zoomer-a" class="bb-stage__zoomer">
+            <iframe
+              id="stage-frame-a"
+              class="bb-stage__frame"
+              title="Artifact A, full view"
+              sandbox="allow-scripts allow-forms allow-modals allow-pointer-lock"
+              referrerpolicy="no-referrer"></iframe>
+          </div>
+        </div>
+        <div
+          id="stage-zoomwrap-b"
+          class="bb-stage__zoomwrap"
+          tabindex="0"
+          aria-label="Artifact B full-screen zoom and pan viewport"
+          aria-keyshortcuts="+ - 0"
+          hidden
+        >
+          <div id="stage-zoomer-b" class="bb-stage__zoomer">
+            <iframe
+              id="stage-frame-b"
+              class="bb-stage__frame"
+              title="Artifact B, full view"
+              sandbox="allow-scripts allow-forms allow-modals allow-pointer-lock"
+              referrerpolicy="no-referrer"></iframe>
+          </div>
+        </div>
+        <div
+          id="stage-zoombar-a"
+          class="bb-stage__zoombar"
+          role="toolbar"
+          aria-label="Zoom artifact A full view"
+        >
+          <button id="stage-zoomout-a" class="bb-zoom-btn" type="button" aria-label="Zoom out"
+            >−</button
+          >
+          <span id="stage-zoomlevel-a" class="bb-zoom-level" aria-live="polite">100%</span>
+          <button id="stage-zoomin-a" class="bb-zoom-btn" type="button" aria-label="Zoom in"
+            >+</button
+          >
+          <button
+            id="stage-zoomreset-a"
+            class="bb-zoom-btn bb-zoom-reset"
+            type="button"
+            aria-label="Reset zoom">↺</button
+          >
+        </div>
+        <div
+          id="stage-zoombar-b"
+          class="bb-stage__zoombar"
+          role="toolbar"
+          aria-label="Zoom artifact B full view"
+          hidden
+        >
+          <button id="stage-zoomout-b" class="bb-zoom-btn" type="button" aria-label="Zoom out"
+            >−</button
+          >
+          <span id="stage-zoomlevel-b" class="bb-zoom-level" aria-live="polite">100%</span>
+          <button id="stage-zoomin-b" class="bb-zoom-btn" type="button" aria-label="Zoom in"
+            >+</button
+          >
+          <button
+            id="stage-zoomreset-b"
+            class="bb-zoom-btn bb-zoom-reset"
+            type="button"
+            aria-label="Reset zoom">↺</button
+          >
+        </div>
+        <span id="stage-zoomlive-a" class="sr-only" aria-live="polite"></span>
+        <span id="stage-zoomlive-b" class="sr-only" aria-live="polite"></span>
+        <button
+          id="stage-prev"
+          class="bb-stage__arrow bb-stage__arrow--prev"
+          type="button"
+          aria-label="Show the other artifact">‹</button
+        >
+        <button
+          id="stage-next"
+          class="bb-stage__arrow bb-stage__arrow--next"
+          type="button"
+          aria-label="Show the other artifact">›</button
+        >
+      </div>
+      <p class="bb-stage__hint mono">Click the artifact to play · ‹ › to switch · esc to close</p>
+    </div>
+  </dialog>
+
+  <dialog id="arena-authgate" class="bb-authgate" aria-label="Sign in to vote">
+    <div class="bb-authgate__panel glass-pane">
+      <p class="bb-authgate__eyebrow mono">// sign in to record your vote</p>
+      <h2 class="bb-authgate__title">One vote per person per matchup</h2>
+      <p class="bb-authgate__body">
+        Sign in to lock in your judgment. You'll never get dealt the same pairing twice, and the
+        board stays honest — one person, one vote, no stuffing.
+      </p>
+      <p id="authgate-status" class="bb-authgate__status" role="status" aria-live="polite" hidden>
+      </p>
+      <div class="bb-authgate__buttons">
+        <button
+          id="authgate-google"
+          class="bb-authgate__btn bb-authgate__btn--google"
+          type="button"
+          aria-label="Continue with Google"
+          title="Continue with Google"
+        >
+          <svg class="bb-authgate__logo" viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              fill="#4285F4"
+              d="M23.49 12.27c0-.82-.07-1.42-.22-2.04H12v3.95h6.62c-.13.98-.85 2.46-2.45 3.45l-.02.13 3.56 2.45.25.02c2.29-2.11 3.53-5.22 3.53-7.96Z"
+            ></path>
+            <path
+              fill="#34A853"
+              d="M12 24c2.97 0 5.46-.98 7.28-2.67l-3.54-2.45c-.93.65-2.1 1.08-3.74 1.08-2.87 0-5.3-1.94-6.17-4.62l-.12.01-3.46 2.67-.04.13A12 12 0 0 0 12 24Z"
+            ></path>
+            <path
+              fill="#FBBC05"
+              d="M5.07 14.26A7.4 7.4 0 0 1 4.67 12c0-.79.14-1.55.39-2.26l-.01-.14-3.75-2.9-.12.06A11.98 11.98 0 0 0 0 12c0 1.88.45 3.66 1.23 5.24l3.84-2.98Z"
+            ></path>
+            <path
+              fill="#EA4335"
+              d="M12 4.68c2.28 0 3.82.99 4.7 1.81l3.43-3.35A11.7 11.7 0 0 0 12 0 12 12 0 0 0 1.2 6.76l3.86 2.98A7.32 7.32 0 0 1 12 4.68Z"
+            ></path>
+          </svg>
+        </button>
+        <button
+          id="authgate-apple"
+          class="bb-authgate__btn bb-authgate__btn--apple"
+          type="button"
+          aria-label="Continue with Apple"
+          title="Continue with Apple"
+        >
+          <svg class="bb-authgate__logo" viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              fill="currentColor"
+              d="M16.78 12.9c-.03-3.04 2.49-4.5 2.6-4.57-1.41-2.06-3.6-2.34-4.38-2.37-1.87-.19-3.64 1.1-4.58 1.1-.95 0-2.42-1.07-3.97-1.04-2.05.03-3.94 1.19-4.99 3.02-2.13 3.69-.55 9.16 1.53 12.15 1.01 1.46 2.22 3.1 3.81 3.04 1.53-.06 2.11-.99 3.96-.99s2.37.99 3.99.96c1.65-.03 2.69-1.49 3.7-2.96 1.16-1.69 1.64-3.33 1.67-3.41-.04-.02-3.2-1.23-3.24-4.93Zm-3-8.91c.84-1.02 1.41-2.43 1.25-3.84-1.21.05-2.67.8-3.54 1.82-.78.9-1.46 2.34-1.28 3.72 1.35.1 2.73-.69 3.57-1.7Z"
+            ></path>
+          </svg>
+        </button>
+        <button
+          id="authgate-github"
+          class="bb-authgate__btn bb-authgate__btn--github"
+          type="button"
+          aria-label="Continue with GitHub"
+          title="Continue with GitHub"
+        >
+          <svg class="bb-authgate__logo" viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              fill="currentColor"
+              d="M12 .3a12 12 0 0 0-3.79 23.39c.6.11.82-.26.82-.58v-2.05c-3.34.73-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.09-.75.08-.74.08-.74 1.2.09 1.83 1.23 1.83 1.23 1.07 1.83 2.8 1.3 3.49.99.11-.78.42-1.3.76-1.6-2.67-.3-5.47-1.34-5.47-5.93 0-1.31.47-2.38 1.23-3.22-.12-.3-.53-1.52.12-3.18 0 0 1-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.3-1.55 3.3-1.23 3.3-1.23.65 1.66.24 2.88.12 3.18.77.84 1.23 1.91 1.23 3.22 0 4.6-2.8 5.62-5.48 5.92.43.37.81 1.1.81 2.22v3.29c0 .32.22.69.83.57A12 12 0 0 0 12 .3Z"
+            ></path>
+          </svg>
+        </button>
+        <button
+          id="authgate-meta"
+          class="bb-authgate__btn bb-authgate__btn--meta"
+          type="button"
+          aria-label="Continue with Meta"
+          title="Continue with Meta"
+        >
+          <svg
+            class="bb-authgate__logo bb-authgate__logo--meta"
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
+            <path
+              fill="currentColor"
+              d="M6.915 4.03c-1.968 0-3.683 1.28-4.871 3.113C.704 9.208 0 11.883 0 14.449c0 .706.07 1.369.21 1.973a6.624 6.624 0 0 0 .265.86 5.297 5.297 0 0 0 .371.761c.696 1.159 1.818 1.927 3.593 1.927 1.497 0 2.633-.671 3.965-2.444.76-1.012 1.144-1.626 2.663-4.32l.756-1.339.186-.325c.061.1.121.196.183.3l2.152 3.595c.724 1.21 1.665 2.556 2.47 3.314 1.046.987 1.992 1.22 3.06 1.22 1.075 0 1.876-.355 2.455-.843a3.743 3.743 0 0 0 .81-.973c.542-.939.861-2.127.861-3.745 0-2.72-.681-5.357-2.084-7.45-1.282-1.912-2.957-2.93-4.716-2.93-1.047 0-2.088.467-3.053 1.308-.652.57-1.257 1.29-1.82 2.05-.69-.875-1.335-1.547-1.958-2.056-1.182-.966-2.315-1.303-3.454-1.303zm10.16 2.053c1.147 0 2.188.758 2.992 1.999 1.132 1.748 1.647 4.195 1.647 6.4 0 1.548-.368 2.9-1.839 2.9-.58 0-1.027-.23-1.664-1.004-.496-.601-1.343-1.878-2.832-4.358l-.617-1.028a44.908 44.908 0 0 0-1.255-1.98c.07-.109.141-.224.211-.327 1.12-1.667 2.118-2.602 3.358-2.602zm-10.201.553c1.265 0 2.058.791 2.675 1.446.307.327.737.871 1.234 1.579l-1.02 1.566c-.757 1.163-1.882 3.017-2.837 4.338-1.191 1.649-1.81 1.817-2.486 1.817-.524 0-1.038-.237-1.383-.794-.263-.426-.464-1.13-.464-2.046 0-2.221.63-4.535 1.66-6.088.454-.687.964-1.226 1.533-1.533a2.264 2.264 0 0 1 1.088-.285z"
+            ></path>
+          </svg>
+        </button>
+      </div>
+      <button id="authgate-dismiss" class="bb-authgate__dismiss mono" type="button">Not now</button>
+    </div>
+  </dialog>
+
+  <script>
+    import "../../../scripts/bench-arena";
+  </script>
+</BaseLayout>

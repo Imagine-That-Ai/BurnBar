@@ -266,9 +266,7 @@ import TrustTierBadge from "@components/TrustTierBadge.astro";
     color: var(--text-bright);
     /* Fraunces at display size needs air: a tight -0.04em collides short words
        like "If our". Looser tracking + heavier weight keeps it crisp. */
-    font-variation-settings:
-      "opsz" 144,
-      "wght" 540;
+    font-weight: var(--wght-display);
     letter-spacing: -0.018em;
     text-wrap: balance;
   }
@@ -280,9 +278,8 @@ import TrustTierBadge from "@components/TrustTierBadge.astro";
     /* font-style alone selects Fraunces' separate italic face (full-italic.css);
        there is no "ital" variation axis. */
     font-style: italic;
-    font-variation-settings:
-      "opsz" 144,
-      "wght" 440;
+    font-weight: var(--wght-display);
+    --opsz: var(--opsz-display);
     letter-spacing: -0.018em;
   }
 
@@ -336,7 +333,7 @@ import TrustTierBadge from "@components/TrustTierBadge.astro";
   }
   .howhonest__step--gate .howhonest__t {
     color: var(--text-bright);
-    font-variation-settings: "wght" 480;
+    font-weight: var(--wght-medium);
   }
 
   .trusthero__ctas {
@@ -392,9 +389,8 @@ import TrustTierBadge from "@components/TrustTierBadge.astro";
   .cryptocore h2,
   .horcrux h2,
   .ledgersec h2 {
-    font-variation-settings:
-      "opsz" 80,
-      "wght" 480;
+    font-weight: var(--wght-semibold);
+    --opsz: var(--opsz-h2);
     letter-spacing: -0.022em;
   }
 
@@ -588,9 +584,8 @@ import TrustTierBadge from "@components/TrustTierBadge.astro";
     font-size: 1.35rem;
     line-height: 1.35;
     color: var(--text-bright);
-    font-variation-settings:
-      "opsz" 36,
-      "wght" 420;
+    font-weight: var(--wght-regular);
+    --opsz: var(--opsz-lead);
     letter-spacing: -0.014em;
   }
 

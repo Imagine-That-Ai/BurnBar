@@ -86,6 +86,13 @@ on:
       - "functions/staging-deploy-targets.json"
       - "scripts/ci/write-firebase-hosting-ci-config.mjs"
       - "scripts/ci/write-firebase-hosting-ci-config.test.mjs"
+      # firebase.json is an INPUT to write-firebase-hosting-ci-config.mjs, not
+      # merely a neighbour of it: a new hosting target, a drifted public dir or
+      # a loosened arena publish allowlist makes the generator throw, and the
+      # generator runs inside the production and staging hosting deploy jobs.
+      # Without this entry such a change skips this job entirely, so the break
+      # lands on main after merge and fails every hosting deploy until reverted.
+      - "firebase.json"
       - "scripts/ci/verify-native-build-workflow-secret-boundary.mjs"
       - "scripts/ci/verify-native-build-workflow-secret-boundary.test.mjs"
       - "scripts/ci/verify-ops-plane-workflow-boundary.mjs"
@@ -228,6 +235,13 @@ on:
       - "functions/staging-deploy-targets.json"
       - "scripts/ci/write-firebase-hosting-ci-config.mjs"
       - "scripts/ci/write-firebase-hosting-ci-config.test.mjs"
+      # firebase.json is an INPUT to write-firebase-hosting-ci-config.mjs, not
+      # merely a neighbour of it: a new hosting target, a drifted public dir or
+      # a loosened arena publish allowlist makes the generator throw, and the
+      # generator runs inside the production and staging hosting deploy jobs.
+      # Without this entry such a change skips this job entirely, so the break
+      # lands on main after merge and fails every hosting deploy until reverted.
+      - "firebase.json"
       - "scripts/ci/verify-native-build-workflow-secret-boundary.mjs"
       - "scripts/ci/verify-native-build-workflow-secret-boundary.test.mjs"
       - "scripts/ci/verify-ops-plane-workflow-boundary.mjs"

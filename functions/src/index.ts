@@ -9,6 +9,8 @@ import "./adminRuntime.js";
 
 export { healthCheck, healthLive, healthReady } from "./health.js";
 export { insightsHostedAnswer } from "./insightsHostedAnswer.js";
+export { benchAssistant } from "./benchAssistant.js";
+export { arenaMatchup, arenaVote } from "./arenaVote.js";
 export { markIrohAuditEventRollupEligible, rollupIrohTransportDaily } from "./irohMonitoring.js";
 export { recomputeMediaQuotaUsage } from "./mediaQuota.js";
 export { rollupMediaSessionDaily } from "./mediaMonitoring.js";

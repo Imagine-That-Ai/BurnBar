@@ -87,7 +87,7 @@ export function callableRequest<T extends Record<string, unknown>>(uid: string, 
   };
 }
 
-export function callableRunner(candidate: unknown): (request: unknown) => Promise<unknown> {
+export function callableRunner(candidate: unknown): <Result = unknown>(request: unknown) => Promise<Result> {
   if (
     candidate === null ||
     (typeof candidate !== "object" && typeof candidate !== "function") ||
@@ -185,22 +185,6 @@ export async function expectCallableDenial(
   expect.fail(`expected callable to reject with ${expectedCode}`);
 }
 
-type EmptyQuery = {
-  where: () => EmptyQuery;
-  limit: () => EmptyQuery;
-  orderBy: () => EmptyQuery;
-  get: () => Promise<{ docs: []; empty: true }>;
-};
-
-function emptyQuery(): EmptyQuery {
-  return {
-    where: () => emptyQuery(),
-    limit: () => emptyQuery(),
-    orderBy: () => emptyQuery(),
-    get: async () => ({ docs: [], empty: true }),
-  };
-}
-
 function isFirestoreDeleteSentinel(value: unknown): boolean {
   if (!value || typeof value !== "object") return false;
   const constructorValue = Reflect.get(value, "constructor");
@@ -213,6 +197,25 @@ function isFirestoreDeleteSentinel(value: unknown): boolean {
     constructorName === "DeleteFieldValueImpl" ||
     constructorName === "DeleteSentinel"
   );
+}
+
+/** A minimal chainable query type for the fake Firestore collection. */
+interface FakeQueryResult {
+  docs: Array<{
+    id: string;
+    ref: unknown;
+    data: () => Record<string, unknown> | undefined;
+    get: (field: string) => unknown;
+    exists: boolean;
+  }>;
+  empty: boolean;
+}
+interface FakeChainableQuery {
+  where: (field: string, op: string, value: unknown) => FakeChainableQuery;
+  select: (...fields: string[]) => FakeChainableQuery;
+  limit: (n: number) => FakeChainableQuery;
+  orderBy: (field: string, dir?: string) => FakeChainableQuery;
+  get: () => Promise<FakeQueryResult>;
 }
 
 function applyFirestoreWrite(
@@ -244,6 +247,14 @@ export function pathKeyedFirestore(store: Map<string, Record<string, unknown>>) 
       set: async (data: Record<string, unknown>) => {
         store.set(path, applyFirestoreWrite(store.get(path), data));
       },
+      create: async (data: Record<string, unknown>) => {
+        if (store.has(path)) {
+          const err = new Error("6 ALREADY_EXISTS: entity already exists");
+          Reflect.set(err, "code", 6);
+          throw err;
+        }
+        store.set(path, data);
+      },
       update: async (data: Record<string, unknown>) => {
         store.set(path, applyFirestoreWrite(store.get(path), data));
       },
@@ -251,18 +262,60 @@ export function pathKeyedFirestore(store: Map<string, Record<string, unknown>>) 
         store.delete(path);
       },
     }),
-    collection: (name: string) => ({
-      doc: (id: string) => pathKeyedFirestore(store).doc(`${name}/${id}`),
-      add: async (data: Record<string, unknown>) => {
-        const id = `auto-${store.size + 1}`;
-        const path = `${name}/${id}`;
-        store.set(path, data);
-        return { id, path };
-      },
-      where: () => emptyQuery(),
-      limit: () => emptyQuery(),
-      orderBy: () => emptyQuery(),
-    }),
+    collection: (name: string) => {
+      const collectionPrefix = `${name}/`;
+      // Collect docs directly under this collection (no subcollections).
+      const directDocs = () =>
+        [...store.entries()]
+          .filter(([key]) => key.startsWith(collectionPrefix) && key.slice(collectionPrefix.length).indexOf("/") === -1)
+          .map(([key, data]) => ({
+            id: key.slice(collectionPrefix.length),
+            ref: pathKeyedFirestore(store).doc(key),
+            data: () => data,
+            get: (field: string) => data?.[field],
+            exists: true,
+          }));
+
+      // A simple where-chainable query that filters the in-memory store.
+      // Supports .where(field, "==", value).select(fields...) for the Arena's
+      // voted-matchup exclusion. Only `==` is needed by the Arena; other
+      // operators are no-ops (return the full set) for test fidelity.
+      function makeQuery(predicates: Array<{ field: string; value: unknown }> = []): FakeChainableQuery {
+        return {
+          where: (field: string, op: string, value: unknown) => {
+            if (op === "==") return makeQuery([...predicates, { field, value }]);
+            return makeQuery(predicates);
+          },
+          select: (..._fields: string[]) => makeQuery(predicates),
+          limit: (_n: number) => makeQuery(predicates),
+          orderBy: (_field: string, _dir?: string) => makeQuery(predicates),
+          get: async () => {
+            let docs = directDocs();
+            for (const { field, value } of predicates) {
+              docs = docs.filter((d) => d.get(field) === value);
+            }
+            return { docs, empty: docs.length === 0 };
+          },
+        };
+      }
+
+      return {
+        doc: (id: string) => pathKeyedFirestore(store).doc(`${name}/${id}`),
+        add: async (data: Record<string, unknown>) => {
+          const id = `auto-${store.size + 1}`;
+          const path = `${name}/${id}`;
+          store.set(path, data);
+          return { id, path };
+        },
+        get: async () => {
+          const docs = directDocs();
+          return { docs, empty: docs.length === 0 };
+        },
+        where: (field: string, op: string, value: unknown) => makeQuery().where(field, op, value),
+        limit: (n: number) => makeQuery().limit(n),
+        orderBy: (field: string, dir?: string) => makeQuery().orderBy(field, dir),
+      };
+    },
     batch: () => {
       const ops: Array<() => void> = [];
       return {
@@ -357,4 +410,18 @@ export async function tier2CallableProof(
   }
 
   expectTenantPathsUnchanged(store, victimBefore);
+}
+
+/** Read an array slot, naming the failure instead of asserting it is present. */
+export function requireEntry<T>(entries: readonly T[], index = 0): T {
+  const entry = entries[index];
+  if (entry === undefined) throw new Error(`expected an entry at index ${index}`);
+  return entry;
+}
+
+/** Read a seeded document, naming the path instead of asserting it exists. */
+export function requireDoc(store: Map<string, Record<string, unknown>>, path: string): Record<string, unknown> {
+  const doc = store.get(path);
+  if (doc === undefined) throw new Error(`expected a document at ${path}`);
+  return doc;
 }

@@ -421,7 +421,7 @@
             y="28"
             text-anchor="middle"
             style="font-family: var(--font-display)"
-            font-weight="600"
+            font-weight="var(--wght-semibold)"
             font-size="12"
             fill="#ffffff"
             class="node-label-main">healthy</text
@@ -534,7 +534,7 @@
             text-anchor="middle"
             font-family="var(--font-mono)"
             font-size="10"
-            font-weight="600"
+            font-weight="var(--wght-semibold)"
             fill="#FA6B06"
             class="swap-text-primary">swap keys</text
           >
@@ -1428,7 +1428,7 @@
     font-family: var(--font-display);
     font-size: clamp(2rem, 1.5rem + 2.5vw, 3.2rem);
     color: var(--text-bright);
-    font-weight: 700;
+    font-weight: var(--wght-black);
     letter-spacing: var(--tracking-tight);
     text-wrap: balance;
     margin: 0;
@@ -1476,7 +1476,7 @@
 
   .sim-controls__label {
     font-size: var(--t-caption);
-    font-weight: 600;
+    font-weight: var(--wght-bold);
     letter-spacing: var(--tracking-wide);
     color: var(--text-dim);
   }
@@ -1497,7 +1497,7 @@
     padding: 6px var(--s-3);
     font-family: var(--font-body);
     font-size: 0.82rem;
-    font-weight: 500;
+    font-weight: var(--wght-medium);
     color: var(--text-mute);
     background: transparent;
     border: none;
@@ -1987,14 +1987,15 @@
   .legend-card__title {
     font-size: var(--t-caption);
     color: var(--text-bright);
-    font-weight: 600;
+    font-weight: var(--wght-bold);
     text-transform: capitalize;
+    --opsz: var(--opsz-caption);
   }
   .legend-card__badge {
     font-size: 0.62rem;
     padding: 1.5px 5px;
     border-radius: 3px;
-    font-weight: 700;
+    font-weight: var(--wght-black);
   }
   .badge--healthy {
     background: rgba(56, 216, 152, 0.12);
@@ -2080,11 +2081,12 @@
     font-size: 0.65rem;
     color: var(--text-dim);
     letter-spacing: var(--tracking-wide);
+    --opsz: var(--opsz-caption);
   }
 
   .console__status {
     font-size: 0.65rem;
-    font-weight: 700;
+    font-weight: var(--wght-black);
     padding: 2px var(--s-2);
     border-radius: 4px;
     letter-spacing: var(--tracking-wide);
@@ -2156,7 +2158,7 @@
   }
   .console__line.alert .console__text {
     color: #fa6b06;
-    font-weight: 600;
+    font-weight: var(--wght-bold);
   }
 
   /* Entrance Transitions */

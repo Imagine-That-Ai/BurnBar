@@ -1,0 +1,32 @@
+---
+/**
+ * A stack's identity: harness × model, always in that order, always with both
+ * marks. Harness and model sit on separate visual tracks — logo pair on the
+ * left, then the names — so you can tell at a glance which half is which.
+ */
+import Chip from "./Chip.astro";
+import { harnessDisplay, modelDisplay, modelDisplayShort } from "@data/bench";
+
+interface Props {
+  harness: string;
+  model: string;
+  size?: "sm" | "md" | "lg";
+  /** Use the short model name (leaderboard rows), not the full one. */
+  short?: boolean;
+  class?: string;
+}
+
+const { harness, model, size = "md", short = false, class: cls = "" } = Astro.props;
+const h = harnessDisplay(harness);
+const m = short ? modelDisplayShort(model) : modelDisplay(model);
+---
+
+<span class:list={["ins-pair", cls]}>
+  <Chip id={harness} kind="harness" size={size} />
+  <Chip id={model} kind="model" size={size} />
+  <span class="ins-pair__names">
+    <span class="ins-pair__h">{h}</span>
+    <span class="ins-pair__x" aria-hidden="true">×</span>
+    <span class="ins-pair__m">{m}</span>
+  </span>
+</span>

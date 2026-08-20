@@ -228,7 +228,7 @@ const firstId = FAQ[0]?.id;
     padding: 0.5rem 0.95rem;
     border-radius: var(--r-pill);
     font-size: 0.88rem;
-    font-weight: 600;
+    font-weight: var(--wght-bold);
     color: var(--text-mute);
     border: 1px solid transparent;
     transition:
@@ -272,9 +272,8 @@ const firstId = FAQ[0]?.id;
     font-family: var(--font-display);
     font-size: 1.35rem;
     color: var(--text-bright);
-    font-variation-settings:
-      "opsz" 40,
-      "wght" 560;
+    font-weight: var(--wght-semibold);
+    --opsz: var(--opsz-lead);
     letter-spacing: -0.02em;
   }
   .faqgroup__blurb {

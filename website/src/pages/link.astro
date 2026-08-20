@@ -178,8 +178,9 @@ import BaseLayout from "@layouts/BaseLayout.astro";
   h2 {
     font-size: 1.75rem;
     margin: 1rem 0 0.5rem;
-    font-weight: 700;
+    font-weight: var(--wght-black);
     color: var(--text-bright);
+    --opsz: var(--opsz-h3);
   }
 
   p {
@@ -194,7 +195,7 @@ import BaseLayout from "@layouts/BaseLayout.astro";
     width: 100%;
     max-width: 320px;
     padding: 0.875rem 1.5rem;
-    font-weight: 600;
+    font-weight: var(--wght-bold);
     cursor: pointer;
     transition: all 0.2s ease;
   }
@@ -315,7 +316,7 @@ import BaseLayout from "@layouts/BaseLayout.astro";
     border-radius: 8px;
     padding: 0.75rem 1rem;
     color: var(--text-bright);
-    font-family: monospace;
+    font-family: var(--font-mono);
     font-size: 1.5rem;
     letter-spacing: 2px;
     text-align: center;

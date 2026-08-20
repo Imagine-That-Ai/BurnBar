@@ -317,6 +317,11 @@ and — on the Hermes connect / sign-in flow — `auth.sign_in.completed` and `e
 | `pricing.plan.viewed`     | screen_view     | — *(impression; the page is in `surface`. Fires once when the plans grid scrolls into view)* |
 | `pricing.cta.clicked`     | conversion_auth | `plan` (`free`\|`cloud`\|`cloud_pro`\|`ultra`)                          |
 | `nav.external.clicked`    | primary_action  | `destination` (`github`\|`discord`\|`docs`\|…; bounded outbound targets) |
+| `arena.variant.exposed`   | primary_action  | `variant` (`neural`) — vote-page skin; once per session (capsule/arcade retired) |
+| `arena.artifact.played`   | primary_action  | `variant` (`neural`), `side` (`A`\|`B`) — the voter took control of that artifact (in place or on the stage); once per side per matchup |
+| `arena.vote.recorded`     | primary_action  | `variant` (`neural`), `choice` (`a`\|`b`\|`tie`), `rubric` (`none`\|`partial`\|`full`) — fires only after the vote commits server-side; `rubric` reports how much of the optional per-dimension rubric was filled in, never which axes or which way they went |
+| `arena.auth.gate_shown`   | primary_action  | `variant` (`neural`) — the sign-in gate appeared when a signed-out voter pressed a vote button |
+| `arena.sign_in.completed` | conversion_auth| `variant` (`neural`), `provider` (`google`\|`apple`\|`github`\|`facebook`) — a voter completed sign-in through the arena gate |
 
 > **PII guard (web):** the wrapper only sends string/boolean properties (raw numbers are a compile
 > error), every value above is a bounded literal set, and unmapped URLs collapse to `surface=other`.

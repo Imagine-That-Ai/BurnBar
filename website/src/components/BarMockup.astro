@@ -194,7 +194,7 @@
   .bar-mockup__menubar-label {
     color: var(--text-bright);
     font-size: 12.5px;
-    font-variation-settings: "wght" 540;
+    font-weight: var(--wght-semibold);
   }
   .bar-mockup__menubar-cap {
     font-size: 11px;
@@ -240,9 +240,8 @@
     color: var(--text-bright);
     font-family: var(--font-display);
     font-size: 15px;
-    font-variation-settings:
-      "opsz" 36,
-      "wght" 540;
+    font-weight: var(--wght-semibold);
+    --opsz: var(--opsz-body);
     letter-spacing: -0.012em;
     flex: 1;
   }
@@ -310,7 +309,7 @@
   .popover__claude-name {
     color: var(--text-bright);
     font-size: 12px;
-    font-variation-settings: "wght" 540;
+    font-weight: var(--wght-semibold);
   }
   .qrow__bars {
     display: grid;
@@ -320,8 +319,9 @@
   .qrow__name {
     color: var(--text-bright);
     font-size: 12px;
-    font-variation-settings: "wght" 540;
+    font-weight: var(--wght-semibold);
     margin-bottom: 2px;
+    --opsz: var(--opsz-caption);
   }
   .qline {
     display: grid;
@@ -354,7 +354,7 @@
   .qline__pct {
     color: var(--text-bright);
     text-align: right;
-    font-variation-settings: "wght" 540;
+    font-weight: var(--wght-semibold);
   }
 
   .popover__claudeline {
@@ -392,9 +392,8 @@
     color: var(--text-bright);
     font-family: var(--font-display);
     font-size: 13.5px;
-    font-variation-settings:
-      "opsz" 36,
-      "wght" 540;
+    font-weight: var(--wght-semibold);
+    --opsz: var(--opsz-body);
   }
   .popover__mission-status {
     font-size: 10px;
@@ -444,7 +443,7 @@
   }
   .popover__mission-grid .val {
     color: var(--text-bright);
-    font-variation-settings: "wght" 500;
+    font-weight: var(--wght-medium);
     font-size: 11.5px;
   }
   .popover__mission-grid .val--ember {
@@ -453,7 +452,7 @@
   .popover__mission-cta {
     color: var(--ember-bright);
     font-size: 11px;
-    font-variation-settings: "wght" 500;
+    font-weight: var(--wght-medium);
     margin-top: 4px;
   }
 
@@ -474,7 +473,7 @@
     border: 1px solid var(--ink-line);
     color: var(--text-bright);
     font-size: 11.5px;
-    font-variation-settings: "wght" 540;
+    font-weight: var(--wght-semibold);
     cursor: pointer;
   }
   .popover__btn--ember {

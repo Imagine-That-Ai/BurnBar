@@ -195,9 +195,8 @@ import LockedModelRelay from "./LockedModelRelay.astro";
     font-family: var(--font-display);
     font-size: clamp(1.6rem, 1.2rem + 1.5vw, 2.4rem);
     color: var(--text-bright);
-    font-variation-settings:
-      "opsz" 80,
-      "wght" 500;
+    font-weight: var(--wght-semibold);
+    --opsz: var(--opsz-h2);
     letter-spacing: -0.022em;
     text-wrap: balance;
   }
@@ -277,9 +276,8 @@ import LockedModelRelay from "./LockedModelRelay.astro";
     font-family: var(--font-display);
     font-size: clamp(1.4rem, 1.1rem + 1vw, 2rem);
     color: var(--text-bright);
-    font-variation-settings:
-      "opsz" 80,
-      "wght" 500;
+    font-weight: var(--wght-semibold);
+    --opsz: var(--opsz-h3);
     letter-spacing: -0.022em;
     line-height: 1.08;
     text-wrap: balance;
@@ -454,7 +452,7 @@ import LockedModelRelay from "./LockedModelRelay.astro";
   }
   .modecard__bullets strong {
     color: var(--text-bright);
-    font-variation-settings: "wght" 540;
+    font-weight: var(--wght-semibold);
   }
 
   .modecard__foot {

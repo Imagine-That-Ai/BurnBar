@@ -1,0 +1,1631 @@
+---
+/**
+ * /bench — the answer.
+ *
+ * This page exists to settle one question: which agent harness × model
+ * actually ships. Evidence lives at /bench/report, the rigour at
+ * /bench/methodology, the raw cells at /bench/data. Keeping those on their
+ * own pages is what lets this one stay short enough to read.
+ *
+ * Layout rules, enforced by bench-instrument.css:
+ *   - nothing animates behind a number
+ *   - model = fill colour, harness = logo + stroke, everywhere
+ *   - every figure is tabular, lining, slashed-zero and decimal-aligned
+ */
+import BaseLayout from "@layouts/BaseLayout.astro";
+import "@styles/bench.css";
+import "@styles/bench-instrument.css";
+import Num from "@components/bench/Num.astro";
+import Chip from "@components/bench/Chip.astro";
+import StackName from "@components/bench/StackName.astro";
+import {
+  BENCH,
+  RANKED_STACKS,
+  MODEL_CLASS,
+  HARNESS_CLASS,
+  classFor,
+  modelDisplay,
+  modelDisplayShort,
+  harnessDisplay,
+  modelLens,
+  familyHeat,
+  stackTaskCount,
+  fmtGeneratedAt,
+  reportQuality,
+  stackScores,
+  hasGradedScores,
+  EVIDENCE_CELLS,
+  stackFor,
+  HARNESS_LOGO,
+  MODEL_LOGO,
+  monogramFor
+} from "@data/bench";
+
+const mcls = (id: string): string => `m--${classFor(MODEL_CLASS, id)}`;
+const hcls = (id: string): string => `h--${classFor(HARNESS_CLASS, id)}`;
+
+const generatedAt = fmtGeneratedAt(BENCH.generated_at_utc);
+const shaShort = BENCH.source.runs_sha256.slice(0, 12);
+const lens = modelLens();
+const quality = reportQuality();
+
+/* Graded scoring: present only once converted tasks have been measured, so
+   the section stays hidden until there is something real to show. */
+const scores = hasGradedScores() ? stackScores() : [];
+
+/* ── The verdict ──────────────────────────────────────────────────────────
+   Three answers, because "best" means three different things depending on
+   what you are paying for. Each is derived, never hand-picked. */
+
+const eligible = RANKED_STACKS.filter((s) => s.confidence !== "low");
+const bestRate = eligible[0] ?? RANKED_STACKS[0];
+
+/* What a stack would actually cost you. The muse-spark contributor tier is
+   free under data-sharing, so its measured cost is $0.00 — ranking on that
+   would hand "best value" to a price nobody outside the tier pays. Amendment
+   12 publishes the standard-tier equivalent; use it whenever it exists. */
+const effCost = (s: (typeof RANKED_STACKS)[number]): number | null =>
+  s.cost_standard_usd_median ?? s.cost_usd_median;
+const isSubsidized = (s: (typeof RANKED_STACKS)[number]): boolean =>
+  s.cost_usd_median === 0 && s.cost_standard_usd_median != null;
+
+/* Each card answers a different question, and no stack answers two — once a
+   stack takes a card it's out of the running for the next, so the podium
+   shows three real options instead of the same row three times. */
+const taken = new Set<string>();
+const key = (s: (typeof RANKED_STACKS)[number]): string => `${s.harness}|${s.model}`;
+if (bestRate) taken.add(key(bestRate));
+
+// Best value: cheapest — at standard-tier prices — among stacks within 3
+// points of the leader. "Cheap but broken" never wins; "nearly as good for a
+// fraction" does.
+const bestValue =
+  eligible
+    .filter(
+      (s) =>
+        !taken.has(key(s)) &&
+        effCost(s) != null &&
+        s.solution_rate >= (bestRate?.solution_rate ?? 0) - 0.03
+    )
+    .sort((a, b) => (effCost(a) ?? 0) - (effCost(b) ?? 0))[0] ?? null;
+if (bestValue) taken.add(key(bestValue));
+
+// Best judged code quality; ties broken by solution rate.
+const bestQuality =
+  eligible
+    .filter((s) => !taken.has(key(s)) && s.quality_mean != null)
+    .sort(
+      (a, b) => (b.quality_mean ?? 0) - (a.quality_mean ?? 0) || b.solution_rate - a.solution_rate
+    )[0] ?? null;
+
+// How much the choice is worth: leader vs the median stack.
+const sortedRates = [...RANKED_STACKS.map((s) => s.solution_rate)].sort((a, b) => a - b);
+const medianRate = sortedRates[Math.floor(sortedRates.length / 2)] ?? 0;
+const choiceSpread = (bestRate?.solution_rate ?? 0) - medianRate;
+
+/* ── Leaderboard scale ────────────────────────────────────────────────────
+   A 0-100 axis crushes every stack into the same 86-99% silhouette. Anchor
+   to the observed band instead — and say so on the axis, because a truncated
+   axis that doesn't announce itself is a lie with good posture. */
+const lbRates = RANKED_STACKS.map((s) => s.solution_rate);
+const lbLo = Math.max(0, Math.floor((Math.min(...lbRates) - 0.03) * 20) / 20);
+const lbHi = Math.min(1, Math.ceil((Math.max(...lbRates) + 0.01) * 20) / 20);
+const lbSpan = lbHi - lbLo || 1;
+const lbPos = (v: number): number => Math.min(100, Math.max(0, ((v - lbLo) / lbSpan) * 100));
+
+const lbTicks: number[] = [];
+for (let t = lbLo; t <= lbHi + 1e-9; t += 0.05) lbTicks.push(Math.round(t * 100) / 100);
+
+/* Ranks: ties share a rank, so render the competition rank and mark ties
+   rather than printing a sequence with holes in it. */
+type Ranked = { s: (typeof RANKED_STACKS)[number]; rank: number; tied: boolean };
+const ranked: Ranked[] = [];
+{
+  let lastVal = Number.NaN;
+  let lastRank = 0;
+  RANKED_STACKS.forEach((s, i) => {
+    const v = Math.round(s.solution_rate * 1000) / 1000;
+    const rank = v === lastVal ? lastRank : i + 1;
+    lastVal = v;
+    lastRank = rank;
+    ranked.push({ s, rank, tied: false });
+  });
+  const counts = new Map<number, number>();
+  ranked.forEach((r) => counts.set(r.rank, (counts.get(r.rank) ?? 0) + 1));
+  ranked.forEach((r) => (r.tied = (counts.get(r.rank) ?? 1) > 1));
+}
+
+/* ── Model lens ───────────────────────────────────────────────────────────
+   One row per model, min→max across harnesses. The width of the row IS the
+   harness effect — that is the whole argument of the section. */
+const lensRates = lens.flatMap((L) => [L.min, L.max]);
+const lensLo = Math.max(0, Math.floor((Math.min(...lensRates) - 0.03) * 20) / 20);
+const lensHi = Math.min(1, Math.ceil((Math.max(...lensRates) + 0.01) * 20) / 20);
+const lensSpanV = lensHi - lensLo || 1;
+const lensX = (rate: number): number => ((rate - lensLo) / lensSpanV) * 100;
+const lensTicks: number[] = [];
+for (let t = lensLo; t <= lensHi + 1e-9; t += 0.05) lensTicks.push(Math.round(t * 100) / 100);
+const widestModel = [...lens].sort((a, b) => b.spread - a.spread)[0];
+
+/* ── Cost-vs-quality geometry ─────────────────────────────────────────────
+   Log-cost x, rate y, every mark carrying its harness logo so the chart reads
+   without a single hover.
+
+   Cost here is the standard-tier price (effCost), not the measured one. On
+   measured cost the free contributor tier dominates the whole field and the
+   efficient frontier collapses to a single point — a true statement about a
+   price almost nobody pays, and a useless chart. Repricing at standard rates
+   restores a frontier you can actually shop along. */
+const PLOT = { w: 880, h: 470, ml: 62, mr: 34, mt: 26, mb: 58 };
+
+const priced = RANKED_STACKS.map((s) => ({ s, cost: effCost(s) })).filter(
+  (p): p is { s: (typeof RANKED_STACKS)[number]; cost: number } => p.cost != null && p.cost > 0
+);
+
+const costs = priced.map((p) => p.cost);
+const logLo = Math.log10(Math.min(...costs)) - 0.12;
+const logHi = Math.log10(Math.max(...costs)) + 0.12;
+const logSpan = logHi - logLo || 1;
+const xPos = (cost: number): number =>
+  PLOT.ml + ((Math.log10(cost) - logLo) / logSpan) * (PLOT.w - PLOT.ml - PLOT.mr);
+
+/* Zoom y to the observed band. A 50–100% axis spends half the plot on empty
+   space no stack occupies; the axis note discloses the floor. */
+const plotRates = priced.map((p) => p.s.solution_rate);
+const yLo = Math.max(0, Math.floor((Math.min(...plotRates) - 0.02) * 20) / 20);
+const yHi = Math.min(1, Math.ceil((Math.max(...plotRates) + 0.01) * 20) / 20);
+const ySpanV = yHi - yLo || 1;
+const yPos = (rate: number): number =>
+  PLOT.mt + (1 - (rate - yLo) / ySpanV) * (PLOT.h - PLOT.mt - PLOT.mb);
+
+/* Non-dominated set over (cost, rate): keep a stack when nothing else is both
+   cheaper-or-equal and better-or-equal. */
+const frontierSet = priced
+  .filter(
+    (p) =>
+      !priced.some(
+        (q) =>
+          q !== p &&
+          q.cost <= p.cost &&
+          q.s.solution_rate >= p.s.solution_rate &&
+          (q.cost < p.cost || q.s.solution_rate > p.s.solution_rate)
+      )
+  )
+  .sort((a, b) => a.cost - b.cost);
+
+const frontierLine = frontierSet
+  .map((p) => `${xPos(p.cost).toFixed(1)},${yPos(p.s.solution_rate).toFixed(1)}`)
+  .join(" ");
+const frontierKeys = new Set(frontierSet.map((p) => `${p.s.harness}|${p.s.model}`));
+
+const plotted = priced.map((p) => ({
+  s: p.s,
+  cost: p.cost,
+  x: xPos(p.cost),
+  y: yPos(p.s.solution_rate),
+  onFrontier: frontierKeys.has(`${p.s.harness}|${p.s.model}`)
+}));
+
+const yTicks: number[] = [];
+for (let t = yLo; t <= yHi + 1e-9; t += 0.05) yTicks.push(Math.round(t * 100) / 100);
+
+/* Log decades inside the range. */
+const xTicks: number[] = [];
+for (let e = Math.ceil(logLo); e <= Math.floor(logHi); e++) xTicks.push(Math.pow(10, e));
+
+const repricedCount = RANKED_STACKS.filter(isSubsidized).length;
+
+/* ── Insights ─────────────────────────────────────────────────────────────
+   Derived findings rather than raw rates — the things a reader would
+   otherwise have to compute in their head from three separate charts.
+
+   1. Passing vs quality. A stack's rank on solution rate and its rank on
+      judged quality are different questions, and the stacks that move most
+      between them are the interesting ones: code that passes more than it
+      deserves to, or is better than its pass rate suggests. */
+const qualityByStack = new Map<string, number>();
+for (const r of quality?.stacks ?? []) {
+  if (r.quality != null) qualityByStack.set(`${r.harness}|${r.model}`, r.quality);
+}
+
+const rankBy = <T,>(items: T[], score: (t: T) => number): Map<T, number> => {
+  const sorted = [...items].sort((a, b) => score(b) - score(a));
+  const out = new Map<T, number>();
+  sorted.forEach((it, i) => out.set(it, i + 1));
+  return out;
+};
+
+const scored = RANKED_STACKS.filter((s) => qualityByStack.has(`${s.harness}|${s.model}`));
+const rateRank = rankBy(scored, (s) => s.solution_rate);
+const qualRank = rankBy(scored, (s) => qualityByStack.get(`${s.harness}|${s.model}`) ?? 0);
+
+interface Mover {
+  s: (typeof RANKED_STACKS)[number];
+  rateRank: number;
+  qualRank: number;
+  delta: number;
+  quality: number;
+}
+const movers: Mover[] = scored
+  .map((s) => {
+    const rr = rateRank.get(s) ?? 0;
+    const qr = qualRank.get(s) ?? 0;
+    return {
+      s,
+      rateRank: rr,
+      qualRank: qr,
+      delta: rr - qr,
+      quality: qualityByStack.get(`${s.harness}|${s.model}`) ?? 0
+    };
+  })
+  .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+
+const topMovers = movers.filter((m) => Math.abs(m.delta) >= 2).slice(0, 6);
+const nScored = scored.length;
+
+/* 2. Where each model is strong. Per family, the model's median rate across
+      every harness, against the field median for that family — so the shape
+      of a model's competence is visible at a glance rather than inferred
+      from a heatmap. */
+const heat = familyHeat();
+interface FamStat {
+  family: string;
+  byModel: Map<string, number>;
+  fieldMedian: number;
+}
+const median = (xs: number[]): number => {
+  if (xs.length === 0) return 0;
+  const s = [...xs].sort((a, b) => a - b);
+  const mid = Math.floor(s.length / 2);
+  return s.length % 2 === 0 ? ((s[mid - 1] ?? 0) + (s[mid] ?? 0)) / 2 : (s[mid] ?? 0);
+};
+
+const famStats: FamStat[] = heat.families.map((family, fi) => {
+  const byModel = new Map<string, number[]>();
+  heat.rows.forEach((row) => {
+    const v = row.cells[fi]?.rate;
+    if (v == null) return;
+    const arr = byModel.get(row.model) ?? [];
+    arr.push(v);
+    byModel.set(row.model, arr);
+  });
+  const medians = new Map<string, number>();
+  const all: number[] = [];
+  byModel.forEach((arr, model) => {
+    medians.set(model, median(arr));
+    all.push(...arr);
+  });
+  return { family, byModel: medians, fieldMedian: median(all) };
+});
+
+/* Each model's single best and worst family, by distance from the field. */
+interface ModelEdge {
+  model: string;
+  best: { family: string; rate: number; edge: number } | null;
+  worst: { family: string; rate: number; edge: number } | null;
+}
+const modelEdges: ModelEdge[] = BENCH.models.map((m) => {
+  const points = famStats
+    .filter((f) => f.byModel.has(m.id))
+    .map((f) => ({
+      family: f.family,
+      rate: f.byModel.get(m.id) as number,
+      edge: (f.byModel.get(m.id) as number) - f.fieldMedian
+    }))
+    .sort((a, b) => b.edge - a.edge);
+  return { model: m.id, best: points[0] ?? null, worst: points[points.length - 1] ?? null };
+});
+
+/* ── Disclosures ──────────────────────────────────────────────────────────*/
+const inferredCount = RANKED_STACKS.filter((s) => s.evidence === "inferred").length;
+const lowCount = RANKED_STACKS.filter((s) => s.confidence === "low").length;
+
+const harnessesInPlay = BENCH.harnesses.length;
+const modelsInPlay = BENCH.models.length;
+
+/* The per-stack median is a dead heat: on a 1-5 rubric twelve stacks all land
+   on 4.50, so ranking by it produces twelve identical bars and tells you
+   nothing. The signal is in the distribution, not the middle — at cell level
+   the judge's scores run the full 1.00-5.00 range. So each stack gets the
+   share of its judged cells in four bands, and the ranking is by how often a
+   stack lands flawless rather than by a median that can't separate them. */
+const QBANDS = [
+  { key: "flawless", label: "5.0 flawless", test: (v: number) => v >= 4.75 },
+  { key: "solid", label: "4.0–4.9 solid", test: (v: number) => v >= 3.75 && v < 4.75 },
+  { key: "flawed", label: "3.0–3.9 flawed", test: (v: number) => v >= 2.75 && v < 3.75 },
+  { key: "poor", label: "under 3.0", test: (v: number) => v < 2.75 }
+] as const;
+
+interface QDist {
+  harness: string;
+  model: string;
+  cells: number;
+  trials: number;
+  median: number | null;
+  /** Share of judged cells in each band, in QBANDS order (0-1). */
+  shares: number[];
+  flawless: number;
+}
+
+const qDist: QDist[] = (() => {
+  const byStack = new Map<string, { h: string; m: string; vals: number[]; trials: number }>();
+  for (const c of EVIDENCE_CELLS) {
+    if (c.quality_mean == null || !c.quality_n) continue;
+    const k = `${c.harness}|${c.model}`;
+    const e = byStack.get(k) ?? { h: c.harness, m: c.model, vals: [], trials: 0 };
+    e.vals.push(c.quality_mean);
+    e.trials += c.quality_n;
+    byStack.set(k, e);
+  }
+  const out: QDist[] = [];
+  for (const { h, m, vals, trials } of byStack.values()) {
+    if (vals.length < 4) continue; // too few judged cells to show a distribution
+    const sorted = [...vals].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    const median =
+      sorted.length % 2 === 0
+        ? ((sorted[mid - 1] ?? 0) + (sorted[mid] ?? 0)) / 2
+        : (sorted[mid] ?? null);
+    const shares = QBANDS.map((b) => vals.filter((v) => b.test(v)).length / vals.length);
+    out.push({
+      harness: h,
+      model: m,
+      cells: vals.length,
+      trials,
+      median,
+      shares,
+      flawless: shares[0] ?? 0
+    });
+  }
+  return out.sort((a, b) => b.flawless - a.flawless);
+})();
+
+const qJudgedCells = qDist.reduce((a, d) => a + d.cells, 0);
+const qMedianTies = (quality?.stacks ?? []).filter((r) => r.quality === 4.5).length;
+---
+
+<BaseLayout
+  title="BurnBench — which agent harness × model actually ships"
+  description={`${harnessesInPlay} agent harnesses × ${modelsInPlay} models measured on real shipping work. ${BENCH.source.cells_measured.toLocaleString("en-US")} cells, Wilson 95% intervals, no self-reported scores.`}
+>
+  <div class="ins">
+    {
+      /* ═══════════════ HERO ═══════════════
+        Short on purpose. The answer is one screen down, not ten. */
+    }
+    <section class="ins-section ins-hero" aria-labelledby="bb-h">
+      <div class="ins-wrap ins-hero__inner">
+        <p class="ins-eyebrow ins-rise ins-rise-1">BurnBench · public benchmark</p>
+        <h1 id="bb-h" class="ins-hero__h ins-rise ins-rise-2">
+          Which harness × model
+          <em>actually ships.</em>
+        </h1>
+        <p class="ins-lede ins-hero__lede ins-rise ins-rise-3">
+          {harnessesInPlay} agent harnesses across {modelsInPlay} models, run on real shipping work —
+          refactors, bugfixes, agentic ops, visual builds. Every rate is measured on scored runs and carries
+          a Wilson 95% interval and the cell count behind it.
+        </p>
+
+        <div class="ins-prov ins-rise ins-rise-4">
+          <span class="ins-prov__item"
+            ><span class="ins-prov__dot" aria-hidden="true"></span>generated {generatedAt}</span
+          >
+          <span class="ins-prov__item"
+            ><span class="ins-prov__dot" aria-hidden="true"></span>{
+              BENCH.source.cells_measured.toLocaleString("en-US")
+            } cells measured</span
+          >
+          <span class="ins-prov__item"
+            ><span class="ins-prov__dot" aria-hidden="true"></span>runs sha {shaShort}…</span
+          >
+          <span class="ins-prov__item"
+            ><span class="ins-prov__dot" aria-hidden="true"></span>{BENCH.source.cells_excluded} excluded
+            by policy</span
+          >
+        </div>
+
+        <nav class="ins-hero__nav ins-rise ins-rise-5" aria-label="Bench sections">
+          <a class="ins-cta ins-cta--primary" href="#verdict">The verdict</a>
+          <a class="ins-cta" href="#leaderboard">Leaderboard</a>
+          <a class="ins-cta" href="#cost">Cost vs quality</a>
+          <a class="ins-cta" href="/bench/report">Evidence</a>
+        </nav>
+      </div>
+    </section>
+
+    {
+      /* ═══════════════ 1 · THE VERDICT ═══════════════
+        Brought to the top. Three answers, because "best" depends on what
+        you are optimising. Each derived from the export, none hand-picked. */
+    }
+    <section class="ins-section" id="verdict" aria-labelledby="verdict-h">
+      <div class="ins-wrap">
+        <header class="ins-section__head">
+          <p class="ins-eyebrow">The verdict</p>
+          <h2 id="verdict-h" class="ins-h">Three answers, depending on what you're paying for.</h2>
+          <p class="ins-lede">
+            Ranked on the overall suite. Low-confidence stacks can't take a podium — the same rule
+            the API enforces.
+          </p>
+        </header>
+
+        <div class="ins-verdict">
+          {
+            bestRate && (
+              <article class:list={["ins-glass ins-glass--tall ins-vcard", mcls(bestRate.model)]}>
+                <div class="ins-vcard__top">
+                  <span class="ins-badge ins-badge--lead">Ships the most</span>
+                  <StackName harness={bestRate.harness} model={bestRate.model} size="lg" short />
+                </div>
+                <Num value={bestRate.solution_rate} kind="pct" size="hero" class="ins-vcard__n" />
+                <p class="ins-vcard__cap">
+                  solution rate · 95% CI <Num value={bestRate.ci95[0]} kind="pct" size="xs" />–
+                  <Num value={bestRate.ci95[1]} kind="pct" size="xs" />
+                </p>
+                <dl class="ins-ledger">
+                  <div class="ins-ledger__row">
+                    <dt class="ins-ledger__k">Strict rate</dt>
+                    <dd class="ins-ledger__v">
+                      <Num value={bestRate.strict_rate} kind="pct" size="sm" />
+                    </dd>
+                  </div>
+                  <div class="ins-ledger__row">
+                    <dt class="ins-ledger__k">
+                      Median cost / task
+                      {isSubsidized(bestRate) && (
+                        <span class="ins-ledger__hint"> standard tier</span>
+                      )}
+                    </dt>
+                    <dd class="ins-ledger__v">
+                      <Num value={effCost(bestRate)} kind="usd" size="sm" />
+                    </dd>
+                  </div>
+                  <div class="ins-ledger__row">
+                    <dt class="ins-ledger__k">Runs · tasks</dt>
+                    <dd class="ins-ledger__v">
+                      {bestRate.n} · {stackTaskCount(bestRate.harness, bestRate.model)}
+                    </dd>
+                  </div>
+                </dl>
+              </article>
+            )
+          }
+
+          {
+            bestValue && (
+              <article class:list={["ins-glass ins-glass--tall ins-vcard", mcls(bestValue.model)]}>
+                <div class="ins-vcard__top">
+                  <span class="ins-badge">Best value</span>
+                  <StackName harness={bestValue.harness} model={bestValue.model} size="lg" short />
+                </div>
+                <Num value={effCost(bestValue)} kind="usd" size="hero" class="ins-vcard__n" />
+                <p class="ins-vcard__cap">
+                  median cost / task, at{" "}
+                  <Num value={bestValue.solution_rate} kind="pct" size="xs" /> solved
+                  {isSubsidized(bestValue) && " · standard-tier price"}
+                </p>
+                <dl class="ins-ledger">
+                  <div class="ins-ledger__row">
+                    <dt class="ins-ledger__k">Behind the leader by</dt>
+                    <dd class="ins-ledger__v">
+                      <Num
+                        value={(bestRate?.solution_rate ?? 0) - bestValue.solution_rate}
+                        kind="pct"
+                        size="sm"
+                      />
+                    </dd>
+                  </div>
+                  <div class="ins-ledger__row">
+                    <dt class="ins-ledger__k">Strict rate</dt>
+                    <dd class="ins-ledger__v">
+                      <Num value={bestValue.strict_rate} kind="pct" size="sm" />
+                    </dd>
+                  </div>
+                  <div class="ins-ledger__row">
+                    <dt class="ins-ledger__k">Runs · tasks</dt>
+                    <dd class="ins-ledger__v">
+                      {bestValue.n} · {stackTaskCount(bestValue.harness, bestValue.model)}
+                    </dd>
+                  </div>
+                </dl>
+              </article>
+            )
+          }
+
+          {
+            bestQuality && (
+              <article
+                class:list={["ins-glass ins-glass--tall ins-vcard", mcls(bestQuality.model)]}
+              >
+                <div class="ins-vcard__top">
+                  <span class="ins-badge">Best code quality</span>
+                  <StackName
+                    harness={bestQuality.harness}
+                    model={bestQuality.model}
+                    size="lg"
+                    short
+                  />
+                </div>
+                <Num
+                  value={bestQuality.quality_mean}
+                  kind="score"
+                  size="hero"
+                  unit="/ 5"
+                  class="ins-vcard__n"
+                />
+                <p class="ins-vcard__cap">
+                  blind judge median over {bestQuality.quality_n.toLocaleString("en-US")} judged
+                  trials
+                </p>
+                <dl class="ins-ledger">
+                  <div class="ins-ledger__row">
+                    <dt class="ins-ledger__k">Solution rate</dt>
+                    <dd class="ins-ledger__v">
+                      <Num value={bestQuality.solution_rate} kind="pct" size="sm" />
+                    </dd>
+                  </div>
+                  <div class="ins-ledger__row">
+                    <dt class="ins-ledger__k">
+                      Median cost / task
+                      {isSubsidized(bestQuality) && (
+                        <span class="ins-ledger__hint"> standard tier</span>
+                      )}
+                    </dt>
+                    <dd class="ins-ledger__v">
+                      <Num value={effCost(bestQuality)} kind="usd" size="sm" />
+                    </dd>
+                  </div>
+                  <div class="ins-ledger__row">
+                    <dt class="ins-ledger__k">Runs · tasks</dt>
+                    <dd class="ins-ledger__v">
+                      {bestQuality.n} · {stackTaskCount(bestQuality.harness, bestQuality.model)}
+                    </dd>
+                  </div>
+                </dl>
+              </article>
+            )
+          }
+        </div>
+
+        <p class="ins-key ins-verdict__foot">
+          <b>Why it matters:</b> the gap between the leader and the median stack is{" "}
+          <Num value={choiceSpread} kind="pct" size="xs" /> of tasks solved. Picking the stack is worth
+          more than picking the model.
+        </p>
+      </div>
+    </section>
+
+    {/* ═══════════════ 2 · LEADERBOARD ═══════════════ */}
+    <section class="ins-section" id="leaderboard" aria-labelledby="lb-h">
+      <div class="ins-wrap">
+        <header class="ins-section__head">
+          <p class="ins-eyebrow">Leaderboard · every published stack</p>
+          <h2 id="lb-h" class="ins-h">Every stack, one metric at a time.</h2>
+          <p class="ins-lede">
+            Switch the metric and the ranking re-sorts. Bars are scaled to the observed band, not to
+            zero — the axis says where it starts.
+          </p>
+        </header>
+
+        <div class="ins-toolbar">
+          <div class="ins-segment" role="tablist" aria-label="Ranking metric" data-ins-lens-tabs>
+            <button class="ins-segment__btn" role="tab" aria-selected="true" data-lens="solution"
+              >Solution</button
+            >
+            <button class="ins-segment__btn" role="tab" aria-selected="false" data-lens="strict"
+              >Strict</button
+            >
+            <button class="ins-segment__btn" role="tab" aria-selected="false" data-lens="cost"
+              >Cost</button
+            >
+            <button class="ins-segment__btn" role="tab" aria-selected="false" data-lens="speed"
+              >Speed</button
+            >
+            <button class="ins-segment__btn" role="tab" aria-selected="false" data-lens="quality"
+              >Quality</button
+            >
+          </div>
+          <label class="ins-sr" for="lb-filter">Filter stacks</label>
+          <input
+            id="lb-filter"
+            class="ins-field ins-toolbar__filter"
+            type="search"
+            placeholder="Filter stacks…"
+            autocomplete="off"
+            data-ins-lb-filter
+          />
+        </div>
+
+        {/* Reading key: stated once, obeyed by every chart below. */}
+        <div class="ins-glass ins-glass--flush ins-readkey">
+          <p class="ins-key">
+            <b>How to read it</b> — the filled bar is the value. The hatched band is the 95% confidence
+            interval: the true rate lives inside it. The white tick is the strict rate. Colour is the
+            model; the two logos are harness then model. On the cost lens, subsidised contributor cells
+            are priced at standard tier — what you'd actually pay.
+          </p>
+          <div class="ins-legend">
+            {
+              BENCH.models.map((m) => (
+                <span class:list={["ins-legend__item", mcls(m.id)]}>
+                  <span class="ins-legend__swatch" aria-hidden="true" />
+                  {modelDisplayShort(m.id)}
+                </span>
+              ))
+            }
+          </div>
+        </div>
+
+        <div class="ins-glass ins-lb">
+          <div class="ins-rows" data-ins-lb>
+            {
+              ranked.map(({ s, rank, tied }) => (
+                <div
+                  class:list={[
+                    "ins-row",
+                    mcls(s.model),
+                    hcls(s.harness),
+                    rank === 1 && "ins-row--lead"
+                  ]}
+                  data-h={s.harness}
+                  data-m={s.model}
+                  data-name={`${harnessDisplay(s.harness)} ${modelDisplay(s.model)}`.toLowerCase()}
+                  data-solution={s.solution_rate}
+                  data-strict={s.strict_rate}
+                  data-cost={effCost(s) ?? ""}
+                  data-speed={s.wall_seconds_median ?? ""}
+                  data-quality={s.quality_mean ?? ""}
+                  data-ci-lo={s.ci95[0]}
+                  data-ci-hi={s.ci95[1]}
+                  data-n={s.n}
+                  data-tip
+                  data-tip-h={s.harness}
+                  data-tip-m={s.model}
+                  data-tip-lead={`${(s.solution_rate * 100).toFixed(1)}%`}
+                  data-tip-lead-label="solution rate"
+                  data-tip-rows={[
+                    `strict|${(s.strict_rate * 100).toFixed(1)}%`,
+                    `95% CI|${(s.ci95[0] * 100).toFixed(1)}–${(s.ci95[1] * 100).toFixed(1)}%`,
+                    `cost / task|${effCost(s) == null ? "—" : (effCost(s) as number) < 0.01 ? `$${(effCost(s) as number).toFixed(4)}` : `$${(effCost(s) as number).toFixed(2)}`}`,
+                    `quality|${s.quality_mean == null ? "—" : `${s.quality_mean.toFixed(2)} / 5`}`,
+                    `runs · tasks|${s.n} · ${stackTaskCount(s.harness, s.model)}`
+                  ].join(";")}
+                >
+                  <span class="ins-row__rank ins-num">
+                    {String(rank).padStart(2, "0")}
+                    {tied && (
+                      <span class="ins-row__tie" title="tied on this metric">
+                        =
+                      </span>
+                    )}
+                  </span>
+
+                  <span class="ins-row__id">
+                    <Chip id={s.harness} kind="harness" />
+                    <Chip id={s.model} kind="model" />
+                    <span class="ins-row__text">
+                      <span class="ins-row__name">
+                        <span class="ins-row__h">{harnessDisplay(s.harness)}</span>
+                        <span class="ins-pair__x" aria-hidden="true">
+                          ×
+                        </span>
+                        <span class="ins-row__m">{modelDisplayShort(s.model)}</span>
+                      </span>
+                      <span class="ins-row__meta">
+                        n {s.n} · {stackTaskCount(s.harness, s.model)} tasks
+                        {s.evidence === "inferred" && " · inferred"}
+                        {s.confidence === "low" && " · low confidence"}
+                      </span>
+                    </span>
+                  </span>
+
+                  <span class="ins-row__plot">
+                    <span
+                      class:list={["ins-bar", s.evidence === "inferred" && "ins-bar--inferred"]}
+                      data-ins-bar
+                    >
+                      <span
+                        class="ins-bar__ci"
+                        data-l={lbPos(s.ci95[0]).toFixed(2)}
+                        data-r={(100 - lbPos(s.ci95[1])).toFixed(2)}
+                        aria-hidden="true"
+                      />
+                      <span class="ins-bar__fill" data-w={lbPos(s.solution_rate).toFixed(2)} />
+                      <span
+                        class="ins-bar__tick"
+                        data-x={lbPos(s.strict_rate).toFixed(2)}
+                        title="strict rate"
+                        aria-hidden="true"
+                      />
+                    </span>
+                  </span>
+
+                  <span class="ins-row__val">
+                    <Num value={s.solution_rate} kind="pct" size="lg" class="ins-row__num" />
+                  </span>
+                </div>
+              ))
+            }
+          </div>
+
+          <div class="ins-lb__axis">
+            <div class="ins-axis" aria-hidden="true">
+              {lbTicks.map((t) => <span>{Math.round(t * 100)}%</span>)}
+            </div>
+            <p class="ins-zoomnote">
+              axis starts at {Math.round(lbLo * 100)}% — every stack clears it, so the bars show the
+              spread rather than the shared floor
+            </p>
+          </div>
+        </div>
+
+        {
+          (inferredCount > 0 || lowCount > 0) && (
+            <p class="ins-key ins-lb__note">
+              {inferredCount > 0 && (
+                <>
+                  <b>{inferredCount}</b> stacks are shrinkage-pooled <em>inferred</em> estimates
+                  (hatched bars).{" "}
+                </>
+              )}
+              {lowCount > 0 && (
+                <>
+                  <b>{lowCount}</b> carry low confidence and are barred from the podium.
+                </>
+              )}
+            </p>
+          )
+        }
+      </div>
+    </section>
+
+    {
+      /* ═══════════════ 3 · MODEL OR HARNESS ═══════════════
+        The single most interesting question in the dataset, and the chart
+        that answers it: row width = how much the harness changes the answer. */
+    }
+    <section class="ins-section" id="lens" aria-labelledby="lens-h">
+      <div class="ins-wrap">
+        <header class="ins-section__head">
+          <p class="ins-eyebrow">Model vs harness</p>
+          <h2 id="lens-h" class="ins-h">Is it the model, or the harness driving it?</h2>
+          <p class="ins-lede">
+            One row per model. The row runs from its worst harness to its best — so the
+            <em> width of the row is the harness effect</em>. A short row means the model decides. A
+            long row means the harness does.
+          </p>
+        </header>
+
+        <div class="ins-glass ins-lens">
+          {
+            lens.map((L) => (
+              <div class:list={["ins-lensrow", mcls(L.model.id)]}>
+                <div class="ins-lensrow__id">
+                  <Chip id={L.model.id} kind="model" />
+                  <span class="ins-lensrow__meta">
+                    <span class="ins-lensrow__name">{modelDisplayShort(L.model.id)}</span>
+                    <span class="ins-lensrow__spread">
+                      harness span <Num value={L.spread} kind="pct" size="xs" />
+                    </span>
+                  </span>
+                </div>
+
+                <div class="ins-lensrow__track" data-ins-lens-track>
+                  <span
+                    class="ins-lensrow__range"
+                    data-l={lensX(L.min).toFixed(2)}
+                    data-r={(100 - lensX(L.max)).toFixed(2)}
+                    aria-hidden="true"
+                  />
+                  {L.cells.map((c) => (
+                    <span
+                      class:list={["ins-lensrow__dot", hcls(c.harness)]}
+                      data-x={lensX(c.rate).toFixed(2)}
+                      tabindex="0"
+                      role="img"
+                      aria-label={`${harnessDisplay(c.harness)} times ${modelDisplayShort(L.model.id)}: ${(c.rate * 100).toFixed(1)} percent solved`}
+                      data-tip
+                      data-tip-h={c.harness}
+                      data-tip-m={L.model.id}
+                      data-tip-lead={`${(c.rate * 100).toFixed(1)}%`}
+                      data-tip-lead-label="solution rate"
+                      data-tip-rows={[
+                        `strict|${(c.strict * 100).toFixed(1)}%`,
+                        `cost / task|${c.cost == null ? "—" : c.cost === 0 ? "free tier" : c.cost < 0.01 ? `$${c.cost.toFixed(4)}` : `$${c.cost.toFixed(2)}`}`,
+                        `confidence|${c.confidence}`
+                      ].join(";")}
+                    >
+                      <Chip id={c.harness} kind="harness" size="sm" />
+                    </span>
+                  ))}
+                </div>
+
+                <div class="ins-lensrow__ends">
+                  <Num value={L.min} kind="pct" size="sm" />
+                  <span class="ins-lensrow__arrow" aria-hidden="true">
+                    →
+                  </span>
+                  <Num value={L.max} kind="pct" size="sm" />
+                </div>
+              </div>
+            ))
+          }
+
+          <div class="ins-lens__axis">
+            <div class="ins-axis" aria-hidden="true">
+              {lensTicks.map((t) => <span>{Math.round(t * 100)}%</span>)}
+            </div>
+            <p class="ins-zoomnote">solution rate · axis starts at {Math.round(lensLo * 100)}%</p>
+          </div>
+        </div>
+
+        {
+          widestModel && (
+            <p class="ins-key ins-lens__note">
+              <b>Widest spread:</b> {modelDisplay(widestModel.model.id)} moves{" "}
+              <Num value={widestModel.spread} kind="pct" size="xs" /> between its worst and best
+              harness — the same weights, a different driver.
+            </p>
+          )
+        }
+      </div>
+    </section>
+
+    {
+      /* ═══════════════ 4 · COST VS QUALITY ═══════════════
+        Every mark carries its harness logo, so the scatter is readable
+        without hovering a single point. */
+    }
+    <section class="ins-section" id="cost" aria-labelledby="cost-h">
+      <div class="ins-wrap">
+        <header class="ins-section__head">
+          <p class="ins-eyebrow">Cost vs quality</p>
+          <h2 id="cost-h" class="ins-h">What quality costs.</h2>
+          <p class="ins-lede">
+            Cheaper is left, better is up. The dashed line traces the stacks you can't beat on both
+            at once — anything below it is outperformed by something equally cheap, and the climb
+            along it is what each extra point of solution rate actually costs.
+          </p>
+        </header>
+
+        <figure class="ins-glass ins-scatter ins-fig" data-fig>
+          <div
+            class="ins-fig__viewport ins-scatter__stage"
+            data-fig-viewport
+            tabindex="0"
+            role="group"
+            aria-label="Cost versus quality scatter. Plus and minus zoom, arrow keys pan."
+          >
+            <div class="ins-fig__stage" data-fig-stage>
+              <svg
+                class="ins-scatter__svg ins-fig__svg"
+                viewBox={`0 0 ${PLOT.w} ${PLOT.h}`}
+                role="img"
+                aria-label="Scatter plot of median cost per task against solution rate for every measured stack"
+              >
+                <defs>
+                  <clipPath id="ins-dot-clip"><circle cx="0" cy="0" r="11"></circle></clipPath>
+                </defs>
+
+                {/* gridlines */}
+                {
+                  yTicks.map((t) => (
+                    <g>
+                      <line
+                        class="ins-gridline"
+                        x1={PLOT.ml}
+                        x2={PLOT.w - PLOT.mr}
+                        y1={yPos(t)}
+                        y2={yPos(t)}
+                      />
+                      <text class="ins-svg-tick" x={PLOT.ml - 12} y={yPos(t) + 4} text-anchor="end">
+                        {Math.round(t * 100)}%
+                      </text>
+                    </g>
+                  ))
+                }
+                {
+                  xTicks.map((t) => (
+                    <g>
+                      <line
+                        class="ins-gridline"
+                        y1={PLOT.mt}
+                        y2={PLOT.h - PLOT.mb}
+                        x1={xPos(t)}
+                        x2={xPos(t)}
+                      />
+                      <text
+                        class="ins-svg-tick"
+                        x={xPos(t)}
+                        y={PLOT.h - PLOT.mb + 22}
+                        text-anchor="middle"
+                      >
+                        {t < 0.01
+                          ? `$${t.toFixed(3)}`
+                          : t < 1
+                            ? `$${t.toFixed(2)}`
+                            : `$${t.toFixed(0)}`}
+                      </text>
+                    </g>
+                  ))
+                }
+                {/* efficient frontier */}
+                {
+                  frontierLine && (
+                    <polyline class="ins-frontier" points={frontierLine} fill="none" />
+                  )
+                }
+
+                {/* marks — logo inside every dot */}
+                {
+                  plotted.map((p) => {
+                    const logo = HARNESS_LOGO[p.s.harness] ?? null;
+                    const cost = p.cost;
+                    return (
+                      <g
+                        class:list={[
+                          "ins-dot",
+                          hcls(p.s.harness),
+                          mcls(p.s.model),
+                          p.onFrontier && "ins-dot--frontier"
+                        ]}
+                        data-h={p.s.harness}
+                        data-m={p.s.model}
+                        transform={`translate(${p.x.toFixed(1)},${p.y.toFixed(1)})`}
+                        tabindex="0"
+                        role="img"
+                        aria-label={`${harnessDisplay(p.s.harness)} times ${modelDisplay(p.s.model)}: ${(p.s.solution_rate * 100).toFixed(1)} percent solved at ${cost < 0.01 ? cost.toFixed(4) : cost.toFixed(2)} dollars per task`}
+                        data-tip
+                        data-tip-h={p.s.harness}
+                        data-tip-m={p.s.model}
+                        data-tip-lead={`${(p.s.solution_rate * 100).toFixed(1)}%`}
+                        data-tip-lead-label="solution rate"
+                        data-tip-note={p.onFrontier ? "on the efficient frontier" : undefined}
+                        data-tip-rows={[
+                          `strict|${(p.s.strict_rate * 100).toFixed(1)}%`,
+                          `cost / task|${cost < 0.01 ? `$${cost.toFixed(4)}` : `$${cost.toFixed(2)}`}${isSubsidized(p.s) ? " std" : ""}`,
+                          `95% CI|${(p.s.ci95[0] * 100).toFixed(1)}–${(p.s.ci95[1] * 100).toFixed(1)}%`,
+                          `runs · tasks|${p.s.n} · ${stackTaskCount(p.s.harness, p.s.model)}`
+                        ].join(";")}
+                      >
+                        <circle class="ins-dot__halo" r="16" />
+                        <circle class="ins-dot__disc" r="13" />
+                        {logo ? (
+                          <image
+                            class="ins-dot__logo"
+                            href={logo}
+                            x="-8"
+                            y="-8"
+                            width="16"
+                            height="16"
+                            preserveAspectRatio="xMidYMid meet"
+                          />
+                        ) : (
+                          <text class="ins-dot__mono" y="4" text-anchor="middle">
+                            {monogramFor(p.s.harness, harnessDisplay(p.s.harness))}
+                          </text>
+                        )}
+                      </g>
+                    );
+                  })
+                }
+              </svg>
+            </div>
+            <div class="ins-fig__hint" data-fig-hint aria-hidden="true">
+              <span>⌘ / Ctrl + scroll to zoom · pinch on touch</span>
+            </div>
+          </div>
+
+          <div class="ins-fig__bar">
+            <button class="ins-fig__btn" type="button" data-fig-out aria-label="Zoom out">−</button>
+            <button class="ins-fig__btn" type="button" data-fig-in aria-label="Zoom in">+</button>
+            <button class="ins-fig__btn" type="button" data-fig-reset>Reset</button>
+            <span class="ins-fig__level" data-fig-level>100%</span>
+            <span class="ins-fig__spacer"></span>
+            <span class="ins-fig__help"
+              >⌘ + scroll or pinch to zoom · drag to pan · double-click to focus</span
+            >
+            <button class="ins-fig__btn" type="button" data-fig-expand aria-pressed="false"
+              >Expand</button
+            >
+          </div>
+
+          <figcaption class="ins-key ins-scatter__key">
+            <b>Ring</b> is the harness, <b>fill</b> is the model, and the logo inside is the harness again
+            — no legend lookup needed. The dashed line is the efficient frontier: the
+            {frontierSet.length} stacks nothing else beats on both price and rate. Vertical axis starts
+            at {Math.round(yLo * 100)}%.
+            {
+              repricedCount > 0 && (
+                <>
+                  {" "}
+                  Costs for the {repricedCount} subsidised contributor cells are shown at
+                  standard-tier rates, so the frontier reflects what you would actually pay.
+                </>
+              )
+            }
+          </figcaption>
+        </figure>
+      </div>
+    </section>
+
+    {/* ═══════════════ 5 · JUDGED QUALITY ═══════════════ */}
+    {
+      quality?.judged && qDist.length > 0 && (
+        <section class="ins-section" id="quality" aria-labelledby="q-h">
+          <div class="ins-wrap">
+            <header class="ins-section__head">
+              <p class="ins-eyebrow">Blind code-quality judging</p>
+              <h2 id="q-h" class="ins-h">
+                Passing isn't the same as good.
+              </h2>
+              <p class="ins-lede">
+                Every non-infra trial is judged blind on a 1–5 rubric — correctness strategy,
+                invariant coverage, code quality, performance awareness.{" "}
+                {quality.trials.toLocaleString("en-US")} trials over {qJudgedCells} judged cells.
+              </p>
+            </header>
+
+            {/* The honest framing: the headline statistic can't separate these
+                stacks, so lead with that rather than printing a fake ranking. */}
+            <div class="ins-glass ins-glass--flush ins-readkey">
+              <p class="ins-key">
+                <b>The median is a tie.</b>{" "}
+                {qMedianTies > 0 && (
+                  <>
+                    {qMedianTies} stacks share the same 4.50 median, so ranking on it would be
+                    theatre.{" "}
+                  </>
+                )}
+                The spread is in the tails — at cell level the judge uses the full 1.0–5.0 range.
+                Each bar below is one stack's judged cells split by band, ordered by how often it
+                lands flawless.
+              </p>
+              <div class="ins-legend">
+                {QBANDS.map((b) => (
+                  <span class="ins-legend__item">
+                    <span
+                      class:list={["ins-legend__swatch", `ins-band--${b.key}`]}
+                      aria-hidden="true"
+                    />
+                    {b.label}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div class="ins-glass ins-qual">
+              {qDist.map((d) => (
+                <div class:list={["ins-qdist", mcls(d.model), hcls(d.harness)]}>
+                  <span class="ins-qdist__id">
+                    <Chip id={d.harness} kind="harness" />
+                    <Chip id={d.model} kind="model" />
+                    <span class="ins-row__text">
+                      <span class="ins-row__name">
+                        <span class="ins-row__h">{harnessDisplay(d.harness)}</span>
+                        <span class="ins-pair__x" aria-hidden="true">
+                          ×
+                        </span>
+                        <span class="ins-row__m">{modelDisplayShort(d.model)}</span>
+                      </span>
+                      <span class="ins-row__meta">
+                        {d.cells} judged cells · {d.trials.toLocaleString("en-US")} trials · median{" "}
+                        {d.median?.toFixed(2) ?? "—"}
+                      </span>
+                    </span>
+                  </span>
+
+                  <span
+                    class="ins-qdist__bar"
+                    role="img"
+                    aria-label={QBANDS.map(
+                      (b, i) => `${b.label}: ${Math.round((d.shares[i] ?? 0) * 100)} percent`
+                    ).join(", ")}
+                  >
+                    {QBANDS.map((b, i) => (
+                      <span
+                        class:list={["ins-qdist__seg", `ins-band--${b.key}`]}
+                        data-w={((d.shares[i] ?? 0) * 100).toFixed(2)}
+                        title={`${b.label} — ${Math.round((d.shares[i] ?? 0) * 100)}% of judged cells`}
+                      />
+                    ))}
+                  </span>
+
+                  <span class="ins-qdist__val">
+                    <Num value={d.flawless} kind="pct" size="lg" digits={0} />
+                    <span class="ins-qdist__cap">flawless</span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      )
+    }
+
+    {
+      /* ═══════════════ 5.4 · GRADED SCORES ═══════════════
+        A weighted 0-100 score and a how-far-did-it-get ladder, for the tasks
+        converted off pass/fail. Ranked on the share of cells reaching gold
+        rather than on the median, which saturates and ties the field exactly
+        the way the judged-quality median did. */
+    }
+    {
+      scores.length > 0 && (
+        <section class="ins-section" id="graded" aria-labelledby="graded-h">
+          <div class="ins-wrap">
+            <header class="ins-section__head">
+              <p class="ins-eyebrow">Graded scoring</p>
+              <h2 id="graded-h" class="ins-h">
+                Not whether it passed — how far it got.
+              </h2>
+              <p class="ins-lede">
+                Converted tasks score every run out of 100 across weighted checks and report the
+                hardest tier it fully cleared: <b>bronze</b> is the requirement as written,
+                <b>silver</b> the edge cases the prompt never spells out, <b>gold</b> stress and
+                scale. Pass/fail could not separate stacks that all pass. This can.
+              </p>
+            </header>
+
+            <div class="ins-glass ins-glass--flush ins-readkey">
+              <p class="ins-key">
+                <b>Ranked by how often a stack reaches gold</b>, not by its median score — a median
+                saturates and ties the field, which is the trap the judged-quality number fell into.
+                Each bar is one stack's graded cells split by the tier each run reached.
+              </p>
+              <div class="ins-legend">
+                <span class="ins-legend__item">
+                  <span class="ins-legend__swatch ins-band--flawless" aria-hidden="true" />
+                  gold
+                </span>
+                <span class="ins-legend__item">
+                  <span class="ins-legend__swatch ins-band--solid" aria-hidden="true" />
+                  silver
+                </span>
+                <span class="ins-legend__item">
+                  <span class="ins-legend__swatch ins-band--flawed" aria-hidden="true" />
+                  bronze
+                </span>
+                <span class="ins-legend__item">
+                  <span class="ins-legend__swatch ins-band--poor" aria-hidden="true" />
+                  no tier cleared
+                </span>
+              </div>
+            </div>
+
+            <div class="ins-glass ins-qual">
+              {scores.map((r) => (
+                <div
+                  class:list={["ins-qdist", mcls(r.model), hcls(r.harness)]}
+                  data-tip
+                  data-tip-h={r.harness}
+                  data-tip-m={r.model}
+                  data-tip-lead={r.score.toFixed(1)}
+                  data-tip-lead-label="median graded score"
+                  data-tip-rows={[
+                    `reaches gold|${Math.round(r.shares.gold * 100)}%`,
+                    `reaches silver|${Math.round(r.shares.silver * 100)}%`,
+                    `bronze only|${Math.round(r.shares.bronze * 100)}%`,
+                    `no tier|${Math.round(r.shares.none * 100)}%`,
+                    `graded cells|${r.n}`
+                  ].join(";")}
+                >
+                  <span class="ins-qdist__id">
+                    <Chip id={r.harness} kind="harness" />
+                    <Chip id={r.model} kind="model" />
+                    <span class="ins-row__text">
+                      <span class="ins-row__name">
+                        <span class="ins-row__h">{harnessDisplay(r.harness)}</span>
+                        <span class="ins-pair__x" aria-hidden="true">
+                          ×
+                        </span>
+                        <span class="ins-row__m">{modelDisplayShort(r.model)}</span>
+                      </span>
+                      <span class="ins-row__meta">
+                        {r.n} graded cells · median {r.score.toFixed(1)}
+                      </span>
+                    </span>
+                  </span>
+
+                  <span
+                    class="ins-qdist__bar"
+                    role="img"
+                    aria-label={`gold ${Math.round(r.shares.gold * 100)} percent, silver ${Math.round(r.shares.silver * 100)} percent, bronze ${Math.round(r.shares.bronze * 100)} percent`}
+                  >
+                    <span
+                      class="ins-qdist__seg ins-band--flawless"
+                      data-w={(r.shares.gold * 100).toFixed(2)}
+                    />
+                    <span
+                      class="ins-qdist__seg ins-band--solid"
+                      data-w={(r.shares.silver * 100).toFixed(2)}
+                    />
+                    <span
+                      class="ins-qdist__seg ins-band--flawed"
+                      data-w={(r.shares.bronze * 100).toFixed(2)}
+                    />
+                    <span
+                      class="ins-qdist__seg ins-band--poor"
+                      data-w={(r.shares.none * 100).toFixed(2)}
+                    />
+                  </span>
+
+                  <span class="ins-qdist__val">
+                    <Num value={r.shares.gold} kind="pct" size="lg" digits={0} />
+                    <span class="ins-qdist__cap">gold</span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      )
+    }
+
+    {
+      /* ═══════════════ 5.5 · INSIGHTS ═══════════════
+        Derived findings, not raw rates. Two are computed from the export at
+        build time; the human verdict is fetched live, because votes arrive
+        continuously and shouldn't wait for a rebuild. */
+    }
+    <section class="ins-section" id="insights" aria-labelledby="ins-h">
+      <div class="ins-wrap">
+        <header class="ins-section__head">
+          <p class="ins-eyebrow">Insights</p>
+          <h2 id="ins-h" class="ins-h">What the numbers add up to.</h2>
+          <p class="ins-lede">
+            Three questions the raw rates don't answer on their own: who writes better code than
+            their pass rate suggests, what each model is actually good at, and what humans think
+            when they judge the work side by side.
+          </p>
+        </header>
+
+        {/* ── 1 · passing vs quality ───────────────────────────────────── */}
+        {
+          topMovers.length > 0 && (
+            <div class="ins-insight">
+              <div class="ins-insight__head">
+                <h3 class="ins-h ins-h--sm">Passing more isn't writing better.</h3>
+                <p class="ins-key">
+                  Each stack's rank among the {nScored} judged stacks on <b>solution rate</b> (left)
+                  against its rank on <b>judged code quality</b> (right). A line sloping down means
+                  the code is better than the pass rate suggests; sloping up means it passes more
+                  than the quality earns.
+                </p>
+              </div>
+
+              <div class="ins-glass ins-slope">
+                <div class="ins-slope__cols" aria-hidden="true">
+                  <span>rank by solution rate</span>
+                  <span>rank by judged quality</span>
+                </div>
+                <ul class="ins-slope__list">
+                  {topMovers.map((m) => (
+                    <li
+                      class:list={[
+                        "ins-slope__row",
+                        mcls(m.s.model),
+                        hcls(m.s.harness),
+                        m.delta > 0 ? "is-up" : "is-down"
+                      ]}
+                      data-tip
+                      data-tip-h={m.s.harness}
+                      data-tip-m={m.s.model}
+                      data-tip-lead={`${m.delta > 0 ? "+" : ""}${m.delta}`}
+                      data-tip-lead-label="places gained on quality"
+                      data-tip-rows={[
+                        `solution rank|#${m.rateRank} of ${nScored}`,
+                        `quality rank|#${m.qualRank} of ${nScored}`,
+                        `solution rate|${(m.s.solution_rate * 100).toFixed(1)}%`,
+                        `judged quality|${m.quality.toFixed(2)} / 5`
+                      ].join(";")}
+                    >
+                      <span class="ins-slope__id">
+                        <Chip id={m.s.harness} kind="harness" size="sm" />
+                        <Chip id={m.s.model} kind="model" size="sm" />
+                        <span class="ins-slope__name">
+                          <span class="ins-row__h">{harnessDisplay(m.s.harness)}</span>
+                          <span class="ins-row__m">{modelDisplayShort(m.s.model)}</span>
+                        </span>
+                      </span>
+
+                      <span class="ins-slope__from ins-num ins-num--sm">#{m.rateRank}</span>
+                      <span class="ins-slope__wire" aria-hidden="true">
+                        <svg viewBox="0 0 100 40" preserveAspectRatio="none">
+                          <line
+                            x1="0"
+                            x2="100"
+                            y1={String(6 + ((m.rateRank - 1) / Math.max(1, nScored - 1)) * 28)}
+                            y2={String(6 + ((m.qualRank - 1) / Math.max(1, nScored - 1)) * 28)}
+                          />
+                        </svg>
+                      </span>
+                      <span class="ins-slope__to ins-num ins-num--sm">#{m.qualRank}</span>
+                      <span class="ins-slope__delta ins-num ins-num--sm">
+                        {m.delta > 0 ? `+${m.delta}` : m.delta}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )
+        }
+
+        {/* ── 2 · what each model is good at ───────────────────────────── */}
+        <div class="ins-insight">
+          <div class="ins-insight__head">
+            <h3 class="ins-h ins-h--sm">Every model has a shape.</h3>
+            <p class="ins-key">
+              A model's median rate per task family, across every harness, measured against the
+              field median for that family. <b>Above the line</b> is where it beats the field.
+            </p>
+          </div>
+
+          <div class="ins-cols ins-cols--2">
+            {
+              modelEdges.map((e) => (
+                <article class:list={["ins-glass ins-edge", mcls(e.model)]}>
+                  <header class="ins-edge__head">
+                    <Chip id={e.model} kind="model" size="lg" />
+                    <span class="ins-edge__name">{modelDisplay(e.model)}</span>
+                  </header>
+                  <dl class="ins-ledger">
+                    {e.best && (
+                      <div class="ins-ledger__row">
+                        <dt class="ins-ledger__k">
+                          Strongest — <b>{e.best.family}</b>
+                        </dt>
+                        <dd class="ins-ledger__v">
+                          <Num value={e.best.rate} kind="pct" size="sm" />
+                          <span class="ins-edge__edge ins-num--up">
+                            {e.best.edge >= 0 ? "+" : ""}
+                            {(e.best.edge * 100).toFixed(1)}
+                          </span>
+                        </dd>
+                      </div>
+                    )}
+                    {e.worst && e.worst.family !== e.best?.family && (
+                      <div class="ins-ledger__row">
+                        <dt class="ins-ledger__k">
+                          Weakest — <b>{e.worst.family}</b>
+                        </dt>
+                        <dd class="ins-ledger__v">
+                          <Num value={e.worst.rate} kind="pct" size="sm" />
+                          <span
+                            class:list={[
+                              "ins-edge__edge",
+                              e.worst.edge < 0 ? "ins-num--down" : "ins-num--up"
+                            ]}
+                          >
+                            {e.worst.edge >= 0 ? "+" : ""}
+                            {(e.worst.edge * 100).toFixed(1)}
+                          </span>
+                        </dd>
+                      </div>
+                    )}
+                  </dl>
+                </article>
+              ))
+            }
+          </div>
+        </div>
+
+        {/* ── 3 · the human verdict, live ──────────────────────────────── */}
+        <div class="ins-insight" data-arena-live data-arena-baked data-votes={BENCH.arena.votes}>
+          <div class="ins-insight__head">
+            <h3 class="ins-h ins-h--sm">What people pick when they can't see the label.</h3>
+            <p class="ins-key">
+              The experiential tasks — visual builds, games, UI — have no test that can score them,
+              so they're judged by blind human pairwise vote and rated with Bradley–Terry. This
+              panel reads the live vote count, so it updates as votes land rather than waiting for a
+              rebuild.
+            </p>
+          </div>
+          <div data-arena-live-body>
+            <div class="ins-glass ins-glass--flush ins-arena__pending">
+              <span class="ins-synth__spinner" aria-hidden="true"></span>
+              Reading the live vote count…
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    {
+      /* ═══════════════ 6 · SYNTHESIS ═══════════════
+        Loaded client-side from /data/synthesis.json and rendered as a grouped
+        carousel: pick an axis, pick a harness or model by its logo, then read
+        its pairings a few at a time. Twenty-five dense cards in one grid was a
+        wall; this is the same content at a readable dose. */
+    }
+    <section class="ins-section" id="synthesis" aria-labelledby="syn-h" data-br-synthesis>
+      <div class="ins-wrap">
+        <header class="ins-section__head">
+          <p class="ins-eyebrow">Cross-cutting patterns</p>
+          <h2 id="syn-h" class="ins-h">What the judge noticed, again and again.</h2>
+          <p class="ins-lede">
+            The judge's rationales read across every task. Pick a harness to see how it behaves
+            whichever model drives it — or pick a model to see what stays true of it whichever
+            harness runs it.
+          </p>
+        </header>
+
+        {
+          /* Display names and marks for the ids the synthesis file uses. Inert
+            JSON, not a script — nothing to execute, nothing to hash. */
+        }
+        <script
+          type="application/json"
+          data-bench-roster
+          set:html={JSON.stringify({
+            harnesses: Object.fromEntries(
+              BENCH.harnesses.map((h) => [
+                h.id,
+                {
+                  display: harnessDisplay(h.id),
+                  logo: HARNESS_LOGO[h.id] ?? null,
+                  cls: `h--${classFor(HARNESS_CLASS, h.id)}`
+                }
+              ])
+            ),
+            models: Object.fromEntries(
+              BENCH.models.map((m) => [
+                m.id,
+                {
+                  display: modelDisplayShort(m.id),
+                  logo: MODEL_LOGO[m.id] ?? null,
+                  cls: `m--${classFor(MODEL_CLASS, m.id)}`
+                }
+              ])
+            )
+          })}
+        />
+
+        <div data-br-synthesis-status>
+          <div class="ins-glass ins-glass--flush ins-synth__pending">
+            <span class="ins-synth__spinner" aria-hidden="true"></span>
+            Synthesis in progress — this section fills in automatically once the analysis job lands.
+          </div>
+        </div>
+
+        <div class="ins-synth" data-br-synthesis-body hidden>
+          <div class="ins-synth__controls">
+            <div class="ins-segment" role="tablist" aria-label="Group synthesis by" data-syn-axis>
+              <button class="ins-segment__btn" role="tab" aria-selected="true" data-axis="harness"
+                >By harness</button
+              >
+              <button class="ins-segment__btn" role="tab" aria-selected="false" data-axis="model"
+                >By model</button
+              >
+            </div>
+          </div>
+
+          {/* Logo rail — the group picker. */}
+          <div
+            class="ins-synth__rail ins-scroll-x"
+            role="tablist"
+            aria-label="Choose a group"
+            data-syn-rail
+          >
+          </div>
+
+          {/* Carousel of that group's cards. */}
+          <div class="ins-carousel" data-syn-carousel>
+            <button
+              class="ins-carousel__nav ins-carousel__nav--prev"
+              type="button"
+              data-syn-prev
+              aria-label="Previous"
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"
+                ><path
+                  d="M10 3 5 8l5 5"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.7"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"></path></svg
+              >
+            </button>
+            <div class="ins-carousel__track ins-scroll-x" data-syn-track tabindex="0"></div>
+            <button
+              class="ins-carousel__nav ins-carousel__nav--next"
+              type="button"
+              data-syn-next
+              aria-label="Next"
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"
+                ><path
+                  d="m6 3 5 5-5 5"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.7"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"></path></svg
+              >
+            </button>
+          </div>
+
+          <div class="ins-carousel__dots" data-syn-dots aria-hidden="true"></div>
+        </div>
+      </div>
+    </section>
+
+    {/* ═══════════════ 7 · WHERE NEXT ═══════════════ */}
+    <section class="ins-section" id="next" aria-labelledby="next-h">
+      <div class="ins-wrap">
+        <header class="ins-section__head">
+          <p class="ins-eyebrow">Underneath</p>
+          <h2 id="next-h" class="ins-h">Every number here is traceable.</h2>
+        </header>
+
+        <div class="ins-cols ins-cols--2">
+          <a class="ins-glass ins-glass--live ins-next" href="/bench/report">
+            <span class="ins-next__k">Evidence</span>
+            <span class="ins-next__h">The full report</span>
+            <span class="ins-next__d"
+              >Harness × model matrix, per-model rollups, strict vs solution disagreements, task
+              catalogue, and the audit verdicts.</span
+            >
+          </a>
+          <a class="ins-glass ins-glass--live ins-next" href="/bench/methodology">
+            <span class="ins-next__k">Rigour</span>
+            <span class="ins-next__h">Methodology &amp; amendments</span>
+            <span class="ins-next__d"
+              >Pre-registration, the scoring contract, every amendment, and the safeguards behind
+              the numbers.</span
+            >
+          </a>
+          <a class="ins-glass ins-glass--live ins-next" href="/bench/data">
+            <span class="ins-next__k">Raw</span>
+            <span class="ins-next__h">Cell explorer &amp; exports</span>
+            <span class="ins-next__d"
+              >Every measured cell, the coverage tables, excluded tasks, and the JSON projections
+              behind this page.</span
+            >
+          </a>
+          <a class="ins-glass ins-glass--live ins-next" href="/bench/arena">
+            <span class="ins-next__k">Human vote</span>
+            <span class="ins-next__h">The Arena</span>
+            <span class="ins-next__d"
+              >Blind side-by-side diffs, judged by people. {
+                BENCH.arena.votes.toLocaleString("en-US")
+              }
+              votes so far.</span
+            >
+          </a>
+        </div>
+
+        <div
+          class="ins-glass ins-cta-strip"
+          style="margin-top:18px;display:flex;flex-wrap:wrap;gap:10px;align-items:center"
+        >
+          <span class="ins-eyebrow" style="margin:0">BurnBarBench Vol. 1 — reconciled edition</span>
+          <a
+            class="ins-cta ins-cta--primary"
+            href="/downloads/BurnBarBench%20Vol.%201%20-%20Executive%20Report.pdf"
+            type="application/pdf">Executive Report PDF — 12 pp ↗</a
+          >
+          <a
+            class="ins-cta"
+            href="/downloads/BurnBarBench%20Vol.%201%20-%20Statistical%20Report.pdf"
+            type="application/pdf">Statistical Report PDF — 20 pp ↗</a
+          >
+        </div>
+        <p class="bb-caption" style="margin-top:8px">
+          Same data as this page, print-ready. Every chart is the original GPT 5.6 vector — shell
+          repainted with BurnBar + real provider logos and tokens.
+        </p>
+        <p class="ins-key ins-next__foot" style="margin-top:18px">
+          Questions, concerns, or corrections about the benchmark?{" "}
+          <a href="mailto:bench@burnbar.ai">bench@burnbar.ai</a>
+        </p>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    import "../scripts/bench-instrument.ts";
+  </script>
+</BaseLayout>

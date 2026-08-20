@@ -272,7 +272,8 @@ const months = [...groupedByMonth.keys()].sort((a, b) => (a < b ? 1 : -1));
     font-size: 1.4rem;
     letter-spacing: 0.04em;
     font-family: var(--font-mono);
-    font-variation-settings: "wght" 540;
+    font-weight: var(--wght-semibold);
+    --opsz: var(--opsz-lead);
   }
   .month__count {
     color: var(--text-dim);
@@ -354,9 +355,8 @@ const months = [...groupedByMonth.keys()].sort((a, b) => (a < b ? 1 : -1));
     display: block;
     color: var(--text-bright);
     font-family: var(--font-display);
-    font-variation-settings:
-      "opsz" 60,
-      "wght" 480;
+    font-weight: var(--wght-medium);
+    --opsz: var(--opsz-body);
     font-size: 0.98rem;
   }
   .archcard__provider {
@@ -368,7 +368,7 @@ const months = [...groupedByMonth.keys()].sort((a, b) => (a < b ? 1 : -1));
     color: var(--ember-bright);
     font-size: 0.84rem;
     letter-spacing: 0.04em;
-    font-variation-settings: "wght" 540;
+    font-weight: var(--wght-semibold);
   }
   .archcard__empty {
     color: var(--text-mute);
