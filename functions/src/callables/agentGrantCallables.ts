@@ -14,14 +14,13 @@
 
 import { FieldValue } from "firebase-admin/firestore";
 import type { DocumentReference } from "firebase-admin/firestore";
-import { HttpsError, type CallableRequest } from "firebase-functions/v2/https";
+import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/https";
 
 import { getConfig } from "../config.js";
 import { enforceHighRiskComputerUseCallableWithNonce } from "../appCheckAttestation.js";
 import { db } from "../adminRuntime.js";
 import { recordOrUndefined } from "../guards.js";
-import { logInfo, logWarn, onCallProduction } from "../logging.js";
-import { assertCallableApprovalNotLocked, recordCallableApprovalFailure } from "./publicRateLimit.js";
+import { logInfo, logWarn, onCallProduction, wrapCallableHandler } from "../logging.js";
 import { assertActiveBurnBarCloudProEntitlement, boundedTrimmedString } from "./shared.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 import {
@@ -52,12 +51,26 @@ import {
   requireTrustedDeviceActionProof,
   requireTrustedEscrowDevice,
 } from "./computerUseSecurityFirestore.js";
-import { ALLOWED_GRANT_RUNTIMES } from "../generated/missionRuntimeCatalog.generated.js";
 
 // Internal shapes derived from the relocated parsers/verifiers so the split adds
 // no new exported type to the public surface.
 type AgentGrantLocalAuthProof = NonNullable<ReturnType<typeof parseAgentGrantLocalAuthProof>>;
 type PhoneControlSigningKeyKind = ReturnType<typeof parsePhoneControlSigningKeyKind>;
+
+const ALLOWED_GRANT_RUNTIMES = new Set([
+  "hermes",
+  "pi",
+  "codex",
+  "claude",
+  "openclaw",
+  "antigravity",
+  "droid",
+  "forge",
+  "grok",
+  "cursorAgent",
+  "cursoragent",
+  "cursor_agent",
+]);
 
 const ALLOWED_GRANT_CAPABILITIES = new Set([
   "desktop_browser",
@@ -577,14 +590,15 @@ export function missionApprovalResolutionWrite(args: {
  * the gap where any owner-authenticated client could flip `approvalStatus` to
  * `approved` by a bare Firestore write. Fail-closed.
  */
-export const respondMissionApproval = onCallProduction(
-  "respondMissionApproval",
+export const respondMissionApproval = onCall(
   {
     region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
-  async (
+  wrapCallableHandler(
+    "respondMissionApproval",
+    async (
       request: CallableRequest<{
         requestId?: unknown;
         approve?: unknown;
@@ -595,31 +609,26 @@ export const respondMissionApproval = onCallProduction(
     ) => {
       const uid = request.auth?.uid;
       if (!uid) throw new HttpsError("unauthenticated", "Sign in before responding to a mission approval.");
-      await assertActiveBurnBarCloudProEntitlement(uid);
       const nonce = boundedTrimmedString(request.data.nonce, "nonce", 256, true);
-      await assertCallableApprovalNotLocked(uid, "mission_approval_fail");
+      await enforceHighRiskComputerUseCallableWithNonce(request, uid, nonce);
+      await assertActiveBurnBarCloudProEntitlement(uid);
+
       const requestId = boundedFirestoreDocumentId(request.data.requestId, "requestId", 160);
       const deviceId = boundedFirestoreDocumentId(request.data.deviceId, "deviceId", 160);
       if (typeof request.data.approve !== "boolean") {
         throw new HttpsError("invalid-argument", "approve must be a boolean.");
       }
       const approve = request.data.approve;
-      try {
-        await enforceHighRiskComputerUseCallableWithNonce(request, uid, nonce);
-        await requireTrustedDeviceActionProof({
-          uid,
-          deviceId,
-          actionKind: "computer_use_mission_approval",
-          subjectId: requestId,
-          approve,
-          nonce,
-          proofRaw: request.data.actionProof,
-          allowedPlatforms: PHONE_CONTROL_ESCROW_PLATFORMS,
-        });
-      } catch (error) {
-        await recordCallableApprovalFailure(uid, "mission_approval_fail");
-        throw error;
-      }
+      await requireTrustedDeviceActionProof({
+        uid,
+        deviceId,
+        actionKind: "computer_use_mission_approval",
+        subjectId: requestId,
+        approve,
+        nonce,
+        proofRaw: request.data.actionProof,
+        allowedPlatforms: PHONE_CONTROL_ESCROW_PLATFORMS,
+      });
 
       const missionRef = db.doc(`users/${uid}/cli_agent_mission_requests/${requestId}`);
       const deviceRef = db.doc(`users/${uid}/escrow_devices/${deviceId}`);
@@ -670,4 +679,5 @@ export const respondMissionApproval = onCallProduction(
         approvedByDeviceId: deviceId,
       };
     },
+  ),
 );

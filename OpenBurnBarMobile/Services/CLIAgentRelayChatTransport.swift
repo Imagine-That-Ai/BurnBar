@@ -146,27 +146,17 @@ final class CLIAgentRelayChatTransport: CLIAgentRelayChatTransporting {
             sessionID: threadID
         )
         var decodeError: Error?
-        try await relayTransport.sendStreaming(payload, timeout: 600) { rawEvent in
+        try await relayTransport.sendStreaming(payload, timeout: 600) { [decoder] rawEvent in
             guard decodeError == nil else { return }
             do {
-                try CLIAgentRelayChatTransport.dispatchStreamEvents([rawEvent], onEvent: onEvent)
+                let event = try decoder.decode(CLIAgentRelayChatEvent.self, from: Data(rawEvent.utf8))
+                onEvent(event)
             } catch {
                 decodeError = error
             }
         }
         if let decodeError {
             throw decodeError
-        }
-    }
-
-    /// Production stream path. Unknown kinds stay `.unknown` and keep going;
-    /// malformed JSON fails the stream.
-    static func dispatchStreamEvents(
-        _ rawEvents: [String],
-        onEvent: @escaping @MainActor (CLIAgentRelayChatEvent) -> Void
-    ) throws {
-        try CLIAgentRelayChatEvent.consumeStream(rawEvents: rawEvents) { event in
-            onEvent(event)
         }
     }
 

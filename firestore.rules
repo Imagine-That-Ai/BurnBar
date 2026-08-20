@@ -85,73 +85,6 @@ service cloud.firestore {
         && hasNoPlaintextSecretFields();
     }
 
-    // BEGIN GENERATED MISSION_RUNTIMES: helper
-    function validGeneratedMissionRuntimeToken(value) {
-      return value is string
-        && value.size() > 0
-        && value.size() <= 80
-        && value in [
-          "agy",
-          "antigravity",
-          "auto",
-          "claude",
-          "claude_code",
-          "claude-code",
-          "claudecode",
-          "codex",
-          "cursor",
-          "cursor_agent",
-          "cursor-agent",
-          "cursoragent",
-          "cursorAgent",
-          "droid",
-          "factory",
-          "factory-droid",
-          "factorydroid",
-          "forge",
-          "forge-dev",
-          "forgedev",
-          "fx",
-          "gemini",
-          "gemini-cli",
-          "geminicli",
-          "google-antigravity",
-          "googleantigravity",
-          "grok",
-          "grok-agent",
-          "grok-build",
-          "grok-cli",
-          "hermes",
-          "jetbrains-junie",
-          "jetbrainsjunie",
-          "junie",
-          "kimi",
-          "kimi-cli",
-          "kimi-code",
-          "oh-my-pi",
-          "ohmypi",
-          "ollama",
-          "omp",
-          "open-claude",
-          "open-claw",
-          "openclaude",
-          "openClaude",
-          "openclaw",
-          "openClaw",
-          "opencode",
-          "pi",
-          "pi_agent",
-          "pi-agent",
-          "piagent",
-          "piAgent",
-          "prime-agent",
-          "primeagent",
-          "primeAgent",
-          "xai"
-        ];
-    }
-    // END GENERATED MISSION_RUNTIMES: helper
-
     function validComputerUseSessionDocument(userId, sessionId) {
       let d = request.resource.data;
       return d.keys().hasOnly([
@@ -1936,7 +1869,6 @@ service cloud.firestore {
         "usage", "budgetRules", "budgetEvents", "conversations",
         "chat_threads", "text_snippets", "mobile_assistant_chats",
         "cli_sessions", "cli_agent_mission_requests", "agent_import_jobs",
-        "burnbar_attachments", "mission_approval_answers", "mission_approval_ceilings",
         "ai_inbox_items", "ai_inbox_item_state",
         "mission_groups", "approval_policies", "rollback_requests",
         "agent_identities", "subscription_topics", "session_logs",
@@ -2241,7 +2173,7 @@ service cloud.firestore {
           "lastAssistantMessageID"
         ])
         && d.id == threadId
-        && validGeneratedMissionRuntimeToken(d.runtime)
+        && d.runtime in ["hermes", "pi", "piagent", "pi_agent", "codex", "claude", "openclaw", "antigravity", "droid", "factory", "forge", "grok", "cursorAgent", "cursoragent", "cursor_agent"]
         && d.messageCount is int
         && d.messageCount >= 0
         && d.messageCount <= 5000
@@ -2287,7 +2219,7 @@ service cloud.firestore {
           "priorityOrder"
         ])
         && d.id == sessionId
-        && validGeneratedMissionRuntimeToken(d.agent)
+        && d.agent in ["codex", "claude", "openclaw", "antigravity", "droid", "forge", "grok", "cursorAgent", "cursoragent", "cursor_agent"]
         && (!("sourceKind" in d) || d.sourceKind in ["live_chat", "archived_log"])
         && d.schemaVersion is int
         && d.contentSealed == true
@@ -2436,8 +2368,7 @@ service cloud.firestore {
       }
 
       function validCliMissionRuntime(value) {
-        return validCliMissionMetadataToken(value, 80)
-          && validGeneratedMissionRuntimeToken(value);
+        return validCliMissionMetadataToken(value, 80);
       }
 
       function validCliMissionSource(value) {
@@ -2739,14 +2670,7 @@ service cloud.firestore {
       // summary into sealedStatePayload — never a plaintext liveSummary). Any
       // other key change (or a plaintext summary) falls through and is denied.
       function validMobileMissionCancel() {
-        return resource.data.status in [
-          "pending",
-          "accepted",
-          "starting",
-          "running",
-          "waiting_for_approval"
-        ]
-          && request.resource.data.status == "cancelled"
+        return request.resource.data.status == "cancelled"
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             "status",
             "contentSealed",
@@ -2788,11 +2712,15 @@ service cloud.firestore {
           );
       }
 
-      allow create: if false;
+      allow create: if ownerWritableNonSecret(userId)
+        && validCliAgentMissionRequest()
+        && validCliAgentMissionCreate();
       allow update: if ownerWritableNonSecret(userId)
         && validCliAgentMissionUpdateEnvelope()
         && (
-          validMobileMissionApprovalResponse()
+          validTrustedMissionHostUpdate(userId)
+          || validMobileMissionApprovalResponse()
+          || validMissionRefusalOrFailureUpdate()
           || validMobileMissionCancel()
         );
 
@@ -2825,28 +2753,67 @@ service cloud.firestore {
         }
 
         allow read: if ownsUserNamespace(userId);
-        // Client event writes are denied. Admin SDK
-        // (createCliAgentMission / appendCliAgentMissionEvent) owns 000001
-        // and later events.
-        allow create: if false;
+        allow create: if ownerWritableNonSecret(userId)
+          && request.resource.data.keys().hasOnly([
+            "sequence",
+            "timestamp",
+            "kind",
+            "phase",
+            "title",
+            "message",
+            "fullMessage",
+            "messageLength",
+            "messageTruncated",
+            "runtime",
+            "source",
+            "sourceSurface",
+            "sourceSkillID",
+            "deliveryMode",
+            "eventImportance",
+            "skillStepID",
+            "toolName",
+            "artifactPath",
+            "changedFilePath",
+            "isError",
+            "contentSealed",
+            "sealedSchemaVersion",
+            "vaultKeyID",
+            "sealedPayload"
+          ])
+          && !request.resource.data.keys().hasAny([
+            "title",
+            "message",
+            "fullMessage",
+            "toolName",
+            "artifactPath",
+            "changedFilePath"
+          ])
+          && request.resource.data.contentSealed == true
+          && request.resource.data.sealedSchemaVersion == 2
+          && validSealedPayloadForUser(userId, request.resource.data.vaultKeyID, request.resource.data.sealedPayload)
+          && request.resource.data.sequence is int
+          && request.resource.data.sequence >= 1
+          && request.resource.data.timestamp is string
+          && request.resource.data.timestamp.size() <= 80
+          && request.resource.data.kind in ["status", "llm_response", "assistant_message", "tool_call", "tool_result", "error", "approval_request", "artifact", "changed_file", "final_answer"]
+          && request.resource.data.phase in ["queued", "accepted", "claimed", "starting", "running", "streaming", "assistant_response", "tool_use", "tool_result", "waiting_for_approval", "approval_requested", "approval_resolved", "artifact", "changed_file", "completed", "failed", "canceled", "cancelled", "mac_offline", "unauthorized", "agent_launch_failed", "process_started", "process_running"]
+          && (!("messageLength" in request.resource.data) || (
+            request.resource.data.messageLength is int
+            && request.resource.data.messageLength <= 24000
+          ))
+          && (!("messageTruncated" in request.resource.data) || request.resource.data.messageTruncated is bool)
+          && request.resource.data.source in ["ios", "android", "ios-chat", "android-chat", "mac"]
+          && (!("sourceSurface" in request.resource.data) || request.resource.data.sourceSurface in ["ios", "android", "ios-chat", "android-chat", "mac-wand"])
+          && (!("sourceSkillID" in request.resource.data) || (request.resource.data.sourceSkillID is string && request.resource.data.sourceSkillID.size() <= 80))
+          && (!("deliveryMode" in request.resource.data) || request.resource.data.deliveryMode in ["action_only", "full_stream", "muted"])
+          && (!("eventImportance" in request.resource.data) || request.resource.data.eventImportance in ["quiet", "normal", "action_required", "terminal"])
+          && (!("skillStepID" in request.resource.data) || (request.resource.data.skillStepID is string && request.resource.data.skillStepID.size() <= 80))
+          && validCliAgentMissionEventSource(userId, requestId, eventId)
+          && request.resource.data.isError is bool
+          && (!("runtime" in request.resource.data) || request.resource.data.runtime in ["codex", "claude", "hermes", "openclaw", "piAgent", "pi", "opencode", "ollama", "auto", "antigravity", "droid", "forge", "grok", "cursorAgent", "cursoragent", "cursor_agent"])
+          ;
         allow update: if validCliAgentMissionEventRewrapUpdate();
       }
-    }
-
-    // burnbar_attachments: Admin-SDK callables own writes. Clients may read metadata.
-    match /users/{userId}/burnbar_attachments/{attachmentId} {
-      allow read: if ownsUserNamespace(userId);
-      allow create, update, delete: if false;
-    }
-
-    match /users/{userId}/mission_approval_answers/{answerId} {
-      allow read: if ownsUserNamespace(userId);
-      allow create, update, delete: if false;
-    }
-
-    match /users/{userId}/mission_approval_ceilings/{requestId} {
-      allow read: if ownsUserNamespace(userId);
-      allow create, update, delete: if false;
     }
 
     // Mobile-triggered agent history imports. Phones create pending jobs;
@@ -3605,7 +3572,7 @@ service cloud.firestore {
         && request.resource.data.threadId is string
         && request.resource.data.threadId.size() <= 512
         && request.resource.data.threadId == get(/databases/$(database)/documents/users/$(userId)/agent_notification_events/$(request.resource.data.eventId)).data.threadId
-        && validGeneratedMissionRuntimeToken(request.resource.data.runtime)
+        && request.resource.data.runtime in ["hermes", "pi", "piagent", "pi_agent", "codex", "claude", "openclaw", "antigravity", "droid", "factory", "forge", "grok", "cursorAgent", "cursoragent", "cursor_agent"]
         && request.resource.data.runtime == get(/databases/$(database)/documents/users/$(userId)/agent_notification_events/$(request.resource.data.eventId)).data.runtime
         && request.resource.data.sourceKind in ["cli_session", "mobile_assistant_chat"]
         && request.resource.data.sourceKind == get(/databases/$(database)/documents/users/$(userId)/agent_notification_events/$(request.resource.data.eventId)).data.sourceKind
@@ -4044,7 +4011,7 @@ service cloud.firestore {
           && receipt.receiptId is string
           && receipt.receiptId.size() <= 160
           && receipt.requestId == requestId
-          && validGeneratedMissionRuntimeToken(receipt.runtime)
+          && receipt.runtime in ["hermes", "pi", "codex", "claude", "openclaw", "antigravity", "droid", "forge", "grok", "cursorAgent", "cursoragent", "cursor_agent"]
           && receipt.threadId is string
           && receipt.threadId.size() <= 240
           && receipt.status in ["queued", "applied", "revoked", "denied", "expired"]

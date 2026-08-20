@@ -33,7 +33,6 @@ struct AssistantsPopoverStrip: View {
         case .openClaude: return "Ask OpenClaude…"
         case .omp: return "Ask OMP…"
         case .junie: return "Ask Junie…"
-        case .grok, .kimi: return "Ask Junie…"
         }
     }
 

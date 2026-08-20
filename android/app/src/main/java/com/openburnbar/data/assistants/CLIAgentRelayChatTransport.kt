@@ -143,15 +143,13 @@ enum class CLIAgentRelayChatEventKind(val wire: String) {
     ASSISTANT_SNAPSHOT("assistantSnapshot"),
     COMPLETED("completed"),
     FAILED("failed"),
-    UNKNOWN("unknown"),
     ;
 
     companion object {
         fun fromWire(value: String?): CLIAgentRelayChatEventKind? = values().firstOrNull { it.wire == value }
             ?: when (value) {
                 "assistant_snapshot" -> ASSISTANT_SNAPSHOT
-                null, "" -> null
-                else -> UNKNOWN
+                else -> null
             }
     }
 }
@@ -178,11 +176,10 @@ enum class CLIAgentSessionActionKind(val wire: String) {
     RESUME("resume"),
     HANDOFF("handoff"),
     PACKAGE_ONLY("package_only"),
-    INTERRUPT("interrupt"),
     ;
 
     companion object {
-        fun fromWire(value: String?): CLIAgentSessionActionKind? = values().firstOrNull { it.wire == value }
+        fun fromWire(value: String?): CLIAgentSessionActionKind = values().firstOrNull { it.wire == value } ?: RESUME
     }
 }
 

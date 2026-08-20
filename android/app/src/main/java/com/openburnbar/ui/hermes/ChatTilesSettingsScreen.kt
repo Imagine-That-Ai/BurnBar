@@ -250,8 +250,6 @@ private fun tileSubtitle(runtime: AssistantRuntimeID): String = when (runtime) {
     AssistantRuntimeID.CODEX -> "Codex chat bridged from your Mac."
     AssistantRuntimeID.CLAUDE -> "Claude Code chat bridged from your Mac."
     AssistantRuntimeID.OPEN_CLAW -> "OpenClaw local agent bridged from your Mac."
-    AssistantRuntimeID.OPEN_CLAUDE -> "OpenClaude chat bridged from your Mac."
-    AssistantRuntimeID.OMP -> "OMP chat bridged from your Mac."
     AssistantRuntimeID.DROID -> "Droid chat bridged from your Mac."
     AssistantRuntimeID.FORGE -> "Forge chat bridged from your Mac."
     AssistantRuntimeID.ANTIGRAVITY -> "Antigravity chat bridged from your Mac."

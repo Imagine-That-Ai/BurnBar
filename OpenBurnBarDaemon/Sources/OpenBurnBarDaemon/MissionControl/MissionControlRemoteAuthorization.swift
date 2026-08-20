@@ -44,7 +44,7 @@ public enum BurnBarRemoteMissionAuthorizationPolicy {
     /// `additionalCapabilities` identifiers this daemon build recognizes.
     /// Empty today: the forward-compat lane exists so NEW identifiers arriving
     /// from newer clients are provably denied by default, not silently echoed.
-    static let recognizedAdditionalCapabilities: Set<String> = ["input.grok_bot"]
+    static let recognizedAdditionalCapabilities: Set<String> = []
 
     public static func evaluate(
         _ request: BurnBarRemoteMissionAuthorizeRequest
@@ -93,16 +93,6 @@ public enum BurnBarRemoteMissionAuthorizationPolicy {
                 deniedReason: .approvalRejected,
                 detail: "Mission approval was \(approvalStatus) by the approver."
             )
-        }
-        if approvalStatus == "approved" {
-            let approver = normalized(request.approverDeviceID ?? "")
-            if approver.isEmpty {
-                return BurnBarRemoteMissionAuthorizeResponse(
-                    verdict: .denied,
-                    deniedReason: .approvalRejected,
-                    detail: "Approved missions require approvedByDeviceId."
-                )
-            }
         }
 
         // (c) Capability ceiling — computed for every non-denied verdict.

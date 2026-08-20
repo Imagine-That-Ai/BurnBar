@@ -334,42 +334,6 @@
       "removalCondition": "Missions TypeSpec already exists; migrate this collection onto generated MissionModels."
     },
     {
-      "id": "doc.burnbar_attachments",
-      "collection": "burnbar_attachments",
-      "path": "users/{uid}/burnbar_attachments/{id}",
-      "access": "read-only",
-      "kind": "legacy-boundary",
-      "legacyId": "legacy.burnbar-attachments",
-      "typeName": "BurnbarAttachmentDoc",
-      "sourceFile": "functions/src/callables/burnbarAttachments.ts",
-      "owner": "mobile-apps",
-      "removalCondition": "Add TypeSpec burnbar-attachments domain covering OBFS1 metadata and GCS object refs."
-    },
-    {
-      "id": "doc.mission_approval_answers",
-      "collection": "mission_approval_answers",
-      "path": "users/{uid}/mission_approval_answers/{requestId}",
-      "access": "read-only",
-      "kind": "legacy-boundary",
-      "legacyId": "legacy.mission-approval-answers",
-      "typeName": "MissionApprovalAnswerDoc",
-      "sourceFile": "functions/src/callables/missionApprovalAnswers.ts",
-      "owner": "mobile-apps",
-      "removalCondition": "Fold mission approval answers into the missions TypeSpec domain."
-    },
-    {
-      "id": "doc.mission_approval_ceilings",
-      "collection": "mission_approval_ceilings",
-      "path": "users/{uid}/mission_approval_ceilings/{requestId}",
-      "access": "read-only",
-      "kind": "legacy-boundary",
-      "legacyId": "legacy.mission-approval-ceilings",
-      "typeName": "MissionApprovalCeilingDoc",
-      "sourceFile": "functions/src/callables/missionApprovalAnswers.ts",
-      "owner": "mobile-apps",
-      "removalCondition": "Fold mission approval ceilings into the missions TypeSpec domain."
-    },
-    {
       "id": "doc.events",
       "collection": "events",
       "path": "users/{uid}/events/{id}",

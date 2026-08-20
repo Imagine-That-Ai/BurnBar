@@ -2,12 +2,9 @@ import FirebaseAuth
 import FirebaseCore
 import FirebaseFirestore
 import Foundation
-import OpenBurnBarComputerUseCore
 import OpenBurnBarCore
 import OpenBurnBarSignalCore
 import os
-
-private typealias UntypedJSONObject = [String: Any]
 
 // MARK: - CLI mission request payload factory
 //
@@ -15,68 +12,6 @@ private typealias UntypedJSONObject = [String: Any]
 // structural decomposition). Pure move — no behavior change.
 
 enum CLIAgentMissionRequestPayloadFactory {
-    static let createPublicKeys: Set<String> = [
-        "id",
-        "missionKind",
-        "requestedRuntime",
-        "requestedModelID",
-        "depth",
-        "approvalMode",
-        "commandsAllowed",
-        "fileEditsAllowed",
-        "source",
-        "sourceSkillID",
-        "sourceSurface",
-        "deliveryMode",
-        "presentationMode",
-        "parentHermesThreadID",
-        "schemaVersion",
-        "groupID",
-        "siblingIndex",
-        "siblingCount",
-        "isGroupChild",
-        "personaID",
-        "clientThreadID",
-        "parentSessionID",
-        "resumeAction",
-        "originatorKind",
-        "originatorRef",
-        "targetBodyID"
-    ]
-
-    static func publicFields(from payload: UntypedJSONObject, requestId: String) -> UntypedJSONObject {
-        var out: UntypedJSONObject = ["id": requestId]
-        for key in createPublicKeys where key != "id" {
-            guard let value = payload[key] else { continue }
-            if value is FieldValue { continue }
-            out[key] = value
-        }
-        return out
-    }
-
-    static func createLeafPayload(
-        requestId: String,
-        remoteCommandID: String,
-        deviceId: String,
-        payload: UntypedJSONObject,
-        initialEvent: UntypedJSONObject
-    ) -> UntypedJSONObject {
-        var leaf: UntypedJSONObject = [
-            "requestId": requestId,
-            "remoteCommandID": remoteCommandID,
-            "deviceId": deviceId,
-            "publicFields": publicFields(from: payload, requestId: requestId),
-            "initialEvent": initialEvent["sealedPayload"] ?? initialEvent
-        ]
-        if let sealed = payload["sealedPayload"] {
-            leaf["sealedPayload"] = sealed
-        }
-        if let envelope = payload["signalEnvelope"] {
-            leaf["signalEnvelope"] = envelope
-        }
-        return leaf
-    }
-
     static func buildSealed(
         id: String,
         title: String,
@@ -98,12 +33,11 @@ enum CLIAgentMissionRequestPayloadFactory {
         parentHermesThreadID: String? = nil,
         presentationMode: CLIAgentChatPresentationMode = .nativeChat,
         personaScopeJSON: String? = nil,
-        attachments: [CLIAgentMissionAttachmentRef] = [],
         now: Date = Date(),
         uid: String? = nil,
         vaultKey: Data,
         vaultKeyID: String
-    ) throws -> UntypedJSONObject {
+    ) throws -> [String: Any] {
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
         let trimmedPrompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         var payload = build(
@@ -141,8 +75,7 @@ enum CLIAgentMissionRequestPayloadFactory {
             approvalTitle: nil,
             approvalMessage: nil,
             personaScopeJSON: personaScopeJSON?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
-            synthesisSummary: nil,
-            attachments: attachments.isEmpty ? nil : attachments
+            synthesisSummary: nil
         )
         let aadContext = try uid.map {
             try CLIAgentMissionCloudSealer.missionAADContext(uid: $0, documentID: id, field: "sealedPayload")
@@ -157,13 +90,13 @@ enum CLIAgentMissionRequestPayloadFactory {
     }
 
     static func sealGroupPayload(
-        _ payload: UntypedJSONObject,
+        _ payload: [String: Any],
         title: String,
         prompt: String,
         targetProject: String?,
         vaultKey: Data,
         vaultKeyID: String
-    ) throws -> UntypedJSONObject {
+    ) throws -> [String: Any] {
         let privatePayload = CLIAgentMissionPrivatePayload(
             title: title.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
             prompt: prompt.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -200,11 +133,11 @@ enum CLIAgentMissionRequestPayloadFactory {
         parentHermesThreadID: String? = nil,
         presentationMode: CLIAgentChatPresentationMode = .nativeChat,
         now: Date = Date()
-    ) -> UntypedJSONObject {
+    ) -> [String: Any] {
         let timestamp = ISO8601DateFormatter().string(from: now)
         let isChatRequest = missionKind.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "chat"
         let baseSource = isChatRequest ? "ios-chat" : "ios-insights"
-        var payload: UntypedJSONObject = [
+        var payload: [String: Any] = [
             "id": id,
             "title": title.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
                 ?? (isChatRequest ? "New chat" : "Insights mission"),
@@ -257,8 +190,8 @@ enum CLIAgentMissionRequestPayloadFactory {
         eventImportance: SkillRunEventImportance = .normal,
         skillStepID: String = "queued",
         now: Date = Date()
-    ) -> UntypedJSONObject {
-        var event: UntypedJSONObject = [
+    ) -> [String: Any] {
+        var event: [String: Any] = [
             "sequence": 1,
             "timestamp": ISO8601DateFormatter().string(from: now),
             "kind": "status",
@@ -290,7 +223,7 @@ enum CLIAgentMissionRequestPayloadFactory {
         eventID: String = "000001",
         vaultKey: Data,
         vaultKeyID: String
-    ) throws -> UntypedJSONObject {
+    ) throws -> [String: Any] {
         var event = initialQueuedEvent(
             label: label,
             source: source,
@@ -330,11 +263,11 @@ enum CLIAgentMissionRequestPayloadFactory {
 
     private static func applySealedPrivatePayload(
         _ privatePayload: CLIAgentMissionPrivatePayload,
-        to payload: UntypedJSONObject,
+        to payload: [String: Any],
         vaultKey: Data,
         vaultKeyID: String,
         aadContext: CloudVaultAADContext? = nil
-    ) throws -> UntypedJSONObject {
+    ) throws -> [String: Any] {
         var payload = payload
         for key in [
             "title",
@@ -364,7 +297,7 @@ enum CLIAgentMissionRequestPayloadFactory {
 
     private static func applySealedEventPayload(
         _ privatePayload: CLIAgentMissionEventPrivatePayload,
-        to event: inout UntypedJSONObject,
+        to event: inout [String: Any],
         vaultKey: Data,
         vaultKeyID: String,
         aadContext: CloudVaultAADContext? = nil

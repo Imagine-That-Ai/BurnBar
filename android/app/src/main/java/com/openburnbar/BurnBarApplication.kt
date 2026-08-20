@@ -227,9 +227,6 @@ class BurnBarApplication : Application() {
         FirebaseApp.initializeApp(this)
         installAppCheckProvider()
         installComputerUseSessionGrantReceiver()
-        applicationScope.launch(Dispatchers.IO) {
-            runCatching { com.openburnbar.ui.share.BurnbarShareInboxProcessor.enqueuePending(this@BurnBarApplication) }
-        }
         val domainCoreEvidenceChannel = com.openburnbar.data.DomainCoreBuildProfile.evidenceChannel()
         runCatching {
             if (domainCoreEvidenceChannel == null) {

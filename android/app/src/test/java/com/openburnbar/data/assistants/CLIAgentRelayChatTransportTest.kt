@@ -1,3 +1,4 @@
+
 package com.openburnbar.data.assistants
 
 import com.openburnbar.data.hermes.AssistantRuntimeID
@@ -5,6 +6,7 @@ import com.openburnbar.data.hermes.CliRuntimeModelCatalogResponse
 import kotlinx.coroutines.test.runTest
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CLIAgentRelayChatTransportTest {
@@ -87,30 +89,25 @@ class CLIAgentRelayChatTransportTest {
     }
 
     @Test
-    fun `stream unknown then completed delivers two events without throwing`() = runTest {
-        val fake =
-            FakePayloadStreamer(
-                rawEvents =
-                listOf(
-                    """{"kind":"futureKind"}""",
-                    """{"kind":"completed","text":"done"}""",
-                ),
-            )
+    fun `stream propagates relay event decode errors`() = runTest {
+        val fake = FakePayloadStreamer(rawEvents = listOf("""{"kind":"bogus"}"""))
         val transport = CLIAgentRelayChatTransport(fake)
-        val events = mutableListOf<CLIAgentRelayChatEvent>()
-        transport.stream(
-            request =
-            CLIAgentRelayChatStreamRequest(
-                runtime = AssistantRuntimeID.CLAUDE,
-                threadID = "thread-1",
-                prompt = "hello",
-                title = "Thread",
-                presentationMode = CLIAgentChatPresentationMode.NATIVE_CHAT,
-            ),
-        ) { events += it }
-        assertEquals(2, events.size)
-        assertEquals(CLIAgentRelayChatEventKind.UNKNOWN, events[0].kind)
-        assertEquals(CLIAgentRelayChatEventKind.COMPLETED, events[1].kind)
+
+        val error =
+            runCatching {
+                transport.stream(
+                    request =
+                    CLIAgentRelayChatStreamRequest(
+                        runtime = AssistantRuntimeID.CLAUDE,
+                        threadID = "thread-1",
+                        prompt = "hello",
+                        title = "Thread",
+                        presentationMode = CLIAgentChatPresentationMode.NATIVE_CHAT,
+                    ),
+                ) {}
+            }.exceptionOrNull()
+
+        assertTrue(error is IllegalStateException)
     }
 }
 

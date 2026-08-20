@@ -37,7 +37,6 @@ extension ChatSessionController {
         case .openClaude: return chatModelOpenClaude
         case .omp: return chatModelOMP
         case .junie: return chatModelJunie
-        case .grok, .kimi: return chatModelJunie
         }
     }
 
@@ -55,7 +54,6 @@ extension ChatSessionController {
         case .openClaude: chatModelOpenClaude = value
         case .omp: chatModelOMP = value
         case .junie: chatModelJunie = value
-        case .grok, .kimi: chatModelJunie = value
         }
     }
 
@@ -103,8 +101,6 @@ extension ChatSessionController {
         case .openClaude: return .openClaude
         case .omp: return .omp
         case .junie: return .junie
-        case .grok: return .grok
-        case .kimi: return .grok
         }
     }
 
@@ -162,7 +158,7 @@ extension ChatSessionController {
             return chatModelOpenClaude.trimmingCharacters(in: .whitespacesAndNewlines)
         case .omp:
             return chatModelOMP.trimmingCharacters(in: .whitespacesAndNewlines)
-        case .junie, .grok, .kimi:
+        case .junie:
             return chatModelJunie.trimmingCharacters(in: .whitespacesAndNewlines)
         }
     }

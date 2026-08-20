@@ -26,8 +26,6 @@ struct ChatInputRow: View {
         case .antigravity: return "Ask Antigravity\u{2026}"
         case .cursorAgent: return "Ask Cursor Agent\u{2026}"
         case .junie: return "Ask Junie\u{2026}"
-        case .grok: return "Ask Grok\u{2026}"
-        case .kimi: return "Ask Kimi\u{2026}"
         }
     }
 

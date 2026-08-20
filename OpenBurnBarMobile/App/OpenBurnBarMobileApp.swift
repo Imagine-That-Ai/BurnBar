@@ -158,10 +158,6 @@ struct OpenBurnBarMobileApp: App {
                     MobileAnalytics.shared.track(.appForegrounded)
                     // Sync any snippets the user added straight from the keyboard.
                     Task { await MobileTextExpansionStore.ingestKeyboardInboxIfNeeded() }
-                    Task {
-                        let deviceId = await MainActor.run { MobileDeviceIdentity.loadOrCreateDeviceId() }
-                        await BurnbarShareInboxProcessor.processPending(deviceId: deviceId)
-                    }
                 }
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
                     agentNotifications.updateLifecycle("inactive")

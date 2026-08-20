@@ -956,7 +956,6 @@ struct ChatPanel: View {
         case .openClaude: return "Ask OpenClaude\u{2026}"
         case .omp: return "Ask OMP\u{2026}"
         case .junie: return "Ask Junie\u{2026}"
-        case .grok, .kimi: return "Ask Junie\u{2026}"
         }
     }
 

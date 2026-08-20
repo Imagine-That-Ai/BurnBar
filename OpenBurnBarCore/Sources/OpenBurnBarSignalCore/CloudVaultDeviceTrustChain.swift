@@ -148,15 +148,8 @@ public enum CloudVaultTrustedDeviceActionProof {
         _ payload: CloudVaultTrustedDeviceActionProofPayload,
         identity: OpenBurnBarSignalIdentityKeypair
     ) throws -> String {
-        try signRawMessage(canonicalPayload(payload), identity: identity)
-    }
-
-    public static func signRawMessage(
-        _ message: Data,
-        identity: OpenBurnBarSignalIdentityKeypair
-    ) throws -> String {
         let privateKey = try PrivateKey(identity.privateKeyData)
-        return privateKey.generateSignature(message: message).base64EncodedString()
+        return privateKey.generateSignature(message: canonicalPayload(payload)).base64EncodedString()
     }
 
     public static func verify(

@@ -8,6 +8,8 @@ final class CLIAgentMissionRequestListener {
     let settingsManager: SettingsManager
     let chatController: ChatSessionController
     let deviceTrustChecker: CLIAgentMissionDeviceTrustChecking
+    /// This Mac's HermesBody id — the relay host's connection id, `nil` before
+    /// it has one, which `MissionClaimGate` reads as "cannot prove I am the target".
     let localBodyIDProvider: @MainActor () -> String?
     let logger = Logger(subsystem: "com.openburnbar.app", category: "CLIAgentMissionRequestListener")
     var listener: ListenerRegistration?
@@ -17,10 +19,6 @@ final class CLIAgentMissionRequestListener {
     private var isStarted = false
     var lastAttachState: String?
     var missionEventSequences: [String: Int] = [:]
-    struct ClaimedMissionHandle { var hostWriteNonce: String; var deviceId: String }
-    var claimedMissions: [String: ClaimedMissionHandle] = [:]; var inFlightExecutions: Set<String> = []
-    var parkedCeilingByRequest: [String: (digest: String, grant: [String: Any])] = [:]
-    var interactiveTerminalLauncher: InteractiveTerminalLaunching = LiveInteractiveTerminalLauncher()
     init(
         accountManager: AccountManaging,
         settingsManager: SettingsManager,
@@ -56,7 +54,8 @@ final class CLIAgentMissionRequestListener {
         listener?.remove()
         listener = nil
         listenerUID = nil
-        processingQueue.stop(); missionEventSequences.removeAll(); claimedMissions.removeAll()
+        processingQueue.stop()
+        missionEventSequences.removeAll()
     }
     func attachIfPossible() {
         guard isStarted else { return }

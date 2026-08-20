@@ -40,7 +40,7 @@ class MediaFileTransferServiceTest {
 
         val (destination, stats) =
             service.fetch(
-                ticketText = "aa".repeat(32),
+                ticketText = "ticket-text",
                 manifest =
                 manifest(
                     blobHash = "../tickets/../../remote\\blob",
@@ -57,7 +57,7 @@ class MediaFileTransferServiceTest {
         assertTrue(fetchedDestination.name.endsWith(".jpg"))
         assertEquals(1, backend.fetchCalls)
         assertEquals(42L, backend.fetchedExpectedSizeBytes)
-        assertEquals("ab".repeat(32), stats.blake3Hash)
+        assertEquals("hash", stats.blake3Hash)
     }
 
     @Test
@@ -68,7 +68,7 @@ class MediaFileTransferServiceTest {
         val error =
             runCatching {
                 service.fetch(
-                    ticketText = "aa".repeat(32),
+                    ticketText = "ticket-text",
                     manifest = manifest(blobHash = "   ", filename = "photo.png"),
                 )
             }.exceptionOrNull()
@@ -85,7 +85,7 @@ class MediaFileTransferServiceTest {
         val error =
             runCatching {
                 service.fetch(
-                    ticketText = "aa".repeat(32),
+                    ticketText = "ticket-text",
                     manifest = manifest(blobHash = "blob-hash", filename = "photo\u0000.png"),
                 )
             }.exceptionOrNull()
@@ -102,7 +102,7 @@ class MediaFileTransferServiceTest {
         val error =
             runCatching {
                 service.fetch(
-                    ticketText = "aa".repeat(32),
+                    ticketText = "ticket-text",
                     manifest = manifest(blobHash = "blob-hash", filename = "photo.png", size = -1),
                 )
             }.exceptionOrNull()
@@ -119,7 +119,7 @@ class MediaFileTransferServiceTest {
         val error =
             runCatching {
                 service.fetch(
-                    ticketText = "aa".repeat(32),
+                    ticketText = "ticket-text",
                     manifest =
                     manifest(
                         blobHash = "blob-hash",
@@ -172,7 +172,7 @@ class MediaFileTransferServiceTest {
             )
         }
 
-        override suspend fun publishBlob(localPath: String): String = "aa".repeat(32)
+        override suspend fun publishBlob(localPath: String): String = "ticket-text"
 
         override suspend fun fetchBlob(ticketText: String, destination: String, expectedSizeBytes: Long?): BlobTransferStats {
             fetchCalls += 1
@@ -180,7 +180,7 @@ class MediaFileTransferServiceTest {
             fetchedExpectedSizeBytes = expectedSizeBytes
             return BlobTransferStats(
                 bytesTotal = 42,
-                blake3Hash = "ab".repeat(32),
+                blake3Hash = "hash",
                 durationMillis = 5,
                 didResume = false,
             )

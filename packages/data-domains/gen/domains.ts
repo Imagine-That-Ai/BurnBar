@@ -144,10 +144,7 @@ export const DATA_DOMAINS: readonly DataDomain[] = [
       "agent_identities",
       "subscription_topics",
       "ai_inbox_items",
-      "ai_inbox_item_state",
-      "burnbar_attachments",
-      "mission_approval_answers",
-      "mission_approval_ceilings"
+      "ai_inbox_item_state"
     ],
     "signalSealedCollections": [
       "conversations",
@@ -161,9 +158,7 @@ export const DATA_DOMAINS: readonly DataDomain[] = [
       "agent_identities",
       "subscription_topics"
     ],
-    "storagePaths": [
-      "burnbar_attachments/{id}"
-    ],
+    "storagePaths": [],
     "countSource": "chat_threads",
     "byteSource": null,
     "retention": "until_deleted",

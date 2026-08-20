@@ -187,9 +187,6 @@ final class MissionRemoteAuthorizationParityTests: XCTestCase {
             ),
             approvalMode: row.approvalMode,
             approvalStatus: row.approvalStatus,
-            approverDeviceID: (row.approvalStatus ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "approved"
-                ? "phone-1"
-                : nil,
             entitlementTier: "advisory-only",
             requestedFanOutCount: row.fanOut,
             trustedFanOutCap: row.cap

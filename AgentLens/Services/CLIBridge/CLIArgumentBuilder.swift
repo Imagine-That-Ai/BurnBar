@@ -119,46 +119,6 @@ enum CLIArgumentBuilder {
         return claudeArguments(prompt: prompt, model: model, capabilityGrant: capabilityGrant)
     }
 
-    /// `grok agent stdio` — ACP. Do not emit `--prompt-file`, `--always-approve`,
-    /// or `--permission-mode auto|dontAsk|bypassPermissions`.
-    static func grokACPArguments() -> [String] {
-        ["agent", "stdio"]
-    }
-
-    /// `kimi acp`. Do not emit `-p`, `--yolo`, or `--auto`.
-    static func kimiACPArguments() -> [String] {
-        ["acp"]
-    }
-
-    static func forbiddenLaunchFlags(in arguments: [String]) -> [String] {
-        let banned = [
-            "--always-approve",
-            "--yolo",
-            "-y",
-            "--auto",
-            "--dangerously-skip-permissions",
-            "--approval-mode=yolo",
-            "allow_always"
-        ]
-        var hits: [String] = []
-        for (index, arg) in arguments.enumerated() {
-            if banned.contains(arg) { hits.append(arg) }
-            if arg == "--permission-mode", index + 1 < arguments.count {
-                let mode = arguments[index + 1]
-                if ["auto", "dontAsk", "bypassPermissions", "yolo"].contains(mode) {
-                    hits.append("\(arg) \(mode)")
-                }
-            }
-            if arg == "--approval-mode", index + 1 < arguments.count, arguments[index + 1] == "yolo" {
-                hits.append("--approval-mode yolo")
-            }
-            if arg == "--prompt-file" {
-                hits.append(arg)
-            }
-        }
-        return hits
-    }
-
     static func droidArguments(
         prompt: String,
         model: String = "",

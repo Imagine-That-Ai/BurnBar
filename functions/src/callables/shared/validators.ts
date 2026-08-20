@@ -301,17 +301,6 @@ export function requireRoamingProfileEnvelope(raw: unknown, uid: unknown): Recor
   return requireCloudVaultSealedPayload(raw, "sealedPayload", roamingProfileAADContext(uid));
 }
 
-export function requirePathBoundCloudVaultSealedPayload(
-  raw: unknown,
-  uid: unknown,
-  collection: unknown,
-  docID: unknown,
-  field: unknown,
-): Record<string, unknown> {
-  const expected = cloudVaultAADContext(uid, collection, docID, field);
-  return requireCloudVaultSealedPayload(raw, String(field ?? "sealedPayload"), expected);
-}
-
 function requireISODateString(raw: unknown, fieldName: string): string {
   const value = boundedTrimmedString(raw, fieldName, 64, true);
   const parsed = Date.parse(value);

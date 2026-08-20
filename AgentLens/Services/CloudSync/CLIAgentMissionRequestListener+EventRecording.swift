@@ -93,7 +93,7 @@ extension CLIAgentMissionRequestListener {
     }
 
     func recordEvent(
-        reference _: DocumentReference,
+        reference: DocumentReference,
         requestID: String,
         phase: String,
         kind: String,
@@ -107,7 +107,7 @@ extension CLIAgentMissionRequestListener {
     ) async {
         let trimmed = CLIAgentMissionEventFactory.redactSecrets(message.trimmingCharacters(in: .whitespacesAndNewlines))
         guard !trimmed.isEmpty else { return }
-        let nextSequence = (missionEventSequences[requestID] ?? 1) + 1
+        let nextSequence = (missionEventSequences[requestID] ?? 0) + 1
         missionEventSequences[requestID] = nextSequence
         let event = CLIAgentMissionEventFactory.event(
             sequence: nextSequence,
@@ -122,17 +122,31 @@ extension CLIAgentMissionRequestListener {
             isError: isError
         )
         do {
-            guard let uid = accountManager.currentUID, let handle = claimedMissions[requestID] else { return }
+            guard let uid = accountManager.currentUID else { return }
+            try await reference.setData(
+                try await sealedStateUpdate(
+                    uid: uid,
+                    requestID: requestID,
+                    payload: [
+                        "lastEventSequence": nextSequence,
+                        "updatedAt": FieldValue.serverTimestamp()
+                    ],
+                    liveSummary: trimmed.prefix(600).description
+                ),
+                merge: true
+            )
             let eventID = CLIAgentMissionEventFactory.eventID(for: nextSequence)
             let key = try await missionVaultKey(uid: uid)
-            let sealed = try CLIAgentMissionEventFactory.sealedEvent(
-                event, uid: uid, requestID: requestID, eventID: eventID, vaultKey: key.keyData, vaultKeyID: key.vaultKeyID
-            )
-            guard let sealedEvent = sealed["sealedPayload"] as? [String: Any] else { return }
-            try await ComputerUseSecurityCallableClient.appendCliAgentMissionEvent(
-                requestId: requestID, deviceId: handle.deviceId, hostWriteNonce: handle.hostWriteNonce, eventId: eventID,
-                sealedEvent: sealedEvent,
-                publicEventShape: ["sequence": nextSequence, "kind": kind, "phase": phase, "runtime": backend?.rawValue ?? "hermes", "source": "mac", "isError": isError]
+            try await reference.collection("events").document(eventID).setData(
+                try CLIAgentMissionEventFactory.sealedEvent(
+                    event,
+                    uid: uid,
+                    requestID: requestID,
+                    eventID: eventID,
+                    vaultKey: key.keyData,
+                    vaultKeyID: key.vaultKeyID
+                ),
+                merge: false
             )
         } catch {
             logger.warning("mission event update failed: \(error.localizedDescription, privacy: .public)")

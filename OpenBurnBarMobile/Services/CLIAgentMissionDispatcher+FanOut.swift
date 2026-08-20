@@ -134,10 +134,18 @@ extension CLIAgentMissionDispatcher {
             vaultKeyID: resolvedKey.vaultKeyID
         )
         batch.setData(groupPayload, forDocument: groupRef, merge: false)
-        try await batch.commit()
 
-        let deviceId = await MainActor.run { MobileDeviceIdentity.loadOrCreateDeviceId() }
-        var leaves: [[String: Any]] = []
+        // Signal children are persisted through the `writeSignalAtRestDocument`
+        // callable (Firestore rules deny direct `signalEnvelope` writes on
+        // `cli_agent_mission_requests`), which cannot join the client batch.
+        // Stage them here and run the callables ONLY AFTER the group + events
+        // batch commits, so a Mac listener can never claim a child while its
+        // parent group and initial event exist only in an uncommitted batch,
+        // and a batch failure leaves nothing behind.
+        var stagedSignalChildren: [(missionID: String, payload: NSDictionary)] = []
+
+        // Child missions: each gets the existing payload plus group hints +
+        // optional persona scope.
         for (index, runtimeToken) in runtimeTokens.enumerated() {
             let missionID = childMissionIDs[index]
             let personaScopeJSON = try personaScopeByRuntime[runtimeToken]?.jsonString()
@@ -187,6 +195,11 @@ extension CLIAgentMissionDispatcher {
                         resolvedKey: resolvedKey
                     ) {
                         payload["signalEnvelope"] = envelope
+                        if signalState == .required {
+                            for key in ["contentSealed", "sealedSchemaVersion", "vaultKeyID", "sealedPayload"] {
+                                payload.removeValue(forKey: key)
+                            }
+                        }
                     }
                 } catch {
                     if signalState == .required { throw error }
@@ -197,41 +210,68 @@ extension CLIAgentMissionDispatcher {
                 state: signalState,
                 domainID: "conversations_chat"
             )
-            let initialEvent = try CLIAgentMissionRequestPayloadFactory.initialQueuedEventSealed(
-                sourceSkillID: sourceSkillID,
-                deliveryMode: deliveryMode,
-                now: Date(),
-                uid: uid,
-                requestID: missionID,
-                eventID: "000001",
-                vaultKey: resolvedKey.keyData,
-                vaultKeyID: resolvedKey.vaultKeyID
-            )
-            leaves.append(
-                CLIAgentMissionRequestPayloadFactory.createLeafPayload(
-                    requestId: missionID,
-                    remoteCommandID: missionID,
-                    deviceId: deviceId,
-                    payload: payload,
-                    initialEvent: initialEvent
+            let requestRef = db
+                .collection("users").document(uid)
+                .collection("cli_agent_mission_requests").document(missionID)
+            let signalWrite = signalState != .off && payload["signalEnvelope"] != nil
+            if signalWrite {
+                var callablePayload = payload
+                callablePayload["updatedAt"] = ISO8601DateFormatter().string(from: Date())
+                stagedSignalChildren.append((missionID: missionID, payload: callablePayload as NSDictionary))
+            } else {
+                batch.setData(
+                    payload,
+                    forDocument: requestRef,
+                    merge: false
                 )
+            }
+            batch.setData(
+                try CLIAgentMissionRequestPayloadFactory.initialQueuedEventSealed(
+                    sourceSkillID: sourceSkillID,
+                    deliveryMode: deliveryMode,
+                    now: Date(),
+                    uid: uid,
+                    requestID: missionID,
+                    eventID: "000001",
+                    vaultKey: resolvedKey.keyData,
+                    vaultKeyID: resolvedKey.vaultKeyID
+                ),
+                forDocument: requestRef.collection("events").document("000001"),
+                merge: false
             )
         }
 
+        try await batch.commit()
+
+        // Persist Signal children only after the group + initial events are
+        // durable. If a callable fails mid-way, compensate by marking the
+        // already-committed group cancelled (best-effort) so the fan-out is
+        // visibly terminal instead of silently waiting on children that will
+        // never arrive. The callable accepts the complete child set and commits
+        // it in one server-side batch, so no partial child set can be exposed.
         do {
-            for chunk in stride(from: 0, to: leaves.count, by: 16) {
-                let slice = Array(leaves[chunk..<min(chunk + 16, leaves.count)])
-                guard var parent = slice.first else { continue }
-                if slice.count > 1 {
-                    parent["siblings"] = Array(slice.dropFirst())
-                }
-                _ = try await ComputerUseSecurityCallableClient.createCliAgentMission(
-                    payload: parent,
-                    deviceId: deviceId
-                )
+            if !stagedSignalChildren.isEmpty {
+                _ = try await Functions.functions()
+                    .httpsCallable("writeSignalAtRestDocument")
+                    .call([
+                        "documents": stagedSignalChildren.map { staged in
+                            [
+                                "collection": "cli_agent_mission_requests",
+                                "docId": staged.missionID,
+                                "data": staged.payload
+                            ]
+                        }
+                    ])
             }
         } catch {
             let cleanup = db.batch()
+            for staged in stagedSignalChildren {
+                cleanup.deleteDocument(
+                    db.collection("users").document(uid)
+                        .collection("cli_agent_mission_requests").document(staged.missionID)
+                        .collection("events").document("000001")
+                )
+            }
             cleanup.setData(
                 ["phase": MissionGroupPhase.cancelled.rawValue],
                 forDocument: groupRef,

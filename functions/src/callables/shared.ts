@@ -33,7 +33,6 @@ export {
   requireTokenHashes,
   requireOptionalSearchHashes,
   cloudVaultAADContext,
-  requirePathBoundCloudVaultSealedPayload,
   requireSealedText,
   optionalISODateString,
   requireBoundedStringArray,

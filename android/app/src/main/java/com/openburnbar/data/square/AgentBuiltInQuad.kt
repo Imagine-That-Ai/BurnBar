@@ -50,20 +50,6 @@ private val builtInQuads: Map<AssistantRuntimeID, AgentBuiltInQuad> =
                 capabilities = AgentCapabilities.FULL_CLI.union(AgentCapabilities.MEMORY).union(AgentCapabilities.MCP_UI),
                 transport = AgentDispatchTransport.MacRelay("openclaw"),
             ),
-        AssistantRuntimeID.OPEN_CLAUDE to
-            AgentBuiltInQuad(
-                paletteHex = "CC785C",
-                tagline = "OpenClaude via your Mac.",
-                capabilities = macCliCapabilities,
-                transport = AgentDispatchTransport.MacRelay("openclaude"),
-            ),
-        AssistantRuntimeID.OMP to
-            AgentBuiltInQuad(
-                paletteHex = "7C3AED",
-                tagline = "OMP via your Mac.",
-                capabilities = macCliCapabilities,
-                transport = AgentDispatchTransport.MacRelay("omp"),
-            ),
         AssistantRuntimeID.DROID to
             AgentBuiltInQuad(
                 paletteHex = "8B5CF6",

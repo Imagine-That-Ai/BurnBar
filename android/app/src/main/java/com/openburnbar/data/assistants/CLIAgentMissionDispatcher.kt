@@ -78,7 +78,6 @@ private data class AndroidMissionPrivatePayload(
     val approvalMessage: String? = null,
     val personaScopeJSON: String? = null,
     val synthesisSummary: String? = null,
-    val attachmentsJSON: String? = null,
 )
 
 @Serializable
@@ -91,31 +90,23 @@ private data class AndroidMissionEventPrivatePayload(
     val changedFilePath: String? = null,
 )
 
-private fun sealedMissionPayloadMap(
-    payload: AndroidMissionPrivatePayload,
-    key: AndroidCloudVaultResolvedKey,
-    aadContext: CloudVaultAADContext? = null,
-): Map<String, Any> = CloudVaultCrypto.sealedPayloadMap(
-    CloudVaultCrypto.sealPayload(
-        missionCloudJson.encodeToString(payload).toByteArray(Charsets.UTF_8),
-        key.keyData,
-        key.vaultKeyID,
-        aadContext,
-    ),
-)
+private fun sealedMissionPayloadMap(payload: AndroidMissionPrivatePayload, key: AndroidCloudVaultResolvedKey): Map<String, Any> =
+    CloudVaultCrypto.sealedPayloadMap(
+        CloudVaultCrypto.sealPayload(
+            missionCloudJson.encodeToString(payload).toByteArray(Charsets.UTF_8),
+            key.keyData,
+            key.vaultKeyID,
+        ),
+    )
 
-private fun sealedMissionEventPayloadMap(
-    payload: AndroidMissionEventPrivatePayload,
-    key: AndroidCloudVaultResolvedKey,
-    aadContext: CloudVaultAADContext? = null,
-): Map<String, Any> = CloudVaultCrypto.sealedPayloadMap(
-    CloudVaultCrypto.sealPayload(
-        missionCloudJson.encodeToString(payload).toByteArray(Charsets.UTF_8),
-        key.keyData,
-        key.vaultKeyID,
-        aadContext,
-    ),
-)
+private fun sealedMissionEventPayloadMap(payload: AndroidMissionEventPrivatePayload, key: AndroidCloudVaultResolvedKey): Map<String, Any> =
+    CloudVaultCrypto.sealedPayloadMap(
+        CloudVaultCrypto.sealPayload(
+            missionCloudJson.encodeToString(payload).toByteArray(Charsets.UTF_8),
+            key.keyData,
+            key.vaultKeyID,
+        ),
+    )
 
 // RR-8 path-bound AAD contexts. These MUST match the Swift writers/readers in
 // AgentLens/Services/CloudSync/CLIAgentMissionRequestListener.swift +
@@ -129,29 +120,10 @@ private fun missionRequestAadContext(uid: String?, requestID: String): CloudVaul
     }.getOrNull()
 }
 
-internal fun missionStateAadContext(uid: String?, requestID: String): CloudVaultAADContext? = uid?.let {
+private fun missionStateAadContext(uid: String?, requestID: String): CloudVaultAADContext? = uid?.let {
     runCatching {
         CloudVaultAADContext(uid = it, collection = "cli_agent_mission_requests", docID = requestID, field = "sealedStatePayload")
     }.getOrNull()
-}
-
-/** Sealed-state map sent on `cancelCliAgentMission` (path-bound AAD on `.aad`). */
-internal fun cancelCallableSealedStatePayload(
-    uid: String,
-    requestID: String,
-    vaultKey: ByteArray,
-    vaultKeyID: String = CloudVaultCrypto.vaultKeyID(vaultKey),
-): Map<String, Any> {
-    val ctx = missionStateAadContext(uid, requestID)
-    val sealed = CloudVaultCrypto.sealPayload(
-        missionCloudJson.encodeToString(
-            AndroidMissionPrivatePayload(liveSummary = "Mission cancelled by user."),
-        ).toByteArray(Charsets.UTF_8),
-        vaultKey,
-        vaultKeyID,
-        ctx,
-    )
-    return CloudVaultCrypto.sealedPayloadMap(sealed)
 }
 
 private fun missionEventAadContext(uid: String?, requestID: String?, eventID: String?): CloudVaultAADContext? =
@@ -197,7 +169,6 @@ private suspend fun sealedMissionStateUpdate(
     errorMessage: String? = null,
     approvalTitle: String? = null,
     approvalMessage: String? = null,
-    requestID: String? = null,
 ): Map<String, Any> {
     val key = AndroidCloudVaultKeyAccess.keyForWriting(uid = uid, firestore = firestore)
     val sanitized = payload.toMutableMap()
@@ -213,11 +184,7 @@ private suspend fun sealedMissionStateUpdate(
     sanitized["contentSealed"] = true
     sanitized["sealedStateSchemaVersion"] = 1
     sanitized["sealedStateVaultKeyID"] = key.vaultKeyID
-    sanitized["sealedStatePayload"] = sealedMissionPayloadMap(
-        privatePayload,
-        key,
-        requestID?.let { missionStateAadContext(uid, it) },
-    )
+    sanitized["sealedStatePayload"] = sealedMissionPayloadMap(privatePayload, key)
     return sanitized
 }
 
@@ -332,7 +299,7 @@ class CLIAgentMissionDispatcher(
         if (fanOutSignal != null && runtimeTokens.size > 100) {
             throw DispatchException("Signal fan-out supports at most 100 agents per dispatch.")
         }
-        val leaves = buildFanOutChildLeaves(
+        val signalWrites = appendFanOutChildMissionWrites(
             FanOutChildWriteRequest(
                 batch = batch,
                 firestore = firestore,
@@ -355,32 +322,9 @@ class CLIAgentMissionDispatcher(
                 signalRecipients = fanOutSignal?.otherRecipients ?: emptyList(),
             ),
         )
-        batch.commit().await()
-        val deviceId = AndroidCloudVaultDeviceKeypair.loadOrCreate().deviceId
-        try {
-            createMissionLeaves(leaves, deviceId)
-        } catch (error: Exception) {
-            runCatching {
-                groupRef.set(
-                    mapOf("phase" to "failed", "updatedAt" to FieldValue.serverTimestamp()),
-                    SetOptions.merge(),
-                ).await()
-            }
-            throw DispatchException("Fan-out createCliAgentMission failed: ${error.message ?: "callable failed"}", error)
-        }
-        return FanOutDispatchResult(groupID = plan.groupID, childMissionIDs = plan.childMissionIDs)
-    }
 
-    private suspend fun createMissionLeaves(leaves: List<MissionCreateLeaf>, deviceId: String) {
-        if (leaves.isEmpty()) return
-        leaves.chunked(16).forEach { chunk ->
-            val parent = chunk.first()
-            val payload = parent.toCallableMap(deviceId).toMutableMap()
-            if (chunk.size > 1) {
-                payload["siblings"] = chunk.drop(1).map { it.toCallableMap(deviceId) }
-            }
-            securityClient.createCliAgentMission(payload, deviceId)
-        }
+        commitFanOutWrites(uid = uid, groupRef = groupRef, batch = batch, signalWrites = signalWrites)
+        return FanOutDispatchResult(groupID = plan.groupID, childMissionIDs = plan.childMissionIDs)
     }
 
     private fun requireSignedInUid(): String = auth.currentUser?.uid
@@ -437,14 +381,12 @@ class CLIAgentMissionDispatcher(
         deliveryMode: SkillRunDeliveryMode = SkillRunDeliveryMode.ACTION_ONLY,
         parentHermesThreadID: String? = null,
         presentationMode: CLIAgentChatPresentationMode = CLIAgentChatPresentationMode.NATIVE_CHAT,
-        remoteCommandID: String? = null,
     ): String {
         val uid = requireSignedInUid()
         val trimmedPrompt = prompt.trim()
         if (trimmedPrompt.isBlank()) throw DispatchException("Mission prompt was empty.")
 
         val id = UUID.randomUUID().toString()
-        val commandId = remoteCommandID?.trim()?.takeIf { it.isNotEmpty() } ?: id
         val resolvedKey = AndroidCloudVaultKeyAccess.keyForWriting(uid = uid, firestore = firestore)
         val signalContext = resolveSignalContext(uid = uid, docId = id)
         val payloadInput =
@@ -468,36 +410,28 @@ class CLIAgentMissionDispatcher(
                 input = payloadInput,
                 key = resolvedKey,
                 signal = signalContext,
-                uid = uid,
             )
-        if (signalContext != null && payload["signalEnvelope"] == null) {
+        val signalWrite = signalCallablePayload(payload)
+        if (signalContext != null && signalWrite == null) {
             throw DispatchException("Signal at-rest activation produced no mission envelope for $id.")
         }
-        val sealed = payload["sealedPayload"] as? Map<*, *>
-            ?: throw DispatchException("Mission payload is missing sealedPayload.")
-        val event = dispatchQueuedEventSealed(
-            missionKind,
-            sourceSurface,
-            sourceSkillID,
-            deliveryMode,
-            resolvedKey,
-            uid = uid,
-            requestID = id,
-        )
-        val initialEvent = event["sealedPayload"] as? Map<*, *> ?: event
-        val deviceId = AndroidCloudVaultDeviceKeypair.loadOrCreate().deviceId
-        val createPayload = linkedMapOf<String, Any>(
-            "requestId" to id,
-            "remoteCommandID" to commandId,
-            "deviceId" to deviceId,
-            "publicFields" to publicFieldsForCreate(payload, id),
-            "sealedPayload" to mapAny(sealed),
-            "initialEvent" to mapAny(initialEvent),
-        )
-        (payload["signalEnvelope"] as? Map<*, *>)?.let { envelope ->
-            createPayload["signalEnvelope"] = mapAny(envelope)
+        val requestRef =
+            firestore.collection("users").document(uid)
+                .collection("cli_agent_mission_requests").document(id)
+        firestore.batch()
+            .apply {
+                if (signalWrite == null) set(requestRef, payload)
+            }
+            .set(
+                requestRef.collection("events").document("000001"),
+                dispatchQueuedEventSealed(missionKind, sourceSurface, sourceSkillID, deliveryMode, resolvedKey),
+            )
+            .commit()
+            .await()
+        if (signalWrite != null) {
+            commitSignalMissionWrite(requestRef = requestRef, missionID = id, payload = signalWrite)
         }
-        return securityClient.createCliAgentMission(createPayload, deviceId)
+        return id
     }
 
     private fun dispatchQueuedEventSealed(
@@ -506,8 +440,6 @@ class CLIAgentMissionDispatcher(
         sourceSkillID: String?,
         deliveryMode: SkillRunDeliveryMode,
         key: AndroidCloudVaultResolvedKey,
-        uid: String,
-        requestID: String,
     ): Map<String, Any> {
         val isChat = missionKind.trim().equals("chat", ignoreCase = true)
         return CLIAgentMissionRequestPayloadFactory.initialQueuedEventSealed(
@@ -518,9 +450,6 @@ class CLIAgentMissionDispatcher(
             sourceSkillID = sourceSkillID,
             deliveryMode = deliveryMode,
             key = key,
-            uid = uid,
-            requestID = requestID,
-            eventID = "000001",
         )
     }
 
@@ -678,65 +607,26 @@ class CLIAgentMissionDispatcher(
             approve = approve,
             deviceId = deviceId,
         )
-        if (approve) {
-            val uid = auth.currentUser?.uid ?: return
-            val ceiling =
-                firestore.collection("users").document(uid)
-                    .collection("mission_approval_ceilings").document(requestID)
-                    .get()
-                    .await()
-            val digest = ceiling.getString("ceilingDigest").orEmpty()
-            if (digest.isNotEmpty()) {
-                val canonical = ceiling.get("canonical")
-                val grantCeiling = if (canonical is Map<*, *>) canonical["grantCeiling"] else null
-                val additionalCapabilities = buildList {
-                    val additionalRaw =
-                        if (grantCeiling is Map<*, *>) grantCeiling["additionalCapabilities"] else null
-                    if (additionalRaw is List<*>) {
-                        for (item in additionalRaw) {
-                            if (item is String) add(item)
-                        }
-                    }
-                }
-                val requestedGrant =
-                    mapOf(
-                        "commandsAllowed" to (grantCeiling is Map<*, *> && grantCeiling["commandsAllowed"] == true),
-                        "fileEditsAllowed" to (grantCeiling is Map<*, *> && grantCeiling["fileEditsAllowed"] == true),
-                        "additionalCapabilities" to additionalCapabilities,
-                    )
-                securityClient.redeemMissionApprovalAnswer(
-                    requestId = requestID,
-                    deviceId = deviceId,
-                    ceilingDigest = digest,
-                    requestedGrant = requestedGrant,
-                )
-            }
-        }
     }
 
     suspend fun cancelMission(requestID: String) {
         val uid = auth.currentUser?.uid ?: throw DispatchException("Sign in before cancelling Mac agent missions.")
-        val requestRef =
-            firestore.collection("users").document(uid)
-                .collection("cli_agent_mission_requests").document(requestID)
-        val snapshot = requestRef.get().await()
-        val status = snapshot.getString("status").orEmpty()
-        if (status in setOf("completed", "failed", "canceled", "cancelled", "unauthorized", "agent_launch_failed")) {
-            return
-        }
-        val key = AndroidCloudVaultKeyAccess.keyForWriting(uid = uid, firestore = firestore)
-        val sealedState = cancelCallableSealedStatePayload(
-            uid = uid,
-            requestID = requestID,
-            vaultKey = key.keyData,
-            vaultKeyID = key.vaultKeyID,
-        )
-        val deviceId = AndroidCloudVaultDeviceKeypair.loadOrCreate().deviceId
-        securityClient.cancelCliAgentMission(
-            requestId = requestID,
-            deviceId = deviceId,
-            sealedStatePayload = sealedState,
-        )
+        firestore.collection("users").document(uid)
+            .collection("cli_agent_mission_requests").document(requestID)
+            .set(
+                sealedMissionStateUpdate(
+                    uid = uid,
+                    firestore = firestore,
+                    payload =
+                    mapOf(
+                        "status" to "cancelled",
+                        "updatedAt" to FieldValue.serverTimestamp(),
+                    ),
+                    liveSummary = "Mission cancelled by user.",
+                ),
+                com.google.firebase.firestore.SetOptions.merge(),
+            )
+            .await()
     }
 
     suspend fun createImportJob(selectedHarnesses: List<String>, source: String = "android-import"): String {
@@ -860,16 +750,13 @@ object CLIAgentMissionRequestPayloadFactory {
         val permissions: Permissions,
         val metadata: Metadata = Metadata(),
         val experience: Experience = Experience(),
-        val attachmentsJSON: String? = null,
         val now: Instant = Instant.now(),
     )
 
-    fun buildSealed(input: PayloadInput, key: AndroidCloudVaultResolvedKey, signal: CLISignalSealContext? = null, uid: String? = null): Map<String, Any> {
+    fun buildSealed(input: PayloadInput, key: AndroidCloudVaultResolvedKey, signal: CLISignalSealContext? = null): Map<String, Any> {
         val legacy = build(input)
         val core = input.core
         val isChat = core.missionKind.trim().equals("chat", ignoreCase = true)
-        val aadUid = uid ?: signal?.uid
-        val aadDoc = signal?.docId ?: core.id
         return applySealedPrivatePayload(
             payload = legacy,
             privatePayload =
@@ -883,11 +770,9 @@ object CLIAgentMissionRequestPayloadFactory {
                 } else {
                     "Mission queued from this device. Waiting for the signed-in Mac agent listener to claim it."
                 },
-                attachmentsJSON = input.attachmentsJSON,
             ),
             key = key,
             signal = signal,
-            aadContext = missionRequestAadContext(aadUid, aadDoc),
         )
     }
 
@@ -984,9 +869,6 @@ object CLIAgentMissionRequestPayloadFactory {
         skillStepID: String = "queued",
         now: Instant = Instant.now(),
         key: AndroidCloudVaultResolvedKey,
-        uid: String? = null,
-        requestID: String? = null,
-        eventID: String = "000001",
     ): Map<String, Any> {
         val legacy =
             initialQueuedEvent(
@@ -1012,11 +894,7 @@ object CLIAgentMissionRequestPayloadFactory {
         sealed["contentSealed"] = true
         sealed["sealedSchemaVersion"] = 2
         sealed["vaultKeyID"] = key.vaultKeyID
-        sealed["sealedPayload"] = sealedMissionEventPayloadMap(
-            privatePayload,
-            key,
-            missionEventAadContext(uid, requestID, eventID),
-        )
+        sealed["sealedPayload"] = sealedMissionEventPayloadMap(privatePayload, key)
         return sealed
     }
 
@@ -1025,7 +903,6 @@ object CLIAgentMissionRequestPayloadFactory {
         privatePayload: AndroidMissionPrivatePayload,
         key: AndroidCloudVaultResolvedKey,
         signal: CLISignalSealContext? = null,
-        aadContext: CloudVaultAADContext? = null,
     ): Map<String, Any> {
         val sealed = payload.toMutableMap()
         listOf(
@@ -1043,7 +920,7 @@ object CLIAgentMissionRequestPayloadFactory {
         sealed["contentSealed"] = true
         sealed["sealedSchemaVersion"] = 2
         sealed["vaultKeyID"] = key.vaultKeyID
-        sealed["sealedPayload"] = sealedMissionPayloadMap(privatePayload, key, aadContext)
+        sealed["sealedPayload"] = sealedMissionPayloadMap(privatePayload, key)
         if (signal != null) {
             // Dual-write the at-rest Signal envelope (same plaintext bytes as the AES-GCM
             // seal above). Gated: signalEnvelopeMapIfEnabled returns null when the domain

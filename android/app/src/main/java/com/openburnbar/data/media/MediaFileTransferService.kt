@@ -130,11 +130,10 @@ class MediaFileTransferService(
             }
 
         val mime = inferMime(localFile)
-        val blobHash = ContentBlake3.hashFile(localFile)
         val manifest =
             HermesRealtimeRelayAttachmentManifest(
                 manifestId = "att_" + UUID.randomUUID().toString().lowercase(),
-                blobHash = blobHash,
+                blobHash = ticketText,
                 filename = localFile.name,
                 mime = mime,
                 size = localFile.length(),

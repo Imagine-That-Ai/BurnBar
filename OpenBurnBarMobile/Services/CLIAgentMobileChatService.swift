@@ -237,12 +237,12 @@ final class CLIAgentMobileChatService {
 
     private func shouldFallBackToMission(afterRelayError error: Error) -> Bool {
         let lower = error.localizedDescription.lowercased()
-        if lower.contains("timeout") || lower.contains("timed out") || lower.contains("already responding")
+        if lower.contains("already responding")
             || lower.contains("unsupported runtime")
             || lower.contains("cannot send an empty") {
             return false
         }
-        return lower.contains("not connected") || lower.contains("mac offline") || lower.contains("offline")
+        return true
     }
 
     func isStreamingMessage(_ id: String) -> Bool {

@@ -289,9 +289,7 @@
         "kotlin": "android/app/src/main/java/com/openburnbar/data/models/generated/MissionModels.kt"
       },
       "tspOnlyModels": [
-        "ApprovalPolicyDoc",
-        "MissionRuntimeCatalogRow",
-        "BurnbarAttachmentDoc"
+        "ApprovalPolicyDoc"
       ],
       "csharpHandMirror": [
         {

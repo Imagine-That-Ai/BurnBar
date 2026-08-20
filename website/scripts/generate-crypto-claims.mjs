@@ -157,18 +157,13 @@ if (
     'Firestore rules tests no longer prove exact-path signalEnvelope gating (relocation/pollution rejection) on wired collections — "wired in" is unbacked'
   );
 }
-const missionCallable = [
-  readFileSync(join(REPO_ROOT, "functions", "src", "callables", "cliAgentMissions.ts"), "utf8"),
-  readFileSync(join(REPO_ROOT, "functions", "src", "callables", "cliAgentMissionsSupport.ts"), "utf8"),
-].join("\n");
-const retiredMissionWrite = readFileSync(
+const missionCallable = readFileSync(
   join(REPO_ROOT, "functions", "src", "callables", "writeSignalAtRestDocument.ts"),
   "utf8"
 );
 if (
   !missionCallable.includes("assertSignalAtRestEnvelopeForWrite") ||
-  !missionCallable.includes("cli_agent_mission_requests") ||
-  !retiredMissionWrite.includes("cli_agent_mission_requests")
+  !missionCallable.includes("cli_agent_mission_requests")
 ) {
   fail(
     'the mission callable boundary no longer deep-validates cli_agent_mission_requests signalEnvelope writes — "wired in" is unbacked'

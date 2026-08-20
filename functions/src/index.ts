@@ -76,26 +76,6 @@ export {
   reapHermesGatewayApprovals,
 } from "./callables/hermesGateway.js";
 export { writeSignalAtRestDocument } from "./callables/writeSignalAtRestDocument.js";
-export {
-  createCliAgentMission,
-  claimCliAgentMission,
-  updateCliAgentMissionStatus,
-  cancelCliAgentMission,
-  appendCliAgentMissionEvent,
-} from "./callables/cliAgentMissions.js";
-export { reapBurnbarAttachments } from "./scheduled/reapBurnbarAttachments.js";
-export {
-  beginBurnbarAttachment,
-  mintBurnbarAttachmentPartURL,
-  composeBurnbarAttachment,
-  finalizeBurnbarAttachment,
-  ticketBurnbarAttachmentDownload,
-  deleteBurnbarAttachment,
-} from "./callables/burnbarAttachments.js";
-export {
-  publishMissionApprovalCeiling,
-  redeemMissionApprovalAnswer,
-} from "./callables/missionApprovalAnswers.js";
 
 export {
   createPiAgentPairing,

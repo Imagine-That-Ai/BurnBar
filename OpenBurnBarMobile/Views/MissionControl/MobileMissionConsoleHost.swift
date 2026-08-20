@@ -162,7 +162,6 @@ final class MobileMissionConsoleHost: MissionConsoleHost {
     }
 
     func cancelMission(id: String) async {
-        if let snapshot = observedMissions[id], snapshot.isTerminal { return }
         do {
             try await CLIAgentMissionDispatcher.shared.cancelMission(requestID: id)
         } catch {

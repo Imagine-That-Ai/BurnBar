@@ -2,7 +2,6 @@ import FirebaseAuth
 import FirebaseCore
 import FirebaseFirestore
 import Foundation
-import OpenBurnBarComputerUseCore
 import OpenBurnBarCore
 import OpenBurnBarSignalCore
 import os
@@ -23,7 +22,6 @@ struct CLIAgentMissionPrivatePayload: Codable {
     var approvalMessage: String?
     var personaScopeJSON: String?
     var synthesisSummary: String?
-    var attachments: [CLIAgentMissionAttachmentRef]?
 
     init(
         title: String? = nil,
@@ -35,8 +33,7 @@ struct CLIAgentMissionPrivatePayload: Codable {
         approvalTitle: String? = nil,
         approvalMessage: String? = nil,
         personaScopeJSON: String? = nil,
-        synthesisSummary: String? = nil,
-        attachments: [CLIAgentMissionAttachmentRef]? = nil
+        synthesisSummary: String? = nil
     ) {
         self.title = title
         self.prompt = prompt
@@ -48,7 +45,6 @@ struct CLIAgentMissionPrivatePayload: Codable {
         self.approvalMessage = approvalMessage
         self.personaScopeJSON = personaScopeJSON
         self.synthesisSummary = synthesisSummary
-        self.attachments = attachments
     }
 }
 

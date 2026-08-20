@@ -63,8 +63,6 @@ object ProviderLogo {
         AgentProvider.GEMINI_CLI -> R.drawable.logo_gemini_cli
         AgentProvider.GOOSE -> R.drawable.goose_logo
         AgentProvider.OPEN_CLAW -> R.drawable.logo_openclaw
-        AgentProvider.OPEN_CLAUDE -> R.drawable.logo_claude_code
-        AgentProvider.OMP -> R.drawable.pi_agent_logo
         AgentProvider.OLLAMA -> R.drawable.logo_ollama
         AgentProvider.WINDSURF -> R.drawable.logo_windsurf
         AgentProvider.DEVIN -> R.drawable.logo_devin
@@ -85,8 +83,6 @@ object ProviderLogo {
         AssistantRuntimeID.CODEX -> R.drawable.logo_codex
         AssistantRuntimeID.CLAUDE -> R.drawable.logo_claude_code
         AssistantRuntimeID.OPEN_CLAW -> R.drawable.logo_openclaw
-        AssistantRuntimeID.OPEN_CLAUDE -> R.drawable.logo_claude_code
-        AssistantRuntimeID.OMP -> R.drawable.pi_runtime_glyph
         AssistantRuntimeID.DROID -> R.drawable.factory_logo
         AssistantRuntimeID.FORGE -> R.drawable.logo_forge
         AssistantRuntimeID.ANTIGRAVITY -> R.drawable.logo_antigravity

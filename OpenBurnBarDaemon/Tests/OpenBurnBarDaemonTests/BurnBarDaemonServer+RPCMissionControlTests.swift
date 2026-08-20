@@ -751,9 +751,6 @@ final class BurnBarDaemonServerRPCMissionControlTests: XCTestCase {
                 ),
                 approvalMode: approvalMode,
                 approvalStatus: approvalStatus,
-                approverDeviceID: (approvalStatus ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "approved"
-                    ? "iphone-trusted-1"
-                    : nil,
                 entitlementTier: "ultra",
                 requestedFanOutCount: fanOut
             )

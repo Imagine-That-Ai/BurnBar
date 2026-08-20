@@ -16,7 +16,6 @@ const baselinePath = path.join(repoRoot, "budgets/hand-maintained-ts-baseline.js
 
 const EXPORTED_DECLARATION_RE = /^\s*export\s+(interface|type)\s+\w+\b/;
 const generatedTypesDir = path.join(functionsSrc, "types", "generated");
-const generatedCatalogDir = path.join(functionsSrc, "generated");
 const nonSchemaSecurityDir = path.join(functionsSrc, "security");
 
 function walkTsFiles(dir, out = []) {
@@ -24,7 +23,6 @@ function walkTsFiles(dir, out = []) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {
       if (full === generatedTypesDir || full.startsWith(`${generatedTypesDir}${path.sep}`)) continue;
-      if (full === generatedCatalogDir || full.startsWith(`${generatedCatalogDir}${path.sep}`)) continue;
       if (full === nonSchemaSecurityDir || full.startsWith(`${nonSchemaSecurityDir}${path.sep}`)) continue;
       walkTsFiles(full, out);
       continue;

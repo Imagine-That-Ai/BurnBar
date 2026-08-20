@@ -19,7 +19,6 @@ internal data class MissionConsoleSnapshotParts(
 internal fun buildMissionConsoleSnapshotParts(
     orderedMissions: List<CLIAgentMissionSnapshot>,
     runtimeIDGuess: (String?) -> String?,
-    hiddenApprovalKeys: Set<String> = emptySet(),
 ): MissionConsoleSnapshotParts {
     val macOnline =
         orderedMissions.any { snap ->
@@ -29,12 +28,7 @@ internal fun buildMissionConsoleSnapshotParts(
         orderedMissions
             .filter { !it.isTerminal && !(it.displayStatus == "mac_offline" && macOnline) }
             .map { it.toActiveMission() }
-    val approvalAsks =
-        orderedMissions.mapNotNull { mission ->
-            val ask = mission.toApprovalAskOrNull() ?: return@mapNotNull null
-            val key = "${mission.id}|${mission.approvalRequestId.orEmpty()}"
-            if (key in hiddenApprovalKeys) null else ask
-        }
+    val approvalAsks = orderedMissions.mapNotNull { it.toApprovalAskOrNull() }
     val ticker = missionConsoleTickerEntries(orderedMissions, runtimeIDGuess)
     val knownProjects = orderedMissions.mapNotNull { it.targetProject?.takeIf { project -> project.isNotBlank() } }.distinct().take(MISSION_KNOWN_PROJECT_LIMIT)
     val daemonState =

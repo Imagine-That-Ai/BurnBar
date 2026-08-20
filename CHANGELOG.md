@@ -7,17 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Security
-- Mission create, claim, host status, cancel, and event append are server-owned
-  Admin-SDK callables. Client creates and host merges of
-  `cli_agent_mission_requests` are denied. The server trusts the attested Mac
-  and never re-evaluates daemon policy.
-- `burnbar_attachments` finalize-once against GCS generation, quotas from
-  `getMetadata`, and OBFS1 chunked AEAD with stored random 12-byte IVs.
-- Mac-signed mission pre-auth answers/ceilings; grok-bot input requires a peer
-  credential (uid/pid) or compared 0600 token bytes. Unauthenticated loopback
-  and non-loopback peers are rejected.
-
 ### Added
 - **Local D box (Developer ID, default off)** — Settings → Agents lists live Grok Bot D box agents by UUID and can send one a prompt over `127.0.0.1`. Send is refused unless shim `:1337`, host `:1338`, and inference `:8787` are up. Turn follow uses `listAgents` plus a read-only `store.db` window when the roster includes `path`. See [`docs/GROK_D_LOCAL_BOX.md`](docs/GROK_D_LOCAL_BOX.md).
 - **The Safari web extension is buildable again** (`docs/SAFARI_EXTENSION.md`) — the
@@ -30,26 +19,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `window.*` call in the service worker fails at compile time instead of silently
   truncating every streamed Ask answer, and CI asserts the built bundle stays free of
   `window.` references.
-- Catalog-generated mission runtime allowlists. Grok ACP, kimi ACP, and
-  Antigravity argv launch paths per `docs/decisions/2026-08-19-acp-vs-argv.md`.
-
-### Added (file plane)
-- OBFS1 chunked AEAD with stored random 12-byte IVs. Cloud attachments cap at
-  10GiB; P2P iroh landing stays 2GiB. Production GCS storage port; compose
-  cannot un-finalize. Mac landing requires a verified blake3 (never SHA-256
-  compared to contentBlake3).
-- Catalog-generated mission runtime allowlists; grok/kimi ACP stdio JSON-RPC
-  (not argv-only hang) and Antigravity argv per
-  `docs/decisions/2026-08-19-acp-vs-argv.md`.
-- Per-session `interrupt` distinct from Computer Use `panicHalt`, registered on
-  the live CLI/ACP process and wired from Agent Control.
-- Agent Control composer mounted on the live Computer Use maximize stage.
-
-### Known blockers
-- iOS Share Extension **appex target** is not in this train. The main app now
-  processes a share-inbox directory via `BurnbarShareInboxProcessor` and
-  `beginBurnbarAttachment`. Android `ACTION_SEND` copies then begins + chunked
-  PUT. Do not claim iOS share-extension-to-Drive ready.
 
 ### Fixed
 - The cloud screenshot disclosure is honored as a **session** acknowledgement again. It
@@ -68,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   access was rejected as a page change after Safari had already granted it.
 - The Safari extension version tracks `MARKETING_VERSION`; it had drifted to 1.0.34 while
   the app shipped 1.0.40, and all three version surfaces are now gated.
+
 
 ## [1.0.40] - 2026-08-18
 

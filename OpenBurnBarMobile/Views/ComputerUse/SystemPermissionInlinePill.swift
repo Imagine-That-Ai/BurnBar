@@ -27,15 +27,15 @@ public struct SystemPermissionInlinePill: View {
                         .frame(width: 28, height: 28)
                         .opacity(0.22)
                     Image(systemName: item.kind.sfSymbolName)
-                        .font(MobileScaledFont.system(size: 14, weight: .semibold, design: .rounded))
+                        .font(.system(size: 14, weight: .semibold, design: .rounded))
                         .foregroundStyle(MobileTheme.mercuryGradient)
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     Text(headlineText)
-                        .font(MobileScaledFont.system(size: 13, weight: .semibold, design: .rounded))
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
                         .foregroundStyle(MobileTheme.textPrimary)
                     Text(subtitleText)
-                        .font(MobileScaledFont.system(size: 12, weight: .medium, design: .rounded))
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
                         .foregroundStyle(MobileTheme.textSecondary)
                 }
                 Spacer(minLength: 6)
@@ -97,7 +97,7 @@ public struct SystemPermissionInlinePill: View {
         switch item.status {
         case .needsAccess, .timeout, .unknown:
             Image(systemName: "arrow.up.right.circle.fill")
-                .font(MobileScaledFont.system(size: 18, weight: .medium))
+                .font(.system(size: 18, weight: .medium))
                 .foregroundStyle(MobileTheme.mercuryGradient)
         case .requesting:
             ProgressView()
@@ -105,11 +105,11 @@ public struct SystemPermissionInlinePill: View {
                 .tint(MobileTheme.hermesMercury)
         case .granted:
             Image(systemName: "checkmark.circle.fill")
-                .font(MobileScaledFont.system(size: 18, weight: .medium))
+                .font(.system(size: 18, weight: .medium))
                 .foregroundStyle(MobileTheme.success)
         case .denied:
             Image(systemName: "exclamationmark.triangle.fill")
-                .font(MobileScaledFont.system(size: 18, weight: .medium))
+                .font(.system(size: 18, weight: .medium))
                 .foregroundStyle(MobileTheme.warning)
         }
     }

@@ -307,22 +307,6 @@ public enum CLIAgentRelayChatEventKind: String, Codable, Sendable, Equatable, Ca
     case assistantSnapshot
     case completed
     case failed
-    case unknown
-    case approvalRequest
-    case approvalResolved
-    case interrupted
-    case sessionStatus
-
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        let raw = try container.decode(String.self)
-        self = CLIAgentRelayChatEventKind(rawValue: raw) ?? .unknown
-    }
-
-    public func encode(to encoder: Encoder) throws {
-        var container = encoder.singleValueContainer()
-        try container.encode(rawValue)
-    }
 }
 
 public enum CLIAgentChatPresentationMode: String, Codable, Sendable, Equatable, Hashable, CaseIterable, Identifiable {
@@ -455,36 +439,12 @@ public struct CLIAgentRelayChatEvent: Codable, Sendable, Equatable {
     public var isError: Bool {
         kind == .failed
     }
-
-    enum CodingKeys: String, CodingKey {
-        case kind, text, modelID, transcriptPieces, errorMessage
-    }
-
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        kind = try container.decode(CLIAgentRelayChatEventKind.self, forKey: .kind)
-        text = try container.decodeIfPresent(String.self, forKey: .text)
-        modelID = try container.decodeIfPresent(String.self, forKey: .modelID)
-        transcriptPieces = try container.decodeIfPresent([CLIAgentRelayTranscriptPiece].self, forKey: .transcriptPieces) ?? []
-        errorMessage = try container.decodeIfPresent(String.self, forKey: .errorMessage)
-    }
-
-    public static func consumeStream(
-        rawEvents: [String],
-        onEvent: (CLIAgentRelayChatEvent) throws -> Void
-    ) throws {
-        let decoder = JSONDecoder()
-        for raw in rawEvents {
-            try onEvent(decoder.decode(CLIAgentRelayChatEvent.self, from: Data(raw.utf8)))
-        }
-    }
 }
 
 public enum CLIAgentSessionActionKind: String, Codable, Sendable, Equatable, Hashable, CaseIterable {
     case resume
     case handoff
     case packageOnly = "package_only"
-    case interrupt
 }
 
 public struct CLIAgentSessionActionRequest: Codable, Sendable, Equatable, Hashable {
@@ -514,7 +474,6 @@ public enum CLIAgentSessionActionStatus: String, Codable, Sendable, Equatable, H
     case handoff
     case packageOnly = "package_only"
     case spawned
-    case interrupted
     case error
 }
 

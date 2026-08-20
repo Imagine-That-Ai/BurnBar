@@ -84,7 +84,6 @@ struct RootNavigationView: View {
                 hermesService: hermesService,
                 onTapHermesTab: { selection = .agents }
             )
-            .onAppear { CLIAgentControlSession.presenter = liveStagePresenter }
             .zIndex(20)
 
             SkillRunLiveStage(

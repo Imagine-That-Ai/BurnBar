@@ -41,7 +41,6 @@
 
   <ItemGroup>
     <Compile Remove="Projects/FakeLanguageServer/**/*.cs" />
-    <Compile Include="../catalog/MissionRuntimeCatalogTests.cs" Link="Catalog/MissionRuntimeCatalogTests.cs" />
     <ProjectReference Include="../../app/OpenBurnBar.App.ManagedAgentRuntime/OpenBurnBar.App.ManagedAgentRuntime.csproj" />
     <ProjectReference Include="../../app/OpenBurnBar.App.Presentation/OpenBurnBar.App.Presentation.csproj" />
     <ProjectReference Include="../../app/OpenBurnBar.App.UsageRuntime/OpenBurnBar.App.UsageRuntime.csproj" />

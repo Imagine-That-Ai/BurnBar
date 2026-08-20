@@ -4,7 +4,6 @@ package com.openburnbar.data.missions
 import com.openburnbar.data.assistants.CLIAgentMissionEvent
 import com.openburnbar.data.assistants.CLIAgentMissionSnapshot
 import java.time.Instant
-import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -25,7 +24,6 @@ class MobileMissionConsoleHostTest {
         events: List<CLIAgentMissionEvent> = emptyList(),
         selectedRuntime: String? = null,
         approvalStatus: String? = null,
-        approvalRequestId: String? = null,
     ) = CLIAgentMissionSnapshot(
         id = id,
         title = "Mission $id",
@@ -39,7 +37,7 @@ class MobileMissionConsoleHostTest {
         resultPreview = null,
         errorMessage = null,
         sessionID = null,
-        approvalRequestId = approvalRequestId,
+        approvalRequestId = null,
         approvalStatus = approvalStatus,
         approvalTitle = null,
         approvalMessage = null,
@@ -88,84 +86,6 @@ class MobileMissionConsoleHostTest {
         val snap = snapshot(id = "m-3", status = "pending")
         val mission = snap.toActiveMission()
         assertTrue(mission.phase == ActiveMission.Phase.QUEUED || mission.phase == ActiveMission.Phase.MAC_OFFLINE)
-    }
-
-    @Test
-    fun secondApprovalRequestIdReShowsAsk() {
-        val first = snapshot(
-            id = "m-dup",
-            status = "waiting_for_approval",
-            approvalStatus = "pending",
-            approvalRequestId = "approval-1",
-        )
-        val second = snapshot(
-            id = "m-dup",
-            status = "waiting_for_approval",
-            approvalStatus = "pending",
-            approvalRequestId = "approval-2",
-        )
-        val hiddenFirst = buildMissionConsoleSnapshotParts(
-            listOf(first),
-            ::runtimeIDGuess,
-            hiddenApprovalKeys = setOf("m-dup|approval-1"),
-        )
-        assertTrue(hiddenFirst.approvalAsks.isEmpty())
-        val newAsk = buildMissionConsoleSnapshotParts(
-            listOf(second),
-            ::runtimeIDGuess,
-            hiddenApprovalKeys = setOf("m-dup|approval-1"),
-        )
-        assertEquals(1, newAsk.approvalAsks.size)
-        assertEquals("m-dup", newAsk.approvalAsks.single().missionID)
-    }
-
-    @Test
-    fun valAgt004_respond_then_new_approval_id_reapplies() = kotlinx.coroutines.test.runTest {
-        val firstSnap = snapshot(
-            id = "m-dup",
-            status = "waiting_for_approval",
-            approvalStatus = "pending",
-            approvalRequestId = "approval-1",
-        )
-        val firstAsk = requireNotNull(firstSnap.toApprovalAskOrNull())
-        val recorded = mutableListOf<Pair<String, Boolean>>()
-        val hidden = mutableSetOf<String>()
-        applyMissionApprovalResponse(
-            ask = firstAsk,
-            approve = true,
-            observedMissions = mapOf("m-dup" to firstSnap),
-            respond = { id, decision -> recorded += id to decision },
-        ) { key, _ -> hidden += key }
-        assertEquals(listOf("m-dup" to true), recorded)
-        val hiddenAfterRespond = hidden
-        assertEquals(setOf("m-dup|approval-1"), hiddenAfterRespond)
-        val firstHidden = buildMissionConsoleSnapshotParts(
-            listOf(
-                snapshot(
-                    id = "m-dup",
-                    status = "waiting_for_approval",
-                    approvalStatus = "pending",
-                    approvalRequestId = "approval-1",
-                ),
-            ),
-            ::runtimeIDGuess,
-            hiddenApprovalKeys = hiddenAfterRespond,
-        )
-        assertTrue(firstHidden.approvalAsks.isEmpty())
-        val newAsk = buildMissionConsoleSnapshotParts(
-            listOf(
-                snapshot(
-                    id = "m-dup",
-                    status = "waiting_for_approval",
-                    approvalStatus = "pending",
-                    approvalRequestId = "approval-2",
-                ),
-            ),
-            ::runtimeIDGuess,
-            hiddenApprovalKeys = hiddenAfterRespond,
-        )
-        assertEquals(1, newAsk.approvalAsks.size)
-        assertEquals("m-dup", newAsk.approvalAsks.single().missionID)
     }
 
     @Test

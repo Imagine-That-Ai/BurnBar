@@ -120,87 +120,49 @@ struct MacWandMissionDispatcher {
             confidence: .exact
         )
 
-        try await batch.commit()
-
-        var leaves: [[String: Any]] = []
         for index in childMissionIDs.indices {
             let missionID = childMissionIDs[index]
-            let payload = try childPayload(
-                MacWandChildPayloadInput(
+            let requestRef = userRef.collection("cli_agent_mission_requests").document(missionID)
+            batch.setData(
+                try childPayload(
+                    MacWandChildPayloadInput(
+                        uid: uid,
+                        missionID: missionID,
+                        title: "\(trimmedTitle) · Worker \(index + 1)",
+                        prompt: trimmedPrompt,
+                        missionKind: missionKind,
+                        requestedRuntime: runtimeTokens[index],
+                        targetProject: targetProject,
+                        depth: depth,
+                        approvalMode: approvalMode,
+                        commandsAllowed: commandsAllowed,
+                        fileEditsAllowed: fileEditsAllowed,
+                        groupID: groupID,
+                        siblingIndex: index,
+                        siblingCount: workerCount,
+                        targetBodyID: targetBodyID
+                    ),
+                    originator: resolvedOriginator,
+                    now: now,
+                    key: key
+                ),
+                forDocument: requestRef,
+                merge: false
+            )
+            batch.setData(
+                try queuedEventPayload(
                     uid: uid,
                     missionID: missionID,
-                    title: "\(trimmedTitle) · Worker \(index + 1)",
-                    prompt: trimmedPrompt,
-                    missionKind: missionKind,
-                    requestedRuntime: runtimeTokens[index],
-                    targetProject: targetProject,
-                    depth: depth,
-                    approvalMode: approvalMode,
-                    commandsAllowed: commandsAllowed,
-                    fileEditsAllowed: fileEditsAllowed,
-                    groupID: groupID,
-                    siblingIndex: index,
-                    siblingCount: workerCount,
-                    targetBodyID: targetBodyID
+                    eventID: "000001",
+                    now: now,
+                    key: key
                 ),
-                originator: resolvedOriginator,
-                now: now,
-                key: key
-            )
-            let initialEvent = try queuedEventPayload(
-                uid: uid,
-                missionID: missionID,
-                eventID: "000001",
-                now: now,
-                key: key
-            )
-            var publicFields: [String: Any] = [
-                "id": missionID,
-                "missionKind": missionKind,
-                "requestedRuntime": runtimeTokens[index],
-                "depth": depth,
-                "approvalMode": approvalMode,
-                "commandsAllowed": commandsAllowed,
-                "fileEditsAllowed": fileEditsAllowed,
-                "source": "mac",
-                "sourceSurface": "mac-wand",
-                "deliveryMode": "action_only",
-                "schemaVersion": 1,
-                "groupID": groupID,
-                "siblingIndex": index,
-                "siblingCount": workerCount,
-                "isGroupChild": true,
-                "originatorKind": resolvedOriginator.kind.rawValue
-            ]
-            if let originatorRef = resolvedOriginator.primaryRef {
-                publicFields["originatorRef"] = originatorRef
-            }
-            if let targetBodyID = targetBodyID?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty {
-                publicFields["targetBodyID"] = targetBodyID
-            }
-            var leaf: [String: Any] = [
-                "requestId": missionID,
-                "remoteCommandID": missionID,
-                "deviceId": accountManager.deviceId,
-                "publicFields": publicFields,
-                "initialEvent": initialEvent["sealedPayload"] as Any
-            ]
-            if let sealed = payload["sealedPayload"] {
-                leaf["sealedPayload"] = sealed
-            }
-            leaves.append(leaf)
-        }
-        for chunkStart in stride(from: 0, to: leaves.count, by: 16) {
-            let slice = Array(leaves[chunkStart..<min(chunkStart + 16, leaves.count)])
-            guard var parent = slice.first else { continue }
-            if slice.count > 1 {
-                parent["siblings"] = Array(slice.dropFirst())
-            }
-            _ = try await ComputerUseSecurityCallableClient.createCliAgentMission(
-                payload: parent,
-                deviceId: accountManager.deviceId
+                forDocument: requestRef.collection("events").document("000001"),
+                merge: false
             )
         }
+
+        try await batch.commit()
         return MacWandDispatchResult(groupID: groupID, childMissionIDs: childMissionIDs)
     }
 

@@ -96,11 +96,8 @@ export const DATA_DOMAIN_PATHS: Record<string, DomainPaths> = {
       "subscription_topics",
       "ai_inbox_items",
       "ai_inbox_item_state",
-      "burnbar_attachments",
-      "mission_approval_answers",
-      "mission_approval_ceilings",
     ],
-    storagePrefixes: ["burnbar_attachments"],
+    storagePrefixes: [],
   },
   session_logs: {
     encryptionTier: "end_to_end",

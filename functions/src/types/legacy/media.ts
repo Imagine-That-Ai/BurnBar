@@ -467,7 +467,7 @@ export interface CLIAgentMissionRequestDoc {
   personaID?: string;
   clientThreadID?: string;
   parentSessionID?: string;
-  resumeAction?: "new" | "resume" | "fork" | "forward" | "continue";
+  resumeAction?: "new" | "resume" | "fork" | "forward";
 }
 
 export interface SubscriptionTopicDoc {

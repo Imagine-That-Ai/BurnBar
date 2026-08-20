@@ -21,7 +21,6 @@ vi.mock("../adminRuntime.js", () => ({ db: pathKeyedFirestore(mocks.store) }));
 import {
   checkAgentNotificationReplyRateLimit,
   checkKnowledgeSearchRateLimit,
-  checkMissionCreateRateLimit,
   checkVoIPCallRateLimit,
   isPublicRateLimitExceeded,
 } from "../callables/publicRateLimit.js";
@@ -85,51 +84,6 @@ describe("checkKnowledgeSearchRateLimit", () => {
       expect(isPublicRateLimitExceeded(error)).toBe(true);
       expect(error).toMatchObject({ code: "resource-exhausted" });
     }
-  });
-});
-
-describe("checkMissionCreateRateLimit", () => {
-  beforeEach(() => {
-    mocks.store.clear();
-  });
-
-  it("allows a 10-call burst and rejects the 11th request for a uid", async () => {
-    for (let i = 0; i < 10; i += 1) {
-      await expect(checkMissionCreateRateLimit(ALICE_UID)).resolves.toBeUndefined();
-    }
-
-    try {
-      await checkMissionCreateRateLimit(ALICE_UID);
-      expect.fail("expected mission create burst rate limit to reject");
-    } catch (error) {
-      expect(isPublicRateLimitExceeded(error)).toBe(true);
-      expect(error).toMatchObject({ code: "resource-exhausted" });
-    }
-
-    const burstEntry = [...mocks.store.entries()].find(([path]) =>
-      path.startsWith("public_rate_limits/mission_create_burst_"),
-    );
-    expect(burstEntry).toBeDefined();
-    expect(burstEntry?.[1].count).toBe(10);
-  });
-
-  it("rejects the 61st create in one hour even across burst windows", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-08-19T00:00:00Z"));
-
-    for (let window = 0; window < 6; window += 1) {
-      for (let attempt = 0; attempt < 10; attempt += 1) {
-        await checkMissionCreateRateLimit(ALICE_UID);
-      }
-      vi.advanceTimersByTime(61_000);
-    }
-
-    await expect(checkMissionCreateRateLimit(ALICE_UID)).rejects.toMatchObject({ code: "resource-exhausted" });
-    const hourlyEntry = [...mocks.store.entries()].find(([path]) =>
-      path.startsWith("public_rate_limits/mission_create_hourly_"),
-    );
-    expect(hourlyEntry).toBeDefined();
-    expect(hourlyEntry?.[1].count).toBe(60);
   });
 });
 

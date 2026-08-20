@@ -30,26 +30,6 @@ typealias CLIAgentSessionActionResumeRunner = @MainActor @Sendable (
 
 typealias CLIAgentSessionActionHaltHandler = @MainActor @Sendable () async -> Void
 
-typealias CLIAgentSessionActionInterruptRunner = @MainActor @Sendable (_ sessionID: String) async -> Bool
-
-enum CLIAgentSessionInterruptBus {
-    private static var handlers: [String: () -> Void] = [:]
-
-    static func register(sessionID: String, handler: @escaping () -> Void) {
-        handlers[sessionID] = handler
-    }
-
-    static func unregister(sessionID: String) {
-        handlers.removeValue(forKey: sessionID)
-    }
-
-    static func interrupt(sessionID: String) -> Bool {
-        guard let handler = handlers.removeValue(forKey: sessionID) else { return false }
-        handler()
-        return true
-    }
-}
-
 private enum CLIAgentSessionActionApprovalDecision {
     case approve
     case reject
@@ -61,13 +41,11 @@ struct CLIAgentSessionActionDaemonDispatcher {
     private let resumeRunner: CLIAgentSessionActionResumeRunner
     private let approvalPresenter: CLIAgentSessionActionApprovalPresenter?
     private let haltHandler: CLIAgentSessionActionHaltHandler?
-    private let interruptRunner: CLIAgentSessionActionInterruptRunner
 
     init(
         daemonManager: OpenBurnBarDaemonManager = .shared,
         approvalPresenter: CLIAgentSessionActionApprovalPresenter? = nil,
-        haltHandler: CLIAgentSessionActionHaltHandler? = nil,
-        interruptRunner: CLIAgentSessionActionInterruptRunner? = nil
+        haltHandler: CLIAgentSessionActionHaltHandler? = nil
     ) {
         self.init(
             resumeRunner: { sessionID, targetHarness, targetModel, mode in
@@ -79,23 +57,18 @@ struct CLIAgentSessionActionDaemonDispatcher {
                 )
             },
             approvalPresenter: approvalPresenter,
-            haltHandler: haltHandler,
-            interruptRunner: interruptRunner
+            haltHandler: haltHandler
         )
     }
 
     init(
         resumeRunner: @escaping CLIAgentSessionActionResumeRunner,
         approvalPresenter: CLIAgentSessionActionApprovalPresenter? = nil,
-        haltHandler: CLIAgentSessionActionHaltHandler? = nil,
-        interruptRunner: CLIAgentSessionActionInterruptRunner? = nil
+        haltHandler: CLIAgentSessionActionHaltHandler? = nil
     ) {
         self.resumeRunner = resumeRunner
         self.approvalPresenter = approvalPresenter
         self.haltHandler = haltHandler
-        self.interruptRunner = interruptRunner ?? { sessionID in
-            CLIAgentSessionInterruptBus.interrupt(sessionID: sessionID)
-        }
     }
 
     func perform(
@@ -104,16 +77,6 @@ struct CLIAgentSessionActionDaemonDispatcher {
     ) async throws -> CLIAgentSessionActionResponse {
         let mode: BurnBarResumeMode
         switch request.action {
-        case .interrupt:
-            let stopped = await interruptRunner(request.sessionID)
-            return CLIAgentSessionActionResponse(
-                status: stopped ? .interrupted : .error,
-                note: stopped
-                    ? "Interrupted session \(request.sessionID)."
-                    : "No running session \(request.sessionID) to interrupt.",
-                errorCode: stopped ? nil : "session_not_running",
-                errorRecovery: stopped ? nil : "The session may have already finished."
-            )
         case .packageOnly:
             mode = .open
         case .resume, .handoff:
@@ -204,8 +167,6 @@ struct CLIAgentSessionActionDaemonDispatcher {
             actionTitle = "Handoff CLI session"
         case .packageOnly:
             actionTitle = "Prepare CLI session package"
-        case .interrupt:
-            actionTitle = "Interrupt CLI session"
         }
         let summary = "\(actionTitle)\(targetText)"
         return HermesRealtimeRelayApprovalRequest(
@@ -731,10 +692,6 @@ final class ChatSessionControllerCLIAgentRelayChatExecutor: CLIAgentRelayChatExe
             return .junie
         case "omp", "ohmypi", "oh-my-pi", "oh my pi":
             return .omp
-        case "grok", "grok-build", "xai", "grok-agent", "grok-cli":
-            return .grok
-        case "kimi", "kimi-code", "kimi-cli":
-            return .kimi
         default:
             return nil
         }

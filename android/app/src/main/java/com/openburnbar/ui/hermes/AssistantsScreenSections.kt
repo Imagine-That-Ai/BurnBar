@@ -76,7 +76,7 @@ internal fun rememberAssistantsScreenState(context: Context, initialRuntime: Ass
     val seedToken = initialRuntime?.takeIf { visibleTiles.contains(it) }?.token ?: visibleTiles.first().token
     var rawRuntime by rememberSaveable { mutableStateOf(seedToken) }
     val parsed = AssistantRuntimeID.fromToken(rawRuntime)
-    val runtime = parsed?.takeIf { visibleTiles.contains(it) } ?: visibleTiles.first()
+    val runtime = if (visibleTiles.contains(parsed)) parsed else visibleTiles.first()
     return AssistantsScreenState(
         visibleTiles = visibleTiles,
         runtime = runtime,
@@ -160,8 +160,6 @@ private fun AssistantsRuntimeContent(
         AssistantRuntimeID.CODEX,
         AssistantRuntimeID.CLAUDE,
         AssistantRuntimeID.OPEN_CLAW,
-        AssistantRuntimeID.OPEN_CLAUDE,
-        AssistantRuntimeID.OMP,
         AssistantRuntimeID.DROID,
         AssistantRuntimeID.FORGE,
         AssistantRuntimeID.ANTIGRAVITY,
@@ -235,8 +233,6 @@ private fun gradientForRuntime(runtime: AssistantRuntimeID): Brush = when (runti
     AssistantRuntimeID.CODEX -> Brush.linearGradient(listOf(Color(0xFF1ABC9C), Color(0xFF2ECC71)))
     AssistantRuntimeID.CLAUDE -> Brush.linearGradient(listOf(Color(0xFFD58A4F), Color(0xFFC76A2C)))
     AssistantRuntimeID.OPEN_CLAW -> Brush.linearGradient(listOf(Color(0xFF6E56CF), Color(0xFF4F44C6)))
-    AssistantRuntimeID.OPEN_CLAUDE -> Brush.linearGradient(listOf(Color(0xFFD58A4F), Color(0xFFC76A2C)))
-    AssistantRuntimeID.OMP -> Brush.linearGradient(listOf(Color(0xFF7C3AED), Color(0xFFA78BFA)))
     AssistantRuntimeID.DROID -> Brush.linearGradient(listOf(Color(0xFF8B5CF6), Color(0xFF6D5DF6)))
     AssistantRuntimeID.FORGE -> Brush.linearGradient(listOf(Color(0xFFF97316), Color(0xFFEA580C)))
     AssistantRuntimeID.ANTIGRAVITY -> Brush.linearGradient(listOf(Color(0xFF6C63FF), Color(0xFF8F8AFF)))
@@ -701,8 +697,6 @@ private fun bridgeCopy(runtime: AssistantRuntimeID): String = when (runtime) {
     AssistantRuntimeID.CODEX -> "Codex chat runs through OpenBurnBar on your Mac. Pair your Mac to start a session here."
     AssistantRuntimeID.CLAUDE -> "Claude Code chat runs through OpenBurnBar on your Mac. Pair your Mac to start a session here."
     AssistantRuntimeID.OPEN_CLAW -> "OpenClaw uses your Mac's local agent runtime. Pair your Mac to chat from here."
-    AssistantRuntimeID.OPEN_CLAUDE -> "OpenClaude runs through OpenBurnBar on your Mac. Pair your Mac to chat from here."
-    AssistantRuntimeID.OMP -> "OMP runs through OpenBurnBar on your Mac. Pair your Mac to chat from here."
     AssistantRuntimeID.DROID -> "Droid runs through OpenBurnBar on your Mac. Pair your Mac to chat from here."
     AssistantRuntimeID.FORGE -> "Forge runs through OpenBurnBar on your Mac. Pair your Mac to chat from here."
     AssistantRuntimeID.ANTIGRAVITY -> "Antigravity runs through OpenBurnBar on your Mac. Pair your Mac to chat from here."

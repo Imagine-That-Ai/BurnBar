@@ -34,9 +34,8 @@ enum CLIAgentMissionRuntimePlanner {
                 return CLIAgentMissionBackend(chatBackend: .antigravity)
             case "cursoragent", "cursor-agent":
                 return CLIAgentMissionBackend(chatBackend: .cursorAgent)
-            case "grok", "grok-build", "xai", "grok-agent", "grok-cli": return CLIAgentMissionBackend(chatBackend: .grok)
-            case "kimi", "kimi-code", "kimi-cli": return CLIAgentMissionBackend(chatBackend: .kimi)
-            case "gemini", "gemini-cli", "geminicli": return CLIAgentMissionBackend(chatBackend: .antigravity)
+            case "grok", "grok-build", "xai", "grok-agent":
+                return CLIAgentMissionBackend(rawValue: "grok", displayName: "Grok Build")
             case "opencode":
                 return CLIAgentMissionBackend(rawValue: "opencode", displayName: "OpenCode")
             case "ollama":
@@ -45,7 +44,6 @@ enum CLIAgentMissionRuntimePlanner {
                 if let direct = ChatBackendID(rawValue: normalizedRuntime) {
                     return CLIAgentMissionBackend(chatBackend: direct)
                 }
-                return CLIAgentMissionBackend(rawValue: normalizedRuntime, displayName: requestedRuntime)
             }
         }
 
@@ -114,9 +112,15 @@ enum CLIAgentMissionRuntimePlanner {
     }
 
     static func presentationMode(from data: [String: Any]) -> CLIAgentChatPresentationMode {
-        let raw = (data["presentationMode"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        let raw = (data["presentationMode"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nilIfEmpty
         return raw.flatMap(CLIAgentChatPresentationMode.init(rawValue:)) ?? .nativeChat
     }
+
+    // The pre-dispatch approval DECISION (`requiresPreDispatchApproval`) moved to
+    // the daemon's `BurnBarRemoteMissionAuthorizationPolicy` (split-brain M4).
+    // Only the execution-side Mac CLI-assistant consent gate remains here.
 
     static func requiresMacCLIAssistantConsentForRemoteMission(
         backend: CLIAgentMissionBackend
@@ -125,7 +129,7 @@ enum CLIAgentMissionRuntimePlanner {
             switch chatBackend {
             case .hermes:
                 return false
-            case .codex, .claude, .openclaw, .piAgent, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp, .junie, .grok, .kimi:
+            case .codex, .claude, .openclaw, .piAgent, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp, .junie:
                 return true
             }
         }
@@ -223,7 +227,7 @@ enum CLIAgentMissionRuntimePlanner {
                 }
                 let dedupedTools = (Array(NSOrderedSet(array: tools)) as? [String] ?? tools)
                     .joined(separator: ",")
-                arguments += ["--tools", dedupedTools]
+                arguments += ["--tools", dedupedTools, "--auto-approve"]
             } else {
                 arguments.append("--no-tools")
             }
@@ -475,7 +479,7 @@ enum CLIAgentMissionRuntimePlanner {
             capabilities.insert(.workspaceWrite)
         }
         return AgentCapabilityGrant.sessionGrant(
-            runtimeID: assistantRuntimeID(for: backend) ?? .hermes,
+            runtimeID: assistantRuntimeID(for: backend),
             threadID: (data["clientThreadID"] as? String)?.nilIfEmpty ?? "visible-terminal-\(UUID().uuidString)",
             capabilities: capabilities,
             trustMode: .manual,
@@ -484,7 +488,7 @@ enum CLIAgentMissionRuntimePlanner {
         )
     }
 
-    static func assistantRuntimeID(for backend: CLIAgentMissionBackend) -> AssistantRuntimeID? {
+    static func assistantRuntimeID(for backend: CLIAgentMissionBackend) -> AssistantRuntimeID {
         if let chatBackend = backend.chatBackend {
             switch chatBackend {
             case .codex: return .codex
@@ -499,7 +503,6 @@ enum CLIAgentMissionRuntimePlanner {
             case .hermes: return .hermes
             case .piAgent: return .pi
             case .junie: return .junie
-            case .grok, .kimi: return .grok
             }
         }
         switch backend.rawValue {
@@ -513,8 +516,7 @@ enum CLIAgentMissionRuntimePlanner {
         case "grok", "grok-build", "xai", "grok-agent": return .grok
         case "pi", "piagent", "pi-agent": return .pi
         case "junie", "jetbrains-junie", "jetbrainsjunie", "jetbrains junie": return .junie
-        default:
-            return AssistantRuntimeID(rawValue: backend.rawValue)
+        default: return .codex
         }
     }
 

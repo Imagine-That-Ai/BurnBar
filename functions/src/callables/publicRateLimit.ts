@@ -32,10 +32,7 @@ type PublicHttpEndpointName =
   | "registerLinuxAppCheckDevice"
   | "startCliLink";
 
-type CallableApprovalRateLimitAction =
-  | "cli_link_approve_fail"
-  | "hermes_gateway_approve_fail"
-  | "mission_approval_fail";
+type CallableApprovalRateLimitAction = "cli_link_approve_fail" | "hermes_gateway_approve_fail";
 
 type HermesGatewayBearerRateLimitAction =
   | "hermes_gateway_message_send"
@@ -83,7 +80,6 @@ const PUBLIC_HTTP_ENDPOINT_LIMITS: Record<PublicHttpEndpointName, { windowSecond
 const APPROVAL_LIMITS: Record<CallableApprovalRateLimitAction, { windowSeconds: number; maxAttempts: number }> = {
   cli_link_approve_fail: { windowSeconds: 900, maxAttempts: 10 },
   hermes_gateway_approve_fail: { windowSeconds: 900, maxAttempts: 10 },
-  mission_approval_fail: { windowSeconds: 900, maxAttempts: 10 },
 };
 
 const HERMES_GATEWAY_BEARER_LIMITS: Record<
@@ -107,9 +103,7 @@ type CallableRateLimitAction =
   | "knowledge_search_burst"
   | "knowledge_search_daily"
   | "agent_notification_reply_burst"
-  | "agent_notification_reply_daily"
-  | "mission_create_burst"
-  | "mission_create_hourly";
+  | "agent_notification_reply_daily";
 
 const CALLABLE_RATE_LIMITS: Record<CallableRateLimitAction, { windowSeconds: number; maxAttempts: number }> = {
   // VoIP call trigger: each call fans out APNs + FCM pushes. 20 burst/min,
@@ -126,10 +120,6 @@ const CALLABLE_RATE_LIMITS: Record<CallableRateLimitAction, { windowSeconds: num
   // cannot flood the reply queue.
   agent_notification_reply_burst: { windowSeconds: 60, maxAttempts: 30 },
   agent_notification_reply_daily: { windowSeconds: 86_400, maxAttempts: 200 },
-  // Mission create: 10 / 60s burst, 60 / hour. Client create is denied; this
-  // is the only remaining flood valve.
-  mission_create_burst: { windowSeconds: 60, maxAttempts: 10 },
-  mission_create_hourly: { windowSeconds: 3600, maxAttempts: 60 },
 };
 
 // Owner-funded hosted Intelligence Brief (OpenRouter). The Pro paywall gates
@@ -524,14 +514,6 @@ export async function checkAgentNotificationReplyRateLimit(uid: string): Promise
     "agent_notification_reply_burst",
     "agent_notification_reply_daily",
   ]);
-}
-
-/**
- * Per-user rate limit for `createCliAgentMission`. Burst 10/min, 60/hour.
- * Count each sibling as one create at the callable.
- */
-export async function checkMissionCreateRateLimit(uid: string): Promise<void> {
-  await incrementCallableRateLimitsAtomically(uid, ["mission_create_burst", "mission_create_hourly"]);
 }
 
 export async function checkHermesGatewayBearerRateLimit(

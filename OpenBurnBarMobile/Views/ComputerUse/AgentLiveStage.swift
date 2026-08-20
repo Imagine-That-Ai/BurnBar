@@ -70,12 +70,7 @@ struct AgentLiveStage: View {
             case .maximize:
                 ZStack {
                     maximizeLayer
-                    AgentControlComposer(
-                        presenter: presenter,
-                        hermesService: hermesService,
-                        missionAttachments: presenter.missionAttachments,
-                        onInterrupt: { interruptSession() }
-                    )
+                    AgentLiveStageChatPuck(presenter: presenter, hermesService: hermesService)
                 }
                 .transition(.opacity)
             }
@@ -183,7 +178,7 @@ struct AgentLiveStage: View {
                         }
                     } label: {
                         Image(systemName: "rectangle.bottomthird.inset.filled")
-                            .font(MobileScaledFont.system(size: 13, weight: .bold))
+                            .font(.system(size: 13, weight: .bold))
                             .foregroundStyle(.white)
                             .padding(8)
                             .background(Circle().fill(Color.black.opacity(0.55)))
@@ -204,12 +199,12 @@ struct AgentLiveStage: View {
     private var placeholder: some View {
         VStack(spacing: 10) {
             Image(systemName: "wand.and.rays")
-                .font(MobileScaledFont.system(size: 36, weight: .medium))
+                .font(.system(size: 36, weight: .medium))
                 .foregroundStyle(.white.opacity(0.35))
             Text(stateRef.sessionId == nil
                  ? "Waiting for a Mac session…"
                  : "Live mirror ready")
-                .font(MobileScaledFont.system(size: 13, weight: .medium, design: .monospaced))
+                .font(.system(size: 13, weight: .medium, design: .monospaced))
                 .foregroundStyle(.white.opacity(0.65))
         }
     }
@@ -243,24 +238,12 @@ struct AgentLiveStage: View {
             HStack(spacing: 8) {
                 AgentLiveStageActionTicker(entry: stateRef.actionTimeline.last)
                 Button {
-                    interruptSession()
-                } label: {
-                    Text("Interrupt")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 5)
-                        .background(Capsule().fill(Color.white.opacity(0.18)))
-                }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("agentControlInterrupt")
-                Button {
                     panicHalt()
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "exclamationmark.octagon.fill")
                         Text("HALT")
-                            .font(MobileScaledFont.system(size: 12, weight: .bold, design: .monospaced))
+                            .font(.system(size: 12, weight: .bold, design: .monospaced))
                             .tracking(0.5)
                     }
                     .foregroundStyle(.white)
@@ -388,16 +371,6 @@ struct AgentLiveStage: View {
         guard let request = stateRef.pendingApproval else { return }
         Task { try? await singleton.coordinator.receiver?.reject(request, halt: halt) }
         HapticBus.destructive()
-    }
-
-    private func interruptSession() {
-        Task {
-            let sessionID = presenter.interruptTarget(computerUseSessionId: stateRef.sessionId?.rawValue)
-            guard let sessionID else { return }
-            _ = try? await CLIAgentRelayChatTransport.shared.performSessionAction(
-                CLIAgentSessionActionRequest(sessionID: sessionID, action: .interrupt)
-            )
-        }
     }
 
     private func panicHalt() {

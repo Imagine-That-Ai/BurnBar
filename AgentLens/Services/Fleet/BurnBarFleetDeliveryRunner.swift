@@ -118,8 +118,6 @@ enum BurnBarFleetDeliveryRunner {
         provider: (BurnBarFleetAgentID?) -> BurnBarFleetDirectiveChannel?
     ) -> BurnBarFleetDirectiveChannel? {
         guard let targetAgent else { return nil }
-        // grok-bot input is daemon loopback only (SO_PEERCRED / 0600 token).
-        if targetAgent == .grokBot { return nil }
         guard let channel = provider(targetAgent), channel.supports(targetAgent: targetAgent) else {
             return nil
         }

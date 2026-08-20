@@ -148,12 +148,12 @@ struct AgentLiveStageDockTile: View {
     private var placeholder: some View {
         VStack(spacing: 6) {
             Image(systemName: "wand.and.rays")
-                .font(MobileScaledFont.system(size: 24, weight: .medium))
+                .font(.system(size: 24, weight: .medium))
                 .foregroundStyle(.white.opacity(0.42))
             Text(state.sessionId == nil
                  ? "Waiting for a Mac session…"
                  : "Live mirror ready")
-                .font(MobileScaledFont.system(size: 12, weight: .medium, design: .monospaced))
+                .font(.system(size: 12, weight: .medium, design: .monospaced))
                 .foregroundStyle(.white.opacity(0.65))
         }
     }
@@ -171,7 +171,7 @@ struct AgentLiveStageDockTile: View {
                 onPanic()
             } label: {
                 Image(systemName: "exclamationmark.octagon.fill")
-                    .font(MobileScaledFont.system(size: 12, weight: .bold))
+                    .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(.white)
                     .padding(5)
                     .background(
@@ -202,10 +202,10 @@ struct AgentLiveStageDockTile: View {
 
             HStack(spacing: 6) {
                 Image(systemName: "arrow.up.left.and.arrow.down.right")
-                    .font(MobileScaledFont.system(size: 12, weight: .bold))
+                    .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(.white.opacity(0.7))
                 Text("Tap to drive")
-                    .font(MobileScaledFont.system(size: 12, weight: .medium, design: .monospaced))
+                    .font(.system(size: 12, weight: .medium, design: .monospaced))
                     .foregroundStyle(.white.opacity(0.6))
                     .tracking(0.4)
                 Spacer(minLength: 0)

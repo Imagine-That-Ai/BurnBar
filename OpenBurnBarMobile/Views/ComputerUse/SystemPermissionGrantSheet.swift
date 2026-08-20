@@ -82,20 +82,20 @@ public struct SystemPermissionGrantSheet: View {
                         .frame(width: 56, height: 56)
                         .opacity(0.18)
                     Image(systemName: item.kind.sfSymbolName)
-                        .font(MobileScaledFont.system(size: 28, weight: .semibold, design: .rounded))
+                        .font(.system(size: 28, weight: .semibold, design: .rounded))
                         .foregroundStyle(MobileTheme.mercuryGradient)
                 }
                 VStack(alignment: .leading, spacing: 4) {
                     Text(item.kind.displayTitle)
-                        .font(MobileScaledFont.system(size: 22, weight: .bold, design: .rounded))
+                        .font(.system(size: 22, weight: .bold, design: .rounded))
                         .foregroundStyle(MobileTheme.textPrimary)
                     Text(item.kind.displaySubtitle)
-                        .font(MobileScaledFont.system(size: 14, weight: .medium, design: .rounded))
+                        .font(.system(size: 14, weight: .medium, design: .rounded))
                         .foregroundStyle(MobileTheme.textSecondary)
                 }
             }
             Text(item.kind.heroExplanation)
-                .font(MobileScaledFont.system(size: 15, weight: .regular, design: .rounded))
+                .font(.system(size: 15, weight: .regular, design: .rounded))
                 .foregroundStyle(MobileTheme.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
             Rectangle()
@@ -110,10 +110,10 @@ public struct SystemPermissionGrantSheet: View {
             statusIcon
             VStack(alignment: .leading, spacing: 4) {
                 Text(statusHeadline)
-                    .font(MobileScaledFont.system(size: 15, weight: .semibold, design: .rounded))
+                    .font(.system(size: 15, weight: .semibold, design: .rounded))
                     .foregroundStyle(MobileTheme.textPrimary)
                 Text(statusSubtitle)
-                    .font(MobileScaledFont.system(size: 12, weight: .medium, design: .rounded))
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
                     .foregroundStyle(MobileTheme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -135,7 +135,7 @@ public struct SystemPermissionGrantSheet: View {
         switch item.status {
         case .needsAccess, .timeout, .unknown:
             Image(systemName: "lock.circle.fill")
-                .font(MobileScaledFont.system(size: 28, weight: .medium))
+                .font(.system(size: 28, weight: .medium))
                 .foregroundStyle(MobileTheme.mercuryGradient)
         case .requesting:
             ProgressView()
@@ -143,11 +143,11 @@ public struct SystemPermissionGrantSheet: View {
                 .tint(MobileTheme.hermesMercury)
         case .granted:
             Image(systemName: "checkmark.seal.fill")
-                .font(MobileScaledFont.system(size: 28, weight: .semibold))
+                .font(.system(size: 28, weight: .semibold))
                 .foregroundStyle(MobileTheme.success)
         case .denied:
             Image(systemName: "exclamationmark.shield.fill")
-                .font(MobileScaledFont.system(size: 28, weight: .semibold))
+                .font(.system(size: 28, weight: .semibold))
                 .foregroundStyle(MobileTheme.warning)
         }
     }
@@ -219,9 +219,9 @@ public struct SystemPermissionGrantSheet: View {
     private func ctaLabel(_ title: String, systemImage: String, filled: Bool) -> some View {
         HStack(spacing: 8) {
             Image(systemName: systemImage)
-                .font(MobileScaledFont.system(size: 14, weight: .semibold))
+                .font(.system(size: 14, weight: .semibold))
             Text(title)
-                .font(MobileScaledFont.system(size: 14, weight: .semibold, design: .rounded))
+                .font(.system(size: 14, weight: .semibold, design: .rounded))
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 14)
@@ -249,15 +249,15 @@ public struct SystemPermissionGrantSheet: View {
     private var instructionsFooter: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("On your Mac")
-                .font(MobileScaledFont.system(size: 12, weight: .semibold, design: .rounded))
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
                 .foregroundStyle(MobileTheme.textSecondary)
             ForEach(Array(item.kind.numberedInstructions(bundleName: item.bundleId).enumerated()), id: \.offset) { idx, step in
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
                     Text(String(format: "%02d", idx + 1))
-                        .font(MobileScaledFont.system(size: 12, weight: .semibold, design: .monospaced))
+                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
                         .foregroundStyle(MobileTheme.hermesMercury)
                     Text(step)
-                        .font(MobileScaledFont.system(size: 13, weight: .regular, design: .rounded))
+                        .font(.system(size: 13, weight: .regular, design: .rounded))
                         .foregroundStyle(MobileTheme.textPrimary)
                         .fixedSize(horizontal: false, vertical: true)
                 }

@@ -79,13 +79,7 @@ for (const d of activated) {
       "cli_agent_mission_requests", "text_snippets", "rollback_requests",
       "approval_policies", "agent_identities", "subscription_topics",
     ];
-    const KNOWN_NON_SIGNAL = new Set([
-      "ai_inbox_items",
-      "ai_inbox_item_state",
-      "burnbar_attachments",
-      "mission_approval_answers",
-      "mission_approval_ceilings",
-    ]);
+    const KNOWN_NON_SIGNAL = new Set(["ai_inbox_items", "ai_inbox_item_state"]);
     const sealedSet = new Set(sealed);
     const missing = EXPECTED_SEALED.filter((c) => !sealedSet.has(c));
     const extra = sealed.filter((c) => !EXPECTED_SEALED.includes(c));

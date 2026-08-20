@@ -38,9 +38,6 @@ if [[ -s "$after_diff" ]]; then
   echo "::notice::Generated schema bindings have uncommitted changes relative to HEAD; emit is idempotent for the current worktree."
 fi
 
-echo "==> Checking mission-runtime catalog emit…"
-node scripts/gen/mission-runtime-catalog.mjs --check
-
 echo "==> Checking hand-maintained schema mirrors…"
 node tools/schema-sync/check-hand-mirror.mjs
 

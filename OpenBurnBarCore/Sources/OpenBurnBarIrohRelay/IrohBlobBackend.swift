@@ -20,8 +20,7 @@ public protocol IrohBlobBackend: AnyObject, Sendable {
     ) async throws -> IrohEndpointIdentity
 
     /// Hash + ingest a local file into the blob store. Returns the base32
-    /// `BlobTicket` text the receiver dials with. The ticket is not a
-    /// content hash; callers must hash opened bytes or parse `ticket.hash()`.
+    /// `BlobTicket` text the receiver dials with.
     func publishBlob(localPath: String) async throws -> String
 
     /// Dial the ticket's source node, download the blob, write it to
@@ -79,7 +78,7 @@ public enum IrohBlobBackendError: Error, Equatable, Sendable {
 }
 
 public enum IrohBlobTransferLimits {
-    public static let maxExpectedFetchBytes: UInt64 = 2 * 1024 * 1024 * 1024
+    public static let maxExpectedFetchBytes: UInt64 = 512 * 1024 * 1024
 }
 
 public extension IrohBlobBackend {

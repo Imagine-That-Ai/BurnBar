@@ -60,10 +60,10 @@ struct AgentWatchEmptyStateView: View {
         VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
             HStack(spacing: 8) {
                 Image(systemName: "macbook.and.iphone")
-                    .font(MobileScaledFont.system(size: 16, weight: .semibold))
+                    .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(MobileTheme.mercuryGradient)
                 Text("COMPUTER USE")
-                    .font(MobileScaledFont.system(size: 10, weight: .semibold, design: .rounded))
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
                     .tracking(1.6)
                     .foregroundStyle(MobileTheme.hermesMercury)
                 Spacer()
@@ -71,12 +71,12 @@ struct AgentWatchEmptyStateView: View {
             }
 
             Text("Let the agent drive your Mac")
-                .font(MobileScaledFont.system(size: 24, weight: .semibold, design: .rounded))
+                .font(.system(size: 24, weight: .semibold, design: .rounded))
                 .foregroundStyle(MobileTheme.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
 
             Text("Watch every click live. Tap the mirror to grab the wheel. Three-finger long-press halts everything.")
-                .font(MobileScaledFont.system(size: 14, weight: .regular, design: .rounded))
+                .font(.system(size: 14, weight: .regular, design: .rounded))
                 .foregroundStyle(MobileTheme.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -109,7 +109,7 @@ struct AgentWatchEmptyStateView: View {
             }
         }()
         return Text(label)
-            .font(MobileScaledFont.system(size: 9, weight: .semibold, design: .rounded))
+            .font(.system(size: 9, weight: .semibold, design: .rounded))
             .tracking(1.2)
             .foregroundStyle(color)
             .padding(.horizontal, 8)
@@ -190,17 +190,17 @@ struct AgentWatchEmptyStateView: View {
                     .fill(isDone ? MobileTheme.success.opacity(0.18) : MobileTheme.error.opacity(0.18))
                     .frame(width: 24, height: 24)
                 Image(systemName: isDone ? "checkmark" : "circle")
-                    .font(MobileScaledFont.system(size: 11, weight: .bold))
+                    .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(isDone ? MobileTheme.success : MobileTheme.error)
             }
             .padding(.top, 2)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
-                    .font(MobileScaledFont.system(size: 14, weight: .semibold, design: .rounded))
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
                     .foregroundStyle(MobileTheme.textPrimary)
                 Text(detail)
-                    .font(MobileScaledFont.system(size: 12, weight: .regular, design: .rounded))
+                    .font(.system(size: 12, weight: .regular, design: .rounded))
                     .foregroundStyle(MobileTheme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -210,7 +210,7 @@ struct AgentWatchEmptyStateView: View {
             if let actionLabel {
                 Button(action: action) {
                     Text(actionLabel)
-                        .font(MobileScaledFont.system(size: 12, weight: .semibold, design: .rounded))
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
                         .background(
@@ -266,7 +266,7 @@ struct AgentWatchEmptyStateView: View {
         HStack(alignment: .top, spacing: 14) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(ordinal)
-                    .font(MobileScaledFont.system(size: 18, weight: .semibold, design: .monospaced))
+                    .font(.system(size: 18, weight: .semibold, design: .monospaced))
                     .foregroundStyle(isActive ? MobileTheme.hermesAureate : MobileTheme.textMuted)
                 Rectangle()
                     .fill(isActive ? MobileTheme.hermesAureate : MobileTheme.border)
@@ -277,10 +277,10 @@ struct AgentWatchEmptyStateView: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
-                    .font(MobileScaledFont.system(size: 14, weight: .semibold, design: .rounded))
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
                     .foregroundStyle(isActive ? MobileTheme.textPrimary : MobileTheme.textSecondary)
                 Text(detail)
-                    .font(MobileScaledFont.system(size: 12, weight: .regular, design: .rounded))
+                    .font(.system(size: 12, weight: .regular, design: .rounded))
                     .foregroundStyle(MobileTheme.textMuted)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -326,13 +326,13 @@ struct AgentWatchEmptyStateView: View {
     private func capabilityCard(icon: String, title: String, detail: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Image(systemName: icon)
-                .font(MobileScaledFont.system(size: 18, weight: .regular))
+                .font(.system(size: 18, weight: .regular))
                 .foregroundStyle(MobileTheme.mercuryGradient)
             Text(title)
-                .font(MobileScaledFont.system(size: 13, weight: .semibold, design: .rounded))
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
                 .foregroundStyle(MobileTheme.textPrimary)
             Text(detail)
-                .font(MobileScaledFont.system(size: 11, weight: .regular, design: .rounded))
+                .font(.system(size: 11, weight: .regular, design: .rounded))
                 .foregroundStyle(MobileTheme.textMuted)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -353,14 +353,14 @@ struct AgentWatchEmptyStateView: View {
     private var permissionsFooter: some View {
         HStack(spacing: 10) {
             Image(systemName: "lock.shield")
-                .font(MobileScaledFont.system(size: 13, weight: .medium))
+                .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(MobileTheme.hermesMercury)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Mac permissions live on the Mac")
-                    .font(MobileScaledFont.system(size: 12, weight: .semibold, design: .rounded))
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
                     .foregroundStyle(MobileTheme.textPrimary)
                 Text("Run \"Re-run Mac permissions setup\" from Settings → Computer Use on your Mac to walk the TCC wizard.")
-                    .font(MobileScaledFont.system(size: 11, weight: .regular, design: .rounded))
+                    .font(.system(size: 11, weight: .regular, design: .rounded))
                     .foregroundStyle(MobileTheme.textMuted)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -381,7 +381,7 @@ struct AgentWatchEmptyStateView: View {
 
     private func sectionHeader(_ text: String) -> some View {
         Text(text)
-            .font(MobileScaledFont.system(size: 10, weight: .semibold, design: .rounded))
+            .font(.system(size: 10, weight: .semibold, design: .rounded))
             .tracking(1.4)
             .foregroundStyle(MobileTheme.textMuted)
     }
