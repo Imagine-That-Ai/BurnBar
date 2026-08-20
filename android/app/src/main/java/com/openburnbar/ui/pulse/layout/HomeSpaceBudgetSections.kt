@@ -137,6 +137,11 @@ object HomeSpaceBudget {
         return min(target, ceiling)
     }
 
+    // / `canvasWidth` is unused here on purpose: column count is resolved separately by
+    // / `resolveColumns(forWidth:)`, but the parameter stays so this signature matches its
+    // / Swift (`LivingSpaceBudget`), C# and TypeScript twins. Dropping it on one platform
+    // / only is how the four ports quietly diverge.
+    @Suppress("UnusedParameter")
     fun resolve(canvasWidth: Float, canvasHeight: Float, slots: List<HomeSlot>, gutter: Float, columns: Int = 1): HomeSpacePlan {
         if (slots.isEmpty()) return HomeSpacePlan.EMPTY
 
@@ -149,46 +154,81 @@ object HomeSpaceBudget {
         val assignment = deal(slots = columnar, into = columnCount)
 
         if (canvasHeight <= 0f) {
-            return HomeSpacePlan(
-                placements = slots.map { slot ->
-                    HomeSpacePlan.Placement(
-                        id = slot.id,
-                        height = null,
-                        rowCount = slot.rows?.baseline ?: 0,
-                        column = assignment[slot.id] ?: 0,
-                        isVisible = true,
-                    )
-                },
-                columns = columnCount,
-                overflows = true,
-                spanningIDs = spanningIDs,
-            )
+            return unmeasuredPlan(slots, assignment, columnCount, spanningIDs)
         }
-
-        val placements = mutableListOf<HomeSpacePlan.Placement>()
-        var anyColumnOverflows = false
 
         val bandHeight = spanning.sumOf { it.ideal.toDouble() }.toFloat() +
             gutter * spanning.size.toFloat()
-        val columnHeight = canvasHeight - bandHeight
+        val columnarResult = columnarPlacements(
+            columnar = columnar,
+            assignment = assignment,
+            columnCount = columnCount,
+            height = canvasHeight - bandHeight,
+            gutter = gutter,
+        )
 
-        for (slot in spanning) {
-            placements.add(
-                HomeSpacePlan.Placement(
-                    id = slot.id,
-                    height = slot.ideal,
-                    rowCount = slot.rows?.baseline ?: 0,
-                    column = 0,
-                    isVisible = true,
-                ),
-            )
+        val placements = bandPlacements(spanning) + columnarResult.placements
+        val anyColumnOverflows = columnarResult.overflows
+
+        // An overflowing column drops every measured height: the plan reverts to intrinsic
+        // sizing rather than shipping heights that do not fit.
+        val finalPlacements = if (anyColumnOverflows) {
+            placements.map { it.copy(height = null) }
+        } else {
+            placements
         }
 
+        val order = slots.withIndex().associate { it.value.id to it.index }
+
+        return HomeSpacePlan(
+            placements = finalPlacements.sortedBy { order[it.id] ?: 0 },
+            columns = columnCount,
+            overflows = anyColumnOverflows,
+            spanningIDs = spanningIDs,
+        )
+    }
+
+    // / No measured canvas yet — every slot is visible at its baseline and the plan
+    // / declares itself overflowing so callers fall back to intrinsic sizing.
+    private fun unmeasuredPlan(slots: List<HomeSlot>, assignment: Map<String, Int>, columnCount: Int, spanningIDs: List<String>): HomeSpacePlan = HomeSpacePlan(
+        placements = slots.map { slot ->
+            HomeSpacePlan.Placement(
+                id = slot.id,
+                height = null,
+                rowCount = slot.rows?.baseline ?: 0,
+                column = assignment[slot.id] ?: 0,
+                isVisible = true,
+            )
+        },
+        columns = columnCount,
+        overflows = true,
+        spanningIDs = spanningIDs,
+    )
+
+    // / Full-width slots, which always sit in column 0 at their ideal height.
+    private fun bandPlacements(spanning: List<HomeSlot>): List<HomeSpacePlan.Placement> = spanning.map { slot ->
+        HomeSpacePlan.Placement(
+            id = slot.id,
+            height = slot.ideal,
+            rowCount = slot.rows?.baseline ?: 0,
+            column = 0,
+            isVisible = true,
+        )
+    }
+
+    private data class ColumnarResult(
+        val placements: List<HomeSpacePlan.Placement>,
+        val overflows: Boolean,
+    )
+
+    private fun columnarPlacements(columnar: List<HomeSlot>, assignment: Map<String, Int>, columnCount: Int, height: Float, gutter: Float): ColumnarResult {
+        val placements = mutableListOf<HomeSpacePlan.Placement>()
+        var overflows = false
         for (column in 0 until columnCount) {
             val members = columnar.filter { assignment[it.id] == column }
             if (members.isEmpty()) continue
-            val resolved = resolveColumn(members, height = columnHeight, gutter = gutter)
-            anyColumnOverflows = anyColumnOverflows || resolved.overflows
+            val resolved = resolveColumn(members, height = height, gutter = gutter)
+            overflows = overflows || resolved.overflows
             placements.addAll(
                 resolved.placements.map {
                     HomeSpacePlan.Placement(
@@ -201,30 +241,32 @@ object HomeSpaceBudget {
                 },
             )
         }
+        return ColumnarResult(placements, overflows)
+    }
 
-        val finalPlacements = if (anyColumnOverflows) {
-            placements.map {
-                HomeSpacePlan.Placement(
-                    id = it.id,
-                    height = null,
-                    rowCount = it.rowCount,
-                    column = it.column,
-                    isVisible = it.isVisible,
-                )
+    // / Spend slack on real rows, one round-robin pass at a time, cheapest slot first.
+    // /
+    // / Round-robin rather than greedy so a single hungry slot cannot eat the whole
+    // / budget before a lower-ranked one gets its first row. Returns the slack left over,
+    // / which the caller then distributes as breathing room.
+    private fun feedRows(kept: List<HomeSlot>, rowCounts: MutableMap<String, Int>, initialSlack: Float): Float {
+        var slack = initialSlack
+        val feeding = kept.filter { it.rows != null }.sortedBy { it.rank }
+        var fed = true
+        while (slack > 0f && fed) {
+            fed = false
+            for (slot in feeding) {
+                val appetite = slot.rows ?: continue
+                val current = rowCounts[slot.id] ?: 0
+                val canGrow = current < appetite.cap && slack >= appetite.unit
+                if (canGrow) {
+                    rowCounts[slot.id] = current + 1
+                    slack -= appetite.unit
+                    fed = true
+                }
             }
-        } else {
-            placements
         }
-
-        val order = slots.withIndex().associate { it.value.id to it.index }
-        val sortedPlacements = finalPlacements.sortedBy { order[it.id] ?: 0 }
-
-        return HomeSpacePlan(
-            placements = sortedPlacements,
-            columns = columnCount,
-            overflows = anyColumnOverflows,
-            spanningIDs = spanningIDs,
-        )
+        return slack
     }
 
     private data class ColumnResult(
@@ -261,23 +303,8 @@ object HomeSpaceBudget {
             return ColumnResult(placements, overflows = true)
         }
 
-        var slack = height - floors - chrome
         val rowCounts = kept.associate { it.id to (it.rows?.baseline ?: 0) }.toMutableMap()
-
-        val feeding = kept.filter { it.rows != null }.sortedBy { it.rank }
-        var fed = true
-        while (slack > 0f && fed) {
-            fed = false
-            for (slot in feeding) {
-                val appetite = slot.rows ?: continue
-                val current = rowCounts[slot.id] ?: 0
-                if (current >= appetite.cap) continue
-                if (slack < appetite.unit) continue
-                rowCounts[slot.id] = current + 1
-                slack -= appetite.unit
-                fed = true
-            }
-        }
+        var slack = feedRows(kept, rowCounts, height - floors - chrome)
 
         val totalStretch = kept.sumOf { it.stretch }
         val totalIdeal = kept.sumOf { it.ideal.toDouble() }.toFloat()

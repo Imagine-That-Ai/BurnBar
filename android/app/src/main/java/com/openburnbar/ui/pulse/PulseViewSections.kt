@@ -193,110 +193,99 @@ private fun PulseViewTitleBar(photoUrl: String?, displayName: String?) {
     }
 }
 
+/**
+ * The slot table Pulse hands to the space solver.
+ *
+ * Plain data, deliberately not `@Composable`: what a slot asks for is a function of
+ * the model alone, and keeping it out of composition means the solver can be unit
+ * tested without a Compose harness — the same split the Swift and TypeScript twins keep.
+ */
+private fun pulseSlots(derived: PulseViewContentDerived, model: PulseContentModel): List<HomeSlot> = buildList {
+    if (derived.shouldOfferDemoData) add(demoSlot())
+    add(controlsSlot())
+    if (model.rollups != null) {
+        add(heroSlot())
+        add(forecastSlot())
+    }
+    if (derived.snapshots.isNotEmpty()) add(quotaSlot(derived.snapshots.size))
+    if (model.rollups != null) add(atlasSlot())
+    add(hermesSlot())
+    if (derived.recentUsages.isNotEmpty()) add(sessionsSlot(derived.recentUsages.size))
+}
+
+private fun demoSlot(): HomeSlot = HomeSlot(
+    id = "demo_prompt",
+    rank = 5,
+    floor = 60f,
+    ideal = 72f,
+    spans = true,
+    isAmbient = true,
+)
+
+private fun controlsSlot(): HomeSlot = HomeSlot(
+    id = "controls",
+    rank = 0,
+    floor = 40f,
+    ideal = 44f,
+    spans = true,
+)
+
+private fun heroSlot(): HomeSlot = HomeSlot(
+    id = "hero",
+    rank = 0,
+    floor = 180f,
+    ideal = 240f,
+    spans = true,
+    stretch = 1.0,
+)
+
+private fun forecastSlot(): HomeSlot = HomeSlot(
+    id = "forecast",
+    rank = 2,
+    floor = 140f,
+    ideal = 180f,
+    stretch = 0.5,
+)
+
+private fun quotaSlot(available: Int): HomeSlot = HomeSlot(
+    id = "quota",
+    rank = 1,
+    floor = 120f,
+    ideal = 200f,
+    rows = HomeSlot.RowAppetite(available = available, baseline = 2, unit = 36f, ceiling = 8),
+    stretch = 1.0,
+)
+
+private fun atlasSlot(): HomeSlot = HomeSlot(
+    id = "atlas",
+    rank = 3,
+    floor = 180f,
+    ideal = 240f,
+    stretch = 1.0,
+)
+
+private fun hermesSlot(): HomeSlot = HomeSlot(
+    id = "hermes",
+    rank = 4,
+    floor = 140f,
+    ideal = 180f,
+    stretch = 0.5,
+)
+
+private fun sessionsSlot(available: Int): HomeSlot = HomeSlot(
+    id = "sessions",
+    rank = 0,
+    floor = 120f,
+    ideal = 220f,
+    rows = HomeSlot.RowAppetite(available = available, baseline = 3, unit = 40f, ceiling = 12),
+    stretch = 1.0,
+)
+
 @Composable
 internal fun PulseViewContent(model: PulseContentModel, navigation: PulseContentNavigation) {
     val derived = rememberPulseViewContentDerived(model)
 
-    val slots = remember(derived, model.rollups, model.displayMode, model.timelineScope) {
-        buildList {
-            if (derived.shouldOfferDemoData) {
-                add(
-                    HomeSlot(
-                        id = "demo_prompt",
-                        rank = 5,
-                        floor = 60f,
-                        ideal = 72f,
-                        spans = true,
-                        isAmbient = true,
-                    ),
-                )
-            }
-            add(
-                HomeSlot(
-                    id = "controls",
-                    rank = 0,
-                    floor = 40f,
-                    ideal = 44f,
-                    spans = true,
-                ),
-            )
-            if (model.rollups != null) {
-                add(
-                    HomeSlot(
-                        id = "hero",
-                        rank = 0,
-                        floor = 180f,
-                        ideal = 240f,
-                        spans = true,
-                        stretch = 1.0,
-                    ),
-                )
-                add(
-                    HomeSlot(
-                        id = "forecast",
-                        rank = 2,
-                        floor = 140f,
-                        ideal = 180f,
-                        stretch = 0.5,
-                    ),
-                )
-            }
-            if (derived.snapshots.isNotEmpty()) {
-                add(
-                    HomeSlot(
-                        id = "quota",
-                        rank = 1,
-                        floor = 120f,
-                        ideal = 200f,
-                        rows = HomeSlot.RowAppetite(
-                            available = derived.snapshots.size,
-                            baseline = 2,
-                            unit = 36f,
-                            ceiling = 8,
-                        ),
-                        stretch = 1.0,
-                    ),
-                )
-            }
-            if (model.rollups != null) {
-                add(
-                    HomeSlot(
-                        id = "atlas",
-                        rank = 3,
-                        floor = 180f,
-                        ideal = 240f,
-                        stretch = 1.0,
-                    ),
-                )
-            }
-            add(
-                HomeSlot(
-                    id = "hermes",
-                    rank = 4,
-                    floor = 140f,
-                    ideal = 180f,
-                    stretch = 0.5,
-                ),
-            )
-            if (derived.recentUsages.isNotEmpty()) {
-                add(
-                    HomeSlot(
-                        id = "sessions",
-                        rank = 0,
-                        floor = 120f,
-                        ideal = 220f,
-                        rows = HomeSlot.RowAppetite(
-                            available = derived.recentUsages.size,
-                            baseline = 3,
-                            unit = 40f,
-                            ceiling = 12,
-                        ),
-                        stretch = 1.0,
-                    ),
-                )
-            }
-        }
-    }
+    val slots = remember(derived, model.rollups, model.displayMode, model.timelineScope) { pulseSlots(derived, model) }
 
     HomeLivingLayout(
         slots = slots,

@@ -165,6 +165,21 @@ private fun AnalyticsRouteTracker(currentRoute: String?) {
     }
 }
 
+/**
+ * Which bottom-bar tab owns a route.
+ *
+ * `cloud_store` and `computer_use_agent` are reached from You but are not themselves tab
+ * roots, so they would otherwise fall through to the Pulse default and light up the wrong
+ * tab while the user is standing in them.
+ */
+private fun tabForRoute(route: String?): BurnBarTab = when (route) {
+    "cloud_store",
+    "computer_use_agent",
+    -> BurnBarTab.YOU
+
+    else -> BurnBarTab.fromRoute(route) ?: BurnBarTab.PULSE
+}
+
 @Composable
 fun BurnBarNavHost(
     modifier: Modifier = Modifier,
@@ -186,16 +201,7 @@ fun BurnBarNavHost(
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
     AnalyticsRouteTracker(currentRoute)
-    val currentTab =
-        remember(currentRoute) {
-            when (currentRoute) {
-                "cloud_store",
-                "computer_use_agent",
-                -> BurnBarTab.YOU
-
-                else -> BurnBarTab.fromRoute(currentRoute) ?: BurnBarTab.PULSE
-            }
-        }
+    val currentTab = remember(currentRoute) { tabForRoute(currentRoute) }
 
     val windowSizeClass = rememberWindowSizeClass()
     val isWideScreen = windowSizeClass.widthClass.isWide

@@ -89,6 +89,7 @@ import com.openburnbar.ui.components.liquidGlassInteractive
 import com.openburnbar.ui.components.liquidGlassSurface
 import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.wallpaper.BurnBarWallpaperService
+import java.io.IOException
 import java.io.OutputStream
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -1031,13 +1032,23 @@ internal suspend fun saveStillWallpaper(view: View, context: Context) {
             withContext(Dispatchers.Main) {
                 Toast.makeText(context, "Wallpaper saved to Photos", Toast.LENGTH_SHORT).show()
             }
-        } catch (e: Exception) {
-            if (e is kotlinx.coroutines.CancellationException) throw e
-            android.util.Log.e("WallpaperGenerator", "Failed to save wallpaper bitmap", e)
-            withContext(Dispatchers.Main) {
-                Toast.makeText(context, "Unable to save wallpaper. Please try again.", Toast.LENGTH_SHORT).show()
-            }
+        } catch (e: IOException) {
+            // Narrowed from `catch (e: Exception)`, which also swallowed
+            // `CancellationException` and needed a manual re-throw to stay
+            // structured-concurrency-correct. These two are what writing a bitmap to
+            // MediaStore actually throws; anything else is a programming error and
+            // should surface rather than become a toast.
+            reportWallpaperSaveFailure(context, e)
+        } catch (e: SecurityException) {
+            reportWallpaperSaveFailure(context, e)
         }
+    }
+}
+
+private suspend fun reportWallpaperSaveFailure(context: Context, error: Throwable) {
+    android.util.Log.e("WallpaperGenerator", "Failed to save wallpaper bitmap", error)
+    withContext(Dispatchers.Main) {
+        Toast.makeText(context, "Unable to save wallpaper. Please try again.", Toast.LENGTH_SHORT).show()
     }
 }
 

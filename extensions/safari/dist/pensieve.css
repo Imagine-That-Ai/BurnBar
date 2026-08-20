@@ -142,4 +142,20 @@
   --motion-swirl-seconds: 18; /** basin swirl loop period (still render under reduced-motion) */
   --motion-frost-flip-ms: 520; /** yours <-> server view-flip frost sweep */
   --motion-ease-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --motion-settle-response-ms: 420; /** settle — a region changing size or position; spring response */
+  --motion-settle-damping: 0.88; /** settle — damping fraction. Higher than arrive: overshoot on a layout edge reads as wobble */
+  --motion-arrive-response-ms: 340; /** arrive — content entering; spring response */
+  --motion-arrive-damping: 0.8; /** arrive — damping fraction. Slight overshoot reads as life */
+  --motion-arrive-rise-px: 18; /** arrive — distance new content rises into place */
+  --motion-arrive-scale: 0.97; /** arrive — starting scale, so content approaches rather than slides */
+  --motion-depart-ms: 160; /** depart — quicker than arriving; a decision already made should not be waited on */
+  --motion-depart-scale: 0.98; /** depart — ending scale */
+  --motion-stagger-step-ms: 60; /** stagger — delay per item when a group arrives together */
+  --motion-stagger-cap-ms: 240; /** stagger — cap, so a long list's tail is not still arriving after its head is read */
+  --motion-tick-ms: 300; /** tick — a value changing inside a frame that is not moving */
+  --motion-pulse-period-ms: 1400; /** pulse — one breath of the ambient live heartbeat */
+  --motion-pulse-floor: 0.55; /** pulse — opacity floor. Shallow on purpose: an ambient signal that swings hard becomes an alert */
+  --motion-reduced-ms: 180; /** reduce-motion — the single crossfade every effect collapses to */
+  --motion-ease-settle: cubic-bezier(0.22, 1, 0.36, 1); /** web/WinUI approximation of the settle spring */
+  --motion-ease-arrive: cubic-bezier(0.34, 1.32, 0.44, 1); /** web/WinUI approximation of the arrive spring, overshoot included */
 }
