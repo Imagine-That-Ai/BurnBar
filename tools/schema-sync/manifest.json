@@ -400,6 +400,18 @@
           "path": "windows/cloudsync/OpenBurnBar.CloudSync/Models/FirestoreModelBenchmarkModels.cs"
         }
       ]
+    },
+    {
+      "id": "war-room",
+      "typespec": "typespec/domains/war-room.tsp",
+      "firestoreCollections": [
+        "users/{uid}/hermes_bodies/{bodyId}"
+      ],
+      "emit": {
+        "typescript": "functions/src/types/generated/war-room.ts",
+        "swift": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/WarRoomModels.swift",
+        "kotlin": "android/app/src/main/java/com/openburnbar/data/models/generated/WarRoomModels.kt"
+      }
     }
   ],
   "tspOnlyModelsDocs": "tspOnlyModels lists documentation-only TypeSpec models that are not (yet) wired into emit/generate.mjs. check-tsp-canon.mjs allows them and ratchets the list: an entry that disappears from the .tsp or that becomes emitted fails the gate until removed."

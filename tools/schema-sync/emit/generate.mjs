@@ -1752,6 +1752,143 @@ data class FirestoreModelBenchmarkSourceStatusDoc(
       },
     },
   },
+  "war-room": {
+    models: {
+      HermesBodyHardwareDoc: {
+        ts: `export interface HermesBodyHardwareDoc {
+  hardwareModel?: string;
+  chip?: string;
+  memoryBytes?: number;
+  performanceCoreCount?: number;
+  efficiencyCoreCount?: number;
+  osVersion?: string;
+}`,
+        swift: `/// Hardware a body reports about itself. Absent means "not readable here", never zero.
+public struct FirestoreHermesBodyHardwareDoc: Codable, Sendable, Equatable {
+    public var hardwareModel: String?
+    public var chip: String?
+    public var memoryBytes: Int64?
+    public var performanceCoreCount: Int?
+    public var efficiencyCoreCount: Int?
+    public var osVersion: String?
+}`,
+        kotlin: `@Keep
+@IgnoreExtraProperties
+data class FirestoreHermesBodyHardwareDoc(
+    val hardwareModel: String? = null,
+    val chip: String? = null,
+    val memoryBytes: Long? = null,
+    val performanceCoreCount: Long? = null,
+    val efficiencyCoreCount: Long? = null,
+    val osVersion: String? = null,
+)`,
+      },
+      HermesBodyPresenceDoc: {
+        ts: `export interface HermesBodyPresenceDoc {
+  state: "online" | "idle" | "offline" | "unknown";
+  lastHeartbeatAt: string;
+  heartbeatIntervalSeconds: number;
+}`,
+        swift: `/// Liveness of a body, derived from its own heartbeat.
+public struct FirestoreHermesBodyPresenceDoc: Codable, Sendable, Equatable {
+    public var state: String
+    public var lastHeartbeatAt: String
+    public var heartbeatIntervalSeconds: Int
+}`,
+        kotlin: `@Keep
+@IgnoreExtraProperties
+data class FirestoreHermesBodyPresenceDoc(
+    val state: String = "",
+    val lastHeartbeatAt: String = "",
+    val heartbeatIntervalSeconds: Long = 0,
+)`,
+      },
+      HermesBodyDoc: {
+        ts: `export interface HermesBodyDoc {
+  bodyId: string;
+  installationId: string;
+  displayName: string;
+  platform: "android" | "ios" | "linux" | "macos" | "windows";
+  hardware: HermesBodyHardwareDoc;
+  capabilities: ("advise" | "missionRun" | "observe" | "relayClient" | "relayHost")[];
+  presence: HermesBodyPresenceDoc;
+  joinedAt: string;
+  updatedAt: string;
+  schemaVersion: number;
+}`,
+        swift: `/// Firestore: users/{uid}/hermes_bodies/{bodyId}
+/// `+"`bodyId`"+` is the existing Hermes relay connection id — joining mints no new identity.
+public struct FirestoreHermesBodyDoc: Codable, Sendable, Equatable {
+    public var bodyId: String
+    public var installationId: String
+    public var displayName: String
+    public var platform: String
+    public var hardware: FirestoreHermesBodyHardwareDoc
+    public var capabilities: [String]
+    public var presence: FirestoreHermesBodyPresenceDoc
+    public var joinedAt: String
+    public var updatedAt: String
+    public var schemaVersion: Int
+}`,
+        kotlin: `@Keep
+@IgnoreExtraProperties
+data class FirestoreHermesBodyDoc(
+    val bodyId: String = "",
+    val installationId: String = "",
+    val displayName: String = "",
+    val platform: String = "",
+    val hardware: FirestoreHermesBodyHardwareDoc = FirestoreHermesBodyHardwareDoc(),
+    val capabilities: List<String> = emptyList(),
+    val presence: FirestoreHermesBodyPresenceDoc = FirestoreHermesBodyPresenceDoc(),
+    val joinedAt: String = "",
+    val updatedAt: String = "",
+    val schemaVersion: Long = 0,
+)`,
+      },
+      OriginatorDoc: {
+        ts: `export interface OriginatorDoc {
+  bodyId: string;
+  kind: "agent" | "daemon" | "human" | "mission" | "unknown";
+  surface: string;
+  confidence: "exact" | "inferred" | "unknown";
+  provenanceDetail?: string;
+  label?: string;
+  missionId?: string;
+  runId?: string;
+  recordedAt: string;
+  schemaVersion: number;
+}`,
+        swift: `/// Who caused a write. Embedded in usage, mission, and run documents.
+/// Only a write the daemon itself spawned may claim `+"`exact`"+` confidence.
+public struct FirestoreOriginatorDoc: Codable, Sendable, Equatable {
+    public var bodyId: String
+    public var kind: String
+    public var surface: String
+    public var confidence: String
+    public var provenanceDetail: String?
+    public var label: String?
+    public var missionId: String?
+    public var runId: String?
+    public var recordedAt: String
+    public var schemaVersion: Int
+}`,
+        kotlin: `@Keep
+@IgnoreExtraProperties
+data class FirestoreOriginatorDoc(
+    val bodyId: String = "",
+    val kind: String = "",
+    val surface: String = "",
+    val confidence: String = "",
+    val provenanceDetail: String? = null,
+    val label: String? = null,
+    val missionId: String? = null,
+    val runId: String? = null,
+    val recordedAt: String = "",
+    val schemaVersion: Long = 0,
+)`,
+      },
+    },
+  },
 };
 
 function emitTypeScript(domainId, models) {
