@@ -493,7 +493,16 @@ jobs:
 
   deploy-hosting:
     needs: build-hosting-artifacts
-    if: ${{ github.event_name != 'workflow_dispatch' || inputs.dry_run != true }}
+    # `!cancelled()` displaces the implicit `success()` guard so the explicit
+    # upstream result check below is what actually decides. Without it this job
+    # silently inherits the routine skip of `authorize-domain-core-rollback`
+    # through `needs` — the exact regression the comment on
+    # `dispatch-domain-core-console-evidence` says this job "did for a month",
+    # and which `verify-workflow-reachability` now catches.
+    if: >-
+      ${{ !cancelled()
+          && needs.build-hosting-artifacts.result == 'success'
+          && (github.event_name != 'workflow_dispatch' || inputs.dry_run != true) }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: production
