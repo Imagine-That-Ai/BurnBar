@@ -49,8 +49,7 @@ object BurnbarShareInboxProcessor {
         return candidate.path == root.path || candidate.path.startsWith(prefix)
     }
 
-    fun uniqueWorkName(file: File): String =
-        "burnbar-share-upload-${file.canonicalFile.absolutePath.hashCode().toUInt()}"
+    fun uniqueWorkName(file: File): String = "burnbar-share-upload-${file.canonicalFile.absolutePath.hashCode().toUInt()}"
 
     fun pendingFiles(root: File): List<File> {
         val items = root.listFiles() ?: return emptyList()
@@ -72,12 +71,7 @@ object BurnbarShareInboxProcessor {
      * [forceSteal] is for the unique WorkManager owner: this worker is the
      * only runner for the path, so a leftover lock is never a live peer.
      */
-    fun tryAcquireUploadLock(
-        file: File,
-        nowMs: Long = System.currentTimeMillis(),
-        staleAfterMs: Long = STALE_LOCK_MS,
-        forceSteal: Boolean = false,
-    ): Boolean {
+    fun tryAcquireUploadLock(file: File, nowMs: Long = System.currentTimeMillis(), staleAfterMs: Long = STALE_LOCK_MS, forceSteal: Boolean = false): Boolean {
         val lock = lockFile(file)
         if (lock.createNewFile()) return true
         if (!forceSteal && !isStaleLock(lock, nowMs, staleAfterMs)) return false
@@ -126,11 +120,7 @@ object BurnbarShareInboxProcessor {
         }
     }
 
-    fun enqueueUnique(
-        context: Context,
-        file: File,
-        policy: ExistingWorkPolicy = ExistingWorkPolicy.KEEP,
-    ) {
+    fun enqueueUnique(context: Context, file: File, policy: ExistingWorkPolicy = ExistingWorkPolicy.KEEP) {
         if (!file.isFile || file.length() <= 0) return
         if (!isContained(file, inboxDirectory(context))) return
         val request =
@@ -155,11 +145,7 @@ object BurnbarShareInboxProcessor {
         }
     }
 
-    suspend fun processPending(
-        root: File,
-        deviceId: String,
-        upload: suspend (File, String) -> Unit,
-    ) {
+    suspend fun processPending(root: File, deviceId: String, upload: suspend (File, String) -> Unit) {
         for (file in pendingFiles(root)) {
             runCatching { uploadOnce(file, deviceId, upload = upload) }
         }
