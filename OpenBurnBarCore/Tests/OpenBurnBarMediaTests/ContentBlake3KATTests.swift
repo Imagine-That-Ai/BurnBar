@@ -9,7 +9,7 @@ final class ContentBlake3KATTests: XCTestCase {
         )
         XCTAssertEqual(
             ContentBlake3.hash(Data("abc".utf8)),
-            "6437b3ac38465133ffb63b75273a8db548ba6158e3c9183084760a73c7ed31c0"
+            "6437b3ac38465133ffb63b75273a8db548c558465d79db03fd359c6cd5bd9d85"
         )
     }
 

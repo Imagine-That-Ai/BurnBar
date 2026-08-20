@@ -12,7 +12,7 @@ class ContentBlake3Test {
             ContentBlake3.hash(ByteArray(0)),
         )
         assertEquals(
-            "6437b3ac38465133ffb63b75273a8db548ba6158e3c9183084760a73c7ed31c0",
+            "6437b3ac38465133ffb63b75273a8db548c558465d79db03fd359c6cd5bd9d85",
             ContentBlake3.hash("abc".toByteArray()),
         )
     }
