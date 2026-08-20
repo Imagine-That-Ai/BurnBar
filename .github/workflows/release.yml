@@ -1411,7 +1411,17 @@ jobs:
       # AAR byte-compare step). Accept all licenses non-interactively so an
       # image rollout cannot fail a release at 2 a.m.
       - name: Accept Android SDK licenses
-        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+        # `yes` always dies of SIGPIPE when sdkmanager exits, so the pipeline's
+        # own status is meaningless — but sdkmanager's is not: if IT fails (bad
+        # cmdline-tools path, broken license op), this step must fail loudly
+        # rather than hand the next step the same opaque exit-64 death.
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
+          status="${PIPESTATUS[1]}"
+          if [[ "$status" -ne 0 ]]; then
+            echo "::error::sdkmanager --licenses failed (exit $status); Android SDK licenses are NOT accepted."
+            exit "$status"
+          fi
 
       - name: Rebuild and byte-compare checked-in Android AAR
         env:
