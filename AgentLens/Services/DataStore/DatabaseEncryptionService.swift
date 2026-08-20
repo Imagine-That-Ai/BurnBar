@@ -227,7 +227,6 @@ enum DatabaseEncryptionService {
     }
     private static let allowedKeyCharacters = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "+/=-"))
 
-
     /// Every keychain call in this file goes through this seam, so suppressing
     /// interaction here covers all of them at once.
     ///
