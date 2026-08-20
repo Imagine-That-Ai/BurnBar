@@ -299,6 +299,18 @@ jobs:
             echo "output of \`xcodegen generate --spec project.yml\`. Run"
             echo "\`xcodegen generate --spec project.yml\` locally and commit the result so"
             echo "no source/test file is silently dropped from the build."
+            echo ""
+            echo "Regenerate from a checkout that has NO build output in it."
+            echo "XcodeGen reads whatever is on disk, so a working copy holding"
+            echo ".derived-data, a .spm-cache symlink or a previously generated"
+            echo ".xcodeproj yields hundreds of lines of duplicate group hierarchy"
+            echo "that regenerate clean here and fail this gate. If your tree has"
+            echo "been built in, use a scratch worktree:"
+            echo "  git worktree add --detach /tmp/obb-pbxproj HEAD"
+            echo "  (cd /tmp/obb-pbxproj && xcodegen generate --spec project.yml)"
+            echo "  cp /tmp/obb-pbxproj/OpenBurnBar.xcodeproj/project.pbxproj \\"
+            echo "     OpenBurnBar.xcodeproj/project.pbxproj"
+            echo "Pin XcodeGen to ${xcodegen_version:-the version this job installs}."
           } >&2
           exit 1
 

@@ -171,3 +171,20 @@ the failure recoverable in one click rather than fatal.
 | `DatabaseKeyLockedRecoveryTests` | `.absent` vs `.unreadable` classification; a locked key never mints a replacement; the failure surfaces as recoverable |
 | `SystemPermissionSafetyFrameTests` | Every kind has a complete frame; no "stays on this Mac" overclaim; the frame is not a copy of the sales copy; the powerful grants invite declining |
 | `SystemPermissionMonitorRefreshTests` | The wizard asks through the ladder; the trust overview blocks every request until acknowledged |
+
+## Regenerating the Xcode project
+
+Adding any file here means regenerating `OpenBurnBar.xcodeproj`. Do it from a checkout
+with **no build output in it**. XcodeGen reads whatever is on disk, so a working copy
+holding `.derived-data`, a `.spm-cache` symlink, or a previously generated `.xcodeproj`
+emits hundreds of lines of duplicate group hierarchy — which regenerates clean on CI and
+fails the `XcodeGen pbxproj drift` gate with a diff that looks nothing like your change.
+
+```bash
+git worktree add --detach /tmp/obb-pbxproj HEAD
+(cd /tmp/obb-pbxproj && xcodegen generate --spec project.yml)
+cp /tmp/obb-pbxproj/OpenBurnBar.xcodeproj/project.pbxproj OpenBurnBar.xcodeproj/project.pbxproj
+```
+
+Use the XcodeGen version pinned in `.github/workflows/pr-native-fast.yml`; different
+versions emit different package-product sets and the gate compares them directly.
