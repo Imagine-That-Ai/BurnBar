@@ -369,8 +369,13 @@ export function isAuthorized(
   if (!authHeader || !isLoopbackIp(clientIp)) {
     return false;
   }
-  const match = /^Bearer\s+(.+)$/iu.exec(authHeader);
-  const provided = match?.[1]?.trim();
+  // Match only the scheme and slice the rest. `/^Bearer\s+(.+)$/` is quadratic on
+  // this input: `\s` and `.` both match tab/space/FF/VT, so when the tail fails the
+  // engine retries every split point of the whitespace run. `authHeader` comes
+  // straight off the wire (CodeQL js/polynomial-redos). Anchored `\s+` with nothing
+  // after it has no split points to retry, so this stays linear.
+  const scheme = /^Bearer\s+/iu.exec(authHeader);
+  const provided = scheme ? authHeader.slice(scheme[0].length).trim() : undefined;
   if (!provided) {
     return false;
   }

@@ -1051,7 +1051,9 @@ let applePrunedDecompositionTargets: [Target] = buildApplePrunedDecompositionTar
             "OpenBurnBarInsights",
             "OpenBurnBarHermes",
             "OpenBurnBarPretext",
-            "OpenBurnBarLogParsers", "OpenBurnBarRecap"],
+            "OpenBurnBarLogParsers",
+            "OpenBurnBarRecap"
+        ],
         exclude: openBurnBarUIExcludes
     )
 ] : []
@@ -1460,6 +1462,12 @@ let firstPartyTargetsBase: [Target] = [
                 // OpenBurnBarQuota` (added in that test) needs the module as a test-target
                 // dependency; the test file otherwise stays put with its logic unchanged.
                 "OpenBurnBarQuota",
+                // AE-TESTABLE: the Recap deck tests reach INTERNAL members
+                // (`RecapCraftRules.vocabulary`, `numericViolation`, `numericTokens`)
+                // that moved with the feature into `OpenBurnBarRecap` when it was carved
+                // out of Insights. `@testable import OpenBurnBarRecap` needs the module
+                // as a test-target dependency; the tests stay put, logic unchanged.
+                "OpenBurnBarRecap",
                 // P-22 (S15) AE-IMPORT: `OBBCAbiUsageScanExportTests` reaches the PUBLIC
                 // OBBCAbi C-ABI surface (`OBBCAbiUsageScanExport.run`, `obb_scan_usage`,
                 // `obb_parse_cli_stdout`, `obb_string_free`), which moved Core →

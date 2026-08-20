@@ -1,5 +1,6 @@
 import XCTest
 @testable import OpenBurnBarCore
+@testable import OpenBurnBarRecap
 @testable import OpenBurnBarInsights
 
 /// The guard that makes model-written prose safe to ship.

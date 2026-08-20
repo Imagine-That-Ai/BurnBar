@@ -1,5 +1,6 @@
 import Foundation
 @testable import OpenBurnBarCore
+@testable import OpenBurnBarRecap
 
 /// Deterministic fixtures for the recap engine.
 ///

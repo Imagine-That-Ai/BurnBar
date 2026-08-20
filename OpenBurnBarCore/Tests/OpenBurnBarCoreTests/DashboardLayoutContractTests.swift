@@ -30,9 +30,13 @@ final class DashboardLayoutContractTests: XCTestCase {
                        "All surfaces persist the layout under this exact key — changing it orphans saved preferences.")
     }
 
-    func test_current_defaultsToAtelier_whenUnset() {
-        XCTAssertEqual(DashboardLayout.current, .atelier,
-                       "The keeper is the out-of-box default.")
+    /// Focus, not Canvas. Canvas is the ambient second-display surface and its whole
+    /// thesis is to show almost nothing, which makes a poor first impression on a
+    /// primary monitor. Focus opens on the one thing that needs a decision, over the
+    /// live spend curve — the product's actual argument.
+    func test_current_defaultsToFocus_whenUnset() {
+        XCTAssertEqual(DashboardLayout.current, .aurora,
+                       "Focus is the out-of-box default.")
     }
 
     func test_current_readsStoredValue() {
@@ -42,9 +46,9 @@ final class DashboardLayoutContractTests: XCTestCase {
         }
     }
 
-    func test_current_fallsBackToAtelier_onGarbage() {
+    func test_current_fallsBackToFocus_onGarbage() {
         UserDefaults.standard.set("not-a-layout", forKey: storageKey)
-        XCTAssertEqual(DashboardLayout.current, .atelier)
+        XCTAssertEqual(DashboardLayout.current, .aurora)
     }
 
     // MARK: - Case set + raw values (persisted strings; do not churn)

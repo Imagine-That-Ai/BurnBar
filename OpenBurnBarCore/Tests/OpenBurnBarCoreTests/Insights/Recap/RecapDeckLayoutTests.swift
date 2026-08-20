@@ -1,6 +1,7 @@
 import XCTest
 import SwiftUI
 @testable import OpenBurnBarCore
+@testable import OpenBurnBarRecap
 @testable import OpenBurnBarInsights
 @testable import OpenBurnBarUI
 
