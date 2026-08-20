@@ -58,9 +58,11 @@ forbidden_pattern='DebugBridge(Core|UI|Touch)?|gstack[.-]ios[.-]qa|StateServer|D
 # Swift emits a `__swift_FORCE_LOAD_$_<shim>_$_<library>` marker symbol for
 # every linked library that pulls in a back-deployment shim. The marker carries
 # no code — its NAME merely encodes the library name — so an otherwise-empty
-# Release build of a DebugBridge* module still produces one. Exempt only that
-# marker family; actual QA code symbols and strings remain banned.
-force_load_marker='swift_FORCE_LOAD'
+# Release build of a DebugBridge* module still produces one. Exempt ONLY a
+# complete marker: anchored, shim segment must start with "swift", nothing
+# after the library name. A QA symbol that merely embeds the marker text
+# (e.g. swift_FORCE_LOAD_StateServer) stays banned.
+force_load_marker='^_{1,2}swift_FORCE_LOAD_\$_swift[A-Za-z0-9]*_\$_[A-Za-z0-9_]+$'
 
 symbol_hits="$(
   nm -j "${executable_path}" 2>/dev/null \
