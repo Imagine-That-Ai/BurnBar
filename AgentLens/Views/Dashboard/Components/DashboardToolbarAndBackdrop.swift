@@ -156,23 +156,22 @@ struct DashboardBackdrop: View {
             // picking a kernel theme on the paper skin rendered nothing at all —
             // the theme was chosen, stored, and then never consulted.
             if shouldUseKernelBackdrop {
+                // Full-window WebGL2 kernel field (the bottom-most backdrop
+                // layer). Reuses the same clear-surface plumbing as the swarm, so
+                // dashboard content composites on top. Keep the normal fallback
+                // static; add the native swarm only when the substrate layer is
+                // explicitly enabled so the substrate picker still has a live host
+                // in kernel mode.
                 Group {
-                        // Full-window WebGL2 kernel field (the bottom-most
-                        // backdrop layer). Reuses the same clear-surface
-                        // plumbing as the swarm, so dashboard content composites
-                        // on top. Keep the normal fallback static; add the native
-                        // swarm only when the substrate layer is explicitly enabled
-                        // so the substrate picker still has a live host in kernel mode.
-                        staticKernelFallback
-                        KernelBackdropView(
-                            colorSchemeOverride: kernelColorScheme,
-                            onReadabilityChange: { profile in
-                                onReadabilityChange?(profile)
-                            }
-                        )
-                            .ignoresSafeArea()
-                        kernelSubstrateOverlay
-                    }
+                    staticKernelFallback
+                    KernelBackdropView(
+                        colorSchemeOverride: kernelColorScheme,
+                        onReadabilityChange: { profile in
+                            onReadabilityChange?(profile)
+                        }
+                    )
+                        .ignoresSafeArea()
+                    kernelSubstrateOverlay
                 }
                 .opacity(1 - 0.82 * clarity)
             } else if settingsManager.appearanceSkin == .editorial {
