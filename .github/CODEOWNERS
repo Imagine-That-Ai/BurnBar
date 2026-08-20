@@ -18,6 +18,7 @@ windows/ @Ajnunezg @emilio3435
 
 # Editor extension
 extensions/openburnbar/ @Ajnunezg @emilio3435
+extensions/safari/ @Ajnunezg @emilio3435
 
 # CI/CD
 .github/workflows/ @Ajnunezg @emilio3435
