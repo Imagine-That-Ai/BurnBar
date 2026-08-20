@@ -5811,15 +5811,6 @@
 			path = Packages;
 			sourceTree = "<group>";
 		};
-		003BA8FEAF6912204AFA5073 /* ControlDeck */ = {
-			isa = PBXGroup;
-			children = (
-				57A7ABFDDD3E1BF3A50CD56D /* ControlTileView.swift
-AgentLens */,
-			);
-			path = ControlDeck;
-			sourceTree = "<group>";
-		};
 		01672476C317896071A3B037 /* Models */ = {
 			isa = PBXGroup;
 			children = (
@@ -5834,14 +5825,6 @@ AgentLens */,
 				F01F23D2FB447030B23F3171 /* MercuryTransferHistoryEntry.swift */,
 			);
 			path = Models;
-			sourceTree = "<group>";
-		};
-		043719881E1DEE87A7B6BD41 /* Services */ = {
-			isa = PBXGroup;
-			children = (
-				74481F9F07C8FFD48F0F33DB /* ComputerUse */,
-			);
-			path = Services;
 			sourceTree = "<group>";
 		};
 		048142ED04F14197F1F94FB1 /* Chat */ = {
@@ -5878,14 +5861,6 @@ AgentLens */,
 				557F1DD450A171E0FD5787EB /* ProviderBrand.swift */,
 			);
 			path = Models;
-			sourceTree = "<group>";
-		};
-		06A22758A742CB099AC19DB3 /* Services */ = {
-			isa = PBXGroup;
-			children = (
-				492194ECF12AFBE6D808796D /* DataStore */,
-			);
-			path = Services;
 			sourceTree = "<group>";
 		};
 		06EF65ACECED166FEFC4E37B /* Home */ = {
@@ -6089,15 +6064,6 @@ AgentLens */,
 			path = DataStore;
 			sourceTree = "<group>";
 		};
-		0A968320B456F149DF03A154 /* ComputerUse */ = {
-			isa = PBXGroup;
-			children = (
-				AA0938781713516008864DDD /* SystemPermissionPromptRunner.swift
-AgentLens */,
-			);
-			path = ComputerUse;
-			sourceTree = "<group>";
-		};
 		0AC800918DF1372DC6761D47 /* Bridges */ = {
 			isa = PBXGroup;
 			children = (
@@ -6200,14 +6166,6 @@ AgentLens */,
 				D248A7C95B5C0A9C9D26E29E /* ProviderQuotaStripViews.swift */,
 			);
 			path = ProviderQuota;
-			sourceTree = "<group>";
-		};
-		0F9568CCBE5A7B463CC8A135 /* Views */ = {
-			isa = PBXGroup;
-			children = (
-				BE34B203866667A721DD27D5 /* Onboarding */,
-			);
-			path = Views;
 			sourceTree = "<group>";
 		};
 		0F96F080BC460790F77AC7F2 /* Models */ = {
@@ -6315,15 +6273,6 @@ AgentLens */,
 				FEEA518B2D7401808B4803AB /* SessionLogsView+Filtering.swift */,
 			);
 			path = SessionLogs;
-			sourceTree = "<group>";
-		};
-		146A46AC69C479404BAC08F7 /* OpenBurnBarComputerUseCore */ = {
-			isa = PBXGroup;
-			children = (
-				A2B63536736CCE8F841009CD /* SystemPermissionSafetyFrame.swift
-OpenBurnBarCore */,
-			);
-			path = OpenBurnBarComputerUseCore;
 			sourceTree = "<group>";
 		};
 		1635CB50ECF269782319F668 /* Components */ = {
@@ -6581,23 +6530,6 @@ OpenBurnBarCore */,
 			path = You;
 			sourceTree = "<group>";
 		};
-		256C6F843D3C8916F8B2D78F /* Onboarding */ = {
-			isa = PBXGroup;
-			children = (
-				B4CC0FF2289ED85BC167FA4B /* OnboardingSystemPermissionsView.swift
-AgentLens */,
-			);
-			path = Onboarding;
-			sourceTree = "<group>";
-		};
-		264A2C6C36EA4F2B49BD48EC /* Services */ = {
-			isa = PBXGroup;
-			children = (
-				A07B3FF3F4F355BB533CEB68 /* SmartHub */,
-			);
-			path = Services;
-			sourceTree = "<group>";
-		};
 		271D0D74D8E204855A96EA45 /* Atlas */ = {
 			isa = PBXGroup;
 			children = (
@@ -6639,36 +6571,12 @@ AgentLens */,
 			path = ProviderQuota;
 			sourceTree = "<group>";
 		};
-		297251916ABB535A7FFA500E /* Sources */ = {
-			isa = PBXGroup;
-			children = (
-				146A46AC69C479404BAC08F7 /* OpenBurnBarComputerUseCore */,
-			);
-			path = Sources;
-			sourceTree = "<group>";
-		};
-		297EF9B33E47D03D6DA4AC40 /* Views */ = {
-			isa = PBXGroup;
-			children = (
-				8DFF7FE9F4D9D9170985BB4D /* Settings */,
-			);
-			path = Views;
-			sourceTree = "<group>";
-		};
 		2A3C524374ED972FA56D68F0 /* Migration */ = {
 			isa = PBXGroup;
 			children = (
 				747A4B6A2B60444C6E31C740 /* VibeProxyMigrationService.swift */,
 			);
 			path = Migration;
-			sourceTree = "<group>";
-		};
-		2A53743B7636FA5135B204B6 /* Tests */ = {
-			isa = PBXGroup;
-			children = (
-				9DCB79C949F4D86B4BFA75A0 /* OpenBurnBarComputerUseCoreTests */,
-			);
-			path = Tests;
 			sourceTree = "<group>";
 		};
 		2A53F185186CFD242A07F70C /* Fixtures */ = {
@@ -6871,15 +6779,6 @@ AgentLens */,
 			path = OnboardingVisualSnapshotTests;
 			sourceTree = "<group>";
 		};
-		357462AFC723746060AF4C6A /* MacAccessibilityPermissionRequester.swift
-AgentLens */ = {
-			isa = PBXGroup;
-			children = (
-				CA3E9B571C503976A5C5C7B1 /* Services */,
-			);
-			path = "MacAccessibilityPermissionRequester.swift\nAgentLens";
-			sourceTree = "<group>";
-		};
 		35CA3A1DB5326DF69280E361 /* Pro */ = {
 			isa = PBXGroup;
 			children = (
@@ -7005,33 +6904,6 @@ AgentLens */ = {
 			);
 			name = "project-code-memory";
 			path = "tools/project-code-memory";
-			sourceTree = "<group>";
-		};
-		3CAF2D167800687C9B40CD64 /* TextExpansion */ = {
-			isa = PBXGroup;
-			children = (
-				3DB4AD16D6ADEF1542B9C13F /* TextExpansionRuntimeController.swift
-AgentLens */,
-			);
-			path = TextExpansion;
-			sourceTree = "<group>";
-		};
-		3DB4AD16D6ADEF1542B9C13F /* TextExpansionRuntimeController.swift
-AgentLens */ = {
-			isa = PBXGroup;
-			children = (
-				AEA3342CF690BDD254EE7EDB /* Views */,
-			);
-			path = "TextExpansionRuntimeController.swift\nAgentLens";
-			sourceTree = "<group>";
-		};
-		3E2D6C7F1939822CB7E2CA1C /* Onboarding */ = {
-			isa = PBXGroup;
-			children = (
-				F678CCC24C3936A3EBBD9BFA /* OnboardingWizardView.swift
-AgentLens */,
-			);
-			path = Onboarding;
 			sourceTree = "<group>";
 		};
 		3F003F71D1AEF24CBAC959E5 /* ElderWand */ = {
@@ -7243,15 +7115,6 @@ AgentLens */,
 			path = Views;
 			sourceTree = "<group>";
 		};
-		492194ECF12AFBE6D808796D /* DataStore */ = {
-			isa = PBXGroup;
-			children = (
-				67D2B57A91E25363B769E42E /* DatabaseEncryptionService.swift
-AgentLens */,
-			);
-			path = DataStore;
-			sourceTree = "<group>";
-		};
 		4B12C9CAC5210D993C3532B0 /* Linux */ = {
 			isa = PBXGroup;
 			children = (
@@ -7304,15 +7167,6 @@ AgentLens */,
 			path = Pro;
 			sourceTree = "<group>";
 		};
-		4FC0ACA25AA14001FB6B7A55 /* SystemPermissionMonitor.swift
-AgentLens */ = {
-			isa = PBXGroup;
-			children = (
-				06A22758A742CB099AC19DB3 /* Services */,
-			);
-			path = "SystemPermissionMonitor.swift\nAgentLens";
-			sourceTree = "<group>";
-		};
 		50844258EEABC7B640F1F00A /* App */ = {
 			isa = PBXGroup;
 			children = (
@@ -7355,14 +7209,6 @@ AgentLens */ = {
 				135D84C14A7204DFBB6237B6 /* SessionLogs */,
 				0A8EDB295C2AC9A2D59F2DCA /* Settings */,
 				95ECA29BA2E78D1200BD855F /* SmartHub */,
-			);
-			path = Views;
-			sourceTree = "<group>";
-		};
-		52FA0C0C5E2F4066D86D8A46 /* Views */ = {
-			isa = PBXGroup;
-			children = (
-				256C6F843D3C8916F8B2D78F /* Onboarding */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -7424,15 +7270,6 @@ AgentLens */ = {
 			path = Telemetry;
 			sourceTree = "<group>";
 		};
-		571A56C65FB122087FE117BD /* FirstRunPermissionLadder.swift
-AgentLens */ = {
-			isa = PBXGroup;
-			children = (
-				708715A9EF45865700996217 /* Services */,
-			);
-			path = "FirstRunPermissionLadder.swift\nAgentLens";
-			sourceTree = "<group>";
-		};
 		575D3D4C2116881CBDB35D9D /* OpenBurnBarMobile */ = {
 			isa = PBXGroup;
 			children = (
@@ -7448,15 +7285,6 @@ AgentLens */ = {
 				877B2C5735E3F07A8DE6C926 /* Info.plist */,
 			);
 			path = OpenBurnBarMobile;
-			sourceTree = "<group>";
-		};
-		57A7ABFDDD3E1BF3A50CD56D /* ControlTileView.swift
-AgentLens */ = {
-			isa = PBXGroup;
-			children = (
-				E5A6838D8468AF4B64F888A9 /* Views */,
-			);
-			path = "ControlTileView.swift\nAgentLens";
 			sourceTree = "<group>";
 		};
 		5853D5B8AD250ADA71377426 /* MissionControl */ = {
@@ -7491,13 +7319,6 @@ AgentLens */ = {
 				F02A613E74975DC3CF96BFEF /* MobileInsightDataSource.swift */,
 			);
 			path = Insights;
-			sourceTree = "<group>";
-		};
-		5A6F7BE080FAE326750B4C29 /* ComputerUse */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			path = ComputerUse;
 			sourceTree = "<group>";
 		};
 		5AF8D166AAAA65DBA071ED7D /* OpenBurnBarRemoteAccessAgentCore */ = {
@@ -7571,14 +7392,6 @@ AgentLens */ = {
 			);
 			name = gen;
 			path = "packages/data-domains/gen";
-			sourceTree = "<group>";
-		};
-		5F9663C96E2F96A247076574 /* Dashboard */ = {
-			isa = PBXGroup;
-			children = (
-				003BA8FEAF6912204AFA5073 /* ControlDeck */,
-			);
-			path = Dashboard;
 			sourceTree = "<group>";
 		};
 		5FA17595EB355C9E729FAE16 /* OpenBurnBarDaemon */ = {
@@ -7700,15 +7513,6 @@ AgentLens */ = {
 			path = OpenBurnBarDaemon/Sources/OpenBurnBarDaemon;
 			sourceTree = "<group>";
 		};
-		60E1C16198B79E6F20DE6E9F /* Mac */ = {
-			isa = PBXGroup;
-			children = (
-				357462AFC723746060AF4C6A /* MacAccessibilityPermissionRequester.swift
-AgentLens */,
-			);
-			path = Mac;
-			sourceTree = "<group>";
-		};
 		61C3D50DC10DC1FCD62988EB /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
@@ -7787,15 +7591,6 @@ AgentLens */,
 			path = Settings;
 			sourceTree = "<group>";
 		};
-		67D2B57A91E25363B769E42E /* DatabaseEncryptionService.swift
-AgentLens */ = {
-			isa = PBXGroup;
-			children = (
-				264A2C6C36EA4F2B49BD48EC /* Services */,
-			);
-			path = "DatabaseEncryptionService.swift\nAgentLens";
-			sourceTree = "<group>";
-		};
 		6894420C69D09C896156B263 /* openburnbar-mcp */ = {
 			isa = PBXGroup;
 			children = (
@@ -7845,15 +7640,6 @@ AgentLens */ = {
 				2AB6EE338EFA834B39EBFF1D /* PopoverQuickSwitchView.swift */,
 			);
 			path = Popover;
-			sourceTree = "<group>";
-		};
-		6B230626AC6AD75FEAD5D9A5 /* ComputerUseSettingsView.swift
-AgentLens */ = {
-			isa = PBXGroup;
-			children = (
-				A8396421FD84E96536312E1C /* Views */,
-			);
-			path = "ComputerUseSettingsView.swift\nAgentLens";
 			sourceTree = "<group>";
 		};
 		6BB559D405D52D77EAB960F6 /* Fleet */ = {
@@ -7928,14 +7714,6 @@ AgentLens */ = {
 			path = WarRoom;
 			sourceTree = "<group>";
 		};
-		708715A9EF45865700996217 /* Services */ = {
-			isa = PBXGroup;
-			children = (
-				0A968320B456F149DF03A154 /* ComputerUse */,
-			);
-			path = Services;
-			sourceTree = "<group>";
-		};
 		72C6CA67A85EA56E3D742024 /* Settings */ = {
 			isa = PBXGroup;
 			children = (
@@ -7958,14 +7736,6 @@ AgentLens */ = {
 				D3638700080FF7CF58D97F5E /* PensieveMemorySearchView.swift */,
 			);
 			path = Control;
-			sourceTree = "<group>";
-		};
-		74481F9F07C8FFD48F0F33DB /* ComputerUse */ = {
-			isa = PBXGroup;
-			children = (
-				60E1C16198B79E6F20DE6E9F /* Mac */,
-			);
-			path = ComputerUse;
 			sourceTree = "<group>";
 		};
 		7659AC2CAC28E69F451DF53B /* Media */ = {
@@ -8036,15 +7806,6 @@ AgentLens */ = {
 				40E304C5071B8E7D1013EE94 /* TrackpadGlassSurface.swift */,
 			);
 			path = Media;
-			sourceTree = "<group>";
-		};
-		7BC1FD27A96923FDA0DBE954 /* SystemPermissionTrustSheet.swift
-AgentLens */ = {
-			isa = PBXGroup;
-			children = (
-				C4B6596758C937EADB3C0B11 /* Views */,
-			);
-			path = "SystemPermissionTrustSheet.swift\nAgentLens";
 			sourceTree = "<group>";
 		};
 		7C387E25425853399E9E8305 /* Cast */ = {
@@ -8398,15 +8159,6 @@ AgentLens */ = {
 			path = ComputerUse;
 			sourceTree = "<group>";
 		};
-		8645C4D16B456C3321BE4896 /* TextExpansionSettingsView.swift
-AgentLensTests */ = {
-			isa = PBXGroup;
-			children = (
-				AC406F19BC65C304F8E6DCEF /* Active */,
-			);
-			path = "TextExpansionSettingsView.swift\nAgentLensTests";
-			sourceTree = "<group>";
-		};
 		873691E94763C330B8006D0A /* Resources */ = {
 			isa = PBXGroup;
 			children = (
@@ -8417,8 +8169,6 @@ AgentLensTests */ = {
 		87CE0F93D9EBCEBC09913516 /* FirstRun */ = {
 			isa = PBXGroup;
 			children = (
-				571A56C65FB122087FE117BD /* FirstRunPermissionLadder.swift
-AgentLens */,
 				5674C527047E92E94CCD4AD9 /* FirstRunPermissionLadder.swift */,
 			);
 			path = FirstRun;
@@ -8505,15 +8255,6 @@ AgentLens */,
 				4189A1FE938A2AB45C360ED4 /* VoIPCallTrigger.swift */,
 			);
 			path = Media;
-			sourceTree = "<group>";
-		};
-		8DFF7FE9F4D9D9170985BB4D /* Settings */ = {
-			isa = PBXGroup;
-			children = (
-				8645C4D16B456C3321BE4896 /* TextExpansionSettingsView.swift
-AgentLensTests */,
-			);
-			path = Settings;
 			sourceTree = "<group>";
 		};
 		8E9FCA97351F0E8C159ED957 /* GrokD */ = {
@@ -8964,15 +8705,6 @@ AgentLensTests */,
 			path = ProjectionPipeline;
 			sourceTree = "<group>";
 		};
-		9900E5E210FBC9C32F46EB99 /* Onboarding */ = {
-			isa = PBXGroup;
-			children = (
-				9A6860D11E4D13E5A4A816CF /* SystemPermissionTrustSheetPresenter.swift
-AgentLensTests */,
-			);
-			path = Onboarding;
-			sourceTree = "<group>";
-		};
 		9991CAD9C8F1D18DADB6C5CC /* Settings */ = {
 			isa = PBXGroup;
 			children = (
@@ -9014,15 +8746,6 @@ AgentLensTests */,
 			path = Insights;
 			sourceTree = "<group>";
 		};
-		9A6860D11E4D13E5A4A816CF /* SystemPermissionTrustSheetPresenter.swift
-AgentLensTests */ = {
-			isa = PBXGroup;
-			children = (
-				EB80B46CADA790BFF775AA03 /* Active */,
-			);
-			path = "SystemPermissionTrustSheetPresenter.swift\nAgentLensTests";
-			sourceTree = "<group>";
-		};
 		9AC4139D9EECB45876AB97B7 /* Core */ = {
 			isa = PBXGroup;
 			children = (
@@ -9040,15 +8763,6 @@ AgentLensTests */ = {
 				B3D6E687A1099C6777E85563 /* UITestBase.swift */,
 			);
 			path = Support;
-			sourceTree = "<group>";
-		};
-		9AF69485A025DC923B6B763E /* FirstRunPermissionLadderTests.swift
-OpenBurnBarCore */ = {
-			isa = PBXGroup;
-			children = (
-				297251916ABB535A7FFA500E /* Sources */,
-			);
-			path = "FirstRunPermissionLadderTests.swift\nOpenBurnBarCore";
 			sourceTree = "<group>";
 		};
 		9C52D6603C54857624956770 /* ProjectCodeMemory */ = {
@@ -9081,13 +8795,6 @@ OpenBurnBarCore */ = {
 			path = ControlDeck;
 			sourceTree = "<group>";
 		};
-		9DCB79C949F4D86B4BFA75A0 /* OpenBurnBarComputerUseCoreTests */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			path = OpenBurnBarComputerUseCoreTests;
-			sourceTree = "<group>";
-		};
 		9DF1C180A3C429C05D2C5E95 /* OpenBurnBarPrivilegedInputKillSwitchWatchdog */ = {
 			isa = PBXGroup;
 			children = (
@@ -9118,32 +8825,6 @@ OpenBurnBarCore */ = {
 				7C1239D91C79E0EED5BB3810 /* OpenBurnBarWidget.appex */,
 			);
 			name = Products;
-			sourceTree = "<group>";
-		};
-		9F07690038F1D95E61951FDA /* Sources */ = {
-			isa = PBXGroup;
-			children = (
-				A6C655602CCB929B1BCA1CBB /* OpenBurnBarKernel */,
-			);
-			path = Sources;
-			sourceTree = "<group>";
-		};
-		A07B3FF3F4F355BB533CEB68 /* SmartHub */ = {
-			isa = PBXGroup;
-			children = (
-				F0C2643DCC687EAC957081B0 /* PixelClockController.swift
-AgentLens */,
-			);
-			path = SmartHub;
-			sourceTree = "<group>";
-		};
-		A1C3F5ABCC294BF155C7257E /* Keychain */ = {
-			isa = PBXGroup;
-			children = (
-				EB8B30CD007BDECA5C2A3704 /* KeychainInteractionGate.swift
-OpenBurnBarCore */,
-			);
-			path = Keychain;
 			sourceTree = "<group>";
 		};
 		A1EE28F5F3BB72E7E956410F /* Resources */ = {
@@ -9247,15 +8928,6 @@ OpenBurnBarCore */,
 			path = Services;
 			sourceTree = "<group>";
 		};
-		A2B63536736CCE8F841009CD /* SystemPermissionSafetyFrame.swift
-OpenBurnBarCore */ = {
-			isa = PBXGroup;
-			children = (
-				9F07690038F1D95E61951FDA /* Sources */,
-			);
-			path = "SystemPermissionSafetyFrame.swift\nOpenBurnBarCore";
-			sourceTree = "<group>";
-		};
 		A4E896F302D6CDDB570081D4 /* ComputerUse */ = {
 			isa = PBXGroup;
 			children = (
@@ -9286,33 +8958,15 @@ OpenBurnBarCore */ = {
 			path = CLIAgents;
 			sourceTree = "<group>";
 		};
-		A6C655602CCB929B1BCA1CBB /* OpenBurnBarKernel */ = {
-			isa = PBXGroup;
-			children = (
-				A1C3F5ABCC294BF155C7257E /* Keychain */,
-			);
-			path = OpenBurnBarKernel;
-			sourceTree = "<group>";
-		};
 		A7F307C02C4B74219C9CDA3A /* Chat */ = {
 			isa = PBXGroup;
 			children = (
-				B8A1B9FB44AD75B6AFDFCF44 /* MacAgentReplyNotificationListener.swift
-AgentLens */,
 				3BF22273ECC0FDC33589B7D5 /* ChatBackendRegistry.swift */,
 				9FA7A1F3B00E656678204F40 /* HermesAttachmentLoader.swift */,
 				6FCBDE527F7AFF33DF3F3FA0 /* MacAgentReplyNotificationListener.swift */,
 				36427609FF2F7D2A03B20522 /* MobileAssistantChatReader.swift */,
 			);
 			path = Chat;
-			sourceTree = "<group>";
-		};
-		A8396421FD84E96536312E1C /* Views */ = {
-			isa = PBXGroup;
-			children = (
-				5F9663C96E2F96A247076574 /* Dashboard */,
-			);
-			path = Views;
 			sourceTree = "<group>";
 		};
 		A944F3DF6AD5010247E23BB6 /* Copilot */ = {
@@ -9324,15 +8978,6 @@ AgentLens */,
 				EE41B6A2350D822747ED0AEC /* SettingsCopilotView.swift */,
 			);
 			path = Copilot;
-			sourceTree = "<group>";
-		};
-		AA0938781713516008864DDD /* SystemPermissionPromptRunner.swift
-AgentLens */ = {
-			isa = PBXGroup;
-			children = (
-				0F9568CCBE5A7B463CC8A135 /* Views */,
-			);
-			path = "SystemPermissionPromptRunner.swift\nAgentLens";
 			sourceTree = "<group>";
 		};
 		AA191D4121251779FE0B401B /* Inbox */ = {
@@ -9361,23 +9006,6 @@ AgentLens */ = {
 				FD233F1D73B59C646A7B5576 /* ComputerUseSessionPanel.swift */,
 				09312843B7919FC4D2F040CE /* ComputerUseSettingsView.swift */,
 				B21CC5FFF6A9146D3C80EA78 /* ComputerUseSetupWizard.swift */,
-			);
-			path = ComputerUse;
-			sourceTree = "<group>";
-		};
-		AC406F19BC65C304F8E6DCEF /* Active */ = {
-			isa = PBXGroup;
-			children = (
-				5A6F7BE080FAE326750B4C29 /* ComputerUse */,
-			);
-			path = Active;
-			sourceTree = "<group>";
-		};
-		AD00F1180FF575EB08529528 /* ComputerUse */ = {
-			isa = PBXGroup;
-			children = (
-				4FC0ACA25AA14001FB6B7A55 /* SystemPermissionMonitor.swift
-AgentLens */,
 			);
 			path = ComputerUse;
 			sourceTree = "<group>";
@@ -9501,32 +9129,6 @@ AgentLens */,
 			path = OpenBurnBarMobileTests;
 			sourceTree = "<group>";
 		};
-		AE165C0705674707BD4304DE /* MediaPermissionsView.swift
-AgentLens */ = {
-			isa = PBXGroup;
-			children = (
-				52FA0C0C5E2F4066D86D8A46 /* Views */,
-			);
-			path = "MediaPermissionsView.swift\nAgentLens";
-			sourceTree = "<group>";
-		};
-		AEA3342CF690BDD254EE7EDB /* Views */ = {
-			isa = PBXGroup;
-			children = (
-				C0C4D572AFE34D1F8D81405D /* ComputerUse */,
-			);
-			path = Views;
-			sourceTree = "<group>";
-		};
-		B4CC0FF2289ED85BC167FA4B /* OnboardingSystemPermissionsView.swift
-AgentLens */ = {
-			isa = PBXGroup;
-			children = (
-				D37C209E38AAEA3F14B92C84 /* Views */,
-			);
-			path = "OnboardingSystemPermissionsView.swift\nAgentLens";
-			sourceTree = "<group>";
-		};
 		B5204891E190AA7124EA46E1 /* Streams */ = {
 			isa = PBXGroup;
 			children = (
@@ -9625,15 +9227,6 @@ AgentLens */ = {
 			path = AgentLensTests/Support;
 			sourceTree = "<group>";
 		};
-		B8A1B9FB44AD75B6AFDFCF44 /* MacAgentReplyNotificationListener.swift
-AgentLens */ = {
-			isa = PBXGroup;
-			children = (
-				043719881E1DEE87A7B6BD41 /* Services */,
-			);
-			path = "MacAgentReplyNotificationListener.swift\nAgentLens";
-			sourceTree = "<group>";
-		};
 		BA8879A1333FCD3DB2B54752 /* Views */ = {
 			isa = PBXGroup;
 			children = (
@@ -9720,15 +9313,6 @@ AgentLens */ = {
 			path = PaneWorkspace;
 			sourceTree = "<group>";
 		};
-		BE34B203866667A721DD27D5 /* Onboarding */ = {
-			isa = PBXGroup;
-			children = (
-				7BC1FD27A96923FDA0DBE954 /* SystemPermissionTrustSheet.swift
-AgentLens */,
-			);
-			path = Onboarding;
-			sourceTree = "<group>";
-		};
 		BFFDEA97568D36B83610F51D /* Media */ = {
 			isa = PBXGroup;
 			children = (
@@ -9754,15 +9338,6 @@ AgentLens */,
 				D35E71FEB137D6CCB35B352D /* VoIPCallService.swift */,
 			);
 			path = Media;
-			sourceTree = "<group>";
-		};
-		C0C4D572AFE34D1F8D81405D /* ComputerUse */ = {
-			isa = PBXGroup;
-			children = (
-				6B230626AC6AD75FEAD5D9A5 /* ComputerUseSettingsView.swift
-AgentLens */,
-			);
-			path = ComputerUse;
 			sourceTree = "<group>";
 		};
 		C1822225B11D5255771B5C0F /* Chat */ = {
@@ -9791,14 +9366,6 @@ AgentLens */,
 				D49A5D19D678D03BFE68C047 /* DashboardView+ControlDeck.swift */,
 			);
 			path = ControlDeck;
-			sourceTree = "<group>";
-		};
-		C243CFAA4B792C1608BB9F2D /* Services */ = {
-			isa = PBXGroup;
-			children = (
-				3CAF2D167800687C9B40CD64 /* TextExpansion */,
-			);
-			path = Services;
 			sourceTree = "<group>";
 		};
 		C2D576DDFA87D2BE1BF509D6 /* OpenBurnBarDaemonExecutable */ = {
@@ -9830,14 +9397,6 @@ AgentLens */,
 				1957B6E4D998481C940FBD90 /* OnboardingVisualSnapshotTests.swift */,
 			);
 			path = SnapshotTests;
-			sourceTree = "<group>";
-		};
-		C4B6596758C937EADB3C0B11 /* Views */ = {
-			isa = PBXGroup;
-			children = (
-				9900E5E210FBC9C32F46EB99 /* Onboarding */,
-			);
-			path = Views;
 			sourceTree = "<group>";
 		};
 		C4D1BCB423BF451FB6BBABC4 /* OpenBurnBarWidget */ = {
@@ -9884,14 +9443,6 @@ AgentLens */,
 				82519185B1064ADE53BD21CE /* MissionGroupObserverTests.swift */,
 			);
 			path = CLIAgents;
-			sourceTree = "<group>";
-		};
-		CA3E9B571C503976A5C5C7B1 /* Services */ = {
-			isa = PBXGroup;
-			children = (
-				AD00F1180FF575EB08529528 /* ComputerUse */,
-			);
-			path = Services;
 			sourceTree = "<group>";
 		};
 		CAE317316D164FEB48D73BB8 /* Services */ = {
@@ -10132,14 +9683,6 @@ AgentLens */,
 				33206584AA3768EBFDC845CD /* UsageMemoryGateTests.swift */,
 			);
 			path = Security;
-			sourceTree = "<group>";
-		};
-		D37C209E38AAEA3F14B92C84 /* Views */ = {
-			isa = PBXGroup;
-			children = (
-				3E2D6C7F1939822CB7E2CA1C /* Onboarding */,
-			);
-			path = Views;
 			sourceTree = "<group>";
 		};
 		D3A79E2233B6DB8EEEE8F8B4 /* Charts */ = {
@@ -10390,15 +9933,6 @@ AgentLens */,
 			path = CloudSync;
 			sourceTree = "<group>";
 		};
-		E38E48ECC01EDE75AFB7A27D /* Media */ = {
-			isa = PBXGroup;
-			children = (
-				AE165C0705674707BD4304DE /* MediaPermissionsView.swift
-AgentLens */,
-			);
-			path = Media;
-			sourceTree = "<group>";
-		};
 		E47B05D3EB17BF868F388F7E /* DBByteCompat */ = {
 			isa = PBXGroup;
 			children = (
@@ -10419,14 +9953,6 @@ AgentLens */,
 				4BF12DB31F38AF9AE1232D17 /* SwitcherOnboardingWizardView.swift */,
 			);
 			path = Switcher;
-			sourceTree = "<group>";
-		};
-		E5A6838D8468AF4B64F888A9 /* Views */ = {
-			isa = PBXGroup;
-			children = (
-				E38E48ECC01EDE75AFB7A27D /* Media */,
-			);
-			path = Views;
 			sourceTree = "<group>";
 		};
 		E8BE7ABD3CB431252C0290B5 /* swift */ = {
@@ -10463,24 +9989,6 @@ AgentLens */,
 				99A3414E93C955561284A2AF /* ZaiMiniMaxUsageProbe.swift */,
 			);
 			path = ProviderUsageAPI;
-			sourceTree = "<group>";
-		};
-		EB80B46CADA790BFF775AA03 /* Active */ = {
-			isa = PBXGroup;
-			children = (
-				9AF69485A025DC923B6B763E /* FirstRunPermissionLadderTests.swift
-OpenBurnBarCore */,
-			);
-			path = Active;
-			sourceTree = "<group>";
-		};
-		EB8B30CD007BDECA5C2A3704 /* KeychainInteractionGate.swift
-OpenBurnBarCore */ = {
-			isa = PBXGroup;
-			children = (
-				2A53743B7636FA5135B204B6 /* Tests */,
-			);
-			path = "KeychainInteractionGate.swift\nOpenBurnBarCore";
 			sourceTree = "<group>";
 		};
 		ED35E5E6AE93A0FEE86DF3A1 /* Fixtures */ = {
@@ -10550,15 +10058,6 @@ OpenBurnBarCore */ = {
 			path = Views;
 			sourceTree = "<group>";
 		};
-		F0C2643DCC687EAC957081B0 /* PixelClockController.swift
-AgentLens */ = {
-			isa = PBXGroup;
-			children = (
-				C243CFAA4B792C1608BB9F2D /* Services */,
-			);
-			path = "PixelClockController.swift\nAgentLens";
-			sourceTree = "<group>";
-		};
 		F0C4BA34215623F7173ACF96 /* Theme */ = {
 			isa = PBXGroup;
 			children = (
@@ -10596,15 +10095,6 @@ AgentLens */ = {
 				B6F6671C14612743415759A5 /* ProviderSetupGuide.swift */,
 			);
 			path = Onboarding;
-			sourceTree = "<group>";
-		};
-		F678CCC24C3936A3EBBD9BFA /* OnboardingWizardView.swift
-AgentLens */ = {
-			isa = PBXGroup;
-			children = (
-				297EF9B33E47D03D6DA4AC40 /* Views */,
-			);
-			path = "OnboardingWizardView.swift\nAgentLens";
 			sourceTree = "<group>";
 		};
 		F6FD879C6D9191DA0F220166 /* Agents */ = {
@@ -14566,11 +14056,11 @@ AgentLens */ = {
 		};
 		3D86C882AF3E0903D2B6AEC1 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_9F402D8E-0D68-4F1B-9A8C-9916897DAF39" /* OpenBurnBarInsights */;
+			productRef = "TEMP_B4D48940-BDFD-41B0-80ED-D74022DDCD65" /* OpenBurnBarInsights */;
 		};
 		443FF277670BA948D441326F /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_A7DC3166-CA4B-4E31-8B53-70DC7B6CE189" /* OpenBurnBarEngine */;
+			productRef = "TEMP_9740484D-EFAF-4ECE-9565-31C9C1B3044D" /* OpenBurnBarEngine */;
 		};
 		5499EFD4C8229C93F39C16E8 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -14584,7 +14074,7 @@ AgentLens */ = {
 		};
 		5F473CBA91EA3EDB5979FCF0 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_76366D6B-01A7-489C-BBA0-4CAAD094CEC9" /* OpenBurnBarMedia */;
+			productRef = "TEMP_7731FB70-381F-4A13-AF98-F54D0819C3CE" /* OpenBurnBarMedia */;
 		};
 		65381FC60CCDA6ECB17D631F /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -14603,11 +14093,11 @@ AgentLens */ = {
 		};
 		8229DDE642E5DC615FF30C8F /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_704D68F6-C027-45C0-8461-D1C54CA68D14" /* OpenBurnBarComputerUseCore */;
+			productRef = "TEMP_B7743DBC-1A86-41B5-8F67-FB94AFB24F66" /* OpenBurnBarComputerUseCore */;
 		};
 		84623C60942B5FF3BB9AC227 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_D6859315-9822-42C1-AA33-B6CCFA7EDBBC" /* OpenBurnBarLinuxSecurity */;
+			productRef = "TEMP_DF63F723-835F-4A8E-A97D-2B140A2342EE" /* OpenBurnBarLinuxSecurity */;
 		};
 		8DA8E1A1A0D1FEBA7474F3C7 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -14631,7 +14121,7 @@ AgentLens */ = {
 		};
 		A6FB5F544F37FA83D0398F77 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_E6AEABFD-3C14-4893-B34D-7B2E4DC3ED09" /* OpenBurnBarCore */;
+			productRef = "TEMP_17F4D5E9-0229-435E-A2CA-930454E78A07" /* OpenBurnBarCore */;
 		};
 		B0DD6D2AA24F4537C1FD53E7 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -14648,7 +14138,7 @@ AgentLens */ = {
 		};
 		DAD9D7BB77FED252BF883D7C /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_BF9AE774-0A67-4727-A3DA-50606C8C7C56" /* OpenBurnBarIrohRelay */;
+			productRef = "TEMP_C825949F-E377-40E7-A607-D8577DED1C02" /* OpenBurnBarIrohRelay */;
 		};
 		DB969356C591A565802DBBD9 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -14666,11 +14156,11 @@ AgentLens */ = {
 		};
 		F34772D139441B426AAE80E8 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_5DA673D0-90DE-40D0-AAE3-333A3C0607DD" /* OpenBurnBarMedia */;
+			productRef = "TEMP_C05829C1-DF29-4542-9010-A4D02A771E18" /* OpenBurnBarMedia */;
 		};
 		FF93F13225A86244B6415A4C /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_39CA8FDF-1F28-4C3B-A685-8445091FC6B3" /* OpenBurnBarComputerUseCore */;
+			productRef = "TEMP_2F930375-2FC2-4ED2-A20D-B2977F521A5D" /* OpenBurnBarComputerUseCore */;
 		};
 /* End PBXTargetDependency section */
 
@@ -16166,41 +15656,41 @@ AgentLens */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarKernel;
 		};
-		"TEMP_39CA8FDF-1F28-4C3B-A685-8445091FC6B3" /* OpenBurnBarComputerUseCore */ = {
+		"TEMP_17F4D5E9-0229-435E-A2CA-930454E78A07" /* OpenBurnBarCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OpenBurnBarCore;
+		};
+		"TEMP_2F930375-2FC2-4ED2-A20D-B2977F521A5D" /* OpenBurnBarComputerUseCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarComputerUseCore;
 		};
-		"TEMP_5DA673D0-90DE-40D0-AAE3-333A3C0607DD" /* OpenBurnBarMedia */ = {
+		"TEMP_7731FB70-381F-4A13-AF98-F54D0819C3CE" /* OpenBurnBarMedia */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarMedia;
 		};
-		"TEMP_704D68F6-C027-45C0-8461-D1C54CA68D14" /* OpenBurnBarComputerUseCore */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = OpenBurnBarComputerUseCore;
-		};
-		"TEMP_76366D6B-01A7-489C-BBA0-4CAAD094CEC9" /* OpenBurnBarMedia */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = OpenBurnBarMedia;
-		};
-		"TEMP_9F402D8E-0D68-4F1B-9A8C-9916897DAF39" /* OpenBurnBarInsights */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = OpenBurnBarInsights;
-		};
-		"TEMP_A7DC3166-CA4B-4E31-8B53-70DC7B6CE189" /* OpenBurnBarEngine */ = {
+		"TEMP_9740484D-EFAF-4ECE-9565-31C9C1B3044D" /* OpenBurnBarEngine */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarEngine;
 		};
-		"TEMP_BF9AE774-0A67-4727-A3DA-50606C8C7C56" /* OpenBurnBarIrohRelay */ = {
+		"TEMP_B4D48940-BDFD-41B0-80ED-D74022DDCD65" /* OpenBurnBarInsights */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OpenBurnBarInsights;
+		};
+		"TEMP_B7743DBC-1A86-41B5-8F67-FB94AFB24F66" /* OpenBurnBarComputerUseCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OpenBurnBarComputerUseCore;
+		};
+		"TEMP_C05829C1-DF29-4542-9010-A4D02A771E18" /* OpenBurnBarMedia */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OpenBurnBarMedia;
+		};
+		"TEMP_C825949F-E377-40E7-A607-D8577DED1C02" /* OpenBurnBarIrohRelay */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarIrohRelay;
 		};
-		"TEMP_D6859315-9822-42C1-AA33-B6CCFA7EDBBC" /* OpenBurnBarLinuxSecurity */ = {
+		"TEMP_DF63F723-835F-4A8E-A97D-2B140A2342EE" /* OpenBurnBarLinuxSecurity */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarLinuxSecurity;
-		};
-		"TEMP_E6AEABFD-3C14-4893-B34D-7B2E4DC3ED09" /* OpenBurnBarCore */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = OpenBurnBarCore;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
