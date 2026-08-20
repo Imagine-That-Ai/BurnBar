@@ -1426,11 +1426,17 @@ jobs:
       - name: Rebuild and byte-compare checked-in Android AAR
         env:
           OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: 0000000000000000000000000000000000000000
+          # The AAR script's DOMAIN_CORE_BUILD_PROFILE is a cargo profile
+          # (debug|release), not an identity profile like the job-level
+          # public-production; PR CI (domain-core.yml) runs this same command
+          # with the var unset, so the checked-in AAR is a cargo-release build.
+          DOMAIN_CORE_BUILD_PROFILE: release
         run: ./scripts/build-domain-core-android-aar.sh --check-artifact
 
       - name: Build candidate-bound four-ABI Android AAR
         env:
           OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: ${{ needs.domain-core-native-release-gate.outputs.candidate_commit }}
+          DOMAIN_CORE_BUILD_PROFILE: release
         run: ./scripts/build-domain-core-android-aar.sh
 
       - name: Inject Android Firebase config
