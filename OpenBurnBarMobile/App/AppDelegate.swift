@@ -19,6 +19,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     /// survives the lifetime of the app and any inbound
     /// `media.blob.advertise` frames have a live receiver.
     private var iOSFileTransfer: iOSFileTransferService?
+    static let attachmentTransfer = BurnbarAttachmentTransferSession()
 
     func application(
         _ application: UIApplication,
@@ -115,6 +116,17 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
         AgentReplyNotificationService.shared.didRegisterForRemoteNotifications(deviceToken: deviceToken)
+    }
+
+    func application(
+        _ application: UIApplication,
+        handleEventsForBackgroundURLSession identifier: String,
+        completionHandler: @escaping () -> Void
+    ) {
+        Self.attachmentTransfer.handleEventsForBackgroundURLSession(
+            identifier: identifier,
+            completionHandler: completionHandler
+        )
     }
 
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {

@@ -17,6 +17,8 @@
     <!-- Mercury Media Phase 5: incoming-call sheet from FCM data push. -->
     <uses-permission android:name="android.permission.MANAGE_OWN_CALLS" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
     <!-- Android 14: Picture-in-Picture is opt-in via this feature flag. -->
     <uses-feature android:name="android.software.picture_in_picture" android:required="false" />
@@ -76,6 +78,17 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="burnbar" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".ui.share.BurnbarShareActivity"
+            android:exported="true"
+            android:label="Send to BurnBar">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
             </intent-filter>
         </activity>
 

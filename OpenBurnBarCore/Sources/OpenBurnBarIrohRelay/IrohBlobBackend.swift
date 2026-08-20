@@ -78,7 +78,7 @@ public enum IrohBlobBackendError: Error, Equatable, Sendable {
 }
 
 public enum IrohBlobTransferLimits {
-    public static let maxExpectedFetchBytes: UInt64 = 512 * 1024 * 1024
+    public static let maxExpectedFetchBytes: UInt64 = 2 * 1024 * 1024 * 1024
 }
 
 public extension IrohBlobBackend {

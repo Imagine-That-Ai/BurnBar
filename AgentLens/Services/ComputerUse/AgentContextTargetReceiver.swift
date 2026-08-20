@@ -205,10 +205,16 @@ final class AgentContextTargetReceiver: Sendable {
             // Plus hidden structured metadata.
             let fullContent = "Use this screen target: \(target.instruction)\n\n<metadata>\n\(metadataString)\n</metadata>"
 
+            let workspaceRoot = FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent(".burnbar/attachments", isDirectory: true)
+            let landed = MacAttachmentLandingService.hermesAttachments(
+                from: MacAttachmentLandingService.takePending(),
+                workspaceRoot: workspaceRoot
+            )
             let userMsg = ChatMessageRecord(
                 role: .user,
                 content: fullContent,
-                attachments: []
+                attachments: landed
             )
 
             chatController.messages.append(userMsg)

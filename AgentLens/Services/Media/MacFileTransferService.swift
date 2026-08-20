@@ -30,7 +30,7 @@ import OSLog
 @MainActor
 final class MacFileTransferService: ObservableObject {
     private static let log = Logger(subsystem: "com.openburnbar.app", category: "Mercury")
-    private static let maxAtRestSealPlaintextBytes: Int64 = 64 * 1024 * 1024
+    private static let maxAtRestSealPlaintextBytes: Int64 = FileSealAEAD.maxPlaintextBytes
     private static let maxAtRestSealEnvelopeBytes: Int64 = maxAtRestSealPlaintextBytes + 64
     private static func debugTrace(_ message: String) {
         #if DEBUG
@@ -450,11 +450,20 @@ final class MacFileTransferService: ObservableObject {
         }
 
         let sealKey = frameSealKeyProvider(frame.uid, frame.connectionId)
-        if sealKey != nil, manifest.size > Self.maxAtRestSealPlaintextBytes {
+        guard sealKey != nil else {
             await sendDenialAck(
                 for: manifest,
                 frame: frame,
-                reason: "received file is too large for in-memory at-rest sealing (\(manifest.size) bytes > \(Self.maxAtRestSealPlaintextBytes) bytes)",
+                reason: "refusing plaintext landing without a file/session key",
+                ackSender: ackSender
+            )
+            return
+        }
+        if manifest.size > Self.maxAtRestSealPlaintextBytes {
+            await sendDenialAck(
+                for: manifest,
+                frame: frame,
+                reason: "received file is too large for streaming at-rest sealing (\(manifest.size) bytes > \(Self.maxAtRestSealPlaintextBytes) bytes)",
                 ackSender: ackSender
             )
             return
@@ -613,43 +622,34 @@ final class MacFileTransferService: ObservableObject {
         }
     }
 
-    /// RR-18 — overwrite the freshly-fetched plaintext blob in place with its
-    /// `MediaFrameAEAD` (OBMFA1) sealed envelope. The AAD binds the manifest id
-    /// + blob hash via the position fields so a sealed inbox file cannot be
-    /// swapped for another transfer's bytes. The write goes through a sibling
-    /// temp file + atomic replace so a crash mid-seal never leaves a truncated
-    /// (and unreadable) plaintext file. `protectionKey` rotates with the media
-    /// session, so the bytes are unreadable once the session key is gone.
+    /// Stream-seal the fetched blob with OBFS1. Never load the whole plaintext.
     private func sealReceivedFileAtRest(
         at url: URL,
         manifest: HermesRealtimeRelayAttachmentManifest,
         key: SymmetricKey
     ) throws {
         let byteCount = try Self.fileSizeBytes(at: url)
-        // Already sealed (idempotent re-fetch) — leave it only after an
-        // authenticated open with the same manifest-bound AAD. Public magic
-        // bytes are not evidence that the remaining bytes are sealed.
-        if fileAuthenticatesAsSealedEnvelope(at: url, manifest: manifest, key: key, byteCount: byteCount) {
+        if byteCount <= 64 * 1024 * 1024,
+           fileAuthenticatesAsSealedEnvelope(at: url, manifest: manifest, key: key, byteCount: byteCount) {
             return
         }
         guard byteCount <= Self.maxAtRestSealPlaintextBytes else {
             throw Failure.fetchFailed(
-                "received file is too large for in-memory at-rest sealing (\(byteCount) bytes > \(Self.maxAtRestSealPlaintextBytes) bytes)"
+                "received file is too large for streaming at-rest sealing (\(byteCount) bytes > \(Self.maxAtRestSealPlaintextBytes) bytes)"
             )
         }
-        let plaintext = try Data(contentsOf: url, options: .mappedIfSafe)
-        let sealed = try frameSealAEAD.seal(
-            plaintext: plaintext,
-            key: key,
-            streamClass: MediaStreamClass.blob.rawValue,
-            kind: 0,
-            gopID: Self.atRestGopID(for: manifest),
-            frameIndex: 0
+        let chunks = max(1, Int((byteCount + Int64(FileSealAEAD.chunkPlaintextBytes) - 1) / Int64(FileSealAEAD.chunkPlaintextBytes)))
+        let header = FileSealAEAD.Header(
+            attachmentId: manifest.manifestId,
+            totalChunks: chunks,
+            plaintextSize: byteCount,
+            contentBlake3: manifest.blobHash
         )
+        let keyData = PlatformCrypto.symmetricKeyData(key)
         let tempURL = url.deletingLastPathComponent()
-            .appendingPathComponent(".\(UUID().uuidString).obmfa1-tmp")
-        try sealed.write(to: tempURL, options: .atomic)
-        defer { try? FileManager.default.removeItem(at: tempURL) } // try?-ok(best-effort temp cleanup)
+            .appendingPathComponent(".\(UUID().uuidString).obfs1-tmp")
+        try FileSealAEAD.sealFile(from: url, to: tempURL, contentKey: keyData, header: header)
+        defer { try? FileManager.default.removeItem(at: tempURL) }
         guard try FileManager.default.replaceItemAt(url, withItemAt: tempURL) != nil else {
             throw Failure.fetchFailed("at-rest seal atomic replace failed")
         }
