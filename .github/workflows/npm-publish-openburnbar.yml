@@ -36,8 +36,9 @@ jobs:
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
-          cache: npm
-          cache-dependency-path: tools/openburnbar-mcp-remote/package-lock.json
+          # Release installs come directly from the lockfile and registry.
+          # Keep the publish lane independent from mutable dependency caches.
+          package-manager-cache: false
 
       - name: Upgrade npm to the trusted-publishing floor
         run: npm i -g npm@^11.5.1
