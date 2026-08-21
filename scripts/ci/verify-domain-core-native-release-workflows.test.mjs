@@ -124,21 +124,20 @@ test("Apple and Android signing consumes the exact protected gate first", () => 
   );
   assert.doesNotMatch(build, /run-as com\.openburnbar\.domaincore\.test/u);
   assert.match(build, /--candidate-aar Vendor\/openburnbar-domain-core\.aar/u);
-  const checkedInAar = build.indexOf(
-    "Rebuild and byte-compare checked-in Android AAR",
-  );
   const candidateAar = build.indexOf(
     "Build candidate-bound four-ABI Android AAR",
   );
   const signedBundle = build.indexOf("Build signed Android release bundle");
-  assert.ok(checkedInAar >= 0);
-  assert.ok(checkedInAar < candidateAar);
+  assert.ok(candidateAar >= 0);
   assert.ok(candidateAar < signedBundle);
-  assert.match(
+  // The checked-in-AAR byte-compare must NOT run on the release path: Rust
+  // codegen is deterministic per host but not across hosts, so comparing a
+  // Linux-built committed artifact on this macOS runner is structurally
+  // unpassable. domain-core.yml (ubuntu) is the gate's authoritative home
+  // and runs it on every PR.
+  assert.doesNotMatch(
     build,
-    // The placeholder MUST be quoted: unquoted, YAML collapses the all-digit
-    // scalar to integer 0 and build.rs rejects the 1-character env value.
-    /Rebuild and byte-compare checked-in Android AAR[\s\S]*OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: "0{40}"[\s\S]*build-domain-core-android-aar\.sh --check-artifact/u,
+    /build-domain-core-android-aar\.sh --check-artifact/u,
   );
   assert.match(
     build,

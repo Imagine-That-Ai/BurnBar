@@ -1423,19 +1423,14 @@ jobs:
             exit "$status"
           fi
 
-      - name: Rebuild and byte-compare checked-in Android AAR
-        env:
-          # Quoted: YAML parses an unquoted all-digit scalar as an integer, which
-          # collapses the 40-zero placeholder to "0" and fails the build.rs
-          # 40-hex-character validation.
-          OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: "0000000000000000000000000000000000000000"
-          # The AAR script's DOMAIN_CORE_BUILD_PROFILE is a cargo profile
-          # (debug|release), not an identity profile like the job-level
-          # public-production; PR CI (domain-core.yml) runs this same command
-          # with the var unset, so the checked-in AAR is a cargo-release build.
-          DOMAIN_CORE_BUILD_PROFILE: release
-        run: ./scripts/build-domain-core-android-aar.sh --check-artifact
-
+      # NOTE: the checked-in-AAR byte-compare (build-domain-core-android-aar.sh
+      # --check-artifact) deliberately does NOT run here. Rust codegen is
+      # deterministic per host but not across hosts (~240KB .so delta with
+      # identical Rust/NDK pins, measured 2026-08-20 across two ubuntu CI runs
+      # vs a local macOS build), so a byte-compare against a Linux-built
+      # committed artifact is structurally unpassable on this macOS runner.
+      # The gate's authoritative home is domain-core.yml, which runs it on
+      # ubuntu for every PR.
       - name: Build candidate-bound four-ABI Android AAR
         env:
           OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: ${{ needs.domain-core-native-release-gate.outputs.candidate_commit }}
