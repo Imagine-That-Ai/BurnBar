@@ -1817,7 +1817,11 @@ final class CLIBridgeTests: XCTestCase {
 
     func test_fxAskJSONParser_buffersMultiLineObject() {
         var parser = FxAskJSONParser()
-        let first = parser.events(fromLine: #"{"output":"hello"#)
+        // The closing quote is part of the fragment: `#"…"#` ends at the first `"#`,
+        // so `#"{"output":"hello"#` silently drops it and the buffer becomes
+        // `{"output":"hello\n, …}` — a raw newline inside a JSON string, which
+        // JSONSerialization rightly refuses. The parser was never at fault.
+        let first = parser.events(fromLine: #"{"output":"hello""#)
         XCTAssertTrue(first.events.isEmpty)
         XCTAssertNil(first.error)
         let second = parser.events(fromLine: #", "session_id":"sess-1"}"#)
