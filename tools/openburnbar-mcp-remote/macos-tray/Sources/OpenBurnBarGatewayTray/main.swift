@@ -227,7 +227,7 @@ final class GatewayPanelController: NSViewController {
         snippetScroll.borderType = .bezelBorder
         snippetScroll.heightAnchor.constraint(equalToConstant: 120).isActive = true
 
-        let stack: NSStackView = NSStackView(views: [
+        let stack = NSStackView(views: [
             labeledRow("Status", statusLabel),
             modeLabel,
             modelsLabel,
@@ -238,7 +238,7 @@ final class GatewayPanelController: NSViewController {
             buttonRow([
                 ("Copy OpenAI URL", #selector(copyOpenAI)),
                 ("Copy Anthropic URL", #selector(copyAnthropic)),
-                ("Copy local key", #selector(copyKey)),
+                ("Copy local key", #selector(copyKey))
             ]),
             snippetPopup,
             snippetScroll,
@@ -246,13 +246,13 @@ final class GatewayPanelController: NSViewController {
             buttonRow([("Copy snippet", #selector(copySnippet))]),
             buttonRow([
                 ("Install BurnBar", #selector(installBurnBar)),
-                ("Open BurnBar", #selector(openBurnBar)),
+                ("Open BurnBar", #selector(openBurnBar))
             ]),
             buttonRow([
                 ("Install Podex", #selector(installPodex)),
-                ("Stop gateway", #selector(stopGateway)),
+                ("Stop gateway", #selector(stopGateway))
             ]),
-            actionLabel,
+            actionLabel
         ])
         stack.orientation = .vertical
         stack.alignment = .leading
@@ -264,7 +264,7 @@ final class GatewayPanelController: NSViewController {
             stack.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             stack.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             stack.topAnchor.constraint(equalTo: root.topAnchor),
-            stack.bottomAnchor.constraint(lessThanOrEqualTo: root.bottomAnchor),
+            stack.bottomAnchor.constraint(lessThanOrEqualTo: root.bottomAnchor)
         ])
 
         openaiField.stringValue = "http://127.0.0.1:\(args.port)/v1"
