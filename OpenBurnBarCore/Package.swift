@@ -1013,6 +1013,18 @@ let sqliteReaderSQLiteDependencies: [Target.Dependency] = coreSQLiteDependencies
 // them there). OpenBurnBarEngine is NOT a Core dependency — Engine re-exports the
 // same leaf targets Core does and lives BELOW Core in the graph (it is what the
 // daemon links); a Core→Engine edge would be circular.
+// AE-TESTABLE, Apple-only: the Recap deck tests reach INTERNAL members
+// (`RecapCraftRules.vocabulary`, `numericViolation`, `numericTokens`) in
+// `OpenBurnBarRecap`, so `@testable import` needs it as a test-target dependency.
+// Conditional because the target itself is Apple-pruned — an unconditional edge
+// fails the Windows/Linux resolve with "product 'OpenBurnBarRecap' ... not found".
+// Hoisted out of the test target's dependency list and explicitly typed: inline,
+// the ternary pushed that already-long concatenation past what the manifest
+// type-checker will solve ("unable to type-check this expression in reasonable
+// time"), which fails the manifest itself rather than any target.
+let recapAppleOnlyTestDependencies: [Target.Dependency] =
+    buildApplePrunedDecompositionTargets ? ["OpenBurnBarRecap"] : []
+
 let coreDecompositionDependencies: [Target.Dependency] = [
     "OpenBurnBarSQLiteReader",
     "OpenBurnBarLogParsers",
@@ -1463,17 +1475,8 @@ let firstPartyTargetsBase: [Target] = [
                 // linkable in the test host. Acyclic: OpenBurnBarCoreCAbi depends only on
                 // OpenBurnBarCore, and a test target adding it introduces no product cycle.
                 "OpenBurnBarCoreCAbi"
-            ]
-            // AE-TESTABLE, Apple-only: the Recap deck tests reach INTERNAL members
-            // (`RecapCraftRules.vocabulary`, `numericViolation`, `numericTokens`) in
-            // `OpenBurnBarRecap`, so `@testable import` needs it as a test-target
-            // dependency. Conditional because the target itself is Apple-pruned —
-            // an unconditional edge makes the Windows/Linux resolve fail with
-            // "product 'OpenBurnBarRecap' ... not found". The Recap tests are already
-            // absent from `openBurnBarCoreOffAppleTestSources`, so nothing off-Apple
-            // needs the module.
-            + (buildApplePrunedDecompositionTargets ? ["OpenBurnBarRecap"] : [])
-            + domainCoreDependencies + swiftTestingAppleDependencies,
+            ] + recapAppleOnlyTestDependencies
+                + domainCoreDependencies + swiftTestingAppleDependencies,
             exclude: openBurnBarCoreTestExcludes
                 + openBurnBarCorePlaceholderExcludes
                 + legacyLinuxTestExcludes(targetPath: "Tests/OpenBurnBarCoreTests"),
