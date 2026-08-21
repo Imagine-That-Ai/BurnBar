@@ -53,7 +53,6 @@ struct CLIProcessStreamRunner: Sendable {
             ),
             grantStillActive: grantStillActive,
             continuation: continuation,
-            finalize: { parser.finish() },
             parseLine: { line in
                 let result = parser.events(fromLine: line)
                 return (result.events, result.error, result.error != nil)
@@ -205,11 +204,15 @@ struct CLIProcessStreamRunner: Sendable {
                 cliType: .fx
             ),
             grantStillActive: grantStillActive,
-            continuation: continuation
-        ) { line in
-            let result = parser.events(fromLine: line)
-            return (result.events, result.error, result.error != nil)
-        }
+            continuation: continuation,
+            // fx ask --json can emit a human auth/setup message instead of one
+            // JSON object. Flush that leftover buffer at process EOF.
+            finalize: { parser.finish() },
+            parseLine: { line in
+                let result = parser.events(fromLine: line)
+                return (result.events, result.error, result.error != nil)
+            }
+        )
     }
 
     func runOMP(
