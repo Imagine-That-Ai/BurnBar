@@ -223,6 +223,11 @@ try {
 // realpath: on macOS tmpdir() returns a /var symlink; Node realpaths
 // import.meta.url but not argv, so the CLI's run-as-main guard would silently
 // not fire inside the fixture and the spawn would exit 0 with no output.
+// Linux CI has no such symlink, so this failure mode is invisible there: the
+// lane stays green while the assertion below never actually exercises the CLI,
+// and the same self-test fails for anyone running it on a Mac. Removing the
+// realpath call re-opens exactly that split, so keep it even though it reads
+// like a redundant no-op next to mkdtempSync.
 const cliFixtureRoot = realpathSync(
   mkdtempSync(join(tmpdir(), "openburnbar-rules-size-cli-")),
 );
