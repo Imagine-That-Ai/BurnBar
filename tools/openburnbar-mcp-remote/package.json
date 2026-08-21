@@ -1,7 +1,7 @@
 {
   "name": "openburnbar",
-  "version": "0.1.3",
-  "description": "OpenBurnBar Node CLI — loopback OpenAI gateway, hosted MCP stdio shim, session resume, Pensieve memory, and explicit macOS app install/update.",
+  "version": "0.2.0",
+  "description": "OpenBurnBar Node CLI — loopback OpenAI/Anthropic gateway, hosted MCP stdio shim, session resume, Pensieve memory, and explicit macOS app install/update.",
   "keywords": [
     "openburnbar",
     "mcp",
@@ -30,11 +30,14 @@
   "files": [
     "lib/",
     "vendor/openburnbar-domain-core-wasm/",
+    "macos-tray/",
     "README.md",
     "LICENSE",
     "!lib/**/*.test.js",
     "!lib/**/*.test.d.ts",
-    "!**/*.dmg"
+    "!**/*.dmg",
+    "!macos-tray/.build/",
+    "!macos-tray/**/*.app"
   ],
   "devDependencies": {
     "@eslint/js": "9.39.4",

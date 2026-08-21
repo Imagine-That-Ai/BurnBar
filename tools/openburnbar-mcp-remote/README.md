@@ -1,8 +1,9 @@
 # openburnbar
 
 The OpenBurnBar Node CLI — an MCP stdio shim to the hosted BurnBar MCP,
-session resume (`obbresume`), the Pensieve memory hook, and explicit commands
-that install or update the notarized macOS app from its public update feed.
+session resume (`obbresume`), the Pensieve memory hook, explicit commands
+that install or update the notarized macOS app from its public update feed,
+and a loopback multi-dialect gateway (`openburnbar proxy` on `:8320`).
 One small binary, zero runtime dependencies, honest about what touches the
 network.
 
@@ -33,17 +34,30 @@ or `openburnbar app update`.
 
 ## What this is — and what it isn't
 
-This npm package is the **Node MCP / resume / memory / Mac-app-door CLI**. It
-talks to the hosted BurnBar MCP endpoint, resumes sessions, installs the
-Pensieve chat-memory hook, and can fetch the current public notarized macOS
-DMG when you ask it to.
+This npm package is the **Node MCP / resume / memory / Mac-app-door / loopback
+gateway CLI**. It talks to the hosted BurnBar MCP endpoint, resumes sessions,
+installs the Pensieve chat-memory hook, can fetch the current public notarized
+macOS DMG when you ask it to, and can start **OpenBurnBar Gateway** — a portable
+loopback **relay** on `127.0.0.1:8320`.
+
+Two products, two jobs, two marks:
+
+| Surface | Port | Job |
+|---|---|---|
+| **OpenBurnBar Gateway** (`openburnbar proxy`) | **`:8320`** | Loopback relay for chat, Anthropic Messages, and OpenAI Responses. No burn, no quota, no dialect translation. Distinct connected-nodes mark in the optional macOS tray. |
+| **BurnBar Mac daemon** | **`:8317`** | Router: quota, failover, catalog, Hermes, dialect *translation*. Flame mark. |
+
+`openburnbar proxy` is an alternative to vibeproxy / cliproxy. It is not a clone
+of either, and it is not the BurnBar daemon. Always use `127.0.0.1`, never
+`localhost` — this process binds IPv4 loopback only, and macOS `localhost` often
+hits `::1` and is refused.
 
 It is **not** the native daemon operator CLI. The OpenBurnBar Mac app ships its
 own Swift CLI, `openburnbar-cli`, which operates the local daemon with exactly
 eight commands: `health`, `controller`, `questions`, `followups`, `missions`,
 `mission-approve`, `simulator-runs`, `simulator-replay`. That CLI is built from
 the app source and is **not published to npm** — if you want it, build the
-app. The npm `openburnbar` package never touches the daemon.
+app. The npm `openburnbar` package never imports daemon Swift.
 
 ## macOS app install and update
 
@@ -77,6 +91,90 @@ installed and is a no-op when the installed build is already current.
 DMG. The actual install/update operation is macOS-only.
 
 ## Commands
+
+### `openburnbar proxy [--port 8320] [--host 127.0.0.1] [--token <token>] [--tray]`
+
+Start the loopback-only OpenBurnBar Gateway on `127.0.0.1:8320`. The well-known
+local credential is `local-cliproxy` (send `Authorization: Bearer local-cliproxy`
+or `x-api-key: local-cliproxy`). `--token` / `OPENBURNBAR_GATEWAY_TOKEN` adds
+another accepted secret without exposing the service beyond loopback.
+
+| Local path | What it does |
+|---|---|
+| `GET /health` | Unauthenticated identity. No secrets. |
+| `GET /gateway` | Unauthenticated HTML panel. Linux/Windows `--tray` opens this. Lists snippets and the well-known local key. |
+| `GET /v1/gateway/panel` | Tray-internal authed JSON (status + copy-paste snippets). Not a client dialect. |
+| `GET /v1/models` | Upstream `/v1/models` if configured, else a curated list. Auth required. |
+| `POST /v1/chat/completions` | Relay, body unchanged. |
+| `POST /v1/messages` | Relay to upstream `/v1/messages`. Forwards `anthropic-version` / `anthropic-beta` (open list); defaults `anthropic-version: 2023-06-01` if missing. Sends the upstream credential as **both** Bearer and `x-api-key`. Query strings are ignored for routing (`POST /v1/messages?beta=true` is still `/v1/messages`). |
+| `POST /v1/responses` | Relay to upstream `/v1/responses`, body unchanged. Bearer only. |
+| `GET`/`DELETE /v1/responses/:id` | Relay stored-response retrieve/delete. |
+| WebSocket `/v1/responses` | Codex Responses WebSocket. Client `response.create` is forwarded as streamed HTTP POST. |
+
+OpenAI-shaped clients use `http://127.0.0.1:8320/v1`. Claude Code and Droid's
+`anthropic` adapter use the origin `http://127.0.0.1:8320` (they append
+`/v1/messages`).
+
+This process is a **relay, not a translator**. Upstream `404`/`405` on messages
+or responses becomes `502 dialect_not_supported` after one upstream call — it
+does not retry as chat. Unconfigured POSTs return `503 provider_not_configured`
+naming the env vars. Request bodies are capped at **8 MiB** until a real client
+413 proves we should raise it. Streaming is HTTP SSE, plus the Responses
+WebSocket on `/v1/responses`. SSE pings are forwarded; streams are not
+buffered and are not aborted on a wall-clock timeout.
+
+**Standalone:** set `XAI_API_KEY` (xAI chat + responses) or both
+`OPENBURNBAR_PROVIDER_BASE_URL` and `OPENBURNBAR_PROVIDER_API_KEY` (remote bases
+must be HTTPS). xAI has no `/v1/messages`; Claude Code still needs a
+Messages-capable upstream or BurnBar forward.
+
+**Forward to BurnBar** (`OPENBURNBAR_UPSTREAM` wins over standalone). The daemon
+authenticates on Bearer / `x-api-key` against **its** gateway token when
+configured. Matching tokens are required — `local-cliproxy` is not automatic on
+`:8317`:
+
+```bash
+export OPENBURNBAR_UPSTREAM=http://127.0.0.1:8317
+export OPENBURNBAR_GATEWAY_TOKEN='<same token BurnBar's gateway expects>'
+```
+
+`--tray` on macOS compiles the `macos-tray/` sources on demand into
+`~/Library/Application Support/OpenBurnBar/gateway-tray/OpenBurnBarGatewayTray.app`
+(an `LSUIElement` helper with SF Symbol `point.3.connected.trianglepath`, not
+the BurnBar flame), then ad-hoc `codesign`s the binary. Missing `swiftc`
+prints `xcode-select --install` and keeps the proxy headless. On Linux and
+Windows, `--tray` opens the loopback HTML panel at
+`http://127.0.0.1:8320/gateway` (native trays are still later). The helper is a
+child of the proxy; SIGTERM on the proxy kills it, but quitting the helper does
+not stop the proxy. Install BurnBar uses `openburnbar app install`; Open BurnBar
+uses `open -a OpenBurnBar`; Install Podex is an honest coming-soon sheet (no
+download URL).
+
+`openburnbar proxy wire <grok|droid|forge|opencode|codex|claude|pi> [--write]`
+prints the `:8320` snippet, or with `--write` updates that client's config
+using a `# openburnbar:gateway-8320` sentinel so it does not clobber BurnBar
+Mac Connect (`:8317`). Cursor BYOK cannot be wired. Dry-run is the default.
+
+`openburnbar proxy status [--port 8320]` prints JSON with `product`,
+`listening`, `ready`, both URLs, `localKey`, mode, and commands — never provider
+API keys or the pid-file instance token. `openburnbar proxy stop` sends SIGTERM
+only after the pid file, private health token, live PID, and listening port
+agree.
+
+#### Client matrix (copy-paste; the tray never writes dotfiles)
+
+| Client | Wire | Notes |
+|---|---|---|
+| Grok Build / SDK | chat | `~/.grok/config.toml` `[model.openburnbar]` with `base_url = "http://127.0.0.1:8320/v1"` and `env_key = "OPENBURNBAR_GATEWAY_TOKEN"`. Do **not** steal `XAI_API_KEY` from the proxy process. |
+| Droid generic | chat | `customModels[]` `provider: "generic-chat-completion-api"`, `baseUrl: ".../v1"`. |
+| Droid Claude | messages | `provider: "anthropic"`, `baseUrl: "http://127.0.0.1:8320"` (no `/v1`). Needs Messages-capable upstream. |
+| Droid OpenAI | Responses | `provider: "openai"`, `baseUrl: ".../v1"`. Works standalone xAI via `/v1/responses`. |
+| Forge | chat | `[[providers]]` `url = ".../v1/chat/completions"`, `models = ".../v1/models"`, `response_type = "OpenAI"`, `api_key_var = "OPENBURNBAR_GATEWAY_TOKEN"`. Matches Mac wiring keys. |
+| OpenCode | chat | `provider.openburnbar.npm = "@ai-sdk/openai-compatible"`, `options.baseURL = ".../v1"`. Some v2 builds also read `settings.baseURL`; that is a pointer, not a second source of truth. |
+| Codex CLI | Responses HTTP + WebSocket | `[model_providers.openburnbar]` `wire_api = "responses"`, `requires_openai_auth = false`, **`supports_websockets = false`** (HTTP SSE default). The gateway also accepts the Responses WebSocket on `/v1/responses`, so a Codex build that ignores the flag still works. `GET`/`DELETE /v1/responses/:id` are relayed. |
+| Claude Code | messages | `ANTHROPIC_BASE_URL=http://127.0.0.1:8320`, pin `ANTHROPIC_MODEL`. No discovery flag (`CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY` is a BurnBar `:8317` catalog feature). |
+| Pi coding agent | client | Point `~/.pi/agent/models.json` at `http://127.0.0.1:8320/v1`. BurnBar's Pi runtime on `:8765` is not an OpenAI gateway. |
+| Cursor BYOK | — | **No.** Requests originate at `api2.cursor.sh`; `127.0.0.1` is that backend's loopback. |
 
 ### `openburnbar app install` / `openburnbar app update`
 
@@ -145,7 +243,8 @@ Prints the usage and exits 0. No network.
 
 | Command | Network |
 |---|---|
-| `proxy` | Binds only `127.0.0.1`. Calls xAI when `XAI_API_KEY` is set, the explicit HTTPS custom provider when configured, or the explicit loopback `OPENBURNBAR_UPSTREAM`. |
+| `proxy` | Binds only `127.0.0.1`. Calls xAI when `XAI_API_KEY` is set, the explicit HTTPS custom provider when configured, or the explicit loopback `OPENBURNBAR_UPSTREAM`. Relays HTTP SSE and the Responses WebSocket. |
+| `proxy wire|unwire` | Local config files only. Dry-run unless `--write`. |
 | `proxy status\|stop` | Loopback/process inspection only; `stop` signals only a pid-file-owned OpenBurnBar proxy. |
 | `app install` / `app update` | Yes — `latest-macos.json` plus the feed's DMG URL. Never during `npm i`. |
 | `app install --dry-run` | Yes — feed JSON only |

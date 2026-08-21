@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const ENTRY = "lib/index.js";
-const USAGE_TOKENS = ["mcp", "memory", "resume"];
+const USAGE_TOKENS = ["mcp", "memory", "resume", "proxy"];
 
 interface CliResult {
   code: number | null;
