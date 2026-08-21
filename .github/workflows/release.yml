@@ -1494,6 +1494,19 @@ jobs:
       # AAB's x86_64 slice; this job uploads the exact signed APKs that proof
       # must execute, and keeps the static byte-binding of BOTH packaged ABIs
       # to the protected candidate AAR below.
+      - name: Require both Android identity proof inputs
+        # if-no-files-found: error below only fires when ZERO paths match.
+        # With one of two files missing, upload-artifact still succeeds with a
+        # partial artifact AND relocates the survivor: the artifact root is
+        # the least common ancestor of matched files, so losing one file
+        # shifts the other's path inside the archive and breaks BOTH download
+        # paths in android-release-identity. Fail here, at the point of
+        # truth, not later inside an emulator script on another runner.
+        run: |
+          set -euo pipefail
+          test -f android/app/build/outputs/apk/release/app-release.apk
+          test -f android/openburnbar-domain-core/build/outputs/apk/androidTest/debug/openburnbar-domain-core-debug-androidTest.apk
+
       - name: Upload Android identity proof inputs
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
