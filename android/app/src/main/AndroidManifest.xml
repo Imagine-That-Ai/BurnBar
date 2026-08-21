@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -296,5 +297,14 @@
             android:name=".services.media.AgentReplyNotificationReceiver"
             android:exported="false" />
 
+        <!-- BurnbarAttachmentTransferWorker promotes to a dataSync foreground
+             service (ForegroundInfo with FOREGROUND_SERVICE_TYPE_DATA_SYNC);
+             androidx.work's SystemForegroundService must declare that type or
+             release lintVital fails (SpecifyForegroundServiceType). -->
+        <service
+            android:name="androidx.work.impl.foreground.SystemForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync"
+            tools:node="merge" />
     </application>
 </manifest>
