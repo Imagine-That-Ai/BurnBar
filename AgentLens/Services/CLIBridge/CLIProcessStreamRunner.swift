@@ -53,11 +53,12 @@ struct CLIProcessStreamRunner: Sendable {
             ),
             grantStillActive: grantStillActive,
             continuation: continuation,
-            finalize: { parser.finish() }
-        ) { line in
-            let result = parser.events(fromLine: line)
-            return (result.events, result.error, result.error != nil)
-        }
+            finalize: { parser.finish() },
+            parseLine: { line in
+                let result = parser.events(fromLine: line)
+                return (result.events, result.error, result.error != nil)
+            }
+        )
     }
 
     func runDroid(

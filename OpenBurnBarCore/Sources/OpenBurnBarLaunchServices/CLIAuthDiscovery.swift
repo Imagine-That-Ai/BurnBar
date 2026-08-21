@@ -424,10 +424,9 @@ public enum CLIAuthDiscovery {
     // MARK: - fx Auth Detection
 
     private static func fxFileCredentialState(configDirectory: String) -> CLIAuthState? {
-        for name in ["auth.json", "chatgpt-auth.json"] {
-            if fileContainsNonWhitespace(atPath: "\(configDirectory)/\(name)") {
-                return .authenticated(lastRefresh: nil)
-            }
+        for name in ["auth.json", "chatgpt-auth.json"]
+            where fileContainsNonWhitespace(atPath: "\(configDirectory)/\(name)") {
+            return .authenticated(lastRefresh: nil)
         }
         return fileContainsNonWhitespace(atPath: "\(configDirectory)/api-key")
             ? .apiKeyPresent
