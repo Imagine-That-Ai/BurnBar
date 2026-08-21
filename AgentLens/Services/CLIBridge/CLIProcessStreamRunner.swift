@@ -52,7 +52,8 @@ struct CLIProcessStreamRunner: Sendable {
                 cliType: .codex
             ),
             grantStillActive: grantStillActive,
-            continuation: continuation
+            continuation: continuation,
+            finalize: { parser.finish() }
         ) { line in
             let result = parser.events(fromLine: line)
             return (result.events, result.error, result.error != nil)
@@ -274,6 +275,9 @@ struct CLIProcessStreamRunner: Sendable {
         invocation: CLIProcessInvocation,
         grantStillActive: (@Sendable () async -> Bool)? = nil,
         continuation: AsyncThrowingStream<CLIChatStreamEvent, Error>.Continuation,
+        finalize: () -> (events: [CLIChatStreamEvent], error: CLIBridgeError?) = {
+            ([], nil)
+        },
         parseLine: (String) -> (events: [CLIChatStreamEvent], error: CLIBridgeError?, terminate: Bool)
     ) async {
         let process = Process()
@@ -419,6 +423,15 @@ struct CLIProcessStreamRunner: Sendable {
         stderrTask.cancel()
         await stderrTask.value
         await runtime.clearRunningProcess(token: processToken)
+
+        if quotaRecorder.snapshot() == nil, parserError == nil {
+            let final = finalize()
+            for event in final.events {
+                continuation.yield(event)
+            }
+            parserError = final.error
+        }
+
         let failed = quotaRecorder.snapshot() != nil
             || parserError != nil
             || (process.terminationStatus != 0 && process.terminationStatus != 15)

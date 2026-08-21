@@ -9,10 +9,18 @@ import XCTest
 /// "one scan, not twelve" contract can be observed.
 private final class StubRecapSource: RecapSource, @unchecked Sendable {
     let batches: [RecapWindow: RecapRowBatch]
+    let completeBatches: [RecapWindow: RecapRowBatch]?
     private(set) var bulkRequests: [[RecapWindow]] = []
     private(set) var singleRequests: [RecapWindow] = []
+    private(set) var completeRequests: [RecapWindow] = []
 
-    init(batches: [RecapWindow: RecapRowBatch]) { self.batches = batches }
+    init(
+        batches: [RecapWindow: RecapRowBatch],
+        completeBatches: [RecapWindow: RecapRowBatch]? = nil
+    ) {
+        self.batches = batches
+        self.completeBatches = completeBatches
+    }
 
     func rows(for window: RecapWindow) async throws -> RecapRowBatch {
         singleRequests.append(window)
@@ -22,6 +30,11 @@ private final class StubRecapSource: RecapSource, @unchecked Sendable {
     func rows(for windows: [RecapWindow]) async throws -> [RecapWindow: RecapRowBatch] {
         bulkRequests.append(windows)
         return windows.reduce(into: [:]) { $0[$1] = batches[$1] ?? .empty($1) }
+    }
+
+    func completeRows(through window: RecapWindow) async throws -> [RecapWindow: RecapRowBatch]? {
+        completeRequests.append(window)
+        return completeBatches
     }
 }
 
@@ -237,6 +250,36 @@ final class RecapStoreAndComposerTests: XCTestCase {
         XCTAssertTrue(source.singleRequests.isEmpty, "no month should be fetched twice")
     }
 
+    func testComposerPersistsACompleteSourceScanForLifetimeClaims() async throws {
+        let months = [august] + august.priorMonths(14)
+        let complete = Dictionary(uniqueKeysWithValues: months.map {
+            ($0, RecapFixtures.busyMonth($0, calendar: calendar))
+        })
+        let source = StubRecapSource(batches: [:], completeBatches: complete)
+        let history = try historyStore()
+        let composer = RecapComposer(
+            source: source,
+            historyStore: history,
+            recapStore: try recapStore(),
+            calendar: calendar
+        )
+
+        let now = RecapFixtures.date(2026, 9, 2, 9, calendar: calendar)
+        _ = await events(composer.build(window: august, now: now))
+
+        XCTAssertEqual(source.completeRequests, [august])
+        XCTAssertTrue(source.bulkRequests.isEmpty)
+        XCTAssertTrue(source.singleRequests.isEmpty)
+        let isComplete = await history.hasCompleteHistory(through: august)
+        let storedHistory = await history.history(before: august)
+        XCTAssertTrue(isComplete)
+        XCTAssertEqual(storedHistory.count, 14)
+
+        let reloaded = try historyStore()
+        let reloadedIsComplete = await reloaded.hasCompleteHistory(through: august)
+        XCTAssertTrue(reloadedIsComplete)
+    }
+
     func testComposerKeepsAnInProgressMonthAsAPreview() async throws {
         let source = StubRecapSource(batches: [august: RecapFixtures.busyMonth(august, calendar: calendar)])
         let composer = RecapComposer(
@@ -401,6 +444,41 @@ final class RecapStoreAndComposerTests: XCTestCase {
         XCTAssertTrue(
             nextDay.contains(july),
             "a partial month must not be stranded — it retries once the interval passes"
+        )
+    }
+
+    func testComposerStampsPartialBackfillWithTheActualFetchTime() async throws {
+        let july = august.previous
+        let partial = RecapRowBatch(
+            window: july,
+            usages: Array(RecapFixtures.busyMonth(july, calendar: calendar).usages.prefix(3)),
+            isPartial: true,
+            hasSessionData: false
+        )
+        let source = StubRecapSource(batches: [
+            july: partial,
+            august: RecapFixtures.busyMonth(august, calendar: calendar)
+        ])
+        let history = try historyStore()
+        let composer = RecapComposer(
+            source: source,
+            historyStore: history,
+            recapStore: try recapStore(),
+            calendar: calendar,
+            historyDepth: 1
+        )
+        let now = RecapFixtures.date(2026, 9, 20, 9, calendar: calendar)
+
+        _ = await events(composer.build(window: august, now: now))
+
+        let immediateRetry = await history.monthsNeedingBackfill(
+            endingAt: august,
+            monthsBack: 1,
+            now: now
+        )
+        XCTAssertFalse(
+            immediateRetry.contains(july),
+            "a partial month fetched now must not become due again merely because the recap ended weeks ago"
         )
     }
 

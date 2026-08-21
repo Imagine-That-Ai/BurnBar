@@ -11,7 +11,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -37,6 +37,10 @@ function run(args, env = {}) {
   });
   if (result.error) throw result.error;
   return { status: result.status ?? 1, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
+}
+
+function permissionMode(filePath) {
+  return statSync(filePath).mode & 0o777;
 }
 
 function printFragment(args, env = {}) {
@@ -174,6 +178,7 @@ test("static token is written into models.json and never logged", () => {
   assert.equal(result.status, 0, `sync failed: ${result.stderr}`);
   const written = JSON.parse(readFileSync(modelsPath, "utf8"));
   assert.equal(written.providers.openburnbar.apiKey, "persist-me-token");
+  assert.equal(permissionMode(modelsPath), 0o600, "models.json must stay owner-only");
   assert.ok(!result.stdout.includes("persist-me-token"), "sync summary must not echo the token");
   assert.ok(result.stdout.includes("static token (passed via CLI)"), "summary must name the static-token mode");
 });
@@ -189,6 +194,8 @@ test("sync preserves foreign providers and stays idempotent", () => {
   const first = run([], env);
   assert.equal(first.status, 0, first.stderr);
   const afterFirst = JSON.parse(readFileSync(modelsPath, "utf8"));
+  assert.equal(permissionMode(modelsPath), 0o600, "atomic replacement must install owner-only");
+  assert.equal(permissionMode(`${modelsPath}.bak`), 0o600, "backup may contain credentials and must be owner-only");
   assert.equal(afterFirst.providers.meta.name, "Meta", "foreign providers must survive the merge");
   const firstCount = afterFirst.providers.openburnbar.models.length;
   assert.ok(firstCount > 100, `catalog should produce 150+ models, got ${firstCount}`);

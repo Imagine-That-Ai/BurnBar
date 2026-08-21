@@ -118,11 +118,13 @@ function startOfLocalDay(iso: string): number {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
 }
 
-function dayLabel(key: number): string {
+export function streamDayLabel(key: number, now: Date = new Date()): string {
   if (key === 0) return 'Unknown date';
-  const today = startOfLocalDay(new Date().toISOString());
-  if (key === today) return 'Today';
-  if (key === today - 86_400_000) return 'Yesterday';
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const todayKey = today.getTime();
+  if (key === todayKey) return 'Today';
+  today.setDate(today.getDate() - 1);
+  if (key === today.getTime()) return 'Yesterday';
   return new Date(key).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
 }
 
@@ -149,7 +151,7 @@ export function groupStreamByDay(entries: StreamEntry[], limit: number): StreamD
     .sort(([a], [b]) => b - a)
     .map(([key, group]) => ({
       key,
-      label: dayLabel(key),
+      label: streamDayLabel(key),
       entries: group,
       totalCostUsd: group.reduce((sum, entry) => sum + entry.costUsd, 0),
       isSpike: false

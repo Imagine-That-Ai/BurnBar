@@ -427,6 +427,17 @@ struct FxAskJSONParser {
         return (events, nil)
     }
 
+    /// Flushes a successful process whose stdout never formed the documented
+    /// JSON object. fx can print a human-readable auth/setup message, and a
+    /// truncated or schema-drifted payload is still more useful in the bubble
+    /// than a silent successful response.
+    mutating func finish() -> (events: [CLIChatStreamEvent], error: CLIBridgeError?) {
+        guard !emitted else { return ([], nil) }
+        emitted = true
+        let text = buffer.trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.isEmpty ? ([], nil) : ([.text(text)], nil)
+    }
+
     private static func errorMessage(from obj: UntypedJSONObject) -> String? {
         if let error = obj["error"] as? String, !error.isEmpty {
             return error

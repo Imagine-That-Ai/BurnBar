@@ -269,7 +269,7 @@ enum RecapEconomyRules {
 
     /// A round-number milestone worth noticing, measured cumulatively.
     @Sendable static func volumeMilestone(_ ctx: RecapContext) -> RecapCandidate? {
-        guard ctx.allowsAbsoluteClaims, ctx.monthsOfHistory >= 2 else { return nil }
+        guard ctx.allowsLifetimeClaims, ctx.monthsOfHistory >= 2 else { return nil }
 
         let priorSessions = ctx.comparableHistory.reduce(0) { $0 + $1.sessionCount }
         let total = priorSessions + ctx.facts.sessionCount

@@ -79,6 +79,10 @@ public struct CLIAuthInfo: Identifiable, Equatable, Sendable {
 /// stay in the shared `OpenBurnBarCore` package.
 public enum CLIAuthDiscovery {
 
+    nonisolated(unsafe) static var environmentProvider: () -> [String: String] = {
+        ProcessInfo.processInfo.environment
+    }
+
     /// Scans all CLI types and returns their auth states.
     public static func discoverAuthStates() -> [CLIAuthInfo] {
         return SwitcherCLIProfileType.allCases.map { cliType in
@@ -381,13 +385,28 @@ public enum CLIAuthDiscovery {
             let sessionsDir = "\(configDir)/sessions"
             let hasConfig = FileManager.default.fileExists(atPath: configDir)
             let hasRecordedSessions = directoryContainsAnyEntry(atPath: sessionsDir)
-            // fx authenticates through Vercel OAuth (auth.json) or an API key
-            // file; recorded sessions are the strongest local evidence of a
-            // usable login, mirroring the Junie heuristic.
+            let fileCredential = fxFileCredentialState(configDirectory: configDir)
+            let environment = environmentProvider()
+            let hasEnvironmentKey = normalizedNonEmpty(environment["AI_GATEWAY_API_KEY"]) != nil
+            // Current fx keeps OAuth in auth.json/chatgpt-auth.json (or the
+            // FX_OAUTH_SESSION_V1 Keychain item after migration) and API keys
+            // in `api-key`, AI_GATEWAY_API_KEY, or FX_AI_GATEWAY_API_KEY in
+            // Keychain. Merely launching fx creates ~/.fx, and old sessions
+            // survive logout, so neither is authentication evidence.
+            let keychainCredential = configDirectoryOverride == nil
+                ? fxKeychainCredentialState()
+                : nil
             let authState: CLIAuthState = {
                 if executablePath == nil { return .notInstalled }
-                if hasRecordedSessions { return .authenticated(lastRefresh: nil) }
-                if hasConfig { return .authenticated(lastRefresh: nil) }
+                if fileCredential == .authenticated(lastRefresh: nil)
+                    || keychainCredential == .authenticated(lastRefresh: nil) {
+                    return .authenticated(lastRefresh: nil)
+                }
+                if fileCredential == .apiKeyPresent
+                    || keychainCredential == .apiKeyPresent
+                    || hasEnvironmentKey {
+                    return .apiKeyPresent
+                }
                 return .notAuthenticated
             }()
             return CLIAuthInfo(
@@ -400,6 +419,57 @@ public enum CLIAuthDiscovery {
             )
         }
         #endif
+    }
+
+    // MARK: - fx Auth Detection
+
+    private static func fxFileCredentialState(configDirectory: String) -> CLIAuthState? {
+        for name in ["auth.json", "chatgpt-auth.json"] {
+            if fileContainsNonWhitespace(atPath: "\(configDirectory)/\(name)") {
+                return .authenticated(lastRefresh: nil)
+            }
+        }
+        return fileContainsNonWhitespace(atPath: "\(configDirectory)/api-key")
+            ? .apiKeyPresent
+            : nil
+    }
+
+    /// Checks Keychain item metadata only. Omitting `-w` is intentional: the
+    /// auth panel needs presence, never the credential bytes.
+    private static func fxKeychainCredentialState() -> CLIAuthState? {
+        guard FileManager.default.isExecutableFile(atPath: "/usr/bin/security") else { return nil }
+        if keychainItemExists(service: "FX_OAUTH_SESSION_V1") {
+            return .authenticated(lastRefresh: nil)
+        }
+        if keychainItemExists(service: "FX_AI_GATEWAY_API_KEY") {
+            return .apiKeyPresent
+        }
+        return nil
+    }
+
+    private static func keychainItemExists(service: String) -> Bool {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/security")
+        process.arguments = [
+            "find-generic-password",
+            "-s", service
+        ]
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        process.standardInput = FileHandle.nullDevice
+        do {
+            try process.run()
+            process.waitUntilExit()
+            return process.terminationStatus == 0
+        } catch {
+            return false
+        }
+    }
+
+    private static func fileContainsNonWhitespace(atPath path: String) -> Bool {
+        guard let data = FileManager.default.contents(atPath: path),
+              let text = String(data: data, encoding: .utf8) else { return false }
+        return normalizedNonEmpty(text) != nil
     }
 
     // MARK: - Codex Auth Detection

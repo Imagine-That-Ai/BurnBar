@@ -53,24 +53,44 @@ struct MacRecapSource: RecapSource {
             startingIn: DateInterval(start: lower, end: upper)
         )
 
-        var factsByWindow: [RecapWindow: [ChartFactRow]] = [:]
-        for row in facts {
-            let window = RecapWindow(containing: row.startTime, calendar: calendar)
-            factsByWindow[window, default: []].append(row)
-        }
-        var sessionsByWindow: [RecapWindow: [InsightSessionRow]] = [:]
-        for row in sessions {
-            let window = RecapWindow(containing: row.startTime, calendar: calendar)
-            sessionsByWindow[window, default: []].append(row)
+        return Self.batches(
+            for: Set(windows),
+            factRows: facts,
+            sessions: sessions,
+            calendar: calendar
+        )
+    }
+
+    // MARK: - Complete history, one scan
+
+    func completeRows(through window: RecapWindow) async throws -> [RecapWindow: RecapRowBatch]? {
+        let calendar = Calendar.current
+        let upper = window.end(calendar: calendar)
+        let facts = try await dataStore.fetchChartFactRows(in: nil)
+            .filter { $0.startTime < upper }
+        let sessions: [InsightSessionRow]
+        do {
+            sessions = try await dataStore.fetchRecapSessionRows(
+                startingIn: Date.distantPast..<upper
+            )
+        } catch {
+            // A usage-only scan can still build ordinary monthly comparisons,
+            // but it cannot prove that a tool or project never appeared in an
+            // older conversation. Decline the complete-history contract so the
+            // composer suppresses lifetime and first-ever wording.
+            return nil
         }
 
-        return windows.reduce(into: [:]) { result, window in
-            result[window] = Self.batch(
-                window: window,
-                factRows: factsByWindow[window] ?? [],
-                sessions: sessionsByWindow[window] ?? []
-            )
-        }
+        let months = Set(facts.map { RecapWindow(containing: $0.startTime, calendar: calendar) })
+            .union(sessions.map { RecapWindow(containing: $0.startTime, calendar: calendar) })
+            .filter { $0 <= window }
+            .union([window])
+        return Self.batches(
+            for: months,
+            factRows: facts,
+            sessions: sessions,
+            calendar: calendar
+        )
     }
 
     private func fetchSessions(startingIn interval: DateInterval) async throws -> [InsightSessionRow] {
@@ -104,6 +124,27 @@ struct MacRecapSource: RecapSource {
             hasSessionData: true,
             exactShare: exactShare(of: factRows)
         )
+    }
+
+    private static func batches(
+        for windows: Set<RecapWindow>,
+        factRows: [ChartFactRow],
+        sessions: [InsightSessionRow],
+        calendar: Calendar
+    ) -> [RecapWindow: RecapRowBatch] {
+        let factsByWindow = Dictionary(grouping: factRows) {
+            RecapWindow(containing: $0.startTime, calendar: calendar)
+        }
+        let sessionsByWindow = Dictionary(grouping: sessions) {
+            RecapWindow(containing: $0.startTime, calendar: calendar)
+        }
+        return windows.reduce(into: [:]) { result, window in
+            result[window] = batch(
+                window: window,
+                factRows: factsByWindow[window] ?? [],
+                sessions: sessionsByWindow[window] ?? []
+            )
+        }
     }
 
     /// `ChartFactRow` carries `totalTokens` but not `outputTokens`; output is

@@ -1856,6 +1856,26 @@ final class CLIBridgeTests: XCTestCase {
         XCTAssertNil(trailing.error)
     }
 
+    func test_fxAskJSONParser_flushesPlainTextAtEOF() {
+        var parser = FxAskJSONParser()
+        let partial = parser.events(fromLine: "fx needs authentication; run fx login")
+        XCTAssertTrue(partial.events.isEmpty)
+
+        let final = parser.finish()
+        XCTAssertNil(final.error)
+        XCTAssertEqual(final.events, [.text("fx needs authentication; run fx login")])
+        XCTAssertTrue(parser.finish().events.isEmpty, "EOF flush must be idempotent")
+    }
+
+    func test_fxAskJSONParser_flushesTruncatedJSONAtEOF() {
+        var parser = FxAskJSONParser()
+        _ = parser.events(fromLine: #"{"output":"unfinished"#)
+
+        let final = parser.finish()
+        XCTAssertNil(final.error)
+        XCTAssertEqual(final.events, [.text(#"{"output":"unfinished"#)])
+    }
+
     func test_openAICompatibleSSEParser_extractsUsageToolAndText() {
         var parser = OpenAICompatibleSSEParser()
         let line = #"""

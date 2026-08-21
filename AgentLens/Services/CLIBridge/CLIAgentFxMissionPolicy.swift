@@ -8,8 +8,8 @@ import OpenBurnBarComputerUseCore
 ///
 /// - `--yolo` is never passed (T-TOOL-02(a): no vendor full-autonomy
 ///   bypass arguments).
-/// - `--auto` is only passed when the grant carries the full desktop
-///   capability set, because automatic review can approve sensitive
+/// - `--auto` is only passed for an active, trusted grant carrying the full
+///   desktop capability set, because automatic review can approve sensitive
 ///   actions without a human in the loop.
 /// - Without the full grant, fx runs in its default permission mode,
 ///   which exits before running unresolved sensitive calls — fail closed
@@ -23,6 +23,8 @@ enum CLIAgentFxMissionPolicy {
     /// single gate; tests pin the same decision through it.
     static func autoReviewPermitted(_ grant: AgentCapabilityGrant?, now: Date = Date()) -> Bool {
         guard let grant else { return false }
-        return grant.isActive(now: now) && hasFullDesktopCapabilities(grant)
+        return grant.isActive(now: now)
+            && grant.trustMode == .trusted
+            && hasFullDesktopCapabilities(grant)
     }
 }

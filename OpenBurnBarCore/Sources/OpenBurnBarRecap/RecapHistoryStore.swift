@@ -10,10 +10,16 @@ public actor RecapHistoryStore {
     public struct Snapshot: Codable, Sendable {
         public var schemaVersion: Int
         public var months: [String: RecapFacts]
+        public var completeThroughKey: String?
 
-        public init(schemaVersion: Int = RecapFacts.currentSchemaVersion, months: [String: RecapFacts] = [:]) {
+        public init(
+            schemaVersion: Int = RecapFacts.currentSchemaVersion,
+            months: [String: RecapFacts] = [:],
+            completeThroughKey: String? = nil
+        ) {
             self.schemaVersion = schemaVersion
             self.months = months
+            self.completeThroughKey = completeThroughKey
         }
     }
 
@@ -34,8 +40,15 @@ public actor RecapHistoryStore {
         // Drop months folded by an older version of the fold. A missing month
         // narrows comparisons — which every rule already tolerates through its
         // history floor — whereas a stale month would silently mis-compare.
+        let loadedSchemaVersion = snapshot.schemaVersion
+        let hadStaleMonths = snapshot.months.contains {
+            $0.value.schemaVersion != RecapFacts.currentSchemaVersion
+        }
         snapshot.months = snapshot.months.filter {
             $0.value.schemaVersion == RecapFacts.currentSchemaVersion
+        }
+        if loadedSchemaVersion != RecapFacts.currentSchemaVersion || hadStaleMonths {
+            snapshot.completeThroughKey = nil
         }
         snapshot.schemaVersion = RecapFacts.currentSchemaVersion
     }
@@ -60,6 +73,15 @@ public actor RecapHistoryStore {
     /// separate, fetch-cost decision owned by the caller that pays for the scan.
     public func history(before window: RecapWindow) -> [RecapFacts] {
         allFacts().filter { $0.window < window }
+    }
+
+    /// Whether a source has authoritatively scanned all of its history through
+    /// `window`. Stored months alone cannot prove this: a fresh install may
+    /// have only the bounded backfill while older usage still exists.
+    public func hasCompleteHistory(through window: RecapWindow) -> Bool {
+        guard let key = snapshot.completeThroughKey,
+              let completeThrough = RecapWindow(key: key) else { return false }
+        return completeThrough >= window
     }
 
     /// How long a partially-read month is left alone before a backfill retries it.
@@ -108,6 +130,31 @@ public actor RecapHistoryStore {
                 continue
             }
             snapshot.months[facts.window.key] = facts
+        }
+        try persist()
+    }
+
+    /// Replaces the authoritative portion of history after a complete source
+    /// scan. Removing absent months matters: deleted local usage must not linger
+    /// in lifetime totals simply because an older snapshot once contained it.
+    public func replaceCompleteHistory(
+        with batch: [RecapFacts],
+        through window: RecapWindow
+    ) throws {
+        snapshot.months = snapshot.months.filter { key, _ in
+            guard let storedWindow = RecapWindow(key: key) else { return false }
+            return storedWindow > window
+        }
+        for facts in batch where facts.window <= window {
+            snapshot.months[facts.window.key] = facts
+        }
+
+        if let key = snapshot.completeThroughKey,
+           let existing = RecapWindow(key: key),
+           existing > window {
+            snapshot.completeThroughKey = existing.key
+        } else {
+            snapshot.completeThroughKey = window.key
         }
         try persist()
     }

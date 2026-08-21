@@ -7,6 +7,7 @@ import {
   groupStreamByDay,
   overviewFixturesAllowed,
   parseEventCost,
+  streamDayLabel,
   streamEntriesFromSummary,
   weeklyHalves
 } from './overviewHomeModel.js';
@@ -47,6 +48,21 @@ describe('stream river', () => {
   it('parses a cost out of the event detail without inventing one', () => {
     expect(parseEventCost('20 tokens · $4.50')).toBe(4.5);
     expect(parseEventCost('no money here')).toBe(0);
+  });
+
+  it('labels yesterday by local calendar day across a DST transition', () => {
+    const priorTZ = process.env.TZ;
+    process.env.TZ = 'America/New_York';
+    try {
+      const now = new Date(2026, 10, 2, 12);
+      const yesterday = new Date(2026, 10, 1).getTime();
+      const today = new Date(2026, 10, 2).getTime();
+      expect(today - yesterday).toBe(25 * 60 * 60 * 1000);
+      expect(streamDayLabel(yesterday, now)).toBe('Yesterday');
+    } finally {
+      if (priorTZ === undefined) delete process.env.TZ;
+      else process.env.TZ = priorTZ;
+    }
   });
 });
 
