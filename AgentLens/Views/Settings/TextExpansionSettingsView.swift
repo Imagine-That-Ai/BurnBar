@@ -453,7 +453,10 @@ struct TextExpansionSettingsView: View {
     }
 
     private func requestAccessibilityPermission() {
-        accessibilityTrusted = MacAccessibilityPermissionRequester.promptAndOpenSettings()
+        Task { @MainActor in
+            await AppCommandRouter.shared.permissionLadder.request(.accessibility)
+            accessibilityTrusted = MacAccessibilityPermissionRequester.isTrusted()
+        }
     }
     #endif
 

@@ -27,6 +27,16 @@ final class TextExpansionRuntimeController: ObservableObject {
     private var lastReconcileLogKey: String?
     private var didPromptForAccessibility = false
 
+    /// True when text expansion is switched on but macOS has not granted (or has
+    /// forgotten) Accessibility trust -- typically after an app update re-signs the
+    /// binary and the grant stays pinned to the old cdhash.
+    ///
+    /// Settings renders this as an inline row. It deliberately does NOT prompt on
+    /// its own: at launch the user has not asked for anything, and seizing the
+    /// screen with a permission dialog plus a System Settings window is exactly
+    /// the behaviour that makes a freshly-updated app feel like malware.
+    @Published private(set) var needsAccessibilityGrant = false
+
     // State touched by the nonisolated CGEvent tap callback (off the main actor),
     // confined to an OSAllocatedUnfairLock so the controller stays Sendable.
     //
@@ -201,15 +211,21 @@ final class TextExpansionRuntimeController: ObservableObject {
                 AppLogger.chat.notice("textExpansion.tapTornDownUntrusted")
             }
             stopEventTap()
-            promptForAccessibilityIfNeeded()
+            needsAccessibilityGrant = true
             return
         }
+        needsAccessibilityGrant = false
         didPromptForAccessibility = false
         startEventTapIfNeeded()
     }
 
+    /// Shows the macOS Accessibility prompt and opens System Settings.
+    ///
+    /// Call this only from a control the user just clicked. The launch path
+    /// publishes `needsAccessibilityGrant` instead, so the ask happens when the
+    /// user goes looking for it rather than the instant the app opens.
     @MainActor
-    private func promptForAccessibilityIfNeeded() {
+    func requestAccessibilityGrantFromUser() {
         guard !didPromptForAccessibility else { return }
         didPromptForAccessibility = true
         AppLogger.chat.notice("textExpansion.promptAccessibility")
@@ -234,7 +250,9 @@ final class TextExpansionRuntimeController: ObservableObject {
                 "accessibilityTrusted": "\(inputController.isAccessibilityTrusted())"
             ])
             if !inputController.isAccessibilityTrusted() {
-                _ = MacAccessibilityPermissionRequester.promptAndOpenSettings()
+                // Same rule as `reconcileEventTap`: surface it, do not seize the
+                // screen. `startEventTapIfNeeded` runs on the launch path.
+                needsAccessibilityGrant = true
             }
             return
         }
