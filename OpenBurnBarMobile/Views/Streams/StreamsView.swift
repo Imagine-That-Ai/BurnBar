@@ -33,10 +33,7 @@ struct StreamsView: View {
     @State private var showSaveQuery = false
     @State private var saveQueryName = ""
     @State private var showCloudStore = false
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.cloudSubscriptionStore) private var cloudStore
-
-    private static let iPhoneNavigationTrayClearance: CGFloat = 112
 
     private var isCloudEntitled: Bool { cloudStore?.isActive ?? false }
 
@@ -290,6 +287,10 @@ struct StreamsView: View {
                         .frame(maxWidth: .infinity, minHeight: 220)
                         .padding(.vertical, 28)
                 } else if searchResultMode == .failed {
+                    // Ahead of the load-error branch below, which only fires
+                    // when the cached list is empty: a failed search over rows
+                    // that did load must still say so and offer to retry the
+                    // search, not fall through to "No matches".
                     AuroraStatePane(
                         kind: .error,
                         icon: "exclamationmark.icloud.fill",
@@ -373,9 +374,7 @@ struct StreamsView: View {
     }
 
     private var listBottomPadding: CGFloat {
-        horizontalSizeClass == .compact
-            ? Self.iPhoneNavigationTrayClearance
-            : MobileTheme.Spacing.xxl
+        MobileTheme.Spacing.xxl
     }
 
     private var searchResultMode: StreamsSearchResultMode {

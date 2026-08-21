@@ -78,7 +78,7 @@ export const deleteProviderCredential = onCall(
     const uid = request.auth?.uid;
 
     if (!uid) {
-      throw new Error("unauthenticated");
+      throw new HttpsError("unauthenticated", "Sign in before deleting provider credentials.");
     }
     enforceAuthAndAppCheck(request, uid);
     assertProvider(provider);

@@ -27,8 +27,8 @@ final class ThemeGlassPaletteTests: XCTestCase {
     // MARK: - Distinctness
 
     func testEveryLayoutHasADistinctPaletteIdentity() {
-        // Six themes, six identities — no two layouts collapse onto the same
-        // rail, so switching themes is always visible on the sidebar.
+        // One identity per layout — no two layouts collapse onto the same rail,
+        // so switching layout is always visible on the sidebar.
         let ids = DashboardLayout.allCases.map { ThemeGlassPalette.glass(for: $0).id }
         XCTAssertEqual(
             Set(ids).count,

@@ -286,13 +286,18 @@ public final class GrokParser: LogParser, Sendable {
         // rows but does not delete a stale pre-reconciliation parent row.
         guard tokenBreakdown.totalTokens > 0 || tokenBreakdown.isExact else { return nil }
 
-        let pricing = ModelPricing.lookup(model: model)
-        let cost = try pricing.cost(
-            inputTokens: tokenBreakdown.inputTokens,
-            outputTokens: tokenBreakdown.outputTokens + tokenBreakdown.reasoningTokens,
-            cacheCreationTokens: 0,
-            cacheReadTokens: tokenBreakdown.cacheReadTokens
-        )
+        let pricing = ModelPricing.lookup(model: model, providerID: "xai")
+        let cost: Double
+        if let exactCost = tokenBreakdown.exactCostUSD, exactCost > 0 {
+            cost = exactCost
+        } else {
+            cost = try pricing.cost(
+                inputTokens: tokenBreakdown.inputTokens,
+                outputTokens: tokenBreakdown.outputTokens + tokenBreakdown.reasoningTokens,
+                cacheCreationTokens: 0,
+                cacheReadTokens: tokenBreakdown.cacheReadTokens
+            )
+        }
 
         let provenance: UsageProvenanceMethod = tokenBreakdown.isExact || signals?.contextTokensUsed != nil
             ? .providerLog
@@ -312,6 +317,10 @@ public final class GrokParser: LogParser, Sendable {
             costUSD: cost,
             startTime: startTime ?? Date(),
             endTime: endTime ?? startTime ?? Date(),
+            executionSourceID: "grok-build",
+            executionSourceName: "Grok Build",
+            executionSourceKind: .cli,
+            executionSourceConfidence: .exact,
             provenanceMethod: provenance,
             provenanceConfidence: confidence,
             estimatorVersion: confidence == .exact ? "" : TokenExtractionUtility.currentEstimatorVersion
@@ -347,7 +356,24 @@ public final class GrokParser: LogParser, Sendable {
         let outputTokens: Int
         let cacheReadTokens: Int
         let reasoningTokens: Int
+        let exactCostUSD: Double?
         let isExact: Bool
+
+        init(
+            inputTokens: Int,
+            outputTokens: Int,
+            cacheReadTokens: Int,
+            reasoningTokens: Int,
+            exactCostUSD: Double? = nil,
+            isExact: Bool
+        ) {
+            self.inputTokens = inputTokens
+            self.outputTokens = outputTokens
+            self.cacheReadTokens = cacheReadTokens
+            self.reasoningTokens = reasoningTokens
+            self.exactCostUSD = exactCostUSD
+            self.isExact = isExact
+        }
 
         var totalTokens: Int {
             inputTokens + outputTokens + cacheReadTokens + reasoningTokens
@@ -358,25 +384,40 @@ public final class GrokParser: LogParser, Sendable {
             outputTokens: 0,
             cacheReadTokens: 0,
             reasoningTokens: 0,
+            exactCostUSD: 0,
             isExact: true
         )
 
         func adding(_ other: TokenBreakdown) -> TokenBreakdown {
-            TokenBreakdown(
+            let combinedCost: Double?
+            if let c1 = exactCostUSD, let c2 = other.exactCostUSD {
+                combinedCost = c1 + c2
+            } else {
+                combinedCost = exactCostUSD ?? other.exactCostUSD
+            }
+            return TokenBreakdown(
                 inputTokens: inputTokens + other.inputTokens,
                 outputTokens: outputTokens + other.outputTokens,
                 cacheReadTokens: cacheReadTokens + other.cacheReadTokens,
                 reasoningTokens: reasoningTokens + other.reasoningTokens,
+                exactCostUSD: combinedCost,
                 isExact: isExact && other.isExact
             )
         }
 
         func subtracting(_ other: TokenBreakdown) -> TokenBreakdown {
-            TokenBreakdown(
+            let diffCost: Double?
+            if let c1 = exactCostUSD, let c2 = other.exactCostUSD {
+                diffCost = max(c1 - c2, 0)
+            } else {
+                diffCost = exactCostUSD
+            }
+            return TokenBreakdown(
                 inputTokens: max(inputTokens - other.inputTokens, 0),
                 outputTokens: max(outputTokens - other.outputTokens, 0),
                 cacheReadTokens: max(cacheReadTokens - other.cacheReadTokens, 0),
                 reasoningTokens: max(reasoningTokens - other.reasoningTokens, 0),
+                exactCostUSD: diffCost,
                 isExact: isExact
             )
         }
@@ -468,6 +509,8 @@ public final class GrokParser: LogParser, Sendable {
         var outputTokens = 0
         var cacheReadTokens = 0
         var reasoningTokens = 0
+        var accumulatedCost: Double = 0
+        var hasExactCost = false
         var foundUsage = false
         var seenPromptIDs = Set<String>()
 
@@ -492,6 +535,11 @@ public final class GrokParser: LogParser, Sendable {
             let cacheRead = integerValue(usage["cachedReadTokens"])
             let reasoning = integerValue(usage["reasoningTokens"])
             let reportedTotal = integerValue(usage["totalTokens"])
+            let costTicks = integerValue(usage["costUsdTicks"])
+            if costTicks > 0 {
+                accumulatedCost += Double(costTicks) / 1_000_000_000.0
+                hasExactCost = true
+            }
             guard rawInput > 0 || rawOutput > 0 || cacheRead > 0 || reasoning > 0 else { continue }
 
             // Current Grok Build totals satisfy total = input + output; cache and
@@ -511,6 +559,7 @@ public final class GrokParser: LogParser, Sendable {
             outputTokens: outputTokens,
             cacheReadTokens: cacheReadTokens,
             reasoningTokens: reasoningTokens,
+            exactCostUSD: hasExactCost ? accumulatedCost : nil,
             isExact: true
         )
     }

@@ -100,7 +100,10 @@ final class FleetLivenessResolverTests: XCTestCase {
 
     func test_writeInsideActiveWindowIsRecent() {
         var evidence = FleetLivenessResolver.Evidence()
-        evidence.lastWrite = (now.addingTimeInterval(-(FleetWindow.active - 1)), .parsedUsageRow)
+        evidence.lastWrite = (
+            now.addingTimeInterval(-(FleetWindow.active - 1)),
+            .sessionLogWrite("session.jsonl")
+        )
 
         guard case .wroteRecently = FleetLivenessResolver.resolve(evidence, now: now) else {
             XCTFail("A write inside the active window is recent")
@@ -110,10 +113,23 @@ final class FleetLivenessResolverTests: XCTestCase {
 
     func test_writeOutsideActiveWindowIsQuiet() {
         var evidence = FleetLivenessResolver.Evidence()
-        evidence.lastWrite = (now.addingTimeInterval(-(FleetWindow.active + 1)), .parsedUsageRow)
+        evidence.lastWrite = (
+            now.addingTimeInterval(-(FleetWindow.active + 1)),
+            .sessionLogWrite("session.jsonl")
+        )
 
         guard case .quietSince = FleetLivenessResolver.resolve(evidence, now: now) else {
             XCTFail("A write outside the active window is quiet — but still not idle")
+            return
+        }
+    }
+
+    func test_parsedUsageIsNeverWroteRecently() {
+        var evidence = FleetLivenessResolver.Evidence()
+        evidence.lastWrite = (now.addingTimeInterval(-5), .parsedUsageRow)
+
+        guard case .quietSince = FleetLivenessResolver.resolve(evidence, now: now) else {
+            XCTFail("Gateway/API usage rows must not light a row as wrote")
             return
         }
     }

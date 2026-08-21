@@ -39,7 +39,7 @@ extension UsageStore {
               let projectName = indexed(row, ChartFactCol.projectName.rawValue) as? String,
               let model = indexed(row, ChartFactCol.model.rawValue) as? String,
               let providerRaw = indexed(row, ChartFactCol.provider.rawValue) as? String,
-              let provider = AgentProvider(rawValue: providerRaw) else {
+              let provider = AgentProvider.resolve(providerRaw) else {
             return nil
         }
         let inputTokens = intValue(indexed(row, ChartFactCol.inputTokens.rawValue))
@@ -129,7 +129,7 @@ extension UsageStore {
               let projectName = indexed(row, ChartSessionCol.projectName.rawValue) as? String,
               let model = indexed(row, ChartSessionCol.model.rawValue) as? String,
               let providerRaw = indexed(row, ChartSessionCol.provider.rawValue) as? String,
-              let provider = AgentProvider(rawValue: providerRaw) else {
+              let provider = AgentProvider.resolve(providerRaw) else {
             return nil
         }
         return ChartSessionAnalytics.Event(

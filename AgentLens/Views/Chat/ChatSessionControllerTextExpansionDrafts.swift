@@ -159,8 +159,7 @@ extension ChatSessionController {
         case .piAgent:
             baseURL = piAgentGatewayBaseURL
             bearerToken = piAgentBearerToken
-        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp, .junie,
-             .grok, .kimi:
+        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp, .junie, .fx, .grok, .kimi:
             throw TextExpansionRewriteError.unsupportedBackend(chatBackend.displayName)
         }
 

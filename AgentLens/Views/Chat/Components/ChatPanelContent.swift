@@ -12,9 +12,9 @@ struct ChatPanelContent: View {
         ChatMessagesStream(
             controller: controller,
             settingsManager: settingsManager,
-            maxContentWidth: .infinity,
-            horizontalPadding: DesignSystem.Spacing.md,
-            verticalPadding: DesignSystem.Spacing.md,
+            maxContentWidth: 520,
+            horizontalPadding: 20,
+            verticalPadding: 16,
             onJumpToConversation: onJumpToConversation
         )
     }

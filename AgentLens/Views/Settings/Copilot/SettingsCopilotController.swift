@@ -115,8 +115,9 @@ final class SettingsCopilotController {
                     _ = chunk
                 case .refusal(let text):
                     streamedText += text
-                case .toolUse, .toolResult, .usage:
-                    // Ignore tool events — the copilot operates via text + action envelopes.
+                case .toolUse, .toolResult, .usage, .sessionID:
+                    // Ignore tool, usage and session-handle events — the
+                    // copilot operates via text + action envelopes.
                     break
                 }
             }

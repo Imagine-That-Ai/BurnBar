@@ -116,8 +116,11 @@
                               VerticalScrollBarVisibility="Auto"
                               VerticalScrollMode="Enabled"
                               HorizontalScrollMode="Disabled"
-                              ViewChanged="OnContentScrollViewChanged">
-                    <ContentPresenter x:Name="ContentHost" />
+                              ViewChanged="OnContentScrollViewChanged"
+                              SizeChanged="OnContentScrollSizeChanged">
+                    <ContentPresenter x:Name="ContentHost"
+                                      HorizontalAlignment="Stretch"
+                                      VerticalAlignment="Stretch" />
                 </ScrollViewer>
             </Grid>
         </Grid>

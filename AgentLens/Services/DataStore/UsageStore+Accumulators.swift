@@ -68,7 +68,7 @@ struct UsageAggregateRow: Equatable { // pure-move: was private
 
     init?(row: Row) {
         guard let providerRaw = row["provider"] as? String,
-              let provider = AgentProvider(rawValue: providerRaw),
+              let provider = AgentProvider.resolve(providerRaw),
               let model = row["model"] as? String else { return nil }
         self.provider = provider
         self.model = model
@@ -619,7 +619,7 @@ struct DailySummaryAccumulator { // pure-move: was private
     }
 
     var summary: DailyUsageSummary? {
-        let date = dateOverride ?? Self.dayFormatter.date(from: dayString)
+        let date = dateOverride ?? OpenBurnBarDatabase.parseDateValue(dayString)
         guard let date else { return nil }
         return DailyUsageSummary(
             date: date,
@@ -634,12 +634,4 @@ struct DailySummaryAccumulator { // pure-move: was private
             models: models.sorted()
         )
     }
-
-    private static let dayFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter
-    }()
 }

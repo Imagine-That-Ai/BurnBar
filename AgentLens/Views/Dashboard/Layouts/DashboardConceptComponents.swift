@@ -21,6 +21,111 @@ extension DashboardView {
         #endif
     }
 
+    /// The scroll scaffold every named layout sits in.
+    ///
+    /// Shared deliberately: eight layouts should differ in *composition*, not in
+    /// how each one handles scrolling, width clamping, page background, and the
+    /// appear hook. Those four were copy-pasted per layout and drifted every
+    /// time one of them was touched — three different `maxWidth` clamps and two
+    /// different background rules, none of them intentional.
+    ///
+    /// What a layout still chooses: rail width, column axis, section order,
+    /// density, and the gutter, because those are the thesis.
+    func conceptCanvas<Content: View>(
+        maxWidth: CGFloat = DashboardLayoutMetrics.contentMaxWidth,
+        spacing: CGFloat = DesignSystem.Spacing.lg,
+        alignment: HorizontalAlignment = .leading,
+        gutter: CGFloat = DesignSystem.Spacing.xl,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        ScrollView {
+            VStack(alignment: alignment, spacing: spacing) {
+                content()
+            }
+            .padding(gutter)
+            .frame(maxWidth: maxWidth, alignment: .top)
+            .frame(maxWidth: .infinity, alignment: .top)
+        }
+        .scrollContentBackground(.hidden)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .dashboardPageBackground(liveBackdropActive: dashboardLiveBackdropActive)
+        .onAppear { overviewAppeared = true }
+    }
+
+    /// The ink a layout draws with when it needs a colour *outside* a view body
+    /// (string interpolation into a `foregroundStyle`, a chart series, a shape
+    /// fill computed in a helper).
+    ///
+    /// `DashboardSection` and its atoms read `\.backdropInk` from the
+    /// environment, which `DashboardView.body` publishes once. Layout code that
+    /// runs before that environment is readable resolves the same value here
+    /// from the same two inputs, so the two can never disagree.
+    var dashboardSectionInk: BackdropInk {
+        BackdropInk.resolve(
+            liveBackdropActive: dashboardLiveBackdropActive,
+            profile: dashboardActiveReadabilityProfile
+        )
+    }
+
+    /// The window's headline numbers, as data rather than as views.
+    ///
+    /// Every layout shows some subset of these; holding the tuples in one place
+    /// is what keeps "Sessions" meaning the same thing in Ledger, Bento, and
+    /// Cockpit instead of three near-identical inline literals.
+    var conceptWindowFacts: [(label: String, value: String, accent: Color)] {
+        [
+            (
+                "Burn · \(selectedTimeRange.displayName)",
+                totalCostForTimeRange.formatAsCost(),
+                DesignSystem.Colors.whimsy
+            ),
+            ("Tokens", totalTokensForTimeRange.formatted(), DesignSystem.Colors.ember),
+            ("Sessions", dashboardUsageWindow.sessionCount.formatted(), DesignSystem.Colors.amber),
+            (
+                "Cache hit",
+                dashboardUsageWindow.cacheEfficiency.formattedHitRate,
+                CacheHitRateTier(dashboardUsageWindow.cacheEfficiency).color
+            ),
+            ("Providers", activeProviderCount.formatted(), DesignSystem.Colors.success),
+            ("Models", dashboardModelSummaries.count.formatted(), DesignSystem.Colors.blaze)
+        ]
+    }
+
+    /// Ranked provider rows with spend share, ready for any layout's table.
+    var conceptProviderRows: [DashboardRankedItem] {
+        let total = max(dashboardProviderSummaries.reduce(0) { $0 + $1.totalCost }, 0.0001)
+        return dashboardProviderSummaries.enumerated().map { index, summary in
+            DashboardRankedItem(
+                id: "provider-\(summary.provider.rawValue)",
+                rank: index + 1,
+                title: summary.provider.displayName,
+                subtitle: "\(summary.sessionCount.formatted()) sessions · \(summary.totalTokens.formatted()) tokens",
+                value: summary.formattedCost,
+                share: summary.totalCost / total,
+                accent: DesignSystem.Colors.primary(for: summary.provider),
+                provider: summary.provider
+            )
+        }
+    }
+
+    /// Ranked model rows with spend share.
+    var conceptModelRows: [DashboardRankedItem] {
+        let total = max(dashboardModelSummaries.reduce(0) { $0 + $1.totalCost }, 0.0001)
+        return dashboardModelSummaries.enumerated().map { index, summary in
+            DashboardRankedItem(
+                id: "model-\(summary.modelName)",
+                rank: index + 1,
+                title: summary.displayName,
+                subtitle: "\(summary.sessionCount.formatted()) sessions · \(summary.totalTokens.formatted()) tokens",
+                value: summary.formattedCost,
+                share: summary.totalCost / total,
+                accent: summary.providerBreakdown.first
+                    .map { DesignSystem.Colors.primary(for: $0.provider) } ?? DesignSystem.Colors.ember,
+                provider: summary.providerBreakdown.first?.provider
+            )
+        }
+    }
+
     /// The collapsed "more details" drawer every concept embeds beneath its
     /// curated hero. It carries every Classic-only section a concept does not
     /// already show directly, so curated layouts never lose Overview information.
@@ -45,8 +150,9 @@ extension DashboardView {
         conceptDetailsDrawer()
     }
 
-    /// The shared live cost curve wrapped in a glass card, for concepts that
-    /// place the curve inside a framed tile (Aurora, Nebula, Cockpit).
+    /// The shared live cost curve wrapped in a glass card. Reached only through
+    /// `conceptDetailsDrawer`; the curated layouts render their curves inside
+    /// `DashboardSection` plates.
     var conceptCurveCard: some View {
         GlassCard {
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {

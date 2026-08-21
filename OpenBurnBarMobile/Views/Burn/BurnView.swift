@@ -57,7 +57,6 @@ struct BurnView: View {
                     }
                 }
                 .padding(.horizontal, AuroraDesign.Layout.cardInset)
-                .padding(.bottom, 100) // clear the tab tray
                 .padding(.top, MobileTheme.Spacing.sm)
             }
             .trackEasterEggScroll(tag: "burn")

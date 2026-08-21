@@ -159,6 +159,11 @@ final class CLIBridgeChatProvider: AgentChatProvider {
             // never plumbs one — advertising "Ready" here would offer a pet
             // that silently answers from the local fallback instead of Junie.
             return .unavailable
+        case .fx:
+            // fx has enforceable permission flags (default mode exits before
+            // running unresolved sensitive calls), so it can answer from the
+            // pet surface without a desktop grant.
+            return await bridge.isExecutableAvailable(named: "fx") ? .ready : .needsLogin
         case .grok, .kimi:
             return .unavailable
         case .omp:
@@ -235,13 +240,25 @@ final class CLIBridgeChatProvider: AgentChatProvider {
             return bridge.chatOpenClaudeStream(systemPrompt: persona, userMessage: userMessage, workspaceDirectory: workspace)
         case .junie:
             return bridge.chatJunieStream(systemPrompt: persona, userMessage: userMessage, workspaceDirectory: workspace)
+        case .fx:
+            return bridge.chatFxStream(systemPrompt: persona, userMessage: userMessage, workspaceDirectory: workspace)
         case .grok, .kimi:
-            // No CLI bridge stream exists for these backends yet — #2362 added
-            // the pickers without an execution path, and status() already
-            // reports .unavailable for both, so this arm is defensive. Fail
-            // closed with an actionable error instead of a hang or fallback.
+            // These backends were introduced without a CLI execution path — there is no
+            // `chatGrokStream` / `chatKimiStream` on the bridge to call. The return type
+            // is non-optional, and an empty stream would read to the user as "the agent
+            // replied with nothing", so finish with an explicit error the chat surface
+            // can render as unsupported.
             return AsyncThrowingStream { continuation in
-                continuation.finish(throwing: CLIBridgeError.noCLI)
+                continuation.finish(
+                    throwing: NSError(
+                        domain: "OpenBurnBar.PetChatProvider",
+                        code: 2,
+                        userInfo: [
+                            NSLocalizedDescriptionKey:
+                                "\(id.displayName) has no local CLI backend yet."
+                        ]
+                    )
+                )
             }
         case .omp:
             return bridge.chatOMPStream(systemPrompt: persona, userMessage: userMessage, workspaceDirectory: workspace)

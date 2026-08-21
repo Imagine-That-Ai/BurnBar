@@ -268,6 +268,17 @@ final class UsageAggregator {
         }
     }
 
+    /// Cancel projection / indexing workers before the SQLCipher pool closes.
+    func stopBackgroundWork() {
+        projectionSweepRequested = false
+        projectionWorkerTask?.cancel()
+        projectionWorkerTask = nil
+        projectionWorkerWakeTask?.cancel()
+        projectionWorkerWakeTask = nil
+        conversationIndexingTask?.cancel()
+        conversationIndexingTask = nil
+    }
+
     /// Called by the watchdog once the footprint falls back under the re-arm
     /// threshold.
     func memoryPressureRecovered() {

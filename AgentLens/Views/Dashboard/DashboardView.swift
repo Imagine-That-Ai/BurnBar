@@ -28,7 +28,7 @@ struct DashboardView: View {
     @Bindable var settingsManager: SettingsManager
     @Environment(NavigationCoordinator.self) var navigationCoordinator
     @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceMotion) var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @State private var easterEggController = EasterEggController()
@@ -49,8 +49,10 @@ struct DashboardView: View {
     /// is still outstanding. Deny must not open chat; allow must.
     @State private var pendingOpenOrchestratorChat = false
     @State var routeHistory: [DashboardMainRoute] = []
+    /// Routes popped by Back. A new `navigate(to:)` clears this, so Forward
+    /// only walks the path you just reversed — same contract as a browser.
+    @State var routeForward: [DashboardMainRoute] = []
     @State var selectedTimeRange: TimeRange = .today
-    @AppStorage("dashboardViewMode") var viewMode: DashboardViewMode = .agents
     @AppStorage("dashboardViewMode") var storedViewMode: DashboardViewMode = .agents
     @State var settingsPresentation = DashboardSettingsPresentation()
     @State var showProgressPanel = false
@@ -65,7 +67,6 @@ struct DashboardView: View {
     @State private var showSessionLogCloudConsent = false
     @State var sessionLogJumpTarget: ConversationJumpTarget?
     @State var dashboardCanvasSize: CGSize = .zero
-    @State private var overviewUsesStackedLanes = false
     @State private var overviewViewportHeight: CGFloat = 0
     @State var burnRailDelta: Double?
     @State var burnRailDeltaRequestID: String?
@@ -74,6 +75,8 @@ struct DashboardView: View {
     @State var showContextPackSheet = false
     @AppStorage("dashboardChatPreferMaximized") var preferMaximizedChat = false
     @AppStorage(KernelBackdropPreferences.enabledKey) private var useKernelBackdrop: Bool = false
+    @AppStorage(BurnBarGlassFieldPreferences.nativeFieldKey)
+    private var useNativeGlassField: Bool = BurnBarGlassFieldPreferences.nativeFieldDefault
     /// Last profile the live backdrop measured and published, or `nil` before
     /// its first publish.
     ///
@@ -112,7 +115,7 @@ struct DashboardView: View {
     /// Owned here rather than by `DashboardHomeView` so the watchers keep
     /// running while the user is on another route — the panel should be warm
     /// the instant they come back, not start from "not watched".
-    @State private var fleetModel = LiveFleetModel()
+    @State var fleetModel = LiveFleetModel()
     @State private var fleetWatcher: ProviderSessionActivityWatcher?
     /// The inbox model Home shares with the focused route. Built once so
     /// switching between them does not reset selection or re-query.
@@ -132,8 +135,27 @@ struct DashboardView: View {
     /// Non-nil only while the user has manually overridden the sidebar for the
     /// current route. Cleared on navigation so each route starts from its default.
     @State private var sidebarVisibilityOverride: Bool?
-    @AppStorage("dashboard.statusRail.height") var storedDashboardStatusRailHeight = 52.0
+    /// Height of the upper command deck row.
+    ///
+    /// Was a hard `minHeight: 116`, which is a lot of window to spend on chrome
+    /// before any data is on screen. The default is now the thin setting and the
+    /// old value is the top of the range, so anyone who liked the tall deck can
+    /// drag back to it.
+    @AppStorage("dashboard.commandDeck.height") var storedDashboardDeckHeight = 72.0
+    @AppStorage("dashboard.statusRail.height") var storedDashboardStatusRailHeight = 40.0
+
+    // Sidebar customization. `@AppStorage` is a property wrapper, so it cannot be
+    // declared in the extension that owns the rest of the sidebar — a stored
+    // property has to live on the type itself.
+    @AppStorage(DashboardSidebarSection.orderStorageKey)
+    var sidebarSectionOrderRaw: String = DashboardSidebarSection.encode(DashboardSidebarSection.defaultOrder)
+
+    @AppStorage(DashboardSidebarSection.stateStorageKey)
+    var sidebarSectionStateRaw: String = "{}"
+    /// Height at the start of the current drag, for both bars. The handle
+    /// resizes them together, so one origin covers the gesture.
     @State var dashboardStatusRailResizeOrigin: Double?
+    @State var dashboardDeckResizeOrigin: Double?
 
     init(
         dataStore: DataStore,
@@ -287,18 +309,31 @@ struct DashboardView: View {
         !routeHistory.isEmpty || mainRoute != .home
     }
 
+    var canGoForward: Bool {
+        !routeForward.isEmpty
+    }
+
     func navigate(to route: DashboardMainRoute) {
         guard route != mainRoute else { return }
         routeHistory.append(mainRoute)
+        routeForward.removeAll()
         mainRoute = route
     }
 
     func goBack() {
         if let previous = routeHistory.popLast() {
+            routeForward.append(mainRoute)
             mainRoute = previous
         } else if mainRoute != .home {
+            routeForward.append(mainRoute)
             mainRoute = .home
         }
+    }
+
+    func goForward() {
+        guard let next = routeForward.popLast() else { return }
+        routeHistory.append(mainRoute)
+        mainRoute = next
     }
 
     /// Applies an externally requested route (deep links like
@@ -333,6 +368,13 @@ struct DashboardView: View {
             return "Back to \(routeTitle(previous))"
         }
         return "Back to Home"
+    }
+
+    var forwardButtonHelpText: String {
+        if let next = routeForward.last {
+            return "Forward to \(routeTitle(next))"
+        }
+        return "Forward"
     }
 
     /// Titling lives on the route itself; this is the one caller-side alias so
@@ -375,6 +417,7 @@ struct DashboardView: View {
         let activeReadabilityProfile = dashboardActiveReadabilityProfile
         let adaptiveColors = BackdropAdaptiveColors(profile: activeReadabilityProfile)
         return VStack(spacing: 0) {
+            dashboardWindowTitleStrip
             dashboardCommandDeck
 
             NavigationSplitView(columnVisibility: $dashboardSplitVisibility) {
@@ -408,6 +451,18 @@ struct DashboardView: View {
                 style: FillStyle(antialiased: true)
             )
         }
+        // Draw the title strip into the transparent titlebar so back/forward
+        // and ⌘K sit beside the traffic lights instead of opening a second
+        // empty toolbar row below them.
+        .ignoresSafeArea(.container, edges: .top)
+        // The field, published to the whole window.
+        //
+        // Attached here, *after* `.ignoresSafeArea(.container, edges: .top)`, so the
+        // coordinate space's origin is the window content origin — which is what puts
+        // the title strip and the command deck on the same continuous weather as the
+        // content below them, instead of on private copies with a visible seam.
+        .burnBarFleetDriver(dashboardFleetDriver)
+        .burnBarField(dashboardFieldContext)
         .background {
             DashboardBackdrop(
                 moodBand: dataStore.moodBand,
@@ -789,9 +844,11 @@ struct DashboardView: View {
     private var railToggleShortcut: some View {
         Button {
             guard mainRoute == .home else { return }
-            let key = DashboardHomeRailMetrics.collapsedStorageKey
-            let collapsed = UserDefaults.standard.bool(forKey: key)
-            UserDefaults.standard.set(!collapsed, forKey: key)
+            // Which key holds the preference depends on the active shell, so ask
+            // the composition rather than assuming the collapse flag.
+            DashboardHomeComposition
+                .resolve(layout: settingsManager.dashboardLayout)
+                .toggleRail()
         } label: {
             EmptyView()
         }
@@ -1170,6 +1227,11 @@ struct DashboardView: View {
                 navigate(to: .inbox)
             },
             onOpenQuota: { navigate(to: .quota) },
+            onAsk: { question in
+                chatController.inputText = question
+                withAnimation(DesignSystem.Animation.standard) { navigate(to: .chat) }
+                Task { await chatController.send() }
+            },
             memoryApproval: makeInboxMemoryApproval()
         )
         .background(dashboardLiveBackdropActive ? Color.clear : DesignSystem.Colors.background)
@@ -1297,6 +1359,14 @@ struct DashboardView: View {
 
     @ViewBuilder
     private var overviewRouteView: some View {
+        overviewRouteContent
+            // Home published this; Overview did not, so all eight Overview layouts
+            // silently rendered `GlassSpec.standard` and lost their personality.
+            .burnBarGlassSpec(settingsManager.dashboardLayout.glassSpec)
+    }
+
+    @ViewBuilder
+    private var overviewRouteContent: some View {
         Group {
             if dataStore.totalUsageSessionCount > 0 {
                 switch settingsManager.dashboardLayout {
@@ -1306,6 +1376,8 @@ struct DashboardView: View {
                 case .constellation: constellationLayout
                 case .cockpit:       cockpitLayout
                 case .atelier:       atelierLayout
+                case .stream:        streamLayout
+                case .atlas:         atlasLayout
                 }
             } else {
                 // No usage data yet: every layout shows the shared welcome
@@ -1324,73 +1396,20 @@ struct DashboardView: View {
                 DashboardDepthBackdrop()
                     .ignoresSafeArea()
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
+                    // Ledger: one ordered column of numbered sections, no hero.
+                    // The composition lives in `LedgerLayoutView.swift`; this
+                    // stays the scaffold because the scroll probe, the easter-egg
+                    // overlay, and the first-view analytics below are route
+                    // plumbing rather than layout.
+                    LazyVStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
                         #if !DISTRIBUTION_MAS
                         UpdateBannerCard()
                         #endif
-                        LazyVGrid(
-                            columns: [
-                                GridItem(
-                                    .adaptive(minimum: 250),
-                                    spacing: DesignSystem.Spacing.lg,
-                                    alignment: .top
-                                )
-                            ],
-                            alignment: .leading,
-                            spacing: DesignSystem.Spacing.lg
-                        ) {
-                            StatCard(
-                                title: "Total Cost",
-                                value: totalCostForTimeRange.formatAsCost(),
-                                accent: DesignSystem.Colors.whimsy,
-                                detail: heroSubheadline
-                            )
-                            StatCard(
-                                title: "Tokens",
-                                value: "\(totalTokensForTimeRange.formatted())",
-                                accent: DesignSystem.Colors.ember,
-                                detail: "\(activeProviderCount) provider\(activeProviderCount == 1 ? "" : "s") active"
-                            )
-                            StatCard(
-                                title: "Sessions",
-                                value: "\(dashboardUsageWindow.sessionCount.formatted())",
-                                accent: DesignSystem.Colors.amber,
-                                detail: "\(dataStore.totalUsageSessionCount.formatted()) total tracked"
-                            )
-                        }
-                        liveCostCurveBand
-                        CastleGreatHallContainer()
-                        NarrativeCardView(dataStore: dataStore)
-                        if overviewUsesStackedLanes {
-                            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
-                                providerLane
-                                modelLane
-                                activityLane
-                            }
-                        } else {
-                            HStack(alignment: .top, spacing: DesignSystem.Spacing.xl) {
-                                VStack(spacing: DesignSystem.Spacing.xl) {
-                                    providerLane
-                                    modelLane
-                                }
-                                .frame(maxWidth: .infinity, alignment: .topLeading)
-                                activityLane
-                            }
-                        }
+                        ledgerContent
                     }
                     .padding(DesignSystem.Spacing.xl)
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
-                    .background {
-                        GeometryReader { proxy in
-                            Color.clear
-                                .onAppear {
-                                    updateOverviewLaneLayout(width: proxy.size.width)
-                                }
-                                .onChange(of: proxy.size.width) { _, width in
-                                    updateOverviewLaneLayout(width: width)
-                                }
-                        }
-                    }
+                    .frame(maxWidth: DashboardLayoutMetrics.ledgerMaxWidth, alignment: .topLeading)
+                    .frame(maxWidth: .infinity, alignment: .top)
                     // Publish scroll geometry for the easter egg detector.
                     .easterEggScrollProbe(space: Self.overviewScrollSpace)
                 }
@@ -1465,28 +1484,6 @@ struct DashboardView: View {
         let start = cal.startOfDay(for: now)
         let end = cal.date(byAdding: .day, value: 1, to: start) ?? now
         return start...end
-    }
-
-    private func updateOverviewLaneLayout(width: CGFloat) {
-        guard width > 0 else { return }
-        // Match the old ViewThatFits break point without asking SwiftUI to build
-        // and measure both expensive lane trees on every scroll/layout pass.
-        //
-        // Use a hysteresis dead-band around the 920pt break instead of a single
-        // hard threshold: collapse to stacked only below 910 and expand to
-        // side-by-side only above 930. Inside the 910...930 band the current
-        // layout is held, so sub-pixel width jitter from the GeometryReader when
-        // the user parks the divider near 920 can't oscillate the lane layout.
-        let shouldStack: Bool
-        if width < 910 {
-            shouldStack = true
-        } else if width > 930 {
-            shouldStack = false
-        } else {
-            shouldStack = overviewUsesStackedLanes
-        }
-        guard shouldStack != overviewUsesStackedLanes else { return }
-        overviewUsesStackedLanes = shouldStack
     }
 
     var liveCostCurveAccent: Color {
@@ -1590,12 +1587,53 @@ struct DashboardView: View {
         }
         // Before the backdrop's first publish (and after a skin change resets
         // it) the skin-aware native fallback is the correct answer, not a
-        // constant: editorial paints light paper, every other live backdrop
-        // paints a dark canvas.
+        // constant: editorial paints light paper, and every other backdrop
+        // paints whatever the current appearance says it paints.
         return backdropReadabilityProfile ?? BackdropReadabilityProfile.nativeFallback(
             colorScheme: dashboardKernelColorScheme,
             appearanceSkin: settingsManager.appearanceSkin,
             liveBackdropActive: true
+        )
+    }
+
+    /// The fleet, as one value.
+    ///
+    /// Built from what this view already holds rather than from
+    /// `AppDelegate.sharedWallpaperViewModel`, so the dashboard's field does not depend
+    /// on the desktop-wallpaper feature being switched on. Historical weights are the
+    /// honest default for a backdrop — it should show where the money actually went.
+    var dashboardFleetDriver: SwarmColorDriver {
+        SwarmWallpaperColorDriverBuilder.driver(
+            totalCostToday: dataStore.totalCostToday,
+            providerSummaries: dataStore.providerSummaries,
+            agentStatuses: [:],
+            daemonIsBusy: false
+        )
+    }
+
+    /// Everything a plate needs to redraw its own patch of the backdrop.
+    ///
+    /// `.unavailable` is a real answer, not a failure: over a WebGL kernel, Editorial
+    /// paper, or a static skin there is nothing a plate could reproduce, and it falls
+    /// back to its authored interior.
+    var dashboardFieldContext: BurnBarFieldContext {
+        guard BurnBarGlassFieldPreferences.isFieldAvailable(
+            liveBackdropSelected: dashboardLiveBackdropActive,
+            nativeFieldEnabled: useNativeGlassField,
+            isEditorialSkin: settingsManager.appearanceSkin == .editorial
+        ) else { return .unavailable }
+
+        return BurnBarFieldContext(
+            driver: dashboardFleetDriver,
+            ground: DesignSystem.Colors.background,
+            scrim: BackdropAdaptiveColors(profile: dashboardActiveReadabilityProfile).scrim,
+            scrimOpacity: dashboardAdaptiveScrimOpacity,
+            size: dashboardCanvasSize,
+            isAnimating: !reduceMotion,
+            frameRate: 30,
+            attenuation: 1,
+            attenuationGround: DesignSystem.Colors.background,
+            isAvailable: true
         )
     }
 

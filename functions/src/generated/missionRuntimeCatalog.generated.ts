@@ -57,6 +57,8 @@ export const MISSION_RUNTIME_CREATE_TOKENS = [
   "prime-agent",
   "primeagent",
   "primeAgent",
+  "vercel-fx",
+  "vercelfx",
   "xai"
 ] as const;
 
@@ -117,6 +119,8 @@ export const MISSION_RUNTIME_EVENT_TOKENS = [
   "prime-agent",
   "primeagent",
   "primeAgent",
+  "vercel-fx",
+  "vercelfx",
   "xai"
 ] as const;
 
@@ -175,6 +179,8 @@ export const ALLOWED_GRANT_RUNTIMES = new Set<string>([
   "prime-agent",
   "primeagent",
   "primeAgent",
+  "vercel-fx",
+  "vercelfx",
   "xai"
 ]);
 
@@ -234,6 +240,8 @@ const ALIAS_TO_ID: Record<string, string> = {
   "primeagent": "prime-agent",
   "primeAgent": "prime-agent",
   "fx": "fx",
+  "vercel-fx": "fx",
+  "vercelfx": "fx",
   "opencode": "opencode",
   "ollama": "ollama",
   "auto": "auto"

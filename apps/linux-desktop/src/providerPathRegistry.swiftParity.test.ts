@@ -67,10 +67,10 @@ describe('provider ingestion manifest parity', () => {
   it('contains every canonical AgentProvider case exactly once', () => {
     const canonicalCases = canonicalProviderCases(swiftProvider);
     const manifestCases = providerManifest.providers.map((provider) => provider.agentProviderCase);
-    expect(canonicalCases).toHaveLength(36);
+    expect(canonicalCases).toHaveLength(37);
     expect(new Set(canonicalCases).size).toBe(canonicalCases.length);
     expect([...manifestCases].sort()).toEqual([...canonicalCases].sort());
-    expect(new Set(providerManifest.providers.map((provider) => provider.providerId)).size).toBe(36);
+    expect(new Set(providerManifest.providers.map((provider) => provider.providerId)).size).toBe(37);
   });
 
   it('generates both platform paths, patterns, and coverage for every provider', () => {

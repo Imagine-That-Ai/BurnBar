@@ -5,6 +5,7 @@ package com.openburnbar.ui.navigation
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -13,7 +14,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -165,6 +165,21 @@ private fun AnalyticsRouteTracker(currentRoute: String?) {
     }
 }
 
+/**
+ * Which bottom-bar tab owns a route.
+ *
+ * `cloud_store` and `computer_use_agent` are reached from You but are not themselves tab
+ * roots, so they would otherwise fall through to the Pulse default and light up the wrong
+ * tab while the user is standing in them.
+ */
+private fun tabForRoute(route: String?): BurnBarTab = when (route) {
+    "cloud_store",
+    "computer_use_agent",
+    -> BurnBarTab.YOU
+
+    else -> BurnBarTab.fromRoute(route) ?: BurnBarTab.PULSE
+}
+
 @Composable
 fun BurnBarNavHost(
     modifier: Modifier = Modifier,
@@ -186,57 +201,52 @@ fun BurnBarNavHost(
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
     AnalyticsRouteTracker(currentRoute)
-    val currentTab =
-        remember(currentRoute) {
-            when (currentRoute) {
-                "cloud_store",
-                "computer_use_agent",
-                -> BurnBarTab.YOU
+    val currentTab = remember(currentRoute) { tabForRoute(currentRoute) }
 
-                else -> BurnBarTab.fromRoute(currentRoute) ?: BurnBarTab.PULSE
-            }
-        }
-
-    val isWideScreen = LocalConfiguration.current.screenWidthDp > 600
+    val windowSizeClass = rememberWindowSizeClass()
+    val isWideScreen = windowSizeClass.widthClass.isWide
 
     val navigateTo: (BurnBarTab) -> Unit = { tab -> navigateToTab(navController, tab) }
 
     InboxWarmDeepLinkNavigator(navController = navController, isSignedIn = currentUser.isSignedIn)
     OsWarmDeepLinkNavigator(navController = navController, isSignedIn = currentUser.isSignedIn)
 
-    Box(modifier = modifier.fillMaxSize().nestedScroll(easterEggController.nestedScrollConnection)) {
-        AuroraBackdrop()
+    CompositionLocalProvider(LocalWindowSizeClass provides windowSizeClass) {
+        Box(modifier = modifier.fillMaxSize().nestedScroll(easterEggController.nestedScrollConnection)) {
+            AuroraBackdrop()
 
-        if (currentUser.isSignedIn) {
-            BurnBarSignedInShell(
-                state =
-                BurnBarSignedInShellState(
-                    isWideScreen = isWideScreen,
-                    currentTab = currentTab,
-                    isCloudMember = isCloudMember,
-                    currentTier = currentTier,
-                    priceForTier = { tier -> monthlyPriceForTier(proPrice, tier) },
-                    userUid = currentUser.uid,
-                    userDisplayName = currentUser.displayName,
-                    userPhotoUrl = currentUser.photoUrl,
-                    chatState = chatState,
-                ),
-                navController = navController,
-                navigateTo = navigateTo,
-            )
-        } else {
-            val isSigningIn by userStore.isSigningIn.collectAsState()
-            val authError by userStore.authError.collectAsState()
-            LoginScreen(
-                userStore = userStore,
-                isSigningIn = isSigningIn,
-                authError = authError,
-                onDismissError = { userStore.clearError() },
-            )
+            if (currentUser.isSignedIn) {
+                BurnBarSignedInShell(
+                    state =
+                    BurnBarSignedInShellState(
+                        windowSizeClass = windowSizeClass,
+                        isWideScreen = isWideScreen,
+                        currentTab = currentTab,
+                        isCloudMember = isCloudMember,
+                        currentTier = currentTier,
+                        priceForTier = { tier -> monthlyPriceForTier(proPrice, tier) },
+                        userUid = currentUser.uid,
+                        userDisplayName = currentUser.displayName,
+                        userPhotoUrl = currentUser.photoUrl,
+                        chatState = chatState,
+                    ),
+                    navController = navController,
+                    navigateTo = navigateTo,
+                )
+            } else {
+                val isSigningIn by userStore.isSigningIn.collectAsState()
+                val authError by userStore.authError.collectAsState()
+                LoginScreen(
+                    userStore = userStore,
+                    isSigningIn = isSigningIn,
+                    authError = authError,
+                    onDismissError = { userStore.clearError() },
+                )
+            }
+
+            // TOP layer, over all content. No pointer modifier, so touches pass through.
+            EasterEggOverlay(controller = easterEggController)
         }
-
-        // TOP layer, over all content. No pointer modifier, so touches pass through.
-        EasterEggOverlay(controller = easterEggController)
     }
 }
 

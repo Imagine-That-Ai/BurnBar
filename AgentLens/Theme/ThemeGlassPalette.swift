@@ -35,7 +35,7 @@ struct ThemeGlassPalette {
         let c = DesignSystem.Colors.self
         switch layout {
         case .classic:
-            // Information-dense neutral: a clean frosted slate, the quiet option.
+            // Ledger: a clean frosted slate, the quiet option for a dense scroll.
             return ThemeGlassPalette(
                 id: layout.rawValue,
                 tint: c.textPrimary,
@@ -80,13 +80,31 @@ struct ThemeGlassPalette {
                 rim: c.blaze
             )
         case .atelier:
-            // The keeper: neutral Liquid Glass over the default substrate.
+            // Canvas: neutral Liquid Glass over the default substrate.
             return ThemeGlassPalette(
                 id: layout.rawValue,
                 tint: c.frost,
                 washTop: c.textPrimary,
                 washBottom: c.frost,
                 rim: c.frost
+            )
+        case .stream:
+            // Stream: success-green running downward, the colour of a live tail.
+            return ThemeGlassPalette(
+                id: layout.rawValue,
+                tint: c.success,
+                washTop: c.frost,
+                washBottom: c.success,
+                rim: c.success
+            )
+        case .atlas:
+            // Atlas: ember over blaze — ranked bars read hottest at the top.
+            return ThemeGlassPalette(
+                id: layout.rawValue,
+                tint: c.ember,
+                washTop: c.blaze,
+                washBottom: c.ember,
+                rim: c.ember
             )
         }
     }

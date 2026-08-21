@@ -201,7 +201,8 @@ enum ReceiptBuilder {
             guard let provider = row["provider"] as? String,
                   let rootSessionId = row["rootSessionId"] as? String else { continue }
             let key = SessionKey(provider: provider, rootSessionId: rootSessionId)
-            spend[key, default: 0] += (row["totalCost"] as? Double) ?? 0
+            let totalCost: Double = row["totalCost"] ?? 0
+            spend[key, default: 0] += totalCost
         }
         return spend
     }

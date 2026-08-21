@@ -75,6 +75,7 @@ import com.openburnbar.ui.theme.AuroraShadows
 import com.openburnbar.ui.theme.AuroraSpacing
 import com.openburnbar.ui.theme.AuroraTypography
 import com.openburnbar.ui.theme.LocalAuroraReduceMotion
+import com.openburnbar.ui.tokens.PensieveMotion
 
 // ── Glass Card ──
 // 3-layer glass per the parity plan: tier-appropriate blur, brand sheen,
@@ -452,30 +453,33 @@ fun BreathingDot(color: Color = AuroraColors.ember, size: Int = 10, modifier: Mo
 // ProviderAvatar / ProviderLogo / ModelLogo composables.)
 
 // ── Staggered Entrance ──
-// Spring-driven entrance matching iOS AnimatedEntranceModifier:
-// `.spring(response: 0.4, dampingFraction: 0.85)` + 12pt Y offset. Respects
-// the reduce-motion composition local.
+// Driven by PensieveMotion tokens: arrive spring spec (response: 340ms, damping: 0.8)
+// + 18px Y offset + staggerStepMs (60ms) / staggerCapMs (240ms).
+// Respects the reduce-motion composition local.
 @Composable
-fun StaggeredEntrance(delay: Int = 0, reduceMotion: Boolean = LocalAuroraReduceMotion.current, content: @Composable () -> Unit) {
+fun StaggeredEntrance(index: Int = 0, reduceMotion: Boolean = LocalAuroraReduceMotion.current, content: @Composable () -> Unit) {
     var visible by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         if (reduceMotion) {
             visible = true
         } else {
-            kotlinx.coroutines.delay(delay.toLong())
+            val delayMs = PensieveMotion.staggerDelay(index, reduceMotion)
+            if (delayMs > 0L) {
+                kotlinx.coroutines.delay(delayMs)
+            }
             visible = true
         }
     }
 
     val alpha by animateFloatAsState(
         targetValue = if (visible) 1f else 0f,
-        animationSpec = AuroraMotion.gentleSpec(),
+        animationSpec = PensieveMotion.arriveSpec(reduceMotion),
         label = "stagger-alpha",
     )
     val offsetY by animateDpAsState(
-        targetValue = if (visible) 0.dp else 12.dp,
-        animationSpec = AuroraMotion.gentleSpec(),
+        targetValue = if (visible) 0.dp else PensieveMotion.arriveRisePx.dp,
+        animationSpec = PensieveMotion.arriveSpec(reduceMotion),
         label = "stagger-offset",
     )
 

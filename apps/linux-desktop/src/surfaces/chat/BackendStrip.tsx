@@ -24,6 +24,7 @@ const BACKEND_LOGOS: Record<ChatBackendId, string | null> = {
   antigravity: '/provider-logos/antigravity.png',
   'cursor-agent': '/provider-logos/cursor.png',
   junie: null,
+  fx: '/provider-logos/fx.png',
   cli: null
 };
 

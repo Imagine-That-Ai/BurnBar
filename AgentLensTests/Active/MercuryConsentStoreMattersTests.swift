@@ -52,6 +52,58 @@ final class MercuryConsentStoreMattersTests: XCTestCase {
         )
     }
 
+    // MARK: - Consent must fail closed on the stored truth
+
+    /// The regression guard for the Liquid Glass slider crash.
+    ///
+    /// The defaults observer used to branch on `Thread.isMainThread` and call
+    /// `MainActor.assumeIsolated` on the true side, so that a main-thread write
+    /// synchronized *inline* and no caller could observe a revoked opt-in while the
+    /// store still said "yes". That branch was unsound — `isMainThread` is about the
+    /// thread and `assumeIsolated` asserts on the executor — and it trapped the moment
+    /// SwiftUI's `@AppStorage` setter posted the notification from a nonisolated
+    /// context, which is every frame of a slider drag.
+    ///
+    /// Removing the branch means the mirror is refreshed by an async hop, so the
+    /// invariant it was protecting has to hold without it: a revoke that has landed in
+    /// `defaults` must take effect on the very next read, with no runloop turn in
+    /// between. This test never pumps the runloop, so it fails if `canAutoAccept` ever
+    /// goes back to trusting the in-memory mirror.
+    func testCanAutoAccept_failsClosedOnARevokeThatHasNotBeenObservedYet() {
+        let store = MercuryConsentStore(defaults: defaults)
+        store.rememberAcceptedMirrorPeers = true
+        store.rememberAcceptedPeer(
+            connectionId: "conn-a",
+            viewerDeviceId: nil,
+            controlAuthorityPeerNodeId: "peer-a",
+            remotePeerNodeId: "peer-a",
+            requesterName: "Phone"
+        )
+        XCTAssertTrue(
+            store.canAutoAccept(
+                connectionId: "conn-a",
+                viewerDeviceId: nil,
+                controlAuthorityPeerNodeId: "peer-a",
+                remotePeerNodeId: "peer-a"
+            ),
+            "Baseline: a live grant under a live opt-in auto-accepts"
+        )
+
+        // Revoke straight in `defaults`, exactly as another writer would — and do NOT
+        // give the notification hop a chance to run.
+        defaults.set(false, forKey: "mercuryRememberAcceptedMirrorPeers")
+
+        XCTAssertFalse(
+            store.canAutoAccept(
+                connectionId: "conn-a",
+                viewerDeviceId: nil,
+                controlAuthorityPeerNodeId: "peer-a",
+                remotePeerNodeId: "peer-a"
+            ),
+            "A revoke on disk must fail closed immediately, not one main-actor hop later"
+        )
+    }
+
     // MARK: - Static encode helper
 
     /// Happy path: a well-formed ledger encodes to non-nil JSON that round-trips back

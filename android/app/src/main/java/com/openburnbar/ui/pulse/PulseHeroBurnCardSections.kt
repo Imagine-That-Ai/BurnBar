@@ -40,6 +40,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.openburnbar.data.models.RollupSummary
 import com.openburnbar.data.models.TokenUsage
 import com.openburnbar.data.models.UsageDisplayMode
 import com.openburnbar.data.policy.MobileAccessibilityLabelPolicy
@@ -95,7 +96,7 @@ internal fun PulseHeroBurnCardHeader(
     burnRateText: String?,
     displayMode: UsageDisplayMode,
     accent: Color,
-    hasTopProvider: Boolean,
+    topProvider: RollupSummary? = null,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -112,7 +113,13 @@ internal fun PulseHeroBurnCardHeader(
                 text = rateLabel,
                 accent = accent,
             )
-            Spacer(Modifier.width(if (hasTopProvider) 64.dp else 0.dp))
+        }
+        topProvider?.let { tp ->
+            Spacer(Modifier.width(8.dp))
+            ProviderHaloAvatar(
+                providerKey = tp.provider,
+                accent = accent,
+            )
         }
     }
 }
@@ -307,31 +314,19 @@ private fun PulseHeroBurnCardGlass(metrics: PulseHeroCardMetrics, derived: Pulse
         cornerRadius = AuroraRadius.XL,
         contentPadding = AuroraSpacing.LG.dp,
     ) {
-        Box(modifier = Modifier.fillMaxWidth()) {
-            PulseHeroBurnCardMainColumn(
-                metrics = metrics,
-                derived = derived,
-                burnRateText = burnRateText,
-                hasTopProvider = topProvider != null,
-            )
-            topProvider?.let { tp ->
-                ProviderHaloAvatar(
-                    providerKey = tp.provider,
-                    accent = derived.accent,
-                    modifier = Modifier.align(Alignment.TopEnd),
-                )
-            }
-        }
+        PulseHeroBurnCardMainColumn(
+            metrics = metrics,
+            derived = derived,
+            burnRateText = burnRateText,
+            topProvider = topProvider,
+        )
     }
 }
 
 @Composable
-private fun PulseHeroBurnCardMainColumn(metrics: PulseHeroCardMetrics, derived: PulseHeroDerivedState, burnRateText: String?, hasTopProvider: Boolean) {
+private fun PulseHeroBurnCardMainColumn(metrics: PulseHeroCardMetrics, derived: PulseHeroDerivedState, burnRateText: String?, topProvider: RollupSummary?) {
     Column(
-        modifier =
-        Modifier
-            .fillMaxWidth()
-            .padding(end = if (hasTopProvider) 64.dp else 0.dp),
+        modifier = Modifier.fillMaxWidth(),
     ) {
         PulseHeroBurnCardHeader(
             timelineScope = metrics.timelineScope,
@@ -339,7 +334,7 @@ private fun PulseHeroBurnCardMainColumn(metrics: PulseHeroCardMetrics, derived: 
             burnRateText = burnRateText,
             displayMode = metrics.displayMode,
             accent = derived.accent,
-            hasTopProvider = hasTopProvider,
+            topProvider = topProvider,
         )
         PulseHeroBurnCardMetricsBlock(
             displayMode = metrics.displayMode,

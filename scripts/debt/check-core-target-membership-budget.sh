@@ -137,7 +137,11 @@ const PLANNED_CEILINGS = {
   // Linux parity adds daemon-owned cloud/privacy/trusted-device/media contracts
   // after the assistant-model extraction. Keep the ceiling below the next
   // monolith while accounting for those cross-platform authority surfaces.
-  OpenBurnBarKernel: { maxFiles: 185, maxLines: 48000 },
+  // 191, exactly the current count, for KeychainInteractionGate.swift — the gate
+  // that keeps the first-run keychain prompt from firing once per caller. No
+  // headroom on purpose: this target is supposed to dissolve, so the next file
+  // added to it should have to argue for itself.
+  OpenBurnBarKernel: { maxFiles: 191, maxLines: 54000 },
   OpenBurnBarParserSupport: { maxFiles: 5, maxLines: 1200 },
   OpenBurnBarSQLiteReader: { maxFiles: 3, maxLines: 450 },
   // The final local-parser catalog adds bounded corpus parsers for the Linux
@@ -145,13 +149,21 @@ const PLANNED_CEILINGS = {
   // Idle usage/quota parse mining (#2244) lands in these owning modules rather
   // than a new leaf; keep the file ceiling at 35 and the LOC ceiling just
   // above the measured 16,472.
-  OpenBurnBarLogParsers: { maxFiles: 35, maxLines: 16700 },
+  // One parser per supported harness is this target's shape, so each new harness
+  // costs it a file by design — decomposing "parsers" further would be arbitrary.
+  // Raised for FxParser.swift (fx harness). 40/18500 leaves room for ~4 more
+  // harnesses before this needs re-examining.
+  OpenBurnBarLogParsers: { maxFiles: 40, maxLines: 18500 },
   OpenBurnBarQuota: { maxFiles: 55, maxLines: 13000 },
   // VectorKit gains OpenBurnBarSearchContracts.swift (P-03 re-slice / FIX 4) on
   // top of the vector indexes + SearchPlanner + Pensieve, so its ceiling covers
   // SearchContracts too.
   OpenBurnBarVectorKit: { maxFiles: 12, maxLines: 5800 },
   OpenBurnBarInsights: { maxFiles: 100, maxLines: 20000 },
+  // Recap carved out of Insights: the monthly deck feature landed as 26 files /
+  // 5312 lines, which pushed Insights past 20000. Ceiling is ~1.13x the measured
+  // size so the feature can settle without becoming the next god module.
+  OpenBurnBarRecap: { maxFiles: 30, maxLines: 6000 },
   OpenBurnBarHermes: { maxFiles: 10, maxLines: 1800 },
   OpenBurnBarPretext: { maxFiles: 5, maxLines: 850 },
   OpenBurnBarTextExpansion: { maxFiles: 8, maxLines: 1100 },

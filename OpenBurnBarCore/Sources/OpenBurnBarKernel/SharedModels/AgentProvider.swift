@@ -40,6 +40,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
     case junie = "Junie"
     case primeAgent = "Prime Agent"
     case muse = "Muse"
+    case fx = "fx"
 
     public var id: String { rawValue }
 
@@ -82,7 +83,8 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         .devin,
         .warp,
         .cursorAgent,
-        .muse
+        .muse,
+        .fx
     ]
 
     /// Providers that expose a real quota/rate-limit signal either through an
@@ -175,12 +177,26 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
             .replacingOccurrences(of: " ", with: "")
             .replacingOccurrences(of: "-", with: "")
             .replacingOccurrences(of: "_", with: "")
+        if normalized == "grok" || normalized == "grokbuild" || normalized == "grokcli" || normalized == "xai" {
+            return .xAI
+        }
         return AgentProvider.allCases.first {
             let canon = $0.persistedToken
                 .replacingOccurrences(of: "-", with: "")
                 .replacingOccurrences(of: "_", with: "")
             return canon == normalized
         }
+    }
+
+    /// Flexible resolver accepting raw strings, tokens, display names, or catalog IDs.
+    public static func resolve(_ rawOrToken: String) -> AgentProvider? {
+        if let direct = AgentProvider(rawValue: rawOrToken) {
+            return direct
+        }
+        if let fromToken = fromPersistedToken(rawOrToken) {
+            return fromToken
+        }
+        return fromCatalogProviderID(rawOrToken)
     }
 
     /// Resolves display/log parser providers from canonical provider IDs.
@@ -299,6 +315,8 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
             return .primeAgent
         case "muse", "muse-code", "musecode", "meta-muse", "metamuse":
             return .muse
+        case "fx", "vercel-fx", "vercelfx", "vercel fx":
+            return .fx
         default:
             if let direct = fromPersistedToken(normalized) {
                 return direct
@@ -346,6 +364,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         case .junie:      return "JunieLogo"
         case .primeAgent: return "PrimeAgentLogo"
         case .muse: return "MetaLogo"
+        case .fx: return "FxLogo"
         }
     }
 
@@ -388,6 +407,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         case .junie: return "j.circle.fill"
         case .primeAgent: return "arrow.triangle.2.circlepath"
         case .muse: return "brain.head.profile"
+        case .fx: return "forward.fill"
         }
     }
 

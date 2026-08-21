@@ -141,6 +141,8 @@ extension ProviderBrand {
             candidates.append("PrimeAgentLogo")
         case "cursor-agent", "cursoragent":
             candidates.append("CursorLogo")
+        case "fx":
+            candidates.append("FxLogo")
         case "moonshot", "kimi":
             candidates.append(contentsOf: ["KimiLogo", "MoonshotLogo", "KimiProviderLogo"])
         case "mlx":
@@ -207,6 +209,7 @@ extension ProviderBrand {
         case "moonshot":    return Color(hex: "6366F1")
         case "prime", "prime-agent", "primeagent": return Color(hex: "582CFF")
         case "cursor-agent", "cursoragent": return Color(hex: "00E5FF")
+        case "fx":          return Color(hex: "A1A1AA")
         case "misc":        return DesignSystem.Colors.textSecondary
         default:            return DesignSystem.Colors.textSecondary
         }
@@ -243,6 +246,7 @@ extension ProviderBrand {
         case "moonshot":    return "moon.fill"
         case "prime", "prime-agent", "primeagent": return "arrow.triangle.2.circlepath"
         case "cursor-agent", "cursoragent": return "cursor.rays"
+        case "fx":          return "forward.fill"
         case "misc":        return "cube.transparent"
         default:            return "cube.transparent"
         }

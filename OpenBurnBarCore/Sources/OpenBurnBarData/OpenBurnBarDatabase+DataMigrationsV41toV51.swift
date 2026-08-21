@@ -592,6 +592,8 @@ extension OpenBurnBarDatabase {
             return "pi-agent"
         case "junie":
             return "junie"
+        case "fx":
+            return "fx"
         case "prime-agent":
             return "prime-agent"
         default:

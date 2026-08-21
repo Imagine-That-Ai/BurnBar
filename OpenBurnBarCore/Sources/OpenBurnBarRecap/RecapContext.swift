@@ -15,13 +15,21 @@ public struct RecapContext: Sendable {
     /// for a month simply has a gap, and every rule tolerates that.
     public let history: [RecapFacts]
     public let calendar: Calendar
+    /// True only when the source proved there is no older unseen history.
+    public let hasCompleteHistory: Bool
 
-    public init(facts: RecapFacts, history: [RecapFacts], calendar: Calendar = .current) {
+    public init(
+        facts: RecapFacts,
+        history: [RecapFacts],
+        calendar: Calendar = .current,
+        hasCompleteHistory: Bool = true
+    ) {
         self.facts = facts
         self.history = history
             .filter { $0.window < facts.window }
             .sorted { $0.window > $1.window }
         self.calendar = calendar
+        self.hasCompleteHistory = hasCompleteHistory
     }
 
     public var window: RecapWindow { facts.window }
@@ -43,13 +51,20 @@ public struct RecapContext: Sendable {
     }
 
     public var monthsOfHistory: Int { comparableHistory.count }
-    public var isFirstMonthEver: Bool { comparableHistory.isEmpty }
+    public var isFirstMonthEver: Bool {
+        hasCompleteHistory && comparableHistory.isEmpty
+    }
 
     /// Whether absolute claims — totals, records, "most ever" — are permitted.
     ///
     /// False for a partially-read month. This is the single guard that keeps a
     /// truncated read from being presented as a headline number.
     public var allowsAbsoluteClaims: Bool { !facts.isPartial }
+
+    /// Whether the context can support "ever", lifetime, and first-time claims.
+    public var allowsLifetimeClaims: Bool {
+        allowsAbsoluteClaims && hasCompleteHistory
+    }
 
     /// Whether conversation-derived claims (tools, task titles) are possible at
     /// all on this platform. Distinct from "there were no tools".
@@ -70,6 +85,7 @@ public struct RecapContext: Sendable {
 
     /// Best (highest) prior value and the month it happened in.
     public func allTimeBest(_ metric: (RecapFacts) -> Double) -> (value: Double, window: RecapWindow)? {
+        guard allowsLifetimeClaims else { return nil }
         var best: (value: Double, window: RecapWindow)?
         for month in comparableHistory {
             let value = metric(month)
@@ -96,17 +112,17 @@ public struct RecapContext: Sendable {
     /// Models used this month that have never appeared before.
     /// Empty on a first-ever month by design — everything being new is not news.
     public func newModels() -> [RecapShare] {
-        guard !isFirstMonthEver else { return [] }
+        guard hasCompleteHistory, !isFirstMonthEver else { return [] }
         return facts.models.filter { !hasSeenModel($0.key) }
     }
 
     public func newProjects() -> [RecapShare] {
-        guard !isFirstMonthEver else { return [] }
+        guard hasCompleteHistory, !isFirstMonthEver else { return [] }
         return facts.projects.filter { !hasSeenProject($0.key) }
     }
 
     public func newTools() -> [RecapCount] {
-        guard !isFirstMonthEver, allowsSessionClaims else { return [] }
+        guard hasCompleteHistory, !isFirstMonthEver, allowsSessionClaims else { return [] }
         return facts.tools.filter { !hasSeenTool($0.name) }
     }
 

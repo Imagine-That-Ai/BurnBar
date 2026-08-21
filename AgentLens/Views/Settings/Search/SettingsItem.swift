@@ -177,6 +177,7 @@ enum SettingsAnchor {
     static let appearanceTheme = "general.appearance.theme"
     static let appearanceSkin = "general.appearance.skin"
     static let appearanceGlassTransparency = "general.appearance.glassTransparency"
+    static let appearanceGlassRefraction = "general.appearance.glassRefraction"
     static let appearanceMenuBar = "general.appearance.menuBar"
     static let appearanceLaunchAtLogin = "general.appearance.launchAtLogin"
     static let usePremiumSOTAUX = "general.appearance.usePremiumSOTAUX"

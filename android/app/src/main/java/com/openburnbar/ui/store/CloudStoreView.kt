@@ -80,7 +80,9 @@ fun CloudStoreView(
                 onPurchase = { productID -> activity?.let { subscriptionStore.purchase(it, productID) } },
                 onRestore = { subscriptionStore.restorePurchases() },
                 onDefaultPurchase = {
-                    activity?.let { subscriptionStore.purchase(it, HostedQuotaSubscriptionStore.PRODUCT_ID) }
+                    activity?.let {
+                        subscriptionStore.purchase(it, HostedQuotaSubscriptionStore.PRODUCT_ID)
+                    }
                 },
                 onRevoke = remoteMcpClientStore::revoke,
             ),

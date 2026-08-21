@@ -1,127 +1,139 @@
 import OpenBurnBarCore
 import SwiftUI
 
-// MARK: - Nebula Layout (concept 1 · bento)
+// MARK: - Bento (storage id `nebula`)
 //
-// A bento grid: provider rail on the left; on the right a top row pairing a
-// tall Burn card with a swarm reveal stage, and a bottom row of Tokens,
-// Sessions, and the live cost curve. Denser than Aurora, still card-forward.
+// For the spatial scanner — the person who does not read a dashboard so much as
+// *look* at it, lands wherever their eye lands, and builds the picture from
+// whichever tile they noticed first.
+//
+// Thesis: a flat field of equal-weight tiles with no reading order. There is no
+// hero, no left rail, no "start here". Every tile is the same size, carries the
+// same visual weight, and is independently meaningful, so any entry point is a
+// valid entry point.
+//
+// Primary axis: none — it is a grid, and that is the point. Density: medium and
+// uniform. Dominant element: deliberately absent.
+//
+// Enforced rule: **no dominant tile.** Every tile in this file is
+// `bentoTileHeight` tall and `emphasis: .standard`. Nothing spans two columns,
+// nothing is `.featured`, and no tile renders type larger than
+// `bentoValueSize`. The moment one tile gets bigger the layout is Focus with
+// extra steps.
 
 extension DashboardView {
+    /// Uniform for every tile. A single constant rather than a per-tile frame is
+    /// what actually enforces "no dominant tile" — you cannot make one bigger
+    /// without changing all of them.
+    private var bentoTileHeight: CGFloat { 128 }
+    private var bentoValueSize: CGFloat { 26 }
+
     var nebulaLayout: some View {
-        GeometryReader { geo in
-            let wide = geo.size.width >= 900
-            ScrollView {
-                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
-                    conceptUpdateBanner
-                    if wide {
-                        HStack(alignment: .top, spacing: DesignSystem.Spacing.lg) {
-                            nebulaProviderRail
-                                .frame(width: 250)
-                            nebulaBento
-                                .frame(maxWidth: .infinity)
-                        }
-                        .frame(minHeight: max(geo.size.height * 0.66, 420), alignment: .topLeading)
-                    } else {
-                        nebulaStacked
-                        nebulaProviderRail
-                            .frame(height: 320)
-                    }
-                    conceptDetailsDrawer(includesLiveCurve: false)
-                }
-                .padding(DesignSystem.Spacing.xl)
-                .frame(maxWidth: DashboardLayoutMetrics.contentMaxWidth, alignment: .topLeading)
-                .frame(maxWidth: .infinity, alignment: .top)
-            }
-            .scrollContentBackground(.hidden)
+        conceptCanvas(spacing: DesignSystem.Spacing.lg) {
+            conceptUpdateBanner
+            bentoGrid
+            conceptDetailsDrawer(includesLiveCurve: false)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onAppear { overviewAppeared = true }
     }
 
-    private var nebulaProviderRail: some View {
-        ProviderListPanel(
-            summaries: dashboardProviderSummaries,
-            title: "Providers",
-            onSelect: { conceptOpenProvider($0, lane: "nebula_provider") }
-        )
-        .frame(maxHeight: .infinity)
-    }
+    private var bentoGrid: some View {
+        LazyVGrid(
+            columns: [
+                GridItem(
+                    .adaptive(minimum: 210, maximum: 320),
+                    spacing: DesignSystem.Spacing.md,
+                    alignment: .top
+                )
+            ],
+            alignment: .leading,
+            spacing: DesignSystem.Spacing.md
+        ) {
+            ForEach(Array(conceptWindowFacts.enumerated()), id: \.offset) { _, fact in
+                bentoTile(fact.label, accent: fact.accent) {
+                    Text(fact.value)
+                        .font(.system(size: bentoValueSize, weight: .bold, design: .monospaced))
+                        .foregroundStyle(fact.accent)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.5)
+                        .allowsTightening(true)
+                        .contentTransition(.numericText())
+                        .animation(DesignSystem.Animation.gentle, value: fact.value)
+                        .frame(maxHeight: .infinity, alignment: .center)
+                }
+            }
 
-    private var nebulaBento: some View {
-        VStack(spacing: DesignSystem.Spacing.lg) {
-            HStack(alignment: .top, spacing: DesignSystem.Spacing.lg) {
-                nebulaBurnCard
-                    .frame(width: 280)
+            bentoTile("Top provider", accent: DesignSystem.Colors.ember) {
+                bentoLeaderBody(conceptProviderRows.first, empty: "No provider spend yet")
+            }
+
+            bentoTile("Top model", accent: DesignSystem.Colors.blaze) {
+                bentoLeaderBody(conceptModelRows.first, empty: "No model spend yet")
+            }
+
+            bentoTile("Cumulative", accent: DesignSystem.Colors.whimsy) {
+                liveCostCurveBand
+                    .frame(maxHeight: .infinity)
+            }
+
+            bentoTile("Substrate", accent: DesignSystem.Colors.amber) {
                 SwarmRevealWindow {
-                    VStack(alignment: .leading) {
+                    VStack {
+                        Spacer()
                         HStack {
-                            SwarmFormingChip(label: "forming · pso")
+                            SwarmFormingChip(label: "forming")
                             Spacer()
                         }
-                        Spacer()
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("PROVIDER FORMATIONS")
-                                .font(DesignSystem.Typography.tiny)
-                                .tracking(1.3)
-                                .foregroundStyle(DesignSystem.Colors.textMuted)
-                            Text("Living substrate")
-                                .font(DesignSystem.Typography.headline)
-                                .foregroundStyle(DesignSystem.Colors.ember)
-                        }
                     }
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(maxHeight: .infinity)
             }
-            .frame(maxHeight: .infinity)
-            .frame(minHeight: 220)
-
-            HStack(spacing: DesignSystem.Spacing.lg) {
-                ConceptStatTile(
-                    label: "Tokens",
-                    value: totalTokensForTimeRange.formatted(),
-                    accent: DesignSystem.Colors.ember
-                )
-                .frame(width: 168)
-                ConceptStatTile(
-                    label: "Sessions",
-                    value: dashboardUsageWindow.sessionCount.formatted(),
-                    accent: DesignSystem.Colors.amber
-                )
-                .frame(width: 168)
-                conceptCurveCard
-                    .frame(maxWidth: .infinity)
-            }
-            .frame(height: 150)
         }
     }
 
-    private var nebulaBurnCard: some View {
-        ConceptStatTile(
-            label: "Burn · \(selectedTimeRange.displayName)",
-            value: totalCostForTimeRange.formatAsCost(),
-            caption: heroSubheadline,
-            accent: DesignSystem.Colors.whimsy,
-            prominence: .hero
-        )
+    /// One tile. The only knob a caller gets is the eyebrow, the accent, and the
+    /// body — never the size.
+    private func bentoTile<Content: View>(
+        _ eyebrow: String,
+        accent: Color,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        DashboardSection(eyebrow, accent: accent, density: .compact, emphasis: .standard) {
+            content()
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(height: bentoTileHeight)
     }
 
-    private var nebulaStacked: some View {
-        VStack(spacing: DesignSystem.Spacing.lg) {
-            HStack(spacing: DesignSystem.Spacing.lg) {
-                nebulaBurnCard
-                ConceptStatTile(
-                    label: "Tokens",
-                    value: totalTokensForTimeRange.formatted(),
-                    accent: DesignSystem.Colors.ember
-                )
-                ConceptStatTile(
-                    label: "Sessions",
-                    value: dashboardUsageWindow.sessionCount.formatted(),
-                    accent: DesignSystem.Colors.amber
-                )
+    @ViewBuilder
+    private func bentoLeaderBody(_ item: DashboardRankedItem?, empty: String) -> some View {
+        if let item {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                HStack(spacing: DesignSystem.Spacing.sm) {
+                    if let provider = item.provider {
+                        ProviderLogoView(provider: provider, size: 22, useFallbackColor: true)
+                    }
+                    Text(item.title)
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(dashboardSectionInk.primary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                Text(item.value)
+                    .font(.system(size: bentoValueSize, weight: .bold, design: .monospaced))
+                    .foregroundStyle(item.accent)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.5)
+                Text("\(Int((item.share * 100).rounded()))% of window spend")
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(dashboardSectionInk.subtle)
+                    .lineLimit(1)
             }
-            conceptCurveCard.frame(height: 150)
+            .frame(maxHeight: .infinity, alignment: .topLeading)
+        } else {
+            Text(empty)
+                .font(DesignSystem.Typography.caption)
+                .foregroundStyle(dashboardSectionInk.subtle)
+                .frame(maxHeight: .infinity, alignment: .center)
         }
     }
 }

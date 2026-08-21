@@ -238,6 +238,7 @@ public enum UsageExecutionSourceResolver {
         case .junie: return known("junie", "Junie", .ide, .derivedExact)
         case .primeAgent: return known("prime-agent", "Prime Agent", .automation, .derivedExact)
         case .muse: return known("muse", "Muse", .cli, .derivedExact)
+        case .fx: return known("fx", "fx", .cli, .derivedExact)
         case .openAI, .openBurnBar, .deepSeek, .mimo: return nil
         }
     }

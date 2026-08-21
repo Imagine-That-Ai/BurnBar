@@ -212,6 +212,13 @@ enum FleetLivenessResolver {
         }
 
         if let write = evidence.lastWrite {
+            // Parsed usage is accounting, not an observed write. Gateway
+            // rows, API buckets, and scan imports all carry a timestamp, and
+            // lighting the row as "wrote 11s ago" is how MiMo/OpenAI/DeepSeek
+            // look busy when nothing produced a session file.
+            if case .parsedUsageRow = write.source {
+                return .quietSince(write.date, source: write.source)
+            }
             let age = now.timeIntervalSince(write.date)
             // A clock that jumped backwards (NTP correction, timezone edit)
             // must not read as a write from the future.

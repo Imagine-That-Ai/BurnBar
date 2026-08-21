@@ -3,7 +3,7 @@ import XCTest
 /// Flow 2 — Drive the Aurora floating tab tray through every destination and
 /// assert each destination screen appears.
 ///
-/// Visits Pulse → Burn → Streams → Agents → You → back to Pulse. Each hop
+/// Visits Pulse → Burn → Insights → Streams → Agents → You → back to Pulse. Each hop
 /// confirms both that the tapped tab became selected and that the destination
 /// screen's marker (`screen.<name>`) rendered.
 @MainActor
@@ -21,6 +21,7 @@ final class TabNavigationSmokeUITests: SmokeUITestCase {
         // Each entry: (tray tab id, destination screen marker name).
         let journey: [(tab: String, screen: String)] = [
             ("burn", "burn"),
+            ("insights", "insights"),
             ("streams", "streams"),
             ("hermes", "agents"),
             ("you", "you"),

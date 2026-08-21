@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  StreamLayoutView — chronological river of sessions grouped by day.
+  Windows peer of StreamLayoutView.swift.
+-->
+<UserControl
+    x:Class="OpenBurnBar.App.Dashboard.Layouts.StreamLayoutView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:components="using:OpenBurnBar.App.Components"
+    xmlns:layouts="using:OpenBurnBar.App.Dashboard.Layouts"
+    xmlns:theme="using:OpenBurnBar.App.Theme"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Grid Padding="24" RowSpacing="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Timeline Header Summary -->
+        <components:UnifiedGlassCard Grid.Row="0">
+            <Grid ColumnSpacing="20">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Spacing="4">
+                    <TextBlock Text="DAYS WITH ACTIVITY" FontSize="11" FontWeight="Bold" CharacterSpacing="80"
+                               Foreground="{StaticResource PensieveColorBrassBrightBrush}" />
+                    <TextBlock x:Name="ActiveDaysText" Text="—" FontSize="20" FontWeight="Bold" FontFamily="{StaticResource OBBMonoFontFamily}" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Spacing="4">
+                    <TextBlock Text="DAILY MEAN" FontSize="11" FontWeight="Bold" CharacterSpacing="80"
+                               Foreground="{StaticResource PensieveColorMercuryCoreBrush}" />
+                    <TextBlock x:Name="DailyMeanText" Text="—" FontSize="20" FontWeight="Bold" FontFamily="{StaticResource OBBMonoFontFamily}" />
+                </StackPanel>
+                <StackPanel Grid.Column="2" Spacing="4">
+                    <TextBlock Text="BUSIEST DAY" FontSize="11" FontWeight="Bold" CharacterSpacing="80"
+                               Foreground="{StaticResource OBBAccentBrush}" />
+                    <TextBlock x:Name="BusiestDayText" Text="—" FontSize="20" FontWeight="Bold" />
+                </StackPanel>
+            </Grid>
+        </components:UnifiedGlassCard>
+
+        <!-- Chronological River of Days with Left Spine Line -->
+        <Border Grid.Row="1"
+                Style="{StaticResource LiquidGlassSurfaceStyle}"
+                theme:LiquidGlass.Surface="True"
+                CornerRadius="{StaticResource PensieveRadiusMdCorner}"
+                Padding="18,16">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollMode="Disabled">
+                <Grid ColumnSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="2" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Left spine line -->
+                    <Border Grid.Column="0" Background="{ThemeResource AuroraGlassStrokeBrush}" Width="2" HorizontalAlignment="Center" />
+
+                    <!-- Stream entries stack -->
+                    <StackPanel Grid.Column="1" Spacing="16">
+                        <StackPanel x:Name="EmptyState" Spacing="8" Margin="0,16,0,16">
+                            <TextBlock Text="No activity recorded in this window."
+                                       FontSize="14"
+                                       FontWeight="SemiBold"
+                                       Opacity="0.8" />
+                            <TextBlock Text="Sessions will appear grouped by day as they are logged to SQLCipher."
+                                       FontSize="12"
+                                       Opacity="0.6" />
+                        </StackPanel>
+                    </StackPanel>
+                </Grid>
+            </ScrollViewer>
+        </Border>
+
+        <!-- Bottom KPI row: star columns distribute slack across full width -->
+        <Grid Grid.Row="2" ColumnSpacing="16" HorizontalAlignment="Stretch">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <layouts:ConceptStatTile Grid.Column="0" x:Name="SpendTile" Value="—" Caption="Spend"
+                                     AccentBrush="{StaticResource PensieveColorBrassCoreBrush}" />
+            <layouts:ConceptStatTile Grid.Column="1" x:Name="TokensTile" Value="—" Caption="Tokens"
+                                     AccentBrush="{StaticResource PensieveColorMercuryCoreBrush}" />
+            <layouts:ConceptStatTile Grid.Column="2" x:Name="SessionsTile" Value="—" Caption="Sessions"
+                                     AccentBrush="{StaticResource OBBAccentBrush}" />
+        </Grid>
+    </Grid>
+</UserControl>

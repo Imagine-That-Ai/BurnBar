@@ -86,13 +86,28 @@ struct RootTabView: View {
 
     var body: some View {
         ZStack {
-            if selection == .hermes {
-                contentForSelection
-                    .environment(\.mobileBackgroundVisibility, rootBackgroundVisibility)
-            } else {
-                contentForSelection
-                    .environment(\.mobileBackgroundVisibility, rootBackgroundVisibility)
-                    .ignoresSafeArea(.keyboard)
+            Group {
+                if selection == .hermes {
+                    contentForSelection
+                        .environment(\.mobileBackgroundVisibility, rootBackgroundVisibility)
+                } else {
+                    contentForSelection
+                        .environment(\.mobileBackgroundVisibility, rootBackgroundVisibility)
+                        .ignoresSafeArea(.keyboard)
+                }
+            }
+            // The tray remains a visual overlay so its glass can float above
+            // every tab, but the root owns one real safe-area reservation for
+            // it. Scroll views, editors and pushed chat screens therefore stop
+            // above the pill instead of each guessing a different bottom
+            // padding and letting live content sit underneath the controls.
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                Color.clear
+                    .frame(height: MobileTrayMetrics.reservedHeight(isVisible: isNavigationTrayVisible))
+                    .accessibilityHidden(true)
+                    .transaction { transaction in
+                        transaction.disablesAnimations = true
+                    }
             }
 
             VStack(spacing: 0) {
@@ -111,10 +126,10 @@ struct RootTabView: View {
                         scrubPreview = nil
                     }
                 )
-                .opacity(isHermesKeyboardVisible || isCloudStoreChromeHidden ? 0 : 1)
+                .opacity(isNavigationTrayVisible ? 1 : 0)
                 .animation(.easeInOut(duration: 0.2), value: isHermesKeyboardVisible)
                 .animation(.easeInOut(duration: 0.2), value: isCloudStoreChromeHidden)
-                .allowsHitTesting(!isHermesKeyboardVisible && !isCloudStoreChromeHidden)
+                .allowsHitTesting(isNavigationTrayVisible)
             }
 
             // Floating Chart Studio button — only visible while Studio is
@@ -239,6 +254,9 @@ struct RootTabView: View {
         .onReceive(NotificationCenter.default.publisher(for: .init("ShowBurnTab"))) { _ in
             selection = .burn
         }
+        // Both of these drain the stash on the live path too: the tap has been
+        // served here, so leaving it parked would let `claimPendingOsRouteIfNeeded`
+        // re-raise the same surface later.
         .onReceive(NotificationCenter.default.publisher(for: .init("ShowMercuryCall"))) { notification in
             guard case .mercuryCall = MobilePendingOsRouteStore.shared.consume() else { return }
             presentMercuryCall(connectionId: notification.userInfo?["connectionId"] as? String)
@@ -272,6 +290,10 @@ struct RootTabView: View {
                 showMercuryCall = false
             }
         }
+    }
+
+    private var isNavigationTrayVisible: Bool {
+        !isHermesKeyboardVisible && !isCloudStoreChromeHidden
     }
 
     @ViewBuilder
@@ -542,6 +564,12 @@ struct RootTabView: View {
         openAIInboxRoute(itemID: itemID)
     }
 
+    /// Cold-launch counterpart to the two `onReceive` handlers above.
+    ///
+    /// A mission or Mercury-call push that launches the app posts during
+    /// `didFinishLaunching`, before this root has subscribed, so the stash is the
+    /// only surviving record of the tap. Same shape as
+    /// `claimPendingAIInboxDeepLink`.
     private func claimPendingOsRouteIfNeeded() {
         switch MobilePendingOsRouteStore.shared.consume() {
         case .mercuryCall(let connectionId):
@@ -685,6 +713,7 @@ struct RootTabView: View {
         case .streams:  return "streams"
         case .hermes:   return "hermes"
         case .you:      return "you"
+        case .recap:    return "recap"
         }
     }
 
@@ -697,6 +726,9 @@ struct RootTabView: View {
         case .streams:  return "dashboard_activity"
         case .hermes:   return "chat"
         case .you:      return "account"
+        // The recap is a monthly read of the same numbers Insights shows, so it
+        // reports the existing taxonomy surface rather than minting a new one.
+        case .recap:    return "insights"
         }
     }
 

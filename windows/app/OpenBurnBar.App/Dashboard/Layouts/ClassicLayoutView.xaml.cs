@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using Microsoft.UI.Xaml.Controls;
 
 namespace OpenBurnBar.App.Dashboard.Layouts;
@@ -8,12 +9,11 @@ public sealed partial class ClassicLayoutView : UserControl
     public ClassicLayoutView()
     {
         InitializeComponent();
-        Loaded += OnLoaded;
+        this.BindUsageRefresh(RefreshAsync);
     }
 
-    private async void OnLoaded(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    private async Task RefreshAsync()
     {
-        Loaded -= OnLoaded;
         ApplyUsageSummary(await DashboardUsageProvider.LoadAsync());
     }
 

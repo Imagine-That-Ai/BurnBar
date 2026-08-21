@@ -314,10 +314,11 @@ struct RoutedClientConfigSyncService {
     ) throws {
         var root = try loadJSONObject(at: url)
         var customModels = root["customModels"] as? [[String: Any]] ?? []
+        let preserved = preservedExtraArgs(in: customModels, key: "extraArgs")
         customModels.removeAll(where: isOpenBurnBarFactoryEntry)
         let startIndex = customModels.count
         customModels.append(contentsOf: models.enumerated().map { offset, model in
-            [
+            var entry: [String: Any] = [
                 "model": model,
                 "id": factoryCustomModelID(for: model, index: startIndex + offset),
                 "index": startIndex + offset,
@@ -326,7 +327,11 @@ struct RoutedClientConfigSyncService {
                 "displayName": "OpenBurnBar \(model)",
                 "maxOutputTokens": 8192,
                 "provider": "generic-chat-completion-api"
-            ] as [String: Any]
+            ]
+            if let extraArgs = preserved[model] {
+                entry["extraArgs"] = extraArgs
+            }
+            return entry
         })
         root["customModels"] = customModels
         try writeJSONObject(root, to: url, backupExisting: true)
@@ -339,19 +344,45 @@ struct RoutedClientConfigSyncService {
     ) throws {
         var root = try loadJSONObject(at: url)
         var customModels = root["custom_models"] as? [[String: Any]] ?? []
+        let preserved = preservedExtraArgs(in: customModels, key: "extra_args")
         customModels.removeAll(where: isOpenBurnBarFactoryEntry)
         customModels.append(contentsOf: models.map { model in
-            [
+            var entry: [String: Any] = [
                 "model_display_name": "OpenBurnBar \(model)",
                 "model": model,
                 "base_url": config.baseURL,
                 "api_key": config.effectiveAPIKey,
                 "max_output_tokens": 8192,
                 "provider": "generic-chat-completion-api"
-            ] as [String: Any]
+            ]
+            if let extraArgs = preserved[model] {
+                entry["extra_args"] = extraArgs
+            }
+            return entry
         })
         root["custom_models"] = customModels
         try writeJSONObject(root, to: url, backupExisting: true)
+    }
+
+    /// Per-model request arguments already recorded on the gateway entries.
+    ///
+    /// Gateway entries are regenerated from the routed model list on every sync,
+    /// so anything the sync cannot re-derive is lost unless it is carried across.
+    /// Factory spreads `extraArgs` verbatim into every outgoing request body,
+    /// which is where a model's reasoning level lives, so silently dropping it
+    /// changes how the model answers rather than just how it is labelled.
+    private func preservedExtraArgs(
+        in entries: [[String: Any]],
+        key: String
+    ) -> [String: [String: Any]] {
+        var preserved: [String: [String: Any]] = [:]
+        for entry in entries where isOpenBurnBarFactoryEntry(entry) {
+            guard let model = entry["model"] as? String,
+                  let extraArgs = entry[key] as? [String: Any],
+                  !extraArgs.isEmpty else { continue }
+            preserved[model] = extraArgs
+        }
+        return preserved
     }
 
     private func isOpenBurnBarFactoryEntry(_ entry: [String: Any]) -> Bool {

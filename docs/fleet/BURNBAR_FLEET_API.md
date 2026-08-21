@@ -61,6 +61,10 @@ newline-terminated response, clean close. Socket mode is owner-only `0600`.
 - The Mac header never renders "0 running" until a snapshot exists.
 - The Control Deck fleet tile distinguishes preparing / 0-running /
   daemon-down. It does not collapse those into a silent success.
+- The Mac fleet board and Control Deck fleet tile prefer
+  `daemon.fleet.snapshot`. If that socket returns an empty body or an
+  undecodable envelope, both read the well-known `fleet-snapshot.json`
+  rather than blanking a live tick.
 
 ## App membership
 

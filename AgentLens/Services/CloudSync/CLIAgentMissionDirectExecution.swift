@@ -236,6 +236,10 @@ extension CLIAgentMissionRequestListener {
                 message: "Launching \(backend.displayName) ACP stdio session.",
                 backend: backend
             )
+            // The permission callback is `@Sendable` (it runs on the stdio pump), so it
+            // cannot capture the untyped `data` dictionary. Snapshot the JSON subset
+            // once, up front — the callback only ever reads it.
+            let permissionData = Self.sendableJSON(data)
             let output = try await ACPStdioClient.runSession(
                 executable: executable,
                 arguments: arguments,
@@ -347,7 +351,7 @@ extension CLIAgentMissionRequestListener {
                 approvalTitle: "Approve \(request.toolName ?? "tool")",
                 approvalMessage: message
             )
-            guard let sealedState = sealed["sealedStatePayload"] as? UntypedJSONObject else { return false }
+            guard let sealedState = sealed["sealedStatePayload"] as? [String: any Sendable] else { return false }
             try await publishParkedCeiling(
                 requestID: requestID,
                 deviceId: handle.deviceId,
@@ -409,7 +413,7 @@ extension CLIAgentMissionRequestListener {
             payload: [:],
             liveSummary: liveSummary
         )
-        guard let sealedState = sealed["sealedStatePayload"] as? UntypedJSONObject else { return }
+        guard let sealedState = sealed["sealedStatePayload"] as? [String: any Sendable] else { return }
         try await ComputerUseSecurityCallableClient.updateCliAgentMissionStatus(
             requestId: requestID,
             deviceId: handle.deviceId,
@@ -527,6 +531,32 @@ extension CLIAgentMissionRequestListener {
                 errorMessage: error.localizedDescription,
                 sessionID: "direct-\(backend.rawValue)-\(UUID().uuidString)"
             )
+        }
+    }
+
+    /// The JSON-representable subset of an untyped dictionary, as `Sendable` values.
+    ///
+    /// Nested containers recurse so a payload cannot smuggle a reference type through
+    /// an array or sub-object. Anything unrecognised is dropped, which keeps the
+    /// callable boundary typed instead of merely cast.
+    private static func sendableJSON(_ value: [String: Any]) -> [String: any Sendable] {
+        var out: [String: any Sendable] = [:]
+        for (key, raw) in value {
+            if let narrowed = sendableJSONValue(raw) { out[key] = narrowed }
+        }
+        return out
+    }
+
+    private static func sendableJSONValue(_ raw: Any) -> (any Sendable)? {
+        switch raw {
+        case let text as String: return text
+        case let number as Int: return number
+        case let number as Double: return number
+        case let flag as Bool: return flag
+        case let nested as [String: Any]: return sendableJSON(nested)
+        case let list as [Any]: return list.compactMap(sendableJSONValue)
+        case is NSNull: return nil
+        default: return nil
         }
     }
 

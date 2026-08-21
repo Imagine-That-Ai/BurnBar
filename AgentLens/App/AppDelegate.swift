@@ -51,6 +51,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             }
         }
     }
+    weak var usageAggregator: UsageAggregator?
     var daemonManager: OpenBurnBarDaemonManager? {
         didSet {
             setupWallpaperObservers()
@@ -89,6 +90,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var cloudVaultRotationPickupObserver: NSObjectProtocol?
     private var postRevokeCloudVaultRotationPickupObserver: NSObjectProtocol?
     private var lastCloudVaultRotationPickupAt: TimeInterval = 0
+    private var isPreparingToTerminate = false
 
     // Analytics: app foreground/background lifecycle observer.
     private var appResignActiveAnalyticsObserver: NSObjectProtocol?
@@ -338,7 +340,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             for peer in peers where peer.bundleURL?.standardizedFileURL != installedBundleURL {
                 NSLog("OpenBurnBar: terminating stale duplicate instance at %@", peer.bundleURL?.path ?? "unknown")
                 peer.terminate()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
                     if !peer.isTerminated {
                         peer.forceTerminate()
                     }
@@ -363,6 +365,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             return
         }
         _ = GIDSignIn.sharedInstance.handle(url)
+    }
+
+    nonisolated func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        MainActor.assumeIsolated {
+            applicationShouldTerminateOnMainActor(sender)
+        }
+    }
+
+    private func applicationShouldTerminateOnMainActor(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if OpenBurnBarRuntime.isRunningTests {
+            return .terminateNow
+        }
+        if isPreparingToTerminate {
+            return .terminateLater
+        }
+        isPreparingToTerminate = true
+
+        // Abort in-flight SQLCipher page decrypts before NSApp is allowed to
+        // call `exit()`. The crash report's faulting thread was still inside
+        // `sqlcipher_memset` on `GRDB.DatabasePool.reader.3` while the main
+        // thread was already in `-[NSApplication terminate:]`.
+        dataStore?.interruptDatabaseReaders()
+        usageAggregator?.stopBackgroundWork()
+        BackgroundCadenceCoordinator.shared.unregisterAll()
+        ProviderQuotaService.shared.stopAutomaticRefresh()
+
+        Task { @MainActor in
+            await dataStore?.prepareForTermination()
+            sender.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
     }
 
     nonisolated func applicationWillTerminate(_ notification: Notification) {

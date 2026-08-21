@@ -1,0 +1,106 @@
+/* Living layout renderer. Timing comes from generated --motion-* tokens. */
+
+.living-layout {
+  --living-gutter: var(--space-3);
+  --living-padding: var(--space-3);
+  --living-columns: 1;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: var(--living-gutter);
+  width: 100%;
+  min-height: 0;
+  min-width: 0;
+  height: 100%;
+  padding: var(--living-padding);
+}
+
+.living-layout[data-overflows='true'] {
+  overflow: auto;
+  align-content: start;
+}
+
+.living-layout[data-overflows='false'] {
+  overflow: hidden;
+}
+
+.living-layout__column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--living-gutter);
+  min-width: 0;
+  min-height: 0;
+}
+
+.living-layout__columns {
+  display: grid;
+  grid-template-columns: repeat(var(--living-columns), minmax(0, 1fr));
+  gap: var(--living-gutter);
+  flex: 1;
+  min-height: 0;
+  align-items: stretch;
+}
+
+.living-slot {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  transition:
+    height calc(var(--motion-settle-response-ms) * 1ms) var(--motion-ease-settle),
+    flex-basis calc(var(--motion-settle-response-ms) * 1ms) var(--motion-ease-settle);
+}
+
+.living-slot[data-hug='false'] {
+  flex: 1 1 auto;
+}
+
+.living-slot__arrive {
+  animation: living-arrive calc(var(--motion-arrive-response-ms) * 1ms) var(--motion-ease-arrive) both;
+  animation-delay: var(--living-stagger, 0ms);
+}
+
+@keyframes living-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(calc(var(--motion-arrive-rise-px) * 1px)) scale(var(--motion-arrive-scale));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.living-tick {
+  transition: opacity calc(var(--motion-tick-ms) * 1ms) var(--motion-ease-settle);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .living-slot {
+    transition: opacity calc(var(--motion-reduced-ms) * 1ms) ease;
+  }
+
+  .living-slot__arrive {
+    animation: living-fade calc(var(--motion-reduced-ms) * 1ms) ease both;
+    animation-delay: 0ms;
+  }
+
+  @keyframes living-fade {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  .living-tick {
+    transition: opacity calc(var(--motion-reduced-ms) * 1ms) ease;
+  }
+}
+
+@container dashboard-shell (max-width: 720px) {
+  .living-layout__columns {
+    grid-template-columns: 1fr;
+  }
+}

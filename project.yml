@@ -458,6 +458,17 @@ targets:
         product: OpenBurnBarLogParsers
       - package: OpenBurnBarCore
         product: OpenBurnBarUI
+      # Recap: the monthly deck feature, carved out of Insights so that target
+      # stayed under its decomposition ceiling.
+      - package: OpenBurnBarCore
+        product: OpenBurnBarRecap
+      # AssistantModels: HermesAttachment, which MacAttachmentLandingService returns
+      # to the Hermes transport. Linked explicitly rather than reached through the
+      # umbrella so the file satisfies the core-decomposition umbrella-import ratchet.
+      # Note OpenBurnBarData declares a *second*, distinct HermesAttachment; the
+      # transport wants this one, so the import here must stay narrow and explicit.
+      - package: OpenBurnBarCore
+        product: OpenBurnBarAssistantModels
       - package: GRDB
         product: GRDB
       - package: SQLCipher
@@ -1133,6 +1144,10 @@ targets:
         product: OpenBurnBarSignalSessionTransport
       - package: OpenBurnBarCore
         product: OpenBurnBarFirestoreModels
+      # Recap: the monthly deck feature, carved out of Insights so that target
+      # stayed under its decomposition ceiling.
+      - package: OpenBurnBarCore
+        product: OpenBurnBarRecap
       - package: DebugBridge
         product: DebugBridgeCore
       - package: DebugBridge

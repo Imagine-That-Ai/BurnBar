@@ -162,9 +162,9 @@ export function validateProtectedSignerRun(raw, coordinates, candidateCommit) {
 // `scripts/ci/gh-api-with-retry.sh`; this gate downloads artifacts from Node,
 // so it carries the same bounded retry here. Permanent failures still fail on
 // the first attempt — retrying cannot fix a bad token, a missing run, or a
-// failed attestation verification, and an expired artifact must reach its
-// committed-bundle fallback in `downloadOrMaterializeSourceArtifacts` without
-// first burning the retry budget.
+// failed attestation verification, and an expired artifact must fail the
+// Actions fallback in `materializeOrDownloadSourceArtifacts` immediately
+// rather than burning the retry budget on a download that can never succeed.
 export function isTransientCommandFailure(detail) {
   if (isExpiredArtifactDownloadError(detail)) return false;
   return (
@@ -397,7 +397,7 @@ export function materializeCandidateBoundRollback({
   return { candidatePath, rollbackPath, bundlePath, source: "committed" };
 }
 
-function downloadOrMaterializeSourceArtifacts({
+function materializeOrDownloadSourceArtifacts({
   repoRoot,
   candidateCommit,
   sourceRun,
@@ -431,7 +431,9 @@ function downloadOrMaterializeSourceArtifacts({
       );
       return { source: "actions" };
     } catch (downloadError) {
-      throw materializeError;
+      throw new Error(
+        `${materializeError.message}; Actions artifact fallback also failed: ${downloadError.message}`,
+      );
     }
   }
 }
@@ -660,7 +662,7 @@ export function run(
   );
 
   const sourceDirectory = join(outputDirectory, "source");
-  downloadOrMaterializeSourceArtifacts({
+  materializeOrDownloadSourceArtifacts({
     repoRoot,
     candidateCommit,
     sourceRun,

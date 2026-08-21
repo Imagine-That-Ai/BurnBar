@@ -67,7 +67,7 @@ describe('chat backend parity contract', () => {
   it('represents every macOS backend and keeps legacy CLI non-selectable', () => {
     expect(CHAT_BACKENDS.map((entry) => entry.id)).toEqual([
       'codex', 'claude', 'hermes', 'pi-agent', 'openclaw', 'openclaude', 'omp',
-      'droid', 'forge', 'antigravity', 'cursor-agent', 'junie'
+      'droid', 'forge', 'antigravity', 'cursor-agent', 'junie', 'fx'
     ]);
     expect(chatBackendAvailability(fixtureConfigSnapshot(), 'cli', routingCatalog)).toMatchObject({ state: 'unsupported' });
   });

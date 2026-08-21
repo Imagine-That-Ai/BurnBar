@@ -366,6 +366,7 @@ object SettingsManifest {
             AgentProvider.JUNIE -> keywords.addAll(listOf("junie", "junie cli", "jetbrains", "jetbrains junie", "jetbrains-junie"))
             AgentProvider.PRIME_AGENT -> keywords.addAll(listOf("prime", "prime agent", "prime-agent", "prime intellect"))
             AgentProvider.MUSE -> keywords.addAll(listOf("muse", "meta muse", "meta-muse", "muse code"))
+            AgentProvider.FX -> keywords.addAll(listOf("fx", "vercel fx", "vercel-fx", "vercelfx"))
             else -> Unit
         }
 

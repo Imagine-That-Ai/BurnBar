@@ -144,4 +144,20 @@ public static class PensieveTokens
     public const string MotionSwirlSeconds = "18";
     public const string MotionFrostFlipMs = "520";
     public const string MotionEaseStandard = "cubic-bezier(0.2, 0.8, 0.2, 1)";
+    public const string MotionSettleResponseMs = "420";
+    public const string MotionSettleDamping = "0.88";
+    public const string MotionArriveResponseMs = "340";
+    public const string MotionArriveDamping = "0.8";
+    public const string MotionArriveRisePx = "18";
+    public const string MotionArriveScale = "0.97";
+    public const string MotionDepartMs = "160";
+    public const string MotionDepartScale = "0.98";
+    public const string MotionStaggerStepMs = "60";
+    public const string MotionStaggerCapMs = "240";
+    public const string MotionTickMs = "300";
+    public const string MotionPulsePeriodMs = "1400";
+    public const string MotionPulseFloor = "0.55";
+    public const string MotionReducedMs = "180";
+    public const string MotionEaseSettle = "cubic-bezier(0.22, 1, 0.36, 1)";
+    public const string MotionEaseArrive = "cubic-bezier(0.34, 1.32, 0.44, 1)";
 }

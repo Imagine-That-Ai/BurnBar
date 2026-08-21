@@ -52,11 +52,13 @@ struct CLIProcessStreamRunner: Sendable {
                 cliType: .codex
             ),
             grantStillActive: grantStillActive,
-            continuation: continuation
-        ) { line in
-            let result = parser.events(fromLine: line)
-            return (result.events, result.error, result.error != nil)
-        }
+            continuation: continuation,
+            finalize: { parser.finish() },
+            parseLine: { line in
+                let result = parser.events(fromLine: line)
+                return (result.events, result.error, result.error != nil)
+            }
+        )
     }
 
     func runDroid(
@@ -177,6 +179,39 @@ struct CLIProcessStreamRunner: Sendable {
         }
     }
 
+    func runFx(
+        executable: String,
+        prompt: String,
+        model: String = "",
+        workspaceDirectory: URL? = nil,
+        capabilityGrant: AgentCapabilityGrant? = nil,
+        resumeSessionID: String? = nil,
+        grantStillActive: (@Sendable () async -> Bool)? = nil,
+        continuation: AsyncThrowingStream<CLIChatStreamEvent, Error>.Continuation
+    ) async {
+        var parser = FxAskJSONParser()
+        await runProcess(
+            invocation: CLIProcessInvocation(
+                executable: executable,
+                arguments: CLIArgumentBuilder.fxArguments(
+                    prompt: prompt,
+                    model: model,
+                    workspaceDirectory: workspaceDirectory,
+                    capabilityGrant: capabilityGrant,
+                    resumeSessionID: resumeSessionID
+                ),
+                environment: CLIExecutableResolver.agentProcessEnvironment(executablePath: executable),
+                workingDirectory: workspaceDirectory ?? FileManager.default.homeDirectoryForCurrentUser,
+                cliType: .fx
+            ),
+            grantStillActive: grantStillActive,
+            continuation: continuation
+        ) { line in
+            let result = parser.events(fromLine: line)
+            return (result.events, result.error, result.error != nil)
+        }
+    }
+
     func runOMP(
         executable: String,
         prompt: String,
@@ -241,6 +276,9 @@ struct CLIProcessStreamRunner: Sendable {
         invocation: CLIProcessInvocation,
         grantStillActive: (@Sendable () async -> Bool)? = nil,
         continuation: AsyncThrowingStream<CLIChatStreamEvent, Error>.Continuation,
+        finalize: () -> (events: [CLIChatStreamEvent], error: CLIBridgeError?) = {
+            ([], nil)
+        },
         parseLine: (String) -> (events: [CLIChatStreamEvent], error: CLIBridgeError?, terminate: Bool)
     ) async {
         let process = Process()
@@ -386,6 +424,15 @@ struct CLIProcessStreamRunner: Sendable {
         stderrTask.cancel()
         await stderrTask.value
         await runtime.clearRunningProcess(token: processToken)
+
+        if quotaRecorder.snapshot() == nil, parserError == nil {
+            let final = finalize()
+            for event in final.events {
+                continuation.yield(event)
+            }
+            parserError = final.error
+        }
+
         let failed = quotaRecorder.snapshot() != nil
             || parserError != nil
             || (process.terminationStatus != 0 && process.terminationStatus != 15)
@@ -454,6 +501,8 @@ struct CLIProcessStreamRunner: Sendable {
             return .junie
         case .primeAgent:
             return .primeAgent
+        case .fx:
+            return .fx
         }
     }
 

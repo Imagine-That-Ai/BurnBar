@@ -298,6 +298,7 @@ node_modules/
 .lane-modulecache/
 *.pcm
 .tmp-*
+.tmp/
 
 # Ledger-referenced Linux-port evidence logs (VAL-OPS-002, VAL-EXTENSION-001):
 # these two .log files are release-gate proof and must be committed despite *.log.

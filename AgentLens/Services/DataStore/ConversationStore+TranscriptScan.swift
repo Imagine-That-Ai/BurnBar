@@ -310,9 +310,9 @@ extension ConversationStore {
                 let rows = try Row.fetchAll(db, sql: sql, arguments: StatementArguments(args))
                 return rows.compactMap { row in
                     guard let providerRaw = row["provider"] as? String,
-                          let provider = AgentProvider(rawValue: providerRaw) else { return nil }
-                    let occurrenceCount = Int((row["occurrenceCount"] as? Int64) ?? 0)
-                    let conversationCount = Int((row["conversationCount"] as? Int64) ?? 0)
+                          let provider = AgentProvider.resolve(providerRaw) else { return nil }
+                    let occurrenceCount: Int = row["occurrenceCount"] ?? 0
+                    let conversationCount: Int = row["conversationCount"] ?? 0
                     return ConversationProviderOccurrence(
                         provider: provider,
                         occurrenceCount: occurrenceCount,

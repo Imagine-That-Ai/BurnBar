@@ -40,75 +40,116 @@ public enum AppSkin: String, CaseIterable, Codable, Sendable {
     }
 }
 
-/// The named dashboard *layout* concept the macOS overview renders.
+/// The dashboard *layout* the macOS overview renders.
 ///
-/// These are the five full-dashboard arrangements from the "Liquid Glass
-/// Studio" design phase plus `classic` (the original information-dense scroll
-/// overview, retained). Each concept floats glass cards over the shared
-/// kernel + provider-swarm backdrop; `classic` keeps the legacy composition.
+/// Each case is a different answer to "how do you want to read your spend",
+/// not a different backdrop. They differ in information density, primary axis,
+/// and which element dominates — see ``tagline`` for the reader each one serves
+/// and `docs/MAC_DASHBOARD_LAYOUTS.md` for the composition rules.
+///
+/// **The raw values are opaque storage ids, not names.** They are the original
+/// design-phase codenames and they stay frozen: the same string is persisted by
+/// the macOS app, the Linux desktop (`apps/linux-desktop/src/dashboard/
+/// dashboardLayout.ts`), and the Windows app (`windows/app/
+/// OpenBurnBar.App.Dashboard/Layout/DashboardLayout.cs`), and a synced
+/// preference that fails to parse resets the user's choice. Rename
+/// ``displayName``, never the case.
 ///
 /// Shared across platforms (same `String` raw values + `storageKey`) so future
 /// iOS/Android parity can read the same preference, mirroring `AppSkin`.
 public enum DashboardLayout: String, CaseIterable, Codable, Sendable {
-    /// The original macOS overview: a vertical scroll of stat cards, the live
-    /// cost curve, the Great Hall, the narrative banner, and the provider /
-    /// model / activity lanes. Information-dense; the safe fallback.
+    /// **Ledger** — one ordered scroll of dense rows, no hero. Read top to
+    /// bottom. The safe fallback, and the only layout that shows everything.
     case classic
-    /// Provider list + open hero swarm field + a bottom data band.
+    /// **Focus** — one number above the fold, everything else collapsed under
+    /// it. For the question "how much, right now".
     case aurora
-    /// Bento grid: provider panel, a big burn card, a framed swarm stage, and
-    /// a tokens / sessions / cost-curve row.
+    /// **Bento** — equal-weight tile grid with no reading order. Built for
+    /// scanning, not for sequence.
     case nebula
-    /// Centered command column: a search/Hermes bar over a full swarm stage,
-    /// three stat pills, and a wrap of provider chips.
+    /// **Ask** — the question box comes first and the page assembles itself
+    /// from what you typed.
     case constellation
-    /// Mission-control grid: spend-share provider rail, four KPI tiles
-    /// (incl. cache hit), a routing swarm stage with TPS, cost curve + The Wand.
+    /// **Cockpit** — gauges, live routing, alarm states, cache hit rate. The
+    /// only layout with instruments rather than figures.
     case cockpit
-    /// The keeper: a full-bleed kernel-forward hero with a headline and three
-    /// floating glass stat cards over the live substrate. The default.
+    /// **Canvas** — full-bleed kernel with an editorial headline and the fewest
+    /// numbers of any layout. For leaving open on a second display.
     case atelier
+    /// **Stream** — a chronological river of sessions, spikes, and alerts, with
+    /// time as the primary axis.
+    case stream
+    /// **Atlas** — ranked side-by-side provider and model comparison, with the
+    /// deltas spelled out.
+    case atlas
 
     /// `UserDefaults` / `@AppStorage` key. Shared verbatim across platforms.
     public static let storageKey = "dashboardLayout"
 
     /// The currently-selected layout, read live from `UserDefaults.standard`.
-    /// Defaults to ``atelier`` — the design phase's "keeper" — when unset.
+    /// Defaults to ``aurora`` — Focus — when unset.
+    ///
+    /// Focus rather than Canvas: Canvas is the ambient second-display surface and makes
+    /// a poor first impression on a primary monitor, because its thesis is deliberately
+    /// to show almost nothing. Focus opens on the one thing that needs a decision, over
+    /// the live spend curve, which is the product's actual argument.
     public static var current: DashboardLayout {
         guard let raw = UserDefaults.standard.string(forKey: storageKey),
-              let layout = DashboardLayout(rawValue: raw) else { return .atelier }
+              let layout = DashboardLayout(rawValue: raw) else { return .aurora }
         return layout
     }
 
     public var displayName: String {
         switch self {
-        case .classic:       return "Classic"
-        case .aurora:        return "Aurora"
-        case .nebula:        return "Nebula"
-        case .constellation: return "Constellation"
+        case .classic:       return "Ledger"
+        case .aurora:        return "Focus"
+        case .nebula:        return "Bento"
+        case .constellation: return "Ask"
         case .cockpit:       return "Cockpit"
-        case .atelier:       return "Atelier"
+        case .atelier:       return "Canvas"
+        case .stream:        return "Stream"
+        case .atlas:         return "Atlas"
+        }
+    }
+
+    /// Who the layout is for, in one line.
+    ///
+    /// Shown under the name in the switcher gallery and in Appearance settings.
+    /// This is an operator surface, so it says what the layout does rather than
+    /// how it feels.
+    public var tagline: String {
+        switch self {
+        case .classic:       return "Every row, in order"
+        case .aurora:        return "One number, front and centre"
+        case .nebula:        return "Equal tiles, scan anywhere"
+        case .constellation: return "Ask first, results follow"
+        case .cockpit:       return "Instruments and alarm states"
+        case .atelier:       return "Ambient, for a second screen"
+        case .stream:        return "What happened, newest first"
+        case .atlas:         return "Side by side, with deltas"
         }
     }
 
     /// SF Symbol used in pickers and the inline switcher.
     public var symbolName: String {
         switch self {
-        case .classic:       return "rectangle.grid.1x2"
-        case .aurora:        return "sun.haze"
-        case .nebula:        return "rectangle.grid.2x2"
-        case .constellation: return "sparkles"
+        case .classic:       return "list.bullet.rectangle"
+        case .aurora:        return "largecircle.fill.circle"
+        case .nebula:        return "square.grid.2x2"
+        case .constellation: return "text.magnifyingglass"
         case .cockpit:       return "gauge.with.dots.needle.67percent"
-        case .atelier:       return "paintpalette"
+        case .atelier:       return "photo.artframe"
+        case .stream:        return "arrow.down.right.and.arrow.up.left.circle"
+        case .atlas:         return "chart.bar.xaxis"
         }
     }
 
-    /// Whether the concept is kernel-forward (full-bleed backdrop is the hero)
+    /// Whether the layout is kernel-forward (full-bleed backdrop is the hero)
     /// versus a structured panel layout. Drives small-window fallbacks.
     public var isKernelForward: Bool {
         switch self {
         case .constellation, .atelier: return true
-        case .classic, .aurora, .nebula, .cockpit: return false
+        case .classic, .aurora, .nebula, .cockpit, .stream, .atlas: return false
         }
     }
 }
@@ -299,6 +340,7 @@ extension DesignSystemColors {
         case .mimo:       return Color(hex: "FF6900")
         case .primeAgent: return Color(hex: "582CFF")
         case .muse: return Color(hex: "0668E1")
+        case .fx:   return Color(hex: "A1A1AA")
         case .openBurnBar: return Color(hex: "FA5053")
         case .junie:      return Color(hex: "48E054")
         }
@@ -340,6 +382,7 @@ extension DesignSystemColors {
         case .mimo:       return Color(hex: "FF8533")
         case .primeAgent: return Color(hex: "7C5CFF")
         case .muse: return Color(hex: "3B82F6")
+        case .fx:   return Color(light: "4A4A4A", dark: "D4D4D8")
         case .openBurnBar: return Color(hex: "FF7578")
         case .junie:      return Color(hex: "6FE87F")
         }

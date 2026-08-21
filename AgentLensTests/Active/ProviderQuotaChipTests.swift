@@ -172,10 +172,10 @@ final class ProviderQuotaChipTests: XCTestCase {
         )
     }
 
-    func test_resolve_remainingFraction_isNil_forTheSixAgentsWithoutAQuotaSignal() {
-        // Quota honesty: only 6 of the 12 chat agents have a quota signal at
+    func test_resolve_remainingFraction_isNil_forTheSevenAgentsWithoutAQuotaSignal() {
+        // Quota honesty: only 6 of the 13 chat agents have a quota signal at
         // all. For the rest the meter must self-hide, not fabricate a number.
-        let withoutSignal: [ChatBackendID] = [.hermes, .openclaw, .openClaude, .piAgent, .forge, .junie]
+        let withoutSignal: [ChatBackendID] = [.hermes, .openclaw, .openClaude, .piAgent, .forge, .junie, .fx]
         for backend in withoutSignal {
             guard let provider = backend.agentProvider else {
                 XCTFail("\(backend.rawValue) lost its agentProvider mapping")

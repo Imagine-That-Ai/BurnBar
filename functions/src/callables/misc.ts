@@ -25,7 +25,7 @@ export const rebuildUsageRollups = onCall(
   wrapCallableHandler("rebuildUsageRollups", async (request: CallableRequest<{ force?: boolean }>) => {
     const uid = request.auth?.uid;
     if (!uid) {
-      throw new Error("unauthenticated");
+      throw new HttpsError("unauthenticated", "Sign in before rebuilding usage rollups.");
     }
     enforceAuthAndAppCheck(request, uid);
 

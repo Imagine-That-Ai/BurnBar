@@ -13,10 +13,6 @@ class UidScopedCacheRegistry {
         synchronized(lock) { clearers.add(clearer) }
     }
 
-    fun unregister(clearer: () -> Unit) {
-        synchronized(lock) { clearers.remove(clearer) }
-    }
-
     fun clearAll() {
         val snapshot = synchronized(lock) { clearers.toList() }
         snapshot.forEach { it() }

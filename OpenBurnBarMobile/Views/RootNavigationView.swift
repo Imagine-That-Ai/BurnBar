@@ -153,6 +153,9 @@ struct RootNavigationView: View {
         .onReceive(NotificationCenter.default.publisher(for: .init("ShowBurnTab"))) { _ in
             selection = .burn
         }
+        // Both of these drain the stash on the live path too: the tap has been
+        // served here, so leaving it parked would let `claimPendingOsRouteIfNeeded`
+        // re-raise the same surface later.
         .onReceive(NotificationCenter.default.publisher(for: .init("ShowMercuryCall"))) { notification in
             guard case .mercuryCall = MobilePendingOsRouteStore.shared.consume() else { return }
             presentMercuryCall(connectionId: notification.userInfo?["connectionId"] as? String)
@@ -533,6 +536,10 @@ struct RootNavigationView: View {
         openAIInboxRoute(itemID: itemID)
     }
 
+    /// Cold-launch counterpart to the mission / Mercury-call `onReceive`
+    /// handlers, for the same reason as `claimPendingAIInboxDeepLink` above:
+    /// the push posts before this root has subscribed, so the stash is the only
+    /// surviving record of the tap.
     private func claimPendingOsRouteIfNeeded() {
         switch MobilePendingOsRouteStore.shared.consume() {
         case .mercuryCall(let connectionId):

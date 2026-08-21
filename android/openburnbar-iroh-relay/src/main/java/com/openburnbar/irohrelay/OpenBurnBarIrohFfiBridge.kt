@@ -188,6 +188,7 @@ class OpenBurnBarIrohFfiBackend(
                         streamClass().getMethod("remoteNodeId").invoke(streamObject)
                     }.requireFfiField("IrohStream.remoteNodeId")
                 } catch (t: Throwable) {
+                    if (t is kotlinx.coroutines.CancellationException) throw t
                     throw IrohBackendError.StreamFailed(t.message ?: t.javaClass.simpleName)
                 }
             }
@@ -199,6 +200,7 @@ class OpenBurnBarIrohFfiBackend(
                         streamClass().getMethod("sendFrame", ByteArray::class.java).invoke(streamObject, envelope)
                     }
                 } catch (t: Throwable) {
+                    if (t is kotlinx.coroutines.CancellationException) throw t
                     throw IrohBackendError.StreamFailed(t.message ?: t.javaClass.simpleName)
                 }
                 Unit
@@ -214,6 +216,7 @@ class OpenBurnBarIrohFfiBackend(
                             .optionalFfiField<ByteArray>("IrohStream.recvFrame")
                     }
                 } catch (t: Throwable) {
+                    if (t is kotlinx.coroutines.CancellationException) throw t
                     throw IrohBackendError.StreamFailed(t.message ?: t.javaClass.simpleName)
                 }
             }

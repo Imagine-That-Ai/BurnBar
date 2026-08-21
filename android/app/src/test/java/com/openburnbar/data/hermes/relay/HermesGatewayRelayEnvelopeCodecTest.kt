@@ -10,7 +10,6 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
-import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Test
 
@@ -167,11 +166,7 @@ class HermesGatewayRelayEnvelopeCodecTest {
     }
 
     private inline fun assertRejected(block: () -> Unit) {
-        try {
-            block()
-            fail("expected gateway envelope open to reject")
-        } catch (expected: Exception) {
-            assertTrue(true)
-        }
+        val thrown = runCatching { block() }.exceptionOrNull()
+        org.junit.Assert.assertNotNull("expected gateway envelope open to reject", thrown)
     }
 }

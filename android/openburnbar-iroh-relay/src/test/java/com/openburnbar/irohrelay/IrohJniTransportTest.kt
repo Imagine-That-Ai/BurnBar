@@ -61,12 +61,8 @@ class IrohJniTransportTest {
                     secretProvider = { IrohSecretKeyMaterial(ByteArray(32) { 1 }) },
                 )
 
-            try {
-                transport.start()
-                fail("Expected start() to surface a stream rejection")
-            } catch (_: IrohRelayTransportError.StreamRejected) {
-                // expected
-            }
+            val thrown = runCatching { transport.start() }.exceptionOrNull()
+            assertTrue("Expected StreamRejected", thrown is IrohRelayTransportError.StreamRejected)
             assertEquals(1, backend.bootstrapCalls)
         }
 

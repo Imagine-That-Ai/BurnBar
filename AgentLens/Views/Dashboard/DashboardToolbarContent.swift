@@ -13,6 +13,119 @@ import SwiftUI
 
 extension DashboardView {
 
+    /// Drawn *in* the window titlebar, not via `.toolbar`.
+    ///
+    /// The window is `fullSizeContentView` + transparent title, so a SwiftUI
+    /// `.toolbar` on the nested `NavigationSplitView` never becomes the window
+    /// toolbar — that is why the strip stayed empty after the first pass.
+    /// This row ignores the top safe area and sits beside the traffic lights.
+    var dashboardWindowTitleStrip: some View {
+        HStack(spacing: 12) {
+            HStack(spacing: 4) {
+                titleChromeStepButton(
+                    systemImage: "chevron.backward",
+                    enabled: canGoBack,
+                    help: backButtonHelpText,
+                    action: goBack
+                )
+                .accessibilityLabel("Back")
+                .accessibilityIdentifier(OBBAccessibilityID.dashboardBackButton)
+
+                titleChromeStepButton(
+                    systemImage: "chevron.forward",
+                    enabled: canGoForward,
+                    help: forwardButtonHelpText,
+                    action: goForward
+                )
+                .accessibilityLabel("Forward")
+            }
+
+            Button {
+                showCommandPalette = true
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(dashboardChromeInk.icon)
+                    Text("Jump or search")
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .foregroundStyle(dashboardChromeInk.secondary)
+                        .lineLimit(1)
+                    Spacer(minLength: 8)
+                    Text("⌘K")
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        .foregroundStyle(dashboardChromeInk.subtle)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 1.5)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(DesignSystem.Colors.surface.opacity(0.35))
+                        )
+                }
+                .padding(.horizontal, 10)
+                .frame(maxWidth: 380, minHeight: 24)
+                // The app's own material, not the system effect. `liquidGlassEffect`
+                // over the old web-view backdrop had nothing to sample and rendered as
+                // flat frost; this pill sits on the live field like everything else, and
+                // carries its own rim rather than a hand-drawn hairline.
+                .burnBarGlassControl(.cockpit, height: 24)
+                .contentShape(Capsule(style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .help("Command Palette (⌘K)")
+            .accessibilityLabel("Command palette")
+            .accessibilityHint("Jump to a section or search sessions")
+            .accessibilityIdentifier(OBBAccessibilityID.dashboardCommandPaletteButton)
+
+            Spacer(minLength: 8)
+
+            Button(action: toggleDashboardSidebar) {
+                Image(systemName: "sidebar.left")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(dashboardChromeInk.icon)
+                    .frame(width: 24, height: 22)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(isDashboardSidebarVisible ? "Hide sidebar" : "Show sidebar")
+            .accessibilityLabel(isDashboardSidebarVisible ? "Hide sidebar" : "Show sidebar")
+        }
+        // Traffic lights occupy the leading ~70pt of the titlebar.
+        .padding(.leading, 84)
+        .padding(.trailing, 16)
+        .padding(.vertical, 4)
+        .frame(height: 32)
+        // Deliberately plateless.
+        //
+        // A first pass gave this strip its own `burnBarGlass` slab, on the theory that
+        // "the top bar is part of the material system" meant "the top bar needs a plate".
+        // It does not: a full-width square plate sitting above the window's own rounded
+        // content reads as a black band bolted on top, which is worse than the bare
+        // glyphs it replaced. The strip belongs to the material system by sitting *on*
+        // the field — which it now genuinely does, because the native backdrop paints
+        // under the transparent titlebar. The only thing here that earns a plate is the
+        // ⌘K pill, because it is a control.
+    }
+
+    @ViewBuilder
+    private func titleChromeStepButton(
+        systemImage: String,
+        enabled: Bool,
+        help: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(enabled ? dashboardChromeInk.primary : dashboardChromeInk.subtle)
+                .frame(width: 22, height: 22)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+        .help(help)
+    }
+
     @ToolbarContentBuilder
     var toolbarContent: some ToolbarContent {
 
@@ -140,50 +253,124 @@ extension DashboardView {
     // MARK: - Full-width dashboard command deck
 
     var dashboardCommandDeck: some View {
-        VStack(spacing: 8) {
-            HStack(spacing: 14) {
-                dashboardDeckLeading
+        // Single unified unibody glass deck container: the upper command deck
+        // and lower status rail sample and refract together within one cohesive plate.
+        // Was wrapped in a `LiquidGlassGroup` (a `GlassEffectContainer`). That exists to
+        // unify *system* glass shapes into one pass, and it has nothing to unify now the
+        // deck's material is a shader — while it does elevate the z-order of its
+        // descendants above its own content, which is the documented trap that has
+        // already shipped twice as a blank frosted slab over invisible copy
+        // (`BackdropLegibleSurface.swift:229`, `:352`).
+        Group {
+            VStack(spacing: 0) {
+                HStack(spacing: 14 * dashboardDeckScale) {
+                    dashboardDeckLeading
 
-                dashboardDeckChart
-                    .layoutPriority(2)
+                    dashboardDeckChart
+                        .layoutPriority(2)
 
-                dashboardDeckActions
-                    .layoutPriority(1)
+                    dashboardDeckActions
+                        .layoutPriority(1)
+                }
+                .padding(.horizontal, 16 * dashboardDeckScale)
+                .padding(.vertical, 6)
+                .frame(height: dashboardDeckHeight)
+
+                Rectangle()
+                    .fill(dashboardChromeInk.hairline)
+                    .frame(height: 0.5)
+                    .opacity(0.35)
+
+                dashboardDeckStatusRail
             }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 10)
-            .frame(minHeight: 116)
-            .background(dashboardDeckSurface(cornerRadius: 34, opacity: 0.94))
-            .overlay {
-                RoundedRectangle(cornerRadius: 34, style: .continuous)
-                    .stroke(DesignSystem.Colors.border.opacity(0.5), lineWidth: 0.75)
-            }
-            .clipShape(
-                RoundedRectangle(cornerRadius: 34, style: .continuous),
-                style: FillStyle(antialiased: true)
+            // One piece of real glass for the whole deck.
+            //
+            // `backdropChromePlate` routed to the system `glassEffect`, which over a
+            // `WKWebView` backdrop had nothing to sample and rendered as flat frost —
+            // the top bar was the most visible casualty of that, and the reason it never
+            // matched the content below it. This is the same material every
+            // `DashboardSection` uses, so the deck now refracts the same field the page
+            // does, continuous across the seam.
+            .burnBarGlass(
+                .cockpit,
+                role: .chrome,
+                cornerRadius: dashboardDeckCornerRadius
             )
-
-            dashboardDeckStatusRail
         }
         .padding(.horizontal, 14)
         .padding(.top, 8)
-        .padding(.bottom, 10)
+        .padding(.bottom, 8)
         .background(Color.clear)
+        // One resolve for the whole chrome, so a bar can never end up
+        // half-adaptive: every label below reads `\.backdropInk` and gets the
+        // family the sampler sized for whatever the kernel is painting.
+        .resolvingBackdropInk(
+            liveBackdropActive: dashboardLiveBackdropActive,
+            profile: dashboardActiveReadabilityProfile
+        )
+    }
+
+    // MARK: Deck geometry
+    //
+    // Both bars share one drag, so both derive from the same clamp and the same
+    // control scale. Type, glyphs, and corner radii all track the height —
+    // "thinner" has to mean retuned, not clipped.
+
+    private var dashboardDeckHeight: CGFloat {
+        CGFloat(min(max(storedDashboardDeckHeight, 60), 116))
+    }
+
+    /// Interior scale for the upper row, pinned to 1.0 at the default height.
+    private var dashboardDeckScale: CGFloat {
+        min(max(dashboardDeckHeight / 72, 0.9), 1.3)
+    }
+
+    /// Corner radius tracks height so the deck reads as one continuous
+    /// capsule-ish body at 60pt and at 116pt, rather than a fixed 34pt radius
+    /// that looks like a stadium when short and a soft box when tall.
+    private var dashboardDeckCornerRadius: CGFloat {
+        min(28, dashboardDeckHeight / 2.4)
+    }
+
+    /// The ink the chrome draws with.
+    ///
+    /// Resolved here rather than read from `\.backdropInk` because the deck rows
+    /// are computed properties of `DashboardView` itself, and a view cannot read
+    /// an environment value it injects into its own output. The injection in
+    /// `dashboardCommandDeck` is still what serves the real child views —
+    /// `DashboardLayoutSwitcher`, `DashboardQuickAccessRail`,
+    /// `BurnRailAppearanceQuickMenu` — so both paths resolve the same family.
+    var dashboardChromeInk: BackdropInk {
+        BackdropInk.resolve(
+            liveBackdropActive: dashboardLiveBackdropActive,
+            profile: dashboardActiveReadabilityProfile
+        )
+    }
+
+    /// The tone of the chrome plate, for the few places that need a
+    /// `ColorScheme` rather than a colour — brand glyph contrast discs, mostly.
+    ///
+    /// Under a live backdrop the sampled profile knows better than the app's
+    /// appearance does, which is the whole reason it is sampled.
+    var dashboardChromeColorScheme: ColorScheme {
+        dashboardLiveBackdropActive
+            ? dashboardActiveReadabilityProfile.interfaceColorScheme
+            : dashboardKernelColorScheme
     }
 
     private var dashboardDeckLeading: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 9 * dashboardDeckScale) {
             // The logo is the Home button. "Logo goes home" is universal, and
             // it costs zero width — which matters, because the deck strip is
             // `.fixedSize(horizontal:)` and a seventh route button would push
-            // the 116pt deck past the 1040pt window minimum.
+            // the deck past the 1040pt window minimum.
             Button {
                 withAnimation(DesignSystem.Animation.standard) {
                     navigate(to: .home)
                 }
             } label: {
-                AppLogoView(size: 36)
-                    .frame(width: 44, height: 44)
+                AppLogoView(size: 26 * dashboardDeckScale)
+                    .frame(width: 32 * dashboardDeckScale, height: 32 * dashboardDeckScale)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -202,9 +389,10 @@ extension DashboardView {
                 }
             )
 
-            Divider()
-                .frame(height: 38)
-                .opacity(0.4)
+            Rectangle()
+                .fill(dashboardChromeInk.hairline)
+                .frame(width: 1, height: 22 * dashboardDeckScale)
+                .opacity(0.5)
 
             HStack(spacing: 0) {
                 dashboardDeckRouteButton(.overview)
@@ -214,14 +402,14 @@ extension DashboardView {
                 dashboardDeckRouteButton(.projects)
                 dashboardDeckRouteButton(.sessionLogs)
             }
-            .padding(3)
+            .padding(2.5)
             .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(DesignSystem.Colors.surface.opacity(0.48))
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(DesignSystem.Colors.surface.opacity(0.34))
             )
             .overlay {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(DesignSystem.Colors.border.opacity(0.36), lineWidth: 0.5)
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(dashboardChromeInk.hairline.opacity(0.5), lineWidth: 0.5)
             }
         }
         .fixedSize(horizontal: true, vertical: false)
@@ -239,18 +427,18 @@ extension DashboardView {
                     DashboardAgentRobotGlyph()
                 } else {
                     Image(systemName: route.systemImage(activeChatBackend: chatController.chatBackend))
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.system(size: 12.5 * dashboardDeckScale, weight: .semibold))
                 }
             }
-                .foregroundStyle(selected ? DesignSystem.Colors.textPrimary : DesignSystem.Colors.textSecondary)
-                .frame(width: 38, height: 38)
+                .foregroundStyle(selected ? dashboardChromeInk.primary : dashboardChromeInk.icon)
+                .frame(width: 30 * dashboardDeckScale, height: 30 * dashboardDeckScale)
                 .background {
                     if selected {
-                        RoundedRectangle(cornerRadius: 11, style: .continuous)
-                            .fill(DesignSystem.Colors.ember.opacity(0.18))
+                        RoundedRectangle(cornerRadius: 9.5, style: .continuous)
+                            .fill(DesignSystem.Colors.ember.opacity(0.2))
                     }
                 }
-                .contentShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                .contentShape(RoundedRectangle(cornerRadius: 9.5, style: .continuous))
         }
         .buttonStyle(.plain)
         .help(route.title(activeChatBackend: chatController.chatBackend))
@@ -259,54 +447,60 @@ extension DashboardView {
     }
 
     private var dashboardDeckChart: some View {
-        HStack(spacing: 14) {
+        let insetShape = RoundedRectangle(
+            cornerRadius: min(20, dashboardDeckHeight / 3.2),
+            style: .continuous
+        )
+        return HStack(spacing: 12 * dashboardDeckScale) {
             Button {
                 withAnimation(DesignSystem.Animation.standard) {
                     navigate(to: .charts)
                 }
             } label: {
-                HStack(spacing: 14) {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 5) {
-                        Text("BURN RATE")
-                            .font(.system(size: 10, weight: .bold, design: .rounded))
-                            .tracking(1.1)
-                        Circle()
-                            .fill(burnRailIsLive ? DesignSystem.Colors.success : DesignSystem.Colors.textMuted)
-                            .frame(width: 5, height: 5)
-                    }
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                HStack(spacing: 12 * dashboardDeckScale) {
+                    VStack(alignment: .leading, spacing: 1) {
+                        HStack(spacing: 5) {
+                            Text("BURN RATE")
+                                .font(.system(size: 9 * dashboardDeckScale, weight: .bold, design: .rounded))
+                                .tracking(1.1)
+                            Circle()
+                                .fill(burnRailIsLive ? DesignSystem.Colors.success : dashboardChromeInk.hairline)
+                                .frame(width: 5, height: 5)
+                        }
+                        .foregroundStyle(dashboardChromeInk.subtle)
 
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text(settingsManager.formatUsageMetric(
-                            cost: totalCostForTimeRange,
-                            tokens: totalTokensForTimeRange
-                        ))
-                        .font(.system(size: 27, weight: .bold, design: .rounded))
-                        .monospacedDigit()
-                        .foregroundStyle(DesignSystem.Colors.textPrimary)
-                        .contentTransition(.numericText())
+                        HStack(alignment: .firstTextBaseline, spacing: 5) {
+                            Text(settingsManager.formatUsageMetric(
+                                cost: totalCostForTimeRange,
+                                tokens: totalTokensForTimeRange
+                            ))
+                            .font(.system(size: 22 * dashboardDeckScale, weight: .bold, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(dashboardChromeInk.primary)
+                            .contentTransition(.numericText())
 
-                        if let delta = burnRailDeltaPercent {
-                            Text(delta.formatted(.number.precision(.fractionLength(1)).sign(strategy: .always())) + "%")
-                                .font(.system(size: 11, weight: .bold, design: .rounded))
-                                .foregroundStyle(delta <= 0 ? DesignSystem.Colors.success : DesignSystem.Colors.amber)
+                            if let delta = burnRailDeltaPercent {
+                                Text(delta.formatted(.number.precision(.fractionLength(1)).sign(strategy: .always())) + "%")
+                                    .font(.system(size: 10.5 * dashboardDeckScale, weight: .bold, design: .rounded))
+                                    .foregroundStyle(delta <= 0 ? DesignSystem.Colors.success : DesignSystem.Colors.amber)
+                            }
                         }
                     }
-                }
-                .frame(minWidth: 122, alignment: .leading)
+                    .frame(minWidth: 112 * dashboardDeckScale, alignment: .leading)
 
-                DashboardIslandSparkline(
-                    samples: burnRailSparkline,
-                    range: burnRailDisplayRange,
-                    timeRange: selectedTimeRange
-                )
-                    .frame(minWidth: 220, maxWidth: .infinity)
-                    .frame(height: 74)
+                    DashboardIslandSparkline(
+                        samples: burnRailSparkline,
+                        range: burnRailDisplayRange,
+                        timeRange: selectedTimeRange
+                    )
+                        .frame(minWidth: 200, maxWidth: .infinity)
+                        // The sparkline is the one element that has real room to
+                        // give back: at 74pt it set the deck's floor by itself.
+                        .frame(height: max(30, dashboardDeckHeight - 32))
                 }
             }
             .buttonStyle(.plain)
-            .frame(minWidth: 360, maxWidth: .infinity)
+            .frame(minWidth: 340, maxWidth: .infinity)
             .help("Open Charts — the full analytics gallery")
             .accessibilityLabel("Open Charts")
             .accessibilityIdentifier(OBBAccessibilityID.dashboardDeckChartButton)
@@ -314,20 +508,25 @@ extension DashboardView {
             Button {
                 showHeroPopover.toggle()
             } label: {
-                VStack(spacing: 2) {
+                HStack(spacing: 4) {
                     Text(selectedTimeRange.displayName.uppercased())
-                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .font(.system(size: 9.5 * dashboardDeckScale, weight: .bold, design: .rounded))
+                        .tracking(0.6)
                     Image(systemName: "chevron.down")
                         .font(.system(size: 7, weight: .bold))
                 }
-                .foregroundStyle(DesignSystem.Colors.textSecondary)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
+                .foregroundStyle(dashboardChromeInk.secondary)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 5)
                 .background(
-                    RoundedRectangle(cornerRadius: 11, style: .continuous)
-                        .fill(DesignSystem.Colors.surface.opacity(0.52))
+                    Capsule(style: .continuous)
+                        .fill(DesignSystem.Colors.surface.opacity(0.4))
                 )
-                .contentShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                .overlay(
+                    Capsule(style: .continuous)
+                        .stroke(dashboardChromeInk.hairline.opacity(0.6), lineWidth: 0.5)
+                )
+                .contentShape(Capsule(style: .continuous))
             }
             .buttonStyle(.plain)
             .help("Change Burn chart range or unit")
@@ -337,30 +536,26 @@ extension DashboardView {
                     .frame(width: 240)
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 9)
-        .frame(minWidth: 440, maxWidth: .infinity)
-        .background(dashboardDeckInsetSurface(cornerRadius: 24, opacity: 0.62))
+        .padding(.horizontal, 14 * dashboardDeckScale)
+        .padding(.vertical, 5)
+        .frame(minWidth: 420, maxWidth: .infinity)
+        .background(insetShape.fill(DesignSystem.Colors.surface.opacity(0.3)))
         .overlay {
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(DesignSystem.Colors.ember.opacity(0.24), lineWidth: 0.75)
+            insetShape.stroke(DesignSystem.Colors.ember.opacity(0.2), lineWidth: 0.75)
         }
-        .clipShape(
-            RoundedRectangle(cornerRadius: 24, style: .continuous),
-            style: FillStyle(antialiased: true)
-        )
-        .contentShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .clipShape(insetShape, style: FillStyle(antialiased: true))
+        .contentShape(insetShape)
     }
 
     private var dashboardDeckActions: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 6) {
             Button(action: runScan) {
                 Image(systemName: "arrow.triangle.2.circlepath")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(isScanning ? DesignSystem.Colors.ember : DesignSystem.Colors.textSecondary)
+                    .font(.system(size: 12 * dashboardDeckScale, weight: .semibold))
+                    .foregroundStyle(isScanning ? DesignSystem.Colors.ember : dashboardChromeInk.icon)
                     .rotationEffect(.degrees(isScanning ? 360 : 0))
                     .animation(isScanning ? .linear(duration: 0.8).repeatForever(autoreverses: false) : .default, value: isScanning)
-                    .frame(width: 34, height: 34)
+                    .frame(width: 28 * dashboardDeckScale, height: 28 * dashboardDeckScale)
             }
             .buttonStyle(.plain)
             .disabled(isScanning || aggregator == nil)
@@ -375,33 +570,31 @@ extension DashboardView {
 
     private var dashboardDeckStatusRail: some View {
         let scale = dashboardStatusRailControlScale
-        return HStack(spacing: 12 * scale) {
+        let ink = dashboardChromeInk
+        return HStack(spacing: 10 * scale) {
             Circle()
                 .fill(DesignSystem.Colors.success)
-                .frame(width: 7 * scale, height: 7 * scale)
+                .frame(width: 6 * scale, height: 6 * scale)
             Text(mainRoute.title(activeChatBackend: chatController.chatBackend))
-                .font(.system(size: 12 * scale, weight: .semibold, design: .rounded))
+                .font(.system(size: 11.5 * scale, weight: .semibold, design: .rounded))
+                .foregroundStyle(ink.primary)
             Text("Updated")
-                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .foregroundStyle(ink.subtle)
             if let lastRefresh = dataStore.lastRefresh {
                 Text(lastRefresh, style: .time)
                     .monospacedDigit()
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .foregroundStyle(ink.secondary)
             } else {
                 Text("Waiting")
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .foregroundStyle(ink.subtle)
             }
 
-            Divider()
-                .frame(height: 22 * scale)
-                .opacity(0.35)
+            dashboardRailHairline(scale: scale)
 
             Text(isScanning ? "Mining session logs" : "Live usage ready")
-                .foregroundStyle(isScanning ? DesignSystem.Colors.ember : DesignSystem.Colors.textMuted)
+                .foregroundStyle(isScanning ? DesignSystem.Colors.ember : ink.subtle)
 
-            Divider()
-                .frame(height: 22 * scale)
-                .opacity(0.35)
+            dashboardRailHairline(scale: scale)
 
             DashboardLayoutSwitcher(selection: dashboardDeckLayoutBinding, scale: scale)
                 .accessibilityIdentifier(OBBAccessibilityID.dashboardLayoutSwitcher)
@@ -424,43 +617,12 @@ extension DashboardView {
                     }
                 },
                 compact: true,
-                scale: scale
+                scale: scale,
+                surfaceScheme: dashboardChromeColorScheme
             )
             .layoutPriority(2)
 
             Spacer(minLength: 12)
-
-            VStack(alignment: .trailing, spacing: 1) {
-                Text(selectedTimeRange.displayName.uppercased())
-                    .font(.system(size: 10 * scale, weight: .bold, design: .rounded))
-                    .tracking(0.8)
-                Text(isScanning ? "Refreshing spend…" : "Spend is live")
-                    .font(.system(size: 9.5 * scale, design: .rounded))
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
-            }
-            .foregroundStyle(DesignSystem.Colors.textSecondary)
-
-            Button(action: runScan) {
-                Image(systemName: "arrow.triangle.2.circlepath")
-                    .font(.system(size: 11 * scale, weight: .semibold))
-                    .foregroundStyle(isScanning ? DesignSystem.Colors.ember : DesignSystem.Colors.textSecondary)
-                    .rotationEffect(.degrees(isScanning ? 360 : 0))
-                    .animation(
-                        isScanning
-                            ? .linear(duration: 0.8).repeatForever(autoreverses: false)
-                            : .default,
-                        value: isScanning
-                    )
-                    .frame(width: 28 * scale, height: 28 * scale)
-                    .contentShape(Circle())
-            }
-            .buttonStyle(.plain)
-            .disabled(isScanning || aggregator == nil)
-            .help(isScanning ? "Refreshing token spend" : "Refresh token spend")
-
-            Divider()
-                .frame(height: 22 * scale)
-                .opacity(0.35)
 
             BurnRailAppearanceQuickMenu(
                 settingsManager: settingsManager,
@@ -470,61 +632,89 @@ extension DashboardView {
                 scale: scale
             )
         }
-        .font(.system(size: 11.5 * scale, design: .rounded))
-        .padding(.horizontal, 18)
+        .font(.system(size: 11 * scale, design: .rounded))
+        .padding(.horizontal, 16)
         .frame(height: dashboardStatusRailHeight)
-        .background(dashboardDeckSurface(cornerRadius: dashboardStatusRailHeight / 2, opacity: 0.78))
-        .overlay {
-            RoundedRectangle(cornerRadius: dashboardStatusRailHeight / 2, style: .continuous)
-                .stroke(DesignSystem.Colors.border.opacity(0.38), lineWidth: 0.6)
-        }
         .overlay(alignment: .bottom) {
-            dashboardStatusRailResizeHandle
+            dashboardDeckResizeHandle
         }
-        .clipShape(
-            RoundedRectangle(cornerRadius: dashboardStatusRailHeight / 2, style: .continuous),
-            style: FillStyle(antialiased: true)
-        )
+    }
+
+    /// A hairline separator that reads through the chrome ink rather than the
+    /// system `Divider`, which paints its own opaque grey and shows as a bar
+    /// over a live kernel.
+    private func dashboardRailHairline(scale: CGFloat) -> some View {
+        Rectangle()
+            .fill(dashboardChromeInk.hairline)
+            .frame(width: 1, height: 16 * scale)
+            .opacity(0.55)
     }
 
     private var dashboardStatusRailHeight: CGFloat {
-        CGFloat(min(max(storedDashboardStatusRailHeight, 46), 82))
+        CGFloat(min(max(storedDashboardStatusRailHeight, 36), 64))
     }
 
     private var dashboardStatusRailControlScale: CGFloat {
-        min(max(dashboardStatusRailHeight / 52, 0.92), 1.35)
+        min(max(dashboardStatusRailHeight / 40, 0.9), 1.3)
     }
 
-    private var dashboardStatusRailResizeHandle: some View {
-        Capsule(style: .continuous)
-            .fill(DesignSystem.Colors.textMuted.opacity(0.48))
-            .frame(width: 42, height: 3)
-            .frame(width: 96, height: 13)
+    /// One handle for the whole deck.
+    ///
+    /// Two independent handles meant the two bars drifted out of proportion with
+    /// each other, and the upper one had no handle at all. The drag moves the
+    /// deck row at full rate and the rail at half, because the rail's range is
+    /// half as wide — so both hit their stops together and the pair keeps its
+    /// ratio the whole way.
+    private var dashboardDeckResizeHandle: some View {
+        let railRate = 0.5
+        return Capsule(style: .continuous)
+            .fill(dashboardChromeInk.subtle.opacity(0.4))
+            .frame(width: 34, height: 2.5)
+            .frame(width: 96, height: 12)
             .contentShape(Rectangle())
             .gesture(
                 DragGesture(minimumDistance: 1)
                     .onChanged { value in
-                        if dashboardStatusRailResizeOrigin == nil {
+                        if dashboardDeckResizeOrigin == nil {
+                            dashboardDeckResizeOrigin = storedDashboardDeckHeight
                             dashboardStatusRailResizeOrigin = storedDashboardStatusRailHeight
                         }
-                        let origin = dashboardStatusRailResizeOrigin ?? storedDashboardStatusRailHeight
-                        storedDashboardStatusRailHeight = min(max(origin + value.translation.height, 46), 82)
+                        let deckOrigin = dashboardDeckResizeOrigin ?? storedDashboardDeckHeight
+                        let railOrigin = dashboardStatusRailResizeOrigin ?? storedDashboardStatusRailHeight
+                        resizeDeck(
+                            deckHeight: deckOrigin + value.translation.height,
+                            railHeight: railOrigin + value.translation.height * railRate
+                        )
                     }
-                    .onEnded { _ in dashboardStatusRailResizeOrigin = nil }
+                    .onEnded { _ in
+                        dashboardDeckResizeOrigin = nil
+                        dashboardStatusRailResizeOrigin = nil
+                    }
             )
-            .accessibilityLabel("Resize shortcut bar")
-            .accessibilityHint("Drag vertically to resize the bar and its controls")
+            .onHover { NSCursor.resizeUpDown.set(); if !$0 { NSCursor.arrow.set() } }
+            .accessibilityLabel("Resize toolbar")
+            .accessibilityHint("Drag vertically to resize both toolbar rows and their controls")
             .accessibilityAdjustableAction { direction in
-                let delta = direction == .increment ? 4.0 : -4.0
-                storedDashboardStatusRailHeight = min(max(storedDashboardStatusRailHeight + delta, 46), 82)
+                let delta = direction == .increment ? 6.0 : -6.0
+                resizeDeck(
+                    deckHeight: storedDashboardDeckHeight + delta,
+                    railHeight: storedDashboardStatusRailHeight + delta * railRate
+                )
             }
+    }
+
+    private func resizeDeck(deckHeight: Double, railHeight: Double) {
+        storedDashboardDeckHeight = min(max(deckHeight, 60), 116)
+        storedDashboardStatusRailHeight = min(max(railHeight, 36), 64)
     }
 
     private var dashboardDeckLayoutBinding: Binding<DashboardLayout> {
         Binding(
             get: { settingsManager.dashboardLayout },
             set: { newValue in
-                guard newValue != settingsManager.dashboardLayout else { return }
+                // No route change: Home and Overview both re-render themselves
+                // through the layout, so yanking the user to Overview to prove
+                // the switcher worked would be the wrong kind of feedback.
                 settingsManager.dashboardLayout = newValue
                 Analytics.shared.track(.settingsChanged, [
                     "setting_key": "dashboard_layout",
@@ -533,26 +723,6 @@ extension DashboardView {
                 ])
             }
         )
-    }
-
-    @ViewBuilder
-    private func dashboardDeckSurface(cornerRadius: CGFloat, opacity: Double) -> some View {
-        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-        if #available(macOS 26.0, *) {
-            shape
-                .fill(.clear)
-                .liquidGlassEffect(.regular, in: shape)
-        } else {
-            ZStack {
-                shape.fill(.ultraThinMaterial)
-                shape.fill(DesignSystem.Colors.surface.opacity(opacity * 0.55))
-            }
-        }
-    }
-
-    private func dashboardDeckInsetSurface(cornerRadius: CGFloat, opacity: Double) -> some View {
-        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-            .fill(DesignSystem.Colors.surface.opacity(opacity))
     }
 
     // MARK: - BURN hero with range + unit popover
@@ -587,7 +757,7 @@ extension DashboardView {
             Text("Time Range")
                 .font(.system(size: 9.5, weight: .bold, design: .rounded))
                 .tracking(1.0)
-                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
 
             VStack(spacing: 2) {
                 ForEach(TimeRange.allCases) { range in
@@ -625,7 +795,7 @@ extension DashboardView {
                 Text("Unit")
                     .font(.system(size: 9.5, weight: .bold, design: .rounded))
                     .tracking(1.0)
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
                 Spacer()
                 BurnRailUnitToggle(
                     unit: Binding(
@@ -641,70 +811,39 @@ extension DashboardView {
         .padding(DesignSystem.Spacing.md)
     }
 
-    // MARK: - Overflow menu (Appearance · Import · Recount · Settings)
+    // MARK: - Overflow menu (Sidebar · Import · Recount · Settings)
 
     private var commandDeckOverflow: some View {
         Menu {
-            Section("Appearance") {
-                ForEach(AppearanceMode.allCases, id: \.self) { mode in
-                    Button {
-                        settingsManager.appearanceMode = mode
-                    } label: {
-                        if settingsManager.appearanceMode == mode {
-                            Label(mode.quickMenuLabel, systemImage: "checkmark")
-                        } else {
-                            Text(mode.quickMenuLabel)
-                        }
-                    }
-                }
+            Button {
+                toggleDashboardSidebar()
+            } label: {
+                Label(
+                    isDashboardSidebarVisible ? "Hide Sidebar" : "Show Sidebar",
+                    systemImage: "sidebar.left"
+                )
             }
 
-            Section("App Skin") {
-                ForEach(AppSkin.allCases, id: \.self) { skin in
-                    Button {
-                        settingsManager.appearanceSkin = skin
-                    } label: {
-                        if settingsManager.appearanceSkin == skin {
-                            Label(skin.quickMenuLabel, systemImage: "checkmark")
-                        } else {
-                            Text(skin.quickMenuLabel)
-                        }
-                    }
-                }
-            }
+            Button("Import Sessions…") { runScan() }
+                .disabled(isScanning)
 
-            Section {
-                Button {
-                    toggleDashboardSidebar()
-                } label: {
-                    Label(
-                        isDashboardSidebarVisible ? "Hide Sidebar" : "Show Sidebar",
-                        systemImage: "sidebar.left"
-                    )
-                }
+            Button("Recount Totals") { runRecount() }
+                .disabled(!canRunRecount)
 
-                Button("Import Sessions") { runScan() }
-                    .disabled(isScanning)
+            Divider()
 
-                Button("Recount Totals") { runRecount() }
-                    .disabled(!canRunRecount)
-
-                Divider()
-
-                Button("Settings…") { presentSettings() }
-                    .accessibilityIdentifier(OBBAccessibilityID.dashboardSettingsButton)
-            }
+            Button("Settings…") { presentSettings() }
+                .accessibilityIdentifier(OBBAccessibilityID.dashboardSettingsButton)
         } label: {
             HStack(spacing: 4) {
-                Image(systemName: "paintbrush.pointed.fill")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(isScanning ? DesignSystem.Colors.ember : DesignSystem.Colors.textSecondary)
-                    .rotationEffect(.degrees(isScanning ? -12 : 0))
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 11.5 * dashboardDeckScale, weight: .bold))
+                    .foregroundStyle(isScanning ? DesignSystem.Colors.ember : dashboardChromeInk.icon)
             }
-            .frame(width: 28, height: 24)
+            .frame(width: 26 * dashboardDeckScale, height: 22 * dashboardDeckScale)
             .background(
                 Capsule(style: .continuous)
-                    .fill(DesignSystem.Colors.surface.opacity(0.4))
+                    .fill(DesignSystem.Colors.surface.opacity(0.3))
             )
             .accessibilityIdentifier(OBBAccessibilityID.dashboardOverflowButton)
             .overlay(
@@ -716,9 +855,9 @@ extension DashboardView {
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
-        .help("Customize appearance and more actions")
-        .accessibilityLabel("Customize appearance")
-        .accessibilityHint("Choose an appearance, app skin, or dashboard action")
+        .help("More actions")
+        .accessibilityLabel("More actions")
+        .accessibilityHint("Toggle sidebar, import sessions, recount totals, or open settings")
     }
 }
 
@@ -726,6 +865,7 @@ private struct DashboardIslandSparkline: View {
     let samples: [Double]
     let range: ClosedRange<Date>
     let timeRange: TimeRange
+    @Environment(\.backdropInk) private var ink
 
     private var points: [DashboardIslandSparklinePoint] {
         let denominator = max(samples.count - 1, 1)
@@ -794,7 +934,7 @@ private struct DashboardIslandSparkline: View {
                     AxisValueLabel(anchor: labelAnchor(for: date)) {
                         Text(label(for: date))
                             .font(.system(size: 8.5, weight: .medium, design: .rounded))
-                            .foregroundStyle(DesignSystem.Colors.textMuted.opacity(0.9))
+                            .foregroundStyle(ink.subtle)
                             .monospacedDigit()
                     }
                 }
@@ -898,12 +1038,18 @@ struct DashboardQuickAccessRail: View {
     let onChatBackend: (ChatBackendID) -> Void
     var compact = false
     var scale: CGFloat = 1
+    /// Tone of the plate the rail is drawn on, forwarded to the chips so brand
+    /// glyphs resolve their contrast treatment against the real surface.
+    var surfaceScheme: ColorScheme = .dark
 
     @AppStorage(Self.storageKey) private var storedItems = ""
     @AppStorage(Self.widthKey) private var storedCompactWidth = 520.0
     @State private var items: [DashboardQuickAccessItem] = []
     @State private var isEditing = false
     @State private var resizeOrigin: Double?
+    /// Compact is the in-chrome placement, so it inherits the deck's resolved
+    /// ink rather than reaching for tokens that assume a static canvas.
+    @Environment(\.backdropInk) private var ink
 
     var body: some View {
         HStack(spacing: 8 * scale) {
@@ -915,9 +1061,13 @@ struct DashboardQuickAccessRail: View {
             }
 
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 7) {
+                HStack(spacing: 6) {
                     ForEach(items) { item in
-                        DashboardQuickAccessChip(item: item, scale: scale) {
+                        DashboardQuickAccessChip(
+                            item: item,
+                            scale: scale,
+                            surfaceScheme: surfaceScheme
+                        ) {
                             activate(item)
                         }
                     }
@@ -929,13 +1079,14 @@ struct DashboardQuickAccessRail: View {
                 isEditing = true
             } label: {
                 Image(systemName: "plus")
-                    .font(.system(size: 11 * scale, weight: .bold))
-                    .frame(width: 25 * scale, height: 25 * scale)
+                    .font(.system(size: 10.5 * scale, weight: .bold))
+                    .foregroundStyle(compact ? ink.icon : DesignSystem.Colors.textSecondary)
+                    .frame(width: 22 * scale, height: 22 * scale)
             }
             .buttonStyle(.plain)
             .background(railCapsuleFill)
-            .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).stroke(DesignSystem.Colors.border.opacity(0.55), lineWidth: 0.5))
-            .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(strokeInk.opacity(0.55), lineWidth: 0.5))
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             .help("Customize quick access")
             .accessibilityLabel("Customize quick access")
             .accessibilityHint("Add, remove, or reorder shortcuts")
@@ -943,8 +1094,8 @@ struct DashboardQuickAccessRail: View {
             if compact {
                 Image(systemName: "arrow.left.and.right")
                     .font(.system(size: 8 * scale, weight: .bold))
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
-                    .frame(width: 13 * scale, height: 25 * scale)
+                    .foregroundStyle(ink.icon)
+                    .frame(width: 13 * scale, height: 22 * scale)
                     .contentShape(Rectangle())
                     .gesture(
                         DragGesture(minimumDistance: 1)
@@ -964,16 +1115,16 @@ struct DashboardQuickAccessRail: View {
                     }
             }
         }
-        .padding(.horizontal, (compact ? 5 : 14) * scale)
-        .padding(.vertical, (compact ? 4 : 7) * scale)
+        .padding(.horizontal, (compact ? 4 : 14) * scale)
+        .padding(.vertical, (compact ? 3 : 7) * scale)
         .frame(width: compact ? CGFloat(min(max(storedCompactWidth, 300), 760)) : nil)
         .frame(maxWidth: compact ? nil : .infinity)
         .background(railBackground)
         .clipShape(
-            RoundedRectangle(cornerRadius: 14, style: .continuous),
+            RoundedRectangle(cornerRadius: 12, style: .continuous),
             style: FillStyle(antialiased: true)
         )
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(DesignSystem.Colors.border.opacity(compact ? 0.32 : 0.4), lineWidth: 0.5))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(strokeInk.opacity(compact ? 0.32 : 0.4), lineWidth: 0.5))
         .onAppear { loadItemsIfNeeded() }
         .sheet(isPresented: $isEditing) {
             DashboardQuickAccessEditor(
@@ -1013,11 +1164,20 @@ struct DashboardQuickAccessRail: View {
         storedItems = json
     }
 
+    /// Hairlines follow the chrome ink when the rail is in the chrome, and the
+    /// design token when it is standalone.
+    private var strokeInk: Color {
+        compact ? ink.hairline : DesignSystem.Colors.border
+    }
+
     @ViewBuilder
     private var railBackground: some View {
-        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
         if compact {
-            shape.fill(DesignSystem.Colors.surface.opacity(0.44))
+            // Inside the chrome the deck plate is already the substrate, so the
+            // rail only needs a whisper to separate the chips from it. A second
+            // opaque slab here is what made the bar look like boxes in boxes.
+            shape.fill(DesignSystem.Colors.surface.opacity(0.26))
         } else if #available(macOS 26.0, *) {
             shape.fill(.clear).liquidGlassEffect(.regular, in: shape)
         } else {
@@ -1026,48 +1186,49 @@ struct DashboardQuickAccessRail: View {
     }
 
     private var railCapsuleFill: some ShapeStyle {
-        DesignSystem.Colors.surface.opacity(0.55)
+        DesignSystem.Colors.surface.opacity(compact ? 0.4 : 0.55)
     }
 }
 
 private struct DashboardQuickAccessChip: View {
     let item: DashboardQuickAccessItem
     var scale: CGFloat = 1
+    /// The tone of the plate this chip sits on, so brand glyphs pick the right
+    /// contrast treatment. Previously hardcoded `.dark` on the belief that the
+    /// deck is always dark glass — it is not, and in Light mode that inverted
+    /// every provider logo's contrast disc.
+    var surfaceScheme: ColorScheme = .dark
     let action: () -> Void
+    @Environment(\.backdropInk) private var ink
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 6) {
+            HStack(spacing: 5) {
                 if let provider {
-                    // The deck rail is always dark glass regardless of app
-                    // appearance, so declare a dark surface: dark brand glyphs
-                    // (Codex, Hermes, xAI…) get their contrast disc instead of
-                    // vanishing black-on-black, and asset-less providers fall
-                    // back to a light symbol rather than a dark brand colour.
                     ProviderLogoView(
                         provider: provider,
-                        size: 20 * scale,
+                        size: 18 * scale,
                         useFallbackColor: false,
-                        surfaceScheme: .dark
+                        surfaceScheme: surfaceScheme
                     )
                 } else {
                     Image(systemName: item.systemImage)
-                        .font(.system(size: 11 * scale, weight: .semibold))
-                        .frame(width: 20 * scale, height: 20 * scale)
-                        .background(DesignSystem.Colors.ember.opacity(0.16), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                        .font(.system(size: 10.5 * scale, weight: .semibold))
+                        .frame(width: 18 * scale, height: 18 * scale)
+                        .background(DesignSystem.Colors.ember.opacity(0.16), in: RoundedRectangle(cornerRadius: 5.5, style: .continuous))
                 }
 
                 if !isChatShortcut {
                     Text(displayTitle)
-                        .font(.system(size: 11.5 * scale, weight: .semibold, design: .rounded))
+                        .font(.system(size: 11 * scale, weight: .semibold, design: .rounded))
                         .lineLimit(1)
                 }
             }
-            .foregroundStyle(DesignSystem.Colors.textPrimary)
-            .padding(.horizontal, (isChatShortcut ? 4 : 8) * scale)
-            .padding(.vertical, 3 * scale)
-            .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(DesignSystem.Colors.surface.opacity(0.62)))
-            .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).stroke(DesignSystem.Colors.border.opacity(0.42), lineWidth: 0.5))
+            .foregroundStyle(ink.primary)
+            .padding(.horizontal, (isChatShortcut ? 3 : 7) * scale)
+            .padding(.vertical, 2.5 * scale)
+            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(DesignSystem.Colors.surface.opacity(0.44)))
+            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(ink.hairline.opacity(0.5), lineWidth: 0.5))
         }
         .buttonStyle(.plain)
         .help(item.subtitle)
@@ -1261,6 +1422,7 @@ extension DashboardMainRoute {
         case "overview": return .overview
         case "insights": return .insights
         case "charts": return .charts
+        case "recap": return .recap
         case "database": return .database
         case "projects": return .projects
         case "missions": return .missions

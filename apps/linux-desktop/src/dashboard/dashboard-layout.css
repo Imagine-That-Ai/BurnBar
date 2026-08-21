@@ -29,7 +29,9 @@
   padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-pill);
   cursor: pointer;
-  transition: color 120ms var(--motion-ease-standard), background 120ms var(--motion-ease-standard);
+  transition:
+    color calc(var(--motion-tick-ms) * 1ms) var(--motion-ease-settle),
+    background calc(var(--motion-tick-ms) * 1ms) var(--motion-ease-settle);
 }
 
 .dashboard-layout-switcher__btn:hover {
@@ -58,6 +60,9 @@
   flex-direction: column;
   gap: var(--space-4);
   min-height: 100%;
+  flex: 1;
+  container-type: inline-size;
+  container-name: dashboard-shell;
 }
 
 .dashboard-layout-shell__toolbar {
@@ -85,7 +90,12 @@
 .dashboard-layout-frame {
   display: grid;
   gap: var(--space-3);
-  min-height: 280px;
+  min-height: min(72vh, 44rem);
+  flex: 1;
+  align-items: stretch;
+  transition:
+    grid-template-columns calc(var(--motion-settle-response-ms) * 1ms) var(--motion-ease-settle),
+    gap calc(var(--motion-settle-response-ms) * 1ms) var(--motion-ease-settle);
 }
 
 .dashboard-layout-frame--classic {
@@ -93,29 +103,50 @@
 }
 
 .dashboard-layout-frame--aurora {
-  grid-template-columns: minmax(200px, 280px) 1fr;
+  grid-template-columns: minmax(200px, 280px) minmax(0, 1fr);
   grid-template-rows: 1fr auto;
 }
 
 .dashboard-layout-frame--nebula {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
   grid-template-rows: auto auto;
 }
 
 .dashboard-layout-frame--constellation {
-  grid-template-columns: 1fr;
-  justify-items: center;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: stretch;
   text-align: center;
 }
 
 .dashboard-layout-frame--cockpit {
-  grid-template-columns: minmax(180px, 240px) 1fr 1fr;
+  grid-template-columns: minmax(180px, 240px) minmax(0, 1fr) minmax(0, 1fr);
   grid-template-rows: auto 1fr;
 }
 
 .dashboard-layout-frame--atelier {
   grid-template-columns: 1fr;
   place-items: stretch;
+}
+
+.dashboard-layout-frame--stream {
+  grid-template-columns: 1fr;
+  grid-auto-rows: minmax(0, auto);
+}
+
+.dashboard-layout-frame--atlas {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.dashboard-layout-frame:has(.living-layout) {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.dashboard-layout-frame:has(.living-layout) > * {
+  min-height: 0;
+  min-width: 0;
+  height: 100%;
 }
 
 .dashboard-layout-panel {
@@ -160,13 +191,18 @@
     color-mix(in srgb, var(--color-glass-bg-elevated) 40%, transparent) 100%
   );
   background-size: 200% 100%;
-  animation: dashboard-skeleton-shimmer 1.6s var(--motion-ease-standard) infinite;
+  animation: dashboard-skeleton-shimmer calc(var(--motion-pulse-period-ms) * 1ms) var(--motion-ease-standard) infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .dashboard-layout-panel__shimmer {
     animation: none;
-    opacity: 0.55;
+    opacity: var(--motion-pulse-floor);
+  }
+
+  .dashboard-layout-switcher__btn,
+  .dashboard-layout-frame {
+    transition: opacity calc(var(--motion-reduced-ms) * 1ms) ease;
   }
 }
 
@@ -207,7 +243,54 @@
 @media (max-width: 720px) {
   .dashboard-layout-frame--aurora,
   .dashboard-layout-frame--nebula,
-  .dashboard-layout-frame--cockpit {
+  .dashboard-layout-frame--cockpit,
+  .dashboard-layout-frame--atlas,
+  .dashboard-layout-frame--constellation,
+  .dashboard-layout-frame--classic,
+  .dashboard-layout-frame--atelier,
+  .dashboard-layout-frame--stream {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (min-width: 721px) and (max-width: 1079px) {
+  .dashboard-layout-frame--aurora,
+  .dashboard-layout-frame--cockpit,
+  .dashboard-layout-frame--atlas {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .dashboard-layout-frame--nebula {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+  }
+}
+
+@media (min-width: 1080px) {
+  .dashboard-layout-frame--cockpit {
+    grid-template-columns: minmax(180px, 240px) minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
+@container dashboard-shell (max-width: 720px) {
+  .dashboard-layout-frame--aurora,
+  .dashboard-layout-frame--nebula,
+  .dashboard-layout-frame--cockpit,
+  .dashboard-layout-frame--atlas,
+  .dashboard-layout-frame--constellation {
+    grid-template-columns: 1fr;
+  }
+}
+
+@container dashboard-shell (min-width: 721px) and (max-width: 1079px) {
+  .dashboard-layout-frame--atlas,
+  .dashboard-layout-frame--aurora,
+  .dashboard-layout-frame--cockpit {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
+@container dashboard-shell (min-width: 1080px) {
+  .dashboard-layout-frame--cockpit {
+    grid-template-columns: minmax(180px, 240px) minmax(0, 1fr) minmax(0, 1fr);
   }
 }

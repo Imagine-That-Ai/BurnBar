@@ -23,6 +23,7 @@ export const PROVIDER_GLYPHS: ProviderGlyph[] = [
   { id: 'windsurf', label: 'Windsurf', accent: '#8b5cf6', logo: '/provider-logos/windsurf.png' },
   { id: 'goose', label: 'Goose', accent: '#8b5cf6', logo: '/provider-logos/goose.png' },
   { id: 'openclaw', label: 'OpenClaw', accent: '#8b5cf6', logo: '/provider-logos/openclaw.png' },
+  { id: 'fx', label: 'fx', accent: '#a1a1aa', logo: '/provider-logos/fx.png' },
 ];
 
 /** Find a glyph by provider id, with graceful fallback */

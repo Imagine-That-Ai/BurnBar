@@ -37,6 +37,7 @@ extension ChatSessionController {
         case .openClaude: return chatModelOpenClaude
         case .omp: return chatModelOMP
         case .junie: return chatModelJunie
+        case .fx: return chatModelFx
         case .grok, .kimi: return chatModelJunie
         }
     }
@@ -55,6 +56,7 @@ extension ChatSessionController {
         case .openClaude: chatModelOpenClaude = value
         case .omp: chatModelOMP = value
         case .junie: chatModelJunie = value
+        case .fx: chatModelFx = value
         case .grok, .kimi: chatModelJunie = value
         }
     }
@@ -103,6 +105,7 @@ extension ChatSessionController {
         case .openClaude: return .openClaude
         case .omp: return .omp
         case .junie: return .junie
+        case .fx: return .fx
         case .grok: return .grok
         case .kimi: return .grok
         }
@@ -164,6 +167,11 @@ extension ChatSessionController {
             return chatModelOMP.trimmingCharacters(in: .whitespacesAndNewlines)
         case .junie, .grok, .kimi:
             return chatModelJunie.trimmingCharacters(in: .whitespacesAndNewlines)
+        case .fx:
+            // fx has no `--model` flag; the selection is only a picker
+            // placeholder. Return it trimmed so the mirror/analytics rows
+            // stay consistent with the other CLI backends.
+            return chatModelFx.trimmingCharacters(in: .whitespacesAndNewlines)
         }
     }
 
@@ -213,8 +221,7 @@ extension ChatSessionController {
             return PromptTokenArbiter.estimateProseTokens(HermesSystemPromptBuilder.atomDirective)
         case .piAgent:
             return PromptTokenArbiter.estimateProseTokens(piSystemPromptWrapper(instanceID: piAgentInstanceID))
-        case .openclaw, .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp, .junie,
-             .grok, .kimi:
+        case .openclaw, .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp, .junie, .fx, .grok, .kimi:
             return 0
         }
     }
@@ -227,8 +234,7 @@ extension ChatSessionController {
             return openClawGatewayModels
         case .piAgent:
             return piAgentGatewayModels
-        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp, .junie,
-             .grok, .kimi:
+        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp, .junie, .fx, .grok, .kimi:
             return []
         }
     }
@@ -693,6 +699,7 @@ extension ChatSessionController {
         completedFusionSessionToken = nil
         selectedContext = nil
         conversationJumpTargets = []
+        fxResumeSessionID = nil
         revokeDesktopControl()
 
         persistActiveThreadSlot()

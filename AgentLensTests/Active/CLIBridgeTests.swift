@@ -43,6 +43,7 @@ final class CLIBridgeTests: XCTestCase {
         XCTAssertEqual(exe("oh-my-pi"), "omp")
         XCTAssertEqual(exe("hermes"), "hermes")
         XCTAssertEqual(exe("pi"), "pi")
+        XCTAssertEqual(exe("fx"), "fx")
         XCTAssertEqual(exe("ollama"), "zsh")
     }
 
@@ -1798,6 +1799,81 @@ final class CLIBridgeTests: XCTestCase {
             [.toolUse(name: "Bash", detail: "swift test --package-path OpenBurnBarCore")]
         )
         XCTAssertNil(result.error)
+    }
+
+    // MARK: - fx ask --json parser
+
+    func test_fxAskJSONParser_emitsSessionIDTextAndToolCalls() {
+        var parser = FxAskJSONParser()
+        let result = parser.events(fromLine: #"""
+        {"output":"Done.","exit_code":0,"model":"anthropic/claude-sonnet-4","session_id":"1770000000000-1770000000000000000-a1b2c3d4e5f60718","steps":2,"tool_calls":[{"name":"Read","status":"ok"},{"name":"Bash","status":"failed","detail":"exit 1"}]}
+        """#)
+        XCTAssertNil(result.error)
+        XCTAssertEqual(result.events.first, .sessionID("1770000000000-1770000000000000000-a1b2c3d4e5f60718"))
+        XCTAssertTrue(result.events.contains(.text("Done.")))
+        XCTAssertTrue(result.events.contains(.toolUse(name: "Read", detail: nil)))
+        XCTAssertTrue(result.events.contains(.toolResult(name: "Bash", detail: "exit 1")))
+    }
+
+    func test_fxAskJSONParser_buffersMultiLineObject() {
+        var parser = FxAskJSONParser()
+        // The closing quote is part of the fragment: `#"…"#` ends at the first `"#`,
+        // so `#"{"output":"hello"#` silently drops it and the buffer becomes
+        // `{"output":"hello\n, …}` — a raw newline inside a JSON string, which
+        // JSONSerialization rightly refuses. The parser was never at fault.
+        let first = parser.events(fromLine: #"{"output":"hello""#)
+        XCTAssertTrue(first.events.isEmpty)
+        XCTAssertNil(first.error)
+        let second = parser.events(fromLine: #", "session_id":"sess-1"}"#)
+        XCTAssertNil(second.error)
+        XCTAssertEqual(second.events.first, .sessionID("sess-1"))
+        XCTAssertTrue(second.events.contains(.text("hello")))
+    }
+
+    func test_fxAskJSONParser_surfacesErrorField() {
+        var parser = FxAskJSONParser()
+        let result = parser.events(fromLine: #"{"error":"fx is not authenticated"}"#)
+        guard case .fxError(let message)? = result.error else {
+            XCTFail("Expected fxError, got \(String(describing: result.error))")
+            return
+        }
+        XCTAssertEqual(message, "fx is not authenticated")
+        XCTAssertTrue(result.events.isEmpty)
+    }
+
+    func test_fxAskJSONParser_fallsBackToRawBufferWhenStructuredButEmpty() {
+        var parser = FxAskJSONParser()
+        let result = parser.events(fromLine: #"{"output":"","exit_code":0}"#)
+        XCTAssertNil(result.error)
+        XCTAssertEqual(result.events, [.text(#"{"output":"","exit_code":0}"#)])
+    }
+
+    func test_fxAskJSONParser_ignoresLinesAfterEmission() {
+        var parser = FxAskJSONParser()
+        _ = parser.events(fromLine: #"{"output":"done"}"#)
+        let trailing = parser.events(fromLine: #"{"output":"second"}"#)
+        XCTAssertTrue(trailing.events.isEmpty)
+        XCTAssertNil(trailing.error)
+    }
+
+    func test_fxAskJSONParser_flushesPlainTextAtEOF() {
+        var parser = FxAskJSONParser()
+        let partial = parser.events(fromLine: "fx needs authentication; run fx login")
+        XCTAssertTrue(partial.events.isEmpty)
+
+        let final = parser.finish()
+        XCTAssertNil(final.error)
+        XCTAssertEqual(final.events, [.text("fx needs authentication; run fx login")])
+        XCTAssertTrue(parser.finish().events.isEmpty, "EOF flush must be idempotent")
+    }
+
+    func test_fxAskJSONParser_flushesTruncatedJSONAtEOF() {
+        var parser = FxAskJSONParser()
+        _ = parser.events(fromLine: #"{"output":"unfinished"#)
+
+        let final = parser.finish()
+        XCTAssertNil(final.error)
+        XCTAssertEqual(final.events, [.text(#"{"output":"unfinished"#)])
     }
 
     func test_openAICompatibleSSEParser_extractsUsageToolAndText() {

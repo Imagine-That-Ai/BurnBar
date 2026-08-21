@@ -167,16 +167,16 @@ final class HermesRelayContractTests: XCTestCase {
 
     func testResumeTargetCatalogMatchesLaunchBrief() {
         let targets = CLIAgentResumeTarget.allCases
-        XCTAssertEqual(targets.count, 10)
+        XCTAssertEqual(targets.count, 11)
         // Canonical wire ids must equal the daemon's `normalizeProvider`
         // output so `targetRuntime` round-trips unchanged.
         XCTAssertEqual(
             targets.map(\.wireID),
-            ["claude_code", "codex", "droid", "forge", "antigravity", "grok", "cursor_agent", "opencode", "gemini", "junie"]
+            ["claude_code", "codex", "droid", "forge", "antigravity", "grok", "cursor_agent", "opencode", "gemini", "junie", "fx"]
         )
         XCTAssertEqual(
             targets.map(\.displayName),
-            ["Claude Code", "Codex", "Droid", "Forge", "Antigravity", "Grok", "Cursor Agent", "OpenCode", "Gemini CLI", "Junie"]
+            ["Claude Code", "Codex", "Droid", "Forge", "Antigravity", "Grok", "Cursor Agent", "OpenCode", "Gemini CLI", "Junie", "fx"]
         )
     }
 
@@ -207,7 +207,8 @@ final class HermesRelayContractTests: XCTestCase {
             .antigravity: "antigravity",
             .grok: "grok",
             .cursorAgent: "cursor_agent",
-            .junie: "junie"
+            .junie: "junie",
+            .fx: "fx"
         ]
         for runtime in CLIAgentRuntime.allCases {
             XCTAssertEqual(runtime.canonicalProviderID, expected[runtime])

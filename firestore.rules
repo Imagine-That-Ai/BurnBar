@@ -147,6 +147,8 @@ service cloud.firestore {
           "prime-agent",
           "primeagent",
           "primeAgent",
+          "vercel-fx",
+          "vercelfx",
           "xai"
         ];
     }
@@ -2824,9 +2826,10 @@ service cloud.firestore {
         }
 
         allow read: if ownsUserNamespace(userId);
-        // Client event writes are denied. Admin SDK
-        // (createCliAgentMission / appendCliAgentMissionEvent) owns 000001
-        // and later events.
+        // Client event creates are deliberately unmatched: the Admin SDK
+        // (createCliAgentMission / appendCliAgentMissionEvent) owns 000001 and
+        // later events, and an absent rule is Firestore's default deny, which
+        // costs no source or compiler budget the way a dead allow clause does.
         allow update: if validCliAgentMissionEventRewrapUpdate();
       }
     }

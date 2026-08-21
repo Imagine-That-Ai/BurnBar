@@ -4,36 +4,45 @@ using System.Collections.Generic;
 namespace OpenBurnBar.App.Dashboard.Layout;
 
 /// <summary>
-/// The named dashboard *layout* concept the overview renders — a C# port of the
-/// shared <c>DashboardLayout</c> enum in
-/// <c>OpenBurnBarCore/.../SharedModels/ThemePrimitives.swift</c>. The five "Liquid
-/// Glass Studio" concepts plus <see cref="Classic"/> (the information-dense scroll).
+/// The dashboard *layout* the overview renders — a C# port of the shared
+/// <c>DashboardLayout</c> enum in
+/// <c>OpenBurnBarCore/.../SharedModels/ThemePrimitives.swift</c>. Each case is a
+/// different way of reading the same data, not a different backdrop.
 /// </summary>
 /// <remarks>
 /// The <see cref="DashboardLayoutMeta.RawValue"/> strings and
 /// <see cref="DashboardLayoutMeta.StorageKey"/> are shared VERBATIM across
 /// platforms (same <c>@AppStorage("dashboardLayout")</c>), so a Windows selection
 /// round-trips through the same preference key a future iOS/Android build reads.
+/// The enum member names are the original design-phase codenames and are kept as
+/// opaque ids; <see cref="DashboardLayoutMeta.DisplayName"/> carries the names a
+/// user actually sees.
 /// </remarks>
 public enum DashboardLayout
 {
-    /// <summary>The information-dense vertical scroll overview. The safe fallback.</summary>
+    /// <summary>"Ledger" — one dense ordered scroll, no hero. The safe fallback.</summary>
     Classic,
 
-    /// <summary>Provider list + open hero swarm field + a bottom data band.</summary>
+    /// <summary>"Focus" — one number above the fold, everything else collapsed under it.</summary>
     Aurora,
 
-    /// <summary>Bento grid: provider panel, big burn card, framed swarm stage, data row.</summary>
+    /// <summary>"Bento" — equal-weight tile grid with no reading order.</summary>
     Nebula,
 
-    /// <summary>Centered command column: search/Hermes bar over a full swarm stage.</summary>
+    /// <summary>"Ask" — the question box leads and the page assembles from it.</summary>
     Constellation,
 
-    /// <summary>Mission-control grid: spend-share rail, four KPI tiles, routing swarm.</summary>
+    /// <summary>"Cockpit" — gauges, live routing, alarm states, cache hit rate.</summary>
     Cockpit,
 
-    /// <summary>Full-bleed kernel-forward hero + three floating glass stat cards. The default.</summary>
+    /// <summary>"Canvas" — full-bleed kernel, editorial headline, minimal numbers.</summary>
     Atelier,
+
+    /// <summary>"Stream" — a chronological river of sessions, spikes and alerts.</summary>
+    Stream,
+
+    /// <summary>"Atlas" — ranked side-by-side provider and model comparison with deltas.</summary>
+    Atlas,
 }
 
 /// <summary>
@@ -46,8 +55,14 @@ public static class DashboardLayoutMeta
     /// <summary><c>ApplicationData</c> / <c>@AppStorage</c> key — shared verbatim across platforms.</summary>
     public const string StorageKey = "dashboardLayout";
 
-    /// <summary>The out-of-box default — the design phase's "keeper".</summary>
-    public const DashboardLayout Default = DashboardLayout.Atelier;
+    /// <summary>
+    /// The out-of-box default. Focus rather than Canvas: Canvas is the ambient
+    /// second-display surface whose thesis is deliberately to show almost nothing,
+    /// which makes a poor first impression on a primary monitor. Focus opens on the
+    /// one thing that needs a decision. Kept in lockstep with Swift
+    /// (<c>DashboardLayout.current</c>) and TypeScript (<c>DEFAULT_DASHBOARD_LAYOUT</c>).
+    /// </summary>
+    public const DashboardLayout Default = DashboardLayout.Aurora;
 
     /// <summary>All layouts in canonical (switcher) order — matches Swift <c>allCases</c>.</summary>
     public static readonly IReadOnlyList<DashboardLayout> All = new[]
@@ -58,6 +73,8 @@ public static class DashboardLayoutMeta
         DashboardLayout.Constellation,
         DashboardLayout.Cockpit,
         DashboardLayout.Atelier,
+        DashboardLayout.Stream,
+        DashboardLayout.Atlas,
     };
 
     /// <summary>The stable persisted string. Renaming these orphans saved preferences.</summary>
@@ -69,30 +86,50 @@ public static class DashboardLayoutMeta
         DashboardLayout.Constellation => "constellation",
         DashboardLayout.Cockpit => "cockpit",
         DashboardLayout.Atelier => "atelier",
+        DashboardLayout.Stream => "stream",
+        DashboardLayout.Atlas => "atlas",
         _ => "atelier",
     };
 
     public static string DisplayName(this DashboardLayout layout) => layout switch
     {
-        DashboardLayout.Classic => "Classic",
-        DashboardLayout.Aurora => "Aurora",
-        DashboardLayout.Nebula => "Nebula",
-        DashboardLayout.Constellation => "Constellation",
+        DashboardLayout.Classic => "Ledger",
+        DashboardLayout.Aurora => "Focus",
+        DashboardLayout.Nebula => "Bento",
+        DashboardLayout.Constellation => "Ask",
         DashboardLayout.Cockpit => "Cockpit",
-        DashboardLayout.Atelier => "Atelier",
-        _ => "Atelier",
+        DashboardLayout.Atelier => "Canvas",
+        DashboardLayout.Stream => "Stream",
+        DashboardLayout.Atlas => "Atlas",
+        _ => "Canvas",
+    };
+
+    /// <summary>Who the layout is for, in one line. Mirrors the Swift <c>tagline</c>.</summary>
+    public static string Tagline(this DashboardLayout layout) => layout switch
+    {
+        DashboardLayout.Classic => "Every row, in order",
+        DashboardLayout.Aurora => "One number, front and centre",
+        DashboardLayout.Nebula => "Equal tiles, scan anywhere",
+        DashboardLayout.Constellation => "Ask first, results follow",
+        DashboardLayout.Cockpit => "Instruments and alarm states",
+        DashboardLayout.Atelier => "Ambient, for a second screen",
+        DashboardLayout.Stream => "What happened, newest first",
+        DashboardLayout.Atlas => "Side by side, with deltas",
+        _ => "Ambient, for a second screen",
     };
 
     /// <summary>The SF Symbol name — kept for cross-platform parity with the Swift enum.</summary>
     public static string SymbolName(this DashboardLayout layout) => layout switch
     {
-        DashboardLayout.Classic => "rectangle.grid.1x2",
-        DashboardLayout.Aurora => "sun.haze",
-        DashboardLayout.Nebula => "rectangle.grid.2x2",
-        DashboardLayout.Constellation => "sparkles",
+        DashboardLayout.Classic => "list.bullet.rectangle",
+        DashboardLayout.Aurora => "largecircle.fill.circle",
+        DashboardLayout.Nebula => "square.grid.2x2",
+        DashboardLayout.Constellation => "text.magnifyingglass",
         DashboardLayout.Cockpit => "gauge.with.dots.needle.67percent",
-        DashboardLayout.Atelier => "paintpalette",
-        _ => "paintpalette",
+        DashboardLayout.Atelier => "photo.artframe",
+        DashboardLayout.Stream => "arrow.down.right.and.arrow.up.left.circle",
+        DashboardLayout.Atlas => "chart.bar.xaxis",
+        _ => "photo.artframe",
     };
 
     /// <summary>
@@ -109,6 +146,8 @@ public static class DashboardLayoutMeta
         DashboardLayout.Constellation => 0xE734, // FavoriteStar - sparkles
         DashboardLayout.Cockpit => 0xE9D9,       // Diagnostic - gauge
         DashboardLayout.Atelier => 0xE790,       // Color - paintpalette
+        DashboardLayout.Stream => 0xE81C,        // History - a time-ordered river
+        DashboardLayout.Atlas => 0xE9D2,         // BarChart4 - ranked comparison
         _ => 0xE790,
     };
 

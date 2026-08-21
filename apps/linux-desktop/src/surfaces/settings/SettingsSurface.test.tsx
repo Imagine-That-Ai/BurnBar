@@ -495,7 +495,7 @@ describe('SettingsSurface', () => {
     useSystemStore.setState({ config: fixtureConfigSnapshot(), loading: false, error: null });
     render(<SettingsSurface />);
     fireEvent.click(screen.getByRole('button', { name: /Engine Room/i }));
-    expect(screen.getByText(/31 local parsers, 4 API-backed sources, 1 unavailable local sources/)).toBeTruthy();
+    expect(screen.getByText(/32 local parsers, 4 API-backed sources, 1 unavailable local sources/)).toBeTruthy();
     expect(screen.getAllByText('API-backed; no local parser').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Local usage unavailable').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Local parser registered').length).toBeGreaterThan(0);

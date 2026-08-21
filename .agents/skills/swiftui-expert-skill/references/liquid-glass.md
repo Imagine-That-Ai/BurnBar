@@ -70,12 +70,25 @@ Text("Capsule")
 
 ### GlassEffectStyle
 
-#### Prominence Levels
+#### Styles
+
+`Glass` has exactly three members — verified against
+`MacOSX.sdk/.../SwiftUICore.swiftinterface` (6874-6887) and the matching iOS SDK:
 
 ```swift
-.glassEffect(.regular)     // Standard glass appearance
-.glassEffect(.prominent)   // More visible, higher contrast
+.glassEffect(.regular)   // Adaptive. Auto light/dark flip, shadow adaptation.
+.glassEffect(.clear)     // Permanently more transparent. NO adaptive behaviour.
+.glassEffect(.identity)  // Renders as if no glass were applied.
 ```
+
+**There is no `.prominent` on `Glass`.** `.glassEffect(.prominent)` does not compile.
+Prominence exists only as the separate button style `.buttonStyle(.glassProminent)`
+and, in AppKit, as `NSToolbarItem.style = .prominent`.
+
+**`.clear` has preconditions.** WWDC25 s219 permits it only when all three hold: the
+element sits over media-rich content, the content layer tolerates a dimming layer, and
+the content above it is bold and bright. Defaulting to `.clear` produces washed,
+illegible chrome.
 
 #### Tinting
 
@@ -83,7 +96,7 @@ Add color tint to the glass:
 
 ```swift
 .glassEffect(.regular.tint(.blue))
-.glassEffect(.prominent.tint(.red.opacity(0.3)))
+.glassEffect(.clear.tint(.red.opacity(0.3)))
 ```
 
 #### Interactivity
@@ -307,7 +320,7 @@ struct GlassSegmentedControl: View {
                         .padding(.horizontal, 16)
                         .padding(.vertical, 8)
                         .glassEffect(
-                            selection == index ? .prominent.interactive() : .regular.interactive(),
+                            selection == index ? .regular.tint(.accentColor).interactive() : .regular.interactive(),
                             in: .capsule
                         )
                         .glassEffectID(selection == index ? "selected" : "option\(index)", in: animation)

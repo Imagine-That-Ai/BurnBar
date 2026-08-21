@@ -65,6 +65,20 @@ const THEME_GLASS_PALETTES: Record<DashboardLayout, ThemeGlassPalette> = {
     washTop: 'textPrimary',
     washBottom: 'frost',
     rim: 'frost'
+  },
+  stream: {
+    id: 'stream',
+    tint: 'frost',
+    washTop: 'frost',
+    washBottom: 'whimsy',
+    rim: 'whimsy'
+  },
+  atlas: {
+    id: 'atlas',
+    tint: 'ember',
+    washTop: 'blaze',
+    washBottom: 'ember',
+    rim: 'ember'
   }
 };
 

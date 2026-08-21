@@ -122,14 +122,31 @@ downloads `Xenova/bge-small-en-v1.5` from Hugging Face on first use.
 
 Resume a past session by UUID, or fuzzy-search your memory by topic. `--copy` puts the briefing on the clipboard, `--open` opens the briefing file, `--spawn` launches the target harness. `obbresume <memory>` and `OBB Resume <memory>` are the same flow with a positional query. Resume calls the hosted MCP — network required.
 
+### `openburnbar proxy [--port 8320] [--host 127.0.0.1] [--allow-local-key] [--token <token>]`
+
+Start a loopback-only OpenAI-compatible gateway on `127.0.0.1:8320`. The fixed local credential is `Bearer local-cliproxy`; `--token` adds another accepted bearer without exposing the service beyond loopback.
+
+- `GET /v1/models` — returns the configured provider/upstream model list, or the GrokD-compatible catalog before a provider is configured.
+- `POST /v1/chat/completions` — relays real JSON completions and `stream: true` SSE without fabricating fallback answers.
+- Standalone xAI mode — set `XAI_API_KEY`.
+- Standalone custom mode — set both `OPENBURNBAR_PROVIDER_BASE_URL` and `OPENBURNBAR_PROVIDER_API_KEY`; remote bases must use HTTPS.
+- Forward mode — set `OPENBURNBAR_UPSTREAM=http://127.0.0.1:8317`; only loopback HTTP origins are accepted. `OPENBURNBAR_GATEWAY_TOKEN` is sent upstream when configured.
+- No provider configured — `/v1/models` remains available, while chat returns an actionable `503 provider_not_configured`.
+- xAI's `x-grok-conv-id` request header is preserved for conversation-level prompt caching. Client bearer tokens and other arbitrary headers are not forwarded upstream.
+- Upstream redirects fail closed with `502 unsafe_upstream_redirect`; configure the provider's final API base URL instead.
+
+`openburnbar proxy status [--port 8320]` prints JSON with `listening`, `port`, and `url`, plus the verified PID and mode when the listener matches the proxy's private pid file. `openburnbar proxy stop [--port 8320]` sends `SIGTERM` only after the pid file, private health token, live PID, and listening port agree; it refuses to kill unrelated port owners.
+
 ### `openburnbar --help` / `-h` / no args
 
-Prints the one-line usage and exits 0. No network.
+Prints the usage and exits 0. No network.
 
 ## Network honesty
 
 | Command | Network |
 |---|---|
+| `proxy` | Binds only `127.0.0.1`. Calls xAI when `XAI_API_KEY` is set, the explicit HTTPS custom provider when configured, or the explicit loopback `OPENBURNBAR_UPSTREAM`. |
+| `proxy status\|stop` | Loopback/process inspection only; `stop` signals only a pid-file-owned OpenBurnBar proxy. |
 | `app install` / `app update` | Yes — `latest-macos.json` plus the feed's DMG URL. Never during `npm i`. |
 | `app install --dry-run` | Yes — feed JSON only |
 | `mcp serve` | Yes — forwards every message to `https://mcp.burnbar.ai/mcp` |
@@ -174,6 +191,6 @@ integration probe.
 
 ### Rollback / containment
 
-- **`npm deprecate openburnbar@0.1.0 "reason"`** — the first move for a bad release. Unpublish is time-limited (72 hours after publish, and only with no dependents), so deprecate is the durable lever; fix forward as `0.1.1`.
+- **`npm deprecate openburnbar@<bad-version> "reason"`** — the first move for a bad release. Unpublish is time-limited (72 hours after publish, and only with no dependents), so deprecate is the durable lever; then fix forward with a new patch version.
 - Delete the `openburnbar-npm-v*` tag or disable the workflow to stop the CI lane.
 - The extension's `private: true` stays regardless of any npm rollback.

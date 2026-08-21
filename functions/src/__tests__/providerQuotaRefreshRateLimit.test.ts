@@ -94,7 +94,7 @@ describe("refreshProviderAccountQuota rate limiting", () => {
       lastRefreshAt: { toMillis: () => Date.now() },
     });
 
-    await expect(runAccountRefresh()).rejects.toThrow(/Rate limited/);
+    await expect(runAccountRefresh()).rejects.toThrow(/Please wait \d+s before refreshing openai/);
     expect(mocks.refreshUserProviderAccountQuota).not.toHaveBeenCalled();
   });
 });

@@ -250,4 +250,13 @@ final class SwitcherDiscoveryServiceMattersTests: XCTestCase {
 
         XCTAssertLessThan(readyBranch.lowerBound, snapshotUpdate.lowerBound)
     }
+
+    func test_discoveryScan_doesNotBlockOnLiveQuotaHTTP_sourceGuard() throws {
+        let source = try repositorySource("AgentLens/Services/SwitcherDiscoveryService.swift")
+
+        XCTAssertTrue(source.contains("let quotaSummaries = loadCLIQuotaSummaries(for: cliAuthInfos)"))
+        XCTAssertFalse(source.contains("await loadCLIQuotaSummaries(for: cliAuthInfos"))
+        XCTAssertFalse(source.contains("await quotaService.refresh(provider: provider, dataStore: dataStore)"))
+        XCTAssertTrue(source.contains("quota refresh") && source.contains("deferred until after setup"))
+    }
 }

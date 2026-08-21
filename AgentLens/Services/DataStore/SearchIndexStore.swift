@@ -837,11 +837,11 @@ final class SearchIndexStore: Sendable {
             return nil
         }
 
-        let chunkOrdinal = (row["chunkOrdinal"] as? Int) ?? Int(row["chunkOrdinal"] as? Int64 ?? 0)
-        let chunkStartOffset = (row["chunkStartOffset"] as? Int) ?? Int(row["chunkStartOffset"] as? Int64 ?? 0)
-        let chunkEndOffset = (row["chunkEndOffset"] as? Int) ?? Int(row["chunkEndOffset"] as? Int64 ?? 0)
-        let chunkMessageStartOffset = (row["chunkMessageStartOffset"] as? Int) ?? Int(row["chunkMessageStartOffset"] as? Int64 ?? -1)
-        let chunkMessageEndOffset = (row["chunkMessageEndOffset"] as? Int) ?? Int(row["chunkMessageEndOffset"] as? Int64 ?? -1)
+        let chunkOrdinal: Int = row["chunkOrdinal"] ?? 0
+        let chunkStartOffset: Int = row["chunkStartOffset"] ?? 0
+        let chunkEndOffset: Int = row["chunkEndOffset"] ?? 0
+        let chunkMessageStartOffset: Int = row["chunkMessageStartOffset"] ?? -1
+        let chunkMessageEndOffset: Int = row["chunkMessageEndOffset"] ?? -1
         let chunkCreatedAt = OpenBurnBarDatabase.parseDateValue(row["chunkCreatedAt"]) ?? Date.distantPast
         let chunkUpdatedAt = OpenBurnBarDatabase.parseDateValue(row["chunkUpdatedAt"]) ?? chunkCreatedAt
 
@@ -1096,11 +1096,11 @@ final class SearchIndexStore: Sendable {
             return nil
         }
 
-        let ordinal = (row["ordinal"] as? Int) ?? Int(row["ordinal"] as? Int64 ?? 0)
-        let startOffset = (row["startOffset"] as? Int) ?? Int(row["startOffset"] as? Int64 ?? 0)
-        let endOffset = (row["endOffset"] as? Int) ?? Int(row["endOffset"] as? Int64 ?? 0)
-        let messageStartOffset = (row["messageStartOffset"] as? Int) ?? Int(row["messageStartOffset"] as? Int64 ?? -1)
-        let messageEndOffset = (row["messageEndOffset"] as? Int) ?? Int(row["messageEndOffset"] as? Int64 ?? -1)
+        let ordinal: Int = row["ordinal"] ?? 0
+        let startOffset: Int = row["startOffset"] ?? 0
+        let endOffset: Int = row["endOffset"] ?? 0
+        let messageStartOffset: Int = row["messageStartOffset"] ?? -1
+        let messageEndOffset: Int = row["messageEndOffset"] ?? -1
         let createdAt = OpenBurnBarDatabase.parseDateValue(row["createdAt"]) ?? Date.distantPast
         let updatedAt = OpenBurnBarDatabase.parseDateValue(row["updatedAt"]) ?? createdAt
         let text = (row["text"] as? String) ?? ""
@@ -1136,10 +1136,10 @@ final class SearchIndexStore: Sendable {
             return nil
         }
 
-        let lexicalRankRaw = (row["lexicalRank"] as? Double) ?? Double(row["lexicalRank"] as? Int64 ?? 0)
-        let chunkOrdinal = (row["chunkOrdinal"] as? Int) ?? Int(row["chunkOrdinal"] as? Int64 ?? 0)
-        let startOffset = (row["startOffset"] as? Int) ?? Int(row["startOffset"] as? Int64 ?? 0)
-        let endOffset = (row["endOffset"] as? Int) ?? Int(row["endOffset"] as? Int64 ?? 0)
+        let lexicalRankRaw: Double = row["lexicalRank"] ?? 0
+        let chunkOrdinal: Int = row["chunkOrdinal"] ?? 0
+        let startOffset: Int = row["startOffset"] ?? 0
+        let endOffset: Int = row["endOffset"] ?? 0
 
         return SearchChunkLexicalMatch(
             chunkID: chunkID,

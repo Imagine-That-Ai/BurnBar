@@ -231,7 +231,7 @@ final class AppCommandRouter {
 
             presentLinkCliAlert(
                 style: .informational,
-                title: "CLI Linked Successfully!",
+                title: "CLI Linked",
                 message: "Your Mac's CLI has been linked with your secure cloud vault key. You can now return to your terminal."
             )
         } catch {

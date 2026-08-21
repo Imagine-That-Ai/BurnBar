@@ -19,7 +19,6 @@ import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
-import org.junit.Assert.fail
 import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Test
@@ -342,12 +341,8 @@ class HermesRelayCryptoHpkeV3Test {
     }
 
     private inline fun assertRejected(block: () -> Unit) {
-        try {
-            block()
-            fail("expected the v3 open to be rejected, but it returned")
-        } catch (expected: Exception) {
-            assertTrue(true)
-        }
+        val thrown = runCatching { block() }.exceptionOrNull()
+        org.junit.Assert.assertNotNull("expected the v3 open to be rejected, but it returned", thrown)
     }
 
     /** Rebuild a P-256 private key from the raw 32-byte big-endian scalar. */

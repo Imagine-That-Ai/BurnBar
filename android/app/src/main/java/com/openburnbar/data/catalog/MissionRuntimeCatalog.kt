@@ -327,7 +327,7 @@ data class MissionRuntimeCatalog(
         ),
         Row(
             id = "fx",
-            wireAliases = listOf("fx"),
+            wireAliases = listOf("fx", "vercel-fx", "vercelfx"),
             displayName = "Fx",
             surfaces = setOf(Surface.SWITCHER, Surface.MISSION_CREATE, Surface.MISSION_EVENT, Surface.MISSION_MIRROR, Surface.MISSION_RECEIPT, Surface.GRANT_RUNTIME),
             launch = Launch.NONE,

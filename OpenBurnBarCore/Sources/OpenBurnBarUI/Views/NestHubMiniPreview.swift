@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarRecap
 import SwiftUI
 import OpenBurnBarKernel
 

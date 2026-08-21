@@ -6,6 +6,8 @@ import OpenBurnBarCore
 import OpenBurnBarSignalCore
 import os
 
+typealias UntypedJSONObject = [String: Any]
+
 // MARK: - CLI mission observation handle + snapshot/event models
 //
 // Split out of `CLIAgentMissionDispatcher.swift` (audit wave 4, item 14

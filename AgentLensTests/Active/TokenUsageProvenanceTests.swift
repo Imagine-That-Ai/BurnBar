@@ -192,7 +192,7 @@ final class TokenUsageProvenanceTests: XCTestCase {
         }
 
         // Exact row must NOT be downgraded by lower confidence estimate
-        let inputTokens = (row["inputTokens"] as? Int) ?? Int(row["inputTokens"] as? Int64 ?? 0)
+        let inputTokens: Int = row["inputTokens"] ?? 0
         XCTAssertEqual(inputTokens, 1000, "Exact row must not be downgraded by lower confidence estimate")
         XCTAssertEqual(row["provenanceMethod"] as? String, "provider_log")
         XCTAssertEqual(row["provenanceConfidence"] as? String, "exact")
@@ -236,7 +236,7 @@ final class TokenUsageProvenanceTests: XCTestCase {
         }
 
         // With equal confidence, update should happen
-        let inputTokens = (row["inputTokens"] as? Int) ?? Int(row["inputTokens"] as? Int64 ?? 0)
+        let inputTokens: Int = row["inputTokens"] ?? 0
         XCTAssertEqual(inputTokens, 2000, "Equal confidence should allow update")
         XCTAssertEqual(row["provenanceConfidence"] as? String, "high_confidence_estimate")
     }
@@ -484,7 +484,7 @@ final class TokenUsageProvenanceTests: XCTestCase {
         XCTAssertEqual(row["usageSource"] as? String, "provider_log",
             "Source identity must be preserved on equal-confidence upsert")
         // Values should be updated since confidence is equal
-        let inputTokens = (row["inputTokens"] as? Int) ?? Int(row["inputTokens"] as? Int64 ?? 0)
+        let inputTokens: Int = row["inputTokens"] ?? 0
         XCTAssertEqual(inputTokens, 2000, "Token values should update on equal-confidence upsert")
     }
 
@@ -676,7 +676,7 @@ final class TokenUsageProvenanceTests: XCTestCase {
         XCTAssertEqual(row["usageSource"] as? String, "provider_log",
             "Source identity must be preserved on equal-confidence upsert via AtomicIngestionTransaction")
         // Values should be updated since confidence is equal
-        let inputTokens = (row["inputTokens"] as? Int) ?? Int(row["inputTokens"] as? Int64 ?? 0)
+        let inputTokens: Int = row["inputTokens"] ?? 0
         XCTAssertEqual(inputTokens, 2000, "Token values should update on equal-confidence upsert")
     }
 
@@ -820,7 +820,7 @@ final class TokenUsageProvenanceTests: XCTestCase {
 
         XCTAssertEqual(row["usageSource"] as? String, "billing_api",
             "Source identity must NOT be overwritten by lower confidence upsert")
-        let inputTokens = (row["inputTokens"] as? Int) ?? Int(row["inputTokens"] as? Int64 ?? 0)
+        let inputTokens: Int = row["inputTokens"] ?? 0
         XCTAssertEqual(inputTokens, 3000, "Exact row must not be downgraded by lower confidence")
         XCTAssertEqual(row["provenanceConfidence"] as? String, "exact",
             "Confidence must remain exact")

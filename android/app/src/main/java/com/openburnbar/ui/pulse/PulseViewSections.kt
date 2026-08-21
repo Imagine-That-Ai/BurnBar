@@ -10,13 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ShowChart
-import androidx.compose.material.icons.filled.Error
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -41,18 +35,16 @@ import com.openburnbar.data.stores.ActivityStore
 import com.openburnbar.data.stores.DashboardStore
 import com.openburnbar.data.stores.QuotaStore
 import com.openburnbar.ui.components.DemoDataPromptCard
-import com.openburnbar.ui.components.EmptyStateView
-import com.openburnbar.ui.components.ErrorStateView
-import com.openburnbar.ui.components.ShimmerCard
-import com.openburnbar.ui.components.StaggeredEntrance
 import com.openburnbar.ui.hermes.rememberAccountScopedHermesService
 import com.openburnbar.ui.pulse.atlas.TrendAtlasCard
+import com.openburnbar.ui.pulse.layout.HomeLivingLayout
+import com.openburnbar.ui.pulse.layout.HomeSlot
 import com.openburnbar.ui.theme.AuroraSpacing
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 
 internal data class PulseContentModel(
-    val rollups: UsageRollups,
+    val rollups: UsageRollups?,
     val displayMode: UsageDisplayMode,
     val timelineScope: PulseTimelineScope,
     val liveMetricsStore: PulseLiveMetricsStore,
@@ -147,46 +139,28 @@ internal fun PulseViewScaffold(state: PulseViewScaffoldState, content: @Composab
     Box(modifier = Modifier.fillMaxSize()) {
         PulseDepthBackdrop()
 
-        if (state.isSignedIn) {
-            PulseViewTitleBar(photoUrl = state.photoUrl, displayName = state.displayName)
-        }
+        Column(modifier = Modifier.fillMaxSize()) {
+            if (state.isSignedIn) {
+                PulseViewTitleBar(photoUrl = state.photoUrl, displayName = state.displayName)
+            }
 
-        val presentation = MobilePulseWindowPolicy.loadPresentation(
-            isLoading = state.isLoading,
-            failed = state.error != null,
-            hasCachedData = state.rollups != null,
-        )
-        val mayRetry = MobileProductSurfacePolicy.disposition("pulse.retry") ==
-            MobileProductCardDisposition.REAL
-        when (presentation) {
-            MobilePulseLoadPresentation.LOADING -> PulseViewLoadingSkeleton()
-            MobilePulseLoadPresentation.FAILED ->
-                ErrorStateView(
-                    icon = Icons.Filled.Error,
-                    title = "Couldn't Load Dashboard",
-                    message = state.error ?: "Usage failed to load.",
-                    onRetry = if (mayRetry) state.onRetry else ({ }),
+            val presentation = MobilePulseWindowPolicy.loadPresentation(
+                isLoading = state.isLoading,
+                failed = state.error != null,
+                hasCachedData = state.rollups != null,
+            )
+            val mayRetry = MobileProductSurfacePolicy.disposition("pulse.retry") ==
+                MobileProductCardDisposition.REAL
+
+            if (presentation == MobilePulseLoadPresentation.STALE_REFRESH_FAILED && state.error != null) {
+                PulseRefreshErrorBanner(
+                    message = state.error,
+                    onRetry = if (mayRetry) state.onRetry else ({}),
                 )
-            MobilePulseLoadPresentation.EMPTY ->
-                EmptyStateView(
-                    icon = Icons.AutoMirrored.Filled.ShowChart,
-                    title = "No Usage Data",
-                    message = "Start using AI to see your burn here.",
-                )
-            MobilePulseLoadPresentation.STALE_REFRESH_FAILED,
-            MobilePulseLoadPresentation.LIVE,
-            -> {
-                Column(modifier = Modifier.fillMaxSize()) {
-                    if (presentation == MobilePulseLoadPresentation.STALE_REFRESH_FAILED &&
-                        state.error != null
-                    ) {
-                        PulseRefreshErrorBanner(
-                            message = state.error,
-                            onRetry = if (mayRetry) state.onRetry else ({}),
-                        )
-                    }
-                    Box(modifier = Modifier.weight(1f)) { content() }
-                }
+            }
+
+            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                content()
             }
         }
     }
@@ -219,26 +193,146 @@ private fun PulseViewTitleBar(photoUrl: String?, displayName: String?) {
     }
 }
 
-@Composable
-private fun PulseViewLoadingSkeleton() {
-    Column(
-        modifier =
-        Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(top = 80.dp, start = AuroraSpacing.LG.dp, end = AuroraSpacing.LG.dp),
-        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.MD.dp),
-    ) {
-        ShimmerCard(height = 180)
-        ShimmerCard(height = 80)
-        ShimmerCard(height = 120)
+/**
+ * The slot table Pulse hands to the space solver.
+ *
+ * Plain data, deliberately not `@Composable`: what a slot asks for is a function of
+ * the model alone, and keeping it out of composition means the solver can be unit
+ * tested without a Compose harness — the same split the Swift and TypeScript twins keep.
+ */
+private fun pulseSlots(derived: PulseViewContentDerived, model: PulseContentModel): List<HomeSlot> = buildList {
+    if (derived.shouldOfferDemoData) add(demoSlot())
+    add(controlsSlot())
+    if (model.rollups != null) {
+        add(heroSlot())
+        add(forecastSlot())
     }
+    if (derived.snapshots.isNotEmpty()) add(quotaSlot(derived.snapshots.size))
+    if (model.rollups != null) add(atlasSlot())
+    add(hermesSlot())
+    if (derived.recentUsages.isNotEmpty()) add(sessionsSlot(derived.recentUsages.size))
 }
+
+private fun demoSlot(): HomeSlot = HomeSlot(
+    id = "demo_prompt",
+    rank = 5,
+    floor = 60f,
+    ideal = 72f,
+    spans = true,
+    isAmbient = true,
+)
+
+private fun controlsSlot(): HomeSlot = HomeSlot(
+    id = "controls",
+    rank = 0,
+    floor = 40f,
+    ideal = 44f,
+    spans = true,
+)
+
+private fun heroSlot(): HomeSlot = HomeSlot(
+    id = "hero",
+    rank = 0,
+    floor = 180f,
+    ideal = 240f,
+    spans = true,
+    stretch = 1.0,
+)
+
+private fun forecastSlot(): HomeSlot = HomeSlot(
+    id = "forecast",
+    rank = 2,
+    floor = 140f,
+    ideal = 180f,
+    stretch = 0.5,
+)
+
+private fun quotaSlot(available: Int): HomeSlot = HomeSlot(
+    id = "quota",
+    rank = 1,
+    floor = 120f,
+    ideal = 200f,
+    rows = HomeSlot.RowAppetite(available = available, baseline = 2, unit = 36f, ceiling = 8),
+    stretch = 1.0,
+)
+
+private fun atlasSlot(): HomeSlot = HomeSlot(
+    id = "atlas",
+    rank = 3,
+    floor = 180f,
+    ideal = 240f,
+    stretch = 1.0,
+)
+
+private fun hermesSlot(): HomeSlot = HomeSlot(
+    id = "hermes",
+    rank = 4,
+    floor = 140f,
+    ideal = 180f,
+    stretch = 0.5,
+)
+
+private fun sessionsSlot(available: Int): HomeSlot = HomeSlot(
+    id = "sessions",
+    rank = 0,
+    floor = 120f,
+    ideal = 220f,
+    rows = HomeSlot.RowAppetite(available = available, baseline = 3, unit = 40f, ceiling = 12),
+    stretch = 1.0,
+)
 
 @Composable
 internal fun PulseViewContent(model: PulseContentModel, navigation: PulseContentNavigation) {
     val derived = rememberPulseViewContentDerived(model)
-    PulseViewContentColumn(model = model, navigation = navigation, derived = derived)
+
+    val slots = remember(derived, model.rollups, model.displayMode, model.timelineScope) { pulseSlots(derived, model) }
+
+    HomeLivingLayout(
+        slots = slots,
+        modifier = Modifier.fillMaxSize(),
+    ) { slotId, _ ->
+        when (slotId) {
+            "demo_prompt" -> PulseViewDemoPromptSection(
+                visible = derived.shouldOfferDemoData,
+                isLoading = model.demoIsSeeding,
+                message = model.demoMessage,
+                error = model.demoError,
+                onLoadDemoData = navigation.onLoadDemoData,
+                onDismissStatus = navigation.onDismissDemoStatus,
+            )
+            "controls" -> PulseViewControlsSection(
+                timelineScope = model.timelineScope,
+                displayMode = model.displayMode,
+                onTimelineChange = navigation.onTimelineChange,
+                onDisplayModeChange = navigation.onDisplayModeChange,
+            )
+            "hero" -> model.rollups?.let {
+                PulseViewHeroSection(model = model, rollups = it, derived = derived)
+            }
+            "forecast" -> model.rollups?.let {
+                PulseViewForecastSection(rollups = it, pulseUsages = derived.pulseUsages)
+            }
+            "quota" -> PulseViewQuotaSection(
+                snapshots = derived.snapshots,
+                onNavigateToBurn = navigation.onNavigateToBurn,
+            )
+            "atlas" -> model.rollups?.let {
+                PulseViewAtlasSection(
+                    rollups = it,
+                    recentUsages = derived.recentUsages,
+                    displayMode = model.displayMode,
+                )
+            }
+            "hermes" -> PulseViewHermesSection(
+                hermesService = derived.hermesService,
+                onNavigateToHermes = navigation.onNavigateToHermes,
+            )
+            "sessions" -> PulseViewSessionsSection(
+                recentUsages = derived.recentUsages,
+                onNavigateToStreams = navigation.onNavigateToStreams,
+            )
+        }
+    }
 }
 
 @Composable
@@ -253,7 +347,7 @@ private fun rememberPulseViewContentDerived(model: PulseContentModel): PulseView
         recentUsages = recentUsages,
         pulseUsages = pulseUsages,
         shouldOfferDemoData = shouldOfferPulseDemoData(model.rollups, snapshots, pulseUsages),
-        topProvider = model.rollups.topProviders.firstOrNull(),
+        topProvider = model.rollups?.topProviders?.firstOrNull(),
         hermesService = hermesService,
     )
 }
@@ -274,10 +368,10 @@ internal fun pulseUsagesForDisplay(
  * tests.
  */
 internal fun shouldOfferPulseDemoData(
-    rollups: com.openburnbar.data.models.UsageRollups,
+    rollups: com.openburnbar.data.models.UsageRollups?,
     snapshots: List<com.openburnbar.data.models.ProviderQuotaSnapshot>,
     pulseUsages: List<com.openburnbar.data.models.TokenUsage>,
-): Boolean = rollups.isEmpty() && snapshots.isEmpty() && pulseUsages.isEmpty()
+): Boolean = (rollups == null || rollups.isEmpty()) && snapshots.isEmpty() && pulseUsages.isEmpty()
 
 private data class PulseViewContentDerived(
     val snapshots: List<com.openburnbar.data.models.ProviderQuotaSnapshot>,
@@ -289,60 +383,6 @@ private data class PulseViewContentDerived(
 )
 
 @Composable
-private fun PulseViewContentColumn(model: PulseContentModel, navigation: PulseContentNavigation, derived: PulseViewContentDerived) {
-    Column(
-        modifier =
-        Modifier
-            .verticalScroll(rememberScrollState())
-            .padding(bottom = 128.dp),
-        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.LG.dp),
-    ) {
-        Spacer(modifier = Modifier.height(72.dp))
-
-        PulseViewDemoPromptSection(
-            visible = derived.shouldOfferDemoData,
-            isLoading = model.demoIsSeeding,
-            message = model.demoMessage,
-            error = model.demoError,
-            onLoadDemoData = navigation.onLoadDemoData,
-            onDismissStatus = navigation.onDismissDemoStatus,
-        )
-
-        PulseViewControlsSection(
-            timelineScope = model.timelineScope,
-            displayMode = model.displayMode,
-            onTimelineChange = navigation.onTimelineChange,
-            onDisplayModeChange = navigation.onDisplayModeChange,
-        )
-
-        PulseViewHeroSection(model = model, derived = derived)
-
-        PulseViewForecastSection(rollups = model.rollups, pulseUsages = derived.pulseUsages)
-
-        PulseViewQuotaSection(
-            snapshots = derived.snapshots,
-            onNavigateToBurn = navigation.onNavigateToBurn,
-        )
-
-        PulseViewAtlasSection(
-            rollups = model.rollups,
-            recentUsages = derived.recentUsages,
-            displayMode = model.displayMode,
-        )
-
-        PulseViewHermesSection(
-            hermesService = derived.hermesService,
-            onNavigateToHermes = navigation.onNavigateToHermes,
-        )
-
-        PulseViewSessionsSection(
-            recentUsages = derived.recentUsages,
-            onNavigateToStreams = navigation.onNavigateToStreams,
-        )
-    }
-}
-
-@Composable
 private fun PulseViewDemoPromptSection(
     visible: Boolean,
     isLoading: Boolean,
@@ -352,15 +392,13 @@ private fun PulseViewDemoPromptSection(
     onDismissStatus: () -> Unit,
 ) {
     if (!visible) return
-    StaggeredEntrance(delay = 0) {
-        DemoDataPromptCard(
-            isLoading = isLoading,
-            message = message,
-            error = error,
-            onLoadDemoData = onLoadDemoData,
-            onDismissStatus = onDismissStatus,
-        )
-    }
+    DemoDataPromptCard(
+        isLoading = isLoading,
+        message = message,
+        error = error,
+        onLoadDemoData = onLoadDemoData,
+        onDismissStatus = onDismissStatus,
+    )
 }
 
 @Composable
@@ -370,50 +408,46 @@ private fun PulseViewControlsSection(
     onTimelineChange: (PulseTimelineScope) -> Unit,
     onDisplayModeChange: (UsageDisplayMode) -> Unit,
 ) {
-    StaggeredEntrance(delay = 0) {
-        Row(
-            modifier =
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = AuroraSpacing.LG.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            TimelineScopePicker(selected = timelineScope, onSelect = onTimelineChange)
-            Spacer(modifier = Modifier.weight(1f))
-            PulseDisplayModeToggle(displayMode = displayMode, onToggle = onDisplayModeChange)
-        }
+    Row(
+        modifier =
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = AuroraSpacing.LG.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        TimelineScopePicker(selected = timelineScope, onSelect = onTimelineChange)
+        Spacer(modifier = Modifier.weight(1f))
+        PulseDisplayModeToggle(displayMode = displayMode, onToggle = onDisplayModeChange)
     }
 }
 
 @Composable
-private fun PulseViewHeroSection(model: PulseContentModel, derived: PulseViewContentDerived) {
-    StaggeredEntrance(delay = 25) {
-        // The 1Hz tick state is read only inside this leaf, so the live clock
-        // recomposes the hero card alone instead of restarting the whole
-        // Pulse tree (and the O(N) window aggregation runs in the store).
-        val tick = model.liveMetricsStore.collectLiveTick(
+private fun PulseViewHeroSection(model: PulseContentModel, rollups: UsageRollups, derived: PulseViewContentDerived) {
+    // The 1Hz tick state is read only inside this leaf, so the live clock
+    // recomposes the hero card alone instead of restarting the whole
+    // Pulse tree (and the O(N) window aggregation runs in the store).
+    val tick = model.liveMetricsStore.collectLiveTick(
+        timelineScope = model.timelineScope,
+        rollups = rollups,
+        usages = derived.pulseUsages,
+    )
+    PulseHeroBurnCard(
+        metrics =
+        PulseHeroCardMetrics(
+            displayMode = model.displayMode,
+            value = tick.windowMetrics.value,
+            trailingValue = tick.windowMetrics.trailingValue,
+            tokenValue = tick.windowMetrics.tokenValue,
+            trailingTokenValue = tick.windowMetrics.trailingTokenValue,
+            requestValue = tick.windowMetrics.requestValue,
+            totals = rollups.totals,
             timelineScope = model.timelineScope,
-            rollups = model.rollups,
-            usages = derived.pulseUsages,
-        )
-        PulseHeroBurnCard(
-            metrics =
-            PulseHeroCardMetrics(
-                displayMode = model.displayMode,
-                value = tick.windowMetrics.value,
-                trailingValue = tick.windowMetrics.trailingValue,
-                tokenValue = tick.windowMetrics.tokenValue,
-                trailingTokenValue = tick.windowMetrics.trailingTokenValue,
-                requestValue = tick.windowMetrics.requestValue,
-                totals = model.rollups.totals,
-                timelineScope = model.timelineScope,
-                topProvider = derived.topProvider,
-                liveUsages = derived.pulseUsages,
-                dailyPoints = model.rollups.dailyPoints,
-                nowMillis = tick.nowMillis,
-            ),
-        )
-    }
+            topProvider = derived.topProvider,
+            liveUsages = derived.pulseUsages,
+            dailyPoints = rollups.dailyPoints,
+            nowMillis = tick.nowMillis,
+        ),
+    )
 }
 
 @Composable
@@ -435,58 +469,48 @@ private fun PulseLiveMetricsStore.collectLiveTick(
 
 @Composable
 private fun PulseViewForecastSection(rollups: UsageRollups, pulseUsages: List<com.openburnbar.data.models.TokenUsage>) {
-    StaggeredEntrance(delay = 50) {
-        VelocityForecastCard(rollups = rollups, liveUsages = pulseUsages)
-    }
+    VelocityForecastCard(rollups = rollups, liveUsages = pulseUsages)
 }
 
 @Composable
 private fun PulseViewQuotaSection(snapshots: List<com.openburnbar.data.models.ProviderQuotaSnapshot>, onNavigateToBurn: (() -> Unit)?) {
-    StaggeredEntrance(delay = 75) {
-        QuotaPulseCard(
-            snapshots = snapshots,
-            onSelect = { onNavigateToBurn?.invoke() },
-            onOpenBurn = { onNavigateToBurn?.invoke() },
-        )
-    }
+    QuotaPulseCard(
+        snapshots = snapshots,
+        onSelect = { onNavigateToBurn?.invoke() },
+        onOpenBurn = { onNavigateToBurn?.invoke() },
+    )
 }
 
 @Composable
 private fun PulseViewAtlasSection(rollups: UsageRollups, recentUsages: List<com.openburnbar.data.models.TokenUsage>, displayMode: UsageDisplayMode) {
-    StaggeredEntrance(delay = 100) {
-        TrendAtlasCard(
-            rollups = rollups,
-            recentUsages = recentUsages,
-            displayMode = displayMode,
-            modifier = Modifier.padding(horizontal = AuroraSpacing.LG.dp),
-        )
-    }
+    TrendAtlasCard(
+        rollups = rollups,
+        recentUsages = recentUsages,
+        displayMode = displayMode,
+        modifier = Modifier.padding(horizontal = AuroraSpacing.LG.dp),
+    )
 }
 
 @Composable
 private fun PulseViewHermesSection(hermesService: HermesService, onNavigateToHermes: (() -> Unit)?) {
-    StaggeredEntrance(delay = 125) {
-        HermesQuickAskCard(
-            service = hermesService,
-            suggestedPrompts =
-            listOf(
-                "What's my burn?",
-                "Top providers",
-                "Forecast spend",
-                "Recent activity",
-            ),
-            onOpenHermes = { onNavigateToHermes?.invoke() },
-        )
-    }
+    HermesQuickAskCard(
+        service = hermesService,
+        suggestedPrompts =
+        listOf(
+            "What's my burn?",
+            "Top providers",
+            "Forecast spend",
+            "Recent activity",
+        ),
+        onOpenHermes = { onNavigateToHermes?.invoke() },
+    )
 }
 
 @Composable
 private fun PulseViewSessionsSection(recentUsages: List<com.openburnbar.data.models.TokenUsage>, onNavigateToStreams: (() -> Unit)?) {
-    StaggeredEntrance(delay = 150) {
-        RecentSessionsStripCard(
-            sessions = recentUsages,
-            onSelect = { onNavigateToStreams?.invoke() },
-            onSeeAll = { onNavigateToStreams?.invoke() },
-        )
-    }
+    RecentSessionsStripCard(
+        sessions = recentUsages,
+        onSelect = { onNavigateToStreams?.invoke() },
+        onSeeAll = { onNavigateToStreams?.invoke() },
+    )
 }

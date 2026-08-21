@@ -205,6 +205,13 @@ public enum CLIQuotaExhaustionClassifier {
                 "prime agent quota",
                 "prime limit"
             ]
+        case .fx:
+            cliSpecificPatterns = [
+                "fx quota",
+                "fx limit",
+                "vercel quota",
+                "vercel fx quota"
+            ]
         }
 
         let candidates = trimmed

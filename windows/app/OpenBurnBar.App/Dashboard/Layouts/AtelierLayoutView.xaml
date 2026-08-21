@@ -52,39 +52,45 @@
             </Grid.RowDefinitions>
 
             <StackPanel VerticalAlignment="Center"
-                        HorizontalAlignment="Left"
-                        Spacing="10"
-                        MaxWidth="640">
+                        HorizontalAlignment="Stretch"
+                        Spacing="14">
                 <Border Background="{ThemeResource AuroraGlassSelectionFillBrush}" CornerRadius="999" Padding="10,5" HorizontalAlignment="Left">
-                    <TextBlock Text="Live kernel"
+                    <TextBlock Text="LIVE KERNEL"
                                FontSize="11"
                                FontWeight="SemiBold"
                                Foreground="{StaticResource OBBAccentBrush}" />
                 </Border>
-                <TextBlock Text="A living substrate, tuned to your spend."
+                <TextBlock x:Name="HeadlineText"
+                           Text="A living substrate, tuned to your spend."
                            FontSize="36"
                            FontWeight="Bold"
                            TextWrapping="Wrap"
+                           MaxWidth="620"
+                           HorizontalAlignment="Left"
                            Foreground="{ThemeResource AuroraTextBrush}" />
-                <TextBlock Text="Provider logos emerge from the kernel and dissolve back into it. Every layout is its own ecosystem — pick a concept, tune the glass."
+                <TextBlock x:Name="SubheadText"
+                           Text="Provider logos emerge from the kernel and dissolve back into it. Every layout is its own ecosystem — pick a concept, tune the glass."
                            FontSize="15"
                            Opacity="0.72"
                            TextWrapping="Wrap"
-                           MaxWidth="460"
+                           MaxWidth="680"
+                           HorizontalAlignment="Left"
                            Foreground="{ThemeResource AuroraTextSecondaryBrush}" />
             </StackPanel>
 
-            <StackPanel Grid.Row="1"
-                        Orientation="Horizontal"
-                        Spacing="16"
-                        HorizontalAlignment="Left">
-                <layouts:ConceptStatTile x:Name="SpendTile" Value="—" Caption="Spend this month"
+            <Grid Grid.Row="1" ColumnSpacing="16" HorizontalAlignment="Stretch">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <layouts:ConceptStatTile Grid.Column="0" x:Name="SpendTile" Value="—" Caption="Spend this month"
                                          AccentBrush="{StaticResource PensieveColorBrassCoreBrush}" />
-                <layouts:ConceptStatTile x:Name="TokensTile" Value="—" Caption="Tokens"
+                <layouts:ConceptStatTile Grid.Column="1" x:Name="TokensTile" Value="—" Caption="Tokens"
                                          AccentBrush="{StaticResource PensieveColorMercuryCoreBrush}" />
-                <layouts:ConceptStatTile x:Name="ProvidersTile" Value="—" Caption="Data source"
+                <layouts:ConceptStatTile Grid.Column="2" x:Name="ProvidersTile" Value="—" Caption="Data source"
                                          AccentBrush="{StaticResource OBBAccentBrush}" />
-            </StackPanel>
+            </Grid>
         </Grid>
     </Grid>
 </UserControl>

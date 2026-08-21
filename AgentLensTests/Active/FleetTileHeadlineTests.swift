@@ -3,6 +3,7 @@ import XCTest
 
 @testable import OpenBurnBar
 
+@MainActor
 final class FleetTileHeadlineTests: XCTestCase {
     func test_snapshotZeroRunningIsHonestZeroNotWatching() {
         let headline = FleetTileHeadline.resolved(fromSnapshot: FleetTestFixtures.makeEmptySnapshot())
@@ -19,6 +20,22 @@ final class FleetTileHeadlineTests: XCTestCase {
         XCTAssertFalse(headline.label.contains("0"))
         XCTAssertEqual(headline.tileState, .unavailable("Checking fleet…"))
         XCTAssertEqual(headline.chipLabel, "Checking")
+    }
+
+    func test_emptySocketWithFileSnapshotIsRunningNotDown() throws {
+        let snapshot = FleetTestFixtures.makeSnapshot()
+        let fileURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fleet-tile-\(UUID().uuidString).json")
+        try JSONEncoder().encode(snapshot).write(to: fileURL)
+        defer { try? FileManager.default.removeItem(at: fileURL) }
+
+        let recovered = try FleetService.fetchSnapshotWithFileFallback(
+            at: URL(fileURLWithPath: "/tmp/openburnbar-fleet-tile-tests/daemon.sock"),
+            fileURL: fileURL
+        )
+        let headline = FleetTileHeadline.resolved(fromSnapshot: recovered)
+        XCTAssertEqual(headline, .running(snapshot.runningCount))
+        XCTAssertNotEqual(headline, .daemonDown)
     }
 
     func test_daemonUnavailableIsDownNotZero() {

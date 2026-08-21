@@ -33,30 +33,28 @@ struct ControlDeckGrid<Tile: View>: View {
 
     var body: some View {
         let rows = CardRowPacker.rows(spans: spans, columns: columns)
-        LiquidGlassGroup(spacing: DesignSystem.Spacing.md) {
-            VStack(spacing: DesignSystem.Spacing.md) {
-                ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
-                    let widths = renderedSpans(in: row)
-                    HStack(alignment: .top, spacing: DesignSystem.Spacing.md) {
-                        ForEach(row, id: \.self) { index in
-                            if configs.indices.contains(index) {
-                                let config = configs[index]
-                                if contentWidth > 0 {
-                                    // Explicit width: a span-2 tile really is
-                                    // twice a span-1 tile plus the gutter it
-                                    // swallows.
-                                    card(config)
-                                        .frame(
-                                            width: CardRowPacker.width(
-                                                span: widths[index] ?? config.span,
-                                                columns: columns,
-                                                contentWidth: contentWidth,
-                                                gutter: DesignSystem.Spacing.md
-                                            )
+        VStack(spacing: DesignSystem.Spacing.md) {
+            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                let widths = renderedSpans(in: row)
+                HStack(alignment: .top, spacing: DesignSystem.Spacing.md) {
+                    ForEach(row, id: \.self) { index in
+                        if configs.indices.contains(index) {
+                            let config = configs[index]
+                            if contentWidth > 0 {
+                                // Explicit width: a span-2 tile really is
+                                // twice a span-1 tile plus the gutter it
+                                // swallows.
+                                card(config)
+                                    .frame(
+                                        width: CardRowPacker.width(
+                                            span: widths[index] ?? config.span,
+                                            columns: columns,
+                                            contentWidth: contentWidth,
+                                            gutter: DesignSystem.Spacing.md
                                         )
-                                } else {
-                                    card(config).frame(maxWidth: .infinity)
-                                }
+                                    )
+                            } else {
+                                card(config).frame(maxWidth: .infinity)
                             }
                         }
                     }

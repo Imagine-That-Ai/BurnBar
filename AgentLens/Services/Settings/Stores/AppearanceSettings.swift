@@ -115,11 +115,13 @@ final class AppearanceSettings {
     }
 
     /// The named dashboard *layout* concept the macOS overview renders (see
-    /// `DashboardLayout`). Defaults to `.atelier` — the design phase's "keeper".
-    /// Written straight to `UserDefaults.standard` (in addition to the debounced
-    /// coordinator) so `DashboardLayout.current` sees the change immediately and
-    /// after relaunch, mirroring ``appearanceSkin``.
-    var dashboardLayout: DashboardLayout = .atelier {
+    /// `DashboardLayout`). Defaults to `.aurora` — Focus — matching
+    /// ``DashboardLayout/current``, which is the value that actually wins: the
+    /// initializer below mirrors it back over this one. Written straight to
+    /// `UserDefaults.standard` (in addition to the debounced coordinator) so
+    /// `DashboardLayout.current` sees the change immediately and after relaunch,
+    /// mirroring ``appearanceSkin``.
+    var dashboardLayout: DashboardLayout = .aurora {
         didSet {
             UserDefaults.standard.set(dashboardLayout.rawValue, forKey: DashboardLayout.storageKey)
             persistence.set(dashboardLayout.rawValue, forKey: DashboardLayout.storageKey)
@@ -270,7 +272,7 @@ final class AppearanceSettings {
         self.appearanceSkin = AppSkin.current
         // Dashboard layout is canonically read from `UserDefaults.standard`
         // (where `DashboardLayout.current` reads it); mirror it back through the
-        // coordinator so a fresh suite stays consistent. Defaults to `.atelier`.
+        // coordinator so a fresh suite stays consistent. Defaults to `.aurora`.
         self.dashboardLayout = DashboardLayout.current
         self.dashboardLaunchSurface = DashboardLaunchSurface.current
         let hasLaunched = persistence.bool(forKey: "hasLaunchedBefore")

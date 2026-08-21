@@ -64,38 +64,36 @@ fun PulseView(
             onRetry = { dashboardStore.refresh() },
         ),
     ) {
-        uiState.rollups?.let { rollups ->
-            PulseViewContent(
-                model =
-                PulseContentModel(
-                    rollups = rollups,
-                    displayMode = uiState.displayMode,
-                    timelineScope = uiState.timelineScope,
-                    liveMetricsStore = liveMetricsStore,
-                    quotaStore = quotaStore,
-                    activityStore = activityStore,
-                    demoIsSeeding = uiState.demoIsSeeding,
-                    demoMessage = uiState.demoMessage,
-                    demoError = uiState.demoError,
-                ),
-                navigation =
-                PulseContentNavigation(
-                    onDisplayModeChange = uiState.onDisplayModeChange,
-                    onTimelineChange = uiState.onTimelineChange,
-                    onLoadDemoData = {
-                        demoDataStore.seed {
-                            dashboardStore.refresh()
-                            quotaStore.refresh()
-                            activityStore.loadInitial(pageSize = 250)
-                        }
-                    },
-                    onDismissDemoStatus = { demoDataStore.clearStatus() },
-                    onNavigateToBurn = onNavigateToBurn,
-                    onNavigateToHermes = onNavigateToHermes,
-                    onNavigateToStreams = onNavigateToStreams,
-                ),
-            )
-        }
+        PulseViewContent(
+            model =
+            PulseContentModel(
+                rollups = uiState.rollups,
+                displayMode = uiState.displayMode,
+                timelineScope = uiState.timelineScope,
+                liveMetricsStore = liveMetricsStore,
+                quotaStore = quotaStore,
+                activityStore = activityStore,
+                demoIsSeeding = uiState.demoIsSeeding,
+                demoMessage = uiState.demoMessage,
+                demoError = uiState.demoError,
+            ),
+            navigation =
+            PulseContentNavigation(
+                onDisplayModeChange = uiState.onDisplayModeChange,
+                onTimelineChange = uiState.onTimelineChange,
+                onLoadDemoData = {
+                    demoDataStore.seed {
+                        dashboardStore.refresh()
+                        quotaStore.refresh()
+                        activityStore.loadInitial(pageSize = 250)
+                    }
+                },
+                onDismissDemoStatus = { demoDataStore.clearStatus() },
+                onNavigateToBurn = onNavigateToBurn,
+                onNavigateToHermes = onNavigateToHermes,
+                onNavigateToStreams = onNavigateToStreams,
+            ),
+        )
     }
 }
 

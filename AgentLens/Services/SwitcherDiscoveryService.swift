@@ -21,6 +21,7 @@ enum DiscoverySource: Equatable {
     case kimi(executablePath: String?, configDirectory: String?)
     case pi(executablePath: String?, configDirectory: String?)
     case junie(executablePath: String?, configDirectory: String?)
+    case fx(executablePath: String?, configDirectory: String?)
     case omp(executablePath: String?, configDirectory: String?)
     case primeAgent(executablePath: String?, configDirectory: String?)
 }
@@ -169,7 +170,11 @@ final class SwitcherDiscoveryService: ObservableObject {
         // Scan CLI tools
         scanProgress.append("Scanning CLI tools...")
         let cliAuthInfos = CLIAuthDiscovery.discoverAuthStates()
-        let quotaSummaries = await loadCLIQuotaSummaries(for: cliAuthInfos, dataStore: dataStore)
+        // Discovery is a local, user-facing setup step. Do not hold the wizard
+        // open on live quota HTTP calls: a provider outage or slow endpoint
+        // must never leave the screen stuck on “Scanning…”. The normal quota
+        // refresh lifecycle will fill missing/stale summaries after setup.
+        let quotaSummaries = loadCLIQuotaSummaries(for: cliAuthInfos)
 
         for cliInfo in cliAuthInfos {
             let source: DiscoverySource
@@ -212,6 +217,8 @@ final class SwitcherDiscoveryService: ObservableObject {
                 source = .pi(executablePath: cliInfo.executablePath, configDirectory: cliInfo.configDirectory)
             case .junie:
                 source = .junie(executablePath: cliInfo.executablePath, configDirectory: cliInfo.configDirectory)
+            case .fx:
+                source = .fx(executablePath: cliInfo.executablePath, configDirectory: cliInfo.configDirectory)
             case .omp:
                 source = .omp(executablePath: cliInfo.executablePath, configDirectory: cliInfo.configDirectory)
             case .primeAgent:
@@ -440,6 +447,18 @@ final class SwitcherDiscoveryService: ObservableObject {
                     displayLabel: "Junie",
                     configDirectory: configDirectory,
                     accountDescription: "Junie local profile"
+                ),
+                sortKey: 0
+            )
+        case .fx(_, let configDirectory):
+            record = SwitcherProfileRecord(
+                targetKind: .cli,
+                cliType: .fx,
+                cliMetadata: SwitcherCLIProfileMetadata(
+                    workingDirectory: nil,
+                    displayLabel: "fx",
+                    configDirectory: configDirectory,
+                    accountDescription: "fx local profile"
                 ),
                 sortKey: 0
             )
@@ -899,6 +918,9 @@ final class SwitcherDiscoveryService: ObservableObject {
                 case .junie(_, let configDirectory):
                     return cliType == .junie
                         && configDirectory == saved.cliMetadata?.configDirectory
+                case .fx(_, let configDirectory):
+                    return cliType == .fx
+                        && configDirectory == saved.cliMetadata?.configDirectory
                 case .omp(_, let configDirectory):
                     return cliType == .omp
                         && configDirectory == saved.cliMetadata?.configDirectory
@@ -1011,6 +1033,8 @@ final class SwitcherDiscoveryService: ObservableObject {
             return .pi(executablePath: CLILaunchAdapter.executablePath(for: .pi), configDirectory: nil)
         case .junie:
             return .junie(executablePath: CLILaunchAdapter.executablePath(for: .junie), configDirectory: nil)
+        case .fx:
+            return .fx(executablePath: CLILaunchAdapter.executablePath(for: .fx), configDirectory: nil)
         case .omp:
             return .omp(executablePath: CLILaunchAdapter.executablePath(for: .omp), configDirectory: nil)
         case .primeAgent:
@@ -1048,7 +1072,7 @@ final class SwitcherDiscoveryService: ObservableObject {
             success = true
             #endif
 
-        case .codex, .claudeCode, .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie, .primeAgent:
+        case .codex, .claudeCode, .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie, .primeAgent, .fx:
             // Quick CLI version check
             let cliType: SwitcherCLIProfileType
             switch identity.source {
@@ -1064,6 +1088,7 @@ final class SwitcherDiscoveryService: ObservableObject {
             case .kimi: cliType = .kimi
             case .pi: cliType = .pi
             case .junie: cliType = .junie
+            case .fx: cliType = .fx
             case .omp: cliType = .omp
             case .primeAgent: cliType = .primeAgent
             default: cliType = .codex
@@ -1082,23 +1107,21 @@ final class SwitcherDiscoveryService: ObservableObject {
     }
 
     private func loadCLIQuotaSummaries(
-        for cliAuthInfos: [CLIAuthInfo],
-        dataStore: DataStore
-    ) async -> [SwitcherCLIProfileType: IdentityQuotaSummary] {
+        for cliAuthInfos: [CLIAuthInfo]
+    ) -> [SwitcherCLIProfileType: IdentityQuotaSummary] {
         let quotaService = ProviderQuotaService.shared
         var summaries: [SwitcherCLIProfileType: IdentityQuotaSummary] = [:]
+        var deferredRefreshes = 0
 
         for cliInfo in cliAuthInfos where cliInfo.isInstalled {
             guard let provider = quotaProvider(for: cliInfo.cliType) else { continue }
 
             let existingSnapshot = quotaService.snapshot(for: provider)
-            if shouldRefreshQuotaSnapshot(existingSnapshot) {
-                scanProgress.append("Refreshing \(cliInfo.cliType.displayName) quota…")
-                await quotaService.refresh(provider: provider, dataStore: dataStore)
-            }
-
             guard let snapshot = quotaService.snapshot(for: provider),
                   let summary = quotaSummary(from: snapshot) else {
+                if shouldRefreshQuotaSnapshot(existingSnapshot) {
+                    deferredRefreshes += 1
+                }
                 continue
             }
 
@@ -1107,6 +1130,12 @@ final class SwitcherDiscoveryService: ObservableObject {
             let fiveHour = summary.fiveHourRemaining ?? "--"
             let weekly = summary.weeklyRemaining ?? "--"
             scanProgress.append("\(cliInfo.cliType.displayName) quota — 5h \(fiveHour), weekly \(weekly)")
+        }
+
+        if deferredRefreshes > 0 {
+            scanProgress.append(
+                "\(deferredRefreshes) quota refresh\(deferredRefreshes == 1 ? "" : "es") deferred until after setup"
+            )
         }
 
         return summaries
@@ -1144,6 +1173,9 @@ final class SwitcherDiscoveryService: ObservableObject {
             return .piAgent
         case .junie:
             return .junie
+        case .fx:
+            // fx has no quota signal; usage is tracked from local sessions.
+            return nil
         case .omp:
             return .omp
         case .primeAgent:
@@ -1302,6 +1334,7 @@ final class SwitcherDiscoveryService: ObservableObject {
         case (.kimi, .kimiCLI): return true
         case (.pi, .piCLI): return true
         case (.junie, .junieCLI): return true
+        case (.fx, .fxCLI): return true
         case (.omp, .ompCLI): return true
         default: return false
         }
@@ -1325,6 +1358,7 @@ extension DiscoverySource {
         case .kimi: return .kimi
         case .pi: return .pi
         case .junie: return .junie
+        case .fx: return .fx
         case .omp: return .omp
         case .primeAgent: return .primeAgent
         default: return nil

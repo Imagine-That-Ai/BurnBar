@@ -77,7 +77,10 @@ function invokeCallable<TRes = unknown>(
   data: Record<string, unknown>,
   uid: string | null = UID,
 ): Promise<TRes> {
-  const run = callable && (typeof callable === "object" || typeof callable === "function") ? Reflect.get(callable, "run") : undefined;
+  const run =
+    callable && (typeof callable === "object" || typeof callable === "function")
+      ? Reflect.get(callable, "run")
+      : undefined;
   if (typeof run !== "function") {
     throw new Error("callable test target is missing run()");
   }
@@ -145,7 +148,9 @@ describe("rebuildUsageRollups force gating", () => {
   });
 
   it("rejects unauthenticated requests before touching the rollup engine", async () => {
-    await expect(invokeCallable(rebuildUsageRollups, {}, null)).rejects.toThrow(/unauthenticated/);
+    await expect(invokeCallable(rebuildUsageRollups, {}, null)).rejects.toThrow(
+      /Sign in before rebuilding usage rollups/,
+    );
     expect(refreshUserRollupsMock).not.toHaveBeenCalled();
   });
 

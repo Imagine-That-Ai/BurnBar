@@ -13,7 +13,7 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('DashboardLayoutShell', () => {
-  it('renders all six layout frames', () => {
+  it('renders all eight layout frames', () => {
     for (const layout of DASHBOARD_LAYOUTS) {
       const { unmount } = render(
         <DashboardLayoutShell layout={layout} state="empty" showSwitcher={false} />
@@ -51,10 +51,21 @@ describe('DashboardLayoutShell', () => {
 
   it('switcher persists selection under dashboardLayout', () => {
     render(<DashboardLayoutShell layout="atelier" state="populated" />);
-    const nebula = screen.getByRole('button', { name: /Nebula/i });
-    fireEvent.click(nebula);
+    const bento = screen.getByRole('button', { name: /Bento/i });
+    fireEvent.click(bento);
     expect(localStorage.getItem(DASHBOARD_LAYOUT_STORAGE_KEY)).toBe('nebula');
     expect(useDashboardLayoutStore.getState().layout).toBe('nebula');
+  });
+
+  it('gives stream and atlas skeleton frames of their own', () => {
+    const { rerender } = render(<DashboardLayoutShell layout="stream" state="empty" showSwitcher={false} />);
+    expect(screen.getByText(/Timeline · newest first/)).toBeTruthy();
+    expect(document.querySelector('.dashboard-layout-frame--stream')).toBeTruthy();
+    expect(document.querySelectorAll('.dashboard-layout-panel--skeleton').length).toBeGreaterThan(0);
+
+    rerender(<DashboardLayoutShell layout="atlas" state="empty" showSwitcher={false} />);
+    expect(screen.getByText(/Needs you · everything else/)).toBeTruthy();
+    expect(document.querySelector('.dashboard-layout-frame--atlas')).toBeTruthy();
   });
 
   it('marks kernel-forward layouts', () => {

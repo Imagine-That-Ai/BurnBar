@@ -64,10 +64,6 @@ enum DesignSystem {
             endPoint: .bottomTrailing
         )
 
-        /// Chat bubbles: user outline (whimsy) / assistant accent (ember).
-        static let chatUserStroke = Color.adaptive(editorial: DesignSystemTokens.chatUserStrokeEditorial, light: "6A5ACD", dark: "6A5ACD")
-        static let chatAssistantStroke = Color.adaptive(editorial: DesignSystemTokens.chatAssistantStrokeEditorial, light: "F45B69", dark: "F45B69")
-
         static let primaryGradient = LinearGradient(
             colors: [ember, amber],
             startPoint: .topLeading,
@@ -150,6 +146,7 @@ enum DesignSystem {
             case .cursorAgent: return Color(hex: "00E5FF")
             case .openBurnBar: return Colors.ember
             case .junie:      return Color(hex: "48E054")
+            case .fx:         return Color(hex: "A1A1AA")
             case .primeAgent: return Color(hex: "582CFF")
             case .muse:       return Color(hex: "0668E1")
             }
@@ -191,6 +188,7 @@ enum DesignSystem {
             case .cursorAgent: return Color(hex: "33ECFF")
             case .openBurnBar: return Color(hex: "FF7578")
             case .junie:      return Color(hex: "6FE87F")
+            case .fx:         return Color.adaptive(light: "4A4A4A", dark: "D4D4D8")
             case .primeAgent: return Color(hex: "9370FF")
             case .muse:       return Color(hex: "3B82F6")
             }

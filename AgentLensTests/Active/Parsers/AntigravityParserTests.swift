@@ -416,7 +416,7 @@ final class AntigravityParserTests: XCTestCase {
             fallbackModel: "test-model"
         )
 
-        XCTAssertNil(result?.usage, "Empty transcript should return nil usage")
+        XCTAssertNil(result, "an empty transcript yields no result at all, so there is no usage to report")
     }
 
     func testOnlySystemMessagesReturnsValidResult() throws {

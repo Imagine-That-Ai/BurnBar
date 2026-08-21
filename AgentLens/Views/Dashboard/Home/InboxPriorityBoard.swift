@@ -62,9 +62,11 @@ struct InboxPriorityBoard: View {
                     ink: ink
                 )
             } else {
-                HStack(alignment: .top, spacing: DesignSystem.Spacing.md) {
-                    ForEach(Column.allCases) { column in
-                        columnView(column)
+                LiquidGlassGroup(spacing: DesignSystem.Spacing.md) {
+                    HStack(alignment: .top, spacing: DesignSystem.Spacing.md) {
+                        ForEach(Column.allCases) { column in
+                            columnView(column)
+                        }
                     }
                 }
                 .padding(DesignSystem.Spacing.md)
@@ -82,23 +84,45 @@ struct InboxPriorityBoard: View {
                 Circle()
                     .fill(column.tint)
                     .frame(width: 6, height: 6)
+                    .shadow(color: column.tint.opacity(0.5), radius: 3)
                 Text(column.title)
                     .font(DesignSystem.Typography.caption)
                     .fontWeight(.semibold)
                     .tracking(0.8)
                     .foregroundStyle(ink.secondary)
+                Spacer(minLength: 0)
                 Text("\(rows.count)")
                     .font(DesignSystem.Typography.monoTiny)
                     .foregroundStyle(ink.subtle)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background {
+                        Capsule(style: .continuous)
+                            .fill(DesignSystem.Colors.surfaceElevated.opacity(0.6))
+                    }
             }
+            .padding(.horizontal, DesignSystem.Spacing.xs)
 
             if rows.isEmpty {
-                // A column with nothing in it is good news, so say so rather
-                // than leaving a blank that reads as a loading failure.
-                Text(column == .urgent ? "Clear" : "Nothing here")
-                    .font(DesignSystem.Typography.tiny)
-                    .foregroundStyle(ink.subtle)
-                    .padding(.vertical, DesignSystem.Spacing.xs)
+                HStack(spacing: DesignSystem.Spacing.xs) {
+                    Image(systemName: column == .urgent ? "checkmark.circle" : "tray")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(column == .urgent ? DesignSystem.Colors.success : ink.subtle)
+                    Text(column == .urgent ? "Queue clear" : "Nothing waiting")
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(ink.subtle)
+                }
+                .padding(.horizontal, DesignSystem.Spacing.sm)
+                .padding(.vertical, DesignSystem.Spacing.md)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background {
+                    RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                        .fill(DesignSystem.Colors.surface.opacity(0.3))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                                .strokeBorder(ink.hairline.opacity(0.3), lineWidth: 0.5)
+                        }
+                }
             } else {
                 ScrollView {
                     VStack(spacing: DesignSystem.Spacing.xs) {
@@ -106,12 +130,12 @@ struct InboxPriorityBoard: View {
                             card(row, tint: column.tint)
                         }
                     }
+                    .frame(maxWidth: .infinity, alignment: .top)
                 }
+                .frame(maxHeight: .infinity)
             }
-
-            Spacer(minLength: 0)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private func card(_ row: ControlPlaneStore.AIInboxRow, tint: Color) -> some View {
@@ -125,8 +149,16 @@ struct InboxPriorityBoard: View {
                         .font(DesignSystem.Typography.tiny)
                         .foregroundStyle(ink.subtle)
                     Spacer(minLength: 0)
+                    if row.summary.occurrenceCount > 1 {
+                        Text("×\(row.summary.occurrenceCount)")
+                            .font(DesignSystem.Typography.monoTiny)
+                            .foregroundStyle(ink.subtle)
+                    }
                     if row.isUnread {
-                        Circle().fill(tint).frame(width: 5, height: 5)
+                        Circle()
+                            .fill(tint)
+                            .frame(width: 5, height: 5)
+                            .shadow(color: tint.opacity(0.6), radius: 2)
                     }
                 }
 
@@ -146,14 +178,26 @@ struct InboxPriorityBoard: View {
             }
             .padding(DesignSystem.Spacing.sm)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background {
+            .liquidGlassSurface(
+                tint: tint.opacity(0.04),
+                in: RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+            )
+            .overlay {
                 RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
-                    .fill(DesignSystem.Colors.surfaceElevated.opacity(0.55))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
-                            .strokeBorder(ink.hairline.opacity(0.5), lineWidth: 0.75)
-                    }
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.3),
+                                ink.hairline.opacity(0.4),
+                                ink.hairline.opacity(0.15)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        ),
+                        lineWidth: 0.75
+                    )
             }
+            .shadow(color: Color.black.opacity(0.12), radius: 4, y: 2)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

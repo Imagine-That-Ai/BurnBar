@@ -158,14 +158,55 @@ struct BackdropReadabilityProfile: Equatable, Sendable {
     )
     // cov:ignore-end
 
+    /// The same profile with a floor placed under its scrim.
+    ///
+    /// Used for the live-backdrop fallback, where the canvas is unknown and
+    /// moving, so the veil needs more authority than a static canvas of the
+    /// same tone requires. Raising a scrim only ever moves the plate *further*
+    /// toward the tone's own extreme, so it cannot reduce contrast for the ink
+    /// family this profile carries.
+    func reinforcingScrim(atLeast floor: Double) -> BackdropReadabilityProfile {
+        guard floor > scrimOpacity else { return self }
+        return BackdropReadabilityProfile(
+            tone: tone,
+            scrimOpacity: min(1, floor),
+            minLuminance: minLuminance,
+            maxLuminance: maxLuminance,
+            contrastRatio: contrastRatio,
+            sampleCount: sampleCount,
+            samplingDurationMs: samplingDurationMs,
+            source: source
+        )
+    }
+
     static func nativeFallback(
         colorScheme: ColorScheme,
         appearanceSkin: AppSkin,
         liveBackdropActive: Bool
     ) -> BackdropReadabilityProfile {
+        // Editorial is light-locked paper whatever the system appearance says,
+        // so it answers before the appearance is consulted at all.
         if appearanceSkin == .editorial { return .lightCanvasFallback }
-        if liveBackdropActive { return .darkCanvasFallback }
-        return colorScheme == .dark ? .darkCanvasFallback : .lightCanvasFallback
+
+        // A live backdrop used to force the dark-canvas family outright, on the
+        // assumption that every kernel paints dark. That is false in Light mode:
+        // over a bright kernel it put the *light* ink family — white — on a light
+        // field, which is exactly the "hard to read in light mode" report.
+        //
+        // The system appearance is the only honest signal available here. The
+        // WebGL sampler overrides this the moment it publishes a real profile,
+        // and the two native backdrops that never publish one (the swarm and the
+        // constellation) both draw over `DesignSystem.Colors.background`, which
+        // tracks the appearance. So the appearance is right in every case this
+        // function actually answers for.
+        let base = colorScheme == .dark ? darkCanvasFallback : lightCanvasFallback
+        guard liveBackdropActive else { return base }
+
+        // The tone is settled; what a live backdrop still changes is how much
+        // veil the unknown canvas needs. Reinforce to the dark-canvas rung so
+        // Light mode gets dark ink behind a stronger scrim rather than the
+        // thinner veil a static light canvas can get away with.
+        return base.reinforcingScrim(atLeast: darkCanvasFallback.scrimOpacity)
     }
 
     static func decode(messageBody: Any) -> BackdropReadabilityProfile? {

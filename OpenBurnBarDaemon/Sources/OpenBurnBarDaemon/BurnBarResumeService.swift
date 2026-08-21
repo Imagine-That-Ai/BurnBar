@@ -451,6 +451,8 @@ final class BurnBarResumeService: @unchecked Sendable {
             return "windsurf"
         case "Junie", "junie":
             return "junie"
+        case "fx", "vercel-fx", "vercelfx":
+            return "fx"
         default:
             return trimmed.lowercased()
                 .replacingOccurrences(of: #"[^a-z0-9]+"#, with: "_", options: .regularExpression)
@@ -592,6 +594,14 @@ final class BurnBarResumeService: @unchecked Sendable {
             var argv = ["junie", "--prompt", prompt]
             if let model = nonBlank(model) { argv += ["--model", model] }
             return TargetInvocation(argv: argv, cleanupPath: hint.cleanup ? hint.path : nil)
+        case "fx":
+            // fx resume is a handoff (unvalidated-handle rule): the briefing
+            // prompt is submitted through the structured one-shot form. fx has
+            // no `--model` flag, so the model argument is intentionally unused.
+            return TargetInvocation(
+                argv: ["fx", "ask", prompt],
+                cleanupPath: hint.cleanup ? hint.path : nil
+            )
         default:
             return TargetInvocation(
                 argv: ["open", nonBlank(workingDirectory) ?? hint.path],

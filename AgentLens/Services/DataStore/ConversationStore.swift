@@ -112,14 +112,14 @@ final class ConversationStore: Sendable {
     static func conversation(from row: Row) -> OpenBurnBarCore.ConversationRecord? {
         guard let id = row["id"] as? String,
               let providerRaw = row["provider"] as? String,
-              let provider = AgentProvider(rawValue: providerRaw),
+              let provider = AgentProvider.resolve(providerRaw),
               let sessionId = row["sessionId"] as? String,
               let projectName = row["projectName"] as? String else {
             return nil
         }
-        let messageCount = (row["messageCount"] as? Int) ?? Int(row["messageCount"] as? Int64 ?? 0)
-        let userWordCount = (row["userWordCount"] as? Int) ?? Int(row["userWordCount"] as? Int64 ?? 0)
-        let assistantWordCount = (row["assistantWordCount"] as? Int) ?? Int(row["assistantWordCount"] as? Int64 ?? 0)
+        let messageCount: Int = row["messageCount"] ?? 0
+        let userWordCount: Int = row["userWordCount"] ?? 0
+        let assistantWordCount: Int = row["assistantWordCount"] ?? 0
         let inferredTaskTitle = (row["inferredTaskTitle"] as? String) ?? ""
         let lastAssistantMessage = (row["lastAssistantMessage"] as? String) ?? ""
         let fullText = (row["fullText"] as? String) ?? ""
@@ -135,6 +135,9 @@ final class ConversationStore: Sendable {
 
         let sourceTypeRaw = (row["sourceType"] as? String) ?? "provider_log"
         let sourceType = OpenBurnBarCore.ConversationSourceType(rawValue: sourceTypeRaw) ?? .providerLog
+
+        let isRemoteRaw: Int = row["isRemote"] ?? 0
+        let version: Int = row["version"] ?? 1
 
         return OpenBurnBarCore.ConversationRecord(
             id: id,
@@ -163,9 +166,9 @@ final class ConversationStore: Sendable {
             sourceType: sourceType,
             sourceDeviceId: row["sourceDeviceId"] as? String,
             sourceDeviceName: row["sourceDeviceName"] as? String,
-            isRemote: ((row["isRemote"] as? Int) ?? Int(row["isRemote"] as? Int64 ?? 0)) != 0,
+            isRemote: isRemoteRaw != 0,
             deletedAt: OpenBurnBarDatabase.parseDateValue(row["deletedAt"]),
-            version: (row["version"] as? Int) ?? Int(row["version"] as? Int64 ?? 1)
+            version: version
         )
     }
 

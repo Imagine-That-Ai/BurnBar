@@ -26,6 +26,7 @@ public enum AssistantRuntimeID: String, Codable, CaseIterable, Hashable, Sendabl
     case grok
     case cursorAgent = "cursorAgent"
     case junie
+    case fx
 
     public var displayName: String {
         switch self {
@@ -42,25 +43,23 @@ public enum AssistantRuntimeID: String, Codable, CaseIterable, Hashable, Sendabl
         case .grok:     return "Grok Build"
         case .cursorAgent: return "Cursor Agent"
         case .junie:    return "Junie"
+        case .fx:       return "fx"
         }
     }
 
     /// Defaults used by `AssistantConnectionSheet` when seeding the Direct URL section.
     public var defaultGatewayURL: URL {
+        // Grouped by port instead of one arm per runtime: the arms were fourteen
+        // copies of the same force-unwrapped literal. Still exhaustive with no
+        // `default:`, so a new runtime has to name its port rather than silently
+        // inheriting the Hermes gateway.
         switch self {
-        case .hermes:   return URL(string: "http://127.0.0.1:8642")!
-        case .pi:       return URL(string: "http://127.0.0.1:8765")!
-        case .codex:    return URL(string: "http://127.0.0.1:8642")!
-        case .claude:   return URL(string: "http://127.0.0.1:8642")!
-        case .openClaw: return URL(string: "http://127.0.0.1:18789")!
-        case .openClaude: return URL(string: "http://127.0.0.1:8642")!
-        case .omp: return URL(string: "http://127.0.0.1:8642")!
-        case .droid:    return URL(string: "http://127.0.0.1:8642")!
-        case .forge:    return URL(string: "http://127.0.0.1:8642")!
-        case .antigravity: return URL(string: "http://127.0.0.1:8642")!
-        case .grok:     return URL(string: "http://127.0.0.1:8642")!
-        case .cursorAgent: return URL(string: "http://127.0.0.1:8642")!
-        case .junie:    return URL(string: "http://127.0.0.1:8642")!
+        case .hermes, .codex, .claude, .openClaude, .omp, .droid, .forge, .antigravity, .grok, .cursorAgent, .junie, .fx:
+            return URL(string: "http://127.0.0.1:8642")!
+        case .pi:
+            return URL(string: "http://127.0.0.1:8765")!
+        case .openClaw:
+            return URL(string: "http://127.0.0.1:18789")!
         }
     }
 
@@ -80,6 +79,7 @@ public enum AssistantRuntimeID: String, Codable, CaseIterable, Hashable, Sendabl
         case .grok:     return "\u{03A8}" // Ψ
         case .cursorAgent: return "\u{27A4}" // ➤
         case .junie:    return "\u{273D}" // ✽ (Junie bloom)
+        case .fx:       return "\u{0192}" // ƒ (fx)
         }
     }
 
@@ -88,7 +88,7 @@ public enum AssistantRuntimeID: String, Codable, CaseIterable, Hashable, Sendabl
     /// model while execution stays on the trusted Mac.
     public var hasMobileChatSurface: Bool {
         switch self {
-        case .hermes, .pi, .codex, .claude, .openClaw, .openClaude, .omp, .droid, .forge, .antigravity, .grok, .cursorAgent, .junie: return true
+        case .hermes, .pi, .codex, .claude, .openClaw, .openClaude, .omp, .droid, .forge, .antigravity, .grok, .cursorAgent, .junie, .fx: return true
         }
     }
 

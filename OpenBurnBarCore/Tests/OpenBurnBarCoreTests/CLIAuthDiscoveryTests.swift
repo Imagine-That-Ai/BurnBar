@@ -11,6 +11,7 @@ final class CLIAuthDiscoveryTests: XCTestCase {
         CLILaunchAdapter.executableResolver = nil
         CLILaunchAdapter.environmentProvider = { ProcessInfo.processInfo.environment }
         CLILaunchAdapter.homeDirectoryProvider = { FileManager.default.homeDirectoryForCurrentUser.path }
+        CLIAuthDiscovery.environmentProvider = { ProcessInfo.processInfo.environment }
         super.tearDown()
     }
 
@@ -133,5 +134,95 @@ final class CLIAuthDiscoveryTests: XCTestCase {
         )
         XCTAssertEqual(recorded.authState, .authenticated(lastRefresh: nil))
         XCTAssertEqual(recorded.accountDescription, "Prime Agent local sessions")
+    }
+
+    func test_fxDiscoveryRequiresCredentialEvidenceNotConfigOrSessions() throws {
+        let tempRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-fx-auth-\(UUID().uuidString)", isDirectory: true)
+        let configDir = tempRoot.appendingPathComponent(".fx", isDirectory: true)
+        let sessionsDir = configDir.appendingPathComponent("sessions", isDirectory: true)
+        let executableURL = tempRoot.appendingPathComponent("fx")
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+        try FileManager.default.createDirectory(at: sessionsDir, withIntermediateDirectories: true)
+        try "#!/bin/sh\n".write(to: executableURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executableURL.path)
+        CLILaunchAdapter.executableResolver = { cliType in
+            cliType == .fx ? executableURL : nil
+        }
+        CLILaunchAdapter.environmentProvider = { [:] }
+        CLIAuthDiscovery.environmentProvider = { [:] }
+
+        let configOnly = CLIAuthDiscovery.discoverAuthState(
+            for: .fx,
+            configDirectoryOverride: configDir.path
+        )
+        XCTAssertEqual(configOnly.authState, .notAuthenticated)
+
+        try "{}\n".write(
+            to: sessionsDir.appendingPathComponent("session-001.json"),
+            atomically: true,
+            encoding: .utf8
+        )
+        let sessionOnly = CLIAuthDiscovery.discoverAuthState(
+            for: .fx,
+            configDirectoryOverride: configDir.path
+        )
+        XCTAssertEqual(sessionOnly.authState, .notAuthenticated)
+        XCTAssertEqual(sessionOnly.accountDescription, "fx local sessions")
+    }
+
+    func test_fxDiscoveryRecognizesOAuthAndAPIKeyFiles() throws {
+        let tempRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-fx-credentials-\(UUID().uuidString)", isDirectory: true)
+        let configDir = tempRoot.appendingPathComponent(".fx", isDirectory: true)
+        let executableURL = tempRoot.appendingPathComponent("fx")
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+        try FileManager.default.createDirectory(at: configDir, withIntermediateDirectories: true)
+        try "#!/bin/sh\n".write(to: executableURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executableURL.path)
+        CLILaunchAdapter.executableResolver = { cliType in
+            cliType == .fx ? executableURL : nil
+        }
+        CLILaunchAdapter.environmentProvider = { [:] }
+        CLIAuthDiscovery.environmentProvider = { [:] }
+
+        try "gateway-key\n".write(
+            to: configDir.appendingPathComponent("api-key"),
+            atomically: true,
+            encoding: .utf8
+        )
+        XCTAssertEqual(
+            CLIAuthDiscovery.discoverAuthState(
+                for: .fx,
+                configDirectoryOverride: configDir.path
+            ).authState,
+            .apiKeyPresent
+        )
+
+        try FileManager.default.removeItem(at: configDir.appendingPathComponent("api-key"))
+        try #"{"access_token":"opaque"}"#.write(
+            to: configDir.appendingPathComponent("auth.json"),
+            atomically: true,
+            encoding: .utf8
+        )
+        XCTAssertEqual(
+            CLIAuthDiscovery.discoverAuthState(
+                for: .fx,
+                configDirectoryOverride: configDir.path
+            ).authState,
+            .authenticated(lastRefresh: nil)
+        )
+
+        try FileManager.default.removeItem(at: configDir.appendingPathComponent("auth.json"))
+        CLIAuthDiscovery.environmentProvider = { ["AI_GATEWAY_API_KEY": "gateway-key"] }
+        XCTAssertEqual(
+            CLIAuthDiscovery.discoverAuthState(
+                for: .fx,
+                configDirectoryOverride: configDir.path
+            ).authState,
+            .apiKeyPresent
+        )
     }
 }

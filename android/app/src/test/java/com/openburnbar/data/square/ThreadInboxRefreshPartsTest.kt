@@ -49,6 +49,11 @@ class ThreadInboxRefreshPartsTest {
                 "cursoragent" to AssistantRuntimeID.CURSOR_AGENT,
                 "cursor_agent" to AssistantRuntimeID.CURSOR_AGENT,
                 "cursor-agent" to AssistantRuntimeID.CURSOR_AGENT,
+                // Fx mapped in the runtime table but was dropped by a second
+                // alias list in the outer switch; walk it end to end.
+                "fx" to AssistantRuntimeID.FX,
+                "vercel-fx" to AssistantRuntimeID.FX,
+                "vercelfx" to AssistantRuntimeID.FX,
             )
 
         for ((runtime, expectedRuntimeID) in aliases) {

@@ -772,7 +772,7 @@ final class AgentDeckIdentityTests: XCTestCase {
             seen[hex] = backend
         }
         XCTAssertEqual(seen.count, ChatBackendID.allCases.count)
-        XCTAssertEqual(ChatBackendID.allCases.count, 12)
+        XCTAssertEqual(ChatBackendID.allCases.count, 15)
     }
 
     func test_sigilTint_reusesTheDesignSystemPrimaries_andInventsNoNewHexes() throws {
@@ -830,8 +830,14 @@ final class AgentDeckIdentityTests: XCTestCase {
         let midTones = ChatBackendID.allCases.filter {
             AgentDeckContrast.inkContrastRatio(forTintHex: $0.sigilTintHex) < BackdropContrast.normalTextRatio
         }
+        // Kimi joins the two existing mid-tones for the same reason they are there:
+        // 6366F1 is an indigo of the same family as 8B5CF6 (Droid) and 6C63FF
+        // (Antigravity), and it is DesignSystem.Colors.primary(for: .kimi) — the
+        // colour the rest of the app already paints Kimi with — not a new hex minted
+        // to pass a bar. It clears large-text 3.0:1 above, which is the bar the ink
+        // actually has to meet.
         XCTAssertEqual(
-            Set(midTones), [.droid, .antigravity],
+            Set(midTones), [.droid, .antigravity, .kimi],
             "The set of agents that miss 4.5:1 changed — re-read §6.1 before shipping a new tint"
         )
     }

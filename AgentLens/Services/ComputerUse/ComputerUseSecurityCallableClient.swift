@@ -1186,9 +1186,9 @@ enum ComputerUseSecurityCallableClient {
         selectedRuntimeName: String,
         selectedModelID: String?,
         approvalRequestId: String?,
-        sealedStatePayload: [String: Any]
+        sealedStatePayload: [String: any Sendable]
     ) async throws -> String {
-        var payload: [String: Any] = [
+        var payload: [String: any Sendable] = [
             "requestId": requestId,
             "deviceId": deviceId,
             "nextStatus": nextStatus,
@@ -1226,7 +1226,7 @@ enum ComputerUseSecurityCallableClient {
         approvalRequestId: String? = nil,
         releaseClaim: Bool = false
     ) async throws {
-        var payload: [String: Any] = [
+        var payload: [String: any Sendable] = [
             "requestId": requestId,
             "deviceId": deviceId,
             "status": status,
@@ -1252,8 +1252,8 @@ enum ComputerUseSecurityCallableClient {
         deviceId: String,
         hostWriteNonce: String,
         eventId: String,
-        sealedEvent: [String: Any],
-        publicEventShape: [String: Any]
+        sealedEvent: [String: any Sendable],
+        publicEventShape: [String: any Sendable]
     ) async throws {
         let result = try await callHighRiskOwnerAction(
             "appendCliAgentMissionEvent",

@@ -10,7 +10,7 @@ const DOC_END = "<!-- END GENERATED MIGRATION CATALOG -->";
 
 // These are reviewed, semantic platform adaptations, not blanket exclusions.
 // Both fingerprints are pinned so any edit on either side requires review.
-const INTENTIONAL_DIVERGENCES = {
+export const INTENTIONAL_DIVERGENCES = {
   v21_multifield_fts: {
     app: "da820ee7efc0ae17440cc7032743f27c7d525d3a92f44e0aec0649941e907531",
     shared: "393f4396428b91eb0a5dd3d2d02c7d06b2f0e7ce939ca45e37a99ce8931711e0",
@@ -22,8 +22,8 @@ const INTENTIONAL_DIVERGENCES = {
     reason: "The app copy qualifies OpenBurnBarIdentity through the imported OpenBurnBarCore module.",
   },
   v46_drain_target_per_provider: {
-    app: "4861dc4526404b006e785f08b3b4c1f227500bfda7917130a8833df9b15f7aaf",
-    shared: "e89d925b947fc9126f86bcfbbe7bdc8b19c0a3701aded9b0a22b7b4d95fbf426",
+    app: "b71f29aa36fb42d5ae4d589e7c01a766b27f99cc149cbfd7f3dc1b714b02ddb6",
+    shared: "92860497ca3f6cc3c173e9b65ca792e97ccdec23c9f1e3fd05308bd837f80d4f",
     appExternalDependencies: [
       {
         file: "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/SwitcherProfile.swift",
@@ -35,7 +35,7 @@ const INTENTIONAL_DIVERGENCES = {
       },
     ],
     sharedDependencies: ["providerIDForSwitcherCLIType"],
-    reason: "The shared-data target cannot depend on the app enum; both its frozen map and the app's enum dependencies are pinned. Fingerprints refreshed for Junie + Prime Agent switcher providerIDs.",
+    reason: "The shared-data target cannot depend on the app enum; both its frozen map and the app's enum dependencies are pinned. Fingerprints refreshed for Junie + Prime Agent + fx switcher providerIDs.",
   },
 };
 

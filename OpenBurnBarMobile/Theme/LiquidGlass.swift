@@ -58,19 +58,59 @@ enum LiquidGlassTransparency {
         return (reduceTransparency && t > 0) ? 0 : t
     }
 
-    /// Whether the iOS 26 plate should use the `.clear` glass variant.
-    static func usesClearGlass(_ t: Double) -> Bool { t > 0.001 }
+    /// The key the kernel backdrop stores its on/off state under.
+    ///
+    /// A literal rather than an import: this type is a pure preference model and must
+    /// not depend on the view layer that owns the backdrop.
+    static let mediaRichBackdropKey = "useKernelBackdrop"
+
+    /// Whether a plate may use the `.clear` glass variant.
+    ///
+    /// WWDC25 s219 permits `.clear` only when **all three** hold: the element sits over
+    /// media-rich content, the content layer tolerates a dimming layer, and the content
+    /// above it is bold and bright. `.clear` has no adaptive behaviour — no light/dark
+    /// flip, no shadow adaptation — so using it outside those conditions is what
+    /// produces washed, low-contrast chrome.
+    ///
+    /// The previous mapping was `t > 0.001`: any nudge of the slider chose `.clear`
+    /// over an ordinary opaque background, meeting none of the three.
+    static func usesClearGlass(_ t: Double, overMediaRichContent: Bool) -> Bool {
+        guard overMediaRichContent else { return false }
+        return t > 0.55
+    }
+
+    static func isOverMediaRichContent(defaults: UserDefaults = .standard) -> Bool {
+        defaults.bool(forKey: mediaRichBackdropKey)
+    }
+
+    static func usesClearGlass(_ t: Double) -> Bool {
+        usesClearGlass(t, overMediaRichContent: isOverMediaRichContent())
+    }
 
     /// Opacity of the thick-material frost scrim between plate and content.
     static func frostScrimOpacity(_ t: Double) -> Double { t < 0 ? 0.9 * -t : 0 }
 
-    /// A faint ultra-thin scrim that bridges the regular→clear variant jump
-    /// just past center, fading out as `t` approaches +1 but stopping at a
-    /// small floor so the plate never disappears completely. Keeps the
-    /// preference continuous and the content legible even at 100% clear.
+    /// The dimming layer that makes `.clear` legitimate.
+    ///
+    /// Takes the media condition explicitly rather than reading `UserDefaults`, so the
+    /// value is a pure function of its inputs and a test cannot be silently steered by
+    /// whatever the developer happens to have switched on.
+    ///
+    /// Zero unless `.clear` is actually selected — below the threshold the plate is
+    /// `.regular`, which is adaptive and needs no help.
+    static func clearBridgeScrimOpacity(_ t: Double, overMediaRichContent: Bool) -> Double {
+        guard usesClearGlass(t, overMediaRichContent: overMediaRichContent) else { return 0 }
+        // `.clear` is only sanctioned *with* a dimming layer, so this is load-bearing
+        // rather than cosmetic. Two changes from the old `max(0.06, 0.14 * (1 - t))`:
+        // the floor is thick enough to actually carry legibility, and the ramp is
+        // additive so it still varies across the valid range. The old form floored out
+        // immediately once the threshold moved, leaving a constant — a dead gradient.
+        return 0.12 + 0.10 * (1 - t)
+    }
+
+    /// Convenience for view code, which always evaluates against the live backdrop.
     static func clearBridgeScrimOpacity(_ t: Double) -> Double {
-        guard usesClearGlass(t) else { return 0 }
-        return max(0.06, 0.14 * (1 - t))
+        clearBridgeScrimOpacity(t, overMediaRichContent: isOverMediaRichContent())
     }
 
     /// Opacity of the fallback material plate on iOS 17–25.
@@ -201,8 +241,11 @@ struct LiquidGlassStyle {
     }
 
     /// The system glass this style resolves to at transparency `t`.
-    func resolvedGlass(at t: Double) -> Glass {
-        var glass: Glass = LiquidGlassTransparency.usesClearGlass(t) ? .clear : .regular
+    func resolvedGlass(
+        at t: Double,
+        overMediaRichContent: Bool = LiquidGlassTransparency.isOverMediaRichContent()
+    ) -> Glass {
+        var glass: Glass = LiquidGlassTransparency.usesClearGlass(t, overMediaRichContent: overMediaRichContent) ? .clear : .regular
         if let tintColor { glass = glass.tint(tintColor) }
         if isInteractive { glass = glass.interactive() }
         return glass
@@ -234,10 +277,16 @@ extension View {
         modifier(LiquidGlassEffectModifier(style: style, shape: shape))
     }
 
-    /// Shape-less overload mirroring `glassEffect(_:)` (capsule, the system
-    /// default glass shape).
+    /// Shape-less overload mirroring `glassEffect(_:)`.
+    ///
+    /// Substitutes `ConcentricRectangle`, **not** `Capsule`. The system default is
+    /// `DefaultGlassEffectShape()`, which concentrically matches the container it sits
+    /// in; a capsule is only correct for pill-shaped controls, so the previous version
+    /// silently rounded every shape-less call site into a lozenge and drifted away from
+    /// system chrome. `ConcentricRectangle` is the closest public equivalent and is
+    /// available on the same OS versions as the glass APIs themselves.
     func liquidGlassEffect(_ style: LiquidGlassStyle = .regular) -> some View {
-        modifier(LiquidGlassEffectModifier(style: style, shape: Capsule()))
+        modifier(LiquidGlassEffectModifier(style: style, shape: ConcentricRectangle()))
     }
 }
 

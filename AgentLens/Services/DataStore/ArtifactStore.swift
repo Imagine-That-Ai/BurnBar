@@ -912,7 +912,7 @@ final class ArtifactStore: Sendable {
         else {
             return nil
         }
-        let fileSizeBytes = (row["fileSizeBytes"] as? Int) ?? Int(row["fileSizeBytes"] as? Int64 ?? 0)
+        let fileSizeBytes: Int = row["fileSizeBytes"] ?? 0
         let discoveredAt = OpenBurnBarDatabase.parseDateValue(row["discoveredAt"]) ?? Date()
         let createdAt = OpenBurnBarDatabase.parseDateValue(row["createdAt"]) ?? discoveredAt
         let updatedAt = OpenBurnBarDatabase.parseDateValue(row["updatedAt"]) ?? createdAt

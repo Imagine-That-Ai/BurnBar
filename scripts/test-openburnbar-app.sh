@@ -32,10 +32,13 @@
 #   OPENBURNBAR_APP_TEST_DERIVED_DATA_ROOT=...
 #                                      Override runnable derived-data root.
 #   OPENBURNBAR_APP_TEST_DERIVED_DATA_DIR=...
-#                                      Reuse this exact prebuilt directory, then
-#                                      remove it on exit. Intended for CI steps
-#                                      that already built the app for a real-
-#                                      process gate on the same runner.
+#                                      Reuse this exact prebuilt directory and
+#                                      leave it in place on exit; the caller
+#                                      owns it. Intended for CI steps that
+#                                      already built the app for a real-process
+#                                      gate on the same runner, and for local
+#                                      iteration where a cold rebuild per run
+#                                      costs more than the disk.
 #
 # Exit status:
 #   0  — at least one attempt completed all tests successfully.
@@ -260,6 +263,11 @@ create_derived_data_dir() {
 }
 
 derived_data_dir="$(create_derived_data_dir)"
+# A caller-pinned directory belongs to the caller. Deleting it on exit made the
+# reuse path above single-use: the seeded objects it exists to preserve were
+# gone before the next invocation could read them, so every run paid a cold
+# build. Retry refreshes still wipe it, which is what a refresh is for.
+derived_data_is_caller_owned="$([[ -n "${OPENBURNBAR_APP_TEST_DERIVED_DATA_DIR:-}" ]] && echo yes || echo no)"
 xcodebuild_log=""
 xcodebuild_args=()
 last_test_exit_code=0
@@ -286,6 +294,11 @@ preserve_diagnostic_xcresult() {
     dest="$diagnostics_dir/$(basename "$bundle")"
     rm -rf "$dest"
     cp -R "$bundle" "$dest" 2>/dev/null || true
+    # Announce it. The bundle surviving cleanup is only useful if the person
+    # reading the failure knows it exists; without this line the natural move is
+    # to re-run the whole suite just to capture output that was already saved.
+    [ -d "$dest" ] && echo "  ↳ failure diagnostics preserved: $dest" >&2
+    return 0
 }
 
 emit_attempt_event() {
@@ -395,6 +408,10 @@ cleanup() {
     if [ -n "$xcodebuild_log" ]; then
         rm -f "$xcodebuild_log" 2>/dev/null || true
     fi
+    if [ "$derived_data_is_caller_owned" = "yes" ]; then
+        echo "Keeping caller-pinned derived data: $derived_data_dir" >&2
+        return 0
+    fi
     cleanup_derived_data "$derived_data_dir"
 }
 
@@ -410,6 +427,14 @@ populate_xcodebuild_args() {
     local dd="$1"
     local attempt_result="$2"
     local phase="${3:-main}"
+    # xcodebuild refuses to start when -resultBundlePath already exists. A
+    # caller-pinned derived-data directory survives the run, so every bundle the
+    # previous invocation wrote (main attempts, fresh-host attempts, the merge)
+    # is still sitting there. Clearing here covers every phase, because every
+    # phase reaches xcodebuild through this function. The failing bundle has
+    # already been copied into the diagnostics directory by
+    # `preserve_diagnostic_xcresult`, so this drops a duplicate, not evidence.
+    rm -rf "$attempt_result"
     xcodebuild_args=(
         -project "$repo_root/OpenBurnBar.xcodeproj"
         -scheme "OpenBurnBar"

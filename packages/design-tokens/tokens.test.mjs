@@ -197,3 +197,50 @@ test("encryption-tier colors are distinct (legible tier badges)", () => {
   assert.notEqual(e2e, server);
   for (const c of [e2e, zero, server]) assert.ok(css.includes(c), `tier color ${c} missing from CSS`);
 });
+
+// The living-layout motion vocabulary is generated for five platforms, but the
+// Swift *expression* layer (MotionTokens.swift, which turns the raw numbers into
+// SwiftUI `Animation` values) lives in OpenBurnBarUI, and the generated Swift is
+// compiled into the app targets rather than into that package — so it re-declares
+// the numbers as literals. This is the gate that keeps the two honest, the same
+// way the Android and Windows in-tree copies are gated above.
+test("Swift MotionTokens expression layer matches the generated motion tokens", () => {
+  const swiftLayer = readFileSync(
+    join(HERE, "..", "..", "OpenBurnBarCore", "Sources", "OpenBurnBarUI", "SharedModels", "MotionTokens.swift"),
+    "utf8",
+  );
+
+  // token leaf name -> [Swift constant, conversion from the generated value]
+  const asIs = (v) => v;
+  const msToSeconds = (v) => String(Number(v) / 1000);
+  const bindings = [
+    ["motionSettleResponseMs", "settleResponse", msToSeconds],
+    ["motionSettleDamping", "settleDamping", asIs],
+    ["motionArriveResponseMs", "arriveResponse", msToSeconds],
+    ["motionArriveDamping", "arriveDamping", asIs],
+    ["motionArriveRisePx", "arriveRise", asIs],
+    ["motionArriveScale", "arriveScale", asIs],
+    ["motionDepartMs", "departDuration", msToSeconds],
+    ["motionDepartScale", "departScale", asIs],
+    ["motionStaggerStepMs", "staggerStep", msToSeconds],
+    ["motionStaggerCapMs", "staggerCap", msToSeconds],
+    ["motionTickMs", "tickDuration", msToSeconds],
+    ["motionPulsePeriodMs", "pulsePeriod", msToSeconds],
+    ["motionPulseFloor", "pulseFloor", asIs],
+    ["motionReducedMs", "reducedDuration", msToSeconds],
+  ];
+
+  for (const [tokenName, swiftName, convert] of bindings) {
+    const emitted = swift.match(new RegExp(`${tokenName}: String = "([^"]+)"`));
+    assert.ok(emitted, `generated Swift is missing ${tokenName}`);
+    const expected = Number(convert(emitted[1]));
+
+    const declared = swiftLayer.match(new RegExp(`static let ${swiftName}: Double = ([0-9.]+)`));
+    assert.ok(declared, `MotionTokens.swift is missing 'static let ${swiftName}: Double'`);
+    assert.equal(
+      Number(declared[1]),
+      expected,
+      `MotionTokens.${swiftName} (${declared[1]}) drifted from motion.${tokenName} (${emitted[1]})`,
+    );
+  }
+});

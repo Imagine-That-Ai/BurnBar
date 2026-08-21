@@ -331,47 +331,24 @@ struct ChatPanel: View {
         }
         .frame(width: controller.panelWidth, height: controller.panelHeight)
         .background {
-            ZStack {
-                RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
-                    .fill(DesignSystem.Colors.surface.opacity(0.4))
-                RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                DesignSystem.Colors.whimsy.opacity(0.06),
-                                Color.clear,
-                                DesignSystem.Colors.ember.opacity(0.04)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-            }
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(DesignSystem.Colors.surface.opacity(0.92))
         }
-        .liquidGlassSurface(in: RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous), fallback: .ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous))
+        .liquidGlassSurface(in: RoundedRectangle(cornerRadius: 22, style: .continuous), fallback: .ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
-                .strokeBorder(
-                    LinearGradient(
-                        colors: [
-                            Color.white.opacity(0.18),
-                            DesignSystem.Colors.whimsy.opacity(0.18),
-                            DesignSystem.Colors.border.opacity(0.35)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 0.75
-                )
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.6)
         )
         .shadow(color: Color.black.opacity(0.12), radius: 32, y: 14)
         .compositingGroup()
         .overlay(alignment: .trailing) {
             InteractiveResizeOverlay(direction: .trailing) { translation in
                 if panelResizeStart == nil { panelResizeStart = controller.panelWidth }
-                let base = panelResizeStart ?? 400
-                controller.panelWidth = min(720, max(260, base + translation.width))
+                let base = panelResizeStart ?? ChatPanelGeometry.defaultSize.width
+                controller.panelWidth = ChatPanelGeometry.clamp(
+                    CGSize(width: base + translation.width, height: controller.panelHeight)
+                ).width
             } onEnded: {
                 panelResizeStart = nil
                 controller.persistPanelGeometry()
@@ -380,8 +357,12 @@ struct ChatPanel: View {
         .overlay(alignment: .bottom) {
             InteractiveResizeOverlay(direction: .bottom) { translation in
                 if bottomResizeStart == nil { bottomResizeStart = controller.panelHeight }
-                let base = bottomResizeStart ?? 440
-                controller.panelHeight = min(900, max(200, base + translation.height))
+                let base = bottomResizeStart ?? ChatPanelGeometry.defaultSize.height
+                let resized = ChatPanelGeometry.clamp(
+                    CGSize(width: controller.panelWidth, height: base + translation.height)
+                )
+                controller.panelWidth = resized.width
+                controller.panelHeight = resized.height
             } onEnded: {
                 bottomResizeStart = nil
                 controller.persistPanelGeometry()
@@ -392,9 +373,12 @@ struct ChatPanel: View {
                 if cornerResizeStart == nil {
                     cornerResizeStart = CGSize(width: controller.panelWidth, height: controller.panelHeight)
                 }
-                let base = cornerResizeStart ?? CGSize(width: 400, height: 440)
-                controller.panelWidth = min(720, max(260, base.width + translation.width))
-                controller.panelHeight = min(900, max(200, base.height + translation.height))
+                let base = cornerResizeStart ?? ChatPanelGeometry.defaultSize
+                let resized = ChatPanelGeometry.clamp(
+                    CGSize(width: base.width + translation.width, height: base.height + translation.height)
+                )
+                controller.panelWidth = resized.width
+                controller.panelHeight = resized.height
             } onEnded: {
                 cornerResizeStart = nil
                 controller.persistPanelGeometry()
@@ -406,80 +390,25 @@ struct ChatPanel: View {
     @State private var showChatMenu = false
 
     private var header: some View {
-        // The header packs a long control cluster (drag handle, backend +
-        // model strips, view-mode picker, model menu, Elder Wand, quota chip,
-        // folder, new-chat, overflow menu, pop-out, maximize, minimize,
-        // close). The panel is resizable down to 260pt and can be restored
-        // from a persisted 260pt width, so the row must render cleanly at the
-        // narrow end instead of overflowing. `ViewThatFits` picks the richest
-        // tier that fits the current width and degrades gracefully: secondary
-        // controls fold into the always-present overflow menu, while the
-        // identity strip and window controls stay visible at every width.
-        ViewThatFits(in: .horizontal) {
-            headerFull
-            headerMedium
-            headerCompact
+        // iOS ChatGPT: one line. Identity, overflow, new chat, close.
+        // Every other control already lives in `chatMenuPopover`.
+        HStack(spacing: DesignSystem.Spacing.sm) {
+            dragHandle
+            Text(controller.chatBackend.displayName)
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
+                .lineLimit(1)
+            Spacer(minLength: 8)
+            overflowMenuButton
+            newChatButton
+            closeButton
         }
         .animation(DesignSystem.Animation.gentle, value: controller.chatBackend)
         .padding(.horizontal, DesignSystem.Spacing.md)
-        .padding(.vertical, DesignSystem.Spacing.sm)
-        .background(Color.white.opacity(0.02))
+        .padding(.vertical, 8)
         .onAppear { cloudEntitlement.start() }
         .sheet(isPresented: $showElderWand) {
             ElderWandConfiguratorView(controller: controller, settingsManager: settingsManager)
-        }
-    }
-
-    // MARK: - Header tiers (progressive degradation)
-
-    /// Widest tier: every control inline, matching the original layout.
-    private var headerFull: some View {
-        HStack(spacing: DesignSystem.Spacing.sm) {
-            dragHandle
-            backendStrips
-            ChatViewModePicker(controller: controller)
-            ChatEngineModelMenu(controller: controller)
-            elderWandControl
-            quotaChipControl
-            folderButton
-            Spacer(minLength: 0)
-            newChatButton
-            overflowMenuButton
-            popOutButton
-            maximizeButton
-            minimizeButton
-            closeButton
-        }
-    }
-
-    /// Mid tier: the view-mode picker, model menu and folder reveal fold into
-    /// the overflow menu; the backend identity strip, Elder Wand, quota chip,
-    /// new-chat, and window controls stay inline.
-    private var headerMedium: some View {
-        HStack(spacing: DesignSystem.Spacing.sm) {
-            dragHandle
-            backendStrips
-            elderWandControl
-            quotaChipControl
-            Spacer(minLength: 0)
-            newChatButton
-            overflowMenuButton
-            minimizeButton
-            closeButton
-        }
-    }
-
-    /// Narrowest tier (guaranteed fit at the 260pt floor): drag handle,
-    /// backend identity strip, the overflow menu (which carries every folded
-    /// secondary action), and the close button.
-    private var headerCompact: some View {
-        HStack(spacing: DesignSystem.Spacing.sm) {
-            dragHandle
-            backendStrips
-            Spacer(minLength: 0)
-            overflowMenuButton
-            minimizeButton
-            closeButton
         }
     }
 
@@ -537,14 +466,6 @@ struct ChatPanel: View {
             }
     }
 
-    @ViewBuilder
-    private var quotaChipControl: some View {
-        if let quotaChip = ProviderQuotaChip(backend: controller.chatBackend) {
-            quotaChip
-                .transition(.opacity.combined(with: .scale(scale: 0.85)))
-        }
-    }
-
     private var folderButton: some View {
         Button {
             controller.revealChatWorkspaceInFinder()
@@ -557,8 +478,7 @@ struct ChatPanel: View {
         .help("Show this chat’s workspace in Finder — each new chat uses its own folder under OpenBurnBar’s Application Support.")
     }
 
-    // New Chat — always visible (inline in the full/medium tiers, and also
-    // reachable from the overflow menu so the compact tier keeps it).
+    // New Chat — always inline in the one-line header.
     private var newChatButton: some View {
         Button {
             controller.clearChat()
@@ -571,8 +491,8 @@ struct ChatPanel: View {
         .help("New chat")
     }
 
-    // Consolidated menu — search, history, clear, plus any actions the current
-    // tier folded away (Elder Wand, folder, new-chat, pop-out, maximize).
+    // Consolidated menu — search, history, clear, plus every control folded
+    // out of the one-line header (Elder Wand, folder, pop-out, maximize).
     private var overflowMenuButton: some View {
         Button {
             showChatMenu.toggle()
@@ -622,22 +542,6 @@ struct ChatPanel: View {
         }
     }
 
-    // Minimize
-    private var minimizeButton: some View {
-        Button {
-            Analytics.shared.track(.chatPanelAction, ["action": "minimized"])
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
-                controller.isMinimized = true
-            }
-        } label: {
-            Image(systemName: "minus.circle.fill")
-                .font(.system(size: 14))
-                .foregroundStyle(DesignSystem.Colors.textMuted.opacity(0.6))
-        }
-        .buttonStyle(.plain)
-        .help("Minimize to pill")
-    }
-
     // Close
     private var closeButton: some View {
         Button {
@@ -657,9 +561,16 @@ struct ChatPanel: View {
         VStack(alignment: .leading, spacing: 0) {
             // Search section
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                backendStrips
                 HStack(spacing: DesignSystem.Spacing.sm) {
                     ChatViewModePicker(controller: controller)
                     ChatEngineModelMenu(controller: controller)
+                }
+                HStack(spacing: DesignSystem.Spacing.sm) {
+                    elderWandControl
+                    folderButton
+                    popOutButton
+                    maximizeButton
                 }
 
                 if let quotaChip = ProviderQuotaChip(backend: controller.chatBackend) {
@@ -805,9 +716,9 @@ struct ChatPanel: View {
         ChatMessagesStream(
             controller: controller,
             settingsManager: settingsManager,
-            maxContentWidth: .infinity,
-            horizontalPadding: DesignSystem.Spacing.md,
-            verticalPadding: DesignSystem.Spacing.md,
+            maxContentWidth: 520,
+            horizontalPadding: 20,
+            verticalPadding: 16,
             onJumpToConversation: onOpenConversationJump
         )
     }
@@ -956,6 +867,7 @@ struct ChatPanel: View {
         case .openClaude: return "Ask OpenClaude\u{2026}"
         case .omp: return "Ask OMP\u{2026}"
         case .junie: return "Ask Junie\u{2026}"
+        case .fx: return "Ask fx\u{2026}"
         case .grok, .kimi: return "Ask Junie\u{2026}"
         }
     }

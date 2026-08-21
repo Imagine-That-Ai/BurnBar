@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import OpenBurnBarKernel
+import OpenBurnBarLogParsers
 
 // MARK: - Live fleet model
 //
@@ -100,11 +101,17 @@ final class LiveFleetModel {
             // but the watcher saw it seconds ago and the parser saw it at the
             // last scan. Taking the newer of the two would be wrong when the
             // parser is *behind*, which is its normal state.
+            //
+            // Parsed usage is only attached for providers that own a local
+            // session tree. API-backed / piggyback agents (MiMo, OpenAI,
+            // DeepSeek, OpenBurnBar, MiniMax, Z.ai) inherit gateway ledger
+            // timestamps that are not those agents writing.
             var project: String?
             if let watched = watchedActivity[provider] {
                 evidence.lastWrite = (watched.date, .sessionLogWrite(watched.path))
                 project = usageActivity[provider]?.project
-            } else if let parsed = usageActivity[provider] {
+            } else if AgentProviderLogDiscovery.isLiveWatchCandidate(provider),
+                      let parsed = usageActivity[provider] {
                 evidence.lastWrite = (parsed.date, .parsedUsageRow)
                 project = parsed.project
             }

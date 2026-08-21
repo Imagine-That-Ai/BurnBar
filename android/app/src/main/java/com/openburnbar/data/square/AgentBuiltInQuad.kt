@@ -106,6 +106,13 @@ private val builtInQuads: Map<AssistantRuntimeID, AgentBuiltInQuad> =
                 capabilities = macCliCapabilities,
                 transport = AgentDispatchTransport.MacRelay("junie"),
             ),
+        AssistantRuntimeID.FX to
+            AgentBuiltInQuad(
+                paletteHex = "A1A1AA",
+                tagline = "Vercel fx via your Mac.",
+                capabilities = macCliCapabilities,
+                transport = AgentDispatchTransport.MacRelay("fx"),
+            ),
     )
 
 internal fun agentBuiltInQuad(runtime: AssistantRuntimeID): AgentBuiltInQuad = builtInQuads.getValue(runtime)

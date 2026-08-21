@@ -43,6 +43,7 @@
 | **OMP** | `OMPQuotaAdapter` | `.exact` | `omp usage --json --redact` | Oh My Pi local CLI quota reports by provider/account/window |
 | **Prime Agent (Prime Intellect)** | `PrimeAgentParser` (local) | `.exact` | `~/.prime/agent/sessions/*.jsonl` (local jsonl: `message.usage` + `cost`) | Recursive Language Model + Continual Harness sessions; per-turn input/output/cacheRead/cacheWrite + exact USD cost; provider auto-detects underlying model (e.g. `muse-spark-1.2`, `gpt-5.6-luna`) |
 | **Muse (Meta)** | `MuseParser` (local) | `.exact` | `~/.local/share/muse/sessions/**/*.jsonl` (envelope JSONL, `model_completed` usage, `tool_batch` tools, `started` prompts; microsecond `recorded_at`) | Local session tokens + cached/read/write + reasoning + exact USD via catalog (`muse-spark-1.2` standard $1.25/$4.25/$0.15 or contributor $0.10/$0.20/$0.002); auto-detects workspace + subagent sessions |
+| **Vercel fx** | `FxParser.swift` | `.exact` | `~/.fx/sessions/<sessionId>/` (`session.json`, `usage-v2.json`, `events.jsonl`, `display.json`) | Local session exact token counts and exact USD cost via `usage-v2.json`; transcript and tool lifecycle via `events.jsonl`; chat bridge via `fx ask --json` / `--resume` |
 | **OpenRouter** | Routed via API key | `.exact` | `GET openrouter.ai/v1/activity` | Per-call exact cost in USD (no quota limits) |
 | **Anthropic** | Admin API key | `.estimated` | `GET api.anthropic.com/v1/organizations` | Org-wide messages usage report (~24h lag) |
 
@@ -104,6 +105,7 @@ without durable source evidence stay `unknown`.
 | `roo-code` | Roo Code | `.ide` | Roo Code | Plugin-only |
 | `augment` | Augment | `.ide` | Augment | Plugin-only |
 | `junie` | Junie | `.ide` | Junie | Plugin-only |
+| `fx` | fx | `.cli` | fx | CLI-only |
 
 > **Audit-corrected 2026-05-09:** Both = 11 active: `codex`, `claude`, `cursor`, `factory`, `minimax`, `z.ai`, `devin`, `hermes`, `warp`, `opencode`, `ollama` (Windsurf is LEGACY → Devin). Plugin-only (no toggle): `cline`, `kilo`, `roo`, `augment`, `junie`. Toggle eligibility = `visualSurfaces` contains both `cli` and `desktop` in `catalog.json`.
 
@@ -130,6 +132,7 @@ without durable source evidence stay `unknown`.
 | **Kimi** | Browser cookie / JWT | KIMI_AUTH_TOKEN | `Authorization: Bearer {token}` | Custom bearer token from kimi.com session |
 | **Hermes** | None | N/A (local file) | N/A | Offline JSONL telemetry scraper |
 | **Pi Agent** | None | N/A (local file) | N/A | Offline workspace interaction logger |
+| **Vercel fx** | CLI auth | N/A (local session files + CLI auth) | N/A | Reads `~/.fx/sessions/` (`session.json`, `usage-v2.json`, `events.jsonl`) |
 | **xAI (Grok)** | API key / Management key | `xai-…` inference key; `xai-mgmt-…` for GrokBuild balance | `Authorization: Bearer {key}` | SuperGrok pacing log + Management API; daemon gateway emits pacing events on routed xAI traffic |
 | **Grok Build CLI** | Local CLI + optional `XAI_API_KEY` | `grok` binary; sessions under `~/.grok/` | OpenBurnBar gateway block in `config.toml` | Switcher profile `Grok Build`; vendor identity stays `AgentProvider.xAI` |
 | **OMP** | Local CLI | `omp` binary | N/A | Uses installed Oh My Pi CLI; OpenBurnBar stores no provider credential |
@@ -323,16 +326,33 @@ as `.exact` (including `usage.cost.total` when the gateway records it).
 ### One-liner (recommended)
 
 ```bash
-node scripts/prime-agent-openburnbar-proxy.mjs        # static catalog -> ~/.prime/agent/models.json
-node scripts/prime-agent-openburnbar-proxy.mjs --live # live gateway /v1/models first, then catalog fallback
+node scripts/prime-agent-openburnbar-proxy.mjs               # static catalog -> ~/.prime/agent/models.json
+node scripts/prime-agent-openburnbar-proxy.mjs --live        # live gateway /v1/models first, then catalog fallback
+node scripts/prime-agent-openburnbar-proxy.mjs --token <tok> # embed static auth token (or --api-key <tok>)
 ```
 
 This merges an `openburnbar` provider into `~/.prime/agent/models.json`
 (`baseUrl: http://127.0.0.1:8317/v1`, `api: openai-completions`, `apiKey`
-resolved at request time from the daemon LaunchAgent plist → keychain →
-`$OPENBURNBAR_GATEWAY_AUTH_TOKEN` → `openburnbar-local`). All 150+ BurnBar
-catalog models appear as `openburnbar/<model-id>` in `prime-agent /model` and
-`prime-agent model list openburnbar`:
+resolved at request time from `$OPENBURNBAR_GATEWAY_AUTH_TOKEN` → the daemon
+LaunchAgent plist → the `openburnbar-local` placeholder).
+
+Every rung is non-interactive, so SSH sessions, CI runners, and background
+subagents resolve the same token a GUI session does. The chain deliberately does
+**not** read the macOS Keychain: the app stores the token under service
+`com.openburnbar.chat-gateway-secrets` / account `settings.gateway.http.authToken`
+with an app-scoped ACL, so `security find-generic-password -w` from another binary
+either blocks on a GUI authorization prompt or fails with
+`errSecInteractionNotAllowed`. The LaunchAgent plist holds the same token by
+construction — the daemon manager writes it into `EnvironmentVariables` whenever
+gateway auth is enabled, which is the fail-closed default.
+
+If the plist is unavailable (daemon never installed, or a non-macOS host), set
+`export OPENBURNBAR_GATEWAY_AUTH_TOKEN="<token>"`. Prefer the env var over
+`--token <token>`: `--token` writes the literal token into `models.json`, while
+the default shell command keeps it off disk entirely.
+
+All 150+ BurnBar catalog models appear as `openburnbar/<model-id>` in `prime-agent /model`
+and `prime-agent model list openburnbar`:
 
 ```
 openburnbar  claude-opus-4-8         200K  64K  yes  yes
@@ -358,7 +378,7 @@ prime-agent --provider openburnbar --model gpt-5.6-luna -p "hello via burnbar"
       "name": "OpenBurnBar Gateway",
       "baseUrl": "http://127.0.0.1:8317/v1",
       "api": "openai-completions",
-      "apiKey": "!plutil -extract EnvironmentVariables.OPENBURNBAR_GATEWAY_AUTH_TOKEN raw ~/Library/LaunchAgents/com.openburnbar.daemon.plist 2>/dev/null || security find-generic-password -a $USER -s com.openburnbar.daemon.gatewayAuthToken -w 2>/dev/null || echo $OPENBURNBAR_GATEWAY_AUTH_TOKEN || echo openburnbar-local",
+      "apiKey": "![ -n \"$OPENBURNBAR_GATEWAY_AUTH_TOKEN\" ] && printf '%s\\n' \"$OPENBURNBAR_GATEWAY_AUTH_TOKEN\" || plutil -extract EnvironmentVariables.OPENBURNBAR_GATEWAY_AUTH_TOKEN raw ~/Library/LaunchAgents/com.openburnbar.daemon.plist 2>/dev/null || printf '%s\\n' openburnbar-local",
       "models": [
         { "id": "claude-sonnet-4-6", "name": "Claude Sonnet 4.6 (via OpenBurnBar)", "reasoning": true, "input": ["text", "image"], "contextWindow": 200000, "maxTokens": 64000, "cost": { "input": 3, "output": 15, "cacheRead": 0.3, "cacheWrite": 3.75 } }
       ]
@@ -367,11 +387,39 @@ prime-agent --provider openburnbar --model gpt-5.6-luna -p "hello via burnbar"
 }
 ```
 
+The leading `!` in that `apiKey` is prime-agent's command marker, not shell
+negation: `resolveConfigValue()` treats any apiKey starting with `!` as
+"run the rest as a shell command and use stdout", and anything else as an
+environment-variable name with a literal fallback. Strip the `!` before
+hand-testing the chain — `[ -n "$OPENBURNBAR_GATEWAY_AUTH_TOKEN" ] && ...`
+is what prime-agent actually executes.
+
+The chain uses `printf '%s\n'` rather than `echo` because POSIX `echo` expands
+backslash escapes, which silently corrupts any token containing one (`a\bc` →
+`ac` under both `/bin/sh` and `dash`).
+
 The script preserves other providers in `models.json` (e.g., `meta`) and is
-idempotent. Use `--status` to inspect, `--print` to preview without writing,
-`--remove` to detach, and `--gateway-host`/`--gateway-port` when the daemon
+idempotent. Use `--status` to inspect, `--print` to preview the JSON fragment
+without writing, `--remove` to detach, `--token <tok>`/`--api-key <tok>` for
+static authentication, and `--gateway-host`/`--gateway-port` when the daemon
 runs on a non-default interface. Re-run after updating BurnBar or rotating the
 gateway token; `--live` reflects the gateway's currently advertised set.
+
+`--print` previews without writing, and its stdout is always exactly the document
+that would be written — every human-readable line goes to stderr — so both
+`--print > models.json` and `--remove --print > models.json` emit valid JSON.
+Credential material never reaches stdout: plain `--print` emits the shell
+resolver verbatim, while `--print --token <tok>` substitutes
+`<redacted: static gateway token>` and warns on stderr that the preview is **not**
+a usable config. Re-run without `--print` to install a static token, or drop
+`--token` and export `OPENBURNBAR_GATEWAY_AUTH_TOKEN` for a pipeable secret-free
+fragment.
+
+Writes are atomic and keep one generation of history: the previous file is copied
+to `models.json.bak` before the replace. An existing `models.json` that is not a
+JSON object — or whose `providers` is an array — is reported and left untouched
+instead of being silently discarded, and an invalid `--gateway-host` /
+`--gateway-port` fails before anything is read or written.
 
 Gateway execution source for these turns is `primeAgent`/`prime-agent`, so
 BurnBar's ledger attributes spend correctly and the PrimeAgent parser's cost

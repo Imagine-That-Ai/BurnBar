@@ -717,6 +717,46 @@ final class CLIBridge: ObservableObject {
         }
     }
 
+    /// Streams using the Vercel fx CLI (`fx ask --json`).
+    ///
+    /// fx has enforceable permission flags (`--auto` / default fail-closed
+    /// mode), so unlike Junie it does not need a full-grant launch gate; the
+    /// argument builder only passes `--auto` under a full desktop grant and
+    /// never passes `--yolo`. `resumeSessionID` continues a saved fx session
+    /// for multi-turn chat.
+    func chatFxStream(
+        systemPrompt: String,
+        userMessage: String,
+        workspaceDirectory: URL? = nil,
+        model: String = "",
+        capabilityGrant: AgentCapabilityGrant? = nil,
+        resumeSessionID: String? = nil
+    ) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
+        AsyncThrowingStream { continuation in
+            Task { [weak self] in
+                guard let self else {
+                    continuation.finish()
+                    return
+                }
+                guard let executable = await self.resolveExecutable(named: "fx") else {
+                    continuation.finish(throwing: CLIBridgeError.noCLI)
+                    return
+                }
+                let fullPrompt = CLIArgumentBuilder.combinedPrompt(systemPrompt: systemPrompt, userMessage: userMessage)
+                await CLIProcessStreamRunner(runtime: self.streamRuntime).runFx(
+                    executable: executable,
+                    prompt: fullPrompt,
+                    model: model,
+                    workspaceDirectory: workspaceDirectory,
+                    capabilityGrant: capabilityGrant,
+                    resumeSessionID: resumeSessionID,
+                    grantStillActive: Self.spawnedCLIGrantPoll(for: capabilityGrant),
+                    continuation: continuation
+                )
+            }
+        }
+    }
+
     /// Streams using Forge CLI only.
     func chatForgeStream(
         systemPrompt: String,

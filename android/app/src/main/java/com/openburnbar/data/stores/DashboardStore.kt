@@ -8,6 +8,7 @@ import com.openburnbar.data.models.UsageRollups
 import com.openburnbar.data.policy.UidScopedCacheRegistry
 import java.time.Duration
 import java.time.Instant
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -123,6 +124,8 @@ class DashboardStore(
         return try {
             repo.rebuildUsageRollups()
             true
+        } catch (e: CancellationException) {
+            throw e
         } catch (_: Exception) {
             false
         }
@@ -142,6 +145,8 @@ class DashboardStore(
             val computedInstant = Instant.parse(computedAt)
             val newestUsage = repo.fetchNewestUsageEndTime() ?: return false
             newestUsage.isAfter(computedInstant)
+        } catch (e: CancellationException) {
+            throw e
         } catch (_: Exception) {
             false
         }

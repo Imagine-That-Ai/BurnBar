@@ -1206,6 +1206,8 @@ struct ConnectionsSettingsView: View {
             return AgentProvider.piAgent.providerID
         case .junie:
             return AgentProvider.junie.providerID
+        case .fx:
+            return AgentProvider.fx.providerID
         case .omp:
             return AgentProvider.omp.providerID
         case .primeAgent:
@@ -1579,6 +1581,8 @@ struct ConnectionsSettingsView: View {
             return AgentProvider.piAgent.providerID
         case .junie:
             return AgentProvider.junie.providerID
+        case .fx:
+            return AgentProvider.fx.providerID
         case .omp:
             return AgentProvider.omp.providerID
         case .primeAgent:

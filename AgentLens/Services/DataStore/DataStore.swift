@@ -1,4 +1,5 @@
 import Foundation
+import os
 @preconcurrency import GRDB
 import OpenBurnBarCore
 
@@ -25,6 +26,7 @@ actor DataStoreActor {
     let backfillCursorStore: BackfillCursorStore
     let providerAccountStore: ProviderAccountStore
     let textExpansionSnippetStore: TextExpansionSnippetStore
+    nonisolated private let didCloseForTermination = OSAllocatedUnfairLock(initialState: false)
 
     init(
         databaseQueue: any DatabaseWriter,
@@ -154,6 +156,35 @@ actor DataStoreActor {
         }
     }
 
+    /// Abort in-flight SQL and close the writer so `exit()` cannot tear down
+    /// SQLCipher while a `DatabasePool` reader is still in `sqlite3Codec`.
+    ///
+    /// Nonisolated on purpose: an actor-isolated close would sit behind
+    /// `fetchDashboardUsageSnapshot` (the crash's in-flight read) and never
+    /// run until that read finished — which is exactly the window `exit()`
+    /// used to win. `dbQueue` is already `nonisolated`.
+    nonisolated func closeForTermination() {
+        let alreadyClosed = didCloseForTermination.withLock { closed -> Bool in
+            if closed { return true }
+            closed = true
+            return false
+        }
+        guard !alreadyClosed else { return }
+        dbQueue.interrupt()
+        do {
+            try dbQueue.close()
+        } catch {
+            dbQueue.interrupt()
+            do {
+                try dbQueue.close()
+            } catch {
+                AppLogger.dataStore.notice(
+                    "database_close_on_termination_failed",
+                    metadata: ["error": "\(error)"]
+                )
+            }
+        }
+    }
 }
 
 // MARK: - DataStore compatibility typealias

@@ -238,6 +238,21 @@ final class BackgroundCadenceCoordinatorTests: XCTestCase {
         XCTAssertNil(BackgroundCadenceCoordinator.shared.state(forId: "deletable"))
     }
 
+    func testUnregisterAll_cancelsEveryRegisteredCadence() {
+        BackgroundCadenceCoordinator.shared.handleLifecycleSignal(.appBecameActive)
+        BackgroundCadenceCoordinator.shared.handleLifecycleSignal(.displayDidWake)
+        BackgroundCadenceCoordinator.shared.register(
+            BackgroundCadenceCoordinator.Cadence(id: "quit-a", activeInterval: 5, work: { })
+        )
+        BackgroundCadenceCoordinator.shared.register(
+            BackgroundCadenceCoordinator.Cadence(id: "quit-b", activeInterval: 5, work: { })
+        )
+
+        BackgroundCadenceCoordinator.shared.unregisterAll()
+
+        XCTAssertTrue(BackgroundCadenceCoordinator.shared.allStates().isEmpty)
+    }
+
     // MARK: - Lifecycle changes while sleeping
 
     func testRunLoop_reEvaluatesPausedStateAfterSleepBeforeFiring() async throws {

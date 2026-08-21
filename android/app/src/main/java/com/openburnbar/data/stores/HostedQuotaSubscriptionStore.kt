@@ -22,7 +22,6 @@ import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.functions.FirebaseFunctionsException
 import com.openburnbar.data.firebase.FunctionsRepository
 import com.openburnbar.data.policy.MobileStoreEntitlementPolicy
-import com.openburnbar.data.policy.UidScopedCacheRegistry
 import com.openburnbar.ui.pro.CloudTier
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -72,7 +71,6 @@ class HostedQuotaSubscriptionStore(
     initialBillingClient: BillingClient? = null,
     initialFirestore: FirebaseFirestore? = null,
     initialFirebaseAuth: FirebaseAuth? = null,
-    private val scopedCaches: UidScopedCacheRegistry = UidScopedCacheRegistry.shared,
 ) : ViewModel(), PurchasesUpdatedListener {
     companion object {
         private const val LOG_TAG = "BurnBarBilling"
@@ -320,30 +318,13 @@ class HostedQuotaSubscriptionStore(
     private var entitlementListener: ListenerRegistration? = null
     private var authListener: FirebaseAuth.AuthStateListener? = null
     private var firestoreEntitlementActive: Boolean? = null
+
+    // The UID the currently published entitlement state belongs to. Every
+    // account change — including a direct signed-in A→B switch — must drop it
+    // before B's first snapshot lands, so paid UI can never render under the
+    // wrong account while B's read is pending, erroring, or offline.
+    private var entitlementUID: String? = null
     private var entitlementWork: Job? = null
-    private val uidClearer = { clearCache() }
-
-    init {
-        scopedCaches.register(uidClearer)
-    }
-
-    /**
-     * Drop UID-scoped entitlement StateFlows and Firestore listeners so an
-     * A→B account switch cannot keep serving A's tier. Play catalog prices
-     * stay; they are device-level, not account-level.
-     */
-    fun clearCache() {
-        entitlementWork?.cancel()
-        entitlementWork = null
-        entitlementListener?.remove()
-        entitlementListener = null
-        firestoreEntitlementActive = null
-        _error.value = null
-        _lastTopUpCredit.value = null
-        _isLoading.value = false
-        clearSubscriptionState()
-        firebaseAuth.currentUser?.uid?.let { attachEntitlementListener(it) }
-    }
 
     fun initialize(context: Context) {
         if (billingClient == null) {
@@ -371,42 +352,49 @@ class HostedQuotaSubscriptionStore(
                 entitlementListener = null
 
                 val uid = auth.currentUser?.uid
+                val previousUID = entitlementUID
+                entitlementUID = uid
+                // Clear on a real account change, NOT on first attach. `entitlementUID`
+                // starts null, and FirebaseAuth delivers its first callback on a later
+                // main-looper turn (UiExecutor posts unconditionally), so for a signed-in
+                // cold start that callback lands *after* `load()` has suspended on the
+                // Play round-trip. Treating null -> uid as a change would cancel
+                // `entitlementWork` mid-flight, skipping both the product-catalog query
+                // (prices render as unavailable) and `restorePurchasesInternal`, which is
+                // the path that reconciles Play against Firestore and acknowledges
+                // purchases — unacknowledged ones are auto-refunded after three days.
+                if (previousUID != uid && (previousUID != null || uid == null)) {
+                    clearEntitlementStateForUidChange()
+                }
                 if (uid == null) {
-                    firestoreEntitlementActive = null
-                    clearSubscriptionState()
                     return@AuthStateListener
                 }
 
-                attachEntitlementListener(uid)
+                entitlementListener =
+                    firestore.collection("users")
+                        .document(uid)
+                        .collection("entitlements")
+                        .addSnapshotListener { snap, error ->
+                            if (firebaseAuth.currentUser?.uid != uid) {
+                                return@addSnapshotListener
+                            }
+                            if (error != null) {
+                                Log.w(LOG_TAG, "cloud entitlement listener failed: ${error.localizedMessage}")
+                                return@addSnapshotListener
+                            }
+                            if (snap == null) {
+                                Log.w(LOG_TAG, "cloud entitlement listener returned no snapshot")
+                                return@addSnapshotListener
+                            }
+                            applyEntitlementDocs(
+                                snap.documents.associate { document ->
+                                    document.id to (document.data ?: emptyMap())
+                                },
+                            )
+                        }
             }
         firebaseAuth.addAuthStateListener(listener)
         authListener = listener
-    }
-
-    private fun attachEntitlementListener(uid: String) {
-        entitlementListener?.remove()
-        entitlementListener =
-            firestore.collection("users")
-                .document(uid)
-                .collection("entitlements")
-                .addSnapshotListener { snap, error ->
-                    if (firebaseAuth.currentUser?.uid != uid) {
-                        return@addSnapshotListener
-                    }
-                    if (error != null) {
-                        Log.w(LOG_TAG, "cloud entitlement listener failed: ${error.localizedMessage}")
-                        return@addSnapshotListener
-                    }
-                    if (snap == null) {
-                        Log.w(LOG_TAG, "cloud entitlement listener returned no snapshot")
-                        return@addSnapshotListener
-                    }
-                    applyEntitlementDocs(
-                        snap.documents.associate { document ->
-                            document.id to (document.data ?: emptyMap())
-                        },
-                    )
-                }
     }
 
     // / Resolve all canonical Firestore entitlement documents highest-tier
@@ -423,6 +411,20 @@ class HostedQuotaSubscriptionStore(
         _activeProductID.value = entitlement.productID.takeIf { entitlement.active }
         _expirationDate.value = entitlement.expiresAtMs
         _purchaseDate.value = entitlement.purchaseAtMs
+    }
+
+    // Drop every UID-scoped entitlement signal the store publishes. Cancels
+    // in-flight verification too: a restore/purchase round-trip started under
+    // the previous account must not land its result on the new one. Play
+    // catalog prices stay — they are device-level, not account-level.
+    private fun clearEntitlementStateForUidChange() {
+        entitlementWork?.cancel()
+        entitlementWork = null
+        firestoreEntitlementActive = null
+        _error.value = null
+        _lastTopUpCredit.value = null
+        _isLoading.value = false
+        clearSubscriptionState()
     }
 
     private fun clearSubscriptionState() {
@@ -553,7 +555,6 @@ class HostedQuotaSubscriptionStore(
     }
 
     override fun onCleared() {
-        scopedCaches.unregister(uidClearer)
         entitlementWork?.cancel()
         entitlementWork = null
         billingClient?.endConnection()

@@ -27,10 +27,28 @@ describe('DashboardLayout contract', () => {
       'nebula',
       'constellation',
       'cockpit',
-      'atelier'
+      'atelier',
+      'stream',
+      'atlas'
     ]);
-    expect(DEFAULT_DASHBOARD_LAYOUT).toBe('atelier');
+    expect(DEFAULT_DASHBOARD_LAYOUT).toBe('aurora');
     expect(DASHBOARD_LAYOUT_STORAGE_KEY).toBe('dashboardLayout');
+  });
+
+  // The ids above are storage keys; these are the names a user reads. They were
+  // renamed away from the design-phase codenames precisely so the ids could stay
+  // frozen across macOS, Linux and Windows.
+  it('carries the shipped display names for every id', () => {
+    expect(DASHBOARD_LAYOUT_META.classic.displayName).toBe('Ledger');
+    expect(DASHBOARD_LAYOUT_META.aurora.displayName).toBe('Focus');
+    expect(DASHBOARD_LAYOUT_META.nebula.displayName).toBe('Bento');
+    expect(DASHBOARD_LAYOUT_META.constellation.displayName).toBe('Ask');
+    expect(DASHBOARD_LAYOUT_META.cockpit.displayName).toBe('Cockpit');
+    expect(DASHBOARD_LAYOUT_META.atelier.displayName).toBe('Canvas');
+    expect(DASHBOARD_LAYOUT_META.stream.displayName).toBe('Stream');
+    expect(DASHBOARD_LAYOUT_META.atlas.displayName).toBe('Atlas');
+    const names = DASHBOARD_LAYOUTS.map((id) => DASHBOARD_LAYOUT_META[id].displayName);
+    expect(new Set(names).size).toBe(names.length);
   });
 
   it('marks constellation and atelier as kernel-forward', () => {
@@ -41,8 +59,8 @@ describe('DashboardLayout contract', () => {
   });
 
   it('parses unknown raw values to default', () => {
-    expect(parseDashboardLayout(undefined)).toBe('atelier');
-    expect(parseDashboardLayout('not-a-layout')).toBe('atelier');
+    expect(parseDashboardLayout(undefined)).toBe('aurora');
+    expect(parseDashboardLayout('not-a-layout')).toBe('aurora');
     expect(parseDashboardLayout('nebula')).toBe('nebula');
   });
 
@@ -53,8 +71,9 @@ describe('DashboardLayout contract', () => {
   });
 
   it('cycles next/previous with wrap', () => {
-    expect(nextDashboardLayout('atelier')).toBe('classic');
-    expect(previousDashboardLayout('classic')).toBe('atelier');
+    expect(nextDashboardLayout('atlas')).toBe('classic');
+    expect(previousDashboardLayout('classic')).toBe('atlas');
     expect(nextDashboardLayout('classic')).toBe('aurora');
+    expect(nextDashboardLayout('atelier')).toBe('stream');
   });
 });

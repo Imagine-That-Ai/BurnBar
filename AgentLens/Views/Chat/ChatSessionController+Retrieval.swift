@@ -95,10 +95,14 @@ extension ChatSessionController {
             case .junie:
                 let m = chatModelJunie.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "junie"
                 return (.junie, "OpenBurnBar Junie Chat", m)
+            case .fx:
+                let m = chatModelFx.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "fx"
+                return (.fx, "OpenBurnBar fx Chat", m)
+            // The provider spelling for Grok is `.xAI`; `AgentProvider` has no `.grok`
+            // member, and Kimi has its own `.kimi` rather than being filed under Grok.
+            // Honour an explicitly requested model like every other backend above,
+            // rather than always reporting the default (from #2384).
             case .grok:
-                // AgentProvider spells xAI's provider `.xAI`; `.grok` is the
-                // ChatBackendID. Honour an explicitly requested model like the
-                // other backends rather than always reporting the default.
                 let m = requestModel.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "grok"
                 return (.xAI, "OpenBurnBar Grok Chat", m)
             case .kimi:

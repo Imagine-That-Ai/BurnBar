@@ -1,26 +1,30 @@
 {
-  "note": "GUI-side mission-authority cluster (audit 2026-06-30 finding #5, split-brain mission execution). Shrink-only: files may only shrink or disappear as authority moves to the daemon BurnBarMissionControlService. Regenerate via scripts/debt/check-mission-splitbrain-budget.sh --update.",
-  "totalLines": 3506,
+  "note": "GUI-side mission-authority cluster (audit 2026-06-30 finding #5, split-brain mission execution). Shrink-only: files may only shrink or disappear as authority moves to the daemon BurnBarMissionControlService. Regenerate via scripts/debt/check-mission-splitbrain-budget.sh --update. RE-BASELINED 2026-08-20: the glob was widened from CLIAgentMissionRequestListener to CLIAgentMission after PR #2362 renamed +ApprovalFlow/+DirectExecution/+Handling out of the narrower prefix, which the gate then scored as a 1387-line improvement while the same code grew to 2076 lines under the new names. This baseline records the cluster's TRUE size for the first time; the jump from 3506 to 4320 is previously-hidden debt plus #2362's new backends, not debt this PR added. Re-run after merging main at 7781db4866: 4320 -> 4323, the +3 being #2384's version of CLIAgentMissionHostHandling arriving, not new debt.",
+  "totalLines": 4323,
   "files": [
+    {
+      "path": "AgentLens/Services/CloudSync/CLIAgentMissionApprovalFlow.swift",
+      "lines": 407
+    },
+    {
+      "path": "AgentLens/Services/CloudSync/CLIAgentMissionDirectExecution.swift",
+      "lines": 819
+    },
+    {
+      "path": "AgentLens/Services/CloudSync/CLIAgentMissionEventFactory.swift",
+      "lines": 100
+    },
+    {
+      "path": "AgentLens/Services/CloudSync/CLIAgentMissionHostHandling.swift",
+      "lines": 853
+    },
     {
       "path": "AgentLens/Services/CloudSync/CLIAgentMissionRequestListener.swift",
       "lines": 102
     },
     {
-      "path": "AgentLens/Services/CloudSync/CLIAgentMissionRequestListener+ApprovalFlow.swift",
-      "lines": 265
-    },
-    {
-      "path": "AgentLens/Services/CloudSync/CLIAgentMissionRequestListener+DirectExecution.swift",
-      "lines": 381
-    },
-    {
       "path": "AgentLens/Services/CloudSync/CLIAgentMissionRequestListener+EventRecording.swift",
-      "lines": 183
-    },
-    {
-      "path": "AgentLens/Services/CloudSync/CLIAgentMissionRequestListener+Handling.swift",
-      "lines": 741
+      "lines": 169
     },
     {
       "path": "AgentLens/Services/CloudSync/CLIAgentMissionRequestListener+Mirrors.swift",
@@ -32,7 +36,7 @@
     },
     {
       "path": "AgentLens/Services/CloudSync/CLIAgentMissionRequestListener+Planner.swift",
-      "lines": 638
+      "lines": 677
     },
     {
       "path": "AgentLens/Services/CloudSync/CLIAgentMissionRequestListener+VaultState.swift",

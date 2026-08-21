@@ -53,7 +53,20 @@ try {
     "jobs:\n  build:\n    steps:\n      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd\n",
     0,
   );
-  console.log("PASS: action pin exception is exact and fail-closed.");
+  // The compact `- uses:` list item is the common spelling; it must be checked,
+  // not just tolerated. Without the negative case the line above passes even
+  // when the ref is a mutable tag.
+  run(
+    "other.yml",
+    "jobs:\n  build:\n    steps:\n      - uses: actions/checkout@v5\n",
+    1,
+  );
+  run(
+    "other.yml",
+    "jobs:\n  build:\n    steps:\n      - name: Checkout\n        uses: actions/checkout@v5\n",
+    1,
+  );
+  console.log("PASS: action pin exception is exact and fail-closed; both `uses:` spellings are checked.");
 } finally {
   rmSync(root, { recursive: true, force: true });
 }

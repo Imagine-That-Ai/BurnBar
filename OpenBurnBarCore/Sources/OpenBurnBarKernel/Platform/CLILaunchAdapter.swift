@@ -101,7 +101,8 @@ public enum CLILaunchAdapter {
         "GEMINI_HOME",
         "CURSOR_AGENT_HOME",
         "CURSOR_AGENT_CONFIG_PATH",
-        "JUNIE_API_KEY"
+        "JUNIE_API_KEY",
+        "FX_HOME"
     ]
 
     private static let baselineEnvKeys: Set<String> = allowlistedEnvKeys.subtracting([
@@ -725,6 +726,8 @@ public enum CLILaunchAdapter {
             return ["OMP_HOME", "OMP_CONFIG_HOME"]
         case .primeAgent:
             return ["PRIME_HOME", "PRIME_AGENT_HOME"]
+        case .fx:
+            return ["FX_HOME"]
         }
     }
 }

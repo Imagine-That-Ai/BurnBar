@@ -64,7 +64,8 @@ final class ConversationTombstoneTests: XCTestCase {
             try Row.fetchOne(db, sql: "SELECT deletedAt, version FROM conversations WHERE id = ?", arguments: ["conv-version-default"])
         }
         XCTAssertNil(row?["deletedAt"])
-        XCTAssertEqual(row?["version"] as? Int64, 1)
+        let defaultVersion: Int64? = row?["version"]
+        XCTAssertEqual(defaultVersion, 1)
     }
 
     // MARK: - (b) Soft-delete excludes from reads
@@ -116,7 +117,8 @@ final class ConversationTombstoneTests: XCTestCase {
             )
         }
         XCTAssertNotNil(row?["deletedAt"], "Soft-delete must stamp deletedAt.")
-        XCTAssertEqual(row?["version"] as? Int64, 2, "Soft-delete must bump version.")
+        let softDeletedVersion: Int64? = row?["version"]
+        XCTAssertEqual(softDeletedVersion, 2, "Soft-delete must bump version.")
         XCTAssertNil(row?["conversationSyncedAt"], "Soft-delete must clear the metadata sync flag.")
         XCTAssertNil(row?["logSyncedAt"], "Soft-delete must clear the session-log sync flag.")
 
@@ -213,7 +215,8 @@ final class ConversationTombstoneTests: XCTestCase {
             try Row.fetchOne(db, sql: "SELECT deletedAt, version FROM conversations WHERE id = ?", arguments: [localId])
         }
         XCTAssertNotNil(row?["deletedAt"], "Remote tombstone must stamp the local deletedAt.")
-        XCTAssertEqual(row?["version"] as? Int64, 2, "Remote tombstone must advance the local version.")
+        let tombstonedVersion: Int64? = row?["version"]
+        XCTAssertEqual(tombstonedVersion, 2, "Remote tombstone must advance the local version.")
     }
 
     func test_remoteTombstone_insertsAlreadyDeletedConversationAsTombstone() async throws {
@@ -273,7 +276,8 @@ final class ConversationTombstoneTests: XCTestCase {
             try Row.fetchOne(db, sql: "SELECT deletedAt, version FROM conversations WHERE id = ?", arguments: [localId])
         }
         XCTAssertNotNil(row?["deletedAt"])
-        XCTAssertEqual(row?["version"] as? Int64, 4)
+        let bornDeletedVersion: Int64? = row?["version"]
+        XCTAssertEqual(bornDeletedVersion, 4)
     }
 
     // MARK: - (d) GC purges after retention

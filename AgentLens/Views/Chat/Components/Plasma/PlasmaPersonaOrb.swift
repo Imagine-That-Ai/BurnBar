@@ -25,6 +25,7 @@ struct PlasmaPersonaOrb: View {
     @State private var isOpen = false
     @State private var isHovering = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
 
     /// Idle is still. This orb sits beside a transcript all day; it earns motion
     /// by being hovered, opened, or by the agent actually working.
@@ -83,7 +84,7 @@ struct PlasmaPersonaOrb: View {
                 .fill(tint)
                 .blur(radius: size * 0.30)
                 .scaleEffect(glow.scale)
-                .opacity(Double(glow.opacity) * (persona == nil ? 0.25 : 0.55))
+                .opacity(Double(glow.opacity) * haloStrength)
 
             shape
                 .fill(fill)
@@ -117,6 +118,13 @@ struct PlasmaPersonaOrb: View {
         .offset(x: offset.width, y: offset.height)
         .scaleEffect(isHovering ? 1.10 : 1)
         .animation(DesignSystem.Animation.hover, value: isHovering)
+    }
+
+    /// The seatless orb keeps its 0.45 share of whatever the theme allows, so
+    /// "no persona" stays visibly quieter than a chosen one.
+    private var haloStrength: Double {
+        let base = PlasmaShade.halo(0.55, in: colorScheme)
+        return persona == nil ? base * 0.45 : base
     }
 
     private var fill: RadialGradient {

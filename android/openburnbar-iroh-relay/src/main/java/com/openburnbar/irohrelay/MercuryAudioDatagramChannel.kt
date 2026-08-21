@@ -22,6 +22,7 @@ class MercuryAudioDatagramChannel internal constructor(
             try {
                 nativeHandle.javaClass.getMethod("send", ByteArray::class.java).invoke(nativeHandle, packet)
             } catch (t: Throwable) {
+                if (t is kotlinx.coroutines.CancellationException) throw t
                 throw IrohBackendError.StreamFailed(t.message ?: t.javaClass.simpleName)
             }
             Unit
@@ -35,6 +36,7 @@ class MercuryAudioDatagramChannel internal constructor(
                     .invoke(nativeHandle, timeoutMillis)
                     .optionalFfiField<ByteArray>("IrohDatagramChannel.recv")
             } catch (t: Throwable) {
+                if (t is kotlinx.coroutines.CancellationException) throw t
                 throw IrohBackendError.StreamFailed(t.message ?: t.javaClass.simpleName)
             }
         }
@@ -56,6 +58,7 @@ class MercuryAudioDatagramChannel internal constructor(
                     .invoke(nativeHandle)
                     .requireFfiField<Int>("IrohDatagramChannel.maxDatagramSize")
             } catch (t: Throwable) {
+                if (t is kotlinx.coroutines.CancellationException) throw t
                 throw IrohBackendError.RuntimeFailed(t.message ?: t.javaClass.simpleName)
             }
         }

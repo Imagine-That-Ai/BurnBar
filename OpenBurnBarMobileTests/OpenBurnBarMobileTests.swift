@@ -136,14 +136,12 @@ final class OpenBurnBarMobileTests: XCTestCase {
         // no cross-test leak can change a downstream test's assertion.
         AssistantPendingThread.shared.clear(.hermes)
         AssistantPendingThread.shared.clear(.pi)
-        MobilePendingOsRouteStore.shared.clear()
     }
 
     override func tearDown() async throws {
         HermesGatewayRelayKeypair.resetPrivateKeyStorageForTesting()
         AssistantPendingThread.shared.clear(.hermes)
         AssistantPendingThread.shared.clear(.pi)
-        MobilePendingOsRouteStore.shared.clear()
         try await super.tearDown()
     }
 
@@ -3058,6 +3056,36 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertTrue(rootNavigation.contains("selection = .settings"))
     }
 
+    func testMobileRootOwnsOneNavigationTraySafeAreaReservation() throws {
+        let rootTab = try sourceFile("OpenBurnBarMobile/Views/RootTabView.swift")
+        let burn = try sourceFile("OpenBurnBarMobile/Views/Burn/BurnView.swift")
+        let insights = try sourceFile("OpenBurnBarMobile/Views/Insights/InsightsRootView.swift")
+        let hermes = try sourceFile("OpenBurnBarMobile/Views/Hermes/HermesTabView.swift")
+        let streams = try sourceFile("OpenBurnBarMobile/Views/Streams/StreamsView.swift")
+
+        XCTAssertTrue(rootTab.contains(".safeAreaInset(edge: .bottom, spacing: 0)"))
+        XCTAssertTrue(rootTab.contains("MobileTrayMetrics.reservedHeight(isVisible: isNavigationTrayVisible)"))
+        XCTAssertFalse(rootTab.contains(#"\.mobileTrayInset"#))
+        XCTAssertFalse(burn.contains("trayInset"))
+        XCTAssertFalse(insights.contains("iPhoneNavigationTrayClearance"))
+        XCTAssertFalse(hermes.contains("bottomReserveHeight"))
+        XCTAssertFalse(streams.contains("iPhoneNavigationTrayClearance"))
+    }
+
+    func testPulseFeedSnapshotsDynamicCardsBeforeDeferredLayout() throws {
+        let pulse = try sourceFile("OpenBurnBarMobile/Views/Pulse/PulseView.swift")
+        let layout = try sourceFile("OpenBurnBarMobile/Views/Pulse/PulseFeedLayout.swift")
+
+        XCTAssertTrue(pulse.contains("let cards = feedCards"))
+        XCTAssertTrue(pulse.contains(#"PulseFeedLayout(items: cards, span: \.span)"#))
+        XCTAssertTrue(pulse.contains("feedCard(card, index: index)"))
+        XCTAssertFalse(pulse.contains("feedCard(feedCards[index], index: index)"))
+        XCTAssertTrue(layout.contains("private struct PulseFeedGridLayout: Layout"))
+        XCTAssertTrue(layout.contains(#"ForEach(Array(items.enumerated()), id: \.element)"#))
+        XCTAssertFalse(layout.contains("PreferenceKey"))
+        XCTAssertFalse(layout.contains(".onPreferenceChange"))
+    }
+
     func testWallpaperSettingsActionDoesNotOpenAppSettingsFallback() throws {
         XCTAssertEqual(WallpaperSettingsDeepLink.wallpaperSettingsURL.absoluteString, "App-prefs:Wallpaper")
         XCTAssertEqual(WallpaperSettingsDeepLink.settingsRootURL.absoluteString, "App-prefs:")
@@ -3284,37 +3312,46 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertEqual(state.mode, .inactive)
     }
 
-    func testStreamsSearchStateSurfacesFailureEvenWithCachedHits() {
+    /// A failed search is not an empty one. Both remote legs failing while the
+    /// list still holds cached rows is the normal post-load case, and there the
+    /// list's own load-error branch never fires — so folding this into `.empty`
+    /// showed "No matches" and silently dropped the search retry.
+    func testStreamsSearchStateSurfacesFailureRatherThanNoMatches() {
         let state = StreamsSearchResultState(
             query: "session cache",
             isSearching: false,
-            cloudConversationHitCount: 2,
-            streamHitCount: 4,
+            cloudConversationHitCount: 0,
+            streamHitCount: 0,
             searchFailed: true
         )
 
         XCTAssertEqual(state.mode, .failed)
     }
 
-    func testPendingOsRouteConsumeIsOneShot() {
-        MobilePendingOsRouteStore.shared.stash(.mission(missionId: "mission-1"))
-        XCTAssertEqual(
-            MobilePendingOsRouteStore.shared.consume(),
-            .mission(missionId: "mission-1")
+    /// Leftover hits from the previous query must not dress a failed search up
+    /// as a successful one either.
+    func testStreamsSearchStateFailsAheadOfStaleHits() {
+        let state = StreamsSearchResultState(
+            query: "session cache",
+            isSearching: false,
+            cloudConversationHitCount: 3,
+            streamHitCount: 2,
+            searchFailed: true
         )
-        XCTAssertNil(MobilePendingOsRouteStore.shared.consume())
+
+        XCTAssertEqual(state.mode, .failed)
     }
 
-    func testPendingOsRouteApplyStashesMissionBeforePost() {
-        let routed = MobileOsIntegrationPolicy.route(payload: [
-            "type": "mission",
-            "mission_id": "m-cold"
-        ])
-        MobileOsDeepLinkApplier.apply(routed)
-        XCTAssertEqual(
-            MobilePendingOsRouteStore.shared.consume(),
-            .mission(missionId: "m-cold")
+    func testStreamsSearchStateStaysInactiveOnAFailedSubMinimumQuery() {
+        let state = StreamsSearchResultState(
+            query: "s",
+            isSearching: false,
+            cloudConversationHitCount: 0,
+            streamHitCount: 0,
+            searchFailed: true
         )
+
+        XCTAssertEqual(state.mode, .inactive)
     }
 
     func testCloudConversationRowsResolveProviderLogosFromCloudProviderStrings() {

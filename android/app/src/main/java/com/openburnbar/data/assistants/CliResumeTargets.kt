@@ -55,6 +55,7 @@ enum class CliResumeTarget(
     GROK("grok", "Grok", false, R.drawable.logo_grok, 0xFF71767B),
     CURSOR_AGENT("cursor_agent", "Cursor Agent", false, R.drawable.logo_cursor, 0xFF00B8D4),
     JUNIE("junie", "Junie", false, R.drawable.logo_junie, 0xFF48E054),
+    FX("fx", "fx", false, R.drawable.logo_fx, 0xFFA1A1AA),
     OPENCODE("opencode", "OpenCode", false, R.drawable.open_code_logo, 0xFF0EA5E9),
     GEMINI("gemini", "Gemini CLI", false, R.drawable.logo_gemini_cli, 0xFF4285F4),
     ;
@@ -77,6 +78,7 @@ enum class CliResumeTarget(
                 "grok", "xai" -> GROK
                 "cursoragent", "cursor" -> CURSOR_AGENT
                 "junie", "jetbrainsjunie" -> JUNIE
+                "fx", "vercelfx", "vercel-fx" -> FX
                 "opencode" -> OPENCODE
                 "gemini", "geminicli" -> GEMINI
                 else -> null

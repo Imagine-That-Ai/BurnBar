@@ -84,7 +84,48 @@ function SkeletonPanel({
   );
 }
 
-/** Six layout shells with shared empty/loading/populated/offline/error states. */
+const SKELETONS: Record<DashboardLayout, Array<{ label: string; variant?: 'default' | 'hero' | 'kernel'; span?: boolean }>> = {
+  classic: [
+    { label: 'Usage pulse' },
+    { label: 'Cost curve' },
+    { label: 'Providers' }
+  ],
+  aurora: [
+    { label: 'Provider rail' },
+    { label: 'Open hero field', variant: 'hero' },
+    { label: 'Data band', span: true }
+  ],
+  nebula: [
+    { label: 'Providers' },
+    { label: 'Burn card' },
+    { label: 'Stage', variant: 'hero' },
+    { label: 'Data row' }
+  ],
+  constellation: [
+    { label: 'Command column' },
+    { label: 'Swarm stage', variant: 'kernel' },
+    { label: 'Provider chips' }
+  ],
+  cockpit: [
+    { label: 'Spend share' },
+    { label: 'KPI tiles' },
+    { label: 'Routing' },
+    { label: 'Mission stage', variant: 'hero', span: true }
+  ],
+  atelier: [{ label: 'Kernel hero · floating glass stats', variant: 'kernel' }],
+  stream: [
+    { label: 'Timeline · newest first', span: true },
+    { label: 'Today' },
+    { label: 'Earlier' }
+  ],
+  atlas: [
+    { label: 'Needs you · everything else', variant: 'hero', span: true },
+    { label: 'Needs you' },
+    { label: 'By kind' }
+  ]
+};
+
+/** Eight layout shells with shared empty/loading/populated/offline/error states. */
 export function DashboardLayoutShell({
   layout,
   state,
@@ -117,52 +158,16 @@ export function DashboardLayoutShell({
       ) : null}
 
       <Frame layout={layout}>
-        {showBody ? (
-          children
-        ) : (
-          <>
-            {layout === 'classic' && (
-              <>
-                <SkeletonPanel label="Usage pulse" />
-                <SkeletonPanel label="Cost curve" />
-                <SkeletonPanel label="Providers" />
-              </>
-            )}
-            {layout === 'aurora' && (
-              <>
-                <SkeletonPanel label="Provider rail" />
-                <SkeletonPanel label="Open hero field" variant="hero" />
-                <SkeletonPanel label="Data band" span />
-              </>
-            )}
-            {layout === 'nebula' && (
-              <>
-                <SkeletonPanel label="Providers" />
-                <SkeletonPanel label="Burn card" />
-                <SkeletonPanel label="Stage" variant="hero" />
-                <SkeletonPanel label="Data row" />
-              </>
-            )}
-            {layout === 'constellation' && (
-              <>
-                <SkeletonPanel label="Command column" />
-                <SkeletonPanel label="Swarm stage" variant="kernel" />
-                <SkeletonPanel label="Provider chips" />
-              </>
-            )}
-            {layout === 'cockpit' && (
-              <>
-                <SkeletonPanel label="Spend share" />
-                <SkeletonPanel label="KPI tiles" />
-                <SkeletonPanel label="Routing" />
-                <SkeletonPanel label="Mission stage" variant="hero" span />
-              </>
-            )}
-            {layout === 'atelier' && (
-              <SkeletonPanel label="Kernel hero · floating glass stats" variant="kernel" />
-            )}
-          </>
-        )}
+        {showBody
+          ? children
+          : SKELETONS[layout].map((panel) => (
+              <SkeletonPanel
+                key={panel.label}
+                label={panel.label}
+                variant={panel.variant}
+                span={panel.span}
+              />
+            ))}
       </Frame>
     </section>
   );

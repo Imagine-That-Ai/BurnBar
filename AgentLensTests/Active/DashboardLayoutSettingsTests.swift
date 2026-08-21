@@ -28,9 +28,12 @@ final class DashboardLayoutSettingsTests: XCTestCase {
 
     // MARK: Persistence
 
-    func test_dashboardLayout_defaultsToAtelier() {
+    /// Focus, not Canvas: Canvas is the ambient second-display surface and its
+    /// thesis is to show almost nothing, which makes a poor first impression on a
+    /// primary monitor. Focus opens on the one thing needing a decision.
+    func test_dashboardLayout_defaultsToFocus() {
         let settings = makeSettingsManager()
-        XCTAssertEqual(settings.dashboardLayout, .atelier)
+        XCTAssertEqual(settings.dashboardLayout, .aurora)
     }
 
     func test_dashboardLayout_setter_persistsToStandardDefaults() {
@@ -94,6 +97,110 @@ final class DashboardLayoutSettingsTests: XCTestCase {
         for layout in DashboardLayout.allCases {
             selection = layout
             XCTAssertNoThrow(try switcher.inspect())
+        }
+    }
+
+    func test_layoutGallery_rendersForEverySelection() throws {
+        var selection: DashboardLayout = .atelier
+        var highlighted: DashboardLayout? = .atelier
+        let gallery = DashboardLayoutGallery(
+            selection: Binding(get: { selection }, set: { selection = $0 }),
+            highlighted: Binding(get: { highlighted }, set: { highlighted = $0 }),
+            onCommit: { selection = $0 },
+            onDismiss: {}
+        )
+        for layout in DashboardLayout.allCases {
+            selection = layout
+            highlighted = layout
+            XCTAssertNoThrow(try gallery.inspect(), "gallery must render with \(layout.rawValue) selected")
+        }
+    }
+
+    /// The gallery's whole justification is that the thumbnails differ, so every
+    /// case must have one and it must render.
+    func test_layoutWireframe_rendersForEveryCase() throws {
+        for layout in DashboardLayout.allCases {
+            XCTAssertNoThrow(
+                try DashboardLayoutWireframe(layout: layout).inspect(),
+                "wireframe must render for \(layout.rawValue)"
+            )
+        }
+    }
+
+    // MARK: Section primitive
+
+    func test_dashboardSection_rendersAtEveryDensityAndEmphasis() throws {
+        let densities: [DashboardSectionDensity] = [.comfortable, .compact, .flush]
+        let emphases: [DashboardSectionEmphasis] = [.quiet, .standard, .featured]
+        for density in densities {
+            for emphasis in emphases {
+                XCTAssertNoThrow(
+                    try DashboardSection(
+                        "Window",
+                        title: "Today",
+                        density: density,
+                        emphasis: emphasis
+                    ) {
+                        Text("body")
+                    }
+                    .inspect()
+                )
+            }
+        }
+    }
+
+    func test_dashboardSection_atomsRender() throws {
+        XCTAssertNoThrow(try DashboardSectionRule().inspect())
+        XCTAssertNoThrow(
+            try DashboardSectionMetric(label: "Burn", value: "$12.00", caption: "today").inspect()
+        )
+        XCTAssertNoThrow(
+            try DashboardSectionValue(label: "Burn", value: "$12.00", caption: "today").inspect()
+        )
+    }
+
+    func test_rankedTable_rendersEmptyAndPopulated() throws {
+        XCTAssertNoThrow(try DashboardRankedTable(items: []).inspect())
+        let items = (1...3).map { index in
+            DashboardRankedItem(
+                id: "row-\(index)",
+                rank: index,
+                title: "Row \(index)",
+                subtitle: "\(index) sessions",
+                value: "$\(index).00",
+                share: Double(index) / 6,
+                delta: Double(index) / 10 - 0.15
+            )
+        }
+        XCTAssertNoThrow(try DashboardRankedTable(items: items).inspect())
+        XCTAssertNoThrow(try DashboardRankedTable(items: items, limit: 2).inspect())
+    }
+
+    /// A delta chip must never invent a direction for an unchanged number.
+    func test_deltaChip_rendersFlatRiseAndFall() throws {
+        for delta in [-0.42, 0.0, 0.001, 0.42] {
+            XCTAssertNoThrow(try DashboardDeltaChip(delta: delta).inspect())
+        }
+    }
+
+    // MARK: Cockpit instruments
+
+    func test_cockpitGauge_clampsOutOfRangeValues() throws {
+        for value in [-1.0, 0.0, 0.5, 1.0, 4.0] {
+            XCTAssertNoThrow(
+                try CockpitGauge(label: "Pace", readout: "1.0×", value: value).inspect()
+            )
+        }
+        XCTAssertNoThrow(
+            try CockpitGauge(label: "Cache", readout: "62%", value: 0.62, redline: nil).inspect()
+        )
+    }
+
+    func test_cockpitAlarmRow_rendersEveryState() throws {
+        for state in [CockpitAlarmRow.State.nominal, .caution, .alarm] {
+            XCTAssertNoThrow(
+                try CockpitAlarmRow(title: "Ingestion", detail: "ok", state: state).inspect()
+            )
         }
     }
 }

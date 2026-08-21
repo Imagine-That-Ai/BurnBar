@@ -288,6 +288,10 @@ function backendFromThread(thread: ChatThreadSummary | null, fallback: ChatBacke
       return 'cursor-agent';
     case 'junie':
       return 'junie';
+    case 'fx':
+    case 'vercel-fx':
+    case 'vercelfx':
+      return 'fx';
     case 'cli':
       return 'cli';
     default:
@@ -319,6 +323,8 @@ function modelLabelForThread(_thread: ChatThreadSummary | null, backend: ChatBac
       return 'cursor-agent';
     case 'junie':
       return 'junie';
+    case 'fx':
+      return 'fx';
     case 'cli':
       return 'CLI assistant';
     default:

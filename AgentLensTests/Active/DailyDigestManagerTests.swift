@@ -29,26 +29,33 @@ final class DailyDigestManagerTests: XCTestCase {
         // When
         await manager.requestAuthorization()
 
-        // Then - no error thrown
-        XCTAssertTrue(true)
+        // Then
+        XCTAssertEqual(mockNotificationCenter.requestAuthorizationCallsCount, 1)
+        XCTAssertEqual(mockNotificationCenter.lastRequestedOptions, [.alert, .sound])
     }
 
     func test_requestAuthorization_handlesDenied() async throws {
         // Given
         mockNotificationCenter.authorizationStatus = .denied
 
-        // When/Then - should not throw
+        // When
         await manager.requestAuthorization()
-        XCTAssertTrue(true)
+
+        // Then
+        XCTAssertEqual(mockNotificationCenter.requestAuthorizationCallsCount, 1)
+        XCTAssertEqual(mockNotificationCenter.lastRequestedOptions, [.alert, .sound])
     }
 
     func test_requestAuthorization_handlesNotDetermined() async throws {
         // Given
         mockNotificationCenter.authorizationStatus = .notDetermined
 
-        // When/Then - should not throw
+        // When
         await manager.requestAuthorization()
-        XCTAssertTrue(true)
+
+        // Then
+        XCTAssertEqual(mockNotificationCenter.requestAuthorizationCallsCount, 1)
+        XCTAssertEqual(mockNotificationCenter.lastRequestedOptions, [.alert, .sound])
     }
 
     // MARK: - Schedule Digest Tests
@@ -272,8 +279,9 @@ final class DailyDigestManagerTests: XCTestCase {
         manager.cancelDigest()
         manager.cancelDigest()
 
-        // Then - should not crash
-        XCTAssertTrue(true)
+        // Then - armed fire date is cleared and removals are issued
+        XCTAssertNil(manager.armedFireDate)
+        XCTAssertTrue(mockNotificationCenter.removedIdentifiers.contains(OpenBurnBar.OpenBurnBarIdentity.dailyDigestNotificationIdentifier))
     }
 
     // MARK: - Integration Tests
@@ -730,8 +738,12 @@ private final class MockUNUserNotificationCenter: OpenBurnBarUserNotificationCen
     var pendingRequests: [UNNotificationRequest] = []
     var addedRequests: [UNNotificationRequest] = []
     var removedIdentifiers: [String] = []
+    var requestAuthorizationCallsCount = 0
+    var lastRequestedOptions: UNAuthorizationOptions?
 
     func requestAuthorization(options: UNAuthorizationOptions) async throws -> Bool {
+        requestAuthorizationCallsCount += 1
+        lastRequestedOptions = options
         return authorizationStatus == .authorized
     }
 

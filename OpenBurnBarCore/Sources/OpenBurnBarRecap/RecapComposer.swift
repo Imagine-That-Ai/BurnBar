@@ -99,9 +99,12 @@ public actor RecapComposer {
         if !forceRegenerate, let existing = await recapStore.recap(for: window) {
             continuation.yield(.deterministic(existing))
             // A preview describes a month still in progress, so a stored one is
-            // stale the moment anything else happens that day. Paint it for
-            // instant feedback, then fall through and rebuild.
-            if existing.sealState == .preview {
+            // stale the moment anything else happens that day. `.unsealed` is the
+            // same problem with a worse ending: the month is over but sealing was
+            // interrupted, and answering from the store means it never finishes
+            // (Codex P1). Paint either for instant feedback, then rebuild. Only a
+            // genuinely sealed month short-circuits.
+            if !existing.sealState.isSealed {
                 // fall through to the rebuild below
             } else {
                 guard existing.sealState == .sealedWithoutVoice,
@@ -131,7 +134,13 @@ public actor RecapComposer {
         // month a lifetime best. `historyDepth` bounds what we *fetch*, not what
         // we compare against.
         let history = await historyStore.allFacts().filter { $0.window < window }
-        let context = RecapContext(facts: facts, history: history, calendar: calendar)
+        let hasCompleteHistory = await historyStore.hasCompleteHistory(through: window)
+        let context = RecapContext(
+            facts: facts,
+            history: history,
+            calendar: calendar,
+            hasCompleteHistory: hasCompleteHistory
+        )
         let candidates = RecapCandidateGenerator.candidates(for: context)
         let cards = RecapRanker.rank(candidates: candidates, limits: limits)
 
@@ -238,7 +247,13 @@ public actor RecapComposer {
     ) async -> MonthlyRecap? {
         guard let facts = await historyStore.facts(for: window) else { return nil }
         let history = await historyStore.allFacts().filter { $0.window < window }
-        let context = RecapContext(facts: facts, history: history, calendar: calendar)
+        let hasCompleteHistory = await historyStore.hasCompleteHistory(through: window)
+        let context = RecapContext(
+            facts: facts,
+            history: history,
+            calendar: calendar,
+            hasCompleteHistory: hasCompleteHistory
+        )
         let candidates = RecapCandidateGenerator.candidates(for: context)
 
         guard let voiced = await applyVoice(
@@ -259,8 +274,34 @@ public actor RecapComposer {
     /// fetching history and then the month separately would scan `conversations`
     /// — which has no time index — twice on a first open.
     private func loadFacts(window: RecapWindow, now: Date) async throws -> RecapFacts {
+        if !(await historyStore.hasCompleteHistory(through: window)),
+           let completeBatches = try await source.completeRows(through: window),
+           let target = completeBatches[window] {
+            let folded = completeBatches.values
+                .filter { $0.window <= window }
+                .map {
+                    RecapFacts.build(batch: $0, builtAt: now, calendar: calendar)
+                }
+            let facts = RecapFacts.build(batch: target, builtAt: now, calendar: calendar)
+
+            if folded.allSatisfy({ !$0.isPartial }) {
+                try? await historyStore.replaceCompleteHistory(
+                    with: folded,
+                    through: window
+                )
+            } else {
+                // A source that cannot finish its advertised complete scan must
+                // not unlock lifetime language, but its useful monthly rows may
+                // still repair gaps in the bounded history.
+                try? await historyStore.upsert(folded)
+            }
+            return facts
+        }
+
         let missing = await historyStore.monthsNeedingBackfill(
-            endingAt: window, monthsBack: historyDepth
+            endingAt: window,
+            monthsBack: historyDepth,
+            now: now
         )
         guard !missing.isEmpty else {
             let facts = RecapFacts.build(
@@ -281,10 +322,9 @@ public actor RecapComposer {
             return facts
         }
 
-        let historyStamp = window.end(calendar: calendar)
         var folded = missing.compactMap { month -> RecapFacts? in
             guard let batch = batches[month] else { return nil }
-            return RecapFacts.build(batch: batch, builtAt: historyStamp, calendar: calendar)
+            return RecapFacts.build(batch: batch, builtAt: now, calendar: calendar)
         }
         let facts = RecapFacts.build(batch: target, builtAt: now, calendar: calendar)
         folded.append(facts)

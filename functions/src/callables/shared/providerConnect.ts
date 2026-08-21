@@ -87,7 +87,8 @@ export function normalizeCloudConnectAuthMethodID(
     return assertCloudConnectAuthMethodID(provider, inferredCloudConnectAuthMethodID(provider, credential));
   }
   const normalized = boundedTrimmedString(authMethodID, "authMethodID", 96);
-  if (!normalized) return assertCloudConnectAuthMethodID(provider, inferredCloudConnectAuthMethodID(provider, credential));
+  if (!normalized)
+    return assertCloudConnectAuthMethodID(provider, inferredCloudConnectAuthMethodID(provider, credential));
   const knownMethods = KNOWN_AUTH_METHODS_BY_PROVIDER[provider];
   if (knownMethods && !knownMethods.has(normalized)) {
     throw new HttpsError("invalid-argument", "Unsupported provider credential method.");
@@ -402,10 +403,9 @@ export async function checkRefreshRateLimit(db: Firestore, uid: string, provider
     if (isTimestampWithToMillis(ts)) {
       const elapsed = Date.now() - ts.toMillis();
       if (elapsed < refreshRateLimitSeconds * 1000) {
-        throw new Error(
-          `Rate limited: wait ${Math.ceil(
-            (refreshRateLimitSeconds * 1000 - elapsed) / 1000,
-          )}s before refreshing ${provider}.`,
+        throw new HttpsError(
+          "resource-exhausted",
+          `Please wait ${Math.ceil((refreshRateLimitSeconds * 1000 - elapsed) / 1000)}s before refreshing ${provider}.`,
         );
       }
     }

@@ -202,7 +202,7 @@ import XCTest
 /// behavior suite does not alter the macOS test graph.
 final class LinuxComputerUseCoreBehaviorTests: XCTestCase {
     func testLinuxSuiteIsPlatformGated() {
-        XCTAssertTrue(true)
+        XCTAssertFalse(ProcessInfo.processInfo.operatingSystemVersionString.isEmpty)
     }
 }
 #endif

@@ -200,6 +200,8 @@ final class CLIProfileStreamFailoverRunner: Sendable {
             return true
         case .usage:
             return false
+        case .sessionID:
+            return false
         }
     }
 

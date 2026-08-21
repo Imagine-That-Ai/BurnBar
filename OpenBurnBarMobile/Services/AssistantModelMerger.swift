@@ -164,6 +164,8 @@ struct AssistantModelMerger {
             return ["openclaude", "open-claude"]
         case .omp:
             return ["omp", "ohmypi", "oh-my-pi", "oh my pi"]
+        case .fx:
+            return ["fx", "vercel-fx", "vercelfx"]
         }
     }
 

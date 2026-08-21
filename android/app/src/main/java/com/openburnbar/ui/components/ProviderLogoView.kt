@@ -73,6 +73,7 @@ object ProviderLogo {
         AgentProvider.ANTIGRAVITY -> R.drawable.logo_antigravity
         AgentProvider.MIMO -> R.drawable.mimo_logo
         AgentProvider.MUSE -> R.drawable.logo_meta
+        AgentProvider.FX -> R.drawable.logo_fx
     }
 
     // / Asset for an `AssistantRuntimeID`. Maps the 5 runtimes to their
@@ -93,6 +94,7 @@ object ProviderLogo {
         AssistantRuntimeID.GROK -> R.drawable.logo_grok
         AssistantRuntimeID.CURSOR_AGENT -> R.drawable.logo_cursor
         AssistantRuntimeID.JUNIE -> R.drawable.logo_junie
+        AssistantRuntimeID.FX -> R.drawable.logo_fx
     }
 
     // / Asset for a `HermesSubProvider`. Maps the sub-providers to their

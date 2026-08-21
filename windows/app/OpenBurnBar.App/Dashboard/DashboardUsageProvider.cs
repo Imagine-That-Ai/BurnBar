@@ -20,6 +20,10 @@ namespace OpenBurnBar.App.Dashboard;
 /// </summary>
 internal static class DashboardUsageProvider
 {
+    public static event EventHandler? Changed;
+
+    public static void NotifyChanged() => Changed?.Invoke(null, EventArgs.Empty);
+
     public static Task<DashboardUsageSummary> LoadAsync(CancellationToken cancellationToken = default)
     {
         GeneralSettingsSnapshot settings = WindowsGeneralSettingsComposition.Load();

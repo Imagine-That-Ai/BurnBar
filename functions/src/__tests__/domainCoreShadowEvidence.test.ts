@@ -246,8 +246,10 @@ describe("domain-core shadow evidence contract", () => {
           schemaContracts.add(
             `${branch.properties.domain.const}/${branch.properties.slice.const}/${consumer}/${operation}`,
           );
-          expect(operation).toBeDefined();
-          expect(consumer).toBeDefined();
+          expect(typeof operation).toBe("string");
+          expect(operation?.length).toBeGreaterThan(0);
+          expect(typeof consumer).toBe("string");
+          expect(consumer?.length).toBeGreaterThan(0);
           expect(() =>
             parseDomainCoreShadowSampleRequest(
               {

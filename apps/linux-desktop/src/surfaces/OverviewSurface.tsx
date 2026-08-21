@@ -1,20 +1,19 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { Banner } from '../components/Banner.js';
-import { ProviderListPanel } from '../components/ProviderListPanel.js';
 import {
   DashboardLayoutShell,
   type DashboardSurfaceState
 } from '../dashboard/DashboardLayoutShell.js';
 import { DASHBOARD_LAYOUT_META } from '../dashboard/dashboardLayout.js';
 import { useDashboardLayoutStore } from '../state/dashboardLayoutStore.js';
+import { useActivityStore } from '../state/activityStore.js';
 import { useDaemonStatusCopy, useShellStore } from '../state/shellStore.js';
-import { useOverviewStore } from '../state/overviewStore.js';
 import { useInsightsStore } from '../state/insightsStore.js';
-import { AtelierHero } from './overview/AtelierHero.js';
-import {
-  buildSpendCurveModel,
-  providerRowsFromInsights
-} from './overview/overviewAtelierData.js';
+import { useLaneLoad } from '../state/useLaneLoad.js';
+import { useMissionsStore } from '../state/missionsStore.js';
+import { useOverviewStore } from '../state/overviewStore.js';
+import { OverviewLayoutBody } from './overview/OverviewLayoutBody.js';
+import { buildSpendCurveModel, providerRowsFromInsights } from './overview/overviewAtelierData.js';
 import './overview/overview.css';
 
 export function resolveOverviewShellState(input: {
@@ -42,6 +41,7 @@ export function OverviewSurface() {
 
   const summary = useOverviewStore((s) => s.summary);
   const cacheHitRatePct = useOverviewStore((s) => s.cacheHitRatePct);
+  const lastRefreshedAt = useOverviewStore((s) => s.lastRefreshedAt);
   const loading = useOverviewStore((s) => s.loading);
   const error = useOverviewStore((s) => s.error);
   const loadSummary = useOverviewStore((s) => s.load);
@@ -50,15 +50,40 @@ export function OverviewSurface() {
   const insightsLoading = useInsightsStore((s) => s.loading);
   const loadInsights = useInsightsStore((s) => s.load);
 
+  const sessions = useActivityStore((s) => s.sessions);
+  const loadActivity = useActivityStore((s) => s.load);
+  const missions = useMissionsStore((s) => s.data);
+  const loadMissions = useMissionsStore((s) => s.load);
+  const dataRevision = useShellStore((s) => s.dataRevision);
+
+  useLaneLoad(loadSummary);
+  useLaneLoad(loadInsights);
+
+  // setFixtureMode() changes neither bridgeReady nor dataRevision, so useLaneLoad
+  // cannot see a fixture/live switch on its own. Re-fire the summary and insight
+  // lanes on the transition itself — mount is already covered by useLaneLoad, so
+  // the ref keeps the first render from issuing a duplicate (and, in the packaged
+  // shell, un-deferred) load.
+  const loadedFixtureModeRef = useRef(fixtureMode);
   useEffect(() => {
+    if (loadedFixtureModeRef.current === fixtureMode) return;
+    loadedFixtureModeRef.current = fixtureMode;
     void loadSummary();
     void loadInsights();
-  }, [loadSummary, loadInsights, fixtureMode, bridge]);
+  }, [fixtureMode, loadSummary, loadInsights]);
+
+  useEffect(() => {
+    if (layout !== 'stream' && layout !== 'atlas') return;
+    void loadActivity();
+    void loadMissions();
+  }, [layout, loadActivity, loadMissions, dataRevision, fixtureMode]);
 
   const reconnect = () => {
     void refreshHealth();
     void loadSummary();
     void loadInsights();
+    void loadActivity();
+    void loadMissions();
   };
 
   const offlineNoBridge = !fixtureMode && !bridge;
@@ -74,7 +99,7 @@ export function OverviewSurface() {
 
   const providerRows = useMemo(() => {
     const mix = insights?.providerMix ?? [];
-    const total = fixtureMode ? 680.94 : summary?.todayCostUsd ?? 0;
+    const total = summary?.todayCostUsd ?? 0;
     return providerRowsFromInsights(mix, total, fixtureMode);
   }, [insights, summary, fixtureMode]);
 
@@ -84,20 +109,20 @@ export function OverviewSurface() {
   );
 
   const overviewBody = (
-    <div className={`overview-atelier-layout overview-atelier-layout--${layout}`}>
-      <aside className="overview-atelier-rail">
-        <ProviderListPanel rows={providerRows} title="Providers" logoSize={40} skeleton={busy && !summary} />
-      </aside>
-      <div className="overview-atelier-main">
-        <AtelierHero
-          summary={error ? null : summary}
-          cacheHitRatePct={cacheHitRatePct}
-          curveModel={curveModel}
-          fixtureMode={fixtureMode}
-          loading={busy && !summary}
-        />
-      </div>
-    </div>
+    <OverviewLayoutBody
+      layout={layout}
+      summary={error ? null : summary}
+      cacheHitRatePct={cacheHitRatePct}
+      lastRefreshedAt={lastRefreshedAt}
+      curveModel={curveModel}
+      providerRows={providerRows}
+      providerMix={insights?.providerMix ?? []}
+      sessions={sessions}
+      missions={missions}
+      fixtureMode={fixtureMode}
+      live={!!bridge}
+      loading={busy && !summary}
+    />
   );
 
   if (offlineNoBridge) {
@@ -118,6 +143,7 @@ export function OverviewSurface() {
     <div
       className={`overview-atelier overview-atelier--${layout}`}
       data-overview-shell-state={shellState}
+      data-overview-layout={layout}
     >
       {error && shellState === 'error' ? (
         <Banner tone="degraded" role="alert">
@@ -152,7 +178,7 @@ export function OverviewSurface() {
         {' · '}
         shell: {shellState}
         {' · '}
-        content: atelier-shared
+        content: {layout}
         {' · '}
         Data source: {fixtureMode ? 'fixture transcript' : bridge ? 'live daemon' : 'unavailable'} ·{' '}
         <button type="button" className="overview-reconnect-link" disabled={healthBusy} onClick={reconnect}>

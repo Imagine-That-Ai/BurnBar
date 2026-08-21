@@ -102,7 +102,107 @@ def main() -> int:
     # …but a real `try?` after an identifier-adjacent boundary still counts.
     expect("real-try-after-paren", count("let x = (try? foo()) ?? d"), (1, 0))
 
-    print("\nAll try? counter tests passed.")
+    print("\nAll try? counter tests passed.\n")
+    return grdb_row_cast_tests()
+
+
+def grdb_row_cast_tests() -> int:
+    def count(text: str) -> tuple[int, int]:
+        untagged, tagged, _ = COUNTER.count_grdb_row_casts_in_text(text)
+        return untagged, tagged
+
+    # The three casts that can never succeed against SQLite storage.
+    expect("as-int", count('let n = (row["messageCount"] as? Int) ?? 0'), (1, 0))
+    expect("as-bool", count('let flag = (row["isLocal"] as? Bool) ?? false'), (1, 0))
+    expect("as-date", count('let at = row["createdAt"] as? Date'), (1, 0))
+
+    # `as? Double` succeeds on REAL but silently nils on INTEGER — SUM(), COUNT()
+    # and CASE WHEN projections all hand back Int64. That is the rollup-reads-zero
+    # bug, so it counts.
+    expect("as-double", count('let total = (row["totalTokens"] as? Double) ?? 0'), (1, 0))
+    # `as? Int64` happens to work on INTEGER, but breaks the moment the column or
+    # aggregate is REAL. One rule, no exceptions to memorize.
+    expect("as-int64", count('let n = row["ftsRowid"] as? Int64'), (1, 0))
+
+    # TEXT storage *is* String, so that cast is sound and stays legal.
+    expect("as-string", count('let id = row["id"] as? String'), (0, 0))
+
+    # Row-shaped identifiers are covered; dictionaries are not.
+    expect("suffixed-row", count('let n = ftsRow["rank"] as? Double'), (1, 0))
+    expect("json-dictionary", count('let n = payload["count"] as? Int'), (0, 0))
+    expect("firestore-document", count('let n = document["citationCount"] as? Int'), (0, 0))
+
+    # Optional chains and collection elements reach the same untyped subscript,
+    # so the gate has to recognize them as readily as the bare identifier.
+    expect("optional-chain", count('let n = row?["count"] as? Int'), (1, 0))
+    expect("indexed-literal", count('let n = rows[0]["count"] as? Int'), (1, 0))
+    expect("indexed-variable", count('let n = rows[index]["count"] as? Int'), (1, 0))
+    expect("indexed-optional-result", count('let n = rows.first?["count"] as? Int'), (1, 0))
+    # A dictionary collection keeps its exemption in the same spellings.
+    expect("indexed-dictionary", count('let n = payloads[0]["count"] as? Int'), (0, 0))
+
+    # A row bound to an ordinary name is still a row. Name-only matching handed
+    # every one of these a free pass through an assert-zero gate.
+    expect(
+        "bound-row-same-line",
+        count('let mapping = try Row.fetchOne(db, sql: sql)\nlet n = mapping?["ftsRowid"] as? Int64'),
+        (1, 0),
+    )
+    expect(
+        "bound-row-inside-read-block",
+        count(
+            'let mapping = try queue.read { db in\n'
+            '    try Row.fetchOne(db, sql: "SELECT ftsRowid FROM search_chunks")\n'
+            '}\n'
+            'let n = mapping?["ftsRowid"] as? Int64'
+        ),
+        (1, 0),
+    )
+    expect(
+        "bound-rows-collection",
+        count('let columns = try Row.fetchAll(db, sql: sql)\nlet n = columns[0]["count"] as? Int'),
+        (1, 0),
+    )
+    # A same-named binding that is NOT a row keeps its exemption, so the
+    # derivation has to read the binding rather than the identifier.
+    expect(
+        "bound-non-row",
+        count('let mapping = try JSONDecoder().decode(Payload.self, from: data)\nlet n = mapping["count"] as? Int'),
+        (0, 0),
+    )
+    # A fetch below an unrelated binding must not be attributed to it.
+    expect(
+        "fetch-attributed-to-its-own-binding",
+        count('let payload = decoded\nlet row = try Row.fetchOne(db, sql: sql)\nlet n = payload["count"] as? Int'),
+        (0, 0),
+    )
+
+    # The typed subscript is the fix and must never be flagged.
+    expect("typed-subscript", count('let n: Int = row["messageCount"] ?? 0'), (0, 0))
+
+    # Tag on the same line, and on the line above, exempt the site.
+    expect(
+        "trailing-tag",
+        count('let n = row["c"] as? Int // grdb-row-ok(plain dictionary)'),
+        (0, 1),
+    )
+    expect(
+        "preceding-tag",
+        count('// grdb-row-ok(plain dictionary)\nlet n = row["c"] as? Int'),
+        (0, 1),
+    )
+
+    # A cast quoted in prose documents the hazard; it is not the hazard.
+    expect("comment-only", count('/// `row["x"] as? Int` always yields nil.'), (0, 0))
+
+    # Two casts on one line count twice.
+    expect(
+        "two-per-line",
+        count('let c = (row["cost"] as? Double) ?? Double(row["cost"] as? Int64 ?? 0)'),
+        (2, 0),
+    )
+
+    print("\nAll GRDB row-cast counter tests passed.")
     return 0
 
 

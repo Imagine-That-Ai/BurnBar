@@ -76,8 +76,10 @@ struct ChatExpandedPanel: View {
         .overlay(alignment: .trailing) {
             InteractiveResizeOverlay(direction: .trailing) { translation in
                 if panelResizeStart == nil { panelResizeStart = controller.panelWidth }
-                let base = panelResizeStart ?? 400
-                controller.panelWidth = min(720, max(260, base + translation.width))
+                let base = panelResizeStart ?? ChatPanelGeometry.defaultSize.width
+                controller.panelWidth = ChatPanelGeometry.clamp(
+                    CGSize(width: base + translation.width, height: controller.panelHeight)
+                ).width
             } onEnded: {
                 panelResizeStart = nil
                 controller.persistPanelGeometry()
@@ -86,8 +88,12 @@ struct ChatExpandedPanel: View {
         .overlay(alignment: .bottom) {
             InteractiveResizeOverlay(direction: .bottom) { translation in
                 if bottomResizeStart == nil { bottomResizeStart = controller.panelHeight }
-                let base = bottomResizeStart ?? 440
-                controller.panelHeight = min(900, max(200, base + translation.height))
+                let base = bottomResizeStart ?? ChatPanelGeometry.defaultSize.height
+                let resized = ChatPanelGeometry.clamp(
+                    CGSize(width: controller.panelWidth, height: base + translation.height)
+                )
+                controller.panelWidth = resized.width
+                controller.panelHeight = resized.height
             } onEnded: {
                 bottomResizeStart = nil
                 controller.persistPanelGeometry()
@@ -98,9 +104,12 @@ struct ChatExpandedPanel: View {
                 if cornerResizeStart == nil {
                     cornerResizeStart = CGSize(width: controller.panelWidth, height: controller.panelHeight)
                 }
-                let base = cornerResizeStart ?? CGSize(width: 400, height: 440)
-                controller.panelWidth = min(720, max(260, base.width + translation.width))
-                controller.panelHeight = min(900, max(200, base.height + translation.height))
+                let base = cornerResizeStart ?? ChatPanelGeometry.defaultSize
+                let resized = ChatPanelGeometry.clamp(
+                    CGSize(width: base.width + translation.width, height: base.height + translation.height)
+                )
+                controller.panelWidth = resized.width
+                controller.panelHeight = resized.height
             } onEnded: {
                 cornerResizeStart = nil
                 controller.persistPanelGeometry()

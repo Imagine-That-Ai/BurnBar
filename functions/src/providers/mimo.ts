@@ -13,7 +13,7 @@ import type {
   QuotaBucket,
   ProviderAccountConnectContext,
 } from "../types.js";
-import { recordOrUndefined } from "../guards.js";
+import { errorMessage, recordOrUndefined } from "../guards.js";
 import { providerFetch } from "./httpClient.js";
 
 const PROVIDER = "mimo" as const;
@@ -270,7 +270,7 @@ export const mimoAdapter: ProviderAdapter = {
         redactedLabel: redact(trimmed),
         credentialKind: "bearer",
         errorCode: "missing_region",
-        errorMessage: String(err),
+        errorMessage: errorMessage(err),
       };
     }
 
@@ -333,7 +333,7 @@ export const mimoAdapter: ProviderAdapter = {
       return {
         ok: false,
         errorCode: "missing_region",
-        errorMessage: String(err),
+        errorMessage: errorMessage(err),
       };
     }
 

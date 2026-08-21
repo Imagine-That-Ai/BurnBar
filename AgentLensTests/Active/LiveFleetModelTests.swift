@@ -35,6 +35,36 @@ final class LiveFleetModelTests: XCTestCase {
         }
     }
 
+    func test_gatewayUsageDoesNotMarkApiBackedProvidersAsWrote() {
+        let model = makeModel()
+        let usage = TokenUsage(
+            provider: .mimo,
+            sessionId: "gateway-1",
+            projectName: "OpenBurnBar Gateway",
+            model: "mimo-v2",
+            inputTokens: 10,
+            outputTokens: 4,
+            startTime: now.addingTimeInterval(-11),
+            endTime: now.addingTimeInterval(-11)
+        )
+
+        model.rebuild(
+            providers: [.mimo, .openAI, .deepSeek, .openBurnBar],
+            presence: [:],
+            busyLocation: [:],
+            usages: [usage],
+            usagesVersion: 1,
+            now: now
+        )
+
+        for row in model.rows {
+            if case .wroteRecently = row.liveness {
+                XCTFail("\(row.provider.displayName) must not show wrote from a gateway usage row")
+            }
+            XCTAssertFalse(row.liveness.isActive)
+        }
+    }
+
     func test_unwatchableProviderReportsUnobservable() {
         let model = makeModel()
         model.recordUnwatchable(provider: .claudeCode, reason: "App Store build can't read agent logs")

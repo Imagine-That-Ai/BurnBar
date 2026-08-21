@@ -11,12 +11,14 @@ export const DASHBOARD_LAYOUTS = [
   'nebula',
   'constellation',
   'cockpit',
-  'atelier'
+  'atelier',
+  'stream',
+  'atlas'
 ] as const;
 
 export type DashboardLayout = (typeof DASHBOARD_LAYOUTS)[number];
 
-export const DEFAULT_DASHBOARD_LAYOUT: DashboardLayout = 'atelier';
+export const DEFAULT_DASHBOARD_LAYOUT: DashboardLayout = 'aurora';
 
 export type DashboardLayoutMeta = {
   id: DashboardLayout;
@@ -30,38 +32,42 @@ export type DashboardLayoutMeta = {
   description: string;
 };
 
+/**
+ * Ids are opaque storage keys and stay frozen; `displayName` is what changed.
+ * See the same note on the Swift enum.
+ */
 export const DASHBOARD_LAYOUT_META: Record<DashboardLayout, DashboardLayoutMeta> = {
   classic: {
     id: 'classic',
-    displayName: 'Classic',
-    symbolName: 'rectangle.grid.1x2',
+    displayName: 'Ledger',
+    symbolName: 'list.bullet.rectangle',
     glyph: '▤',
     isKernelForward: false,
-    description: 'Information-dense vertical scroll overview.'
+    description: 'Every row, in order — one dense ordered scroll, no hero.'
   },
   aurora: {
     id: 'aurora',
-    displayName: 'Aurora',
-    symbolName: 'sun.haze',
+    displayName: 'Focus',
+    symbolName: 'largecircle.fill.circle',
     glyph: '◎',
     isKernelForward: false,
-    description: 'Provider list + open hero field + bottom data band.'
+    description: 'One number, front and centre; everything else collapses below it.'
   },
   nebula: {
     id: 'nebula',
-    displayName: 'Nebula',
-    symbolName: 'rectangle.grid.2x2',
+    displayName: 'Bento',
+    symbolName: 'square.grid.2x2',
     glyph: '▦',
     isKernelForward: false,
-    description: 'Bento grid: providers, burn card, stage, data row.'
+    description: 'Equal tiles, scan anywhere — a grid with no reading order.'
   },
   constellation: {
     id: 'constellation',
-    displayName: 'Constellation',
-    symbolName: 'sparkles',
+    displayName: 'Ask',
+    symbolName: 'text.magnifyingglass',
     glyph: '✦',
     isKernelForward: true,
-    description: 'Centered command column over a full swarm stage.'
+    description: 'Ask first, results follow — the question box leads the page.'
   },
   cockpit: {
     id: 'cockpit',
@@ -69,15 +75,31 @@ export const DASHBOARD_LAYOUT_META: Record<DashboardLayout, DashboardLayoutMeta>
     symbolName: 'gauge.with.dots.needle.67percent',
     glyph: '◉',
     isKernelForward: false,
-    description: 'Mission-control grid with KPI tiles and routing stage.'
+    description: 'Instruments and alarm states — gauges, routing, cache hit rate.'
   },
   atelier: {
     id: 'atelier',
-    displayName: 'Atelier',
-    symbolName: 'paintpalette',
+    displayName: 'Canvas',
+    symbolName: 'photo.artframe',
     glyph: '✧',
     isKernelForward: true,
-    description: 'Full-bleed kernel-forward hero with floating glass stats.'
+    description: 'Ambient, for a second screen — full-bleed kernel, minimal numbers.'
+  },
+  stream: {
+    id: 'stream',
+    displayName: 'Stream',
+    symbolName: 'arrow.down.right.and.arrow.up.left.circle',
+    glyph: '≋',
+    isKernelForward: false,
+    description: 'What happened, newest first — sessions, spikes and alerts on a time axis.'
+  },
+  atlas: {
+    id: 'atlas',
+    displayName: 'Atlas',
+    symbolName: 'chart.bar.xaxis',
+    glyph: '▥',
+    isKernelForward: false,
+    description: 'Side by side, with deltas — ranked provider and model comparison.'
   }
 };
 

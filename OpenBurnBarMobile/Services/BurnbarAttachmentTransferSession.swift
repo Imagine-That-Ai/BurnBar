@@ -39,7 +39,7 @@ final class BurnbarAttachmentTransferSession: NSObject, URLSessionDelegate, URLS
     /// the product path does not fire-and-forget a background task.
     func uploadAwaiting(fileURL: URL, signedURL: URL) async throws {
         let request = Self.signedPutRequest(fileURL: fileURL, signedURL: signedURL)
-        let (_, response) = try await URLSession.shared.upload(fromFile: fileURL, for: request)
+        let (_, response) = try await URLSession.shared.upload(for: request, fromFile: fileURL)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             throw NSError(
                 domain: "OpenBurnBar.BurnbarAttachmentTransfer",

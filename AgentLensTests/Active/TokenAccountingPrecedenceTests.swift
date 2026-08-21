@@ -79,7 +79,8 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
         XCTAssertEqual(row?["executionSourceName"] as? String, "Codex Desktop")
         XCTAssertEqual(row?["executionSourceKind"] as? String, "desktop_app")
         XCTAssertEqual(row?["executionSourceConfidence"] as? String, "exact")
-        XCTAssertEqual((row?["inputTokens"] as? Int) ?? Int(row?["inputTokens"] as? Int64 ?? 0), 150)
+        let inputTokens: Int = row?["inputTokens"] ?? 0
+        XCTAssertEqual(inputTokens, 150)
     }
 
     func test_modelSummaries_includeExecutionSourceBreakdown() throws {
@@ -154,7 +155,7 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
 
         // Then: exact row is preserved (not downgraded)
         let row = try await fetchCanonicalRow(queue: queue, sessionId: sessionId)
-        let inputTokens = (row?["inputTokens"] as? Int) ?? Int(row?["inputTokens"] as? Int64 ?? 0)
+        let inputTokens: Int = row?["inputTokens"] ?? 0
 
         XCTAssertEqual(inputTokens, 1000, "Exact row must not be downgraded by estimate")
         XCTAssertEqual(row?["provenanceConfidence"] as? String, "exact")
@@ -206,7 +207,7 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
         // derivedExact has precedence 3, exact has precedence 4
         // So exact > derivedExact, meaning derived should NOT replace exact
         let row = try await fetchCanonicalRow(queue: queue, sessionId: sessionId)
-        let inputTokens = (row?["inputTokens"] as? Int) ?? Int(row?["inputTokens"] as? Int64 ?? 0)
+        let inputTokens: Int = row?["inputTokens"] ?? 0
 
         XCTAssertEqual(inputTokens, 5000, "Exact row must not be downgraded")
         XCTAssertEqual(row?["provenanceConfidence"] as? String, "exact")
@@ -254,7 +255,7 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
 
         // Then: high-confidence estimate is preserved
         let row = try await fetchCanonicalRow(queue: queue, sessionId: sessionId)
-        let inputTokens = (row?["inputTokens"] as? Int) ?? Int(row?["inputTokens"] as? Int64 ?? 0)
+        let inputTokens: Int = row?["inputTokens"] ?? 0
 
         XCTAssertEqual(inputTokens, 3000, "High-confidence estimate must not be downgraded")
         XCTAssertEqual(row?["provenanceConfidence"] as? String, "high_confidence_estimate")
@@ -304,7 +305,7 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
 
         // Then: canonical row is upgraded to exact
         let row = try await fetchCanonicalRow(queue: queue, sessionId: sessionId)
-        let inputTokens = (row?["inputTokens"] as? Int) ?? Int(row?["inputTokens"] as? Int64 ?? 0)
+        let inputTokens: Int = row?["inputTokens"] ?? 0
 
         XCTAssertEqual(inputTokens, 2000, "Late exact must upgrade estimated row")
         XCTAssertEqual(row?["provenanceConfidence"] as? String, "exact")
@@ -353,7 +354,7 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
 
         // Then: canonical row is upgraded to exact (and projectName updated)
         let row = try await fetchCanonicalRow(queue: queue, sessionId: sessionId)
-        let inputTokens = (row?["inputTokens"] as? Int) ?? Int(row?["inputTokens"] as? Int64 ?? 0)
+        let inputTokens: Int = row?["inputTokens"] ?? 0
 
         XCTAssertEqual(inputTokens, 2500, "Late exact must upgrade derived-exact row")
         XCTAssertEqual(row?["provenanceConfidence"] as? String, "exact")
@@ -402,7 +403,7 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
 
         // Then: row is promoted to high-confidence
         let row = try await fetchCanonicalRow(queue: queue, sessionId: sessionId)
-        let inputTokens = (row?["inputTokens"] as? Int) ?? Int(row?["inputTokens"] as? Int64 ?? 0)
+        let inputTokens: Int = row?["inputTokens"] ?? 0
 
         XCTAssertEqual(inputTokens, 1500, "Late high-confidence must promote low-confidence row")
         XCTAssertEqual(row?["provenanceConfidence"] as? String, "high_confidence_estimate")
@@ -504,7 +505,7 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
         XCTAssertEqual(count, 1, "Re-ingest must not create duplicate rows")
 
         let row = try await fetchCanonicalRow(queue: queue, sessionId: sessionId)
-        let inputTokens = (row?["inputTokens"] as? Int) ?? Int(row?["inputTokens"] as? Int64 ?? 0)
+        let inputTokens: Int = row?["inputTokens"] ?? 0
         XCTAssertEqual(inputTokens, 2500, "Row should be updated")
         XCTAssertEqual(row?["provenanceConfidence"] as? String, "exact")
     }
@@ -678,7 +679,7 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
 
         // Then: row is updated
         let row = try await fetchCanonicalRow(queue: queue, sessionId: sessionId)
-        let inputTokens = (row?["inputTokens"] as? Int) ?? Int(row?["inputTokens"] as? Int64 ?? 0)
+        let inputTokens: Int = row?["inputTokens"] ?? 0
 
         XCTAssertEqual(inputTokens, 2000, "Equal confidence with different values should update")
         XCTAssertEqual(row?["provenanceConfidence"] as? String, "high_confidence_estimate")
@@ -726,7 +727,8 @@ final class TokenAccountingPrecedenceTests: XCTestCase {
         }
         XCTAssertEqual(rows.count, 1)
         XCTAssertEqual(rows.first?["provider"] as? String, AgentProvider.factory.rawValue)
-        XCTAssertEqual((rows.first?["cost"] as? Double) ?? -1, 0, accuracy: 0.000001)
+        let cost: Double = rows.first?["cost"] ?? -1
+        XCTAssertEqual(cost, 0, accuracy: 0.000001)
     }
 
     func test_factoryRowDeletesExistingRoutedProviderMirror() async throws {

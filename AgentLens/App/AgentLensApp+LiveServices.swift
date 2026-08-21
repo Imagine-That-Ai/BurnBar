@@ -198,6 +198,7 @@ extension OpenBurnBarApp {
             }
             context.aggregator = aggregator
             context.operatingLayer.aggregator = aggregator
+            appDelegate.usageAggregator = aggregator
             context.operatingLayer.chatController = context.chatController
             if shouldStartBackgroundServices {
                 StartupProfiler.interval("memory_watchdog_start") {

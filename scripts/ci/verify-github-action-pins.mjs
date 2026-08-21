@@ -18,7 +18,10 @@ for (const file of readdirSync(workflowDir).filter((name) => /\.ya?ml$/u.test(na
   const source = readFileSync(path, "utf8");
   const lines = source.split(/\r?\n/u);
   lines.forEach((line, index) => {
-    const match = line.match(/^\s*uses:\s*["']?([^"'\s#]+)["']?/u);
+    // Both spellings: a bare `uses:` under a named step, and the compact
+    // `- uses:` list item. Omitting the list form left the majority of step
+    // references unchecked, so an unpinned tag could land in the common shape.
+    const match = line.match(/^\s*(?:-\s*)?uses:\s*["']?([^"'\s#]+)["']?/u);
     if (!match) return;
     const spec = match[1];
     if (spec.startsWith("./") || spec.startsWith("../")) return;

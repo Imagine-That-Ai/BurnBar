@@ -256,6 +256,7 @@ final class MemoryReviewInboxModel {
                         bodyState = ("", .unavailable)
                     }
                 } catch {
+                    AppLogger.dataStore.silentFailure("Failed to open memory body for \(memory.id)", error: error)
                     bodyState = ("", .unavailable)
                 }
                 items.append(Item(memory: memory, body: bodyState.0, bodyLoadState: bodyState.1))

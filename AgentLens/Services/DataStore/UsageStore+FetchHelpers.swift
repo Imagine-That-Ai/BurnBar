@@ -387,7 +387,7 @@ extension UsageStore {
 
         for row in rows {
             guard let providerRaw = row["provider"] as? String,
-                  let provider = AgentProvider(rawValue: providerRaw),
+                  let provider = AgentProvider.resolve(providerRaw),
                   let model = row["model"] as? String else { continue }
             let executionSourceID = row["executionSourceID"] as? String ?? "unknown"
             let executionSourceName = row["executionSourceName"] as? String ?? "Unknown"
@@ -646,7 +646,7 @@ extension UsageStore {
             for row in rows {
                 guard let dayStart = OpenBurnBarDatabase.parseDateValue(row["dayStart"]),
                       let providerRaw = row["provider"] as? String,
-                      let provider = AgentProvider(rawValue: providerRaw),
+                      let provider = AgentProvider.resolve(providerRaw),
                       let model = row["model"] as? String else {
                     continue
                 }
@@ -696,7 +696,7 @@ extension UsageStore {
             let dayString = overlappingDayString(window.dayStart, calendar: calendar)
             for row in rows {
                 guard let providerRaw = row["provider"] as? String,
-                      let provider = AgentProvider(rawValue: providerRaw),
+                      let provider = AgentProvider.resolve(providerRaw),
                       let model = row["model"] as? String else { continue }
                 accumulators[
                     window.dayStart,

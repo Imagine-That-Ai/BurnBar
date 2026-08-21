@@ -122,7 +122,7 @@ struct MacWandMissionDispatcher {
 
         try await batch.commit()
 
-        var leaves: [[String: Any]] = []
+        var leaves: [[String: any Sendable]] = []
         for index in childMissionIDs.indices {
             let missionID = childMissionIDs[index]
             let payload = try childPayload(
@@ -154,7 +154,7 @@ struct MacWandMissionDispatcher {
                 now: now,
                 key: key
             )
-            var publicFields: [String: Any] = [
+            var publicFields: [String: any Sendable] = [
                 "id": missionID,
                 "missionKind": missionKind,
                 "requestedRuntime": runtimeTokens[index],
@@ -178,14 +178,14 @@ struct MacWandMissionDispatcher {
             if let targetBodyID = targetBodyID?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty {
                 publicFields["targetBodyID"] = targetBodyID
             }
-            var leaf: [String: Any] = [
+            var leaf: [String: any Sendable] = [
                 "requestId": missionID,
                 "remoteCommandID": missionID,
                 "deviceId": accountManager.deviceId,
                 "publicFields": publicFields,
-                "initialEvent": initialEvent["sealedPayload"] as Any
+                "initialEvent": (initialEvent["sealedPayload"] as? [String: any Sendable]) ?? [:]
             ]
-            if let sealed = payload["sealedPayload"] {
+            if let sealed = payload["sealedPayload"] as? [String: any Sendable] {
                 leaf["sealedPayload"] = sealed
             }
             leaves.append(leaf)

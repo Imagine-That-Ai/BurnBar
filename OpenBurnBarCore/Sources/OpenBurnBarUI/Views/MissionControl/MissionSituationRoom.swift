@@ -1,4 +1,5 @@
 import SwiftUI
+import OpenBurnBarRecap
 import OpenBurnBarKernel
 
 // MARK: - Mission Situation Room

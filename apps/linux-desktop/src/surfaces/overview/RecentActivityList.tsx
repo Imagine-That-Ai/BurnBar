@@ -4,15 +4,18 @@ import type { UsageSummary } from '../../tauriBridge.js';
 export function RecentActivityList({
   summary,
   fixtureMode,
-  live
+  live,
+  limit
 }: {
   summary: UsageSummary | null;
   fixtureMode: boolean;
   live: boolean;
+  limit?: number;
 }) {
   if (!summary) return null;
 
-  const rows = summary.recentEvents.map((e) => ({
+  const events = typeof limit === 'number' ? summary.recentEvents.slice(0, Math.max(0, limit)) : summary.recentEvents;
+  const rows = events.map((e) => ({
     id: e.id,
     title: e.title,
     detail: e.detail

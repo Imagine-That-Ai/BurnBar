@@ -200,7 +200,8 @@ public enum BurnBarRemoteMissionAuthorizationPolicy {
              "cursoragent", "cursor-agent",
              "opencode", "ollama",
              "omp", "ohmypi", "oh-my-pi", "oh my pi",
-             "junie", "grok", "grok-build", "xai", "grok-agent":
+             "junie", "grok", "grok-build", "xai", "grok-agent",
+             "fx", "vercel-fx", "vercelfx":
             return true
         default:
             return true

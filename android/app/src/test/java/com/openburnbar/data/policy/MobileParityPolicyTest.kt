@@ -57,17 +57,6 @@ class MobileParityPolicyTest {
     }
 
     @Test
-    fun uidScopedCacheUnregisterStopsLaterClears() {
-        val caches = UidScopedCacheRegistry()
-        var cleared = 0
-        val clearer = { cleared += 1 }
-        caches.register(clearer)
-        caches.unregister(clearer)
-        caches.clearAll()
-        assertEquals(0, cleared)
-    }
-
-    @Test
     fun syncFreshnessNeverLooksLikeLiveZero() {
         assertEquals(
             MobileSyncFreshness.EMPTY,

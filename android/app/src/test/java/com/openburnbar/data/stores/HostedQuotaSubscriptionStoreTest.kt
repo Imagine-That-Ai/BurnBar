@@ -27,7 +27,6 @@ import com.google.firebase.firestore.QuerySnapshot
 import com.openburnbar.MainDispatcherRule
 import com.openburnbar.data.firebase.FunctionsRepository
 import com.openburnbar.data.policy.MobileStoreEntitlementPolicy
-import com.openburnbar.data.policy.UidScopedCacheRegistry
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -159,100 +158,6 @@ class HostedQuotaSubscriptionStoreTest {
         assertTrue(store.currentTier.value.satisfies(com.openburnbar.ui.pro.CloudTier.CLOUD))
         assertTrue(store.currentTier.value.satisfies(com.openburnbar.ui.pro.CloudTier.PRO))
         assertFalse(store.currentTier.value.satisfies(com.openburnbar.ui.pro.CloudTier.ULTRA))
-    }
-
-    @Test
-    fun uidScopedCacheClearDropsPublishedEntitlement() = runTest {
-        every { mockBillingClient.isReady } returns true
-
-        val mockResult = mockk<BillingResult>()
-        every { mockResult.responseCode } returns BillingClient.BillingResponseCode.OK
-        every { mockResult.debugMessage } returns ""
-
-        val proPurchase = mockk<Purchase>()
-        every { proPurchase.purchaseState } returns Purchase.PurchaseState.PURCHASED
-        every { proPurchase.products } returns listOf(HostedQuotaSubscriptionStore.CLOUD_PRO_MONTHLY_PRODUCT_ID)
-        every { proPurchase.purchaseToken } returns "pro-token"
-        every { proPurchase.purchaseTime } returns 123456789L
-        every { proPurchase.isAcknowledged } returns true
-
-        val purchasesListenerSlot = slot<PurchasesResponseListener>()
-        every { mockBillingClient.queryPurchasesAsync(any(), capture(purchasesListenerSlot)) } answers {
-            purchasesListenerSlot.captured.onQueryPurchasesResponse(mockResult, listOf(proPurchase))
-        }
-
-        coEvery {
-            mockFunctions.verifyGooglePlayBurnBarProSubscription(
-                purchaseToken = "pro-token",
-                productID = HostedQuotaSubscriptionStore.CLOUD_PRO_MONTHLY_PRODUCT_ID,
-            )
-        } returns mapOf("active" to true, "expiresAt" to ACTIVE_SUBSCRIPTION_EXPIRES_AT)
-
-        val caches = UidScopedCacheRegistry()
-        val store =
-            HostedQuotaSubscriptionStore(
-                functions = mockFunctions,
-                initialBillingClient = mockBillingClient,
-                scopedCaches = caches,
-            )
-
-        store.restorePurchases()
-        advanceUntilIdle()
-        assertTrue(store.isActive.value)
-        assertEquals(HostedQuotaSubscriptionStore.CLOUD_PRO_MONTHLY_PRODUCT_ID, store.activeProductID.value)
-
-        store.load()
-        advanceUntilIdle()
-        caches.clearAll()
-        advanceUntilIdle()
-
-        assertFalse(store.isActive.value)
-        assertNull(store.activeProductID.value)
-        assertEquals(com.openburnbar.ui.pro.CloudTier.NONE, store.currentTier.value)
-        assertNull(store.error.value)
-
-        val onCleared = androidx.lifecycle.ViewModel::class.java.getDeclaredMethod("onCleared")
-        onCleared.isAccessible = true
-        onCleared.invoke(store)
-    }
-
-    @Test
-    fun uidScopedCacheClearCancelsWorkAndReattachesCurrentUid() = runTest {
-        val context = mockk<Context>(relaxed = true)
-        val firestore = mockk<FirebaseFirestore>()
-        val usersCollection = mockk<CollectionReference>()
-        val userDocument = mockk<DocumentReference>()
-        val entitlementsCollection = mockk<CollectionReference>()
-        val firstRegistration = mockk<ListenerRegistration>(relaxed = true)
-        val secondRegistration = mockk<ListenerRegistration>(relaxed = true)
-        every { firestore.collection("users") } returns usersCollection
-        every { usersCollection.document("user-123") } returns userDocument
-        every { userDocument.collection("entitlements") } returns entitlementsCollection
-        every { entitlementsCollection.addSnapshotListener(any()) } returnsMany listOf(firstRegistration, secondRegistration)
-
-        val firebaseUser = mockk<FirebaseUser>()
-        every { firebaseUser.uid } returns "user-123"
-        val firebaseAuth = mockk<FirebaseAuth>(relaxed = true)
-        every { firebaseAuth.currentUser } returns firebaseUser
-        every { firebaseAuth.addAuthStateListener(any()) } answers {
-            firstArg<FirebaseAuth.AuthStateListener>().onAuthStateChanged(firebaseAuth)
-        }
-
-        val caches = UidScopedCacheRegistry()
-        val store =
-            HostedQuotaSubscriptionStore(
-                functions = mockFunctions,
-                initialBillingClient = mockBillingClient,
-                initialFirestore = firestore,
-                initialFirebaseAuth = firebaseAuth,
-                scopedCaches = caches,
-            )
-        store.initialize(context)
-        verify(exactly = 1) { entitlementsCollection.addSnapshotListener(any()) }
-
-        caches.clearAll()
-        verify { firstRegistration.remove() }
-        verify(exactly = 2) { entitlementsCollection.addSnapshotListener(any()) }
     }
 
     @Test
@@ -756,6 +661,199 @@ class HostedQuotaSubscriptionStoreTest {
     }
 
     @Test
+    fun `account switch drops the previous UID entitlement before the new UID snapshot arrives`() = runTest {
+        every { mockBillingClient.isReady } returns true
+
+        val context = mockk<Context>(relaxed = true)
+        val firestore = mockk<FirebaseFirestore>()
+        val usersCollection = mockk<CollectionReference>()
+        val documentA = mockk<DocumentReference>()
+        val documentB = mockk<DocumentReference>()
+        val entitlementsA = mockk<CollectionReference>()
+        val entitlementsB = mockk<CollectionReference>()
+        val registrationA = mockk<ListenerRegistration>(relaxed = true)
+        val registrationB = mockk<ListenerRegistration>(relaxed = true)
+        val listenerSlotA = slot<EventListener<QuerySnapshot>>()
+        every { firestore.collection("users") } returns usersCollection
+        every { usersCollection.document("user-a") } returns documentA
+        every { usersCollection.document("user-b") } returns documentB
+        every { documentA.collection("entitlements") } returns entitlementsA
+        every { documentB.collection("entitlements") } returns entitlementsB
+        every { entitlementsA.addSnapshotListener(capture(listenerSlotA)) } returns registrationA
+        every { entitlementsB.addSnapshotListener(any()) } returns registrationB
+
+        val userA = mockk<FirebaseUser>()
+        every { userA.uid } returns "user-a"
+        val userB = mockk<FirebaseUser>()
+        every { userB.uid } returns "user-b"
+
+        val firebaseAuth = mockk<FirebaseAuth>(relaxed = true)
+        every { firebaseAuth.currentUser } returns userA
+        val authListenerSlot = slot<FirebaseAuth.AuthStateListener>()
+        every { firebaseAuth.addAuthStateListener(capture(authListenerSlot)) } answers {
+            authListenerSlot.captured.onAuthStateChanged(firebaseAuth)
+        }
+
+        val store =
+            HostedQuotaSubscriptionStore(
+                functions = mockFunctions,
+                initialBillingClient = mockBillingClient,
+                initialFirestore = firestore,
+                initialFirebaseAuth = firebaseAuth,
+            )
+        store.initialize(context)
+
+        val ultraDoc = mockk<DocumentSnapshot>()
+        every { ultraDoc.id } returns "burnbar_ultra"
+        every { ultraDoc.data } returns
+            mapOf(
+                "active" to true,
+                "productID" to HostedQuotaSubscriptionStore.CLOUD_ULTRA_MONTHLY_PRODUCT_ID,
+                "expiresAt" to ACTIVE_SUBSCRIPTION_EXPIRES_AT,
+            )
+        val snapshotA = mockk<QuerySnapshot>()
+        every { snapshotA.documents } returns listOf(ultraDoc)
+        listenerSlotA.captured.onEvent(snapshotA, null)
+
+        assertTrue(store.isActive.value)
+        assertEquals(com.openburnbar.ui.pro.CloudTier.ULTRA, store.currentTier.value)
+
+        // Direct signed-in A -> B switch. B's first entitlement read has not
+        // landed yet (and may never, if the device is offline), so nothing of
+        // A's paid state may survive the flip.
+        every { firebaseAuth.currentUser } returns userB
+        authListenerSlot.captured.onAuthStateChanged(firebaseAuth)
+
+        verify { registrationA.remove() }
+        verify { entitlementsB.addSnapshotListener(any()) }
+        assertFalse(store.isActive.value)
+        assertNull(store.activeProductID.value)
+        assertNull(store.expirationDate.value)
+        assertNull(store.purchaseDate.value)
+        assertEquals(com.openburnbar.ui.pro.CloudTier.NONE, store.currentTier.value)
+
+        val onCleared = androidx.lifecycle.ViewModel::class.java.getDeclaredMethod("onCleared")
+        onCleared.isAccessible = true
+        onCleared.invoke(store)
+    }
+
+    @Test
+    fun `sign out drops the previous UID entitlement`() = runTest {
+        every { mockBillingClient.isReady } returns true
+
+        val context = mockk<Context>(relaxed = true)
+        val firestore = mockk<FirebaseFirestore>()
+        val usersCollection = mockk<CollectionReference>()
+        val documentA = mockk<DocumentReference>()
+        val entitlementsA = mockk<CollectionReference>()
+        val registrationA = mockk<ListenerRegistration>(relaxed = true)
+        val listenerSlotA = slot<EventListener<QuerySnapshot>>()
+        every { firestore.collection("users") } returns usersCollection
+        every { usersCollection.document("user-a") } returns documentA
+        every { documentA.collection("entitlements") } returns entitlementsA
+        every { entitlementsA.addSnapshotListener(capture(listenerSlotA)) } returns registrationA
+
+        val userA = mockk<FirebaseUser>()
+        every { userA.uid } returns "user-a"
+        val firebaseAuth = mockk<FirebaseAuth>(relaxed = true)
+        every { firebaseAuth.currentUser } returns userA
+        val authListenerSlot = slot<FirebaseAuth.AuthStateListener>()
+        every { firebaseAuth.addAuthStateListener(capture(authListenerSlot)) } answers {
+            authListenerSlot.captured.onAuthStateChanged(firebaseAuth)
+        }
+
+        val store =
+            HostedQuotaSubscriptionStore(
+                functions = mockFunctions,
+                initialBillingClient = mockBillingClient,
+                initialFirestore = firestore,
+                initialFirebaseAuth = firebaseAuth,
+            )
+        store.initialize(context)
+
+        val proDoc = mockk<DocumentSnapshot>()
+        every { proDoc.id } returns "burnbar_pro_max"
+        every { proDoc.data } returns
+            mapOf(
+                "active" to true,
+                "productID" to HostedQuotaSubscriptionStore.CLOUD_PRO_MONTHLY_PRODUCT_ID,
+                "expiresAt" to ACTIVE_SUBSCRIPTION_EXPIRES_AT,
+            )
+        val snapshotA = mockk<QuerySnapshot>()
+        every { snapshotA.documents } returns listOf(proDoc)
+        listenerSlotA.captured.onEvent(snapshotA, null)
+        assertTrue(store.isActive.value)
+
+        every { firebaseAuth.currentUser } returns null
+        authListenerSlot.captured.onAuthStateChanged(firebaseAuth)
+
+        assertFalse(store.isActive.value)
+        assertNull(store.activeProductID.value)
+        assertEquals(com.openburnbar.ui.pro.CloudTier.NONE, store.currentTier.value)
+
+        val onCleared = androidx.lifecycle.ViewModel::class.java.getDeclaredMethod("onCleared")
+        onCleared.isAccessible = true
+        onCleared.invoke(store)
+    }
+
+    @Test
+    fun `a repeat auth callback for the same UID keeps the published entitlement`() = runTest {
+        every { mockBillingClient.isReady } returns true
+
+        val context = mockk<Context>(relaxed = true)
+        val firestore = mockk<FirebaseFirestore>()
+        val usersCollection = mockk<CollectionReference>()
+        val documentA = mockk<DocumentReference>()
+        val entitlementsA = mockk<CollectionReference>()
+        val listenerSlotA = slot<EventListener<QuerySnapshot>>()
+        every { firestore.collection("users") } returns usersCollection
+        every { usersCollection.document("user-a") } returns documentA
+        every { documentA.collection("entitlements") } returns entitlementsA
+        every { entitlementsA.addSnapshotListener(capture(listenerSlotA)) } returns mockk<ListenerRegistration>(relaxed = true)
+
+        val userA = mockk<FirebaseUser>()
+        every { userA.uid } returns "user-a"
+        val firebaseAuth = mockk<FirebaseAuth>(relaxed = true)
+        every { firebaseAuth.currentUser } returns userA
+        val authListenerSlot = slot<FirebaseAuth.AuthStateListener>()
+        every { firebaseAuth.addAuthStateListener(capture(authListenerSlot)) } answers {
+            authListenerSlot.captured.onAuthStateChanged(firebaseAuth)
+        }
+
+        val store =
+            HostedQuotaSubscriptionStore(
+                functions = mockFunctions,
+                initialBillingClient = mockBillingClient,
+                initialFirestore = firestore,
+                initialFirebaseAuth = firebaseAuth,
+            )
+        store.initialize(context)
+
+        val ultraDoc = mockk<DocumentSnapshot>()
+        every { ultraDoc.id } returns "burnbar_ultra"
+        every { ultraDoc.data } returns
+            mapOf(
+                "active" to true,
+                "productID" to HostedQuotaSubscriptionStore.CLOUD_ULTRA_MONTHLY_PRODUCT_ID,
+                "expiresAt" to ACTIVE_SUBSCRIPTION_EXPIRES_AT,
+            )
+        val snapshotA = mockk<QuerySnapshot>()
+        every { snapshotA.documents } returns listOf(ultraDoc)
+        listenerSlotA.captured.onEvent(snapshotA, null)
+        assertTrue(store.isActive.value)
+
+        // Token refresh style re-fire for the same account must not blank the UI.
+        authListenerSlot.captured.onAuthStateChanged(firebaseAuth)
+
+        assertTrue(store.isActive.value)
+        assertEquals(com.openburnbar.ui.pro.CloudTier.ULTRA, store.currentTier.value)
+
+        val onCleared = androidx.lifecycle.ViewModel::class.java.getDeclaredMethod("onCleared")
+        onCleared.isAccessible = true
+        onCleared.invoke(store)
+    }
+
+    @Test
     fun `cloud entitlement resolves all canonical documents by tier until server state is empty`() = runTest {
         every { mockBillingClient.isReady } returns true
 
@@ -980,5 +1078,93 @@ class HostedQuotaSubscriptionStoreTest {
         assertNull(store.error.value)
         assertTrue(store.isActive.value)
         verify { mockBillingClient.acknowledgePurchase(any(), any()) }
+    }
+
+    // A signed-in cold start must not have its in-flight load cancelled.
+    //
+    // `entitlementUID` starts null and FirebaseAuth posts its first callback on a
+    // later main-looper turn, so that callback lands while `load()` is still
+    // suspended in `ensureReady()` waiting on Play. If null -> uid counts as an
+    // account change, `clearEntitlementStateForUidChange` cancels `entitlementWork`
+    // mid-flight: the catalog is never queried (prices render unavailable) and
+    // `restorePurchasesInternal` never runs, so Play is never reconciled against
+    // Firestore and purchases go unacknowledged — Google auto-refunds those after
+    // three days.
+    //
+    // The suspension is the whole point of the setup: `isReady` is false and the
+    // connection callback is held until after the auth callback fires. With
+    // `isReady = true` the load completes before the callback arrives and this test
+    // passes against the defect.
+    @Test
+    fun `first auth callback after a signed-in cold start does not cancel the in-flight load`() = runTest {
+        every { mockBillingClient.isReady } returns false
+
+        val context = mockk<Context>(relaxed = true)
+        val firestore = mockk<FirebaseFirestore>()
+        val usersCollection = mockk<CollectionReference>()
+        val document = mockk<DocumentReference>()
+        val entitlements = mockk<CollectionReference>()
+        val registration = mockk<ListenerRegistration>(relaxed = true)
+        every { firestore.collection("users") } returns usersCollection
+        every { usersCollection.document("user-a") } returns document
+        every { document.collection("entitlements") } returns entitlements
+        every { entitlements.addSnapshotListener(any<EventListener<QuerySnapshot>>()) } returns registration
+
+        val user = mockk<FirebaseUser>()
+        every { user.uid } returns "user-a"
+        val firebaseAuth = mockk<FirebaseAuth>(relaxed = true)
+        every { firebaseAuth.currentUser } returns user
+
+        // Captured but NOT fired at registration: FirebaseAuth's UiExecutor posts
+        // unconditionally, so the first callback always lands on a later turn.
+        val authListenerSlot = slot<FirebaseAuth.AuthStateListener>()
+        every { firebaseAuth.addAuthStateListener(capture(authListenerSlot)) } answers { }
+
+        // Hold the Play connection open so `load()` is genuinely suspended when the
+        // auth callback arrives.
+        val connectionSlot = slot<BillingClientStateListener>()
+        every { mockBillingClient.startConnection(capture(connectionSlot)) } answers { }
+
+        val okResult = mockk<BillingResult>()
+        every { okResult.responseCode } returns BillingClient.BillingResponseCode.OK
+        val mockProductDetails = mockk<ProductDetails>(relaxed = true)
+        every { mockProductDetails.productId } returns HostedQuotaSubscriptionStore.PRODUCT_ID
+        every { mockProductDetails.subscriptionOfferDetails } returns null
+        every { mockProductDetails.oneTimePurchaseOfferDetails } returns null
+        val mockQueryResult = mockk<QueryProductDetailsResult>()
+        every { mockQueryResult.getProductDetailsList() } returns listOf(mockProductDetails)
+        every { mockQueryResult.getUnfetchedProductList() } returns emptyList()
+        val detailsSlot = slot<ProductDetailsResponseListener>()
+        every { mockBillingClient.queryProductDetailsAsync(any(), capture(detailsSlot)) } answers {
+            detailsSlot.captured.onProductDetailsResponse(okResult, mockQueryResult)
+        }
+
+        val store =
+            HostedQuotaSubscriptionStore(
+                functions = mockFunctions,
+                initialBillingClient = mockBillingClient,
+                initialFirestore = firestore,
+                initialFirebaseAuth = firebaseAuth,
+            )
+        store.initialize(context)
+        store.load()
+        advanceUntilIdle()
+
+        // Auth callback lands while the load is parked on the Play round-trip.
+        authListenerSlot.captured.onAuthStateChanged(firebaseAuth)
+        advanceUntilIdle()
+
+        // Play connects only now.
+        every { mockBillingClient.isReady } returns true
+        connectionSlot.captured.onBillingSetupFinished(okResult)
+        advanceUntilIdle()
+
+        // The load survived: the catalog was queried and prices resolved.
+        verify(atLeast = 1) { mockBillingClient.queryProductDetailsAsync(any(), any()) }
+        assertNotNull(store.productDetailsByID.value[HostedQuotaSubscriptionStore.PRODUCT_ID])
+
+        val onCleared = androidx.lifecycle.ViewModel::class.java.getDeclaredMethod("onCleared")
+        onCleared.isAccessible = true
+        onCleared.invoke(store)
     }
 }

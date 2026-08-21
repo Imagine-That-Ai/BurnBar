@@ -87,7 +87,7 @@ final class AgentBrandZoneStore {
                 updatedAt: thread.updatedAt
             )
         case .claude, .codex, .openClaw, .droid, .forge, .antigravity,
-             .grok, .cursorAgent, .openClaude, .omp, .junie:
+             .grok, .cursorAgent, .openClaude, .omp, .junie, .fx:
             guard let cliRuntime = CLIAgentRuntime(assistant: runtime) else { return nil }
             await cliReader.refresh()
             guard let session = cliReader.sessions(for: cliRuntime).first else { return nil }

@@ -779,7 +779,7 @@ final class ProjectionStore: Sendable {
             )
             return ChunkEmbeddingVersionStats(
                 embeddingVersionID: embeddingVersionID,
-                vectorCount: Int((row?["vectorCount"] as? Int64) ?? 0),
+                vectorCount: row?["vectorCount"] ?? 0,
                 newestUpdatedAt: OpenBurnBarDatabase.parseDateValue(row?["newestUpdatedAt"])
             )
         }
@@ -1026,9 +1026,9 @@ final class ProjectionStore: Sendable {
             return nil
         }
 
-        let priority = (row["priority"] as? Int) ?? Int(row["priority"] as? Int64 ?? 0)
-        let attempts = (row["attempts"] as? Int) ?? Int(row["attempts"] as? Int64 ?? 0)
-        let maxAttempts = (row["maxAttempts"] as? Int) ?? Int(row["maxAttempts"] as? Int64 ?? 0)
+        let priority: Int = row["priority"] ?? 0
+        let attempts: Int = row["attempts"] ?? 0
+        let maxAttempts: Int = row["maxAttempts"] ?? 0
         let scheduledAt = OpenBurnBarDatabase.parseDateValue(row["scheduledAt"]) ?? Date()
         let availableAt = OpenBurnBarDatabase.parseDateValue(row["availableAt"]) ?? scheduledAt
         let createdAt = OpenBurnBarDatabase.parseDateValue(row["createdAt"]) ?? scheduledAt
@@ -1069,7 +1069,7 @@ final class ProjectionStore: Sendable {
         else {
             return nil
         }
-        let dimensions = (row["dimensions"] as? Int) ?? Int(row["dimensions"] as? Int64 ?? 0)
+        let dimensions: Int = row["dimensions"] ?? 0
         let createdAt = OpenBurnBarDatabase.parseDateValue(row["createdAt"]) ?? Date()
         let updatedAt = OpenBurnBarDatabase.parseDateValue(row["updatedAt"]) ?? createdAt
         return EmbeddingModelRecord(
@@ -1094,16 +1094,7 @@ final class ProjectionStore: Sendable {
         else {
             return nil
         }
-        let isActiveRaw: Bool
-        if let boolValue = row["isActive"] as? Bool {
-            isActiveRaw = boolValue
-        } else if let intValue = row["isActive"] as? Int {
-            isActiveRaw = intValue == 1
-        } else if let int64Value = row["isActive"] as? Int64 {
-            isActiveRaw = int64Value == 1
-        } else {
-            isActiveRaw = false
-        }
+        let isActiveRaw: Bool = row["isActive"] ?? false
         let createdAt = OpenBurnBarDatabase.parseDateValue(row["createdAt"]) ?? Date()
         let updatedAt = OpenBurnBarDatabase.parseDateValue(row["updatedAt"]) ?? createdAt
         return EmbeddingVersionRecord(
@@ -1152,9 +1143,9 @@ final class ProjectionStore: Sendable {
             return nil
         }
 
-        let dimensions = (row["dimensions"] as? Int) ?? Int(row["dimensions"] as? Int64 ?? 0)
-        let vectorCount = (row["vectorCount"] as? Int) ?? Int(row["vectorCount"] as? Int64 ?? 0)
-        let fileBytes = (row["fileBytes"] as? Int64) ?? Int64(row["fileBytes"] as? Int ?? 0)
+        let dimensions: Int = row["dimensions"] ?? 0
+        let vectorCount: Int = row["vectorCount"] ?? 0
+        let fileBytes: Int64 = row["fileBytes"] ?? 0
         let createdAt = OpenBurnBarDatabase.parseDateValue(row["createdAt"]) ?? Date()
         let updatedAt = OpenBurnBarDatabase.parseDateValue(row["updatedAt"]) ?? createdAt
         let lastBuiltAt = OpenBurnBarDatabase.parseDateValue(row["lastBuiltAt"])

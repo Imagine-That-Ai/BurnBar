@@ -413,7 +413,10 @@ describe("eraseUserAccount — durable deletion audit", () => {
           operation.path.startsWith("account_erasure_audit/") &&
           operation.data.status === "auth_user_already_missing",
       ),
-    ).toBeDefined();
+    ).toMatchObject({
+      op: "set",
+      data: expect.objectContaining({ status: "auth_user_already_missing" }),
+    });
     expect(appendAuditEvent).not.toHaveBeenCalled();
   });
 
@@ -447,7 +450,13 @@ describe("eraseUserAccount — durable deletion audit", () => {
           operation.data.status === "external_cleanup_incomplete" &&
           operation.data.retryRequired === true,
       ),
-    ).toBeDefined();
+    ).toMatchObject({
+      op: "set",
+      data: expect.objectContaining({
+        status: "external_cleanup_incomplete",
+        retryRequired: true,
+      }),
+    });
   });
 
   it("fails closed when post-delete Storage verification still finds an object", async () => {

@@ -15,11 +15,11 @@ public sealed class SettingsManifestTests
     [Fact]
     public void RowCounts_MatchTheSwiftManifest()
     {
-        // 72 hand-authored base rows (29 + 26 + 17) + 36 generated provider rows.
+        // 72 hand-authored base rows (29 + 26 + 17) + 37 generated provider rows.
         Assert.Equal(72, SettingsManifest.BaseItems.Count);
-        Assert.Equal(36, SettingsManifest.ProviderItems.Count);
-        Assert.Equal(108, SettingsManifest.All.Count);
-        Assert.Equal(36, AgentProviderMetadata.AllCases.Count);
+        Assert.Equal(37, SettingsManifest.ProviderItems.Count);
+        Assert.Equal(109, SettingsManifest.All.Count);
+        Assert.Equal(37, AgentProviderMetadata.AllCases.Count);
     }
 
     [Fact]
@@ -79,8 +79,8 @@ public sealed class SettingsManifestTests
     [Fact]
     public void ProviderItems_HaveUniqueIdsAnchorsAndAgentsRoute()
     {
-        Assert.Equal(36, SettingsManifest.ProviderItems.Select(i => i.Id).Distinct().Count());
-        Assert.Equal(36, SettingsManifest.ProviderItems.Select(i => i.AnchorId).Distinct().Count());
+        Assert.Equal(37, SettingsManifest.ProviderItems.Select(i => i.Id).Distinct().Count());
+        Assert.Equal(37, SettingsManifest.ProviderItems.Select(i => i.AnchorId).Distinct().Count());
         Assert.All(SettingsManifest.ProviderItems, item =>
         {
             Assert.Equal(SettingsTab.Agents, item.Tab);

@@ -24,6 +24,8 @@ public sealed class DashboardLayoutTests
                 DashboardLayout.Constellation,
                 DashboardLayout.Cockpit,
                 DashboardLayout.Atelier,
+                DashboardLayout.Stream,
+                DashboardLayout.Atlas,
             },
             DashboardLayoutMeta.All);
     }
@@ -35,18 +37,40 @@ public sealed class DashboardLayoutTests
     [InlineData(DashboardLayout.Constellation, "constellation")]
     [InlineData(DashboardLayout.Cockpit, "cockpit")]
     [InlineData(DashboardLayout.Atelier, "atelier")]
+    [InlineData(DashboardLayout.Stream, "stream")]
+    [InlineData(DashboardLayout.Atlas, "atlas")]
     public void RawValues_AreStable(DashboardLayout layout, string raw)
     {
         Assert.Equal(raw, layout.RawValue());
     }
 
+    /// <summary>
+    /// The enum member names are frozen ids; these are what a user reads. Pinned
+    /// so a Windows build cannot drift from the macOS switcher gallery.
+    /// </summary>
     [Theory]
-    [InlineData(DashboardLayout.Classic, "rectangle.grid.1x2")]
-    [InlineData(DashboardLayout.Aurora, "sun.haze")]
-    [InlineData(DashboardLayout.Nebula, "rectangle.grid.2x2")]
-    [InlineData(DashboardLayout.Constellation, "sparkles")]
+    [InlineData(DashboardLayout.Classic, "Ledger")]
+    [InlineData(DashboardLayout.Aurora, "Focus")]
+    [InlineData(DashboardLayout.Nebula, "Bento")]
+    [InlineData(DashboardLayout.Constellation, "Ask")]
+    [InlineData(DashboardLayout.Cockpit, "Cockpit")]
+    [InlineData(DashboardLayout.Atelier, "Canvas")]
+    [InlineData(DashboardLayout.Stream, "Stream")]
+    [InlineData(DashboardLayout.Atlas, "Atlas")]
+    public void DisplayNames_MatchSwift(DashboardLayout layout, string name)
+    {
+        Assert.Equal(name, layout.DisplayName());
+    }
+
+    [Theory]
+    [InlineData(DashboardLayout.Classic, "list.bullet.rectangle")]
+    [InlineData(DashboardLayout.Aurora, "largecircle.fill.circle")]
+    [InlineData(DashboardLayout.Nebula, "square.grid.2x2")]
+    [InlineData(DashboardLayout.Constellation, "text.magnifyingglass")]
     [InlineData(DashboardLayout.Cockpit, "gauge.with.dots.needle.67percent")]
-    [InlineData(DashboardLayout.Atelier, "paintpalette")]
+    [InlineData(DashboardLayout.Atelier, "photo.artframe")]
+    [InlineData(DashboardLayout.Stream, "arrow.down.right.and.arrow.up.left.circle")]
+    [InlineData(DashboardLayout.Atlas, "chart.bar.xaxis")]
     public void SymbolNames_MatchSwift(DashboardLayout layout, string symbol)
     {
         Assert.Equal(symbol, layout.SymbolName());
@@ -59,9 +83,9 @@ public sealed class DashboardLayoutTests
     }
 
     [Fact]
-    public void Default_IsAtelier()
+    public void Default_IsAurora()
     {
-        Assert.Equal(DashboardLayout.Atelier, DashboardLayoutMeta.Default);
+        Assert.Equal(DashboardLayout.Aurora, DashboardLayoutMeta.Default);
     }
 
     [Fact]
@@ -73,6 +97,8 @@ public sealed class DashboardLayoutTests
         Assert.False(DashboardLayout.Aurora.IsKernelForward());
         Assert.False(DashboardLayout.Nebula.IsKernelForward());
         Assert.False(DashboardLayout.Cockpit.IsKernelForward());
+        Assert.False(DashboardLayout.Stream.IsKernelForward());
+        Assert.False(DashboardLayout.Atlas.IsKernelForward());
     }
 
     [Fact]
@@ -82,6 +108,7 @@ public sealed class DashboardLayoutTests
         {
             Assert.False(string.IsNullOrEmpty(layout.DisplayName()));
             Assert.False(string.IsNullOrEmpty(layout.Glyph()));
+            Assert.False(string.IsNullOrEmpty(layout.Tagline()));
         }
     }
 
@@ -95,11 +122,11 @@ public sealed class DashboardLayoutTests
     }
 
     [Fact]
-    public void Parse_FallsBackToAtelier_OnNullOrGarbage()
+    public void Parse_FallsBackToAurora_OnNullOrGarbage()
     {
-        Assert.Equal(DashboardLayout.Atelier, DashboardLayoutMeta.Parse(null));
-        Assert.Equal(DashboardLayout.Atelier, DashboardLayoutMeta.Parse("not-a-layout"));
-        Assert.Equal(DashboardLayout.Atelier, DashboardLayoutMeta.Parse(string.Empty));
+        Assert.Equal(DashboardLayout.Aurora, DashboardLayoutMeta.Parse(null));
+        Assert.Equal(DashboardLayout.Aurora, DashboardLayoutMeta.Parse("not-a-layout"));
+        Assert.Equal(DashboardLayout.Aurora, DashboardLayoutMeta.Parse(string.Empty));
     }
 }
 
@@ -107,17 +134,17 @@ public sealed class DashboardLayoutTests
 public sealed class DashboardLayoutStateTests
 {
     [Fact]
-    public void Default_IsAtelier()
+    public void Default_IsAurora()
     {
         var state = new DashboardLayoutState();
-        Assert.Equal(DashboardLayout.Atelier, state.Selection);
+        Assert.Equal(DashboardLayout.Aurora, state.Selection);
     }
 
     [Fact]
     public void FromRaw_HydratesSelection()
     {
         Assert.Equal(DashboardLayout.Nebula, DashboardLayoutState.FromRaw("nebula").Selection);
-        Assert.Equal(DashboardLayout.Atelier, DashboardLayoutState.FromRaw("garbage").Selection);
+        Assert.Equal(DashboardLayout.Aurora, DashboardLayoutState.FromRaw("garbage").Selection);
     }
 
     [Fact]
@@ -144,7 +171,7 @@ public sealed class DashboardLayoutStateTests
         state.SelectNext();
         Assert.Equal(DashboardLayout.Aurora, state.Selection);
 
-        state.Select(DashboardLayout.Atelier); // last
+        state.Select(DashboardLayout.Atlas); // last
         state.SelectNext();
         Assert.Equal(DashboardLayout.Classic, state.Selection); // wrapped
     }
@@ -154,7 +181,7 @@ public sealed class DashboardLayoutStateTests
     {
         var state = new DashboardLayoutState(DashboardLayout.Classic);
         state.SelectPrevious();
-        Assert.Equal(DashboardLayout.Atelier, state.Selection); // wrapped to last
+        Assert.Equal(DashboardLayout.Atlas, state.Selection); // wrapped to last
     }
 
     [Fact]

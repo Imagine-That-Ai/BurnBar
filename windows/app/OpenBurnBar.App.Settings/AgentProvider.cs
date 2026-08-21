@@ -58,6 +58,7 @@ public enum AgentProvider
     Junie,
     PrimeAgent,
     Muse,
+    Fx,
 }
 
 /// <summary>
@@ -111,6 +112,7 @@ public static class AgentProviderMetadata
         AgentProvider.Junie => "Junie",
         AgentProvider.PrimeAgent => "Prime Agent",
         AgentProvider.Muse => "Muse",
+        AgentProvider.Fx => "fx",
         _ => throw new ArgumentOutOfRangeException(nameof(p), p, null),
     };
 

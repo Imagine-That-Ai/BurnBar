@@ -157,6 +157,18 @@ enum SettingsManifest {
             helpText: "Zero matches this Mac's appearance settings, including Reduce transparency. Slide toward Clear for more see-through glass, or Frosted for more privacy and contrast."
         ),
         SettingsItem(
+            id: "general.appearance.glassRefraction",
+            tab: .general,
+            pageRoute: .appearance,
+            anchorID: SettingsAnchor.appearanceGlassRefraction,
+            title: "Liquid Glass Refraction",
+            subtitle: "How strongly glass bends the living backdrop behind it",
+            // Deliberately disjoint from the transparency item's keywords: two rows that
+            // both answer "glass" would make the search result a coin flip.
+            keywords: ["refraction", "refract", "bend", "lens", "lensing", "optics", "dispersion", "caustics", "depth", "thickness"],
+            helpText: "Transparency controls how much you see through the glass; this controls how much it bends what is behind it. The midpoint is exactly what the active theme intends — left for a flatter, calmer pane, right for a heavier optical block."
+        ),
+        SettingsItem(
             id: "general.appearance.menuBar",
             tab: .general,
             pageRoute: .appearance,
@@ -922,6 +934,7 @@ enum SettingsManifest {
         SettingsAnchor.appearanceTheme,
         SettingsAnchor.appearanceSkin,
         SettingsAnchor.appearanceGlassTransparency,
+        SettingsAnchor.appearanceGlassRefraction,
         SettingsAnchor.appearanceMenuBar,
         SettingsAnchor.appearanceLaunchAtLogin,
         SettingsAnchor.usePremiumSOTAUX,
@@ -962,6 +975,7 @@ enum SettingsManifest {
         SettingsAnchor.agentsModels,
         SettingsAnchor.agentsAdvanced,
         SettingsAnchor.agentsQuotaDisplay,
+        SettingsAnchor.agentsLocalDBox,
         SettingsAnchor.alertsDailySpend,
         SettingsAnchor.alertsDigest,
         SettingsAnchor.notificationsLocal,

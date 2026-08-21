@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import os
 import OpenBurnBarComputerUseCore
 import OpenBurnBarKernel
 import OpenBurnBarMedia

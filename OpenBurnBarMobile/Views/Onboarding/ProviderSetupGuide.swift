@@ -177,6 +177,8 @@ extension ProviderSetupGuide {
             return primeAgentGuide(for: provider)
         case .muse:
             return museGuide(for: provider)
+        case .fx:
+            return fxGuide(for: provider)
 
         case .openAI:
             return ProviderSetupGuide(
@@ -756,6 +758,27 @@ extension ProviderSetupGuide {
             ],
             credentialPlaceholder: "Managed by your paired Mac",
             credentialFooterMarkdown: "Muse auth stays on your Mac. OpenBurnBar only reads local session usage.",
+            supportsHosted: false,
+            supportsSelfHosted: false
+        )
+    }
+
+    private static func fxGuide(for provider: AgentProvider) -> ProviderSetupGuide {
+        ProviderSetupGuide(
+            provider: provider,
+            kinds: [.session],
+            defaultKind: .session,
+            labelSuggestion: "fx",
+            dashboardURL: URL(string: "https://fx.sh/docs"),
+            dashboardCTA: "Open fx docs",
+            oneLineHint: "fx sessions under ~/.fx/sessions — exact cost from usage-v2.json.",
+            instructions: [
+                GuideStep(1, "Install fx on your Mac", detail: "Vercel Labs' coding agent. Install it and run a session so it writes its session store.", codeSnippet: "~/.fx/sessions"),
+                GuideStep(2, "Keep the Mac bridge running", detail: "OpenBurnBar parses ~/.fx/sessions for tokens and exact cost.", codeSnippet: "~/.fx/sessions"),
+                GuideStep(3, "Watch usage in the meter", detail: "Sessions appear with model and exact cost from fx's usage sidecar.")
+            ],
+            credentialPlaceholder: "Managed by your paired Mac",
+            credentialFooterMarkdown: "fx auth stays on your Mac. OpenBurnBar only reads local session usage.",
             supportsHosted: false,
             supportsSelfHosted: false
         )

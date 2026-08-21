@@ -112,6 +112,7 @@ struct ChatEngineModelMenu: View {
         case .omp: return .omp
         case .openClaude: return .openClaude
         case .junie: return .junie
+        case .fx: return .fx
         case .grok: return .grok
         case .kimi: return .grok
         case .hermes, .openclaw, .piAgent: return nil
@@ -231,6 +232,10 @@ struct ChatEngineModelRows: View {
             return liveCLIRows(for: .openClaude, defaultTitle: "Default (OpenClaude profile)")
         case .junie:
             return liveCLIRows(for: .junie, defaultTitle: "Default (Junie profile)")
+        case .fx:
+            // fx has no `--model` flag — the model is fx-configured. The menu
+            // shows a single non-interactive default row instead of a dead picker.
+            return [ModelMenuRow(id: "fx-default", title: "Default (fx-configured)")]
         case .grok:
             return liveCLIRows(for: .grok, defaultTitle: "Default (Grok profile)")
         case .kimi:
@@ -282,9 +287,7 @@ struct ChatEngineModelRows: View {
     private var perRowQuotaSuffix: String {
         let backend = controller.chatBackend
         switch backend {
-        // `.kimi` has no agentProvider, so the guard below yields "" for it naturally.
-        case .codex, .claude, .droid, .antigravity, .cursorAgent, .openClaude, .omp, .junie,
-             .grok, .kimi:
+        case .codex, .claude, .droid, .antigravity, .cursorAgent, .openClaude, .omp, .junie, .grok, .kimi:
             guard let provider = backend.agentProvider,
                   let resolution = ProviderQuotaChip.resolve(
                     provider: provider,
@@ -295,7 +298,11 @@ struct ChatEngineModelRows: View {
                   )
             else { return "" }
             return " · \(resolution.text) left"
-        case .hermes, .openclaw, .piAgent, .forge:
+        // `.fx` lands here rather than in the branch above because a quota
+        // suffix has to come from a real `ProviderQuotaChip.resolve`, and the
+        // fx backend does not have one yet. Move it up when it does — an
+        // invented percentage beside a model name is worse than no percentage.
+        case .hermes, .openclaw, .piAgent, .forge, .fx:
             return ""
         }
     }

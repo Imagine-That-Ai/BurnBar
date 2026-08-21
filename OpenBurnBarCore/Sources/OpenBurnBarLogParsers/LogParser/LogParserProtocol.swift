@@ -82,6 +82,7 @@ public struct ParserConversationCacheScrubber {
             appPaths.warpParserCacheURL,
             appPaths.primeAgentParserCacheURL,
             appPaths.museParserCacheURL,
+            appPaths.fxParserCacheURL,
             appPaths.kimiParserCacheURL,
             appPaths.hermesParserCacheURL,
             appPaths.forgeDevParserCacheURL,

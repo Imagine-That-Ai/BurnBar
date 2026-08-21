@@ -249,6 +249,20 @@
     <x:Double x:Key="PensieveTypeSizeMonoTiny">11</x:Double>
     <x:Double x:Key="PensieveMotionSwirlSeconds">18</x:Double>
     <x:Double x:Key="PensieveMotionFrostFlipMs">520</x:Double>
+    <x:Double x:Key="PensieveMotionSettleResponseMs">420</x:Double>
+    <x:Double x:Key="PensieveMotionSettleDamping">0.88</x:Double>
+    <x:Double x:Key="PensieveMotionArriveResponseMs">340</x:Double>
+    <x:Double x:Key="PensieveMotionArriveDamping">0.8</x:Double>
+    <x:Double x:Key="PensieveMotionArriveRisePx">18</x:Double>
+    <x:Double x:Key="PensieveMotionArriveScale">0.97</x:Double>
+    <x:Double x:Key="PensieveMotionDepartMs">160</x:Double>
+    <x:Double x:Key="PensieveMotionDepartScale">0.98</x:Double>
+    <x:Double x:Key="PensieveMotionStaggerStepMs">60</x:Double>
+    <x:Double x:Key="PensieveMotionStaggerCapMs">240</x:Double>
+    <x:Double x:Key="PensieveMotionTickMs">300</x:Double>
+    <x:Double x:Key="PensieveMotionPulsePeriodMs">1400</x:Double>
+    <x:Double x:Key="PensieveMotionPulseFloor">0.55</x:Double>
+    <x:Double x:Key="PensieveMotionReducedMs">180</x:Double>
 
     <!-- Convenience CornerRadius shapes (radius.*) -->
     <CornerRadius x:Key="PensieveRadiusXsCorner">6</CornerRadius>
@@ -274,6 +288,8 @@
     <x:String x:Key="PensieveFontMono">'JetBrains Mono Variable', 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace</x:String>
     <x:String x:Key="PensieveFontArcane">'Fraunces Variable', Georgia, serif</x:String>
     <x:String x:Key="PensieveMotionEaseStandard">cubic-bezier(0.2, 0.8, 0.2, 1)</x:String>
+    <x:String x:Key="PensieveMotionEaseSettle">cubic-bezier(0.22, 1, 0.36, 1)</x:String>
+    <x:String x:Key="PensieveMotionEaseArrive">cubic-bezier(0.34, 1.32, 0.44, 1)</x:String>
 
     <!-- ── Shell semantic aliases (OBB*) — keys the WinUI shell binds to. ── -->
     <Color x:Key="OBBAccentColor">#FFFA5053</Color>

@@ -121,6 +121,7 @@ const SHOWCASE_PROVIDER_IDS: string[] = [
   "windsurf",
   "warp",
   "cursoragent",
+  "fx",
 ];
 
 const PROVIDER_LOGO_ASSETS: Record<string, string> = {

@@ -155,6 +155,7 @@ final class AgentContextTargetReceiver: Sendable {
             case "codex": backend = .codex
             case "claude": backend = .claude
             case "openclaw": backend = .openclaw
+            case "fx": backend = .fx
             default: return false
             }
 

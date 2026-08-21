@@ -27,6 +27,7 @@ const PROVIDER_COLORS: Record<string, string> = {
   cline: '#22D3EE',
   goose: '#84CC16',
   openclaw: '#F97316',
+  fx: '#A1A1AA',
 };
 
 const MODEL_PALETTE = [

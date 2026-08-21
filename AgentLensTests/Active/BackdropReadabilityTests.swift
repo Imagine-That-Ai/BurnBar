@@ -94,6 +94,96 @@ final class BackdropReadabilityTests: XCTestCase {
         assertContrast(profile: .lightCanvasFallback, background: BackdropRGB(245, 247, 250))
     }
 
+    /// A live backdrop must not force the light ink family in Light mode.
+    ///
+    /// This is the defect behind "hard to read in light mode": the fallback
+    /// returned `.darkCanvasFallback` — the *white* family — for any live
+    /// backdrop regardless of appearance, so Light mode over a bright kernel
+    /// drew white text on a light field. The sampler overrides this when it
+    /// publishes, but the native swarm and constellation backdrops never do.
+    func testLiveBackdropFallbackFollowsAppearanceRatherThanAssumingDarkCanvas() {
+        let light = BackdropReadabilityProfile.nativeFallback(
+            colorScheme: .light,
+            appearanceSkin: .aurora,
+            liveBackdropActive: true
+        )
+        XCTAssertEqual(
+            light.tone, .dark,
+            "a live backdrop in Light mode must resolve the dark ink family"
+        )
+        XCTAssertEqual(light.foreground, .dark)
+
+        let dark = BackdropReadabilityProfile.nativeFallback(
+            colorScheme: .dark,
+            appearanceSkin: .aurora,
+            liveBackdropActive: true
+        )
+        XCTAssertEqual(dark.tone, .light)
+    }
+
+    /// The live fallback reinforces the scrim rather than merely picking a tone.
+    ///
+    /// Tone answers *which* ink; the scrim answers how much veil an unknown,
+    /// moving canvas needs. Light mode previously got neither, so assert it now
+    /// gets the same veil authority the dark canvas always had.
+    func testLiveBackdropFallbackReinforcesScrimWithoutChangingTone() {
+        let staticLight = BackdropReadabilityProfile.nativeFallback(
+            colorScheme: .light,
+            appearanceSkin: .aurora,
+            liveBackdropActive: false
+        )
+        let liveLight = BackdropReadabilityProfile.nativeFallback(
+            colorScheme: .light,
+            appearanceSkin: .aurora,
+            liveBackdropActive: true
+        )
+        XCTAssertEqual(staticLight, .lightCanvasFallback)
+        XCTAssertEqual(liveLight.tone, staticLight.tone)
+        XCTAssertGreaterThan(liveLight.scrimOpacity, staticLight.scrimOpacity)
+        XCTAssertEqual(
+            liveLight.scrimOpacity,
+            BackdropReadabilityProfile.darkCanvasFallback.scrimOpacity,
+            accuracy: 0.000_001
+        )
+
+        // Reinforcing is a floor, never a cap: the dark canvas already sits at
+        // the floor, so it must come back untouched and stay equatable to the
+        // published constant other call sites compare against.
+        XCTAssertEqual(
+            BackdropReadabilityProfile.nativeFallback(
+                colorScheme: .dark,
+                appearanceSkin: .aurora,
+                liveBackdropActive: true
+            ),
+            .darkCanvasFallback
+        )
+    }
+
+    func testReinforcingScrimIsAFloorAndClampsToUnity() {
+        let base = BackdropReadabilityProfile.lightCanvasFallback
+        XCTAssertEqual(base.reinforcingScrim(atLeast: 0.05), base, "a lower floor is a no-op")
+        XCTAssertEqual(base.reinforcingScrim(atLeast: 0.4).scrimOpacity, 0.4, accuracy: 0.000_001)
+        XCTAssertEqual(base.reinforcingScrim(atLeast: 9).scrimOpacity, 1, accuracy: 0.000_001)
+        // Everything except the scrim survives, or the ink family silently flips.
+        XCTAssertEqual(base.reinforcingScrim(atLeast: 0.4).tone, base.tone)
+        XCTAssertEqual(base.reinforcingScrim(atLeast: 0.4).source, base.source)
+    }
+
+    /// A reinforced light-canvas profile must still clear the bar it was
+    /// reinforced for. Raising a near-white scrim over a light canvas can only
+    /// brighten the plate, which helps dark ink — assert that rather than
+    /// assuming it.
+    func testReinforcedLightCanvasStillClearsContrast() {
+        assertContrast(
+            profile: BackdropReadabilityProfile.nativeFallback(
+                colorScheme: .light,
+                appearanceSkin: .aurora,
+                liveBackdropActive: true
+            ),
+            background: BackdropRGB(245, 247, 250)
+        )
+    }
+
     func testNativeFallbackFollowsSystemColorSchemeWithoutLiveBackdrop() {
         XCTAssertEqual(
             BackdropReadabilityProfile.nativeFallback(

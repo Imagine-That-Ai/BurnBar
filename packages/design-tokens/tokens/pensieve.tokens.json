@@ -68,6 +68,23 @@
   "motion": {
     "swirlSeconds": { "$value": "18", "$type": "number", "$description": "basin swirl loop period (still render under reduced-motion)" },
     "frostFlipMs": { "$value": "520", "$type": "number", "$description": "yours <-> server view-flip frost sweep" },
-    "easeStandard": { "$value": "cubic-bezier(0.2, 0.8, 0.2, 1)", "$type": "cubicBezier" }
+    "easeStandard": { "$value": "cubic-bezier(0.2, 0.8, 0.2, 1)", "$type": "cubicBezier" },
+
+    "settleResponseMs": { "$value": "420", "$type": "number", "$description": "settle — a region changing size or position; spring response" },
+    "settleDamping": { "$value": "0.88", "$type": "number", "$description": "settle — damping fraction. Higher than arrive: overshoot on a layout edge reads as wobble" },
+    "arriveResponseMs": { "$value": "340", "$type": "number", "$description": "arrive — content entering; spring response" },
+    "arriveDamping": { "$value": "0.8", "$type": "number", "$description": "arrive — damping fraction. Slight overshoot reads as life" },
+    "arriveRisePx": { "$value": "18", "$type": "number", "$description": "arrive — distance new content rises into place" },
+    "arriveScale": { "$value": "0.97", "$type": "number", "$description": "arrive — starting scale, so content approaches rather than slides" },
+    "departMs": { "$value": "160", "$type": "number", "$description": "depart — quicker than arriving; a decision already made should not be waited on" },
+    "departScale": { "$value": "0.98", "$type": "number", "$description": "depart — ending scale" },
+    "staggerStepMs": { "$value": "60", "$type": "number", "$description": "stagger — delay per item when a group arrives together" },
+    "staggerCapMs": { "$value": "240", "$type": "number", "$description": "stagger — cap, so a long list's tail is not still arriving after its head is read" },
+    "tickMs": { "$value": "300", "$type": "number", "$description": "tick — a value changing inside a frame that is not moving" },
+    "pulsePeriodMs": { "$value": "1400", "$type": "number", "$description": "pulse — one breath of the ambient live heartbeat" },
+    "pulseFloor": { "$value": "0.55", "$type": "number", "$description": "pulse — opacity floor. Shallow on purpose: an ambient signal that swings hard becomes an alert" },
+    "reducedMs": { "$value": "180", "$type": "number", "$description": "reduce-motion — the single crossfade every effect collapses to" },
+    "easeSettle": { "$value": "cubic-bezier(0.22, 1, 0.36, 1)", "$type": "cubicBezier", "$description": "web/WinUI approximation of the settle spring" },
+    "easeArrive": { "$value": "cubic-bezier(0.34, 1.32, 0.44, 1)", "$type": "cubicBezier", "$description": "web/WinUI approximation of the arrive spring, overshoot included" }
   }
 }

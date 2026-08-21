@@ -246,15 +246,17 @@ private struct PlasmaConstellationOrb: View {
 
     @ViewBuilder
     private var markView: some View {
-        switch item.mark {
-        case let .backend(backend):
-            AgentMark(backend: backend, size: 22)
-        case let .providerID(id):
-            // The same resolver the pill body uses. `CatalogProviderLogoView`
-            // falls back to an SF Symbol where this one falls back to a
-            // monogram, so mixing them made one provider render two different
-            // ways in two presentations of the same list.
-            ProxyProviderLogoView(catalogProviderID: id, providerName: item.name, size: 22)
+        PlasmaEmissiveMark(size: orbSize, isDimmed: item.isImpaired) {
+            switch item.mark {
+            case let .backend(backend):
+                AgentMark(backend: backend, size: 22)
+            case let .providerID(id):
+                // The same resolver the pill body uses. `CatalogProviderLogoView`
+                // falls back to an SF Symbol where this one falls back to a
+                // monogram, so mixing them made one provider render two different
+                // ways in two presentations of the same list.
+                ProxyProviderLogoView(catalogProviderID: id, providerName: item.name, size: 22)
+            }
         }
     }
 

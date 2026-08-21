@@ -46,6 +46,7 @@ public struct MimoQuotaAdapter: ProviderQuotaAdapter {
 
         var request = URLRequest(url: remainsURL)
         request.httpMethod = "GET"
+        request.timeoutInterval = 12
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
 
@@ -95,8 +96,13 @@ public struct MimoQuotaAdapter: ProviderQuotaAdapter {
                 buckets: [
                     ProviderQuotaBucket(
                         key: "token_plan_credits",
-                        label: "Token Plan Credits",
-                        windowKind: cycle == .annual ? .monthly : .monthly,
+                        label: cycle == .annual ? "Token Plan Credits (Annual)" : "Token Plan Credits",
+                        // `cycle == .annual ? .monthly : .monthly` — both arms were
+                        // identical, so an annual plan was reported as a monthly window
+                        // and its reset date read a year early. `ProviderQuotaWindowKind`
+                        // has no `.annual`, so `.custom` is the honest answer; the label
+                        // carries the period the enum cannot.
+                        windowKind: cycle == .annual ? .custom : .monthly,
                         usedValue: 0,
                         limitValue: limit,
                         remainingValue: limit,

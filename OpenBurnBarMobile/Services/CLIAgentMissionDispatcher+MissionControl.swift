@@ -6,8 +6,6 @@ import OpenBurnBarCore
 import OpenBurnBarSignalCore
 import os
 
-private typealias UntypedJSONObject = [String: Any]
-
 // MARK: - Mission group observation, merge, approval + cancel
 //
 // Split out of `CLIAgentMissionDispatcher.swift` (audit wave 4, item 14
@@ -191,7 +189,7 @@ extension CLIAgentMissionDispatcher {
                     requestId: requestID,
                     deviceId: deviceId,
                     ceilingDigest: digest,
-                    requestedGrant: requestedGrant
+                    requestedGrant: ComputerUseSecurityCallableClient.sendableJSONPayload(requestedGrant)
                 )
             }
         }
@@ -227,7 +225,7 @@ extension CLIAgentMissionDispatcher {
         try await ComputerUseSecurityCallableClient.cancelCliAgentMission(
             requestId: requestID,
             deviceId: deviceId,
-            sealedStatePayload: sealedState
+            sealedStatePayload: ComputerUseSecurityCallableClient.sendableJSONPayload(sealedState)
         )
     }
 

@@ -212,6 +212,7 @@ struct CLIAgentTranscriptView: View {
         case .grok: return Color(hex: "E0E0E0")  // Grok monochrome brand — light gray legible in dark mode
         case .cursorAgent: return Color(hex: "00E5FF")
         case .junie:    return Color(hex: "48E054")
+        case .fx:       return Color(hex: "A1A1AA")
         }
     }
 }

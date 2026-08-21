@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -107,7 +108,7 @@ private fun LaneRow(lane: Lane, rank: Int) {
 @Composable
 private fun EmptyLanesNotice() {
     Column(
-        modifier = Modifier.fillMaxWidth().height(160.dp),
+        modifier = Modifier.fillMaxWidth().heightIn(min = 100.dp, max = 180.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {

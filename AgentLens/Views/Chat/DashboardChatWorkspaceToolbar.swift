@@ -55,11 +55,15 @@ extension ChatBackendID {
         case .antigravity: return "6C63FF"
         case .cursorAgent: return "00E5FF"
         case .junie: return "48E054"
-        case .grok, .kimi: return "48E054"
+        case .fx: return "A1A1AA"
+        // xAI and Moonshot, not a second copy of Junie's green: three agents
+        // sharing one tint is three agents the deck cannot tell apart.
+        case .grok: return "1A1A1A"
+        case .kimi: return "6366F1"
         }
     }
 
-    /// Identity tint for chat surfaces. Total over `allCases` — a thirteenth
+    /// Identity tint for chat surfaces. Total over `allCases` — a fifteenth
     /// backend cannot ship colourless.
     var sigilTint: Color {
         switch self {
@@ -98,7 +102,7 @@ extension ChatBackendID {
         case .hermes: return "Agent harness"
         case .piAgent: return "Empathy agent"
         case .openclaw: return "Gateway agent"
-        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp, .junie:
+        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp, .junie, .fx:
             return "CLI agent"
         case .grok, .kimi:
             // Hosted API backends (#2362): no CLI invocation, probed like
@@ -1262,6 +1266,10 @@ struct DashboardChatWorkspaceToolbar: View {
     /// workspace is built.
     var workspace: PaneWorkspaceModel?
 
+    /// Visibility of the thread rail. Collapsed by default so the chat route
+    /// reads as a single vertical column; `nil` when the host has no rail.
+    var threadRailVisible: Binding<Bool>?
+
     var onNewChat: () -> Void
     var onShowClearChatPrompt: () -> Void
     var onPopOut: (() -> Void)?
@@ -1315,15 +1323,40 @@ struct DashboardChatWorkspaceToolbar: View {
         .animation(DesignSystem.Animation.gentle, value: controller.chatBackend)
         .padding(.horizontal, DesignSystem.Spacing.lg)
         .padding(.vertical, DesignSystem.Spacing.sm)
-        .background(DesignSystem.Colors.surface.opacity(0.6))
+        // An Apple toolbar is a *material*, not a fill: it takes its colour
+        // from whatever scrolls under it. A flat 60% surface reads as a grey
+        // band bolted to the top of the window in both themes.
+        .background(.ultraThinMaterial)
         .overlay(alignment: .bottom) {
-            Divider().opacity(0.35)
+            Rectangle()
+                .fill(Color.primary.opacity(0.10))
+                .frame(height: 1)
         }
     }
 
     @ViewBuilder
     private func controlRow(_ tier: Tier) -> some View {
         HStack(spacing: DesignSystem.Spacing.sm) {
+            if let threadRailVisible {
+                Button {
+                    withAnimation(DesignSystem.Animation.standard) {
+                        threadRailVisible.wrappedValue.toggle()
+                    }
+                } label: {
+                    Image(systemName: "sidebar.leading")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(
+                            threadRailVisible.wrappedValue
+                                ? accent
+                                : DesignSystem.Colors.textSecondary
+                        )
+                }
+                .buttonStyle(.plain)
+                .keyboardShortcut("l", modifiers: [.command, .control])
+                .help(threadRailVisible.wrappedValue ? "Hide chat history (⌃⌘L)" : "Show chat history (⌃⌘L)")
+                .accessibilityIdentifier(OBBAccessibilityID.dashboardChatRailToggle)
+            }
+
             AgentSigilBar(
                 controller: controller,
                 settingsManager: settingsManager,
@@ -1350,7 +1383,7 @@ struct DashboardChatWorkspaceToolbar: View {
                 } label: {
                     Image(systemName: "folder")
                         .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(accent)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
                 }
                 .buttonStyle(.plain)
                 .help("Show this chat's workspace in Finder")
@@ -1363,10 +1396,13 @@ struct DashboardChatWorkspaceToolbar: View {
             Button(action: onNewChat) {
                 Image(systemName: "square.and.pencil")
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(accent)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
             }
             .buttonStyle(.plain)
-            .help("New chat")
+            // Owns ⌘N because it is always on screen; the thread rail's own
+            // New chat button is only present while the rail is expanded.
+            .keyboardShortcut("n", modifiers: [.command])
+            .help("New chat (⌘N)")
 
             Button {
                 showChatMenu.toggle()
@@ -1392,7 +1428,7 @@ struct DashboardChatWorkspaceToolbar: View {
                 Button(action: onPopOut) {
                     Image(systemName: "rectangle.on.rectangle")
                         .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(accent)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
                 }
                 .buttonStyle(.plain)
                 .help("Pop out chat into its own window")

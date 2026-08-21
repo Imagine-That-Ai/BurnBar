@@ -160,8 +160,7 @@ struct HermesConversationListView: View {
                 HermesChatView(
                     service: service,
                     dashboardSnapshot: dashboardSnapshot,
-                    route: presented.route,
-                    presentation: .cover
+                    route: presented.route
                 )
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) {

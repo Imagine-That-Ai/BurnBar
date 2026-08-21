@@ -11,6 +11,7 @@ import OpenBurnBarCore
 final class AIInboxNotificationRoutingTests: XCTestCase {
     override func tearDown() {
         AIInboxDeepLink.resetPendingItemID()
+        MobilePendingOsRouteStore.shared.clear()
         super.tearDown()
     }
 
@@ -151,6 +152,51 @@ final class AIInboxNotificationRoutingTests: XCTestCase {
         XCTAssertNil(
             AIInboxDeepLink.consumePendingItemID(),
             "A link already served live must not be replayed by the cold-launch claim."
+        )
+    }
+
+    // MARK: - Mission / Mercury-call cold launch
+
+    /// A mission push that launches the app posts `ShowMissionConsole` during
+    /// `didFinishLaunching`, before either root has subscribed, so the post is
+    /// heard by nobody. Without the stash the tapped mission is simply lost.
+    func testAColdLaunchMissionPushSurvivesHavingNoSubscriber() {
+        MobileOsDeepLinkApplier.apply(
+            MobileOsRouteDecision(destination: .mission, missionId: "msn_cold")
+        )
+
+        XCTAssertEqual(
+            MobilePendingOsRouteStore.shared.consume(),
+            .mission(missionId: "msn_cold"),
+            "A launch-time mission push must remain claimable after its post went unheard."
+        )
+    }
+
+    func testAColdLaunchMercuryCallPushSurvivesHavingNoSubscriber() {
+        MobileOsDeepLinkApplier.apply(
+            MobileOsRouteDecision(destination: .mercuryCall, connectionId: "conn_cold")
+        )
+
+        XCTAssertEqual(
+            MobilePendingOsRouteStore.shared.consume(),
+            .mercuryCall(connectionId: "conn_cold"),
+            "A launch-time Mercury-call push must remain claimable after its post went unheard."
+        )
+    }
+
+    /// One tap opens one surface once. The roots drain the stash on the live
+    /// `onReceive` path too, so the cold-launch claim that runs afterwards must
+    /// find nothing left to replay.
+    func testAServedOsRouteIsDrainedSoItIsNotReplayed() {
+        MobileOsDeepLinkApplier.apply(
+            MobileOsRouteDecision(destination: .mercuryCall, connectionId: "conn_live")
+        )
+        // Stands in for the `onReceive` path draining the stash after routing.
+        _ = MobilePendingOsRouteStore.shared.consume()
+
+        XCTAssertNil(
+            MobilePendingOsRouteStore.shared.consume(),
+            "A route already served live must not be replayed by the cold-launch claim."
         )
     }
 

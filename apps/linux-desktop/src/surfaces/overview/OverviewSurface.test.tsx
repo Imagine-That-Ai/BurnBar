@@ -7,13 +7,18 @@ import {
   fixtureUsageSummary
 } from '../../daemonFixture.js';
 import type { LinuxShellBridge, UsageSummary } from '../../tauriBridge.js';
+import { useActivityStore } from '../../state/activityStore.js';
+import { useDashboardLayoutStore } from '../../state/dashboardLayoutStore.js';
 import { useInsightsStore } from '../../state/insightsStore.js';
+import { useMissionsStore } from '../../state/missionsStore.js';
 import { useOverviewStore } from '../../state/overviewStore.js';
 import { useShellStore } from '../../state/shellStore.js';
 import { OverviewSurface } from '../OverviewSurface.js';
 
 const realOverviewLoad = useOverviewStore.getState().load;
 const realInsightsLoad = useInsightsStore.getState().load;
+const realActivityLoad = useActivityStore.getState().load;
+const realMissionsLoad = useMissionsStore.getState().load;
 
 function resetStores(): void {
   localStorage.clear();
@@ -27,8 +32,10 @@ function resetStores(): void {
     skin: 'editorial',
     bridge: null,
     bridgeReady: true,
-    fixtureMode: false
+    fixtureMode: false,
+    dataRevision: 0
   });
+  useDashboardLayoutStore.setState({ layout: 'atelier' });
   useOverviewStore.setState({
     summary: null,
     cacheHitRatePct: null,
@@ -43,6 +50,18 @@ function resetStores(): void {
     error: null,
     load: realInsightsLoad
   });
+  useActivityStore.setState({
+    sessions: [],
+    loading: false,
+    error: null,
+    load: realActivityLoad
+  });
+  useMissionsStore.setState({
+    data: null,
+    loading: false,
+    error: null,
+    load: realMissionsLoad
+  });
 }
 
 function freezeLoads(): { overviewLoad: Mock<() => Promise<void>>; insightsLoad: Mock<() => Promise<void>> } {
@@ -50,6 +69,8 @@ function freezeLoads(): { overviewLoad: Mock<() => Promise<void>>; insightsLoad:
   const insightsLoad = vi.fn(async () => {});
   useOverviewStore.setState({ load: overviewLoad });
   useInsightsStore.setState({ load: insightsLoad });
+  useActivityStore.setState({ load: vi.fn(async () => {}) });
+  useMissionsStore.setState({ load: vi.fn(async () => {}) });
   return { overviewLoad, insightsLoad };
 }
 
@@ -83,7 +104,8 @@ describe('OverviewSurface', () => {
       error: null
     });
     render(<OverviewSurface />);
-    expect(screen.getByText(/living substrate/i)).toBeTruthy();
+    expect(screen.queryByText(/living substrate/i)).toBeNull();
+    expect(screen.getByText(/sessions in the window/i)).toBeTruthy();
     expect(screen.getByText('MiMo')).toBeTruthy();
     expect(screen.getByText('Hermes')).toBeTruthy();
     expect(screen.getByText('Burn · Today')).toBeTruthy();
@@ -181,5 +203,137 @@ describe('OverviewSurface', () => {
     expect(usageSummary).toHaveBeenCalled();
     expect(useOverviewStore.getState().summary?.todayTokens).toBe(1);
     expect(useOverviewStore.getState().cacheHitRatePct).toBe(42);
+  });
+
+  it('re-fires overview load when the daemon data revision advances', async () => {
+    const { overviewLoad } = freezeLoads();
+    useShellStore.setState({ fixtureMode: true, health: fixtureDaemonHealth('/tmp/x.sock') });
+    render(<OverviewSurface />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const afterMount = overviewLoad.mock.calls.length;
+    expect(afterMount).toBeGreaterThanOrEqual(1);
+
+    await act(async () => {
+      useShellStore.setState({ dataRevision: 1 });
+      await Promise.resolve();
+    });
+    expect(overviewLoad.mock.calls.length).toBeGreaterThan(afterMount);
+  });
+
+  it('re-fires the overview lanes when fixture mode is toggled while mounted', async () => {
+    const { overviewLoad, insightsLoad } = freezeLoads();
+    render(<OverviewSurface />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const summaryAfterMount = overviewLoad.mock.calls.length;
+    const insightsAfterMount = insightsLoad.mock.calls.length;
+    expect(summaryAfterMount).toBeGreaterThanOrEqual(1);
+    expect(insightsAfterMount).toBeGreaterThanOrEqual(1);
+
+    // setFixtureMode bumps neither bridgeReady nor dataRevision, so the surface
+    // itself has to notice the switch.
+    await act(async () => {
+      useShellStore.getState().setFixtureMode(true);
+      await Promise.resolve();
+    });
+    expect(useShellStore.getState().fixtureMode).toBe(true);
+    expect(overviewLoad.mock.calls.length).toBeGreaterThan(summaryAfterMount);
+    expect(insightsLoad.mock.calls.length).toBeGreaterThan(insightsAfterMount);
+
+    const summaryAfterEnable = overviewLoad.mock.calls.length;
+    const insightsAfterEnable = insightsLoad.mock.calls.length;
+    await act(async () => {
+      useShellStore.getState().setFixtureMode(false);
+      await Promise.resolve();
+    });
+    expect(useShellStore.getState().fixtureMode).toBe(false);
+    expect(overviewLoad.mock.calls.length).toBeGreaterThan(summaryAfterEnable);
+    expect(insightsLoad.mock.calls.length).toBeGreaterThan(insightsAfterEnable);
+  });
+
+  it('does not double-load the overview lanes when fixture mode never changes', async () => {
+    const { overviewLoad, insightsLoad } = freezeLoads();
+    useShellStore.setState({ fixtureMode: true, health: fixtureDaemonHealth('/tmp/x.sock') });
+    const { rerender } = render(<OverviewSurface />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    rerender(<OverviewSurface />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(overviewLoad).toHaveBeenCalledTimes(1);
+    expect(insightsLoad).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-fires the activity and mission lanes on fixture toggle in the stream layout', async () => {
+    freezeLoads();
+    const activityLoad = vi.fn(async () => {});
+    const missionsLoad = vi.fn(async () => {});
+    useActivityStore.setState({ load: activityLoad });
+    useMissionsStore.setState({ load: missionsLoad });
+    useDashboardLayoutStore.setState({ layout: 'stream' });
+    render(<OverviewSurface />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const activityAfterMount = activityLoad.mock.calls.length;
+    const missionsAfterMount = missionsLoad.mock.calls.length;
+    expect(activityAfterMount).toBeGreaterThanOrEqual(1);
+    expect(missionsAfterMount).toBeGreaterThanOrEqual(1);
+
+    await act(async () => {
+      useShellStore.getState().setFixtureMode(true);
+      await Promise.resolve();
+    });
+    expect(activityLoad.mock.calls.length).toBeGreaterThan(activityAfterMount);
+    expect(missionsLoad.mock.calls.length).toBeGreaterThan(missionsAfterMount);
+  });
+
+  it('renders a timestamped stream river for the stream layout', () => {
+    freezeLoads();
+    useDashboardLayoutStore.setState({ layout: 'stream' });
+    useShellStore.setState({
+      fixtureMode: true,
+      health: fixtureDaemonHealth('/tmp/openburnbar.sock')
+    });
+    useOverviewStore.setState({
+      summary: fixtureUsageSummary(),
+      cacheHitRatePct: fixtureUsageInsights().cacheHitRatePct,
+      loading: false,
+      error: null
+    });
+    render(<OverviewSurface />);
+    expect(document.querySelector('.stream-river')).toBeTruthy();
+    expect(document.querySelector('.stream-river__time')).toBeTruthy();
+    expect(screen.queryByText(/living substrate/i)).toBeNull();
+  });
+
+  it('renders needs-you against everything else for the atlas layout', () => {
+    freezeLoads();
+    useDashboardLayoutStore.setState({ layout: 'atlas' });
+    useShellStore.setState({
+      fixtureMode: true,
+      health: fixtureDaemonHealth('/tmp/openburnbar.sock')
+    });
+    useOverviewStore.setState({
+      summary: fixtureUsageSummary(),
+      cacheHitRatePct: fixtureUsageInsights().cacheHitRatePct,
+      loading: false,
+      error: null
+    });
+    useInsightsStore.setState({
+      data: fixtureUsageInsights(),
+      loading: false,
+      error: null
+    });
+    render(<OverviewSurface />);
+    expect(screen.getAllByText('Needs you').length).toBeGreaterThan(0);
+    expect(screen.getByText('Everything else')).toBeTruthy();
+    expect(document.querySelector('.atlas-gap')).toBeTruthy();
+    expect(document.querySelector('.atlas-ladder__comparison')).toBeTruthy();
   });
 });

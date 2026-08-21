@@ -43,7 +43,7 @@ assert.match(
 );
 assert.match(
   routerPage,
-  /gpt-5\.4-mini[\s\S]*gpt-5\.4-pro[\s\S]*gpt-5-family[\s\S]*openai:standard/,
+  /gpt-5\.6-mini[\s\S]*gpt-5\.6-pro[\s\S]*gpt-5-family[\s\S]*openai:standard/,
   "router page must name rejected similar-model examples"
 );
 assert.doesNotMatch(

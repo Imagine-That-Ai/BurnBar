@@ -317,6 +317,16 @@ public sealed partial class DashboardCommandSidebar : UserControl
     private void RaiseSelection(DashboardCommandSelection selection) =>
         SelectionChanged?.Invoke(this, selection);
 
+    // Reads the collapsed `{ThemeResource}` probe Borders declared in the XAML, rather
+    // than looking a brush up out of a resource dictionary by key. A dictionary lookup
+    // resolves *once* and hands back a fixed brush, so a code-built row keeps its old
+    // colours when the user switches light/dark; a probe's `Background` is a real
+    // ThemeResource binding and re-resolves on `ActualThemeChanged`.
+    //
+    // `WindowsVisualSourceContractTests` pins this both ways — it requires the probes and
+    // forbids the by-key lookup — because the difference is invisible until someone flips
+    // the system theme. That assertion is a plain substring scan of this whole file, so
+    // the forbidden call must not appear even inside a comment explaining it.
     private Brush? ResourceBrush(string key) => key switch
     {
         "AuroraGlassTintBaseBrush" => AuroraGlassTintBaseBrushProbe.Background,

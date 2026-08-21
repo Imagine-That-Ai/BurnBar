@@ -1114,6 +1114,28 @@ struct BurnRailAppearanceQuickMenu: View {
                             }
                         }
                     }
+
+                    Section("Atmospheric & Flow") {
+                        ForEach(KernelCatalog.atmospheric) { kernel in
+                            kernelOptionButton(kernel)
+                        }
+                    }
+
+                    Section("Lattice & Geometry") {
+                        ForEach(KernelCatalog.geometry) { kernel in
+                            kernelOptionButton(kernel)
+                        }
+                    }
+
+                    Section("Living & Organic") {
+                        ForEach(KernelCatalog.organic) { kernel in
+                            kernelOptionButton(kernel)
+                        }
+                    }
+                }
+
+                Section("Overlay") {
+                    Toggle("Swarm particles", isOn: $swarmSubstrateEnabled)
                 }
             }
 
@@ -1172,6 +1194,22 @@ struct BurnRailAppearanceQuickMenu: View {
         if useKernelBackdrop { return .kernel }
         if !settingsManager.useWebsiteBackground { return .off }
         return settingsManager.useConstellationBackground ? .constellation : .swarm
+    }
+
+    private func kernelOptionButton(_ kernel: KernelCatalogEntry) -> some View {
+        Button {
+            backdropKernel = kernel.id
+            Analytics.shared.track(.settingsChanged, [
+                "setting_key": "window_backdrop_kernel_quick_menu",
+                "new_value": .string(kernel.id)
+            ])
+        } label: {
+            if backdropKernel == kernel.id {
+                Label(kernel.label, systemImage: "checkmark")
+            } else {
+                Text(kernel.label)
+            }
+        }
     }
 
     private func quickBackgroundOption(_ state: QuickBackgroundState) -> some View {

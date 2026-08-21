@@ -1,14 +1,14 @@
+import { useId } from 'react';
+import { useElementSize } from '../../dashboard/useElementSize.js';
 import type { SpendCurveModel } from './overviewAtelierData.js';
 import { monotonePath } from './overviewAtelierData.js';
 
-const W = 640;
-const H = 176;
 const PAD_L = 44;
-const PAD_R = 8;
+const PAD_R = 12;
 const PAD_T = 8;
 const PAD_B = 28;
-const PLOT_W = W - PAD_L - PAD_R;
-const PLOT_H = H - PAD_T - PAD_B;
+const BASE_W = 640;
+const BASE_H = 176;
 
 function formatAxisCost(v: number): string {
   if (v >= 1000) return `$${Math.round(v / 1000)}k`;
@@ -40,6 +40,13 @@ export function AtelierSpendCurve({
   fixtureMode: boolean;
   loading?: boolean;
 }) {
+  const { ref, width } = useElementSize<HTMLElement>();
+  const reactId = useId().replace(/:/g, '');
+  const W = width > 0 ? Math.max(280, width) : BASE_W;
+  const H = Math.max(140, Math.round((W * BASE_H) / BASE_W));
+  const plotW = W - PAD_L - PAD_R;
+  const plotH = H - PAD_T - PAD_B;
+
   if (loading) {
     return (
       <div className="atelier-spend-curve atelier-spend-curve--skeleton" aria-busy="true" aria-label="Loading spend curve">
@@ -59,14 +66,15 @@ export function AtelierSpendCurve({
           const pts = model.bands[0].points;
           const n = pts.length;
           if (n <= 4) return pts.map((p) => p.date);
-          return [0, Math.floor(n / 3), Math.floor((2 * n) / 3), n - 1].map((i) => pts[i].date);
+          return [0, Math.floor(n / 3), Math.floor((2 * n) / 3), n - 1].map((i) => pts[i]!.date);
         })();
 
-  const toX = (t: number) => PAD_L + t * PLOT_W;
-  const toY = (v: number) => PAD_T + (1 - v / model.yMax) * PLOT_H;
+  const toX = (t: number) => PAD_L + t * plotW;
+  const toY = (v: number) => PAD_T + (1 - v / model.yMax) * plotH;
+  const signature = model.bands.map((band) => band.points.map((p) => `${p.base}:${p.top}`).join(',')).join('|');
 
   return (
-    <figure className="atelier-spend-curve">
+    <figure ref={ref} className="atelier-spend-curve">
       <figcaption className="atelier-spend-curve-head">
         <span className="atelier-spend-curve-title">Provider burn over time</span>
         {!model.isEmpty ? (
@@ -82,12 +90,12 @@ export function AtelierSpendCurve({
       </figcaption>
       {model.isEmpty ? (
         <div className="atelier-spend-curve-empty" role="img" aria-label="No spend in this range">
-          <svg viewBox={`0 0 ${W} ${H}`} className="atelier-spend-curve-svg" aria-hidden>
+          <svg viewBox={`0 0 ${W} ${H}`} className="atelier-spend-curve-svg" preserveAspectRatio="none" aria-hidden>
             <line
               x1={PAD_L}
-              y1={PAD_T + PLOT_H / 2}
-              x2={PAD_L + PLOT_W}
-              y2={PAD_T + PLOT_H / 2}
+              y1={PAD_T + plotH / 2}
+              x2={PAD_L + plotW}
+              y2={PAD_T + plotH / 2}
               stroke="var(--color-glass-line)"
               strokeWidth={1}
               strokeDasharray="4 6"
@@ -98,13 +106,16 @@ export function AtelierSpendCurve({
       ) : (
         <svg
           viewBox={`0 0 ${W} ${H}`}
+          width="100%"
+          height={H}
           className="atelier-spend-curve-svg"
+          preserveAspectRatio="none"
           role="img"
           aria-label="Stacked provider spend over time"
         >
           <defs>
             {model.bands.map((band) => (
-              <linearGradient key={`g-${band.id}`} id={`atelier-fill-${band.id}`} x1="0" y1="0" x2="0" y2="1">
+              <linearGradient key={`g-${band.id}`} id={`atelier-fill-${reactId}-${band.id}`} x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor={band.color} stopOpacity={0.55} />
                 <stop offset="55%" stopColor={band.color} stopOpacity={0.22} />
                 <stop offset="100%" stopColor={band.color} stopOpacity={0.04} />
@@ -116,7 +127,7 @@ export function AtelierSpendCurve({
               key={tick}
               x1={PAD_L}
               y1={toY(tick)}
-              x2={PAD_L + PLOT_W}
+              x2={PAD_L + plotW}
               y2={toY(tick)}
               stroke="var(--color-glass-line)"
               strokeOpacity={0.35}
@@ -125,7 +136,7 @@ export function AtelierSpendCurve({
           <line
             x1={PAD_L}
             y1={toY(0)}
-            x2={PAD_L + PLOT_W}
+            x2={PAD_L + plotW}
             y2={toY(0)}
             stroke="var(--color-glass-line)"
             strokeOpacity={0.6}
@@ -139,9 +150,10 @@ export function AtelierSpendCurve({
             const area = bandAreaPath(pts);
             const stroke = monotonePath(pts.map((p) => ({ x: p.x, y: p.yTop })));
             return (
-              <g key={band.id}>
-                <path d={area} fill={`url(#atelier-fill-${band.id})`} />
+              <g key={`${band.id}-${signature}`}>
+                <path className="atelier-spend-curve-area" d={area} fill={`url(#atelier-fill-${reactId}-${band.id})`} />
                 <path
+                  className="atelier-spend-curve-stroke"
                   d={stroke}
                   fill="none"
                   stroke={band.color}

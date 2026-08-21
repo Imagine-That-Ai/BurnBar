@@ -1,6 +1,6 @@
 {
   "note": "Per-consumer-root files importing the OpenBurnBarCore umbrella (docs/CORE_DECOMPOSITION_PROGRAM.md). Covers ALL Swift import-attribute forms including `@testable import OpenBurnBarCore` and `@_exported`/`@_spi(...)` prefixes (so no repoint can leave a hidden umbrella import). Shrink-only: no NEW file may import the umbrella in a tracked root. Privileged roots (OpenBurnBarDaemon, OpenBurnBarWidget, OpenBurnBarKeyboard) ratchet to zero after their repoint packets (S17/S18/S19); AgentLens/OpenBurnBarMobile keep the umbrella deliberately. Regenerate via scripts/debt/check-core-umbrella-imports-budget.sh --update.",
-  "total": 904,
+  "total": 900,
   "roots": {
     "OpenBurnBarDaemon": {
       "count": 0,
@@ -70,10 +70,10 @@
         "AgentLens/Services/CLIBridge/RoutingClientWiring+CodexGrok.swift",
         "AgentLens/Services/CloudBudgetService.swift",
         "AgentLens/Services/CloudSync/ChatThreadSyncService.swift",
-        "AgentLens/Services/CloudSync/CLIAgentMissionRequestListener.swift",
         "AgentLens/Services/CloudSync/CLIAgentMissionApprovalFlow.swift",
         "AgentLens/Services/CloudSync/CLIAgentMissionDirectExecution.swift",
         "AgentLens/Services/CloudSync/CLIAgentMissionHostHandling.swift",
+        "AgentLens/Services/CloudSync/CLIAgentMissionRequestListener.swift",
         "AgentLens/Services/CloudSync/CLIAgentMissionRequestListener+EventRecording.swift",
         "AgentLens/Services/CloudSync/CLIAgentMissionRequestListener+Mirrors.swift",
         "AgentLens/Services/CloudSync/CLIAgentMissionRequestListener+Models.swift",
@@ -548,7 +548,7 @@
       ]
     },
     "OpenBurnBarMobile": {
-      "count": 374,
+      "count": 370,
       "files": [
         "OpenBurnBarMobile/App/AppDelegate.swift",
         "OpenBurnBarMobile/App/AppServices.swift",
@@ -683,7 +683,6 @@
         "OpenBurnBarMobile/Services/Media/MediaFileTransferServiceFactory.swift",
         "OpenBurnBarMobile/Services/Media/MediaSealSessionEstablisher.swift",
         "OpenBurnBarMobile/Services/Media/MercuryPeerSource.swift",
-        "OpenBurnBarMobile/Services/MissionFABResurrectionController.swift",
         "OpenBurnBarMobile/Services/MissionGroupObserver.swift",
         "OpenBurnBarMobile/Services/MobileChatHistoryStore.swift",
         "OpenBurnBarMobile/Services/MobileCloudVaultKeyAccess.swift",
@@ -704,7 +703,6 @@
         "OpenBurnBarMobile/Settings/Search/SettingsItem.swift",
         "OpenBurnBarMobile/Settings/Search/SettingsManifest.swift",
         "OpenBurnBarMobile/Settings/Search/SettingsSearchResultsView.swift",
-        "OpenBurnBarMobile/Tests/MissionFABResurrectionControllerTests.swift",
         "OpenBurnBarMobile/Theme/AuroraDesign.swift",
         "OpenBurnBarMobile/Theme/MobileTheme.swift",
         "OpenBurnBarMobile/Theme/ProTheme.swift",
@@ -869,7 +867,6 @@
         "OpenBurnBarMobile/Views/Media/TrackpadGlassSurface.swift",
         "OpenBurnBarMobile/Views/MissionControl/MobileMissionConsoleHost.swift",
         "OpenBurnBarMobile/Views/MissionControl/MobileMissionConsoleSheet.swift",
-        "OpenBurnBarMobile/Views/MissionControl/MobileMissionFAB.swift",
         "OpenBurnBarMobile/Views/MobileProviderWizardView.swift",
         "OpenBurnBarMobile/Views/MobileWizardComponents.swift",
         "OpenBurnBarMobile/Views/Onboarding/OnboardingProviderConnectStep.swift",
@@ -916,7 +913,6 @@
         "OpenBurnBarMobile/Views/You/ChatTilesSettingsView.swift",
         "OpenBurnBarMobile/Views/You/ConnectedDevicesRow.swift",
         "OpenBurnBarMobile/Views/You/IdentityHero.swift",
-        "OpenBurnBarMobile/Views/You/MissionFABResurrectToggle.swift",
         "OpenBurnBarMobile/Views/You/QuotaCustomizationSettingsView.swift",
         "OpenBurnBarMobile/Views/You/SettingsHubView.swift",
         "OpenBurnBarMobile/Views/You/SettingsProfileHeader.swift",

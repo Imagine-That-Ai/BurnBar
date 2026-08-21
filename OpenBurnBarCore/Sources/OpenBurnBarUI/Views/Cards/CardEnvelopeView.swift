@@ -1,4 +1,5 @@
 import SwiftUI
+import OpenBurnBarRecap
 import OpenBurnBarKernel
 
 // MARK: - Card Envelope View (Hermes Square §6.6)

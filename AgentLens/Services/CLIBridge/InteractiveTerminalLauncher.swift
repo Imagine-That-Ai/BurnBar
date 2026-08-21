@@ -121,6 +121,8 @@ enum InteractiveTerminalLauncher {
             var arguments: [String] = []
             if let model { arguments += ["--model", model] }
             return Invocation(executableName: "pi", arguments: arguments, extraEnvironment: [:])
+        case "fx":
+            return Invocation(executableName: "fx", arguments: [], extraEnvironment: [:])
         case "ollama":
             if let model {
                 return Invocation(executableName: "ollama", arguments: ["run", model], extraEnvironment: [:])

@@ -61,6 +61,10 @@ struct PlasmaModelSelector: View {
 
     private var label: some View {
         HStack(spacing: 5) {
+            // 16pt, and it stays 16pt. `ChatEngineModelMenu` is shared by the
+            // menubar popover, the 260pt floating panel, ChatPanel and the
+            // Hermes popover; widening this control to fit a logo inside the
+            // glass pushed the whole header past the edge in every one of them.
             PlasmaOrb(
                 tint: tint,
                 size: 16,

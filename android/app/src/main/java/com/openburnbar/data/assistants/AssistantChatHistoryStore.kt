@@ -22,6 +22,7 @@ import java.io.File
 import java.lang.IllegalStateException
 import java.util.Date
 import java.util.UUID
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -250,6 +251,8 @@ class AssistantChatHistoryStore internal constructor(
                         if (!isCurrentCloudUser(cloud, uid, generation)) return@launch
                         cloud.delete(uid, id)
                         clearTombstone(id, generation)
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (_: Exception) {
                         // Stays in the tombstone set; retried next refresh.
                     }
@@ -288,6 +291,8 @@ class AssistantChatHistoryStore internal constructor(
                 if (!isCurrentCloudUser(cloud, uid, generation)) return@launch
                 cloud.delete(uid, threadID)
                 clearTombstone(threadID, generation)
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {
                 // Tombstone retried on next bootstrap.
             }
@@ -372,6 +377,7 @@ class AssistantChatHistoryStore internal constructor(
                     if (!isCurrentCloudUser(cloud, uid, generation)) return@launch
                     cloud.upsert(uid, thread)
                 } catch (e: Exception) {
+                    if (e is CancellationException) throw e
                     // Surface (not crash) any cloud-mirror error — incl. Signal producer throws
                     // (atRestRecipients fail-closed) and Firestore exceptions — on this
                     // SupervisorJob IO coroutine. Matches the delete/tombstone coroutines.

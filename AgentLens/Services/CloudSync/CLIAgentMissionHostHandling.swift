@@ -349,7 +349,7 @@ extension CLIAgentMissionRequestListener {
                 payload: [:],
                 liveSummary: claimSummary
             )
-            guard let sealedState = sealed["sealedStatePayload"] as? [String: Any] else {
+            guard let sealedState = sealed["sealedStatePayload"] as? [String: any Sendable] else {
                 throw CLIAgentMissionClaimThenEvaluate.Failure.missingSealedState
             }
             let hostWriteNonce = try await ComputerUseSecurityCallableClient.claimCliAgentMission(
@@ -474,7 +474,7 @@ extension CLIAgentMissionRequestListener {
                     payload: [:],
                     liveSummary: summary
                 )
-                if let sealedState = sealed["sealedStatePayload"] as? [String: Any] {
+                if let sealedState = sealed["sealedStatePayload"] as? [String: any Sendable] {
                     try await ComputerUseSecurityCallableClient.updateCliAgentMissionStatus(
                         requestId: document.documentID,
                         deviceId: handle.deviceId,

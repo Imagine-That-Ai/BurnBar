@@ -26,7 +26,7 @@ final class DashboardRenderSmokeUITests: SmokeUITestCase {
         )
 
         // The floating Aurora nav tray renders every core destination.
-        for id in ["pulse", "burn", "streams", "hermes", "you"] {
+        for id in ["pulse", "burn", "insights", "streams", "hermes", "you"] {
             let tab = app.buttons["auroraTab.\(id)"]
             XCTAssertTrue(
                 tab.waitForExistence(timeout: 10),

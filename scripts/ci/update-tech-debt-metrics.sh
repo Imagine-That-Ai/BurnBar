@@ -87,6 +87,8 @@ try_optional_services="$(python3 "${repo_root}/tools/error-debt/count-error-debt
 
 empty_catch_blocks="$(python3 "${repo_root}/tools/error-debt/count-error-debt.py" --repo-root "${repo_root}" --metric empty-catch --format json | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>console.log(JSON.parse(s).emptyCatch.total))")"
 
+grdb_row_casts="$(python3 "${repo_root}/tools/error-debt/count-error-debt.py" --repo-root "${repo_root}" --metric grdb-row-cast --format json | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>console.log(JSON.parse(s).grdbRowCast.total))")"
+
 main_actor_io_services=0
 for rel in \
   "AgentLens/Services/CloudSyncService.swift" \
@@ -224,6 +226,7 @@ Track trends monthly against targets in [TECH_DEBT_STRATEGY.md](TECH_DEBT_STRATE
 | \`Task.detached\` in \`AgentLens/Services/\` | ${task_detached_services} | ≤ 10 | 0 |
 | \`try?\` in \`AgentLens/Services/\` | ${try_optional_services} | ≤ 120 | ≤ 50 |
 | Unsafe cast assert-zero gate | ${unsafe_cast_total} | 0 | 0 |
+| Untyped GRDB row cast assert-zero gate | ${grdb_row_casts} | 0 | 0 |
 | Knip dead-code budget (\`budgets/knip-baseline.json\`, functions) | ${knip_functions_total} | 0 | 0 |
 | Schema \`knownDrift\` tokens (\`tools/schema-sync/manifest.json\`) | ${schema_known_drift_total} | 0 | 0 |
 | \`@unchecked Sendable\` ratchet (assert-zero gate; ${unchecked_sendable_allowlist} documented allowlist exceptions) | ${unchecked_sendable_total} | 0 | 0 |

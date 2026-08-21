@@ -85,8 +85,7 @@ extension ChatSessionController {
         }
 
         switch backend {
-        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp, .junie,
-             .grok, .kimi:
+        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp, .junie, .fx, .grok, .kimi:
             if let legacy = UserDefaults.standard.string(forKey: Self.udActiveThreadID),
                (try? await dataStore.chatThreadExists(id: legacy)) == true {
                 if persistsViewState { UserDefaults.standard.set(legacy, forKey: key) }
@@ -175,6 +174,7 @@ extension ChatSessionController {
         lastRetrievalHadNoEvidence = false
         pendingAttachments = []
         attachmentError = nil
+        fxResumeSessionID = nil
         startNewChatThread()
     }
 
@@ -196,6 +196,7 @@ extension ChatSessionController {
         messages = []
         conversationJumpTargets = []
         completedFusionSessionToken = nil
+        fxResumeSessionID = nil
         if chatBackend.requiresCLIAssistantConsent {
             chatViewMode = .cli
         } else {
@@ -237,6 +238,7 @@ extension ChatSessionController {
         completedFusionSessionToken = nil
         selectedContext = nil
         conversationJumpTargets = []
+        fxResumeSessionID = nil
         revokeDesktopControl()
         activeThreadID = threadID
         persistActiveThreadSlot()

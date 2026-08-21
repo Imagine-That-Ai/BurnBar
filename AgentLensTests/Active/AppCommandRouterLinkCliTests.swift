@@ -143,7 +143,7 @@ final class AppCommandRouterLinkCliTests: XCTestCase {
         // The CLI keychain item stores the UTF-8 bytes of the base64 key.
         XCTAssertEqual(recorder.keychainWrites, [Data(keyData.base64EncodedString().utf8)])
         XCTAssertEqual(recorder.legacyRemovals, 1, "the plaintext on-disk fallback must be cleaned up")
-        XCTAssertEqual(recorder.alerts.map(\.title), ["CLI Linked Successfully!"])
+        XCTAssertEqual(recorder.alerts.map(\.title), ["CLI Linked"])
         XCTAssertEqual(recorder.alerts.first?.style, .informational)
     }
 

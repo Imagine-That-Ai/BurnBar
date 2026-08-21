@@ -391,7 +391,8 @@ struct AgentBrandZoneView: View {
                 dispatchPreset = .newThread
                 showDispatchSheet = true
             }
-        case .claude, .codex, .openClaw, .droid, .forge, .antigravity, .grok, .cursorAgent, .openClaude, .omp, .junie:
+        case .claude, .codex, .openClaw, .droid, .forge, .antigravity, .grok, .cursorAgent, .openClaude, .omp,
+             .junie, .fx:
             dispatchPreset = .newThread
             showDispatchSheet = true
         }

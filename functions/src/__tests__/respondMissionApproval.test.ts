@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { FieldValue } from "firebase-admin/firestore";
 
 import { missionApprovalResolutionWrite } from "../callables/agentGrantCallables.js";
 
@@ -12,8 +13,8 @@ describe("missionApprovalResolutionWrite (respondMissionApproval persist contrac
     expect(write.approvalStatus).toBe("approved");
     expect(write.approvedByDeviceId).toBe("iphone-trusted-1");
     expect(write).not.toHaveProperty("status");
-    expect(write.approvalRespondedAt).toBeDefined();
-    expect(write.updatedAt).toBeDefined();
+    expect(write.approvalRespondedAt).toEqual(FieldValue.serverTimestamp());
+    expect(write.updatedAt).toEqual(FieldValue.serverTimestamp());
   });
 
   it("makes Deny leave waiting_for_approval so the inbox cannot re-hydrate the card", () => {
@@ -25,7 +26,7 @@ describe("missionApprovalResolutionWrite (respondMissionApproval persist contrac
     expect(write.approvalStatus).toBe("rejected");
     expect(write.status).toBe("canceled");
     expect(write.approvedByDeviceId).toBe("iphone-trusted-1");
-    expect(write.approvalRespondedAt).toBeDefined();
-    expect(write.updatedAt).toBeDefined();
+    expect(write.approvalRespondedAt).toEqual(FieldValue.serverTimestamp());
+    expect(write.updatedAt).toEqual(FieldValue.serverTimestamp());
   });
 });

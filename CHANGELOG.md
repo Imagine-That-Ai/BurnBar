@@ -7,6 +7,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Prime Agent gateway proxy resolves the auth token headlessly
+  (`scripts/prime-agent-openburnbar-proxy.mjs`) — non-interactive shells (SSH,
+  CI, subagents) fell through to the `openburnbar-local` placeholder and got 401s
+  from the gateway. The emitted `apiKey` resolver now checks
+  `$OPENBURNBAR_GATEWAY_AUTH_TOKEN` first, then the daemon LaunchAgent plist,
+  then `openburnbar-local`, and `--live` probes follow the same order. The
+  Keychain rung was **removed rather than reordered**: it had been querying a
+  service/account pair the app never writes (dead since it was added), and
+  querying the real pair (`com.openburnbar.chat-gateway-secrets` /
+  `settings.gateway.http.authToken`) either blocks on a GUI authorization prompt
+  or fails with `errSecInteractionNotAllowed`, because the item's ACL is
+  app-scoped. The plist carries the same token by construction. Each rung also
+  emits `printf '%s\n'` instead of `echo`, which was corrupting any token
+  containing a backslash. A new `--token <tok>` / `--api-key <tok>` flag embeds a
+  static token directly into `models.json`. `--print` previews the resolver
+  verbatim (so `--print > models.json` works) and, with `--token`, redacts the
+  literal to `<redacted: static gateway token>` plus a stderr warning that the
+  preview is not a usable config; `--status` never shows the credential field.
+  Locked by `scripts/prime-agent-openburnbar-proxy.test.mjs` in fast-feedback.
+  Docs: `docs/PROVIDERS.md` → Prime Agent via OpenBurnBar Gateway.
+- Prime Agent gateway proxy stops reporting success while writing a config that
+  cannot work. A `models.json` whose root was a JSON array — or whose `providers`
+  was an array — took the merge silently, because `JSON.stringify` drops named
+  properties assigned to an array: the run printed `Synced openburnbar provider
+  … models: 155` and wrote the original file straight back. Those shapes are now
+  reported with the path and left untouched. `--gateway-host`/`--gateway-port`
+  are validated before any read or write, so `--gateway-port abc` fails fast
+  instead of embedding `http://127.0.0.1:NaN/v1`; IPv6 literals are bracketed;
+  and the gateway URL is built in one place rather than concatenated at six call
+  sites. `--remove --print` now emits the providers that actually survive the
+  delete (it claimed an empty set) with its prose on stderr, so its stdout is
+  valid JSON like every other `--print` mode. `--help` renders the header as help
+  text instead of spilling `import` statements at the reader.
+- Close SQLCipher before `NSApplication` calls `exit()`, so a quit (including
+  the installed app terminating a DerivedData duplicate) cannot SIGSEGV inside
+  `sqlcipher_memset` on a live GRDB reader. Concurrent usage hydration now
+  parses SQLite timestamps without a shared `DateFormatter`.
+
+### Added
+- **Monthly Recap** (`docs/RECAP.md`) — a new destination that reads a calendar
+  month of AI usage back as an editorial deck of cards: favourite model and
+  model+harness pairing, weekday and late-night habits, streaks, project focus,
+  personal records, month-over-month change, and a closing "your month in a
+  sentence". Shared engine (`OpenBurnBarInsights/Services/Recap`) and shared
+  SwiftUI card system (`OpenBurnBarUI/Views/Recap`) render on macOS (sidebar,
+  3 columns), iPad (tray, 2 columns) and iPhone (Insights banner, 1 column).
+  Every statistic is computed locally by ~30 rules with per-rule data floors and
+  computed significance; an opt-in LLM layer may only select, order and re-word
+  those candidates, and a numeric-containment guard rejects any figure it cannot
+  trace back to that card's own metrics. Project names are tokenized and
+  candidate ids are opaque before anything leaves the device. Completed months
+  seal so a past recap never rewrites itself. Cards export as 1080×1350 /
+  1080×1080 PNGs. This is also the first production caller of the previously
+  unwired `CadenceScheduler` monthly slot.
+
+- **Vercel fx provider support** (`docs/PROVIDERS.md`) — Added Vercel `fx` (fx.sh)
+  as a first-class provider across all layers: exact usage parsing from `~/.fx/sessions/`
+  with `usage-v2.json` cost calculations and `events.jsonl` transcript ingestion,
+  interactive REPL terminal launcher, `fx ask --json` chat engine streaming parser with
+  multi-turn `--resume` session support, desktop grant mission policies, switcher discovery
+  and authentication coordinators, and cross-platform provider parity across macOS,
+  Android, Windows, Linux, and iOS.
 ### Security
 - Mission create, claim, host status, cancel, and event append are server-owned
   Admin-SDK callables. Client creates and host merges of

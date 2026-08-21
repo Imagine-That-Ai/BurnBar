@@ -581,18 +581,19 @@ private fun androidx.navigation.NavGraphBuilder.burnBarDashboardRedirectRoute(na
 }
 
 @Composable
-internal fun BurnBarNavigationRail(currentTab: BurnBarTab, onSelect: (BurnBarTab) -> Unit, modifier: Modifier = Modifier) {
+internal fun BurnBarNavigationRail(currentTab: BurnBarTab, onSelect: (BurnBarTab) -> Unit, modifier: Modifier = Modifier, isExpanded: Boolean = false) {
+    val railWidth = if (isExpanded) 96.dp else 80.dp
     Column(
         modifier =
         modifier
             .fillMaxHeight()
-            .width(104.dp)
+            .width(railWidth)
             .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.6f))
             .padding(vertical = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         BurnBarLogo(
-            size = 42.dp,
+            size = if (isExpanded) 42.dp else 36.dp,
             modifier = Modifier.padding(bottom = 6.dp),
         )
         Column(
@@ -616,9 +617,10 @@ private fun BurnBarNavigationRailItem(tab: BurnBarTab, selected: Boolean, onSele
     Column(
         modifier =
         Modifier
-            .width(96.dp)
-            .height(44.dp)
-            .clip(RoundedCornerShape(18.dp))
+            .fillMaxWidth()
+            .padding(horizontal = 6.dp)
+            .height(48.dp)
+            .clip(RoundedCornerShape(16.dp))
             .background(if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f) else Color.Transparent)
             .clickable(onClick = onSelect)
             .padding(horizontal = 4.dp, vertical = 3.dp),
@@ -662,7 +664,8 @@ private val BurnBarTab.railLabel: String
         }
 
 internal data class BurnBarSignedInShellState(
-    val isWideScreen: Boolean,
+    val windowSizeClass: BurnBarWindowSizeClass = BurnBarWindowSizeClass(BurnBarWindowWidthClass.COMPACT, 360.dp),
+    val isWideScreen: Boolean = windowSizeClass.widthClass.isWide,
     val currentTab: BurnBarTab,
     val isCloudMember: Boolean,
     val currentTier: com.openburnbar.ui.pro.CloudTier = com.openburnbar.ui.pro.CloudTier.NONE,
@@ -691,6 +694,7 @@ private fun BurnBarWideScreenShell(state: BurnBarSignedInShellState, navControll
         BurnBarNavigationRail(
             currentTab = state.currentTab,
             onSelect = navigateTo,
+            isExpanded = state.windowSizeClass.widthClass.isExpanded,
             modifier = Modifier.statusBarsPadding(),
         )
         Box(
@@ -713,6 +717,8 @@ private fun BurnBarWideScreenShell(state: BurnBarSignedInShellState, navControll
     }
 }
 
+private const val CANONICAL_TRAY_BOTTOM_PADDING_DP = 80
+
 @Composable
 private fun BurnBarPhoneShell(state: BurnBarSignedInShellState, navController: NavHostController, navigateTo: (BurnBarTab) -> Unit) {
     Box(
@@ -720,7 +726,7 @@ private fun BurnBarPhoneShell(state: BurnBarSignedInShellState, navController: N
         Modifier
             .fillMaxSize()
             .statusBarsPadding()
-            .padding(bottom = 96.dp),
+            .padding(bottom = CANONICAL_TRAY_BOTTOM_PADDING_DP.dp),
     ) {
         BurnBarContent(
             navController = navController,
@@ -754,12 +760,18 @@ private fun BurnBarPhoneShell(state: BurnBarSignedInShellState, navController: N
 
 @Composable
 private fun BurnBarSignedInOverlays(state: BurnBarSignedInShellState, navigateTo: (BurnBarTab) -> Unit) {
+    val overlayBottomInset = if (!state.isWideScreen) {
+        (CANONICAL_TRAY_BOTTOM_PADDING_DP + 8).dp
+    } else {
+        com.openburnbar.ui.theme.AuroraSpacing.LG.dp
+    }
+
     if (state.currentTab != BurnBarTab.HERMES && state.chatState.mode != com.openburnbar.ui.components.FloatingChatMode.Hidden) {
         Box(
             modifier =
             Modifier
                 .fillMaxSize()
-                .padding(bottom = if (!state.isWideScreen) 84.dp else com.openburnbar.ui.theme.AuroraSpacing.LG.dp),
+                .padding(bottom = overlayBottomInset),
             contentAlignment = androidx.compose.ui.Alignment.BottomEnd,
         ) {
             com.openburnbar.ui.components.FloatingChatPill(
@@ -777,6 +789,6 @@ private fun BurnBarSignedInOverlays(state: BurnBarSignedInShellState, navigateTo
         modifier =
         Modifier
             .fillMaxSize()
-            .padding(bottom = if (!state.isWideScreen) 104.dp else com.openburnbar.ui.theme.AuroraSpacing.LG.dp),
+            .padding(bottom = overlayBottomInset),
     )
 }

@@ -63,11 +63,16 @@ describe("appendAuditEvent — transactional head advance", () => {
 
     const eventWrite = writes.find((w) => w.path.includes("unified_audit_log"));
     const headWrite = writes.find((w) => w.path.endsWith("audit_meta/head"));
-    expect(eventWrite).toBeDefined();
-    expect(headWrite).toBeDefined();
-    // The head pins the chain length to the just-appended seq + its hash.
-    expect(headWrite?.data.maxSeq).toBe(0);
-    expect(headWrite?.data.headHash).toBe(result.hash);
+    expect(eventWrite?.data).toMatchObject({
+      actor: "user",
+      action: "data.export",
+      domain: "all",
+      seq: 0,
+    });
+    expect(headWrite?.data).toMatchObject({
+      maxSeq: 0,
+      headHash: result.hash,
+    });
   });
 });
 

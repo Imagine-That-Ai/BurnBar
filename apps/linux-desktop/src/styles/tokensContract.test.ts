@@ -75,7 +75,7 @@ describe('VAL-TOKENS design token contract', () => {
   });
 
   it('binds every dashboard layout to a ThemeGlassPalette role set', () => {
-    for (const layout of ['classic', 'aurora', 'nebula', 'constellation', 'cockpit', 'atelier']) {
+    for (const layout of ['classic', 'aurora', 'nebula', 'constellation', 'cockpit', 'atelier', 'stream', 'atlas']) {
       expect(liquidGlassTokensCss).toContain(`:root[data-dashboard-glass='${layout}']`);
     }
     expect(topChromeCss).toContain('--glass-theme-wash-top');

@@ -54,7 +54,7 @@ final class ControlDeckRegistryTests: XCTestCase {
         XCTAssertEqual(
             ControlKind.allCases.map(\.rawValue).sorted(),
             [
-                "aiInbox", "alerts", "appearance", "charts", "engineRoom",
+                "aiInbox", "alerts", "appearance", "charts", "engineRoom", "fleet",
                 "memoryMCP", "modelRouter", "pets", "textExpansion", "updates", "wand"
             ]
         )

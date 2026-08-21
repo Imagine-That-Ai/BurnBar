@@ -89,6 +89,7 @@ public enum CLIAgentResumeTarget: String, CaseIterable, Hashable, Sendable, Iden
     case opencode
     case gemini
     case junie
+    case fx
 
     public var id: String { rawValue }
 
@@ -109,6 +110,7 @@ public enum CLIAgentResumeTarget: String, CaseIterable, Hashable, Sendable, Iden
         case .opencode:    return "OpenCode"
         case .gemini:      return "Gemini CLI"
         case .junie:       return "Junie"
+        case .fx:          return "fx"
         }
     }
 
@@ -133,6 +135,7 @@ public enum CLIAgentResumeTarget: String, CaseIterable, Hashable, Sendable, Iden
         case .opencode:    return .openCode
         case .gemini:      return .geminiCLI
         case .junie:       return .junie
+        case .fx:          return .fx
         }
     }
 
@@ -149,6 +152,7 @@ public enum CLIAgentResumeTarget: String, CaseIterable, Hashable, Sendable, Iden
         case .grok:        return .grok
         case .cursorAgent: return .cursorAgent
         case .junie:       return .junie
+        case .fx:          return .fx
         case .opencode, .gemini: return nil
         }
     }
@@ -168,6 +172,7 @@ public enum CLIAgentResumeTarget: String, CaseIterable, Hashable, Sendable, Iden
         case .opencode:    return "0EA5E9"
         case .gemini:      return "4285F4"
         case .junie:       return "48E054"
+        case .fx:          return "A1A1AA"
         }
     }
 
@@ -198,6 +203,7 @@ extension CLIAgentRuntime {
         case .grok:        return "grok"
         case .cursorAgent: return "cursor_agent"
         case .junie:       return "junie"
+        case .fx:          return "fx"
         }
     }
 

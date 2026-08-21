@@ -100,6 +100,7 @@ public actor BurnBarLocalUsageIngestionService {
             .junie: { JunieParser() },
             .primeAgent: { PrimeAgentParser() },
             .muse: { MuseParser() },
+            .fx: { FxParser() },
             .zai: { ModelFilterParser(modelPattern: "zai", provider: .zai) },
             .minimax: { ModelFilterParser(modelPattern: "minimax", provider: .minimax) }
         ]

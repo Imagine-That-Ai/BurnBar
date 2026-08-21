@@ -25,39 +25,67 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- Spend-share provider rail. -->
+        <!-- Spend-share provider rail & Alarms. -->
         <components:UnifiedGlassCard Grid.Row="0" Grid.RowSpan="2" Grid.Column="0">
-            <StackPanel Spacing="10">
-                <TextBlock Text="Data source" FontSize="13" Opacity="0.6" FontWeight="SemiBold" />
+            <StackPanel Spacing="14">
+                <TextBlock Text="INSTRUMENTS &amp; ALARMS" FontSize="11" FontWeight="Bold" CharacterSpacing="80"
+                           Foreground="{StaticResource PensieveColorBrassBrightBrush}" />
                 <TextBlock x:Name="ProviderStatusText"
                            Text="No SQLCipher database connected"
                            TextWrapping="Wrap"
-                           FontSize="14" />
+                           FontSize="13" />
+                <Border Height="1" Background="{ThemeResource AuroraGlassStrokeBrush}" Margin="0,2" />
+                <TextBlock Text="Alarms" FontSize="12" FontWeight="SemiBold" Opacity="0.7" />
+                <StackPanel Spacing="6">
+                    <TextBlock x:Name="AlarmUrgentText" Text="• Urgent queue: Nominal" FontSize="12" Opacity="0.8" />
+                    <TextBlock x:Name="AlarmTodayText" Text="• Today queue: Nominal" FontSize="12" Opacity="0.8" />
+                    <TextBlock x:Name="AlarmCacheText" Text="• Cache efficiency: Live" FontSize="12" Opacity="0.8" />
+                </StackPanel>
             </StackPanel>
         </components:UnifiedGlassCard>
 
-        <!-- Four KPI tiles. -->
-        <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Spacing="16">
-            <layouts:ConceptStatTile x:Name="BurnTile" Value="—" Caption="Burn / day"
+        <!-- Four KPI tiles: star columns distribute slack. -->
+        <Grid Grid.Row="0" Grid.Column="1" ColumnSpacing="14" HorizontalAlignment="Stretch">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <layouts:ConceptStatTile Grid.Column="0" x:Name="BurnTile" Value="—" Caption="Burn / day"
                                      AccentBrush="{StaticResource PensieveColorBrassCoreBrush}" />
-            <layouts:ConceptStatTile x:Name="TokensTile" Value="—" Caption="Tokens"
+            <layouts:ConceptStatTile Grid.Column="1" x:Name="TokensTile" Value="—" Caption="Tokens"
                                      AccentBrush="{StaticResource PensieveColorMercuryCoreBrush}" />
-            <layouts:ConceptStatTile x:Name="SessionsTile" Value="—" Caption="Sessions"
+            <layouts:ConceptStatTile Grid.Column="2" x:Name="SessionsTile" Value="—" Caption="Sessions"
                                      AccentBrush="{StaticResource OBBAccentBrush}" />
-            <layouts:ConceptStatTile x:Name="CacheTile" Value="—" Caption="Cache hit"
+            <layouts:ConceptStatTile Grid.Column="3" x:Name="CacheTile" Value="—" Caption="Cache hit"
                                      AccentBrush="{StaticResource PensieveColorTierEndToEndBrush}" />
-        </StackPanel>
+        </Grid>
 
-        <!-- Routing swarm stage (transparent). -->
+        <!-- Routing swarm stage (transparent — backdrop reads through). -->
         <Border Grid.Row="1" Grid.Column="1"
                 CornerRadius="{StaticResource PensieveRadiusLgCorner}"
                 BorderThickness="1"
-                BorderBrush="{StaticResource OBBStrokeBrush}">
-            <TextBlock x:Name="RoutingStatusText" Text="Routing idle until live sessions are connected"
-                       Margin="14"
-                       VerticalAlignment="Top"
-                       Opacity="0.6"
-                       FontSize="12" />
+                BorderBrush="{StaticResource OBBStrokeBrush}"
+                Padding="16">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="10">
+                    <Border Background="{ThemeResource AuroraGlassSelectionFillBrush}" CornerRadius="999" Padding="8,4">
+                        <TextBlock Text="forming · boids" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource OBBAccentBrush}" />
+                    </Border>
+                    <TextBlock x:Name="ActiveProvidersBadge" Text="0 providers active" FontSize="12" VerticalAlignment="Center" Opacity="0.75" />
+                </StackPanel>
+                <TextBlock Grid.Row="1" x:Name="RoutingStatusText"
+                           Text="Live routing active across agent sessions"
+                           VerticalAlignment="Center"
+                           HorizontalAlignment="Center"
+                           Opacity="0.6"
+                           FontSize="13" />
+            </Grid>
         </Border>
 
         <!-- Cost curve + The Wand row. -->

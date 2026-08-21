@@ -266,7 +266,7 @@ extension UsageStore {
         guard let idString = indexed(row, UsageDecodeCol.id.rawValue) as? String,
               let id = UUID(uuidString: idString),
               let providerString = indexed(row, UsageDecodeCol.provider.rawValue) as? String,
-              let provider = AgentProvider(rawValue: providerString),
+              let provider = AgentProvider.resolve(providerString),
               let sessionId = indexed(row, UsageDecodeCol.sessionId.rawValue) as? String,
               let projectName = indexed(row, UsageDecodeCol.projectName.rawValue) as? String,
               let model = indexed(row, UsageDecodeCol.model.rawValue) as? String else { return nil }

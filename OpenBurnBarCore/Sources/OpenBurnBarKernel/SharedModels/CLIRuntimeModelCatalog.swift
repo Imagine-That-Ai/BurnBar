@@ -366,6 +366,21 @@ public enum CLIRuntimeModelCatalog {
                 "jetbrains",
                 "JetBrains via Junie CLI"
             )
+        case .fx:
+            // fx has no `--model` flag — the model is fx-configured. The
+            // catalog publishes a single default row so the picker and relay
+            // still have a stable selection to persist.
+            return option(
+                "",
+                OpenBurnBarModelDisplayName.compose(
+                    modelName: "fx default",
+                    providerName: "Vercel",
+                    providerID: "vercel",
+                    reasoningLevel: "CLI default"
+                ),
+                "vercel",
+                "Vercel via fx CLI"
+            )
         case .droid, .forge, .hermes, .pi, .openClaw, .openClaude, .omp:
             return nil
         }
