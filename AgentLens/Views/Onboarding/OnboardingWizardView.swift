@@ -7,25 +7,18 @@ enum OnboardingWizardStep: Int, CaseIterable {
     case connect
     case scan
     case tour
-    case systemPermissions
     case chatEngine
     case complete
 
-    /// Steps that exist in this build. The system-permissions step hosts
-    /// direct-download-only flows and is compiled out of Mac App Store builds,
-    /// so navigation must skip it there instead of showing an empty page.
-    var isAvailableInThisBuild: Bool {
-        switch self {
-        case .systemPermissions:
-            #if canImport(AppKit) && !DISTRIBUTION_MAS
-            return true
-            #else
-            return false
-            #endif
-        default:
-            return true
-        }
-    }
+    /// Every remaining step exists in every build.
+    ///
+    /// `.systemPermissions` used to live between `.tour` and `.chatEngine`, which put a
+    /// twelve-card TCC wizard directly in the path of somebody who opened setup to see
+    /// their token spend. Per `docs/product-focus/ONBOARDING_SPEC.md` §6, those grants
+    /// are asked at the moment of use instead; `OnboardingSystemPermissionsView` survives
+    /// as the Advanced -> Agent Control setup page and is reachable from
+    /// Settings -> Computer Use.
+    var isAvailableInThisBuild: Bool { true }
 
     static var availableCases: [OnboardingWizardStep] {
         allCases.filter(\.isAvailableInThisBuild)
@@ -68,9 +61,6 @@ struct OnboardingWizardView: View {
     @State private var defaultEngine: ChatBackendID = .codex
     @State private var tourPage: Int = 0
     @State private var navigationDirection: Edge = .trailing
-    #if canImport(AppKit) && !DISTRIBUTION_MAS
-    @StateObject private var permissionsCoordinator = PermissionsOnboardingCoordinator()
-    #endif
 
     var body: some View {
         VStack(spacing: 0) {
@@ -143,12 +133,6 @@ struct OnboardingWizardView: View {
                 )
             case .tour:
                 OnboardingTourView(currentPage: $tourPage)
-            case .systemPermissions:
-                #if canImport(AppKit) && !DISTRIBUTION_MAS
-                OnboardingSystemPermissionsView(coordinator: permissionsCoordinator)
-                #else
-                EmptyView()
-                #endif
             case .chatEngine:
                 OnboardingChatEngineView(
                     enabledBackends: $enabledBackends,
@@ -222,12 +206,6 @@ struct OnboardingWizardView: View {
         case .connect: return "Scan"
         case .scan: return aggregator?.isRefreshing == true ? "Scanning\u{2026}" : "Continue"
         case .tour: return tourPage < 3 ? "Next" : "Continue"
-        case .systemPermissions:
-            #if canImport(AppKit) && !DISTRIBUTION_MAS
-            return permissionsCoordinator.allResolved ? "Continue" : "Continue (set up later)"
-            #else
-            return "Continue"
-            #endif
         case .chatEngine: return "Finish"
         case .complete: return ""
         }
@@ -238,7 +216,6 @@ struct OnboardingWizardView: View {
         case .providers: return !selectedProviders.isEmpty
         case .scan: return aggregator?.isRefreshing != true
         case .tour: return true
-        case .systemPermissions: return true
         case .chatEngine: return true
         case .connect: return true
         case .complete: return true
@@ -291,11 +268,6 @@ struct OnboardingWizardView: View {
             chatController?.chatBackend = start
         }
         settingsManager.chatBackendOnboardingCompleted = true
-
-        #if canImport(AppKit) && !DISTRIBUTION_MAS
-        settingsManager.systemPermissionsOnboardingCompleted = true
-        settingsManager.systemPermissionsDeferredKinds = permissionsCoordinator.deferredKinds()
-        #endif
 
         hasOnboarded = true
     }

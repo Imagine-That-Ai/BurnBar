@@ -884,8 +884,12 @@ struct ComputerUseSettingsView: View {
     }
 
     private func requestAccessibility() {
-        _ = MacAccessibilityPermissionRequester.promptAndOpenSettings()
-        refreshReadiness()
+        // Through the ladder, so this row explains what Accessibility means before
+        // macOS says "wants to control this computer".
+        Task { @MainActor in
+            await AppCommandRouter.shared.permissionLadder.request(.accessibility)
+            refreshReadiness()
+        }
     }
 
     private func runPlaywrightInstaller() {

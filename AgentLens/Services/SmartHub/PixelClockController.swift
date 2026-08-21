@@ -307,7 +307,19 @@ final class PixelClockController {
             Self.logger.info("Pixel Clock controller start skipped under XCTest")
             return
         }
-        stockSimulator.start()
+        // Only bind the LAN listener when Pixel Clock is actually set up.
+        //
+        // This used to run unconditionally, so every launch opened an
+        // all-interfaces NWListener on :7001 and macOS raised the Local Network
+        // permission dialog at users who had never touched Pixel Clock. The
+        // stock-firmware path still starts the server on demand in
+        // `configureStockSimulator` (below), which is the only moment a real
+        // Ulanzi device has been pointed at this Mac.
+        if settingsManager.pixelClockConfig.enabled {
+            stockSimulator.start()
+        } else {
+            stockSimulator.stop()
+        }
         heartbeatTask?.cancel()
         inputTask?.cancel()
         Self.logger.info("Pixel Clock controller started; enabled=\(self.settingsManager.pixelClockConfig.enabled, privacy: .public) host=\(self.settingsManager.pixelClockConfig.host, privacy: .public)")
@@ -338,10 +350,19 @@ final class PixelClockController {
             while !Task.isCancelled {
                 guard let self else { return }
                 guard self.settingsManager.pixelClockConfig.enabled else {
+                    // Disabled: make sure we are not holding the :7001 LAN
+                    // listener open, so a user who turns Pixel Clock off stops
+                    // being a local-network listener too.
+                    self.stockSimulator.stop()
                     try? await Task.sleep(nanoseconds: 60_000_000_000) // try?-ok(sleep cancellation)
                     forceNextPush = true
                     continue
                 }
+                // `start()` binds the listener only when Pixel Clock was already
+                // enabled at launch, and nothing re-invokes it when the user flips
+                // the toggle later. Reconciling here keeps enabling-after-launch
+                // working without putting the bind back on the cold path.
+                self.stockSimulator.start()
                 await self.pushIfNeeded(force: forceNextPush)
                 forceNextPush = false
                 // After a successful push we normally tick every 5 s, but

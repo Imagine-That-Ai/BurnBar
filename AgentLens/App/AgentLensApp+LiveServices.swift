@@ -119,6 +119,13 @@ extension OpenBurnBarApp {
 
         Analytics.shared.track(.appSessionStarted)
 
+        #if canImport(AppKit) && !DISTRIBUTION_MAS
+        // Wire the trust sheet before anything can ask for a permission. The ladder
+        // fails closed without an explainer, so installing this early is what turns
+        // "BurnBar speaks first" from a convention into a guarantee.
+        SystemPermissionTrustSheetPresenter.install()
+        #endif
+
         Task { @MainActor in
             let shouldStartBackgroundServices =
                 OpenBurnBarRuntime.shouldStartBackgroundApplicationServices(
