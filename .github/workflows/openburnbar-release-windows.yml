@@ -75,7 +75,7 @@ jobs:
       domain_core_profile: ${{ steps.version.outputs.domain_core_profile }}
     steps:
       - name: Check out repository metadata
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
           fetch-depth: 0
 
@@ -171,13 +171,13 @@ jobs:
         shell: bash
     steps:
       - name: Check out authorized release commit
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
           ref: ${{ needs.resolve-release.outputs.release_commit }}
           fetch-depth: 0
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: |
             8.0.x
@@ -274,7 +274,7 @@ jobs:
       signer_run_attempt: ${{ steps.gate.outputs.signer_run_attempt }}
     steps:
       - name: Check out exact Windows release candidate
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
           ref: ${{ needs.resolve-release.outputs.release_commit }}
           fetch-depth: 0
@@ -303,7 +303,7 @@ jobs:
             --github-output "$GITHUB_OUTPUT"
 
       - name: Upload immutable verified Windows release inputs
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: domain-core-windows-release-gate-${{ needs.resolve-release.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/domain-core-native-release-gate/
@@ -335,7 +335,7 @@ jobs:
       signed_release: ${{ steps.config.outputs.codesign }}
     steps:
       - name: Check out authorized release commit
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
           ref: ${{ needs.resolve-release.outputs.release_commit }}
           fetch-depth: 0
@@ -344,13 +344,13 @@ jobs:
         run: node scripts/ci/resolve-domain-core-build-profile.mjs --profile "${{ needs.domain-core-native-release-gate.outputs.profile_name }}" --expected-candidate-commit "${{ needs.domain-core-native-release-gate.outputs.candidate_commit }}" --expected-release-commit "$RELEASE_COMMIT" --format msbuild-props --output "$GITHUB_WORKSPACE/.domain-core-profile.props"
 
       - name: Download verified Shared Rust release inputs
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v6.0.0 (node24-native)
         with:
           name: domain-core-windows-release-gate-${{ needs.resolve-release.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/domain-core-native-release-gate
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: |
             8.0.x
@@ -383,13 +383,13 @@ jobs:
           "MakePri: $makepri"
 
       - name: Download x64 native engine bundle
-        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: openburnbar-native-engine-win-x64
           path: windows/native-engine/win-x64
 
       - name: Download ARM64 native engine bundle
-        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: openburnbar-native-engine-win-arm64
           path: windows/native-engine/win-arm64
@@ -997,7 +997,7 @@ jobs:
           test -s "artifacts/OpenBurnBar-${VERSION}-windows-release.zip"
 
       - name: Upload Windows release artifacts
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: windows-release-v${{ needs.resolve-release.outputs.version }}
           path: artifacts/
@@ -1005,7 +1005,7 @@ jobs:
           retention-days: 7
 
       - name: Upload observed Windows Rust identity
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: domain-core-windows-observed-identity-${{ needs.resolve-release.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/domain-core-windows-observed-identity.json
@@ -1028,14 +1028,14 @@ jobs:
       VERSION: ${{ needs.resolve-release.outputs.version }}
     steps:
       - name: Check out authorized release scripts
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.resolve-release.outputs.release_commit }}
           persist-credentials: false
 
       - name: Download signed Windows release artifacts
         if: needs.build-sign.outputs.signed_release == 'true'
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: windows-release-v${{ needs.resolve-release.outputs.version }}
           path: artifacts
@@ -1058,7 +1058,7 @@ jobs:
 
       - name: Upload lifecycle receipt
         if: needs.build-sign.outputs.signed_release == 'true'
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: windows-msix-lifecycle-v${{ needs.resolve-release.outputs.version }}
           path: ${{ runner.temp }}/signed-x64-msix-lifecycle.json
@@ -1091,13 +1091,13 @@ jobs:
       SIGNER_RUN_ATTEMPT: ${{ needs.domain-core-native-release-gate.outputs.signer_run_attempt }}
     steps:
       - name: Check out authorized release commit
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
           ref: ${{ needs.resolve-release.outputs.release_commit }}
           fetch-depth: 0
 
       - name: Download Windows release artifacts
-        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: windows-release-v${{ needs.resolve-release.outputs.version }}
           path: artifacts
@@ -1232,7 +1232,7 @@ jobs:
           done < <(find artifacts -type f -print0 | sort -z)
 
       - name: Download exact verified candidate chain
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v6.0.0 (node24-native)
         with:
           name: domain-core-windows-release-gate-${{ needs.resolve-release.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/domain-core-native-release-gate
@@ -1307,7 +1307,7 @@ jobs:
           done < "$predicate_list"
 
       - name: Upload provenance bundle
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: windows-provenance-v${{ needs.resolve-release.outputs.version }}
           path: |
@@ -1341,26 +1341,26 @@ jobs:
       PROFILE: ${{ needs.domain-core-native-release-gate.outputs.profile_name }}
     steps:
       - name: Check out exact Windows stable release commit
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
           ref: ${{ needs.resolve-release.outputs.release_commit }}
           fetch-depth: 0
           persist-credentials: false
 
       - name: Download exact signed Windows artifacts
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v6.0.0 (node24-native)
         with:
           name: windows-release-v${{ needs.resolve-release.outputs.version }}
           path: ${{ runner.temp }}/windows-release-input
 
       - name: Download exact verified candidate chain
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v6.0.0 (node24-native)
         with:
           name: domain-core-windows-release-gate-${{ needs.resolve-release.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/domain-core-native-release-gate
 
       - name: Download observed Windows Rust identity
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v6.0.0 (node24-native)
         with:
           name: domain-core-windows-observed-identity-${{ needs.resolve-release.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/domain-core-windows-identity
@@ -1458,7 +1458,7 @@ jobs:
       - name: Attest Windows quota predicate
         id: attest-windows-quota
         if: steps.windows-plan.outputs.domain_quota == 'true'
-        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: ${{ steps.bundle.outputs.artifact }}
           predicate-type: https://openburnbar.dev/attestations/domain-core-release-artifact/v2
@@ -1467,7 +1467,7 @@ jobs:
       - name: Attest Windows CloudVault predicate
         id: attest-windows-cloud-vault
         if: steps.windows-plan.outputs.domain_cloud_vault == 'true'
-        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: ${{ steps.bundle.outputs.artifact }}
           predicate-type: https://openburnbar.dev/attestations/domain-core-release-artifact/v2
@@ -1508,7 +1508,7 @@ jobs:
           node scripts/ci/publish-domain-core-release-evidence.mjs --manifest "$manifest"
 
       - name: Retain exact Windows evidence and rollback chain
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: domain-core-windows-release-evidence-${{ needs.domain-core-native-release-gate.outputs.profile_name }}-${{ needs.resolve-release.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |

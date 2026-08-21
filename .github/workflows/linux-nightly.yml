@@ -23,9 +23,9 @@ jobs:
     env:
       OB_EVIDENCE_OUT: ${{ github.workspace }}/.linux-matched-performance
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6.4.0 (node24-native)
         with:
           node-version: 22
 
@@ -35,7 +35,7 @@ jobs:
       - name: Upload macOS nightly matched workload soak
         id: upload-macos-performance-primary
         continue-on-error: true
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: linux-parity-macos-performance-nightly
           path: ${{ env.OB_EVIDENCE_OUT }}/matched-performance-macos.json
@@ -45,7 +45,7 @@ jobs:
         id: upload-macos-performance-retry
         if: steps.upload-macos-performance-primary.outcome != 'success'
         continue-on-error: true
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: linux-parity-macos-performance-nightly-retry-${{ github.run_id }}
           path: ${{ env.OB_EVIDENCE_OUT }}/matched-performance-macos.json
@@ -80,14 +80,14 @@ jobs:
     env:
       OB_EVIDENCE_OUT: ${{ github.workspace }}/.linux-matched-performance
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6.4.0 (node24-native)
         with:
           node-version: 22
 
       - name: Download macOS nightly matched workload soak
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v6.0.0 (node24-native)
         with:
           name: ${{ needs.macos-matched-performance.outputs.macos_artifact_name }}
           path: ${{ runner.temp }}/openburnbar-macos-performance
@@ -102,7 +102,7 @@ jobs:
           --macos-input "${{ runner.temp }}/openburnbar-macos-performance/matched-performance-macos.json"
 
       - name: Upload nightly matched performance evidence
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: linux-parity-matched-performance-nightly
           path: ${{ env.OB_EVIDENCE_OUT }}/
@@ -134,9 +134,9 @@ jobs:
             reason: GitHub hosted runner is Ubuntu; Arch/wlroots needs a dedicated VM or nested compositor runner.
 
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6.4.0 (node24-native)
         with:
           node-version: 22
           cache: npm
@@ -177,7 +177,7 @@ jobs:
 
       - name: Download nightly matched performance evidence
         if: matrix.mode == 'runnable'
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v6.0.0 (node24-native)
         with:
           name: linux-parity-matched-performance-nightly
           path: ${{ runner.temp }}/openburnbar-matched-performance
@@ -201,7 +201,7 @@ jobs:
 
       - name: Upload Linux nightly evidence
         if: always()
-        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4.6.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.6.1
         with:
           name: linux-nightly-${{ matrix.label }}
           path: ${{ env.OPENBURNBAR_LINUX_EVIDENCE_OUT }}/
@@ -213,7 +213,7 @@ jobs:
     needs: [macos-matched-performance, linux-matched-performance, linux-surface]
     if: always() && contains(needs.*.result, 'failure')
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
       - name: Record Linux nightly failure
         uses: ./.github/actions/ops-failure-issue
         with:

@@ -36,9 +36,9 @@ jobs:
     env:
       OB_EVIDENCE_OUT: ${{ github.workspace }}/.linux-matched-performance
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6.4.0 (node24-native)
         with:
           node-version: 22
 
@@ -49,7 +49,7 @@ jobs:
         run: node scripts/linux-port/run-matched-performance.mjs --macos-only --profile pr
 
       - name: Upload macOS matched performance reference
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: linux-parity-macos-performance-pr
           path: ${{ env.OB_EVIDENCE_OUT }}/matched-performance-macos.json
@@ -63,9 +63,9 @@ jobs:
     env:
       OPENBURNBAR_LINUX_EVIDENCE_OUT: ${{ github.workspace }}/.linux-evidence
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6.4.0 (node24-native)
         with:
           node-version: 22
           cache: npm
@@ -246,7 +246,7 @@ jobs:
             bash scripts/linux-port/run-linux-swift-tests.sh
 
       - name: Download macOS matched performance reference
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v6.0.0 (node24-native)
         with:
           name: linux-parity-macos-performance-pr
           path: ${{ runner.temp }}/openburnbar-macos-performance
@@ -270,7 +270,7 @@ jobs:
 
       - name: Upload Linux gate evidence
         if: always()
-        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4.6.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.6.1
         with:
           name: linux-pr-gate-evidence
           path: ${{ env.OPENBURNBAR_LINUX_EVIDENCE_OUT }}/

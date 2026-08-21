@@ -41,7 +41,7 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Check out repository
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
@@ -97,7 +97,7 @@ jobs:
         run: bash scripts/ci/check-firestore-ttl-declared.sh
 
       - name: Check out trusted default-branch evaluator
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.sha }}
           path: .domain-core-trusted-evaluator
@@ -141,7 +141,7 @@ jobs:
           --output "$RUNNER_TEMP/promotion-contracts.json"
 
       - name: Upload promotion-contracts proof fragment
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: domain-core-proof-promotion-contracts-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/promotion-contracts.json
@@ -156,7 +156,7 @@ jobs:
     timeout-minutes: 45
     steps:
       - name: Check out repository
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -171,12 +171,12 @@ jobs:
           toolchain: "1.96.0"
           components: rustfmt,clippy
 
-      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: crates/openburnbar-domain-core
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: |
             8.0.x
@@ -220,7 +220,7 @@ jobs:
 
       - name: Cache pinned uniffi-bindgen-cs
         id: domain-bindgen-cache
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cargo/bin/uniffi-bindgen-cs
           key: domain-core-uniffi-bindgen-cs-${{ runner.os }}-v0.9.2+v0.28.3
@@ -305,7 +305,7 @@ jobs:
           --output "$RUNNER_TEMP/rust-and-csharp.json"
 
       - name: Upload C# native attestation input
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: domain-core-attestation-csharp-native-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/attestation-csharp-native
@@ -313,7 +313,7 @@ jobs:
           retention-days: 14
 
       - name: Upload Rust and C# proof fragment
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: domain-core-proof-rust-and-csharp-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/rust-and-csharp.json
@@ -343,7 +343,7 @@ jobs:
         shell: pwsh
     steps:
       - name: Check out repository
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -352,12 +352,12 @@ jobs:
         with:
           toolchain: "1.96.0"
 
-      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: crates/openburnbar-domain-core
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: 10.0.x
 
@@ -403,7 +403,7 @@ jobs:
             --output "$env:RUNNER_TEMP/windows-native-${{ matrix.rid }}.json"
 
       - name: Upload Windows native attestation input
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: domain-core-attestation-${{ matrix.artifact }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/attestation-${{ matrix.artifact }}
@@ -411,7 +411,7 @@ jobs:
           retention-days: 14
 
       - name: Upload Windows native proof fragment
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: domain-core-proof-windows-native-${{ matrix.rid }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/windows-native-${{ matrix.rid }}.json
@@ -426,7 +426,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Check out repository
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -435,12 +435,12 @@ jobs:
         with:
           toolchain: "1.96.0"
 
-      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: crates/openburnbar-domain-core
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: 10.0.x
 
@@ -484,7 +484,7 @@ jobs:
           --output "$RUNNER_TEMP/linux-arm64-native.json"
 
       - name: Upload Linux ARM64 native attestation input
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: domain-core-attestation-linux-arm64-native-binary-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/attestation-linux-arm64-native-binary
@@ -492,7 +492,7 @@ jobs:
           retention-days: 14
 
       - name: Upload Linux ARM64 native proof fragment
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: domain-core-proof-linux-arm64-native-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/linux-arm64-native.json
@@ -507,7 +507,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Check out repository
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -517,7 +517,7 @@ jobs:
           toolchain: "1.96.0"
           targets: wasm32-unknown-unknown
 
-      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: crates/openburnbar-domain-core
 
@@ -528,7 +528,7 @@ jobs:
 
       - name: Upload rebuilt Wasm packages
         if: always()
-        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4.6.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.6.1
         with:
           name: domain-core-wasm-rebuilt
           path: ${{ runner.temp }}/domain-core-wasm-rebuilt/
@@ -597,7 +597,7 @@ jobs:
           --output "$RUNNER_TEMP/wasm.json"
 
       - name: Upload Wasm attestation inputs
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: domain-core-attestation-browser-wasm-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/attestation-browser-wasm
@@ -605,7 +605,7 @@ jobs:
           retention-days: 14
 
       - name: Upload Node Wasm attestation input
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: domain-core-attestation-node-wasm-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/attestation-node-wasm
@@ -613,7 +613,7 @@ jobs:
           retention-days: 14
 
       - name: Upload Wasm proof fragment
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: domain-core-proof-wasm-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/wasm.json
@@ -628,12 +628,12 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Check out repository
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: Set up Node
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6.4.0 (node24-native)
         with:
           node-version: "22"
           cache: npm
@@ -673,7 +673,7 @@ jobs:
           --output "$RUNNER_TEMP/functions-pricing.json"
 
       - name: Upload Functions pricing proof fragment
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: domain-core-proof-functions-pricing-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/functions-pricing.json
@@ -688,7 +688,7 @@ jobs:
     timeout-minutes: 75
     steps:
       - name: Check out repository
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -710,7 +710,7 @@ jobs:
           printf 'DOMAIN_CORE_ANDROID_NDK_VERSION=%s\n' "${ndk_version}" >> "${GITHUB_ENV}"
 
       - name: Set up JDK 21
-        uses: actions/setup-java@1bcf9fb12cf4aa7d266a90ae39939e61372fe520 # v5.3.0
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.3.0
         with:
           distribution: temurin
           java-version: "21"
@@ -738,7 +738,7 @@ jobs:
           toolchain: "1.96.0"
           targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
 
-      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: crates/openburnbar-domain-core
 
@@ -755,7 +755,7 @@ jobs:
 
       - name: Upload rebuilt Android AAR and bindings
         if: always()
-        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4.6.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.6.1
         with:
           name: domain-core-android-rebuilt
           path: ${{ runner.temp }}/domain-core-android-rebuilt/
@@ -890,7 +890,7 @@ jobs:
           --output "$RUNNER_TEMP/android.json"
 
       - name: Upload Android loaded-library attestation input
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: domain-core-attestation-kotlin-aar-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/attestation-kotlin-aar
@@ -898,7 +898,7 @@ jobs:
           retention-days: 14
 
       - name: Upload Android proof fragment
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: domain-core-proof-android-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/android.json
@@ -913,7 +913,7 @@ jobs:
     timeout-minutes: 45
     steps:
       - name: Check out repository
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -923,7 +923,7 @@ jobs:
           toolchain: "1.96.0"
           targets: aarch64-apple-darwin,x86_64-apple-darwin,aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
 
-      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: crates/openburnbar-domain-core
 
@@ -958,7 +958,7 @@ jobs:
           --output "$RUNNER_TEMP/apple.json"
 
       - name: Upload Apple artifact proof fragment
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: domain-core-proof-apple-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/apple.json
@@ -967,7 +967,7 @@ jobs:
 
       - name: Upload rebuilt Apple artifacts
         if: always()
-        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4.6.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.6.1
         with:
           name: domain-core-apple-rebuilt
           path: |
@@ -978,7 +978,7 @@ jobs:
           retention-days: 3
 
       - name: Upload XCFramework
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: OpenBurnBarDomainCore.xcframework
           path: Vendor/OpenBurnBarDomainCore.xcframework
@@ -997,7 +997,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Check out repository
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -1012,7 +1012,7 @@ jobs:
           printf 'commit=%s\n' "$candidate_commit" >> "$GITHUB_OUTPUT"
 
       - name: Download the exact XCFramework produced by the Apple job
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v6.0.0 (node24-native)
         with:
           name: OpenBurnBarDomainCore.xcframework
           path: Vendor/OpenBurnBarDomainCore.xcframework
@@ -1044,7 +1044,7 @@ jobs:
           --output "$RUNNER_TEMP/apple-native-smoke.json"
 
       - name: Upload Swift XCFramework attestation input
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: domain-core-attestation-swift-xcframework-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/attestation-swift-xcframework
@@ -1052,7 +1052,7 @@ jobs:
           retention-days: 14
 
       - name: Upload Apple native-load proof fragment
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: domain-core-proof-apple-native-smoke-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/apple-native-smoke.json
@@ -1076,7 +1076,7 @@ jobs:
     runs-on: ${{ vars.MACOS_GATE_POOL == 'fleet' && fromJSON('["self-hosted","macOS","burnbar-swift"]') || vars.MACOS_GATE_POOL == 'paid' && fromJSON('{"group":"burnbar-ci-paid"}') || 'macos-26' }}
     steps:
       - name: Check out repository
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -1085,7 +1085,7 @@ jobs:
         with:
           toolchain: "1.96.0"
 
-      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: crates/openburnbar-domain-core
 
@@ -1159,7 +1159,7 @@ jobs:
           --output "$RUNNER_TEMP/swift-consumer-contracts.json"
 
       - name: Upload Swift consumer proof fragment
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: domain-core-proof-swift-consumer-contracts-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/swift-consumer-contracts.json
@@ -1174,12 +1174,12 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Check out repository
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: Set up Node
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6.4.0 (node24-native)
         with:
           node-version: "22"
           cache: npm
@@ -1214,7 +1214,7 @@ jobs:
           --output "$RUNNER_TEMP/console-consumer-contracts.json"
 
       - name: Upload Console consumer proof fragment
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: domain-core-proof-console-consumer-contracts-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/console-consumer-contracts.json
@@ -1229,7 +1229,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Check out repository
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -1238,7 +1238,7 @@ jobs:
         with:
           toolchain: "1.96.0"
 
-      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: crates/openburnbar-domain-core
 
@@ -1278,7 +1278,7 @@ jobs:
           --output "$RUNNER_TEMP/python-mcp-cloudvault-contracts.json"
 
       - name: Upload Python MCP native attestation input
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: domain-core-attestation-python-mcp-native-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/attestation-python-mcp-native
@@ -1286,7 +1286,7 @@ jobs:
           retention-days: 14
 
       - name: Upload Python MCP proof fragment
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: domain-core-proof-python-mcp-cloudvault-contracts-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/python-mcp-cloudvault-contracts.json
@@ -1301,7 +1301,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Check out repository
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -1310,7 +1310,7 @@ jobs:
         with:
           toolchain: "1.96.0"
 
-      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: crates/openburnbar-domain-core
 
@@ -1352,7 +1352,7 @@ jobs:
           --output "$RUNNER_TEMP/python-hermes-contracts.json"
 
       - name: Upload Hermes Python native attestation input
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: domain-core-attestation-python-hermes-native-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/attestation-python-hermes-native
@@ -1360,7 +1360,7 @@ jobs:
           retention-days: 14
 
       - name: Upload Hermes Python proof fragment
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: domain-core-proof-python-hermes-contracts-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/python-hermes-contracts.json
@@ -1375,12 +1375,12 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Check out repository
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: Set up Node
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6.4.0 (node24-native)
         with:
           node-version: "22"
           cache: npm
@@ -1418,7 +1418,7 @@ jobs:
           --output "$RUNNER_TEMP/rollback-drill.json"
 
       - name: Publish the exact candidate-bound rollback artifact
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: domain-core-public-production-rollback-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/domain-core-public-production-rollback.json
@@ -1426,7 +1426,7 @@ jobs:
           retention-days: 90
 
       - name: Upload rollback proof fragment
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: domain-core-proof-rollback-drill-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/rollback-drill.json
@@ -1457,7 +1457,7 @@ jobs:
     steps:
       - name: Check out exact candidate
         if: github.event_name == 'push'
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -1473,7 +1473,7 @@ jobs:
 
       - name: Download exact-attempt proof fragments
         if: github.event_name == 'push'
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v6.0.0 (node24-native)
         with:
           pattern: domain-core-proof-*-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/domain-core-proof-fragments
@@ -1495,7 +1495,7 @@ jobs:
 
       - name: Upload immutable unsigned candidate bundle
         if: github.event_name == 'push'
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: domain-core-candidate-bundle-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/domain-core-candidate-bundle.json
@@ -1551,7 +1551,7 @@ jobs:
 
       - name: Check out deletion candidate
         if: needs.classify.outputs.rust == 'true'
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
@@ -1561,7 +1561,7 @@ jobs:
       # Keep this fetch bounded so it cannot burn the gate's checkout headroom.
       - name: Check out trusted default-branch absence evaluator
         if: needs.classify.outputs.rust == 'true'
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.sha }}
           path: .domain-core-trusted-evaluator
@@ -1574,7 +1574,7 @@ jobs:
 
       - name: Download exact-attempt proof fragments
         if: needs.classify.outputs.rust == 'true'
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: domain-core-proof-*-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/domain-core-proof-fragments
@@ -1582,7 +1582,7 @@ jobs:
 
       - name: Download exact-attempt staged final binaries
         if: needs.classify.outputs.rust == 'true'
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: domain-core-attestation-*-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/domain-core-final-binaries
