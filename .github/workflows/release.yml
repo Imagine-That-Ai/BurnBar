@@ -1485,45 +1485,29 @@ jobs:
         working-directory: android
         run: ./gradlew :openburnbar-domain-core:assembleDebugAndroidTest --no-daemon
 
-      - name: Execute and record loaded Android Rust identity
-        # This lane booted the emulator with none of the headless options the
-        # domain-core lane uses, so it tried to open a window and a hardware
-        # GPU path on a headless runner — release attempts 13/13R both died at
-        # boot (adb:5554 refused) before any proof script ran. Mirror the
-        # domain-core emulator config. Deliberately NO boot-flake retry here:
-        # this step is a release provenance guard, and the boundary verifier
-        # forbids continue-on-error on guard steps (a guard that continues on
-        # error is not a guard). If a residual boot flake ever needs handling,
-        # retry the boot inside the script or in a separate warm-up step with
-        # no provenance responsibility — never by soft-failing this step.
-        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
+      # The dynamic loaded-bytes proof no longer runs in this job: macos-26
+      # hosted runners expose no hardware virtualization, so the Android
+      # emulator can never boot here (HV_UNSUPPORTED — see the
+      # android-hermes-smoke comment in openburnbar-pr-harness.yml; release
+      # attempts 13/13R proved it at 100%, qemu never came up). The proof runs
+      # in the android-release-identity job on ubuntu-24.04 + KVM against the
+      # AAB's x86_64 slice; this job uploads the exact signed APKs that proof
+      # must execute, and keeps the static byte-binding of BOTH packaged ABIs
+      # to the protected candidate AAR below.
+      - name: Upload Android identity proof inputs
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
-          api-level: 34
-          arch: arm64-v8a
-          target: google_apis
-          disk-size: 4G
-          heap-size: 768M
-          disable-animations: true
-          emulator-options: >-
-            -no-snapshot -no-window -gpu swiftshader_indirect -noaudio
-            -no-boot-anim
-          script: |
-            bash scripts/ci/run-android-release-startup-smoke.sh android/app/build/outputs/apk/release/app-release.apk
-            bash scripts/ci/run-domain-core-android-native-load.sh android/openburnbar-domain-core/build/outputs/apk/androidTest/debug/openburnbar-domain-core-debug-androidTest.apk "${{ needs.domain-core-native-release-gate.outputs.candidate_commit }}" "$RUNNER_TEMP/domain-core-android-observed-identity.json"
+          name: android-release-identity-inputs-${{ needs.release-preflight.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            android/app/build/outputs/apk/release/app-release.apk
+            android/openburnbar-domain-core/build/outputs/apk/androidTest/debug/openburnbar-domain-core-debug-androidTest.apk
+          if-no-files-found: error
 
-      - name: Verify loaded Android Rust identity
+      - name: Verify packaged Android Rust libraries match the protected candidate AAR
         env:
           RUST_ACTIVE: ${{ needs.domain-core-native-release-gate.outputs.rust_active }}
         run: |
           set -euo pipefail
-          packaged_library="$RUNNER_TEMP/domain-core-android-packaged-libopenburnbar_domain_ffi.so"
-          unzip -p "${{ steps.android.outputs.aab_path }}" \
-            base/lib/arm64-v8a/libopenburnbar_domain_ffi.so > "$packaged_library"
-          test -s "$packaged_library"
-          node scripts/ci/verify-domain-core-observed-identity.mjs \
-            --profile "$RUNNER_TEMP/domain-core-native-release-gate/domain-core-selected-public-profile.json" \
-            --observed-identity "$RUNNER_TEMP/domain-core-android-observed-identity.json" \
-            --binary "$packaged_library"
           if [[ "$RUST_ACTIVE" == "true" ]]; then
             node scripts/ci/verify-domain-core-android-universal-artifact.mjs \
               --aab "${{ steps.android.outputs.aab_path }}" \
@@ -3107,6 +3091,103 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
+  android-release-identity:
+    name: Android release identity proof (x86_64 emulator)
+    # The dynamic proof that the shipped domain-core library actually loads
+    # with the attested identity. It lives on ubuntu-24.04 + KVM because
+    # hosted Apple Silicon runners cannot start the Android emulator at all
+    # (HV_UNSUPPORTED; see android-hermes-smoke in openburnbar-pr-harness.yml).
+    # Coverage contract: this job binds loaded-bytes == the AAB's x86_64 slice
+    # dynamically; build-and-release binds BOTH packaged ABIs byte-for-byte to
+    # the protected candidate AAR statically; the AAR is bound by the
+    # domain-core provenance chain. The inputs are the exact signed APKs
+    # uploaded by build-and-release — nothing is rebuilt here.
+    needs:
+      - release-preflight
+      - domain-core-native-release-gate
+      - build-and-release
+    if: ${{ !cancelled() && needs.build-and-release.result == 'success' && needs.domain-core-native-release-gate.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          ref: ${{ needs.release-preflight.outputs.release_commit }}
+          persist-credentials: false
+
+      - name: Set up Java
+        uses: actions/setup-java@1bcf9fb12cf4aa7d266a90ae39939e61372fe520 # v5.3.0 (node24-native)
+        with:
+          java-version: "21"
+          distribution: temurin
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1 (node24-native)
+
+      - name: Enable KVM for the Android emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Download verified Shared Rust release inputs
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        with:
+          name: ${{ needs.domain-core-native-release-gate.outputs.artifact_name }}
+          path: ${{ runner.temp }}/domain-core-native-release-gate
+
+      - name: Download Android identity proof inputs
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        with:
+          name: android-release-identity-inputs-${{ needs.release-preflight.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/identity-inputs
+
+      - name: Download Android release bundle
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        with:
+          name: OpenBurnBar-${{ needs.release-preflight.outputs.version }}-Android.aab
+          path: ${{ runner.temp }}/android-bundle
+
+      - name: Execute and record loaded Android Rust identity
+        # Release provenance guard: never soft-failable — the boundary
+        # verifier forbids it on guard steps, and a guard that tolerates its
+        # own failure is not a guard.
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          emulator-options: >-
+            -no-snapshot -no-window -gpu swiftshader_indirect -noaudio
+            -no-boot-anim
+          script: |
+            bash scripts/ci/run-android-release-startup-smoke.sh "$RUNNER_TEMP/identity-inputs/app/build/outputs/apk/release/app-release.apk"
+            bash scripts/ci/run-domain-core-android-native-load.sh "$RUNNER_TEMP/identity-inputs/openburnbar-domain-core/build/outputs/apk/androidTest/debug/openburnbar-domain-core-debug-androidTest.apk" "${{ needs.domain-core-native-release-gate.outputs.candidate_commit }}" "$RUNNER_TEMP/domain-core-android-observed-identity.json"
+
+      - name: Verify loaded Android Rust identity
+        run: |
+          set -euo pipefail
+          packaged_library="$RUNNER_TEMP/domain-core-android-packaged-libopenburnbar_domain_ffi.so"
+          unzip -p "$RUNNER_TEMP/android-bundle/OpenBurnBar-${{ needs.release-preflight.outputs.version }}-Android.aab" \
+            base/lib/x86_64/libopenburnbar_domain_ffi.so > "$packaged_library"
+          test -s "$packaged_library"
+          node scripts/ci/verify-domain-core-observed-identity.mjs \
+            --profile "$RUNNER_TEMP/domain-core-native-release-gate/domain-core-selected-public-profile.json" \
+            --observed-identity "$RUNNER_TEMP/domain-core-android-observed-identity.json" \
+            --binary "$packaged_library"
+
+      - name: Upload observed Android Rust identity
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: domain-core-android-observed-identity-${{ needs.release-preflight.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/domain-core-android-observed-identity.json
+          if-no-files-found: error
+
   prepare-release-publication:
     # Fail-closed release gate: preparation requires every validation lane and the
     # packaging + artifact smoke chain. A skipped gate only occurs through the
@@ -3135,6 +3216,7 @@ jobs:
           && needs.release-extension-gate.result != 'failure'
           && needs.release-supply-chain-gate.result != 'failure'
           && needs.build-and-release.result == 'success'
+          && needs.android-release-identity.result == 'success'
           && needs.domain-core-ios-release-evidence.result != 'failure'
           && needs.smoke-test.result == 'success'
           && needs.apple-native-prepublication.result != 'failure' }}
@@ -3149,6 +3231,7 @@ jobs:
       - release-extension-gate
       - release-supply-chain-gate
       - build-and-release
+      - android-release-identity
       - build-ios-release
       - domain-core-ios-release-evidence
       - smoke-test

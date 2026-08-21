@@ -105,17 +105,38 @@ test("Apple and Android signing consumes the exact protected gate first", () => 
     /needs:[\s\S]*release-preflight,[\s\S]*authorize-domain-core-rollback,[\s\S]*domain-core-native-release-gate,/u,
   );
   assert.match(build, /resolve-domain-core-build-profile\.mjs/u);
-  assert.match(build, /domain-core-android-observed-identity\.json/u);
-  assert.match(build, /verify-domain-core-observed-identity\.mjs/u);
   assert.doesNotMatch(build, /OpenBurnBarDomainCoreIdentityProbe/u);
   assert.match(
     build,
     /--policy "\$GITHUB_WORKSPACE\/config\/apple-release-signing-policy\.json" --environment/u,
   );
-  assert.match(build, /--binary "\$packaged_library"/u);
   assert.match(build, /verify-domain-core-android-universal-artifact\.mjs/u);
-  assert.match(build, /run-domain-core-android-native-load\.sh/u);
-  assert.match(build, /run-android-release-startup-smoke\.sh/u);
+  // The dynamic loaded-bytes identity proof moved to the dedicated
+  // android-release-identity job: macos-26 hosted runners cannot start the
+  // Android emulator (HV_UNSUPPORTED — no hardware virtualization on hosted
+  // Apple Silicon), so the proof executes on ubuntu-24.04 + KVM against the
+  // AAB's x86_64 slice while build-and-release keeps the static byte-binding
+  // of both packaged ABIs to the protected candidate AAR and uploads the
+  // exact signed APKs the proof must run.
+  assert.match(build, /Upload Android identity proof inputs/u);
+  const identity = job(
+    appleAndroid,
+    "android-release-identity",
+    "prepare-release-publication",
+  );
+  assert.match(identity, /runs-on: ubuntu-24\.04/u);
+  assert.match(identity, /KERNEL=="kvm"/u);
+  assert.match(identity, /arch: x86_64/u);
+  assert.match(identity, /domain-core-android-observed-identity\.json/u);
+  assert.match(identity, /verify-domain-core-observed-identity\.mjs/u);
+  assert.match(identity, /--binary "\$packaged_library"/u);
+  assert.match(
+    identity,
+    /base\/lib\/x86_64\/libopenburnbar_domain_ffi\.so/u,
+  );
+  assert.match(identity, /run-domain-core-android-native-load\.sh/u);
+  assert.match(identity, /run-android-release-startup-smoke\.sh/u);
+  assert.doesNotMatch(identity, /continue-on-error/u);
   assert.match(
     build,
     /\.\/gradlew :app:bundleRelease :app:assembleRelease --no-daemon/u,
@@ -141,7 +162,13 @@ test("Apple and Android signing consumes the exact protected gate first", () => 
     build,
     /Build candidate-bound four-ABI Android AAR[\s\S]*OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: \$\{\{ needs\.domain-core-native-release-gate\.outputs\.candidate_commit \}\}[\s\S]*build-domain-core-android-aar\.sh/u,
   );
-  assert.match(build, /runs-on: macos-26[\s\S]*arch: arm64-v8a/u);
+  // build-and-release must NOT host an emulator: macos-26 hosted runners have
+  // no hardware virtualization (HV_UNSUPPORTED), which is exactly how release
+  // attempts 13/13R burned — the arm64-v8a emulator this line used to pin
+  // could never boot there. The dynamic proof now lives in
+  // android-release-identity (ubuntu-24.04 + KVM, asserted above).
+  assert.match(build, /runs-on: macos-26/u);
+  assert.doesNotMatch(build, /android-emulator-runner/u);
   assert.match(
     androidBuild,
     /keepDebugSymbols \+= "\*\*\/libopenburnbar_domain_ffi\.so"/u,
