@@ -1486,6 +1486,17 @@ jobs:
         run: ./gradlew :openburnbar-domain-core:assembleDebugAndroidTest --no-daemon
 
       - name: Execute and record loaded Android Rust identity
+        # This lane booted the emulator with none of the headless options the
+        # domain-core lane uses, so it tried to open a window and a hardware
+        # GPU path on a headless runner — release attempts 13/13R both died at
+        # boot (adb:5554 refused) before any proof script ran. Mirror the
+        # domain-core emulator config, and its boot-flake retry contract: the
+        # marker is dropped the moment the emulator has booted, so a retry can
+        # only ever happen for a boot failure — a post-boot proof failure
+        # (startup smoke or native-load/identity mismatch) fails closed below
+        # and is never rerolled.
+        id: release-emu-smoke
+        continue-on-error: true
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
         with:
           api-level: 34
@@ -1493,6 +1504,34 @@ jobs:
           target: google_apis
           disk-size: 4G
           heap-size: 768M
+          disable-animations: true
+          emulator-options: >-
+            -no-snapshot -no-window -gpu swiftshader_indirect -noaudio
+            -no-boot-anim
+          script: |
+            touch "$RUNNER_TEMP/release-emulator-booted"
+            bash scripts/ci/run-android-release-startup-smoke.sh android/app/build/outputs/apk/release/app-release.apk
+            bash scripts/ci/run-domain-core-android-native-load.sh android/openburnbar-domain-core/build/outputs/apk/androidTest/debug/openburnbar-domain-core-debug-androidTest.apk "${{ needs.domain-core-native-release-gate.outputs.candidate_commit }}" "$RUNNER_TEMP/domain-core-android-observed-identity.json"
+
+      - name: Fail closed when the emulator booted but the release proof failed
+        if: steps.release-emu-smoke.outcome == 'failure' && hashFiles(format('{0}/release-emulator-booted', runner.temp)) != ''
+        run: |
+          echo "::error::Release Android proof failed after the emulator booted; not a boot flake, not retrying." >&2
+          exit 1
+
+      - name: Retry loaded Android Rust identity (boot-flake guard)
+        if: steps.release-emu-smoke.outcome == 'failure' && hashFiles(format('{0}/release-emulator-booted', runner.temp)) == ''
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
+        with:
+          api-level: 34
+          arch: arm64-v8a
+          target: google_apis
+          disk-size: 4G
+          heap-size: 768M
+          disable-animations: true
+          emulator-options: >-
+            -no-snapshot -no-window -gpu swiftshader_indirect -noaudio
+            -no-boot-anim
           script: |
             bash scripts/ci/run-android-release-startup-smoke.sh android/app/build/outputs/apk/release/app-release.apk
             bash scripts/ci/run-domain-core-android-native-load.sh android/openburnbar-domain-core/build/outputs/apk/androidTest/debug/openburnbar-domain-core-debug-androidTest.apk "${{ needs.domain-core-native-release-gate.outputs.candidate_commit }}" "$RUNNER_TEMP/domain-core-android-observed-identity.json"
