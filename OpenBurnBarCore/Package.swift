@@ -296,6 +296,10 @@ if buildApplePrunedDecompositionTargets {
             targets: ["OpenBurnBarLaunchServices"]
         ),
         .library(
+            name: "OpenBurnBarRecap",
+            targets: ["OpenBurnBarRecap"]
+        ),
+        .library(
             name: "OpenBurnBarUI",
             targets: ["OpenBurnBarUI"]
         )
@@ -1028,6 +1032,10 @@ let coreDecompositionDependencies: [Target.Dependency] = [
 // package target list only on Apple hosts (pruned off-Apple like OpenBurnBarData).
 let applePrunedDecompositionTargets: [Target] = buildApplePrunedDecompositionTargets ? [
     .target(
+        name: "OpenBurnBarRecap",
+        dependencies: ["OpenBurnBarKernel", "OpenBurnBarInsights"]
+    ),
+    .target(
         name: "OpenBurnBarTextExpansion",
         dependencies: ["OpenBurnBarKernel"],
         exclude: openBurnBarTextExpansionExcludes
@@ -1043,6 +1051,7 @@ let applePrunedDecompositionTargets: [Target] = buildApplePrunedDecompositionTar
             "OpenBurnBarKernel",
             "OpenBurnBarQuota",
             "OpenBurnBarInsights",
+            "OpenBurnBarRecap",
             "OpenBurnBarHermes",
             "OpenBurnBarPretext",
             "OpenBurnBarLogParsers"

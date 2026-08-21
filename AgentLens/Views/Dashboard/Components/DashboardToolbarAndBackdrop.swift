@@ -151,28 +151,35 @@ struct DashboardBackdrop: View {
                 LiquidGlassWindowBlend()
                     .ignoresSafeArea()
             }
-            if settingsManager.appearanceSkin == .editorial {
+            // An explicitly chosen live backdrop outranks the skin's default
+            // background. Editorial used to short-circuit above this, which meant
+            // picking a kernel theme on the paper skin rendered nothing at all —
+            // the theme was chosen, stored, and then never consulted.
+            if shouldUseKernelBackdrop {
+                // Full-window WebGL2 kernel field (the living backdrop).
+                // Native swarm mounts only for an explicit substrate — see
+                // `KernelSwarmOverlayPolicy`. Provider glyphs tint the kernel;
+                // they do not spawn a second particle simulator.
+                Group {
+                    staticKernelFallback
+                    KernelBackdropView(
+                        colorSchemeOverride: kernelColorScheme,
+                        onReadabilityChange: { profile in
+                            onReadabilityChange?(profile)
+                        },
+                        wantsOpaqueLayer: KernelWebViewOpacityPolicy.isOpaque(clarity: clarity)
+                    )
+                        .ignoresSafeArea()
+                    kernelSubstrateOverlay
+                }
+                .opacity(1 - 0.82 * clarity)
+            } else if settingsManager.appearanceSkin == .editorial {
                 // Editorial / Paper skin: the light dot-crest (provider logos
                 // drifting from coloured dots on paper), like app.burnbar.ai.
                 WebsiteBackgroundView(accent: DesignSystem.Colors.ember)
             } else if dynamicBackdropEnabled {
                 Group {
-                    if shouldUseKernelBackdrop {
-                        // Full-window WebGL2 kernel field (the living backdrop).
-                        // Native swarm mounts only for an explicit substrate — see
-                        // `KernelSwarmOverlayPolicy`. Provider glyphs tint the kernel;
-                        // they do not spawn a second particle simulator.
-                        staticKernelFallback
-                        KernelBackdropView(
-                            colorSchemeOverride: kernelColorScheme,
-                            onReadabilityChange: { profile in
-                                onReadabilityChange?(profile)
-                            },
-                            wantsOpaqueLayer: KernelWebViewOpacityPolicy.isOpaque(clarity: clarity)
-                        )
-                            .ignoresSafeArea()
-                        kernelSubstrateOverlay
-                    } else if settingsManager.useConstellationBackground {
+                    if settingsManager.useConstellationBackground {
                         ConstellationBackgroundView(
                             accent: DesignSystem.Colors.ember,
                             enabledProviderGlyphs: settingsManager.desktopWallpaperProviderGlyphs

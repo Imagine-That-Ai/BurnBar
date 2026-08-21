@@ -162,7 +162,9 @@ final class MobileInsightDataSource: InsightDataSource {
         }
     }
 
-    nonisolated private static func insightRow(from usage: TokenUsage) -> InsightUsageRow {
+    /// Shared with `MobileRecapSource` — a 16-field mapping is not worth
+    /// maintaining twice in one target.
+    nonisolated static func insightRow(from usage: TokenUsage) -> InsightUsageRow {
         InsightUsageRow(
             sessionID: usage.sessionId,
             provider: usage.provider.rawValue,

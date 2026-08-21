@@ -349,4 +349,7 @@ result hash, and cost where available.
   architecture, gateway protocol, JSON-Schema contract, extension recipe.
 - [`docs/CHART_STUDIO.md`](CHART_STUDIO.md) — the exploratory single-canvas
   surface; shares the same renderer grammar.
+- [`docs/RECAP.md`](RECAP.md) — the monthly recap: the same telemetry read
+  back as an editorial deck, with the numbers computed locally and only the
+  wording written by a model.
 - [`docs/PRIVACY.md`](PRIVACY.md) — overall data-collection posture.

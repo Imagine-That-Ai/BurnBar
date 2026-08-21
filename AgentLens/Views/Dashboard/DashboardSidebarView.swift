@@ -221,7 +221,7 @@ extension DashboardView {
     }
 
     var sidebarRouteOrder: [DashboardMainRoute] {
-        var routes: [DashboardMainRoute] = [.overview, .insights]
+        var routes: [DashboardMainRoute] = [.overview, .insights, .recap]
         if viewMode == .agents {
             routes.append(contentsOf: dashboardProviderSummaries.map { .provider($0.provider) })
         } else {

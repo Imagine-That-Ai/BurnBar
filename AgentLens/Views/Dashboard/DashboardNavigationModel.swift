@@ -19,6 +19,11 @@ enum DashboardMainRoute: Hashable {
     case overview
     case insights
     case charts
+    /// The monthly recap. Deliberately **not** in `primarySections`: that array
+    /// is positional and drives ⌘1–⌘8, so inserting here would renumber every
+    /// existing user's shortcuts. Reached from the sidebar, the section
+    /// switcher, the command palette, and `openburnbar://recap`.
+    case recap
     case database
     case projects
     case missions
@@ -60,6 +65,7 @@ enum DashboardMainRoute: Hashable {
         case .overview: return "Overview"
         case .insights: return "Insights"
         case .charts: return "Charts"
+        case .recap: return "Recap"
         case .database: return "Database"
         case .projects: return "Projects"
         case .missions: return "Missions"
@@ -81,6 +87,7 @@ enum DashboardMainRoute: Hashable {
         case .overview: return "chart.bar.xaxis"
         case .insights: return "cpu"
         case .charts: return "chart.xyaxis.line"
+        case .recap: return "calendar.badge.clock"
         case .database: return "archivebox"
         case .projects: return "folder"
         case .missions: return "flag"
@@ -107,6 +114,8 @@ enum DashboardMainRoute: Hashable {
             return DesignSystem.Colors.amber
         case .charts:
             return DesignSystem.Colors.ember
+        case .recap:
+            return DesignSystem.Colors.amber
         case .controlDeck:
             return DesignSystem.Colors.ember
         case .fleet:
@@ -135,6 +144,7 @@ enum DashboardMainRoute: Hashable {
         case .overview: return "All providers + models"
         case .insights: return "Editorial brief & anomalies"
         case .charts: return "Your usage, drawn honestly"
+        case .recap: return "Your month with AI, read back to you"
         case .controlDeck: return "Every feature, live, one click deep"
         case .fleet: return "Watch agents. Steer the one in charge."
         case .provider: return "Provider deep dive"
