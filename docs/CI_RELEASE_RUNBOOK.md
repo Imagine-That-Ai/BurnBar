@@ -30,14 +30,19 @@ but
 
 > **did this check actually run — and did it run the thing I think it ran?**
 
-Three instances are known. They look unrelated in the logs. They are the same
-bug, and the list is almost certainly not finished.
+Two confirmed instances, and one mechanism that can manufacture a third. They
+look unrelated in the logs. The list is almost certainly not finished.
 
-| # | Instance | Never… |
-| --- | --- | --- |
-| 1.1 | Skip propagation through `needs` | …scheduled |
-| 1.2 | Path-filter drift | …triggered |
-| 1.3 | Self-test unrunnable on the dev platform | …executed |
+| # | | Never… | Presents as |
+| --- | --- | --- | --- |
+| 1.1 | Skip propagation through `needs` | …scheduled | green |
+| 1.2 | Path-filter drift | …triggered | green |
+| 1.3 | Copied-CLI fixture on macOS | …executed | **either** — see below |
+
+`1.3` earns its place for a reason worth stating up front: the same mechanism
+produces a **loud red** or a **silent green** depending only on what the test
+happens to assert. We hit the loud half and caught it in minutes. The silent
+half is the one this section is about, and nothing would have told us.
 
 ### 1.1 Skip propagation through `needs` — never scheduled
 
@@ -106,18 +111,27 @@ On macOS `tmpdir()` returns a `/var` symlink, and Node realpaths
 resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 ```
 
-never matched inside the fixture. `main()` never ran. The spawn exited 0, and
-the assertion "the real CLI must exit 1 on a size failure" was never exercised.
+never matched inside the fixture. **`main()` never ran** and the spawn exited 0.
 
-Linux CI has no such symlink, so the lane was green **for the right reason on
-the runner and the wrong reason everywhere else**: the self-test was simply
-unrunnable on every Mac in the fleet.
+**Be precise about what happened next, because it decides the taxonomy.** That
+test asserts a *non-zero* exit, so the assertion **did run, and it failed
+loudly** — the file was red on every Mac and green on Linux, where the CLI
+executed correctly. It was never a vacuously-green check, and calling it one
+would teach the wrong lesson.
 
-The consequence is the whole point. When #2362 added five dead
-`allow …: if false;` clauses to `firestore.rules`, the gate that exists to
-reject them **could not run locally on the platform this repo is developed on**,
-so nobody saw it before merge. It reached main and reddened every branch cut
-from it.
+What makes it belong here is the *other* branch of the same mechanism. Flip the
+expectation — a test that copies a CLI in and asserts it **succeeds** — and the
+identical bug produces the identical exit code 0, the assertion passes, and the
+check is green forever without the CLI ever having run. Same cause, opposite
+symptom:
+
+| the test asserts | CLI silently doesn't run | you find out |
+| --- | --- | --- |
+| non-zero exit | assertion fails | immediately, loudly |
+| **success** | **assertion passes** | **never** |
+
+So the honest statement is: we found the loud half, and the loud half is a gift.
+It told us the mechanism exists before the silent half bit us.
 
 **Fix:** realpath the fixture root — `mkdtempSync` under `realpathSync(tmpdir())`.
 
@@ -186,10 +200,20 @@ node scripts/ci/verify-workflow-reachability.mjs
 Runs in `Workflow Lint` on every PR, reports the offending job or path, and
 tells you which of the two you hit.
 
-**`1.3` is not enforced by anything yet.** It is caught only by running the
-self-tests on a Mac, which is exactly the gap that let it through. Treat the
-grep above as the current control, and do not read the green `Workflow Lint`
-tick as coverage for it.
+**`1.3` is not enforced by anything yet, and the two obvious controls do not
+work.** Say plainly what each one can and cannot do:
+
+- **Running the self-tests on a Mac** catches only the loud half. A test whose
+  copied CLI silently exits 0 while asserting success stays green on macOS and
+  Linux alike.
+- **The grep** yields *candidates*. It cannot establish that any candidate's
+  assertions actually executed — which is the only question that matters.
+
+The control that does work is a **positive control per candidate**: feed the
+gate a known-bad input and prove it goes red. A gate that cannot be made to
+fail is not passing; it is not running. Until that is automated, "I ran the
+grep" and "it is green on my Mac" are **not** evidence that 1.3 was checked, and
+the green `Workflow Lint` tick is not coverage for it either.
 
 ---
 
