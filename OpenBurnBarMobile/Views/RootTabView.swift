@@ -86,13 +86,28 @@ struct RootTabView: View {
 
     var body: some View {
         ZStack {
-            if selection == .hermes {
-                contentForSelection
-                    .environment(\.mobileBackgroundVisibility, rootBackgroundVisibility)
-            } else {
-                contentForSelection
-                    .environment(\.mobileBackgroundVisibility, rootBackgroundVisibility)
-                    .ignoresSafeArea(.keyboard)
+            Group {
+                if selection == .hermes {
+                    contentForSelection
+                        .environment(\.mobileBackgroundVisibility, rootBackgroundVisibility)
+                } else {
+                    contentForSelection
+                        .environment(\.mobileBackgroundVisibility, rootBackgroundVisibility)
+                        .ignoresSafeArea(.keyboard)
+                }
+            }
+            // The tray remains a visual overlay so its glass can float above
+            // every tab, but the root owns one real safe-area reservation for
+            // it. Scroll views, editors and pushed chat screens therefore stop
+            // above the pill instead of each guessing a different bottom
+            // padding and letting live content sit underneath the controls.
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                Color.clear
+                    .frame(height: MobileTrayMetrics.reservedHeight(isVisible: isNavigationTrayVisible))
+                    .accessibilityHidden(true)
+                    .transaction { transaction in
+                        transaction.disablesAnimations = true
+                    }
             }
 
             VStack(spacing: 0) {
@@ -111,10 +126,10 @@ struct RootTabView: View {
                         scrubPreview = nil
                     }
                 )
-                .opacity(isHermesKeyboardVisible || isCloudStoreChromeHidden ? 0 : 1)
+                .opacity(isNavigationTrayVisible ? 1 : 0)
                 .animation(.easeInOut(duration: 0.2), value: isHermesKeyboardVisible)
                 .animation(.easeInOut(duration: 0.2), value: isCloudStoreChromeHidden)
-                .allowsHitTesting(!isHermesKeyboardVisible && !isCloudStoreChromeHidden)
+                .allowsHitTesting(isNavigationTrayVisible)
             }
 
             // Floating Chart Studio button — only visible while Studio is
@@ -160,15 +175,6 @@ struct RootTabView: View {
             .zIndex(19)
         }
         .environment(\.motionStore, motionStore)
-        // This root is the one that actually draws the floating tray, so it is
-        // the one that says how much room it takes. The sidebar root never sets
-        // this and inherits `0`, which is why iPad stops reserving space for a
-        // tray it does not have. Goes to `0` while the tray is hidden too — the
-        // space is only owed when something is standing in it.
-        .environment(
-            \.mobileTrayInset,
-            isHermesKeyboardVisible || isCloudStoreChromeHidden ? 0 : MobileTrayMetrics.occupiedHeight
-        )
         .environment(\.chartStudioPresenter, studioPresenter)
         .environment(\.cloudSubscriptionStore, subscriptionStore)
         .environment(\.mobileAuthStore, authStore)
@@ -284,6 +290,10 @@ struct RootTabView: View {
                 showMercuryCall = false
             }
         }
+    }
+
+    private var isNavigationTrayVisible: Bool {
+        !isHermesKeyboardVisible && !isCloudStoreChromeHidden
     }
 
     @ViewBuilder

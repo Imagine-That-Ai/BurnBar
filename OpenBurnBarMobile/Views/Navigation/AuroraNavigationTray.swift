@@ -59,12 +59,11 @@ struct AuroraNavigationTray: View {
     // Store are discoverable without relying on icon interpretation.
     private let pillHeight: CGFloat = MobileTrayMetrics.pillHeight
     private let iconSize: CGFloat = 24
-    private let tabWidth: CGFloat = 56
-    private let pillSidePadding: CGFloat = 6
+    private let pillSidePadding: CGFloat = MobileTrayMetrics.pillSidePadding
     private let pillBottomInset: CGFloat = MobileTrayMetrics.pillBottomInset
 
-    /// Effective pill content width (sum of all tab widths + side padding).
-    private var trayContentWidth: CGFloat {
+    /// Effective pill width (sum of all tab slots + side padding).
+    private func trayWidth(tabWidth: CGFloat) -> CGFloat {
         CGFloat(destinations.count) * tabWidth + pillSidePadding * 2
     }
 
@@ -79,10 +78,19 @@ struct AuroraNavigationTray: View {
         // (`pillHeight + bottomInset`); the parent decides where it sits.
         // Avoids an inner Spacer that would expand the tray to fill the
         // screen and visually swallow the underlying content.
-        pill
-            .padding(.bottom, pillBottomInset)
-            .padding(.horizontal, 32)
-            .accessibilityElement(children: .contain)
+        GeometryReader { geometry in
+            let tabWidth = MobileTrayMetrics.tabWidth(
+                containerWidth: geometry.size.width,
+                destinationCount: destinations.count
+            )
+
+            pill(tabWidth: tabWidth)
+                .frame(width: MobileTrayMetrics.pillWidth(containerWidth: geometry.size.width))
+                .padding(.horizontal, MobileTrayMetrics.minimumEdgeMargin)
+                .padding(.bottom, pillBottomInset)
+                .accessibilityElement(children: .contain)
+        }
+        .frame(height: MobileTrayMetrics.occupiedHeight)
     }
 
     /// The floating pill. On iOS 26 the body is true Liquid Glass: the warm
@@ -92,9 +100,9 @@ struct AuroraNavigationTray: View {
     /// would flatten the glass specular. Older systems keep the original
     /// material + tint stack.
     @ViewBuilder
-    private var pill: some View {
+    private func pill(tabWidth: CGFloat) -> some View {
         if #available(iOS 26.0, *) {
-            tabRow
+            tabRow(tabWidth: tabWidth)
                 .clipShape(Capsule(style: .continuous))
                 .background(
                     warmTintCapsule
@@ -104,7 +112,7 @@ struct AuroraNavigationTray: View {
                 .overlay(alignment: .leading) {
                     // Liquid Glass viewfinder capsule — tracks the finger,
                     // tints with the previewed destination's accent.
-                    viewfinderOverlay
+                    viewfinderOverlay(tabWidth: tabWidth)
                         .allowsHitTesting(false)
                 }
                 .overlay(
@@ -112,11 +120,11 @@ struct AuroraNavigationTray: View {
                         .stroke(strokeGradient, lineWidth: 0.6)
                 )
                 .contentShape(Capsule(style: .continuous))
-                .gesture(scrubGesture)
+                .gesture(scrubGesture(tabWidth: tabWidth))
         } else {
-            tabRow
+            tabRow(tabWidth: tabWidth)
                 .overlay(alignment: .leading) {
-                    viewfinderOverlay
+                    viewfinderOverlay(tabWidth: tabWidth)
                         .allowsHitTesting(false)
                 }
                 .background(pillBackground)
@@ -128,11 +136,11 @@ struct AuroraNavigationTray: View {
                 .compositingGroup()
                 .shadow(color: Color.black.opacity(0.18), radius: 10, y: 4)
                 .contentShape(Capsule(style: .continuous))
-                .gesture(scrubGesture)
+                .gesture(scrubGesture(tabWidth: tabWidth))
         }
     }
 
-    private var tabRow: some View {
+    private func tabRow(tabWidth: CGFloat) -> some View {
         HStack(spacing: 0) {
             ForEach(destinations) { dest in
                 AuroraTabItem(
@@ -159,7 +167,7 @@ struct AuroraNavigationTray: View {
     /// the previewed destination's accent. On iOS 26+ it rides on
     /// `liquidGlassEffect`; on older systems it's a material + tint capsule.
     @ViewBuilder
-    private var viewfinderOverlay: some View {
+    private func viewfinderOverlay(tabWidth: CGFloat) -> some View {
         if isScrubbing, let preview = previewDestination {
             let capsuleWidth = tabWidth + 4
             let x = viewfinderX - capsuleWidth / 2
@@ -180,7 +188,7 @@ struct AuroraNavigationTray: View {
 
     // MARK: - Scrub gesture
 
-    private var scrubGesture: some Gesture {
+    private func scrubGesture(tabWidth: CGFloat) -> some Gesture {
         DragGesture(minimumDistance: 0, coordinateSpace: .local)
             .onChanged { value in
                 if !isScrubbing {
@@ -193,7 +201,7 @@ struct AuroraNavigationTray: View {
                     viewfinderX = AuroraNavGestureModel.viewfinderCenterX(
                         index: currentIdx,
                         count: destinations.count,
-                        trayWidth: trayContentWidth
+                        trayWidth: CGFloat(destinations.count) * tabWidth
                     ) + pillSidePadding
                 }
                 fingerX = value.location.x
@@ -223,7 +231,7 @@ struct AuroraNavigationTray: View {
             }
             .onEnded { value in
                 // Determine if the finger ended inside the pill bounds.
-                let insideX = value.location.x >= 0 && value.location.x <= trayContentWidth + pillSidePadding * 2
+                let insideX = value.location.x >= 0 && value.location.x <= trayWidth(tabWidth: tabWidth)
                 if insideX, let committed = previewDestination {
                     // Commit: write the binding (fires analytics via .onChange
                     // in the host) and notify the host.

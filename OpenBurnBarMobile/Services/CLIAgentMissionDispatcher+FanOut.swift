@@ -226,7 +226,7 @@ extension CLIAgentMissionDispatcher {
                     parent["siblings"] = Array(slice.dropFirst())
                 }
                 _ = try await ComputerUseSecurityCallableClient.createCliAgentMission(
-                    payload: parent,
+                    payload: ComputerUseSecurityCallableClient.sendableJSONPayload(parent),
                     deviceId: deviceId
                 )
             }

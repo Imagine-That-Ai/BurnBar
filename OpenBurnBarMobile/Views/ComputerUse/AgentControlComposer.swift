@@ -1,6 +1,7 @@
 #if canImport(SwiftUI) && canImport(UIKit)
 import SwiftUI
 import OpenBurnBarComputerUseCore
+import OpenBurnBarCore
 
 /// Agent Control surface: live puck + permission sheet. Not a CLI thread view.
 struct AgentControlComposer: View {

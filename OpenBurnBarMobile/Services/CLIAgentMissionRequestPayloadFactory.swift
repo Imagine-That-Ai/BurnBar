@@ -7,8 +7,6 @@ import OpenBurnBarCore
 import OpenBurnBarSignalCore
 import os
 
-private typealias UntypedJSONObject = [String: Any]
-
 // MARK: - CLI mission request payload factory
 //
 // Split out of `CLIAgentMissionDispatcher.swift` (audit wave 4, item 14
@@ -106,7 +104,7 @@ enum CLIAgentMissionRequestPayloadFactory {
     ) throws -> UntypedJSONObject {
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
         let trimmedPrompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        var payload = build(
+        let payload = build(
             id: id,
             title: title,
             prompt: prompt,

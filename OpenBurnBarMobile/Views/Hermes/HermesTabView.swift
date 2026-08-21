@@ -29,7 +29,6 @@ struct HermesChatView: View {
     @Bindable var service: HermesService
     let dashboardSnapshot: DashboardStore?
     let route: HermesChatRoute
-    let presentation: HermesChatPresentation
 
     @Environment(\.mobileAuthStore) private var authStore
     @State private var input: String = ""
@@ -76,13 +75,11 @@ struct HermesChatView: View {
     init(
         service: HermesService,
         dashboardSnapshot: DashboardStore? = nil,
-        route: HermesChatRoute = .new,
-        presentation: HermesChatPresentation = .push
+        route: HermesChatRoute = .new
     ) {
         self.service = service
         self.dashboardSnapshot = dashboardSnapshot
         self.route = route
-        self.presentation = presentation
     }
 
     /// User-visible subset of `service.messages`. `.tool` role messages
@@ -271,20 +268,6 @@ struct HermesChatView: View {
                 inputBar
                     .padding(.horizontal, AuroraDesign.Layout.cardInset)
                     .padding(.bottom, HermesChatLayout.composerBottomPadding)
-            }
-            // Keep the visible prompt/composer stack stable. The floating
-            // AuroraNavigationTray needs a reserve only while the keyboard
-            // is hidden AND we're being pushed inside the tab's
-            // NavigationStack — the tray sits above the stack and would
-            // otherwise overlap the composer. When presented as a
-            // fullScreenCover the tray is fully occluded, so the reserve
-            // becomes a dead gap above the home indicator.
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                Color.clear
-                    .frame(height: bottomReserveHeight)
-                    .transaction { transaction in
-                        transaction.disablesAnimations = true
-                    }
             }
         }
         // Tells the swarm background to throttle its frame rate while a reply
@@ -1195,15 +1178,6 @@ struct HermesChatView: View {
         !service.isStreaming
             && input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && pendingAttachments.isEmpty
-    }
-
-    private var bottomReserveHeight: CGFloat {
-        if UIDevice.current.userInterfaceIdiom == .pad { return 0 }
-        if inputFocused { return 0 }
-        switch presentation {
-        case .cover: return 0
-        case .push: return HermesChatLayout.hiddenNavigationTrayReserve
-        }
     }
 
     // MARK: - Actions

@@ -1162,6 +1162,30 @@ enum ComputerUseSecurityCallableClient {
         ]
     }
 
+    /// Narrows an untyped JSON object to the value types Firebase can safely
+    /// carry across this Swift 6 async boundary.
+    static func sendableJSONPayload(_ object: [String: Any]) -> [String: any Sendable] {
+        object.reduce(into: [String: any Sendable]()) { result, entry in
+            if let value = sendableJSONValue(entry.value) {
+                result[entry.key] = value
+            }
+        }
+    }
+
+    private static func sendableJSONValue(_ value: Any) -> (any Sendable)? {
+        switch value {
+        case let value as String: return value
+        case let value as Bool: return value
+        case let value as Int: return value
+        case let value as Double: return value
+        case let value as NSNumber: return value.doubleValue
+        case is NSNull: return nil
+        case let value as [Any]: return value.compactMap(sendableJSONValue)
+        case let value as [String: Any]: return sendableJSONPayload(value)
+        default: return nil
+        }
+    }
+
     @discardableResult
     static func callHighRiskOwnerAction(
         _ callableName: String,
@@ -1261,7 +1285,7 @@ enum ComputerUseSecurityCallableClient {
     static func publishMissionApprovalCeiling(
         requestId: String,
         deviceId: String,
-        canonical: [String: Any],
+        canonical: [String: any Sendable],
         ceilingDigest: String,
         signature: String
     ) async throws {
@@ -1284,7 +1308,7 @@ enum ComputerUseSecurityCallableClient {
         requestId: String,
         deviceId: String,
         ceilingDigest: String,
-        requestedGrant: [String: Any]
+        requestedGrant: [String: any Sendable]
     ) async throws {
         _ = try await callHighRiskOwnerAction(
             "redeemMissionApprovalAnswer",
@@ -1300,14 +1324,19 @@ enum ComputerUseSecurityCallableClient {
         )
     }
 
-    static func createCliAgentMission(payload: [String: Any], deviceId: String) async throws -> String {
+    static func createCliAgentMission(
+        payload: [String: any Sendable],
+        deviceId: String
+    ) async throws -> String {
         let requestId = payload["requestId"] as? String ?? ""
+        var callablePayload = payload
+        callablePayload["deviceId"] = deviceId
         let result = try await callHighRiskOwnerAction(
             "createCliAgentMission",
             deviceId: deviceId,
             actionKind: "cli_agent_mission_create",
             subjectId: requestId,
-            payload: payload.merging(["deviceId": deviceId]) { _, new in new }
+            payload: callablePayload
         )
         guard let dict = result.data as? [String: Any],
               dict["ok"] as? Bool == true,
@@ -1321,7 +1350,7 @@ enum ComputerUseSecurityCallableClient {
     static func cancelCliAgentMission(
         requestId: String,
         deviceId: String,
-        sealedStatePayload: [String: Any]
+        sealedStatePayload: [String: any Sendable]
     ) async throws {
         let result = try await callHighRiskOwnerAction(
             "cancelCliAgentMission",

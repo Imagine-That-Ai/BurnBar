@@ -37,91 +37,161 @@ enum PulseCardSpan: Int {
     case full = 2
 }
 
-/// Reports the feed's content width so the layout can pick a column count.
-///
-/// A `GeometryReader` wrapper would take over the scroll content's sizing — the
-/// feed lives inside `PulseView`'s `ScrollView`, and a reader that claims the
-/// height collapses it. Read from a transparent background instead. Identical
-/// in shape and reason to `RecapDeckView`'s `RecapWidthKey`.
-private struct PulseFeedWidthKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = max(value, nextValue())
-    }
+private struct PulseCardSpanKey: LayoutValueKey {
+    static let defaultValue = PulseCardSpan.single.rawValue
 }
 
 /// Lays a heterogeneous card feed into width-derived columns.
 ///
-/// Generic over one content closure keyed by index rather than taking an array
-/// of views, for the same reason `HomeLivingLayout` does: an `[AnyView]` would
-/// erase the card types and cost SwiftUI its diffing.
-struct PulseFeedLayout<Card: View>: View {
-    /// Span per card, in feed order. Order is the contract — `CardRowPacker`
-    /// never reshuffles to improve the fit.
-    let spans: [PulseCardSpan]
+/// Generic over the card identity so conditional membership keeps stable
+/// SwiftUI identity when the Cloud forecast band appears or disappears.
+struct PulseFeedLayout<Item: Hashable, Card: View>: View {
+    let items: [Item]
     var gutter: CGFloat = MobileTheme.Spacing.md
-    @ViewBuilder let card: (Int) -> Card
-
-    @State private var contentWidth: CGFloat = 0
-    @State private var columns = 1
+    let span: (Item) -> PulseCardSpan
+    @ViewBuilder let card: (Item, Int) -> Card
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        VStack(spacing: gutter) {
-            // Until the width is known there is nothing honest to lay out, and
-            // guessing produces a visible reflow on first paint.
-            if contentWidth > 0 {
-                ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
-                    HStack(alignment: .top, spacing: gutter) {
-                        ForEach(row, id: \.self) { index in
-                            card(index)
-                                .frame(width: cardWidth(for: index))
-                        }
-                        // Keeps a short final row left-aligned instead of
-                        // letting one card stretch across a gap it did not ask
-                        // for — the packer's own trailing-`Spacer` convention.
-                        Spacer(minLength: 0)
-                    }
-                }
+        PulseFeedGridLayout(gutter: gutter) {
+            ForEach(Array(items.enumerated()), id: \.element) { index, item in
+                card(item, index)
+                    .layoutValue(key: PulseCardSpanKey.self, value: span(item).rawValue)
             }
         }
         .frame(maxWidth: .infinity, alignment: .top)
-        .background {
-            GeometryReader { proxy in
-                Color.clear.preference(key: PulseFeedWidthKey.self, value: proxy.size.width)
-            }
-        }
-        .onPreferenceChange(PulseFeedWidthKey.self) { width in
-            // Ignore sub-point jitter; a column flip is a layout event, not a
-            // per-frame one.
-            guard abs(width - contentWidth) > 0.5 else { return }
-            contentWidth = width
-            updateColumns(width: width)
-        }
-        .animation(MotionTokens.settle(reduceMotion: reduceMotion), value: columns)
+        .animation(MotionTokens.settle(reduceMotion: reduceMotion), value: items.count)
+    }
+}
+
+/// Measures and places the feed directly from SwiftUI's proposed width.
+///
+/// The old transparent-background `PreferenceKey` wrote width back into
+/// `@State` during layout. On a physical iPhone, remounting Pulse after walking
+/// the tray could turn that feedback loop into an indefinitely busy main
+/// thread. A custom `Layout` receives the real proposal synchronously, so it
+/// needs no geometry reader, preference propagation, or render-time state write.
+private struct PulseFeedGridLayout: Layout {
+    let gutter: CGFloat
+
+    struct Cache {
+        var columns = 1
     }
 
-    private var rows: [[Int]] {
-        CardRowPacker.rows(spans: spans.map(\.rawValue), columns: columns)
+    func makeCache(subviews: Subviews) -> Cache {
+        Cache()
     }
 
-    private func cardWidth(for index: Int) -> CGFloat {
-        let span = spans.indices.contains(index) ? spans[index].rawValue : 1
-        return CardRowPacker.width(
-            span: span,
-            columns: columns,
-            contentWidth: contentWidth,
-            gutter: gutter
+    func sizeThatFits(
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout Cache
+    ) -> CGSize {
+        layoutPlan(width: proposedWidth(proposal, subviews: subviews), subviews: subviews, cache: &cache).size
+    }
+
+    func placeSubviews(
+        in bounds: CGRect,
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout Cache
+    ) {
+        let plan = layoutPlan(width: bounds.width, subviews: subviews, cache: &cache)
+        for placement in plan.placements {
+            subviews[placement.index].place(
+                at: CGPoint(
+                    x: bounds.minX + placement.frame.minX,
+                    y: bounds.minY + placement.frame.minY
+                ),
+                anchor: .topLeading,
+                proposal: ProposedViewSize(placement.frame.size)
+            )
+        }
+    }
+
+    private func proposedWidth(_ proposal: ProposedViewSize, subviews: Subviews) -> CGFloat {
+        if let width = proposal.width { return max(0, width) }
+        return subviews.reduce(CGFloat.zero) {
+            max($0, $1.sizeThatFits(.unspecified).width)
+        }
+    }
+
+    private func layoutPlan(
+        width: CGFloat,
+        subviews: Subviews,
+        cache: inout Cache
+    ) -> Plan {
+        let safeWidth = max(0, width)
+        let spans = subviews.map { max(PulseCardSpan.single.rawValue, $0[PulseCardSpanKey.self]) }
+        let resolvedColumns = LivingSpaceBudget.columns(
+            forWidth: safeWidth,
+            current: cache.columns,
+            slots: subviews.count
         )
-    }
-
-    private func updateColumns(width: CGFloat) {
-        let next = LivingSpaceBudget.columns(forWidth: width, current: columns, slots: spans.count)
         // Pulse is a reading feed, not a dashboard grid: three columns of cards
         // this tall stops being scannable. Two is the ceiling here even when the
         // shared breakpoint would allow a third.
-        let capped = min(2, next)
-        guard capped != columns else { return }
-        withAnimation(MotionTokens.settle(reduceMotion: reduceMotion)) { columns = capped }
+        cache.columns = max(1, min(2, resolvedColumns))
+
+        let rows = CardRowPacker.rows(spans: spans, columns: cache.columns)
+        var placements: [Placement] = []
+        var y: CGFloat = 0
+
+        for (rowIndex, row) in rows.enumerated() {
+            var rowMeasurements: [(index: Int, width: CGFloat, height: CGFloat)] = []
+            var rowHeight: CGFloat = 0
+
+            for index in row {
+                guard subviews.indices.contains(index) else { continue }
+                let cardWidth = CardRowPacker.width(
+                    span: spans[index],
+                    columns: cache.columns,
+                    contentWidth: safeWidth,
+                    gutter: gutter
+                )
+                let measured = subviews[index].sizeThatFits(
+                    ProposedViewSize(width: cardWidth, height: nil)
+                )
+                let cardHeight = measured.height.isFinite ? max(0, measured.height) : 0
+                rowMeasurements.append((index, cardWidth, cardHeight))
+                rowHeight = max(rowHeight, cardHeight)
+            }
+
+            var x: CGFloat = 0
+            for measurement in rowMeasurements {
+                placements.append(
+                    Placement(
+                        index: measurement.index,
+                        frame: CGRect(
+                            x: x,
+                            y: y,
+                            width: measurement.width,
+                            height: measurement.height
+                        )
+                    )
+                )
+                x += measurement.width + gutter
+            }
+
+            y += rowHeight
+            if rowIndex < rows.count - 1 {
+                y += gutter
+            }
+        }
+
+        return Plan(
+            size: CGSize(width: safeWidth, height: max(0, y)),
+            placements: placements
+        )
+    }
+
+    private struct Plan {
+        let size: CGSize
+        let placements: [Placement]
+    }
+
+    private struct Placement {
+        let index: Int
+        let frame: CGRect
     }
 }

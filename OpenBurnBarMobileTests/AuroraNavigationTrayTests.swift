@@ -10,8 +10,9 @@ import XCTest
 @MainActor
 final class AuroraNavigationTrayTests: XCTestCase {
 
-    private let allDestinations = AuroraNavDestination.allCases
-    // tabWidth = 56 matches AuroraNavigationTray's constant.
+    private let allDestinations = AuroraNavDestination.trayDestinations(compact: true)
+    // Fixed fixture width for the pure gesture model. Rendering uses the
+    // responsive width covered by `test_mobileTrayGeometry...` below.
     private let tabWidth: CGFloat = 56
 
     // MARK: - Destination index resolution
@@ -128,7 +129,7 @@ final class AuroraNavigationTrayTests: XCTestCase {
 
     func test_adjacent_sweepForwardThroughEntireOrder() {
         var current = AuroraNavDestination.pulse
-        let expected = AuroraNavDestination.allCases
+        let expected = allDestinations
         for expectedDest in expected.dropFirst() {
             let next = AuroraNavGestureModel.adjacent(current: current, direction: .leading, destinations: allDestinations)
             XCTAssertEqual(next, expectedDest)
@@ -201,8 +202,35 @@ final class AuroraNavigationTrayTests: XCTestCase {
     // MARK: - Destination order invariant
 
     func test_destinationOrder_matchesSpec() {
-        // The single source of truth: pulse → burn → insights → streams → hermes → you
-        XCTAssertEqual(AuroraNavDestination.allCases, [.pulse, .burn, .insights, .streams, .hermes, .you])
+        // Compact width stays six deep; iPad earns the first-class recap slot.
+        XCTAssertEqual(
+            AuroraNavDestination.trayDestinations(compact: true),
+            [.pulse, .burn, .insights, .streams, .hermes, .you]
+        )
+        XCTAssertEqual(
+            AuroraNavDestination.trayDestinations(compact: false),
+            [.pulse, .burn, .insights, .streams, .hermes, .you, .recap]
+        )
+    }
+
+    func test_mobileTrayGeometry_fillsCompactWidthAndCollapsesWhenHidden() {
+        XCTAssertEqual(
+            MobileTrayMetrics.reservedHeight(isVisible: true),
+            MobileTrayMetrics.pillHeight + MobileTrayMetrics.pillBottomInset
+        )
+        XCTAssertEqual(MobileTrayMetrics.reservedHeight(isVisible: false), 0)
+        XCTAssertEqual(MobileTrayMetrics.pillWidth(containerWidth: 375), 351)
+        XCTAssertEqual(
+            MobileTrayMetrics.tabWidth(containerWidth: 375, destinationCount: 6),
+            56.5,
+            accuracy: 0.01
+        )
+        XCTAssertEqual(
+            MobileTrayMetrics.tabWidth(containerWidth: 440, destinationCount: 6),
+            67.33,
+            accuracy: 0.01
+        )
+        XCTAssertEqual(MobileTrayMetrics.tabWidth(containerWidth: 440, destinationCount: 0), 0)
     }
 
     // MARK: - Scrub phase semantics
@@ -275,12 +303,13 @@ final class AuroraNavigationTrayTests: XCTestCase {
         // If the gesture cancels (finger leaves tray), revert to the
         // resting selection captured at scrub start.
         let resting: AuroraNavDestination = .burn
-        var selection: AuroraNavDestination = resting
+        let selection: AuroraNavDestination = resting
         var preview: AuroraNavDestination? = .you
 
         // Simulate cancel: preview cleared, selection stays at resting
         preview = nil
         XCTAssertEqual(selection, resting)
+        XCTAssertNil(preview)
     }
 
     // MARK: - Boundary haptic dedup
