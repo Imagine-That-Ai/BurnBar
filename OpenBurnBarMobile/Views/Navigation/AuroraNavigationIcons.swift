@@ -1,4 +1,5 @@
 import SwiftUI
+import OpenBurnBarRecap
 
 // MARK: - Aurora Navigation Icons
 //
@@ -29,8 +30,21 @@ enum AuroraNavDestination: Hashable, Identifiable, CaseIterable {
     case streams
     case hermes
     case you
+    case recap
 
     var id: String { String(describing: self) }
+
+    /// Destinations the navigation tray shows.
+    ///
+    /// Recap is a first-class destination on iPad, where there is room for a
+    /// seventh. On iPhone the tray is already six deep and a surface that
+    /// matters once a month does not earn a permanent slot there — it is
+    /// reached from the pinned banner at the top of Insights instead
+    /// (`RecapEntryBanner`), which is louder in the month it lands and quieter
+    /// the rest of the time.
+    static func trayDestinations(compact: Bool) -> [AuroraNavDestination] {
+        compact ? allCases.filter { $0 != .recap } : allCases
+    }
 
     var label: String {
         switch self {
@@ -43,6 +57,7 @@ enum AuroraNavDestination: Hashable, Identifiable, CaseIterable {
         // selection values keep working.
         case .hermes:   return "Agents"
         case .you:      return "You"
+        case .recap:    return "Recap"
         }
     }
 
@@ -54,6 +69,7 @@ enum AuroraNavDestination: Hashable, Identifiable, CaseIterable {
         case .streams:  return "Streams"
         case .hermes:   return "Agents"
         case .you:      return "Store"
+        case .recap:    return "Recap"
         }
     }
 
@@ -65,6 +81,7 @@ enum AuroraNavDestination: Hashable, Identifiable, CaseIterable {
         case .streams:  return MobileTheme.whimsy
         case .hermes:   return MobileTheme.hermesAureate
         case .you:      return MobileTheme.blaze
+        case .recap:    return MobileTheme.amber
         }
     }
 
@@ -101,6 +118,12 @@ enum AuroraNavDestination: Hashable, Identifiable, CaseIterable {
                 colors: [MobileTheme.blaze, MobileTheme.ember],
                 startPoint: .top,
                 endPoint: .bottom
+            )
+        case .recap:
+            return LinearGradient(
+                colors: [MobileTheme.amber, MobileTheme.ember],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
             )
         }
     }
@@ -183,6 +206,9 @@ struct AuroraNavIcon: View {
         case .you:
             YouGlyphShape()
                 .fill(destination.accent.opacity(0.45))
+        case .recap:
+            Circle()
+                .fill(destination.accent.opacity(0.45))
         }
     }
 
@@ -197,7 +223,16 @@ struct AuroraNavIcon: View {
         case .streams:  streamsIcon
         case .hermes:   hermesIcon
         case .you:      youIcon
+        case .recap:    recapIcon
         }
+    }
+
+    /// Recap only appears in the iPad tray, where the system glyph reads
+    /// correctly beside the hand-drawn ones.
+    private var recapIcon: some View {
+        Image(systemName: "calendar.badge.clock")
+            .font(.system(size: size * 0.62, weight: isSelected ? .semibold : .regular))
+            .foregroundStyle(isSelected ? AnyShapeStyle(destination.gradient) : AnyShapeStyle(Color.secondary))
     }
 
     private var insightsIcon: some View {

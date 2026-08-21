@@ -1,5 +1,6 @@
 import SwiftUI
 import OpenBurnBarCore
+import OpenBurnBarRecap
 #if DEBUG
 import OSLog
 #endif
@@ -436,6 +437,7 @@ struct RootNavigationView: View {
                         .environment(settingsRouter)
                     case .devices:  iPadDevicesSettingsView(store: devicesStore, hermesService: hermesService)
                     case .providers: ProviderConnectionsView(showsDoneButton: false)
+                    case .recap:    MobileRecapScreen(accountID: authStore.currentIdentity?.uid)
                     }
                 }
                 .navigationDestination(for: YouRoute.self) { route in

@@ -57,6 +57,13 @@ struct DashboardDetailView: View {
                         chatController: chatController
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                case .recap:
+                    RecapPageView(
+                        dataStore: dataStore,
+                        settingsManager: settingsManager,
+                        chatController: chatController
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 case .charts:
                     ChartsPageDetailHost(
                         context: context,
