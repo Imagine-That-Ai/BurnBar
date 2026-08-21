@@ -1455,12 +1455,6 @@ let firstPartyTargetsBase: [Target] = [
                 // OpenBurnBarQuota` (added in that test) needs the module as a test-target
                 // dependency; the test file otherwise stays put with its logic unchanged.
                 "OpenBurnBarQuota",
-                // AE-TESTABLE: the Recap deck tests reach INTERNAL members
-                // (`RecapCraftRules.vocabulary`, `numericViolation`, `numericTokens`)
-                // that moved with the feature into `OpenBurnBarRecap` when it was carved
-                // out of Insights. `@testable import OpenBurnBarRecap` needs the module
-                // as a test-target dependency; the tests stay put, logic unchanged.
-                "OpenBurnBarRecap",
                 // P-22 (S15) AE-IMPORT: `OBBCAbiUsageScanExportTests` reaches the PUBLIC
                 // OBBCAbi C-ABI surface (`OBBCAbiUsageScanExport.run`, `obb_scan_usage`,
                 // `obb_parse_cli_stdout`, `obb_string_free`), which moved Core →
@@ -1469,7 +1463,17 @@ let firstPartyTargetsBase: [Target] = [
                 // linkable in the test host. Acyclic: OpenBurnBarCoreCAbi depends only on
                 // OpenBurnBarCore, and a test target adding it introduces no product cycle.
                 "OpenBurnBarCoreCAbi"
-            ] + domainCoreDependencies + swiftTestingAppleDependencies,
+            ]
+            // AE-TESTABLE, Apple-only: the Recap deck tests reach INTERNAL members
+            // (`RecapCraftRules.vocabulary`, `numericViolation`, `numericTokens`) in
+            // `OpenBurnBarRecap`, so `@testable import` needs it as a test-target
+            // dependency. Conditional because the target itself is Apple-pruned —
+            // an unconditional edge makes the Windows/Linux resolve fail with
+            // "product 'OpenBurnBarRecap' ... not found". The Recap tests are already
+            // absent from `openBurnBarCoreOffAppleTestSources`, so nothing off-Apple
+            // needs the module.
+            + (buildApplePrunedDecompositionTargets ? ["OpenBurnBarRecap"] : [])
+            + domainCoreDependencies + swiftTestingAppleDependencies,
             exclude: openBurnBarCoreTestExcludes
                 + openBurnBarCorePlaceholderExcludes
                 + legacyLinuxTestExcludes(targetPath: "Tests/OpenBurnBarCoreTests"),

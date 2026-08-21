@@ -332,7 +332,6 @@ final class RecapStoreAndComposerTests: XCTestCase {
         XCTAssertTrue(source.singleRequests.isEmpty, "a sealed month must not re-read the database")
     }
 
-
     // MARK: - Codex P1 review findings
 
     // A month stored partial — because a paging budget ran out or a later page
