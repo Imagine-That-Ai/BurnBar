@@ -1,7 +1,13 @@
 #if canImport(SwiftUI) && canImport(UIKit)
 import SwiftUI
 import OpenBurnBarComputerUseCore
-import OpenBurnBarCore
+// `HermesAttachment` only. Kernel rather than the OpenBurnBarCore umbrella
+// because the umbrella is ratchet-only for OpenBurnBarMobile — and it is
+// provably the same type: OpenBurnBarCore @_exported imports Kernel, which
+// @_exported imports OpenBurnBarAssistantModels, where HermesAttachment lives.
+// (OpenBurnBarData declares a second, distinct HermesAttachment; importing
+// that one instead would silently substitute a different type.)
+import OpenBurnBarKernel
 
 /// Agent Control surface: live puck + permission sheet. Not a CLI thread view.
 struct AgentControlComposer: View {
