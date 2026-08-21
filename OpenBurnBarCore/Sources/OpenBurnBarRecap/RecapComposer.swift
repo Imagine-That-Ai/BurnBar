@@ -32,6 +32,9 @@ public actor RecapComposer {
     private let postProcessor: RecapVoicePostProcessor
     private let limits: RecapRanker.Limits
     private let calendar: Calendar
+    /// How many months back a backfill reaches. A **fetch** budget only — the
+    /// horizon a comparison is allowed to see is everything the history store
+    /// holds, which grows past this as the months accumulate.
     private let historyDepth: Int
 
     public init(
@@ -94,10 +97,18 @@ public actor RecapComposer {
         forceRegenerate: Bool,
         continuation: AsyncStream<Event>.Continuation
     ) async {
-        // A sealed month is answered from the store. The single exception is a
+        // A *sealed* month is answered from the store — that is the promise that
+        // last August reads the same way in December. The single exception is a
         // month sealed without prose when an author is now available — the
         // one-time upgrade that keeps the AI toggle from looking broken.
-        if !forceRegenerate, let existing = await recapStore.recap(for: window) {
+        //
+        // A `.preview` or `.unsealed` deck is deliberately not answered from the
+        // store: the preview of a running month has to pick up the usage since
+        // it was written, and an `.unsealed` month is one whose sealing pass was
+        // interrupted, which only a rebuild can finish.
+        if !forceRegenerate,
+           let existing = await recapStore.recap(for: window),
+           existing.sealState.isSealed {
             continuation.yield(.deterministic(existing))
             guard existing.sealState == .sealedWithoutVoice,
                   !(author is RecapVoiceAuthorUnavailable) else { return }
@@ -120,7 +131,10 @@ public actor RecapComposer {
             return
         }
 
-        let history = await historyStore.history(before: window, limit: historyDepth)
+        // Every stored month, not `historyDepth` of them: the record and volume
+        // rules read this as an all-time baseline, so a device holding three
+        // years must compare against three years or stop saying "yet".
+        let history = await historyStore.history(before: window)
         let context = RecapContext(facts: facts, history: history, calendar: calendar)
         let candidates = RecapCandidateGenerator.candidates(for: context)
         let cards = RecapRanker.rank(candidates: candidates, limits: limits)
@@ -227,7 +241,7 @@ public actor RecapComposer {
         now: Date
     ) async -> MonthlyRecap? {
         guard let facts = await historyStore.facts(for: window) else { return nil }
-        let history = await historyStore.history(before: window, limit: historyDepth)
+        let history = await historyStore.history(before: window)
         let context = RecapContext(facts: facts, history: history, calendar: calendar)
         let candidates = RecapCandidateGenerator.candidates(for: context)
 

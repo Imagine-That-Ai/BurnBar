@@ -222,6 +222,77 @@ describe('OverviewSurface', () => {
     expect(overviewLoad.mock.calls.length).toBeGreaterThan(afterMount);
   });
 
+  it('re-fires the overview lanes when fixture mode is toggled while mounted', async () => {
+    const { overviewLoad, insightsLoad } = freezeLoads();
+    render(<OverviewSurface />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const summaryAfterMount = overviewLoad.mock.calls.length;
+    const insightsAfterMount = insightsLoad.mock.calls.length;
+    expect(summaryAfterMount).toBeGreaterThanOrEqual(1);
+    expect(insightsAfterMount).toBeGreaterThanOrEqual(1);
+
+    // setFixtureMode bumps neither bridgeReady nor dataRevision, so the surface
+    // itself has to notice the switch.
+    await act(async () => {
+      useShellStore.getState().setFixtureMode(true);
+      await Promise.resolve();
+    });
+    expect(useShellStore.getState().fixtureMode).toBe(true);
+    expect(overviewLoad.mock.calls.length).toBeGreaterThan(summaryAfterMount);
+    expect(insightsLoad.mock.calls.length).toBeGreaterThan(insightsAfterMount);
+
+    const summaryAfterEnable = overviewLoad.mock.calls.length;
+    const insightsAfterEnable = insightsLoad.mock.calls.length;
+    await act(async () => {
+      useShellStore.getState().setFixtureMode(false);
+      await Promise.resolve();
+    });
+    expect(useShellStore.getState().fixtureMode).toBe(false);
+    expect(overviewLoad.mock.calls.length).toBeGreaterThan(summaryAfterEnable);
+    expect(insightsLoad.mock.calls.length).toBeGreaterThan(insightsAfterEnable);
+  });
+
+  it('does not double-load the overview lanes when fixture mode never changes', async () => {
+    const { overviewLoad, insightsLoad } = freezeLoads();
+    useShellStore.setState({ fixtureMode: true, health: fixtureDaemonHealth('/tmp/x.sock') });
+    const { rerender } = render(<OverviewSurface />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    rerender(<OverviewSurface />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(overviewLoad).toHaveBeenCalledTimes(1);
+    expect(insightsLoad).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-fires the activity and mission lanes on fixture toggle in the stream layout', async () => {
+    freezeLoads();
+    const activityLoad = vi.fn(async () => {});
+    const missionsLoad = vi.fn(async () => {});
+    useActivityStore.setState({ load: activityLoad });
+    useMissionsStore.setState({ load: missionsLoad });
+    useDashboardLayoutStore.setState({ layout: 'stream' });
+    render(<OverviewSurface />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const activityAfterMount = activityLoad.mock.calls.length;
+    const missionsAfterMount = missionsLoad.mock.calls.length;
+    expect(activityAfterMount).toBeGreaterThanOrEqual(1);
+    expect(missionsAfterMount).toBeGreaterThanOrEqual(1);
+
+    await act(async () => {
+      useShellStore.getState().setFixtureMode(true);
+      await Promise.resolve();
+    });
+    expect(activityLoad.mock.calls.length).toBeGreaterThan(activityAfterMount);
+    expect(missionsLoad.mock.calls.length).toBeGreaterThan(missionsAfterMount);
+  });
+
   it('renders a timestamped stream river for the stream layout', () => {
     freezeLoads();
     useDashboardLayoutStore.setState({ layout: 'stream' });

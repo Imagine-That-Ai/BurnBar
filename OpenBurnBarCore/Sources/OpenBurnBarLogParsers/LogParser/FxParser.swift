@@ -30,7 +30,10 @@ import OpenBurnBarParserSupport
 //     total_input_tokens, total_output_tokens, history_len, preferences: { model } }
 //   Legacy schema-1/2 manifests carry a `history` array instead of the event
 //   log; the parser reads totals from them but transcripts come from
-//   events.jsonl when present.
+//   events.jsonl when present. `created_at_ms`/`updated_at_ms` are the
+//   authoritative session bounds — usage-only ingestion never opens
+//   events.jsonl, so dating rows off the manifest file's mtime would
+//   misallocate spend whenever a session file is rewritten, restored or copied.
 //
 // Event log (`events.jsonl`):
 //   One JSON object per line: { seq, timestamp_ms, kind, payload } — `kind` is
@@ -203,6 +206,10 @@ public final class FxParser: LogParser, Sendable {
         let display = readJSONObject(at: displayURL)
 
         let mtime = (try? fileManager.attributesOfItem(atPath: manifestURL.path)[.modificationDate]) as? Date
+        // Authoritative session bounds. These are the only timestamps available
+        // during usage-only ingestion, where events.jsonl is never opened.
+        let manifestCreated = Self.msDate(manifest?["created_at_ms"])
+        let manifestUpdated = Self.msDate(manifest?["updated_at_ms"])
 
         // Usage: sidecar first (exact), manifest totals as fallback.
         var totalInput = 0
@@ -251,9 +258,10 @@ public final class FxParser: LogParser, Sendable {
 
         let hasUsage = totalInput > 0 || totalOutput > 0 || totalCacheRead > 0 || totalCacheWrite > 0
 
-        // Transcript from events.jsonl (top-level `kind` frames).
-        var userTexts: [String] = []
-        var assistantTexts: [String] = []
+        // Transcript from events.jsonl (top-level `kind` frames). Turns are kept
+        // in event-log order (U1, A1, U2, A2) so each answer stays attached to
+        // the prompt it replied to.
+        var turns: [(isAssistant: Bool, text: String)] = []
         var toolNames = Set<String>()
         var filePaths = Set<String>()
         var firstTime: Date?
@@ -269,8 +277,7 @@ public final class FxParser: LogParser, Sendable {
                       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                     continue // truncated/partial line — skip
                 }
-                if let ts = Self.int64Val(json["timestamp_ms"]) {
-                    let date = Date(timeIntervalSince1970: Double(ts) / 1_000.0)
+                if let date = Self.msDate(json["timestamp_ms"]) {
                     if firstTime == nil { firstTime = date }
                     lastTime = date
                 }
@@ -281,10 +288,10 @@ public final class FxParser: LogParser, Sendable {
                 }
                 if let user = turn["user"] as? [String: Any],
                    let text = user["text"] as? String, !text.isEmpty {
-                    userTexts.append(text)
+                    turns.append((isAssistant: false, text: text))
                 }
                 if let assistant = turn["assistant"] as? String, !assistant.isEmpty {
-                    assistantTexts.append(assistant)
+                    turns.append((isAssistant: true, text: assistant))
                 }
                 if let execution = turn["execution"] as? [String: Any] {
                     if let steps = execution["tool_steps"] as? [[String: Any]] {
@@ -320,8 +327,11 @@ public final class FxParser: LogParser, Sendable {
         }()
         let displayTitle = (display?["title"] as? String).flatMap(nonBlank)
 
-        let start = firstTime ?? mtime ?? Date()
-        let end = lastTime ?? firstTime ?? mtime ?? start
+        // Manifest timestamps win over event timestamps so a session is dated
+        // identically whether or not this pass read events.jsonl; mtime is the
+        // last resort for legacy manifests that carry neither.
+        let start = manifestCreated ?? firstTime ?? mtime ?? Date()
+        let end = max(manifestUpdated ?? lastTime ?? firstTime ?? mtime ?? start, start)
 
         // Cost: prefer the explicit sidecar total; fall back to catalog pricing
         // when only manifest totals exist.
@@ -363,17 +373,16 @@ public final class FxParser: LogParser, Sendable {
         }
 
         var conversation: ConversationRecord?
-        if options.includeConversationBodies, !userTexts.isEmpty || !assistantTexts.isEmpty {
-            let filteredTurns: [(isAssistant: Bool, text: String)] =
-                userTexts.map { (false, $0) } + assistantTexts.map { (true, $0) }
-            let fullText = filteredTurns.map {
+        if options.includeConversationBodies, !turns.isEmpty {
+            let fullText = turns.map {
                 SessionLogMarkdownFormatter.transcriptTurnMarkdown(isAssistant: $0.isAssistant, body: $0.text)
             }.joined(separator: "\n\n")
-            let firstUser = userTexts.first?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let firstUser = turns.first { !$0.isAssistant }?
+                .text.trimmingCharacters(in: .whitespacesAndNewlines)
             let inferredTitle = displayTitle
                 ?? firstUser.flatMap { $0.isEmpty ? nil : String($0.prefix(120)) }
                 ?? projectName
-            let lastAssistant = assistantTexts.last ?? ""
+            let lastAssistant = turns.last { $0.isAssistant }?.text ?? ""
             conversation = ConversationRecord(
                 id: ConversationRecord.stableId(provider: .fx, sessionId: sessionId),
                 provider: .fx,
@@ -381,9 +390,9 @@ public final class FxParser: LogParser, Sendable {
                 projectName: projectName,
                 startTime: start,
                 endTime: end,
-                messageCount: filteredTurns.count,
-                userWordCount: userTexts.reduce(0) { $0 + $1.split { $0.isWhitespace || $0.isNewline }.count },
-                assistantWordCount: assistantTexts.reduce(0) { $0 + $1.split { $0.isWhitespace || $0.isNewline }.count },
+                messageCount: turns.count,
+                userWordCount: Self.wordCount(of: turns, isAssistant: false),
+                assistantWordCount: Self.wordCount(of: turns, isAssistant: true),
                 keyFiles: Array(filePaths.sorted().prefix(20)),
                 keyCommands: [],
                 keyTools: Array(toolNames.sorted().prefix(20)),
@@ -432,6 +441,21 @@ public final class FxParser: LogParser, Sendable {
         }
         guard let best, let raw = best["model"] as? String, !raw.isEmpty else { return nil }
         return normalizeModelName(raw)
+    }
+
+    /// Words spoken by one side of an ordered transcript.
+    private static func wordCount(of turns: [(isAssistant: Bool, text: String)], isAssistant: Bool) -> Int {
+        turns.reduce(0) { total, turn in
+            guard turn.isAssistant == isAssistant else { return total }
+            return total + turn.text.split { $0.isWhitespace || $0.isNewline }.count
+        }
+    }
+
+    /// fx timestamps are epoch milliseconds. Missing, non-numeric, and
+    /// non-positive values are treated as absent rather than as 1970.
+    private static func msDate(_ value: Any?) -> Date? {
+        guard let ms = int64Val(value), ms > 0 else { return nil }
+        return Date(timeIntervalSince1970: Double(ms) / 1_000.0)
     }
 
     private func readJSONObject(at url: URL) -> [String: Any]? {

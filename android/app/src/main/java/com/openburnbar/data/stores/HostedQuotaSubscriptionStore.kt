@@ -25,6 +25,7 @@ import com.openburnbar.data.policy.MobileStoreEntitlementPolicy
 import com.openburnbar.ui.pro.CloudTier
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -318,6 +319,13 @@ class HostedQuotaSubscriptionStore(
     private var authListener: FirebaseAuth.AuthStateListener? = null
     private var firestoreEntitlementActive: Boolean? = null
 
+    // The UID the currently published entitlement state belongs to. Every
+    // account change — including a direct signed-in A→B switch — must drop it
+    // before B's first snapshot lands, so paid UI can never render under the
+    // wrong account while B's read is pending, erroring, or offline.
+    private var entitlementUID: String? = null
+    private var entitlementWork: Job? = null
+
     fun initialize(context: Context) {
         if (billingClient == null) {
             billingClient =
@@ -344,9 +352,21 @@ class HostedQuotaSubscriptionStore(
                 entitlementListener = null
 
                 val uid = auth.currentUser?.uid
+                val previousUID = entitlementUID
+                entitlementUID = uid
+                // Clear on a real account change, NOT on first attach. `entitlementUID`
+                // starts null, and FirebaseAuth delivers its first callback on a later
+                // main-looper turn (UiExecutor posts unconditionally), so for a signed-in
+                // cold start that callback lands *after* `load()` has suspended on the
+                // Play round-trip. Treating null -> uid as a change would cancel
+                // `entitlementWork` mid-flight, skipping both the product-catalog query
+                // (prices render as unavailable) and `restorePurchasesInternal`, which is
+                // the path that reconciles Play against Firestore and acknowledges
+                // purchases — unacknowledged ones are auto-refunded after three days.
+                if (previousUID != uid && (previousUID != null || uid == null)) {
+                    clearEntitlementStateForUidChange()
+                }
                 if (uid == null) {
-                    firestoreEntitlementActive = null
-                    clearSubscriptionState()
                     return@AuthStateListener
                 }
 
@@ -393,6 +413,20 @@ class HostedQuotaSubscriptionStore(
         _purchaseDate.value = entitlement.purchaseAtMs
     }
 
+    // Drop every UID-scoped entitlement signal the store publishes. Cancels
+    // in-flight verification too: a restore/purchase round-trip started under
+    // the previous account must not land its result on the new one. Play
+    // catalog prices stay — they are device-level, not account-level.
+    private fun clearEntitlementStateForUidChange() {
+        entitlementWork?.cancel()
+        entitlementWork = null
+        firestoreEntitlementActive = null
+        _error.value = null
+        _lastTopUpCredit.value = null
+        _isLoading.value = false
+        clearSubscriptionState()
+    }
+
     private fun clearSubscriptionState() {
         _isActive.value = false
         _activeProductID.value = null
@@ -412,7 +446,8 @@ class HostedQuotaSubscriptionStore(
     }
 
     fun load() {
-        viewModelScope.launch {
+        entitlementWork?.cancel()
+        entitlementWork = viewModelScope.launch {
             _isLoading.value = true
             _error.value = null
             try {
@@ -432,7 +467,8 @@ class HostedQuotaSubscriptionStore(
     }
 
     fun purchase(activity: Activity, productID: String) {
-        viewModelScope.launch {
+        entitlementWork?.cancel()
+        entitlementWork = viewModelScope.launch {
             _isLoading.value = true
             _error.value = null
             try {
@@ -475,7 +511,8 @@ class HostedQuotaSubscriptionStore(
     }
 
     fun restorePurchases() {
-        viewModelScope.launch {
+        entitlementWork?.cancel()
+        entitlementWork = viewModelScope.launch {
             _isLoading.value = true
             _error.value = null
             try {
@@ -503,7 +540,8 @@ class HostedQuotaSubscriptionStore(
             _isLoading.value = false
             return
         }
-        viewModelScope.launch {
+        entitlementWork?.cancel()
+        entitlementWork = viewModelScope.launch {
             try {
                 handlePurchases(purchases.orEmpty())
             } catch (e: FirebaseFunctionsException) {
@@ -517,6 +555,8 @@ class HostedQuotaSubscriptionStore(
     }
 
     override fun onCleared() {
+        entitlementWork?.cancel()
+        entitlementWork = null
         billingClient?.endConnection()
         billingClient = null
         entitlementListener?.remove()

@@ -53,24 +53,47 @@ public actor RecapHistoryStore {
         snapshot.months.values.sorted { $0.window > $1.window }
     }
 
-    /// The `limit` months immediately before `window` that we hold.
-    public func history(before window: RecapWindow, limit: Int = 12) -> [RecapFacts] {
-        Array(
-            allFacts()
-                .filter { $0.window < window }
-                .prefix(limit)
-        )
+    /// Every month we hold before `window`, newest first.
+    ///
+    /// Deliberately uncapped. `RecapContext` derives all-time records and
+    /// lifetime totals from exactly what it is handed, so truncating here would
+    /// turn "your biggest month yet" into "your biggest month out of the last N"
+    /// while the deck goes on saying the former. How far back a *backfill*
+    /// reaches is a separate, fetch-cost decision, and belongs to the caller
+    /// that pays for the scan.
+    public func history(before window: RecapWindow) -> [RecapFacts] {
+        allFacts().filter { $0.window < window }
     }
 
-    /// Months in the requested span that are missing or stale, oldest first —
-    /// exactly the set a backfill needs to fetch.
+    /// How long a partially-read month is left alone before a backfill retries it.
+    ///
+    /// A partial month must stay eligible — `RecapContext` drops partial months
+    /// from every comparison, so calling one done strands it outside records and
+    /// trends forever, even once the connection that truncated it is back. But it
+    /// cannot be eligible on *every* open: `isPartial` does not record *why*, and
+    /// a month truncated by the mobile paging budget (24 pages x 300 rows) is
+    /// deterministically partial on every retry. Re-paginating that month each
+    /// time costs thousands of billed reads to arrive at the same answer.
+    ///
+    /// A day is the compromise: a recovered connection repairs the month by the
+    /// next day, and a permanently-truncated month costs one re-read a day rather
+    /// than one per open.
+    public static let partialRetryInterval: TimeInterval = 24 * 60 * 60
+
+    /// Months in the requested span that are missing, stale, or due a retry after
+    /// being only partially read — oldest first, exactly what a backfill fetches.
     public func monthsNeedingBackfill(
         endingAt window: RecapWindow,
-        monthsBack: Int
+        monthsBack: Int,
+        now: Date = Date()
     ) -> [RecapWindow] {
         guard monthsBack > 0 else { return [] }
         return window.priorMonths(monthsBack)
-            .filter { snapshot.months[$0.key] == nil }
+            .filter { month in
+                guard let stored = snapshot.months[month.key] else { return true }
+                guard stored.isPartial else { return false }
+                return now.timeIntervalSince(stored.builtAt) >= Self.partialRetryInterval
+            }
             .sorted()
     }
 

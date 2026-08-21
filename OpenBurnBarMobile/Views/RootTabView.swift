@@ -180,7 +180,10 @@ struct RootTabView: View {
         .task(id: authStore.currentIdentity?.uid) { applyHermesE2EPromptIfNeeded() }
         .task(id: authStore.currentIdentity?.uid) { applyComputerUseE2EProofIfNeeded() }
         .task { missionActivityCenter.start() }
-        .task { missionConsoleHost.start() }
+        .task {
+            missionConsoleHost.start()
+            claimPendingOsRouteIfNeeded()
+        }
         .task { liveStagePresenter.observe(liveStageSingleton.state) }
         .task { liveStageSingleton.installLiveActivityIntentRouter() }
         // Claims a push tap that landed BEFORE this view existed — a cold
@@ -244,16 +247,16 @@ struct RootTabView: View {
         .onReceive(NotificationCenter.default.publisher(for: .init("ShowBurnTab"))) { _ in
             selection = .burn
         }
+        // Both of these drain the stash on the live path too: the tap has been
+        // served here, so leaving it parked would let `claimPendingOsRouteIfNeeded`
+        // re-raise the same surface later.
         .onReceive(NotificationCenter.default.publisher(for: .init("ShowMercuryCall"))) { notification in
-            pendingMercuryConnectionId = notification.userInfo?["connectionId"] as? String
-            showMercuryCall = true
+            guard case .mercuryCall = MobilePendingOsRouteStore.shared.consume() else { return }
+            presentMercuryCall(connectionId: notification.userInfo?["connectionId"] as? String)
         }
         .onReceive(NotificationCenter.default.publisher(for: .init("ShowMissionConsole"))) { notification in
-            if let missionId = notification.userInfo?["missionId"] as? String {
-                missionConsoleHost.focusMission(id: missionId)
-            }
-            selection = .hermes
-            showMissionConsole = true
+            guard case .mission = MobilePendingOsRouteStore.shared.consume() else { return }
+            presentMissionConsole(missionId: notification.userInfo?["missionId"] as? String)
         }
         .onReceive(NotificationCenter.default.publisher(for: .init("ShowStreamsTab"))) { _ in
             selection = .streams
@@ -550,6 +553,36 @@ struct RootTabView: View {
         openAIInboxRoute(itemID: itemID)
     }
 
+    /// Cold-launch counterpart to the two `onReceive` handlers above.
+    ///
+    /// A mission or Mercury-call push that launches the app posts during
+    /// `didFinishLaunching`, before this root has subscribed, so the stash is the
+    /// only surviving record of the tap. Same shape as
+    /// `claimPendingAIInboxDeepLink`.
+    private func claimPendingOsRouteIfNeeded() {
+        switch MobilePendingOsRouteStore.shared.consume() {
+        case .mercuryCall(let connectionId):
+            presentMercuryCall(connectionId: connectionId)
+        case .mission(let missionId):
+            presentMissionConsole(missionId: missionId)
+        case nil:
+            break
+        }
+    }
+
+    private func presentMercuryCall(connectionId: String?) {
+        pendingMercuryConnectionId = connectionId
+        showMercuryCall = true
+    }
+
+    private func presentMissionConsole(missionId: String?) {
+        if let missionId, !missionId.isEmpty {
+            missionConsoleHost.focusMission(id: missionId)
+        }
+        selection = .hermes
+        showMissionConsole = true
+    }
+
     private func openHermesGatewayPairingRoute(_: Notification) {
         settingsRouter.prepareDeepLink(anchor: SettingsAnchor.hermesCloudGateway)
         selection = .you
@@ -669,6 +702,7 @@ struct RootTabView: View {
         case .streams:  return "streams"
         case .hermes:   return "hermes"
         case .you:      return "you"
+        case .recap:    return "recap"
         }
     }
 
@@ -681,6 +715,9 @@ struct RootTabView: View {
         case .streams:  return "dashboard_activity"
         case .hermes:   return "chat"
         case .you:      return "account"
+        // The recap is a monthly read of the same numbers Insights shows, so it
+        // reports the existing taxonomy surface rather than minting a new one.
+        case .recap:    return "insights"
         }
     }
 

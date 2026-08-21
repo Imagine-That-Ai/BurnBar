@@ -93,42 +93,54 @@ struct MobileRecapSource: RecapSource {
         pageSize: Int,
         pageBudget: Int
     ) async -> (rows: [TokenUsage], isPartial: Bool) {
-        await paginate(interval: interval, pageSize: pageSize, pageBudget: pageBudget)
+        await paginate(pageSize: pageSize, pageBudget: pageBudget) { cursor in
+            try await FirestoreRepository.shared.fetchUsagePage(
+                pageSize: pageSize,
+                after: cursor,
+                provider: nil,
+                model: nil,
+                device: nil,
+                startDate: interval.start,
+                // Firestore's range filter is inclusive; the month's
+                // exclusive upper bound sits a hair below it.
+                endDate: interval.end.addingTimeInterval(-0.001)
+            )
+        }
     }
 
-    /// The cursor is a Firestore reference type, so the whole walk stays on the
-    /// main actor and it never crosses an isolation boundary.
+    /// Walks pages until the source runs out or the budget does, reporting
+    /// whether what came back is the whole span.
+    ///
+    /// `fetchPage` is injected — and the cursor left generic — so the paging
+    /// contract, above all what a *failed* read reports, can be exercised
+    /// without Firestore. In production `Cursor` is `DocumentSnapshot`, a
+    /// Firestore reference type, which is why the whole walk stays on the main
+    /// actor and never crosses an isolation boundary.
     @MainActor
-    private static func paginate(
-        interval: DateInterval,
+    static func paginate<Cursor>(
         pageSize: Int,
-        pageBudget: Int
+        pageBudget: Int,
+        fetchPage: @MainActor @Sendable (Cursor?) async throws -> ([TokenUsage], Cursor?)
     ) async -> (rows: [TokenUsage], isPartial: Bool) {
         var collected: [TokenUsage] = []
-        var cursor: DocumentSnapshot?
+        var cursor: Cursor?
 
         for _ in 0..<pageBudget {
             do {
-                let (page, next) = try await FirestoreRepository.shared.fetchUsagePage(
-                    pageSize: pageSize,
-                    after: cursor,
-                    provider: nil,
-                    model: nil,
-                    device: nil,
-                    startDate: interval.start,
-                    // Firestore's range filter is inclusive; the month's
-                    // exclusive upper bound sits a hair below it.
-                    endDate: interval.end.addingTimeInterval(-0.001)
-                )
+                let (page, next) = try await fetchPage(cursor)
                 collected.append(contentsOf: page)
                 guard let next, page.count >= pageSize else {
                     return (collected, false)
                 }
                 cursor = next
             } catch {
-                // A page that failed mid-month leaves an incomplete read, which
-                // is precisely what `isPartial` exists to declare.
-                return (collected, !collected.isEmpty)
+                // A failed read leaves the rest of the month unread, and that is
+                // true however many rows made it back first. Nothing collected
+                // means "we could not read the month", never "the month was
+                // empty" — reporting that as complete is what would let the
+                // composer persist a zero-usage month as a real baseline,
+                // dragging averages down and manufacturing records.
+                return (collected, true)
             }
         }
         // Budget exhausted with the cursor still live: more month than we read.

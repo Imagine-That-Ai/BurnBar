@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { Banner } from '../components/Banner.js';
 import {
   DashboardLayoutShell,
@@ -59,11 +59,24 @@ export function OverviewSurface() {
   useLaneLoad(loadSummary);
   useLaneLoad(loadInsights);
 
+  // setFixtureMode() changes neither bridgeReady nor dataRevision, so useLaneLoad
+  // cannot see a fixture/live switch on its own. Re-fire the summary and insight
+  // lanes on the transition itself — mount is already covered by useLaneLoad, so
+  // the ref keeps the first render from issuing a duplicate (and, in the packaged
+  // shell, un-deferred) load.
+  const loadedFixtureModeRef = useRef(fixtureMode);
+  useEffect(() => {
+    if (loadedFixtureModeRef.current === fixtureMode) return;
+    loadedFixtureModeRef.current = fixtureMode;
+    void loadSummary();
+    void loadInsights();
+  }, [fixtureMode, loadSummary, loadInsights]);
+
   useEffect(() => {
     if (layout !== 'stream' && layout !== 'atlas') return;
     void loadActivity();
     void loadMissions();
-  }, [layout, loadActivity, loadMissions, dataRevision]);
+  }, [layout, loadActivity, loadMissions, dataRevision, fixtureMode]);
 
   const reconnect = () => {
     void refreshHealth();

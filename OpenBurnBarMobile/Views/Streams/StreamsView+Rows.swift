@@ -389,6 +389,7 @@ enum StreamsSearchResultMode: Equatable {
     case cloudConversationHits
     case streamHits
     case searching
+    case failed
     case empty
 }
 
@@ -403,7 +404,12 @@ struct StreamsSearchResultState: Equatable {
         guard query.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2 else {
             return .inactive
         }
-        if searchFailed { return .empty }
+        // A search that failed is not a search that found nothing. Decide it
+        // ahead of the hit counts and ahead of `.empty`, so leftover hits from
+        // the previous query — or a full page of cached rows, which keeps the
+        // list's load-error branch from ever showing — cannot dress a failed
+        // search up as "No matches" and swallow its retry.
+        if searchFailed { return .failed }
         if cloudConversationHitCount > 0 { return .cloudConversationHits }
         if streamHitCount > 0 { return .streamHits }
         if isSearching { return .searching }

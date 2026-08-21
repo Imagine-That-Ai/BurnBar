@@ -104,7 +104,10 @@ struct RootNavigationView: View {
         .task(id: authStore.currentIdentity?.uid) { applyHermesE2EPromptIfNeeded() }
         .task(id: authStore.currentIdentity?.uid) { applyComputerUseE2EProofIfNeeded() }
         .task { missionActivityCenter.start() }
-        .task { missionConsoleHost.start() }
+        .task {
+            missionConsoleHost.start()
+            claimPendingOsRouteIfNeeded()
+        }
         .task { liveStagePresenter.observe(liveStageSingleton.state) }
         .task { liveStageSingleton.installLiveActivityIntentRouter() }
         // Claims a push tap that landed BEFORE this view existed — a cold
@@ -149,16 +152,16 @@ struct RootNavigationView: View {
         .onReceive(NotificationCenter.default.publisher(for: .init("ShowBurnTab"))) { _ in
             selection = .burn
         }
+        // Both of these drain the stash on the live path too: the tap has been
+        // served here, so leaving it parked would let `claimPendingOsRouteIfNeeded`
+        // re-raise the same surface later.
         .onReceive(NotificationCenter.default.publisher(for: .init("ShowMercuryCall"))) { notification in
-            pendingMercuryConnectionId = notification.userInfo?["connectionId"] as? String
-            showMercuryCall = true
+            guard case .mercuryCall = MobilePendingOsRouteStore.shared.consume() else { return }
+            presentMercuryCall(connectionId: notification.userInfo?["connectionId"] as? String)
         }
         .onReceive(NotificationCenter.default.publisher(for: .init("ShowMissionConsole"))) { notification in
-            if let missionId = notification.userInfo?["missionId"] as? String {
-                missionConsoleHost.focusMission(id: missionId)
-            }
-            selection = .agents
-            showMissionConsole = true
+            guard case .mission = MobilePendingOsRouteStore.shared.consume() else { return }
+            presentMissionConsole(missionId: notification.userInfo?["missionId"] as? String)
         }
         .onReceive(NotificationCenter.default.publisher(for: .init("ShowStreamsTab"))) { _ in
             selection = .streams
@@ -529,6 +532,34 @@ struct RootNavigationView: View {
     private func claimPendingAIInboxDeepLink() {
         guard let itemID = AIInboxDeepLink.consumePendingItemID() else { return }
         openAIInboxRoute(itemID: itemID)
+    }
+
+    /// Cold-launch counterpart to the mission / Mercury-call `onReceive`
+    /// handlers, for the same reason as `claimPendingAIInboxDeepLink` above:
+    /// the push posts before this root has subscribed, so the stash is the only
+    /// surviving record of the tap.
+    private func claimPendingOsRouteIfNeeded() {
+        switch MobilePendingOsRouteStore.shared.consume() {
+        case .mercuryCall(let connectionId):
+            presentMercuryCall(connectionId: connectionId)
+        case .mission(let missionId):
+            presentMissionConsole(missionId: missionId)
+        case nil:
+            break
+        }
+    }
+
+    private func presentMercuryCall(connectionId: String?) {
+        pendingMercuryConnectionId = connectionId
+        showMercuryCall = true
+    }
+
+    private func presentMissionConsole(missionId: String?) {
+        if let missionId, !missionId.isEmpty {
+            missionConsoleHost.focusMission(id: missionId)
+        }
+        selection = .agents
+        showMissionConsole = true
     }
 
     private func updateColumnVisibility(for destination: AppDestination, animated: Bool = true) {

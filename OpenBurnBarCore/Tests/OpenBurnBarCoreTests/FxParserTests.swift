@@ -407,6 +407,91 @@ final class FxParserTests: XCTestCase {
         XCTAssertEqual(result.conversations.first?.fullText.contains("hi"), true)
     }
 
+    // MARK: - Timestamps
+
+    /// Usage-only ingestion never opens events.jsonl, so the manifest's
+    /// created_at_ms/updated_at_ms must date the row. Falling back to the
+    /// manifest file's mtime misallocates spend whenever a session file is
+    /// rewritten, restored or copied.
+    func testUsageRowsUseManifestTimestampsNotFileMtime() async throws {
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let sessionId = "1770000000000-1770000000000000000-a1b2c3d4e5f60718"
+        try writeSession(
+            dir: dir,
+            sessionId: sessionId,
+            manifest: manifest(input: 800, output: 200),
+            sidecar: sidecar(input: 800, output: 200)
+        )
+        // Simulate a restored/copied session file: mtime years away from the
+        // session's real activity window.
+        let restoredAt = Date(timeIntervalSince1970: 1_600_000_000)
+        let manifestPath = dir
+            .appendingPathComponent(sessionId, isDirectory: true)
+            .appendingPathComponent("session.json").path
+        try FileManager.default.setAttributes([.modificationDate: restoredAt], ofItemAtPath: manifestPath)
+
+        let result = try await FxParser(logDirectoryOverride: dir.path).parse(options: LogParseOptions(includeConversationBodies: false))
+        let usage = try XCTUnwrap(result.usages.first)
+        XCTAssertEqual(usage.startTime.timeIntervalSince1970, 1_770_000_000, accuracy: 0.001)
+        XCTAssertEqual(usage.endTime.timeIntervalSince1970, 1_770_000_600, accuracy: 0.001)
+    }
+
+    func testUsageRowsFallBackToFileMtimeWhenManifestHasNoTimestamps() async throws {
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let sessionId = "1770000000000-1770000000000000000-a1b2c3d4e5f60718"
+        var legacyManifest = manifest(input: 800, output: 200)
+        legacyManifest.removeValue(forKey: "created_at_ms")
+        legacyManifest.removeValue(forKey: "updated_at_ms")
+        legacyManifest["schema_version"] = 1
+        try writeSession(dir: dir, sessionId: sessionId, manifest: legacyManifest)
+        let mtime = Date(timeIntervalSince1970: 1_600_000_000)
+        let manifestPath = dir
+            .appendingPathComponent(sessionId, isDirectory: true)
+            .appendingPathComponent("session.json").path
+        try FileManager.default.setAttributes([.modificationDate: mtime], ofItemAtPath: manifestPath)
+
+        let result = try await FxParser(logDirectoryOverride: dir.path).parse(options: LogParseOptions(includeConversationBodies: false))
+        let usage = try XCTUnwrap(result.usages.first)
+        XCTAssertEqual(usage.startTime.timeIntervalSince1970, 1_600_000_000, accuracy: 1)
+        XCTAssertEqual(usage.endTime.timeIntervalSince1970, 1_600_000_000, accuracy: 1)
+    }
+
+    // MARK: - Transcript ordering
+
+    /// The transcript must read U1, A1, U2, A2 — not every user message
+    /// followed by every assistant message — or answers detach from prompts.
+    func testTranscriptPreservesEventTurnOrder() async throws {
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try writeSession(
+            dir: dir,
+            manifest: manifest(),
+            sidecar: sidecar(input: 100, output: 50),
+            events: [
+                turnEvent(seq: 1, timestampMs: 1_770_000_000_000, userText: "USER-ONE", assistantText: "ASSISTANT-ONE"),
+                turnEvent(seq: 2, timestampMs: 1_770_000_060_000, userText: "USER-TWO", assistantText: "ASSISTANT-TWO")
+            ]
+        )
+        let options = LogParseOptions(
+            includeConversationBodies: true,
+            minimumFileModificationDate: nil,
+            fileDiscoveryTracker: nil,
+            resourceGovernor: nil,
+            metrics: nil
+        )
+        let result = try await FxParser(logDirectoryOverride: dir.path).parse(options: options)
+        let conversation = try XCTUnwrap(result.conversations.first)
+        let text = conversation.fullText
+        let offsets = try ["USER-ONE", "ASSISTANT-ONE", "USER-TWO", "ASSISTANT-TWO"].map { marker in
+            try XCTUnwrap(text.range(of: marker), "\(marker) missing from transcript").lowerBound
+        }
+        XCTAssertEqual(offsets, offsets.sorted(), "turns must stay in event-log order (U1, A1, U2, A2)")
+        XCTAssertEqual(conversation.messageCount, 4)
+        XCTAssertEqual(conversation.lastAssistantMessage, "ASSISTANT-TWO")
+    }
+
     // MARK: - Cache
 
     func testCacheHitSkipsRescan() async throws {

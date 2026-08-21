@@ -38,26 +38,15 @@ private fun threadInboxHistoryItems(history: AssistantChatHistoryStore, mobileCL
                 agentURI = AgentIdentity.builtInURI(AssistantRuntimeID.PI)
                 source = ThreadInboxItem.Source.PI
             }
-            "codex",
-            "claude",
-            "openclaw",
-            "droid",
-            "forge",
-            "antigravity",
-            "grok",
-            "cursoragent",
-            "cursor_agent",
-            "cursor-agent",
-            "junie",
-            "junie-agent",
-            "jetbrains-junie",
-            -> {
+            // Every other runtime is a CLI mirror. Admission is decided by
+            // threadInboxCLIRuntimeID alone so the alias list has exactly one
+            // home — a second copy here silently drops runtimes it forgets.
+            else -> {
                 val runtime = threadInboxCLIRuntimeID(runtimeLower) ?: return@mapNotNull null
                 agentURI = AgentIdentity.builtInURI(runtime)
                 source = ThreadInboxItem.Source.CLI_MIRROR
                 mobileCLIThreadIDs.add(thread.id)
             }
-            else -> return@mapNotNull null
         }
         ThreadInboxItem(
             id = "${source.token}:${thread.id}",

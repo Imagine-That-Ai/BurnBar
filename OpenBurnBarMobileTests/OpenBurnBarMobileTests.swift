@@ -3282,6 +3282,48 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertEqual(state.mode, .inactive)
     }
 
+    /// A failed search is not an empty one. Both remote legs failing while the
+    /// list still holds cached rows is the normal post-load case, and there the
+    /// list's own load-error branch never fires — so folding this into `.empty`
+    /// showed "No matches" and silently dropped the search retry.
+    func testStreamsSearchStateSurfacesFailureRatherThanNoMatches() {
+        let state = StreamsSearchResultState(
+            query: "session cache",
+            isSearching: false,
+            cloudConversationHitCount: 0,
+            streamHitCount: 0,
+            searchFailed: true
+        )
+
+        XCTAssertEqual(state.mode, .failed)
+    }
+
+    /// Leftover hits from the previous query must not dress a failed search up
+    /// as a successful one either.
+    func testStreamsSearchStateFailsAheadOfStaleHits() {
+        let state = StreamsSearchResultState(
+            query: "session cache",
+            isSearching: false,
+            cloudConversationHitCount: 3,
+            streamHitCount: 2,
+            searchFailed: true
+        )
+
+        XCTAssertEqual(state.mode, .failed)
+    }
+
+    func testStreamsSearchStateStaysInactiveOnAFailedSubMinimumQuery() {
+        let state = StreamsSearchResultState(
+            query: "s",
+            isSearching: false,
+            cloudConversationHitCount: 0,
+            streamHitCount: 0,
+            searchFailed: true
+        )
+
+        XCTAssertEqual(state.mode, .inactive)
+    }
+
     func testCloudConversationRowsResolveProviderLogosFromCloudProviderStrings() {
         let claude = makeCloudSearchRow(id: "claude", provider: "Claude Code")
         let forge = makeCloudSearchRow(id: "forge", provider: "forge")

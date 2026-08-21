@@ -611,23 +611,48 @@ extension BurnBarHTTPGatewayServer {
             self.supportsSearchTool = false
         }
 
+        /// Advertised when we have no discovered limit for a route.
+        ///
+        /// Deliberately small: a client that believes it has more room than the
+        /// upstream allows only finds out by failing a request, while a client
+        /// that believes it has less compacts early and still works.
+        static let unknownContextWindowFallback = 65_536
+
         private static func contextWindow(for model: ModelDescriptor) -> Int {
-            if let contextWindowTokens = model.modelCapabilities?.contextWindowTokens {
-                return contextWindowTokens
+            advertisedContextWindow(
+                formatFamily: model.formatFamily,
+                modelID: model.id,
+                declaredContextWindowTokens: model.modelCapabilities?.contextWindowTokens
+            )
+        }
+
+        /// Context window advertised to Codex-compatible clients.
+        ///
+        /// Clients use this number to decide when to truncate and compact, so a
+        /// generous guess is not a neutral default: tell an 8K/128K/400K route it
+        /// has a million tokens and the conversation grows past the real limit and
+        /// then fails upstream instead of compacting. So only three things are
+        /// advertised — the limit the provider actually reported, the published
+        /// Anthropic family windows (every current Claude model is 200K, Opus adds
+        /// the 1M tier), and otherwise ``unknownContextWindowFallback``. A model
+        /// name from some other vendor is not evidence of a limit: OpenAI-compatible
+        /// routes cover everything from 8K local builds to 1M frontier models under
+        /// arbitrary custom ids, so an unreported window stays at the fallback.
+        static func advertisedContextWindow(
+            formatFamily: String,
+            modelID: String,
+            declaredContextWindowTokens: Int?
+        ) -> Int {
+            // Discovery normalizes non-positive values away, but a decoded
+            // capability payload bypasses that init — a zero limit here would
+            // advertise a zero-token truncation policy.
+            if let declaredContextWindowTokens, declaredContextWindowTokens > 0 {
+                return declaredContextWindowTokens
             }
-            let id = model.id.lowercased()
-            if model.formatFamily == BurnBarProviderFormatFamily.anthropic.rawValue,
-               id.contains("opus") {
-                return 1_000_000
+            if formatFamily == BurnBarProviderFormatFamily.anthropic.rawValue {
+                return modelID.lowercased().contains("opus") ? 1_000_000 : 200_000
             }
-            if model.formatFamily == BurnBarProviderFormatFamily.anthropic.rawValue {
-                return 200_000
-            }
-            if id.contains("gpt") || id.contains("codex") || id.contains("luna")
-                || id.contains("sol") || id.contains("terra") {
-                return 1_000_000
-            }
-            return 65_536
+            return unknownContextWindowFallback
         }
 
         enum CodingKeys: String, CodingKey {
