@@ -12,6 +12,14 @@ import SwiftUI
 final class AppCommandRouter {
     static let shared = AppCommandRouter()
 
+    #if canImport(AppKit) && !DISTRIBUTION_MAS
+    /// The single door between BurnBar and a macOS permission dialog.
+    ///
+    /// Lives here rather than as its own singleton so the shared-singleton ratchet stays
+    /// flat: every surface that can ask for a permission already reaches the router.
+    let permissionLadder = FirstRunPermissionLadder()
+    #endif
+
     var openDashboard: (() -> Void)?
     /// Opens the dashboard directly on the Charts analytics page
     /// (`openburnbar://charts`).

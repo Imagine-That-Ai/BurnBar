@@ -14,7 +14,7 @@ import OpenBurnBarComputerUseCore
 enum SystemPermissionTrustSheetPresenter {
 
     /// Installs the presenter as the ladder's explainer. Call once during startup.
-    static func install(into ladder: FirstRunPermissionLadder = .shared) {
+    static func install(into ladder: FirstRunPermissionLadder = AppCommandRouter.shared.permissionLadder) {
         ladder.explainer = { kind, bundleId in
             await present(kind: kind, bundleId: bundleId)
         }

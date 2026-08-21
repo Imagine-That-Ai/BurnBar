@@ -239,14 +239,33 @@ final class DataStoreCoordinator {
             && DatabaseEncryptionService.isEncryptedDatabaseFile(at: path)
         let encryptionKey: String
         if existingDatabaseIsEncrypted {
-            guard let existingKey = DatabaseEncryptionService.getKey() else {
+            // Use `lookUpKey()` rather than `getKey()`: the difference between "there is
+            // no key" and "the key is there and macOS will not release it" decides which
+            // recovery the user is offered. Collapsing both to nil here would report a
+            // locked key as missing, and the recovery screen would offer archive-and-reset
+            // -- discarding an intact database -- instead of the one-click Unlock that
+            // actually resolves it. Now that keychain UI is suppressed on the launch path,
+            // the locked case is an expected outcome of any signature drift, not an edge.
+            switch DatabaseEncryptionService.lookUpKey() {
+            case let .found(existingKey):
+                encryptionKey = existingKey
+            case let .unreadable(status):
+                AppLogger.dataStore.error(
+                    "encrypted_database_key_unreadable",
+                    metadata: [
+                        "path": path,
+                        "status": "\(status)",
+                        "action": "preserved_without_replacement_key"
+                    ]
+                )
+                throw DatabaseEncryptionError.keychainKeyUnreadable(status: status)
+            case .absent:
                 AppLogger.dataStore.error(
                     "encrypted_database_key_missing",
                     metadata: ["path": path, "action": "preserved_without_replacement_key"]
                 )
                 throw DatabaseEncryptionError.existingEncryptedDatabaseKeyMissing(path: path)
             }
-            encryptionKey = existingKey
         } else {
             encryptionKey = try DatabaseEncryptionService.getOrCreatePersistedKey()
         }

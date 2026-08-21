@@ -57,7 +57,10 @@ public extension SystemPermissionKind {
                 // frames go peer-to-peer to a paired iPhone during Agent Watch. Saying
                 // otherwise would be a false claim on a trust surface.
                 whereItGoes: "There's no BurnBar server in this path. What the agent reads goes to the model provider you already chose \u{2014} the same one reading your prompts. The image and the action log are written to this Mac.",
-                whoDrives: "This permission only lets it look. Clicking and typing is a separate permission, and every action stops for your approval.",
+                whoDrives: "This permission only lets it look \u{2014} clicking and typing is a separate permission. "
+                    + "How much the agent does without asking depends on the session mode you choose: Manual stops for "
+                    + "every action, Step lets one approval cover a short burst of similar actions, and Trusted runs "
+                    + "actions matching rules you wrote without asking again.",
                 ifYouDecline: "Everything else works. The agent just can't read your screen \u{2014} you'd paste or describe things instead.",
                 howToRevoke: "System Settings \u{2192} Privacy & Security \u{2192} Screen Recording, any time. OpenBurnBar goes back to asking."
             )
@@ -65,8 +68,8 @@ public extension SystemPermissionKind {
         case .accessibility:
             return SystemPermissionSafetyFrame(
                 whoWatches: "The same agent, on this Mac. It reads the labels of buttons and fields so it knows what it's about to click.",
-                whereItGoes: "Every action and its result is appended to a hash-linked log on this Mac that you can open, verify, and export.",
-                whoDrives: "You do. The agent proposes, you approve, and you can stop it mid-run. Control-Option-Command-. halts it instantly from anywhere.",
+                whereItGoes: "The labels, window titles and URLs it reads come back as tool results, so they go to the model provider you already chose \u{2014} the same one reading your prompts. Every action is also appended to a hash-linked log on this Mac that you can open, verify, and export.",
+                whoDrives: "You choose how much it does on its own. Manual stops for every action, Step lets one approval cover a short burst, and Trusted runs actions matching rules you wrote without asking again. Control-Option-Command-. halts it instantly from anywhere, in every mode.",
                 ifYouDecline: "Chat and quota tracking are unaffected. The agent just can't click or type for you.",
                 howToRevoke: "System Settings \u{2192} Privacy & Security \u{2192} Accessibility. Switch it off mid-run and OpenBurnBar halts the session within five seconds \u{2014} you don't have to quit anything."
             )
@@ -111,9 +114,11 @@ public extension SystemPermissionKind {
 
         case .fullDiskAccess:
             return SystemPermissionSafetyFrame(
-                whoWatches: "Nothing watches. This lets OpenBurnBar open a specific folder macOS keeps fenced off.",
-                whereItGoes: "Nothing is indexed or uploaded because of this grant. It only unblocks files you asked an agent to open.",
-                whoDrives: "You, by naming the folder. macOS is the one holding it shut, not us.",
+                whoWatches: "Nothing watches on its own \u{2014} but be clear about what you are granting: macOS has "
+                    + "no per-folder version of this. Full Disk Access opens all of your protected data (Mail, Messages, "
+                    + "Safari, Time Machine and more) to OpenBurnBar at once, not just the folder you came here for.",
+                whereItGoes: "Nothing is indexed or uploaded merely for holding the grant. But a file an agent actually reads becomes a tool result, and tool results go to the model provider you already chose. Only ask an agent to open files you are willing to send there.",
+                whoDrives: "You, by asking an agent for a specific file. OpenBurnBar confines itself to what you asked for; macOS does not enforce that limit, so the grant is broader than our use of it.",
                 ifYouDecline: "That one provider stays blocked and is named honestly in the path audit. Everything else keeps working.",
                 howToRevoke: "System Settings \u{2192} Privacy & Security \u{2192} Full Disk Access. OpenBurnBar simply starts failing those reads again."
             )

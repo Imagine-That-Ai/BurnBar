@@ -137,9 +137,11 @@ const PLANNED_CEILINGS = {
   // Linux parity adds daemon-owned cloud/privacy/trusted-device/media contracts
   // after the assistant-model extraction. Keep the ceiling below the next
   // monolith while accounting for those cross-platform authority surfaces.
-  // 195 for KeychainInteractionGate.swift, the process-wide gate that keeps the
-  // first-run keychain prompt from firing once per caller.
-  OpenBurnBarKernel: { maxFiles: 195, maxLines: 54000 },
+  // 191, exactly the current count, for KeychainInteractionGate.swift — the gate
+  // that keeps the first-run keychain prompt from firing once per caller. No
+  // headroom on purpose: this target is supposed to dissolve, so the next file
+  // added to it should have to argue for itself.
+  OpenBurnBarKernel: { maxFiles: 191, maxLines: 54000 },
   OpenBurnBarParserSupport: { maxFiles: 5, maxLines: 1200 },
   OpenBurnBarSQLiteReader: { maxFiles: 3, maxLines: 450 },
   // The final local-parser catalog adds bounded corpus parsers for the Linux

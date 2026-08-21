@@ -1,7 +1,7 @@
 import CryptoKit
 import Foundation
 import GRDB
-import OpenBurnBarKernel
+import OpenBurnBarComputerUseCore
 import Security
 #if canImport(Darwin)
 import Darwin
@@ -338,7 +338,16 @@ enum DatabaseEncryptionService {
     }
 
     /// Reads the stored key, reporting *why* a read failed.
-    static func lookUpKey() -> KeyLookup {
+    ///
+    /// - Parameter allowingInteraction: when `true`, macOS may show its own keychain
+    ///   dialog to unlock a legacy item whose access control no longer matches this
+    ///   binary. Pass `true` **only** from a control the user just clicked, after
+    ///   BurnBar has explained what the dialog is -- same rule as
+    ///   `FirstRunPermissionLadder`: we speak first, macOS speaks second.
+    ///
+    ///   The launch path always passes `false`, so a stale ACL can never produce a
+    ///   password box before the app has drawn a window.
+    static func lookUpKey(allowingInteraction: Bool = false) -> KeyLookup {
         #if DEBUG
         if let testKey = uiTestDatabaseKey() {
             return .found(testKey)
@@ -351,7 +360,9 @@ enum DatabaseEncryptionService {
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne
         ]
-        let lookup = keychainClient.copyMatching(query)
+        let lookup = allowingInteraction
+            ? interactiveCopyMatching(query)
+            : keychainClient.copyMatching(query)
         switch lookup.status {
         case errSecSuccess:
             guard let data = lookup.result as? Data,
@@ -371,6 +382,34 @@ enum DatabaseEncryptionService {
             )
             return .unreadable(lookup.status)
         }
+    }
+
+    /// Reads the key with macOS keychain UI *enabled*, bypassing the seam that
+    /// suppresses it everywhere else.
+    ///
+    /// Deliberately not routed through `keychainClient`: that seam exists so no code
+    /// path can prompt by accident, and this is the one place allowed to, under direct
+    /// user instruction.
+    private static func interactiveCopyMatching(
+        _ query: [String: Any]
+    ) -> (status: OSStatus, result: AnyObject?) {
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        return (status, result)
+    }
+
+    /// Attempts to recover a key that read back as `.unreadable`, allowing macOS to ask
+    /// the user for their login keychain password.
+    ///
+    /// Returns `true` when the key is readable afterwards, so the caller can re-attempt
+    /// startup instead of leaving the user on a dead end.
+    @discardableResult
+    static func unlockUnreadableKeyWithUserConsent() -> Bool {
+        if case .found = lookUpKey(allowingInteraction: true) {
+            AppLogger.dataStore.notice("database_key_unlocked_by_user")
+            return true
+        }
+        return false
     }
 
     /// Returns the stored encryption key if one exists and is readable, nil otherwise.

@@ -64,6 +64,7 @@ final class SystemPermissionMonitorRefreshTests: XCTestCase {
             monitor: monitor,
             permissionLadder: ladder
         )
+        coordinator.acknowledgeTrustOverview()
         while coordinator.currentStep?.kind != .automation {
             coordinator.skipCurrent()
         }
@@ -110,7 +111,37 @@ final class SystemPermissionMonitorRefreshTests: XCTestCase {
             onRefresh?(self)
         }
     }
+
+    /// The trust overview is a gate. If it ever becomes skippable, the wizard can hand
+    /// a user straight to "OpenBurnBar wants to record this computer's screen" with no
+    /// explanation -- the exact experience this work exists to remove.
+    @MainActor
+    func testTrustOverviewBlocksAnyPermissionRequestUntilAcknowledged() async {
+        let promptedBundleIds = BundleIdRecorder()
+        let ladder = FirstRunPermissionLadder(
+            prompter: { _, bundleId in promptedBundleIds.append(bundleId ?? "none") },
+            statusReader: { _, _ in .needsAccess }
+        )
+        ladder.explainer = { _, _ in true }
+        let coordinator = PermissionsOnboardingCoordinator(
+            monitor: FakeSystemPermissionMonitor(),
+            permissionLadder: ladder
+        )
+
+        XCTAssertTrue(coordinator.isShowingTrustOverview, "the overview must come first")
+        await coordinator.requestCurrent()
+        XCTAssertTrue(
+            promptedBundleIds.values.isEmpty,
+            "no permission may be requested while the trust overview is still showing"
+        )
+
+        coordinator.acknowledgeTrustOverview()
+        XCTAssertFalse(coordinator.isShowingTrustOverview)
+        await coordinator.requestCurrent()
+        XCTAssertFalse(promptedBundleIds.values.isEmpty, "after acknowledging, asks proceed normally")
+    }
 }
+
 #endif
 
 /// Reference box so the `@Sendable` ladder prompter can record without capturing a

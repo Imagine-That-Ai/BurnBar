@@ -887,7 +887,7 @@ struct ComputerUseSettingsView: View {
         // Through the ladder, so this row explains what Accessibility means before
         // macOS says "wants to control this computer".
         Task { @MainActor in
-            await FirstRunPermissionLadder.shared.request(.accessibility)
+            await AppCommandRouter.shared.permissionLadder.request(.accessibility)
             refreshReadiness()
         }
     }

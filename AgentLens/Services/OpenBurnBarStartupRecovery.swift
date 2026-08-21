@@ -13,6 +13,15 @@ struct DataStoreStartupFailure: Identifiable, Equatable {
     let databaseURL: URL
     let archiveURL: URL?
 
+    /// The database key exists but macOS would not let this binary read it -- almost
+    /// always a legacy login-keychain ACL still bound to a previous code signature.
+    ///
+    /// Distinct from every other startup failure because it is *recoverable by the
+    /// user in one click*: macOS will hand the key over if they confirm with their
+    /// login password. Without this flag the recovery screen would offer only
+    /// "archive and reset", which throws away a perfectly intact database.
+    let isKeychainLocked: Bool
+
     static func make(
         error: Error,
         paths: OpenBurnBarCore.OpenBurnBarAppPaths = .live(),
@@ -27,8 +36,14 @@ struct DataStoreStartupFailure: Identifiable, Equatable {
             technicalDetails: String(describing: error),
             supportDirectory: paths.supportDirectory,
             databaseURL: paths.databaseURL,
-            archiveURL: archiveURL
+            archiveURL: archiveURL,
+            isKeychainLocked: Self.isKeychainLocked(error)
         )
+    }
+
+    private static func isKeychainLocked(_ error: Error) -> Bool {
+        if case DatabaseEncryptionError.keychainKeyUnreadable = error { return true }
+        return false
     }
 
     /// Zero-cost placeholder used by the XCTest host. No filesystem probing, no
@@ -45,7 +60,8 @@ struct DataStoreStartupFailure: Identifiable, Equatable {
             technicalDetails: "OpenBurnBarRuntime.shouldUseTestStubScene == true",
             supportDirectory: URL(fileURLWithPath: "/dev/null/openburnbar-test-stub", isDirectory: true),
             databaseURL: URL(fileURLWithPath: "/dev/null/openburnbar-test-stub.sqlite"),
-            archiveURL: nil
+            archiveURL: nil,
+            isKeychainLocked: false
         )
     }
 

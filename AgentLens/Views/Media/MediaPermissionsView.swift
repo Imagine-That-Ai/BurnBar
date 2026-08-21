@@ -277,7 +277,7 @@ struct MediaPermissionsView: View {
         // to System Settings either way -- but only once the user has agreed to go.
         #if !DISTRIBUTION_MAS
         Task { @MainActor in
-            let didProceed = await FirstRunPermissionLadder.shared.request(.screenRecording)
+            let didProceed = await AppCommandRouter.shared.permissionLadder.request(.screenRecording)
             guard didProceed else { return }
             openSystemSettings(deepLink: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")
         }
@@ -313,7 +313,7 @@ struct MediaPermissionsView: View {
 
     private func requestAVAccess(for mediaType: AVMediaType) async {
         #if !DISTRIBUTION_MAS
-        _ = await FirstRunPermissionLadder.shared.request(mediaType == .audio ? .microphone : .camera)
+        _ = await AppCommandRouter.shared.permissionLadder.request(mediaType == .audio ? .microphone : .camera)
         #else
         #if canImport(AVFoundation)
         _ = await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in

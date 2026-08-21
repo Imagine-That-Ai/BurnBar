@@ -408,7 +408,14 @@ final class WindowManager: ObservableObject {
             onRevealSupportFolder: onRevealSupportFolder,
             onArchiveAndReset: onArchiveAndReset,
             onCopyDiagnostics: onCopyDiagnostics,
-            onQuit: onQuit
+            onQuit: onQuit,
+            onUnlockKeychain: failure.isKeychainLocked ? {
+                // The user asked for this, having just read what macOS is about to
+                // request. Only now may keychain UI appear.
+                if DatabaseEncryptionService.unlockUnreadableKeyWithUserConsent() {
+                    onRetry()
+                }
+            } : nil
         )
 
         if let window = startupRecoveryWindow {

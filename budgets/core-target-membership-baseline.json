@@ -48,7 +48,7 @@
       "planned": true
     },
     "OpenBurnBarKernel": {
-      "maxFiles": 195,
+      "maxFiles": 191,
       "maxLines": 54000,
       "planned": true
     },

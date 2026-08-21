@@ -26,7 +26,11 @@ import OpenBurnBarComputerUseCore
 ///   started a call or a session.
 @MainActor
 final class FirstRunPermissionLadder {
-    static let shared = FirstRunPermissionLadder()
+    /// Deliberately not a singleton. `budgets/singleton-baseline.json` is a shrink-only
+    /// ratchet, and its failure message is the right instruction: "use runtime-context
+    /// injection instead of adding global shared access". The process-wide instance every
+    /// surface shares lives on `AppCommandRouter`, which is already the app-wide hub
+    /// views reach for actions like this.
 
     /// Shows BurnBar's own explanation. Returns `true` when the user chose to continue
     /// to the macOS dialog. Injected so tests can drive it without a window.

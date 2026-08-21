@@ -28,14 +28,18 @@ struct OnboardingSystemPermissionsView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-            Text("MAC PERMISSIONS")
+            Text(coordinator.isShowingTrustOverview ? "WHAT BURNBAR CAN AND CANNOT DO" : "MAC PERMISSIONS")
                 .font(.system(size: 10, weight: .semibold, design: .rounded))
                 .tracking(1.2)
                 .foregroundStyle(DesignSystem.Colors.textMuted)
-            Text("Let the agent actually help you")
+            Text(coordinator.isShowingTrustOverview
+                 ? "Before macOS asks you anything"
+                 : "Let the agent actually help you")
                 .font(.system(size: 22, weight: .semibold, design: .rounded))
                 .foregroundStyle(DesignSystem.Colors.textPrimary)
-            Text("Each permission unlocks a different ability. Allow now, see exactly what's blocked if you skip, and finish the rest later from chat.")
+            Text(coordinator.isShowingTrustOverview
+                 ? "You are about to see some blunt macOS dialogs. Here is what they actually mean."
+                 : "Each permission unlocks a different ability. Allow now, see exactly what's blocked if you skip, and finish the rest later from chat.")
                 .font(DesignSystem.Typography.caption)
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
         }
@@ -43,7 +47,11 @@ struct OnboardingSystemPermissionsView: View {
 
     @ViewBuilder
     private var cardContent: some View {
-        if let step = coordinator.currentStep {
+        if coordinator.isShowingTrustOverview {
+            PermissionsTrustOverviewCard(coordinator: coordinator)
+                .transition(.asymmetric(insertion: .opacity,
+                                        removal: .move(edge: .leading).combined(with: .opacity)))
+        } else if let step = coordinator.currentStep {
             PermissionsCard(step: step, coordinator: coordinator)
                 .id(step.id)
                 .transition(.asymmetric(insertion: .move(edge: .trailing).combined(with: .opacity),
@@ -72,7 +80,14 @@ struct OnboardingSystemPermissionsView: View {
         )
     }
 
+    @ViewBuilder
     private var stepDots: some View {
+        if !coordinator.isShowingTrustOverview {
+            stepDotsRow
+        }
+    }
+
+    private var stepDotsRow: some View {
         HStack(spacing: 6) {
             ForEach(Array(coordinator.steps.enumerated()), id: \.element.id) { index, step in
                 Circle()
@@ -94,6 +109,114 @@ struct OnboardingSystemPermissionsView: View {
         case .pending:
             return isCurrent ? DesignSystem.Colors.coral : DesignSystem.Colors.borderSubtle
         }
+    }
+}
+
+// MARK: - Trust overview
+
+/// The first thing a nervous user sees, before any permission is requested.
+///
+/// Every claim here is checkable, and the "can't" list is as important as the "can":
+/// a reassurance page that only lists benefits reads as marketing, which is exactly
+/// what someone worried about spyware discounts.
+private struct PermissionsTrustOverviewCard: View {
+    @ObservedObject var coordinator: PermissionsOnboardingCoordinator
+
+    private struct Point: Identifiable {
+        let id = UUID()
+        let symbol: String
+        let title: String
+        let detail: String
+    }
+
+    private let canDo: [Point] = [
+        Point(symbol: "hand.tap",
+              title: "Nothing starts on its own",
+              detail: "An agent only sees or touches your Mac inside a session you start."),
+        Point(symbol: "checkmark.shield",
+              title: "You choose how much it does on its own",
+              detail: "Manual stops for every action and is the default. Step lets one approval cover a short burst; Trusted runs actions matching rules you wrote. You pick per session."),
+        Point(symbol: "externaldrive",
+              title: "No BurnBar server is in the loop",
+              detail: "Nobody here can see your screen. What the agent reads goes to the model provider you already chose."),
+        Point(symbol: "bolt.slash",
+              title: "One key ends it",
+              detail: "Control-Option-Command-. halts an agent instantly, from anywhere. So does locking your Mac.")
+    ]
+
+    private let cannotDo: [String] = [
+        "Run when you have not started something.",
+        "Take an action you rejected, or exceed the session mode you chose.",
+        "Send your screen to BurnBar."
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+            Text("OpenBurnBar does not drive your Mac. Your agents do \u{2014} and only with your hand on it.")
+                .font(.system(size: 15, weight: .semibold, design: .rounded))
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                ForEach(canDo) { point in
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: point.symbol)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(DesignSystem.Colors.success)
+                            .frame(width: 16)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(point.title)
+                                .font(DesignSystem.Typography.caption.weight(.semibold))
+                                .foregroundStyle(DesignSystem.Colors.textPrimary)
+                            Text(point.detail)
+                                .font(DesignSystem.Typography.caption)
+                                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+            }
+
+            Divider().opacity(0.35)
+
+            Text("What it cannot do \u{2014} ever")
+                .font(DesignSystem.Typography.caption.weight(.semibold))
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(cannotDo, id: \.self) { line in
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                            .frame(width: 16)
+                        Text(line)
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    }
+                }
+            }
+
+            Text("macOS will only ask about the permissions you actually use, one at a time \u{2014} and OpenBurnBar explains each one before it asks.")
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack {
+                Spacer()
+                Button("Continue") { coordinator.acknowledgeTrustOverview() }
+                    .buttonStyle(.borderedProminent)
+                    .font(DesignSystem.Typography.caption)
+            }
+        }
+        .padding(DesignSystem.Spacing.lg)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(DesignSystem.Colors.surface.opacity(0.55))
+        .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.lg))
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.lg)
+                .stroke(DesignSystem.Colors.borderSubtle, lineWidth: 0.5)
+        )
     }
 }
 
@@ -334,6 +457,22 @@ final class PermissionsOnboardingCoordinator: ObservableObject {
 
     @Published private(set) var steps: [Step] = []
     @Published private(set) var currentIndex: Int = 0
+
+    /// True until the user has read the trust overview.
+    ///
+    /// The per-bucket cards are written for someone who already wants agent control:
+    /// they lead with what you gain and list what breaks if you skip. That is the wrong
+    /// first sentence for someone who is not yet sure this app is safe. The overview
+    /// answers "what is this, and what can't it do" before anything is asked for.
+    @Published private(set) var isShowingTrustOverview = true
+
+    /// Dismisses the overview and moves on to the per-bucket asks.
+    func acknowledgeTrustOverview() {
+        guard isShowingTrustOverview else { return }
+        withAnimation(DesignSystem.Animation.gentle) {
+            isShowingTrustOverview = false
+        }
+    }
     @Published private var snapshotByKey: [String: SystemPermissionStatus] = [:]
     @Published private var deferredKeys: Set<String> = []
 
@@ -345,7 +484,7 @@ final class PermissionsOnboardingCoordinator: ObservableObject {
 
     init(
         monitor: any SystemPermissionMonitoring = SystemPermissionMonitor.shared,
-        permissionLadder: FirstRunPermissionLadder = .shared
+        permissionLadder: FirstRunPermissionLadder = AppCommandRouter.shared.permissionLadder
     ) {
         self.monitor = monitor
         self.permissionLadder = permissionLadder
@@ -424,6 +563,9 @@ final class PermissionsOnboardingCoordinator: ObservableObject {
     /// re-implemented the prompt without the explanation. They now live in
     /// `SystemPermissionPromptRunner`, behind `FirstRunPermissionLadder`.
     func requestCurrent() async {
+        // The overview is a gate, not decoration: no permission may be requested
+        // before the user has read what agent control does and does not do.
+        guard !isShowingTrustOverview else { return }
         guard let step = currentStep else { return }
 
         let didProceed = await permissionLadder.request(
