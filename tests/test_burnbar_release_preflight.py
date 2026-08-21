@@ -233,11 +233,24 @@ def test_release_build_and_release_job_has_packaging_headroom():
     assert "Cold-runner worst case stays well under five hours" in build_job
     assert "Build signed Android release bundle" in build_job
     assert ":app:bundleRelease :app:assembleRelease" in build_job
-    assert "run-android-release-startup-smoke.sh" in build_job
     assert "Notarize and staple DMG" in build_job
     # Codex P1 on PR #1281: the fail-hard signing-secret check must live in the
     # environment-bound packaging job, where environment-scoped secrets resolve.
     assert "Validate strict release secrets" in build_job
+
+    # The Android startup smoke must still run somewhere in the release chain,
+    # but it CANNOT live in build-and-release: macos-26 hosted runners have no
+    # hardware virtualization (HV_UNSUPPORTED), so the emulator can never boot
+    # there — release attempts 13/13R failed 100% on exactly that. Unlike the
+    # signing-secret check above, the smoke needs only the built APK (which
+    # travels by artifact), not environment-scoped secrets, so it moved to the
+    # ubuntu+KVM android-release-identity job. Assert it there, and assert the
+    # packaging job no longer hosts an emulator at all.
+    identity_start = body.index("  android-release-identity:")
+    identity_end = body.index("  prepare-release-publication:")
+    identity_job = body[identity_start:identity_end]
+    assert "run-android-release-startup-smoke.sh" in identity_job
+    assert "android-emulator-runner" not in build_job
 
 
 def test_android_release_proguard_preserves_reflective_firebase_registrars():
