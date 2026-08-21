@@ -256,33 +256,33 @@ extension CLIAgentMissionRequestListener {
             logger.error("mission id=\(document.documentID, privacy: .public) cannot be opened with this Mac vault key: \(error.localizedDescription, privacy: .public)")
             return
         }
-        var data = mergePrivateMissionPayload(privatePayload, into: rawData)
-        var missionGroupContext: MissionGroupClaimContext?
+        var muData = mergePrivateMissionPayload(privatePayload, into: rawData)
+        var muMissionGroupContext: MissionGroupClaimContext?
         do {
-            missionGroupContext = try await validateMissionGroupClaimIfNeeded(
-                data: data, uid: uid, requestID: document.documentID)
+            muMissionGroupContext = try await validateMissionGroupClaimIfNeeded(
+                data: muData, uid: uid, requestID: document.documentID)
         } catch {
             logger.warning("mission id=\(document.documentID, privacy: .public) refused before claim: \(error.localizedDescription, privacy: .public)")
             // cov:ignore-start -- live Firestore mission-listener denial telemetry; reducer behavior is unit-tested.
             MissionRemoteAuthorizationShadow.observeDeny(
-                ctx: .fromMissionData(data, missionID: document.documentID, prompt: "", fanOutCount: 1),
+                ctx: .fromMissionData(muData, missionID: document.documentID, prompt: "", fanOutCount: 1),
                 executorTrustState: "trusted")
             // cov:ignore-end
-            data["_preClaimFailure"] = error.localizedDescription
+            muData["_preClaimFailure"] = error.localizedDescription
         }
-        let title = (data["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        let title = (muData["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
             ?? "Insights mission"
-        let prompt = (data["prompt"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let prompt = (muData["prompt"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if prompt.isEmpty {
-            data["_preClaimFailure"] = "Mission prompt was empty."
+            muData["_preClaimFailure"] = "Mission prompt was empty."
         }
 
-        var requestedRuntime = (data["requestedRuntime"] as? String) ?? "auto"
-        var requestedModelID = (data["requestedModelID"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
-        let missionKind = (data["missionKind"] as? String) ?? "unknown"
+        var muRequestedRuntime = (muData["requestedRuntime"] as? String) ?? "auto"
+        var muRequestedModelID = (muData["requestedModelID"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        let missionKind = (muData["missionKind"] as? String) ?? "unknown"
         missionEventSequences[document.documentID] = max(
-            data["lastEventSequence"] as? Int ?? 1,
-            ((data["events"] as? [Any])?.count ?? 1)
+            muData["lastEventSequence"] as? Int ?? 1,
+            ((muData["events"] as? [Any])?.count ?? 1)
         )
 
         let trustResult = await deviceTrustChecker.prepareAndValidateTrustedExecutor(
@@ -291,24 +291,24 @@ extension CLIAgentMissionRequestListener {
         )
         let executorTrustState = trustResult.rawTrustState
 
-        var backend = resolveBackend(
-            requestedRuntime: requestedRuntime,
-            missionKind: data["missionKind"] as? String
+        var muBackend = resolveBackend(
+            requestedRuntime: muRequestedRuntime,
+            missionKind: muData["missionKind"] as? String
         )
         let wandRoutingSelection: CLIAgentMissionWandRoutingSelection?
         do {
             wandRoutingSelection = try await Self.resolveWandRoutingIfNeeded(
-                context: missionGroupContext,
-                data: data
+                context: muMissionGroupContext,
+                data: muData
             )
             if let wandRoutingSelection {
-                requestedRuntime = wandRoutingSelection.requestedRuntime
-                requestedModelID = wandRoutingSelection.modelID
-                data["requestedRuntime"] = requestedRuntime
-                data["requestedModelID"] = requestedModelID
-                backend = resolveBackend(
-                    requestedRuntime: requestedRuntime,
-                    missionKind: data["missionKind"] as? String
+                muRequestedRuntime = wandRoutingSelection.requestedRuntime
+                muRequestedModelID = wandRoutingSelection.modelID
+                muData["requestedRuntime"] = muRequestedRuntime
+                muData["requestedModelID"] = muRequestedModelID
+                muBackend = resolveBackend(
+                    requestedRuntime: muRequestedRuntime,
+                    missionKind: muData["missionKind"] as? String
                 )
                 logger.info("wand routing selected mission id=\(document.documentID, privacy: .public) model=\(wandRoutingSelection.modelID, privacy: .public) provider=\(wandRoutingSelection.provider ?? "unknown", privacy: .public) source=\(wandRoutingSelection.source ?? "unknown", privacy: .public)")
             }
@@ -316,6 +316,17 @@ extension CLIAgentMissionRequestListener {
             logger.warning("mission id=\(document.documentID, privacy: .public) refused before claim: \(error.localizedDescription, privacy: .public)")
             return
         }
+
+        // Freeze the mutable resolution phase into immutable bindings: the
+        // @Sendable local functions below may only capture lets under Swift 6
+        // region isolation. All mutation of the mu* vars ends above this line.
+        // sendableJSONPayload: the frozen dictionary itself must have a
+        // Sendable value type to cross into the claim/evaluate closures.
+        let data = ComputerUseSecurityCallableClient.sendableJSONPayload(muData)
+        let missionGroupContext = muMissionGroupContext
+        let requestedRuntime = muRequestedRuntime
+        let requestedModelID = muRequestedModelID
+        let backend = muBackend
 
         let claimDecision = CLIAgentMissionClaimDecision.make(
             thisDeviceId: accountManager.deviceId,
@@ -325,7 +336,7 @@ extension CLIAgentMissionRequestListener {
             inFlight: inFlightExecutions.contains(document.documentID)
         )
 
-        func performExclusiveClaim() async throws -> String {
+        @MainActor @Sendable func performExclusiveClaim() async throws -> String {
             logger.info("claiming mission id=\(document.documentID, privacy: .public) kind=\(missionKind, privacy: .public) requested=\(requestedRuntime, privacy: .public) selected=\(backend.rawValue, privacy: .public) model=\(requestedModelID ?? "auto", privacy: .public)")
             let baseClaimSummary = requestedModelID.map { "\(backend.displayName) claimed the mission on this Mac with model \($0)." }
                 ?? "\(backend.displayName) claimed the mission on this Mac."
@@ -349,7 +360,7 @@ extension CLIAgentMissionRequestListener {
                 selectedRuntimeName: backend.displayName,
                 selectedModelID: requestedModelID,
                 approvalRequestId: nil,
-                sealedStatePayload: sealedState
+                sealedStatePayload: ComputerUseSecurityCallableClient.sendableJSONPayload(sealedState)
             )
             claimedMissions[document.documentID] = .init(hostWriteNonce: hostWriteNonce, deviceId: accountManager.deviceId)
             if missionEventSequences[document.documentID] == nil {
@@ -359,7 +370,11 @@ extension CLIAgentMissionRequestListener {
             return hostWriteNonce
         }
 
-        func evaluateAfterExclusiveClaim() async {
+        @MainActor @Sendable func evaluateAfterExclusiveClaim() async {
+            // Local mutable shadow: the captured binding is a let (required for
+            // @Sendable capture); this function amends grant-ceiling fields
+            // before handing the payload to execution.
+            var data = data
             inFlightExecutions.insert(document.documentID)
             defer { inFlightExecutions.remove(document.documentID) }
             if let preClaimFailure = data["_preClaimFailure"] as? String {
@@ -465,7 +480,7 @@ extension CLIAgentMissionRequestListener {
                         deviceId: handle.deviceId,
                         status: "starting",
                         hostWriteNonce: handle.hostWriteNonce,
-                        sealedStatePayload: sealedState
+                        sealedStatePayload: ComputerUseSecurityCallableClient.sendableJSONPayload(sealedState)
                     )
                 }
             } catch {
@@ -807,18 +822,13 @@ enum CLIAgentMissionClaimThenEvaluate {
         return text.contains("failed-precondition") || text.contains("failed_precondition")
     }
 
-    /// Runs in the caller's isolation domain.
-    ///
-    /// The three closures capture the caller's actor-isolated state, so a `nonisolated`
-    /// helper would have to *send* them across a boundary — which region isolation
-    /// rightly rejects. `#isolation` means no boundary is crossed at all: this is an
-    /// algorithm over the caller's own state, not a hop off it.
+    // @Sendable: the caller's closures cross into this async helper under
+    // Swift 6 region isolation; callers capture actor references only.
     static func run(
         decision: CLIAgentMissionClaimDecision,
-        isolation: isolated (any Actor)? = #isolation,
-        claim: () async throws -> String,
-        evaluate: () async throws -> Void,
-        fail: () async throws -> Void
+        claim: @Sendable () async throws -> String,
+        evaluate: @Sendable () async throws -> Void,
+        fail: @Sendable () async throws -> Void
     ) async throws {
         switch decision {
         case .skip:

@@ -371,11 +371,8 @@ final class CLIAgentSessionMirror: Sendable {
         case .omp: return .omp
         case .xAI: return .grok
         case .junie: return .junie
-        case .fx: return .fx
-        // `.grok` is not an `AgentProvider` member — the provider spelling is `.xAI`,
-        // already mapped to `.grok` above. This arm arrived from the `ChatBackendID`
-        // switch further up, where `.grok, .kimi` is valid, and does not compile here.
-        case .kimi: return .junie
+        // AgentProvider spells xAI `.xAI`, mapped above. `.kimi` has no CLIAgentRuntime
+        // counterpart, so it falls through to nil rather than being mis-attributed.
         default: return nil
         }
     }

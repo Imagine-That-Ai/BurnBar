@@ -100,10 +100,14 @@ extension ChatSessionController {
                 return (.fx, "OpenBurnBar fx Chat", m)
             // The provider spelling for Grok is `.xAI`; `AgentProvider` has no `.grok`
             // member, and Kimi has its own `.kimi` rather than being filed under Grok.
+            // Honour an explicitly requested model like every other backend above,
+            // rather than always reporting the default (from #2384).
             case .grok:
-                return (.xAI, "OpenBurnBar Grok Chat", "grok")
+                let m = requestModel.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "grok"
+                return (.xAI, "OpenBurnBar Grok Chat", m)
             case .kimi:
-                return (.kimi, "OpenBurnBar Kimi Chat", "kimi")
+                let m = requestModel.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "kimi"
+                return (.kimi, "OpenBurnBar Kimi Chat", m)
             }
         }()
 

@@ -1062,6 +1062,37 @@ enum ComputerUseSecurityCallableClient {
         ]
     }
 
+    /// Narrows an untyped JSON object to a provably `Sendable` one.
+    ///
+    /// Mission payloads arrive from Firestore as `[String: Any]`, but
+    /// `callHighRiskOwnerAction` deliberately requires `Sendable` (tightened by the
+    /// high-risk-owner-action security work). `as? any Sendable` cannot express that --
+    /// `Sendable` is a marker protocol and Swift rejects it in a conditional cast -- so
+    /// recognise the JSON value types instead. Anything unrecognised is dropped rather
+    /// than force-cast: a payload reaching the wire while carrying a non-Sendable
+    /// reference is exactly the race the requirement exists to prevent.
+    static func sendableJSONPayload(_ object: [String: Any]) -> [String: any Sendable] {
+        object.reduce(into: [String: any Sendable]()) { result, entry in
+            if let value = sendableJSONValue(entry.value) {
+                result[entry.key] = value
+            }
+        }
+    }
+
+    private static func sendableJSONValue(_ value: Any) -> (any Sendable)? {
+        switch value {
+        case let value as String: return value
+        case let value as Bool: return value
+        case let value as Int: return value
+        case let value as Double: return value
+        case let value as NSNumber: return value.doubleValue
+        case is NSNull: return nil
+        case let value as [Any]: return value.compactMap(sendableJSONValue)
+        case let value as [String: Any]: return sendableJSONPayload(value)
+        default: return nil
+        }
+    }
+
     @discardableResult
     static func callHighRiskOwnerAction(
         _ callableName: String,
@@ -1126,6 +1157,9 @@ enum ComputerUseSecurityCallableClient {
         )
     }
 
+    // `any Sendable` for the same reason as updateCliAgentMissionStatus: the
+    // caller's mission payload crosses into this async call under Swift 6
+    // region isolation; require provably-Sendable values at the boundary.
     static func createCliAgentMission(payload: [String: any Sendable], deviceId: String) async throws -> String {
         let requestId = payload["requestId"] as? String ?? ""
         let result = try await callHighRiskOwnerAction(
@@ -1133,7 +1167,7 @@ enum ComputerUseSecurityCallableClient {
             deviceId: deviceId,
             actionKind: "cli_agent_mission_create",
             subjectId: requestId,
-            payload: payload.merging(["deviceId": deviceId]) { _, new in new }
+            payload: sendableJSONPayload(payload.merging(["deviceId": deviceId]) { _, new in new })
         )
         guard let dict = result.data as? [String: Any],
               dict["ok"] as? Bool == true,
@@ -1169,7 +1203,7 @@ enum ComputerUseSecurityCallableClient {
             deviceId: deviceId,
             actionKind: "cli_agent_mission_claim",
             subjectId: requestId,
-            payload: payload
+            payload: sendableJSONPayload(payload)
         )
         guard let dict = result.data as? [String: Any],
               dict["ok"] as? Bool == true,
@@ -1185,6 +1219,9 @@ enum ComputerUseSecurityCallableClient {
         deviceId: String,
         status: String,
         hostWriteNonce: String,
+        // `any Sendable` values: callers hold `[String: Any]` mission state that
+        // crosses into this async call; requiring provably-Sendable values here
+        // (via `sendableJSONPayload`) is what satisfies Swift 6 region isolation.
         sealedStatePayload: [String: any Sendable],
         approvalRequestId: String? = nil,
         releaseClaim: Bool = false
@@ -1203,7 +1240,7 @@ enum ComputerUseSecurityCallableClient {
             deviceId: deviceId,
             actionKind: "cli_agent_mission_status",
             subjectId: requestId,
-            payload: payload
+            payload: sendableJSONPayload(payload)
         )
         guard let dict = result.data as? [String: Any], dict["ok"] as? Bool == true else {
             throw ClientError.invalidResponse("Mission status update failed.")
@@ -1223,14 +1260,14 @@ enum ComputerUseSecurityCallableClient {
             deviceId: deviceId,
             actionKind: "cli_agent_mission_append_event",
             subjectId: requestId,
-            payload: [
+            payload: sendableJSONPayload([
                 "requestId": requestId,
                 "deviceId": deviceId,
                 "hostWriteNonce": hostWriteNonce,
                 "eventId": eventId,
                 "sealedEvent": sealedEvent,
                 "publicEventShape": publicEventShape
-            ]
+            ])
         )
         guard let dict = result.data as? [String: Any], dict["ok"] as? Bool == true else {
             throw ClientError.invalidResponse("Mission event append failed.")

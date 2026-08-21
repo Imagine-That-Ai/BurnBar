@@ -248,7 +248,6 @@ extension CLIAgentMissionRequestListener {
                 onPermission: { request in
                     await self.resolveACPPermission(
                         request,
-                        data: permissionData,
                         document: reference,
                         requestID: requestID,
                         backend: backend
@@ -331,7 +330,6 @@ extension CLIAgentMissionRequestListener {
 
     func resolveACPPermission(
         _ request: ACPStdioClient.PermissionRequest,
-        data _: UntypedJSONObject,
         document: DocumentReference,
         requestID: String,
         backend: CLIAgentMissionBackend
@@ -368,7 +366,7 @@ extension CLIAgentMissionRequestListener {
                 deviceId: handle.deviceId,
                 status: "waiting_for_approval",
                 hostWriteNonce: handle.hostWriteNonce,
-                sealedStatePayload: sealedState,
+                sealedStatePayload: ComputerUseSecurityCallableClient.sendableJSONPayload(sealedState),
                 approvalRequestId: approvalID
             )
             await recordEvent(
@@ -421,7 +419,7 @@ extension CLIAgentMissionRequestListener {
             deviceId: handle.deviceId,
             status: "running",
             hostWriteNonce: handle.hostWriteNonce,
-            sealedStatePayload: sealedState
+            sealedStatePayload: ComputerUseSecurityCallableClient.sendableJSONPayload(sealedState)
         )
     }
 
@@ -455,13 +453,9 @@ extension CLIAgentMissionRequestListener {
         let identity = try OpenBurnBarSignalIdentityKeyStore().loadOrCreate(uid: uid, deviceId: deviceId)
         let signature = try MissionApprovalCeiling.signCanonical(canonical, identity: identity)
         parkedCeilingByRequest[requestID] = (digest, grant)
-        // `Sendable` is a marker protocol: it carries no runtime witness, so
-        // `value as? any Sendable` cannot compile — there is nothing to test at run
-        // time. The canonical dictionary is JSON by construction, so name the JSON
-        // primitives explicitly. That is also stricter than the cast would have been:
-        // anything that is not a JSON value is dropped here rather than smuggled
-        // across the callable boundary as an opaque `Any`.
-        let sendable = Self.sendableJSON(canonical)
+        // `as? any Sendable` does not compile: Sendable is a marker protocol and cannot
+        // appear in a conditional cast. The callable boundary owns this conversion.
+        let sendable = ComputerUseSecurityCallableClient.sendableJSONPayload(canonical)
         try await ComputerUseSecurityCallableClient.publishMissionApprovalCeiling(
             requestId: requestID,
             deviceId: deviceId,
@@ -573,9 +567,8 @@ extension CLIAgentMissionRequestListener {
         extraEnvironment: [String: String],
         workingDirectoryURL: URL?,
         cancellationTracker: MissionCancellationTracker,
-        // Threaded in rather than captured: the body registers an interrupt handler
-        // under the mission's request id so a remote cancel can reach this process,
-        // and that id is only known to the caller.
+        // Registered on the interrupt bus alongside the synthetic session id so a
+        // cancel addressed to the mission request also terminates this process.
         requestID: String,
         eventSink: @escaping @Sendable (DirectCLIStreamEvent) -> Void
     ) async throws -> String {

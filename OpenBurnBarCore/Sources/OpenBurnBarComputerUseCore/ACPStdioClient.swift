@@ -68,10 +68,9 @@ public enum ACPStdioClient {
         extraEnvironment: [String: String] = [:],
         workingDirectory: URL? = nil,
         timeoutSeconds: TimeInterval = 180,
-        // `@Sendable` because these are called from the stdio pump, not from the
-        // caller's actor: `onUpdate` fires per streamed line and `interruptFlag` is
-        // polled between reads. Without it, handing them across the isolation
-        // boundary is a data race Swift 6 correctly refuses to compile.
+        // @Sendable: these closures cross the caller's isolation region into
+        // this async session (Swift 6 region isolation). Callers capture actor
+        // references, which are themselves Sendable.
         onPermission: @escaping @Sendable (PermissionRequest) async -> Bool,
         onUpdate: @escaping @Sendable (String) -> Void = { _ in },
         interruptFlag: @Sendable () -> Bool = { false }

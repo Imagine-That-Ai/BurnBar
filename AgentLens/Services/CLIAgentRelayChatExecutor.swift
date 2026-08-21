@@ -33,30 +33,52 @@ typealias CLIAgentSessionActionHaltHandler = @MainActor @Sendable () async -> Vo
 
 typealias CLIAgentSessionActionInterruptRunner = @MainActor @Sendable (_ sessionID: String) async -> Bool
 
-/// Routes an interrupt to whoever owns a running session.
-///
-/// Genuinely concurrent by construction: handlers are registered on the actor that
-/// launched the process and fired from cancellation paths, timeout tasks and process
-/// termination — none of which share an executor. The table is therefore guarded by a
-/// lock rather than pinned to an actor, because pinning it would make `interrupt`
-/// `async` and put a hop between "user pressed stop" and "process receives SIGTERM",
-/// which is the one place latency is the whole feature.
-///
-/// `removeValue` inside the lock is also what makes interruption exactly-once: two
-/// racing callers cannot both take the same handler.
-enum CLIAgentSessionInterruptBus {
-    private static let handlers = OSAllocatedUnfairLock<[String: @Sendable () -> Void]>(initialState: [:])
+// AUDIT(@unchecked Sendable): the handler table is guarded by `lock` on every access;
+// the stored closures capture a `Process`, which is not Sendable, so the box owns the
+// isolation rather than the closure type. sendable-allowlist: foundation-sdk-shim
+private final class CLIAgentSessionInterruptHandlerBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var handlers: [String: () -> Void] = [:]
 
-    static func register(sessionID: String, handler: @escaping @Sendable () -> Void) {
-        handlers.withLock { $0[sessionID] = handler }
+    func register(sessionID: String, handler: @escaping () -> Void) {
+        lock.lock()
+        defer { lock.unlock() }
+        handlers[sessionID] = handler
+    }
+
+    func unregister(sessionID: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        handlers.removeValue(forKey: sessionID)
+    }
+
+    /// Removes and returns the handler so a racing second interrupt cannot run it twice.
+    func take(sessionID: String) -> (() -> Void)? {
+        lock.lock()
+        defer { lock.unlock() }
+        return handlers.removeValue(forKey: sessionID)
+    }
+}
+
+/// Routes "stop this session" from any thread to the process that is running it.
+///
+/// Registration happens on the nonisolated process-spawn path and interruption arrives
+/// from UI and relay callers, so the table is genuinely concurrent. It used to be a
+/// bare `static var`, which Swift 6 rejects as nonisolated global mutable state -- and
+/// it was a real race, not just a diagnostic.
+enum CLIAgentSessionInterruptBus {
+    private static let box = CLIAgentSessionInterruptHandlerBox()
+
+    static func register(sessionID: String, handler: @escaping () -> Void) {
+        box.register(sessionID: sessionID, handler: handler)
     }
 
     static func unregister(sessionID: String) {
-        _ = handlers.withLock { $0.removeValue(forKey: sessionID) }
+        box.unregister(sessionID: sessionID)
     }
 
     static func interrupt(sessionID: String) -> Bool {
-        guard let handler = handlers.withLock({ $0.removeValue(forKey: sessionID) }) else { return false }
+        guard let handler = box.take(sessionID: sessionID) else { return false }
         handler()
         return true
     }

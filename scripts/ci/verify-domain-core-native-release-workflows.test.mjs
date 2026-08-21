@@ -134,7 +134,9 @@ test("Apple and Android signing consumes the exact protected gate first", () => 
   assert.ok(candidateAar < signedBundle);
   assert.match(
     build,
-    /Rebuild and byte-compare checked-in Android AAR[\s\S]*OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: 0{40}[\s\S]*build-domain-core-android-aar\.sh --check-artifact/u,
+    // The placeholder MUST be quoted: unquoted, YAML collapses the all-digit
+    // scalar to integer 0 and build.rs rejects the 1-character env value.
+    /Rebuild and byte-compare checked-in Android AAR[\s\S]*OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: "0{40}"[\s\S]*build-domain-core-android-aar\.sh --check-artifact/u,
   );
   assert.match(
     build,

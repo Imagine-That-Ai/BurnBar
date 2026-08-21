@@ -1,5 +1,6 @@
 package com.openburnbar.ui.tokens
 
+import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.animation.core.SpringSpec
 import androidx.compose.animation.core.TweenSpec
 import kotlin.math.PI
@@ -30,22 +31,19 @@ class PensieveMotionTest {
     /// duration, not type.
     @Test
     fun `depart and tick shorten to the reduced duration`() {
-        assertEquals(
-            PensieveMotion.departMs,
-            (PensieveMotion.departSpec<Float>(reduceMotion = false) as TweenSpec).durationMillis,
-        )
-        assertEquals(
-            PensieveMotion.reducedMs,
-            (PensieveMotion.departSpec<Float>(reduceMotion = true) as TweenSpec).durationMillis,
-        )
-        assertEquals(
-            PensieveMotion.tickMs,
-            (PensieveMotion.tickSpec<Float>(reduceMotion = false) as TweenSpec).durationMillis,
-        )
-        assertEquals(
-            PensieveMotion.reducedMs,
-            (PensieveMotion.tickSpec<Float>(reduceMotion = true) as TweenSpec).durationMillis,
-        )
+        assertEquals(PensieveMotion.departMs, durationOf(PensieveMotion.departSpec(reduceMotion = false)))
+        assertEquals(PensieveMotion.reducedMs, durationOf(PensieveMotion.departSpec(reduceMotion = true)))
+        assertEquals(PensieveMotion.tickMs, durationOf(PensieveMotion.tickSpec(reduceMotion = false)))
+        assertEquals(PensieveMotion.reducedMs, durationOf(PensieveMotion.tickSpec(reduceMotion = true)))
+    }
+
+    /// Safe-cast helper: `FiniteAnimationSpec` does not expose a duration, and an
+    /// unchecked `as` here would turn a spec-type regression into a ClassCastException
+    /// rather than a readable assertion.
+    private fun durationOf(spec: FiniteAnimationSpec<Float>): Int {
+        val tween = spec as? TweenSpec<Float>
+            ?: throw AssertionError("expected a TweenSpec, got ${spec::class.simpleName}")
+        return tween.durationMillis
     }
 
     // MARK: Stagger

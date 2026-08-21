@@ -2,7 +2,7 @@ import Darwin
 import Foundation
 import os
 import OpenBurnBarComputerUseCore
-import OpenBurnBarAssistantModels
+import OpenBurnBarKernel
 import OpenBurnBarMedia
 
 /// Lands a verified attachment into a workspace / Drop / `.burnbar/attachments` prefix.
@@ -22,32 +22,57 @@ enum MacAttachmentLandingService {
         var displayName: String
     }
 
-    /// Landed files, keyed by verified content digest, plus the queue waiting to be
-    /// handed to a chat turn.
-    ///
-    /// Held under one lock rather than two so a landing is atomic: `landedByDigest`
-    /// and `pending` are written together in `land`, and a reader that saw the digest
-    /// but not the queue entry would report a file as already-landed while it was
-    /// still invisible to `takePending`. Attachments arrive from URLSession delegate
-    /// queues and the mission executor, so this is genuinely concurrent.
-    private struct LandingTable: Sendable {
-        var byDigest: [String: URL] = [:]
-        var pending: [LandedFile] = []
+    // AUDIT(@unchecked Sendable): both tables are guarded by `lock` on every access.
+    // Landing runs off the main actor from the attachment receive path while the UI
+    // drains `pending`, so this is genuinely concurrent, not just a diagnostic.
+    // sendable-allowlist: foundation-sdk-shim
+    private final class LandingStateBox: @unchecked Sendable {
+        private let lock = NSLock()
+        private var landedByDigest: [String: URL] = [:]
+        private var pending: [LandedFile] = []
+
+        func landedURL(forDigest digest: String) -> URL? {
+            lock.lock(); defer { lock.unlock() }
+            return landedByDigest[digest]
+        }
+
+        func recordLanded(digest: String, url: URL) {
+            lock.lock(); defer { lock.unlock() }
+            landedByDigest[digest] = url
+        }
+
+        func appendPending(_ file: LandedFile) {
+            lock.lock(); defer { lock.unlock() }
+            pending.append(file)
+        }
+
+        func drainPending() -> [LandedFile] {
+            lock.lock(); defer { lock.unlock() }
+            let drained = pending
+            pending.removeAll()
+            return drained
+        }
+
+        func snapshotPending() -> [LandedFile] {
+            lock.lock(); defer { lock.unlock() }
+            return pending
+        }
+
+        func removeAll() {
+            lock.lock(); defer { lock.unlock() }
+            landedByDigest.removeAll()
+            pending.removeAll()
+        }
     }
 
-    private static let table = OSAllocatedUnfairLock(initialState: LandingTable())
+    private static let state = LandingStateBox()
 
     static func resetForTests() {
-        table.withLock { $0 = LandingTable() }
+        state.removeAll()
     }
 
     static func takePending() -> [LandedFile] {
-        let copy = table.withLock { state -> [LandedFile] in
-            let drained = state.pending
-            state.pending.removeAll()
-            return drained
-        }
-        return copy
+        state.drainPending()
     }
 
     static func sanitizeFilename(_ raw: String) -> String {
@@ -141,8 +166,7 @@ enum MacAttachmentLandingService {
             try? FileManager.default.removeItem(at: plaintextURL) // try?-ok(best-effort digest-mismatch cleanup)
             throw Error.digestMismatch
         }
-        if let existing = table.withLock({ $0.byDigest[verified] }),
-           FileManager.default.fileExists(atPath: existing.path) {
+        if let existing = state.landedURL(forDigest: verified), FileManager.default.fileExists(atPath: existing.path) {
             return LandedFile(url: existing, contentBlake3: verified, displayName: sanitizeFilename(filename))
         }
         let dest = try containedURL(filename: filename, roots: roots)
@@ -151,11 +175,9 @@ enum MacAttachmentLandingService {
             try FileManager.default.copyItem(at: plaintextURL, to: dest)
         }
         try applyQuarantine(dest)
+        state.recordLanded(digest: verified, url: dest)
         let landed = LandedFile(url: dest, contentBlake3: verified, displayName: sanitizeFilename(filename))
-        table.withLock {
-            $0.byDigest[verified] = dest
-            $0.pending.append(landed)
-        }
+        state.appendPending(landed)
         return landed
     }
 
