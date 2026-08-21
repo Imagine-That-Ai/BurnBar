@@ -161,6 +161,11 @@ final class AgentReplyNotificationService: NSObject, ObservableObject {
     /// must not clear the flag or write `fcm_token` back onto that doc.
     private var tombstonedUid: String?
 
+    private var currentAuthUID: String? {
+        guard FirebaseAppAvailable.isConfigured else { return nil }
+        return Auth.auth().currentUser?.uid
+    }
+
     var deviceID: String {
         let defaults = UserDefaults.standard
         if let existing = defaults.string(forKey: deviceIDKey), !existing.isEmpty {
@@ -180,7 +185,12 @@ final class AgentReplyNotificationService: NSObject, ObservableObject {
         // registration elsewhere would silently drop the first one's actions.
         center.setNotificationCategories([Self.agentReplyCategory, Self.aiInboxCategory])
         Messaging.messaging().delegate = self
-        requestAuthorizationAndRegister(application: application)
+        // Register for remote notifications quietly so APNs token can resolve
+        // without prompting for user alert/sound permissions before first content.
+        // Permission ladder: docs/PRODUCT_FOCUS_AND_ONBOARDING_PLAN.md.
+        DispatchQueue.main.async {
+            application.registerForRemoteNotifications()
+        }
         updateLifecycle("active")
     }
 
@@ -193,7 +203,7 @@ final class AgentReplyNotificationService: NSObject, ObservableObject {
     }
 
     func tombstoneCurrentDevice() async {
-        guard let uid = Auth.auth().currentUser?.uid else { return }
+        guard let uid = currentAuthUID else { return }
         await tombstoneDevice(uid: uid)
     }
 
@@ -204,7 +214,7 @@ final class AgentReplyNotificationService: NSObject, ObservableObject {
     }
 
     func restoreDeviceAfterFailedSwitch() async {
-        if tombstonedUid == Auth.auth().currentUser?.uid {
+        if tombstonedUid == currentAuthUID {
             tombstonedUid = nil
         }
         await persistDeviceState(clearInvalidation: true)
@@ -212,7 +222,7 @@ final class AgentReplyNotificationService: NSObject, ObservableObject {
 
     func tombstoneDevice(uid: String) async {
         guard FirebaseAppAvailable.isConfigured, !uid.isEmpty else { return }
-        let boundUid = Auth.auth().currentUser?.uid
+        let boundUid = currentAuthUID
         if boundUid == uid {
             tombstonedUid = uid
         }
@@ -260,7 +270,7 @@ final class AgentReplyNotificationService: NSObject, ObservableObject {
         )
         let decision = MobileOsIntegrationPolicy.navigation(
             envelope: envelope,
-            activeUid: Auth.auth().currentUser?.uid,
+            activeUid: currentAuthUID,
             nowMs: Int64(Date().timeIntervalSince1970 * 1000),
             lastConsumedEventId: lastConsumedEventID,
             permissionGranted: true
@@ -273,7 +283,7 @@ final class AgentReplyNotificationService: NSObject, ObservableObject {
     /// Route an already-flattened push payload in-process and, when it actually
     /// navigated, record its event id so the same open is never replayed.
     private func applyConsumingDeepLink(_ fields: [String: String]) {
-        let uid = Auth.auth().currentUser?.uid
+        let uid = currentAuthUID
         guard let consumed = MobileOsDeepLinkApplier.applyIfNavigable(
             payload: fields,
             activeUid: uid,
@@ -322,7 +332,7 @@ final class AgentReplyNotificationService: NSObject, ObservableObject {
         // before it reaches either of them.
         let preview = HermesAtomParser.plainText(preview)
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        let uid = Auth.auth().currentUser?.uid
+        let uid = currentAuthUID
         let expiresAtMs = Int64(Date().timeIntervalSince1970 * 1000) + 10 * 60 * 1000
         presentBannerIfNavigable(
             AgentReplyNotificationBanner(
@@ -373,12 +383,26 @@ final class AgentReplyNotificationService: NSObject, ObservableObject {
         }
     }
 
-    private func requestAuthorizationAndRegister(application: UIApplication) {
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
-            guard granted else { return }
-            DispatchQueue.main.async {
-                application.registerForRemoteNotifications()
+    @discardableResult
+    func requestNotificationAuthorization() async -> Bool {
+        let center = UNUserNotificationCenter.current()
+        let settings = await center.notificationSettings()
+        switch settings.authorizationStatus {
+        case .authorized, .provisional, .ephemeral:
+            return true
+        case .denied:
+            return false
+        case .notDetermined:
+            let granted = (try? await center.requestAuthorization(options: [.alert, .sound, .badge])) ?? false
+            if granted {
+                await MainActor.run {
+                    UIApplication.shared.registerForRemoteNotifications()
+                }
             }
+            await persistDeviceState()
+            return granted
+        @unknown default:
+            return false
         }
     }
 
@@ -402,8 +426,7 @@ final class AgentReplyNotificationService: NSObject, ObservableObject {
     }
 
     private func persistDeviceState(clearInvalidation: Bool = false) async {
-        guard FirebaseAppAvailable.isConfigured,
-              let uid = Auth.auth().currentUser?.uid else { return }
+        guard let uid = currentAuthUID else { return }
         // Report the REAL notification-permission state — never a hardcoded
         // `true`. When the user has denied (or not yet granted) authorization,
         // the cloud fan-out (`shouldSuppressForDevice`) must skip this device
@@ -495,7 +518,7 @@ final class AgentReplyNotificationService: NSObject, ObservableObject {
             )
             let decision = MobileOsIntegrationPolicy.navigation(
                 envelope: MobileOsIntegrationPolicy.envelope(from: fields),
-                activeUid: Auth.auth().currentUser?.uid,
+                activeUid: currentAuthUID,
                 nowMs: Int64(Date().timeIntervalSince1970 * 1000),
                 lastConsumedEventId: lastConsumedEventID,
                 permissionGranted: true
@@ -529,7 +552,7 @@ final class AgentReplyNotificationService: NSObject, ObservableObject {
     private func submitReply(eventID: String, replyText: String) async {
         let callable = Functions.functions(region: "us-central1").httpsCallable("submitAgentNotificationReply")
         do {
-            guard let uid = Auth.auth().currentUser?.uid else { return }
+            guard let uid = currentAuthUID else { return }
             let key = try await MobileCloudVaultKeyAccess.keyForWriting(uid: uid)
             let replyId = "\(eventID)_\(deviceID)"
             _ = try await callable.call([
@@ -733,7 +756,7 @@ extension AgentReplyNotificationService: UNUserNotificationCenterDelegate {
     /// privacy (OPUS-F-006).
     private nonisolated func resolvedPayloadForPush(_ payload: AgentReplyNotificationPayload?) async -> AgentReplyNotificationPayload? {
         guard let payload, payload.threadID.isEmpty, !payload.eventID.isEmpty else { return payload }
-        guard let uid = Auth.auth().currentUser?.uid else { return payload }
+        guard FirebaseApp.app() != nil, let uid = Auth.auth().currentUser?.uid else { return payload }
         do {
             let snapshot = try await FirestoreRepository.database
                 .collection("users").document(uid)
