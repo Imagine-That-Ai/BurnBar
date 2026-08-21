@@ -1,3 +1,8 @@
+#if os(macOS)
+// Process-based stdio session runner: macOS only. Foundation.Process does
+// not exist on iOS; the sole consumer is AgentLens (macOS). #2362 shipped
+// this file unguarded, which broke the iOS archive the first time a release
+// tag contained it.
 import Foundation
 
 /// ACP JSON-RPC client over stdio. Maps `session/request_permission`
@@ -285,3 +290,5 @@ enum CLIArgumentBuilderForbiddenFlags {
         return hits
     }
 }
+
+#endif // os(macOS)
