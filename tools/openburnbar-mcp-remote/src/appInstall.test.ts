@@ -259,14 +259,14 @@ test("default feed URL is the desktop updater URL and is not a pinned old versio
   assert.match(source, /downloads\.burnbar\.ai\/latest-macos\.json/);
 });
 
-test("package version is current and npm install never downloads the Mac app", () => {
+test("package is 0.2.0 and never downloads the Mac app during npm install", () => {
   const pkg = JSON.parse(readFileSync(join(PKG_ROOT, "package.json"), "utf8")) as {
     name: string;
     version: string;
     scripts?: Record<string, string>;
   };
   assert.equal(pkg.name, "openburnbar");
-  assert.equal(pkg.version, "0.1.3");
+  assert.equal(pkg.version, "0.2.0");
   assert.equal(pkg.scripts?.postinstall, undefined);
   assert.equal(pkg.scripts?.install, undefined);
   assert.equal(pkg.scripts?.prepare, undefined);
@@ -887,9 +887,18 @@ test("npm pack stays small and never includes a Mac DMG", async () => {
   assert.ok(packed < 1_000_000, `packed size ${packed} must stay small`);
   const files = entry.files ?? [];
   assert.ok(files.length > 0);
+  const packedPaths = new Set(files.map((file) => file.path));
+  assert.ok(packedPaths.has("macos-tray/Info.plist"), "pack must include macos-tray/Info.plist");
+  assert.ok(packedPaths.has("macos-tray/Package.swift"), "pack must include macos-tray/Package.swift");
+  assert.ok(
+    packedPaths.has("macos-tray/Sources/OpenBurnBarGatewayTray/main.swift"),
+    "pack must include macos-tray Swift sources"
+  );
   for (const file of files) {
     assert.doesNotMatch(file.path, /\.dmg$/i);
     assert.doesNotMatch(file.path, /\.app(\/|$)/i);
+    assert.doesNotMatch(file.path, /(^|\/)\.build(\/|$)/u);
+    assert.doesNotMatch(file.path, /\.test\.(js|d\.ts)$/u);
     assert.ok(file.size < 2_000_000, `${file.path} is ${file.size} bytes`);
   }
 });

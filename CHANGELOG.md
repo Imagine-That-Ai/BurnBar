@@ -335,6 +335,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the copy into a ~150px column at phone widths; the banner now stacks
   (text full-width, buttons on their own row) below sm.
 
+## [openburnbar 0.2.0] - 2026-08-20
+
+### Added
+- npm `openburnbar proxy` is a portable loopback **relay** on `127.0.0.1:8320`
+  for chat completions, Anthropic Messages, OpenAI Responses (HTTP SSE plus
+  the Responses WebSocket), and `GET`/`DELETE /v1/responses/:id`. It does not
+  translate dialects or count burn. OpenAI clients use
+  `http://127.0.0.1:8320/v1`; Claude Code / Droid `anthropic` use the origin
+  `http://127.0.0.1:8320`. Always `127.0.0.1`, never `localhost`.
+- Optional `--tray`: on macOS, compiles shipped `macos-tray/` sources into an
+  ad-hoc-signed `LSUIElement` helper (`point.3.connected.trianglepath`, not the
+  BurnBar flame). Elsewhere it opens the loopback HTML panel at `/gateway`.
+  Missing Xcode CLT keeps the proxy headless. Install Podex is an honest
+  coming-soon sheet.
+- `openburnbar proxy wire <client> [--write]` writes `:8320` snippets with a
+  sentinel distinct from BurnBar Mac Connect (`:8317`). Dry-run is the default.
+- Request bodies stay capped at **8 MiB**. The 413 names that limit and says
+  this gateway does not raise it without a real client 413.
+
+### Changed
+- Bump the separately versioned `openburnbar` Node CLI from `0.1.2` to `0.2.0`.
+
 ## [openburnbar 0.1.2] - 2026-08-18
 
 ### Changed
