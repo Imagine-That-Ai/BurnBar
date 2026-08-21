@@ -447,6 +447,7 @@ public enum CLIAuthDiscovery {
     }
 
     private static func keychainItemExists(service: String) -> Bool {
+        #if os(macOS)
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/security")
         process.arguments = [
@@ -463,6 +464,10 @@ public enum CLIAuthDiscovery {
         } catch {
             return false
         }
+        #else
+        // iOS and other non-Mac targets cannot launch the macOS `security` CLI.
+        return false
+        #endif
     }
 
     private static func fileContainsNonWhitespace(atPath path: String) -> Bool {
