@@ -17,8 +17,8 @@ class BurnBarWindowSizeClassTest {
 
     // MARK: Breakpoints
 
-    /// The exact boundary values, from both sides. 600 and 840 are inclusive lower
-    /// bounds of MEDIUM and EXPANDED respectively.
+    // The exact boundary values, from both sides. 600 and 840 are inclusive lower
+    // bounds of MEDIUM and EXPANDED respectively.
     @Test
     fun `breakpoints are half-open at 600 and 840`() {
         assertEquals(BurnBarWindowWidthClass.COMPACT, BurnBarWindowSizeClass.calculate(599.dp).widthClass)
@@ -36,8 +36,8 @@ class BurnBarWindowSizeClassTest {
         assertEquals(BurnBarWindowWidthClass.EXPANDED, BurnBarWindowSizeClass.calculate(1280.dp).widthClass)
     }
 
-    /// Degenerate widths must still classify rather than throw — a 0dp measure pass
-    /// happens during layout, and it should read as the narrowest class, not crash.
+    // Degenerate widths must still classify rather than throw — a 0dp measure pass
+    // happens during layout, and it should read as the narrowest class, not crash.
     @Test
     fun `zero and negative widths fall back to compact`() {
         assertEquals(BurnBarWindowWidthClass.COMPACT, BurnBarWindowSizeClass.calculate(0.dp).widthClass)
@@ -53,8 +53,8 @@ class BurnBarWindowSizeClassTest {
 
     // MARK: Convenience predicates
 
-    /// `isWide` is the one predicate that groups two classes, so it is the easy one
-    /// to get backwards — MEDIUM is wide, and only COMPACT is not.
+    // `isWide` is the one predicate that groups two classes, so it is the easy one
+    // to get backwards — MEDIUM is wide, and only COMPACT is not.
     @Test
     fun `isWide covers medium and expanded but never compact`() {
         assertFalse(BurnBarWindowWidthClass.COMPACT.isWide)
@@ -70,10 +70,10 @@ class BurnBarWindowSizeClassTest {
         }
     }
 
-    /// The narrowest class is the safe default for a first frame, before a real
-    /// measurement arrives — over-committing to a wide layout means tearing it
-    /// down. `LocalWindowSizeClass`'s own default is only readable inside a
-    /// composition, so what is pinned here is the property that makes it safe.
+    // The narrowest class is the safe default for a first frame, before a real
+    // measurement arrives — over-committing to a wide layout means tearing it
+    // down. `LocalWindowSizeClass`'s own default is only readable inside a
+    // composition, so what is pinned here is the property that makes it safe.
     @Test
     fun `a phone-width fallback classifies as compact`() {
         val fallback = BurnBarWindowSizeClass.calculate(360.dp)

@@ -33,11 +33,11 @@ class CliAgentChatPresentationTotalityTest {
         }
     }
 
-    /// Hermes and Pi are deliberately promptless *here*: they have their own
-    /// first-class chat surfaces and are not CLI runtimes, which is the same reason
-    /// `CLIAgentRuntime` refuses to construct from them. Pinning the fall-through
-    /// set as exactly those two is what turns a future half-added runtime into a
-    /// failure instead of an agent that silently offers nothing to say.
+    // Hermes and Pi are deliberately promptless *here*: they have their own
+    // first-class chat surfaces and are not CLI runtimes, which is the same reason
+    // `CLIAgentRuntime` refuses to construct from them. Pinning the fall-through
+    // set as exactly those two is what turns a future half-added runtime into a
+    // failure instead of an agent that silently offers nothing to say.
     @Test
     fun `every CLI runtime offers quick prompts and only Hermes and Pi opt out`() {
         val promptless = AssistantRuntimeID.entries.filter { quickPromptsFor(it).isEmpty() }
@@ -56,8 +56,8 @@ class CliAgentChatPresentationTotalityTest {
         }
     }
 
-    /// fx is the newest runtime, so it is the one most likely to have been added to
-    /// the enum without reaching all three presentation tables.
+    // fx is the newest runtime, so it is the one most likely to have been added to
+    // the enum without reaching all three presentation tables.
     @Test
     fun `fx is wired through all three presentation surfaces`() {
         assertEquals("fx", providerFor(AssistantRuntimeID.FX).key)
@@ -65,7 +65,7 @@ class CliAgentChatPresentationTotalityTest {
         assertTrue(quickPromptsFor(AssistantRuntimeID.FX).isNotEmpty())
     }
 
-    /// Preference keys are persisted, so they must stay stable and per-runtime.
+    // Preference keys are persisted, so they must stay stable and per-runtime.
     @Test
     fun `preference keys are stable and unique per runtime`() {
         val modelKeys = AssistantRuntimeID.entries.map { cliModelPreferenceKey(it) }

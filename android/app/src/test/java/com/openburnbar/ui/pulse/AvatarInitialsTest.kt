@@ -20,7 +20,7 @@ class AvatarInitialsTest {
         assertEquals("A", avatarInitials("Alberto"))
     }
 
-    /// Hyphenated names split too, so "Mary-Jane" is MJ rather than M.
+    // Hyphenated names split too, so "Mary-Jane" is MJ rather than M.
     @Test
     fun `splits on hyphens as well as spaces`() {
         assertEquals("MJ", avatarInitials("Mary-Jane"))
@@ -32,7 +32,7 @@ class AvatarInitialsTest {
         assertEquals("AB", avatarInitials("alberto burnbar"))
     }
 
-    /// Every shape that must yield null rather than a blank badge.
+    // Every shape that must yield null rather than a blank badge.
     @Test
     fun `null blank and separator-only names produce no initials`() {
         assertNull(avatarInitials(null))
@@ -42,8 +42,8 @@ class AvatarInitialsTest {
         assertNull(avatarInitials(" - "))
     }
 
-    /// Leading separators must not consume one of the two slots and leave a
-    /// single-letter badge for a two-word name.
+    // Leading separators must not consume one of the two slots and leave a
+    // single-letter badge for a two-word name.
     @Test
     fun `leading and repeated separators do not eat an initial slot`() {
         assertEquals("AN", avatarInitials("  Alberto   Nunez"))

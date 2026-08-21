@@ -102,8 +102,7 @@ extension ChatBackendID {
         case .hermes: return "Agent harness"
         case .piAgent: return "Empathy agent"
         case .openclaw: return "Gateway agent"
-        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp, .junie, .fx,
-             .grok, .kimi:
+        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp, .junie, .fx:
             return "CLI agent"
         case .grok, .kimi:
             // Hosted API backends (#2362): no CLI invocation, probed like

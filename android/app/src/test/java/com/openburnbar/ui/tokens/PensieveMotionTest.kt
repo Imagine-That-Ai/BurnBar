@@ -17,8 +17,8 @@ class PensieveMotionTest {
 
     // MARK: Reduce Motion
 
-    /// The whole Reduce Motion contract in one assertion: springs become tweens.
-    /// A spring that survives here is motion a user explicitly opted out of.
+    // The whole Reduce Motion contract in one assertion: springs become tweens.
+    // A spring that survives here is motion a user explicitly opted out of.
     @Test
     fun `settle and arrive collapse from spring to tween under reduce motion`() {
         assertTrue(PensieveMotion.settleSpec<Float>(reduceMotion = false) is SpringSpec)
@@ -27,8 +27,8 @@ class PensieveMotionTest {
         assertTrue(PensieveMotion.arriveSpec<Float>(reduceMotion = true) is TweenSpec)
     }
 
-    /// Depart and tick are tweens either way, so the rule they must honour is
-    /// duration, not type.
+    // Depart and tick are tweens either way, so the rule they must honour is
+    // duration, not type.
     @Test
     fun `depart and tick shorten to the reduced duration`() {
         assertEquals(PensieveMotion.departMs, durationOf(PensieveMotion.departSpec(reduceMotion = false)))
@@ -37,9 +37,9 @@ class PensieveMotionTest {
         assertEquals(PensieveMotion.reducedMs, durationOf(PensieveMotion.tickSpec(reduceMotion = true)))
     }
 
-    /// Safe-cast helper: `FiniteAnimationSpec` does not expose a duration, and an
-    /// unchecked `as` here would turn a spec-type regression into a ClassCastException
-    /// rather than a readable assertion.
+    // Safe-cast helper: `FiniteAnimationSpec` does not expose a duration, and an
+    // unchecked `as` here would turn a spec-type regression into a ClassCastException
+    // rather than a readable assertion.
     private fun durationOf(spec: FiniteAnimationSpec<Float>): Int {
         val tween = spec as? TweenSpec<Float>
             ?: throw AssertionError("expected a TweenSpec, got ${spec::class.simpleName}")
@@ -48,8 +48,8 @@ class PensieveMotionTest {
 
     // MARK: Stagger
 
-    /// Stagger is the one token that must reach exactly zero, not merely "small":
-    /// a staggered cascade is precisely the effect Reduce Motion exists to stop.
+    // Stagger is the one token that must reach exactly zero, not merely "small":
+    // a staggered cascade is precisely the effect Reduce Motion exists to stop.
     @Test
     fun `stagger is zero under reduce motion and for the first item`() {
         assertEquals(0L, PensieveMotion.staggerDelay(index = 5, reduceMotion = true))
@@ -68,8 +68,8 @@ class PensieveMotionTest {
 
     // MARK: Stiffness
 
-    /// Stiffness is derived, not authored: k = (2π / responseSeconds)². Pinning the
-    /// formula keeps a token edit from silently retuning every spring in the app.
+    // Stiffness is derived, not authored: k = (2π / responseSeconds)². Pinning the
+    // formula keeps a token edit from silently retuning every spring in the app.
     @Test
     fun `stiffness follows the response-period formula`() {
         fun expected(responseMs: Float): Float {
@@ -80,8 +80,8 @@ class PensieveMotionTest {
         assertEquals(expected(PensieveMotion.arriveResponseMs), PensieveMotion.arriveStiffness, 0.01f)
     }
 
-    /// Arrive responds faster than settle, so it must be the stiffer spring. This is
-    /// the ordering the vocabulary depends on; equal values would flatten the two.
+    // Arrive responds faster than settle, so it must be the stiffer spring. This is
+    // the ordering the vocabulary depends on; equal values would flatten the two.
     @Test
     fun `arrive is stiffer than settle and both are positive`() {
         assertTrue(PensieveMotion.settleStiffness > 0f)
@@ -90,8 +90,8 @@ class PensieveMotionTest {
 
     // MARK: Token fallbacks
 
-    /// Every token parses to a usable number. A malformed token falls back rather
-    /// than producing 0f, which would mean an infinitely stiff spring.
+    // Every token parses to a usable number. A malformed token falls back rather
+    // than producing 0f, which would mean an infinitely stiff spring.
     @Test
     fun `damping ratios stay inside the physical range`() {
         assertTrue(PensieveMotion.settleDamping > 0f && PensieveMotion.settleDamping <= 1f)
