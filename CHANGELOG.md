@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- macOS app compiles again after #2379. `runCodex` was calling
+  `parser.finish()` on `CodexExecJSONLParser`, which has no such member
+  (Codex exec is line-oriented JSONL). The EOF flush belongs on `runFx`,
+  where `FxAskJSONParser` must emit a leftover `fx ask --json` buffer or
+  a plain-text auth message when the process exits. App PR Gate and
+  Headless on main were failing with `has no member 'finish'`.
 - Prime Agent gateway proxy resolves the auth token headlessly
   (`scripts/prime-agent-openburnbar-proxy.mjs`) — non-interactive shells (SSH,
   CI, subagents) fell through to the `openburnbar-local` placeholder and got 401s
