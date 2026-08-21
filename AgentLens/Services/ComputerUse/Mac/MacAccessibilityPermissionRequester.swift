@@ -16,5 +16,14 @@ enum MacAccessibilityPermissionRequester {
         }
         return AXIsProcessTrusted()
     }
+
+    /// Current trust state, without prompting.
+    ///
+    /// Callers that go through `FirstRunPermissionLadder` need to re-read the result
+    /// after the ladder has done the asking; calling `promptAndOpenSettings()` for that
+    /// would fire a second dialog and re-open System Settings.
+    static func isTrusted() -> Bool {
+        AXIsProcessTrusted()
+    }
 }
 #endif

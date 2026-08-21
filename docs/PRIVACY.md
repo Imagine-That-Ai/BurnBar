@@ -90,7 +90,22 @@ If you enable analytics in **Settings → Analytics**, OpenBurnBar sends privacy
 
 ### Optional Computer Use Audit Notarization (opt-in only)
 
-If you choose to notarize a Computer Use audit session, OpenBurnBar submits only the 32-byte SHA-256 digest of your local `chain.jsonl` audit file to an OpenTimestamps calendar service and stores the returned `.ots` proof beside your local audit chain. During a support dispute, you may optionally send the `.ots` proof and chain file to OpenBurnBar so the server-side `validateOpenTimestampsProof` function can cross-check the session head and verify the proof through the configured OpenTimestamps verifier service. Screenshots and full action descriptors remain local unless you explicitly include them in an audit export.
+If you choose to notarize a Computer Use audit session, OpenBurnBar submits only the 32-byte SHA-256 digest of your local `chain.jsonl` audit file to an OpenTimestamps calendar service and stores the returned `.ots` proof beside your local audit chain. During a support dispute, you may optionally send the `.ots` proof and chain file to OpenBurnBar so the server-side `validateOpenTimestampsProof` function can cross-check the session head and verify the proof through the configured OpenTimestamps verifier service. Screenshots and full action descriptors are not part of notarization, and remain local unless you explicitly include them in an audit export.
+
+### What Agent Control (Computer Use) can see, and where it goes
+
+This section exists because the sentence above is easy to read more broadly than it is meant. It is about *audit notarization only*. The agent data path is different, and we would rather state it plainly than let you infer something flattering and untrue.
+
+When you grant Screen Recording, Accessibility or Automation and then run an agent:
+
+- **No BurnBar server is in that path.** Nobody at BurnBar can see your screen. We do not receive, store, or proxy your screen contents.
+- **What the agent reads goes to the model provider you already configured** — the same provider already receiving your prompts. A screenshot the agent requests, and the accessibility labels it reads to know what it is clicking, are tool results, and tool results are sent to that provider. If you are running a local model, they stay on this Mac; if you are running a hosted one, they go there.
+- **During Agent Watch, frames go peer-to-peer to your own paired device**, not through us.
+- **Every action is written to a hash-linked audit log on this Mac**, which you can read, verify, and export. Shell commands your agents run inside their own CLI are recorded by the system log rather than this chain.
+- **Nothing starts on its own.** An agent only sees or touches your Mac inside a session you start, and by default every action stops for your approval. `Control-Option-Command-.` halts a session instantly from anywhere, as does locking your Mac.
+- **Revoking is immediate.** Turning off Accessibility in System Settings halts a running session within about five seconds.
+
+OpenBurnBar never asks macOS for any of these permissions until you have asked for that capability by name inside the app, and it always explains what the dialog means before macOS shows it. See [`PERMISSION_TRUST_ARCHITECTURE.md`](PERMISSION_TRUST_ARCHITECTURE.md).
 
 ---
 

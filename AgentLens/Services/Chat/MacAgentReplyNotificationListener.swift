@@ -184,6 +184,30 @@ private extension MacAgentReplyNotificationPayload {
     }
 }
 
+/// Narrow seam over `UNUserNotificationCenter` authorization.
+///
+/// Exists so the "no OS prompt at launch" invariant is provable in a unit test
+/// rather than only observable by installing the app on a clean Mac. See
+/// `MacAgentReplyNotificationAuthorizationTests`.
+protocol NotificationAuthorizing: Sendable {
+    func currentStatus() async -> UNAuthorizationStatus
+    /// Shows the macOS prompt. Only ever called for `.notDetermined`.
+    func requestAuthorization() async -> Bool
+}
+
+struct LiveNotificationAuthorizer: NotificationAuthorizing {
+    func currentStatus() async -> UNAuthorizationStatus {
+        await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
+    }
+
+    func requestAuthorization() async -> Bool {
+        // try?-ok(optional permission prompt)
+        let granted = try? await UNUserNotificationCenter.current()
+            .requestAuthorization(options: [.alert, .sound, .badge])
+        return granted ?? false
+    }
+}
+
 @MainActor
 final class MacAgentReplyNotificationListener: NSObject {
     static let shared = MacAgentReplyNotificationListener()
@@ -196,6 +220,12 @@ final class MacAgentReplyNotificationListener: NSObject {
     private var deliveredEventIDs = Set<String>()
     private var processedReplyIDs = Set<String>()
     private var started = false
+
+    /// Seam so tests can assert the launch path never reaches
+    /// `UNUserNotificationCenter.requestAuthorization`. Production wiring is
+    /// `LiveNotificationAuthorizer`; tests substitute a recording double.
+    var notificationAuthorizer: NotificationAuthorizing = LiveNotificationAuthorizer()
+
     private let startMillis = Int64(Date().timeIntervalSince1970 * 1000)
     private let deviceIDKey = "agentReplyNotifications.macDeviceID"
 
@@ -240,7 +270,10 @@ final class MacAgentReplyNotificationListener: NSObject {
             return
         }
         started = true
-        Task { await requestNotificationAuthorization() }
+        // Authorization is NOT requested here. Launching the app is not a reason
+        // to ask for anything; the request is earned in `deliver(_:)`, at the
+        // moment a real agent reply exists to show. Permission ladder:
+        // docs/PRODUCT_FOCUS_AND_ONBOARDING_PLAN.md "nothing before value".
 
         authHandle = Auth.auth().addStateDidChangeListener { [weak self] _, user in
             Task { @MainActor in
@@ -336,6 +369,10 @@ final class MacAgentReplyNotificationListener: NSObject {
     }
 
     private func deliver(_ payload: MacAgentReplyNotificationPayload) async {
+        // The ask happens here, not at launch: by this point an agent has actually
+        // replied, so the prompt arrives carrying news instead of arriving cold.
+        guard await ensureNotificationAuthorization() else { return }
+
         let center = UNUserNotificationCenter.current()
         let content = UNMutableNotificationContent()
         content.title = payload.title
@@ -356,8 +393,23 @@ final class MacAgentReplyNotificationListener: NSObject {
         }
     }
 
-    private func requestNotificationAuthorization() async {
-        _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) // try?-ok(optional permission prompt)
+    /// Returns whether this process may post a notification, asking macOS for
+    /// permission at most once and only when there is something real to show.
+    ///
+    /// `.notDetermined` is the only status that prompts. A previous denial is
+    /// respected silently -- re-asking a user who already said no is how apps
+    /// train people to distrust them.
+    private func ensureNotificationAuthorization() async -> Bool {
+        switch await notificationAuthorizer.currentStatus() {
+        case .authorized, .provisional, .ephemeral:
+            return true
+        case .denied:
+            return false
+        case .notDetermined:
+            return await notificationAuthorizer.requestAuthorization()
+        @unknown default:
+            return false
+        }
     }
 
     private func persistDeviceState(uid: String?) async {

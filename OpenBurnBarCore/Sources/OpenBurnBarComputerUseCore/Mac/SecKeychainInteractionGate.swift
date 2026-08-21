@@ -16,8 +16,18 @@ private func obbSecKeychainGetUserInteractionAllowed(_ allowed: UnsafeMutablePoi
 @_silgen_name("SecKeychainSetUserInteractionAllowed")
 private func obbSecKeychainSetUserInteractionAllowed(_ allowed: Bool) -> OSStatus
 
-/// Disables keychain UI for the enclosed operation (legacy items can still prompt without this).
-func withKeychainUserInteractionDisabled<T>(_ operation: () throws -> T) rethrows -> T {
+/// Runs `operation` with macOS keychain UI suppressed, so a legacy-keychain item whose
+/// ACL no longer matches this binary fails closed with `errSecInteractionNotAllowed`
+/// instead of throwing a password dialog at the user.
+///
+/// Public because the app needs it too: `DatabaseEncryptionService` reads the SQLCipher
+/// key inside `OpenBurnBarApp.init`, before any window exists, and a prompt there is
+/// indistinguishable from an app demanding the user's computer password. The daemon has
+/// always wrapped its reads in this; the app had no way to.
+///
+/// Pair it with `kSecUseAuthenticationUI: kSecUseAuthenticationUIFail` in the query --
+/// this suppresses the legacy keychain's own UI, that one covers the modern path.
+public func withKeychainUserInteractionDisabled<T>(_ operation: () throws -> T) rethrows -> T {
     var previousAllowed = DarwinBoolean(true)
     let readStatus = obbSecKeychainGetUserInteractionAllowed(&previousAllowed)
     let disableStatus = obbSecKeychainSetUserInteractionAllowed(false)
@@ -35,7 +45,7 @@ func withKeychainUserInteractionDisabled<T>(_ operation: () throws -> T) rethrow
 
 #else
 
-func withKeychainUserInteractionDisabled<T>(_ operation: () throws -> T) rethrows -> T {
+public func withKeychainUserInteractionDisabled<T>(_ operation: () throws -> T) rethrows -> T {
     try operation()
 }
 
