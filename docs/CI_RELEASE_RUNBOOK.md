@@ -10,12 +10,36 @@ ordered by how much time each section saves.
 
 ---
 
-## 1. The two silent failure modes
+## 1. The silent failure mode: a green check that never ran
 
-A failing job gets noticed. **A job that never runs does not.** Both of these
-present as "green CI, nothing shipped".
+A failing job gets noticed. **A job that never ran does not.**
 
-### 1.1 Skip propagation through `needs`
+Every root cause of the August 2026 outage was one failure mode wearing
+different clothes: **a green check that never executed its assertion.** Not a
+check that ran and reached the wrong answer — a check that reported success
+without ever doing its work.
+
+That is why a month passed. Nobody ignored a red signal; there was no signal.
+
+So when something breaks behind a gate that was supposed to catch it, the useful
+question is not
+
+> did this check pass?
+
+but
+
+> **did this check actually run — and did it run the thing I think it ran?**
+
+Three instances are known. They look unrelated in the logs. They are the same
+bug, and the list is almost certainly not finished.
+
+| # | Instance | Never… |
+| --- | --- | --- |
+| 1.1 | Skip propagation through `needs` | …scheduled |
+| 1.2 | Path-filter drift | …triggered |
+| 1.3 | Self-test unrunnable on the dev platform | …executed |
+
+### 1.1 Skip propagation through `needs` — never scheduled
 
 GitHub replaces a job's implicit `success()` guard **only** when its `if:` calls
 a status-check function (`always()`, `!cancelled()`, `success()`, `failure()`,
@@ -55,7 +79,7 @@ also runs during cancellation.
 preflight gating it skipped. So the gate is a ratchet, not a ban: declare
 intentional cases in `governance/workflow-reachability.json` with a real reason.
 
-### 1.2 Path-filter drift
+### 1.2 Path-filter drift — never triggered
 
 A `push.paths` filter that omits a script the workflow runs means **editing that
 script triggers nothing**. The fix merges, main advances, and the old artifact
@@ -68,14 +92,104 @@ changed file, `scripts/lib/firebase-hosting-rest-url.mjs`, was not in
 **Rule:** every local script a workflow invokes — and every local module those
 scripts import, transitively — belongs in the filter.
 
-### Both are enforced
+### 1.3 A self-test that cannot run on the dev platform — never executed
+
+The newest instance, found 2026-08-20, and the one that shows the class is not
+limited to workflow wiring. **A test file can be the thing that never runs.**
+
+`scripts/ci/check-firestore-rules-size.test.mjs` spawns the real CLI from a
+fixture under `mkdtempSync(join(tmpdir(), …))` and asserts it exits non-zero.
+On macOS `tmpdir()` returns a `/var` symlink, and Node realpaths
+`import.meta.url` but **not** `argv` — so the CLI's run-as-main guard
+
+```js
+resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+```
+
+never matched inside the fixture. `main()` never ran. The spawn exited 0, and
+the assertion "the real CLI must exit 1 on a size failure" was never exercised.
+
+Linux CI has no such symlink, so the lane was green **for the right reason on
+the runner and the wrong reason everywhere else**: the self-test was simply
+unrunnable on every Mac in the fleet.
+
+The consequence is the whole point. When #2362 added five dead
+`allow …: if false;` clauses to `firestore.rules`, the gate that exists to
+reject them **could not run locally on the platform this repo is developed on**,
+so nobody saw it before merge. It reached main and reddened every branch cut
+from it.
+
+**Fix:** realpath the fixture root — `mkdtempSync` under `realpathSync(tmpdir())`.
+
+**This is a class, not a bug** — but the signature is narrower than it first
+looks, and being imprecise here just produces noise nobody reads. All three
+conditions must hold:
+
+1. a fixture root from `mkdtempSync(join(tmpdir(), …))` — not realpathed, and
+2. an executable **copied into** that fixture (`copyFileSync`/`cpSync`), and
+3. that copy spawned as `node <path-inside-fixture>`, relying on its
+   run-as-main guard to fire.
+
+Spawning a script from the real `scripts/ci/` is safe: `argv[1]` is then a real
+path and matches. It is the copy-into-tmpdir step that creates the mismatch.
+
+```bash
+grep -rl 'mkdtempSync(join(tmpdir()' scripts/ci/ \
+  | xargs grep -lE 'copyFileSync|cpSync' \
+  | xargs grep -lE 'spawnSync|execFileSync'
+```
+
+Surveyed 2026-08-20: **11 files match, 9 of them self-tests, and all 9 pass on
+macOS** — so no second live instance was found. Note the list includes
+`check-firestore-rules-size.test.mjs` itself, which is how you know the recipe
+finds the real thing.
+
+A match is a **candidate, not a bug**. Confirm it by positive control (below),
+because the two halves fail very differently:
+
+- a test asserting a **non-zero** exit fails loudly when it hits this — that is
+  how this instance was found at all
+- a test asserting **success passes vacuously**, and looks green forever
+
+The second half is the dangerous one, and greping cannot tell you which you have.
+
+### Detecting the next one
+
+The instances differ; the detection does not. **Reproduce the exact CI
+invocation, not a subset of it** — same entrypoint, same working directory,
+same platform. Most of these hide precisely in the gap between "the command I
+ran locally" and "the command CI ran".
+
+Two habits catch them cheaply:
+
+- **Positive-control your gates.** Before trusting a green verdict, prove the
+  gate still fails on a known-bad input. Several lanes here already do this
+  (`Self-test the diff-coverage gate`, `Positive control first: prove the gate
+  still fails…`). A gate that cannot be made to fail is not passing — it is
+  not running.
+- **Read the log for evidence of work, not for the word "passed".** A check
+  that emits no counts, no filenames and no findings usually did nothing. "0
+  problems found" and "found nothing because it scanned nothing" render
+  identically in a green tick.
+
+When a gate is green and the thing it guards broke anyway, assume it never ran
+until you have seen it do work.
+
+### What is enforced, and what is not
+
+`1.1` and `1.2` are enforced:
 
 ```bash
 node scripts/ci/verify-workflow-reachability.mjs
 ```
 
-Runs in `Workflow Lint` on every PR. It reports the offending job or path and
+Runs in `Workflow Lint` on every PR, reports the offending job or path, and
 tells you which of the two you hit.
+
+**`1.3` is not enforced by anything yet.** It is caught only by running the
+self-tests on a Mac, which is exactly the gap that let it through. Treat the
+grep above as the current control, and do not read the green `Workflow Lint`
+tick as coverage for it.
 
 ---
 
