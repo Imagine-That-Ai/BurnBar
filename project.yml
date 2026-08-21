@@ -980,6 +980,19 @@ targets:
           SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) GSTACK_IOS_QA"
         Release:
           APS_ENVIRONMENT: production
+          # Store archives must sign with a distribution identity. Without this
+          # override, xcodegen's built-in iOS application preset
+          # (SettingPresets/Product_Platform/application_iOS.yml) re-emits
+          # CODE_SIGN_IDENTITY "iPhone Developer" into the pbxproj on every
+          # regen, so the release lane's cloud-signed archive (release.yml,
+          # method app-store-connect) demands an iOS App DEVELOPMENT cert.
+          # Development certs need a local private key, so every fresh CI
+          # runner mints a new one until Apple's per-type cert cap fails the
+          # archive ("Choose a certificate to revoke", run 32498938813,
+          # 2026-08-21). Apple Distribution certs are cloud-managed via the
+          # ASC API key and reusable from any runner. Debug keeps the preset's
+          # development identity for local device installs (dev-iphone.sh).
+          CODE_SIGN_IDENTITY: Apple Distribution
     postBuildScripts:
       - name: Copy Firebase Config If Present
         script: |
@@ -1260,6 +1273,15 @@ targets:
         # only emits when the HOST app granted consent (read from the shared App
         # Group) AND this key is non-empty.
         BURNBAR_AMPLITUDE_API_KEY: ""
+      configs:
+        Release:
+          # Archive-time automatic signing resolves appexes to a DEVELOPMENT
+          # identity independently of the host app (release run 32498938813:
+          # "No profiles for 'com.openburnbar.app.widget'... iOS App
+          # Development" in target OpenBurnBarWidget). Pin distribution like
+          # the host app; see OpenBurnBarMobile's Release config for the full
+          # story.
+          CODE_SIGN_IDENTITY: Apple Distribution
     info:
       path: OpenBurnBarWidget/Info.plist
       properties:
@@ -1313,6 +1335,15 @@ targets:
         # only emits usage OUTCOMES (never keystrokes/text) and only when the HOST
         # app granted consent (read from the shared App Group) AND this is non-empty.
         BURNBAR_AMPLITUDE_API_KEY: ""
+      configs:
+        Release:
+          # Archive-time automatic signing resolves appexes to a DEVELOPMENT
+          # identity independently of the host app (release run 32498938813:
+          # "No profiles for 'com.openburnbar.app.keyboard'... iOS App
+          # Development" in target OpenBurnBarKeyboard). Pin distribution like
+          # the host app; see OpenBurnBarMobile's Release config for the full
+          # story.
+          CODE_SIGN_IDENTITY: Apple Distribution
     info:
       path: OpenBurnBarKeyboard/Info.plist
       properties:
