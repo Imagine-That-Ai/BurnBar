@@ -1,6 +1,5 @@
 import Foundation
 import OpenBurnBarInsights
-import OpenBurnBarKernel
 
 /// Builds a month's recap, deterministically first and editorially second.
 ///
@@ -32,9 +31,6 @@ public actor RecapComposer {
     private let postProcessor: RecapVoicePostProcessor
     private let limits: RecapRanker.Limits
     private let calendar: Calendar
-    /// How many months back a backfill reaches. A **fetch** budget only — the
-    /// horizon a comparison is allowed to see is everything the history store
-    /// holds, which grows past this as the months accumulate.
     private let historyDepth: Int
 
     public init(
@@ -97,25 +93,27 @@ public actor RecapComposer {
         forceRegenerate: Bool,
         continuation: AsyncStream<Event>.Continuation
     ) async {
-        // A *sealed* month is answered from the store — that is the promise that
-        // last August reads the same way in December. The single exception is a
+        // A sealed month is answered from the store. The single exception is a
         // month sealed without prose when an author is now available — the
         // one-time upgrade that keeps the AI toggle from looking broken.
-        //
-        // A `.preview` or `.unsealed` deck is deliberately not answered from the
-        // store: the preview of a running month has to pick up the usage since
-        // it was written, and an `.unsealed` month is one whose sealing pass was
-        // interrupted, which only a rebuild can finish.
-        if !forceRegenerate,
-           let existing = await recapStore.recap(for: window),
-           existing.sealState.isSealed {
+        if !forceRegenerate, let existing = await recapStore.recap(for: window) {
             continuation.yield(.deterministic(existing))
-            guard existing.sealState == .sealedWithoutVoice,
-                  !(author is RecapVoiceAuthorUnavailable) else { return }
-            if let upgraded = await voiceUpgrade(for: existing, window: window, now: now) {
-                continuation.yield(.voiced(upgraded))
+            // A preview describes a month still in progress, so a stored one is
+            // stale the moment anything else happens that day. `.unsealed` is the
+            // same problem with a worse ending: the month is over but sealing was
+            // interrupted, and answering from the store means it never finishes
+            // (Codex P1). Paint either for instant feedback, then rebuild. Only a
+            // genuinely sealed month short-circuits.
+            if !existing.sealState.isSealed {
+                // fall through to the rebuild below
+            } else {
+                guard existing.sealState == .sealedWithoutVoice,
+                      !(author is RecapVoiceAuthorUnavailable) else { return }
+                if let upgraded = await voiceUpgrade(for: existing, window: window, now: now) {
+                    continuation.yield(.voiced(upgraded))
+                }
+                return
             }
-            return
         }
 
         let facts: RecapFacts
@@ -131,10 +129,11 @@ public actor RecapComposer {
             return
         }
 
-        // Every stored month, not `historyDepth` of them: the record and volume
-        // rules read this as an all-time baseline, so a device holding three
-        // years must compare against three years or stop saying "yet".
-        let history = await historyStore.history(before: window)
+        // Every stored month, not just `historyDepth`: records claim "ever", and
+        // a context that only saw the last twelve months would call a mediocre
+        // month a lifetime best. `historyDepth` bounds what we *fetch*, not what
+        // we compare against.
+        let history = await historyStore.allFacts().filter { $0.window < window }
         let context = RecapContext(facts: facts, history: history, calendar: calendar)
         let candidates = RecapCandidateGenerator.candidates(for: context)
         let cards = RecapRanker.rank(candidates: candidates, limits: limits)
@@ -207,7 +206,7 @@ public actor RecapComposer {
             guard !Task.isCancelled else { return nil }
             let outbound = attempt == 0 ? request : request.jsonOnlyRetry
             guard let response = try? await author.author(outbound) else { return nil }
-            guard let parsed = RecapJSON.decode(RecapVoiceResponse.self, from: response.text) else {
+            guard let parsed = ModelResponseJSON.decode(RecapVoiceResponse.self, from: response.text) else {
                 continue
             }
             let processed = postProcessor.process(
@@ -241,7 +240,7 @@ public actor RecapComposer {
         now: Date
     ) async -> MonthlyRecap? {
         guard let facts = await historyStore.facts(for: window) else { return nil }
-        let history = await historyStore.history(before: window)
+        let history = await historyStore.allFacts().filter { $0.window < window }
         let context = RecapContext(facts: facts, history: history, calendar: calendar)
         let candidates = RecapCandidateGenerator.candidates(for: context)
 

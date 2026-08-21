@@ -1,6 +1,4 @@
 import Foundation
-import OpenBurnBarInsights
-import OpenBurnBarKernel
 
 /// Turns a pile of true statements into a deck worth swiping through.
 ///

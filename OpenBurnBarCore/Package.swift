@@ -284,12 +284,6 @@ packageProductsBase.append(
         targets: ["OpenBurnBarInsights"]
     )
 )
-packageProductsBase.append(
-    .library(
-        name: "OpenBurnBarRecap",
-        targets: ["OpenBurnBarRecap"]
-    )
-)
 if buildApplePrunedDecompositionTargets {
     // Apple-only presentation products remain pruned off the non-Apple graph.
     packageProductsBase.append(contentsOf: [
@@ -300,6 +294,10 @@ if buildApplePrunedDecompositionTargets {
         .library(
             name: "OpenBurnBarLaunchServices",
             targets: ["OpenBurnBarLaunchServices"]
+        ),
+        .library(
+            name: "OpenBurnBarRecap",
+            targets: ["OpenBurnBarRecap"]
         ),
         .library(
             name: "OpenBurnBarUI",
@@ -1034,6 +1032,10 @@ let coreDecompositionDependencies: [Target.Dependency] = [
 // package target list only on Apple hosts (pruned off-Apple like OpenBurnBarData).
 let applePrunedDecompositionTargets: [Target] = buildApplePrunedDecompositionTargets ? [
     .target(
+        name: "OpenBurnBarRecap",
+        dependencies: ["OpenBurnBarKernel", "OpenBurnBarInsights"]
+    ),
+    .target(
         name: "OpenBurnBarTextExpansion",
         dependencies: ["OpenBurnBarKernel"],
         exclude: openBurnBarTextExpansionExcludes
@@ -1049,6 +1051,7 @@ let applePrunedDecompositionTargets: [Target] = buildApplePrunedDecompositionTar
             "OpenBurnBarKernel",
             "OpenBurnBarQuota",
             "OpenBurnBarInsights",
+            "OpenBurnBarRecap",
             "OpenBurnBarHermes",
             "OpenBurnBarPretext",
             "OpenBurnBarLogParsers",
@@ -1220,16 +1223,6 @@ let firstPartyTargetsBase: [Target] = [
             name: "OpenBurnBarInsights",
             dependencies: ["OpenBurnBarKernel"],
             exclude: openBurnBarInsightsExcludes
-        ),
-        // Recap (the monthly "Your Month with AI" deck) is a cohesive feature that
-        // arrived whole: composer, stores, craft rules, voice author, card model.
-        // It lives beside Insights rather than inside it because folding 5.3k lines
-        // into Insights pushed that target past its decomposition ceiling, and
-        // nothing in Insights depends on Recap — the dependency runs one way.
-        // Foundation-only, so it stays on the non-Apple graph like Insights.
-        .target(
-            name: "OpenBurnBarRecap",
-            dependencies: ["OpenBurnBarKernel", "OpenBurnBarInsights"]
         ),
         // OpenBurnBarEngine (S16) — UI-free umbrella the daemon/CLI/parity
         // executables link. Its single source file `@_exported import`s the leaf

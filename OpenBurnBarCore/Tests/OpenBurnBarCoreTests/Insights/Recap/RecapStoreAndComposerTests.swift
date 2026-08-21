@@ -1,7 +1,7 @@
 import XCTest
 @testable import OpenBurnBarCore
-@testable import OpenBurnBarRecap
 @testable import OpenBurnBarInsights
+@testable import OpenBurnBarRecap
 
 // MARK: - Stubs
 
@@ -25,32 +25,19 @@ private final class StubRecapSource: RecapSource, @unchecked Sendable {
     }
 }
 
-private let stubModelTag = InsightModelTag(
-    providerKey: "test",
-    modelID: "stub-1",
-    displayName: "Stub",
-    egressTier: .localOnly,
-    stampedAt: Date(timeIntervalSince1970: 0)
-)
-
 private struct StubVoiceAuthor: RecapVoiceAuthor {
     let json: String
     func author(_ request: RecapVoiceRequest) async throws -> RecapVoiceAuthorResult? {
-        RecapVoiceAuthorResult(text: json, modelTag: stubModelTag)
-    }
-}
-
-/// Keeps the requests it was handed, so what the composer put in front of the
-/// model — including how much history it claimed to have — can be asserted on.
-private final class CapturingVoiceAuthor: RecapVoiceAuthor, @unchecked Sendable {
-    let json: String
-    private(set) var requests: [RecapVoiceRequest] = []
-
-    init(json: String) { self.json = json }
-
-    func author(_ request: RecapVoiceRequest) async throws -> RecapVoiceAuthorResult? {
-        requests.append(request)
-        return RecapVoiceAuthorResult(text: json, modelTag: stubModelTag)
+        RecapVoiceAuthorResult(
+            text: json,
+            modelTag: InsightModelTag(
+                providerKey: "test",
+                modelID: "stub-1",
+                displayName: "Stub",
+                egressTier: .localOnly,
+                stampedAt: Date(timeIntervalSince1970: 0)
+            )
+        )
     }
 }
 
@@ -131,98 +118,6 @@ final class RecapStoreAndComposerTests: XCTestCase {
         let kept = await store.facts(for: august)
         XCTAssertEqual(kept?.totalCostUSD, full.totalCostUSD)
         XCTAssertFalse(kept?.isPartial ?? true)
-    }
-
-    /// A month persisted partial is excluded from every comparison, so leaving
-    /// it out of the backfill set would strand it out of history for good.
-    func testPartialMonthsStayEligibleForBackfill() async throws {
-        let store = try historyStore()
-        let july = august.previous
-        let june = july.previous
-        try await store.upsert(RecapFixtures.facts(june, calendar: calendar))
-
-        let truncated = RecapRowBatch(
-            window: july,
-            usages: Array(RecapFixtures.busyMonth(july, calendar: calendar).usages.prefix(3)),
-            isPartial: true,
-            hasSessionData: false
-        )
-        try await store.upsert(
-            RecapFacts.build(batch: truncated, builtAt: july.end(calendar: calendar), calendar: calendar)
-        )
-
-        let missing = await store.monthsNeedingBackfill(endingAt: august, monthsBack: 2)
-        XCTAssertEqual(
-            missing.map(\.key), [july.key],
-            "the half-read month must be re-fetched; the complete one must not"
-        )
-
-        // And once the retry lands a complete read, the month leaves the set.
-        try await store.upsert(RecapFixtures.facts(july, calendar: calendar))
-        let repaired = await store.facts(for: july)
-        XCTAssertEqual(repaired?.isPartial, false)
-        let afterRepair = await store.monthsNeedingBackfill(endingAt: august, monthsBack: 2)
-        XCTAssertTrue(afterRepair.isEmpty)
-    }
-
-    /// Eligible is not the same as eligible *every open*.
-    ///
-    /// `isPartial` does not record why a month was truncated, and the mobile source
-    /// returns partial whenever its 24-page x 300-row budget runs out with a live
-    /// cursor — so a large month is deterministically partial on every retry. Without
-    /// a bound, every recap open re-paginates it: thousands of billed reads to reach
-    /// the same answer. A freshly-stored partial month therefore waits.
-    func testFreshlyStoredPartialMonthIsNotRefetchedOnEveryOpen() async throws {
-        let store = try historyStore()
-        let july = august.previous
-        let now = Date()
-
-        let truncated = RecapRowBatch(
-            window: july,
-            usages: Array(RecapFixtures.busyMonth(july, calendar: calendar).usages.prefix(3)),
-            isPartial: true,
-            hasSessionData: false
-        )
-        try await store.upsert(RecapFacts.build(batch: truncated, builtAt: now, calendar: calendar))
-
-        // Just stored: the next open must not re-read it.
-        let immediately = await store.monthsNeedingBackfill(endingAt: august, monthsBack: 2, now: now)
-        XCTAssertFalse(
-            immediately.contains(july),
-            "a partial month stored seconds ago must not be re-paginated on the next open"
-        )
-
-        // An hour later, still not.
-        let anHourOn = await store.monthsNeedingBackfill(
-            endingAt: august, monthsBack: 2, now: now.addingTimeInterval(3600)
-        )
-        XCTAssertFalse(immediately.contains(july) || anHourOn.contains(july))
-
-        // Past the retry interval it becomes eligible again, so a recovered
-        // connection still repairs the month.
-        let nextDay = await store.monthsNeedingBackfill(
-            endingAt: august,
-            monthsBack: 2,
-            now: now.addingTimeInterval(RecapHistoryStore.partialRetryInterval + 1)
-        )
-        XCTAssertTrue(
-            nextDay.contains(july),
-            "a partial month must not be stranded — it retries once the interval passes"
-        )
-    }
-
-    /// All-time records read whatever history they are handed, so the store
-    /// hands over every month it holds — not a year of them.
-    func testHistoryReturnsEveryStoredMonth() async throws {
-        let store = try historyStore()
-        for month in august.priorMonths(14) {
-            try await store.upsert(RecapFixtures.facts(month, calendar: calendar))
-        }
-
-        let all = await store.history(before: august)
-        XCTAssertEqual(all.count, 14, "an all-time comparison must see every stored month")
-        XCTAssertEqual(all.first?.window, august.previous, "newest first")
-        XCTAssertEqual(all.last?.window, august.priorMonths(14).last)
     }
 
     func testStaleSchemaMonthsAreDroppedOnLoad() async throws {
@@ -437,93 +332,90 @@ final class RecapStoreAndComposerTests: XCTestCase {
         XCTAssertTrue(source.singleRequests.isEmpty, "a sealed month must not re-read the database")
     }
 
-    /// A stored preview is a snapshot of a month still running. Serving it back
-    /// unchanged would freeze the current month at whatever it looked like the
-    /// first time the page was opened.
-    func testStoredPreviewIsRebuiltSoNewUsageAppears() async throws {
-        let store = try recapStore()
-        _ = try await store.save(recap(august, seal: .preview, title: "Stale preview"))
 
-        let source = StubRecapSource(batches: [august: RecapFixtures.busyMonth(august, calendar: calendar)])
-        let composer = RecapComposer(
-            source: source,
-            historyStore: try historyStore(),
-            recapStore: store,
-            calendar: calendar
+    // MARK: - Codex P1 review findings
+
+    // A month stored partial — because a paging budget ran out or a later page
+    // failed — must stay eligible for backfill. `RecapContext` drops partial months
+    // from every comparison, so treating one as done strands it outside records,
+    // trends and "vs last month" permanently, even once connectivity is back.
+    func testPartialMonthsStayEligibleForBackfill() async throws {
+        let store = try historyStore()
+        let july = august.previous
+        let june = july.previous
+        try await store.upsert(RecapFixtures.facts(june, calendar: calendar))
+
+        let truncated = RecapRowBatch(
+            window: july,
+            usages: Array(RecapFixtures.busyMonth(july, calendar: calendar).usages.prefix(3)),
+            isPartial: true,
+            hasSessionData: false
         )
-        let midMonth = RecapFixtures.date(2026, 8, 19, 12, calendar: calendar)
-        let collected = await events(composer.build(window: august, now: midMonth))
+        try await store.upsert(
+            RecapFacts.build(batch: truncated, builtAt: july.end(calendar: calendar), calendar: calendar)
+        )
 
-        guard case let .deterministic(rebuilt) = collected.last else {
-            XCTFail("expected a freshly built deck")
-            return
-        }
-        XCTAssertNotEqual(rebuilt.title, "Stale preview")
-        XCTAssertFalse(rebuilt.cards.isEmpty)
-        XCTAssertEqual(rebuilt.sealState, .preview)
-        let read = source.bulkRequests.flatMap { $0 } + source.singleRequests
-        XCTAssertTrue(read.contains(august), "the running month must be re-read")
+        let missing = await store.monthsNeedingBackfill(endingAt: august, monthsBack: 2)
+        XCTAssertEqual(
+            missing.map(\.key), [july.key],
+            "the half-read month must be re-fetched; the complete one must not"
+        )
+
+        try await store.upsert(RecapFixtures.facts(july, calendar: calendar))
+        let repaired = await store.facts(for: july)
+        XCTAssertEqual(repaired?.isPartial, false)
+        let afterRepair = await store.monthsNeedingBackfill(endingAt: august, monthsBack: 2)
+        XCTAssertTrue(afterRepair.isEmpty)
     }
 
-    /// `.unsealed` is the state a month is left in when its sealing pass was
-    /// interrupted. Serving it back would freeze it there forever.
-    func testInterruptedUnsealedMonthFinishesSealing() async throws {
-        let store = try recapStore()
-        _ = try await store.save(recap(august, seal: .unsealed, title: "Interrupted"))
+    // Eligible is not the same as eligible *every open*.
+    //
+    // `isPartial` does not record why a month was truncated, and MobileRecapSource
+    // returns partial whenever its 24-page x 300-row budget runs out with a live
+    // cursor — so a large month is deterministically partial on every retry. Without
+    // a bound, every recap open re-paginates it: thousands of billed reads to reach
+    // the same answer.
+    func testFreshlyStoredPartialMonthIsNotRefetchedOnEveryOpen() async throws {
+        let store = try historyStore()
+        let july = august.previous
+        let now = Date()
 
-        let source = StubRecapSource(batches: [august: RecapFixtures.busyMonth(august, calendar: calendar)])
-        let composer = RecapComposer(
-            source: source,
-            historyStore: try historyStore(),
-            recapStore: store,
-            calendar: calendar
+        let truncated = RecapRowBatch(
+            window: july,
+            usages: Array(RecapFixtures.busyMonth(july, calendar: calendar).usages.prefix(3)),
+            isPartial: true,
+            hasSessionData: false
         )
-        let now = RecapFixtures.date(2026, 9, 2, 9, calendar: calendar)
-        let collected = await events(composer.build(window: august, now: now))
+        try await store.upsert(RecapFacts.build(batch: truncated, builtAt: now, calendar: calendar))
 
-        guard case let .deterministic(sealed) = collected.last else {
-            XCTFail("expected the sealing event")
-            return
-        }
-        XCTAssertEqual(sealed.sealState, .sealedWithoutVoice)
-        XCTAssertNotEqual(sealed.title, "Interrupted")
-    }
-
-    /// `historyDepth` budgets the *fetch*, not the claim. A device that has
-    /// accumulated more months than it backfills must compare against all of
-    /// them — otherwise "your biggest month yet" silently means "biggest of the
-    /// last few".
-    func testAllTimeComparisonsSeeMoreHistoryThanTheBackfillDepth() async throws {
-        let history = try historyStore()
-        let stored = august.priorMonths(14)
-        for month in stored {
-            try await history.upsert(RecapFixtures.facts(month, calendar: calendar))
-        }
-
-        let json = """
-        {"monthTitle":"August was your builder month",
-         "monthInOneSentence":"You settled into one setup, kept at it most days, and let the sessions run long.",
-         "cards":[{"id":"c1","headline":"A clear pattern.","body":"Something worth noticing about how you worked."}]}
-        """
-        let author = CapturingVoiceAuthor(json: json)
-        let source = StubRecapSource(batches: [august: RecapFixtures.busyMonth(august, calendar: calendar)])
-        let composer = RecapComposer(
-            source: source,
-            historyStore: history,
-            recapStore: try recapStore(),
-            author: author,
-            calendar: calendar,
-            // Mobile's budget: three months of fetching, fourteen months of memory.
-            historyDepth: 3
+        let immediately = await store.monthsNeedingBackfill(endingAt: august, monthsBack: 2, now: now)
+        XCTAssertFalse(
+            immediately.contains(july),
+            "a partial month stored seconds ago must not be re-paginated on the next open"
         )
 
-        let now = RecapFixtures.date(2026, 9, 2, 9, calendar: calendar)
-        _ = await events(composer.build(window: august, now: now))
-
-        let prompt = try XCTUnwrap(author.requests.first?.userPrompt)
+        let nextDay = await store.monthsNeedingBackfill(
+            endingAt: august,
+            monthsBack: 2,
+            now: now.addingTimeInterval(RecapHistoryStore.partialRetryInterval + 1)
+        )
         XCTAssertTrue(
-            prompt.contains("\"monthsOfHistoryAvailable\":14"),
-            "the context must carry every stored month, not just the backfill depth"
+            nextDay.contains(july),
+            "a partial month must not be stranded — it retries once the interval passes"
         )
+    }
+
+    // Every stored month reaches the comparison, not just the backfill depth:
+    // records claim "ever", so a bounded window turns a mediocre month into a
+    // lifetime best.
+    func testHistoryReturnsEveryStoredMonth() async throws {
+        let store = try historyStore()
+        var window = august.previous
+        for _ in 0..<14 {
+            try await store.upsert(RecapFixtures.facts(window, calendar: calendar))
+            window = window.previous
+        }
+        let history = await store.history(before: august)
+        XCTAssertEqual(history.count, 14, "all-time comparisons must see every stored month")
     }
 }

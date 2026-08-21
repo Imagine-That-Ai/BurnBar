@@ -1083,7 +1083,10 @@ struct BurnRailAppearanceQuickMenu: View {
                 }
             }
 
-            // Mutually exclusive background choices
+            // One list, because these are mutually exclusive in the renderer:
+            // the kernel is checked before constellation and swarm, so offering
+            // them as two independent controls meant whichever lost silently did
+            // nothing.
             Section("Background") {
                 quickBackgroundOption(.off)
                 quickBackgroundOption(.swarm)
@@ -1091,12 +1094,24 @@ struct BurnRailAppearanceQuickMenu: View {
                 quickBackgroundOption(.kernel)
             }
 
-            // Structured submenus for shaders to keep the menu compact and legible
+            // Flat buttons rather than a `Picker`: a Picker nested in a Menu
+            // renders as a submenu that dismisses itself the moment the pointer
+            // crosses into it, which made the theme list unusable.
             if useKernelBackdrop {
-                Menu("Kernel theme (\(KernelCatalog.label(for: backdropKernel)))") {
-                    Section("Curated") {
-                        ForEach(KernelCatalog.curated) { kernel in
-                            kernelOptionButton(kernel)
+                Section("Kernel theme") {
+                    ForEach(KernelCatalog.all) { kernel in
+                        Button {
+                            backdropKernel = kernel.id
+                            Analytics.shared.track(.settingsChanged, [
+                                "setting_key": "window_backdrop_kernel_quick_menu",
+                                "new_value": .string(kernel.id)
+                            ])
+                        } label: {
+                            if backdropKernel == kernel.id {
+                                Label(kernel.label, systemImage: "checkmark")
+                            } else {
+                                Text(kernel.label)
+                            }
                         }
                     }
 
@@ -1122,6 +1137,10 @@ struct BurnRailAppearanceQuickMenu: View {
                 Section("Overlay") {
                     Toggle("Swarm particles", isOn: $swarmSubstrateEnabled)
                 }
+            }
+
+            Section("Overlay") {
+                Toggle("Swarm particles", isOn: $swarmSubstrateEnabled)
             }
 
             Section {

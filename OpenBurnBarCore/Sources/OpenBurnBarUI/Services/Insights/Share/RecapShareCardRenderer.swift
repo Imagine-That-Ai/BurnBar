@@ -1,8 +1,8 @@
 import ImageIO
-import OpenBurnBarRecap
 import SwiftUI
 import UniformTypeIdentifiers
 import OpenBurnBarInsights
+import OpenBurnBarRecap
 #if canImport(UIKit)
 import UIKit
 #endif
@@ -39,7 +39,8 @@ public struct RecapShareCardRenderer {
         card: RecapCard,
         window: RecapWindow,
         format: Format = .portrait1080x1350,
-        colorScheme: ColorScheme = .dark
+        colorScheme: ColorScheme = .dark,
+        isPartial: Bool = false
     ) -> Data? {
         let layout = layoutSource.layout(for: format, isDark: colorScheme == .dark)
         return render(
@@ -47,7 +48,8 @@ public struct RecapShareCardRenderer {
                 card: card,
                 window: window,
                 width: layout.width,
-                height: layout.height
+                height: layout.height,
+                isPartial: isPartial
             ),
             layout: layout,
             colorScheme: colorScheme
@@ -65,7 +67,8 @@ public struct RecapShareCardRenderer {
             RecapShareSummaryView(
                 recap: recap,
                 width: layout.width,
-                height: layout.height
+                height: layout.height,
+                isPartial: recap.isPartial
             ),
             layout: layout,
             colorScheme: colorScheme
@@ -73,9 +76,21 @@ public struct RecapShareCardRenderer {
     }
 
     /// A filename someone can find again later.
+    ///
+    /// Card ids embed their subject, which can include a project name, so every
+    /// character that could redirect a write — separators, colons, dots — is
+    /// folded to a dash rather than only the colon.
     public func suggestedFilename(for window: RecapWindow, cardID: String? = nil) -> String {
-        let suffix = cardID.map { "-" + $0.replacingOccurrences(of: ":", with: "-") } ?? ""
+        let suffix = cardID.map { "-" + Self.sanitize($0) } ?? ""
         return "burnbar-recap-\(window.key)\(suffix).png"
+    }
+
+    static func sanitize(_ raw: String) -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
+        let folded = String(raw.unicodeScalars.map { allowed.contains($0) ? Character($0) : "-" })
+        // Collapse runs and trim so "a//b" cannot become "a--b-".
+        let collapsed = folded.split(separator: "-", omittingEmptySubsequences: true).joined(separator: "-")
+        return String(collapsed.prefix(80))
     }
 
     // MARK: - Rendering

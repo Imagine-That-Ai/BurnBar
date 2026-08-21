@@ -1,6 +1,6 @@
 import SwiftUI
-import OpenBurnBarRecap
 import OpenBurnBarInsights
+import OpenBurnBarRecap
 
 /// The small statistic tile: one number, one line, nothing else.
 ///

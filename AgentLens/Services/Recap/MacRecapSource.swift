@@ -1,6 +1,6 @@
 import Foundation
-import OpenBurnBarRecap
 import OpenBurnBarInsights
+import OpenBurnBarRecap
 
 /// Supplies the recap engine with real database rows.
 ///
@@ -77,7 +77,9 @@ struct MacRecapSource: RecapSource {
         // Conversation data is a bonus, not a precondition: if the projection
         // fails or the table is empty the recap still has every usage-derived
         // insight, and the tool rules simply do not fire.
-        // try?-ok(conversation data is a bonus, not a precondition — see the note above)
+        // A failed read costs only the tool and task-title rules, which already
+        // tolerate absence through their data floors. It must not fail the month.
+        // try?-ok(conversation rows are additive to the recap)
         (try? await dataStore.fetchRecapSessionRows(
             startingIn: interval.start..<interval.end
         )) ?? []

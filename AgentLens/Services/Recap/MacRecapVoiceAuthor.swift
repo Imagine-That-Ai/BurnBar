@@ -1,6 +1,7 @@
 import Foundation
-import OpenBurnBarRecap
 import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarRecap
 
 /// Routes the recap's editorial pass through whichever chat backend the user has
 /// already connected — local-first, exactly as the Charts insight strip does.
@@ -29,7 +30,7 @@ struct MacRecapVoiceAuthor: RecapVoiceAuthor {
             attempts: [request.userPrompt],
             timeout: 150
         ) { text in
-            RecapJSON.extractFirstObject(from: text) != nil
+            ModelResponseJSON.extractFirstObject(from: text) != nil
         }
 
         guard let answer else { return nil }

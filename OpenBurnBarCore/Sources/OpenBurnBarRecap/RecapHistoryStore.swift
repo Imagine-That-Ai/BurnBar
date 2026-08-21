@@ -1,6 +1,4 @@
 import Foundation
-import OpenBurnBarInsights
-import OpenBurnBarKernel
 
 /// Per-month `RecapFacts`, persisted so comparisons are cheap.
 ///
@@ -55,29 +53,27 @@ public actor RecapHistoryStore {
 
     /// Every month we hold before `window`, newest first.
     ///
-    /// Deliberately uncapped. `RecapContext` derives all-time records and
-    /// lifetime totals from exactly what it is handed, so truncating here would
-    /// turn "your biggest month yet" into "your biggest month out of the last N"
-    /// while the deck goes on saying the former. How far back a *backfill*
-    /// reaches is a separate, fetch-cost decision, and belongs to the caller
-    /// that pays for the scan.
+    /// Deliberately uncapped (Codex P1). `RecapContext` derives all-time records
+    /// and lifetime totals from exactly what it is handed, so truncating here turns
+    /// "your biggest month yet" into "your biggest month out of the last N" while
+    /// the deck goes on saying the former. How far back a *backfill* reaches is a
+    /// separate, fetch-cost decision owned by the caller that pays for the scan.
     public func history(before window: RecapWindow) -> [RecapFacts] {
         allFacts().filter { $0.window < window }
     }
 
     /// How long a partially-read month is left alone before a backfill retries it.
     ///
-    /// A partial month must stay eligible — `RecapContext` drops partial months
-    /// from every comparison, so calling one done strands it outside records and
-    /// trends forever, even once the connection that truncated it is back. But it
-    /// cannot be eligible on *every* open: `isPartial` does not record *why*, and
-    /// a month truncated by the mobile paging budget (24 pages x 300 rows) is
-    /// deterministically partial on every retry. Re-paginating that month each
-    /// time costs thousands of billed reads to arrive at the same answer.
+    /// A partial month must stay eligible — `RecapContext` drops partial months from
+    /// every comparison, so calling one done strands it outside records and trends
+    /// forever, even once the connection that truncated it is back. But it cannot be
+    /// eligible on *every* open: `isPartial` does not record *why*, and a month
+    /// truncated by the mobile paging budget (24 pages x 300 rows) is
+    /// deterministically partial on every retry. Re-paginating it each time costs
+    /// thousands of billed reads to reach the same answer.
     ///
-    /// A day is the compromise: a recovered connection repairs the month by the
-    /// next day, and a permanently-truncated month costs one re-read a day rather
-    /// than one per open.
+    /// A day is the compromise: a recovered connection repairs the month by the next
+    /// day, and a permanently-truncated one costs one re-read a day, not one per open.
     public static let partialRetryInterval: TimeInterval = 24 * 60 * 60
 
     /// Months in the requested span that are missing, stale, or due a retry after

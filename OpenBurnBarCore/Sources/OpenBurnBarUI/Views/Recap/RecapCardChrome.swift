@@ -1,6 +1,6 @@
 import SwiftUI
-import OpenBurnBarRecap
 import OpenBurnBarInsights
+import OpenBurnBarRecap
 
 /// The plate every recap card sits on: surface, padding, accessibility grouping
 /// and the optional share affordance.

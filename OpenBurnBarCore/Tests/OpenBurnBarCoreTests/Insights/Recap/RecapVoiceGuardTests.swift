@@ -1,7 +1,7 @@
 import XCTest
 @testable import OpenBurnBarCore
-@testable import OpenBurnBarRecap
 @testable import OpenBurnBarInsights
+@testable import OpenBurnBarRecap
 
 /// The guard that makes model-written prose safe to ship.
 final class RecapVoiceGuardTests: XCTestCase {
@@ -139,7 +139,8 @@ final class RecapVoiceGuardTests: XCTestCase {
             fallbackClosing: "A steady month.",
             mapping: .identity
         )
-        guard case let .accepted(_, report) = result else { XCTFail("expected acceptance"); return }
+        guard case let .accepted(_, report) = result else { XCTFail("expected acceptance")
+ return }
         XCTAssertEqual(report.cardsFellBack, 1)
         XCTAssertFalse(report.bannedPhraseHits.isEmpty)
     }
@@ -154,7 +155,8 @@ final class RecapVoiceGuardTests: XCTestCase {
             fallbackClosing: "A steady month.",
             mapping: .identity
         )
-        guard case let .accepted(outcome, report) = result else { XCTFail("expected acceptance"); return }
+        guard case let .accepted(outcome, report) = result else { XCTFail("expected acceptance")
+ return }
         XCTAssertEqual(report.unknownIDs, 1)
         // The real card is still there — omission is not a decision.
         XCTAssertEqual(outcome.cards.map(\.id), [subject.id])
@@ -207,7 +209,8 @@ final class RecapVoiceGuardTests: XCTestCase {
             fallbackClosing: "A steady month.",
             mapping: .identity
         )
-        guard case let .accepted(outcome, _) = result else { XCTFail("expected acceptance"); return }
+        guard case let .accepted(outcome, _) = result else { XCTFail("expected acceptance")
+ return }
         XCTAssertEqual(outcome.cards.first?.size, .hero)
     }
 
@@ -240,7 +243,8 @@ final class RecapVoiceGuardTests: XCTestCase {
             fallbackClosing: "A steady month.",
             mapping: RecapPromptMapping(redaction: redaction, idByToken: [:])
         )
-        guard case let .accepted(outcome, report) = result else { XCTFail("expected acceptance"); return }
+        guard case let .accepted(outcome, report) = result else { XCTFail("expected acceptance")
+ return }
         XCTAssertEqual(report.unresolvedTokenHits, 1)
         XCTAssertFalse(outcome.cards.first?.body.contains("{project") ?? true)
     }
@@ -266,6 +270,54 @@ final class RecapVoiceGuardTests: XCTestCase {
         XCTAssertTrue(json.contains("Claude Opus 5") || json.contains("GPT-5"))
     }
 
+    // MARK: - Quantities in words
+
+    /// The numeric guard reads digits, so "nearly half" used to sail through it
+    /// while inventing the claim outright.
+    func testQuantityWordsAreRejected() {
+        let subject = candidate()
+        let processor = RecapVoicePostProcessor()
+        for phrase in ["Claude Opus 5 handled nearly half your sessions.",
+                       "It doubled since last month.",
+                       "The vast majority of your work ran through it."] {
+            let result = processor.process(
+                response: response(headline: "A favorite.", body: phrase),
+                deterministicCards: [card(subject)],
+                fallbackTitle: "Your August with AI",
+                fallbackClosing: "A steady month.",
+                mapping: .identity
+            )
+            guard case let .accepted(outcome, report) = result else {
+                XCTFail("expected acceptance with a fallback for: \(phrase)")
+                return
+            }
+            XCTAssertEqual(report.cardsFellBack, 1, phrase)
+            XCTAssertEqual(outcome.cards.first?.body, subject.body, phrase)
+        }
+    }
+
+    /// Short names are the ones most likely to be a client or employer code.
+    func testShortProjectNamesAreStillTokenized() {
+        var redaction = RecapRedaction()
+        redaction.register("fx")
+        XCTAssertFalse(redaction.isEmpty, "a two-letter project must still be tokenized")
+
+        let redacted = redaction.redact("fx took most of the month")
+        XCTAssertFalse(redacted.contains("fx"))
+        XCTAssertEqual(redaction.restore(redacted), "fx took most of the month")
+    }
+
+    /// ...but tokenizing them must not corrupt unrelated words.
+    func testShortNamesMatchOnWordBoundariesOnly() {
+        var redaction = RecapRedaction()
+        redaction.register("fx")
+        let text = "the prefix and the suffix stayed intact, fx did not"
+        let redacted = redaction.redact(text)
+        XCTAssertTrue(redacted.contains("prefix"), redacted)
+        XCTAssertTrue(redacted.contains("suffix"), redacted)
+        XCTAssertEqual(redaction.restore(redacted), text)
+    }
+
     // MARK: - JSON extraction
 
     func testJSONExtractionSurvivesFencesAndBracesInStrings() {
@@ -275,7 +327,7 @@ final class RecapVoiceGuardTests: XCTestCase {
         {"monthTitle": "August {was} your month", "cards": []}
         ```
         """
-        let extracted = RecapJSON.extractFirstObject(from: text)
+        let extracted = ModelResponseJSON.extractFirstObject(from: text)
         XCTAssertEqual(extracted, #"{"monthTitle": "August {was} your month", "cards": []}"#)
     }
 }

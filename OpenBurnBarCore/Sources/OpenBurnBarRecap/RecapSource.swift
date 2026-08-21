@@ -1,6 +1,5 @@
 import Foundation
 import OpenBurnBarInsights
-import OpenBurnBarKernel
 
 /// The rows one calendar month's recap is folded from.
 ///

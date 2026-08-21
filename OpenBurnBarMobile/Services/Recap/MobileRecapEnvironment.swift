@@ -1,8 +1,8 @@
 import Foundation
-import OpenBurnBarRecap
 import SwiftUI
 import Observation
-import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarRecap
 
 /// Owns the recap's stores and composer on iOS, and drives one month's state.
 ///
@@ -46,9 +46,10 @@ final class MobileRecapEnvironment {
         source: any RecapSource = MobileRecapSource(),
         makeAuthor: @escaping @MainActor () -> any RecapVoiceAuthor = { RecapVoiceAuthorUnavailable() },
         historyDepth: Int = 3,
+        accountID: String? = nil,
         now: Date = Date()
     ) throws {
-        let directory = try Self.recapDirectory()
+        let directory = try Self.recapDirectory(accountID: accountID)
         self.source = source
         self.makeAuthor = makeAuthor
         self.historyDepth = historyDepth
@@ -138,15 +139,30 @@ final class MobileRecapEnvironment {
 
     // MARK: - Paths
 
-    private static func recapDirectory() throws -> URL {
+    /// Per-account, because one device signs in as more than one person.
+    ///
+    /// A shared directory meant the previous account's sealed months — its
+    /// projects, its spend, its habits — were served to whoever signed in next.
+    /// The id is hashed so the path never carries an address.
+    private static func recapDirectory(accountID: String?) throws -> URL {
         let manager = FileManager.default
-        let url = try manager.url(
+        var url = try manager.url(
             for: .applicationSupportDirectory,
             in: .userDomainMask,
             appropriateFor: nil,
             create: true
         ).appendingPathComponent("Recap", isDirectory: true)
+        url = url.appendingPathComponent(accountScope(accountID), isDirectory: true)
         try manager.createDirectory(at: url, withIntermediateDirectories: true)
         return url
+    }
+
+    static func accountScope(_ accountID: String?) -> String {
+        guard let accountID, !accountID.isEmpty else { return "local" }
+        var hash = UInt64(5381)
+        for byte in accountID.utf8 {
+            hash = ((hash << 5) &+ hash) &+ UInt64(byte)
+        }
+        return String(format: "u%016llx", hash)
     }
 }

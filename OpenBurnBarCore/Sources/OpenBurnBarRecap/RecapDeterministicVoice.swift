@@ -1,6 +1,4 @@
 import Foundation
-import OpenBurnBarInsights
-import OpenBurnBarKernel
 
 /// The title and closing paragraph the recap ships with when no model writes them.
 ///

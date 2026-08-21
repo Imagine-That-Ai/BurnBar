@@ -1,6 +1,6 @@
 import SwiftUI
-import OpenBurnBarRecap
 import OpenBurnBarInsights
+import OpenBurnBarRecap
 
 /// The last card: the month in a sentence or three.
 ///

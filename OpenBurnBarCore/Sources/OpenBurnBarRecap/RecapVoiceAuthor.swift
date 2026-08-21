@@ -1,6 +1,5 @@
 import Foundation
 import OpenBurnBarInsights
-import OpenBurnBarKernel
 
 /// One request to the editorial model.
 public struct RecapVoiceRequest: Sendable {

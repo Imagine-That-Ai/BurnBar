@@ -1,6 +1,4 @@
 import Foundation
-import OpenBurnBarInsights
-import OpenBurnBarKernel
 
 /// Persisted `MonthlyRecap` decks, with the sealing rules enforced at the
 /// storage boundary rather than trusted to callers.

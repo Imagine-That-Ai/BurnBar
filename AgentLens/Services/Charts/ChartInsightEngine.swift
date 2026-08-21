@@ -55,7 +55,7 @@ enum ChartInsightParser {
     }
 
     static func parse(_ text: String) -> ChartInsightResult? {
-        guard let json = RecapJSON.extractFirstObject(from: text),
+        guard let json = ModelResponseJSON.extractFirstObject(from: text),
               let data = json.data(using: .utf8) else {
             return nil
         }

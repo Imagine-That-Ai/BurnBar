@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 /// One prompt in, one complete answer out, over whichever backend the user has
 /// already connected.
@@ -68,8 +69,15 @@ enum CLIOneShotChat {
         let stream: AsyncThrowingStream<CLIChatStreamEvent, Error>
         switch backend {
         case .hermes:
-            // try?-ok(no stored token is a normal unauthenticated state; chatHermes takes an Optional bearer)
-            let bearerToken = try? PetKeychainStore().get(.hermes)
+            // Absent is a normal state (no Hermes token configured); a read
+            // *fault* is not, so it stays distinguishable rather than collapsing
+            // into the same nil.
+            let bearerToken: String?
+            do {
+                bearerToken = try PetKeychainStore().get(.hermes)
+            } catch {
+                bearerToken = nil
+            }
             stream = bridge.chatHermes(
                 systemPrompt: systemPrompt,
                 history: [ChatMessageRecord(role: .user, content: message)],

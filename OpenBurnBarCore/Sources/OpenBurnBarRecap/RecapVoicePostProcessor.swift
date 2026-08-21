@@ -1,6 +1,5 @@
 import Foundation
 import OpenBurnBarInsights
-import OpenBurnBarKernel
 
 /// Validates model-authored prose before any of it reaches a card.
 ///
@@ -217,6 +216,13 @@ public struct RecapVoicePostProcessor: Sendable {
             return nil
         }
 
+        // A quantity in words is still a quantity, and the numeric guard below
+        // cannot see it.
+        if let hit = quantityWordHit(in: restored) {
+            report.numericViolations.append(hit)
+            return nil
+        }
+
         if let offender = Self.numericViolation(in: restored, vocabulary: vocabulary) {
             report.numericViolations.append(offender)
             return nil
@@ -227,6 +233,34 @@ public struct RecapVoicePostProcessor: Sendable {
         guard restored.count <= ceiling else { return nil }
         report.truncations += 1
         return Self.trimToWordBoundary(restored, limit: limit)
+    }
+
+    /// Quantity words the model must not reach for.
+    ///
+    /// The numeric guard reads digits, so a model told "41%" could write
+    /// "nearly half" or "doubled" and satisfy it while inventing the claim.
+    /// These are refused outright: the cards already carry their figures, and
+    /// the deterministic copy phrases proportions from real numbers.
+    static let quantityWords: [String] = [
+        "half", "third", "quarter", "fifth", "two-thirds", "three-quarters",
+        "double", "doubled", "doubling", "triple", "tripled", "quadrupled",
+        "twice", "thrice", "tenfold", "hundredfold",
+        "most of", "almost all", "nearly all", "the majority", "a minority",
+        "a handful", "dozens", "hundreds", "thousands", "countless",
+        "the vast majority", "the bulk of"
+    ]
+
+    private func quantityWordHit(in text: String) -> String? {
+        let lowered = text.lowercased()
+        return Self.quantityWords.first { word in
+            guard let range = lowered.range(of: word) else { return false }
+            let before = range.lowerBound == lowered.startIndex
+                ? nil : lowered[lowered.index(before: range.lowerBound)]
+            let after = range.upperBound == lowered.endIndex
+                ? nil : lowered[range.upperBound]
+            let isBoundary: (Character?) -> Bool = { $0.map { !($0.isLetter || $0.isNumber) } ?? true }
+            return isBoundary(before) && isBoundary(after)
+        }
     }
 
     private func bannedPhraseHit(in text: String) -> String? {

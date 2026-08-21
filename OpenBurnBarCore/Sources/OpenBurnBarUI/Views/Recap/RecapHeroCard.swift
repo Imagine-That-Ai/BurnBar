@@ -1,6 +1,6 @@
 import SwiftUI
-import OpenBurnBarRecap
 import OpenBurnBarInsights
+import OpenBurnBarRecap
 
 /// The oversized moments: the opener and the one or two insights the ranker
 /// decided deserve the whole width.

@@ -1,7 +1,7 @@
 import Charts
-import OpenBurnBarRecap
 import SwiftUI
 import OpenBurnBarInsights
+import OpenBurnBarRecap
 
 // MARK: - Data shims
 //

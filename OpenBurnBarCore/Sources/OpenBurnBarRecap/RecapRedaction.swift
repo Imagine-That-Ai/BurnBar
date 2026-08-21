@@ -1,6 +1,4 @@
 import Foundation
-import OpenBurnBarInsights
-import OpenBurnBarKernel
 
 /// Swaps private identifiers for opaque tokens on the way out to a model, and
 /// swaps them back on the way in.
@@ -40,9 +38,12 @@ public struct RecapRedaction: Sendable {
     @discardableResult
     public mutating func register(_ value: String) -> String? {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        // Very short names would match inside unrelated words; leave them alone
-        // rather than corrupting the prose.
-        guard trimmed.count >= 3 else { return nil }
+        // Every non-empty name is tokenized, including two-letter ones like
+        // "fx". Skipping short names used to be the guard against matching
+        // inside unrelated words — but it meant the shortest project names, the
+        // ones most likely to be an employer or client code, went out in clear
+        // text. Word-boundary matching handles the collision instead.
+        guard !trimmed.isEmpty else { return nil }
         if let existing = tokenByValue[trimmed] { return existing }
         let token = "{project\(tokenByValue.count + 1)}"
         tokenByValue[trimmed] = token
@@ -54,13 +55,23 @@ public struct RecapRedaction: Sendable {
     }
 
     /// Replaces every registered value with its token.
+    ///
+    /// Matches on word boundaries so a short name cannot corrupt an unrelated
+    /// word — "fx" replaces the standalone token, never the middle of "prefix".
     public func redact(_ text: String) -> String {
         guard !orderedValues.isEmpty else { return text }
         var output = text
         for value in orderedValues {
             guard let token = tokenByValue[value] else { continue }
-            output = output.replacingOccurrences(
-                of: value, with: token, options: [.caseInsensitive]
+            let pattern = "(?<![A-Za-z0-9])" + NSRegularExpression.escapedPattern(for: value) + "(?![A-Za-z0-9])"
+            guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
+                output = output.replacingOccurrences(of: value, with: token, options: [.caseInsensitive])
+                continue
+            }
+            output = regex.stringByReplacingMatches(
+                in: output,
+                range: NSRange(output.startIndex..<output.endIndex, in: output),
+                withTemplate: NSRegularExpression.escapedTemplate(for: token)
             )
         }
         return output

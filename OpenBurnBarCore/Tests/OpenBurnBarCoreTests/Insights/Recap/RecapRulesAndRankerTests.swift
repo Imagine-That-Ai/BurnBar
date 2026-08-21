@@ -1,9 +1,9 @@
 import XCTest
 @testable import OpenBurnBarCore
-@testable import OpenBurnBarRecap
 // Rule families are internal to the Insights module; reach them directly
 // rather than widening their access purely for tests.
 @testable import OpenBurnBarInsights
+@testable import OpenBurnBarRecap
 
 final class RecapRulesAndRankerTests: XCTestCase {
 

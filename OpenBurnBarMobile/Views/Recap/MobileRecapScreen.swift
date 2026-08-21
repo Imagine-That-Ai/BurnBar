@@ -1,6 +1,6 @@
 import SwiftUI
+import OpenBurnBarKernel
 import OpenBurnBarRecap
-import OpenBurnBarInsights
 import OpenBurnBarUI
 
 /// The monthly recap on iPhone and iPad.
@@ -10,6 +10,9 @@ import OpenBurnBarUI
 /// system to keep in sync.
 struct MobileRecapScreen: View {
 
+    /// Scopes the stored recaps to the signed-in account. Nil falls back to a
+    /// local scope, so a signed-out device still keeps its own history.
+    var accountID: String?
     /// Set when presented modally from the Insights tab on iPhone, so the sheet
     /// has a way out. Nil when it is a first-class destination on iPad.
     var onDismiss: (() -> Void)?
@@ -17,7 +20,6 @@ struct MobileRecapScreen: View {
     @State private var environment: MobileRecapEnvironment?
     @State private var setupError: String?
     @State private var pendingExport: RecapExport?
-    @AppStorage(MobileRecapEnvironment.aiToggleKey) private var editorialEnabled = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -30,7 +32,6 @@ struct MobileRecapScreen: View {
         }
         .task { await setUpIfNeeded() }
         .onDisappear { environment?.cancel() }
-        .onChange(of: editorialEnabled) { environment?.load() }
         .sheet(item: $pendingExport) { export in
             RecapSharePreviewSheet(export: export)
         }
@@ -50,7 +51,7 @@ struct MobileRecapScreen: View {
                     ScrollView {
                         RecapDeckView(
                             recap: recap,
-                            onShareCard: { card in export(card: card, window: recap.window) },
+                            onShareCard: { card in export(card: card, window: recap.window, isPartial: recap.isPartial) },
                             onShareRecap: { export(recap: recap) }
                         )
                         .padding(.horizontal, MobileTheme.Spacing.lg)
@@ -108,10 +109,6 @@ struct MobileRecapScreen: View {
                         }
                     }
                 }
-                Divider()
-                Toggle(isOn: $editorialEnabled) {
-                    Label("Let AI write it", systemImage: "sparkles")
-                }
             } label: {
                 Image(systemName: "ellipsis.circle")
             }
@@ -124,7 +121,7 @@ struct MobileRecapScreen: View {
     private func setUpIfNeeded() async {
         guard environment == nil, setupError == nil else { return }
         do {
-            let created = try MobileRecapEnvironment()
+            let created = try MobileRecapEnvironment(accountID: accountID)
             environment = created
             await created.refreshAvailableMonths()
             created.load()
@@ -137,9 +134,11 @@ struct MobileRecapScreen: View {
 
     /// Writes the PNG to a temp file and hands it to the share sheet — a URL
     /// gives the receiving app a real filename instead of an untitled blob.
-    private func export(card: RecapCard, window: RecapWindow) {
+    private func export(card: RecapCard, window: RecapWindow, isPartial: Bool) {
         let renderer = RecapShareCardRenderer()
-        guard let data = renderer.png(card: card, window: window) else { return }
+        guard let data = renderer.png(
+            card: card, window: window, isPartial: isPartial
+        ) else { return }
         present(data, named: renderer.suggestedFilename(for: window, cardID: card.id))
     }
 

@@ -1,4 +1,5 @@
 import SwiftUI
+import OpenBurnBarRecap
 
 // MARK: - Transparency preference
 //
@@ -20,23 +21,7 @@ enum RecapGlassTransparency {
         return (reduceTransparency && clamped > 0) ? 0 : clamped
     }
 
-    /// Kept in lockstep with `LiquidGlassTransparency.usesClearGlass` in both app
-    /// targets. WWDC25 s219 permits `.clear` only over media-rich content and with a
-    /// dimming layer; `value > 0.001` met neither, so at t = 0.3 the recap plate went
-    /// `.clear` while every other plate in the app stayed `.regular` — one slider
-    /// giving two opposite answers.
-    static func usesClearGlass(_ value: Double, overMediaRichContent: Bool) -> Bool {
-        guard overMediaRichContent else { return false }
-        return value > 0.55
-    }
-
-    static func isOverMediaRichContent(defaults: UserDefaults = .standard) -> Bool {
-        defaults.bool(forKey: "useKernelBackdrop")
-    }
-
-    static func usesClearGlass(_ value: Double) -> Bool {
-        usesClearGlass(value, overMediaRichContent: isOverMediaRichContent())
-    }
+    static func usesClearGlass(_ value: Double) -> Bool { value > 0.001 }
 
     static func frostScrimOpacity(_ value: Double) -> Double {
         value < 0 ? 0.9 * -value : 0

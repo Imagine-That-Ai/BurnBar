@@ -1,5 +1,4 @@
 import XCTest
-import OpenBurnBarRecap
 import OpenBurnBarCore
 @testable import OpenBurnBar
 
@@ -106,20 +105,20 @@ final class ChartInsightEngineParsingTests: XCTestCase {
 
     // MARK: JSON object extraction
     //
-    // The extractor moved to `RecapJSON` in Core when the monthly recap needed
+    // The extractor lives in Insights as `ModelResponseJSON`; the recap needed
     // the same fence-tolerant parse; these cases follow it so the behaviour
     // stays covered at its one implementation.
 
     func test_extractJSONObject_balancesNestedBracesAndStrings() {
         let text = #"noise {"a": {"b": "close } brace in string"}, "c": 1} trailing"#
         XCTAssertEqual(
-            RecapJSON.extractFirstObject(from: text),
+            ModelResponseJSON.extractFirstObject(from: text),
             #"{"a": {"b": "close } brace in string"}, "c": 1}"#
         )
     }
 
     func test_extractJSONObject_noObject_returnsNil() {
-        XCTAssertNil(RecapJSON.extractFirstObject(from: "no braces here"))
+        XCTAssertNil(ModelResponseJSON.extractFirstObject(from: "no braces here"))
     }
 
     // MARK: Metrics serializer

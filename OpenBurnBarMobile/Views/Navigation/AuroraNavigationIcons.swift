@@ -1,4 +1,5 @@
 import SwiftUI
+import OpenBurnBarRecap
 
 // MARK: - Aurora Navigation Icons
 //

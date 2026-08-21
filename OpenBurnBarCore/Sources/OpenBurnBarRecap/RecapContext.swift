@@ -1,6 +1,4 @@
 import Foundation
-import OpenBurnBarInsights
-import OpenBurnBarKernel
 
 /// Everything a rule is allowed to look at: the month in question, and whatever
 /// history the device has accumulated.
@@ -75,9 +73,8 @@ public struct RecapContext: Sendable {
         var best: (value: Double, window: RecapWindow)?
         for month in comparableHistory {
             let value = metric(month)
-            if best == nil || value > best!.value {
-                best = (value, month.window)
-            }
+            if let current = best, value <= current.value { continue }
+            best = (value, month.window)
         }
         return best
     }

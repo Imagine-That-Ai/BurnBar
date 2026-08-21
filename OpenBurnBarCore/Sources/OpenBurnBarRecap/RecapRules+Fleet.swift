@@ -1,6 +1,4 @@
 import Foundation
-import OpenBurnBarInsights
-import OpenBurnBarKernel
 
 // MARK: - Fleet rules
 //
@@ -108,9 +106,8 @@ enum RecapFleetRules {
                 successes2: priorSessions, trials2: previous.sessionCount
             ) else { continue }
             guard rising ? z > 0 : z < 0 else { continue }
-            if best == nil || abs(z) > abs(best!.z) {
-                best = (model, prior?.sessionShare ?? 0, priorSessions, z)
-            }
+            if let current = best, abs(z) <= abs(current.z) { continue }
+            best = (model, prior?.sessionShare ?? 0, priorSessions, z)
         }
 
         // A decline is only worth a card if the model was meaningful before.
