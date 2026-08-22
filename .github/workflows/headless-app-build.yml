@@ -17,6 +17,12 @@ name: Headless App Build (K4 precursor)
 # plus the required security/quality contexts remain the merge door. A broken
 # AgentLens graph stays visible on push-to-main and nightly, not silent.
 #
+# Since 2026-08-22 the SAME build (this lane's script) also runs at PR time in
+# macos-app-compile-gate.yml, classifier-scoped to macos/daemon candidates,
+# after PR #2379 merged an uncompilable AgentLens line with green checks and
+# burned a release attempt. This push/nightly lane stays as the exact-main
+# proof and the cache warmer for that gate.
+#
 # PATH FILTER (push only): surfaces a UI extraction can break —
 # OpenBurnBarCore/** and AgentLens/**. Nightly and workflow_dispatch ignore
 # path filters so a quiet day cannot hide a red app graph.

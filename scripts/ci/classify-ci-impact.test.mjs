@@ -215,6 +215,22 @@ test("external Safari build inputs reach the macos lane", () => {
   assert.equal(tokens.macos, true);
 });
 
+test("the app compile gate's own inputs re-run the macos lane", () => {
+  // macos-app-compile-gate.yml compiles the app via headless-app-build.sh; if
+  // an edit to either did not select macos, a broken gate or build script
+  // would merge without ever re-running the compile it feeds (§1.2
+  // trigger-vs-checked drift, docs/CI_RELEASE_RUNBOOK.md).
+  for (const path of [
+    "scripts/ci/headless-app-build.sh",
+    ".github/workflows/macos-app-compile-gate.yml",
+  ]) {
+    const result = classifyPaths([path]);
+    assert.equal(result.full, false, path);
+    assert.equal(result.macos, true, path);
+    assert.equal(result.mobile, false, path);
+  }
+});
+
 test("safari extension manifests mixed with functions wake both lanes", () => {
   const result = classifyPaths([
     "extensions/safari/package.json",
