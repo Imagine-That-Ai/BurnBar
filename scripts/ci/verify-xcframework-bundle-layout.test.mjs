@@ -44,15 +44,28 @@ function runMakeFramework(layout) {
   writeFileSync(join(generated, `${MODULE}.h`), "// stub umbrella header\n");
   const lib = join(work, "libstub.a");
   writeFileSync(lib, "!<arch>\n");
+  // Paths and the layout reach bash strictly through the environment (never
+  // interpolated into the command string) — the only inlined text is the
+  // function body read from our own repo file.
   const harness = [
     "set -euo pipefail",
-    `FRAMEWORK_MODULE_NAME=${MODULE}`,
-    `GENERATED_DIR=${JSON.stringify(generated)}`,
+    'FRAMEWORK_MODULE_NAME="$TEST_MODULE"',
+    'GENERATED_DIR="$TEST_GENERATED_DIR"',
     "build_xcframework_args=()",
     extractMakeFramework(),
-    `make_framework ${JSON.stringify(lib)} ${JSON.stringify(out)} ${layout}`,
+    'make_framework "$TEST_LIB" "$TEST_OUT" "$TEST_LAYOUT"',
   ].join("\n");
-  execFileSync("bash", ["-c", harness], { stdio: ["ignore", "pipe", "pipe"] });
+  execFileSync("bash", ["-c", harness], {
+    stdio: ["ignore", "pipe", "pipe"],
+    env: {
+      ...process.env,
+      TEST_MODULE: MODULE,
+      TEST_GENERATED_DIR: generated,
+      TEST_LIB: lib,
+      TEST_OUT: out,
+      TEST_LAYOUT: layout,
+    },
+  });
   return join(out, `${MODULE}.framework`);
 }
 
