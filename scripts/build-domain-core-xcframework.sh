@@ -209,24 +209,41 @@ mkdir -p "${ARCHS_DIR}"
 # this way; this converges on that proven layout.
 FRAMEWORK_MODULE_NAME="openburnbar_domain_ffiFFI"
 
+# make_framework LIBRARY OUT_DIR LAYOUT
+#
+# LAYOUT is "shallow" (iOS-style: everything at the framework root) or "deep"
+# (macOS-style: content under Versions/A with Current/top-level symlinks, and
+# Info.plist in Resources/). macOS does not use shallow bundles: when the app
+# embeds this framework, Xcode's bundle-format validation rejects a flat
+# Info.plist — repair.14 failed exactly there ("contains Info.plist, expected
+# Versions/Current/Resources/Info.plist") the first time the release lane ever
+# reached the embed step. iOS slices must STAY shallow for the same reason in
+# reverse.
 make_framework() {
   local source_library="$1"
   local out_dir="$2"
+  local layout="${3:?make_framework requires a layout: shallow|deep}"
   local framework_dir="${out_dir}/${FRAMEWORK_MODULE_NAME}.framework"
   local umbrella_header="${FRAMEWORK_MODULE_NAME}.h"
   [[ -f "${GENERATED_DIR}/${umbrella_header}" ]] \
     || { echo "missing generated umbrella header ${umbrella_header} in ${GENERATED_DIR}" >&2; exit 1; }
   rm -rf "${framework_dir}"
-  mkdir -p "${framework_dir}/Headers" "${framework_dir}/Modules"
-  cp "${source_library}" "${framework_dir}/${FRAMEWORK_MODULE_NAME}"
-  cp "${GENERATED_DIR}/"*.h "${framework_dir}/Headers/"
-  cat > "${framework_dir}/Modules/module.modulemap" <<EOF
+  local content_dir="${framework_dir}"
+  local plist_dir="${framework_dir}"
+  if [[ "${layout}" == "deep" ]]; then
+    content_dir="${framework_dir}/Versions/A"
+    plist_dir="${content_dir}/Resources"
+  fi
+  mkdir -p "${content_dir}/Headers" "${content_dir}/Modules" "${plist_dir}"
+  cp "${source_library}" "${content_dir}/${FRAMEWORK_MODULE_NAME}"
+  cp "${GENERATED_DIR}/"*.h "${content_dir}/Headers/"
+  cat > "${content_dir}/Modules/module.modulemap" <<EOF
 framework module ${FRAMEWORK_MODULE_NAME} {
   umbrella header "${umbrella_header}"
   export *
 }
 EOF
-  cat > "${framework_dir}/Info.plist" <<EOF
+  cat > "${plist_dir}/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -244,6 +261,13 @@ EOF
 </dict>
 </plist>
 EOF
+  if [[ "${layout}" == "deep" ]]; then
+    ln -s A "${framework_dir}/Versions/Current"
+    ln -s "Versions/Current/${FRAMEWORK_MODULE_NAME}" "${framework_dir}/${FRAMEWORK_MODULE_NAME}"
+    ln -s "Versions/Current/Headers" "${framework_dir}/Headers"
+    ln -s "Versions/Current/Modules" "${framework_dir}/Modules"
+    ln -s "Versions/Current/Resources" "${framework_dir}/Resources"
+  fi
   build_xcframework_args+=(-framework "${framework_dir}")
 }
 
@@ -264,7 +288,9 @@ package_static_for_target() {
   mkdir -p "${out_dir}"
   cp "${TARGET_DIR}/${target}/${PROFILE_DIR}/libopenburnbar_domain_ffi.a" \
      "${out_dir}/libopenburnbar_domain_ffi.a"
-  make_framework "${out_dir}/libopenburnbar_domain_ffi.a" "${out_dir}"
+  local fw_layout="shallow"
+  case "${platform_id}" in macos-*) fw_layout="deep" ;; esac
+  make_framework "${out_dir}/libopenburnbar_domain_ffi.a" "${out_dir}" "${fw_layout}"
 }
 
 # Direct-download macOS supports Apple Silicon and Intel. Package both
@@ -277,7 +303,7 @@ if printf '%s\n' "${TARGETS[@]}" | grep -q "aarch64-apple-darwin" \
     "${TARGET_DIR}/aarch64-apple-darwin/${PROFILE_DIR}/libopenburnbar_domain_ffi.a" \
     "${TARGET_DIR}/x86_64-apple-darwin/${PROFILE_DIR}/libopenburnbar_domain_ffi.a" \
     -output "${MAC_DIR}/libopenburnbar_domain_ffi.a"
-  make_framework "${MAC_DIR}/libopenburnbar_domain_ffi.a" "${MAC_DIR}"
+  make_framework "${MAC_DIR}/libopenburnbar_domain_ffi.a" "${MAC_DIR}" deep
 else
   for target in aarch64-apple-darwin x86_64-apple-darwin; do
     [[ " ${TARGETS[*]} " == *" ${target} "* ]] && package_static_for_target "${target}"
@@ -294,7 +320,7 @@ if printf '%s\n' "${TARGETS[@]}" | grep -q "aarch64-apple-ios-sim" \
     "${TARGET_DIR}/aarch64-apple-ios-sim/${PROFILE_DIR}/libopenburnbar_domain_ffi.a" \
     "${TARGET_DIR}/x86_64-apple-ios/${PROFILE_DIR}/libopenburnbar_domain_ffi.a" \
     -output "${SIM_DIR}/libopenburnbar_domain_ffi.a"
-  make_framework "${SIM_DIR}/libopenburnbar_domain_ffi.a" "${SIM_DIR}"
+  make_framework "${SIM_DIR}/libopenburnbar_domain_ffi.a" "${SIM_DIR}" shallow
 
   # Per-arch slices still emitted for archive reproducibility.
   if [[ " ${TARGETS[*]} " == *" aarch64-apple-ios "* ]]; then
