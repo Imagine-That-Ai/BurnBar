@@ -1570,6 +1570,16 @@ jobs:
           xcodebuild_log="${RUNNER_TEMP:-/tmp}/openburnbar-release-app-xcodebuild.log"
           rm -f "$xcodebuild_log"
 
+          # SWIFT_COMPILATION_MODE=incremental: the app module's whole-module
+          # -O compile (which also turns on cross-module optimization,
+          # -enable-default-cmo) exceeds the hosted macos-26 runner's memory —
+          # repair.12's swift-frontend was killed mid-compile with zero
+          # diagnostics ("The following build commands failed: CompileSwift"
+          # and nothing else, the memory-kill signature). No PR gate ever
+          # caught this because none of them builds the app with xcodebuild in
+          # Release; the daemon-only "Release build" check passes on `swift
+          # build`. Per-file -O trades some cross-file inlining for a build
+          # that fits the runner. Revisit if the lane moves to bigger runners.
           xcodebuild \
             -project "$PROJECT" \
             -scheme "$SCHEME" \
@@ -1579,6 +1589,7 @@ jobs:
             -derivedDataPath "$DERIVED_DATA" \
             ARCHS=arm64 \
             ONLY_ACTIVE_ARCH=YES \
+            SWIFT_COMPILATION_MODE=incremental \
             DOMAIN_CORE_BUILD_PROFILE="$DOMAIN_CORE_BUILD_PROFILE" \
             DOMAIN_CORE_BUILD_AUTHORITY="$DOMAIN_CORE_BUILD_AUTHORITY" \
             DOMAIN_CORE_DISTRIBUTION="$DOMAIN_CORE_DISTRIBUTION" \
