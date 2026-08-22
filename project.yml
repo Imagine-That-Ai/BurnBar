@@ -613,24 +613,31 @@ targets:
       # UI-free OpenBurnBarEngine umbrella (+ ComputerUseCore/IrohRelay/Media/
       # LinuxSecurity), NEVER the SwiftUI/AppKit OpenBurnBarCore monolith, so this
       # binary has no path to the UI. See docs/CORE_DECOMPOSITION_PROGRAM.md.
+      #
+      # These package products are LINKED here (not `link: false`) so XCBuild
+      # propagates their linkage to executables that link this static library
+      # (OpenBurnBarDaemonExecutable). Static-library targets record package
+      # products as packageProductDependencies without an embed-copy command;
+      # a standalone executable (`type: tool`) that names them DIRECTLY gets a
+      # copy of every transitive binary framework (openburnbar_domain_ffiFFI
+      # from OpenBurnBarDomainCore.xcframework, via Kernel) into the shared
+      # $BUILT_PRODUCTS_DIR/Frameworks — and two tools doing that collide with
+      # "Multiple commands produce". Keep tools off direct package-product
+      # deps; route them through a static-library target like this one
+      # (OpenBurnBarRemoteAccessAgentCore plays the same role for the
+      # privileged-input tools).
       - package: OpenBurnBarCore
         product: OpenBurnBarEngine
-        link: false
       - package: OpenBurnBarCore
         product: OpenBurnBarInsights
-        link: false
       - package: OpenBurnBarCore
         product: OpenBurnBarComputerUseCore
-        link: false
       - package: OpenBurnBarCore
         product: OpenBurnBarIrohRelay
-        link: false
       - package: OpenBurnBarCore
         product: OpenBurnBarMedia
-        link: false
       - package: OpenBurnBarCore
         product: OpenBurnBarLinuxSecurity
-        link: false
       - package: GRDB
         product: GRDB
       - package: SQLCipher
@@ -660,19 +667,36 @@ targets:
       # Core-decomposition P-18 (S17): OpenBurnBarDaemonMain imports OpenBurnBarEngine
       # (the UI-free umbrella), matching OpenBurnBarDaemon/Package.swift; no path to
       # the OpenBurnBarCore UI monolith. See docs/CORE_DECOMPOSITION_PROGRAM.md.
+      #
+      # Package products are `link: false` here on purpose: a standalone
+      # executable (`type: tool`) with DIRECT package-product deps makes
+      # XCBuild copy every transitive binary framework (openburnbar_domain_ffiFFI
+      # from OpenBurnBarDomainCore.xcframework, via Kernel) into the shared
+      # $BUILT_PRODUCTS_DIR/Frameworks, and two tools doing so collide with
+      # "Multiple commands produce" (first seen in release run 32525126144 —
+      # the only lane where the DomainCore xcframework exists). Linkage
+      # propagates from the linked OpenBurnBarDaemon static library, whose
+      # package products are linked; `link: false` keeps module import + build
+      # ordering without the embed copy.
       - target: OpenBurnBarDaemon
       - package: OpenBurnBarCore
         product: OpenBurnBarEngine
+        link: false
       - package: OpenBurnBarCore
         product: OpenBurnBarInsights
+        link: false
       - package: OpenBurnBarCore
         product: OpenBurnBarComputerUseCore
+        link: false
       - package: OpenBurnBarCore
         product: OpenBurnBarIrohRelay
+        link: false
       - package: OpenBurnBarCore
         product: OpenBurnBarMedia
+        link: false
       - package: OpenBurnBarCore
         product: OpenBurnBarLinuxSecurity
+        link: false
 
   OpenBurnBarPrivilegedInputExecution:
     type: tool
@@ -723,8 +747,19 @@ targets:
         ENABLE_HARDENED_RUNTIME: YES
         SKIP_INSTALL: true
     dependencies:
+      # ComputerUseCore linkage arrives transitively through the
+      # OpenBurnBarRemoteAccessAgentCore static library (same shape as the
+      # PrivilegedInputExecution / VirtualHIDBridge siblings). A direct linked
+      # package-product dep on a `type: tool` target would make XCBuild copy
+      # the transitive openburnbar_domain_ffiFFI binary framework into the
+      # shared $BUILT_PRODUCTS_DIR/Frameworks and collide with any other tool
+      # doing the same ("Multiple commands produce", release run 32525126144).
+      # `link: false` keeps the `import OpenBurnBarComputerUseCore` module
+      # dependency explicit without the embed copy.
+      - target: OpenBurnBarRemoteAccessAgentCore
       - package: OpenBurnBarCore
         product: OpenBurnBarComputerUseCore
+        link: false
 
   OpenBurnBarRemoteAccessAgentCore:
     type: library.static
