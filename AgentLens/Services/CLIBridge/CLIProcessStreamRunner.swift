@@ -53,7 +53,11 @@ struct CLIProcessStreamRunner: Sendable {
             ),
             grantStillActive: grantStillActive,
             continuation: continuation,
-            finalize: { parser.finish() },
+            // No finalize: the codex exec stream is line-oriented JSONL with
+            // no tail buffer to flush, and CodexExecJSONLParser has no
+            // finish() — the call the layout sweep pattern-matched in here
+            // never compiled (nothing in CI builds this app; the release
+            // lane's first-ever full compile caught it).
             parseLine: { line in
                 let result = parser.events(fromLine: line)
                 return (result.events, result.error, result.error != nil)
