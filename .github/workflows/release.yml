@@ -1893,6 +1893,24 @@ jobs:
             fi
           }
 
+          # SwiftPM embeds the OpenBurnBarDomainCore binaryTarget into
+          # Contents/Frameworks even though its ".framework" wraps a static
+          # archive (scripts/build-domain-core-xcframework.sh) whose code is
+          # already linked into the executables. codesign cannot sign an ar
+          # archive, so the copy ships unsigned and the notary service rejects
+          # the whole DMG ("The binary is not signed with a valid Developer ID
+          # certificate" on openburnbar_domain_ffiFFI, repair.16 submission
+          # 25976ab9-e013-4871-9363-827fe3994062). Drop the dead copy; a real
+          # dylib would fall through to the normal signing loop below.
+          STATIC_FFI_FRAMEWORK="$FRAMEWORKS_DIR/openburnbar_domain_ffiFFI.framework"
+          if [[ -d "$STATIC_FFI_FRAMEWORK" ]]; then
+            static_ffi_binary="$(find "$STATIC_FFI_FRAMEWORK" -type f -name openburnbar_domain_ffiFFI -print -quit)"
+            if [[ -n "$static_ffi_binary" ]] && file -b "$static_ffi_binary" | grep -q 'ar archive'; then
+              echo "Removing embedded static-archive framework $STATIC_FFI_FRAMEWORK (already linked into the executables; not signable)."
+              rm -rf "$STATIC_FFI_FRAMEWORK"
+            fi
+          fi
+
           if [[ -d "$FRAMEWORKS_DIR" ]]; then
             while IFS= read -r -d '' item; do
               sign_one "$item"
