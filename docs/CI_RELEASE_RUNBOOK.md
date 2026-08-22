@@ -169,7 +169,10 @@ attempt repair.13 (fixed in #2404).
   default) routes the runner; warm runs restore the headless post-merge lane's
   SPM + Signal FFI caches. If queue latency becomes unacceptable, removing the
   one context line from `burnbar-ci-gate.json` reverts the gate to
-  PR-visible-but-not-queue-blocking without touching the workflow.
+  PR-visible-but-not-queue-blocking without touching the workflow — that json
+  is control-plane pinned, so rerun
+  `node scripts/ci/verify-domain-core-control-plane.mjs --write` from the same
+  tree in the same commit (§2, step 1).
 
 ---
 
