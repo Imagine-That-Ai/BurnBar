@@ -73,3 +73,25 @@ test("skips non-Release builds", async () => {
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /skipped for Debug/);
 });
+
+test("allows a Swift force-load marker whose shim name contains underscores", async () => {
+  const result = run(
+    await makeApp({
+      payload: "__swift_FORCE_LOAD_$_swift_Builtin_float_$_DebugBridgeCore\n",
+    }),
+  );
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /PASS/);
+});
+
+test("still bans a DebugBridgeCore token that is not a complete force-load marker", async () => {
+  const result = run(await makeApp({ payload: "DebugBridgeCore\n" }));
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /forbidden QA strings/);
+});
+
+test("still bans a force-load-shaped QA symbol that is not a complete marker", async () => {
+  const result = run(await makeApp({ payload: "swift_FORCE_LOAD_StateServer\n" }));
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /forbidden QA strings/);
+});

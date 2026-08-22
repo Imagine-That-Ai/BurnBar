@@ -48,6 +48,14 @@ plist_path="${app_path}/Info.plist"
 executable_name="$(
   /usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "${plist_path}" 2>/dev/null || true
 )"
+if [[ -z "${executable_name}" ]] && command -v python3 >/dev/null 2>&1; then
+  executable_name="$(
+    python3 -c 'import plistlib, sys
+with open(sys.argv[1], "rb") as handle:
+    print(plistlib.load(handle).get("CFBundleExecutable") or "")
+' "${plist_path}" 2>/dev/null || true
+  )"
+fi
 [[ -n "${executable_name}" ]] || fail "CFBundleExecutable is missing"
 
 executable_path="${app_path}/${executable_name}"
@@ -60,9 +68,10 @@ forbidden_pattern='DebugBridge(Core|UI|Touch)?|gstack[.-]ios[.-]qa|StateServer|D
 # no code — its NAME merely encodes the library name — so an otherwise-empty
 # Release build of a DebugBridge* module still produces one. Exempt ONLY a
 # complete marker: anchored, shim segment must start with "swift", nothing
-# after the library name. A QA symbol that merely embeds the marker text
+# after the library name. Shim names include underscores (Xcode 26:
+# `swift_Builtin_float`). A QA symbol that merely embeds the marker text
 # (e.g. swift_FORCE_LOAD_StateServer) stays banned.
-force_load_marker='^_{1,2}swift_FORCE_LOAD_\$_swift[A-Za-z0-9]*_\$_[A-Za-z0-9_]+$'
+force_load_marker='^_{1,2}swift_FORCE_LOAD_\$_swift[A-Za-z0-9_]*_\$_[A-Za-z0-9_]+$'
 
 symbol_hits="$(
   nm -j "${executable_path}" 2>/dev/null \
