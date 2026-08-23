@@ -457,8 +457,11 @@ export function validateDomainCoreActivation({
   candidateCommit,
   activationCommit,
   requireHead = true,
+  requireClean = true,
 }) {
-  requireCleanCheckout(repoRoot);
+  if (requireClean) {
+    requireCleanCheckout(repoRoot);
+  }
   const candidate = candidateAt(
     repoRoot,
     commit(candidateCommit, "candidate commit"),
@@ -535,6 +538,7 @@ export function validateDomainCoreReleaseActivation({
   candidateCommit,
   releaseCommit,
   requireHead = true,
+  requireClean = true,
 }) {
   const release = commit(releaseCommit, "release commit");
   if (requireHead && git(repoRoot, ["rev-parse", "HEAD"]) !== release) {
@@ -542,12 +546,16 @@ export function validateDomainCoreReleaseActivation({
       "release commit must equal the exact release checkout HEAD",
     );
   }
+  if (requireClean) {
+    requireCleanCheckout(repoRoot);
+  }
   const activationSha = resolveActivationAuthorityCommit(repoRoot, release);
   const activation = validateDomainCoreActivation({
     repoRoot,
     candidateCommit,
     activationCommit: activationSha,
     requireHead: false,
+    requireClean,
   });
   // Post-activation drift protects the authority files and the activation's
   // append-only evidence (receipts, attestations, bundles, provenance) — the
@@ -1042,9 +1050,16 @@ export function resolveActiveDomainCoreActivation({
   repoRoot,
   activationCommit,
   verifyArtifactIdentity = true,
+  requireClean = true,
 }) {
   const releaseCommit = commit(activationCommit, "activation commit");
-  requireExactCheckout(repoRoot, releaseCommit);
+  if (requireClean) {
+    requireExactCheckout(repoRoot, releaseCommit);
+  } else if (git(repoRoot, ["rev-parse", "HEAD"]) !== releaseCommit) {
+    throw new Error(
+      "signed domain-core activation checkout must match the activation commit",
+    );
+  }
   const authorityActivationCommit = resolveActivationAuthorityCommit(
     repoRoot,
     releaseCommit,

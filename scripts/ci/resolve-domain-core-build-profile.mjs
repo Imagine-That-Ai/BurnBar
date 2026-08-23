@@ -42,11 +42,12 @@ if (catalogProfile.artifactAuthority === "signed") {
       );
     }
     const hasActiveRust = Object.values(catalogProfile.modes).includes("rust");
+    const requireClean = !args.has("--allow-dirty");
     if (!hasActiveRust && expectedCandidateCommit === expectedReleaseCommit) {
       candidateIdentity = resolveDomainCoreCandidateIdentity({
         repoRoot,
         expectedCandidateCommit,
-        requireClean: true,
+        requireClean,
       });
     } else {
       // The release commit R is not the activation authority: protected main
@@ -57,6 +58,7 @@ if (catalogProfile.artifactAuthority === "signed") {
         repoRoot,
         candidateCommit: expectedCandidateCommit,
         releaseCommit: expectedReleaseCommit,
+        requireClean,
       });
       candidateIdentity = {
         candidateCommit: activation.candidateCommit,
@@ -69,7 +71,7 @@ if (catalogProfile.artifactAuthority === "signed") {
     candidateIdentity = resolveDomainCoreCandidateIdentity({
       repoRoot,
       expectedCandidateCommit,
-      requireClean: true,
+      requireClean: !args.has("--allow-dirty"),
     });
   }
 }
