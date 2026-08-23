@@ -2285,7 +2285,7 @@ jobs:
           source_archive="$RUNNER_TEMP/OpenBurnBar-${VERSION}-legacy-source.tar.gz"
           rollback="$RUNNER_TEMP/OpenBurnBar-${VERSION}-legacy-rollback.zip"
           node scripts/ci/resolve-domain-core-activation.mjs \
-            --release-commit "$RELEASE_COMMIT" --format json \
+            --release-commit "$RELEASE_COMMIT" --allow-dirty --format json \
             | jq '{candidateCommit, activationCommit, coreVersion, abiVersion, sourceSha256, changedPathsSha256}' \
             > "$activation"
           candidate="$(jq -er '.candidateCommit' "$activation")"
@@ -2295,6 +2295,7 @@ jobs:
             --expected-release-commit "$RELEASE_COMMIT" \
             --expected-release-version "$VERSION" \
             --expected-release-tag "$RELEASE_TAG" \
+            --allow-dirty \
             --format json --output "$profile"
           git merge-base --is-ancestor "$candidate" "$RELEASE_COMMIT"
           git archive \

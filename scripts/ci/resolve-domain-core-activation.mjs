@@ -18,14 +18,19 @@ function argument(argv, flag) {
 }
 
 export function run(argv) {
-  const allowed = new Set(["--release-commit", "--format"]);
-  for (let index = 0; index < argv.length; index += 2) {
-    if (!allowed.has(argv[index]))
-      throw new Error(`unknown argument: ${argv[index]}`);
+  const allowed = new Set(["--release-commit", "--format", "--allow-dirty"]);
+  for (let index = 0; index < argv.length; index += 1) {
+    const flag = argv[index];
+    if (flag.startsWith("--")) {
+      if (!allowed.has(flag)) throw new Error(`unknown argument: ${flag}`);
+      if (flag === "--allow-dirty") continue;
+      index += 1;
+    }
   }
   const activation = resolveActiveDomainCoreActivation({
     repoRoot: ROOT,
     activationCommit: argument(argv, "--release-commit"),
+    requireClean: !argv.includes("--allow-dirty"),
   });
   const format = argv.includes("--format")
     ? argument(argv, "--format")
