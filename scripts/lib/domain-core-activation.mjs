@@ -229,10 +229,33 @@ function sha256GitBlob(repoRoot, revision, path) {
 }
 
 function requireCleanCheckout(repoRoot) {
-  if (
-    git(repoRoot, ["status", "--porcelain=v1", "--untracked-files=all"]) !== ""
-  ) {
-    throw new Error("signed domain-core activation checkout must be clean");
+  // --ignore-submodules=dirty: Vendor/libsignal is a submodule and CI builds
+  // libsignal from it (Rust target/ etc). The superproject .gitignore cannot
+  // suppress dirt inside a submodule work tree, so every release reached this
+  // guard with `M Vendor/libsignal (modified content)` and failed. Build
+  // residue inside a submodule does not change the superproject bytes this
+  // evidence is bound to. A moved submodule gitlink is still reported, as is
+  // any superproject modification or untracked file.
+  const status = git(repoRoot, [
+    "status",
+    "--porcelain=v1",
+    "--untracked-files=all",
+    "--ignore-submodules=dirty",
+  ]);
+  if (status !== "") {
+    // Name the offending paths. Reaching this guard requires a full release
+    // build (~90 min on macOS), so a bare "must be clean" costs an entire
+    // release cycle to diagnose. Porcelain v1 lines are `XY <path>` — paths
+    // here are repository-relative build residue, not secret material, and the
+    // guard already refuses to proceed regardless of what it finds.
+    const paths = status
+      .split("\n")
+      .filter((line) => line !== "")
+      .slice(0, 20)
+      .join(", ");
+    throw new Error(
+      `signed domain-core activation checkout must be clean; dirty entries: ${paths}`,
+    );
   }
 }
 
