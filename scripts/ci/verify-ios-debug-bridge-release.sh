@@ -62,7 +62,7 @@ forbidden_pattern='DebugBridge(Core|UI|Touch)?|gstack[.-]ios[.-]qa|StateServer|D
 # complete marker: anchored, shim segment must start with "swift", nothing
 # after the library name. A QA symbol that merely embeds the marker text
 # (e.g. swift_FORCE_LOAD_StateServer) stays banned.
-force_load_marker='^_{1,2}swift_FORCE_LOAD_\$_swift[A-Za-z0-9]*_\$_[A-Za-z0-9_]+$'
+force_load_marker='^_{1,2}swift_FORCE_LOAD_\$_swift[A-Za-z0-9_]*_\$_[A-Za-z0-9_]+$'
 
 symbol_hits="$(
   nm -j "${executable_path}" 2>/dev/null \
