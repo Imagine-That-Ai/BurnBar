@@ -243,6 +243,20 @@ framework module ${FRAMEWORK_MODULE_NAME} {
   export *
 }
 EOF
+  # CFBundleExecutable is load-bearing, not boilerplate. Without it codesign
+  # cannot find a main executable, so it signs the .framework as a
+  # RESOURCE-ONLY bundle: `codesign -dvvv` reports
+  # `Executable=.../Resources/Info.plist` and `Format=bundle`, the seal lands
+  # in Versions/A/_CodeSignature/CodeResources, and the Mach-O is hashed as a
+  # plain *resource*. The binary itself keeps whatever signature the linker
+  # gave it — ad-hoc, no authority, no timestamp — which is exactly the pair
+  # of errors the notary service returned for repair.16/17/18:
+  #   openburnbar_domain_ffiFFI: "The binary is not signed with a valid
+  #   Developer ID certificate" + "The signature does not include a secure
+  #   timestamp"   (submission 00688dc6-a2ed-4401-b50a-c62599a8153a)
+  # `codesign --verify --strict` passes throughout, because a resource-only
+  # bundle really is validly signed — which is why three release cycles were
+  # spent chasing a static-archive theory instead.
   cat > "${plist_dir}/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -251,6 +265,8 @@ EOF
   <key>CFBundlePackageType</key>
   <string>FMWK</string>
   <key>CFBundleName</key>
+  <string>${FRAMEWORK_MODULE_NAME}</string>
+  <key>CFBundleExecutable</key>
   <string>${FRAMEWORK_MODULE_NAME}</string>
   <key>CFBundleIdentifier</key>
   <string>ai.openburnbar.domain-core-ffi</string>
