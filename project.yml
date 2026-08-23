@@ -925,12 +925,16 @@ targets:
         embed: false
       - package: OpenBurnBarCore
         product: OpenBurnBarEngine
+        link: false
       - package: OpenBurnBarCore
         product: OpenBurnBarInsights
+        link: false
       - package: OpenBurnBarCore
         product: OpenBurnBarComputerUseCore
+        link: false
       - package: OpenBurnBarCore
         product: OpenBurnBarLinuxSecurity
+        link: false
 
   OpenBurnBarMobile:
     type: application
