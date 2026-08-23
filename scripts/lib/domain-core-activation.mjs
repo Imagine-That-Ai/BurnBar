@@ -1171,6 +1171,7 @@ export function resolveActiveDomainCoreActivation({
         candidateCommit: authorityActivationCommit,
         activationCommit: authorityActivationCommit,
         requireHead: false,
+        requireClean,
       }),
       domains: [],
     };
@@ -1187,6 +1188,7 @@ export function resolveActiveDomainCoreActivation({
       candidateCommit: [...candidates][0],
       activationCommit: authorityActivationCommit,
       requireHead: false,
+      requireClean,
     }),
     domains,
   };

@@ -211,7 +211,7 @@
     "scripts/lib/atomic-regular-file.mjs": ["d8e2a4bc8d331da9","ef5ed02c8e534ea7","2d600d4bc9f8630d","750cdb1250d33ca2"],
     "scripts/lib/branch-protection-drift.mjs": ["19d3737d14cc9c5d","978b5b0f6113e4a8","619a33b6e0dfd519","18256af12bf6ddc5"],
     "scripts/lib/curl-bearer.sh": ["8f75dd66be14129b","5c2d39ca21231f2f","8448cc892af799a9","bdba5b39b1307230"],
-    "scripts/lib/domain-core-activation.mjs": ["cf6f187c4b361c92","b5edf180c813b9ad","744db4a16e567a51","5b3381a1863d03a2"],
+    "scripts/lib/domain-core-activation.mjs": ["8413ade9f20a19d7","d603fe20c9ab3f12","2745af75b0acf35c","2d1223e2f74d894f"],
     "scripts/lib/domain-core-artifact-profile.mjs": ["a40109b9641951a5","e1c2daedbed39e60","d16fb9c080511543","ff8be40ffa40756b"],
     "scripts/lib/domain-core-artifact-profile.test.mjs": ["17ef7a24689eff11","bbdec9365cebfe75","e730f3c1f6ae1adf","ca5b8edee3f16b2e"],
     "scripts/lib/domain-core-build-profile.mjs": ["43c6d41a64249d3e","c751c9eeefc023ce","9f4a3417393ae022","4e8d9b3d31f7f6f5"],
