@@ -101,6 +101,26 @@ test("iOS layout stays a shallow bundle: everything at the framework root, no Ve
   assert.ok(!existsSync(join(fw, "Versions")), "no Versions/ directory in a shallow bundle");
 });
 
+// repair.16/17/18 were rejected by the notary service with
+// "The binary is not signed with a valid Developer ID certificate" +
+// "The signature does not include a secure timestamp" on
+// Versions/A/openburnbar_domain_ffiFFI. The Info.plist had no
+// CFBundleExecutable, so codesign could not find a main executable and sealed
+// the framework as a resource-only bundle (Format=bundle,
+// Executable=.../Resources/Info.plist): the Mach-O was hashed as a *resource*
+// and kept its ad-hoc linker signature. `codesign --verify --strict` passes on
+// such a bundle, so nothing downstream caught it.
+for (const layout of ["deep", "shallow"]) {
+  test(`${layout} layout declares CFBundleExecutable so codesign signs the binary, not a resource`, () => {
+    const fw = runMakeFramework(layout);
+    const plist = layout === "deep" ? join(fw, "Versions", "A", "Resources", "Info.plist") : join(fw, "Info.plist");
+    const executable = execFileSync("/usr/libexec/PlistBuddy", ["-c", "Print :CFBundleExecutable", plist], {
+      encoding: "utf8",
+    }).trim();
+    assert.equal(executable, MODULE, "CFBundleExecutable must name the framework binary");
+  });
+}
+
 test("make_framework refuses a missing layout argument", () => {
   assert.throws(() => runMakeFramework(""), /layout|parameter|unbound/iu);
 });

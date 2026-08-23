@@ -1893,25 +1893,29 @@ jobs:
             fi
           }
 
-          # SwiftPM embeds the OpenBurnBarDomainCore binaryTarget into
-          # Contents/Frameworks even though its ".framework" wraps a *static*
-          # archive: scripts/build-domain-core-xcframework.sh copies
-          # libopenburnbar_domain_ffi.a to Versions/A/openburnbar_domain_ffiFFI
-          # (deep layout for macos-* slices). codesign cannot put a signature
-          # inside an ar archive, so the embedded copy ships unsigned and the
-          # notary service rejects the entire DMG:
+          # Xcode embeds the OpenBurnBarDomainCore binaryTarget's framework into
+          # Contents/Frameworks (see project.yml: XCBuild copies every
+          # transitive binary framework into $BUILT_PRODUCTS_DIR/Frameworks).
+          #
+          # repair.16/17/18 were all rejected by the notary service on this one
+          # path with the same two errors:
           #   openburnbar_domain_ffiFFI: "The binary is not signed with a valid
           #   Developer ID certificate" + "The signature does not include a
           #   secure timestamp"
           #   repair.16 submission 25976ab9-e013-4871-9363-827fe3994062
           #   repair.17 submission a55acafc-42c0-42d1-82ad-c9bdfd3183e9
-          # The archive's code is already linked into the executables and a
-          # static archive cannot be dlopen'd, so the embedded copy is dead
-          # weight. repair.17 tried to detect it with
-          # `find -type f -name ... | file | grep 'ar archive'` and the guard
-          # never fired, so this version inverts the test: keep the framework
-          # only when its binary is provably a Mach-O dynamic library, and log
-          # what was actually found either way so a future miss is diagnosable.
+          #   repair.18 submission 00688dc6-a2ed-4401-b50a-c62599a8153a
+          # repair.17 and repair.18 guessed the framework wrapped a static
+          # archive. It does not — repair.18's own diagnostics printed
+          # "Mach-O universal binary with 1 architecture: [arm64:... dynamically
+          # linked shared library]". The real cause was in
+          # scripts/build-domain-core-xcframework.sh: the generated Info.plist
+          # had no CFBundleExecutable, so codesign could not locate a main
+          # executable and sealed the bundle as RESOURCE-ONLY — hashing the
+          # Mach-O as a resource and leaving its ad-hoc linker signature (no
+          # authority, no timestamp) untouched. That plist now declares
+          # CFBundleExecutable; the sweep below stays only as a guard against a
+          # binary that is not a signable Mach-O at all.
           STATIC_FFI_FRAMEWORK="$FRAMEWORKS_DIR/openburnbar_domain_ffiFFI.framework"
           if [[ -e "$STATIC_FFI_FRAMEWORK" ]]; then
             echo "domain-ffi framework present; inspecting before signing:"
@@ -2004,14 +2008,38 @@ jobs:
             --sign "$SIGNING_IDENTITY" \
             "$APP_PATH"
 
-          # Fail closed: the domain-ffi framework is the one thing that has ever
-          # reached the notary service unsigned. If a copy survived the sweep
-          # above, it must now carry a valid signature.
-          if [[ -e "$STATIC_FFI_FRAMEWORK" ]] \
-            && ! codesign --verify --strict "$STATIC_FFI_FRAMEWORK"; then
-            echo "::error::$STATIC_FFI_FRAMEWORK is present but not validly signed; notarization would reject the DMG."
-            exit 1
-          fi
+          # Fail closed on what the notary service actually inspects. Every
+          # Mach-O in the bundle is checked on its own, so a bundle-level
+          # `codesign --verify --strict` proves nothing: it passed in repair.18
+          # while the domain-ffi Mach-O inside was still ad-hoc signed, because
+          # a resource-only bundle really is validly signed. Assert the two
+          # properties the notary rejected instead — a Developer ID authority
+          # and a secure timestamp on each embedded Mach-O.
+          assert_macho_notarizable() {
+            local path="$1"
+            local kind signature
+            [[ -f "$path" ]] || return 0
+            kind="$(file -b "$path")"
+            # Real Mach-O code only. A fat *static archive* also reports
+            # "Mach-O universal binary", so exclude ar members explicitly;
+            # the notary service does not demand a signature on those.
+            grep -q 'Mach-O' <<<"$kind" || return 0
+            grep -q 'ar archive' <<<"$kind" && return 0
+            signature="$(codesign -dvvv "$path" 2>&1)"
+            if ! grep -q '^Authority=Developer ID Application:' <<<"$signature"; then
+              echo "::error::$path carries no Developer ID Application authority; the notary service would reject the DMG."
+              printf '%s\n' "$signature"
+              exit 1
+            fi
+            if ! grep -q '^Timestamp=' <<<"$signature"; then
+              echo "::error::$path has no secure timestamp; the notary service would reject the DMG."
+              printf '%s\n' "$signature"
+              exit 1
+            fi
+          }
+          while IFS= read -r -d '' macho; do
+            assert_macho_notarizable "$macho"
+          done < <(find "$FRAMEWORKS_DIR" "$HELPERS_DIR" -type f -print0 2>/dev/null)
 
           bash scripts/ci/verify-signing-profile-certificate.sh "$APP_PATH" "$APP_PROFILE"
           codesign --verify --deep --strict --verbose=2 "$APP_PATH"
