@@ -1894,19 +1894,48 @@ jobs:
           }
 
           # SwiftPM embeds the OpenBurnBarDomainCore binaryTarget into
-          # Contents/Frameworks even though its ".framework" wraps a static
-          # archive (scripts/build-domain-core-xcframework.sh) whose code is
-          # already linked into the executables. codesign cannot sign an ar
-          # archive, so the copy ships unsigned and the notary service rejects
-          # the whole DMG ("The binary is not signed with a valid Developer ID
-          # certificate" on openburnbar_domain_ffiFFI, repair.16 submission
-          # 25976ab9-e013-4871-9363-827fe3994062). Drop the dead copy; a real
-          # dylib would fall through to the normal signing loop below.
+          # Contents/Frameworks even though its ".framework" wraps a *static*
+          # archive: scripts/build-domain-core-xcframework.sh copies
+          # libopenburnbar_domain_ffi.a to Versions/A/openburnbar_domain_ffiFFI
+          # (deep layout for macos-* slices). codesign cannot put a signature
+          # inside an ar archive, so the embedded copy ships unsigned and the
+          # notary service rejects the entire DMG:
+          #   openburnbar_domain_ffiFFI: "The binary is not signed with a valid
+          #   Developer ID certificate" + "The signature does not include a
+          #   secure timestamp"
+          #   repair.16 submission 25976ab9-e013-4871-9363-827fe3994062
+          #   repair.17 submission a55acafc-42c0-42d1-82ad-c9bdfd3183e9
+          # The archive's code is already linked into the executables and a
+          # static archive cannot be dlopen'd, so the embedded copy is dead
+          # weight. repair.17 tried to detect it with
+          # `find -type f -name ... | file | grep 'ar archive'` and the guard
+          # never fired, so this version inverts the test: keep the framework
+          # only when its binary is provably a Mach-O dynamic library, and log
+          # what was actually found either way so a future miss is diagnosable.
           STATIC_FFI_FRAMEWORK="$FRAMEWORKS_DIR/openburnbar_domain_ffiFFI.framework"
-          if [[ -d "$STATIC_FFI_FRAMEWORK" ]]; then
-            static_ffi_binary="$(find "$STATIC_FFI_FRAMEWORK" -type f -name openburnbar_domain_ffiFFI -print -quit)"
-            if [[ -n "$static_ffi_binary" ]] && file -b "$static_ffi_binary" | grep -q 'ar archive'; then
-              echo "Removing embedded static-archive framework $STATIC_FFI_FRAMEWORK (already linked into the executables; not signable)."
+          if [[ -e "$STATIC_FFI_FRAMEWORK" ]]; then
+            echo "domain-ffi framework present; inspecting before signing:"
+            ls -l "$STATIC_FFI_FRAMEWORK" || true
+            ffi_binary=""
+            for candidate in \
+              "$STATIC_FFI_FRAMEWORK/Versions/A/openburnbar_domain_ffiFFI" \
+              "$STATIC_FFI_FRAMEWORK/Versions/Current/openburnbar_domain_ffiFFI" \
+              "$STATIC_FFI_FRAMEWORK/openburnbar_domain_ffiFFI"; do
+              if [[ -f "$candidate" ]]; then
+                ffi_binary="$candidate"
+                break
+              fi
+            done
+            if [[ -n "$ffi_binary" ]]; then
+              echo "  binary: $ffi_binary"
+              echo "  type:   $(file -b "$ffi_binary" || true)"
+            else
+              echo "  binary: <none found>"
+            fi
+            if [[ -n "$ffi_binary" ]] && file -b "$ffi_binary" | grep -q 'dynamically linked shared library'; then
+              echo "  keeping: real Mach-O dylib, the signing loop below will sign it."
+            else
+              echo "  removing: not a signable Mach-O dylib (already linked into the executables)."
               rm -rf "$STATIC_FFI_FRAMEWORK"
             fi
           fi
@@ -1974,6 +2003,15 @@ jobs:
             --entitlements "$APP_SIGNING_ENTITLEMENTS" \
             --sign "$SIGNING_IDENTITY" \
             "$APP_PATH"
+
+          # Fail closed: the domain-ffi framework is the one thing that has ever
+          # reached the notary service unsigned. If a copy survived the sweep
+          # above, it must now carry a valid signature.
+          if [[ -e "$STATIC_FFI_FRAMEWORK" ]] \
+            && ! codesign --verify --strict "$STATIC_FFI_FRAMEWORK"; then
+            echo "::error::$STATIC_FFI_FRAMEWORK is present but not validly signed; notarization would reject the DMG."
+            exit 1
+          fi
 
           bash scripts/ci/verify-signing-profile-certificate.sh "$APP_PATH" "$APP_PROFILE"
           codesign --verify --deep --strict --verbose=2 "$APP_PATH"
