@@ -5,9 +5,11 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import io
 import json
 import re
 import stat
+import tarfile
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -15,6 +17,7 @@ from typing import Any
 
 SHA = re.compile(r"^[0-9a-f]{40}$")
 VERSION = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(?:\+[0-9A-Za-z.-]+)?$")
+CORE_VERSION = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
 BASE_ENTRIES = (
     "manifest.json",
     "domain-core-public-production-rollback.json",
@@ -209,8 +212,13 @@ def create_bundle(
         for key in ("candidateCommit", "coreVersion", "abiVersion", "sourceSha256")
     ):
         raise ValueError("rollback profile candidate and activation closure disagree")
-    if version != candidate.get("coreVersion"):
-        raise ValueError("rollback release version does not match the candidate core version")
+    # The release train (1.0.40+repair.N) and the domain-core version (0.1.0)
+    # are independent, so requiring them equal was unsatisfiable in production.
+    # Activation/candidate coreVersion agreement is enforced above.
+    if not isinstance(candidate.get("coreVersion"), str) or not CORE_VERSION.fullmatch(
+        candidate["coreVersion"]
+    ):
+        raise ValueError("rollback candidate core version is invalid")
     profile_release = profile.get("release")
     if (
         not isinstance(profile_release, dict)
@@ -236,8 +244,27 @@ def create_bundle(
     source_bytes = source_archive.read_bytes()
     if len(source_bytes) < 128:
         raise ValueError("rollback source archive is empty or implausibly small")
-    if hashlib.sha256(source_bytes).hexdigest() != candidate.get("sourceSha256"):
-        raise ValueError("rollback source archive digest does not match the candidate source SHA-256")
+    # candidate.sourceSha256 is the committed domain-core source manifest
+    # constant (OpenBurnBarDomainCoreExpectedSourceSHA256); the archive is a
+    # whole-repo `git archive` export. The two cover different bytes and can
+    # never be equal. The archive's own digest is recorded below in
+    # restoration.sourceArchive.sha256, which is what verifiers use; assert
+    # here only that the export is well formed and rooted at this release.
+    if source_bytes[:2] != b"\x1f\x8b":
+        raise ValueError("rollback source archive must be a gzip stream")
+    expected_root = f"OpenBurnBar-{version}-legacy-source"
+    try:
+        with tarfile.open(fileobj=io.BytesIO(source_bytes), mode="r|gz") as tar:
+            first = next((m for m in tar if m.name.strip("/")), None)
+    except tarfile.TarError as error:
+        raise ValueError("rollback source archive is not a readable tar.gz") from error
+    if first is None:
+        raise ValueError("rollback source archive contains no entries")
+    # git archive emits the prefix directory itself as the first entry, which
+    # tarfile reports without its trailing slash.
+    root = first.name.strip("/")
+    if root != expected_root and not root.startswith(f"{expected_root}/"):
+        raise ValueError("rollback source archive is not rooted at the release source prefix")
     environment = rollback_environment(profile)
     manifest = {
         "schemaVersion": 1,

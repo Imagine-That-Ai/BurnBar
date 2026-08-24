@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
+import io
 import json
+import tarfile
 import tempfile
 import unittest
 import zipfile
@@ -16,20 +18,46 @@ assert SPEC and SPEC.loader
 BUNDLE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(BUNDLE)
 
+# These fixtures deliberately mirror the shape of a real release rather than a
+# tidy set of matching constants. Earlier fixtures set the release version, the
+# core version and every commit to the same value, which let a family of
+# unsatisfiable assertions pass here and fail every production release:
+#   * the release train (1.0.40+repair.N) is not the domain-core version (0.1.0)
+#   * the activation authority P is not the release commit R
+#   * neither is the candidate commit C
+CANDIDATE_COMMIT = "1" * 40   # C
+ACTIVATION_COMMIT = "2" * 40  # P, re-derived from the committed authority files
+RELEASE_COMMIT = "3" * 40     # R
+CORE_VERSION = "0.1.0"
+RELEASE_VERSION = "1.0.40+repair.25"
+RELEASE_TAG = f"v{RELEASE_VERSION}"
+SOURCE_ROOT = f"OpenBurnBar-{RELEASE_VERSION}-legacy-source"
+
+
+def source_archive_bytes(root: str = SOURCE_ROOT, *, body: bytes = b"legacy tree") -> bytes:
+    """Build a `git archive`-shaped tar.gz rooted at ``root``."""
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
+        directory = tarfile.TarInfo(root)
+        directory.type = tarfile.DIRTYPE
+        archive.addfile(directory)
+        entry = tarfile.TarInfo(f"{root}/README")
+        entry.size = len(body)
+        archive.addfile(entry, io.BytesIO(body))
+    return buffer.getvalue()
+
 
 class RollbackBundleTests(unittest.TestCase):
     def fixture(self, root: Path, *, rust_mode: bool = False) -> tuple[Path, Path, Path, dict]:
         candidate = {
-            "candidateCommit": "1" * 40,
-            "coreVersion": "1.2.3",
+            "candidateCommit": CANDIDATE_COMMIT,
+            "coreVersion": CORE_VERSION,
             "abiVersion": 3,
-            "sourceSha256": hashlib.sha256(
-                b"deterministic legacy source archive" * 16
-            ).hexdigest(),
+            "sourceSha256": "5" * 64,
         }
         activation = {
             **candidate,
-            "activationCommit": "3" * 40,
+            "activationCommit": ACTIVATION_COMMIT,
             "changedPathsSha256": "4" * 64,
         }
         modes = {domain: "legacy" for domain in BUNDLE.DOMAIN_ENV_KEYS}
@@ -45,9 +73,9 @@ class RollbackBundleTests(unittest.TestCase):
             "modes": modes,
             "candidateIdentity": candidate,
             "release": {
-                "version": "1.2.3",
-                "tag": "v1.2.3",
-                "commit": "3" * 40,
+                "version": RELEASE_VERSION,
+                "tag": RELEASE_TAG,
+                "commit": RELEASE_COMMIT,
             },
         }
         profile_path = root / "profile.json"
@@ -55,7 +83,7 @@ class RollbackBundleTests(unittest.TestCase):
         source_path = root / "legacy-source.tar.gz"
         profile_path.write_text(json.dumps(profile))
         activation_path.write_text(json.dumps(activation))
-        source_path.write_bytes(b"deterministic legacy source archive" * 16)
+        source_path.write_bytes(source_archive_bytes())
         return profile_path, activation_path, source_path, activation
 
     def test_bundle_has_exact_deterministic_seven_consumer_payloads(self) -> None:
@@ -69,9 +97,9 @@ class RollbackBundleTests(unittest.TestCase):
                     activation_path,
                     output,
                     source,
-                    version="1.2.3",
-                    tag="v1.2.3",
-                    commit=activation["activationCommit"],
+                    version=RELEASE_VERSION,
+                    tag=RELEASE_TAG,
+                    commit=RELEASE_COMMIT,
                 )
             self.assertEqual(outputs[0].read_bytes(), outputs[1].read_bytes())
             with zipfile.ZipFile(outputs[0]) as archive:
@@ -102,52 +130,93 @@ class RollbackBundleTests(unittest.TestCase):
                     activation,
                     root / "rollback.zip",
                     source,
-                    version="1.2.3",
-                    tag="v1.2.3",
-                    commit=closure["activationCommit"],
+                    version=RELEASE_VERSION,
+                    tag=RELEASE_TAG,
+                    commit=RELEASE_COMMIT,
                 )
 
-    def test_rejects_unrelated_source_archive(self) -> None:
-        """An archive whose digest does not match candidate.sourceSha256 must
-        be rejected so a rollback bundle cannot ship an unrelated source tree."""
+    def test_rejects_source_archive_that_is_not_a_gzip_stream(self) -> None:
+        """A source archive that is not a gzip stream must be rejected so a
+        rollback bundle cannot ship an unreadable source tree."""
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             profile, activation_path, source, activation = self.fixture(root)
             source.write_bytes(b"unrelated legacy source archive" * 16)
-            with self.assertRaisesRegex(
-                ValueError, "source archive digest does not match"
-            ):
+            with self.assertRaisesRegex(ValueError, "must be a gzip stream"):
                 BUNDLE.create_bundle(
                     profile,
                     activation_path,
                     root / "rollback.zip",
                     source,
-                    version="1.2.3",
-                    tag="v1.2.3",
-                    commit=activation["activationCommit"],
+                    version=RELEASE_VERSION,
+                    tag=RELEASE_TAG,
+                    commit=RELEASE_COMMIT,
                 )
 
-    def test_rejects_release_version_not_bound_to_candidate_core_version(
-        self,
-    ) -> None:
-        """The release version must equal candidate.coreVersion so a rollback
-        bundle cannot be labeled with an unrelated release train."""
+    def test_rejects_source_archive_not_rooted_at_release_prefix(self) -> None:
+        """A well-formed archive exported for a different release must be
+        rejected so a rollback bundle cannot ship a foreign source tree."""
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             profile, activation_path, source, activation = self.fixture(root)
+            source.write_bytes(source_archive_bytes("OpenBurnBar-9.9.9-legacy-source"))
             with self.assertRaisesRegex(
-                ValueError, "release version does not match the candidate core version"
+                ValueError, "not rooted at the release source prefix"
             ):
                 BUNDLE.create_bundle(
                     profile,
                     activation_path,
                     root / "rollback.zip",
                     source,
-                    version="2.0.0",
-                    tag="v2.0.0",
-                    commit=activation["activationCommit"],
+                    version=RELEASE_VERSION,
+                    tag=RELEASE_TAG,
+                    commit=RELEASE_COMMIT,
                 )
+    def test_accepts_release_version_distinct_from_core_version(self) -> None:
+        """The release train and the domain-core version are independent.
 
+        The old assertion required version == candidate.coreVersion. Every real
+        release ships a release version (1.0.40+repair.N) that differs from the
+        domain-core version (0.1.0), so that check could never hold in
+        production and failed the release at its final step. It only passed
+        here because the fixtures set both to the same string.
+        """
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            profile, activation_path, source, activation = self.fixture(root)
+            self.assertNotEqual(RELEASE_VERSION, CORE_VERSION)
+            bundle = BUNDLE.create_bundle(
+                profile,
+                activation_path,
+                root / "rollback.zip",
+                source,
+                version=RELEASE_VERSION,
+                tag=RELEASE_TAG,
+                commit=RELEASE_COMMIT,
+            )
+            self.assertEqual(bundle["release"]["version"], RELEASE_VERSION)
+            self.assertEqual(bundle["candidate"]["coreVersion"], CORE_VERSION)
+
+    def test_rejects_malformed_candidate_core_version(self) -> None:
+        """The candidate core version must still be a real version string."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            profile_path, activation_path, source, _ = self.fixture(root)
+            for path in (profile_path, activation_path):
+                document = json.loads(path.read_text())
+                target = document.get("candidateIdentity", document)
+                target["coreVersion"] = "not-a-version"
+                path.write_text(json.dumps(document))
+            with self.assertRaisesRegex(ValueError, "core version is invalid"):
+                BUNDLE.create_bundle(
+                    profile_path,
+                    activation_path,
+                    root / "rollback.zip",
+                    source,
+                    version=RELEASE_VERSION,
+                    tag=RELEASE_TAG,
+                    commit=RELEASE_COMMIT,
+                )
     def test_rejects_moved_release_tag(self) -> None:
         """A tag that does not match v{version} must be rejected so the
         rollback bundle cannot be labeled with a moved or foreign tag."""
@@ -162,7 +231,7 @@ class RollbackBundleTests(unittest.TestCase):
                     activation_path,
                     root / "rollback.zip",
                     source,
-                    version="1.2.3",
+                    version=RELEASE_VERSION,
                     tag="v9.9.9",
                     commit=activation["activationCommit"],
                 )
@@ -186,9 +255,9 @@ class RollbackBundleTests(unittest.TestCase):
                     activation_path,
                     root / "rollback.zip",
                     source,
-                    version="1.2.3",
-                    tag="v1.2.3",
-                    commit=activation["activationCommit"],
+                    version=RELEASE_VERSION,
+                    tag=RELEASE_TAG,
+                    commit=RELEASE_COMMIT,
                 )
 
     def test_rejects_profile_release_commit_equal_to_candidate_commit(self) -> None:
@@ -214,8 +283,8 @@ class RollbackBundleTests(unittest.TestCase):
                     activation_path,
                     root / "rollback.zip",
                     source,
-                    version="1.2.3",
-                    tag="v1.2.3",
+                    version=RELEASE_VERSION,
+                    tag=RELEASE_TAG,
                     commit="1" * 40,
                 )
 
@@ -234,8 +303,8 @@ class RollbackBundleTests(unittest.TestCase):
                     activation_path,
                     root / "rollback.zip",
                     source,
-                    version="1.2.3",
-                    tag="v1.2.3",
+                    version=RELEASE_VERSION,
+                    tag=RELEASE_TAG,
                     commit="5" * 40,
                 )
 
@@ -247,27 +316,23 @@ class RollbackBundleTests(unittest.TestCase):
         later check requires the release commit to differ from candidateCommit.
         When domain-core is inactive the resolver returns
         activationCommit == candidateCommit, so the two were unsatisfiable and
-        every real release failed here. This fixture models production: the
-        activation binds P, the profile binds R, and P != R.
+        every real release failed here.
         """
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            profile_path, activation_path, source, _ = self.fixture(root)
-            release_commit = "7" * 40
-            profile = json.loads(profile_path.read_text())
-            profile["release"]["commit"] = release_commit
-            profile_path.write_text(json.dumps(profile))
+            profile_path, activation_path, source, activation = self.fixture(root)
+            self.assertNotEqual(activation["activationCommit"], RELEASE_COMMIT)
             bundle = BUNDLE.create_bundle(
                 profile_path,
                 activation_path,
                 root / "rollback.zip",
                 source,
-                version="1.2.3",
-                tag="v1.2.3",
-                commit=release_commit,
+                version=RELEASE_VERSION,
+                tag=RELEASE_TAG,
+                commit=RELEASE_COMMIT,
             )
-            self.assertEqual(bundle["release"]["commit"], release_commit)
-
+            self.assertEqual(bundle["release"]["commit"], RELEASE_COMMIT)
+            self.assertEqual(bundle["activation"]["activationCommit"], ACTIVATION_COMMIT)
     def test_payload_generator_is_exact_and_not_caller_replaceable(self) -> None:
         self.assertEqual(
             list(BUNDLE.ROLLBACK_CONSUMERS),
