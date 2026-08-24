@@ -2790,11 +2790,22 @@ jobs:
     # Follows the iOS job, not the Mac one. `!cancelled()` displaces the
     # implicit success() guard so a failed iOS build reaches this job and
     # reports "not enabled" instead of propagating a skip into publication.
+    #
+    # build-and-release is nevertheless a dependency: when the iOS lane
+    # succeeds this job downloads the canonical retained rollback bundle,
+    # which build-and-release produces. Without the edge the two race and the
+    # download fails with "Artifact not found for name:
+    # OpenBurnBar-<version>-legacy-rollback.zip". The race stayed invisible
+    # because every prior release failed the iOS lane, leaving `enabled` false
+    # so the job reported "not enabled" and never reached the download.
+    # `!cancelled()` still displaces success(), so a failed Mac lane reaches
+    # this job exactly as a failed iOS lane does.
     if: ${{ !cancelled() && needs.release-preflight.result == 'success' }}
     needs:
       - release-preflight
       - domain-core-native-release-gate
       - build-ios-release
+      - build-and-release
     uses: ./.github/workflows/domain-core-ios-release-evidence.yml
     with:
       # No archive exists to gather evidence for when the iOS lane failed.
