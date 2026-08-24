@@ -95,6 +95,8 @@ jobs:
       tag: ${{ steps.resolve.outputs.tag }}
       version: ${{ steps.resolve.outputs.version }}
       version_code: ${{ steps.inspect.outputs.version_code }}
+      target_sdk: ${{ steps.inspect.outputs.target_sdk }}
+      bundletool_version: ${{ steps.inspect.outputs.bundletool_version }}
       aab_sha256: ${{ steps.inspect.outputs.aab_sha256 }}
     steps:
       - name: Check out the exact approved workflow revision
@@ -238,17 +240,34 @@ jobs:
             "https://github.com/google/bundletool/releases/download/${bundletool_version}/bundletool-all-${bundletool_version}.jar"
           printf '%s  %s\n' "$bundletool_sha256" "$bundletool" | sha256sum --check --strict
           java -jar "$bundletool" validate --bundle="$aab"
+          target_sdk_policy_count="$(grep -c '^openburnbar\.android\.targetSdk=' android/gradle.properties || true)"
+          [[ "$target_sdk_policy_count" == "1" ]] || {
+            echo "::error::android/gradle.properties must declare exactly one target SDK policy."
+            exit 1
+          }
+          required_target_sdk="$(sed -n 's/^openburnbar\.android\.targetSdk=//p' android/gradle.properties)"
+          [[ "$required_target_sdk" =~ ^[1-9][0-9]*$ ]] || {
+            echo "::error::Android target SDK policy is not a positive integer."
+            exit 1
+          }
           package_name="$(java -jar "$bundletool" dump manifest --bundle="$aab" --xpath=/manifest/@package)"
           version_name="$(java -jar "$bundletool" dump manifest --bundle="$aab" --xpath=/manifest/@android:versionName)"
           version_code="$(java -jar "$bundletool" dump manifest --bundle="$aab" --xpath=/manifest/@android:versionCode)"
+          target_sdk="$(java -jar "$bundletool" dump manifest --bundle="$aab" --xpath=/manifest/uses-sdk/@android:targetSdkVersion)"
           [[ "$package_name" == "com.openburnbar" ]] || { echo "::error::Unexpected package: $package_name"; exit 1; }
           [[ "$version_name" == "$VERSION" ]] || { echo "::error::Unexpected versionName: $version_name"; exit 1; }
           [[ "$version_code" =~ ^[1-9][0-9]*$ ]] || { echo "::error::Invalid versionCode: $version_code"; exit 1; }
+          [[ "$target_sdk" == "$required_target_sdk" ]] || {
+            echo "::error::Google Play publication requires target SDK $required_target_sdk; bundle targets $target_sdk."
+            exit 1
+          }
           aab_sha256="$(sha256sum "$aab" | awk '{print $1}')"
           {
             echo "package_name=$package_name"
             echo "version_name=$version_name"
             echo "version_code=$version_code"
+            echo "target_sdk=$target_sdk"
+            echo "bundletool_version=$bundletool_version"
             echo "aab_sha256=$aab_sha256"
             echo "upload_certificate_sha256=$signer_fingerprint"
           } >> "$GITHUB_OUTPUT"
@@ -265,6 +284,8 @@ jobs:
           RELEASE_STATUS: ${{ inputs.release_status }}
           PACKAGE_NAME: ${{ steps.inspect.outputs.package_name }}
           VERSION_CODE: ${{ steps.inspect.outputs.version_code }}
+          TARGET_SDK: ${{ steps.inspect.outputs.target_sdk }}
+          BUNDLETOOL_VERSION: ${{ steps.inspect.outputs.bundletool_version }}
           AAB_SHA256: ${{ steps.inspect.outputs.aab_sha256 }}
           UPLOAD_CERTIFICATE_SHA256: ${{ steps.inspect.outputs.upload_certificate_sha256 }}
         run: |
@@ -287,6 +308,8 @@ jobs:
             --package "$PACKAGE_NAME" \
             --version-name "$VERSION" \
             --version-code "$VERSION_CODE" \
+            --target-sdk "$TARGET_SDK" \
+            --bundletool-version "$BUNDLETOOL_VERSION" \
             --sha256 "$AAB_SHA256" \
             --upload-certificate-sha256 "$UPLOAD_CERTIFICATE_SHA256" \
             --prepared-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
@@ -313,6 +336,7 @@ jobs:
           COMMIT: ${{ steps.resolve.outputs.commit }}
           TRACK: ${{ inputs.track }}
           VERSION_CODE: ${{ steps.inspect.outputs.version_code }}
+          TARGET_SDK: ${{ steps.inspect.outputs.target_sdk }}
           AAB_SHA256: ${{ steps.inspect.outputs.aab_sha256 }}
         run: |
           {
@@ -323,6 +347,7 @@ jobs:
             echo "- Commit: \`$COMMIT\`"
             echo "- Track: \`$TRACK\`"
             echo "- Version code: \`$VERSION_CODE\`"
+            echo "- Target SDK: \`$TARGET_SDK\`"
             echo "- AAB SHA-256: \`$AAB_SHA256\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -352,6 +377,8 @@ jobs:
           EXPECTED_COMMIT: ${{ needs.prepare-google-play-publication.outputs.commit }}
           EXPECTED_TAG: ${{ needs.prepare-google-play-publication.outputs.tag }}
           EXPECTED_VERSION_CODE: ${{ needs.prepare-google-play-publication.outputs.version_code }}
+          EXPECTED_TARGET_SDK: ${{ needs.prepare-google-play-publication.outputs.target_sdk }}
+          EXPECTED_BUNDLETOOL_VERSION: ${{ needs.prepare-google-play-publication.outputs.bundletool_version }}
           EXPECTED_AAB_SHA256: ${{ needs.prepare-google-play-publication.outputs.aab_sha256 }}
           EXPECTED_TRACK: ${{ inputs.track }}
           EXPECTED_RELEASE_STATUS: ${{ inputs.release_status }}
@@ -373,6 +400,8 @@ jobs:
             --arg commit "$EXPECTED_COMMIT" \
             --arg tag "$EXPECTED_TAG" \
             --arg versionCode "$EXPECTED_VERSION_CODE" \
+            --arg targetSdk "$EXPECTED_TARGET_SDK" \
+            --arg bundletoolVersion "$EXPECTED_BUNDLETOOL_VERSION" \
             --arg sha256 "$EXPECTED_AAB_SHA256" \
             --arg track "$EXPECTED_TRACK" \
             --arg status "$EXPECTED_RELEASE_STATUS" '
@@ -384,6 +413,10 @@ jobs:
               and .release.commit == $commit
               and .release.tag == $tag
               and (.release.versionCode | tostring) == $versionCode
+              and (.release.targetSdk | tostring) == $targetSdk
+              and (.validation.requiredTargetSdk | tostring) == $targetSdk
+              and (.validation.observedTargetSdk | tostring) == $targetSdk
+              and .validation.bundletoolVersion == $bundletoolVersion
               and .artifact.sha256 == $sha256
               and .release.signerWorkflow == ".github/workflows/release.yml"
               and .preparation.workflow == ".github/workflows/publish-google-play.yml"
@@ -453,6 +486,9 @@ jobs:
               commit: $manifest[0].release.commit,
               versionName: $manifest[0].release.versionName,
               versionCode: ($versionCode | tonumber),
+              targetSdk: $manifest[0].release.targetSdk,
+              requiredTargetSdk: $manifest[0].validation.requiredTargetSdk,
+              bundletoolVersion: $manifest[0].validation.bundletoolVersion,
               aabSha256: $manifest[0].artifact.sha256,
               uploadCertificateSha256: $manifest[0].artifact.uploadCertificateSha256,
               editId: $editId,
@@ -485,6 +521,8 @@ jobs:
           TAG: ${{ needs.prepare-google-play-publication.outputs.tag }}
           COMMIT: ${{ needs.prepare-google-play-publication.outputs.commit }}
           TRACK: ${{ inputs.track }}
+          TARGET_SDK: ${{ needs.prepare-google-play-publication.outputs.target_sdk }}
+          BUNDLETOOL_VERSION: ${{ needs.prepare-google-play-publication.outputs.bundletool_version }}
         run: |
           {
             if [[ "$ACTION" == "already_current" ]]; then
@@ -497,6 +535,8 @@ jobs:
             echo "- Commit: \`$COMMIT\`"
             echo "- Track: \`$TRACK\`"
             echo "- Version code: \`$VERSION_CODE\`"
+            echo "- Target SDK: \`$TARGET_SDK\`"
+            echo "- Bundletool: \`$BUNDLETOOL_VERSION\`"
             echo "- Action: \`$ACTION\`"
             if [[ -n "$EDIT_ID" ]]; then
               echo "- Committed edit ID: \`$EDIT_ID\`"

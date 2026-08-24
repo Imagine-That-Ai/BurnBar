@@ -18,10 +18,11 @@ val stageDomainCoreIdentityForAndroidTest =
         from(rootProject.file("../crates/openburnbar-domain-core/union-abi-manifest.json"))
         into(generatedDomainCoreAndroidTestAssetsDir)
     }
+val openBurnBarCompileSdk: Int by rootProject.extra
 
 android {
     namespace = "com.openburnbar.domaincore"
-    compileSdk = 35
+    compileSdk = openBurnBarCompileSdk
 
     defaultConfig {
         minSdk = 26

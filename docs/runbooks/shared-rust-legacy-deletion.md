@@ -117,6 +117,11 @@ The stable-release receipt must also bind a dedicated `legacy-rollback-bundle`:
 - separately hashed and covered by official release-workflow provenance;
 - targeted to all supported consumers;
 - contains a full `git archive` of candidate `C`, the exact signed all-legacy profile, a portable `rollback.env` with every domain mode set to `legacy`, and exact embedded rollback-settings plus provenance bytes for Apple, iOS, Linux, Android, Windows, Console, and Functions;
+- verifies the retained source archive's Git PAX commit header is exactly `C`,
+  its top-level prefix matches the app release, every entry is a regular file
+  or directory, and its embedded shared-Rust source recomputes to the candidate
+  union fingerprint; the retained bytes must also exactly equal a freshly
+  regenerated, complete `git archive` of candidate `C`;
 - rejects missing, encrypted, linked, path-traversing, or digest-mismatched restoration material during stable-receipt verification;
 - retained under `retain_until_legacy_deletion_complete`;
 - listed in stable-release evidence and stored with append-only provenance.

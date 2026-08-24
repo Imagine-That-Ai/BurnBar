@@ -6,7 +6,9 @@ import test from "node:test";
 import { join } from "node:path";
 
 import {
+  ANDROID_RELEASE_POLICY,
   buildPublicationManifest,
+  parseAndroidReleasePolicy,
   validatePublicationRequest,
 } from "./google-play-publication.mjs";
 
@@ -14,6 +16,12 @@ const root = join(import.meta.dirname, "..", "..");
 const workflow = readFileSync(
   join(root, ".github", "workflows", "publish-google-play.yml"),
   "utf8",
+);
+const androidCiWorkflows = [
+  "release.yml",
+  "openburnbar-pr-harness.yml",
+].map((path) =>
+  readFileSync(join(root, ".github", "workflows", path), "utf8"),
 );
 
 function valid(overrides = {}) {
@@ -28,6 +36,8 @@ function valid(overrides = {}) {
     packageName: "com.openburnbar",
     versionName: "1.2.3",
     versionCode: "41",
+    targetSdk: "36",
+    bundletoolVersion: "1.18.3",
     sha256: "b".repeat(64),
     sizeBytes: 123,
     uploadCertificateSha256: "c".repeat(64),
@@ -45,6 +55,12 @@ test("safe defaults produce an internal dry-run draft manifest", () => {
   assert.equal(manifest.publication.dryRun, true);
   assert.equal(manifest.publication.releaseStatus, "draft");
   assert.equal(manifest.release.versionCode, 41);
+  assert.equal(manifest.release.targetSdk, 36);
+  assert.deepEqual(manifest.validation, {
+    requiredTargetSdk: 36,
+    observedTargetSdk: 36,
+    bundletoolVersion: "1.18.3",
+  });
 });
 
 test("non-internal tracks require explicit confirmation", () => {
@@ -106,6 +122,73 @@ test("package, version, version code, signing digest, and artifact name fail clo
   );
 });
 
+test("the signed bundle must match the canonical Android SDK policy", () => {
+  assert.deepEqual(ANDROID_RELEASE_POLICY, {
+    compileSdk: 36,
+    targetSdk: 36,
+  });
+  assert.throws(
+    () => validatePublicationRequest(valid({ targetSdk: "35" })),
+    /requires target SDK 36; bundle targets 35/u,
+  );
+  assert.throws(
+    () => validatePublicationRequest(valid({ targetSdk: "" })),
+    /targetSdk must be a positive integer/u,
+  );
+  assert.throws(
+    () => buildPublicationManifest(valid({ bundletoolVersion: "latest" })),
+    /bundletoolVersion must be a canonical numeric version/u,
+  );
+});
+
+test("malformed Android SDK policies fail closed", () => {
+  const validPolicy =
+    "openburnbar.android.compileSdk=36\nopenburnbar.android.targetSdk=36\n";
+  assert.deepEqual(parseAndroidReleasePolicy(validPolicy), {
+    compileSdk: 36,
+    targetSdk: 36,
+  });
+  for (const source of [
+    "openburnbar.android.compileSdk=36\n",
+    `${validPolicy}openburnbar.android.targetSdk=36\n`,
+    "openburnbar.android.compileSdk=36\nopenburnbar.android.targetSdk=0\n",
+  ]) {
+    assert.throws(() => parseAndroidReleasePolicy(source));
+  }
+  assert.throws(
+    () =>
+      parseAndroidReleasePolicy(
+        "openburnbar.android.compileSdk=35\nopenburnbar.android.targetSdk=36\n",
+      ),
+    /target SDK cannot exceed compile SDK/u,
+  );
+});
+
+test("every Android module consumes the shared SDK policy", () => {
+  const scripts = [
+    "app/build.gradle.kts",
+    "burnbar-remote/build.gradle.kts",
+    "macrobenchmark/build.gradle.kts",
+    "openburnbar-domain-core/build.gradle.kts",
+    "openburnbar-iroh-relay/build.gradle.kts",
+  ].map((path) =>
+    readFileSync(join(root, "android", path), "utf8"),
+  );
+  for (const script of scripts) {
+    assert.match(script, /compileSdk = openBurnBarCompileSdk/u);
+    assert.doesNotMatch(script, /compileSdk\s*=\s*36/u);
+  }
+  assert.match(scripts[0], /targetSdk = openBurnBarTargetSdk/u);
+  assert.match(scripts[2], /targetSdk = openBurnBarTargetSdk/u);
+});
+
+test("explicit Android CI SDK installs provision API 36", () => {
+  for (const source of androidCiWorkflows) {
+    assert.doesNotMatch(source, /platforms;android-35/u);
+    assert.match(source, /platforms;android-36 build-tools;36\.0\.0/u);
+  }
+});
+
 test("workflow has a protected two-job trust boundary and safe defaults", () => {
   assert.match(workflow, /default: internal/u);
   assert.match(workflow, /default: true/u);
@@ -141,6 +224,12 @@ test("credentialed job does not check out or consume repository scripts", () => 
     publishJob,
     /google-play-provider-result\.json/u,
   );
+  assert.match(publishJob, /targetSdk: \$manifest\[0\]\.release\.targetSdk/u);
+  assert.match(
+    publishJob,
+    /bundletoolVersion: \$manifest\[0\]\.validation\.bundletoolVersion/u,
+  );
+  assert.match(publishJob, /- Target SDK: \\`\$TARGET_SDK\\`/u);
   assert.doesNotMatch(publishJob, /curl .*androidpublisher/u);
 });
 
@@ -152,6 +241,20 @@ test("prepare job has no publisher credential or release environment", () => {
   assert.doesNotMatch(prepareJob, /environment:\s*release/u);
   assert.match(prepareJob, /com\.openburnbar/u);
   assert.match(prepareJob, /android:versionCode/u);
+  assert.match(prepareJob, /uses-sdk\/@android:targetSdkVersion/u);
+  assert.match(
+    prepareJob,
+    /openburnbar\\\.android\\\.targetSdk/u,
+  );
+  assert.match(prepareJob, /--target-sdk "\$TARGET_SDK"/u);
+  assert.match(
+    prepareJob,
+    /--bundletool-version "\$BUNDLETOOL_VERSION"/u,
+  );
+  assert.match(
+    prepareJob,
+    /Google Play publication requires target SDK \$required_target_sdk/u,
+  );
   assert.match(prepareJob, /android-upload-certificate\.sha256/u);
   assert.match(
     prepareJob,

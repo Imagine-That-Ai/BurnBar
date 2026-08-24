@@ -11,9 +11,11 @@ plugins {
     id("org.jlleitschuh.gradle.ktlint")
 }
 
+val openBurnBarCompileSdk: Int by rootProject.extra
+
 android {
     namespace = "com.openburnbar.remote"
-    compileSdk = 35
+    compileSdk = openBurnBarCompileSdk
 
     defaultConfig {
         minSdk = 26

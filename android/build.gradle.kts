@@ -21,6 +21,14 @@ plugins {
     id("androidx.baselineprofile") version "1.5.0-beta01" apply false
 }
 
+val openBurnBarCompileSdk =
+    providers.gradleProperty("openburnbar.android.compileSdk").map(String::toInt).get()
+val openBurnBarTargetSdk =
+    providers.gradleProperty("openburnbar.android.targetSdk").map(String::toInt).get()
+require(openBurnBarCompileSdk > 0 && openBurnBarTargetSdk in 1..openBurnBarCompileSdk) {
+    "OpenBurnBar Android SDK policy must use positive targetSdk <= compileSdk"
+}
+
 // Supply-chain hardening (R-S5): activate Gradle dependency locking for every
 // module (root + :app + :openburnbar-iroh-relay + :burnbar-remote + :macrobenchmark).
 //
@@ -42,6 +50,8 @@ plugins {
 // requires a fully generated trust file or every build fails — a separate,
 // higher-risk change.)
 allprojects {
+    extra["openBurnBarCompileSdk"] = openBurnBarCompileSdk
+    extra["openBurnBarTargetSdk"] = openBurnBarTargetSdk
     dependencyLocking {
         lockMode.set(LockMode.DEFAULT)
         lockAllConfigurations()
