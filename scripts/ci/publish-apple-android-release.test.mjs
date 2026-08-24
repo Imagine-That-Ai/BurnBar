@@ -231,6 +231,7 @@ class FakeClient {
     this.lookupHook = undefined;
     this.latestLookupHook = undefined;
     this.editHook = undefined;
+    this.tagLookupFails = false;
   }
 
   asset(name, bytes) {
@@ -295,10 +296,16 @@ class FakeClient {
     }
     if (args[0] === "api" && args[1].includes("/releases/tags/")) {
       if (this.lookupHook) this.lookupHook(this);
-      if (this.state === "absent") {
+      if (this.state === "absent" || this.tagLookupFails) {
         return { status: 1, stdout: "", stderr: "HTTP 404" };
       }
       return { status: 0, stdout: JSON.stringify(this.release()), stderr: "" };
+    }
+    if (args[0] === "api" && args[1].includes("/releases?")) {
+      if (this.state === "absent") {
+        return { status: 0, stdout: "[]", stderr: "" };
+      }
+      return { status: 0, stdout: JSON.stringify([this.release()]), stderr: "" };
     }
     if (args[0] === "release" && args[1] === "create") {
       if (this.state !== "absent")
@@ -408,6 +415,25 @@ test("stages the complete stable set create-only and publishes exactly once last
       false,
     );
     assert.equal(client.state, "published");
+  });
+});
+
+test("draft publication falls back to the release list when tag lookup returns 404", () => {
+  withFixture({}, (files) => {
+    const client = new FakeClient(files, "draft");
+    client.tagLookupFails = true;
+    const result = publishAppleAndroidRelease(files.publication, { client });
+    assert.equal(result.published, true);
+    assert.equal(
+      client.calls.some(
+        (args) => args[0] === "api" && args[1].includes("/releases?"),
+      ),
+      true,
+    );
+    assert.equal(
+      mutations(client).some((args) => args[1] === "create"),
+      false,
+    );
   });
 });
 

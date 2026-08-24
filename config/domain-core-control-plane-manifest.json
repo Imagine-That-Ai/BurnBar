@@ -131,7 +131,7 @@
     "scripts/ci/prepare-firebase-tools.sh": ["d5f5ecde089f6577","aadebba51770def6","0a0b565b3ff256c9","d8e59bc84329dd14"],
     "scripts/ci/prepare-functions-runtime-package.mjs": ["b0a18be6ac489e39","f3200c54dcb1941c","515d5a1f8cb5325f","77eeb5cbec1b81ad"],
     "scripts/ci/promote-github-release.mjs": ["f9ded936a21df44a","2e6d66e3bcef5a84","8413bfeba37e0f8e","76e4a1d54920e13c"],
-    "scripts/ci/publish-apple-android-release.mjs": ["a3d103f8939ecf78","74e6b4e22a2daf96","bc2632d024d12799","5c5dbadb40fddcbe"],
+    "scripts/ci/publish-apple-android-release.mjs": ["1e69bff0a9f65ebc","1710c4884131fa27","c07c266622c4301c","5219728459a7d7b2"],
     "scripts/ci/publish-domain-core-release-evidence.mjs": ["56fd5140c4c96e99","943545fc6e791af8","ba1c9293bbc59504","6f6e64eea4225695"],
     "scripts/ci/publish-domain-core-release-evidence.test.mjs": ["32893e0510710232","35983c7d027fed5a","1c3f207656e604c9","00fb961052131687"],
     "scripts/ci/release-command-watchdog.py": ["a38e875d20624fa4","197eae4534c8213b","bb0f2882e139e7a3","d8911a68bdc8cc4e"],
