@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 import pathlib
@@ -18,7 +17,7 @@ SCRIPT_DIRECTORY = str(pathlib.Path(__file__).resolve().parent)
 if SCRIPT_DIRECTORY not in sys.path:
     sys.path.insert(0, SCRIPT_DIRECTORY)
 
-from domain_core_source_fingerprint import source_fingerprint
+from domain_core_source_fingerprint import source_fingerprint  # noqa: E402
 
 
 REQUIRED_DOMAINS = {

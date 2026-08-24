@@ -22,7 +22,7 @@ if SCRIPT_DIRECTORY not in sys.path:
     # Tests load this script directly with importlib, outside its package path.
     sys.path.insert(0, SCRIPT_DIRECTORY)
 
-from domain_core_source_fingerprint import source_fingerprint
+from domain_core_source_fingerprint import source_fingerprint  # noqa: E402
 
 
 SHA = re.compile(r"^[0-9a-f]{40}$")
@@ -219,8 +219,7 @@ def candidate_git_archive(
             candidate_commit,
         ],
         check=False,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
     )
     if result.returncode != 0:
         detail = result.stderr.decode("utf-8", errors="replace").strip()
