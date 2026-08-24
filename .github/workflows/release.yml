@@ -1064,7 +1064,7 @@ jobs:
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
         uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1 (node24-native)
         with:
-          packages: "platforms;android-35 build-tools;36.0.0"
+          packages: "platforms;android-36 build-tools;36.0.0"
 
       - name: Inject Android Firebase config
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
@@ -1403,7 +1403,7 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1 (node24-native)
         with:
-          packages: "platforms;android-35 build-tools;36.0.0"
+          packages: "platforms;android-36 build-tools;36.0.0"
 
       # The runner image periodically gains preview SDK components whose
       # licenses nobody has accepted; sdkmanager then exits 64 mid-release
@@ -2316,6 +2316,7 @@ jobs:
             --version "$VERSION" \
             --tag "$RELEASE_TAG" \
             --commit "$RELEASE_COMMIT" \
+            --repository-root "$GITHUB_WORKSPACE" \
             --output "$rollback"
           test -s "$rollback"
           echo "rollback_path=$rollback" >> "$GITHUB_OUTPUT"

@@ -14,6 +14,12 @@ import sys
 import tomllib
 import zipfile
 
+SCRIPT_DIRECTORY = str(pathlib.Path(__file__).resolve().parent)
+if SCRIPT_DIRECTORY not in sys.path:
+    sys.path.insert(0, SCRIPT_DIRECTORY)
+
+from domain_core_source_fingerprint import source_fingerprint
+
 
 REQUIRED_DOMAINS = {
     "quota",
@@ -155,15 +161,11 @@ def source_files(crate_root: pathlib.Path, manifest: dict[str, object]) -> list[
 
 def calculate_source_fingerprint(root: pathlib.Path, manifest: dict[str, object]) -> str:
     crate_root = root / "crates/openburnbar-domain-core"
-    digest = hashlib.sha256()
-    for path in source_files(crate_root, manifest):
-        relative = path.relative_to(crate_root).as_posix().encode()
-        contents = path.read_bytes()
-        digest.update(len(relative).to_bytes(4, "big"))
-        digest.update(relative)
-        digest.update(len(contents).to_bytes(8, "big"))
-        digest.update(contents)
-    return digest.hexdigest()
+    files = {
+        path.relative_to(crate_root).as_posix(): path.read_bytes()
+        for path in source_files(crate_root, manifest)
+    }
+    return source_fingerprint(files)
 
 
 def verified_source_fingerprint(root: pathlib.Path, manifest: dict[str, object]) -> str:

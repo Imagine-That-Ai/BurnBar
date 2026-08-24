@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Android now compiles and targets Android 16 (API level 36) across the app,
+  native bridge libraries, and macrobenchmark producer. Google Play publishing
+  also reads the signed AAB manifest and fails before authentication unless the
+  exact artifact targets API 36, closing the August 31, 2026 target-level
+  requirement without relying on a deadline extension.
+- Release rollback packaging now binds the app release version and shared Rust
+  core version as separate identities, so a valid app release is no longer
+  blocked when the retained rollback core has its own independent version.
 - Prime Agent gateway proxy resolves the auth token headlessly
   (`scripts/prime-agent-openburnbar-proxy.mjs`) — non-interactive shells (SSH,
   CI, subagents) fell through to the `openburnbar-local` placeholder and got 401s
