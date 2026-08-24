@@ -726,6 +726,37 @@ class RollbackBundleTests(unittest.TestCase):
                             repository_root=root / "candidate-repo",
                         )
 
+    def test_rejects_malformed_candidate_core_version(self) -> None:
+        for core_version in ("not-a-version", "01.2.3", "1.2"):
+            with self.subTest(core_version=core_version):
+                with tempfile.TemporaryDirectory() as directory:
+                    root = Path(directory)
+                    profile_path, activation_path, source, _ = self.fixture(root)
+                    profile = json.loads(profile_path.read_text())
+                    activation = json.loads(activation_path.read_text())
+                    profile["candidateIdentity"]["coreVersion"] = core_version
+                    activation["coreVersion"] = core_version
+                    profile_path.write_text(json.dumps(profile))
+                    activation_path.write_text(json.dumps(activation))
+                    with self.assertRaisesRegex(
+                        ValueError, "rollback candidate core version is invalid"
+                    ):
+                        BUNDLE.create_bundle(
+                            profile_path,
+                            activation_path,
+                            root / "rollback.zip",
+                            source,
+                            version="1.2.3",
+                            tag="v1.2.3",
+                            commit="3" * 40,
+                            repository_root=root / "candidate-repo",
+                        )
+
+    def test_accepts_canonical_candidate_core_version_variants(self) -> None:
+        for core_version in ("0.1.0", "0.2.0-rc.1", "0.2.0+build.7"):
+            with self.subTest(core_version=core_version):
+                self.assertIsNotNone(BUNDLE.CORE_VERSION.fullmatch(core_version))
+
     def test_rejects_release_version_not_bound_to_profile_release(self) -> None:
         """The app release version is independent of candidate.coreVersion,
         but it must still match the exact release coordinates in the profile."""

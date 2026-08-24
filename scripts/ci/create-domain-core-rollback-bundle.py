@@ -27,6 +27,11 @@ from domain_core_source_fingerprint import source_fingerprint
 
 SHA = re.compile(r"^[0-9a-f]{40}$")
 VERSION = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(?:\+[0-9A-Za-z.-]+)?$")
+# Keep this aligned with the candidate bundle schema so prerelease and
+# build-qualified domain-core versions remain valid release inputs.
+CORE_VERSION = re.compile(
+    r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$"
+)
 BASE_ENTRIES = (
     "manifest.json",
     "domain-core-public-production-rollback.json",
@@ -383,6 +388,11 @@ def create_bundle(
         for key in ("candidateCommit", "coreVersion", "abiVersion", "sourceSha256")
     ):
         raise ValueError("rollback profile candidate and activation closure disagree")
+    if (
+        not isinstance(candidate.get("coreVersion"), str)
+        or not CORE_VERSION.fullmatch(candidate["coreVersion"])
+    ):
+        raise ValueError("rollback candidate core version is invalid")
     profile_release = profile.get("release")
     if (
         not isinstance(profile_release, dict)
