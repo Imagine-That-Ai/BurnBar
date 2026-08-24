@@ -150,6 +150,16 @@ jobs:
             found { print }
           ' CHANGELOG.md > "$notes"
           if [[ ! -s "$notes" ]]; then
+            # A repair train ships under [Unreleased] until it is cut into its
+            # own section, and that is the section the publication actually
+            # used for the release body. Falling straight through to the whole
+            # CHANGELOG made the audit demand a body no release can carry:
+            # the file is far larger than GitHub's release-body limit, so the
+            # comparison could never hold. Mirror the publication instead.
+            awk '/^## / { if (found) { exit } if ($0 ~ /\[Unreleased\]/) { found=1; next } } found { print }' \
+              CHANGELOG.md > "$notes"
+          fi
+          if [[ ! -s "$notes" ]]; then
             cp CHANGELOG.md "$notes"
           fi
 
@@ -3422,7 +3432,12 @@ jobs:
             found { print }
           ' CHANGELOG.md > "$NOTES_FILE"
           if [[ ! -s "$NOTES_FILE" ]]; then
-            echo "::warning::No CHANGELOG section for $VERSION_TAG; falling back to full CHANGELOG"
+            echo "::warning::No CHANGELOG section for $VERSION_TAG; using [Unreleased]"
+            awk '/^## / { if (found) { exit } if ($0 ~ /\[Unreleased\]/) { found=1; next } } found { print }' \
+              CHANGELOG.md > "$NOTES_FILE"
+          fi
+          if [[ ! -s "$NOTES_FILE" ]]; then
+            echo "::warning::No [Unreleased] section either; falling back to full CHANGELOG"
             cp CHANGELOG.md "$NOTES_FILE"
           fi
 
