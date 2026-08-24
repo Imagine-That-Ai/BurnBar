@@ -1313,16 +1313,18 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
                     "commit": activation["activationCommit"],
                 },
             }
+            # `git archive --prefix` roots the export at the release source
+            # directory, and candidate.sourceSha256 is the committed domain-core
+            # source manifest constant -- not a digest of this tarball.
+            source_root = "OpenBurnBar-1.2.3-legacy-source"
             with tarfile.open(source_path, "w:gz") as source:
                 for name, value in (
-                    ("OpenBurnBar/config/domain-core-build-profiles.json", b"{}\n"),
-                    ("OpenBurnBar/crates/openburnbar-domain-core/Cargo.toml", b"[workspace]\n"),
+                    (f"{source_root}/config/domain-core-build-profiles.json", b"{}\n"),
+                    (f"{source_root}/crates/openburnbar-domain-core/Cargo.toml", b"[workspace]\n"),
                 ):
                     info = tarfile.TarInfo(name)
                     info.size = len(value)
                     source.addfile(info, io.BytesIO(value))
-            identity["sourceSha256"] = hashlib.sha256(source_path.read_bytes()).hexdigest()
-            activation["sourceSha256"] = identity["sourceSha256"]
             profile.write_text(json.dumps(profile_value))
             activation_path.write_text(json.dumps(activation))
             download_bytes = {}
