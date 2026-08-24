@@ -11,13 +11,19 @@ import re
 import stat
 import tarfile
 import zipfile
-from pathlib import Path
+import zlib
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 
 SHA = re.compile(r"^[0-9a-f]{40}$")
 VERSION = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(?:\+[0-9A-Za-z.-]+)?$")
-CORE_VERSION = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
+# Mirrors $defs.candidate.properties.coreVersion in
+# config/domain-core-deterministic-candidate-bundle.schema.json, so a valid
+# prerelease or build-qualified candidate is not rejected at the final step.
+CORE_VERSION = re.compile(
+    r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$"
+)
 BASE_ENTRIES = (
     "manifest.json",
     "domain-core-public-production-rollback.json",
@@ -251,18 +257,27 @@ def create_bundle(
     if source_bytes[:2] != b"\x1f\x8b":
         raise ValueError("rollback source archive must be a gzip stream")
     expected_root = f"OpenBurnBar-{version}-legacy-source"
+    # Walk every member to EOF rather than sampling the first one: consuming the
+    # whole stream is what detects truncation and gzip corruption, and it is the
+    # only way to know that no later entry escapes the release source root.
+    entries = 0
     try:
         with tarfile.open(fileobj=io.BytesIO(source_bytes), mode="r|gz") as tar:
-            first = next((m for m in tar if m.name.strip("/")), None)
-    except tarfile.TarError as error:
+            for member in tar:
+                # git archive emits the prefix directory itself as an entry,
+                # which tarfile reports without its trailing slash.
+                name = member.name.strip("/")
+                if not name:
+                    continue
+                if name != expected_root and not name.startswith(f"{expected_root}/"):
+                    raise ValueError("rollback source archive is not rooted at the release source prefix")
+                if member.name.startswith("/") or ".." in PurePosixPath(name).parts:
+                    raise ValueError("rollback source archive contains an unsafe member path")
+                entries += 1
+    except (tarfile.TarError, EOFError, zlib.error, OSError) as error:
         raise ValueError("rollback source archive is not a readable tar.gz") from error
-    if first is None:
+    if not entries:
         raise ValueError("rollback source archive contains no entries")
-    # git archive emits the prefix directory itself as the first entry, which
-    # tarfile reports without its trailing slash.
-    root = first.name.strip("/")
-    if root != expected_root and not root.startswith(f"{expected_root}/"):
-        raise ValueError("rollback source archive is not rooted at the release source prefix")
     environment = rollback_environment(profile)
     manifest = {
         "schemaVersion": 1,

@@ -96,7 +96,7 @@
     "scripts/ci/create-domain-core-native-release-evidence.mjs": ["bab1806564c77e10","fb52340ed9188bd6","8c93abefd8a305fe","f21f3c9b50457789"],
     "scripts/ci/create-domain-core-release-evidence.mjs": ["76171815b1c89c4a","2791f1dbc03b51ff","08d854e865febb2f","cf4c08bd8b7e4263"],
     "scripts/ci/create-domain-core-release-evidence.test.mjs": ["fd628fe7c026e439","3fe7a54380db4ea7","c9fe3ade0ef1aa21","9842a9e5124b5627"],
-    "scripts/ci/create-domain-core-rollback-bundle.py": ["8df156dfbe97b20c","e47a05da591b53de","c5e19f2729d08c49","0a7d54d9ec784681"],
+    "scripts/ci/create-domain-core-rollback-bundle.py": ["f2b2db6b22e24a9f","dcfb9f902f36fa1f","4e9f233b2165b68a","ee1e2f0060091049"],
     "scripts/ci/create-domain-core-runtime-artifact-manifest.mjs": ["14f8216d8386b4a5","985a1b66663ed9cd","21470581c6bd917c","14d725189ce21616"],
     "scripts/ci/create-domain-core-runtime-artifact-manifest.test.mjs": ["fc20e3e2fa60cf59","3049366afc90d0b8","faa5a19047ba8d5a","170c2e59af251058"],
     "scripts/ci/create-windows-domain-core-release-bundle.py": ["0f4e00439fa898f3","13c28484047e9809","4f3ee941bf8311fd","cbd1097da2ca52b4"],

@@ -333,6 +333,66 @@ class RollbackBundleTests(unittest.TestCase):
             )
             self.assertEqual(bundle["release"]["commit"], RELEASE_COMMIT)
             self.assertEqual(bundle["activation"]["activationCommit"], ACTIVATION_COMMIT)
+    def test_rejects_truncated_source_archive(self) -> None:
+        """Validation must consume the whole stream: a truncated archive is
+        only detectable past its first entry."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            profile, activation_path, source, _ = self.fixture(root)
+            # Incompressible body, so the truncated half stays well above the
+            # minimum-size floor and the stream walk is what rejects it.
+            body = b"".join(
+                hashlib.sha256(index.to_bytes(4, "big")).digest() for index in range(4096)
+            )
+            whole = source_archive_bytes(body=body)
+            source.write_bytes(whole[: len(whole) // 2])
+            with self.assertRaisesRegex(ValueError, "not a readable tar.gz"):
+                BUNDLE.create_bundle(
+                    profile,
+                    activation_path,
+                    root / "rollback.zip",
+                    source,
+                    version=RELEASE_VERSION,
+                    tag=RELEASE_TAG,
+                    commit=RELEASE_COMMIT,
+                )
+
+    def test_rejects_source_archive_member_escaping_the_release_root(self) -> None:
+        """A later member that escapes the release root must be rejected, not
+        skipped because the first entry looked correct."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            profile, activation_path, source, _ = self.fixture(root)
+            buffer = io.BytesIO()
+            with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
+                good = tarfile.TarInfo(SOURCE_ROOT)
+                good.type = tarfile.DIRTYPE
+                archive.addfile(good)
+                escape = tarfile.TarInfo(f"{SOURCE_ROOT}/../../etc/passwd")
+                escape.size = 1
+                archive.addfile(escape, io.BytesIO(b"x"))
+            source.write_bytes(buffer.getvalue())
+            with self.assertRaisesRegex(ValueError, "unsafe member path"):
+                BUNDLE.create_bundle(
+                    profile,
+                    activation_path,
+                    root / "rollback.zip",
+                    source,
+                    version=RELEASE_VERSION,
+                    tag=RELEASE_TAG,
+                    commit=RELEASE_COMMIT,
+                )
+
+    def test_accepts_canonical_semver_core_version_variants(self) -> None:
+        """coreVersion must accept the prerelease and build-qualified forms the
+        committed domain-core schemas allow."""
+        for core_version in ("0.1.0", "0.2.0-rc.1", "0.2.0+build.7"):
+            with self.subTest(core_version=core_version):
+                self.assertTrue(BUNDLE.CORE_VERSION.fullmatch(core_version))
+        for invalid in ("not-a-version", "01.2.3", "1.2"):
+            with self.subTest(invalid=invalid):
+                self.assertIsNone(BUNDLE.CORE_VERSION.fullmatch(invalid))
+
     def test_payload_generator_is_exact_and_not_caller_replaceable(self) -> None:
         self.assertEqual(
             list(BUNDLE.ROLLBACK_CONSUMERS),
