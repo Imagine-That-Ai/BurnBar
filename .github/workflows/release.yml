@@ -2749,6 +2749,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload observed Android Rust identity
+        if: ${{ needs.domain-core-native-release-gate.outputs.rust_active == 'true' }}
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
           name: domain-core-native-observed-identities-${{ needs.release-preflight.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
@@ -3232,7 +3233,7 @@ jobs:
       - release-preflight
       - domain-core-native-release-gate
       - build-and-release
-    if: ${{ !cancelled() && needs.build-and-release.result == 'success' && needs.domain-core-native-release-gate.result == 'success' }}
+    if: ${{ !cancelled() && needs.build-and-release.result == 'success' && needs.domain-core-native-release-gate.result == 'success' && needs.domain-core-native-release-gate.outputs.rust_active == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     permissions:
@@ -3342,7 +3343,9 @@ jobs:
           && needs.release-extension-gate.result != 'failure'
           && needs.release-supply-chain-gate.result != 'failure'
           && needs.build-and-release.result == 'success'
-          && needs.android-release-identity.result == 'success'
+          && (needs.android-release-identity.result == 'success'
+              || (needs.domain-core-native-release-gate.outputs.rust_active == 'false'
+                  && needs.android-release-identity.result == 'skipped'))
           && needs.domain-core-ios-release-evidence.result != 'failure'
           && needs.smoke-test.result == 'success'
           && needs.apple-native-prepublication.result != 'failure' }}
@@ -3357,6 +3360,7 @@ jobs:
       - release-extension-gate
       - release-supply-chain-gate
       - build-and-release
+      - domain-core-native-release-gate
       - android-release-identity
       - build-ios-release
       - domain-core-ios-release-evidence
@@ -3528,6 +3532,7 @@ jobs:
           path: ${{ runner.temp }}/domain-core-native-artifacts
 
       - name: Download observed native Rust identities
+        if: ${{ needs.domain-core-native-release-gate.outputs.rust_active == 'true' }}
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
         with:
           name: ${{ needs.build-and-release.outputs.native_identity_artifact_name }}
@@ -3564,12 +3569,16 @@ jobs:
               "$RUNNER_TEMP/domain-core-native-evidence/android-universal-abi-manifest.json"
             )
           fi
+          android_observed_identity=""
+          if [[ "$RUST_ACTIVE" == "true" ]]; then
+            android_observed_identity="$RUNNER_TEMP/domain-core-native-identities/domain-core-android-observed-identity.json"
+          fi
           bash scripts/ci/verify-domain-core-native-release-artifact.sh \
             apple "$DMG_PATH" "$VERSION" "$PROFILE" "$COMMIT" "$profile" \
             "$RUNNER_TEMP/domain-core-native-evidence/apple-final-reverify-identity.json"
           bash scripts/ci/verify-domain-core-native-release-artifact.sh \
             android "$AAB_PATH" "$VERSION" "$PROFILE" "$COMMIT" "$profile" \
-            "$RUNNER_TEMP/domain-core-native-identities/domain-core-android-observed-identity.json" \
+            "$android_observed_identity" \
             ${protected_android[@]+"${protected_android[@]}"}
 
       - name: Create Apple v2 release predicates

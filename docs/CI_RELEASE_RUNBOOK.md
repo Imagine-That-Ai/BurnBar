@@ -166,6 +166,17 @@ From `release.yml`:
 
 So a full release is **two dispatches**: build+publish, then promote.
 
+### Legacy domain-core releases
+
+The native release gate can report `rust_active=false` when every governed
+domain remains on its legacy implementation. In that mode the Android build
+does not produce a loaded-Rust identity report, the x86_64 emulator identity
+job is intentionally skipped, and publication accepts that explicit skip. The
+signed AAB, package/version/target-SDK checks, and all non-native release gates
+remain required. A Rust-active release must still produce and verify the
+Android observed identity and universal-ABI manifest; the inactive path must
+never be used to bypass those checks.
+
 ### Local escape hatch
 
 `make release-website` builds, signs, notarizes, and produces the DMG/ZIP plus a
