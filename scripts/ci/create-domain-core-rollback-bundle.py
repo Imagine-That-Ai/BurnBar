@@ -186,8 +186,24 @@ def create_bundle(
         "sourceSha256",
         "changedPathsSha256",
     }
-    if set(activation) != required or activation["activationCommit"] != commit:
-        raise ValueError("rollback activation must bind exact release commit P")
+    if set(activation) != required:
+        raise ValueError("rollback activation closure keys are not canonical")
+    # activationCommit is the activation authority P, re-derived from the
+    # committed authority files. It is deliberately NOT the release commit R:
+    # scripts/lib/domain-core-activation.mjs states that "a release commit R is
+    # release-authoritative but is not itself the activation authority once
+    # path-disjoint protected-main commits land after P".
+    #
+    # Requiring activationCommit == commit made this function unsatisfiable.
+    # When domain-core is inactive the resolver returns
+    # activationCommit == candidateCommit, while the check below already
+    # requires the release commit to be DISTINCT from candidateCommit — the two
+    # assertions cannot both hold. Every release reached this step and failed.
+    #
+    # Bind the format here; the caller asserts P..R ancestry with git, next to
+    # the merge-base check it already performs for the candidate.
+    if not SHA.fullmatch(activation["activationCommit"]):
+        raise ValueError("rollback activation commit must be a full lowercase Git SHA-1")
     if any(
         activation.get(key) != candidate.get(key)
         for key in ("candidateCommit", "coreVersion", "abiVersion", "sourceSha256")

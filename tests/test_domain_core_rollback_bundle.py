@@ -220,13 +220,14 @@ class RollbackBundleTests(unittest.TestCase):
                 )
 
     def test_rejects_mismatched_release_commit(self) -> None:
-        """A release commit that does not match the activation commit P must
-        be rejected so the rollback bundle binds the exact release P."""
+        """A release commit that disagrees with the profile's release
+        coordinates must be rejected."""
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             profile, activation_path, source, activation = self.fixture(root)
             with self.assertRaisesRegex(
-                ValueError, "rollback activation must bind exact release commit P"
+                ValueError,
+                "rollback profile release coordinates do not match the exact release P",
             ):
                 BUNDLE.create_bundle(
                     profile,
@@ -237,6 +238,35 @@ class RollbackBundleTests(unittest.TestCase):
                     tag="v1.2.3",
                     commit="5" * 40,
                 )
+
+    def test_accepts_activation_commit_distinct_from_release_commit(self) -> None:
+        """The activation authority P is re-derived from the committed
+        authority files and is not the release commit R.
+
+        The old assertion required activationCommit == release commit while a
+        later check requires the release commit to differ from candidateCommit.
+        When domain-core is inactive the resolver returns
+        activationCommit == candidateCommit, so the two were unsatisfiable and
+        every real release failed here. This fixture models production: the
+        activation binds P, the profile binds R, and P != R.
+        """
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            profile_path, activation_path, source, _ = self.fixture(root)
+            release_commit = "7" * 40
+            profile = json.loads(profile_path.read_text())
+            profile["release"]["commit"] = release_commit
+            profile_path.write_text(json.dumps(profile))
+            bundle = BUNDLE.create_bundle(
+                profile_path,
+                activation_path,
+                root / "rollback.zip",
+                source,
+                version="1.2.3",
+                tag="v1.2.3",
+                commit=release_commit,
+            )
+            self.assertEqual(bundle["release"]["commit"], release_commit)
 
     def test_payload_generator_is_exact_and_not_caller_replaceable(self) -> None:
         self.assertEqual(

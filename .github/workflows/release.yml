@@ -2298,6 +2298,11 @@ jobs:
             --allow-dirty \
             --format json --output "$profile"
           git merge-base --is-ancestor "$candidate" "$RELEASE_COMMIT"
+          # The activation authority P is re-derived from the committed
+          # authority files and is not the release commit R. Bind it to this
+          # release's lineage: P must be an ancestor of R.
+          activation_commit="$(jq -er '.activationCommit' "$activation")"
+          git merge-base --is-ancestor "$activation_commit" "$RELEASE_COMMIT"
           git archive \
             --format=tar.gz \
             --prefix="OpenBurnBar-${VERSION}-legacy-source/" \
