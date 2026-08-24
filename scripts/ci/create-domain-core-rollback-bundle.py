@@ -81,11 +81,7 @@ def normalized_archive_path(name: str) -> PurePosixPath:
     if not name or "\\" in name:
         raise ValueError(f"rollback source archive contains an unsafe path: {name!r}")
     path = PurePosixPath(name)
-    if (
-        path.is_absolute()
-        or name != path.as_posix()
-        or any(part in ("", ".", "..") for part in path.parts)
-    ):
+    if path.is_absolute() or name != path.as_posix() or any(part in ("", ".", "..") for part in path.parts):
         raise ValueError(f"rollback source archive contains an unsafe path: {name!r}")
     return path
 
@@ -104,35 +100,22 @@ def verify_source_archive(
     try:
         with tarfile.open(fileobj=io.BytesIO(source_bytes), mode="r:gz") as archive:
             if archive.pax_headers.get("comment") != candidate["candidateCommit"]:
-                raise ValueError(
-                    "rollback source archive does not bind the candidate commit"
-                )
+                raise ValueError("rollback source archive does not bind the candidate commit")
             for member in archive:
                 path = normalized_archive_path(member.name)
                 if path != expected_root and expected_root not in path.parents:
-                    raise ValueError(
-                        "rollback source archive does not use the exact release prefix"
-                    )
+                    raise ValueError("rollback source archive does not use the exact release prefix")
                 if member.name in seen:
-                    raise ValueError(
-                        f"rollback source archive contains a duplicate path: {member.name}"
-                    )
+                    raise ValueError(f"rollback source archive contains a duplicate path: {member.name}")
                 seen.add(member.name)
                 if member.pax_headers.get("comment") != candidate["candidateCommit"]:
-                    raise ValueError(
-                        "rollback source archive member does not bind the candidate commit"
-                    )
+                    raise ValueError("rollback source archive member does not bind the candidate commit")
                 if not member.isdir() and not member.isfile():
-                    raise ValueError(
-                        f"rollback source archive contains a linked or special entry: {member.name}"
-                    )
+                    raise ValueError(f"rollback source archive contains a linked or special entry: {member.name}")
                 if path == expected_root:
                     continue
                 repository_path = PurePosixPath(*path.parts[1:])
-                if (
-                    repository_path == DOMAIN_CORE_ROOT
-                    or DOMAIN_CORE_ROOT not in repository_path.parents
-                ):
+                if repository_path == DOMAIN_CORE_ROOT or DOMAIN_CORE_ROOT not in repository_path.parents:
                     continue
                 crate_path = repository_path.relative_to(DOMAIN_CORE_ROOT).as_posix()
                 if member.isdir():
@@ -140,9 +123,7 @@ def verify_source_archive(
                     continue
                 extracted = archive.extractfile(member)
                 if extracted is None:
-                    raise ValueError(
-                        f"rollback source archive cannot read regular file: {member.name}"
-                    )
+                    raise ValueError(f"rollback source archive cannot read regular file: {member.name}")
                 domain_core_files[crate_path] = extracted.read()
     except (tarfile.TarError, EOFError, OSError) as error:
         raise ValueError(f"rollback source archive is not a valid tar.gz: {error}") from error
@@ -161,9 +142,7 @@ def verify_source_archive(
         or manifest.get("abiVersion") != candidate["abiVersion"]
         or manifest.get("sourceSha256") != candidate["sourceSha256"]
     ):
-        raise ValueError(
-            "rollback source archive union ABI identity does not match the candidate"
-        )
+        raise ValueError("rollback source archive union ABI identity does not match the candidate")
     roots = manifest.get("sourceRoots")
     if not isinstance(roots, list) or not roots:
         raise ValueError("rollback source archive union ABI sourceRoots are invalid")
@@ -177,9 +156,7 @@ def verify_source_archive(
             fingerprint_files[root_name] = domain_core_files[root_name]
             continue
         if root_name not in domain_core_directories:
-            raise ValueError(
-                f"rollback source archive omits required source root: {root_name}"
-            )
+            raise ValueError(f"rollback source archive omits required source root: {root_name}")
         prefix = f"{root_name}/"
         for path, contents in domain_core_files.items():
             if not path.startswith(prefix):
@@ -191,13 +168,9 @@ def verify_source_archive(
     if not fingerprint_files:
         raise ValueError("rollback source archive sourceRoots resolve to no files")
     if source_fingerprint(fingerprint_files) != candidate["sourceSha256"]:
-        raise ValueError(
-            "rollback source archive domain-core fingerprint does not match the candidate"
-        )
+        raise ValueError("rollback source archive domain-core fingerprint does not match the candidate")
     if source_bytes != expected_source_bytes:
-        raise ValueError(
-            "rollback source archive is not the exact complete candidate git archive"
-        )
+        raise ValueError("rollback source archive is not the exact complete candidate git archive")
 
 
 def candidate_git_archive(
@@ -223,9 +196,7 @@ def candidate_git_archive(
     )
     if result.returncode != 0:
         detail = result.stderr.decode("utf-8", errors="replace").strip()
-        raise ValueError(
-            f"cannot regenerate exact candidate git archive: {detail}"
-        )
+        raise ValueError(f"cannot regenerate exact candidate git archive: {detail}")
     if len(result.stdout) < 128:
         raise ValueError("regenerated candidate git archive is empty or implausibly small")
     return result.stdout
@@ -352,9 +323,7 @@ def create_bundle(
         raise ValueError("rollback profile must bind candidate C")
     candidate_commit = candidate.get("candidateCommit")
     if not isinstance(candidate_commit, str) or not SHA.fullmatch(candidate_commit):
-        raise ValueError(
-            "rollback candidate commit must be a full lowercase Git SHA-1"
-        )
+        raise ValueError("rollback candidate commit must be a full lowercase Git SHA-1")
     activation = load(activation_path, "activation closure")
     required = {
         "candidateCommit",
@@ -387,10 +356,7 @@ def create_bundle(
         for key in ("candidateCommit", "coreVersion", "abiVersion", "sourceSha256")
     ):
         raise ValueError("rollback profile candidate and activation closure disagree")
-    if (
-        not isinstance(candidate.get("coreVersion"), str)
-        or not CORE_VERSION.fullmatch(candidate["coreVersion"])
-    ):
+    if not isinstance(candidate.get("coreVersion"), str) or not CORE_VERSION.fullmatch(candidate["coreVersion"]):
         raise ValueError("rollback candidate core version is invalid")
     profile_release = profile.get("release")
     if (

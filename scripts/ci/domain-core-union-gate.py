@@ -160,10 +160,7 @@ def source_files(crate_root: pathlib.Path, manifest: dict[str, object]) -> list[
 
 def calculate_source_fingerprint(root: pathlib.Path, manifest: dict[str, object]) -> str:
     crate_root = root / "crates/openburnbar-domain-core"
-    files = {
-        path.relative_to(crate_root).as_posix(): path.read_bytes()
-        for path in source_files(crate_root, manifest)
-    }
+    files = {path.relative_to(crate_root).as_posix(): path.read_bytes() for path in source_files(crate_root, manifest)}
     return source_fingerprint(files)
 
 
