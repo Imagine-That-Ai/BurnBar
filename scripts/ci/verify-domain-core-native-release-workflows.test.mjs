@@ -119,10 +119,18 @@ test("Apple and Android signing consumes the exact protected gate first", () => 
   // of both packaged ABIs to the protected candidate AAR and uploads the
   // exact signed APKs the proof must run.
   assert.match(build, /Upload Android identity proof inputs/u);
+  assert.match(
+    build,
+    /- name: Upload observed Android Rust identity\n\s+if: \$\{\{ needs\.domain-core-native-release-gate\.outputs\.rust_active == 'true' \}\}/u,
+  );
   const identity = job(
     appleAndroid,
     "android-release-identity",
     "prepare-release-publication",
+  );
+  assert.match(
+    identity,
+    /if: \$\{\{ !cancelled\(\) && needs\.build-and-release\.result == 'success' && needs\.domain-core-native-release-gate\.result == 'success' && needs\.domain-core-native-release-gate\.outputs\.rust_active == 'true' \}\}/u,
   );
   assert.match(identity, /runs-on: ubuntu-24\.04/u);
   assert.match(identity, /KERNEL=="kvm"/u);
@@ -270,6 +278,10 @@ test("Apple DMG is fully verified before any release mutation", () => {
     "prepare-release-publication",
     "domain-core-native-release-evidence",
   );
+  assert.match(
+    preparation,
+    /needs\.android-release-identity\.result == 'success'[\s\S]*needs\.domain-core-native-release-gate\.outputs\.rust_active == 'false'[\s\S]*needs\.android-release-identity\.result == 'skipped'/u,
+  );
   assert.match(prepublication, /needs:[\s\S]*- smoke-test/u);
   assert.match(prepublication, /runs-on: macos-26/u);
   assert.match(
@@ -415,6 +427,10 @@ test("all Apple and Android assets and v2 evidence publish through one draft sta
   assert.match(
     evidence,
     /mkdir -p "\$RUNNER_TEMP\/domain-core-native-evidence"/u,
+  );
+  assert.match(
+    artifactVerifier,
+    /modes\.some\(\(mode\) => mode === "rust"\)/u,
   );
   assert.match(evidence, /release_published != 'true'/u);
   assert.match(evidence, /--asset "\$asset"/u);
