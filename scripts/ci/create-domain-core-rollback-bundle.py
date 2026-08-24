@@ -215,9 +215,7 @@ def create_bundle(
     # The release train (1.0.40+repair.N) and the domain-core version (0.1.0)
     # are independent, so requiring them equal was unsatisfiable in production.
     # Activation/candidate coreVersion agreement is enforced above.
-    if not isinstance(candidate.get("coreVersion"), str) or not CORE_VERSION.fullmatch(
-        candidate["coreVersion"]
-    ):
+    if not isinstance(candidate.get("coreVersion"), str) or not CORE_VERSION.fullmatch(candidate["coreVersion"]):
         raise ValueError("rollback candidate core version is invalid")
     profile_release = profile.get("release")
     if (
