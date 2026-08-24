@@ -50,7 +50,7 @@ class MainActivity : FragmentActivity() {
             navigationBarStyle = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT),
         )
         WindowCompat.setDecorFitsSystemWindows(window, false)
-        requestNotificationPermissionIfNeeded()
+        syncNotificationPermissionState()
         AgentReplyNotificationState.bindConsumedEvents(currentUid(), applicationContext)
         handleIntent(intent)
         setContent {
@@ -66,15 +66,20 @@ class MainActivity : FragmentActivity() {
     }
 
     /**
-     * On Android 13+ (TIRAMISU) POST_NOTIFICATIONS is a runtime permission; the
-     * manifest declaration alone delivers nothing. Without this prompt every
-     * agent-reply and Mercury-call notification is silently suppressed by the
-     * OS while the backend marks the push "sent". Request it once at the first
-     * notification-relevant entry point (app open). Pre-13 the permission is
-     * granted at install time, so the launcher persists the granted state
-     * directly.
+     * Synchronizes existing notification permission grant without popping an
+     * unsolicited OS dialog on cold launch. BurnBar speaks first; runtime
+     * permission prompts are triggered contextually or upon explicit user intent.
      */
-    private fun requestNotificationPermissionIfNeeded() {
+    private fun syncNotificationPermissionState() {
+        val granted = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED
+        if (granted) {
+            AgentReplyNotificationState.recordPermissionResult(applicationContext, granted = true)
+        }
+    }
+
+    fun requestNotificationPermission() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
             AgentReplyNotificationState.recordPermissionResult(applicationContext, granted = true)
             return

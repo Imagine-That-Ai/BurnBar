@@ -199,6 +199,20 @@ private fun androidx.navigation.NavGraphBuilder.burnBarInsightsRoutes(navControl
             onSelectAggregate = {
                 navController.navigate("agent_insights/all")
             },
+            onNavigateToRecap = {
+                navController.navigate("monthly_recap")
+            },
+        )
+    }
+    composable(
+        "monthly_recap",
+        deepLinks = listOf(
+            navDeepLink { uriPattern = "burnbar://recap" },
+            navDeepLink { uriPattern = "burnbar://monthly_recap" },
+        ),
+    ) {
+        com.openburnbar.ui.recap.MonthlyRecapScreen(
+            onDismiss = { navController.popBackStack() },
         )
     }
     composable(

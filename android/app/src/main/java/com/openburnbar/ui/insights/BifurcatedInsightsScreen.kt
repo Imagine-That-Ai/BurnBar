@@ -33,67 +33,83 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.openburnbar.data.models.AgentProvider
 import com.openburnbar.ui.components.HapticBus
+import com.openburnbar.ui.recap.RecapEntryBanner
 import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraSpacing
 import com.openburnbar.ui.theme.AuroraType
 
 @Composable
-fun BifurcatedInsightsScreen(onSelectProvider: (AgentProvider) -> Unit, onSelectAggregate: () -> Unit, modifier: Modifier = Modifier) {
+fun BifurcatedInsightsScreen(
+    onSelectProvider: (AgentProvider) -> Unit,
+    onSelectAggregate: () -> Unit,
+    onNavigateToRecap: () -> Unit = {},
+    modifier: Modifier = Modifier,
+) {
     val isDark = isSystemInDarkTheme()
     var selectedTab by rememberSaveable { mutableStateOf("Budgeting") }
 
     Column(
-        modifier =
-        modifier
+        modifier = modifier
             .fillMaxSize()
-            .background(
-                if (isDark) {
-                    AuroraColors.darkBackground
-                } else {
-                    AuroraColors.lightBackground
-                },
-            ),
+            .background(if (isDark) AuroraColors.darkBackground else AuroraColors.lightBackground),
     ) {
         Spacer(modifier = Modifier.height(AuroraSpacing.MD.dp))
-
-        // HEADER & TITLE
-        Row(
-            modifier =
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = "Budget & Insights",
-                style = AuroraType.displayLarge,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.weight(1f),
-            )
-        }
-
-        // CUSTOM SLIDING SEGMENT CONTROL
-        AuroraSegmentedControl(
-            options = listOf("Budgeting", "Insights"),
-            selectedOption = selectedTab,
-            onOptionSelected = { selectedTab = it },
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        BifurcatedInsightsHeader(
+            selectedTab = selectedTab,
+            onTabSelected = { selectedTab = it },
         )
-
         Spacer(modifier = Modifier.height(AuroraSpacing.XS.dp))
+        BifurcatedInsightsBody(
+            selectedTab = selectedTab,
+            onSelectProvider = onSelectProvider,
+            onSelectAggregate = onSelectAggregate,
+            onNavigateToRecap = onNavigateToRecap,
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
 
-        // VIEW PORT CONTAINER
-        Box(
-            modifier =
-            Modifier
-                .fillMaxWidth()
-                .weight(1f),
-        ) {
-            if (selectedTab == "Budgeting") {
-                BudgetCenterView(
-                    contentPadding = PaddingValues(bottom = 16.dp),
+@Composable
+private fun BifurcatedInsightsHeader(selectedTab: String, onTabSelected: (String) -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = "Budget & Insights",
+            style = AuroraType.displayLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f),
+        )
+    }
+
+    AuroraSegmentedControl(
+        options = listOf("Budgeting", "Insights"),
+        selectedOption = selectedTab,
+        onOptionSelected = onTabSelected,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+    )
+}
+
+@Composable
+private fun BifurcatedInsightsBody(
+    selectedTab: String,
+    onSelectProvider: (AgentProvider) -> Unit,
+    onSelectAggregate: () -> Unit,
+    onNavigateToRecap: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(modifier = modifier.fillMaxWidth()) {
+        if (selectedTab == "Budgeting") {
+            BudgetCenterView(contentPadding = PaddingValues(bottom = 16.dp))
+        } else {
+            Column(modifier = Modifier.fillMaxSize()) {
+                RecapEntryBanner(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                    onClick = onNavigateToRecap,
                 )
-            } else {
                 AgentInsightsRosterScreen(
                     onSelectProvider = onSelectProvider,
                     onSelectAggregate = onSelectAggregate,
