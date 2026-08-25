@@ -2820,7 +2820,21 @@ jobs:
     uses: ./.github/workflows/domain-core-ios-release-evidence.yml
     with:
       # No archive exists to gather evidence for when the iOS lane failed.
-      enabled: ${{ needs.release-preflight.outputs.is_prerelease == 'false' && needs.build-ios-release.result == 'success' }}
+      #
+      # Rust-inactive releases ship the legacy implementation, so the iOS
+      # executable carries no linked Rust domain core and demanding its
+      # identity symbols is incoherent: the lane can only ever fail. That is
+      # what v1.0.40+repair.26 hit -- the first release whose iOS lane actually
+      # built, which made the lane run for the first time instead of reporting
+      # "not enabled" over a missing archive.
+      #
+      # promote-github-release.mjs already states the intended shape: a
+      # governed rollback release "publishes the legacy artifacts with no
+      # native domain-core evidence and no App Store iOS lane". Gate on
+      # rust_active so that holds here too. This also keeps the App Store
+      # Connect upload in this lane from running for a release that will never
+      # produce the evidence to attest it.
+      enabled: ${{ needs.release-preflight.outputs.is_prerelease == 'false' && needs.build-ios-release.result == 'success' && needs.domain-core-native-release-gate.outputs.rust_active == 'true' }}
       version: ${{ needs.release-preflight.outputs.version }}
       release_commit: ${{ needs.release-preflight.outputs.release_commit }}
       archive_artifact_name: OpenBurnBar-${{ needs.release-preflight.outputs.version }}-iOS-archive
