@@ -3340,6 +3340,23 @@ jobs:
     # this workflow was restructured to remove. Every other gate remains
     # strictly required, and mobile-gate failure still blocks whenever the iOS
     # build succeeded.
+    #
+    # A failed domain-core-ios-release-evidence lane likewise no longer blocks
+    # publication. That lane had never once run against a real archive: every
+    # earlier release failed to build the iOS app, so the evidence job passed
+    # vacuously over a missing artifact. The first release whose iOS lane
+    # actually succeeded is therefore the first to surface the real defect --
+    # and the effect was that a working iOS build blocked the macOS release
+    # while a broken one did not, which is exactly backwards.
+    #
+    # Excluding iOS is self-managing: when the evidence lane fails it produces
+    # no domain-core-ios-*.predicate.json, so the staging step attaches no iOS
+    # archive, receipt, or predicates, and this workflow never uploads to App
+    # Store Connect or TestFlight. No unattested iOS binary can reach anyone
+    # through this path. The lane still runs and still reports.
+    #
+    # Owner decision, 2026-08-25: ship the signed, notarized macOS release; fix
+    # the iOS Rust identity symbols separately.
     if: >-
       ${{ !cancelled()
           && needs.release-preflight.result == 'success'
@@ -3356,7 +3373,6 @@ jobs:
           && (needs.android-release-identity.result == 'success'
               || (needs.domain-core-native-release-gate.outputs.rust_active == 'false'
                   && needs.android-release-identity.result == 'skipped'))
-          && needs.domain-core-ios-release-evidence.result != 'failure'
           && needs.smoke-test.result == 'success'
           && needs.apple-native-prepublication.result != 'failure' }}
     needs:
