@@ -175,7 +175,7 @@
     "scripts/ci/verify-domain-core-legacy-absence.py": ["da64af0878cd7ddf","bd6bc924ba5d1ff9","80adbc154013d0e1","b3e4e692358daa48"],
     "scripts/ci/verify-domain-core-legacy-deletion.py": ["e54ed250f7b2d5cd","e3f5d8b172ded95d","58e6ee036e95591b","6f5c9078c7228765"],
     "scripts/ci/verify-domain-core-native-event-commit.mjs": ["6d2f52e99e5a9634","4b0118ac894adac3","6cd5501b02cf5648","088f8104e401dcc7"],
-    "scripts/ci/verify-domain-core-native-release-artifact.sh": ["ebf95046f7731165","7357be48db03e611","61bf2edeb4a5d705","bc698dc74393c9b4"],
+    "scripts/ci/verify-domain-core-native-release-artifact.sh": ["cffc52b299bffdae","04e194b7081acb7d","627dfb0ec072d6bb","7d2b24197ac837d1"],
     "scripts/ci/verify-domain-core-native-release-workflows.test.mjs": ["708254f884322091","6e5fb519ee83fad1","6b7b9139411c504e","e70d31528ccf41cc"],
     "scripts/ci/verify-domain-core-observed-identity.mjs": ["c112104124b8a885","bbfbfc45a1fb581c","de3e3984c4b30f53","8ca951a41f399f8a"],
     "scripts/ci/verify-domain-core-protected-attestation.mjs": ["687d7d78c4019069","202d3e11870a3bfb","9ce1d4ee02161b6e","28c7e4c52d32355c"],
