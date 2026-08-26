@@ -3201,10 +3201,7 @@ jobs:
     # and with it skipped `Atomically publish` can never reach 'success' either,
     # so a signed, notarized DMG was built and then never published.
     # See docs/CI_RELEASE_RUNBOOK.md 1.1.
-    if: >-
-      ${{ !cancelled()
-          && needs.smoke-test.result == 'success'
-          && needs.domain-core-native-release-gate.result == 'success' }}
+    if: ${{ !cancelled() && needs.smoke-test.result == 'success' && needs.domain-core-native-release-gate.result == 'success' }}
     runs-on: macos-26
     timeout-minutes: 25
     environment: release
@@ -3540,10 +3537,7 @@ jobs:
       - prepare-release-publication
     # Same transitive-skip guard as apple-native-prepublication above: without a
     # status-check function this job is skipped before its condition is read.
-    if: >-
-      ${{ !cancelled()
-          && needs.prepare-release-publication.result == 'success'
-          && needs.apple-native-prepublication.result == 'success' }}
+    if: ${{ !cancelled() && needs.prepare-release-publication.result == 'success' && needs.apple-native-prepublication.result == 'success' }}
     runs-on: macos-26
     timeout-minutes: 60
     environment: release
