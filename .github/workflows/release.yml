@@ -3191,7 +3191,17 @@ jobs:
       - domain-core-native-release-gate
       - build-and-release
       - smoke-test
-    if: ${{ needs.smoke-test.result == 'success' && needs.domain-core-native-release-gate.result == 'success' }}
+    # `!cancelled()` for the same reason smoke-test carries it:
+    # `authorize-domain-core-rollback` skips on every non-rollback release and
+    # that skip propagates transitively through `needs`, even across jobs that
+    # run under always() and succeed. Without a status-check function the
+    # implicit success() over every need is never satisfied, so this job is
+    # skipped before its own condition is ever evaluated. That is why it has
+    # never run on any release -- v1.0.40+repair.22 through .27 all skipped it,
+    # and with it skipped `Atomically publish` can never reach 'success' either,
+    # so a signed, notarized DMG was built and then never published.
+    # See docs/CI_RELEASE_RUNBOOK.md 1.1.
+    if: ${{ !cancelled() && needs.smoke-test.result == 'success' && needs.domain-core-native-release-gate.result == 'success' }}
     runs-on: macos-26
     timeout-minutes: 25
     environment: release
@@ -3525,7 +3535,9 @@ jobs:
       - build-and-release
       - apple-native-prepublication
       - prepare-release-publication
-    if: ${{ needs.prepare-release-publication.result == 'success' && needs.apple-native-prepublication.result == 'success' }}
+    # Same transitive-skip guard as apple-native-prepublication above: without a
+    # status-check function this job is skipped before its condition is read.
+    if: ${{ !cancelled() && needs.prepare-release-publication.result == 'success' && needs.apple-native-prepublication.result == 'success' }}
     runs-on: macos-26
     timeout-minutes: 60
     environment: release
