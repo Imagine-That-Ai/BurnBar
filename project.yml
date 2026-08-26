@@ -248,6 +248,24 @@ targets:
           # only perturbs the ad-hoc-signed test host (observed as an
           # XCTest hang on CI runners) without protecting anything.
           OTHER_CODE_SIGN_FLAGS: --options runtime,library
+          # The shared Rust candidate identity is not a Rust static on Apple:
+          # domain-ffi's build.rs compiles it into its own object so it can sit
+          # in __TEXT,__obb_core_id, which release verification reads back out
+          # of the shipped binary.
+          #
+          # That object is only ever an archive member of
+          # libopenburnbar_domain_ffi.a, and nothing references the symbol, so
+          # ld never pulls the member in. The section was dropped from every
+          # shipped Apple binary and the release could not pass its own
+          # provenance gate: "observed Rust binary must contain exactly one
+          # canonical embedded identity; found 0". Verified against the real
+          # archive -- linking without this flag yields 0 markers and no
+          # section, linking with it yields 1 and the section is present.
+          #
+          # Release-only for the same reason as the code-sign flags above: a
+          # Debug build may be made against a checkout with no domain-core
+          # xcframework, where -u would fail to resolve.
+          OTHER_LDFLAGS: "$(inherited) -Wl,-u,_OPENBURNBAR_DOMAIN_CORE_IDENTITY_V1"
     postBuildScripts:
       - name: Configure Firebase Auth Resources
         # GoogleService-Info.plist is gitignored and may be absent on fresh
