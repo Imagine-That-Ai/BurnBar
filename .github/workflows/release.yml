@@ -98,6 +98,19 @@ jobs:
     permissions:
       attestations: read
       contents: write
+    env:
+      # cosign refuses any blob over 128MiB by default, and this job verifies
+      # the DMG (~448MB), the macOS zip, the corresponding-source archive
+      # (~459MB) and the legacy rollback bundle (~445MB). v1.0.40+repair.31
+      # failed here with "size of layer (459150420) exceeded the limit
+      # (134217728)" the first time a release ever reached this step.
+      #
+      # Job-level so every cosign call inherits it: the asset sweep in
+      # scripts/ci/verify-release-attestations.sh and the inline rollback
+      # verification below both need it, as will any future one. This raises a
+      # download ceiling only -- signature, certificate identity, OIDC issuer
+      # and predicate type are all still enforced unchanged.
+      COSIGN_MAX_ATTACHMENT_SIZE: 2GiB
     steps:
       - name: Check out exact release tag
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
