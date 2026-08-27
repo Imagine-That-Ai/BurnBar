@@ -38,7 +38,7 @@ for pair in "$artifact:native release artifact" "$selected_profile:selected publ
     exit 1
   fi
 done
-if [[ "$consumer" == "android" || "$consumer" == "apple" ]]; then
+if [[ "$consumer" == "android" ]]; then
   if [[ -z "$rust_active" ]]; then
     rust_active="$(node -e '
       const fs = require("node:fs");
@@ -50,11 +50,11 @@ if [[ "$consumer" == "android" || "$consumer" == "apple" ]]; then
   case "$rust_active" in
     true | false) ;;
     *)
-      echo "RUST_ACTIVE must be true or false for $consumer release verification: $rust_active" >&2
+      echo "RUST_ACTIVE must be true or false for Android release verification: $rust_active" >&2
       exit 1
       ;;
   esac
-  if [[ "$consumer" == "android" && "$rust_active" == "true" && ( -z "$observed_identity" || ! -f "$observed_identity" || -L "$observed_identity" || ! -s "$observed_identity" ) ]]; then
+  if [[ "$rust_active" == "true" && ( -z "$observed_identity" || ! -f "$observed_identity" || -L "$observed_identity" || ! -s "$observed_identity" ) ]]; then
     echo "observed Rust identity must be a nonempty regular non-symlink file: $observed_identity" >&2
     exit 1
   fi
@@ -171,17 +171,7 @@ verify_apple() {
     echo "shipped Apple app did not create a safe nonempty identity report" >&2
     exit 1
   fi
-  # The embedded identity is emitted by the Rust domain core. A legacy release
-  # ships no Rust slice -- every mode in the selected profile is "legacy" -- so
-  # the shipped binary carries no canonical identity and this check demanded
-  # something that cannot exist: "found 0". The Android path has always skipped
-  # its Rust binding on a legacy release for the same reason; the Apple path was
-  # never taught to. A Rust-active release still verifies exactly as before.
-  if [[ "$rust_active" == "true" ]]; then
-    verify_selected_identity "$executable"
-  else
-    echo "legacy release: no Rust slice shipped, skipping embedded identity binding"
-  fi
+  verify_selected_identity "$executable"
   cleanup_apple_mount
   apple_mount_point=""
 }

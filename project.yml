@@ -262,10 +262,9 @@ targets:
           # archive -- linking without this flag yields 0 markers and no
           # section, linking with it yields 1 and the section is present.
           #
-          # Release-only for the same reason as the code-sign flags above: a
-          # Debug build may be made against a checkout with no domain-core
-          # xcframework, where -u would fail to resolve.
-          OTHER_LDFLAGS: "$(inherited) -Wl,-u,_OPENBURNBAR_DOMAIN_CORE_IDENTITY_V1"
+          # Empty unless the protected release lane supplies it; a fresh checkout
+          # has no domain-core xcframework, where -u could not resolve.
+          OTHER_LDFLAGS: "$(inherited) $(OBB_DOMAIN_CORE_IDENTITY_LDFLAGS)"
     postBuildScripts:
       - name: Configure Firebase Auth Resources
         # GoogleService-Info.plist is gitignored and may be absent on fresh
