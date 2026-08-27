@@ -229,6 +229,11 @@ struct AppearanceCorkboardSection: View {
 
                 Divider().background(DesignSystem.Colors.border)
 
+                PopoverTrayLayoutSettingsPanel(settingsManager: settingsManager)
+                    .settingsAnchor(SettingsAnchor.appearancePopoverLayout)
+
+                Divider().background(DesignSystem.Colors.border)
+
                 SettingsToggle(
                     title: "Launch at Login",
                     subtitle: "Start OpenBurnBar when you sign in to macOS.",
@@ -411,6 +416,7 @@ struct AppearanceCorkboardSection: View {
              SettingsAnchor.appearanceGlassRefraction:
             return .theme
         case SettingsAnchor.appearanceMenuBar,
+             SettingsAnchor.appearancePopoverLayout,
              SettingsAnchor.appearanceLaunchAtLogin,
              SettingsAnchor.usePremiumSOTAUX:
             return .menuBar

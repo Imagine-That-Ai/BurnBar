@@ -178,6 +178,19 @@ enum SettingsManifest {
             keywords: ["menubar", "icon", "tray", "hide"]
         ),
         SettingsItem(
+            id: "general.appearance.popoverLayout",
+            tab: .general,
+            pageRoute: .appearance,
+            anchorID: SettingsAnchor.appearancePopoverLayout,
+            title: "Menu Bar Popover Layout",
+            subtitle: "Choose which sections appear, their order, and how much space each one takes — including quotas",
+            keywords: [
+                "popover", "tray", "layout", "quotas", "quota space", "section", "sections",
+                "reorder", "hide", "collapse", "weight", "size", "menu bar", "menubar",
+                "drop down", "dropdown"
+            ]
+        ),
+        SettingsItem(
             id: "general.appearance.launchAtLogin",
             tab: .general,
             pageRoute: .appearance,
@@ -936,6 +949,7 @@ enum SettingsManifest {
         SettingsAnchor.appearanceGlassTransparency,
         SettingsAnchor.appearanceGlassRefraction,
         SettingsAnchor.appearanceMenuBar,
+        SettingsAnchor.appearancePopoverLayout,
         SettingsAnchor.appearanceLaunchAtLogin,
         SettingsAnchor.usePremiumSOTAUX,
         SettingsAnchor.useWebsiteBackground,

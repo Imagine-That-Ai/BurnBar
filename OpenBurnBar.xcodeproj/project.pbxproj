@@ -1067,6 +1067,7 @@
 		5E3F1D198D1E1C68E1221633 /* VectorSemanticDeltaIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B55AE87A27A5147154499964 /* VectorSemanticDeltaIntegrationTests.swift */; };
 		5E65DA00C2DC5B07136150B1 /* HermesTabView+Setup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31B230B4D1B71A3D32297BFE /* HermesTabView+Setup.swift */; };
 		5E88B1B23BD2713D3801265E /* PopoverContentPrewarmerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B05A27BC7E53090F613343D1 /* PopoverContentPrewarmerTests.swift */; };
+		4D8C1F0E6A924B7C83E5A2B1 /* PopoverTrayLayoutSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B3E6D1A5C8F47E2B0D419A7 /* PopoverTrayLayoutSettingsTests.swift */; };
 		5E89AAE1A4444E470D5194BD /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 26D25E62271A8698A81CAB25 /* PrivacyInfo.xcprivacy */; };
 		5EABAFA153A5C57F1AEFB5F9 /* AgentToolBroker+Workspace.swift in Sources */ = {isa = PBXBuildFile; fileRef = 325FF26BAF6E90EB0F7FFF2C /* AgentToolBroker+Workspace.swift */; };
 		5ED2DA293E036FB4637F1704 /* BurnBarAIInboxChangeGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F05FCE88911A8714228685E6 /* BurnBarAIInboxChangeGate.swift */; };
@@ -2553,6 +2554,7 @@
 		E6EFCF180F5F5776BBD332DE /* MCPInstallCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A4BB6E9119657D2AD3E799B /* MCPInstallCard.swift */; };
 		E6F2FA8DF1CEFB2A35078C88 /* BurnBarDaemonServer+RPCMissionControlTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C707B4C69EB0545B90B86C8 /* BurnBarDaemonServer+RPCMissionControlTests.swift */; };
 		E6F4AB5B102E3A0AC0C7BBC2 /* PopoverTooltip.swift in Sources */ = {isa = PBXBuildFile; fileRef = E859984BF72F9054FA678705 /* PopoverTooltip.swift */; };
+		1F7A2C9E4B8D40F3A6C152D9 /* PopoverTrayLayoutSettingsPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8E41A9B7D2F4C6A91B305E8 /* PopoverTrayLayoutSettingsPanel.swift */; };
 		E716AE28826838040CD3D4D7 /* BurnBarProjectCodeMemoryStore+SQLite.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91804B3A7DF620A83ABBE155 /* BurnBarProjectCodeMemoryStore+SQLite.swift */; };
 		E74E0CC2C21D3C75B37944EF /* MemorySettingsAndKillSwitchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 113C7B742CDAE192EB075961 /* MemorySettingsAndKillSwitchTests.swift */; };
 		E775DDF5CE2F2F25182E58AA /* retrieval-semantic-rescue.json in Resources */ = {isa = PBXBuildFile; fileRef = 071DB146DB7EFFCC6D74F56C /* retrieval-semantic-rescue.json */; };
@@ -4842,6 +4844,7 @@
 		AFF82088F9F623F5B7A775E0 /* ProviderQuotaService+Context.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ProviderQuotaService+Context.swift"; sourceTree = "<group>"; };
 		B00E45921CE77131E76C0A3F /* PlasmaModelSelectorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlasmaModelSelectorTests.swift; sourceTree = "<group>"; };
 		B05A27BC7E53090F613343D1 /* PopoverContentPrewarmerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PopoverContentPrewarmerTests.swift; sourceTree = "<group>"; };
+		9B3E6D1A5C8F47E2B0D419A7 /* PopoverTrayLayoutSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PopoverTrayLayoutSettingsTests.swift; sourceTree = "<group>"; };
 		B063FCC3647F0103DF5F109F /* AgentCapabilityGrantStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentCapabilityGrantStore.swift; sourceTree = "<group>"; };
 		B06B15AD2287653D014107A3 /* DownloadSyncServiceRollupTotalsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadSyncServiceRollupTotalsTests.swift; sourceTree = "<group>"; };
 		B06CEF330683751758B837CB /* BurnBarFleetProbeSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarFleetProbeSupport.swift; sourceTree = "<group>"; };
@@ -5468,6 +5471,7 @@
 		E848179FCF0180CCB84281D9 /* CastReconnectStrategy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CastReconnectStrategy.swift; sourceTree = "<group>"; };
 		E8542D73EB307A0471234A0B /* IrohControllerRouteRegistrarTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IrohControllerRouteRegistrarTests.swift; sourceTree = "<group>"; };
 		E859984BF72F9054FA678705 /* PopoverTooltip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PopoverTooltip.swift; sourceTree = "<group>"; };
+		C8E41A9B7D2F4C6A91B305E8 /* PopoverTrayLayoutSettingsPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PopoverTrayLayoutSettingsPanel.swift; sourceTree = "<group>"; };
 		E87BC0D2B9B4594EACDBC44D /* ConceptStatTile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConceptStatTile.swift; sourceTree = "<group>"; };
 		E88170D7828BC868123885FF /* CloudVaultRotationPickupLifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudVaultRotationPickupLifecycle.swift; sourceTree = "<group>"; };
 		E88D619C6C40B439C10EEBB8 /* ProviderPlanWizardView+QuotaAndCLI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ProviderPlanWizardView+QuotaAndCLI.swift"; sourceTree = "<group>"; };
@@ -6055,6 +6059,7 @@
 				627F804B656BB5E3847C91EA /* MacCloudStoreLegalLinks.swift */,
 				2A4BB6E9119657D2AD3E799B /* MCPInstallCard.swift */,
 				A3EF540DDC549AA771400354 /* ModelProxySettingsView.swift */,
+				C8E41A9B7D2F4C6A91B305E8 /* PopoverTrayLayoutSettingsPanel.swift */,
 				0CFEBC043255C4DEF0B59442 /* PrivacyIndexingSettingsView.swift */,
 				69BCB90F76A95B60DCC9F4A3 /* ProviderPlanWizardView.swift */,
 				1201A510DD1475AAD37794E1 /* ProviderPlanWizardView+AuthCredentialStep.swift */,
@@ -8746,6 +8751,7 @@
 				3FB05DCFDBF084B47BC456FC /* PlasmaPersonaTests.swift */,
 				677D6F3BC3A9515B1DA21D14 /* PlasmaRouteTests.swift */,
 				B05A27BC7E53090F613343D1 /* PopoverContentPrewarmerTests.swift */,
+				9B3E6D1A5C8F47E2B0D419A7 /* PopoverTrayLayoutSettingsTests.swift */,
 				086FC1D44A7F5C4A3F4F9B75 /* PowerSourceMonitoringTests.swift */,
 				394C1FDF44D6026D2162A5B5 /* ProjectionChunkerTests.swift */,
 				CBC37A92344CC49FE58FDF2F /* ProjectionPipelineServiceMattersTests.swift */,
@@ -13085,6 +13091,7 @@
 				94431A7BE0C06FE1C6C74BAE /* PlasmaPersonaTests.swift in Sources */,
 				541F9BA4C3142008196581BC /* PlasmaRouteTests.swift in Sources */,
 				5E88B1B23BD2713D3801265E /* PopoverContentPrewarmerTests.swift in Sources */,
+				4D8C1F0E6A924B7C83E5A2B1 /* PopoverTrayLayoutSettingsTests.swift in Sources */,
 				1746641704378EE99340D4D5 /* PowerSourceMonitoringTests.swift in Sources */,
 				9D888DCC0421CCA8B03D7D66 /* PrimeAgentParserTests.swift in Sources */,
 				68489789B575D0FA7A916155 /* ProjectMemoryDetailSheetTests.swift in Sources */,
@@ -14004,6 +14011,7 @@
 				5300016E3513B8C61D761483 /* PopoverDismissController.swift in Sources */,
 				601643D1FD373A0645E4DFD6 /* PopoverQuickSwitchView.swift in Sources */,
 				E6F4AB5B102E3A0AC0C7BBC2 /* PopoverTooltip.swift in Sources */,
+				1F7A2C9E4B8D40F3A6C152D9 /* PopoverTrayLayoutSettingsPanel.swift in Sources */,
 				7ADC9B979EB5FB9ABEB3E9FD /* PrivacyIndexingSettingsView.swift in Sources */,
 				CEDE439F3B9095073FAAA3B3 /* ProBadgeDot.swift in Sources */,
 				00967255FE16F00EC41E17A2 /* ProPosterScaffold.swift in Sources */,

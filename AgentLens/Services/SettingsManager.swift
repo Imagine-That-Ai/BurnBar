@@ -202,6 +202,12 @@ final class SettingsManager {
             name: .excludeBrandShapesFromSwarmDidChange,
             object: nil
         )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(appearanceSubStoreDidChange),
+            name: .popoverTrayLayoutDidChange,
+            object: nil
+        )
         startComputerUseRemoteConfigPolling()
     }
 
@@ -444,6 +450,11 @@ final class SettingsManager {
     var showInMenuBar: Bool {
         get { _ = appearanceMutationVersion; return appearance.showInMenuBar }
         set { appearance.showInMenuBar = newValue }
+    }
+
+    var popoverTrayLayout: PopoverTrayLayout {
+        get { _ = appearanceMutationVersion; return appearance.popoverTrayLayout }
+        set { appearance.popoverTrayLayout = newValue }
     }
 
     var colorfulMenuBarIcon: Bool {

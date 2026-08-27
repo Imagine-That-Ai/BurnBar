@@ -7,9 +7,9 @@ import AppKit
 
 // MARK: - Popover Quota Bar
 
-/// Always-visible compact quota summary for the popover.
-/// Shows connected providers' 5h + weekly bars inline — no horizontal scroll.
-/// Clicking a row with routing detail expands the inline cockpit.
+/// Compact quota summary for the popover. Height is owned by the tray layout;
+/// this view fills its allocated slot. Clicking a row with routing detail
+/// expands the inline cockpit.
 struct QuotaPopoverBar: View {
     @Environment(\.colorScheme) private var colorScheme
     @Bindable var quotaService: ProviderQuotaService
@@ -42,14 +42,6 @@ struct QuotaPopoverBar: View {
                 : Array(providers.prefix(maximumCollapsedProviderRows))
         }
         return Array(providers.prefix(maximumCollapsedProviderRows))
-    }
-
-    private var quotaRowsMaxHeight: CGFloat {
-        // A tray should feel like a glanceable control, not a dashboard.
-        // The collapsed rail fits six single-bar rows; anything beyond that
-        // scrolls inside the rail so connected accounts cannot stretch the
-        // whole MenuBarExtra down the screen.
-        expandedProvider == nil ? 340 : 440
     }
 
     private func hiddenProviderSummaryText(selectionHidden: Int, collapseHidden: Int) -> String {
@@ -185,7 +177,7 @@ struct QuotaPopoverBar: View {
                 }
                 .padding(.horizontal, DesignSystem.Spacing.sm)
             }
-            .frame(maxHeight: quotaRowsMaxHeight)
+            .frame(maxHeight: .infinity)
 
             if hiddenProviderCount > 0, expandedProvider == nil {
                 HStack(spacing: DesignSystem.Spacing.xs) {
@@ -203,6 +195,7 @@ struct QuotaPopoverBar: View {
         }
         .padding(.top, DesignSystem.Spacing.sm)
         .padding(.bottom, DesignSystem.Spacing.xs)
+        .frame(maxHeight: .infinity, alignment: .top)
         .background(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .fill(colorScheme == .dark ? Color.white.opacity(0.022) : Color.black.opacity(0.014))

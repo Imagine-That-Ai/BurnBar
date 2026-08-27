@@ -147,6 +147,18 @@ final class AppearanceSettings {
         didSet { persistence.set(showInMenuBar, forKey: "showInMenuBar") }
     }
 
+    /// Menu-bar popover body layout: section order, hide/collapse, relative
+    /// weight, min/max, and drag-pinned heights. Canonical JSON plus the older
+    /// order/heights keys so a rollback still sees order and sizes.
+    var popoverTrayLayout: PopoverTrayLayout = .default() {
+        didSet {
+            persistence.set(popoverTrayLayout.encodeJSON(), forKey: PopoverTrayLayout.storageKey)
+            persistence.set(popoverTrayLayout.legacyOrderCSV(), forKey: PopoverTrayLayout.legacyOrderKey)
+            persistence.set(popoverTrayLayout.legacyHeightsJSON(), forKey: PopoverTrayLayout.legacyHeightsKey)
+            NotificationCenter.default.post(name: .popoverTrayLayoutDidChange, object: nil)
+        }
+    }
+
     /// When `true`, the menu bar icon renders in full color instead of the
     /// monochrome template style that adapts to system light/dark mode.
     var colorfulMenuBarIcon: Bool = false {
@@ -275,6 +287,17 @@ final class AppearanceSettings {
         // coordinator so a fresh suite stays consistent. Defaults to `.aurora`.
         self.dashboardLayout = DashboardLayout.current
         self.dashboardLaunchSurface = DashboardLaunchSurface.current
+        self.popoverTrayLayout = PopoverTrayLayoutStore.load(
+            json: persistence.optionalString(forKey: PopoverTrayLayout.storageKey),
+            legacyOrder: persistence.optionalString(forKey: PopoverTrayLayout.legacyOrderKey),
+            legacyHeightsJSON: persistence.optionalString(forKey: PopoverTrayLayout.legacyHeightsKey)
+        )
+        // Init does not fire didSet. Write the canonical JSON (and the legacy
+        // mirrors) so a migrated layout survives the next launch even if the
+        // user never touches a control.
+        persistence.set(self.popoverTrayLayout.encodeJSON(), forKey: PopoverTrayLayout.storageKey)
+        persistence.set(self.popoverTrayLayout.legacyOrderCSV(), forKey: PopoverTrayLayout.legacyOrderKey)
+        persistence.set(self.popoverTrayLayout.legacyHeightsJSON(), forKey: PopoverTrayLayout.legacyHeightsKey)
         let hasLaunched = persistence.bool(forKey: "hasLaunchedBefore")
         self.showInMenuBar = hasLaunched ? persistence.bool(forKey: "showInMenuBar") : true
         self.colorfulMenuBarIcon = persistence.bool(forKey: "colorfulMenuBarIcon")
@@ -350,4 +373,5 @@ extension Notification.Name {
     static let clickDesktopToCycleSwarmDidChange = Notification.Name("com.openburnbar.appearance.clickDesktopToCycleSwarmDidChange")
     static let desktopWallpaperSpeedDidChange = Notification.Name("com.openburnbar.appearance.desktopWallpaperSpeedDidChange")
     static let desktopWallpaperProviderGlyphsDidChange = Notification.Name("com.openburnbar.appearance.desktopWallpaperProviderGlyphsDidChange")
+    static let popoverTrayLayoutDidChange = Notification.Name("com.openburnbar.appearance.popoverTrayLayoutDidChange")
 }
