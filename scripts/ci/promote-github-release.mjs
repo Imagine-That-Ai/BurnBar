@@ -206,6 +206,24 @@ export function domainCoreBundleAssetName(consumer, version, domain) {
     : `OpenBurnBar-${version}-${consumer}-${domain}-domain-core.sigstore.json`;
 }
 
+/// Sidecar stem for a signed subject.
+///
+/// cosign writes its bundles under a filesystem-safe form of the subject name,
+/// so every `+` in a `1.0.40+repair.N` version becomes `_`. The producer emits
+/// that form and scripts/ci/verify-release-attestations.sh re-derives the same
+/// sanitisation (`[^A-Za-z0-9._-]` -> `_`) when it looks the bundles up. This
+/// expected-asset set was the only place still building sidecar names from the
+/// raw version, so the audit demanded `...+repair.30-macOS.dmg.sigstore.json`
+/// while the release legitimately carried `..._repair.30-macOS.dmg.sigstore.json`.
+///
+/// The mismatch was unreachable until now: no release had ever passed the
+/// earlier notes and asset checks to reach this comparison, and renaming the
+/// assets to satisfy it simply moved the failure to the attestation verifier,
+/// which wants the sanitised form. Derive it the same way here.
+function sigstoreSidecarStem(subject) {
+  return subject.replace(/[^A-Za-z0-9._-]/gu, "_");
+}
+
 export function expectedReleaseAssets(version, domainCoreProfile) {
   validateDomainCoreProfile(domainCoreProfile);
   const required = new Set([
@@ -225,12 +243,12 @@ export function expectedReleaseAssets(version, domainCoreProfile) {
   ]);
 
   for (const subject of generalProvenanceSubjects(version)) {
-    required.add(`${subject}.predicate.json`);
-    required.add(`${subject}.sigstore.json`);
+    required.add(`${sigstoreSidecarStem(subject)}.predicate.json`);
+    required.add(`${sigstoreSidecarStem(subject)}.sigstore.json`);
   }
   const rollback = `OpenBurnBar-${version}-legacy-rollback.zip`;
-  required.add(`${rollback}.predicate.json`);
-  required.add(`${rollback}.sigstore.json`);
+  required.add(`${sigstoreSidecarStem(rollback)}.predicate.json`);
+  required.add(`${sigstoreSidecarStem(rollback)}.sigstore.json`);
 
   // Domain-core evidence exists exactly when the release was published with a
   // Rust-active public-production profile. A governed public-production-rollback
