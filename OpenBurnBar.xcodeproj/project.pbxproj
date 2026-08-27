@@ -14864,6 +14864,7 @@
 				);
 				OTHER_CFLAGS = "$(inherited) -DSQLITE_HAS_CODEC";
 				OTHER_CODE_SIGN_FLAGS = "--options runtime,library";
+				OTHER_LDFLAGS = "$(inherited) $(OBB_DOMAIN_CORE_IDENTITY_LDFLAGS)";
 				PRODUCT_BUNDLE_IDENTIFIER = com.openburnbar.app;
 				PRODUCT_NAME = OpenBurnBar;
 				SDKROOT = macosx;
