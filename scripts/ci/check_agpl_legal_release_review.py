@@ -530,11 +530,28 @@ def validate_owner_attested_soft_approval(
         repo = data.get("repo")
         if not isinstance(repo, dict):
             errors.append("repo must be an object for owner emergency approval")
-        elif repo.get("releaseTag") != expected_release_tag:
-            errors.append(
-                "repo.releaseTag must match the current release tag "
-                f"{expected_release_tag!r}, found {repo.get('releaseTag')!r}"
-            )
+        else:
+            # The attestation authorizes a release BOUNDARY ("the v1.0.40
+            # release boundary"), not one build of it, and
+            # compare_release_tags already ignores SemVer build metadata.
+            # Requiring byte-equality with each +repair.N tag forced a packet
+            # rebind commit per tag -- eight for v1.0.40 alone -- with zero
+            # change to what the owner attested. Bind to the release train
+            # instead: same MAJOR.MINOR.PATCH authorizes every build of it,
+            # while a packet from any other train still fails closed.
+            packet_tag = repo.get("releaseTag")
+            try:
+                same_train = isinstance(packet_tag, str) and compare_release_tags(
+                    packet_tag, expected_release_tag
+                ) == 0
+            except ValueError:
+                same_train = False
+            if not same_train:
+                errors.append(
+                    "repo.releaseTag must name the current release train "
+                    f"{expected_release_tag!r} (build metadata ignored), "
+                    f"found {packet_tag!r}"
+                )
 
     attestation = data.get("ownerAttestation")
     if not isinstance(attestation, dict):
