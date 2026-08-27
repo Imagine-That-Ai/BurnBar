@@ -206,7 +206,7 @@ export function domainCoreBundleAssetName(consumer, version, domain) {
     : `OpenBurnBar-${version}-${consumer}-${domain}-domain-core.sigstore.json`;
 }
 
-/// Sidecar stem for a signed subject.
+/// Sidecar stem for a subject signed through `attest_release_blob`.
 ///
 /// cosign writes its bundles under a filesystem-safe form of the subject name,
 /// so every `+` in a `1.0.40+repair.N` version becomes `_`. The producer emits
@@ -246,9 +246,12 @@ export function expectedReleaseAssets(version, domainCoreProfile) {
     required.add(`${sigstoreSidecarStem(subject)}.predicate.json`);
     required.add(`${sigstoreSidecarStem(subject)}.sigstore.json`);
   }
+  // The rollback sidecars are NOT cosign-named: release.yml builds them
+  // directly from `${ROLLBACK_PATH##*/}`, so they keep the raw `+`. Only the
+  // subjects above go through attest_release_blob.
   const rollback = `OpenBurnBar-${version}-legacy-rollback.zip`;
-  required.add(`${sigstoreSidecarStem(rollback)}.predicate.json`);
-  required.add(`${sigstoreSidecarStem(rollback)}.sigstore.json`);
+  required.add(`${rollback}.predicate.json`);
+  required.add(`${rollback}.sigstore.json`);
 
   // Domain-core evidence exists exactly when the release was published with a
   // Rust-active public-production profile. A governed public-production-rollback

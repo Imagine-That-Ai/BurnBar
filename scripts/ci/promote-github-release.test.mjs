@@ -278,7 +278,6 @@ test("sidecar expectations use cosign's sanitised subject names", () => {
   for (const name of [
     "OpenBurnBar-1.0.40_repair.30-macOS.dmg.sigstore.json",
     "OpenBurnBar-1.0.40_repair.30-macOS.dmg.predicate.json",
-    "OpenBurnBar-1.0.40_repair.30-legacy-rollback.zip.sigstore.json",
     "checksums-v1.0.40_repair.30.txt.sigstore.json",
     "sbom-v1.0.40_repair.30.spdx.json.sigstore.json",
     "openburnbar-v1.0.40_repair.30.vex.json.predicate.json",
@@ -290,20 +289,23 @@ test("sidecar expectations use cosign's sanitised subject names", () => {
   // attestation bundle names" step in release.yml, so they legitimately keep
   // the `+`. Pin both halves so neither is "fixed" into the other.
   for (const name of [...required]) {
-    if (name.includes("domain-core")) continue;
+    if (name.includes("domain-core") || name.includes("legacy-rollback")) continue;
     assert.equal(
       /\+.*\.(?:sigstore|predicate)\.json$/u.test(name),
       false,
       `cosign sidecar must be sanitised: ${name}`,
     );
   }
-  assert.equal(
-    required.has(
-      "OpenBurnBar-1.0.40+repair.30-apple-quota-domain-core.sigstore.json",
-    ),
-    true,
-    "staged domain-core bundles keep the raw version",
-  );
+  // Both non-cosign families keep the raw version: the domain-core bundles are
+  // `cp`'d to explicit ${VERSION} names, and the rollback sidecars are built
+  // from ${ROLLBACK_PATH##*/} by release.yml.
+  for (const name of [
+    "OpenBurnBar-1.0.40+repair.30-apple-quota-domain-core.sigstore.json",
+    "OpenBurnBar-1.0.40+repair.30-legacy-rollback.zip.sigstore.json",
+    "OpenBurnBar-1.0.40+repair.30-legacy-rollback.zip.predicate.json",
+  ]) {
+    assert.equal(required.has(name), true, `must keep raw version: ${name}`);
+  }
   // A version with no build metadata is unchanged.
   const plain = expectedReleaseAssets("1.0.41", "public-production").required;
   assert.equal(plain.has("OpenBurnBar-1.0.41-macOS.dmg.sigstore.json"), true);
