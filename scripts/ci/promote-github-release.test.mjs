@@ -268,6 +268,49 @@ function mutations(client) {
   );
 }
 
+test("sidecar expectations use cosign's sanitised subject names", () => {
+  // cosign writes bundles under a filesystem-safe subject, so a +repair build
+  // ships `..._repair.N-macOS.dmg.sigstore.json`. verify-release-attestations.sh
+  // re-derives the same form. Building these from the raw version made the audit
+  // demand names no release can carry, and renaming the assets to match simply
+  // broke the attestation verifier instead.
+  const { required } = expectedReleaseAssets("1.0.40+repair.30", "public-production");
+  for (const name of [
+    "OpenBurnBar-1.0.40_repair.30-macOS.dmg.sigstore.json",
+    "OpenBurnBar-1.0.40_repair.30-macOS.dmg.predicate.json",
+    "checksums-v1.0.40_repair.30.txt.sigstore.json",
+    "sbom-v1.0.40_repair.30.spdx.json.sigstore.json",
+    "openburnbar-v1.0.40_repair.30.vex.json.predicate.json",
+  ]) {
+    assert.equal(required.has(name), true, name);
+  }
+  // Only the cosign-produced sidecars are sanitised. The domain-core bundles
+  // are `cp`'d to deterministic ${VERSION} names by the "Stage deterministic
+  // attestation bundle names" step in release.yml, so they legitimately keep
+  // the `+`. Pin both halves so neither is "fixed" into the other.
+  for (const name of [...required]) {
+    if (name.includes("domain-core") || name.includes("legacy-rollback")) continue;
+    assert.equal(
+      /\+.*\.(?:sigstore|predicate)\.json$/u.test(name),
+      false,
+      `cosign sidecar must be sanitised: ${name}`,
+    );
+  }
+  // Both non-cosign families keep the raw version: the domain-core bundles are
+  // `cp`'d to explicit ${VERSION} names, and the rollback sidecars are built
+  // from ${ROLLBACK_PATH##*/} by release.yml.
+  for (const name of [
+    "OpenBurnBar-1.0.40+repair.30-apple-quota-domain-core.sigstore.json",
+    "OpenBurnBar-1.0.40+repair.30-legacy-rollback.zip.sigstore.json",
+    "OpenBurnBar-1.0.40+repair.30-legacy-rollback.zip.predicate.json",
+  ]) {
+    assert.equal(required.has(name), true, `must keep raw version: ${name}`);
+  }
+  // A version with no build metadata is unchanged.
+  const plain = expectedReleaseAssets("1.0.41", "public-production").required;
+  assert.equal(plain.has("OpenBurnBar-1.0.41-macOS.dmg.sigstore.json"), true);
+});
+
 test("audits the exact complete remote release and writes an immutable receipt", () => {
   withFixture((files) => {
     const client = new FakeClient(files);
