@@ -105,9 +105,11 @@ jobs:
       # failed here with "size of layer (459150420) exceeded the limit
       # (134217728)" the first time a release ever reached this step.
       #
-      # Job-level so every cosign call inherits it: the asset sweep in
-      # scripts/ci/verify-release-attestations.sh and the inline rollback
-      # verification below both need it, as will any future one. This raises a
+      # Job-level so every cosign call inherits it: the release asset sweep and
+      # the inline rollback verification below both need it, as will any future
+      # one. (Deliberately not naming the sweep's script here -- the ordered
+      # marker test locates steps with indexOf, so a mention in a comment
+      # shadows the real step.) This raises a
       # download ceiling only -- signature, certificate identity, OIDC issuer
       # and predicate type are all still enforced unchanged.
       COSIGN_MAX_ATTACHMENT_SIZE: 2GiB
