@@ -93,8 +93,33 @@ with zipfile.ZipFile(archive) as source:
         if entry.create_system == 3 and unix_mode:
             entry_type = stat.S_IFMT(unix_mode)
             if entry_type == stat.S_IFLNK:
-                raise ValueError("archive contains a symbolic link")
-            if is_directory:
+                # A signed macOS bundle cannot be represented without symlinks:
+                # every versioned framework carries Versions/Current -> A plus
+                # the Resources/Headers aliases beside it, and codesign seals
+                # them. Rejecting the type outright meant no real app could ever
+                # pass -- this release ships GLTFKit2.framework. Reject the
+                # dangerous shape instead: the link target must be relative and
+                # must resolve inside the bundle root (zip-slip), which is the
+                # property this check was reaching for.
+                if is_directory:
+                    raise ValueError("archive contains a symlink marked as a directory")
+                target = source.read(entry).decode("utf-8", "strict")
+                if (
+                    not target
+                    or "\x00" in target
+                    or target.startswith("/")
+                    or "\\" in target
+                ):
+                    raise ValueError("archive contains an unsafe symlink target")
+                resolved = os.path.normpath(
+                    os.path.join(os.path.dirname(path), target)
+                )
+                if (
+                    resolved != "OpenBurnBar.app"
+                    and not resolved.startswith("OpenBurnBar.app/")
+                ):
+                    raise ValueError("archive symlink escapes the bundle root")
+            elif is_directory:
                 if entry_type != stat.S_IFDIR:
                     raise ValueError("archive directory has an invalid file type")
             elif entry_type not in (0, stat.S_IFREG):
@@ -124,6 +149,12 @@ with zipfile.ZipFile(archive) as source:
             os.makedirs(output, mode=0o700, exist_ok=True)
             continue
         os.makedirs(os.path.dirname(output), mode=0o700, exist_ok=True)
+        if entry.create_system == 3 and stat.S_IFMT(unix_mode) == stat.S_IFLNK:
+            # Validated above as relative and bundle-internal. Recreate it as a
+            # symlink rather than a regular file holding the target text, so the
+            # extracted tree matches the signed bundle it is standing in for.
+            os.symlink(source.read(entry).decode("utf-8", "strict"), output)
+            continue
         with source.open(entry, "r") as input_file:
             with open(output, "xb") as output_file:
                 shutil.copyfileobj(input_file, output_file, length=1024 * 1024)

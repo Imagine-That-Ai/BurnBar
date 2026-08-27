@@ -98,6 +98,25 @@ function fixture({
       mode: 0o100644,
       content: plist,
     },
+    // Every shipped bundle carries versioned frameworks, and those cannot be
+    // expressed without symlinks -- codesign seals Versions/Current and the
+    // aliases beside it. Keeping them in the canonical fixture means every
+    // happy-path assertion below also proves a real bundle still passes.
+    {
+      name: "OpenBurnBar.app/Contents/Frameworks/G.framework/Versions/A/G",
+      mode: 0o100644,
+      content: "framework",
+    },
+    {
+      name: "OpenBurnBar.app/Contents/Frameworks/G.framework/Versions/Current",
+      mode: 0o120777,
+      content: "A",
+    },
+    {
+      name: "OpenBurnBar.app/Contents/Frameworks/G.framework/G",
+      mode: 0o120777,
+      content: "Versions/Current/G",
+    },
   ];
   if (zipLayout === "decoy") {
     zipEntries.push(
@@ -127,6 +146,12 @@ function fixture({
       name: "OpenBurnBar.app/Contents/Frameworks/escape",
       mode: 0o120777,
       content: "../../../../outside",
+    });
+  } else if (zipLayout === "symlink-absolute") {
+    zipEntries.push({
+      name: "OpenBurnBar.app/Contents/Frameworks/absolute",
+      mode: 0o120777,
+      content: "/etc/passwd",
     });
   } else if (zipLayout === "traversal") {
     zipEntries.push({
@@ -766,7 +791,11 @@ for (const [zipLayout, expectedError] of [
   ["decoy", /canonical root OpenBurnBar\.app/u],
   ["duplicate", /duplicate or filesystem-colliding paths/u],
   ["case-collision", /duplicate or filesystem-colliding paths/u],
-  ["symlink", /symbolic link/u],
+  // A bundle-internal symlink is legitimate and lives in the canonical fixture
+  // below; what must stay rejected is a link that leaves the bundle or names an
+  // absolute path.
+  ["symlink", /symlink escapes the bundle root/u],
+  ["symlink-absolute", /unsafe symlink target/u],
   ["traversal", /canonical root OpenBurnBar\.app/u],
 ]) {
   test(`forward preflight rejects a ${zipLayout} app ZIP layout`, () => {
