@@ -57,6 +57,7 @@ const PRODUCT_EVENT_ALLOWLIST = new Set<string>([
 
 const EMAILISH = /[^\s@]+@[^\s@]+\.[^\s@]+/;
 const PROP_KEY = /^[a-z][a-z0-9_]*$/;
+const ANONYMOUS_ID = /^[A-Za-z0-9._:-]{1,64}$/;
 const ATTRIBUTION_KEY_SET = new Set<string>(FUNNEL_ATTRIBUTION_KEYS);
 
 const ENUM_PROP_VALUES: Record<string, ReadonlySet<string>> = {
@@ -101,6 +102,15 @@ const BOOLEAN_PROP_KEYS = new Set([
   "cold_start",
   "is_first_launch",
   "is_first_view",
+]);
+
+/** Direct POSTs may only carry taxonomy-known keys. A missing enum is not "unrestricted." */
+const ALLOWED_PROP_KEYS = new Set<string>([
+  ...Object.keys(ENUM_PROP_VALUES),
+  ...BOOLEAN_PROP_KEYS,
+  ...FUNNEL_ATTRIBUTION_KEYS,
+  "app_version",
+  "source",
 ]);
 
 export type CollectorEnv = {
@@ -149,6 +159,7 @@ function sanitizeProps(props: Record<string, string | boolean> | undefined): Rec
   if (!props || typeof props !== "object" || Array.isArray(props)) return out;
   for (const [key, value] of Object.entries(props)) {
     if (!PROP_KEY.test(key)) continue;
+    if (!ALLOWED_PROP_KEYS.has(key)) continue;
     if (key === "email" || key === "raw_email" || key.endsWith("_email")) continue;
     if (key.startsWith("utm_") && !ATTRIBUTION_KEY_SET.has(key)) continue;
     if (typeof value === "boolean") {
@@ -211,6 +222,24 @@ function asTrimmedString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function isPhoneShapedIdentifier(value: string): boolean {
+  return /^\d{7,}$/.test(value.replace(/[._:-]/g, ""));
+}
+
+/** Bounded anonymous-ID token. Emails, phones, spaces, and oversize values fall back. */
+function sanitizeAnonymousId(value: unknown, fallback: string): string {
+  const trimmed = asTrimmedString(value);
+  if (!trimmed) return fallback;
+  if (EMAILISH.test(trimmed)) return fallback;
+  if (!ANONYMOUS_ID.test(trimmed)) return fallback;
+  if (isPhoneShapedIdentifier(trimmed)) return fallback;
+  return trimmed;
+}
+
+function mintedInsertId(now: number, index: number): string {
+  return `obb-${now.toString(36)}-${index}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 export async function handleCollectorPost(
   body: CollectorRequestBody | null | undefined,
   env: CollectorEnv,
@@ -259,9 +288,9 @@ export async function handleCollectorPost(
     options: { min_id_length: 1 },
     events: allowed.map((event, index) => ({
       event_type: event.name,
-      device_id: asTrimmedString(event.device_id) || "anonymous",
+      device_id: sanitizeAnonymousId(event.device_id, "anonymous"),
       time: typeof event.time_ms === "number" ? event.time_ms : now,
-      insert_id: asTrimmedString(event.insert_id) || `obb-${now}-${index}`,
+      insert_id: sanitizeAnonymousId(event.insert_id, mintedInsertId(now, index)),
       event_properties: {
         ...sanitizeProps({
           ...event.props,
@@ -272,11 +301,16 @@ export async function handleCollectorPost(
     })),
   };
 
-  const res = await fetchImpl(endpoint, {
-    method: "POST",
-    headers: { "content-type": "application/json", accept: "application/json" },
-    body: JSON.stringify(payload),
-  });
+  let res: Response;
+  try {
+    res = await fetchImpl(endpoint, {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "application/json" },
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    return json(502, { accepted: false, reason: "amplitude_http_error" }, { forwarded: 0, amplitudeUrl: endpoint });
+  }
 
   if (!res.ok) {
     return json(502, { accepted: false, reason: "amplitude_http_error" }, { forwarded: 0, amplitudeUrl: endpoint });

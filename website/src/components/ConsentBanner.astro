@@ -173,6 +173,7 @@
     grantConsent,
     declineConsent,
     boot,
+    rememberAttribution,
     installDelegatedTracking
   } from "../lib/analytics";
 
@@ -194,6 +195,11 @@
   // CTA tracking is safe to wire immediately — every track() is dropped until
   // consent is granted, so nothing leaks pre-opt-in.
   installDelegatedTracking();
+
+  // Persist bounded landing UTMs before the consent branch. Undecided
+  // visitors who navigate internally and grant on /download must still
+  // carry the campaign; `boot()` only runs after a decision.
+  rememberAttribution();
 
   const suppressInitialPrompt = document.body.hasAttribute("data-transactional-page");
   if (analyticsConsent.hasDecided) {

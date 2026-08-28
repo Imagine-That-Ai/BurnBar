@@ -428,6 +428,84 @@ describe("collector worker — consent and project routing", () => {
     expect(lifecycle?.event_properties.event_category).toBe("lifecycle");
     expect(lifecycle?.event_properties.amplitude_project_id).toBe("830581");
   });
+
+  it("drops unknown property keys instead of treating a missing enum as unrestricted", async () => {
+    const fetches: { body: Record<string, unknown> }[] = [];
+    await handleCollectorPost(
+      {
+        consent: true,
+        events: [
+          {
+            name: "page.viewed",
+            props: {
+              product: "burnbar",
+              surface: "home",
+              prompt: "secret",
+              api_key: "sk-secret"
+            }
+          }
+        ]
+      },
+      { AMPLITUDE_API_KEY: "secret-key", AMPLITUDE_PROJECT_ID: "830581" },
+      async (_url, init) => {
+        fetches.push({ body: JSON.parse(String(init?.body ?? "{}")) });
+        return new Response("{}", { status: 200 });
+      }
+    );
+    const events = fetches[0]?.body.events as { event_properties: Record<string, unknown> }[];
+    expect(events[0]?.event_properties.prompt).toBeUndefined();
+    expect(events[0]?.event_properties.api_key).toBeUndefined();
+    expect(events[0]?.event_properties.surface).toBe("home");
+    expect(events[0]?.event_properties.product).toBe("burnbar");
+  });
+
+  it("replaces email, phone, and oversize identifiers with anonymous fallbacks", async () => {
+    const fetches: { body: Record<string, unknown> }[] = [];
+    await handleCollectorPost(
+      {
+        consent: true,
+        events: [
+          {
+            name: "page.viewed",
+            device_id: "alice@example.com",
+            insert_id: "14155551212",
+            props: { product: "burnbar", surface: "home" }
+          },
+          {
+            name: "page.viewed",
+            device_id: "550e8400-e29b-41d4-a716-446655440000",
+            insert_id: "obb-ok-1",
+            props: { product: "burnbar", surface: "home" }
+          }
+        ]
+      },
+      { AMPLITUDE_API_KEY: "secret-key", AMPLITUDE_PROJECT_ID: "830581" },
+      async (_url, init) => {
+        fetches.push({ body: JSON.parse(String(init?.body ?? "{}")) });
+        return new Response("{}", { status: 200 });
+      }
+    );
+    const events = fetches[0]?.body.events as { device_id: string; insert_id: string }[];
+    expect(events[0]?.device_id).toBe("anonymous");
+    expect(events[0]?.insert_id).toMatch(/^obb-/);
+    expect(events[0]?.insert_id).not.toBe("14155551212");
+    expect(events[1]?.device_id).toBe("550e8400-e29b-41d4-a716-446655440000");
+    expect(events[1]?.insert_id).toBe("obb-ok-1");
+  });
+
+  it("returns a structured 502 when Amplitude fetch rejects", async () => {
+    const result = await handleCollectorPost(
+      { consent: true, events: [{ name: "page.viewed" }] },
+      { AMPLITUDE_API_KEY: "secret-key", AMPLITUDE_PROJECT_ID: "830581" },
+      async () => {
+        throw new Error("dns failed");
+      }
+    );
+    expect(result.status).toBe(502);
+    expect(result.body.reason).toBe("amplitude_http_error");
+    expect(result.forwarded).toBe(0);
+    expect(result.amplitudeUrl).toBe(AMPLITUDE_HTTP_V2_US);
+  });
 });
 
 describe("attribution", () => {
@@ -492,6 +570,16 @@ describe("attribution", () => {
     resolveAttribution("?utm_campaign=spring-sale", storage);
     clearStoredAttribution(storage);
     expect(resolveAttribution("", storage)).toEqual({});
+  });
+
+  it("ConsentBanner captures attribution before the consent decision branch", () => {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const banner = readFileSync(join(here, "../src/components/ConsentBanner.astro"), "utf8");
+    const rememberIdx = banner.indexOf("rememberAttribution()");
+    const decidedIdx = banner.indexOf("if (analyticsConsent.hasDecided)");
+    expect(rememberIdx).toBeGreaterThan(-1);
+    expect(decidedIdx).toBeGreaterThan(-1);
+    expect(rememberIdx).toBeLessThan(decidedIdx);
   });
 });
 
