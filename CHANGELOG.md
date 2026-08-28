@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
-- `openburnbar app install` no longer aborts a verified macOS DMG when the
+- `openburnbar app install` (npm 0.2.2) no longer aborts a verified macOS DMG when the
   public feed advertises a SemVer tag with `+repair.N` (for example
   `1.0.40+repair.34` build 81) and the mounted app's
   `CFBundleShortVersionString` is the Apple-visible marketing version
