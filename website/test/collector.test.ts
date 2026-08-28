@@ -225,6 +225,49 @@ describe("collector worker — consent and project routing", () => {
     expect(isAllowedCollectorOrigin("https://evil.example")).toBe(false);
   });
 
+  it("binds staging origins to Dev and production origins to prod", () => {
+    expect(isAllowedCollectorOrigin("https://burnbar-staging.web.app", 830583)).toBe(false);
+    expect(isAllowedCollectorOrigin("https://burnbar-staging.firebaseapp.com", 830583)).toBe(false);
+    expect(isAllowedCollectorOrigin("http://127.0.0.1:4321", 830583)).toBe(false);
+    expect(isAllowedCollectorOrigin("https://burnbar.ai", 830581)).toBe(false);
+    expect(isAllowedCollectorOrigin("https://burnbar.web.app", 830581)).toBe(false);
+    expect(isAllowedCollectorOrigin("https://burnbar.ai", 830583)).toBe(true);
+    expect(isAllowedCollectorOrigin("https://burnbar-staging.web.app", 830581)).toBe(true);
+    expect(isAllowedCollectorOrigin("http://127.0.0.1:4321", 830581)).toBe(true);
+  });
+
+  it("rejects a staging origin against the production project", async () => {
+    const fetches: string[] = [];
+    const result = await handleCollectorPost(
+      { consent: true, events: [{ name: "page.viewed" }] },
+      { AMPLITUDE_API_KEY: "secret-key", AMPLITUDE_PROJECT_ID: "830583" },
+      async (url) => {
+        fetches.push(url);
+        return new Response("{}", { status: 200 });
+      },
+      "https://burnbar-staging.web.app"
+    );
+    expect(result.status).toBe(403);
+    expect(result.body.reason).toBe("origin_rejected");
+    expect(fetches).toHaveLength(0);
+  });
+
+  it("rejects a production origin against the Dev project", async () => {
+    const fetches: string[] = [];
+    const result = await handleCollectorPost(
+      { consent: true, events: [{ name: "page.viewed" }] },
+      { AMPLITUDE_API_KEY: "secret-key", AMPLITUDE_PROJECT_ID: "830581" },
+      async (url) => {
+        fetches.push(url);
+        return new Response("{}", { status: 200 });
+      },
+      "https://burnbar.ai"
+    );
+    expect(result.status).toBe(403);
+    expect(result.body.reason).toBe("origin_rejected");
+    expect(fetches).toHaveLength(0);
+  });
+
   it("forwards from a staging origin", async () => {
     const fetches: string[] = [];
     const result = await handleCollectorPost(

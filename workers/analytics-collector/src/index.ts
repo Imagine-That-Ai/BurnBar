@@ -1,8 +1,13 @@
+import {
+  AMPLITUDE_PROJECT,
+  resolveAmplitudeProjectId,
+} from "../../../analytics/funnel-contract";
 import { collectorCorsHeaders, handleCollectorPost, type CollectorEnv, type CollectorRequestBody } from "./handler";
 
 export default {
   async fetch(request: Request, env: CollectorEnv): Promise<Response> {
-    const cors = collectorCorsHeaders(request.headers.get("origin"));
+    const projectId = resolveAmplitudeProjectId(env.AMPLITUDE_PROJECT_ID ?? AMPLITUDE_PROJECT.development);
+    const cors = collectorCorsHeaders(request.headers.get("origin"), projectId);
     if (request.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: cors });
     }

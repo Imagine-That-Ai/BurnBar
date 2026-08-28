@@ -113,16 +113,43 @@ function sanitizeProps(props: Record<string, string | boolean> | undefined): Rec
   return out;
 }
 
-export function isAllowedCollectorOrigin(origin: string | null): boolean {
+const PRODUCTION_COLLECTOR_ORIGINS = new Set([
+  "https://burnbar.ai",
+  "https://www.burnbar.ai",
+  "https://burnbar.web.app",
+  "https://burnbar.firebaseapp.com",
+]);
+
+const DEVELOPMENT_COLLECTOR_ORIGINS = new Set([
+  "https://burnbar-staging.web.app",
+  "https://burnbar-staging.firebaseapp.com",
+]);
+
+function isLocalDevOrigin(origin: string | null): boolean {
+  return origin !== null && /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(origin);
+}
+
+export function isKnownCollectorOrigin(origin: string | null): boolean {
   return (
-    origin === "https://burnbar.ai" ||
-    origin === "https://www.burnbar.ai" ||
-    origin === "https://burnbar.web.app" ||
-    origin === "https://burnbar.firebaseapp.com" ||
-    origin === "https://burnbar-staging.web.app" ||
-    origin === "https://burnbar-staging.firebaseapp.com" ||
-    (origin !== null && /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(origin))
+    origin !== null &&
+    (PRODUCTION_COLLECTOR_ORIGINS.has(origin) ||
+      DEVELOPMENT_COLLECTOR_ORIGINS.has(origin) ||
+      isLocalDevOrigin(origin))
   );
+}
+
+/** Known origins for CORS. When `projectId` is set, staging is Dev-only and production is prod-only. */
+export function isAllowedCollectorOrigin(origin: string | null, projectId?: number | null): boolean {
+  if (!isKnownCollectorOrigin(origin) || origin === null) return false;
+  if (projectId === undefined) return true;
+  if (projectId === null) return false;
+  if (projectId === AMPLITUDE_PROJECT.production) {
+    return PRODUCTION_COLLECTOR_ORIGINS.has(origin);
+  }
+  if (projectId === AMPLITUDE_PROJECT.development) {
+    return DEVELOPMENT_COLLECTOR_ORIGINS.has(origin) || isLocalDevOrigin(origin);
+  }
+  return false;
 }
 
 function asTrimmedString(value: unknown): string {
@@ -135,7 +162,7 @@ export async function handleCollectorPost(
   fetchImpl: FetchLike,
   origin?: string | null,
 ): Promise<HandlerResult> {
-  if (origin !== undefined && !isAllowedCollectorOrigin(origin)) {
+  if (origin !== undefined && !isKnownCollectorOrigin(origin)) {
     return json(403, { accepted: false, reason: "origin_rejected" });
   }
 
@@ -155,6 +182,10 @@ export async function handleCollectorPost(
   const projectId = resolveAmplitudeProjectId(env.AMPLITUDE_PROJECT_ID ?? AMPLITUDE_PROJECT.development);
   if (projectId === null) {
     return json(409, { accepted: false, reason: "project_rejected" });
+  }
+
+  if (origin !== undefined && !isAllowedCollectorOrigin(origin, projectId)) {
+    return json(403, { accepted: false, reason: "origin_rejected" });
   }
 
   const incoming = Array.isArray(body.events) ? body.events : [];
@@ -201,8 +232,11 @@ export async function handleCollectorPost(
   );
 }
 
-export function collectorCorsHeaders(origin: string | null): Record<string, string> {
-  const allowed = isAllowedCollectorOrigin(origin);
+export function collectorCorsHeaders(
+  origin: string | null,
+  projectId?: number | null,
+): Record<string, string> {
+  const allowed = isAllowedCollectorOrigin(origin, projectId);
   return {
     "access-control-allow-origin": allowed && origin ? origin : "https://burnbar.ai",
     "access-control-allow-methods": "POST, OPTIONS",

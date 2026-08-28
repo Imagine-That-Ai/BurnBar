@@ -12,8 +12,14 @@ type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Respo
  */
 export const DEVICE_ID_KEY = "burnbar-analytics-device-id";
 
+type IdStorage = {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem?(key: string): void;
+};
+
 export function persistentAnonymousId(
-  storage: { getItem(key: string): string | null; setItem(key: string, value: string): void },
+  storage: IdStorage,
   createId: () => string = newAnonymousId
 ): string {
   const existing = storage.getItem(DEVICE_ID_KEY)?.trim();
@@ -27,11 +33,21 @@ export function persistentAnonymousId(
   return id;
 }
 
-type IdStorage = { getItem(key: string): string | null; setItem(key: string, value: string): void };
+export function clearPersistedAnonymousId(storage: IdStorage): void {
+  try {
+    storage.removeItem?.(DEVICE_ID_KEY);
+  } catch {
+    /* private mode / quota */
+  }
+}
 
 function memoryStorage(): IdStorage {
   const m = new Map<string, string>();
-  return { getItem: (k) => m.get(k) ?? null, setItem: (k, v) => void m.set(k, v) };
+  return {
+    getItem: (k) => m.get(k) ?? null,
+    setItem: (k, v) => void m.set(k, v),
+    removeItem: (k) => void m.delete(k)
+  };
 }
 
 function consentTimeStorage(): IdStorage {
@@ -103,6 +119,10 @@ export class FirstPartyCollectorTransport implements AnalyticsTransport {
     this.optedOut = true;
     this.started = false;
     this.collectorUrl = "";
+    this.deviceId = "";
+    if (!this.explicitDeviceId) {
+      clearPersistedAnonymousId(this.storage);
+    }
   }
 }
 

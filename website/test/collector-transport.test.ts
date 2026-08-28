@@ -50,6 +50,35 @@ describe("FirstPartyCollectorTransport", () => {
     expect(storage.get(DEVICE_ID_KEY)).toBeTruthy();
   });
 
+  it("clears the persisted device id on stop so a later grant is not linkable", () => {
+    const storage = new Map<string, string>();
+    const store = {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => void storage.set(key, value),
+      removeItem: (key: string) => void storage.delete(key)
+    };
+    const first = new FirstPartyCollectorTransport(
+      undefined,
+      async () => new Response("{}", { status: 200 }),
+      store
+    );
+    first.start("https://collect.burnbar.test/v1");
+    const beforeRevoke = storage.get(DEVICE_ID_KEY);
+    expect(beforeRevoke).toBeTruthy();
+    first.stop();
+    expect(storage.get(DEVICE_ID_KEY)).toBeUndefined();
+
+    const second = new FirstPartyCollectorTransport(
+      undefined,
+      async () => new Response("{}", { status: 200 }),
+      store
+    );
+    second.start("https://collect.burnbar.test/v1");
+    const afterGrant = storage.get(DEVICE_ID_KEY);
+    expect(afterGrant).toBeTruthy();
+    expect(afterGrant).not.toBe(beforeRevoke);
+  });
+
   it("reuses a persisted anonymous device id across constructions", () => {
     const storage = new Map<string, string>();
     const store = {
