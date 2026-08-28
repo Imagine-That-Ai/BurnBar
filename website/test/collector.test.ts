@@ -396,6 +396,38 @@ describe("collector worker — consent and project routing", () => {
     expect(events[0]?.event_properties.email).toBeUndefined();
     expect(events[0]?.event_properties.captured).toBe(true);
   });
+
+  it("sanitizes event.category before forwarding event_category", async () => {
+    const fetches: { body: Record<string, unknown> }[] = [];
+    await handleCollectorPost(
+      {
+        consent: true,
+        events: [
+          {
+            name: "page.viewed",
+            category: "alice@example.com",
+            props: { product: "burnbar", surface: "home" }
+          },
+          {
+            name: "app.opened",
+            category: "lifecycle",
+            props: { product: "burnbar", surface: "macos" }
+          }
+        ]
+      },
+      { AMPLITUDE_API_KEY: "secret-key", AMPLITUDE_PROJECT_ID: "830581" },
+      async (_url, init) => {
+        fetches.push({ body: JSON.parse(String(init?.body ?? "{}")) });
+        return new Response("{}", { status: 200 });
+      }
+    );
+    const events = fetches[0]?.body.events as { event_type: string; event_properties: Record<string, unknown> }[];
+    const emailed = events.find((event) => event.event_type === "page.viewed");
+    const lifecycle = events.find((event) => event.event_type === "app.opened");
+    expect(emailed?.event_properties.event_category).toBeUndefined();
+    expect(lifecycle?.event_properties.event_category).toBe("lifecycle");
+    expect(lifecycle?.event_properties.amplitude_project_id).toBe("830581");
+  });
 });
 
 describe("attribution", () => {

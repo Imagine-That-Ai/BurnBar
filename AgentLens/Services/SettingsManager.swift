@@ -1559,6 +1559,7 @@ final class SettingsManager {
         // Consent can be written after init; that key is never a store default.
         if !persistence.objectExists(forKey: "hasLaunchedBefore"),
            persistence.objectExists(forKey: AnalyticsConsentStore.key) {
+            Self.seedDefaultShowInMenuBarIfNeeded(persistence: persistence)
             persistence.set(true, forKey: "hasLaunchedBefore")
             persistence.flush()
         }
@@ -1587,6 +1588,7 @@ final class SettingsManager {
         guard !persistence.objectExists(forKey: "hasLaunchedBefore") else { return }
         let hasPriorInstall = priorInstallEvidenceKeys.contains { persistence.objectExists(forKey: $0) }
         guard hasPriorInstall else { return }
+        Self.seedDefaultShowInMenuBarIfNeeded(persistence: persistence)
         persistence.set(true, forKey: "hasLaunchedBefore")
         persistence.flush()
     }
@@ -1594,7 +1596,16 @@ final class SettingsManager {
     /// One-shot install marker. Written after the first-launch flag is captured
     /// for this process so later launches are not treated as installs.
     func markHasLaunchedBefore() {
+        Self.seedDefaultShowInMenuBarIfNeeded(persistence: persistence)
         persistence.set(true, forKey: "hasLaunchedBefore")
+        persistence.flush()
+    }
+
+    /// Seed the menu-bar default before flipping `hasLaunchedBefore`. Absent
+    /// `showInMenuBar` must stay `true`, not `UserDefaults`' false-for-missing-key.
+    private static func seedDefaultShowInMenuBarIfNeeded(persistence: SettingsPersistenceCoordinator) {
+        guard !persistence.objectExists(forKey: "showInMenuBar") else { return }
+        persistence.set(true, forKey: "showInMenuBar")
     }
 
     // MARK: Usage Formatting

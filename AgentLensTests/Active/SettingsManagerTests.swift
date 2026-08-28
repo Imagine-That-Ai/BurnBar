@@ -183,6 +183,29 @@ final class SettingsManagerTests: XCTestCase {
         XCTAssertFalse(settings.showInMenuBar)
     }
 
+    func test_markHasLaunchedBefore_seedsShowInMenuBarDefaultWhenAbsent() {
+        let defaults = makeIsolatedDefaults()
+        defaults.removeObject(forKey: "hasLaunchedBefore")
+        defaults.removeObject(forKey: "showInMenuBar")
+        let settings = makeSettingsManager(defaults: defaults)
+        XCTAssertTrue(settings.showInMenuBar)
+        settings.markHasLaunchedBefore()
+
+        let relaunched = makeSettingsManager(defaults: defaults)
+        XCTAssertTrue(relaunched.showInMenuBar)
+        XCTAssertEqual(defaults.object(forKey: "showInMenuBar") as? Bool, true)
+        XCTAssertTrue(defaults.bool(forKey: "hasLaunchedBefore"))
+    }
+
+    func test_showInMenuBar_defaultsTrueWhenLaunchMarkerExistsButKeyIsAbsent() {
+        let defaults = makeIsolatedDefaults()
+        defaults.set(true, forKey: "hasLaunchedBefore")
+        defaults.removeObject(forKey: "showInMenuBar")
+        let settings = makeSettingsManager(defaults: defaults)
+        XCTAssertTrue(settings.showInMenuBar)
+        XCTAssertEqual(defaults.object(forKey: "showInMenuBar") as? Bool, true)
+    }
+
     func test_launchAtLogin_defaultValue_isFalse() {
         let defaults = makeIsolatedDefaults()
         let settings = makeSettingsManager(defaults: defaults)
@@ -1779,6 +1802,22 @@ final class SettingsManagerTests: XCTestCase {
         let settings = makeSettingsManager(defaults: defaults)
         XCTAssertFalse(settings.isFirstLaunch)
         XCTAssertTrue(defaults.bool(forKey: "hasLaunchedBefore"))
+    }
+
+    func test_showInMenuBar_staysTrueOnUpgradeWhenKeyWasNeverPersisted() {
+        let defaults = makeIsolatedDefaults()
+        defaults.removeObject(forKey: "hasLaunchedBefore")
+        defaults.removeObject(forKey: "showInMenuBar")
+        defaults.removeObject(forKey: "analyticsConsentState")
+        defaults.set("system", forKey: "appearanceMode")
+        let settings = makeSettingsManager(defaults: defaults)
+        XCTAssertFalse(settings.isFirstLaunch)
+        XCTAssertTrue(settings.showInMenuBar)
+        XCTAssertEqual(defaults.object(forKey: "showInMenuBar") as? Bool, true)
+
+        let relaunched = makeSettingsManager(defaults: defaults)
+        XCTAssertTrue(relaunched.showInMenuBar)
+        XCTAssertFalse(relaunched.isFirstLaunch)
     }
 
     func test_isFirstLaunch_falseOnUpgradeWhenOnboardingProvidersAlreadyPersisted() {

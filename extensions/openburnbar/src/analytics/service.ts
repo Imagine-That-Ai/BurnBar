@@ -22,6 +22,7 @@ import { randomUUID } from 'node:crypto';
 import * as vscode from 'vscode';
 
 import { logger } from '../logger';
+import { CONSENT_STORAGE_KEY } from './consent';
 import {
   createAnalytics,
   bootAnalytics,
@@ -44,6 +45,7 @@ import {
 const DEVICE_ID_KEY = 'openburnbar.analytics.deviceId';
 const PROMPT_SETTING = 'openburnbar.analytics.enabled';
 const PROMPT_SEEN_KEY = 'openburnbar.analytics.promptSeen';
+export const INSTALL_MARKER_KEY = 'openburnbar.analytics.hasActivatedBefore';
 
 const CONSENT_PROMPT_MESSAGE =
   'Help improve OpenBurnBar with privacy-preserving, opt-in analytics (Amplitude)? ' +
@@ -86,6 +88,10 @@ export class OpenBurnBarAnalyticsService {
    * service whose `track*` methods are all no-ops until the user opts in.
    */
   static initialize(context: AnalyticsServiceHostContext): OpenBurnBarAnalyticsService {
+    // Resolve first-activation BEFORE minting a device id. `resolveDeviceId`
+    // writes a UUID when the key is absent; that write must not look like
+    // prior-install evidence for this process.
+    const isFirstActivation = resolveFirstActivation(context);
     const deviceId = OpenBurnBarAnalyticsService.resolveDeviceId(context);
     const appVersion = context.extension.packageJSON.version ?? '0.0.0';
     const hostKind = vscode.env.appName ?? 'vscode';
@@ -100,7 +106,6 @@ export class OpenBurnBarAnalyticsService {
       telemetrySignal: new TelemetrySignal()
     });
 
-    const isFirstActivation = context.globalState.get<boolean>(PROMPT_SEEN_KEY) !== true;
     const service = new OpenBurnBarAnalyticsService(graph, hostKind, isFirstActivation);
 
     // Reconcile the persisted opt-in SETTING with the consent store. The setting
@@ -140,6 +145,7 @@ export class OpenBurnBarAnalyticsService {
       surface: SURFACE.app
     });
 
+    void context.globalState.update(INSTALL_MARKER_KEY, true);
     return service;
   }
 
@@ -252,4 +258,20 @@ function readGlobalAnalyticsOptIn(): boolean {
   const inspected = typeof config.inspect === 'function' ? config.inspect<boolean>(PROMPT_SETTING) : undefined;
   if (inspected) return inspected.globalValue === true;
   return false;
+}
+
+/**
+ * First activation is a dedicated install marker, not "analytics prompt handled."
+ * Any durable prior-install evidence means this is an upgrade (or a re-activation)
+ * and must not emit `install.started`.
+ */
+export function resolveFirstActivation(context: AnalyticsServiceHostContext): boolean {
+  if (context.globalState.get<boolean>(INSTALL_MARKER_KEY) === true) return false;
+  if (context.globalState.get<boolean>(PROMPT_SEEN_KEY) === true) return false;
+  const deviceId = context.globalState.get<string>(DEVICE_ID_KEY);
+  if (typeof deviceId === 'string' && deviceId.length > 0) return false;
+  const consent = context.globalState.get<string>(CONSENT_STORAGE_KEY);
+  if (consent === 'granted' || consent === 'declined') return false;
+  if (readGlobalAnalyticsOptIn()) return false;
+  return true;
 }

@@ -263,8 +263,10 @@ export async function handleCollectorPost(
       time: typeof event.time_ms === "number" ? event.time_ms : now,
       insert_id: asTrimmedString(event.insert_id) || `obb-${now}-${index}`,
       event_properties: {
-        ...sanitizeProps(event.props),
-        ...(asTrimmedString(event.category) ? { event_category: asTrimmedString(event.category) } : {}),
+        ...sanitizeProps({
+          ...event.props,
+          ...(asTrimmedString(event.category) ? { event_category: asTrimmedString(event.category) } : {}),
+        }),
         amplitude_project_id: String(projectId),
       },
     })),
