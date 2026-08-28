@@ -91,4 +91,15 @@ describe("FirstPartyCollectorTransport", () => {
     expect(second).toBe("stable-device-1");
     expect(storage.get(DEVICE_ID_KEY)).toBe("stable-device-1");
   });
+
+  it("replaces a persisted email or phone-shaped device id instead of reusing it", () => {
+    const storage = new Map<string, string>([[DEVICE_ID_KEY, "alice@example.com"]]);
+    const store = {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => void storage.set(key, value)
+    };
+    const next = persistentAnonymousId(store, () => "reminted-device-1");
+    expect(next).toBe("reminted-device-1");
+    expect(storage.get(DEVICE_ID_KEY)).toBe("reminted-device-1");
+  });
 });

@@ -476,6 +476,12 @@ describe("collector worker — consent and project routing", () => {
           },
           {
             name: "page.viewed",
+            device_id: "alice@example.com",
+            insert_id: "14155551212",
+            props: { product: "burnbar", surface: "home" }
+          },
+          {
+            name: "page.viewed",
             device_id: "550e8400-e29b-41d4-a716-446655440000",
             insert_id: "obb-ok-1",
             props: { product: "burnbar", surface: "home" }
@@ -489,11 +495,15 @@ describe("collector worker — consent and project routing", () => {
       }
     );
     const events = fetches[0]?.body.events as { device_id: string; insert_id: string }[];
-    expect(events[0]?.device_id).toBe("anonymous");
+    expect(events[0]?.device_id).toMatch(/^anon-/);
+    expect(events[0]?.device_id).not.toBe("anonymous");
+    expect(events[0]?.device_id).not.toBe("alice@example.com");
+    expect(events[1]?.device_id).toMatch(/^anon-/);
+    expect(events[1]?.device_id).not.toBe(events[0]?.device_id);
     expect(events[0]?.insert_id).toMatch(/^obb-/);
     expect(events[0]?.insert_id).not.toBe("14155551212");
-    expect(events[1]?.device_id).toBe("550e8400-e29b-41d4-a716-446655440000");
-    expect(events[1]?.insert_id).toBe("obb-ok-1");
+    expect(events[2]?.device_id).toBe("550e8400-e29b-41d4-a716-446655440000");
+    expect(events[2]?.insert_id).toBe("obb-ok-1");
   });
 
   it("returns a structured 502 when Amplitude fetch rejects", async () => {

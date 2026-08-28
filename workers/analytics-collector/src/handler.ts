@@ -244,8 +244,8 @@ function sanitizeAnonymousId(value: unknown, fallback: string): string {
   return trimmed;
 }
 
-function mintedInsertId(now: number, index: number): string {
-  return `obb-${now.toString(36)}-${index}-${Math.random().toString(36).slice(2, 10)}`;
+function mintedAnonymousId(prefix: "anon" | "obb", now: number, index: number): string {
+  return `${prefix}-${now.toString(36)}-${index}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 export function collectorClientKey(headers: { get(name: string): string | null }): string {
@@ -338,9 +338,9 @@ export async function handleCollectorPost(
     options: { min_id_length: 1 },
     events: allowed.map((event, index) => ({
       event_type: event.name,
-      device_id: sanitizeAnonymousId(event.device_id, "anonymous"),
+      device_id: sanitizeAnonymousId(event.device_id, mintedAnonymousId("anon", now, index)),
       time: typeof event.time_ms === "number" ? event.time_ms : now,
-      insert_id: sanitizeAnonymousId(event.insert_id, mintedInsertId(now, index)),
+      insert_id: sanitizeAnonymousId(event.insert_id, mintedAnonymousId("obb", now, index)),
       event_properties: {
         ...sanitizeProps({
           ...event.props,

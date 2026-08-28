@@ -18,12 +18,19 @@ type IdStorage = {
   removeItem?(key: string): void;
 };
 
+function isBoundedAnonymousId(value: string): boolean {
+  if (!/^[A-Za-z0-9._:-]{1,64}$/.test(value)) return false;
+  if (/[^\s@]+@[^\s@]+\.[^\s@]+/.test(value)) return false;
+  if (/^\d{7,}$/.test(value.replace(/[._:-]/g, ""))) return false;
+  return true;
+}
+
 export function persistentAnonymousId(
   storage: IdStorage,
   createId: () => string = newAnonymousId
 ): string {
   const existing = storage.getItem(DEVICE_ID_KEY)?.trim();
-  if (existing) return existing;
+  if (existing && isBoundedAnonymousId(existing)) return existing;
   const id = createId();
   try {
     storage.setItem(DEVICE_ID_KEY, id);
