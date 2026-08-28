@@ -144,9 +144,10 @@ jobs:
             hosting="$RUNNER_TEMP/candidate-hosting"
             test "$(cat "$hosting/CANDIDATE_SHA")" = "$CANDIDATE_SHA"
             test "$(du -sk "$hosting" | cut -f1)" -le 131072
-            test "$(find "$hosting" -mindepth 1 -maxdepth 1 -type f | wc -l | tr -d ' ')" = "2"
+            test "$(find "$hosting" -mindepth 1 -maxdepth 1 -type f | wc -l | tr -d ' ')" = "3"
             test "$(find "$hosting" -mindepth 1 -maxdepth 1 -type d -name website | wc -l | tr -d ' ')" = "1"
-            test "$(find "$hosting" -mindepth 1 -maxdepth 1 | wc -l | tr -d ' ')" = "3"
+            test "$(find "$hosting" -mindepth 1 -maxdepth 1 | wc -l | tr -d ' ')" = "4"
+            test -f "$hosting/firebase.json"
             test -f "$hosting/website/dist/index.html"
             test -f "$hosting/website/dist/subscribe/index.html"
             test "$(find "$hosting/website/dist" -type f | wc -l | tr -d ' ')" -le 10000
@@ -186,6 +187,7 @@ jobs:
             cp -R "$RUNNER_TEMP/candidate-hosting/website" "$deploy_root/website"
             node scripts/ci/write-firebase-hosting-ci-config.mjs \
               --mode staging-hosting \
+              --source "$RUNNER_TEMP/candidate-hosting/firebase.json" \
               --output "$deploy_root/firebase-hosting.json" \
               --manifest "$deploy_root/firebase-hosting.manifest.json" \
               --check

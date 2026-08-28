@@ -205,7 +205,7 @@
     "scripts/ci/verify-vendored-agent-source.sh": ["48ff000aa91c1c44","ba388cf6fa1a5f4f","8ca3239c3779963c","b6b9032d2a9961f6"],
     "scripts/ci/verify-windows-release-signing-preflight.sh": ["a61366e7cf919b8a","18d8a5b1c57f0999","8073c9f66d2fb40d","8d70b2fddab066df"],
     "scripts/ci/write-firebase-hosting-ci-config.mjs": ["e6767c25142b7ca8","58ab3d53831f39bc","419d58535746264e","b89aa9f5ccb7418f"],
-    "scripts/ci/write-firebase-hosting-ci-config.test.mjs": ["9c0d37d36e3971f5","9db08fa83c1246e5","739ba79d9486d419","3f55389b4d376938"],
+    "scripts/ci/write-firebase-hosting-ci-config.test.mjs": ["62a8343ff9ca3dd4","4cfb8c35503d466a","de3b5846678a2b2c","625c5549cf34dcca"],
     "scripts/ci/write_burnbar_source_provenance.py": ["58c17feac8c0cdec","79f0a5da8d349483","b0cf1bb4f36a0ceb","35271150afd53c21"],
     "scripts/ci/write_hermes_gateway_migration_drain_evidence.js": ["bc94fc90bff055eb","62f1120666d2d64e","6142f98942687b5d","ae12b1dc488291d9"],
     "scripts/create-corresponding-source.sh": ["1b136c51684fa9c7","a316b1d0da9f0862","3cf0473eb4c9ebc1","879001159bf386ab"],

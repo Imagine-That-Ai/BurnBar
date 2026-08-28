@@ -91,6 +91,8 @@ If a legitimate inline script/style changes, run `npm run build:offline` and
 then `npm run csp:update` to refresh `firebase.json` before re-running verify.
 `csp:check` always compares the committed dark `connect-src`. A nonempty
 `PUBLIC_ANALYTICS_COLLECTOR_URL` is applied only by `csp:update` at deploy.
+Staging `build-hosting-candidate` always runs `csp:update` after `build:staging`
+and ships the reviewed `firebase.json` in the hosting artifact.
 
 For a manual visual pass:
 

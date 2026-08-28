@@ -159,6 +159,9 @@ jobs:
           test -n "$STAGING_FIREBASE_PUBLIC_CONFIG_JSON"
           npm ci --prefix website
           npm run build:staging --prefix website
+          # Staging dist hashes + optional collector origin. csp:check stays
+          # dark in PR verify; this write is artifact-only and is not committed.
+          npm run csp:update --prefix website
           node scripts/ci/write-firebase-hosting-ci-config.test.mjs
 
       - name: Package bounded Hosting data
@@ -169,9 +172,10 @@ jobs:
           destination="$RUNNER_TEMP/staging-hosting/website/dist"
           mkdir -p "$destination"
           cp -R website/dist/. "$destination/"
+          cp firebase.json "$RUNNER_TEMP/staging-hosting/firebase.json"
           (
             cd "$RUNNER_TEMP/staging-hosting"
-            find website -type f -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS
+            find website firebase.json -type f -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS
             printf '%s\n' "$CANDIDATE_SHA" > CANDIDATE_SHA
           )
 

@@ -39,7 +39,11 @@ for staging). An unset variable builds `""`, so `Analytics.canSend` stays false 
 ops deploys the Worker and sets the variable. Do not bake a URL into the workflow.
 `csp:check` compares the committed dark marketing CSP. When the production variable
 is set, `deploy-hosting.yml` runs `csp:update` after verify so the deployed
-`firebase.json` `connect-src` includes that collector origin.
+`firebase.json` `connect-src` includes that collector origin. Staging
+`build-hosting-candidate` always runs `csp:update` after `build:staging` and
+packages the reviewed `firebase.json` in the hosting artifact;
+`deploy-staging-trusted.yml` generates `firebase-hosting.json` from that
+artifact instead of the committed dark default.
 
 Amplitude **routes by API key**, not by `AMPLITUDE_PROJECT_ID`. The numeric id is a local
 allowlist + event stamp (OpenBurnBar `830583` / Dev `830581` only). Bind each deploy's

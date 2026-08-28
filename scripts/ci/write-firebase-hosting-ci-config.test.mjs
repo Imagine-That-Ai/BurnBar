@@ -184,6 +184,29 @@ test("explicit bucket names fail closed on invalid input", () => {
   assert.match(result.stderr, /valid lowercase Cloud Storage bucket name/);
 });
 
+test("staging hosting preserves a reviewed collector connect-src from --source", () => {
+  const collectorOrigin = "https://collector.example";
+  const { result, config } = generateFromMutatedSource((firebaseJson) => {
+    const marketing = firebaseJson.hosting.find(
+      (entry) => entry.target === "marketing",
+    );
+    assert.ok(marketing, "mutated source must keep the marketing target");
+    const csp = marketing.headers
+      ?.flatMap((entry) => entry.headers ?? [])
+      .find((header) => header.key === "Content-Security-Policy");
+    assert.ok(csp, "mutated source must keep a marketing CSP");
+    csp.value = csp.value.replace(
+      "connect-src 'self'",
+      `connect-src 'self' ${collectorOrigin}`,
+    );
+  }, ["--mode", "staging-hosting", "--check"]);
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const csp = config.hosting[0].headers
+    .flatMap((entry) => entry.headers ?? [])
+    .find((header) => header.key === "Content-Security-Policy");
+  assert.match(csp.value, /connect-src 'self' https:\/\/collector\.example/);
+});
+
 test("staging hosting emits only the marketing site with a noindex boundary", () => {
   const directory = mkdtempSync(join(tmpdir(), "firebase-staging-hosting-"));
   try {
