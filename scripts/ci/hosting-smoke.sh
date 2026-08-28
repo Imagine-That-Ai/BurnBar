@@ -144,12 +144,21 @@ if (!live.endsWith(expected)) process.exit(1);
 const managedPrefix = live.slice(0, live.length - expected.length);
 const beginMarker = "# BEGIN Cloudflare Managed content\n";
 const endMarker = "\n# END Cloudflare Managed Content\n\n";
-if (!managedPrefix.startsWith(beginMarker) || !managedPrefix.endsWith(endMarker)) {
+const beginIndex = managedPrefix.indexOf(beginMarker);
+const endIndex = managedPrefix.lastIndexOf(endMarker);
+// Cloudflare may prepend its legal content-signals preamble before the
+// managed block. Require the block markers to be present and terminal, then
+// validate the managed body itself for nested markers.
+if (
+  beginIndex < 0 ||
+  endIndex < beginIndex ||
+  endIndex + endMarker.length !== managedPrefix.length
+) {
   process.exit(1);
 }
 const managedBody = managedPrefix.slice(
-  beginMarker.length,
-  managedPrefix.length - endMarker.length,
+  beginIndex + beginMarker.length,
+  endIndex,
 );
 if (
   managedBody.includes("# BEGIN Cloudflare Managed content") ||
