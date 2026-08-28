@@ -35,8 +35,8 @@ const GITHUB_RELEASE_CDN_HOSTS = new Set([
   "release-assets.githubusercontent.com",
   "github-releases.githubusercontent.com"
 ]);
-const GITHUB_RELEASE_ASSET = /^\/Imagine-That-Ai\/BurnBar\/releases\/(?:latest\/download|download\/[^/]+)\/[^/]+$/u;
-const GITHUB_FEED_ASSET = /^\/Imagine-That-Ai\/BurnBar\/releases\/(?:latest\/download|download\/[^/]+)\/latest-macos\.json$/u;
+const GITHUB_RELEASE_ASSET = /^\/Imagine-That-Ai\/BurnBar\/releases\/(?:latest\/download|download\/[^/%]+)\/[^/]+$/u;
+const GITHUB_FEED_ASSET = /^\/Imagine-That-Ai\/BurnBar\/releases\/(?:latest\/download|download\/[^/%]+)\/latest-macos\.json$/u;
 
 export type AppCommand = "install" | "update";
 
