@@ -80,11 +80,7 @@ object AnalyticsManager {
         get() = if (isGranted) anonymousDeviceId else null
 
     /** Test seam: attach a recorder without Android Context / Amplitude SDK. */
-    internal fun attachForTests(
-        store: AnalyticsConsentStore,
-        transport: AnalyticsTransport,
-        apiKey: String = "test-key",
-    ) {
+    internal fun attachForTests(store: AnalyticsConsentStore, transport: AnalyticsTransport, apiKey: String = "test-key") {
         consentStore = store
         analytics = Analytics(
             consent = store,
