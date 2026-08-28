@@ -127,7 +127,13 @@ const linuxPubKeyHref = `${linuxDownloadBaseUrl}/${SITE.linuxPubKeyFile}`;
           </p>
         </div>
         <div class="dlsec__primarywrap">
-          <a class="btn btn--ember dlsec__primary" href={macDownloadHref}>
+          <a
+            class="btn btn--ember dlsec__primary"
+            href={macDownloadHref}
+            data-analytics-event="download.cta.clicked"
+            data-analytics-prop-placement="download_hero"
+            data-analytics-prop-platform="macos"
+          >
             Download DMG · {SITE.macReleaseLatest}
             <span class="btn-arrow" aria-hidden="true">↓</span>
           </a>

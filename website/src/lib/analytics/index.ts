@@ -1,17 +1,18 @@
 /**
  * Browser entry point for website analytics. Imported only from bundled
- * (non-inline) Astro `<script>` tags, so it runs client-side and the Amplitude
- * chunk it pulls is served from `'self'` (CSP-clean) and fetched only after
- * opt-in. With no `PUBLIC_AMPLITUDE_API_KEY` the recorder stays dark.
+ * (non-inline) Astro `<script>` tags. The browser POSTs to a first-party
+ * collector URL — it never receives an Amplitude API key. With no
+ * `PUBLIC_ANALYTICS_COLLECTOR_URL` the recorder stays dark.
  */
 import { ConsentStore, type ConsentStorage } from "./consent";
 import { Analytics, type AnalyticsProps } from "./recorder";
-import { AmplitudeTransport } from "./amplitudeTransport";
+import { FirstPartyCollectorTransport } from "./collectorTransport";
+import { attributionFromSearch } from "./attribution";
 import { EVENT, type AnalyticsEventName, type ArenaSignInProvider } from "./events";
+import { eventsToEmit } from "./funnelAlias";
+import { FUNNEL_PRODUCT } from "../../../../analytics/funnel-contract";
 
-const API_KEY = (import.meta.env.PUBLIC_AMPLITUDE_API_KEY as string | undefined) ?? "";
-const SERVER_ZONE: "US" | "EU" =
-  (import.meta.env.PUBLIC_AMPLITUDE_SERVER_ZONE as string | undefined) === "EU" ? "EU" : "US";
+const COLLECTOR_URL = (import.meta.env.PUBLIC_ANALYTICS_COLLECTOR_URL as string | undefined)?.trim() ?? "";
 const APP_VERSION = (import.meta.env.PUBLIC_APP_VERSION as string | undefined) ?? "web";
 
 /** localStorage can be absent/blocked (private mode, SSR) — fall back to memory. */
@@ -29,12 +30,14 @@ export const analyticsConsent = new ConsentStore(safeStorage());
 
 export const analytics = new Analytics({
   consent: analyticsConsent,
-  transport: new AmplitudeTransport(SERVER_ZONE),
-  apiKey: API_KEY,
+  transport: new FirstPartyCollectorTransport(),
+  collectorUrl: COLLECTOR_URL,
   superProperties: () => ({
+    product: FUNNEL_PRODUCT,
     platform: "web",
     app_version: APP_VERSION,
-    surface: typeof location !== "undefined" ? surfaceForPath(location.pathname) : "other"
+    surface: typeof location !== "undefined" ? surfaceForPath(location.pathname) : "other",
+    ...(typeof location !== "undefined" ? attributionFromSearch(location.search) : {})
   })
 });
 
@@ -76,12 +79,12 @@ export function boot(): void {
   try {
     if (!sessionStorage.getItem(SESSION_KEY)) {
       sessionStorage.setItem(SESSION_KEY, "1");
-      analytics.track(EVENT.appSessionStarted);
+      trackEvent(EVENT.appSessionStarted);
     }
   } catch {
     /* sessionStorage blocked — skip the dedupe, still send the view below */
   }
-  analytics.track(EVENT.screenViewed); // surface is carried by super-properties
+  trackEvent(EVENT.screenViewed); // surface is carried by super-properties
 }
 
 export function grantConsent(): void {
@@ -101,7 +104,15 @@ export function revokeConsent(): void {
 }
 
 export function trackEvent(event: AnalyticsEventName, props?: AnalyticsProps): void {
-  analytics.track(event, props);
+  for (const name of eventsToEmit(event)) analytics.track(name, props);
+}
+
+/**
+ * Email capture without a raw address. The only legal payload is that a
+ * capture happened (`captured: true`) plus an optional bounded source.
+ */
+export function trackEmailCaptured(source = "unknown"): void {
+  analytics.track(EVENT.emailCaptured, { captured: true, source: source.slice(0, 40) });
 }
 
 /**
@@ -126,7 +137,7 @@ export function installDelegatedTracking(): void {
           props[key] = attr.value;
         }
       }
-      analytics.track(name as AnalyticsEventName, props);
+      trackEvent(name as AnalyticsEventName, props);
     },
     { capture: true }
   );

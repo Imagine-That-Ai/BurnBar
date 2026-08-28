@@ -62,6 +62,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   parses SQLite timestamps without a shared `DateFormatter`.
 
 ### Added
+- **Opt-in Amplitude funnel contract** — shared CMO acquisition events
+  (`page.viewed`, `app.opened`, `cta.clicked`, `download.clicked`,
+  `install.started`, `email.captured`) in `analytics/funnel-contract.ts`,
+  wired through the existing default-off consent gate. The marketing site
+  now POSTs to a first-party collector (`workers/analytics-collector/`) so
+  the browser never holds `AMPLITUDE_API_KEY`. Production project is
+  OpenBurnBar `830583`; Dev is `830581`. CubeLove `852537` and Hormiga
+  `703455` / `799824` are rejected. Native apps emit `app.opened` /
+  `install.started` only after the existing Settings opt-in (still off by
+  default). Docs: `README.md` § Opt-in analytics, `docs/analytics/`.
 - **Monthly Recap** (`docs/RECAP.md`) — a new destination that reads a calendar
   month of AI usage back as an editorial deck of cards: favourite model and
   model+harness pairing, weekday and late-night habits, streaks, project focus,

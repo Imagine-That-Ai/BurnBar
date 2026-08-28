@@ -65,6 +65,13 @@ enum MobileAnalytics {
             "is_first_launch": .bool(currentSessionIsFirstLaunch),
             "cold_start": .bool(true)
         ])
+        shared.track(.appOpened, [
+            "is_first_launch": .bool(currentSessionIsFirstLaunch),
+            "cold_start": .bool(true)
+        ])
+        if currentSessionIsFirstLaunch {
+            shared.track(.installStarted)
+        }
     }
 
     static func trackSessionSpineAfterFirstGrant() {

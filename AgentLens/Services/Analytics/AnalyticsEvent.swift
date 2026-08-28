@@ -29,6 +29,14 @@ enum AnalyticsEvent: String, CaseIterable, Sendable {
     /// feature-usage record (feature id + outcome + bucketed duration).
     case featureUsed = "feature.used"
 
+    // MARK: CMO acquisition funnel (taxonomy-legal aliases of page_viewed / app_opened / …)
+    case pageViewed = "page.viewed"
+    case appOpened = "app.opened"
+    case ctaClicked = "cta.clicked"
+    case downloadClicked = "download.clicked"
+    case installStarted = "install.started"
+    case emailCaptured = "email.captured"
+
     // MARK: Tier 2 — dashboard
     case dashboardScanRun = "dashboard.scan.run"
     case dashboardRecountRun = "dashboard.recount.run"
@@ -98,19 +106,20 @@ enum AnalyticsEvent: String, CaseIterable, Sendable {
     /// embedded in the name). Default is `primaryAction`.
     var category: AnalyticsCategory {
         switch self {
-        case .appSessionStarted, .appSessionEnded, .appForegrounded, .appBackgrounded,
+        case .appSessionStarted, .appOpened, .installStarted, .appSessionEnded, .appForegrounded, .appBackgrounded,
              .authSignedOut, .onboardingStarted, .onboardingDismissed, .consentAnalyticsGranted,
              .chatGenerationCompleted, .quotaRefreshStarted, .quotaRefreshSucceeded:
             return .lifecycle
         case .appStartupFailed, .errorHandled, .chatGenerationFailed, .chatAttachmentFailed,
              .quotaRefreshFailed, .budgetThresholdBlocked, .cloudsyncFailed:
             return .error
-        case .screenViewed, .navRouteChanged, .onboardingStepViewed,
+        case .screenViewed, .pageViewed, .navRouteChanged, .onboardingStepViewed,
              .menubarPopoverShown, .missionConsoleOpened:
             return .screenView
         case .authSignInCompleted, .authSignUpCompleted, .authAccountDeleted,
              .onboardingCompleted, .subscriptionUpgradeInitiated,
-             .chatDesktopControlGranted, .cloudsyncCompleted:
+             .chatDesktopControlGranted, .cloudsyncCompleted,
+             .ctaClicked, .downloadClicked, .emailCaptured:
             return .conversionAuth
         default:
             return .primaryAction

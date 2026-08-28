@@ -1,5 +1,9 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "astro/config";
 import mdx from "@astrojs/mdx";
+
+const websiteRoot = path.dirname(fileURLToPath(import.meta.url));
 
 // No Sentry, no PostHog, nothing: the footer says "No analytics, no trackers"
 // and the claim is enforced by absence — scripts/test-trust-copy.mjs fails the
@@ -24,6 +28,11 @@ export default defineConfig({
     port: 4321
   },
   vite: {
+    server: {
+      fs: {
+        allow: [websiteRoot, path.resolve(websiteRoot, "../analytics")]
+      }
+    },
     build: {
       cssMinify: "lightningcss"
       // No rollup externals: src/scripts/pretextShrinkwrap.ts used to import

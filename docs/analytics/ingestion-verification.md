@@ -20,15 +20,17 @@ contract.
 | Platform | Env var / secret | How it reaches the wrapper |
 |----------|------------------|----------------------------|
 | macOS (`AgentLens`) | `BURNBAR_AMPLITUDE_API_KEY` | `scripts/ci/inject-amplitude-config.sh` replaces the `__AMPLITUDE_API_KEY__` placeholder in `AnalyticsConfig.swift` |
-| Website (`website`) | `PUBLIC_AMPLITUDE_API_KEY` | Astro build env → `import.meta.env` |
+| Website (`website`) | `PUBLIC_ANALYTICS_COLLECTOR_URL` (browser) + `AMPLITUDE_API_KEY` (collector Worker secret) | Browser POSTs to the first-party collector; the Worker stamps the Amplitude key. `PUBLIC_AMPLITUDE_API_KEY` is retired for the marketing site. |
 | Console (`apps/console`) | `NEXT_PUBLIC_AMPLITUDE_API_KEY` | Next build env → `process.env` |
 | VS Code ext (`extensions/openburnbar`) | `BURNBAR_EXTENSION_AMPLITUDE_API_KEY` | injected at package/CI time |
 | Backend (`functions`) | `AMPLITUDE_API_KEY` | functions runtime config/env |
 | Android (`android/app`) | `OPENBURNBAR_AMPLITUDE_API_KEY` (or `amplitude.apiKey` in gitignored `local.properties`) | Gradle → `BuildConfig.AMPLITUDE_API_KEY` |
 | iOS / widget / keyboard | xcconfig/Info.plist placeholder injected at build | shared App Group → host wrapper |
 
-CSP `connect-src` already allows `https://api2.amplitude.com` on the marketing **and** console
-hosting targets (`firebase.json`).
+The marketing site no longer talks to `api2.amplitude.com` from the browser. Point
+`PUBLIC_ANALYTICS_COLLECTOR_URL` at the first-party Worker (`workers/analytics-collector/`)
+or another same-origin collector path, and allow that origin in `connect-src`.
+Console / native clients still use platform Amplitude SDKs with build-time keys.
 
 ## Verification (2026-06-18)
 

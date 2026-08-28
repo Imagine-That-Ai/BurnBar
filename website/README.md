@@ -2,8 +2,10 @@
 
 The marketing website for OpenBurnBar — `burnbar.ai`.
 
-Static site, no analytics, no third-party fonts loaded remotely, no JavaScript
-shipped to users beyond a tiny header script. Built with [Astro](https://astro.build).
+Static site. Usage analytics are **off by default** and stay dark unless the
+visitor accepts the consent banner **and** `PUBLIC_ANALYTICS_COLLECTOR_URL` is
+set at build time. The browser never receives an Amplitude API key. Fonts are
+self-hosted. Built with [Astro](https://astro.build).
 
 ## Stack
 
@@ -44,6 +46,13 @@ All content data lives in `src/data/`. Edit the data files; rebuild.
 cd website
 npm ci
 npm run dev    # http://127.0.0.1:4321
+```
+
+Optional opt-in analytics (still dark until the visitor accepts the banner):
+
+```sh
+export PUBLIC_ANALYTICS_COLLECTOR_URL="https://your-first-party-collector.example"
+# Never set PUBLIC_AMPLITUDE_API_KEY in the browser build.
 ```
 
 ## Build

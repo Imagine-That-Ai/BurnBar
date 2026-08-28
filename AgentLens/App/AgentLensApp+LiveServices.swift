@@ -118,6 +118,10 @@ extension OpenBurnBarApp {
         guard !OpenBurnBarRuntime.shouldUseTestStubScene else { return }
 
         Analytics.shared.track(.appSessionStarted)
+        Analytics.shared.track(.appOpened)
+        if context.settingsManager.isFirstLaunch {
+            Analytics.shared.track(.installStarted)
+        }
 
         #if canImport(AppKit) && !DISTRIBUTION_MAS
         // Wire the trust sheet before anything can ask for a permission. The ladder

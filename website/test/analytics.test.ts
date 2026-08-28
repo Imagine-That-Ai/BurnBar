@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { ConsentStore, type ConsentStorage } from "../src/lib/analytics/consent";
 import { Analytics, type AnalyticsTransport } from "../src/lib/analytics/recorder";
 import { EVENT } from "../src/lib/analytics/events";
+import { eventsToEmit } from "../src/lib/analytics/funnelAlias";
 import { bucketCount, bucketDurationMs, bucketDurationSeconds } from "../src/lib/analytics/buckets";
 
 /** In-memory Storage seam — vitest's node env has no localStorage. */
@@ -32,14 +33,14 @@ class FakeTransport implements AnalyticsTransport {
   }
 }
 
-function make(granted: boolean, apiKey = "test-key") {
+function make(granted: boolean, collectorUrl = "https://collect.example.test/v1") {
   const consent = new ConsentStore(makeStorage());
   if (granted) consent.grant();
   const transport = new FakeTransport();
   const analytics = new Analytics({
     consent,
     transport,
-    apiKey,
+    collectorUrl,
     superProperties: () => ({ platform: "website", app_version: "1.0.0" }),
   });
   return { analytics, transport, consent };
@@ -118,7 +119,7 @@ describe("Analytics recorder — consent contract", () => {
     expect(transport.sent).toHaveLength(n);
   });
 
-  it("stays dark with no API key even when consent is granted", () => {
+  it("stays dark with no collector URL even when consent is granted", () => {
     const { analytics, transport } = make(true, "");
     analytics.track(EVENT.screenViewed, { surface: "home" });
     expect(transport.isStarted).toBe(false);
@@ -165,5 +166,27 @@ describe("buckets match the macOS labels verbatim", () => {
     expect(bucketDurationSeconds(2)).toBe("<5s");
     expect(bucketDurationSeconds(90)).toBe("30s-2m");
     expect(bucketDurationSeconds(9999)).toBe(">60m");
+  });
+});
+
+describe("CMO funnel aliases", () => {
+  it("pairs product events with taxonomy-legal funnel names", () => {
+    expect(eventsToEmit(EVENT.screenViewed)).toEqual([EVENT.screenViewed, EVENT.pageViewed]);
+    expect(eventsToEmit(EVENT.appSessionStarted)).toEqual([EVENT.appSessionStarted, EVENT.appOpened]);
+    expect(eventsToEmit(EVENT.downloadCtaClicked)).toEqual([
+      EVENT.downloadCtaClicked,
+      EVENT.downloadClicked,
+    ]);
+    expect(eventsToEmit(EVENT.pricingCtaClicked)).toEqual([EVENT.pricingCtaClicked, EVENT.ctaClicked]);
+    expect(eventsToEmit(EVENT.errorHandled)).toEqual([EVENT.errorHandled]);
+  });
+
+  it("does not emit aliases when the recorder is dark", () => {
+    const { analytics, transport } = make(false);
+    for (const name of eventsToEmit(EVENT.downloadCtaClicked)) {
+      analytics.track(name, { placement: "header" });
+    }
+    expect(transport.sent).toHaveLength(0);
+    expect(transport.isStarted).toBe(false);
   });
 });

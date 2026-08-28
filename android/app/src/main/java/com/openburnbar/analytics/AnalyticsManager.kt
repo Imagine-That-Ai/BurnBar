@@ -125,6 +125,16 @@ object AnalyticsManager {
                 "cold_start" to true.av(),
             ),
         )
+        track(
+            AnalyticsEvent.APP_OPENED,
+            mapOf(
+                "is_first_launch" to isFirstLaunch.av(),
+                "cold_start" to true.av(),
+            ),
+        )
+        if (isFirstLaunch) {
+            track(AnalyticsEvent.INSTALL_STARTED)
+        }
     }
 
     fun trackCurrentSessionStartIfConsented() {
@@ -136,6 +146,7 @@ object AnalyticsManager {
         val region = locale.country.takeIf { it.isNotBlank() }
         val bcp47 = if (region != null) "${locale.language}-$region" else locale.language
         return linkedMapOf(
+            "product" to "burnbar".av(),
             "platform" to "android".av(),
             "app_version" to BuildConfig.VERSION_NAME.av(),
             "app_build" to BuildConfig.VERSION_CODE.toString().av(),

@@ -2,7 +2,7 @@
 // Opt-in analytics consent banner. Renders hidden; the bundled script below
 // shows it only on first visit (consent unset) and boots analytics ONLY after
 // an explicit Accept. Declining — or never answering — keeps the site dark:
-// the Amplitude chunk is never even fetched. Revisit via any `[data-analytics-manage]`
+// the first-party collector is never called. Revisit via any `[data-analytics-manage]`
 // control (see Footer). This is the single client entry point for analytics and
 // is included once from BaseLayout.
 ---

@@ -99,11 +99,10 @@ function buildMarketingCsp(
     `style-src-attr 'unsafe-hashes' ${styleAttributeHashes.join(" ")}`,
     `script-src 'self' ${scriptHashes.join(" ")}${scriptSrc.length > 0 ? ` ${scriptSrc.join(" ")}` : ""}`,
     "font-src 'self' data:",
-    // Opt-in analytics (Amplitude) posts events to its US ingest endpoint. The
-    // domain is allowed site-wide because the consent banner can boot analytics
-    // on any page — but the SDK is dynamically imported and sends nothing until
-    // the visitor opts in. An EU project would swap in https://api.eu.amplitude.com.
-    `connect-src 'self' https://api2.amplitude.com${connectSrc.length > 0 ? ` ${connectSrc.join(" ")}` : ""}`,
+    // Opt-in analytics POSTs to a first-party collector URL (same origin by
+    // default). The browser never talks to api2.amplitude.com. Extra collector
+    // origins, if any, are passed via connectSrc.
+    `connect-src 'self'${connectSrc.length > 0 ? ` ${connectSrc.join(" ")}` : ""}`,
     "frame-ancestors 'none'",
     "base-uri 'self'",
     `form-action 'self'${formAction.length > 0 ? ` ${formAction.join(" ")}` : ""}`,
