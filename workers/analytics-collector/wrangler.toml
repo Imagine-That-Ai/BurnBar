@@ -15,3 +15,14 @@ compatibility_date = "2026-08-01"
 [vars]
 AMPLITUDE_PROJECT_ID = "830581"
 AMPLITUDE_SERVER_ZONE = "US"
+
+# Origin is not authorization. Non-browser clients can spoof an allowlisted
+# Origin and POST consented batches. This binding is the server-side cap.
+# namespace_id is account-local; Workers that share it share the counter.
+[[ratelimits]]
+name = "COLLECTOR_RATE_LIMIT"
+namespace_id = "1001"
+
+  [ratelimits.simple]
+  limit = 60
+  period = 60

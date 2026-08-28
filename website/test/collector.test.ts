@@ -13,7 +13,10 @@ import {
 import {
   handleCollectorPost,
   AMPLITUDE_HTTP_V2_US,
-  isAllowedCollectorOrigin
+  isAllowedCollectorOrigin,
+  createMemoryRateLimiter,
+  rejectOversizedCollectorBody,
+  MAX_COLLECTOR_BODY_BYTES
 } from "../../workers/analytics-collector/src/handler";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -505,6 +508,54 @@ describe("collector worker — consent and project routing", () => {
     expect(result.body.reason).toBe("amplitude_http_error");
     expect(result.forwarded).toBe(0);
     expect(result.amplitudeUrl).toBe(AMPLITUDE_HTTP_V2_US);
+  });
+
+  it("returns 429 when the rate limiter rejects the client key", async () => {
+    const fetches: string[] = [];
+    const limiter = { limit: async () => ({ success: false }) };
+    const result = await handleCollectorPost(
+      { consent: true, events: [{ name: "page.viewed" }] },
+      {
+        AMPLITUDE_API_KEY: "secret-key",
+        AMPLITUDE_PROJECT_ID: "830581",
+        COLLECTOR_RATE_LIMIT: limiter
+      },
+      async (url) => {
+        fetches.push(url);
+        return new Response("{}", { status: 200 });
+      },
+      "https://burnbar.ai",
+      "203.0.113.9"
+    );
+    expect(result.status).toBe(429);
+    expect(result.body.reason).toBe("rate_limited");
+    expect(result.forwarded).toBe(0);
+    expect(fetches).toHaveLength(0);
+  });
+
+  it("forwards when the rate limiter allows the client key", async () => {
+    const limiter = createMemoryRateLimiter(2, 60_000);
+    const result = await handleCollectorPost(
+      { consent: true, events: [{ name: "page.viewed" }] },
+      {
+        AMPLITUDE_API_KEY: "secret-key",
+        AMPLITUDE_PROJECT_ID: "830581",
+        COLLECTOR_RATE_LIMIT: limiter
+      },
+      async () => new Response("{}", { status: 200 }),
+      "https://burnbar-staging.web.app",
+      "203.0.113.9"
+    );
+    expect(result.status).toBe(200);
+    expect(result.forwarded).toBe(1);
+  });
+
+  it("rejects an oversized collector body before JSON parse", () => {
+    const oversized = "x".repeat(MAX_COLLECTOR_BODY_BYTES + 1);
+    const result = rejectOversizedCollectorBody(oversized);
+    expect(result?.status).toBe(413);
+    expect(result?.body.reason).toBe("body_too_large");
+    expect(rejectOversizedCollectorBody("{\"consent\":true}")).toBeNull();
   });
 });
 

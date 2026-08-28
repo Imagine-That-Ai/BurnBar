@@ -113,17 +113,27 @@ function buildMarketingCsp(
   return directives.join("; ");
 }
 
-function extraCollectorConnectSrc(env = process.env) {
-  const raw = (env.PUBLIC_ANALYTICS_COLLECTOR_URL ?? "").trim();
-  if (!raw) return [];
+function parseCollectorUrl(raw) {
+  const trimmed = (raw ?? "").trim();
+  if (!trimmed) return null;
   let url;
   try {
-    url = new URL(raw);
+    url = new URL(trimmed);
   } catch {
-    return [];
+    throw new Error(`PUBLIC_ANALYTICS_COLLECTOR_URL must be an absolute URL, got: ${trimmed}`);
   }
   const local = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(url.origin);
-  if (url.protocol !== "https:" && !local) return [];
+  if (url.protocol !== "https:" && !local) {
+    throw new Error(
+      `PUBLIC_ANALYTICS_COLLECTOR_URL must be https (or http localhost / 127.0.0.1), got: ${trimmed}`,
+    );
+  }
+  return url;
+}
+
+function extraCollectorConnectSrc(env = process.env) {
+  const url = parseCollectorUrl(env.PUBLIC_ANALYTICS_COLLECTOR_URL);
+  if (!url) return [];
   // CSP `'self'` is exact-origin. A page on burnbar.ai cannot POST to
   // burnbar.web.app (or www) unless that origin is listed, even when it is
   // first-party.
@@ -134,7 +144,10 @@ function expectedMarketingCsps(hashes, { includeCollector = false, env = process
   // `--check` compares the committed dark default. Collector origins are
   // applied only by `--write` at deploy time when PUBLIC_ANALYTICS_COLLECTOR_URL
   // is set, so PR verify stays green without baking a Worker URL into git.
-  const collectorOrigins = includeCollector ? extraCollectorConnectSrc(env) : [];
+  // Always validate a nonempty URL, even during `--check` / dark CSP.
+  // A typo must fail the deploy, not silently omit connect-src.
+  const parsedCollectorOrigins = extraCollectorConnectSrc(env);
+  const collectorOrigins = includeCollector ? parsedCollectorOrigins : [];
   const firebaseAuthSources = {
     imgSrc: ["https://*.googleusercontent.com"],
     scriptSrc: [
@@ -256,7 +269,7 @@ function main(argv = process.argv.slice(2)) {
   }
 }
 
-export { extraCollectorConnectSrc, expectedMarketingCsps };
+export { extraCollectorConnectSrc, expectedMarketingCsps, parseCollectorUrl };
 
 function invokedDirectly() {
   const entry = process.argv[1];

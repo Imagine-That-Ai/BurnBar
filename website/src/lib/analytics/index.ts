@@ -12,8 +12,27 @@ import { EVENT, type AnalyticsEventName, type ArenaSignInProvider } from "./even
 import { eventsToEmit } from "./funnelAlias";
 import { FUNNEL_PRODUCT } from "../../../../analytics/funnel-contract";
 
-const COLLECTOR_URL =
-  (import.meta.env.PUBLIC_ANALYTICS_COLLECTOR_URL as string | undefined)?.trim() ?? "";
+function collectorUrlFromEnv(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return "";
+  let url: URL;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    throw new Error(`PUBLIC_ANALYTICS_COLLECTOR_URL must be an absolute URL, got: ${trimmed}`);
+  }
+  const local = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(url.origin);
+  if (url.protocol !== "https:" && !local) {
+    throw new Error(
+      `PUBLIC_ANALYTICS_COLLECTOR_URL must be https (or http localhost / 127.0.0.1), got: ${trimmed}`
+    );
+  }
+  return trimmed;
+}
+
+const COLLECTOR_URL = collectorUrlFromEnv(
+  (import.meta.env.PUBLIC_ANALYTICS_COLLECTOR_URL as string | undefined) ?? ""
+);
 const APP_VERSION = (import.meta.env.PUBLIC_APP_VERSION as string | undefined) ?? "web";
 
 /** localStorage can be absent/blocked (private mode, SSR) — fall back to memory. */

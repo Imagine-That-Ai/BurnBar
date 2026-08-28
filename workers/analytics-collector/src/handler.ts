@@ -34,6 +34,9 @@ export const AMPLITUDE_HTTP_V2_US = "https://api2.amplitude.com/2/httpapi";
 export const AMPLITUDE_HTTP_V2_EU = "https://api.eu.amplitude.com/2/httpapi";
 
 export const MAX_COLLECTOR_EVENTS = 20;
+export const MAX_COLLECTOR_BODY_BYTES = 16_384;
+export const COLLECTOR_RATE_LIMIT_MAX = 60;
+export const COLLECTOR_RATE_LIMIT_PERIOD_SECONDS = 60;
 
 const PRODUCT_EVENT_ALLOWLIST = new Set<string>([
   ...FUNNEL_EVENT_NAMES,
@@ -113,10 +116,15 @@ const ALLOWED_PROP_KEYS = new Set<string>([
   "source",
 ]);
 
+export type RateLimitBinding = {
+  limit(options: { key: string }): Promise<{ success: boolean }>;
+};
+
 export type CollectorEnv = {
   AMPLITUDE_API_KEY?: string;
   AMPLITUDE_PROJECT_ID?: string;
   AMPLITUDE_SERVER_ZONE?: string;
+  COLLECTOR_RATE_LIMIT?: RateLimitBinding;
 };
 
 export type CollectorEvent = {
@@ -240,14 +248,56 @@ function mintedInsertId(now: number, index: number): string {
   return `obb-${now.toString(36)}-${index}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+export function collectorClientKey(headers: { get(name: string): string | null }): string {
+  return headers.get("cf-connecting-ip")?.trim() || "unknown";
+}
+
+/** Isolate-local fallback when the Wrangler rate-limit binding is absent (tests / wrangler dev). */
+export function createMemoryRateLimiter(
+  limit = COLLECTOR_RATE_LIMIT_MAX,
+  periodMs = COLLECTOR_RATE_LIMIT_PERIOD_SECONDS * 1000,
+): RateLimitBinding {
+  const hits = new Map<string, number[]>();
+  return {
+    async limit({ key }) {
+      const now = Date.now();
+      const window = (hits.get(key) ?? []).filter((t) => now - t < periodMs);
+      if (window.length >= limit) {
+        hits.set(key, window);
+        return { success: false };
+      }
+      window.push(now);
+      hits.set(key, window);
+      return { success: true };
+    },
+  };
+}
+
+export function rejectOversizedCollectorBody(raw: string): HandlerResult | null {
+  if (raw.length > MAX_COLLECTOR_BODY_BYTES) {
+    return json(413, { accepted: false, reason: "body_too_large" });
+  }
+  return null;
+}
+
 export async function handleCollectorPost(
   body: CollectorRequestBody | null | undefined,
   env: CollectorEnv,
   fetchImpl: FetchLike,
   origin?: string | null,
+  clientKey?: string,
 ): Promise<HandlerResult> {
   if (origin !== undefined && !isKnownCollectorOrigin(origin)) {
     return json(403, { accepted: false, reason: "origin_rejected" });
+  }
+
+  if (env.COLLECTOR_RATE_LIMIT) {
+    const { success } = await env.COLLECTOR_RATE_LIMIT.limit({
+      key: (clientKey ?? "").trim() || "unknown",
+    });
+    if (!success) {
+      return json(429, { accepted: false, reason: "rate_limited" });
+    }
   }
 
   if (body == null || typeof body !== "object" || Array.isArray(body)) {

@@ -57,8 +57,10 @@ export PUBLIC_ANALYTICS_COLLECTOR_URL="https://your-first-party-collector.exampl
 
 Official hosting builds use `vars.PUBLIC_ANALYTICS_COLLECTOR_URL` (production)
 and `vars.STAGING_ANALYTICS_COLLECTOR_URL` (staging). Unset keeps the artifact
-dark. Set them only after the collector Worker is deployed and its origin is
-in the marketing CSP.
+dark. A nonempty value that is not an absolute `https` URL (or `http` localhost
+/ `127.0.0.1`) fails `csp:check`, `csp:update`, and the website build — it must
+not deploy a collector-less `connect-src`. Set them only after the collector
+Worker is deployed.
 
 ## Build
 

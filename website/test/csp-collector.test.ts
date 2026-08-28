@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   expectedMarketingCsps,
   extraCollectorConnectSrc,
+  parseCollectorUrl,
 } from "../scripts/update-csp-hashes.mjs";
 
 const hashes = {
@@ -28,12 +29,27 @@ describe("marketing CSP collector origin", () => {
     ).toEqual(["http://localhost:8787"]);
   });
 
-  it("rejects non-https remote collectors", () => {
-    expect(
-      extraCollectorConnectSrc({
-        PUBLIC_ANALYTICS_COLLECTOR_URL: "http://evil.example/x",
+  it("fails closed on a nonempty invalid or non-https collector URL", () => {
+    expect(() => extraCollectorConnectSrc({ PUBLIC_ANALYTICS_COLLECTOR_URL: "not-a-url" })).toThrow(
+      /absolute URL/,
+    );
+    expect(() => extraCollectorConnectSrc({ PUBLIC_ANALYTICS_COLLECTOR_URL: "http://evil.example/x" })).toThrow(
+      /must be https/,
+    );
+    expect(() =>
+      expectedMarketingCsps(hashes, {
+        includeCollector: false,
+        env: { PUBLIC_ANALYTICS_COLLECTOR_URL: "htps://collect.burnbar.ai" },
       }),
-    ).toEqual([]);
+    ).toThrow(/must be https/);
+    expect(() =>
+      expectedMarketingCsps(hashes, {
+        includeCollector: false,
+        env: { PUBLIC_ANALYTICS_COLLECTOR_URL: "not a url" },
+      }),
+    ).toThrow(/absolute URL/);
+    expect(parseCollectorUrl("")).toBeNull();
+    expect(parseCollectorUrl("https://collect.burnbar.ai/v1").origin).toBe("https://collect.burnbar.ai");
   });
 
   it("keeps --check / dark expected CSP collector-free when the env URL is set", () => {
