@@ -1,6 +1,6 @@
 {
   "name": "openburnbar",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "OpenBurnBar Node CLI — loopback OpenAI/Anthropic gateway, hosted MCP stdio shim, session resume, Pensieve memory, and explicit macOS app install/update.",
   "keywords": [
     "openburnbar",

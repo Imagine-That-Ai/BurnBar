@@ -97,8 +97,10 @@ Both commands:
 4. Require the Mac to satisfy the feed's `minimumSystemVersion`.
 5. Refuse to replace a running app/daemon, a Mac App Store installation, or a
    Homebrew-managed Caskroom installation.
-6. Mount the DMG read-only and require the mounted app to have the exact feed
-   version, build, and `com.openburnbar.app` bundle identifier.
+6. Mount the DMG read-only and require the mounted app to have the same
+   Apple-visible marketing version (SemVer `+build` metadata such as
+   `+repair.N` is ignored), the same build, and `com.openburnbar.app`
+   bundle identifier.
 7. Verify the app code signature and atomically replace
    `/Applications/OpenBurnBar.app`.
 

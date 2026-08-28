@@ -13,11 +13,13 @@ import {
   DEFAULT_MACOS_FEED_URL,
   HOMEBREW_CASK_RECEIPT_DIRS,
   SU_PUBLIC_ED_KEY_BASE64,
+  appleVisibleVersion,
   compareNumericVersion,
   isAllowedDownloadUrl,
   isAllowedFeedUrl,
   isAllowedFeedResponseUrl,
   isNewerRelease,
+  offeredMatchesAdvertisedRelease,
   parseAppCliOptions,
   parseMacOSReleaseFeed,
   parseMountPoint,
@@ -259,14 +261,14 @@ test("default feed URL is the desktop updater URL and is not a pinned old versio
   assert.match(source, /downloads\.burnbar\.ai\/latest-macos\.json/);
 });
 
-test("package is 0.2.1 and never downloads the Mac app during npm install", () => {
+test("package is 0.2.2 and never downloads the Mac app during npm install", () => {
   const pkg = JSON.parse(readFileSync(join(PKG_ROOT, "package.json"), "utf8")) as {
     name: string;
     version: string;
     scripts?: Record<string, string>;
   };
   assert.equal(pkg.name, "openburnbar");
-  assert.equal(pkg.version, "0.2.1");
+  assert.equal(pkg.version, "0.2.2");
   assert.equal(pkg.scripts?.postinstall, undefined);
   assert.equal(pkg.scripts?.install, undefined);
   assert.equal(pkg.scripts?.prepare, undefined);
@@ -371,6 +373,61 @@ test("version comparison matches the desktop updater", () => {
   assert.equal(isNewerRelease({ version: "1.0.0", build: "201" }, { version: "1.0.0", build: "200" }), true);
   assert.equal(isNewerRelease({ version: "1.0.0", build: "200" }, { version: "1.0.0", build: "201" }), false);
   assert.equal(isNewerRelease({ version: "1.10.0", build: "200" }, { version: "1.9.0", build: "200" }), true);
+});
+
+test("Apple-visible version strips SemVer +build metadata used on the public feed", () => {
+  assert.equal(appleVisibleVersion("1.0.40+repair.34"), "1.0.40");
+  assert.equal(appleVisibleVersion("1.0.40"), "1.0.40");
+  assert.equal(appleVisibleVersion(" 1.0.40+repair.34 "), "1.0.40");
+  assert.equal(compareNumericVersion("1.0.40+repair.34", "1.0.40"), 0);
+  assert.equal(compareNumericVersion("1.10.0+repair.1", "1.9.0"), 1);
+  assert.equal(compareNumericVersion("1.0.40+repair.35", "1.0.40+repair.34"), 0);
+});
+
+test("same-build +repair.N feed matches the mounted Apple marketing version", () => {
+  assert.equal(
+    offeredMatchesAdvertisedRelease(
+      { version: "1.0.40", build: "81" },
+      { version: "1.0.40+repair.34", build: "81" }
+    ),
+    true
+  );
+  assert.equal(
+    offeredMatchesAdvertisedRelease(
+      { version: "1.0.40+repair.34", build: "81" },
+      { version: "1.0.40+repair.34", build: "81" }
+    ),
+    true
+  );
+  assert.equal(
+    offeredMatchesAdvertisedRelease(
+      { version: "1.0.40", build: "81" },
+      { version: "1.0.40", build: "81" }
+    ),
+    true
+  );
+  assert.equal(
+    offeredMatchesAdvertisedRelease(
+      { version: "1.0.41", build: "81" },
+      { version: "1.0.40+repair.34", build: "81" }
+    ),
+    false
+  );
+  assert.equal(
+    offeredMatchesAdvertisedRelease(
+      { version: "1.0.40", build: "82" },
+      { version: "1.0.40+repair.34", build: "81" }
+    ),
+    false
+  );
+  assert.equal(
+    isNewerRelease({ version: "1.0.40+repair.34", build: "81" }, { version: "1.0.40", build: "81" }),
+    false
+  );
+  assert.equal(
+    isNewerRelease({ version: "1.0.40+repair.34", build: "82" }, { version: "1.0.40", build: "81" }),
+    true
+  );
 });
 
 test("mount-point and Info.plist parsers prefer the volume root", () => {
@@ -543,6 +600,76 @@ test("app install refuses a mounted app whose version or build differs from the 
     assert.equal(code, 1);
     assert.match(env.errors.join(""), /feed advertised/);
     assert.equal(existsSync(join(env.applicationsDir, APP_BUNDLE_NAME)), false);
+  } finally {
+    env.cleanup();
+  }
+});
+
+test("app install accepts a +repair.N feed when the mounted app has the same marketing version and build", async () => {
+  const key = testKey();
+  const bytes = Buffer.from("OpenBurnBar-1.0.40+repair.34-dmg");
+  const release = makeRelease(bytes, key, {
+    version: "1.0.40+repair.34",
+    build: "81",
+    downloadUrl: "https://downloads.burnbar.ai/OpenBurnBar-1.0.40+repair.34-macOS.dmg",
+    dmg: "OpenBurnBar-1.0.40+repair.34-macOS.dmg"
+  });
+  const env = harness(bytes, release, key, undefined, {
+    version: "1.0.40",
+    build: "81",
+    bundleId: APP_BUNDLE_ID
+  });
+  try {
+    const code = await runAppCommand("install", { dryRun: false }, env.deps);
+    assert.equal(code, 0);
+    const installed = readInstalledBundle(env.applicationsDir, {
+      exists: (path) => existsSync(path),
+      readFile: (path) => readFileSync(path)
+    });
+    assert.deepEqual(installed, { version: "1.0.40", build: "81", bundleId: APP_BUNDLE_ID });
+    assert.match(env.logs.join(""), /Installed OpenBurnBar 1\.0\.40\+repair\.34 \(build 81\)/);
+    assert.ok(env.commands.some((item) => item.command === "/usr/bin/ditto"));
+    assert.doesNotMatch(env.errors.join(""), /feed advertised/);
+  } finally {
+    env.cleanup();
+  }
+});
+
+test("app install still refuses a +repair.N feed when the mounted marketing version differs", async () => {
+  const key = testKey();
+  const bytes = Buffer.from("signed-but-wrong-marketing-version");
+  const release = makeRelease(bytes, key, {
+    version: "1.0.40+repair.34",
+    build: "81"
+  });
+  const env = harness(bytes, release, key, undefined, {
+    version: "1.0.41",
+    build: "81",
+    bundleId: APP_BUNDLE_ID
+  });
+  try {
+    const code = await runAppCommand("install", { dryRun: false }, env.deps);
+    assert.equal(code, 1);
+    assert.match(env.errors.join(""), /mounted app is 1\.0\.41 \(build 81\).*advertised 1\.0\.40\+repair\.34 \(build 81\)/s);
+    assert.equal(existsSync(join(env.applicationsDir, APP_BUNDLE_NAME)), false);
+  } finally {
+    env.cleanup();
+  }
+});
+
+test("app update is a no-op when the installed marketing version matches a +repair.N feed at the same build", async () => {
+  const key = testKey();
+  const bytes = Buffer.from("already-installed-repair-ship");
+  const release = makeRelease(bytes, key, {
+    version: "1.0.40+repair.34",
+    build: "81"
+  });
+  const env = harness(bytes, release, key, { version: "1.0.40", build: "81" });
+  try {
+    const code = await runAppCommand("update", { dryRun: false }, env.deps);
+    assert.equal(code, 0);
+    assert.equal(env.downloads(), 0);
+    assert.match(env.logs.join(""), /already installed/);
   } finally {
     env.cleanup();
   }
