@@ -12,7 +12,8 @@ import { EVENT, type AnalyticsEventName, type ArenaSignInProvider } from "./even
 import { eventsToEmit } from "./funnelAlias";
 import { FUNNEL_PRODUCT } from "../../../../analytics/funnel-contract";
 
-const COLLECTOR_URL = (import.meta.env.PUBLIC_ANALYTICS_COLLECTOR_URL as string | undefined)?.trim() ?? "";
+const COLLECTOR_URL =
+  (import.meta.env.PUBLIC_ANALYTICS_COLLECTOR_URL as string | undefined)?.trim() ?? "";
 const APP_VERSION = (import.meta.env.PUBLIC_APP_VERSION as string | undefined) ?? "web";
 
 /** localStorage can be absent/blocked (private mode, SSR) — fall back to memory. */

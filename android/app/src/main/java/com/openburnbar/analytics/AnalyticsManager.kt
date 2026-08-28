@@ -79,6 +79,28 @@ object AnalyticsManager {
     val analyticsDeviceIdPayload: String?
         get() = if (isGranted) anonymousDeviceId else null
 
+    /** Test seam: attach a recorder without Android Context / Amplitude SDK. */
+    internal fun attachForTests(
+        store: AnalyticsConsentStore,
+        transport: AnalyticsTransport,
+        apiKey: String = "test-key",
+    ) {
+        consentStore = store
+        analytics = Analytics(
+            consent = store,
+            transport = transport,
+            apiKey = apiKey,
+            superProperties = ::superProperties,
+        )
+    }
+
+    internal fun resetForTests() {
+        analytics = null
+        consentStore = null
+        anonymousDeviceId = null
+        currentSessionIsFirstLaunch = false
+    }
+
     fun rememberLaunchContext(isFirstLaunch: Boolean) {
         currentSessionIsFirstLaunch = isFirstLaunch
     }

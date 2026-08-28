@@ -1,4 +1,7 @@
-import { FUNNEL_ATTRIBUTION_KEYS, type FunnelAttributionKey } from "../../../../analytics/funnel-contract";
+import {
+  FUNNEL_ATTRIBUTION_KEYS,
+  type FunnelAttributionKey
+} from "../../../../analytics/funnel-contract";
 import type { AnalyticsProps } from "./recorder";
 
 const QUERY_ALIASES: Record<string, FunnelAttributionKey> = {
@@ -12,7 +15,7 @@ const QUERY_ALIASES: Record<string, FunnelAttributionKey> = {
   fbclid: "click_id",
   campaign: "campaign",
   slate_id: "slate_id",
-  post_id: "post_id",
+  post_id: "post_id"
 };
 
 /**

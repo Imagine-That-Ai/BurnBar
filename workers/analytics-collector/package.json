@@ -2,5 +2,6 @@
   "name": "@openburnbar/analytics-collector",
   "private": true,
   "type": "module",
+  "license": "AGPL-3.0-only",
   "description": "First-party Amplitude HTTP V2 collector. Browser never holds AMPLITUDE_API_KEY."
 }

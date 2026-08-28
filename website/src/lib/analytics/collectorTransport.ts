@@ -19,7 +19,7 @@ export class FirstPartyCollectorTransport implements AnalyticsTransport {
 
   constructor(
     deviceId: string = newAnonymousId(),
-    fetchImpl: FetchLike = (input, init) => fetch(input, init),
+    fetchImpl: FetchLike = (input, init) => fetch(input, init)
   ) {
     this.deviceId = deviceId;
     this.fetchImpl = fetchImpl;
@@ -51,11 +51,11 @@ export class FirstPartyCollectorTransport implements AnalyticsTransport {
             props,
             device_id: this.deviceId,
             time_ms: now,
-            insert_id: `${this.deviceId}:${name}:${now}`,
-          },
-        ],
+            insert_id: `${this.deviceId}:${name}:${now}`
+          }
+        ]
       }),
-      keepalive: true,
+      keepalive: true
     }).catch(() => {
       /* analytics is best-effort — never throw into the page */
     });
