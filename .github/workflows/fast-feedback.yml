@@ -607,6 +607,7 @@ jobs:
           bash scripts/ci/inject-firebase-config.test.sh
           bash scripts/ci/verify-apple-release-firebase-config.test.sh
           bash scripts/ci/inject-sentry-config-extension.test.sh
+          bash scripts/ci/inject-amplitude-extension-config.test.sh
           bash scripts/ci/verify-windows-release-signing-preflight.test.sh
           bash scripts/ci/verify-iroh-release-artifact.test.sh
 

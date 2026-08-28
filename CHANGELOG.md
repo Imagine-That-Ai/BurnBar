@@ -71,8 +71,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   OpenBurnBar `830583`; Dev is `830581`. CubeLove `852537` and Hormiga
   `703455` / `799824` are rejected. Native apps emit `app.opened` /
   `install.started` only after the existing Settings opt-in (still off by
-  default). Official `release.yml` injects optional native keys; unset keeps
-  shipping binaries dark. `csp:check` stays on the committed dark CSP;
+  default). The VS Code extension emits `install.started` on first activation
+  after opt-in. Official `release.yml` injects optional native and extension
+  keys; unset keeps shipping binaries dark. The collector drops unbounded
+  / phone-shaped property values before Amplitude. `csp:check` stays on the committed dark CSP;
   `deploy-hosting.yml` runs `csp:update` when `PUBLIC_ANALYTICS_COLLECTOR_URL`
   is set. Docs: `README.md` § Opt-in analytics, `docs/analytics/`.
 - **Monthly Recap** (`docs/RECAP.md`) — a new destination that reads a calendar

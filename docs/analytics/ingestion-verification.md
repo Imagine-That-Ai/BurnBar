@@ -22,7 +22,7 @@ contract.
 | macOS (`AgentLens`) | `BURNBAR_AMPLITUDE_API_KEY` | `scripts/ci/inject-amplitude-config.sh` replaces the `__AMPLITUDE_API_KEY__` placeholder in `AnalyticsConfig.swift` |
 | Website (`website`) | `PUBLIC_ANALYTICS_COLLECTOR_URL` (browser) + `AMPLITUDE_API_KEY` (collector Worker secret) | Browser POSTs to the first-party collector; the Worker stamps the Amplitude key. `PUBLIC_AMPLITUDE_API_KEY` is retired for the marketing site. |
 | Console (`apps/console`) | `NEXT_PUBLIC_AMPLITUDE_API_KEY` | Next build env → `process.env` |
-| VS Code ext (`extensions/openburnbar`) | `BURNBAR_EXTENSION_AMPLITUDE_API_KEY` | injected at package/CI time |
+| VS Code ext (`extensions/openburnbar`) | `BURNBAR_EXTENSION_AMPLITUDE_API_KEY` | Official `release.yml` runs `scripts/ci/inject-amplitude-extension-config.sh` before `tsc`. Unset leaves `__AMPLITUDE_API_KEY__` and the recorder stays dark. |
 | Backend (`functions`) | `AMPLITUDE_API_KEY` | functions runtime config/env |
 | Android (`android/app`) | `OPENBURNBAR_AMPLITUDE_API_KEY` (or `amplitude.apiKey` in gitignored `local.properties`) | Gradle → `BuildConfig.AMPLITUDE_API_KEY` |
 | iOS / widget / keyboard | xcconfig/Info.plist placeholder injected at build | shared App Group → host wrapper |
@@ -68,5 +68,6 @@ those projects even if `AMPLITUDE_PROJECT_ID=830583`.
    That is a key check, not the website path.
 
 Unit tests in `website/test/collector.test.ts` cover consent, project routing, Arena
-allowlisting, origin rejection, and email stripping. Live ingestion for native surfaces
+allowlisting, origin rejection, email stripping, and bounded property sanitization
+(`isBoundedAttributionValue` plus per-key enums). Live ingestion for native surfaces
 still needs each runtime with its key injected.

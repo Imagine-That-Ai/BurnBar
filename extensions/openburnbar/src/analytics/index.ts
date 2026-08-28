@@ -129,6 +129,9 @@ export function bootAnalytics(
     cold_start: true,
     surface: 'extension'
   });
+  if (ctx.isFirstActivation) {
+    graph.analytics.track(EVENT.installStarted, { surface: 'extension' });
+  }
   graph.analytics.track(EVENT.vscodeExtensionActivated, { host_kind: ctx.hostKind });
   graph.analytics.track(EVENT.screenViewed, {
     surface: ctx.surface ?? SURFACE.app,

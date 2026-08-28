@@ -76,6 +76,7 @@ describe('analytics wiring (index.ts graph)', () => {
     const names = transport.events.map((e) => e.name);
     expect(names).toContain(EVENT.appSessionStarted);
     expect(names).toContain(EVENT.appOpened);
+    expect(names).toContain(EVENT.installStarted);
     expect(names).toContain(EVENT.vscodeExtensionActivated);
     expect(names).toContain(EVENT.screenViewed);
   });
@@ -88,6 +89,7 @@ describe('analytics wiring (index.ts graph)', () => {
     expect(names).toContain(EVENT.consentAnalyticsGranted);
     expect(names).toContain(EVENT.appSessionStarted);
     expect(names).toContain(EVENT.appOpened);
+    expect(names).toContain(EVENT.installStarted);
     expect(names).toContain(EVENT.vscodeExtensionActivated);
     expect(names).toContain(EVENT.screenViewed);
 
@@ -109,6 +111,10 @@ describe('analytics wiring (index.ts graph)', () => {
     expect(opened).toBeDefined();
     if (!opened) throw new Error('missing app opened analytics event');
     expect(opened.props.surface).toBe('extension');
+    const installed = transport.events.find((e) => e.name === EVENT.installStarted);
+    expect(installed).toBeDefined();
+    if (!installed) throw new Error('missing install started analytics event');
+    expect(installed.props.surface).toBe('extension');
     const view = transport.events.find((e) => e.name === EVENT.screenViewed);
     expect(view).toBeDefined();
     if (!view) throw new Error('missing screen viewed analytics event');
@@ -135,6 +141,7 @@ describe('analytics wiring (index.ts graph)', () => {
     expect(start).toBeDefined();
     if (!start) throw new Error('missing relaunch session start analytics event');
     expect(start.props.is_first_launch).toBe(false);
+    expect(transport2.events.some((e) => e.name === EVENT.installStarted)).toBe(false);
   });
 
   it('boot is idempotent: the session spine fires at most once per process', () => {

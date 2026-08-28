@@ -21,7 +21,10 @@
 
 import {
   AMPLITUDE_PROJECT,
+  FUNNEL_ATTRIBUTION_KEYS,
   FUNNEL_EVENT_NAMES,
+  FUNNEL_SURFACES,
+  isBoundedAttributionValue,
   isFunnelEventName,
   resolveAmplitudeProjectId,
   type FunnelEventName,
@@ -53,6 +56,52 @@ const PRODUCT_EVENT_ALLOWLIST = new Set<string>([
 ]);
 
 const EMAILISH = /[^\s@]+@[^\s@]+\.[^\s@]+/;
+const PROP_KEY = /^[a-z][a-z0-9_]*$/;
+const ATTRIBUTION_KEY_SET = new Set<string>(FUNNEL_ATTRIBUTION_KEYS);
+
+const ENUM_PROP_VALUES: Record<string, ReadonlySet<string>> = {
+  product: new Set(["burnbar"]),
+  platform: new Set(["web"]),
+  surface: new Set([
+    "home",
+    "download",
+    "pricing",
+    "trust",
+    "privacy",
+    "security",
+    "support",
+    "mcp",
+    "router",
+    "control",
+    "floo",
+    "link",
+    "other",
+    ...FUNNEL_SURFACES,
+  ]),
+  target_platform: new Set(["macos", "ios", "android", "linux", "windows"]),
+  event_category: new Set([
+    "lifecycle",
+    "screen_view",
+    "primary_action",
+    "conversion_auth",
+    "error",
+  ]),
+  placement: new Set(["hero", "header", "mobile_nav"]),
+  destination: new Set(["github"]),
+  plan: new Set(["free", "cloud", "cloud_pro", "ultra"]),
+  variant: new Set(["neural", "unknown"]),
+  choice: new Set(["a", "b", "A", "B", "tie"]),
+  rubric: new Set(["none", "partial", "full"]),
+  side: new Set(["A", "B"]),
+  provider: new Set(["google", "apple", "github", "facebook"]),
+};
+
+const BOOLEAN_PROP_KEYS = new Set([
+  "captured",
+  "cold_start",
+  "is_first_launch",
+  "is_first_view",
+]);
 
 export type CollectorEnv = {
   AMPLITUDE_API_KEY?: string;
@@ -99,15 +148,21 @@ function sanitizeProps(props: Record<string, string | boolean> | undefined): Rec
   const out: Record<string, string | boolean> = {};
   if (!props || typeof props !== "object" || Array.isArray(props)) return out;
   for (const [key, value] of Object.entries(props)) {
+    if (!PROP_KEY.test(key)) continue;
     if (key === "email" || key === "raw_email" || key.endsWith("_email")) continue;
-    if (typeof value === "string") {
-      const trimmed = value.trim();
-      if (trimmed.length === 0) continue;
-      if (EMAILISH.test(trimmed)) continue;
-      out[key] = trimmed.slice(0, 200);
-    } else if (typeof value === "boolean") {
-      out[key] = value;
+    if (key.startsWith("utm_") && !ATTRIBUTION_KEY_SET.has(key)) continue;
+    if (typeof value === "boolean") {
+      if (BOOLEAN_PROP_KEYS.has(key)) out[key] = value;
+      continue;
     }
+    if (typeof value !== "string") continue;
+    const trimmed = value.trim();
+    if (trimmed.length === 0) continue;
+    if (EMAILISH.test(trimmed)) continue;
+    if (!isBoundedAttributionValue(trimmed)) continue;
+    const allowed = ENUM_PROP_VALUES[key];
+    if (allowed && !allowed.has(trimmed)) continue;
+    out[key] = trimmed;
   }
   if (out.product !== "burnbar") out.product = "burnbar";
   return out;

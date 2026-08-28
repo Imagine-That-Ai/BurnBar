@@ -340,6 +340,40 @@ describe("collector worker — consent and project routing", () => {
     expect(result.body.reason).toBe("batch_too_large");
   });
 
+  it("drops phone-shaped attribution and free-text props before forwarding", async () => {
+    const fetches: { body: Record<string, unknown> }[] = [];
+    await handleCollectorPost(
+      {
+        consent: true,
+        events: [
+          {
+            name: "page.viewed",
+            props: {
+              product: "burnbar",
+              surface: "home",
+              utm_campaign: "Alice-14155551212",
+              utm_source: "spring-sale",
+              note: "hello world",
+              target_platform: "macos"
+            }
+          }
+        ]
+      },
+      { AMPLITUDE_API_KEY: "secret-key", AMPLITUDE_PROJECT_ID: "830581" },
+      async (_url, init) => {
+        fetches.push({ body: JSON.parse(String(init?.body ?? "{}")) });
+        return new Response("{}", { status: 200 });
+      }
+    );
+    const events = fetches[0]?.body.events as { event_properties: Record<string, unknown> }[];
+    expect(events[0]?.event_properties.utm_campaign).toBeUndefined();
+    expect(events[0]?.event_properties.note).toBeUndefined();
+    expect(events[0]?.event_properties.utm_source).toBe("spring-sale");
+    expect(events[0]?.event_properties.surface).toBe("home");
+    expect(events[0]?.event_properties.target_platform).toBe("macos");
+    expect(events[0]?.event_properties.product).toBe("burnbar");
+  });
+
   it("strips raw email fields before forwarding", async () => {
     const fetches: { body: Record<string, unknown> }[] = [];
     await handleCollectorPost(

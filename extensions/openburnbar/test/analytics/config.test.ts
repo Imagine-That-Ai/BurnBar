@@ -36,6 +36,19 @@ describe('Amplitude key resolution (pre-consent dark by construction)', () => {
     expect(source).not.toMatch(/['"][0-9a-f]{32}['"]/);
   });
 
+  it('official release.yml injects the extension key before tsc', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { join, dirname } = await import('node:path');
+    const { fileURLToPath } = await import('node:url');
+    const here = dirname(fileURLToPath(import.meta.url));
+    const release = readFileSync(join(here, '..', '..', '..', '..', '.github', 'workflows', 'release.yml'), 'utf8');
+    expect(release).toContain('inject-amplitude-extension-config.sh');
+    expect(release).toContain('BURNBAR_EXTENSION_AMPLITUDE_API_KEY');
+    expect(release.indexOf('inject-amplitude-extension-config.sh')).toBeLessThan(
+      release.indexOf('npm run --prefix extensions/openburnbar build')
+    );
+  });
+
   it('server zone defaults to US and honours EU only when explicitly set', () => {
     expect(resolveServerZone({})).toBe('US');
     expect(resolveServerZone({ BURNBAR_EXTENSION_AMPLITUDE_SERVER_ZONE: 'EU' })).toBe('EU');

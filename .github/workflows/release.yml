@@ -1579,6 +1579,11 @@ jobs:
           BURNBAR_EXTENSION_SENTRY_DSN: ${{ secrets.BURNBAR_EXTENSION_SENTRY_DSN }}
         run: bash scripts/ci/inject-sentry-config-extension.sh
 
+      - name: Inject extension Amplitude API key
+        env:
+          BURNBAR_EXTENSION_AMPLITUDE_API_KEY: ${{ secrets.BURNBAR_EXTENSION_AMPLITUDE_API_KEY }}
+        run: bash scripts/ci/inject-amplitude-extension-config.sh
+
       - name: Build extension
         run: npm run --prefix extensions/openburnbar build
 
