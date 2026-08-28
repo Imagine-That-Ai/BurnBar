@@ -132,7 +132,7 @@ const linuxPubKeyHref = `${linuxDownloadBaseUrl}/${SITE.linuxPubKeyFile}`;
             href={macDownloadHref}
             data-analytics-event="download.clicked"
             data-analytics-prop-placement="hero"
-            data-analytics-prop-platform="macos"
+            data-analytics-prop-target-platform="macos"
           >
             Download DMG · {SITE.macReleaseLatest}
             <span class="btn-arrow" aria-hidden="true">↓</span>
@@ -233,7 +233,7 @@ make install</code></pre>
           href={linuxAppImageHref}
           data-analytics-event="download.clicked"
           data-analytics-prop-placement="hero"
-          data-analytics-prop-platform="linux"
+          data-analytics-prop-target-platform="linux"
         >
           <span class="linux-dl__kind mono">PRIMARY</span>
           <span class="linux-dl__title">AppImage</span>
@@ -245,7 +245,7 @@ make install</code></pre>
           href={linuxDebHref}
           data-analytics-event="download.clicked"
           data-analytics-prop-placement="hero"
-          data-analytics-prop-platform="linux"
+          data-analytics-prop-target-platform="linux"
         >
           <span class="linux-dl__kind mono">DEB</span>
           <span class="linux-dl__title">.deb</span>
@@ -257,7 +257,7 @@ make install</code></pre>
           href={linuxRpmHref}
           data-analytics-event="download.clicked"
           data-analytics-prop-placement="hero"
-          data-analytics-prop-platform="linux"
+          data-analytics-prop-target-platform="linux"
         >
           <span class="linux-dl__kind mono">RPM</span>
           <span class="linux-dl__title">.rpm</span>
@@ -365,7 +365,7 @@ make install</code></pre>
           rel="noopener noreferrer"
           data-analytics-event="download.clicked"
           data-analytics-prop-placement="hero"
-          data-analytics-prop-platform="ios"
+          data-analytics-prop-target-platform="ios"
         >
           Get it on the App Store
           <span class="btn-arrow" aria-hidden="true">→</span>

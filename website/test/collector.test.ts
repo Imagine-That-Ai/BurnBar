@@ -6,7 +6,8 @@ import { EVENT } from "../src/lib/analytics/events";
 import { attributionFromSearch } from "../src/lib/analytics/attribution";
 import {
   handleCollectorPost,
-  AMPLITUDE_HTTP_V2_US
+  AMPLITUDE_HTTP_V2_US,
+  isAllowedCollectorOrigin
 } from "../../workers/analytics-collector/src/handler";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -196,6 +197,33 @@ describe("collector worker — consent and project routing", () => {
     expect(events[0]?.event_type).toBe("arena.vote.recorded");
   });
 
+  it("allows production and staging hosting origins", () => {
+    expect(isAllowedCollectorOrigin("https://burnbar.ai")).toBe(true);
+    expect(isAllowedCollectorOrigin("https://www.burnbar.ai")).toBe(true);
+    expect(isAllowedCollectorOrigin("https://burnbar.web.app")).toBe(true);
+    expect(isAllowedCollectorOrigin("https://burnbar.firebaseapp.com")).toBe(true);
+    expect(isAllowedCollectorOrigin("https://burnbar-staging.web.app")).toBe(true);
+    expect(isAllowedCollectorOrigin("https://burnbar-staging.firebaseapp.com")).toBe(true);
+    expect(isAllowedCollectorOrigin("http://127.0.0.1:4321")).toBe(true);
+    expect(isAllowedCollectorOrigin("https://evil.example")).toBe(false);
+  });
+
+  it("forwards from a staging origin", async () => {
+    const fetches: string[] = [];
+    const result = await handleCollectorPost(
+      { consent: true, events: [{ name: "page.viewed" }] },
+      { AMPLITUDE_API_KEY: "secret-key", AMPLITUDE_PROJECT_ID: "830581" },
+      async (url) => {
+        fetches.push(url);
+        return new Response("{}", { status: 200 });
+      },
+      "https://burnbar-staging.web.app"
+    );
+    expect(result.status).toBe(200);
+    expect(result.forwarded).toBe(1);
+    expect(fetches).toHaveLength(1);
+  });
+
   it("rejects a disallowed origin and does not call Amplitude", async () => {
     const fetches: string[] = [];
     const result = await handleCollectorPost(
@@ -289,6 +317,15 @@ describe("attribution", () => {
     expect(props.utm_campaign).toBeUndefined();
     expect(props.utm_source).toBe("x");
   });
+
+  it("drops free-text names and phone-shaped query values", () => {
+    const props = attributionFromSearch(
+      "?utm_term=Alice+Smith+14155551212&utm_campaign=spring-sale&utm_content=14155551212"
+    );
+    expect(props.utm_term).toBeUndefined();
+    expect(props.utm_content).toBeUndefined();
+    expect(props.utm_campaign).toBe("spring-sale");
+  });
 });
 
 describe("website bundle never embeds an Amplitude API key", () => {
@@ -299,5 +336,15 @@ describe("website bundle never embeds an Amplitude API key", () => {
     expect(source).not.toContain("PUBLIC_AMPLITUDE_API_KEY");
     expect(source).toContain("FirstPartyCollectorTransport");
     expect(source).not.toMatch(/AmplitudeTransport/);
+  });
+
+  it("download CTAs emit target_platform, never overriding platform", () => {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const download = readFileSync(join(here, "../src/pages/download.astro"), "utf8");
+    const header = readFileSync(join(here, "../src/components/Header.astro"), "utf8");
+    expect(download).not.toContain("data-analytics-prop-platform=");
+    expect(header).not.toContain("data-analytics-prop-platform=");
+    expect(download).toContain("data-analytics-prop-target-platform=");
+    expect(header).toContain("data-analytics-prop-target-platform=");
   });
 });

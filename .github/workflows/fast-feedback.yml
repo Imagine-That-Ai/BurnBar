@@ -338,6 +338,9 @@ jobs:
       - name: Prettier format check
         run: npm run format:check --prefix website
 
+      - name: Analytics collector + funnel contract
+        run: npm run test:analytics --prefix website
+
       - name: Link attestation source contract
         run: npm run test:link-attestation --prefix website
 

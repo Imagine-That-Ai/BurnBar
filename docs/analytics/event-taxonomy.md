@@ -334,7 +334,7 @@ and — on the Hermes connect / sign-in flow — `auth.sign_in.completed` and `e
 
 | Event                     | Category        | Properties                                                              |
 |---------------------------|-----------------|------------------------------------------------------------------------|
-| `download.cta.clicked`    | conversion_auth | `placement` (`header`\|`mobile_nav`\|`hero`\|`pricing`\|`footer`), `platform?` (`macos`\|`ios`\|`android`\|`linux`) |
+| `download.cta.clicked`    | conversion_auth | `placement` (`header`\|`mobile_nav`\|`hero`\|`pricing`\|`footer`), `target_platform?` (`macos`\|`ios`\|`android`\|`linux`) — website `platform` stays `web` |
 | `pricing.plan.viewed`     | screen_view     | — *(impression; the page is in `surface`. Fires once when the plans grid scrolls into view)* |
 | `pricing.cta.clicked`     | conversion_auth | `plan` (`free`\|`cloud`\|`cloud_pro`\|`ultra`)                          |
 | `nav.external.clicked`    | primary_action  | `destination` (`github`\|`discord`\|`docs`\|…; bounded outbound targets) |

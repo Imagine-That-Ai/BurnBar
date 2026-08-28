@@ -21,7 +21,21 @@ extension AnalyticsConsentStore {
 enum MobileAnalytics {
     private static let launchMarkerKey = "hasLaunchedBefore"
     private static var sessionSpineEmitted = false
-    static let currentSessionIsFirstLaunch: Bool = !UserDefaults.standard.bool(forKey: launchMarkerKey)
+    private static var launchContextCaptured = false
+    private static var rememberedFirstLaunch = false
+
+    /// Eager capture. `static let` would be lazy and can read the marker
+    /// after `markLaunchSeen()` on a first-run grant-later path.
+    static func captureLaunchContext() {
+        guard !launchContextCaptured else { return }
+        rememberedFirstLaunch = !UserDefaults.standard.bool(forKey: launchMarkerKey)
+        launchContextCaptured = true
+    }
+
+    static var currentSessionIsFirstLaunch: Bool {
+        if !launchContextCaptured { captureLaunchContext() }
+        return rememberedFirstLaunch
+    }
 
     static let shared: Analytics = {
         let sessionId = UUID().uuidString

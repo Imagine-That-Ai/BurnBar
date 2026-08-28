@@ -119,6 +119,8 @@ export function isAllowedCollectorOrigin(origin: string | null): boolean {
     origin === "https://www.burnbar.ai" ||
     origin === "https://burnbar.web.app" ||
     origin === "https://burnbar.firebaseapp.com" ||
+    origin === "https://burnbar-staging.web.app" ||
+    origin === "https://burnbar-staging.firebaseapp.com" ||
     (origin !== null && /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(origin))
   );
 }

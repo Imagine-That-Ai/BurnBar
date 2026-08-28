@@ -89,6 +89,13 @@ export type FunnelProps = {
   app_version?: string;
 } & Partial<Record<FunnelAttributionKey, string>>;
 
+/** Campaign / click-id tokens only — no spaces, emails, phones, or free text. */
+export function isBoundedAttributionValue(value: string): boolean {
+  if (!/^[A-Za-z0-9._:-]{1,64}$/.test(value)) return false;
+  if (/^\d{7,}$/.test(value)) return false;
+  return true;
+}
+
 export function isFunnelEventName(name: string): name is FunnelEventName {
   return (FUNNEL_EVENT_NAMES as readonly string[]).includes(name);
 }

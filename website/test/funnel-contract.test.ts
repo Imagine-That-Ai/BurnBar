@@ -7,6 +7,7 @@ import {
   FUNNEL_EVENT_NAMES,
   FUNNEL_PRODUCT,
   isAllowedAmplitudeProject,
+  isBoundedAttributionValue,
   isForbiddenAmplitudeProject,
   isFunnelEventName,
   resolveAmplitudeProjectId,
@@ -64,6 +65,16 @@ describe("Amplitude project routing", () => {
     expect(resolveAmplitudeProjectId("")).toBeNull();
     expect(resolveAmplitudeProjectId("not-a-number")).toBeNull();
     expect(resolveAmplitudeProjectId(1)).toBeNull();
+  });
+
+  it("accepts campaign tokens and rejects emails, phones, and free text", () => {
+    expect(isBoundedAttributionValue("spring-sale")).toBe(true);
+    expect(isBoundedAttributionValue("twitter")).toBe(true);
+    expect(isBoundedAttributionValue("hero_macos")).toBe(true);
+    expect(isBoundedAttributionValue("a@b.com")).toBe(false);
+    expect(isBoundedAttributionValue("14155551212")).toBe(false);
+    expect(isBoundedAttributionValue("Alice Smith")).toBe(false);
+    expect(isBoundedAttributionValue("Alice Smith 14155551212")).toBe(false);
   });
 
   it("treats only the six funnel names as funnel events", () => {
