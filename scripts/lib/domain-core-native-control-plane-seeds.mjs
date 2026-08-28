@@ -35,6 +35,8 @@ export const NATIVE_RELEASE_CONTROL_PLANE_SEEDS = Object.freeze([
   "scripts/ci/domain-core-union-gate.py",
   "scripts/ci/ensure-windows-domain-core-release.mjs",
   "scripts/ci/hydrate-apple-android-release-evidence.mjs",
+  "scripts/ci/inject-amplitude-config.sh",
+  "scripts/ci/inject-amplitude-mobile-config.sh",
   "scripts/ci/inject-android-keystore.sh",
   "scripts/ci/inject-firebase-config-android.sh",
   "scripts/ci/inject-firebase-config.sh",
