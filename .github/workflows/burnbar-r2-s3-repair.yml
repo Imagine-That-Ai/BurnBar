@@ -1,0 +1,186 @@
+name: BurnBar R2 S3 repair
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v1.0.40+r2repair.*'
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  r2-s3-repair:
+    name: Publish audited 1.0.40+repair.34 via R2 S3
+    runs-on: macos-26
+    timeout-minutes: 60
+    environment: release
+    env:
+      RELEASE_REPO: Imagine-That-Ai/BurnBar
+      RELEASE_TAG: v1.0.40+repair.34
+      RELEASE_VERSION: 1.0.40+repair.34
+      RELEASE_COMMIT: 6940dc3b006460b0b07237537a1cade05be1cc1b
+      EXPECTED_LIVE_VERSION: 1.0.29
+      EXPECTED_LIVE_COMMIT: ba39ea388fb9775938d4f51fd76cb16ec2cb38b1
+      R2_BUCKET: openburnbar-downloads
+      PUBLIC_BASE_URL: https://downloads.burnbar.ai
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      GH_TOKEN: ${{ github.token }}
+      AWS_DEFAULT_REGION: auto
+      AWS_EC2_METADATA_DISABLED: 'true'
+    steps:
+      - name: Check out the exact audited release code
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          ref: v1.0.40+repair.34
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Confirm the compare-and-swap target is still live
+        run: |
+          set -euo pipefail
+          live="$RUNNER_TEMP/live-before.json"
+          curl --fail --silent --show-error --location \
+            --header 'cache-control: no-cache, no-store, max-age=0' \
+            "$PUBLIC_BASE_URL/latest-macos.json?openburnbar_r2_repair_before=$(date +%s%N)" > "$live"
+          jq -e --arg version "$EXPECTED_LIVE_VERSION" --arg commit "$EXPECTED_LIVE_COMMIT" \
+            'select(.version == $version and .commit == $commit)' "$live" >/dev/null
+
+      - name: Download the authoritative handoff from the failed audited run
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          name: macos-r2-publication-inputs-6940dc3b006460b0b07237537a1cade05be1cc1b-33163578070-1
+          path: ${{ runner.temp }}/r2-inputs
+          github-token: ${{ github.token }}
+          repository: Imagine-That-Ai/BurnBar
+          run-id: 33163578070
+
+      - name: Locate the exact audited asset directory and receipt
+        id: handoff
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/r2-inputs"
+          dmg_path="$(find "$root" -type f -name "OpenBurnBar-${RELEASE_VERSION}-macOS.dmg" -print -quit)"
+          receipt_path="$(find "$root" -type f -name 'release-promotion-receipt.json' -print -quit)"
+          test -n "$dmg_path"
+          test -n "$receipt_path"
+          asset_dir="$(dirname "$dmg_path")"
+          test -f "$asset_dir/OpenBurnBar-${RELEASE_VERSION}-macOS.zip"
+          test -f "$asset_dir/OpenBurnBar-${RELEASE_VERSION}-corresponding-source.tar.gz"
+          echo "asset_dir=$asset_dir" >> "$GITHUB_OUTPUT"
+          echo "receipt_path=$receipt_path" >> "$GITHUB_OUTPUT"
+          echo "Using audited asset directory: $asset_dir"
+          echo 'Using audited promotion receipt from run 33163578070'
+
+      - name: Create an AWS-backed Wrangler compatibility shim
+        run: |
+          set -euo pipefail
+          shim="$RUNNER_TEMP/r2-wrangler-s3"
+          cat > "$shim" <<'SHIM'
+          #!/usr/bin/env bash
+          set -euo pipefail
+
+          if (( $# < 4 )) || [[ "$1" != r2 || "$2" != object ]]; then
+            echo 'unsupported Wrangler command' >&2
+            exit 2
+          fi
+          operation="$3"
+          target="$4"
+          shift 4
+          bucket="${target%%/*}"
+          name="${target#*/}"
+          if [[ -z "$bucket" || "$bucket" == "$target" || -z "$name" ]]; then
+            echo 'invalid R2 object target' >&2
+            exit 2
+          fi
+          endpoint="https://${CLOUDFLARE_ACCOUNT_ID:?}.r2.cloudflarestorage.com"
+          export AWS_ACCESS_KEY_ID="${R2_ACCESS_KEY_ID:?}"
+          export AWS_SECRET_ACCESS_KEY="${R2_SECRET_ACCESS_KEY:?}"
+          export AWS_DEFAULT_REGION="${AWS_DEFAULT_REGION:-auto}"
+          export AWS_EC2_METADATA_DISABLED="true"
+
+          case "$operation" in
+            put)
+              file=''
+              content_type=''
+              cache_control=''
+              while (( $# )); do
+                case "$1" in
+                  --remote) shift ;;
+                  --file) file="${2:?}"; shift 2 ;;
+                  --content-type) content_type="${2:?}"; shift 2 ;;
+                  --cache-control) cache_control="${2:?}"; shift 2 ;;
+                  *) echo "unsupported Wrangler put option: $1" >&2; exit 2 ;;
+                esac
+              done
+              [[ -f "$file" ]]
+              command=(aws s3 cp "$file" "s3://$bucket/$name" --endpoint-url "$endpoint" --only-show-errors)
+              [[ -z "$content_type" ]] || command+=(--content-type "$content_type")
+              [[ -z "$cache_control" ]] || command+=(--cache-control "$cache_control")
+              "${command[@]}"
+              ;;
+            delete)
+              while (( $# )); do
+                case "$1" in
+                  --remote) shift ;;
+                  *) echo "unsupported Wrangler delete option: $1" >&2; exit 2 ;;
+                esac
+              done
+              aws s3 rm "s3://$bucket/$name" --endpoint-url "$endpoint" --only-show-errors
+              ;;
+            *)
+              echo "unsupported Wrangler object operation: $operation" >&2
+              exit 2
+              ;;
+          esac
+          SHIM
+          chmod 700 "$shim"
+
+      - name: Publish and verify the audited R2 candidate through S3
+        env:
+          ASSET_DIR: ${{ steps.handoff.outputs.asset_dir }}
+          RECEIPT_PATH: ${{ steps.handoff.outputs.receipt_path }}
+        run: |
+          set -euo pipefail
+          command -v aws
+          OPENBURNBAR_R2_BUCKET="$R2_BUCKET" \
+          OPENBURNBAR_R2_PUBLIC_BASE_URL="$PUBLIC_BASE_URL" \
+          OPENBURNBAR_RELEASE_ASSET_DIR="$ASSET_DIR" \
+          OPENBURNBAR_RELEASE_RECEIPT="$RECEIPT_PATH" \
+          OPENBURNBAR_RELEASE_VERSION="$RELEASE_VERSION" \
+          OPENBURNBAR_RELEASE_TAG="$RELEASE_TAG" \
+          OPENBURNBAR_RELEASE_COMMIT="$RELEASE_COMMIT" \
+          OPENBURNBAR_EXPECTED_LIVE_VERSION="$EXPECTED_LIVE_VERSION" \
+          OPENBURNBAR_EXPECTED_LIVE_COMMIT="$EXPECTED_LIVE_COMMIT" \
+          OPENBURNBAR_VERIFY_ATTEMPTS=20 \
+          OPENBURNBAR_VERIFY_DELAY_MS=5000 \
+          WRANGLER_BIN="$RUNNER_TEMP/r2-wrangler-s3" \
+            bash scripts/upload-macos-downloads-r2.sh
+
+      - name: Promote only the unchanged audited GitHub release
+        env:
+          RECEIPT_PATH: ${{ steps.handoff.outputs.receipt_path }}
+        run: node scripts/ci/promote-github-release.mjs promote --receipt "$RECEIPT_PATH"
+
+      - name: Verify GitHub latest and the public download host
+        run: |
+          set -euo pipefail
+          latest_tag="$(gh release view latest --repo "$RELEASE_REPO" --json tagName --jq .tagName)"
+          test "$latest_tag" = "$RELEASE_TAG"
+          live="$RUNNER_TEMP/live-after.json"
+          curl --fail --silent --show-error --location \
+            --header 'cache-control: no-cache, no-store, max-age=0' \
+            "$PUBLIC_BASE_URL/latest-macos.json?openburnbar_r2_repair_after=$(date +%s%N)" > "$live"
+          jq -e --arg version "$RELEASE_VERSION" --arg commit "$RELEASE_COMMIT" \
+            'select(.version == $version and .commit == $commit)' "$live" >/dev/null
+          dmg="$(jq -r .dmg "$live")"
+          encoded_dmg="$(printf '%s' "$dmg" | jq -sRr @uri)"
+          curl --fail --silent --show-error --location --head \
+            "$PUBLIC_BASE_URL/$encoded_dmg?openburnbar_r2_repair_asset=$(date +%s%N)" >/dev/null
+          curl --fail --silent --show-error --location \
+            "$PUBLIC_BASE_URL/appcast.xml?openburnbar_r2_repair_appcast=$(date +%s%N)" \
+            | rg -F "<sparkle:shortVersionString>$RELEASE_VERSION</sparkle:shortVersionString>" >/dev/null
+          echo "GitHub latest and downloads.burnbar.ai now advertise $RELEASE_VERSION at $RELEASE_COMMIT"
