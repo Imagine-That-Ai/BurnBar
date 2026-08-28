@@ -17,7 +17,10 @@ export default {
       return Response.json({ accepted: false, reason: "invalid_json" }, { status: 400, headers: cors });
     }
 
-    const result = await handleCollectorPost(body, env, (url, init) => fetch(url, init));
+    const result = await handleCollectorPost(body, env, (url, init) => fetch(url, init), request.headers.get("origin"));
+    if (result.status === 204) {
+      return new Response(null, { status: 204, headers: cors });
+    }
     return Response.json(result.body, { status: result.status, headers: cors });
   },
 };

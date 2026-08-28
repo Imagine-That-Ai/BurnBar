@@ -4,7 +4,10 @@ import { Analytics } from "../src/lib/analytics/recorder";
 import { ConsentStore, type ConsentStorage } from "../src/lib/analytics/consent";
 import { EVENT } from "../src/lib/analytics/events";
 import { attributionFromSearch } from "../src/lib/analytics/attribution";
-import { handleCollectorPost, AMPLITUDE_HTTP_V2_US } from "../../workers/analytics-collector/src/handler";
+import {
+  handleCollectorPost,
+  AMPLITUDE_HTTP_V2_US
+} from "../../workers/analytics-collector/src/handler";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -26,7 +29,7 @@ describe("first-party collector — consent gate", () => {
       consent,
       transport,
       collectorUrl: "https://collect.burnbar.test/v1",
-      superProperties: () => ({ product: "burnbar", platform: "web" }),
+      superProperties: () => ({ product: "burnbar", platform: "web" })
     });
 
     analytics.track(EVENT.pageViewed, { surface: "home" });
@@ -46,7 +49,7 @@ describe("first-party collector — consent gate", () => {
       consent,
       transport,
       collectorUrl: "https://collect.burnbar.test/v1",
-      superProperties: () => ({ product: "burnbar", platform: "web" }),
+      superProperties: () => ({ product: "burnbar", platform: "web" })
     });
 
     analytics.track(EVENT.pageViewed, { surface: "home" });
@@ -66,7 +69,7 @@ describe("first-party collector — consent gate", () => {
       consent,
       transport,
       collectorUrl: "https://collect.burnbar.test/v1",
-      superProperties: () => ({ product: "burnbar", platform: "web", app_version: "1.0.40" }),
+      superProperties: () => ({ product: "burnbar", platform: "web", app_version: "1.0.40" })
     });
 
     analytics.track(EVENT.pageViewed, { surface: "home" });
@@ -75,7 +78,10 @@ describe("first-party collector — consent gate", () => {
     expect(calls).toHaveLength(1);
     expect(calls[0]?.url).toBe("https://collect.burnbar.test/v1");
     expect(calls[0]?.url).not.toContain("amplitude.com");
-    const payload = calls[0]?.body as { consent: boolean; events: { name: string; props: Record<string, string> }[] };
+    const payload = calls[0]?.body as {
+      consent: boolean;
+      events: { name: string; props: Record<string, string> }[];
+    };
     expect(payload.consent).toBe(true);
     expect(payload.events[0]?.name).toBe("page.viewed");
     expect(JSON.stringify(payload)).not.toMatch(/api[_-]?key/i);
@@ -92,7 +98,7 @@ describe("collector worker — consent and project routing", () => {
       async (url) => {
         fetches.push(url);
         return new Response("{}", { status: 200 });
-      },
+      }
     );
     expect(result.status).toBe(204);
     expect(result.forwarded).toBe(0);
@@ -107,7 +113,7 @@ describe("collector worker — consent and project routing", () => {
       async (url) => {
         fetches.push(url);
         return new Response("{}", { status: 200 });
-      },
+      }
     );
     expect(result.status).toBe(204);
     expect(result.body.reason).toBe("collector_dark");
@@ -119,20 +125,24 @@ describe("collector worker — consent and project routing", () => {
     const result = await handleCollectorPost(
       {
         consent: true,
-        events: [{ name: "page.viewed", props: { product: "burnbar", surface: "web" }, device_id: "d1" }],
+        events: [
+          { name: "page.viewed", props: { product: "burnbar", surface: "web" }, device_id: "d1" }
+        ]
       },
       { AMPLITUDE_API_KEY: "secret-key", AMPLITUDE_PROJECT_ID: "830583" },
       async (url, init) => {
         fetches.push({ url, body: JSON.parse(String(init?.body ?? "{}")) });
         return new Response(JSON.stringify({ code: 200, events_ingested: 1 }), { status: 200 });
-      },
+      }
     );
     expect(result.status).toBe(200);
     expect(result.forwarded).toBe(1);
     expect(result.body.project_id).toBe(830583);
     expect(fetches[0]?.url).toBe(AMPLITUDE_HTTP_V2_US);
     expect(fetches[0]?.body.api_key).toBe("secret-key");
-    const events = fetches[0]?.body.events as { event_properties: { amplitude_project_id: string } }[];
+    const events = fetches[0]?.body.events as {
+      event_properties: { amplitude_project_id: string };
+    }[];
     expect(events[0]?.event_properties.amplitude_project_id).toBe("830583");
   });
 
@@ -145,7 +155,7 @@ describe("collector worker — consent and project routing", () => {
         async (url) => {
           fetches.push(url);
           return new Response("{}", { status: 200 });
-        },
+        }
       );
       expect(result.status, `project ${forbidden} must be rejected`).toBe(409);
       expect(result.body.reason).toBe("project_rejected");
@@ -161,10 +171,59 @@ describe("collector worker — consent and project routing", () => {
       async (url) => {
         fetches.push(url);
         return new Response("{}", { status: 200 });
-      },
+      }
     );
     expect(result.status).toBe(204);
     expect(fetches).toHaveLength(0);
+  });
+
+  it("forwards arena events that the marketing site already emits", async () => {
+    const fetches: { body: Record<string, unknown> }[] = [];
+    const result = await handleCollectorPost(
+      {
+        consent: true,
+        events: [{ name: "arena.vote.recorded", props: { variant: "neural", choice: "a" } }]
+      },
+      { AMPLITUDE_API_KEY: "secret-key", AMPLITUDE_PROJECT_ID: "830581" },
+      async (_url, init) => {
+        fetches.push({ body: JSON.parse(String(init?.body ?? "{}")) });
+        return new Response("{}", { status: 200 });
+      }
+    );
+    expect(result.status).toBe(200);
+    expect(result.forwarded).toBe(1);
+    const events = fetches[0]?.body.events as { event_type: string }[];
+    expect(events[0]?.event_type).toBe("arena.vote.recorded");
+  });
+
+  it("rejects a disallowed origin and does not call Amplitude", async () => {
+    const fetches: string[] = [];
+    const result = await handleCollectorPost(
+      { consent: true, events: [{ name: "page.viewed" }] },
+      { AMPLITUDE_API_KEY: "secret-key", AMPLITUDE_PROJECT_ID: "830581" },
+      async (url) => {
+        fetches.push(url);
+        return new Response("{}", { status: 200 });
+      },
+      "https://evil.example"
+    );
+    expect(result.status).toBe(403);
+    expect(result.body.reason).toBe("origin_rejected");
+    expect(fetches).toHaveLength(0);
+  });
+
+  it("rejects oversized event batches", async () => {
+    const events = Array.from({ length: 21 }, (_, i) => ({
+      name: "page.viewed",
+      insert_id: `n${i}`
+    }));
+    const result = await handleCollectorPost(
+      { consent: true, events },
+      { AMPLITUDE_API_KEY: "secret-key", AMPLITUDE_PROJECT_ID: "830581" },
+      async () => new Response("{}", { status: 200 })
+    );
+    expect(result.status).toBe(413);
+    expect(result.body.reason).toBe("batch_too_large");
   });
 
   it("strips raw email fields before forwarding", async () => {
@@ -172,13 +231,18 @@ describe("collector worker — consent and project routing", () => {
     await handleCollectorPost(
       {
         consent: true,
-        events: [{ name: "email.captured", props: { email: "a@b.com", captured: true, product: "burnbar" } }],
+        events: [
+          {
+            name: "email.captured",
+            props: { email: "a@b.com", captured: true, product: "burnbar" }
+          }
+        ]
       },
       { AMPLITUDE_API_KEY: "secret-key", AMPLITUDE_PROJECT_ID: "830581" },
       async (_url, init) => {
         fetches.push({ body: JSON.parse(String(init?.body ?? "{}")) });
         return new Response("{}", { status: 200 });
-      },
+      }
     );
     const events = fetches[0]?.body.events as { event_properties: Record<string, unknown> }[];
     expect(events[0]?.event_properties.email).toBeUndefined();
@@ -189,7 +253,7 @@ describe("collector worker — consent and project routing", () => {
 describe("attribution", () => {
   it("keeps only the bounded attribution keys", () => {
     const props = attributionFromSearch(
-      "?utm_source=x&utm_campaign=spring&click_id=abc&slate_id=s1&post_id=p9&email=no@no.com&path=/secret",
+      "?utm_source=x&utm_campaign=spring&click_id=abc&slate_id=s1&post_id=p9&email=no@no.com&path=/secret"
     );
     expect(props.utm_source).toBe("x");
     expect(props.utm_campaign).toBe("spring");
@@ -198,6 +262,12 @@ describe("attribution", () => {
     expect(props.post_id).toBe("p9");
     expect(props.email).toBeUndefined();
     expect(props.path).toBeUndefined();
+  });
+
+  it("drops attribution values that look like personal data", () => {
+    const props = attributionFromSearch("?utm_campaign=a@b.com&utm_source=x");
+    expect(props.utm_campaign).toBeUndefined();
+    expect(props.utm_source).toBe("x");
   });
 });
 

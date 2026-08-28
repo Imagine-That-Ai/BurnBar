@@ -25,6 +25,8 @@ import {
 export const AMPLITUDE_HTTP_V2_US = "https://api2.amplitude.com/2/httpapi";
 export const AMPLITUDE_HTTP_V2_EU = "https://api.eu.amplitude.com/2/httpapi";
 
+export const MAX_COLLECTOR_EVENTS = 20;
+
 const PRODUCT_EVENT_ALLOWLIST = new Set<string>([
   ...FUNNEL_EVENT_NAMES,
   "consent.analytics.granted",
@@ -38,7 +40,14 @@ const PRODUCT_EVENT_ALLOWLIST = new Set<string>([
   "auth.sign_in.completed",
   "auth.sign_up.completed",
   "error.handled",
+  "arena.variant.exposed",
+  "arena.artifact.played",
+  "arena.vote.recorded",
+  "arena.auth.gate_shown",
+  "arena.sign_in.completed",
 ]);
+
+const EMAILISH = /[^\s@]+@[^\s@]+\.[^\s@]+/;
 
 export type CollectorEnv = {
   AMPLITUDE_API_KEY?: string;
@@ -89,6 +98,7 @@ function sanitizeProps(props: Record<string, string | boolean> | undefined): Rec
     if (typeof value === "string") {
       const trimmed = value.trim();
       if (trimmed.length === 0) continue;
+      if (EMAILISH.test(trimmed)) continue;
       out[key] = trimmed.slice(0, 200);
     } else if (typeof value === "boolean") {
       out[key] = value;
@@ -98,11 +108,25 @@ function sanitizeProps(props: Record<string, string | boolean> | undefined): Rec
   return out;
 }
 
+export function isAllowedCollectorOrigin(origin: string | null): boolean {
+  return (
+    origin === "https://burnbar.ai" ||
+    origin === "https://www.burnbar.ai" ||
+    origin === "https://burnbar.web.app" ||
+    (origin !== null && /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(origin))
+  );
+}
+
 export async function handleCollectorPost(
   body: CollectorRequestBody,
   env: CollectorEnv,
   fetchImpl: FetchLike,
+  origin?: string | null,
 ): Promise<HandlerResult> {
+  if (origin !== undefined && !isAllowedCollectorOrigin(origin)) {
+    return json(403, { accepted: false, reason: "origin_rejected" });
+  }
+
   if (body.consent !== true) {
     return json(204, { accepted: false, reason: "consent_required" });
   }
@@ -118,6 +142,9 @@ export async function handleCollectorPost(
   }
 
   const incoming = Array.isArray(body.events) ? body.events : [];
+  if (incoming.length > MAX_COLLECTOR_EVENTS) {
+    return json(413, { accepted: false, reason: "batch_too_large" });
+  }
   const allowed = incoming.filter((event) => event && typeof event.name === "string" && isAllowedEventName(event.name));
   if (allowed.length === 0) {
     return json(204, { accepted: false, reason: "no_allowed_events" });
@@ -159,11 +186,7 @@ export async function handleCollectorPost(
 }
 
 export function collectorCorsHeaders(origin: string | null): Record<string, string> {
-  const allowed =
-    origin === "https://burnbar.ai" ||
-    origin === "https://www.burnbar.ai" ||
-    origin === "https://burnbar.web.app" ||
-    (origin !== null && /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(origin));
+  const allowed = isAllowedCollectorOrigin(origin);
   return {
     "access-control-allow-origin": allowed && origin ? origin : "https://burnbar.ai",
     "access-control-allow-methods": "POST, OPTIONS",

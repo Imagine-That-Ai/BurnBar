@@ -14,6 +14,7 @@
 export const EVENT = {
   // ── Tier 1 — core cross-platform spine ──────────────────────────────────────
   appSessionStarted: 'app.session.started',
+  appOpened: 'app.opened',
   appSessionEnded: 'app.session.ended',
   screenViewed: 'screen.viewed',
   settingsChanged: 'settings.changed',
@@ -43,6 +44,7 @@ type AnalyticsCategory = 'lifecycle' | 'screen_view' | 'primary_action' | 'conve
 
 const LIFECYCLE = new Set<string>([
   EVENT.appSessionStarted,
+  EVENT.appOpened,
   EVENT.appSessionEnded,
   EVENT.consentAnalyticsGranted,
   EVENT.vscodeExtensionActivated,

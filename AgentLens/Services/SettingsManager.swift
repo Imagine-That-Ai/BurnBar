@@ -1556,6 +1556,12 @@ final class SettingsManager {
         !persistence.bool(forKey: "hasLaunchedBefore")
     }
 
+    /// One-shot install marker. Written after the first-launch flag is captured
+    /// for this process so later launches are not treated as installs.
+    func markHasLaunchedBefore() {
+        persistence.set(true, forKey: "hasLaunchedBefore")
+    }
+
     // MARK: Usage Formatting
     func formatUsageMetric(cost: Double, tokens: Int) -> String {
         switch usageDisplayMode {

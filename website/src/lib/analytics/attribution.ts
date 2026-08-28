@@ -30,6 +30,7 @@ export function attributionFromSearch(search: string): AnalyticsProps {
     if (!key) continue;
     const value = rawValue.trim().slice(0, 120);
     if (value.length === 0) continue;
+    if (/[^\s@]+@[^\s@]+\.[^\s@]+/.test(value)) continue;
     if (!(FUNNEL_ATTRIBUTION_KEYS as readonly string[]).includes(key)) continue;
     out[key] = value;
   }

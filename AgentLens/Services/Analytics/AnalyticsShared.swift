@@ -4,6 +4,7 @@ import Foundation
 enum AnalyticsRuntime {
     private static var consentStore: AnalyticsConsentStore?
     private static var recorder: Analytics?
+    private static var rememberedFirstLaunch = false
 
     static func configure(
         consentStore newConsentStore: AnalyticsConsentStore? = nil,
@@ -24,6 +25,28 @@ enum AnalyticsRuntime {
         let store = AnalyticsConsentStore()
         consentStore = store
         return store
+    }
+
+    static func rememberFirstLaunch(_ isFirst: Bool) {
+        rememberedFirstLaunch = isFirst
+    }
+
+    static var currentSessionIsFirstLaunch: Bool { rememberedFirstLaunch }
+
+    static func trackFunnelSessionStart() {
+        let isFirst = rememberedFirstLaunch
+        analytics.track(.appSessionStarted, [
+            "is_first_launch": .bool(isFirst),
+            "cold_start": .bool(true)
+        ])
+        analytics.track(.appOpened, [
+            "is_first_launch": .bool(isFirst),
+            "cold_start": .bool(true),
+            "surface": .string("macos")
+        ])
+        if isFirst {
+            analytics.track(.installStarted, ["surface": .string("macos")])
+        }
     }
 
     static var analytics: Analytics {
@@ -55,4 +78,12 @@ extension Analytics {
     /// App-wide recorder owned by `AnalyticsRuntime`. Every instrumentation call
     /// site goes through this accessor; nothing touches the Amplitude SDK directly.
     static var shared: Analytics { AnalyticsRuntime.analytics }
+
+    static func rememberFirstLaunch(_ isFirst: Bool) {
+        AnalyticsRuntime.rememberFirstLaunch(isFirst)
+    }
+
+    static func trackFunnelSessionStartIfConsented() {
+        AnalyticsRuntime.trackFunnelSessionStart()
+    }
 }

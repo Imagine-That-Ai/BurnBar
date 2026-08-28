@@ -10,6 +10,23 @@ type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Respo
  * No collector URL → start() is a no-op and track() drops. That is the
  * default-off promise when the site is built without a collector.
  */
+export const DEVICE_ID_KEY = "burnbar-analytics-device-id";
+
+export function persistentAnonymousId(
+  storage: { getItem(key: string): string | null; setItem(key: string, value: string): void },
+  createId: () => string = newAnonymousId
+): string {
+  const existing = storage.getItem(DEVICE_ID_KEY)?.trim();
+  if (existing) return existing;
+  const id = createId();
+  try {
+    storage.setItem(DEVICE_ID_KEY, id);
+  } catch {
+    /* private mode / quota */
+  }
+  return id;
+}
+
 export class FirstPartyCollectorTransport implements AnalyticsTransport {
   private started = false;
   private optedOut = false;

@@ -152,10 +152,11 @@ object AnalyticsManager {
             mapOf(
                 "is_first_launch" to isFirstLaunch.av(),
                 "cold_start" to true.av(),
+                "surface" to "android".av(),
             ),
         )
         if (isFirstLaunch) {
-            track(AnalyticsEvent.INSTALL_STARTED)
+            track(AnalyticsEvent.INSTALL_STARTED, mapOf("surface" to "android".av()))
         }
     }
 

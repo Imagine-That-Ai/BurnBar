@@ -67,10 +67,11 @@ enum MobileAnalytics {
         ])
         shared.track(.appOpened, [
             "is_first_launch": .bool(currentSessionIsFirstLaunch),
-            "cold_start": .bool(true)
+            "cold_start": .bool(true),
+            "surface": .string("ios")
         ])
         if currentSessionIsFirstLaunch {
-            shared.track(.installStarted)
+            shared.track(.installStarted, ["surface": .string("ios")])
         }
     }
 

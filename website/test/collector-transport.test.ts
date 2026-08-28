@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { FirstPartyCollectorTransport } from "../src/lib/analytics/collectorTransport";
+import {
+  DEVICE_ID_KEY,
+  FirstPartyCollectorTransport,
+  persistentAnonymousId
+} from "../src/lib/analytics/collectorTransport";
 
 describe("FirstPartyCollectorTransport", () => {
   it("start() with an empty URL stays dark", () => {
@@ -28,5 +32,18 @@ describe("FirstPartyCollectorTransport", () => {
     transport.track("cta.clicked", "conversion_auth", { product: "burnbar" });
     await new Promise((r) => setTimeout(r, 0));
     expect(calls).toHaveLength(1);
+  });
+
+  it("reuses a persisted anonymous device id across constructions", () => {
+    const storage = new Map<string, string>();
+    const store = {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => void storage.set(key, value)
+    };
+    const first = persistentAnonymousId(store, () => "stable-device-1");
+    const second = persistentAnonymousId(store, () => "should-not-run");
+    expect(first).toBe("stable-device-1");
+    expect(second).toBe("stable-device-1");
+    expect(storage.get(DEVICE_ID_KEY)).toBe("stable-device-1");
   });
 });

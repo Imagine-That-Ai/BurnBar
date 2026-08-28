@@ -57,6 +57,7 @@ class AnalyticsManagerFunnelTest {
         assertEquals(AnalyticsValue.Bool(true), opened.properties["cold_start"])
         assertEquals(AnalyticsValue.Str("burnbar"), opened.properties["product"])
         assertEquals(AnalyticsValue.Str("android"), opened.properties["platform"])
+        assertEquals(AnalyticsValue.Str("android"), opened.properties["surface"])
     }
 
     @Test

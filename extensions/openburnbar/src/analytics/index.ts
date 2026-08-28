@@ -82,6 +82,7 @@ export function createAnalytics(host: AnalyticsHost): AnalyticsGraph {
 
   const superProperties = (): AnalyticsProps => {
     const props: AnalyticsProps = {
+      product: 'burnbar',
       platform: 'vscode',
       app_version: host.appVersion,
       surface: SURFACE.app
@@ -122,6 +123,11 @@ export function bootAnalytics(
   graph.analytics.track(EVENT.appSessionStarted, {
     is_first_launch: ctx.isFirstActivation,
     cold_start: true
+  });
+  graph.analytics.track(EVENT.appOpened, {
+    is_first_launch: ctx.isFirstActivation,
+    cold_start: true,
+    surface: 'extension'
   });
   graph.analytics.track(EVENT.vscodeExtensionActivated, { host_kind: ctx.hostKind });
   graph.analytics.track(EVENT.screenViewed, {

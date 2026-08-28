@@ -75,6 +75,7 @@ describe('analytics wiring (index.ts graph)', () => {
 
     const names = transport.events.map((e) => e.name);
     expect(names).toContain(EVENT.appSessionStarted);
+    expect(names).toContain(EVENT.appOpened);
     expect(names).toContain(EVENT.vscodeExtensionActivated);
     expect(names).toContain(EVENT.screenViewed);
   });
@@ -86,6 +87,7 @@ describe('analytics wiring (index.ts graph)', () => {
     const names = transport.events.map((e) => e.name);
     expect(names).toContain(EVENT.consentAnalyticsGranted);
     expect(names).toContain(EVENT.appSessionStarted);
+    expect(names).toContain(EVENT.appOpened);
     expect(names).toContain(EVENT.vscodeExtensionActivated);
     expect(names).toContain(EVENT.screenViewed);
 
@@ -103,6 +105,10 @@ describe('analytics wiring (index.ts graph)', () => {
     expect(start).toBeDefined();
     if (!start) throw new Error('missing session start analytics event');
     expect(start.props).toMatchObject({ is_first_launch: true, cold_start: true });
+    const opened = transport.events.find((e) => e.name === EVENT.appOpened);
+    expect(opened).toBeDefined();
+    if (!opened) throw new Error('missing app opened analytics event');
+    expect(opened.props.surface).toBe('extension');
     const view = transport.events.find((e) => e.name === EVENT.screenViewed);
     expect(view).toBeDefined();
     if (!view) throw new Error('missing screen viewed analytics event');

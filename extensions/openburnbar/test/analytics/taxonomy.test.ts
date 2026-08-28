@@ -20,6 +20,7 @@ describe('event taxonomy governance', () => {
   it('Tier 1 shared names are reused VERBATIM from the cross-platform spine', () => {
     // These must be byte-identical to AnalyticsEvent.swift / website events.ts.
     expect(EVENT.appSessionStarted).toBe('app.session.started');
+    expect(EVENT.appOpened).toBe('app.opened');
     expect(EVENT.appSessionEnded).toBe('app.session.ended');
     expect(EVENT.screenViewed).toBe('screen.viewed');
     expect(EVENT.settingsChanged).toBe('settings.changed');
@@ -45,6 +46,7 @@ describe('event taxonomy governance', () => {
 
   it('categories are assigned correctly for the spine', () => {
     expect(eventCategory(EVENT.appSessionStarted)).toBe('lifecycle');
+    expect(eventCategory(EVENT.appOpened)).toBe('lifecycle');
     expect(eventCategory(EVENT.consentAnalyticsGranted)).toBe('lifecycle');
     expect(eventCategory(EVENT.vscodeExtensionActivated)).toBe('lifecycle');
     expect(eventCategory(EVENT.vscodeDaemonConnection)).toBe('lifecycle');

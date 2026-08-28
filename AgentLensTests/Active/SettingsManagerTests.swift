@@ -159,6 +159,15 @@ final class SettingsManagerTests: XCTestCase {
         XCTAssertEqual(settings.refreshIntervalMinutes, 5)
     }
 
+    func test_markHasLaunchedBefore_flipsFirstLaunchFlag() {
+        let defaults = makeIsolatedDefaults()
+        defaults.removeObject(forKey: "hasLaunchedBefore")
+        let settings = makeSettingsManager(defaults: defaults)
+        XCTAssertTrue(settings.isFirstLaunch)
+        settings.markHasLaunchedBefore()
+        XCTAssertFalse(settings.isFirstLaunch)
+    }
+
     func test_showInMenuBar_defaultValue_isTrueOnFirstLaunch() {
         let defaults = makeIsolatedDefaults()
         defaults.removeObject(forKey: "hasLaunchedBefore")

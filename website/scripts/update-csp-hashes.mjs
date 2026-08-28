@@ -113,7 +113,24 @@ function buildMarketingCsp(
   return directives.join("; ");
 }
 
+function extraCollectorConnectSrc(env = process.env) {
+  const raw = (env.PUBLIC_ANALYTICS_COLLECTOR_URL ?? "").trim();
+  if (!raw) return [];
+  let url;
+  try {
+    url = new URL(raw);
+  } catch {
+    return [];
+  }
+  const firstParty = new Set(["https://burnbar.ai", "https://www.burnbar.ai", "https://burnbar.web.app"]);
+  if (firstParty.has(url.origin)) return [];
+  const local = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(url.origin);
+  if (url.protocol !== "https:" && !local) return [];
+  return [url.origin];
+}
+
 function expectedMarketingCsps(hashes) {
+  const collectorOrigins = extraCollectorConnectSrc();
   const firebaseAuthSources = {
     imgSrc: ["https://*.googleusercontent.com"],
     scriptSrc: [
@@ -139,6 +156,7 @@ function expectedMarketingCsps(hashes) {
       "https://content-firebaseappcheck.googleapis.com",
       "https://www.google.com",
       "https://www.gstatic.com",
+      ...collectorOrigins,
     ],
     formAction: ["https://accounts.google.com", "https://appleid.apple.com"],
   };
@@ -162,12 +180,13 @@ function expectedMarketingCsps(hashes) {
     frameSrc: [...arenaArtifactFrameSrc, ...firebaseAuthSources.frameSrc],
     connectSrc: [
       "https://us-central1-burnbar.cloudfunctions.net",
-      ...firebaseAuthSources.connectSrc,
+      ...firebaseAuthSources.connectSrc.filter((source) => !collectorOrigins.includes(source)),
+      ...collectorOrigins,
     ],
     formAction: firebaseAuthSources.formAction,
   };
   return new Map([
-    ["**", buildMarketingCsp(hashes, { frameSrc: arenaArtifactFrameSrc })],
+    ["**", buildMarketingCsp(hashes, { frameSrc: arenaArtifactFrameSrc, connectSrc: collectorOrigins })],
     ["/bench/arena/vote", buildMarketingCsp(hashes, arenaVotePage)],
     ["/link", buildMarketingCsp(hashes, firebaseAuthSources)],
     ["/hermes/connect", buildMarketingCsp(hashes, firebaseAuthSources)],
