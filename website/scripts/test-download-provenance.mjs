@@ -37,7 +37,7 @@ const releaseDocs = read("docs/RELEASE_MACOS.md");
 const AUDITED_LIVE_MAC_DOWNLOAD_URL = "https://downloads.burnbar.ai/OpenBurnBar-1.0.40+repair.34-macOS.dmg";
 
 const TRUSTED_GITHUB_RELEASE_PATH =
-  /^\/Imagine-That-Ai\/BurnBar\/releases\/download\/[^/]+(?:\/OpenBurnBar-[A-Za-z0-9._+%-]+-macOS\.dmg)?$/;
+  /^\/Imagine-That-Ai\/BurnBar\/releases\/download\/[^/]+(?:\/OpenBurnBar-[A-Za-z0-9._+-]+-macOS\.dmg)?$/;
 
 function assertHttpsDownloadUrl(url, label) {
   assert.equal(url.protocol, "https:", `${label} must use HTTPS`);
@@ -48,7 +48,7 @@ function assertHttpsDownloadUrl(url, label) {
 
   if (url.hostname === "downloads.burnbar.ai") {
     assert(
-      /^\/(?:OpenBurnBar-[A-Za-z0-9._+%-]+-macOS\.dmg)?$/.test(url.pathname),
+      /^\/(?:OpenBurnBar-[A-Za-z0-9._+-]+-macOS\.dmg)?$/.test(url.pathname),
       `${label} must stay on the first-party download root or macOS DMG asset`
     );
     return;
@@ -69,7 +69,7 @@ const macDownloadBaseUrl = new URL(stringValue(siteSource, "macDownloadBaseUrl")
 const macReleaseFile = stringValue(siteSource, "macReleaseFile");
 assert.match(
   macReleaseFile,
-  /^OpenBurnBar-[A-Za-z0-9._+%-]+-macOS\.dmg$/,
+  /^OpenBurnBar-[A-Za-z0-9._+-]+-macOS\.dmg$/,
   "SITE.macReleaseFile must be a plain OpenBurnBar macOS DMG filename"
 );
 assertHttpsDownloadUrl(macDownloadBaseUrl, "SITE.macDownloadBaseUrl");
