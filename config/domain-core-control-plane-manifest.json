@@ -124,7 +124,7 @@
     "scripts/ci/inject-sentry-config-android.sh": ["7ffd547d83fbc0ab","2e634169f8645de4","1ab7f3aa29969b75","123b8cb21a9f5bf5"],
     "scripts/ci/inject-sentry-config-extension.sh": ["0ab6bd137d92ebe6","639736daa1b6bc36","0323c3e77d786890","776e744e3f0241e1"],
     "scripts/ci/inject-sentry-config-ios.sh": ["b4154913df61ec09","0ec2752bfe1b3042","7516ead3b769cd75","b5b5105747a55969"],
-    "scripts/ci/macos-r2-publication.mjs": ["af2d6407a5624fa8","2c655e7c44fae3b6","a30bb0b2357b8466","6c9ff06f20227f78"],
+    "scripts/ci/macos-r2-publication.mjs": ["0af2ed22f5c98667","eed2b2fa9cd17d23","bf3475ceb37aeb94","2ffacd88a4dc32e8"],
     "scripts/ci/post-deploy-health-gate.sh": ["4169a04fcd931db5","a3e6daf364a5e60d","edc5fed67386e1a6","bdd51ccf516becec"],
     "scripts/ci/post-deploy-health-gate.test.sh": ["422d3d774ee0b0aa","9bfae0653610091d","7a4c6474749fc8b8","2b52d296678f0cc9"],
     "scripts/ci/prepare-domain-core-native-release-gate.mjs": ["8926f01191249682","59188cf305660800","3a895bb83b02715a","076415897f4cc2ca"],

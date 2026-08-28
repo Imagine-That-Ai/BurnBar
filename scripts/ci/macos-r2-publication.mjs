@@ -51,6 +51,8 @@ archive, destination = sys.argv[1:]
 max_entries = 100_000
 max_file_bytes = 1 * 1024 * 1024 * 1024
 max_total_bytes = 2 * 1024 * 1024 * 1024
+# Comfortably above PATH_MAX on both macOS (1024) and Linux (4096).
+max_symlink_target_bytes = 4096
 
 with zipfile.ZipFile(archive) as source:
     entries = source.infolist()
@@ -59,6 +61,7 @@ with zipfile.ZipFile(archive) as source:
 
     seen = set()
     seen_filesystem_names = set()
+    symlink_paths = set()
     total_bytes = 0
     info_plists = 0
     for entry in entries:
@@ -103,6 +106,12 @@ with zipfile.ZipFile(archive) as source:
                 # property this check was reaching for.
                 if is_directory:
                     raise ValueError("archive contains a symlink marked as a directory")
+                # Read the target only after bounding it. A symlink entry is a
+                # short path, but a crafted one can be a highly compressed
+                # oversized member, and read() would decompress all of it here --
+                # before the per-entry and total-size checks below.
+                if entry.file_size > max_symlink_target_bytes:
+                    raise ValueError("archive contains an oversized symlink target")
                 target = source.read(entry).decode("utf-8", "strict")
                 if (
                     not target
@@ -119,6 +128,7 @@ with zipfile.ZipFile(archive) as source:
                     and not resolved.startswith("OpenBurnBar.app/")
                 ):
                     raise ValueError("archive symlink escapes the bundle root")
+                symlink_paths.add(path)
             elif is_directory:
                 if entry_type != stat.S_IFDIR:
                     raise ValueError("archive directory has an invalid file type")
@@ -138,7 +148,34 @@ with zipfile.ZipFile(archive) as source:
     if info_plists != 1:
         raise ValueError("archive must contain exactly one canonical app Info.plist")
 
+    # The per-entry target check above is lexical, so it cannot see a chain: with
+    # aliases such as "a -> ." and "a/b -> ." a later target of "../../../../tmp"
+    # normalizes inside the bundle by name while physically resolving outside it,
+    # and an entry beneath that link then lands outside the extraction tree.
+    # In a real signed bundle every symlink is a leaf -- Versions/Current and the
+    # aliases beside it are never archived through -- so requiring that no path
+    # descends through one costs nothing and makes chains impossible to express.
+    for path in seen:
+        parts = path.split("/")
+        for index in range(1, len(parts)):
+            if "/".join(parts[:index]) in symlink_paths:
+                raise ValueError("archive path descends through a symlink")
+
     os.makedirs(destination, mode=0o700, exist_ok=False)
+    real_destination = os.path.realpath(destination)
+
+    def checked_parent(output):
+        # Belt and braces for the ancestor rule above: resolve the parent for
+        # real, so a link that slipped past the name-based checks still cannot
+        # place a file outside the extraction tree.
+        parent = os.path.dirname(output)
+        os.makedirs(parent, mode=0o700, exist_ok=True)
+        real_parent = os.path.realpath(parent)
+        if real_parent != real_destination and not real_parent.startswith(
+            real_destination + os.sep
+        ):
+            raise ValueError("archive entry escapes the extraction root")
+
     for entry in entries:
         name = entry.filename
         is_directory = name.endswith("/")
@@ -146,9 +183,10 @@ with zipfile.ZipFile(archive) as source:
         output = os.path.join(destination, *path.split("/"))
         unix_mode = (entry.external_attr >> 16) & 0xFFFF
         if is_directory:
+            checked_parent(output)
             os.makedirs(output, mode=0o700, exist_ok=True)
             continue
-        os.makedirs(os.path.dirname(output), mode=0o700, exist_ok=True)
+        checked_parent(output)
         if entry.create_system == 3 and stat.S_IFMT(unix_mode) == stat.S_IFLNK:
             # Validated above as relative and bundle-internal. Recreate it as a
             # symlink rather than a regular file holding the target text, so the
