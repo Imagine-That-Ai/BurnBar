@@ -110,8 +110,8 @@ export const SITE = {
   },
   // Public macOS download and update feeds. The first-party host is backed by
   // the verified openburnbar-downloads R2 bucket.
-  macReleaseLatest: "1.0.29",
-  macReleaseFile: "OpenBurnBar-1.0.29-macOS.dmg",
+  macReleaseLatest: "1.0.40+repair.34",
+  macReleaseFile: "OpenBurnBar-1.0.40+repair.34-macOS.dmg",
   macAppcastFile: "appcast.xml",
   macUpdateFeedFile: "latest-macos.json",
   macDownloadBaseUrl: "https://downloads.burnbar.ai",
