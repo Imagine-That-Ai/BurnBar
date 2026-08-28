@@ -319,6 +319,11 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # wrangler cannot upload the ~449 MiB DMG: it never starts a multipart
+          # upload and refuses anything over 300 MiB. These are R2 API token
+          # credentials, which are separate from CLOUDFLARE_API_TOKEN.
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           OPENBURNBAR_R2_BUCKET: ${{ vars.OPENBURNBAR_R2_BUCKET }}
           OPENBURNBAR_R2_PUBLIC_BASE_URL: ${{ vars.OPENBURNBAR_MAC_UPDATE_BASE_URL }}
           OPENBURNBAR_RELEASE_ASSET_DIR: ${{ steps.release.outputs.asset_dir }}
