@@ -5,6 +5,7 @@ enum AnalyticsRuntime {
     private static var consentStore: AnalyticsConsentStore?
     private static var recorder: Analytics?
     private static var rememberedFirstLaunch = false
+    private static var sessionSpineEmitted = false
 
     static func configure(
         consentStore newConsentStore: AnalyticsConsentStore? = nil,
@@ -16,6 +17,8 @@ enum AnalyticsRuntime {
         if let newRecorder {
             recorder = newRecorder
         }
+        sessionSpineEmitted = false
+        rememberedFirstLaunch = false
     }
 
     static var consent: AnalyticsConsentStore {
@@ -34,6 +37,9 @@ enum AnalyticsRuntime {
     static var currentSessionIsFirstLaunch: Bool { rememberedFirstLaunch }
 
     static func trackFunnelSessionStart() {
+        guard consent.isGranted else { return }
+        guard !sessionSpineEmitted else { return }
+        sessionSpineEmitted = true
         let isFirst = rememberedFirstLaunch
         analytics.track(.appSessionStarted, [
             "is_first_launch": .bool(isFirst),

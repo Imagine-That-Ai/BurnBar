@@ -79,6 +79,21 @@ class AnalyticsManagerFunnelTest {
     }
 
     @Test
+    fun `settings grant emits the session spine once`() {
+        val transport = FakeAnalyticsTransport()
+        val store = AnalyticsConsentStore(InMemoryConsentStorage(null))
+        AnalyticsManager.attachForTests(store, transport)
+        AnalyticsManager.rememberLaunchContext(isFirstLaunch = true)
+
+        AnalyticsManager.grant()
+        AnalyticsManager.grant()
+
+        assertEquals(1, transport.names().count { it == AnalyticsEvent.APP_OPENED.wire })
+        assertEquals(1, transport.names().count { it == AnalyticsEvent.INSTALL_STARTED.wire })
+        assertEquals(AnalyticsValue.Str("android"), transport.sent.single { it.name == AnalyticsEvent.APP_OPENED.wire }.properties["surface"])
+    }
+
+    @Test
     fun `current session start uses remembered first-launch flag`() {
         val transport = FakeAnalyticsTransport()
         val store = AnalyticsConsentStore(InMemoryConsentStorage(AnalyticsConsent.GRANTED.raw))

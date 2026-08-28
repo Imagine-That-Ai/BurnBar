@@ -28,6 +28,8 @@ object AnalyticsManager {
 
     @Volatile private var currentSessionIsFirstLaunch: Boolean = false
 
+    @Volatile private var sessionSpineEmitted: Boolean = false
+
     /** Per-app-session id (rotated each process launch); NOT a user id. */
     private val sessionId: String = UUID.randomUUID().toString()
 
@@ -95,6 +97,7 @@ object AnalyticsManager {
         consentStore = null
         anonymousDeviceId = null
         currentSessionIsFirstLaunch = false
+        sessionSpineEmitted = false
     }
 
     fun rememberLaunchContext(isFirstLaunch: Boolean) {
@@ -105,6 +108,7 @@ object AnalyticsManager {
     fun grant() {
         consentStore?.grant()
         analytics?.consentDidChange()
+        trackCurrentSessionStartIfConsented()
     }
 
     /** Decline: persist; stays dark. */
@@ -136,6 +140,8 @@ object AnalyticsManager {
      */
     fun trackSessionStartIfConsented(isFirstLaunch: Boolean) {
         if (!isGranted) return
+        if (sessionSpineEmitted) return
+        sessionSpineEmitted = true
         track(
             AnalyticsEvent.APP_SESSION_STARTED,
             mapOf(

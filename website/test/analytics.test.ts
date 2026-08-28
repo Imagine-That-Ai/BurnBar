@@ -41,7 +41,7 @@ function make(granted: boolean, collectorUrl = "https://collect.example.test/v1"
     consent,
     transport,
     collectorUrl,
-    superProperties: () => ({ platform: "website", app_version: "1.0.0" }),
+    superProperties: () => ({ platform: "website", app_version: "1.0.0" })
   });
   return { analytics, transport, consent };
 }
@@ -172,12 +172,19 @@ describe("buckets match the macOS labels verbatim", () => {
 describe("CMO funnel aliases", () => {
   it("pairs product events with taxonomy-legal funnel names", () => {
     expect(eventsToEmit(EVENT.screenViewed)).toEqual([EVENT.screenViewed, EVENT.pageViewed]);
-    expect(eventsToEmit(EVENT.appSessionStarted)).toEqual([EVENT.appSessionStarted, EVENT.appOpened]);
-    expect(eventsToEmit(EVENT.downloadCtaClicked)).toEqual([
-      EVENT.downloadCtaClicked,
-      EVENT.downloadClicked,
+    expect(eventsToEmit(EVENT.appSessionStarted)).toEqual([
+      EVENT.appSessionStarted,
+      EVENT.appOpened
     ]);
-    expect(eventsToEmit(EVENT.pricingCtaClicked)).toEqual([EVENT.pricingCtaClicked, EVENT.ctaClicked]);
+    expect(eventsToEmit(EVENT.downloadCtaClicked)).toEqual([EVENT.downloadCtaClicked]);
+    expect(eventsToEmit(EVENT.downloadClicked)).toEqual([
+      EVENT.downloadClicked,
+      EVENT.downloadCtaClicked
+    ]);
+    expect(eventsToEmit(EVENT.pricingCtaClicked)).toEqual([
+      EVENT.pricingCtaClicked,
+      EVENT.ctaClicked
+    ]);
     expect(eventsToEmit(EVENT.errorHandled)).toEqual([EVENT.errorHandled]);
   });
 

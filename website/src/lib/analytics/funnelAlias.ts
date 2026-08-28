@@ -4,7 +4,9 @@ import { EVENT, type AnalyticsEventName } from "./events";
 export const FUNNEL_ALIAS: Partial<Record<AnalyticsEventName, AnalyticsEventName>> = {
   [EVENT.screenViewed]: EVENT.pageViewed,
   [EVENT.appSessionStarted]: EVENT.appOpened,
-  [EVENT.downloadCtaClicked]: EVENT.downloadClicked,
+  // Real artifact/store clicks use `download.clicked` and also emit the product event.
+  // Header / mobile-nav `download.cta.clicked` is page navigation only — no funnel alias.
+  [EVENT.downloadClicked]: EVENT.downloadCtaClicked,
   [EVENT.pricingCtaClicked]: EVENT.ctaClicked,
   [EVENT.navExternalClicked]: EVENT.ctaClicked
 };

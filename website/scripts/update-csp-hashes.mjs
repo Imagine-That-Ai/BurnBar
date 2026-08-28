@@ -122,10 +122,11 @@ function extraCollectorConnectSrc(env = process.env) {
   } catch {
     return [];
   }
-  const firstParty = new Set(["https://burnbar.ai", "https://www.burnbar.ai", "https://burnbar.web.app"]);
-  if (firstParty.has(url.origin)) return [];
   const local = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(url.origin);
   if (url.protocol !== "https:" && !local) return [];
+  // CSP `'self'` is exact-origin. A page on burnbar.ai cannot POST to
+  // burnbar.web.app (or www) unless that origin is listed, even when it is
+  // first-party.
   return [url.origin];
 }
 

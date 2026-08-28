@@ -130,7 +130,7 @@ const linuxPubKeyHref = `${linuxDownloadBaseUrl}/${SITE.linuxPubKeyFile}`;
           <a
             class="btn btn--ember dlsec__primary"
             href={macDownloadHref}
-            data-analytics-event="download.cta.clicked"
+            data-analytics-event="download.clicked"
             data-analytics-prop-placement="hero"
             data-analytics-prop-platform="macos"
           >
@@ -228,19 +228,19 @@ make install</code></pre>
       </div>
 
       <div class="linux-downloads" data-animate-onview>
-        <a class="linux-dl linux-dl--primary" href={linuxAppImageHref}>
+        <a class="linux-dl linux-dl--primary" href={linuxAppImageHref} data-analytics-event="download.clicked" data-analytics-prop-placement="hero" data-analytics-prop-platform="linux">
           <span class="linux-dl__kind mono">PRIMARY</span>
           <span class="linux-dl__title">AppImage</span>
           <span class="linux-dl__meta">Portable · {SITE.linuxArch}</span>
           <span class="linux-dl__action">Download · {SITE.linuxReleaseLatest} ↓</span>
         </a>
-        <a class="linux-dl" href={linuxDebHref}>
+        <a class="linux-dl" href={linuxDebHref} data-analytics-event="download.clicked" data-analytics-prop-placement="hero" data-analytics-prop-platform="linux">
           <span class="linux-dl__kind mono">DEB</span>
           <span class="linux-dl__title">.deb</span>
           <span class="linux-dl__meta">Debian · Ubuntu · arm64</span>
           <span class="linux-dl__action">Download ↓</span>
         </a>
-        <a class="linux-dl" href={linuxRpmHref}>
+        <a class="linux-dl" href={linuxRpmHref} data-analytics-event="download.clicked" data-analytics-prop-placement="hero" data-analytics-prop-platform="linux">
           <span class="linux-dl__kind mono">RPM</span>
           <span class="linux-dl__title">.rpm</span>
           <span class="linux-dl__meta">Fedora · RHEL · aarch64</span>
@@ -345,6 +345,9 @@ make install</code></pre>
           href={SITE.iosAppStoreUrl}
           target="_blank"
           rel="noopener noreferrer"
+          data-analytics-event="download.clicked"
+          data-analytics-prop-placement="hero"
+          data-analytics-prop-platform="ios"
         >
           Get it on the App Store
           <span class="btn-arrow" aria-hidden="true">→</span>

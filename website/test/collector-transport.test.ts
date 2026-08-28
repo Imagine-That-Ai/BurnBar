@@ -34,6 +34,22 @@ describe("FirstPartyCollectorTransport", () => {
     expect(calls).toHaveLength(1);
   });
 
+  it("does not persist a device id until start() after consent", () => {
+    const storage = new Map<string, string>();
+    const store = {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => void storage.set(key, value)
+    };
+    const transport = new FirstPartyCollectorTransport(
+      undefined,
+      async () => new Response("{}", { status: 200 }),
+      store
+    );
+    expect(storage.get(DEVICE_ID_KEY)).toBeUndefined();
+    transport.start("https://collect.burnbar.test/v1");
+    expect(storage.get(DEVICE_ID_KEY)).toBeTruthy();
+  });
+
   it("reuses a persisted anonymous device id across constructions", () => {
     const storage = new Map<string, string>();
     const store = {

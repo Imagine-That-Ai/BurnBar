@@ -27,19 +27,39 @@ export function persistentAnonymousId(
   return id;
 }
 
+type IdStorage = { getItem(key: string): string | null; setItem(key: string, value: string): void };
+
+function memoryStorage(): IdStorage {
+  const m = new Map<string, string>();
+  return { getItem: (k) => m.get(k) ?? null, setItem: (k, v) => void m.set(k, v) };
+}
+
+function consentTimeStorage(): IdStorage {
+  try {
+    if (typeof localStorage !== "undefined") return localStorage;
+  } catch {
+    /* private mode / SSR */
+  }
+  return memoryStorage();
+}
+
 export class FirstPartyCollectorTransport implements AnalyticsTransport {
   private started = false;
   private optedOut = false;
   private collectorUrl = "";
-  private readonly deviceId: string;
+  private deviceId = "";
+  private readonly explicitDeviceId: string | undefined;
   private readonly fetchImpl: FetchLike;
+  private readonly storage: IdStorage;
 
   constructor(
-    deviceId: string = newAnonymousId(),
-    fetchImpl: FetchLike = (input, init) => fetch(input, init)
+    deviceId?: string,
+    fetchImpl: FetchLike = (input, init) => fetch(input, init),
+    storage: IdStorage = consentTimeStorage()
   ) {
-    this.deviceId = deviceId;
+    this.explicitDeviceId = deviceId;
     this.fetchImpl = fetchImpl;
+    this.storage = storage;
   }
 
   get isStarted(): boolean {
@@ -51,6 +71,7 @@ export class FirstPartyCollectorTransport implements AnalyticsTransport {
     this.collectorUrl = collectorUrl;
     this.started = true;
     this.optedOut = false;
+    this.deviceId = this.explicitDeviceId ?? persistentAnonymousId(this.storage);
   }
 
   track(name: string, category: string, props: AnalyticsProps): void {

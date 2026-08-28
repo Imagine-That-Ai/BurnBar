@@ -29,26 +29,32 @@ contract.
 
 The marketing site no longer talks to `api2.amplitude.com` from the browser. Point
 `PUBLIC_ANALYTICS_COLLECTOR_URL` at the first-party Worker (`workers/analytics-collector/`)
-or another same-origin collector path, and allow that origin in `connect-src`.
+or another collector origin, and allow that origin in `connect-src` (CSP `'self'` is
+exact-origin — a `burnbar.web.app` collector is not implied by a `burnbar.ai` page).
 Console / native clients still use platform Amplitude SDKs with build-time keys.
 
-## Verification (2026-06-18)
+Amplitude **routes by API key**, not by `AMPLITUDE_PROJECT_ID`. The numeric id is a local
+allowlist + event stamp (OpenBurnBar `830583` / Dev `830581` only). Bind each deploy's
+`wrangler secret` to that project's key. A CubeLove or Hormiga key would still land in
+those projects even if `AMPLITUDE_PROJECT_ID=830583`.
 
-1. **Raw ingestion** — `POST https://api2.amplitude.com/2/httpapi` with the Dev key →
-   `{"code":200,"events_ingested":1}`. The event appears on the OpenBurnBar Dev project
-   (Events This Month = 1).
+## Verification (collector path)
 
-2. **Live end-to-end through the real website wrapper** — built the site with the Dev key, served
-   it, clicked **Enable analytics** in the consent banner. The wrapper dynamically imported the SDK
-   and `POST /2/httpapi` returned **200** carrying exactly:
-   - `consent.analytics.granted` · `app.session.started` · `screen.viewed`
-   - props: `platform=web`, `surface=home`, `app_version`, `event_category` (lifecycle / screen_view)
-   - `device_id` = random UUID, **no `user_id`**, no IP in payload, **zero PII**.
+1. **Worker dark without a key** — `AMPLITUDE_API_KEY` unset → `204` and no Amplitude POST.
+   Consent false → `204`. Forbidden project ids → `409`.
 
-3. **Pre-consent darkness** — before opt-in, the served HTML loads **no** Amplitude script and makes
-   **no** request to `api2.amplitude.com` (the SDK is a dynamic chunk fetched only on opt-in).
+2. **Consented collector forward** — with the Dev key and `AMPLITUDE_PROJECT_ID=830581`,
+   `POST` `{consent:true,events:[{name:"page.viewed",...}]}` from an allowlisted origin.
+   The Worker returns `{accepted:true,events_forwarded:N,project_id:830581}` and POSTs
+   Amplitude HTTP V2. The browser payload must not contain `api_key`.
 
-**Pipeline proven** (key → SDK → Amplitude, and the website wrapper end-to-end). Per-platform *live*
-ingestion for the other surfaces is gated only on running each runtime (Xcode 16 for Apple, an
-emulator/device for Android, a deploy for backend) with its key set — the wrappers themselves are
-unit-tested to emit the same taxonomy events, and the key + endpoint are confirmed working.
+3. **Pre-consent darkness** — before opt-in the page does not persist a device id, does
+   not POST to the collector, and does not talk to `api2.amplitude.com`.
+
+4. **Raw Amplitude sanity (ops only)** — `POST https://api2.amplitude.com/2/httpapi` with
+   the **project-specific** Dev key still returns Amplitude's `{code:200,events_ingested:1}`.
+   That is a key check, not the website path.
+
+Unit tests in `website/test/collector.test.ts` cover consent, project routing, Arena
+allowlisting, origin rejection, and email stripping. Live ingestion for native surfaces
+still needs each runtime with its key injected.

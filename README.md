@@ -589,7 +589,7 @@ Properties: `product=burnbar`, `app_version`, optional `utm_*` / `click_id` / `c
 
 1. Build the website with `PUBLIC_ANALYTICS_COLLECTOR_URL` pointing at a collector that has the **Dev** key and project `830581`.
 2. Open the site, click **Enable analytics** (do not skip the banner).
-3. Load a page or click Download. The collector should POST to Amplitude HTTP V2 and return `events_ingested >= 1`.
+3. Load a page or click a real download (DMG / Linux artifact / App Store). The collector should POST to Amplitude HTTP V2 and return `events_forwarded >= 1`. Header / nav “Download” links are page navigation (`download.cta.clicked`) and do not emit `download.clicked`.
 4. In Amplitude → OpenBurnBar Dev (`830581`) → Events This Month, look for `page.viewed` / `cta.clicked` / `download.clicked`.
 5. Confirm the event is **not** in CubeLove (`852537`) or Hormiga (`703455`).
 6. Load the same site **without** accepting the banner: DevTools → Network should show **zero** requests to the collector and **zero** requests to `api2.amplitude.com`.

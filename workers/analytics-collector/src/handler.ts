@@ -12,6 +12,11 @@
  *
  * Do not deploy secrets from this tree. Set AMPLITUDE_API_KEY via
  * `wrangler secret put`. Default project is OpenBurnBar Dev (830581).
+ *
+ * Amplitude routes by API key, not by AMPLITUDE_PROJECT_ID. The numeric id is a
+ * local allowlist + event stamp (OpenBurnBar 830583 / Dev 830581 only). Bind
+ * each deploy's secret to that project's key. A CubeLove/Hormiga key would
+ * still land in those projects even if PROJECT_ID is 830583.
  */
 
 import {
@@ -92,7 +97,7 @@ function isAllowedEventName(name: string): name is FunnelEventName | string {
 
 function sanitizeProps(props: Record<string, string | boolean> | undefined): Record<string, string | boolean> {
   const out: Record<string, string | boolean> = {};
-  if (!props) return out;
+  if (!props || typeof props !== "object" || Array.isArray(props)) return out;
   for (const [key, value] of Object.entries(props)) {
     if (key === "email" || key === "raw_email" || key.endsWith("_email")) continue;
     if (typeof value === "string") {
@@ -113,18 +118,27 @@ export function isAllowedCollectorOrigin(origin: string | null): boolean {
     origin === "https://burnbar.ai" ||
     origin === "https://www.burnbar.ai" ||
     origin === "https://burnbar.web.app" ||
+    origin === "https://burnbar.firebaseapp.com" ||
     (origin !== null && /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(origin))
   );
 }
 
+function asTrimmedString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
 export async function handleCollectorPost(
-  body: CollectorRequestBody,
+  body: CollectorRequestBody | null | undefined,
   env: CollectorEnv,
   fetchImpl: FetchLike,
   origin?: string | null,
 ): Promise<HandlerResult> {
   if (origin !== undefined && !isAllowedCollectorOrigin(origin)) {
     return json(403, { accepted: false, reason: "origin_rejected" });
+  }
+
+  if (body == null || typeof body !== "object" || Array.isArray(body)) {
+    return json(400, { accepted: false, reason: "invalid_body" });
   }
 
   if (body.consent !== true) {
@@ -157,12 +171,12 @@ export async function handleCollectorPost(
     options: { min_id_length: 1 },
     events: allowed.map((event, index) => ({
       event_type: event.name,
-      device_id: (event.device_id ?? "").trim() || "anonymous",
+      device_id: asTrimmedString(event.device_id) || "anonymous",
       time: typeof event.time_ms === "number" ? event.time_ms : now,
-      insert_id: (event.insert_id ?? "").trim() || `obb-${now}-${index}`,
+      insert_id: asTrimmedString(event.insert_id) || `obb-${now}-${index}`,
       event_properties: {
         ...sanitizeProps(event.props),
-        ...(event.category ? { event_category: event.category } : {}),
+        ...(asTrimmedString(event.category) ? { event_category: asTrimmedString(event.category) } : {}),
         amplitude_project_id: String(projectId),
       },
     })),

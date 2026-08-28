@@ -212,6 +212,26 @@ describe("collector worker — consent and project routing", () => {
     expect(fetches).toHaveLength(0);
   });
 
+  it("rejects a null body without throwing", async () => {
+    const result = await handleCollectorPost(
+      null,
+      { AMPLITUDE_API_KEY: "secret-key", AMPLITUDE_PROJECT_ID: "830581" },
+      async () => new Response("{}", { status: 200 })
+    );
+    expect(result.status).toBe(400);
+    expect(result.body.reason).toBe("invalid_body");
+  });
+
+  it("does not throw when device_id is a number", async () => {
+    const result = await handleCollectorPost(
+      { consent: true, events: [{ name: "page.viewed", device_id: 12 as unknown as string }] },
+      { AMPLITUDE_API_KEY: "secret-key", AMPLITUDE_PROJECT_ID: "830581" },
+      async () => new Response("{}", { status: 200 })
+    );
+    expect(result.status).toBe(200);
+    expect(result.forwarded).toBe(1);
+  });
+
   it("rejects oversized event batches", async () => {
     const events = Array.from({ length: 21 }, (_, i) => ({
       name: "page.viewed",

@@ -20,6 +20,7 @@ extension AnalyticsConsentStore {
 @MainActor
 enum MobileAnalytics {
     private static let launchMarkerKey = "hasLaunchedBefore"
+    private static var sessionSpineEmitted = false
     static let currentSessionIsFirstLaunch: Bool = !UserDefaults.standard.bool(forKey: launchMarkerKey)
 
     static let shared: Analytics = {
@@ -56,11 +57,20 @@ enum MobileAnalytics {
 
     /// Flip consent + notify the recorder in one call (used by the prompt + toggle).
     static func setConsent(granted: Bool) {
-        if granted { AnalyticsConsentStore.shared.grant() } else { AnalyticsConsentStore.shared.revoke() }
-        shared.consentDidChange()
+        if granted {
+            AnalyticsConsentStore.shared.grant()
+            shared.consentDidChange()
+            trackSessionStartIfConsented()
+        } else {
+            AnalyticsConsentStore.shared.revoke()
+            shared.consentDidChange()
+        }
     }
 
     static func trackSessionStartIfConsented() {
+        guard AnalyticsConsentStore.shared.isGranted else { return }
+        guard !sessionSpineEmitted else { return }
+        sessionSpineEmitted = true
         shared.track(.appSessionStarted, [
             "is_first_launch": .bool(currentSessionIsFirstLaunch),
             "cold_start": .bool(true)

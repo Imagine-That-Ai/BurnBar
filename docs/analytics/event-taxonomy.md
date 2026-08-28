@@ -109,7 +109,7 @@ Instrumentation call sites never pass them.
 
 | Property             | Type    | Notes                                                             |
 |----------------------|---------|-------------------------------------------------------------------|
-| `platform`           | enum    | `macos` \| `ios` \| `ipados` \| `widget` \| `keyboard` \| `android` \| `web` \| `console` \| `vscode` \| `backend` |
+| `platform`           | enum    | `macos` \| `ios` \| `ipados` \| `widget` \| `keyboard` \| `android` \| `linux` \| `web` \| `console` \| `vscode` \| `backend` |
 | `app_version`        | string  | Marketing version, e.g. `2.4.1`                                   |
 | `app_build`          | string  | Build number                                                     |
 | `surface`            | enum    | Current surface/area (see surface enum below); also passed on `screen.viewed` |
@@ -334,7 +334,7 @@ and — on the Hermes connect / sign-in flow — `auth.sign_in.completed` and `e
 
 | Event                     | Category        | Properties                                                              |
 |---------------------------|-----------------|------------------------------------------------------------------------|
-| `download.cta.clicked`    | conversion_auth | `placement` (`header`\|`mobile_nav`\|`hero`\|`pricing`\|`footer`), `platform?` (`macos`\|`ios`\|`android`) |
+| `download.cta.clicked`    | conversion_auth | `placement` (`header`\|`mobile_nav`\|`hero`\|`pricing`\|`footer`), `platform?` (`macos`\|`ios`\|`android`\|`linux`) |
 | `pricing.plan.viewed`     | screen_view     | — *(impression; the page is in `surface`. Fires once when the plans grid scrolls into view)* |
 | `pricing.cta.clicked`     | conversion_auth | `plan` (`free`\|`cloud`\|`cloud_pro`\|`ultra`)                          |
 | `nav.external.clicked`    | primary_action  | `destination` (`github`\|`discord`\|`docs`\|…; bounded outbound targets) |

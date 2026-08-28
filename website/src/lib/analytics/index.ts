@@ -6,7 +6,7 @@
  */
 import { ConsentStore, type ConsentStorage } from "./consent";
 import { Analytics, type AnalyticsProps } from "./recorder";
-import { FirstPartyCollectorTransport, persistentAnonymousId } from "./collectorTransport";
+import { FirstPartyCollectorTransport } from "./collectorTransport";
 import { attributionFromSearch } from "./attribution";
 import { EVENT, type AnalyticsEventName, type ArenaSignInProvider } from "./events";
 import { eventsToEmit } from "./funnelAlias";
@@ -31,7 +31,7 @@ export const analyticsConsent = new ConsentStore(safeStorage());
 
 export const analytics = new Analytics({
   consent: analyticsConsent,
-  transport: new FirstPartyCollectorTransport(persistentAnonymousId(safeStorage())),
+  transport: new FirstPartyCollectorTransport(),
   collectorUrl: COLLECTOR_URL,
   superProperties: () => ({
     product: FUNNEL_PRODUCT,
