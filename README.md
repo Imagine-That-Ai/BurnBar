@@ -559,6 +559,13 @@ This repo already had a consent-gated Amplitude stack (macOS, iOS, Android, webs
 
 The marketing site (`website/`, burnbar.ai) **never** embeds `AMPLITUDE_API_KEY`. It POSTs consented events to `PUBLIC_ANALYTICS_COLLECTOR_URL`. The collector lives at `workers/analytics-collector/` and forwards to Amplitude HTTP V2 (`https://api2.amplitude.com/2/httpapi`) using the server-side key. If the collector URL or key is unset, the recorder stays dark even after opt-in.
 
+Official hosting builds read an optional GitHub Actions variable (empty keeps the artifact dark):
+
+- Production (`deploy-hosting.yml`): `vars.PUBLIC_ANALYTICS_COLLECTOR_URL`
+- Staging (`deploy-staging.yml`): `vars.STAGING_ANALYTICS_COLLECTOR_URL`
+
+Do not commit a collector URL. Set the variable only after the Worker is deployed and the matching origin is in the marketing CSP. Local / PR builds stay empty by default.
+
 ```bash
 # Website (browser) — collector URL only
 export PUBLIC_ANALYTICS_COLLECTOR_URL="https://collect.example.workers.dev"

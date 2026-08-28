@@ -72,19 +72,31 @@ export function surfaceForPath(pathname: string): string {
 
 const SESSION_KEY = "burnbar-analytics-session";
 
+export function shouldEmitSessionSpine(storage: {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+}): boolean {
+  try {
+    if (storage.getItem(SESSION_KEY)) return false;
+    storage.setItem(SESSION_KEY, "1");
+    return true;
+  } catch {
+    return true;
+  }
+}
+
 /** Resume a consented session and emit session-start (once per tab) + the page
  *  view. Safe to call on every page load; dark until opt-in. */
 export function boot(): void {
   analytics.startIfConsented();
   if (!analyticsConsent.isGranted) return;
+  let emitSession = true;
   try {
-    if (!sessionStorage.getItem(SESSION_KEY)) {
-      sessionStorage.setItem(SESSION_KEY, "1");
-      trackEvent(EVENT.appSessionStarted);
-    }
+    emitSession = shouldEmitSessionSpine(sessionStorage);
   } catch {
-    /* sessionStorage blocked — skip the dedupe, still send the view below */
+    emitSession = true;
   }
+  if (emitSession) trackEvent(EVENT.appSessionStarted);
   trackEvent(EVENT.screenViewed); // surface is carried by super-properties
 }
 

@@ -33,6 +33,11 @@ or another collector origin, and allow that origin in `connect-src` (CSP `'self'
 exact-origin — a `burnbar.web.app` collector is not implied by a `burnbar.ai` page).
 Console / native clients still use platform Amplitude SDKs with build-time keys.
 
+Hosting lanes compile that URL from optional GitHub Actions variables
+(`vars.PUBLIC_ANALYTICS_COLLECTOR_URL` for production, `vars.STAGING_ANALYTICS_COLLECTOR_URL`
+for staging). An unset variable builds `""`, so `Analytics.canSend` stays false until
+ops deploys the Worker and sets the variable. Do not bake a URL into the workflow.
+
 Amplitude **routes by API key**, not by `AMPLITUDE_PROJECT_ID`. The numeric id is a local
 allowlist + event stamp (OpenBurnBar `830583` / Dev `830581` only). Bind each deploy's
 `wrangler secret` to that project's key. A CubeLove or Hormiga key would still land in

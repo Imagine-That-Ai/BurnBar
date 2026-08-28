@@ -3,6 +3,7 @@ import { ConsentStore, type ConsentStorage } from "../src/lib/analytics/consent"
 import { Analytics, type AnalyticsTransport } from "../src/lib/analytics/recorder";
 import { EVENT } from "../src/lib/analytics/events";
 import { eventsToEmit } from "../src/lib/analytics/funnelAlias";
+import { shouldEmitSessionSpine } from "../src/lib/analytics/index";
 import { bucketCount, bucketDurationMs, bucketDurationSeconds } from "../src/lib/analytics/buckets";
 
 /** In-memory Storage seam — vitest's node env has no localStorage. */
@@ -195,5 +196,36 @@ describe("CMO funnel aliases", () => {
     }
     expect(transport.sent).toHaveLength(0);
     expect(transport.isStarted).toBe(false);
+  });
+});
+
+describe("session spine when storage is blocked", () => {
+  it("emits once per tab when sessionStorage works", () => {
+    const storage = new Map<string, string>();
+    const store = {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => void storage.set(key, value)
+    };
+    expect(shouldEmitSessionSpine(store)).toBe(true);
+    expect(shouldEmitSessionSpine(store)).toBe(false);
+  });
+
+  it("emits the spine when getItem or setItem throws", () => {
+    expect(
+      shouldEmitSessionSpine({
+        getItem: () => {
+          throw new Error("blocked");
+        },
+        setItem: () => undefined
+      })
+    ).toBe(true);
+    expect(
+      shouldEmitSessionSpine({
+        getItem: () => null,
+        setItem: () => {
+          throw new Error("quota");
+        }
+      })
+    ).toBe(true);
   });
 });

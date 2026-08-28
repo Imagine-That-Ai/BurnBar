@@ -404,6 +404,7 @@ jobs:
       - name: Build immutable hosting outputs
         env:
           PUBLIC_SOURCE_COMMIT: ${{ steps.ref.outputs.commit }}
+          PUBLIC_ANALYTICS_COLLECTOR_URL: ${{ vars.PUBLIC_ANALYTICS_COLLECTOR_URL }}
         run: |
           npm run verify --prefix website
           npm run build --prefix apps/console

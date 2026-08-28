@@ -55,6 +55,11 @@ export PUBLIC_ANALYTICS_COLLECTOR_URL="https://your-first-party-collector.exampl
 # Never set PUBLIC_AMPLITUDE_API_KEY in the browser build.
 ```
 
+Official hosting builds use `vars.PUBLIC_ANALYTICS_COLLECTOR_URL` (production)
+and `vars.STAGING_ANALYTICS_COLLECTOR_URL` (staging). Unset keeps the artifact
+dark. Set them only after the collector Worker is deployed and its origin is
+in the marketing CSP.
+
 ## Build
 
 ```sh

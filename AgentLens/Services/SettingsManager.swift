@@ -1553,7 +1553,18 @@ final class SettingsManager {
 
     // MARK: First Launch
     var isFirstLaunch: Bool {
-        !persistence.bool(forKey: "hasLaunchedBefore")
+        migrateHasLaunchedBeforeIfNeeded()
+        return !persistence.bool(forKey: "hasLaunchedBefore")
+    }
+
+    /// Prior builds read `hasLaunchedBefore` but never wrote it. A persisted
+    /// analytics consent decision is evidence this Mac already ran OpenBurnBar,
+    /// so an upgrade must not emit `install.started`.
+    func migrateHasLaunchedBeforeIfNeeded() {
+        guard !persistence.objectExists(forKey: "hasLaunchedBefore") else { return }
+        if persistence.objectExists(forKey: AnalyticsConsentStore.key) {
+            persistence.set(true, forKey: "hasLaunchedBefore")
+        }
     }
 
     /// One-shot install marker. Written after the first-launch flag is captured

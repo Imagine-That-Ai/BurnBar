@@ -1755,8 +1755,18 @@ final class SettingsManagerTests: XCTestCase {
     func test_isFirstLaunch_trueOnFreshInstall() {
         let defaults = makeIsolatedDefaults()
         defaults.removeObject(forKey: "hasLaunchedBefore")
+        defaults.removeObject(forKey: "analyticsConsentState")
         let settings = makeSettingsManager(defaults: defaults)
         XCTAssertTrue(settings.isFirstLaunch)
+    }
+
+    func test_isFirstLaunch_falseOnUpgradeWhenConsentAlreadyDecided() {
+        let defaults = makeIsolatedDefaults()
+        defaults.removeObject(forKey: "hasLaunchedBefore")
+        defaults.set("granted", forKey: "analyticsConsentState")
+        let settings = makeSettingsManager(defaults: defaults)
+        XCTAssertFalse(settings.isFirstLaunch)
+        XCTAssertTrue(defaults.bool(forKey: "hasLaunchedBefore"))
     }
 
     func test_isFirstLaunch_falseAfterFirstLaunch() {
