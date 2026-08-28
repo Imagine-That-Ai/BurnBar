@@ -147,6 +147,23 @@ describe("collector worker — consent and project routing", () => {
     expect(events[0]?.event_properties.amplitude_project_id).toBe("830583");
   });
 
+  it("rejects malformed project id suffixes instead of parseInt coercion", async () => {
+    for (const malformed of ["830583-prod", "830583.5"]) {
+      const fetches: string[] = [];
+      const result = await handleCollectorPost(
+        { consent: true, events: [{ name: "page.viewed" }] },
+        { AMPLITUDE_API_KEY: "secret-key", AMPLITUDE_PROJECT_ID: malformed },
+        async (url) => {
+          fetches.push(url);
+          return new Response("{}", { status: 200 });
+        }
+      );
+      expect(result.status, `project ${malformed} must be rejected`).toBe(409);
+      expect(result.body.reason).toBe("project_rejected");
+      expect(fetches).toHaveLength(0);
+    }
+  });
+
   it("rejects CubeLove and Hormiga project ids and does not call Amplitude", async () => {
     for (const forbidden of ["852537", "703455", "799824"]) {
       const fetches: string[] = [];
@@ -320,10 +337,12 @@ describe("attribution", () => {
 
   it("drops free-text names and phone-shaped query values", () => {
     const props = attributionFromSearch(
-      "?utm_term=Alice+Smith+14155551212&utm_campaign=spring-sale&utm_content=14155551212"
+      "?utm_term=Alice+Smith+14155551212&utm_campaign=spring-sale&utm_content=14155551212&utm_medium=1415-555-1212&utm_source=Alice-14155551212"
     );
     expect(props.utm_term).toBeUndefined();
     expect(props.utm_content).toBeUndefined();
+    expect(props.utm_medium).toBeUndefined();
+    expect(props.utm_source).toBeUndefined();
     expect(props.utm_campaign).toBe("spring-sale");
   });
 });

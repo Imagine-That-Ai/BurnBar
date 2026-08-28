@@ -67,12 +67,21 @@ describe("Amplitude project routing", () => {
     expect(resolveAmplitudeProjectId(1)).toBeNull();
   });
 
+  it("rejects malformed suffixes and decimals instead of parseInt coercion", () => {
+    expect(resolveAmplitudeProjectId("830583-prod")).toBeNull();
+    expect(resolveAmplitudeProjectId("830583.5")).toBeNull();
+    expect(resolveAmplitudeProjectId(" 830583 ")).toBe(830583);
+    expect(resolveAmplitudeProjectId(830583.5)).toBeNull();
+  });
+
   it("accepts campaign tokens and rejects emails, phones, and free text", () => {
     expect(isBoundedAttributionValue("spring-sale")).toBe(true);
     expect(isBoundedAttributionValue("twitter")).toBe(true);
     expect(isBoundedAttributionValue("hero_macos")).toBe(true);
     expect(isBoundedAttributionValue("a@b.com")).toBe(false);
     expect(isBoundedAttributionValue("14155551212")).toBe(false);
+    expect(isBoundedAttributionValue("1415-555-1212")).toBe(false);
+    expect(isBoundedAttributionValue("Alice-14155551212")).toBe(false);
     expect(isBoundedAttributionValue("Alice Smith")).toBe(false);
     expect(isBoundedAttributionValue("Alice Smith 14155551212")).toBe(false);
   });

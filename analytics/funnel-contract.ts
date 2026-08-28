@@ -92,7 +92,8 @@ export type FunnelProps = {
 /** Campaign / click-id tokens only — no spaces, emails, phones, or free text. */
 export function isBoundedAttributionValue(value: string): boolean {
   if (!/^[A-Za-z0-9._:-]{1,64}$/.test(value)) return false;
-  if (/^\d{7,}$/.test(value)) return false;
+  const digits = value.replace(/[._:-]/g, "");
+  if (/\d{7,}/.test(digits)) return false;
   return true;
 }
 
@@ -120,8 +121,16 @@ export function resolveAmplitudeProjectId(
   raw: string | number | undefined | null,
 ): number | null {
   if (raw === undefined || raw === null || raw === "") return null;
-  const id = typeof raw === "number" ? raw : Number.parseInt(String(raw).trim(), 10);
-  if (!Number.isInteger(id)) return null;
+  let id: number;
+  if (typeof raw === "number") {
+    if (!Number.isInteger(raw)) return null;
+    id = raw;
+  } else {
+    const trimmed = String(raw).trim();
+    if (!/^\d+$/.test(trimmed)) return null;
+    id = Number(trimmed);
+    if (!Number.isInteger(id)) return null;
+  }
   if (isForbiddenAmplitudeProject(id)) return null;
   if (!isAllowedAmplitudeProject(id)) return null;
   return id;
