@@ -259,14 +259,14 @@ test("default feed URL is the desktop updater URL and is not a pinned old versio
   assert.match(source, /downloads\.burnbar\.ai\/latest-macos\.json/);
 });
 
-test("package is 0.2.0 and never downloads the Mac app during npm install", () => {
+test("package is 0.2.1 and never downloads the Mac app during npm install", () => {
   const pkg = JSON.parse(readFileSync(join(PKG_ROOT, "package.json"), "utf8")) as {
     name: string;
     version: string;
     scripts?: Record<string, string>;
   };
   assert.equal(pkg.name, "openburnbar");
-  assert.equal(pkg.version, "0.2.0");
+  assert.equal(pkg.version, "0.2.1");
   assert.equal(pkg.scripts?.postinstall, undefined);
   assert.equal(pkg.scripts?.install, undefined);
   assert.equal(pkg.scripts?.prepare, undefined);
@@ -300,6 +300,22 @@ test("feed and download URL allowlists match the public Mac door", () => {
   assert.equal(
     isAllowedDownloadUrl("https://github.com/Imagine-That-Ai/BurnBar/releases/download/v1.0.35/OpenBurnBar-1.0.35-macOS.dmg"),
     true
+  );
+  assert.equal(
+    isAllowedFeedUrl("https://github.com/Imagine-That-Ai/BurnBar/releases/download/v1%2F../latest-macos.json"),
+    false
+  );
+  assert.equal(
+    isAllowedFeedUrl("https://github.com/Imagine-That-Ai/BurnBar/releases/download/v1%5Cassets/latest-macos.json"),
+    false
+  );
+  assert.equal(
+    isAllowedDownloadUrl("https://github.com/Imagine-That-Ai/BurnBar/releases/download/v1%2F../OpenBurnBar-1.0.35-macOS.dmg"),
+    false
+  );
+  assert.equal(
+    isAllowedDownloadUrl("https://github.com/Imagine-That-Ai/BurnBar/releases/download/v1%5Cassets/OpenBurnBar-1.0.35-macOS.dmg"),
+    false
   );
   assert.equal(isAllowedDownloadUrl("https://github.com/evil/repo/releases/latest/download/OpenBurnBar.dmg"), false);
   assert.equal(isAllowedDownloadUrl("https://evil.example/OpenBurnBar.dmg"), false);

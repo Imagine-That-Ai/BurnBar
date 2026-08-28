@@ -23,6 +23,23 @@ npx -y openburnbar --help
 
 `npx` executes the package in an ephemeral cache; use it for manual runs, not as the `command` in a saved MCP client config.
 
+To install the current notarized macOS app in one command (on macOS with Node
+22+), run:
+
+```bash
+npx -y --prefer-online openburnbar app install
+```
+
+That command uses a temporary CLI cache, then explicitly installs the app from
+the live signed update feed. For a persistent CLI install, use:
+
+```bash
+npm i -g openburnbar && openburnbar app install
+```
+
+`npm i -g openburnbar` by itself still installs only the CLI. The app download
+is never hidden in an npm lifecycle hook.
+
 The package ships four bin names, all pointing at the same entry point: `openburnbar` (the name to use), `openburnbar-mcp-remote` (compatibility alias for existing local configs), `obbresume`, and `OBB`.
 
 Requires Node 22+. The package is licensed **AGPL-3.0-only** — see [LICENSE](LICENSE).
