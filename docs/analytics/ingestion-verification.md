@@ -37,6 +37,9 @@ Hosting lanes compile that URL from optional GitHub Actions variables
 (`vars.PUBLIC_ANALYTICS_COLLECTOR_URL` for production, `vars.STAGING_ANALYTICS_COLLECTOR_URL`
 for staging). An unset variable builds `""`, so `Analytics.canSend` stays false until
 ops deploys the Worker and sets the variable. Do not bake a URL into the workflow.
+`csp:check` compares the committed dark marketing CSP. When the production variable
+is set, `deploy-hosting.yml` runs `csp:update` after verify so the deployed
+`firebase.json` `connect-src` includes that collector origin.
 
 Amplitude **routes by API key**, not by `AMPLITUDE_PROJECT_ID`. The numeric id is a local
 allowlist + event stamp (OpenBurnBar `830583` / Dev `830581` only). Bind each deploy's

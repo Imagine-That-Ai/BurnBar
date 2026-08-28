@@ -89,6 +89,8 @@ Runs:
 `website/dist/`, but it must not refresh router-rundown history.
 If a legitimate inline script/style changes, run `npm run build:offline` and
 then `npm run csp:update` to refresh `firebase.json` before re-running verify.
+`csp:check` always compares the committed dark `connect-src`. A nonempty
+`PUBLIC_ANALYTICS_COLLECTOR_URL` is applied only by `csp:update` at deploy.
 
 For a manual visual pass:
 

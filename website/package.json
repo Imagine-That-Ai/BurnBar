@@ -37,7 +37,7 @@
     "test:lazy-assets": "node scripts/test-lazy-background-assets.mjs",
     "test:typography": "node scripts/test-typography.mjs",
     "test:link-attestation": "node scripts/test-link-attestation.mjs",
-    "test:analytics": "vitest run test/analytics.test.ts test/collector.test.ts test/collector-transport.test.ts test/funnel-contract.test.ts",
+    "test:analytics": "vitest run test/analytics.test.ts test/collector.test.ts test/collector-transport.test.ts test/funnel-contract.test.ts test/csp-collector.test.ts",
     "crypto-claims:generate": "node scripts/generate-crypto-claims.mjs",
     "csp:check": "node scripts/update-csp-hashes.mjs --check",
     "csp:update": "node scripts/update-csp-hashes.mjs --write",

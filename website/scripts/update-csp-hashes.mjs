@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WEBSITE_ROOT = join(HERE, "..");
@@ -130,8 +130,11 @@ function extraCollectorConnectSrc(env = process.env) {
   return [url.origin];
 }
 
-function expectedMarketingCsps(hashes) {
-  const collectorOrigins = extraCollectorConnectSrc();
+function expectedMarketingCsps(hashes, { includeCollector = false, env = process.env } = {}) {
+  // `--check` compares the committed dark default. Collector origins are
+  // applied only by `--write` at deploy time when PUBLIC_ANALYTICS_COLLECTOR_URL
+  // is set, so PR verify stays green without baking a Worker URL into git.
+  const collectorOrigins = includeCollector ? extraCollectorConnectSrc(env) : [];
   const firebaseAuthSources = {
     imgSrc: ["https://*.googleusercontent.com"],
     scriptSrc: [
@@ -216,7 +219,7 @@ function main(argv = process.argv.slice(2)) {
   const write = argv.includes("--write");
   const check = argv.includes("--check") || !write;
   const hashes = inlineHashesFromDist();
-  const expected = expectedMarketingCsps(hashes);
+  const expected = expectedMarketingCsps(hashes, { includeCollector: write });
   const config = loadFirebaseConfig();
   const cspHeaders = marketingCspHeaders(config);
 
@@ -253,4 +256,18 @@ function main(argv = process.argv.slice(2)) {
   }
 }
 
-main();
+export { extraCollectorConnectSrc, expectedMarketingCsps };
+
+function invokedDirectly() {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  try {
+    return import.meta.url === pathToFileURL(entry).href;
+  } catch {
+    return false;
+  }
+}
+
+if (invokedDirectly()) {
+  main();
+}

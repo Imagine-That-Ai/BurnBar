@@ -407,6 +407,9 @@ jobs:
           PUBLIC_ANALYTICS_COLLECTOR_URL: ${{ vars.PUBLIC_ANALYTICS_COLLECTOR_URL }}
         run: |
           npm run verify --prefix website
+          if [[ -n "${PUBLIC_ANALYTICS_COLLECTOR_URL:-}" ]]; then
+            npm run csp:update --prefix website
+          fi
           npm run build --prefix apps/console
           node scripts/ci/create-domain-core-runtime-artifact-manifest.mjs \
             --consumer console \
