@@ -554,7 +554,7 @@ This repo already had a consent-gated Amplitude stack (macOS, iOS, Android, webs
 | `AMPLITUDE_API_KEY` | Collector Worker secret, Functions, native CI inject | Server / build machine only |
 | `AMPLITUDE_PROJECT_ID` | Collector Worker var (`830583` prod / `830581` dev) | Server only |
 | `PUBLIC_ANALYTICS_COLLECTOR_URL` | Website Astro build env | Browser — this is a first-party URL, **not** an Amplitude key |
-| `BURNBAR_AMPLITUDE_API_KEY` | macOS / iOS / widget / keyboard build inject | Native binary after CI inject; empty in git. Official `release.yml` calls `inject-amplitude-config.sh` on the Mac app, passes the key as an iOS `xcodebuild` setting, then runs `inject-amplitude-mobile-config.sh` on the archived iOS app. Unset keeps shipping binaries dark. |
+| `BURNBAR_AMPLITUDE_API_KEY` | macOS / iOS / widget / keyboard build inject | Native binary after CI inject; empty in git. Official `release.yml` calls `inject-amplitude-config.sh` on the Mac app and passes the key as an iOS `xcodebuild archive` setting (`project.yml` → Info.plist). It does not patch already-signed archive plists. Unset keeps shipping binaries dark. |
 | `OPENBURNBAR_AMPLITUDE_API_KEY` | Android Gradle / `local.properties` | Native binary after inject; empty in git. Official `release.yml` exports it on the signed bundle step. Unset keeps shipping binaries dark. |
 
 The marketing site (`website/`, burnbar.ai) **never** embeds `AMPLITUDE_API_KEY`. It POSTs consented events to `PUBLIC_ANALYTICS_COLLECTOR_URL`. The collector lives at `workers/analytics-collector/` and forwards to Amplitude HTTP V2 (`https://api2.amplitude.com/2/httpapi`) using the server-side key. If the collector URL or key is unset, the recorder stays dark even after opt-in.

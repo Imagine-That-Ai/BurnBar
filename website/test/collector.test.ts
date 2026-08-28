@@ -3,7 +3,13 @@ import { FirstPartyCollectorTransport } from "../src/lib/analytics/collectorTran
 import { Analytics } from "../src/lib/analytics/recorder";
 import { ConsentStore, type ConsentStorage } from "../src/lib/analytics/consent";
 import { EVENT } from "../src/lib/analytics/events";
-import { attributionFromSearch } from "../src/lib/analytics/attribution";
+import {
+  ATTRIBUTION_STORAGE_KEY,
+  attributionFromSearch,
+  clearStoredAttribution,
+  resolveAttribution,
+  type AttributionStorage
+} from "../src/lib/analytics/attribution";
 import {
   handleCollectorPost,
   AMPLITUDE_HTTP_V2_US,
@@ -388,7 +394,49 @@ describe("attribution", () => {
     expect(props.utm_source).toBeUndefined();
     expect(props.utm_campaign).toBe("spring-sale");
   });
+
+  it("retains bounded attribution across empty internal navigation", () => {
+    const storage = attributionMemory();
+    const landed = resolveAttribution("?utm_campaign=spring-sale&click_id=abc", storage);
+    expect(landed.utm_campaign).toBe("spring-sale");
+    expect(landed.click_id).toBe("abc");
+    const nextPage = resolveAttribution("", storage);
+    expect(nextPage.utm_campaign).toBe("spring-sale");
+    expect(nextPage.click_id).toBe("abc");
+    expect(storage.getItem(ATTRIBUTION_STORAGE_KEY)).toContain("spring-sale");
+  });
+
+  it("does not persist rejected personal-data values for later pages", () => {
+    const storage = attributionMemory();
+    const landed = resolveAttribution("?utm_campaign=a@b.com", storage);
+    expect(landed.utm_campaign).toBeUndefined();
+    expect(resolveAttribution("", storage).utm_campaign).toBeUndefined();
+  });
+
+  it("replaces the stored bag when a later landing carries a new campaign", () => {
+    const storage = attributionMemory();
+    resolveAttribution("?utm_campaign=spring-sale", storage);
+    const next = resolveAttribution("?utm_campaign=summer-sale", storage);
+    expect(next.utm_campaign).toBe("summer-sale");
+    expect(resolveAttribution("", storage).utm_campaign).toBe("summer-sale");
+  });
+
+  it("clears the stored bag on revoke", () => {
+    const storage = attributionMemory();
+    resolveAttribution("?utm_campaign=spring-sale", storage);
+    clearStoredAttribution(storage);
+    expect(resolveAttribution("", storage)).toEqual({});
+  });
 });
+
+function attributionMemory(): AttributionStorage {
+  const m = new Map<string, string>();
+  return {
+    getItem: (k) => m.get(k) ?? null,
+    setItem: (k, v) => void m.set(k, v),
+    removeItem: (k) => void m.delete(k)
+  };
+}
 
 describe("website bundle never embeds an Amplitude API key", () => {
   it("index.ts reads a collector URL, not PUBLIC_AMPLITUDE_API_KEY", () => {
@@ -397,6 +445,7 @@ describe("website bundle never embeds an Amplitude API key", () => {
     expect(source).toContain("PUBLIC_ANALYTICS_COLLECTOR_URL");
     expect(source).not.toContain("PUBLIC_AMPLITUDE_API_KEY");
     expect(source).toContain("FirstPartyCollectorTransport");
+    expect(source).toContain("rememberAttribution");
     expect(source).not.toMatch(/AmplitudeTransport/);
   });
 

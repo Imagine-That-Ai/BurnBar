@@ -7,7 +7,7 @@
 import { ConsentStore, type ConsentStorage } from "./consent";
 import { Analytics, type AnalyticsProps } from "./recorder";
 import { FirstPartyCollectorTransport } from "./collectorTransport";
-import { attributionFromSearch } from "./attribution";
+import { clearStoredAttribution, resolveAttribution, type AttributionStorage } from "./attribution";
 import { EVENT, type AnalyticsEventName, type ArenaSignInProvider } from "./events";
 import { eventsToEmit } from "./funnelAlias";
 import { FUNNEL_PRODUCT } from "../../../../analytics/funnel-contract";
@@ -29,6 +29,33 @@ function safeStorage(): ConsentStorage {
 
 export const analyticsConsent = new ConsentStore(safeStorage());
 
+function memoryAttributionStorage(): AttributionStorage {
+  const m = new Map<string, string>();
+  return {
+    getItem: (k) => m.get(k) ?? null,
+    setItem: (k, v) => void m.set(k, v),
+    removeItem: (k) => void m.delete(k)
+  };
+}
+
+const fallbackAttributionStorage = memoryAttributionStorage();
+
+function attributionSessionStorage(): AttributionStorage {
+  try {
+    if (typeof sessionStorage !== "undefined") return sessionStorage;
+  } catch {
+    /* access can throw when storage is blocked */
+  }
+  return fallbackAttributionStorage;
+}
+
+export function rememberAttribution(
+  search = typeof location !== "undefined" ? location.search : "",
+  storage: AttributionStorage = attributionSessionStorage()
+): AnalyticsProps {
+  return resolveAttribution(search, storage);
+}
+
 export const analytics = new Analytics({
   consent: analyticsConsent,
   transport: new FirstPartyCollectorTransport(),
@@ -38,7 +65,7 @@ export const analytics = new Analytics({
     platform: "web",
     app_version: APP_VERSION,
     surface: typeof location !== "undefined" ? surfaceForPath(location.pathname) : "other",
-    ...(typeof location !== "undefined" ? attributionFromSearch(location.search) : {})
+    ...(typeof location !== "undefined" ? rememberAttribution(location.search) : {})
   })
 });
 
@@ -86,8 +113,11 @@ export function shouldEmitSessionSpine(storage: {
 }
 
 /** Resume a consented session and emit session-start (once per tab) + the page
- *  view. Safe to call on every page load; dark until opt-in. */
+ *  view. Safe to call on every page load; dark until opt-in. Bounded
+ *  attribution is remembered even before consent so a later grant on
+ *  /download still carries the landing campaign. */
 export function boot(): void {
+  rememberAttribution();
   analytics.startIfConsented();
   if (!analyticsConsent.isGranted) return;
   let emitSession = true;
@@ -109,11 +139,13 @@ export function grantConsent(): void {
 export function declineConsent(): void {
   analyticsConsent.decline();
   analytics.consentDidChange();
+  clearStoredAttribution(attributionSessionStorage());
 }
 
 export function revokeConsent(): void {
   analyticsConsent.revoke();
   analytics.consentDidChange();
+  clearStoredAttribution(attributionSessionStorage());
 }
 
 export function trackEvent(event: AnalyticsEventName, props?: AnalyticsProps): void {

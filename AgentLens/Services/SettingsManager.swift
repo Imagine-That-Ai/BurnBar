@@ -80,6 +80,9 @@ final class SettingsManager {
     ) {
         let coordinator = SettingsPersistenceCoordinator(defaults: defaults, flushDelayNanoseconds: flushDelayNanoseconds)
         self.persistence = coordinator
+        // Seed before domain stores write the same defaults this process uses
+        // as prior-install evidence (appearanceMode, refreshInterval, …).
+        Self.migrateHasLaunchedBeforeIfNeeded(persistence: coordinator)
 
         let controllerSecretPersistence = SettingsSecretPersistence(
             defaults: defaults,
@@ -1553,18 +1556,39 @@ final class SettingsManager {
 
     // MARK: First Launch
     var isFirstLaunch: Bool {
-        migrateHasLaunchedBeforeIfNeeded()
+        // Consent can be written after init; that key is never a store default.
+        if !persistence.objectExists(forKey: "hasLaunchedBefore"),
+           persistence.objectExists(forKey: AnalyticsConsentStore.key) {
+            persistence.set(true, forKey: "hasLaunchedBefore")
+            persistence.flush()
+        }
         return !persistence.bool(forKey: "hasLaunchedBefore")
     }
 
-    /// Prior builds read `hasLaunchedBefore` but never wrote it. A persisted
-    /// analytics consent decision is evidence this Mac already ran OpenBurnBar,
-    /// so an upgrade must not emit `install.started`.
-    func migrateHasLaunchedBeforeIfNeeded() {
+    /// Keys older production SettingsManager constructions persist. Inspected
+    /// only at init, before this process's stores write the same defaults.
+    /// `analyticsConsentState` is also checked later from `isFirstLaunch`.
+    private static let priorInstallEvidenceKeys = [
+        AnalyticsConsentStore.key,
+        "appearanceMode",
+        "preferLightAppearance",
+        "databaseEncryptionEnabled",
+        "refreshInterval",
+        "selectedOnboardingProvidersCSV",
+        "chatBackendOnboardingCompleted",
+        "conversationIndexingConsentShown"
+    ]
+
+    /// Prior builds read `hasLaunchedBefore` but never wrote it. Any durable
+    /// pre-existing-install evidence — not only an analytics decision — means
+    /// this Mac already ran OpenBurnBar, so an upgrade must not emit
+    /// `install.started`.
+    static func migrateHasLaunchedBeforeIfNeeded(persistence: SettingsPersistenceCoordinator) {
         guard !persistence.objectExists(forKey: "hasLaunchedBefore") else { return }
-        if persistence.objectExists(forKey: AnalyticsConsentStore.key) {
-            persistence.set(true, forKey: "hasLaunchedBefore")
-        }
+        let hasPriorInstall = priorInstallEvidenceKeys.contains { persistence.objectExists(forKey: $0) }
+        guard hasPriorInstall else { return }
+        persistence.set(true, forKey: "hasLaunchedBefore")
+        persistence.flush()
     }
 
     /// One-shot install marker. Written after the first-launch flag is captured

@@ -1757,6 +1757,8 @@ final class SettingsManagerTests: XCTestCase {
         defaults.removeObject(forKey: "hasLaunchedBefore")
         defaults.removeObject(forKey: "analyticsConsentState")
         let settings = makeSettingsManager(defaults: defaults)
+        XCTAssertNotNil(defaults.object(forKey: "appearanceMode"))
+        XCTAssertNotNil(defaults.object(forKey: "databaseEncryptionEnabled"))
         XCTAssertTrue(settings.isFirstLaunch)
     }
 
@@ -1764,6 +1766,26 @@ final class SettingsManagerTests: XCTestCase {
         let defaults = makeIsolatedDefaults()
         defaults.removeObject(forKey: "hasLaunchedBefore")
         defaults.set("granted", forKey: "analyticsConsentState")
+        let settings = makeSettingsManager(defaults: defaults)
+        XCTAssertFalse(settings.isFirstLaunch)
+        XCTAssertTrue(defaults.bool(forKey: "hasLaunchedBefore"))
+    }
+
+    func test_isFirstLaunch_falseOnUpgradeWhenAppearanceModeAlreadyPersisted() {
+        let defaults = makeIsolatedDefaults()
+        defaults.removeObject(forKey: "hasLaunchedBefore")
+        defaults.removeObject(forKey: "analyticsConsentState")
+        defaults.set("system", forKey: "appearanceMode")
+        let settings = makeSettingsManager(defaults: defaults)
+        XCTAssertFalse(settings.isFirstLaunch)
+        XCTAssertTrue(defaults.bool(forKey: "hasLaunchedBefore"))
+    }
+
+    func test_isFirstLaunch_falseOnUpgradeWhenOnboardingProvidersAlreadyPersisted() {
+        let defaults = makeIsolatedDefaults()
+        defaults.removeObject(forKey: "hasLaunchedBefore")
+        defaults.removeObject(forKey: "analyticsConsentState")
+        defaults.set("codex", forKey: "selectedOnboardingProvidersCSV")
         let settings = makeSettingsManager(defaults: defaults)
         XCTAssertFalse(settings.isFirstLaunch)
         XCTAssertTrue(defaults.bool(forKey: "hasLaunchedBefore"))

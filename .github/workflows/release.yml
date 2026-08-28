@@ -3136,10 +3136,9 @@ jobs:
             DOMAIN_CORE_HERMES_MODE="$DOMAIN_CORE_HERMES_MODE" \
             DOMAIN_CORE_PRICING_MODE="$DOMAIN_CORE_PRICING_MODE"
 
-          # Official iOS inject patches built Info.plists (app / widget / keyboard).
-          # Unset key exits 0 and leaves binaries dark. Must run before export/sign.
-          APP_PRODUCTS_DIR="$archive/Products/Applications" \
-            bash scripts/ci/inject-amplitude-mobile-config.sh
+          # Path A only: BURNBAR_AMPLITUDE_API_KEY is already on xcodebuild archive
+          # (project.yml → Info.plist). Do not patch signed archive plists here —
+          # that breaks codesign --verify --deep --strict on the archive and IPA.
 
           xcodebuild -exportArchive \
             -archivePath "$archive" \
