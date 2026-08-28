@@ -10,7 +10,9 @@ import {
   existsSync,
   mkdtempSync,
   mkdirSync,
+  lstatSync,
   readFileSync,
+  readlinkSync,
   rmSync,
   unlinkSync,
   writeFileSync,
@@ -98,6 +100,25 @@ function fixture({
       mode: 0o100644,
       content: plist,
     },
+    // Every shipped bundle carries versioned frameworks, and those cannot be
+    // expressed without symlinks -- codesign seals Versions/Current and the
+    // aliases beside it. Keeping them in the canonical fixture means every
+    // happy-path assertion below also proves a real bundle still passes.
+    {
+      name: "OpenBurnBar.app/Contents/Frameworks/G.framework/Versions/A/G",
+      mode: 0o100644,
+      content: "framework",
+    },
+    {
+      name: "OpenBurnBar.app/Contents/Frameworks/G.framework/Versions/Current",
+      mode: 0o120777,
+      content: "A",
+    },
+    {
+      name: "OpenBurnBar.app/Contents/Frameworks/G.framework/G",
+      mode: 0o120777,
+      content: "Versions/Current/G",
+    },
   ];
   if (zipLayout === "decoy") {
     zipEntries.push(
@@ -127,6 +148,30 @@ function fixture({
       name: "OpenBurnBar.app/Contents/Frameworks/escape",
       mode: 0o120777,
       content: "../../../../outside",
+    });
+  } else if (zipLayout === "symlink-chain") {
+    // Aliases that collapse the path, so a later entry's name stays inside the
+    // bundle while the physical location it resolves to does not.
+    zipEntries.push(
+      { name: "OpenBurnBar.app/a", mode: 0o120777, content: "." },
+      { name: "OpenBurnBar.app/a/b", mode: 0o120777, content: "." },
+      {
+        name: "OpenBurnBar.app/a/b/payload",
+        mode: 0o100644,
+        content: "payload",
+      },
+    );
+  } else if (zipLayout === "symlink-oversized") {
+    zipEntries.push({
+      name: "OpenBurnBar.app/huge",
+      mode: 0o120777,
+      content: "A".repeat(8192),
+    });
+  } else if (zipLayout === "symlink-absolute") {
+    zipEntries.push({
+      name: "OpenBurnBar.app/Contents/Frameworks/absolute",
+      mode: 0o120777,
+      content: "/etc/passwd",
     });
   } else if (zipLayout === "traversal") {
     zipEntries.push({
@@ -311,6 +356,29 @@ set -euo pipefail
       assert.equal(appBundlePath.split("/").at(-1), "OpenBurnBar.app");
       assert.equal(
         existsSync(join(appBundlePath, "Contents", "Info.plist")),
+        true,
+      );
+      // The canonical fixture ships the framework aliases every signed bundle
+      // carries. Merely accepting that ZIP proves nothing about how the entries
+      // came back, so assert the node type and target here: without this the
+      // suite still passes when the extractor falls through and writes "A" into
+      // a regular file, which is the regression the fixture exists to catch.
+      const framework = join(
+        appBundlePath,
+        "Contents",
+        "Frameworks",
+        "G.framework",
+      );
+      for (const [alias, target] of [
+        ["Versions/Current", "A"],
+        ["G", "Versions/Current/G"],
+      ]) {
+        const link = join(framework, ...alias.split("/"));
+        assert.equal(lstatSync(link).isSymbolicLink(), true, alias);
+        assert.equal(readlinkSync(link), target, alias);
+      }
+      assert.equal(
+        lstatSync(join(framework, "Versions", "A", "G")).isFile(),
         true,
       );
     },
@@ -766,7 +834,13 @@ for (const [zipLayout, expectedError] of [
   ["decoy", /canonical root OpenBurnBar\.app/u],
   ["duplicate", /duplicate or filesystem-colliding paths/u],
   ["case-collision", /duplicate or filesystem-colliding paths/u],
-  ["symlink", /symbolic link/u],
+  // A bundle-internal symlink is legitimate and lives in the canonical fixture
+  // below; what must stay rejected is a link that leaves the bundle or names an
+  // absolute path.
+  ["symlink", /symlink escapes the bundle root/u],
+  ["symlink-absolute", /unsafe symlink target/u],
+  ["symlink-chain", /descends through a symlink/u],
+  ["symlink-oversized", /oversized symlink target/u],
   ["traversal", /canonical root OpenBurnBar\.app/u],
 ]) {
   test(`forward preflight rejects a ${zipLayout} app ZIP layout`, () => {
