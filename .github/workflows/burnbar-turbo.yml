@@ -110,7 +110,7 @@ jobs:
     timeout-minutes: 90
     steps:
       - name: Check out exact candidate without persisted credentials
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.authorize.outputs.candidate_sha }}
           fetch-depth: 1
@@ -128,7 +128,7 @@ jobs:
         run: bash scripts/ci/update-submodules-with-retry.sh Vendor/libsignal
 
       - name: Restore SwiftPM and build caches
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             .spm-cache-new
@@ -204,7 +204,7 @@ jobs:
 
       - name: Upload app evidence
         if: always()
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: turbo-app-${{ needs.authorize.outputs.candidate_sha }}
           path: |
@@ -223,7 +223,7 @@ jobs:
     timeout-minutes: 75
     steps:
       - name: Check out exact candidate without persisted credentials
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.authorize.outputs.candidate_sha }}
           fetch-depth: 1
@@ -241,7 +241,7 @@ jobs:
         run: bash scripts/ci/update-submodules-with-retry.sh Vendor/libsignal
 
       - name: Restore SwiftPM and build caches
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             .spm-cache-new
@@ -310,7 +310,7 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Check out exact candidate without persisted credentials
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.authorize.outputs.candidate_sha }}
           fetch-depth: 1
@@ -328,7 +328,7 @@ jobs:
         run: bash scripts/ci/update-submodules-with-retry.sh Vendor/libsignal
 
       - name: Restore SwiftPM caches
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             .spm-cache

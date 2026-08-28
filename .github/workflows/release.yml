@@ -115,14 +115,14 @@ jobs:
       COSIGN_MAX_ATTACHMENT_SIZE: 2GiB
     steps:
       - name: Check out exact release tag
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
           ref: ${{ inputs.tag }}
           fetch-depth: 0
           persist-credentials: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6.4.0 (node24-native)
         with:
           node-version: 22
           cache: npm
@@ -306,7 +306,7 @@ jobs:
             --output "$RUNNER_TEMP/r2-publication-preflight.json"
 
       - name: Retain authoritative R2 publication handoff
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: macos-r2-publication-inputs-${{ steps.release.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
@@ -351,17 +351,17 @@ jobs:
       contents: read
     steps:
       - name: Check out repository
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
       - name: Set up Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6.4.0 (node24-native)
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: functions/package-lock.json
 
       - name: Set up Java 21 for Firebase emulators
-        uses: actions/setup-java@1bcf9fb12cf4aa7d266a90ae39939e61372fe520 # v5.3.0 (node24-native)
+        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v5.3.0 (node24-native)
         with:
           java-version: "21"
           distribution: temurin
@@ -393,10 +393,10 @@ jobs:
       contents: read
     steps:
       - name: Check out repository
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
       - name: Set up Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6.4.0 (node24-native)
         with:
           node-version: 22
           cache: npm
@@ -423,10 +423,10 @@ jobs:
       contents: read
     steps:
       - name: Check out repository
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
       - name: Set up Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6.4.0 (node24-native)
         with:
           node-version: 22
           cache: npm
@@ -466,7 +466,7 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
           fetch-depth: 0
 
@@ -714,7 +714,7 @@ jobs:
     steps:
       - name: Check out repository
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
           fetch-depth: 0
 
@@ -759,7 +759,7 @@ jobs:
 
       - name: Restore SwiftPM package cache
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5.0.5 (node24-native)
         with:
           path: .spm-cache-new
           key: release-spm-gate-${{ runner.os }}-${{ hashFiles('OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved', 'OpenBurnBarDaemon/Package.resolved') }}
@@ -768,7 +768,7 @@ jobs:
 
       - name: Restore cargo cache for libsignal FFI
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5.0.5 (node24-native)
         with:
           path: |
             ~/.cargo/registry
@@ -800,7 +800,7 @@ jobs:
     steps:
       - name: Check out repository
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
           fetch-depth: 0
 
@@ -845,7 +845,7 @@ jobs:
 
       - name: Restore SwiftPM package cache
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5.0.5 (node24-native)
         with:
           path: .spm-cache-new
           key: release-spm-gate-${{ runner.os }}-${{ hashFiles('OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved', 'OpenBurnBarDaemon/Package.resolved') }}
@@ -854,7 +854,7 @@ jobs:
 
       - name: Restore cargo cache for libsignal FFI
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5.0.5 (node24-native)
         with:
           path: |
             ~/.cargo/registry
@@ -894,7 +894,7 @@ jobs:
     steps:
       - name: Check out repository
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
           fetch-depth: 0
 
@@ -939,7 +939,7 @@ jobs:
 
       - name: Restore SwiftPM package cache
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5.0.5 (node24-native)
         with:
           path: .spm-cache-new
           key: release-spm-gate-${{ runner.os }}-${{ hashFiles('OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved', 'OpenBurnBarDaemon/Package.resolved') }}
@@ -948,7 +948,7 @@ jobs:
 
       - name: Restore cargo cache for libsignal FFI
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5.0.5 (node24-native)
         with:
           path: |
             ~/.cargo/registry
@@ -973,7 +973,7 @@ jobs:
     steps:
       - name: Check out repository
         if: ${{ github.event_name != 'workflow_dispatch' || (inputs.run_release_validation_gates && inputs.run_mobile_unit_tests) }}
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
           fetch-depth: 0
 
@@ -1018,7 +1018,7 @@ jobs:
 
       - name: Restore SwiftPM package cache
         if: ${{ github.event_name != 'workflow_dispatch' || (inputs.run_release_validation_gates && inputs.run_mobile_unit_tests) }}
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5.0.5 (node24-native)
         with:
           path: .spm-cache-new
           key: release-spm-gate-${{ runner.os }}-${{ hashFiles('OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved', 'OpenBurnBarDaemon/Package.resolved') }}
@@ -1027,7 +1027,7 @@ jobs:
 
       - name: Restore cargo cache for libsignal FFI
         if: ${{ github.event_name != 'workflow_dispatch' || (inputs.run_release_validation_gates && inputs.run_mobile_unit_tests) }}
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5.0.5 (node24-native)
         with:
           path: |
             ~/.cargo/registry
@@ -1066,7 +1066,7 @@ jobs:
     steps:
       - name: Check out repository
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
           fetch-depth: 0
 
@@ -1084,7 +1084,7 @@ jobs:
 
       - name: Set up Java 21 (Android release tests)
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_release_validation_gates }}
-        uses: actions/setup-java@1bcf9fb12cf4aa7d266a90ae39939e61372fe520 # v5.3.0 (node24-native)
+        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v5.3.0 (node24-native)
         with:
           java-version: "21"
           distribution: temurin
@@ -1155,7 +1155,7 @@ jobs:
       artifact_name: domain-core-native-release-gate-${{ needs.release-preflight.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - name: Check out exact release candidate
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
           ref: ${{ needs.release-preflight.outputs.release_commit }}
           fetch-depth: 0
@@ -1184,7 +1184,7 @@ jobs:
             --github-output "$GITHUB_OUTPUT"
 
       - name: Upload immutable verified native release inputs
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: domain-core-native-release-gate-${{ needs.release-preflight.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/domain-core-native-release-gate/
@@ -1225,7 +1225,7 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
           fetch-depth: 0
 
@@ -1300,14 +1300,14 @@ jobs:
           echo "notary_key_path=$NOTARY_KEY_PATH" >> "$GITHUB_ENV"
 
       - name: Set up Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6.4.0 (node24-native)
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: extensions/openburnbar/package-lock.json
 
       - name: Download verified Shared Rust release inputs
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v6.0.0 (node24-native)
         with:
           name: ${{ needs.domain-core-native-release-gate.outputs.artifact_name }}
           path: ${{ runner.temp }}/domain-core-native-release-gate
@@ -1377,7 +1377,7 @@ jobs:
         run: echo "rev=$(git rev-parse HEAD:Vendor/libsignal)" >> "$GITHUB_OUTPUT"
 
       - name: Restore SwiftPM package cache
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5.0.5 (node24-native)
         with:
           path: .spm-cache
           key: release-spm-package-${{ runner.os }}-${{ hashFiles('OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved', 'OpenBurnBarDaemon/Package.resolved') }}
@@ -1385,7 +1385,7 @@ jobs:
             release-spm-package-${{ runner.os }}-
 
       - name: Restore cargo cache for libsignal FFI
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5.0.5 (node24-native)
         with:
           path: |
             ~/.cargo/registry
@@ -1424,7 +1424,7 @@ jobs:
         run: ./scripts/check-openburnbar-app-swiftpm-lock.sh
 
       - name: Set up Java 21 (Android release bundle)
-        uses: actions/setup-java@1bcf9fb12cf4aa7d266a90ae39939e61372fe520 # v5.3.0 (node24-native)
+        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v5.3.0 (node24-native)
         with:
           java-version: "21"
           distribution: temurin
@@ -1538,7 +1538,7 @@ jobs:
           test -f android/openburnbar-domain-core/build/outputs/apk/androidTest/debug/openburnbar-domain-core-debug-androidTest.apk
 
       - name: Upload Android identity proof inputs
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: android-release-identity-inputs-${{ needs.release-preflight.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
@@ -1560,7 +1560,7 @@ jobs:
           fi
 
       - name: Upload Android release bundle artifact
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: ${{ steps.android.outputs.aab_name }}
           path: ${{ steps.android.outputs.aab_path }}
@@ -2700,42 +2700,42 @@ jobs:
           cat "$METADATA_FILE"
 
       - name: Upload DMG artifact
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: ${{ steps.dmg.outputs.dmg_name }}
           path: ${{ steps.dmg.outputs.dmg_path }}
           if-no-files-found: error
 
       - name: Upload ZIP artifact
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: ${{ steps.zip.outputs.zip_name }}
           path: ${{ steps.zip.outputs.zip_path }}
           if-no-files-found: error
 
       - name: Upload retained domain-core rollback artifact
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: ${{ steps.domain-core-rollback.outputs.rollback_name }}
           path: ${{ steps.domain-core-rollback.outputs.rollback_path }}
           if-no-files-found: error
 
       - name: Upload appcast artifact
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: appcast-v${{ needs.release-preflight.outputs.version }}
           path: ${{ steps.update-feeds.outputs.appcast_path }}
           if-no-files-found: error
 
       - name: Upload latest macOS metadata artifact
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: latest-macos-v${{ needs.release-preflight.outputs.version }}
           path: ${{ steps.update-feeds.outputs.latest_path }}
           if-no-files-found: error
 
       - name: Upload checksums artifact
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: checksums-v${{ needs.release-preflight.outputs.version }}
           path: ${{ steps.checksums.outputs.checksums_path }}
@@ -2743,21 +2743,21 @@ jobs:
 
       - name: Upload checksum signature artifact
         if: steps.sign-checksums.outputs.sig_path != ''
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: checksums-v${{ needs.release-preflight.outputs.version }}-signature
           path: ${{ steps.sign-checksums.outputs.sig_path }}
           if-no-files-found: error
 
       - name: Upload SBOM artifact
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: sbom-v${{ needs.release-preflight.outputs.version }}
           path: ${{ steps.sbom.outputs.sbom_path }}
           if-no-files-found: error
 
       - name: Upload corresponding source artifact
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: OpenBurnBar-${{ needs.release-preflight.outputs.version }}-corresponding-source
           path: |
@@ -2766,14 +2766,14 @@ jobs:
           if-no-files-found: error
 
       - name: Upload VEX artifact
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: vex-v${{ needs.release-preflight.outputs.version }}
           path: ${{ steps.vex.outputs.vex_path }}
           if-no-files-found: error
 
       - name: Upload release provenance bundles artifact
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: release-provenance-v${{ needs.release-preflight.outputs.version }}
           path: ${{ steps.sigstore-provenance.outputs.provenance_dir }}
@@ -2781,7 +2781,7 @@ jobs:
 
       - name: Upload observed Android Rust identity
         if: ${{ needs.domain-core-native-release-gate.outputs.rust_active == 'true' }}
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: domain-core-native-observed-identities-${{ needs.release-preflight.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/domain-core-android-observed-identity.json
@@ -2789,14 +2789,14 @@ jobs:
           retention-days: 90
 
       - name: Upload NOTICES artifact
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: notices-v${{ needs.release-preflight.outputs.version }}
           path: ${{ steps.notices.outputs.notices_path }}
           if-no-files-found: error
 
       - name: Upload release metadata artifact
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: release-metadata-v${{ needs.release-preflight.outputs.version }}
           path: ${{ steps.metadata.outputs.metadata_path }}
@@ -2900,7 +2900,7 @@ jobs:
       id-token: write
     steps:
       - name: Check out repository for iOS packaging
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
           fetch-depth: 0
 
@@ -2975,14 +2975,14 @@ jobs:
           echo "notary_key_path=$NOTARY_KEY_PATH" >> "$GITHUB_ENV"
 
       - name: Set up Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6.4.0 (node24-native)
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: extensions/openburnbar/package-lock.json
 
       - name: Download verified Shared Rust release inputs
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v6.0.0 (node24-native)
         with:
           name: ${{ needs.domain-core-native-release-gate.outputs.artifact_name }}
           path: ${{ runner.temp }}/domain-core-native-release-gate
@@ -3017,7 +3017,7 @@ jobs:
         run: echo "rev=$(git rev-parse HEAD:Vendor/libsignal)" >> "$GITHUB_OUTPUT"
 
       - name: Restore SwiftPM package cache
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5.0.5 (node24-native)
         with:
           path: .spm-cache
           key: release-spm-package-${{ runner.os }}-${{ hashFiles('OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved', 'OpenBurnBarDaemon/Package.resolved') }}
@@ -3025,7 +3025,7 @@ jobs:
             release-spm-package-${{ runner.os }}-
 
       - name: Restore cargo cache for libsignal FFI
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5.0.5 (node24-native)
         with:
           path: |
             ~/.cargo/registry
@@ -3169,7 +3169,7 @@ jobs:
 
       - name: Upload signed iOS archive artifact
         if: needs.release-preflight.outputs.is_prerelease == 'false'
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: ${{ steps.ios-archive.outputs.artifact_name }}
           path: ${{ steps.ios-archive.outputs.archive_path }}
@@ -3190,10 +3190,10 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Check out repository
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
       - name: Download DMG artifact
-        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0 (node24-native)
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v5.0.0 (node24-native)
         with:
           name: ${{ needs.build-and-release.outputs.dmg_name }}
           path: ${{ runner.temp }}
@@ -3233,20 +3233,20 @@ jobs:
       identity_artifact_name: domain-core-apple-prepublication-identity-${{ needs.release-preflight.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - name: Check out exact release commit
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
           ref: ${{ needs.release-preflight.outputs.release_commit }}
           fetch-depth: 0
           persist-credentials: false
 
       - name: Download exact verified release inputs
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v6.0.0 (node24-native)
         with:
           name: ${{ needs.domain-core-native-release-gate.outputs.artifact_name }}
           path: ${{ runner.temp }}/domain-core-native-release-gate
 
       - name: Download signed Apple DMG
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v6.0.0 (node24-native)
         with:
           name: ${{ needs.build-and-release.outputs.dmg_name }}
           path: ${{ runner.temp }}/domain-core-apple-prepublication
@@ -3266,7 +3266,7 @@ jobs:
             "$OBSERVED_IDENTITY"
 
       - name: Retain prepublication Apple observed identity
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: domain-core-apple-prepublication-identity-${{ needs.release-preflight.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/domain-core-apple-prepublication-observed-identity.json
@@ -3295,13 +3295,13 @@ jobs:
       contents: read
     steps:
       - name: Check out repository
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
           ref: ${{ needs.release-preflight.outputs.release_commit }}
           persist-credentials: false
 
       - name: Set up Java
-        uses: actions/setup-java@1bcf9fb12cf4aa7d266a90ae39939e61372fe520 # v5.3.0 (node24-native)
+        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v5.3.0 (node24-native)
         with:
           java-version: "21"
           distribution: temurin
@@ -3317,19 +3317,19 @@ jobs:
           sudo udevadm trigger --name-match=kvm
 
       - name: Download verified Shared Rust release inputs
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v6.0.0 (node24-native)
         with:
           name: ${{ needs.domain-core-native-release-gate.outputs.artifact_name }}
           path: ${{ runner.temp }}/domain-core-native-release-gate
 
       - name: Download Android identity proof inputs
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v6.0.0 (node24-native)
         with:
           name: android-release-identity-inputs-${{ needs.release-preflight.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/identity-inputs
 
       - name: Download Android release bundle
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v6.0.0 (node24-native)
         with:
           name: OpenBurnBar-${{ needs.release-preflight.outputs.version }}-Android.aab
           path: ${{ runner.temp }}/android-bundle
@@ -3364,7 +3364,7 @@ jobs:
             --binary "$packaged_library"
 
       - name: Upload observed Android Rust identity
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: domain-core-android-observed-identity-${{ needs.release-preflight.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/domain-core-android-observed-identity.json
@@ -3430,14 +3430,14 @@ jobs:
       publication_inputs_artifact_name: release-publication-inputs-${{ needs.release-preflight.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - name: Check out exact release commit
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
           ref: ${{ needs.release-preflight.outputs.release_commit }}
           fetch-depth: 0
           persist-credentials: false
 
       - name: Download build artifacts
-        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0 (node24-native)
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v5.0.0 (node24-native)
         with:
           path: ${{ runner.temp }}
           merge-multiple: true
@@ -3541,7 +3541,7 @@ jobs:
           fi
 
       - name: Retain exact general publication inputs
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: release-publication-inputs-${{ needs.release-preflight.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/release-publication-inputs/
@@ -3569,45 +3569,45 @@ jobs:
       id-token: write
     steps:
       - name: Check out exact release commit
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
           ref: ${{ needs.release-preflight.outputs.release_commit }}
           fetch-depth: 0
           persist-credentials: false
 
       - name: Download exact verified release inputs
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v6.0.0 (node24-native)
         with:
           name: ${{ needs.domain-core-native-release-gate.outputs.artifact_name }}
           path: ${{ runner.temp }}/domain-core-native-release-gate
 
       - name: Download signed Apple artifact
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v6.0.0 (node24-native)
         with:
           name: ${{ needs.build-and-release.outputs.dmg_name }}
           path: ${{ runner.temp }}/domain-core-native-artifacts
 
       - name: Download signed Android artifact
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v6.0.0 (node24-native)
         with:
           name: ${{ needs.build-and-release.outputs.aab_name }}
           path: ${{ runner.temp }}/domain-core-native-artifacts
 
       - name: Download observed native Rust identities
         if: ${{ needs.domain-core-native-release-gate.outputs.rust_active == 'true' }}
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v6.0.0 (node24-native)
         with:
           name: ${{ needs.build-and-release.outputs.native_identity_artifact_name }}
           path: ${{ runner.temp }}/domain-core-native-identities
 
       - name: Download prepublication Apple observed identity
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v6.0.0 (node24-native)
         with:
           name: ${{ needs.apple-native-prepublication.outputs.identity_artifact_name }}
           path: ${{ runner.temp }}/domain-core-apple-prepublication-identity
 
       - name: Download exact general publication inputs
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v6.0.0 (node24-native)
         with:
           name: ${{ needs.prepare-release-publication.outputs.publication_inputs_artifact_name }}
           path: ${{ runner.temp }}/release-publication-inputs
@@ -3724,7 +3724,7 @@ jobs:
       - name: Attest Apple quota predicate
         id: attest-apple-quota
         if: ${{ steps.existing-evidence.outputs.release_published != 'true' && steps.apple-plan.outputs.domain_quota == 'true' && steps.existing-evidence.outputs.apple_quota_existing != 'true' }}
-        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: ${{ runner.temp }}/domain-core-native-artifacts/${{ needs.build-and-release.outputs.dmg_name }}
           predicate-type: https://openburnbar.dev/attestations/domain-core-release-artifact/v2
@@ -3733,7 +3733,7 @@ jobs:
       - name: Attest Apple CloudVault predicate
         id: attest-apple-cloud-vault
         if: ${{ steps.existing-evidence.outputs.release_published != 'true' && steps.apple-plan.outputs.domain_cloud_vault == 'true' && steps.existing-evidence.outputs.apple_cloud_vault_existing != 'true' }}
-        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: ${{ runner.temp }}/domain-core-native-artifacts/${{ needs.build-and-release.outputs.dmg_name }}
           predicate-type: https://openburnbar.dev/attestations/domain-core-release-artifact/v2
@@ -3742,7 +3742,7 @@ jobs:
       - name: Attest Apple CloudVault rewrap predicate
         id: attest-apple-cloud-vault-rewrap
         if: ${{ steps.existing-evidence.outputs.release_published != 'true' && steps.apple-plan.outputs.domain_cloud_vault_rewrap == 'true' && steps.existing-evidence.outputs.apple_cloud_vault_rewrap_existing != 'true' }}
-        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: ${{ runner.temp }}/domain-core-native-artifacts/${{ needs.build-and-release.outputs.dmg_name }}
           predicate-type: https://openburnbar.dev/attestations/domain-core-release-artifact/v2
@@ -3751,7 +3751,7 @@ jobs:
       - name: Attest Apple CloudVault search predicate
         id: attest-apple-cloud-vault-search
         if: ${{ steps.existing-evidence.outputs.release_published != 'true' && steps.apple-plan.outputs.domain_cloud_vault_search == 'true' && steps.existing-evidence.outputs.apple_cloud_vault_search_existing != 'true' }}
-        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: ${{ runner.temp }}/domain-core-native-artifacts/${{ needs.build-and-release.outputs.dmg_name }}
           predicate-type: https://openburnbar.dev/attestations/domain-core-release-artifact/v2
@@ -3760,7 +3760,7 @@ jobs:
       - name: Attest Apple Hermes predicate
         id: attest-apple-hermes
         if: ${{ steps.existing-evidence.outputs.release_published != 'true' && steps.apple-plan.outputs.domain_hermes == 'true' && steps.existing-evidence.outputs.apple_hermes_existing != 'true' }}
-        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: ${{ runner.temp }}/domain-core-native-artifacts/${{ needs.build-and-release.outputs.dmg_name }}
           predicate-type: https://openburnbar.dev/attestations/domain-core-release-artifact/v2
@@ -3769,7 +3769,7 @@ jobs:
       - name: Attest Apple pricing predicate
         id: attest-apple-pricing
         if: ${{ steps.existing-evidence.outputs.release_published != 'true' && steps.apple-plan.outputs.domain_pricing == 'true' && steps.existing-evidence.outputs.apple_pricing_existing != 'true' }}
-        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: ${{ runner.temp }}/domain-core-native-artifacts/${{ needs.build-and-release.outputs.dmg_name }}
           predicate-type: https://openburnbar.dev/attestations/domain-core-release-artifact/v2
@@ -3778,7 +3778,7 @@ jobs:
       - name: Attest Android CloudVault predicate
         id: attest-android-cloud-vault
         if: ${{ steps.existing-evidence.outputs.release_published != 'true' && steps.android-plan.outputs.domain_cloud_vault == 'true' && steps.existing-evidence.outputs.android_cloud_vault_existing != 'true' }}
-        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: ${{ runner.temp }}/domain-core-native-artifacts/${{ needs.build-and-release.outputs.aab_name }}
           predicate-type: https://openburnbar.dev/attestations/domain-core-release-artifact/v2
@@ -3787,7 +3787,7 @@ jobs:
       - name: Attest Android CloudVault rewrap predicate
         id: attest-android-cloud-vault-rewrap
         if: ${{ steps.existing-evidence.outputs.release_published != 'true' && steps.android-plan.outputs.domain_cloud_vault_rewrap == 'true' && steps.existing-evidence.outputs.android_cloud_vault_rewrap_existing != 'true' }}
-        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: ${{ runner.temp }}/domain-core-native-artifacts/${{ needs.build-and-release.outputs.aab_name }}
           predicate-type: https://openburnbar.dev/attestations/domain-core-release-artifact/v2
@@ -3796,7 +3796,7 @@ jobs:
       - name: Attest Android CloudVault search predicate
         id: attest-android-cloud-vault-search
         if: ${{ steps.existing-evidence.outputs.release_published != 'true' && steps.android-plan.outputs.domain_cloud_vault_search == 'true' && steps.existing-evidence.outputs.android_cloud_vault_search_existing != 'true' }}
-        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: ${{ runner.temp }}/domain-core-native-artifacts/${{ needs.build-and-release.outputs.aab_name }}
           predicate-type: https://openburnbar.dev/attestations/domain-core-release-artifact/v2
@@ -3805,7 +3805,7 @@ jobs:
       - name: Attest Android Hermes predicate
         id: attest-android-hermes
         if: ${{ steps.existing-evidence.outputs.release_published != 'true' && steps.android-plan.outputs.domain_hermes == 'true' && steps.existing-evidence.outputs.android_hermes_existing != 'true' }}
-        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: ${{ runner.temp }}/domain-core-native-artifacts/${{ needs.build-and-release.outputs.aab_name }}
           predicate-type: https://openburnbar.dev/attestations/domain-core-release-artifact/v2
@@ -3937,7 +3937,7 @@ jobs:
           done
 
       - name: Retain exact native release evidence and rollback chain
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: domain-core-native-release-evidence-${{ needs.domain-core-native-release-gate.outputs.profile_name }}-${{ needs.release-preflight.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
@@ -3966,7 +3966,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Check out repository
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
           ref: ${{ inputs.tag }}
           persist-credentials: false

@@ -29,9 +29,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6.4.0 (node24-native)
         with:
           node-version: 22
 
@@ -55,7 +55,7 @@ jobs:
 
       - name: Upload jscpd report
         if: always()
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: jscpd-duplication-report
           path: jscpd-report/
@@ -65,9 +65,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6.4.0 (node24-native)
         with:
           node-version: 22
 
@@ -88,9 +88,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6.4.0 (node24-native)
         with:
           node-version: 22
           cache: npm
@@ -110,9 +110,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6.4.0 (node24-native)
         with:
           node-version: 22
           cache: npm
@@ -129,9 +129,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6.4.0 (node24-native)
         with:
           node-version: 22
 
@@ -148,9 +148,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6.4.0 (node24-native)
         with:
           node-version: 22
           cache: npm
@@ -193,9 +193,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6.4.0 (node24-native)
         with:
           node-version: 22
 
@@ -221,7 +221,7 @@ jobs:
 
       - name: Upload size reports
         if: always()
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: bundle-size-reports
           path: extensions/openburnbar/size-limit-extension.txt
@@ -234,9 +234,9 @@ jobs:
       TRUSTED_PR_SECRET_RUN: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)) }}
       HAS_ANDROID_FIREBASE_SECRET: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 != '' }}
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
-      - uses: actions/setup-java@1bcf9fb12cf4aa7d266a90ae39939e61372fe520 # v5.3.0 (node24-native)
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v5.3.0 (node24-native)
         with:
           java-version: "21"
           distribution: "temurin"
@@ -276,7 +276,7 @@ jobs:
 
       - name: Upload Android dependency health report
         if: always()
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: android-dependency-health
           path: android-dep-health.txt
@@ -286,9 +286,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6.4.0 (node24-native)
         with:
           node-version: 22
           cache: npm

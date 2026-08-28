@@ -26,7 +26,7 @@ jobs:
     environment: domain-core-promotion
     steps:
       - name: Check out trusted main evaluator
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
@@ -105,14 +105,14 @@ jobs:
           printf 'run_id=%s\nrun_attempt=%s\n' "$run_id" "$attempt" >> "$GITHUB_OUTPUT"
 
       - name: Check out exact candidate without executing its scripts
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.candidate_commit }}
           path: candidate
           persist-credentials: false
 
       - name: Download exact-run unsigned candidate bundle
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v6.0.0 (node24-native)
         with:
           github-token: ${{ github.token }}
           run-id: ${{ steps.source.outputs.run_id }}
@@ -120,7 +120,7 @@ jobs:
           path: ${{ runner.temp }}/candidate-bundle
 
       - name: Download exact-run proof fragments
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v6.0.0 (node24-native)
         with:
           github-token: ${{ github.token }}
           run-id: ${{ steps.source.outputs.run_id }}
@@ -129,7 +129,7 @@ jobs:
           path: ${{ runner.temp }}/proof-fragments
 
       - name: Download exact-run artifact identity archives
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v6.0.0 (node24-native)
         with:
           github-token: ${{ github.token }}
           run-id: ${{ steps.source.outputs.run_id }}
@@ -138,7 +138,7 @@ jobs:
           path: ${{ runner.temp }}/attestation-inputs
 
       - name: Download exact candidate rollback artifact
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v6.0.0 (node24-native)
         with:
           github-token: ${{ github.token }}
           run-id: ${{ steps.source.outputs.run_id }}
@@ -172,12 +172,12 @@ jobs:
 
       - name: Attest independently verified candidate bundle
         id: attest
-        uses: actions/attest-build-provenance@96278af6caaf10aea03fd8d33a09a777ca52d62f # v3.2.0
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: ${{ runner.temp }}/candidate-bundle/domain-core-candidate-bundle.json
 
       - name: Upload official provenance bundle and diagnostic verification receipt
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: domain-core-protected-attestation-${{ inputs.candidate_commit }}-${{ steps.source.outputs.run_id }}-${{ steps.source.outputs.run_attempt }}
           path: |
@@ -187,7 +187,7 @@ jobs:
           retention-days: 90
 
       - name: Upload hosting-consumable protected verification receipt
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: domain-core-protected-verification-${{ inputs.candidate_commit }}
           path: ${{ runner.temp }}/candidate-bundle/protected-verification.json
