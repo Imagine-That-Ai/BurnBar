@@ -37,7 +37,7 @@ const releaseDocs = read("docs/RELEASE_MACOS.md");
 const AUDITED_LIVE_MAC_DOWNLOAD_URL = "https://downloads.burnbar.ai/OpenBurnBar-1.0.40+repair.34-macOS.dmg";
 
 const TRUSTED_GITHUB_RELEASE_PATH =
-  /^\/Imagine-That-Ai\/BurnBar\/releases\/download\/[^/]+(?:\/OpenBurnBar-[A-Za-z0-9._+-]+-macOS\.dmg)?$/;
+  /^\/Imagine-That-Ai\/BurnBar\/releases\/download\/[^/%]+(?:\/OpenBurnBar-[A-Za-z0-9._+-]+-macOS\.dmg)?$/;
 
 function assertHttpsDownloadUrl(url, label) {
   assert.equal(url.protocol, "https:", `${label} must use HTTPS`);
