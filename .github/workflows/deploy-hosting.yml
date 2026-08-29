@@ -14,6 +14,11 @@ on:
     tags: ["v*"]
     paths:
       - "website/**"
+      # Shared funnel/origin contract compiled into the marketing bundle
+      # (`website/src/lib/analytics/*` and `website/scripts/update-csp-hashes.mjs`).
+      # A contract-only main commit otherwise passes Website CI and never
+      # rebuilds burnbar.ai.
+      - "analytics/**"
       - "apps/console/**"
       - "crates/openburnbar-domain-core/union-abi-manifest.json"
       - "config/domain-core-build-profiles.json"
