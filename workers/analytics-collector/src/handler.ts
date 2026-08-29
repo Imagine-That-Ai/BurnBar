@@ -280,21 +280,79 @@ export function rejectOversizedCollectorBody(raw: string): HandlerResult | null 
   return null;
 }
 
+export function applyCollectorRateLimit(
+  env: CollectorEnv,
+  clientKey: string,
+): Promise<{ success: boolean }> {
+  const limiter = env.COLLECTOR_RATE_LIMIT;
+  if (!limiter) {
+    return Promise.resolve({ success: true });
+  }
+  return limiter.limit({ key: (clientKey ?? "").trim() || "unknown" });
+}
+
+export function declaredCollectorBodyTooLarge(contentLength: string | null): boolean {
+  if (!contentLength) return false;
+  const declared = Number.parseInt(contentLength, 10);
+  return Number.isFinite(declared) && declared > MAX_COLLECTOR_BODY_BYTES;
+}
+
+export async function readBoundedCollectorBody(request: Request): Promise<string | null> {
+  const reader = request.body?.getReader();
+  if (!reader) return "";
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (!value) continue;
+    total += value.byteLength;
+    if (total > MAX_COLLECTOR_BODY_BYTES) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  return new TextDecoder().decode(concatBytes(chunks));
+}
+
+function concatBytes(chunks: Uint8Array[]): Uint8Array {
+  const total = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return out;
+}
+
+const FUNNEL_SURFACE_SET = new Set<string>(FUNNEL_SURFACES);
+
+function eventMeetsSchema(name: string, props: Record<string, string | boolean>): boolean {
+  if (name === "email.captured") {
+    return props.captured === true;
+  }
+  if (name === "install.started" || name === "app.opened") {
+    return typeof props.surface === "string" && FUNNEL_SURFACE_SET.has(props.surface);
+  }
+  return true;
+}
+
 export async function handleCollectorPost(
   body: CollectorRequestBody | null | undefined,
   env: CollectorEnv,
   fetchImpl: FetchLike,
   origin?: string | null,
   clientKey?: string,
+  options: { applyRateLimit?: boolean } = {},
 ): Promise<HandlerResult> {
   if (origin !== undefined && !isKnownCollectorOrigin(origin)) {
     return json(403, { accepted: false, reason: "origin_rejected" });
   }
 
-  if (env.COLLECTOR_RATE_LIMIT) {
-    const { success } = await env.COLLECTOR_RATE_LIMIT.limit({
-      key: (clientKey ?? "").trim() || "unknown",
-    });
+  if (options.applyRateLimit !== false) {
+    const { success } = await applyCollectorRateLimit(env, clientKey ?? "");
     if (!success) {
       return json(429, { accepted: false, reason: "rate_limited" });
     }
@@ -327,7 +385,15 @@ export async function handleCollectorPost(
     return json(413, { accepted: false, reason: "batch_too_large" });
   }
   const allowed = incoming.filter((event) => event && typeof event.name === "string" && isAllowedEventName(event.name));
-  if (allowed.length === 0) {
+  const prepared = allowed.flatMap((event) => {
+    const props = sanitizeProps({
+      ...event.props,
+      ...(asTrimmedString(event.category) ? { event_category: asTrimmedString(event.category) } : {}),
+    });
+    if (!eventMeetsSchema(event.name, props)) return [];
+    return [{ event, props }];
+  });
+  if (prepared.length === 0) {
     return json(204, { accepted: false, reason: "no_allowed_events" });
   }
 
@@ -336,16 +402,13 @@ export async function handleCollectorPost(
   const payload = {
     api_key: apiKey,
     options: { min_id_length: 1 },
-    events: allowed.map((event, index) => ({
+    events: prepared.map(({ event, props }, index) => ({
       event_type: event.name,
       device_id: sanitizeAnonymousId(event.device_id, mintedAnonymousId("anon", now, index)),
       time: typeof event.time_ms === "number" ? event.time_ms : now,
       insert_id: sanitizeAnonymousId(event.insert_id, mintedAnonymousId("obb", now, index)),
       event_properties: {
-        ...sanitizeProps({
-          ...event.props,
-          ...(asTrimmedString(event.category) ? { event_category: asTrimmedString(event.category) } : {}),
-        }),
+        ...props,
         amplitude_project_id: String(projectId),
       },
     })),
@@ -368,8 +431,8 @@ export async function handleCollectorPost(
 
   return json(
     200,
-    { accepted: true, events_forwarded: allowed.length, project_id: projectId },
-    { forwarded: allowed.length, amplitudeUrl: endpoint },
+    { accepted: true, events_forwarded: prepared.length, project_id: projectId },
+    { forwarded: prepared.length, amplitudeUrl: endpoint },
   );
 }
 

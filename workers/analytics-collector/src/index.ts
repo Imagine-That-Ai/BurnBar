@@ -3,11 +3,13 @@ import {
   resolveAmplitudeProjectId,
 } from "../../../analytics/funnel-contract";
 import {
+  applyCollectorRateLimit,
   collectorClientKey,
   collectorCorsHeaders,
   createMemoryRateLimiter,
+  declaredCollectorBodyTooLarge,
   handleCollectorPost,
-  rejectOversizedCollectorBody,
+  readBoundedCollectorBody,
   type CollectorEnv,
   type CollectorRequestBody,
 } from "./handler";
@@ -23,10 +25,18 @@ export default {
       return Response.json({ error: "method_not_allowed" }, { status: 405, headers: cors });
     }
 
-    const raw = await request.text();
-    const oversized = rejectOversizedCollectorBody(raw);
-    if (oversized) {
-      return Response.json(oversized.body, { status: oversized.status, headers: cors });
+    const limiter = env.COLLECTOR_RATE_LIMIT ?? createMemoryRateLimiter();
+    const clientKey = collectorClientKey(request.headers);
+    const verdict = await applyCollectorRateLimit({ ...env, COLLECTOR_RATE_LIMIT: limiter }, clientKey);
+    if (!verdict.success) {
+      return Response.json({ accepted: false, reason: "rate_limited" }, { status: 429, headers: cors });
+    }
+    if (declaredCollectorBodyTooLarge(request.headers.get("content-length"))) {
+      return Response.json({ accepted: false, reason: "body_too_large" }, { status: 413, headers: cors });
+    }
+    const raw = await readBoundedCollectorBody(request);
+    if (raw === null) {
+      return Response.json({ accepted: false, reason: "body_too_large" }, { status: 413, headers: cors });
     }
 
     let body: CollectorRequestBody = {};
@@ -40,11 +50,12 @@ export default {
       body,
       {
         ...env,
-        COLLECTOR_RATE_LIMIT: env.COLLECTOR_RATE_LIMIT ?? createMemoryRateLimiter(),
+        COLLECTOR_RATE_LIMIT: limiter,
       },
       (url, init) => fetch(url, init),
       request.headers.get("origin"),
-      collectorClientKey(request.headers),
+      clientKey,
+      { applyRateLimit: false },
     );
     if (result.status === 204) {
       return new Response(null, { status: 204, headers: cors });

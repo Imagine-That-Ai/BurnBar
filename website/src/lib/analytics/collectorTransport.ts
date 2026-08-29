@@ -29,7 +29,12 @@ export function persistentAnonymousId(
   storage: IdStorage,
   createId: () => string = newAnonymousId
 ): string {
-  const existing = storage.getItem(DEVICE_ID_KEY)?.trim();
+  let existing = "";
+  try {
+    existing = storage.getItem(DEVICE_ID_KEY)?.trim() ?? "";
+  } catch {
+    existing = "";
+  }
   if (existing && isBoundedAnonymousId(existing)) return existing;
   const id = createId();
   try {
@@ -91,10 +96,11 @@ export class FirstPartyCollectorTransport implements AnalyticsTransport {
 
   start(collectorUrl: string): void {
     if (this.started || collectorUrl.length === 0) return;
+    const deviceId = this.explicitDeviceId ?? persistentAnonymousId(this.storage);
+    this.deviceId = deviceId;
     this.collectorUrl = collectorUrl;
-    this.started = true;
     this.optedOut = false;
-    this.deviceId = this.explicitDeviceId ?? persistentAnonymousId(this.storage);
+    this.started = true;
   }
 
   track(name: string, category: string, props: AnalyticsProps): void {

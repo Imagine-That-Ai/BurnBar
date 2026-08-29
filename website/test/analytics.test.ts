@@ -3,7 +3,12 @@ import { ConsentStore, type ConsentStorage } from "../src/lib/analytics/consent"
 import { Analytics, type AnalyticsTransport } from "../src/lib/analytics/recorder";
 import { EVENT } from "../src/lib/analytics/events";
 import { eventsToEmit } from "../src/lib/analytics/funnelAlias";
-import { shouldEmitSessionSpine } from "../src/lib/analytics/index";
+import {
+  authCaptureSourceFromProviderId,
+  clearSessionSpine,
+  isFreshAuthAccount,
+  shouldEmitSessionSpine
+} from "../src/lib/analytics/index";
 import { bucketCount, bucketDurationMs, bucketDurationSeconds } from "../src/lib/analytics/buckets";
 
 /** In-memory Storage seam — vitest's node env has no localStorage. */
@@ -227,5 +232,42 @@ describe("session spine when storage is blocked", () => {
         }
       })
     ).toBe(true);
+  });
+
+  it("clears the session marker so a later grant in the same tab emits again", () => {
+    const storage = new Map<string, string>();
+    const store = {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => void storage.set(key, value),
+      removeItem: (key: string) => void storage.delete(key)
+    };
+    expect(shouldEmitSessionSpine(store)).toBe(true);
+    expect(shouldEmitSessionSpine(store)).toBe(false);
+    clearSessionSpine(store);
+    expect(shouldEmitSessionSpine(store)).toBe(true);
+  });
+});
+
+describe("fresh auth account capture", () => {
+  it("accepts only parsed creation and last-sign-in times within 60s", () => {
+    const created = "2026-08-28T12:00:00.000Z";
+    const fresh = "2026-08-28T12:00:30.000Z";
+    const stale = "2026-08-28T12:05:00.000Z";
+    expect(isFreshAuthAccount({ metadata: { creationTime: created, lastSignInTime: fresh } })).toBe(
+      true
+    );
+    expect(isFreshAuthAccount({ metadata: { creationTime: created, lastSignInTime: stale } })).toBe(
+      false
+    );
+    expect(isFreshAuthAccount({ metadata: { creationTime: created } })).toBe(false);
+    expect(isFreshAuthAccount(null)).toBe(false);
+  });
+
+  it("maps Firebase provider ids to bounded capture sources", () => {
+    expect(authCaptureSourceFromProviderId("google.com")).toBe("google");
+    expect(authCaptureSourceFromProviderId("apple.com")).toBe("apple");
+    expect(authCaptureSourceFromProviderId("github.com")).toBe("github");
+    expect(authCaptureSourceFromProviderId("facebook.com")).toBe("facebook");
+    expect(authCaptureSourceFromProviderId("twitter.com")).toBe("unknown");
   });
 });

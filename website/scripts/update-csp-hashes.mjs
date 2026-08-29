@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { isReviewedCollectorOrigin } from "../../analytics/collector-origins.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WEBSITE_ROOT = join(HERE, "..");
@@ -49,7 +50,10 @@ const CROSS_ORIGIN_IMPORT = /\b(?:import|from)\s*\(?\s*["'`](?:https?:)?\/\/(?!b
 const INERT_DATA_BLOCK_TYPE = /\btype\s*=\s*["']?(?:application\/(?:ld\+)?json|text\/plain)\b/i;
 
 function inlineHashesFromDist() {
-  assert.ok(statSync(DIST).isDirectory(), `${relative(REPO_ROOT, DIST)} must exist; run npm --prefix website run build:offline first`);
+  assert.ok(
+    statSync(DIST).isDirectory(),
+    `${relative(REPO_ROOT, DIST)} must exist; run npm --prefix website run build:offline first`
+  );
   const scriptHashes = new Set();
   const styleElementHashes = new Set();
   const styleAttributeHashes = new Set();
@@ -62,7 +66,7 @@ function inlineHashesFromDist() {
         !CROSS_ORIGIN_IMPORT.test(match[2]),
         `${relative(REPO_ROOT, file)}: inline script imports cross-origin code (${
           match[2].match(CROSS_ORIGIN_IMPORT)?.[0]
-        }…) — the generated CSP (script-src 'self' + hashes) would block that import at runtime; bundle the dependency instead of hashing a script this CSP will break`,
+        }…) — the generated CSP (script-src 'self' + hashes) would block that import at runtime; bundle the dependency instead of hashing a script this CSP will break`
       );
       scriptHashes.add(sha256Source(match[2]));
     }
@@ -77,19 +81,13 @@ function inlineHashesFromDist() {
   return {
     scriptHashes: sortedSources(scriptHashes),
     styleElementHashes: sortedSources(styleElementHashes),
-    styleAttributeHashes: sortedSources(styleAttributeHashes),
+    styleAttributeHashes: sortedSources(styleAttributeHashes)
   };
 }
 
 function buildMarketingCsp(
   { scriptHashes, styleElementHashes, styleAttributeHashes },
-  {
-    imgSrc = [],
-    scriptSrc = [],
-    frameSrc = [],
-    connectSrc = [],
-    formAction = [],
-  } = {},
+  { imgSrc = [], scriptSrc = [], frameSrc = [], connectSrc = [], formAction = [] } = {}
 ) {
   const directives = [
     "default-src 'self'",
@@ -105,7 +103,7 @@ function buildMarketingCsp(
     `connect-src 'self'${connectSrc.length > 0 ? ` ${connectSrc.join(" ")}` : ""}`,
     "frame-ancestors 'none'",
     "base-uri 'self'",
-    `form-action 'self'${formAction.length > 0 ? ` ${formAction.join(" ")}` : ""}`,
+    `form-action 'self'${formAction.length > 0 ? ` ${formAction.join(" ")}` : ""}`
   ];
   if (frameSrc.length > 0) {
     directives.splice(7, 0, `frame-src ${frameSrc.join(" ")}`);
@@ -125,7 +123,12 @@ function parseCollectorUrl(raw) {
   const local = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(url.origin);
   if (url.protocol !== "https:" && !local) {
     throw new Error(
-      `PUBLIC_ANALYTICS_COLLECTOR_URL must be https (or http localhost / 127.0.0.1), got: ${trimmed}`,
+      `PUBLIC_ANALYTICS_COLLECTOR_URL must be https (or http localhost / 127.0.0.1), got: ${trimmed}`
+    );
+  }
+  if (!isReviewedCollectorOrigin(url.origin)) {
+    throw new Error(
+      `PUBLIC_ANALYTICS_COLLECTOR_URL must be a reviewed collector origin, got: ${trimmed}`
     );
   }
   return url;
@@ -153,13 +156,13 @@ function expectedMarketingCsps(hashes, { includeCollector = false, env = process
     scriptSrc: [
       "https://apis.google.com",
       "https://www.google.com/recaptcha/",
-      "https://www.gstatic.com/recaptcha/",
+      "https://www.gstatic.com/recaptcha/"
     ],
     frameSrc: [
       "https://*.firebaseapp.com",
       "https://accounts.google.com",
       "https://appleid.apple.com",
-      "https://www.google.com/recaptcha/",
+      "https://www.google.com/recaptcha/"
     ],
     connectSrc: [
       "https://apis.google.com",
@@ -173,9 +176,9 @@ function expectedMarketingCsps(hashes, { includeCollector = false, env = process
       "https://content-firebaseappcheck.googleapis.com",
       "https://www.google.com",
       "https://www.gstatic.com",
-      ...collectorOrigins,
+      ...collectorOrigins
     ],
-    formAction: ["https://accounts.google.com", "https://appleid.apple.com"],
+    formAction: ["https://accounts.google.com", "https://appleid.apple.com"]
   };
   // The BurnBench Arena vote page embeds anonymized artifacts in cross-origin
   // iframes served from the dedicated arena-artifacts hosting site (locked CSP,
@@ -184,7 +187,7 @@ function expectedMarketingCsps(hashes, { includeCollector = false, env = process
   // network access, so this does not widen the marketing site's attack surface.
   const arenaArtifactFrameSrc = [
     "https://burnbar-arena-artifacts.web.app",
-    "https://burnbar-arena-artifacts.firebaseapp.com",
+    "https://burnbar-arena-artifacts.firebaseapp.com"
   ];
   // The vote page also calls the two Arena callables (arenaMatchup, arenaVote)
   // directly from the client, and now requires Firebase Auth sign-in (Google +
@@ -198,16 +201,19 @@ function expectedMarketingCsps(hashes, { includeCollector = false, env = process
     connectSrc: [
       "https://us-central1-burnbar.cloudfunctions.net",
       ...firebaseAuthSources.connectSrc.filter((source) => !collectorOrigins.includes(source)),
-      ...collectorOrigins,
+      ...collectorOrigins
     ],
-    formAction: firebaseAuthSources.formAction,
+    formAction: firebaseAuthSources.formAction
   };
   return new Map([
-    ["**", buildMarketingCsp(hashes, { frameSrc: arenaArtifactFrameSrc, connectSrc: collectorOrigins })],
+    [
+      "**",
+      buildMarketingCsp(hashes, { frameSrc: arenaArtifactFrameSrc, connectSrc: collectorOrigins })
+    ],
     ["/bench/arena/vote", buildMarketingCsp(hashes, arenaVotePage)],
     ["/link", buildMarketingCsp(hashes, firebaseAuthSources)],
     ["/hermes/connect", buildMarketingCsp(hashes, firebaseAuthSources)],
-    ["/subscribe", buildMarketingCsp(hashes, firebaseAuthSources)],
+    ["/subscribe", buildMarketingCsp(hashes, firebaseAuthSources)]
   ]);
 }
 
@@ -220,7 +226,7 @@ function marketingCspHeaders(firebaseConfig) {
         const csp = entry.headers?.find((header) => header.key === CSP_HEADER);
         return csp ? [entry.source, csp] : undefined;
       })
-      .filter(Boolean),
+      .filter(Boolean)
   );
 }
 
@@ -244,7 +250,7 @@ function main(argv = process.argv.slice(2)) {
     }
     writeFileSync(FIREBASE_JSON, `${JSON.stringify(config, null, 2)}\n`, "utf8");
     console.log(
-      `PASS: updated ${expected.size} marketing CSP header(s) with ${hashes.scriptHashes.length} script, ${hashes.styleElementHashes.length} style element, and ${hashes.styleAttributeHashes.length} style attribute hash(es).`,
+      `PASS: updated ${expected.size} marketing CSP header(s) with ${hashes.scriptHashes.length} script, ${hashes.styleElementHashes.length} style element, and ${hashes.styleAttributeHashes.length} style attribute hash(es).`
     );
     return;
   }
@@ -255,16 +261,19 @@ function main(argv = process.argv.slice(2)) {
     assert.equal(
       csp.value,
       value,
-      `firebase.json marketing ${source} CSP is stale; run npm --prefix website run csp:update after build:offline`,
+      `firebase.json marketing ${source} CSP is stale; run npm --prefix website run csp:update after build:offline`
     );
-    assert.ok(!/\bunsafe-inline\b/.test(csp.value), `marketing ${source} CSP must not contain unsafe-inline`);
+    assert.ok(
+      !/\bunsafe-inline\b/.test(csp.value),
+      `marketing ${source} CSP must not contain unsafe-inline`
+    );
     assert.match(csp.value, /script-src 'self' 'sha256-/);
     assert.match(csp.value, /style-src-elem 'self' 'sha256-/);
     assert.match(csp.value, /style-src-attr 'unsafe-hashes' 'sha256-/);
   }
   if (check) {
     console.log(
-      `PASS: ${expected.size} marketing CSP header(s) cover ${hashes.scriptHashes.length} script, ${hashes.styleElementHashes.length} style element, and ${hashes.styleAttributeHashes.length} style attribute hash(es); unsafe-inline absent.`,
+      `PASS: ${expected.size} marketing CSP header(s) cover ${hashes.scriptHashes.length} script, ${hashes.styleElementHashes.length} style element, and ${hashes.styleAttributeHashes.length} style attribute hash(es); unsafe-inline absent.`
     );
   }
 }

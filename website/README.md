@@ -51,16 +51,17 @@ npm run dev    # http://127.0.0.1:4321
 Optional opt-in analytics (still dark until the visitor accepts the banner):
 
 ```sh
-export PUBLIC_ANALYTICS_COLLECTOR_URL="https://your-first-party-collector.example"
+export PUBLIC_ANALYTICS_COLLECTOR_URL="https://collect.burnbar.ai"
 # Never set PUBLIC_AMPLITUDE_API_KEY in the browser build.
 ```
 
 Official hosting builds use `vars.PUBLIC_ANALYTICS_COLLECTOR_URL` (production)
 and `vars.STAGING_ANALYTICS_COLLECTOR_URL` (staging). Unset keeps the artifact
-dark. A nonempty value that is not an absolute `https` URL (or `http` localhost
-/ `127.0.0.1`) fails `csp:check`, `csp:update`, and the website build — it must
-not deploy a collector-less `connect-src`. Set them only after the collector
-Worker is deployed.
+dark. A nonempty value that is not a reviewed collector origin
+(`https://collect.burnbar.ai`, `https://collect-staging.burnbar.ai`, or
+`http(s)://localhost|127.0.0.1`) fails `csp:check`, `csp:update`, and the
+website build — it must not deploy a collector-less or takeover `connect-src`.
+Set them only after the collector Worker is deployed.
 
 ## Build
 

@@ -16,8 +16,11 @@ import {
   isAllowedCollectorOrigin,
   createMemoryRateLimiter,
   rejectOversizedCollectorBody,
+  declaredCollectorBodyTooLarge,
+  readBoundedCollectorBody,
   MAX_COLLECTOR_BODY_BYTES
 } from "../../workers/analytics-collector/src/handler";
+import collectorWorker from "../../workers/analytics-collector/src/index";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -424,7 +427,10 @@ describe("collector worker — consent and project routing", () => {
         return new Response("{}", { status: 200 });
       }
     );
-    const events = fetches[0]?.body.events as { event_type: string; event_properties: Record<string, unknown> }[];
+    const events = fetches[0]?.body.events as {
+      event_type: string;
+      event_properties: Record<string, unknown>;
+    }[];
     const emailed = events.find((event) => event.event_type === "page.viewed");
     const lifecycle = events.find((event) => event.event_type === "app.opened");
     expect(emailed?.event_properties.event_category).toBeUndefined();
@@ -565,7 +571,159 @@ describe("collector worker — consent and project routing", () => {
     const result = rejectOversizedCollectorBody(oversized);
     expect(result?.status).toBe(413);
     expect(result?.body.reason).toBe("body_too_large");
-    expect(rejectOversizedCollectorBody("{\"consent\":true}")).toBeNull();
+    expect(rejectOversizedCollectorBody('{"consent":true}')).toBeNull();
+  });
+
+  it("drops email.captured unless captured is true", async () => {
+    const fetches: string[] = [];
+    const dropped = await handleCollectorPost(
+      {
+        consent: true,
+        events: [{ name: "email.captured", props: { captured: false, product: "burnbar" } }]
+      },
+      { AMPLITUDE_API_KEY: "secret-key", AMPLITUDE_PROJECT_ID: "830581" },
+      async (url) => {
+        fetches.push(url);
+        return new Response("{}", { status: 200 });
+      }
+    );
+    expect(dropped.status).toBe(204);
+    expect(dropped.body.reason).toBe("no_allowed_events");
+    expect(fetches).toHaveLength(0);
+
+    const kept = await handleCollectorPost(
+      {
+        consent: true,
+        events: [{ name: "email.captured", props: { captured: true, product: "burnbar" } }]
+      },
+      { AMPLITUDE_API_KEY: "secret-key", AMPLITUDE_PROJECT_ID: "830581" },
+      async (url) => {
+        fetches.push(url);
+        return new Response("{}", { status: 200 });
+      }
+    );
+    expect(kept.status).toBe(200);
+    expect(kept.forwarded).toBe(1);
+    expect(fetches).toHaveLength(1);
+  });
+
+  it("drops install.started and app.opened unless surface is a funnel surface", async () => {
+    const fetches: string[] = [];
+    const dropped = await handleCollectorPost(
+      {
+        consent: true,
+        events: [
+          { name: "install.started", props: { surface: "pricing", product: "burnbar" } },
+          { name: "app.opened", props: { surface: "home", product: "burnbar" } }
+        ]
+      },
+      { AMPLITUDE_API_KEY: "secret-key", AMPLITUDE_PROJECT_ID: "830581" },
+      async (url) => {
+        fetches.push(url);
+        return new Response("{}", { status: 200 });
+      }
+    );
+    expect(dropped.status).toBe(204);
+    expect(dropped.body.reason).toBe("no_allowed_events");
+    expect(fetches).toHaveLength(0);
+
+    const kept = await handleCollectorPost(
+      {
+        consent: true,
+        events: [{ name: "install.started", props: { surface: "macos", product: "burnbar" } }]
+      },
+      { AMPLITUDE_API_KEY: "secret-key", AMPLITUDE_PROJECT_ID: "830581" },
+      async (url) => {
+        fetches.push(url);
+        return new Response("{}", { status: 200 });
+      }
+    );
+    expect(kept.status).toBe(200);
+    expect(kept.forwarded).toBe(1);
+  });
+
+  it("still allows page.viewed with the website page-surface enum", async () => {
+    const result = await handleCollectorPost(
+      {
+        consent: true,
+        events: [{ name: "page.viewed", props: { surface: "web", product: "burnbar" } }]
+      },
+      { AMPLITUDE_API_KEY: "secret-key", AMPLITUDE_PROJECT_ID: "830581" },
+      async () => new Response("{}", { status: 200 })
+    );
+    expect(result.status).toBe(200);
+    expect(result.forwarded).toBe(1);
+  });
+
+  it("rejects a declared Content-Length over the collector cap", () => {
+    expect(declaredCollectorBodyTooLarge(String(MAX_COLLECTOR_BODY_BYTES + 1))).toBe(true);
+    expect(declaredCollectorBodyTooLarge(String(MAX_COLLECTOR_BODY_BYTES))).toBe(false);
+    expect(declaredCollectorBodyTooLarge(null)).toBe(false);
+  });
+
+  it("cancels a streaming body once it exceeds the collector cap", async () => {
+    const oversized = new Request("https://collect.burnbar.ai/v1", {
+      method: "POST",
+      body: "x".repeat(MAX_COLLECTOR_BODY_BYTES + 1)
+    });
+    expect(await readBoundedCollectorBody(oversized)).toBeNull();
+    const ok = new Request("https://collect.burnbar.ai/v1", {
+      method: "POST",
+      body: JSON.stringify({ consent: true, events: [] })
+    });
+    expect(await readBoundedCollectorBody(ok)).toContain("consent");
+  });
+});
+
+describe("collector worker fetch — rate limit and body order", () => {
+  it("rate-limits before buffering the body", async () => {
+    let limited = false;
+    let bodyRead = false;
+    const stream = new ReadableStream({
+      pull(controller) {
+        bodyRead = true;
+        controller.enqueue(new TextEncoder().encode('{"consent":true}'));
+        controller.close();
+      }
+    });
+    const response = await collectorWorker.fetch(
+      new Request("https://collect.burnbar.ai/v1", {
+        method: "POST",
+        headers: { "cf-connecting-ip": "203.0.113.9", origin: "https://burnbar.ai" },
+        body: stream,
+        duplex: "half" // reason: Node fetch requires duplex for a streaming request body
+      } as RequestInit),
+      {
+        AMPLITUDE_API_KEY: "secret-key",
+        AMPLITUDE_PROJECT_ID: "830583",
+        COLLECTOR_RATE_LIMIT: {
+          async limit() {
+            limited = true;
+            return { success: false };
+          }
+        }
+      }
+    );
+    expect(limited).toBe(true);
+    expect(response.status).toBe(429);
+    expect(bodyRead).toBe(false);
+  });
+
+  it("rejects a trustworthy oversized Content-Length without reading the body", async () => {
+    const response = await collectorWorker.fetch(
+      new Request("https://collect.burnbar.ai/v1", {
+        method: "POST",
+        headers: {
+          "content-length": String(MAX_COLLECTOR_BODY_BYTES + 1),
+          origin: "https://burnbar.ai"
+        },
+        body: "x".repeat(MAX_COLLECTOR_BODY_BYTES + 1)
+      }),
+      { AMPLITUDE_API_KEY: "secret-key", AMPLITUDE_PROJECT_ID: "830583" }
+    );
+    expect(response.status).toBe(413);
+    const payload = (await response.json()) as { reason?: string };
+    expect(payload.reason).toBe("body_too_large");
   });
 });
 
@@ -661,7 +819,28 @@ describe("website bundle never embeds an Amplitude API key", () => {
     expect(source).not.toContain("PUBLIC_AMPLITUDE_API_KEY");
     expect(source).toContain("FirstPartyCollectorTransport");
     expect(source).toContain("rememberAttribution");
+    expect(source).toContain("isReviewedCollectorOrigin");
+    expect(source).toContain("clearSessionSpine");
+    expect(source.indexOf("clearSessionSpine(sessionSpineStorage())")).toBeGreaterThan(
+      source.indexOf("export function revokeConsent")
+    );
     expect(source).not.toMatch(/AmplitudeTransport/);
+  });
+
+  it("wires email.captured on credential success, not restored auth sessions", () => {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const subscribe = readFileSync(join(here, "../src/pages/subscribe.astro"), "utf8");
+    const link = readFileSync(join(here, "../src/pages/link.astro"), "utf8");
+    const connect = readFileSync(join(here, "../src/pages/hermes/connect.astro"), "utf8");
+    const arena = readFileSync(join(here, "../src/scripts/bench-arena.ts"), "utf8");
+    for (const source of [subscribe, link, connect, arena]) {
+      expect(source).toContain("trackEmailCapturedIfNewAccount");
+      expect(source).toContain("signInWithPopup");
+    }
+    expect(subscribe).toContain("getRedirectResult");
+    expect(arena).toContain("getRedirectResult");
+    const authListener = subscribe.slice(subscribe.lastIndexOf("onAuthStateChanged(auth"));
+    expect(authListener).not.toContain("trackEmailCapturedIfNewAccount");
   });
 
   it("download CTAs emit target_platform, never overriding platform", () => {

@@ -92,6 +92,29 @@ describe("FirstPartyCollectorTransport", () => {
     expect(storage.get(DEVICE_ID_KEY)).toBe("stable-device-1");
   });
 
+  it("resolves a device id before marking started when storage getItem throws", async () => {
+    const calls: { device_id?: string }[] = [];
+    const store = {
+      getItem: () => {
+        throw new Error("blocked");
+      },
+      setItem: () => undefined
+    };
+    const transport = new FirstPartyCollectorTransport(
+      undefined,
+      async (_input, init) => {
+        calls.push(JSON.parse(String(init?.body ?? "{}")).events[0]);
+        return new Response("{}", { status: 200 });
+      },
+      store
+    );
+    expect(() => transport.start("https://collect.burnbar.test/v1")).not.toThrow();
+    expect(transport.isStarted).toBe(true);
+    transport.track("page.viewed", "screen_view", { product: "burnbar" });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(calls[0]?.device_id).toBeTruthy();
+  });
+
   it("replaces a persisted email or phone-shaped device id instead of reusing it", () => {
     const storage = new Map<string, string>([[DEVICE_ID_KEY, "alice@example.com"]]);
     const store = {

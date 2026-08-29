@@ -364,6 +364,10 @@ import BaseLayout from "@layouts/BaseLayout.astro";
   import { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
   import type { User } from "firebase/auth";
   import {
+    authCaptureSourceFromProviderId,
+    trackEmailCapturedIfNewAccount
+  } from "../lib/analytics";
+  import {
     attestedCallable,
     callableErrorCode,
     isAppCheckBindingConflictError
@@ -450,7 +454,11 @@ import BaseLayout from "@layouts/BaseLayout.astro";
   const signIn = async (provider: typeof googleProvider | typeof appleProvider) => {
     try {
       showState("checking");
-      await signInWithPopup(auth, provider);
+      const credential = await signInWithPopup(auth, provider);
+      trackEmailCapturedIfNewAccount(
+        credential.user,
+        authCaptureSourceFromProviderId(provider.providerId)
+      );
     } catch (err: unknown) {
       const errorLike = err as { message?: unknown };
       if (errorMessage) {

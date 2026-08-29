@@ -569,7 +569,7 @@ Do not commit a collector URL. Set the variable only after the Worker is deploye
 
 ```bash
 # Website (browser) — collector URL only
-export PUBLIC_ANALYTICS_COLLECTOR_URL="https://collect.example.workers.dev"
+export PUBLIC_ANALYTICS_COLLECTOR_URL="https://collect.burnbar.ai"
 
 # Collector Worker — Amplitude key + OpenBurnBar project id (prod 830583 or Dev 830581)
 wrangler secret put AMPLITUDE_API_KEY

@@ -11,6 +11,7 @@ import { clearStoredAttribution, resolveAttribution, type AttributionStorage } f
 import { EVENT, type AnalyticsEventName, type ArenaSignInProvider } from "./events";
 import { eventsToEmit } from "./funnelAlias";
 import { FUNNEL_PRODUCT } from "../../../../analytics/funnel-contract";
+import { isReviewedCollectorOrigin } from "../../../../analytics/collector-origins";
 
 function collectorUrlFromEnv(raw: string): string {
   const trimmed = raw.trim();
@@ -25,6 +26,11 @@ function collectorUrlFromEnv(raw: string): string {
   if (url.protocol !== "https:" && !local) {
     throw new Error(
       `PUBLIC_ANALYTICS_COLLECTOR_URL must be https (or http localhost / 127.0.0.1), got: ${trimmed}`
+    );
+  }
+  if (!isReviewedCollectorOrigin(url.origin)) {
+    throw new Error(
+      `PUBLIC_ANALYTICS_COLLECTOR_URL must be a reviewed collector origin, got: ${trimmed}`
     );
   }
   return trimmed;
@@ -131,6 +137,23 @@ export function shouldEmitSessionSpine(storage: {
   }
 }
 
+export function clearSessionSpine(storage: { removeItem?(key: string): void }): void {
+  try {
+    storage.removeItem?.(SESSION_KEY);
+  } catch {
+    /* private mode / quota */
+  }
+}
+
+function sessionSpineStorage(): { removeItem?(key: string): void } {
+  try {
+    if (typeof sessionStorage !== "undefined") return sessionStorage;
+  } catch {
+    /* access can throw when storage is blocked */
+  }
+  return fallbackAttributionStorage;
+}
+
 /** Resume a consented session and emit session-start (once per tab) + the page
  *  view. Safe to call on every page load; dark until opt-in. Bounded
  *  attribution is remembered even before consent so a later grant on
@@ -159,12 +182,14 @@ export function declineConsent(): void {
   analyticsConsent.decline();
   analytics.consentDidChange();
   clearStoredAttribution(attributionSessionStorage());
+  clearSessionSpine(sessionSpineStorage());
 }
 
 export function revokeConsent(): void {
   analyticsConsent.revoke();
   analytics.consentDidChange();
   clearStoredAttribution(attributionSessionStorage());
+  clearSessionSpine(sessionSpineStorage());
 }
 
 export function trackEvent(event: AnalyticsEventName, props?: AnalyticsProps): void {
@@ -177,6 +202,44 @@ export function trackEvent(event: AnalyticsEventName, props?: AnalyticsProps): v
  */
 export function trackEmailCaptured(source = "unknown"): void {
   analytics.track(EVENT.emailCaptured, { captured: true, source: source.slice(0, 40) });
+}
+
+const FRESH_AUTH_WINDOW_MS = 60_000;
+
+export type AuthAccountLike = {
+  metadata?: {
+    creationTime?: string | null;
+    lastSignInTime?: string | null;
+  } | null;
+} | null;
+
+/** True only when creation and last-sign-in parse and are within 60s. */
+export function isFreshAuthAccount(user: AuthAccountLike): boolean {
+  const created = Date.parse(user?.metadata?.creationTime ?? "");
+  const lastSignIn = Date.parse(user?.metadata?.lastSignInTime ?? "");
+  if (!Number.isFinite(created) || !Number.isFinite(lastSignIn)) return false;
+  return Math.abs(lastSignIn - created) < FRESH_AUTH_WINDOW_MS;
+}
+
+const AUTH_CAPTURE_SOURCES = new Set(["google", "apple", "github", "facebook"]);
+
+export function boundedAuthCaptureSource(source: string): string {
+  return AUTH_CAPTURE_SOURCES.has(source) ? source : "unknown";
+}
+
+export function authCaptureSourceFromProviderId(providerId: string): string {
+  const id = providerId.toLowerCase();
+  if (id.includes("google")) return "google";
+  if (id.includes("apple")) return "apple";
+  if (id.includes("github")) return "github";
+  if (id.includes("facebook")) return "facebook";
+  return "unknown";
+}
+
+/** Credential-success path only — never restored onAuthStateChanged sessions. */
+export function trackEmailCapturedIfNewAccount(user: AuthAccountLike, source = "unknown"): void {
+  if (!isFreshAuthAccount(user)) return;
+  trackEmailCaptured(boundedAuthCaptureSource(source));
 }
 
 /**
