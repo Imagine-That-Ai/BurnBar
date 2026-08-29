@@ -14,7 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   finishes device-id creation before the browser transport marks itself
   started, bounds client timestamps, and does not recapture campaign
   attribution after decline. Website `app.opened` accepts page surfaces.
-  Funnel events require a surface. Rejected campaign params clear the
+  Funnel events require a surface. Allowlisted product events require
+  their taxonomy properties after sanitize (`arena.vote.recorded` needs
+  `choice`/`rubric`; `auth.sign_in.completed` needs `method`/`outcome`).
+  Production hosting may only pin `collect.burnbar.ai`; staging may only
+  pin `collect-staging.burnbar.ai`. Rejected campaign params clear the
   stored bag. `email.captured` fires once per fresh account, never a
   restored auth session. The collector reuses one isolate-local limiter
   when the Wrangler binding is absent.

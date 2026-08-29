@@ -215,7 +215,9 @@ describe("collector worker — consent and project routing", () => {
     const result = await handleCollectorPost(
       {
         consent: true,
-        events: [{ name: "arena.vote.recorded", props: { variant: "neural", choice: "a" } }]
+        events: [
+          { name: "arena.vote.recorded", props: { variant: "neural", choice: "a", rubric: "none" } }
+        ]
       },
       { AMPLITUDE_API_KEY: "secret-key", AMPLITUDE_PROJECT_ID: "830581" },
       async (_url, init) => {
@@ -658,6 +660,67 @@ describe("collector worker — consent and project routing", () => {
     expect(types).toEqual(["install.started", "app.opened", "page.viewed", "download.clicked"]);
   });
 
+  it("drops allowlisted product events that miss required properties", async () => {
+    const fetches: string[] = [];
+    const dropped = await handleCollectorPost(
+      {
+        consent: true,
+        events: [
+          { name: "arena.vote.recorded", props: { variant: "neural" } },
+          { name: "auth.sign_in.completed", props: { product: "burnbar" } }
+        ]
+      },
+      { AMPLITUDE_API_KEY: "secret-key", AMPLITUDE_PROJECT_ID: "830581" },
+      async (url) => {
+        fetches.push(url);
+        return new Response("{}", { status: 200 });
+      }
+    );
+    expect(dropped.status).toBe(204);
+    expect(dropped.body.reason).toBe("no_allowed_events");
+    expect(fetches).toHaveLength(0);
+  });
+
+  it("forwards arena votes and auth completions only with required properties", async () => {
+    const fetches: { events?: { event_type: string; event_properties: Record<string, string> }[] }[] =
+      [];
+    const result = await handleCollectorPost(
+      {
+        consent: true,
+        events: [
+          {
+            name: "arena.vote.recorded",
+            props: { variant: "neural", choice: "a", rubric: "none" }
+          },
+          {
+            name: "auth.sign_in.completed",
+            props: { method: "google", outcome: "success" }
+          },
+          { name: "pricing.plan.viewed", props: { surface: "pricing" } }
+        ]
+      },
+      { AMPLITUDE_API_KEY: "secret-key", AMPLITUDE_PROJECT_ID: "830581" },
+      async (_url, init) => {
+        fetches.push(JSON.parse(String(init?.body ?? "{}")));
+        return new Response("{}", { status: 200 });
+      }
+    );
+    expect(result.status).toBe(200);
+    expect(result.forwarded).toBe(3);
+    const events = fetches[0]?.events ?? [];
+    expect(events.map((event) => event.event_type)).toEqual([
+      "arena.vote.recorded",
+      "auth.sign_in.completed",
+      "pricing.plan.viewed"
+    ]);
+    expect(events[0]?.event_properties).toMatchObject({
+      variant: "neural",
+      choice: "a",
+      rubric: "none"
+    });
+    expect(events[1]?.event_properties).toMatchObject({ method: "google", outcome: "success" });
+  });
+
   it("still allows page.viewed with the website page-surface enum", async () => {
     const result = await handleCollectorPost(
       {
@@ -912,6 +975,8 @@ describe("website bundle never embeds an Amplitude API key", () => {
     expect(source).toContain("FirstPartyCollectorTransport");
     expect(source).toContain("rememberAttribution");
     expect(source).toContain("isReviewedCollectorOrigin");
+    expect(source).toContain("resolveCollectorLane");
+    expect(source).toContain("PUBLIC_ANALYTICS_COLLECTOR_LANE");
     expect(source).toMatch(
       /export function declineConsent\(\)[\s\S]*clearSessionSpine\(sessionSpineStorage\(\)\)/
     );

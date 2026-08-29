@@ -100,6 +100,8 @@ const ENUM_PROP_VALUES: Record<string, ReadonlySet<string>> = {
   rubric: new Set(["none", "partial", "full"]),
   side: new Set(["A", "B"]),
   provider: new Set(["google", "apple", "github", "facebook"]),
+  method: new Set(["google", "apple", "github", "email", "facebook"]),
+  outcome: new Set(["success", "failure"]),
 };
 
 const BOOLEAN_PROP_KEYS = new Set([
@@ -339,15 +341,50 @@ function concatBytes(chunks: Uint8Array[]): Uint8Array {
 const FUNNEL_SURFACE_SET = new Set<string>(FUNNEL_SURFACES);
 const WEBSITE_OR_FUNNEL_SURFACE = ENUM_PROP_VALUES.surface;
 
+/** Required keys that survive sanitizeProps. Missing map entry → fail closed. */
+const REQUIRED_EVENT_PROPS: Record<string, readonly string[]> = {
+  "consent.analytics.granted": [],
+  "app.session.started": ["surface"],
+  "screen.viewed": ["surface"],
+  "nav.route.changed": [],
+  "download.cta.clicked": [],
+  "pricing.plan.viewed": [],
+  "pricing.cta.clicked": [],
+  "nav.external.clicked": [],
+  "auth.sign_in.completed": ["method", "outcome"],
+  "auth.sign_up.completed": ["method", "outcome"],
+  "error.handled": [],
+  "arena.variant.exposed": ["variant"],
+  "arena.artifact.played": ["variant", "side"],
+  "arena.vote.recorded": ["variant", "choice", "rubric"],
+  "arena.auth.gate_shown": ["variant"],
+  "arena.sign_in.completed": ["variant", "provider"],
+};
+
+function hasRequiredProps(
+  props: Record<string, string | boolean>,
+  keys: readonly string[],
+): boolean {
+  return keys.every((key) => {
+    const value = props[key];
+    if (typeof value === "boolean") return true;
+    return typeof value === "string" && value.length > 0;
+  });
+}
+
 function eventMeetsSchema(name: string, props: Record<string, string | boolean>): boolean {
   if (name === "email.captured") {
     return props.captured === true;
   }
-  if (!isFunnelEventName(name)) return true;
-  if (name === "install.started") {
-    return typeof props.surface === "string" && FUNNEL_SURFACE_SET.has(props.surface);
+  if (isFunnelEventName(name)) {
+    if (name === "install.started") {
+      return typeof props.surface === "string" && FUNNEL_SURFACE_SET.has(props.surface);
+    }
+    return typeof props.surface === "string" && WEBSITE_OR_FUNNEL_SURFACE.has(props.surface);
   }
-  return typeof props.surface === "string" && WEBSITE_OR_FUNNEL_SURFACE.has(props.surface);
+  const required = REQUIRED_EVENT_PROPS[name];
+  if (!required) return false;
+  return hasRequiredProps(props, required);
 }
 
 export async function handleCollectorPost(

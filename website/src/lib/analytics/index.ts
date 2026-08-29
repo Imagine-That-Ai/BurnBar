@@ -11,7 +11,10 @@ import { clearStoredAttribution, resolveAttribution, type AttributionStorage } f
 import { EVENT, type AnalyticsEventName, type ArenaSignInProvider } from "./events";
 import { eventsToEmit } from "./funnelAlias";
 import { FUNNEL_PRODUCT } from "../../../../analytics/funnel-contract";
-import { isReviewedCollectorOrigin } from "../../../../analytics/collector-origins";
+import {
+  isReviewedCollectorOrigin,
+  resolveCollectorLane
+} from "../../../../analytics/collector-origins";
 
 function collectorUrlFromEnv(raw: string): string {
   const trimmed = raw.trim();
@@ -28,9 +31,12 @@ function collectorUrlFromEnv(raw: string): string {
       `PUBLIC_ANALYTICS_COLLECTOR_URL must be https (or http localhost / 127.0.0.1), got: ${trimmed}`
     );
   }
-  if (!isReviewedCollectorOrigin(trimmed)) {
+  const lane = resolveCollectorLane(import.meta.env.PUBLIC_ANALYTICS_COLLECTOR_LANE);
+  if (!isReviewedCollectorOrigin(trimmed, lane)) {
     throw new Error(
-      `PUBLIC_ANALYTICS_COLLECTOR_URL must be a reviewed collector origin, got: ${trimmed}`
+      lane
+        ? `PUBLIC_ANALYTICS_COLLECTOR_URL must be the ${lane} first-party collector, got: ${trimmed}`
+        : `PUBLIC_ANALYTICS_COLLECTOR_URL must be a reviewed collector origin, got: ${trimmed}`
     );
   }
   return trimmed;

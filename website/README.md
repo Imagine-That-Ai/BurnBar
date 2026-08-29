@@ -56,12 +56,15 @@ export PUBLIC_ANALYTICS_COLLECTOR_URL="https://collect.burnbar.ai"
 ```
 
 Official hosting builds use `vars.PUBLIC_ANALYTICS_COLLECTOR_URL` (production)
-and `vars.STAGING_ANALYTICS_COLLECTOR_URL` (staging). Unset keeps the artifact
-dark. A nonempty value that is not a reviewed collector origin
-(`https://collect.burnbar.ai`, `https://collect-staging.burnbar.ai`, or
-`http(s)://localhost|127.0.0.1`) fails `csp:check`, `csp:update`, and the
-website build — it must not deploy a collector-less or takeover `connect-src`.
-Set them only after the collector Worker is deployed.
+and `vars.STAGING_ANALYTICS_COLLECTOR_URL` (staging). Production deploys pin
+`ANALYTICS_COLLECTOR_LANE=production` to `https://collect.burnbar.ai`; staging
+pins `staging` to `https://collect-staging.burnbar.ai`. Unset lane (local / PR
+`csp:check`) still accepts either reviewed host plus localhost. Unset URL
+keeps the artifact dark. A nonempty value that is not a reviewed collector
+origin (`https://collect.burnbar.ai`, `https://collect-staging.burnbar.ai`, or
+`http(s)://localhost|127.0.0.1` when no lane is set) fails `csp:check`,
+`csp:update`, and the website build — it must not deploy a collector-less or
+takeover `connect-src`. Set them only after the collector Worker is deployed.
 
 ## Build
 

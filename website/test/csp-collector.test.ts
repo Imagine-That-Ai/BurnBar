@@ -33,6 +33,35 @@ describe("marketing CSP collector origin", () => {
     expect(isReviewedCollectorOrigin("https://collect.burnbar.ai")).toBe(true);
   });
 
+  it("binds official lanes to a single collector host", () => {
+    expect(isReviewedCollectorOrigin("https://collect.burnbar.ai", "production")).toBe(true);
+    expect(isReviewedCollectorOrigin("https://collect-staging.burnbar.ai", "production")).toBe(
+      false
+    );
+    expect(isReviewedCollectorOrigin("http://localhost:8787", "production")).toBe(false);
+    expect(isReviewedCollectorOrigin("https://collect-staging.burnbar.ai", "staging")).toBe(true);
+    expect(isReviewedCollectorOrigin("https://collect.burnbar.ai", "staging")).toBe(false);
+    expect(isReviewedCollectorOrigin("http://localhost:8787", "staging")).toBe(false);
+    expect(() =>
+      extraCollectorConnectSrc({
+        PUBLIC_ANALYTICS_COLLECTOR_URL: "https://collect-staging.burnbar.ai/v1",
+        ANALYTICS_COLLECTOR_LANE: "production"
+      })
+    ).toThrow(/production first-party collector/);
+    expect(() =>
+      extraCollectorConnectSrc({
+        PUBLIC_ANALYTICS_COLLECTOR_URL: "https://collect.burnbar.ai/v1",
+        ANALYTICS_COLLECTOR_LANE: "staging"
+      })
+    ).toThrow(/staging first-party collector/);
+    expect(
+      extraCollectorConnectSrc({
+        PUBLIC_ANALYTICS_COLLECTOR_URL: "https://collect.burnbar.ai/v1",
+        ANALYTICS_COLLECTOR_LANE: "production"
+      })
+    ).toEqual(["https://collect.burnbar.ai"]);
+  });
+
   it("allows localhost collectors", () => {
     expect(
       extraCollectorConnectSrc({

@@ -4,7 +4,10 @@ import { createHash } from "node:crypto";
 import { readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { isReviewedCollectorOrigin } from "../../analytics/collector-origins.mjs";
+import {
+  isReviewedCollectorOrigin,
+  resolveCollectorLane
+} from "../../analytics/collector-origins.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WEBSITE_ROOT = join(HERE, "..");
@@ -111,7 +114,7 @@ function buildMarketingCsp(
   return directives.join("; ");
 }
 
-function parseCollectorUrl(raw) {
+function parseCollectorUrl(raw, env = {}) {
   const trimmed = (raw ?? "").trim();
   if (!trimmed) return null;
   let url;
@@ -126,16 +129,21 @@ function parseCollectorUrl(raw) {
       `PUBLIC_ANALYTICS_COLLECTOR_URL must be https (or http localhost / 127.0.0.1), got: ${trimmed}`
     );
   }
-  if (!isReviewedCollectorOrigin(trimmed)) {
+  const lane = resolveCollectorLane(
+    env.ANALYTICS_COLLECTOR_LANE ?? env.PUBLIC_ANALYTICS_COLLECTOR_LANE
+  );
+  if (!isReviewedCollectorOrigin(trimmed, lane)) {
     throw new Error(
-      `PUBLIC_ANALYTICS_COLLECTOR_URL must be a reviewed collector origin, got: ${trimmed}`
+      lane
+        ? `PUBLIC_ANALYTICS_COLLECTOR_URL must be the ${lane} first-party collector, got: ${trimmed}`
+        : `PUBLIC_ANALYTICS_COLLECTOR_URL must be a reviewed collector origin, got: ${trimmed}`
     );
   }
   return url;
 }
 
 function extraCollectorConnectSrc(env = process.env) {
-  const url = parseCollectorUrl(env.PUBLIC_ANALYTICS_COLLECTOR_URL);
+  const url = parseCollectorUrl(env.PUBLIC_ANALYTICS_COLLECTOR_URL, env);
   if (!url) return [];
   // CSP `'self'` is exact-origin. A page on burnbar.ai cannot POST to
   // burnbar.web.app (or www) unless that origin is listed, even when it is

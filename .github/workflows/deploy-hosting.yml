@@ -405,6 +405,8 @@ jobs:
         env:
           PUBLIC_SOURCE_COMMIT: ${{ steps.ref.outputs.commit }}
           PUBLIC_ANALYTICS_COLLECTOR_URL: ${{ vars.PUBLIC_ANALYTICS_COLLECTOR_URL }}
+          ANALYTICS_COLLECTOR_LANE: production
+          PUBLIC_ANALYTICS_COLLECTOR_LANE: production
         run: |
           npm run verify --prefix website
           if [[ -n "${PUBLIC_ANALYTICS_COLLECTOR_URL:-}" ]]; then
