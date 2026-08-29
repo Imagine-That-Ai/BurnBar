@@ -6,8 +6,11 @@ import { eventsToEmit } from "../src/lib/analytics/funnelAlias";
 import {
   authCaptureSourceFromProviderId,
   clearSessionSpine,
+  hasRecordedEmailCapture,
   isFreshAuthAccount,
-  shouldEmitSessionSpine
+  markEmailCaptured,
+  shouldEmitSessionSpine,
+  trackEmailCapturedIfNewAccount
 } from "../src/lib/analytics/index";
 import { bucketCount, bucketDurationMs, bucketDurationSeconds } from "../src/lib/analytics/buckets";
 
@@ -269,5 +272,23 @@ describe("fresh auth account capture", () => {
     expect(authCaptureSourceFromProviderId("github.com")).toBe("github");
     expect(authCaptureSourceFromProviderId("facebook.com")).toBe("facebook");
     expect(authCaptureSourceFromProviderId("twitter.com")).toBe("unknown");
+  });
+
+  it("records at most one email.captured per browser after a fresh account", () => {
+    const storage = makeStorage();
+    const created = "2026-08-28T12:00:00.000Z";
+    const user = {
+      metadata: { creationTime: created, lastSignInTime: "2026-08-28T12:00:20.000Z" }
+    };
+    expect(hasRecordedEmailCapture(storage)).toBe(false);
+    trackEmailCapturedIfNewAccount(user, "google", storage);
+    expect(hasRecordedEmailCapture(storage)).toBe(true);
+    markEmailCaptured(storage);
+    trackEmailCapturedIfNewAccount(
+      { metadata: { creationTime: created, lastSignInTime: "2026-08-28T12:00:40.000Z" } },
+      "apple",
+      storage
+    );
+    expect(hasRecordedEmailCapture(storage)).toBe(true);
   });
 });

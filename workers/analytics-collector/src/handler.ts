@@ -337,15 +337,17 @@ function concatBytes(chunks: Uint8Array[]): Uint8Array {
 }
 
 const FUNNEL_SURFACE_SET = new Set<string>(FUNNEL_SURFACES);
+const WEBSITE_OR_FUNNEL_SURFACE = ENUM_PROP_VALUES.surface;
 
 function eventMeetsSchema(name: string, props: Record<string, string | boolean>): boolean {
   if (name === "email.captured") {
     return props.captured === true;
   }
-  if (name === "install.started" || name === "app.opened") {
+  if (!isFunnelEventName(name)) return true;
+  if (name === "install.started") {
     return typeof props.surface === "string" && FUNNEL_SURFACE_SET.has(props.surface);
   }
-  return true;
+  return typeof props.surface === "string" && WEBSITE_OR_FUNNEL_SURFACE.has(props.surface);
 }
 
 export async function handleCollectorPost(

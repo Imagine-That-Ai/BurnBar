@@ -241,9 +241,33 @@ export function authCaptureSourceFromProviderId(providerId: string): string {
   return "unknown";
 }
 
+export const EMAIL_CAPTURED_KEY = "burnbar-analytics-email-captured";
+
+export function hasRecordedEmailCapture(storage: ConsentStorage = safeStorage()): boolean {
+  try {
+    return storage.getItem(EMAIL_CAPTURED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function markEmailCaptured(storage: ConsentStorage = safeStorage()): void {
+  try {
+    storage.setItem(EMAIL_CAPTURED_KEY, "1");
+  } catch {
+    /* private mode / quota */
+  }
+}
+
 /** Credential-success path only — never restored onAuthStateChanged sessions. */
-export function trackEmailCapturedIfNewAccount(user: AuthAccountLike, source = "unknown"): void {
+export function trackEmailCapturedIfNewAccount(
+  user: AuthAccountLike,
+  source = "unknown",
+  storage: ConsentStorage = safeStorage()
+): void {
   if (!isFreshAuthAccount(user)) return;
+  if (hasRecordedEmailCapture(storage)) return;
+  markEmailCaptured(storage);
   trackEmailCaptured(boundedAuthCaptureSource(source));
 }
 

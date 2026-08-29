@@ -14,6 +14,8 @@ import {
   type CollectorRequestBody,
 } from "./handler";
 
+const fallbackCollectorRateLimit = createMemoryRateLimiter();
+
 export default {
   async fetch(request: Request, env: CollectorEnv): Promise<Response> {
     const projectId = resolveAmplitudeProjectId(env.AMPLITUDE_PROJECT_ID ?? AMPLITUDE_PROJECT.development);
@@ -25,7 +27,7 @@ export default {
       return Response.json({ error: "method_not_allowed" }, { status: 405, headers: cors });
     }
 
-    const limiter = env.COLLECTOR_RATE_LIMIT ?? createMemoryRateLimiter();
+    const limiter = env.COLLECTOR_RATE_LIMIT ?? fallbackCollectorRateLimit;
     const clientKey = collectorClientKey(request.headers);
     const verdict = await applyCollectorRateLimit({ ...env, COLLECTOR_RATE_LIMIT: limiter }, clientKey);
     if (!verdict.success) {

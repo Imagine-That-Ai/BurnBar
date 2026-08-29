@@ -286,7 +286,7 @@ describe("collector worker — consent and project routing", () => {
   it("forwards from a staging origin", async () => {
     const fetches: string[] = [];
     const result = await handleCollectorPost(
-      { consent: true, events: [{ name: "page.viewed" }] },
+      { consent: true, events: [{ name: "page.viewed", props: { surface: "home" } }] },
       { AMPLITUDE_API_KEY: "secret-key", AMPLITUDE_PROJECT_ID: "830581" },
       async (url) => {
         fetches.push(url);
@@ -327,7 +327,12 @@ describe("collector worker — consent and project routing", () => {
 
   it("does not throw when device_id is a number", async () => {
     const result = await handleCollectorPost(
-      { consent: true, events: [{ name: "page.viewed", device_id: 12 as unknown as string }] },
+      {
+        consent: true,
+        events: [
+          { name: "page.viewed", device_id: 12 as unknown as string, props: { surface: "home" } }
+        ]
+      },
       { AMPLITUDE_API_KEY: "secret-key", AMPLITUDE_PROJECT_ID: "830581" },
       async () => new Response("{}", { status: 200 })
     );
@@ -517,7 +522,7 @@ describe("collector worker — consent and project routing", () => {
 
   it("returns a structured 502 when Amplitude fetch rejects", async () => {
     const result = await handleCollectorPost(
-      { consent: true, events: [{ name: "page.viewed" }] },
+      { consent: true, events: [{ name: "page.viewed", props: { surface: "home" } }] },
       { AMPLITUDE_API_KEY: "secret-key", AMPLITUDE_PROJECT_ID: "830581" },
       async () => {
         throw new Error("dns failed");
@@ -555,7 +560,7 @@ describe("collector worker — consent and project routing", () => {
   it("forwards when the rate limiter allows the client key", async () => {
     const limiter = createMemoryRateLimiter(2, 60_000);
     const result = await handleCollectorPost(
-      { consent: true, events: [{ name: "page.viewed" }] },
+      { consent: true, events: [{ name: "page.viewed", props: { surface: "home" } }] },
       {
         AMPLITUDE_API_KEY: "secret-key",
         AMPLITUDE_PROJECT_ID: "830581",
@@ -610,19 +615,20 @@ describe("collector worker — consent and project routing", () => {
     expect(fetches).toHaveLength(1);
   });
 
-  it("drops install.started and app.opened unless surface is a funnel surface", async () => {
-    const fetches: string[] = [];
+  it("requires a funnel surface on install.started and a page or funnel surface on other funnel events", async () => {
+    const fetches: { events?: { event_type: string }[] }[] = [];
     const dropped = await handleCollectorPost(
       {
         consent: true,
         events: [
           { name: "install.started", props: { surface: "pricing", product: "burnbar" } },
-          { name: "app.opened", props: { surface: "home", product: "burnbar" } }
+          { name: "page.viewed", props: { product: "burnbar" } },
+          { name: "download.clicked", props: { product: "burnbar" } }
         ]
       },
       { AMPLITUDE_API_KEY: "secret-key", AMPLITUDE_PROJECT_ID: "830581" },
       async (url) => {
-        fetches.push(url);
+        fetches.push({ events: [] });
         return new Response("{}", { status: 200 });
       }
     );
@@ -633,16 +639,23 @@ describe("collector worker — consent and project routing", () => {
     const kept = await handleCollectorPost(
       {
         consent: true,
-        events: [{ name: "install.started", props: { surface: "macos", product: "burnbar" } }]
+        events: [
+          { name: "install.started", props: { surface: "macos", product: "burnbar" } },
+          { name: "app.opened", props: { surface: "home", product: "burnbar" } },
+          { name: "page.viewed", props: { surface: "pricing", product: "burnbar" } },
+          { name: "download.clicked", props: { surface: "download", product: "burnbar" } }
+        ]
       },
       { AMPLITUDE_API_KEY: "secret-key", AMPLITUDE_PROJECT_ID: "830581" },
-      async (url) => {
-        fetches.push(url);
+      async (_url, init) => {
+        fetches.push(JSON.parse(String(init?.body ?? "{}")));
         return new Response("{}", { status: 200 });
       }
     );
     expect(kept.status).toBe(200);
-    expect(kept.forwarded).toBe(1);
+    expect(kept.forwarded).toBe(4);
+    const types = (fetches[0]?.events ?? []).map((event) => event.event_type);
+    expect(types).toEqual(["install.started", "app.opened", "page.viewed", "download.clicked"]);
   });
 
   it("still allows page.viewed with the website page-surface enum", async () => {
@@ -741,6 +754,22 @@ describe("collector worker fetch — rate limit and body order", () => {
     expect(response.status).toBe(429);
   });
 
+  it("reuses one isolate-local limiter when the binding is absent", () => {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const worker = readFileSync(
+      join(here, "../../workers/analytics-collector/src/index.ts"),
+      "utf8"
+    );
+    expect(
+      worker.indexOf("const fallbackCollectorRateLimit = createMemoryRateLimiter()")
+    ).toBeGreaterThan(-1);
+    expect(worker.indexOf("const fallbackCollectorRateLimit")).toBeLessThan(
+      worker.indexOf("export default")
+    );
+    expect(worker).toContain("env.COLLECTOR_RATE_LIMIT ?? fallbackCollectorRateLimit");
+    expect(worker).not.toMatch(/fetch\([\s\S]*createMemoryRateLimiter\(\)/);
+  });
+
   it("rejects a trustworthy oversized Content-Length without reading the body", async () => {
     const response = await collectorWorker.fetch(
       new Request("https://collect.burnbar.ai/v1", {
@@ -806,6 +835,14 @@ describe("attribution", () => {
     const landed = resolveAttribution("?utm_campaign=a@b.com", storage);
     expect(landed.utm_campaign).toBeUndefined();
     expect(resolveAttribution("", storage).utm_campaign).toBeUndefined();
+  });
+
+  it("clears a stored campaign when the next URL has rejected attribution keys", () => {
+    const storage = attributionMemory();
+    resolveAttribution("?utm_campaign=spring-sale", storage);
+    const rejected = resolveAttribution("?utm_campaign=a@b.com", storage);
+    expect(rejected).toEqual({});
+    expect(resolveAttribution("", storage)).toEqual({});
   });
 
   it("replaces the stored bag when a later landing carries a new campaign", () => {

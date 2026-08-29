@@ -69,11 +69,22 @@ function readStoredAttribution(storage: AttributionStorage): AnalyticsProps {
   }
 }
 
+/** True when the query names a known attribution key, even if every value is rejected. */
+export function searchHasAttributionKeys(search: string): boolean {
+  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  for (const rawKey of params.keys()) {
+    if (QUERY_ALIASES[rawKey.toLowerCase()]) return true;
+  }
+  return false;
+}
+
 /**
  * Funnel-session attribution. A landing URL with bounded params replaces
  * the stored bag. An empty destination query (internal /download, /pricing)
  * returns the re-validated stored bag so CTA conversions keep the campaign.
- * Persist even before consent — values are already PII-rejected.
+ * A URL that names attribution keys whose values were all rejected clears
+ * the bag instead of keeping the previous campaign. Persist even before
+ * consent — values are already PII-rejected.
  */
 export function resolveAttribution(search: string, storage: AttributionStorage): AnalyticsProps {
   const fromUrl = attributionFromSearch(search);
@@ -84,6 +95,10 @@ export function resolveAttribution(search: string, storage: AttributionStorage):
       /* private mode / quota — still return the URL bag for this page */
     }
     return fromUrl;
+  }
+  if (searchHasAttributionKeys(search)) {
+    clearStoredAttribution(storage);
+    return {};
   }
   return readStoredAttribution(storage);
 }
