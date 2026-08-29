@@ -1212,6 +1212,8 @@ describe("website bundle never embeds an Amplitude API key", () => {
     expect(source).toContain("resolveSessionId");
     expect(source).toContain("session_id");
     expect(source).toContain("SESSION_ID_KEY");
+    expect(source).toContain("crypto.randomUUID");
+    expect(source).not.toMatch(/function newSessionId[\s\S]*Math\.random/);
     expect(source).toContain("analytics.canSend");
     expect(source).toMatch(
       /export function declineConsent\(\)[\s\S]*clearSessionSpine\(sessionSpineStorage\(\)\)/
