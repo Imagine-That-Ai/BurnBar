@@ -28,7 +28,7 @@ function collectorUrlFromEnv(raw: string): string {
       `PUBLIC_ANALYTICS_COLLECTOR_URL must be https (or http localhost / 127.0.0.1), got: ${trimmed}`
     );
   }
-  if (!isReviewedCollectorOrigin(url.origin)) {
+  if (!isReviewedCollectorOrigin(trimmed)) {
     throw new Error(
       `PUBLIC_ANALYTICS_COLLECTOR_URL must be a reviewed collector origin, got: ${trimmed}`
     );
@@ -76,8 +76,12 @@ function attributionSessionStorage(): AttributionStorage {
 
 export function rememberAttribution(
   search = typeof location !== "undefined" ? location.search : "",
-  storage: AttributionStorage = attributionSessionStorage()
+  storage: AttributionStorage = attributionSessionStorage(),
+  consent: { hasDecided: boolean; isGranted: boolean } = analyticsConsent
 ): AnalyticsProps {
+  if (consent.hasDecided && !consent.isGranted) {
+    return {};
+  }
   return resolveAttribution(search, storage);
 }
 
@@ -156,8 +160,9 @@ function sessionSpineStorage(): { removeItem?(key: string): void } {
 
 /** Resume a consented session and emit session-start (once per tab) + the page
  *  view. Safe to call on every page load; dark until opt-in. Bounded
- *  attribution is remembered even before consent so a later grant on
- *  /download still carries the landing campaign. */
+ *  attribution is remembered before a decision so a later grant on
+ *  /download still carries the landing campaign. After decline or revoke
+ *  the bag stays cleared — a campaign reload must not recapture. */
 export function boot(): void {
   rememberAttribution();
   analytics.startIfConsented();

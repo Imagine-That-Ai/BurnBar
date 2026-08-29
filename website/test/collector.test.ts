@@ -10,6 +10,7 @@ import {
   resolveAttribution,
   type AttributionStorage
 } from "../src/lib/analytics/attribution";
+import { rememberAttribution } from "../src/lib/analytics/index";
 import {
   handleCollectorPost,
   AMPLITUDE_HTTP_V2_US,
@@ -18,7 +19,9 @@ import {
   rejectOversizedCollectorBody,
   declaredCollectorBodyTooLarge,
   readBoundedCollectorBody,
-  MAX_COLLECTOR_BODY_BYTES
+  MAX_COLLECTOR_BODY_BYTES,
+  MAX_EVENT_TIME_SKEW_MS,
+  sanitizeCollectorEventTime
 } from "../../workers/analytics-collector/src/handler";
 import collectorWorker from "../../workers/analytics-collector/src/index";
 import { readFileSync } from "node:fs";
@@ -655,6 +658,33 @@ describe("collector worker — consent and project routing", () => {
     expect(result.forwarded).toBe(1);
   });
 
+  it("stamps the Worker receipt time for unusable client timestamps", async () => {
+    const now = Date.now();
+    expect(sanitizeCollectorEventTime(Number.POSITIVE_INFINITY, now)).toBe(now);
+    expect(sanitizeCollectorEventTime(Number.NaN, now)).toBe(now);
+    expect(sanitizeCollectorEventTime(-1, now)).toBe(now);
+    expect(sanitizeCollectorEventTime(now + MAX_EVENT_TIME_SKEW_MS + 1, now)).toBe(now);
+    expect(sanitizeCollectorEventTime(now - 1_000, now)).toBe(now - 1_000);
+
+    const fetches: { body: Record<string, unknown> }[] = [];
+    await handleCollectorPost(
+      {
+        consent: true,
+        events: [
+          { name: "page.viewed", time_ms: Number.POSITIVE_INFINITY, props: { surface: "home" } }
+        ]
+      },
+      { AMPLITUDE_API_KEY: "secret-key", AMPLITUDE_PROJECT_ID: "830581" },
+      async (_url, init) => {
+        fetches.push({ body: JSON.parse(String(init?.body ?? "{}")) });
+        return new Response("{}", { status: 200 });
+      }
+    );
+    const events = fetches[0]?.body.events as { time: number }[];
+    expect(Number.isFinite(events[0]?.time)).toBe(true);
+    expect(JSON.stringify(fetches[0]?.body)).not.toContain("null");
+  });
+
   it("rejects a declared Content-Length over the collector cap", () => {
     expect(declaredCollectorBodyTooLarge(String(MAX_COLLECTOR_BODY_BYTES + 1))).toBe(true);
     expect(declaredCollectorBodyTooLarge(String(MAX_COLLECTOR_BODY_BYTES))).toBe(false);
@@ -791,6 +821,29 @@ describe("attribution", () => {
     resolveAttribution("?utm_campaign=spring-sale", storage);
     clearStoredAttribution(storage);
     expect(resolveAttribution("", storage)).toEqual({});
+  });
+
+  it("does not persist campaign params after consent is declined", () => {
+    const storage = attributionMemory();
+    const declined = { hasDecided: true, isGranted: false };
+    expect(rememberAttribution("?utm_campaign=spring-sale", storage, declined)).toEqual({});
+    expect(storage.getItem(ATTRIBUTION_STORAGE_KEY)).toBeNull();
+    expect(rememberAttribution("", storage, declined)).toEqual({});
+  });
+
+  it("still persists campaign params before a consent decision", () => {
+    const storage = attributionMemory();
+    const unset = { hasDecided: false, isGranted: false };
+    const landed = rememberAttribution("?utm_campaign=spring-sale", storage, unset);
+    expect(landed.utm_campaign).toBe("spring-sale");
+    expect(storage.getItem(ATTRIBUTION_STORAGE_KEY)).toContain("spring-sale");
+    clearStoredAttribution(storage);
+    const afterDecline = rememberAttribution("?utm_campaign=summer-sale", storage, {
+      hasDecided: true,
+      isGranted: false
+    });
+    expect(afterDecline).toEqual({});
+    expect(storage.getItem(ATTRIBUTION_STORAGE_KEY)).toBeNull();
   });
 
   it("ConsentBanner captures attribution before the consent decision branch", () => {

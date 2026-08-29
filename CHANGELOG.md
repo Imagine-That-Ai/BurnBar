@@ -9,10 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - First-party collector now rate-limits before buffering, rejects unreviewed
-  collector hosts, drops events that miss their per-event schema, remints a
-  session spine after revoke, and finishes device-id creation before the
-  browser transport marks itself started. `email.captured` fires only on a
-  fresh credential success, never a restored auth session.
+  collector hosts (including non-default ports and credentials), drops events
+  that miss their per-event schema, remints a session spine after revoke,
+  finishes device-id creation before the browser transport marks itself
+  started, bounds client timestamps, and does not recapture campaign
+  attribution after decline. `email.captured` fires only on a fresh
+  credential success, never a restored auth session.
 - `openburnbar app install` (npm 0.2.2) no longer aborts a verified macOS DMG when the
   public feed advertises a SemVer tag with `+repair.N` (for example
   `1.0.40+repair.34` build 81) and the mounted app's

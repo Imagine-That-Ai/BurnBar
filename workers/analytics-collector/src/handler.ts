@@ -35,6 +35,8 @@ export const AMPLITUDE_HTTP_V2_EU = "https://api.eu.amplitude.com/2/httpapi";
 
 export const MAX_COLLECTOR_EVENTS = 20;
 export const MAX_COLLECTOR_BODY_BYTES = 16_384;
+/** Client clocks may drift; outside this window we stamp the Worker receipt. */
+export const MAX_EVENT_TIME_SKEW_MS = 24 * 60 * 60 * 1000;
 export const COLLECTOR_RATE_LIMIT_MAX = 60;
 export const COLLECTOR_RATE_LIMIT_PERIOD_SECONDS = 60;
 
@@ -248,6 +250,13 @@ function mintedAnonymousId(prefix: "anon" | "obb", now: number, index: number): 
   return `${prefix}-${now.toString(36)}-${index}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+export function sanitizeCollectorEventTime(timeMs: unknown, now: number): number {
+  if (typeof timeMs !== "number" || !Number.isFinite(timeMs)) return now;
+  if (timeMs < 0) return now;
+  if (Math.abs(timeMs - now) > MAX_EVENT_TIME_SKEW_MS) return now;
+  return Math.trunc(timeMs);
+}
+
 export function collectorClientKey(headers: { get(name: string): string | null }): string {
   return headers.get("cf-connecting-ip")?.trim() || "unknown";
 }
@@ -405,7 +414,7 @@ export async function handleCollectorPost(
     events: prepared.map(({ event, props }, index) => ({
       event_type: event.name,
       device_id: sanitizeAnonymousId(event.device_id, mintedAnonymousId("anon", now, index)),
-      time: typeof event.time_ms === "number" ? event.time_ms : now,
+      time: sanitizeCollectorEventTime(event.time_ms, now),
       insert_id: sanitizeAnonymousId(event.insert_id, mintedAnonymousId("obb", now, index)),
       event_properties: {
         ...props,

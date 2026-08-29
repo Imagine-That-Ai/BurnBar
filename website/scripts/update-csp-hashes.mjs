@@ -126,7 +126,7 @@ function parseCollectorUrl(raw) {
       `PUBLIC_ANALYTICS_COLLECTOR_URL must be https (or http localhost / 127.0.0.1), got: ${trimmed}`
     );
   }
-  if (!isReviewedCollectorOrigin(url.origin)) {
+  if (!isReviewedCollectorOrigin(trimmed)) {
     throw new Error(
       `PUBLIC_ANALYTICS_COLLECTOR_URL must be a reviewed collector origin, got: ${trimmed}`
     );

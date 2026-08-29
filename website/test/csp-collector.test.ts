@@ -28,6 +28,9 @@ describe("marketing CSP collector origin", () => {
     expect(isReviewedCollectorOrigin("http://localhost:8787")).toBe(true);
     expect(isReviewedCollectorOrigin("https://evil.example")).toBe(false);
     expect(isReviewedCollectorOrigin("https://collect.example.workers.dev")).toBe(false);
+    expect(isReviewedCollectorOrigin("https://collect.burnbar.ai:444")).toBe(false);
+    expect(isReviewedCollectorOrigin("https://user:pass@collect.burnbar.ai")).toBe(false);
+    expect(isReviewedCollectorOrigin("https://collect.burnbar.ai")).toBe(true);
   });
 
   it("allows localhost collectors", () => {
@@ -47,6 +50,16 @@ describe("marketing CSP collector origin", () => {
     ).toThrow(/must be https/);
     expect(() =>
       extraCollectorConnectSrc({ PUBLIC_ANALYTICS_COLLECTOR_URL: "https://evil.example/x" })
+    ).toThrow(/reviewed collector origin/);
+    expect(() =>
+      extraCollectorConnectSrc({
+        PUBLIC_ANALYTICS_COLLECTOR_URL: "https://collect.burnbar.ai:444/v1"
+      })
+    ).toThrow(/reviewed collector origin/);
+    expect(() =>
+      extraCollectorConnectSrc({
+        PUBLIC_ANALYTICS_COLLECTOR_URL: "https://user:pass@collect.burnbar.ai/v1"
+      })
     ).toThrow(/reviewed collector origin/);
     expect(() =>
       expectedMarketingCsps(hashes, {
