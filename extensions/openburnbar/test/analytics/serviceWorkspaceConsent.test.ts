@@ -227,11 +227,11 @@ describe('OpenBurnBarAnalyticsService first activation', () => {
     ).toBe(false);
   });
 
-  it('is not a first activation when the global opt-in is already enabled', () => {
+  it('is still a first activation when only the synced global opt-in is present', () => {
     vscodeState.globalValue = true;
-    const { context } = createHostContext();
-    expect(resolveFirstActivation(context)).toBe(false);
+    const { context, storage } = createHostContext();
+    expect(resolveFirstActivation(context)).toBe(true);
     OpenBurnBarAnalyticsService.initialize(context);
-    expect(resolveFirstActivation(context)).toBe(false);
+    expect(storage.get(INSTALL_MARKER_KEY)).toBe(true);
   });
 });

@@ -307,11 +307,13 @@ export function markEmailCaptured(
 export function trackEmailCapturedIfNewAccount(
   user: AuthAccountLike,
   source = "unknown",
-  storage: ConsentStorage = safeStorage()
+  storage: ConsentStorage = safeStorage(),
+  canSend = analytics.canSend
 ): void {
   if (!isFreshAuthAccount(user)) return;
   const uid = typeof user?.uid === "string" ? user.uid.trim() : "";
   if (!uid) return;
+  if (!canSend) return;
   if (hasRecordedEmailCapture(uid, storage)) return;
   markEmailCaptured(uid, storage);
   trackEmailCaptured(boundedAuthCaptureSource(source));

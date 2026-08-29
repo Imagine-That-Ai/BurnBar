@@ -261,9 +261,11 @@ function readGlobalAnalyticsOptIn(): boolean {
 }
 
 /**
- * First activation is a dedicated install marker, not "analytics prompt handled."
- * Any durable prior-install evidence means this is an upgrade (or a re-activation)
- * and must not emit `install.started`.
+ * First activation is per-install `globalState` evidence, not the synced
+ * user-level `openburnbar.analytics.enabled` setting. That setting may
+ * authorize emission after Settings Sync; it does not prove this profile
+ * already ran. Any local install/prompt/device/consent marker means this
+ * is an upgrade (or a re-activation) and must not emit `install.started`.
  */
 export function resolveFirstActivation(context: AnalyticsServiceHostContext): boolean {
   if (context.globalState.get<boolean>(INSTALL_MARKER_KEY) === true) return false;
@@ -272,6 +274,5 @@ export function resolveFirstActivation(context: AnalyticsServiceHostContext): bo
   if (typeof deviceId === 'string' && deviceId.length > 0) return false;
   const consent = context.globalState.get<string>(CONSENT_STORAGE_KEY);
   if (consent === 'granted' || consent === 'declined') return false;
-  if (readGlobalAnalyticsOptIn()) return false;
   return true;
 }

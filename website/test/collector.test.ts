@@ -624,6 +624,7 @@ describe("collector worker — consent and project routing", () => {
         consent: true,
         events: [
           { name: "install.started", props: { surface: "macos", product: "burnbar" } },
+          { name: "nav.route.changed", props: { surface: "home" } },
           { name: "app.opened", props: { surface: "ios", product: "burnbar" } },
           { name: "page.viewed", props: { product: "burnbar" } },
           { name: "download.clicked", props: { product: "burnbar" } }

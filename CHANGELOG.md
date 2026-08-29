@@ -26,6 +26,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   collector can send. `email.captured` dedupes per hashed account, not
   the whole browser. `error.handled` requires bounded `error_category`
   plus `surface`. The collector stamps `platform: web` on every event.
+  Website collector drops `nav.route.changed`. Email-capture markers are
+  written only when the collector can send. Extension first-activation
+  ignores a synced opt-in setting.
   Production hosting may only pin `collect.burnbar.ai`; staging may only
   pin `collect-staging.burnbar.ai`. Rejected campaign params clear the
   stored bag. `email.captured` fires once per fresh account, never a

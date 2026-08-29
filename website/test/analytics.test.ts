@@ -299,7 +299,7 @@ describe("fresh auth account capture", () => {
       metadata: { creationTime: created, lastSignInTime: "2026-08-28T12:00:20.000Z" }
     };
     expect(hasRecordedEmailCapture("uid-one", storage)).toBe(false);
-    trackEmailCapturedIfNewAccount(first, "google", storage);
+    trackEmailCapturedIfNewAccount(first, "google", storage, true);
     expect(hasRecordedEmailCapture("uid-one", storage)).toBe(true);
     trackEmailCapturedIfNewAccount(
       {
@@ -307,7 +307,8 @@ describe("fresh auth account capture", () => {
         metadata: { creationTime: created, lastSignInTime: "2026-08-28T12:00:40.000Z" }
       },
       "apple",
-      storage
+      storage,
+      true
     );
     expect(hasRecordedEmailCapture("uid-one", storage)).toBe(true);
     expect(hasRecordedEmailCapture("uid-two", storage)).toBe(false);
@@ -317,14 +318,19 @@ describe("fresh auth account capture", () => {
         metadata: { creationTime: created, lastSignInTime: "2026-08-28T12:00:20.000Z" }
       },
       "github",
-      storage
+      storage,
+      true
     );
     expect(hasRecordedEmailCapture("uid-two", storage)).toBe(true);
     trackEmailCapturedIfNewAccount(
       { metadata: { creationTime: created, lastSignInTime: "2026-08-28T12:00:20.000Z" } },
       "google",
-      storage
+      storage,
+      true
     );
     expect(hasRecordedEmailCapture("", storage)).toBe(false);
+    const dark = makeStorage();
+    trackEmailCapturedIfNewAccount(first, "google", dark, false);
+    expect(hasRecordedEmailCapture("uid-one", dark)).toBe(false);
   });
 });

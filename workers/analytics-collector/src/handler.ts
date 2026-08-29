@@ -452,7 +452,7 @@ function eventMeetsSchema(name: string, props: Record<string, string | boolean>)
   if (name === "email.captured") {
     return props.captured === true;
   }
-  if (name === "install.started") {
+  if (name === "install.started" || name === "nav.route.changed") {
     return false;
   }
   if (isFunnelEventName(name)) {
