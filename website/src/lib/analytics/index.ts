@@ -10,7 +10,7 @@ import { FirstPartyCollectorTransport } from "./collectorTransport";
 import { clearStoredAttribution, resolveAttribution, type AttributionStorage } from "./attribution";
 import { EVENT, type AnalyticsEventName, type ArenaSignInProvider } from "./events";
 import { eventsToEmit } from "./funnelAlias";
-import { FUNNEL_PRODUCT } from "../../../../analytics/funnel-contract";
+import { FUNNEL_PRODUCT, isBoundedSessionId } from "../../../../analytics/funnel-contract";
 import {
   isReviewedCollectorOrigin,
   resolveCollectorLane
@@ -100,6 +100,9 @@ export const analytics = new Analytics({
     platform: "web",
     app_version: APP_VERSION,
     surface: typeof location !== "undefined" ? surfaceForPath(location.pathname) : "other",
+    ...(analyticsConsent.isGranted && COLLECTOR_URL.length > 0
+      ? { session_id: resolveSessionId(true) }
+      : {}),
     ...(typeof location !== "undefined" ? rememberAttribution(location.search) : {})
   })
 });
@@ -136,6 +139,7 @@ const SESSION_KEY = "burnbar-analytics-session";
 export const LAUNCHED_KEY = "burnbar-analytics-launched";
 export const FIRST_VIEW_KEY = "burnbar-analytics-first-view";
 export const EMAIL_PENDING_KEY = "burnbar-analytics-email-pending";
+export const SESSION_ID_KEY = "burnbar-analytics-session-id";
 
 type PendingEmailStorage = ConsentStorage & { removeItem?(key: string): void };
 
@@ -237,6 +241,7 @@ export function clearSessionSpine(storage: { removeItem?(key: string): void }): 
     storage.removeItem?.(SESSION_KEY);
     storage.removeItem?.(FIRST_VIEW_KEY);
     storage.removeItem?.(EMAIL_PENDING_KEY);
+    storage.removeItem?.(SESSION_ID_KEY);
   } catch {
     /* private mode / quota */
   }
@@ -254,6 +259,46 @@ function sessionSpineStorage(): PendingEmailStorage {
 /** Pending email captures live on the session store, not localStorage. */
 export function pendingEmailStorage(): PendingEmailStorage {
   return sessionSpineStorage();
+}
+
+function newSessionId(): string {
+  try {
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+      return crypto.randomUUID();
+    }
+  } catch {
+    /* private mode / SSR */
+  }
+  const bytes = new Uint8Array(16);
+  for (let i = 0; i < 16; i++) bytes[i] = Math.floor(Math.random() * 256);
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+/**
+ * One privacy-safe UUID per tab session. Mint only when the collector can
+ * send. Revoke remints with the session spine.
+ */
+export function resolveSessionId(
+  canSend: boolean,
+  storage: {
+    getItem(key: string): string | null;
+    setItem(key: string, value: string): void;
+  } = pendingEmailStorage(),
+  createId: () => string = newSessionId
+): string {
+  if (!canSend) return "";
+  try {
+    const existing = storage.getItem(SESSION_ID_KEY)?.trim() ?? "";
+    if (isBoundedSessionId(existing)) return existing;
+    const id = createId();
+    storage.setItem(SESSION_ID_KEY, id);
+    return id;
+  } catch {
+    return createId();
+  }
 }
 
 /** Resume a consented session and emit session-start (once per tab) + the page

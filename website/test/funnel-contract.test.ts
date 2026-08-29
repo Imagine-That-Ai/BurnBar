@@ -8,6 +8,7 @@ import {
   FUNNEL_PRODUCT,
   isAllowedAmplitudeProject,
   isBoundedAttributionValue,
+  isBoundedSessionId,
   isForbiddenAmplitudeProject,
   isFunnelEventName,
   resolveAmplitudeProjectId,
@@ -84,6 +85,10 @@ describe("Amplitude project routing", () => {
     expect(isBoundedAttributionValue("Alice-14155551212")).toBe(false);
     expect(isBoundedAttributionValue("Alice Smith")).toBe(false);
     expect(isBoundedAttributionValue("Alice Smith 14155551212")).toBe(false);
+    expect(isBoundedAttributionValue("550e8400-e29b-41d4-a716-446655440000")).toBe(false);
+    expect(isBoundedSessionId("550e8400-e29b-41d4-a716-446655440000")).toBe(true);
+    expect(isBoundedSessionId("spring-sale")).toBe(false);
+    expect(isBoundedSessionId("14155551212")).toBe(false);
   });
 
   it("treats only the six funnel names as funnel events", () => {

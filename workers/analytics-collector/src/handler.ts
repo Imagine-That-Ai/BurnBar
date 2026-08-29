@@ -24,6 +24,7 @@ import {
   FUNNEL_ATTRIBUTION_KEYS,
   FUNNEL_EVENT_NAMES,
   isBoundedAttributionValue,
+  isBoundedSessionId,
   isFunnelEventName,
   resolveAmplitudeProjectId,
   type FunnelEventName,
@@ -103,6 +104,7 @@ const ENUM_PROP_VALUES: Record<string, ReadonlySet<string>> = {
   outcome: new Set(["success", "failure"]),
   consent_version: new Set(["1"]),
   error_category: new Set(["auth", "callable", "network", "unknown"]),
+  source: new Set(["google", "apple", "github", "facebook", "unknown"]),
 };
 
 const BOOLEAN_PROP_KEYS = new Set([
@@ -118,7 +120,7 @@ const ALLOWED_PROP_KEYS = new Set<string>([
   ...BOOLEAN_PROP_KEYS,
   ...FUNNEL_ATTRIBUTION_KEYS,
   "app_version",
-  "source",
+  "session_id",
 ]);
 
 export type RateLimitBinding = {
@@ -183,6 +185,10 @@ function sanitizeProps(props: Record<string, string | boolean> | undefined): Rec
     const trimmed = value.trim();
     if (trimmed.length === 0) continue;
     if (EMAILISH.test(trimmed)) continue;
+    if (key === "session_id") {
+      if (isBoundedSessionId(trimmed)) out[key] = trimmed.toLowerCase();
+      continue;
+    }
     if (!isBoundedAttributionValue(trimmed)) continue;
     const allowed = ENUM_PROP_VALUES[key];
     if (allowed && !allowed.has(trimmed)) continue;
@@ -346,6 +352,7 @@ const SHARED_EVENT_PROPS = new Set<string>([
   "platform",
   "app_version",
   "surface",
+  "session_id",
   ...FUNNEL_ATTRIBUTION_KEYS,
 ]);
 
@@ -457,6 +464,9 @@ function eventMeetsSchema(name: string, props: Record<string, string | boolean>)
     return false;
   }
   if (!hasWebsiteSurface(props)) {
+    return false;
+  }
+  if (typeof props.session_id !== "string" || !isBoundedSessionId(props.session_id)) {
     return false;
   }
   if (name === "email.captured") {

@@ -18,6 +18,8 @@ import {
   flushPendingEmailCapture,
   rememberPendingEmailCapture,
   EMAIL_PENDING_KEY,
+  SESSION_ID_KEY,
+  resolveSessionId,
   FIRST_VIEW_KEY,
   LAUNCHED_KEY,
   trackEmailCapturedIfNewAccount
@@ -295,6 +297,24 @@ describe("session spine when storage is blocked", () => {
     expect(screenViewedProps(true, store)).toEqual({ is_first_view: true });
     expect(storage.get(FIRST_VIEW_KEY)).toBe("1");
     expect(screenViewedProps(true, store)).toEqual({ is_first_view: false });
+  });
+
+  it("mints one UUID session id per tab only when the collector can send", () => {
+    const { analytics } = make(true, "");
+    expect(analytics.canSend).toBe(false);
+    const storage = new Map<string, string>();
+    const store = {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => void storage.set(key, value)
+    };
+    const minted = "550e8400-e29b-41d4-a716-446655440000";
+    expect(resolveSessionId(analytics.canSend, store, () => minted)).toBe("");
+    expect(storage.get(SESSION_ID_KEY)).toBeUndefined();
+    expect(resolveSessionId(true, store, () => minted)).toBe(minted);
+    expect(storage.get(SESSION_ID_KEY)).toBe(minted);
+    expect(resolveSessionId(true, store, () => "11111111-1111-4111-8111-111111111111")).toBe(
+      minted
+    );
   });
 
   it("treats a blocked first-launch store as first launch", () => {

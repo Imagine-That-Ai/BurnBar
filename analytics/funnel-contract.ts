@@ -97,6 +97,13 @@ export function isBoundedAttributionValue(value: string): boolean {
   return true;
 }
 
+/** Per-tab analytics session id — RFC 4122 UUID, not a user id or campaign token. */
+export function isBoundedSessionId(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    value.trim(),
+  );
+}
+
 export function isFunnelEventName(name: string): name is FunnelEventName {
   return (FUNNEL_EVENT_NAMES as readonly string[]).includes(name);
 }

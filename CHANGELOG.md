@@ -32,8 +32,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `is_first_launch` and `cold_start`; website `boot()` stamps both.
   Pre-consent email captures keep a hashed pending signal on the
   session store and flush it from that same store on grant. `screen.viewed` requires `is_first_view`. Every accepted website
-  event needs a website `surface`. Foreign origins are rejected before
-  the collector rate limiter.
+  event needs a website `surface`.   Foreign origins are rejected before
+  the collector rate limiter. `email.captured` `source` is the bounded
+  auth enum. Website events carry a per-tab UUID `session_id`.
   Production hosting may only pin `collect.burnbar.ai`; staging may only
   pin `collect-staging.burnbar.ai`. Rejected campaign params clear the
   stored bag. `email.captured` fires once per fresh account, never a
