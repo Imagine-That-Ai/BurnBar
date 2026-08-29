@@ -401,7 +401,7 @@ const EVENT_OWN_PROPS: Record<string, readonly string[]> = {
 /** Required keys that survive sanitizeProps. Missing map entry → fail closed. */
 const REQUIRED_EVENT_PROPS: Record<string, readonly string[]> = {
   "consent.analytics.granted": ["consent_version"],
-  "app.session.started": ["surface"],
+  "app.session.started": ["surface", "is_first_launch", "cold_start"],
   "screen.viewed": ["surface"],
   "nav.route.changed": [],
   "download.cta.clicked": ["placement"],

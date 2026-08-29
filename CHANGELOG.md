@@ -28,7 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   plus `surface`. The collector stamps `platform: web` on every event.
   Website collector drops `nav.route.changed`. Email-capture markers are
   written only when the collector can send. Extension first-activation
-  ignores a synced opt-in setting.
+  ignores a synced opt-in setting. `app.session.started` requires
+  `is_first_launch` and `cold_start`; website `boot()` stamps both.
   Production hosting may only pin `collect.burnbar.ai`; staging may only
   pin `collect-staging.burnbar.ai`. Rejected campaign params clear the
   stored bag. `email.captured` fires once per fresh account, never a

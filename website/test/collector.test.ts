@@ -673,7 +673,8 @@ describe("collector worker — consent and project routing", () => {
           { name: "pricing.cta.clicked", props: { surface: "pricing" } },
           { name: "nav.external.clicked", props: { surface: "home" } },
           { name: "consent.analytics.granted", props: { surface: "home" } },
-          { name: "error.handled", props: { surface: "home" } }
+          { name: "error.handled", props: { surface: "home" } },
+          { name: "app.session.started", props: { surface: "home" } }
         ]
       },
       { AMPLITUDE_API_KEY: "secret-key", AMPLITUDE_PROJECT_ID: "830581" },
@@ -751,6 +752,35 @@ describe("collector worker — consent and project routing", () => {
     });
     expect(events[0]?.event_properties.event_category).toBe("primary_action");
     expect(events[6]?.event_properties.platform).toBe("web");
+  });
+
+  it("requires is_first_launch and cold_start on app.session.started", async () => {
+    const fetches: { events?: { event_type: string; event_properties: Record<string, unknown> }[] }[] =
+      [];
+    const kept = await handleCollectorPost(
+      {
+        consent: true,
+        events: [
+          {
+            name: "app.session.started",
+            props: { surface: "home", is_first_launch: true, cold_start: true }
+          }
+        ]
+      },
+      { AMPLITUDE_API_KEY: "secret-key", AMPLITUDE_PROJECT_ID: "830581" },
+      async (_url, init) => {
+        fetches.push(JSON.parse(String(init?.body ?? "{}")));
+        return new Response("{}", { status: 200 });
+      }
+    );
+    expect(kept.status).toBe(200);
+    expect(kept.forwarded).toBe(1);
+    expect(fetches[0]?.events?.[0]?.event_properties).toMatchObject({
+      surface: "home",
+      is_first_launch: true,
+      cold_start: true,
+      platform: "web"
+    });
   });
 
   it("strips properties and categories outside each event's schema", async () => {
@@ -1045,6 +1075,9 @@ describe("website bundle never embeds an Amplitude API key", () => {
     expect(source).toContain("resolveCollectorLane");
     expect(source).toContain("PUBLIC_ANALYTICS_COLLECTOR_LANE");
     expect(source).toContain("claimSessionSpine");
+    expect(source).toContain("sessionStartProps");
+    expect(source).toContain("is_first_launch");
+    expect(source).toContain("cold_start");
     expect(source).toContain("analytics.canSend");
     expect(source).toMatch(
       /export function declineConsent\(\)[\s\S]*clearSessionSpine\(sessionSpineStorage\(\)\)/

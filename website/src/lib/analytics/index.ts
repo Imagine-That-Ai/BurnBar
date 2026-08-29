@@ -133,6 +133,7 @@ export function surfaceForPath(pathname: string): string {
 }
 
 const SESSION_KEY = "burnbar-analytics-session";
+export const LAUNCHED_KEY = "burnbar-analytics-launched";
 
 export function shouldEmitSessionSpine(storage: {
   getItem(key: string): string | null;
@@ -157,6 +158,42 @@ export function claimSessionSpine(
 ): boolean {
   if (!canSend) return false;
   return shouldEmitSessionSpine(storage);
+}
+
+/**
+ * First browser launch is durable localStorage evidence, not a tab session.
+ * Write the marker only when the collector can send. Revoke does not clear
+ * it — a later grant is a returning session, not a first launch.
+ */
+export function claimFirstLaunch(
+  canSend: boolean,
+  storage: {
+    getItem(key: string): string | null;
+    setItem(key: string, value: string): void;
+  }
+): boolean {
+  if (!canSend) return false;
+  try {
+    if (storage.getItem(LAUNCHED_KEY)) return false;
+    storage.setItem(LAUNCHED_KEY, "1");
+    return true;
+  } catch {
+    return true;
+  }
+}
+
+/** Taxonomy-required lifecycle flags for `app.session.started`. */
+export function sessionStartProps(
+  canSend: boolean,
+  storage: {
+    getItem(key: string): string | null;
+    setItem(key: string, value: string): void;
+  } = safeStorage()
+): { is_first_launch: boolean; cold_start: true } {
+  return {
+    is_first_launch: claimFirstLaunch(canSend, storage),
+    cold_start: true
+  };
 }
 
 export function clearSessionSpine(storage: { removeItem?(key: string): void }): void {
@@ -191,7 +228,9 @@ export function boot(): void {
   } catch {
     emitSession = true;
   }
-  if (emitSession) trackEvent(EVENT.appSessionStarted);
+  if (emitSession) {
+    trackEvent(EVENT.appSessionStarted, sessionStartProps(true, safeStorage()));
+  }
   trackEvent(EVENT.screenViewed); // surface is carried by super-properties
 }
 

@@ -327,7 +327,9 @@ who emits what.
 Marketing-site conversions. Emitted by `website/src/lib/analytics` through the same consent gate.
 The browser POSTs to a first-party collector (`PUBLIC_ANALYTICS_COLLECTOR_URL`); it never
 holds an Amplitude API key. No collector URL → the site stays dark even after opt-in.
-The site also emits the Tier 1 spine: `app.session.started` (once per tab session),
+The site also emits the Tier 1 spine: `app.session.started` (once per tab session;
+`is_first_launch` from a durable browser marker, `cold_start: true` on that first
+tab boot),
 `screen.viewed` (every page; `surface` from the page super-property), `page.viewed`,
 `app.opened`, `consent.analytics.granted`,
 and — on the Hermes connect / sign-in flow — `auth.sign_in.completed` and `error.handled`.

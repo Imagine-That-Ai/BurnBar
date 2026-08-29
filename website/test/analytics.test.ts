@@ -11,6 +11,9 @@ import {
   markEmailCaptured,
   shouldEmitSessionSpine,
   claimSessionSpine,
+  claimFirstLaunch,
+  sessionStartProps,
+  LAUNCHED_KEY,
   trackEmailCapturedIfNewAccount
 } from "../src/lib/analytics/index";
 import { bucketCount, bucketDurationMs, bucketDurationSeconds } from "../src/lib/analytics/buckets";
@@ -252,6 +255,32 @@ describe("session spine when storage is blocked", () => {
     expect(storage.get("burnbar-analytics-session")).toBeUndefined();
     expect(claimSessionSpine(true, store)).toBe(true);
     expect(storage.get("burnbar-analytics-session")).toBe("1");
+  });
+
+  it("stamps first-launch only when the collector can send", () => {
+    const { analytics } = make(true, "");
+    expect(analytics.canSend).toBe(false);
+    const storage = new Map<string, string>();
+    const store = {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => void storage.set(key, value)
+    };
+    expect(claimFirstLaunch(analytics.canSend, store)).toBe(false);
+    expect(storage.get(LAUNCHED_KEY)).toBeUndefined();
+    expect(sessionStartProps(true, store)).toEqual({ is_first_launch: true, cold_start: true });
+    expect(storage.get(LAUNCHED_KEY)).toBe("1");
+    expect(sessionStartProps(true, store)).toEqual({ is_first_launch: false, cold_start: true });
+  });
+
+  it("treats a blocked first-launch store as first launch", () => {
+    expect(
+      claimFirstLaunch(true, {
+        getItem: () => {
+          throw new Error("blocked");
+        },
+        setItem: () => undefined
+      })
+    ).toBe(true);
   });
 
   it("clears the session marker so a later grant in the same tab emits again", () => {
