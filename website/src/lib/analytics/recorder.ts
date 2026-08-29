@@ -1,4 +1,4 @@
-import { ConsentStore } from "./consent";
+import { ANALYTICS_CONSENT_VERSION, ConsentStore } from "./consent";
 import { EVENT, eventCategory, type AnalyticsEventName } from "./events";
 
 /** Property values are strings or booleans only — raw numbers must be bucketed
@@ -66,7 +66,9 @@ export class Analytics {
       this.ensureStarted();
       if (!this.announcedGrant) {
         this.announcedGrant = true;
-        this.track(EVENT.consentAnalyticsGranted);
+        this.track(EVENT.consentAnalyticsGranted, {
+          consent_version: ANALYTICS_CONSENT_VERSION
+        });
       }
     } else {
       if (this.opts.transport.isStarted) this.opts.transport.stop();

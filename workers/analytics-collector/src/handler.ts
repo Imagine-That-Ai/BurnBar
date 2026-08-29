@@ -101,6 +101,7 @@ const ENUM_PROP_VALUES: Record<string, ReadonlySet<string>> = {
   provider: new Set(["google", "apple", "github", "facebook"]),
   method: new Set(["google", "apple", "github", "email", "facebook"]),
   outcome: new Set(["success", "failure"]),
+  consent_version: new Set(["1"]),
 };
 
 const BOOLEAN_PROP_KEYS = new Set([
@@ -341,7 +342,7 @@ const WEBSITE_SURFACE = ENUM_PROP_VALUES.surface;
 
 /** Required keys that survive sanitizeProps. Missing map entry → fail closed. */
 const REQUIRED_EVENT_PROPS: Record<string, readonly string[]> = {
-  "consent.analytics.granted": [],
+  "consent.analytics.granted": ["consent_version"],
   "app.session.started": ["surface"],
   "screen.viewed": ["surface"],
   "nav.route.changed": [],

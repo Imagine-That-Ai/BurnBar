@@ -110,7 +110,9 @@ describe("Analytics recorder — consent contract", () => {
     consent.grant();
     analytics.consentDidChange();
     expect(transport.isStarted).toBe(true);
-    expect(transport.sent.filter((e) => e.name === "consent.analytics.granted")).toHaveLength(1);
+    const grants = transport.sent.filter((e) => e.name === "consent.analytics.granted");
+    expect(grants).toHaveLength(1);
+    expect(grants[0]?.props.consent_version).toBe("1");
     analytics.consentDidChange();
     expect(transport.sent.filter((e) => e.name === "consent.analytics.granted")).toHaveLength(1);
   });

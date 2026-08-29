@@ -670,7 +670,8 @@ describe("collector worker — consent and project routing", () => {
           { name: "auth.sign_in.completed", props: { product: "burnbar" } },
           { name: "download.cta.clicked", props: { surface: "home" } },
           { name: "pricing.cta.clicked", props: { surface: "pricing" } },
-          { name: "nav.external.clicked", props: { surface: "home" } }
+          { name: "nav.external.clicked", props: { surface: "home" } },
+          { name: "consent.analytics.granted", props: { surface: "home" } }
         ]
       },
       { AMPLITUDE_API_KEY: "secret-key", AMPLITUDE_PROJECT_ID: "830581" },
@@ -702,7 +703,8 @@ describe("collector worker — consent and project routing", () => {
           { name: "pricing.plan.viewed", props: { surface: "pricing" } },
           { name: "download.cta.clicked", props: { placement: "header" } },
           { name: "pricing.cta.clicked", props: { plan: "cloud" } },
-          { name: "nav.external.clicked", props: { destination: "github" } }
+          { name: "nav.external.clicked", props: { destination: "github" } },
+          { name: "consent.analytics.granted", props: { consent_version: "1" } }
         ]
       },
       { AMPLITUDE_API_KEY: "secret-key", AMPLITUDE_PROJECT_ID: "830581" },
@@ -712,7 +714,7 @@ describe("collector worker — consent and project routing", () => {
       }
     );
     expect(result.status).toBe(200);
-    expect(result.forwarded).toBe(6);
+    expect(result.forwarded).toBe(7);
     const events = fetches[0]?.events ?? [];
     expect(events.map((event) => event.event_type)).toEqual([
       "arena.vote.recorded",
@@ -720,7 +722,8 @@ describe("collector worker — consent and project routing", () => {
       "pricing.plan.viewed",
       "download.cta.clicked",
       "pricing.cta.clicked",
-      "nav.external.clicked"
+      "nav.external.clicked",
+      "consent.analytics.granted"
     ]);
     expect(events[0]?.event_properties).toMatchObject({
       variant: "neural",
@@ -731,6 +734,7 @@ describe("collector worker — consent and project routing", () => {
     expect(events[3]?.event_properties).toMatchObject({ placement: "header" });
     expect(events[4]?.event_properties).toMatchObject({ plan: "cloud" });
     expect(events[5]?.event_properties).toMatchObject({ destination: "github" });
+    expect(events[6]?.event_properties).toMatchObject({ consent_version: "1" });
   });
 
   it("still allows page.viewed with the website page-surface enum", async () => {
