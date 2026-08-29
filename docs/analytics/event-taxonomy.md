@@ -330,7 +330,8 @@ holds an Amplitude API key. No collector URL → the site stays dark even after 
 The site also emits the Tier 1 spine: `app.session.started` (once per tab session;
 `is_first_launch` from a durable browser marker, `cold_start: true` on that first
 tab boot),
-`screen.viewed` (every page; `surface` from the page super-property), `page.viewed`,
+`screen.viewed` (every page; `surface` from the page super-property,
+`is_first_view` from a per-tab marker), `page.viewed`,
 `app.opened`, `consent.analytics.granted`,
 and — on the Hermes connect / sign-in flow — `auth.sign_in.completed` and `error.handled`.
 

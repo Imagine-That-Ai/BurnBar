@@ -216,7 +216,10 @@ describe("collector worker — consent and project routing", () => {
       {
         consent: true,
         events: [
-          { name: "arena.vote.recorded", props: { variant: "neural", choice: "a", rubric: "none" } }
+          {
+            name: "arena.vote.recorded",
+            props: { variant: "neural", choice: "a", rubric: "none", surface: "other" }
+          }
         ]
       },
       { AMPLITUDE_API_KEY: "secret-key", AMPLITUDE_PROJECT_ID: "830581" },
@@ -398,7 +401,7 @@ describe("collector worker — consent and project routing", () => {
         events: [
           {
             name: "email.captured",
-            props: { email: "a@b.com", captured: true, product: "burnbar" }
+            props: { email: "a@b.com", captured: true, product: "burnbar", surface: "other" }
           }
         ]
       },
@@ -589,7 +592,9 @@ describe("collector worker — consent and project routing", () => {
     const dropped = await handleCollectorPost(
       {
         consent: true,
-        events: [{ name: "email.captured", props: { captured: false, product: "burnbar" } }]
+        events: [
+          { name: "email.captured", props: { captured: false, product: "burnbar", surface: "other" } }
+        ]
       },
       { AMPLITUDE_API_KEY: "secret-key", AMPLITUDE_PROJECT_ID: "830581" },
       async (url) => {
@@ -604,7 +609,9 @@ describe("collector worker — consent and project routing", () => {
     const kept = await handleCollectorPost(
       {
         consent: true,
-        events: [{ name: "email.captured", props: { captured: true, product: "burnbar" } }]
+        events: [
+          { name: "email.captured", props: { captured: true, product: "burnbar", surface: "other" } }
+        ]
       },
       { AMPLITUDE_API_KEY: "secret-key", AMPLITUDE_PROJECT_ID: "830581" },
       async (url) => {
@@ -674,7 +681,10 @@ describe("collector worker — consent and project routing", () => {
           { name: "nav.external.clicked", props: { surface: "home" } },
           { name: "consent.analytics.granted", props: { surface: "home" } },
           { name: "error.handled", props: { surface: "home" } },
-          { name: "app.session.started", props: { surface: "home" } }
+          { name: "app.session.started", props: { surface: "home" } },
+          { name: "screen.viewed", props: { surface: "home" } },
+          { name: "pricing.cta.clicked", props: { plan: "cloud" } },
+          { name: "email.captured", props: { captured: true } }
         ]
       },
       { AMPLITUDE_API_KEY: "secret-key", AMPLITUDE_PROJECT_ID: "830581" },
@@ -697,17 +707,20 @@ describe("collector worker — consent and project routing", () => {
         events: [
           {
             name: "arena.vote.recorded",
-            props: { variant: "neural", choice: "a", rubric: "none" }
+            props: { variant: "neural", choice: "a", rubric: "none", surface: "other" }
           },
           {
             name: "auth.sign_in.completed",
-            props: { method: "google", outcome: "success" }
+            props: { method: "google", outcome: "success", surface: "other" }
           },
           { name: "pricing.plan.viewed", props: { surface: "pricing" } },
-          { name: "download.cta.clicked", props: { placement: "header" } },
-          { name: "pricing.cta.clicked", props: { plan: "cloud" } },
-          { name: "nav.external.clicked", props: { destination: "github" } },
-          { name: "consent.analytics.granted", props: { consent_version: "1" } },
+          { name: "download.cta.clicked", props: { placement: "header", surface: "home" } },
+          { name: "pricing.cta.clicked", props: { plan: "cloud", surface: "pricing" } },
+          { name: "nav.external.clicked", props: { destination: "github", surface: "home" } },
+          {
+            name: "consent.analytics.granted",
+            props: { consent_version: "1", surface: "home" }
+          },
           {
             name: "error.handled",
             props: { error_category: "auth", surface: "home" }
@@ -783,6 +796,29 @@ describe("collector worker — consent and project routing", () => {
     });
   });
 
+  it("requires is_first_view on screen.viewed", async () => {
+    const fetches: { events?: { event_type: string; event_properties: Record<string, unknown> }[] }[] =
+      [];
+    const kept = await handleCollectorPost(
+      {
+        consent: true,
+        events: [{ name: "screen.viewed", props: { surface: "home", is_first_view: true } }]
+      },
+      { AMPLITUDE_API_KEY: "secret-key", AMPLITUDE_PROJECT_ID: "830581" },
+      async (_url, init) => {
+        fetches.push(JSON.parse(String(init?.body ?? "{}")));
+        return new Response("{}", { status: 200 });
+      }
+    );
+    expect(kept.status).toBe(200);
+    expect(kept.forwarded).toBe(1);
+    expect(fetches[0]?.events?.[0]?.event_properties).toMatchObject({
+      surface: "home",
+      is_first_view: true,
+      platform: "web"
+    });
+  });
+
   it("strips properties and categories outside each event's schema", async () => {
     const fetches: { events?: { event_type: string; event_properties: Record<string, unknown> }[] }[] =
       [];
@@ -797,7 +833,8 @@ describe("collector worker — consent and project routing", () => {
               variant: "neural",
               choice: "a",
               rubric: "none",
-              plan: "ultra"
+              plan: "ultra",
+              surface: "other"
             }
           }
         ]
@@ -886,13 +923,19 @@ describe("collector worker fetch — rate limit and body order", () => {
       join(here, "../../workers/analytics-collector/src/index.ts"),
       "utf8"
     );
-    expect(worker.indexOf("applyCollectorRateLimit")).toBeGreaterThan(-1);
-    expect(worker.indexOf("applyCollectorRateLimit")).toBeLessThan(
-      worker.indexOf("declaredCollectorBodyTooLarge")
+    const originGate = worker.indexOf("if (!isAllowedCollectorOrigin(origin, projectId))");
+    const rateLimit = worker.indexOf("const verdict = await applyCollectorRateLimit");
+    const contentLength = worker.indexOf(
+      'if (declaredCollectorBodyTooLarge(request.headers.get("content-length")))'
     );
-    expect(worker.indexOf("declaredCollectorBodyTooLarge")).toBeLessThan(
-      worker.indexOf("readBoundedCollectorBody")
-    );
+    const bodyRead = worker.indexOf("const raw = await readBoundedCollectorBody(request)");
+    expect(originGate).toBeGreaterThan(-1);
+    expect(rateLimit).toBeGreaterThan(-1);
+    expect(contentLength).toBeGreaterThan(-1);
+    expect(bodyRead).toBeGreaterThan(-1);
+    expect(originGate).toBeLessThan(rateLimit);
+    expect(rateLimit).toBeLessThan(contentLength);
+    expect(contentLength).toBeLessThan(bodyRead);
     const response = await collectorWorker.fetch(
       new Request("https://collect.burnbar.ai/v1", {
         method: "POST",
@@ -912,6 +955,34 @@ describe("collector worker fetch — rate limit and body order", () => {
     );
     expect(limited).toBe(true);
     expect(response.status).toBe(429);
+  });
+
+  it("rejects a foreign origin before charging the rate limiter", async () => {
+    let limited = false;
+    const response = await collectorWorker.fetch(
+      new Request("https://collect.burnbar.ai/v1", {
+        method: "POST",
+        headers: {
+          "cf-connecting-ip": "203.0.113.9",
+          origin: "https://evil.example",
+          "content-type": "text/plain"
+        },
+        body: '{"consent":true}'
+      }),
+      {
+        AMPLITUDE_API_KEY: "secret-key",
+        AMPLITUDE_PROJECT_ID: "830583",
+        COLLECTOR_RATE_LIMIT: {
+          async limit() {
+            limited = true;
+            return { success: false };
+          }
+        }
+      }
+    );
+    expect(limited).toBe(false);
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ reason: "origin_rejected" });
   });
 
   it("reuses one isolate-local limiter when the binding is absent", () => {
@@ -1076,8 +1147,11 @@ describe("website bundle never embeds an Amplitude API key", () => {
     expect(source).toContain("PUBLIC_ANALYTICS_COLLECTOR_LANE");
     expect(source).toContain("claimSessionSpine");
     expect(source).toContain("sessionStartProps");
+    expect(source).toContain("screenViewedProps");
+    expect(source).toContain("flushPendingEmailCapture");
     expect(source).toContain("is_first_launch");
     expect(source).toContain("cold_start");
+    expect(source).toContain("is_first_view");
     expect(source).toContain("analytics.canSend");
     expect(source).toMatch(
       /export function declineConsent\(\)[\s\S]*clearSessionSpine\(sessionSpineStorage\(\)\)/

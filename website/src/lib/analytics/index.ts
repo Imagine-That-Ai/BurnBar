@@ -134,6 +134,8 @@ export function surfaceForPath(pathname: string): string {
 
 const SESSION_KEY = "burnbar-analytics-session";
 export const LAUNCHED_KEY = "burnbar-analytics-launched";
+export const FIRST_VIEW_KEY = "burnbar-analytics-first-view";
+export const EMAIL_PENDING_KEY = "burnbar-analytics-email-pending";
 
 export function shouldEmitSessionSpine(storage: {
   getItem(key: string): string | null;
@@ -196,9 +198,43 @@ export function sessionStartProps(
   };
 }
 
+/**
+ * First screen view is per-tab session evidence. Write the marker only when
+ * the collector can send. Revoke clears it with the session spine so a later
+ * grant in the same tab is a new first view.
+ */
+export function claimFirstView(
+  canSend: boolean,
+  storage: {
+    getItem(key: string): string | null;
+    setItem(key: string, value: string): void;
+  }
+): boolean {
+  if (!canSend) return false;
+  try {
+    if (storage.getItem(FIRST_VIEW_KEY)) return false;
+    storage.setItem(FIRST_VIEW_KEY, "1");
+    return true;
+  } catch {
+    return true;
+  }
+}
+
+export function screenViewedProps(
+  canSend: boolean,
+  storage: {
+    getItem(key: string): string | null;
+    setItem(key: string, value: string): void;
+  }
+): { is_first_view: boolean } {
+  return { is_first_view: claimFirstView(canSend, storage) };
+}
+
 export function clearSessionSpine(storage: { removeItem?(key: string): void }): void {
   try {
     storage.removeItem?.(SESSION_KEY);
+    storage.removeItem?.(FIRST_VIEW_KEY);
+    storage.removeItem?.(EMAIL_PENDING_KEY);
   } catch {
     /* private mode / quota */
   }
@@ -231,7 +267,8 @@ export function boot(): void {
   if (emitSession) {
     trackEvent(EVENT.appSessionStarted, sessionStartProps(true, safeStorage()));
   }
-  trackEvent(EVENT.screenViewed); // surface is carried by super-properties
+  trackEvent(EVENT.screenViewed, screenViewedProps(true, sessionSpineStorage()));
+  flushPendingEmailCapture(true, sessionSpineStorage(), safeStorage());
 }
 
 export function grantConsent(): void {
@@ -342,18 +379,88 @@ export function markEmailCaptured(
   }
 }
 
+type PendingEmailStorage = ConsentStorage & { removeItem?(key: string): void };
+
+function parsePendingEmailCapture(raw: string | null): { hash: string; source: string } | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as { hash?: unknown; source?: unknown };
+    const hash = typeof parsed.hash === "string" ? parsed.hash : "";
+    if (!/^[0-9a-f]{16}$/.test(hash)) return null;
+    return { hash, source: boundedAuthCaptureSource(String(parsed.source ?? "")) };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Privacy-safe pre-consent capture: hashed account id + bounded source only.
+ * Never writes the durable captured marker and never stores an email.
+ */
+export function rememberPendingEmailCapture(
+  accountId: string,
+  source: string,
+  storage: ConsentStorage
+): void {
+  const uid = accountId.trim();
+  if (!uid) return;
+  if (hasRecordedEmailCapture(uid, storage)) return;
+  try {
+    storage.setItem(
+      EMAIL_PENDING_KEY,
+      JSON.stringify({
+        hash: localAccountCaptureHash(uid),
+        source: boundedAuthCaptureSource(source)
+      })
+    );
+  } catch {
+    /* private mode / quota */
+  }
+}
+
+/** Emit a stored pre-consent capture after grant. No-op when dark or empty. */
+export function flushPendingEmailCapture(
+  canSend = analytics.canSend,
+  pendingStorage: PendingEmailStorage = sessionSpineStorage(),
+  capturedStorage: ConsentStorage = safeStorage(),
+  emit: (source: string) => void = trackEmailCaptured
+): boolean {
+  if (!canSend) return false;
+  let pending: { hash: string; source: string } | null = null;
+  try {
+    pending = parsePendingEmailCapture(pendingStorage.getItem(EMAIL_PENDING_KEY));
+    pendingStorage.removeItem?.(EMAIL_PENDING_KEY);
+  } catch {
+    return false;
+  }
+  if (!pending) return false;
+  const capturedKey = `${EMAIL_CAPTURED_KEY}:${pending.hash}`;
+  try {
+    if (capturedStorage.getItem(capturedKey) === "1") return false;
+    capturedStorage.setItem(capturedKey, "1");
+  } catch {
+    /* still emit — the send is the user-visible outcome */
+  }
+  emit(pending.source);
+  return true;
+}
+
 /** Credential-success path only — never restored onAuthStateChanged sessions. */
 export function trackEmailCapturedIfNewAccount(
   user: AuthAccountLike,
   source = "unknown",
   storage: ConsentStorage = safeStorage(),
-  canSend = analytics.canSend
+  canSend = analytics.canSend,
+  pendingStorage: ConsentStorage = storage
 ): void {
   if (!isFreshAuthAccount(user)) return;
   const uid = typeof user?.uid === "string" ? user.uid.trim() : "";
   if (!uid) return;
-  if (!canSend) return;
   if (hasRecordedEmailCapture(uid, storage)) return;
+  if (!canSend) {
+    rememberPendingEmailCapture(uid, source, pendingStorage);
+    return;
+  }
   markEmailCaptured(uid, storage);
   trackEmailCaptured(boundedAuthCaptureSource(source));
 }

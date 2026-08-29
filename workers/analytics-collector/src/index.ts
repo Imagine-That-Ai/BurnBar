@@ -9,6 +9,7 @@ import {
   createMemoryRateLimiter,
   declaredCollectorBodyTooLarge,
   handleCollectorPost,
+  isAllowedCollectorOrigin,
   readBoundedCollectorBody,
   type CollectorEnv,
   type CollectorRequestBody,
@@ -25,6 +26,11 @@ export default {
     }
     if (request.method !== "POST") {
       return Response.json({ error: "method_not_allowed" }, { status: 405, headers: cors });
+    }
+
+    const origin = request.headers.get("origin");
+    if (!isAllowedCollectorOrigin(origin, projectId)) {
+      return Response.json({ accepted: false, reason: "origin_rejected" }, { status: 403, headers: cors });
     }
 
     const limiter = env.COLLECTOR_RATE_LIMIT ?? fallbackCollectorRateLimit;
@@ -55,7 +61,7 @@ export default {
         COLLECTOR_RATE_LIMIT: limiter,
       },
       (url, init) => fetch(url, init),
-      request.headers.get("origin"),
+      origin,
       clientKey,
       { applyRateLimit: false },
     );

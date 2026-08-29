@@ -402,7 +402,7 @@ const EVENT_OWN_PROPS: Record<string, readonly string[]> = {
 const REQUIRED_EVENT_PROPS: Record<string, readonly string[]> = {
   "consent.analytics.granted": ["consent_version"],
   "app.session.started": ["surface", "is_first_launch", "cold_start"],
-  "screen.viewed": ["surface"],
+  "screen.viewed": ["surface", "is_first_view"],
   "nav.route.changed": [],
   "download.cta.clicked": ["placement"],
   "pricing.plan.viewed": [],
@@ -448,15 +448,22 @@ function boundEventProps(
   return out;
 }
 
+function hasWebsiteSurface(props: Record<string, string | boolean>): boolean {
+  return typeof props.surface === "string" && WEBSITE_SURFACE.has(props.surface);
+}
+
 function eventMeetsSchema(name: string, props: Record<string, string | boolean>): boolean {
-  if (name === "email.captured") {
-    return props.captured === true;
-  }
   if (name === "install.started" || name === "nav.route.changed") {
     return false;
   }
+  if (!hasWebsiteSurface(props)) {
+    return false;
+  }
+  if (name === "email.captured") {
+    return props.captured === true;
+  }
   if (isFunnelEventName(name)) {
-    return typeof props.surface === "string" && WEBSITE_SURFACE.has(props.surface);
+    return true;
   }
   const required = REQUIRED_EVENT_PROPS[name];
   if (!required) return false;

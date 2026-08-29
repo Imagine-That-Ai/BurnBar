@@ -12,16 +12,26 @@ import {
   shouldEmitSessionSpine,
   claimSessionSpine,
   claimFirstLaunch,
+  claimFirstView,
   sessionStartProps,
+  screenViewedProps,
+  flushPendingEmailCapture,
+  rememberPendingEmailCapture,
+  EMAIL_PENDING_KEY,
+  FIRST_VIEW_KEY,
   LAUNCHED_KEY,
   trackEmailCapturedIfNewAccount
 } from "../src/lib/analytics/index";
 import { bucketCount, bucketDurationMs, bucketDurationSeconds } from "../src/lib/analytics/buckets";
 
 /** In-memory Storage seam — vitest's node env has no localStorage. */
-function makeStorage(): ConsentStorage {
+function makeStorage(): ConsentStorage & { removeItem(key: string): void } {
   const m = new Map<string, string>();
-  return { getItem: (k) => m.get(k) ?? null, setItem: (k, v) => void m.set(k, v) };
+  return {
+    getItem: (k) => m.get(k) ?? null,
+    setItem: (k, v) => void m.set(k, v),
+    removeItem: (k) => void m.delete(k)
+  };
 }
 
 /** Records every transport call so tests can assert on the wire contract. */
@@ -272,6 +282,21 @@ describe("session spine when storage is blocked", () => {
     expect(sessionStartProps(true, store)).toEqual({ is_first_launch: false, cold_start: true });
   });
 
+  it("stamps first-view only when the collector can send", () => {
+    const { analytics } = make(true, "");
+    expect(analytics.canSend).toBe(false);
+    const storage = new Map<string, string>();
+    const store = {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => void storage.set(key, value)
+    };
+    expect(claimFirstView(analytics.canSend, store)).toBe(false);
+    expect(storage.get(FIRST_VIEW_KEY)).toBeUndefined();
+    expect(screenViewedProps(true, store)).toEqual({ is_first_view: true });
+    expect(storage.get(FIRST_VIEW_KEY)).toBe("1");
+    expect(screenViewedProps(true, store)).toEqual({ is_first_view: false });
+  });
+
   it("treats a blocked first-launch store as first launch", () => {
     expect(
       claimFirstLaunch(true, {
@@ -359,7 +384,19 @@ describe("fresh auth account capture", () => {
     );
     expect(hasRecordedEmailCapture("", storage)).toBe(false);
     const dark = makeStorage();
+    const emitted: string[] = [];
     trackEmailCapturedIfNewAccount(first, "google", dark, false);
     expect(hasRecordedEmailCapture("uid-one", dark)).toBe(false);
+    expect(dark.getItem(EMAIL_PENDING_KEY)).toContain("google");
+    expect(flushPendingEmailCapture(false, dark, dark, (source) => emitted.push(source))).toBe(
+      false
+    );
+    expect(hasRecordedEmailCapture("uid-one", dark)).toBe(false);
+    expect(flushPendingEmailCapture(true, dark, dark, (source) => emitted.push(source))).toBe(true);
+    expect(hasRecordedEmailCapture("uid-one", dark)).toBe(true);
+    expect(emitted).toEqual(["google"]);
+    expect(dark.getItem(EMAIL_PENDING_KEY)).toBeNull();
+    rememberPendingEmailCapture("uid-one", "apple", dark);
+    expect(dark.getItem(EMAIL_PENDING_KEY)).toBeNull();
   });
 });
