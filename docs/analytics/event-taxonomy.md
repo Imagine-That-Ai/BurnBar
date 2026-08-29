@@ -381,6 +381,8 @@ Apple/GitHub/passkey), `settings.changed`, `error.handled`, `consent.analytics.g
 Gated on BOTH the extension's opt-in setting AND VS Code's telemetry signal
 (`vscode.env.isTelemetryEnabled`); it fans out alongside the existing telemetry, never replacing it.
 Also emits Tier 1 `error.handled` + `consent.analytics.granted`.
+Every sent event carries a per-activation UUID `session_id` (rotated each host
+launch; **not** a user id). Dark activations do not mint one.
 
 | Event                       | Category       | Properties                                                                 |
 |-----------------------------|----------------|----------------------------------------------------------------------------|

@@ -96,10 +96,17 @@ describe('analytics wiring (index.ts graph)', () => {
     // consent.granted first, exactly once.
     expect(names.filter((n) => n === EVENT.consentAnalyticsGranted)).toHaveLength(1);
 
+    const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    const sessionIds = new Set(transport.events.map((e) => e.props.session_id));
+    expect(sessionIds.size).toBe(1);
+    const [sessionId] = sessionIds;
+    expect(sessionId).toMatch(SESSION_ID);
+
     // Every event carries the platform super-property.
     for (const e of transport.events) {
       expect(e.props.platform).toBe('vscode');
       expect(e.props.app_version).toBe('1.2.3');
+      expect(e.props.session_id).toBe(sessionId);
     }
 
     // session start carries the right flags, screen.viewed carries a bounded surface.
@@ -142,6 +149,22 @@ describe('analytics wiring (index.ts graph)', () => {
     if (!start) throw new Error('missing relaunch session start analytics event');
     expect(start.props.is_first_launch).toBe(false);
     expect(transport2.events.some((e) => e.name === EVENT.installStarted)).toBe(false);
+  });
+
+  it('mints one session id per activation and a different id on the next graph', () => {
+    const graph1 = createAnalytics(host(transport));
+    grantAnalyticsConsent(graph1, { isFirstActivation: true, hostKind: 'VS Code' });
+    const first = transport.events[0]?.props.session_id;
+    expect(typeof first).toBe('string');
+    expect(transport.events.every((e) => e.props.session_id === first)).toBe(true);
+
+    const transport2 = new FakeTransport();
+    const graph2 = createAnalytics(host(transport2));
+    grantAnalyticsConsent(graph2, { isFirstActivation: false, hostKind: 'VS Code' });
+    const second = transport2.events[0]?.props.session_id;
+    expect(typeof second).toBe('string');
+    expect(second).not.toBe(first);
+    expect(transport2.events.every((e) => e.props.session_id === second)).toBe(true);
   });
 
   it('boot is idempotent: the session spine fires at most once per process', () => {
