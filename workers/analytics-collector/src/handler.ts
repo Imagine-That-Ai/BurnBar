@@ -340,6 +340,63 @@ function concatBytes(chunks: Uint8Array[]): Uint8Array {
 
 const WEBSITE_SURFACE = ENUM_PROP_VALUES.surface;
 
+const SHARED_EVENT_PROPS = new Set<string>([
+  "product",
+  "platform",
+  "app_version",
+  "surface",
+  ...FUNNEL_ATTRIBUTION_KEYS,
+]);
+
+const EVENT_CATEGORY: Record<string, string> = {
+  "page.viewed": "screen_view",
+  "app.opened": "lifecycle",
+  "cta.clicked": "conversion_auth",
+  "download.clicked": "conversion_auth",
+  "email.captured": "conversion_auth",
+  "consent.analytics.granted": "lifecycle",
+  "app.session.started": "lifecycle",
+  "screen.viewed": "screen_view",
+  "nav.route.changed": "screen_view",
+  "download.cta.clicked": "conversion_auth",
+  "pricing.plan.viewed": "screen_view",
+  "pricing.cta.clicked": "conversion_auth",
+  "nav.external.clicked": "primary_action",
+  "auth.sign_in.completed": "conversion_auth",
+  "auth.sign_up.completed": "conversion_auth",
+  "error.handled": "error",
+  "arena.variant.exposed": "primary_action",
+  "arena.artifact.played": "primary_action",
+  "arena.vote.recorded": "primary_action",
+  "arena.auth.gate_shown": "primary_action",
+  "arena.sign_in.completed": "conversion_auth",
+};
+
+/** Event-owned keys. Shared super-properties and attribution stay allowed on every event. */
+const EVENT_OWN_PROPS: Record<string, readonly string[]> = {
+  "page.viewed": [],
+  "app.opened": [],
+  "cta.clicked": [],
+  "download.clicked": ["placement", "target_platform"],
+  "email.captured": ["captured", "source"],
+  "consent.analytics.granted": ["consent_version"],
+  "app.session.started": ["is_first_launch", "cold_start"],
+  "screen.viewed": ["is_first_view"],
+  "nav.route.changed": [],
+  "download.cta.clicked": ["placement", "target_platform"],
+  "pricing.plan.viewed": [],
+  "pricing.cta.clicked": ["plan"],
+  "nav.external.clicked": ["destination"],
+  "auth.sign_in.completed": ["method", "outcome"],
+  "auth.sign_up.completed": ["method", "outcome"],
+  "error.handled": [],
+  "arena.variant.exposed": ["variant"],
+  "arena.artifact.played": ["variant", "side"],
+  "arena.vote.recorded": ["variant", "choice", "rubric"],
+  "arena.auth.gate_shown": ["variant"],
+  "arena.sign_in.completed": ["variant", "provider"],
+};
+
 /** Required keys that survive sanitizeProps. Missing map entry → fail closed. */
 const REQUIRED_EVENT_PROPS: Record<string, readonly string[]> = {
   "consent.analytics.granted": ["consent_version"],
@@ -369,6 +426,24 @@ function hasRequiredProps(
     if (typeof value === "boolean") return true;
     return typeof value === "string" && value.length > 0;
   });
+}
+
+function boundEventProps(
+  name: string,
+  props: Record<string, string | boolean>,
+): Record<string, string | boolean> {
+  const own = EVENT_OWN_PROPS[name];
+  if (!own) return {};
+  const allowed = new Set<string>([...SHARED_EVENT_PROPS, ...own]);
+  const out: Record<string, string | boolean> = {};
+  for (const [key, value] of Object.entries(props)) {
+    if (key === "event_category") continue;
+    if (!allowed.has(key)) continue;
+    out[key] = value;
+  }
+  const category = EVENT_CATEGORY[name];
+  if (category) out.event_category = category;
+  return out;
 }
 
 function eventMeetsSchema(name: string, props: Record<string, string | boolean>): boolean {
@@ -433,10 +508,13 @@ export async function handleCollectorPost(
   }
   const allowed = incoming.filter((event) => event && typeof event.name === "string" && isAllowedEventName(event.name));
   const prepared = allowed.flatMap((event) => {
-    const props = sanitizeProps({
-      ...event.props,
-      ...(asTrimmedString(event.category) ? { event_category: asTrimmedString(event.category) } : {}),
-    });
+    const props = boundEventProps(
+      event.name,
+      sanitizeProps({
+        ...event.props,
+        ...(asTrimmedString(event.category) ? { event_category: asTrimmedString(event.category) } : {}),
+      }),
+    );
     if (!eventMeetsSchema(event.name, props)) return [];
     return [{ event, props }];
   });

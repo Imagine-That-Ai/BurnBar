@@ -147,6 +147,18 @@ export function shouldEmitSessionSpine(storage: {
   }
 }
 
+/** Write the once-per-tab marker only when the collector can send. */
+export function claimSessionSpine(
+  canSend: boolean,
+  storage: {
+    getItem(key: string): string | null;
+    setItem(key: string, value: string): void;
+  }
+): boolean {
+  if (!canSend) return false;
+  return shouldEmitSessionSpine(storage);
+}
+
 export function clearSessionSpine(storage: { removeItem?(key: string): void }): void {
   try {
     storage.removeItem?.(SESSION_KEY);
@@ -172,10 +184,10 @@ function sessionSpineStorage(): { removeItem?(key: string): void } {
 export function boot(): void {
   rememberAttribution();
   analytics.startIfConsented();
-  if (!analyticsConsent.isGranted) return;
+  if (!analytics.canSend) return;
   let emitSession = true;
   try {
-    emitSession = shouldEmitSessionSpine(sessionStorage);
+    emitSession = claimSessionSpine(true, sessionStorage);
   } catch {
     emitSession = true;
   }

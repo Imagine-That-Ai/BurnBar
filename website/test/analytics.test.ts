@@ -10,6 +10,7 @@ import {
   isFreshAuthAccount,
   markEmailCaptured,
   shouldEmitSessionSpine,
+  claimSessionSpine,
   trackEmailCapturedIfNewAccount
 } from "../src/lib/analytics/index";
 import { bucketCount, bucketDurationMs, bucketDurationSeconds } from "../src/lib/analytics/buckets";
@@ -237,6 +238,20 @@ describe("session spine when storage is blocked", () => {
         }
       })
     ).toBe(true);
+  });
+
+  it("does not write the session marker when the collector cannot send", () => {
+    const { analytics } = make(true, "");
+    expect(analytics.canSend).toBe(false);
+    const storage = new Map<string, string>();
+    const store = {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => void storage.set(key, value)
+    };
+    expect(claimSessionSpine(analytics.canSend, store)).toBe(false);
+    expect(storage.get("burnbar-analytics-session")).toBeUndefined();
+    expect(claimSessionSpine(true, store)).toBe(true);
+    expect(storage.get("burnbar-analytics-session")).toBe("1");
   });
 
   it("clears the session marker so a later grant in the same tab emits again", () => {

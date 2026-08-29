@@ -42,7 +42,7 @@ export class Analytics {
   constructor(private readonly opts: AnalyticsOptions) {}
 
   /** The single invariant: granted consent AND a collector URL. No URL → dark. */
-  private get canSend(): boolean {
+  get canSend(): boolean {
     return this.opts.consent.isGranted && this.opts.collectorUrl.length > 0;
   }
 

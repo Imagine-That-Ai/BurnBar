@@ -386,7 +386,7 @@ describe("collector worker — consent and project routing", () => {
     expect(events[0]?.event_properties.note).toBeUndefined();
     expect(events[0]?.event_properties.utm_source).toBe("spring-sale");
     expect(events[0]?.event_properties.surface).toBe("home");
-    expect(events[0]?.event_properties.target_platform).toBe("macos");
+    expect(events[0]?.event_properties.target_platform).toBeUndefined();
     expect(events[0]?.event_properties.product).toBe("burnbar");
   });
 
@@ -443,7 +443,7 @@ describe("collector worker — consent and project routing", () => {
     }[];
     const emailed = events.find((event) => event.event_type === "page.viewed");
     const lifecycle = events.find((event) => event.event_type === "app.opened");
-    expect(emailed?.event_properties.event_category).toBeUndefined();
+    expect(emailed?.event_properties.event_category).toBe("screen_view");
     expect(lifecycle?.event_properties.event_category).toBe("lifecycle");
     expect(lifecycle?.event_properties.amplitude_project_id).toBe("830581");
   });
@@ -735,6 +735,42 @@ describe("collector worker — consent and project routing", () => {
     expect(events[4]?.event_properties).toMatchObject({ plan: "cloud" });
     expect(events[5]?.event_properties).toMatchObject({ destination: "github" });
     expect(events[6]?.event_properties).toMatchObject({ consent_version: "1" });
+    expect(events[0]?.event_properties.event_category).toBe("primary_action");
+  });
+
+  it("strips properties and categories outside each event's schema", async () => {
+    const fetches: { events?: { event_type: string; event_properties: Record<string, unknown> }[] }[] =
+      [];
+    const result = await handleCollectorPost(
+      {
+        consent: true,
+        events: [
+          {
+            name: "arena.vote.recorded",
+            category: "error",
+            props: {
+              variant: "neural",
+              choice: "a",
+              rubric: "none",
+              plan: "ultra"
+            }
+          }
+        ]
+      },
+      { AMPLITUDE_API_KEY: "secret-key", AMPLITUDE_PROJECT_ID: "830581" },
+      async (_url, init) => {
+        fetches.push(JSON.parse(String(init?.body ?? "{}")));
+        return new Response("{}", { status: 200 });
+      }
+    );
+    expect(result.status).toBe(200);
+    expect(result.forwarded).toBe(1);
+    const props = fetches[0]?.events?.[0]?.event_properties ?? {};
+    expect(props.variant).toBe("neural");
+    expect(props.choice).toBe("a");
+    expect(props.rubric).toBe("none");
+    expect(props.plan).toBeUndefined();
+    expect(props.event_category).toBe("primary_action");
   });
 
   it("still allows page.viewed with the website page-surface enum", async () => {
@@ -993,6 +1029,8 @@ describe("website bundle never embeds an Amplitude API key", () => {
     expect(source).toContain("isReviewedCollectorOrigin");
     expect(source).toContain("resolveCollectorLane");
     expect(source).toContain("PUBLIC_ANALYTICS_COLLECTOR_LANE");
+    expect(source).toContain("claimSessionSpine");
+    expect(source).toContain("analytics.canSend");
     expect(source).toMatch(
       /export function declineConsent\(\)[\s\S]*clearSessionSpine\(sessionSpineStorage\(\)\)/
     );

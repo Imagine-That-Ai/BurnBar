@@ -21,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `plan`; `nav.external.clicked` needs `destination`;
   `consent.analytics.granted` needs bounded `consent_version`). This
   website collector rejects native funnel surfaces and `install.started`.
+  Per-event property sets drop cross-event dimensions and stamp the
+  registry category. The session marker is written only when the
+  collector can send.
   Production hosting may only pin `collect.burnbar.ai`; staging may only
   pin `collect-staging.burnbar.ai`. Rejected campaign params clear the
   stored bag. `email.captured` fires once per fresh account, never a
