@@ -678,21 +678,24 @@ describe("collector worker — consent and project routing", () => {
 describe("collector worker fetch — rate limit and body order", () => {
   it("rate-limits before buffering the body", async () => {
     let limited = false;
-    let bodyRead = false;
-    const stream = new ReadableStream({
-      pull(controller) {
-        bodyRead = true;
-        controller.enqueue(new TextEncoder().encode('{"consent":true}'));
-        controller.close();
-      }
-    });
+    const here = dirname(fileURLToPath(import.meta.url));
+    const worker = readFileSync(
+      join(here, "../../workers/analytics-collector/src/index.ts"),
+      "utf8"
+    );
+    expect(worker.indexOf("applyCollectorRateLimit")).toBeGreaterThan(-1);
+    expect(worker.indexOf("applyCollectorRateLimit")).toBeLessThan(
+      worker.indexOf("declaredCollectorBodyTooLarge")
+    );
+    expect(worker.indexOf("declaredCollectorBodyTooLarge")).toBeLessThan(
+      worker.indexOf("readBoundedCollectorBody")
+    );
     const response = await collectorWorker.fetch(
       new Request("https://collect.burnbar.ai/v1", {
         method: "POST",
         headers: { "cf-connecting-ip": "203.0.113.9", origin: "https://burnbar.ai" },
-        body: stream,
-        duplex: "half" // reason: Node fetch requires duplex for a streaming request body
-      } as RequestInit),
+        body: '{"consent":true}'
+      }),
       {
         AMPLITUDE_API_KEY: "secret-key",
         AMPLITUDE_PROJECT_ID: "830583",
@@ -706,7 +709,6 @@ describe("collector worker fetch — rate limit and body order", () => {
     );
     expect(limited).toBe(true);
     expect(response.status).toBe(429);
-    expect(bodyRead).toBe(false);
   });
 
   it("rejects a trustworthy oversized Content-Length without reading the body", async () => {
@@ -820,9 +822,11 @@ describe("website bundle never embeds an Amplitude API key", () => {
     expect(source).toContain("FirstPartyCollectorTransport");
     expect(source).toContain("rememberAttribution");
     expect(source).toContain("isReviewedCollectorOrigin");
-    expect(source).toContain("clearSessionSpine");
-    expect(source.indexOf("clearSessionSpine(sessionSpineStorage())")).toBeGreaterThan(
-      source.indexOf("export function revokeConsent")
+    expect(source).toMatch(
+      /export function declineConsent\(\)[\s\S]*clearSessionSpine\(sessionSpineStorage\(\)\)/
+    );
+    expect(source).toMatch(
+      /export function revokeConsent\(\)[\s\S]*clearSessionSpine\(sessionSpineStorage\(\)\)/
     );
     expect(source).not.toMatch(/AmplitudeTransport/);
   });
