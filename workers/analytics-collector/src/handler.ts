@@ -23,7 +23,6 @@ import {
   AMPLITUDE_PROJECT,
   FUNNEL_ATTRIBUTION_KEYS,
   FUNNEL_EVENT_NAMES,
-  FUNNEL_SURFACES,
   isBoundedAttributionValue,
   isFunnelEventName,
   resolveAmplitudeProjectId,
@@ -82,7 +81,7 @@ const ENUM_PROP_VALUES: Record<string, ReadonlySet<string>> = {
     "floo",
     "link",
     "other",
-    ...FUNNEL_SURFACES,
+    "web",
   ]),
   target_platform: new Set(["macos", "ios", "android", "linux", "windows"]),
   event_category: new Set([
@@ -92,8 +91,8 @@ const ENUM_PROP_VALUES: Record<string, ReadonlySet<string>> = {
     "conversion_auth",
     "error",
   ]),
-  placement: new Set(["hero", "header", "mobile_nav"]),
-  destination: new Set(["github"]),
+  placement: new Set(["hero", "header", "mobile_nav", "pricing", "footer"]),
+  destination: new Set(["github", "discord", "docs"]),
   plan: new Set(["free", "cloud", "cloud_pro", "ultra"]),
   variant: new Set(["neural", "unknown"]),
   choice: new Set(["a", "b", "A", "B", "tie"]),
@@ -338,8 +337,7 @@ function concatBytes(chunks: Uint8Array[]): Uint8Array {
   return out;
 }
 
-const FUNNEL_SURFACE_SET = new Set<string>(FUNNEL_SURFACES);
-const WEBSITE_OR_FUNNEL_SURFACE = ENUM_PROP_VALUES.surface;
+const WEBSITE_SURFACE = ENUM_PROP_VALUES.surface;
 
 /** Required keys that survive sanitizeProps. Missing map entry → fail closed. */
 const REQUIRED_EVENT_PROPS: Record<string, readonly string[]> = {
@@ -347,10 +345,10 @@ const REQUIRED_EVENT_PROPS: Record<string, readonly string[]> = {
   "app.session.started": ["surface"],
   "screen.viewed": ["surface"],
   "nav.route.changed": [],
-  "download.cta.clicked": [],
+  "download.cta.clicked": ["placement"],
   "pricing.plan.viewed": [],
-  "pricing.cta.clicked": [],
-  "nav.external.clicked": [],
+  "pricing.cta.clicked": ["plan"],
+  "nav.external.clicked": ["destination"],
   "auth.sign_in.completed": ["method", "outcome"],
   "auth.sign_up.completed": ["method", "outcome"],
   "error.handled": [],
@@ -376,11 +374,11 @@ function eventMeetsSchema(name: string, props: Record<string, string | boolean>)
   if (name === "email.captured") {
     return props.captured === true;
   }
+  if (name === "install.started") {
+    return false;
+  }
   if (isFunnelEventName(name)) {
-    if (name === "install.started") {
-      return typeof props.surface === "string" && FUNNEL_SURFACE_SET.has(props.surface);
-    }
-    return typeof props.surface === "string" && WEBSITE_OR_FUNNEL_SURFACE.has(props.surface);
+    return typeof props.surface === "string" && WEBSITE_SURFACE.has(props.surface);
   }
   const required = REQUIRED_EVENT_PROPS[name];
   if (!required) return false;

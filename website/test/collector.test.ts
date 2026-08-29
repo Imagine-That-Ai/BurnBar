@@ -427,7 +427,7 @@ describe("collector worker — consent and project routing", () => {
           {
             name: "app.opened",
             category: "lifecycle",
-            props: { product: "burnbar", surface: "macos" }
+            props: { product: "burnbar", surface: "home" }
           }
         ]
       },
@@ -617,13 +617,14 @@ describe("collector worker — consent and project routing", () => {
     expect(fetches).toHaveLength(1);
   });
 
-  it("requires a funnel surface on install.started and a page or funnel surface on other funnel events", async () => {
+  it("rejects native funnel events and requires a website surface on website funnel events", async () => {
     const fetches: { events?: { event_type: string }[] }[] = [];
     const dropped = await handleCollectorPost(
       {
         consent: true,
         events: [
-          { name: "install.started", props: { surface: "pricing", product: "burnbar" } },
+          { name: "install.started", props: { surface: "macos", product: "burnbar" } },
+          { name: "app.opened", props: { surface: "ios", product: "burnbar" } },
           { name: "page.viewed", props: { product: "burnbar" } },
           { name: "download.clicked", props: { product: "burnbar" } }
         ]
@@ -642,7 +643,6 @@ describe("collector worker — consent and project routing", () => {
       {
         consent: true,
         events: [
-          { name: "install.started", props: { surface: "macos", product: "burnbar" } },
           { name: "app.opened", props: { surface: "home", product: "burnbar" } },
           { name: "page.viewed", props: { surface: "pricing", product: "burnbar" } },
           { name: "download.clicked", props: { surface: "download", product: "burnbar" } }
@@ -655,9 +655,9 @@ describe("collector worker — consent and project routing", () => {
       }
     );
     expect(kept.status).toBe(200);
-    expect(kept.forwarded).toBe(4);
+    expect(kept.forwarded).toBe(3);
     const types = (fetches[0]?.events ?? []).map((event) => event.event_type);
-    expect(types).toEqual(["install.started", "app.opened", "page.viewed", "download.clicked"]);
+    expect(types).toEqual(["app.opened", "page.viewed", "download.clicked"]);
   });
 
   it("drops allowlisted product events that miss required properties", async () => {
@@ -667,7 +667,10 @@ describe("collector worker — consent and project routing", () => {
         consent: true,
         events: [
           { name: "arena.vote.recorded", props: { variant: "neural" } },
-          { name: "auth.sign_in.completed", props: { product: "burnbar" } }
+          { name: "auth.sign_in.completed", props: { product: "burnbar" } },
+          { name: "download.cta.clicked", props: { surface: "home" } },
+          { name: "pricing.cta.clicked", props: { surface: "pricing" } },
+          { name: "nav.external.clicked", props: { surface: "home" } }
         ]
       },
       { AMPLITUDE_API_KEY: "secret-key", AMPLITUDE_PROJECT_ID: "830581" },
@@ -696,7 +699,10 @@ describe("collector worker — consent and project routing", () => {
             name: "auth.sign_in.completed",
             props: { method: "google", outcome: "success" }
           },
-          { name: "pricing.plan.viewed", props: { surface: "pricing" } }
+          { name: "pricing.plan.viewed", props: { surface: "pricing" } },
+          { name: "download.cta.clicked", props: { placement: "header" } },
+          { name: "pricing.cta.clicked", props: { plan: "cloud" } },
+          { name: "nav.external.clicked", props: { destination: "github" } }
         ]
       },
       { AMPLITUDE_API_KEY: "secret-key", AMPLITUDE_PROJECT_ID: "830581" },
@@ -706,12 +712,15 @@ describe("collector worker — consent and project routing", () => {
       }
     );
     expect(result.status).toBe(200);
-    expect(result.forwarded).toBe(3);
+    expect(result.forwarded).toBe(6);
     const events = fetches[0]?.events ?? [];
     expect(events.map((event) => event.event_type)).toEqual([
       "arena.vote.recorded",
       "auth.sign_in.completed",
-      "pricing.plan.viewed"
+      "pricing.plan.viewed",
+      "download.cta.clicked",
+      "pricing.cta.clicked",
+      "nav.external.clicked"
     ]);
     expect(events[0]?.event_properties).toMatchObject({
       variant: "neural",
@@ -719,6 +728,9 @@ describe("collector worker — consent and project routing", () => {
       rubric: "none"
     });
     expect(events[1]?.event_properties).toMatchObject({ method: "google", outcome: "success" });
+    expect(events[3]?.event_properties).toMatchObject({ placement: "header" });
+    expect(events[4]?.event_properties).toMatchObject({ plan: "cloud" });
+    expect(events[5]?.event_properties).toMatchObject({ destination: "github" });
   });
 
   it("still allows page.viewed with the website page-surface enum", async () => {

@@ -16,7 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   attribution after decline. Website `app.opened` accepts page surfaces.
   Funnel events require a surface. Allowlisted product events require
   their taxonomy properties after sanitize (`arena.vote.recorded` needs
-  `choice`/`rubric`; `auth.sign_in.completed` needs `method`/`outcome`).
+  `choice`/`rubric`; `auth.sign_in.completed` needs `method`/`outcome`;
+  `download.cta.clicked` needs `placement`; `pricing.cta.clicked` needs
+  `plan`; `nav.external.clicked` needs `destination`). This website
+  collector rejects native funnel surfaces and `install.started`.
   Production hosting may only pin `collect.burnbar.ai`; staging may only
   pin `collect-staging.burnbar.ai`. Rejected campaign params clear the
   stored bag. `email.captured` fires once per fresh account, never a
