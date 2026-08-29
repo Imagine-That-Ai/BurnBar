@@ -1149,6 +1149,8 @@ describe("website bundle never embeds an Amplitude API key", () => {
     expect(source).toContain("sessionStartProps");
     expect(source).toContain("screenViewedProps");
     expect(source).toContain("flushPendingEmailCapture");
+    expect(source).toContain("pendingEmailStorage()");
+    expect(source).not.toMatch(/pendingStorage: ConsentStorage = storage/);
     expect(source).toContain("is_first_launch");
     expect(source).toContain("cold_start");
     expect(source).toContain("is_first_view");

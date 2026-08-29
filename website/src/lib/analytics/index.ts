@@ -137,6 +137,8 @@ export const LAUNCHED_KEY = "burnbar-analytics-launched";
 export const FIRST_VIEW_KEY = "burnbar-analytics-first-view";
 export const EMAIL_PENDING_KEY = "burnbar-analytics-email-pending";
 
+type PendingEmailStorage = ConsentStorage & { removeItem?(key: string): void };
+
 export function shouldEmitSessionSpine(storage: {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
@@ -240,13 +242,18 @@ export function clearSessionSpine(storage: { removeItem?(key: string): void }): 
   }
 }
 
-function sessionSpineStorage(): { removeItem?(key: string): void } {
+function sessionSpineStorage(): PendingEmailStorage {
   try {
     if (typeof sessionStorage !== "undefined") return sessionStorage;
   } catch {
     /* access can throw when storage is blocked */
   }
   return fallbackAttributionStorage;
+}
+
+/** Pending email captures live on the session store, not localStorage. */
+export function pendingEmailStorage(): PendingEmailStorage {
+  return sessionSpineStorage();
 }
 
 /** Resume a consented session and emit session-start (once per tab) + the page
@@ -268,7 +275,7 @@ export function boot(): void {
     trackEvent(EVENT.appSessionStarted, sessionStartProps(true, safeStorage()));
   }
   trackEvent(EVENT.screenViewed, screenViewedProps(true, sessionSpineStorage()));
-  flushPendingEmailCapture(true, sessionSpineStorage(), safeStorage());
+  flushPendingEmailCapture(true, pendingEmailStorage(), safeStorage());
 }
 
 export function grantConsent(): void {
@@ -379,8 +386,6 @@ export function markEmailCaptured(
   }
 }
 
-type PendingEmailStorage = ConsentStorage & { removeItem?(key: string): void };
-
 function parsePendingEmailCapture(raw: string | null): { hash: string; source: string } | null {
   if (!raw) return null;
   try {
@@ -400,11 +405,12 @@ function parsePendingEmailCapture(raw: string | null): { hash: string; source: s
 export function rememberPendingEmailCapture(
   accountId: string,
   source: string,
-  storage: ConsentStorage
+  storage: ConsentStorage = pendingEmailStorage(),
+  capturedStorage: ConsentStorage = safeStorage()
 ): void {
   const uid = accountId.trim();
   if (!uid) return;
-  if (hasRecordedEmailCapture(uid, storage)) return;
+  if (hasRecordedEmailCapture(uid, capturedStorage)) return;
   try {
     storage.setItem(
       EMAIL_PENDING_KEY,
@@ -421,7 +427,7 @@ export function rememberPendingEmailCapture(
 /** Emit a stored pre-consent capture after grant. No-op when dark or empty. */
 export function flushPendingEmailCapture(
   canSend = analytics.canSend,
-  pendingStorage: PendingEmailStorage = sessionSpineStorage(),
+  pendingStorage: PendingEmailStorage = pendingEmailStorage(),
   capturedStorage: ConsentStorage = safeStorage(),
   emit: (source: string) => void = trackEmailCaptured
 ): boolean {
@@ -451,7 +457,7 @@ export function trackEmailCapturedIfNewAccount(
   source = "unknown",
   storage: ConsentStorage = safeStorage(),
   canSend = analytics.canSend,
-  pendingStorage: ConsentStorage = storage
+  pendingStorage: ConsentStorage = pendingEmailStorage()
 ): void {
   if (!isFreshAuthAccount(user)) return;
   const uid = typeof user?.uid === "string" ? user.uid.trim() : "";

@@ -385,7 +385,7 @@ describe("fresh auth account capture", () => {
     expect(hasRecordedEmailCapture("", storage)).toBe(false);
     const dark = makeStorage();
     const emitted: string[] = [];
-    trackEmailCapturedIfNewAccount(first, "google", dark, false);
+    trackEmailCapturedIfNewAccount(first, "google", dark, false, dark);
     expect(hasRecordedEmailCapture("uid-one", dark)).toBe(false);
     expect(dark.getItem(EMAIL_PENDING_KEY)).toContain("google");
     expect(flushPendingEmailCapture(false, dark, dark, (source) => emitted.push(source))).toBe(
@@ -396,7 +396,18 @@ describe("fresh auth account capture", () => {
     expect(hasRecordedEmailCapture("uid-one", dark)).toBe(true);
     expect(emitted).toEqual(["google"]);
     expect(dark.getItem(EMAIL_PENDING_KEY)).toBeNull();
-    rememberPendingEmailCapture("uid-one", "apple", dark);
+    rememberPendingEmailCapture("uid-one", "apple", dark, dark);
     expect(dark.getItem(EMAIL_PENDING_KEY)).toBeNull();
+    const pending = makeStorage();
+    const captured = makeStorage();
+    const later: string[] = [];
+    trackEmailCapturedIfNewAccount(first, "google", captured, false, pending);
+    expect(captured.getItem(EMAIL_PENDING_KEY)).toBeNull();
+    expect(pending.getItem(EMAIL_PENDING_KEY)).toContain("google");
+    expect(flushPendingEmailCapture(true, pending, captured, (source) => later.push(source))).toBe(
+      true
+    );
+    expect(hasRecordedEmailCapture("uid-one", captured)).toBe(true);
+    expect(later).toEqual(["google"]);
   });
 });
