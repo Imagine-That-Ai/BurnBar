@@ -305,14 +305,58 @@ describe("session spine when storage is blocked", () => {
     const storage = new Map<string, string>();
     const store = {
       getItem: (key: string) => storage.get(key) ?? null,
-      setItem: (key: string, value: string) => void storage.set(key, value)
+      setItem: (key: string, value: string) => void storage.set(key, value),
+      removeItem: (key: string) => void storage.delete(key)
     };
+    clearSessionSpine(store);
     const minted = "550e8400-e29b-41d4-a716-446655440000";
     expect(resolveSessionId(analytics.canSend, store, () => minted)).toBe("");
     expect(storage.get(SESSION_ID_KEY)).toBeUndefined();
     expect(resolveSessionId(true, store, () => minted)).toBe(minted);
     expect(storage.get(SESSION_ID_KEY)).toBe(minted);
     expect(resolveSessionId(true, store, () => "11111111-1111-4111-8111-111111111111")).toBe(
+      minted
+    );
+  });
+
+  it("reuses one minted session id when sessionStorage getItem and setItem throw", () => {
+    clearSessionSpine({});
+    const blocked = {
+      getItem: () => {
+        throw new Error("blocked");
+      },
+      setItem: () => {
+        throw new Error("blocked");
+      },
+      removeItem: () => {
+        throw new Error("blocked");
+      }
+    };
+    const ids = [
+      "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+    ];
+    let minted = 0;
+    const createId = () => ids[minted++] ?? "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+    expect(resolveSessionId(true, blocked, createId)).toBe(ids[0]);
+    expect(resolveSessionId(true, blocked, createId)).toBe(ids[0]);
+    expect(minted).toBe(1);
+    clearSessionSpine(blocked);
+    expect(resolveSessionId(true, blocked, createId)).toBe(ids[1]);
+    expect(minted).toBe(2);
+  });
+
+  it("keeps the minted session id when setItem throws and getItem stays empty", () => {
+    clearSessionSpine({});
+    const store = {
+      getItem: () => null,
+      setItem: () => {
+        throw new Error("quota");
+      }
+    };
+    const minted = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+    expect(resolveSessionId(true, store, () => minted)).toBe(minted);
+    expect(resolveSessionId(true, store, () => "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee")).toBe(
       minted
     );
   });

@@ -236,7 +236,11 @@ export function screenViewedProps(
   return { is_first_view: claimFirstView(canSend, storage) };
 }
 
+/** Page-lifetime session id when sessionStorage get/set throws. */
+let memorySessionId = "";
+
 export function clearSessionSpine(storage: { removeItem?(key: string): void }): void {
+  memorySessionId = "";
   try {
     storage.removeItem?.(SESSION_KEY);
     storage.removeItem?.(FIRST_VIEW_KEY);
@@ -291,15 +295,20 @@ export function resolveSessionId(
   if (!canSend) return "";
   try {
     const existing = storage.getItem(SESSION_ID_KEY)?.trim() ?? "";
-    if (isBoundedSessionId(existing)) return existing;
+    if (isBoundedSessionId(existing)) {
+      memorySessionId = existing;
+      return existing;
+    }
   } catch {
     /* private mode / quota */
   }
+  if (isBoundedSessionId(memorySessionId)) return memorySessionId;
   const id = createId();
+  memorySessionId = id;
   try {
     storage.setItem(SESSION_ID_KEY, id);
   } catch {
-    /* ephemeral this page only */
+    /* persist failed — keep the minted id for this page load */
   }
   return id;
 }
