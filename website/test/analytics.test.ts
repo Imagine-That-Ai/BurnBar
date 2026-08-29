@@ -291,21 +291,40 @@ describe("fresh auth account capture", () => {
     expect(authCaptureSourceFromProviderId("twitter.com")).toBe("unknown");
   });
 
-  it("records at most one email.captured per browser after a fresh account", () => {
+  it("records at most one email.captured per account, not per browser", () => {
     const storage = makeStorage();
     const created = "2026-08-28T12:00:00.000Z";
-    const user = {
+    const first = {
+      uid: "uid-one",
       metadata: { creationTime: created, lastSignInTime: "2026-08-28T12:00:20.000Z" }
     };
-    expect(hasRecordedEmailCapture(storage)).toBe(false);
-    trackEmailCapturedIfNewAccount(user, "google", storage);
-    expect(hasRecordedEmailCapture(storage)).toBe(true);
-    markEmailCaptured(storage);
+    expect(hasRecordedEmailCapture("uid-one", storage)).toBe(false);
+    trackEmailCapturedIfNewAccount(first, "google", storage);
+    expect(hasRecordedEmailCapture("uid-one", storage)).toBe(true);
     trackEmailCapturedIfNewAccount(
-      { metadata: { creationTime: created, lastSignInTime: "2026-08-28T12:00:40.000Z" } },
+      {
+        uid: "uid-one",
+        metadata: { creationTime: created, lastSignInTime: "2026-08-28T12:00:40.000Z" }
+      },
       "apple",
       storage
     );
-    expect(hasRecordedEmailCapture(storage)).toBe(true);
+    expect(hasRecordedEmailCapture("uid-one", storage)).toBe(true);
+    expect(hasRecordedEmailCapture("uid-two", storage)).toBe(false);
+    trackEmailCapturedIfNewAccount(
+      {
+        uid: "uid-two",
+        metadata: { creationTime: created, lastSignInTime: "2026-08-28T12:00:20.000Z" }
+      },
+      "github",
+      storage
+    );
+    expect(hasRecordedEmailCapture("uid-two", storage)).toBe(true);
+    trackEmailCapturedIfNewAccount(
+      { metadata: { creationTime: created, lastSignInTime: "2026-08-28T12:00:20.000Z" } },
+      "google",
+      storage
+    );
+    expect(hasRecordedEmailCapture("", storage)).toBe(false);
   });
 });

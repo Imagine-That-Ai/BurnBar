@@ -230,6 +230,7 @@ export function trackEmailCaptured(source = "unknown"): void {
 const FRESH_AUTH_WINDOW_MS = 60_000;
 
 export type AuthAccountLike = {
+  uid?: string | null;
   metadata?: {
     creationTime?: string | null;
     lastSignInTime?: string | null;
@@ -261,17 +262,42 @@ export function authCaptureSourceFromProviderId(providerId: string): string {
 
 export const EMAIL_CAPTURED_KEY = "burnbar-analytics-email-captured";
 
-export function hasRecordedEmailCapture(storage: ConsentStorage = safeStorage()): boolean {
+/** FNV-1a 64-bit hex so localStorage never holds a raw Firebase uid or email. */
+export function localAccountCaptureHash(accountId: string): string {
+  let hash = 0xcbf29ce484222325n;
+  const normalized = accountId.trim();
+  for (let i = 0; i < normalized.length; i++) {
+    hash ^= BigInt(normalized.charCodeAt(i));
+    hash = (hash * 0x100000001b3n) & 0xffffffffffffffffn;
+  }
+  return hash.toString(16).padStart(16, "0");
+}
+
+function emailCaptureStorageKey(accountId: string): string {
+  return `${EMAIL_CAPTURED_KEY}:${localAccountCaptureHash(accountId)}`;
+}
+
+export function hasRecordedEmailCapture(
+  accountId: string,
+  storage: ConsentStorage = safeStorage()
+): boolean {
+  const uid = accountId.trim();
+  if (!uid) return false;
   try {
-    return storage.getItem(EMAIL_CAPTURED_KEY) === "1";
+    return storage.getItem(emailCaptureStorageKey(uid)) === "1";
   } catch {
     return false;
   }
 }
 
-export function markEmailCaptured(storage: ConsentStorage = safeStorage()): void {
+export function markEmailCaptured(
+  accountId: string,
+  storage: ConsentStorage = safeStorage()
+): void {
+  const uid = accountId.trim();
+  if (!uid) return;
   try {
-    storage.setItem(EMAIL_CAPTURED_KEY, "1");
+    storage.setItem(emailCaptureStorageKey(uid), "1");
   } catch {
     /* private mode / quota */
   }
@@ -284,8 +310,10 @@ export function trackEmailCapturedIfNewAccount(
   storage: ConsentStorage = safeStorage()
 ): void {
   if (!isFreshAuthAccount(user)) return;
-  if (hasRecordedEmailCapture(storage)) return;
-  markEmailCaptured(storage);
+  const uid = typeof user?.uid === "string" ? user.uid.trim() : "";
+  if (!uid) return;
+  if (hasRecordedEmailCapture(uid, storage)) return;
+  markEmailCaptured(uid, storage);
   trackEmailCaptured(boundedAuthCaptureSource(source));
 }
 

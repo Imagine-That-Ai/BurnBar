@@ -102,6 +102,7 @@ const ENUM_PROP_VALUES: Record<string, ReadonlySet<string>> = {
   method: new Set(["google", "apple", "github", "email", "facebook"]),
   outcome: new Set(["success", "failure"]),
   consent_version: new Set(["1"]),
+  error_category: new Set(["auth", "callable", "network", "unknown"]),
 };
 
 const BOOLEAN_PROP_KEYS = new Set([
@@ -389,7 +390,7 @@ const EVENT_OWN_PROPS: Record<string, readonly string[]> = {
   "nav.external.clicked": ["destination"],
   "auth.sign_in.completed": ["method", "outcome"],
   "auth.sign_up.completed": ["method", "outcome"],
-  "error.handled": [],
+  "error.handled": ["error_category"],
   "arena.variant.exposed": ["variant"],
   "arena.artifact.played": ["variant", "side"],
   "arena.vote.recorded": ["variant", "choice", "rubric"],
@@ -409,7 +410,7 @@ const REQUIRED_EVENT_PROPS: Record<string, readonly string[]> = {
   "nav.external.clicked": ["destination"],
   "auth.sign_in.completed": ["method", "outcome"],
   "auth.sign_up.completed": ["method", "outcome"],
-  "error.handled": [],
+  "error.handled": ["error_category", "surface"],
   "arena.variant.exposed": ["variant"],
   "arena.artifact.played": ["variant", "side"],
   "arena.vote.recorded": ["variant", "choice", "rubric"],
@@ -443,6 +444,7 @@ function boundEventProps(
   }
   const category = EVENT_CATEGORY[name];
   if (category) out.event_category = category;
+  out.platform = "web";
   return out;
 }
 
