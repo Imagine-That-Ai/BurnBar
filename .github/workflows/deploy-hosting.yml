@@ -14,6 +14,11 @@ on:
     tags: ["v*"]
     paths:
       - "website/**"
+      # Shared funnel/origin contract compiled into the marketing bundle
+      # (`website/src/lib/analytics/*` and `website/scripts/update-csp-hashes.mjs`).
+      # A contract-only main commit otherwise passes Website CI and never
+      # rebuilds burnbar.ai.
+      - "analytics/**"
       - "apps/console/**"
       - "crates/openburnbar-domain-core/union-abi-manifest.json"
       - "config/domain-core-build-profiles.json"
@@ -404,8 +409,14 @@ jobs:
       - name: Build immutable hosting outputs
         env:
           PUBLIC_SOURCE_COMMIT: ${{ steps.ref.outputs.commit }}
+          PUBLIC_ANALYTICS_COLLECTOR_URL: ${{ vars.PUBLIC_ANALYTICS_COLLECTOR_URL }}
+          ANALYTICS_COLLECTOR_LANE: production
+          PUBLIC_ANALYTICS_COLLECTOR_LANE: production
         run: |
           npm run verify --prefix website
+          if [[ -n "${PUBLIC_ANALYTICS_COLLECTOR_URL:-}" ]]; then
+            npm run csp:update --prefix website
+          fi
           npm run build --prefix apps/console
           node scripts/ci/create-domain-core-runtime-artifact-manifest.mjs \
             --consumer console \

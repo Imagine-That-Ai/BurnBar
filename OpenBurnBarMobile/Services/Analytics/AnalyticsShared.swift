@@ -20,7 +20,22 @@ extension AnalyticsConsentStore {
 @MainActor
 enum MobileAnalytics {
     private static let launchMarkerKey = "hasLaunchedBefore"
-    static let currentSessionIsFirstLaunch: Bool = !UserDefaults.standard.bool(forKey: launchMarkerKey)
+    private static var sessionSpineEmitted = false
+    private static var launchContextCaptured = false
+    private static var rememberedFirstLaunch = false
+
+    /// Eager capture. `static let` would be lazy and can read the marker
+    /// after `markLaunchSeen()` on a first-run grant-later path.
+    static func captureLaunchContext() {
+        guard !launchContextCaptured else { return }
+        rememberedFirstLaunch = !UserDefaults.standard.bool(forKey: launchMarkerKey)
+        launchContextCaptured = true
+    }
+
+    static var currentSessionIsFirstLaunch: Bool {
+        if !launchContextCaptured { captureLaunchContext() }
+        return rememberedFirstLaunch
+    }
 
     static let shared: Analytics = {
         let sessionId = UUID().uuidString
@@ -56,15 +71,32 @@ enum MobileAnalytics {
 
     /// Flip consent + notify the recorder in one call (used by the prompt + toggle).
     static func setConsent(granted: Bool) {
-        if granted { AnalyticsConsentStore.shared.grant() } else { AnalyticsConsentStore.shared.revoke() }
-        shared.consentDidChange()
+        if granted {
+            AnalyticsConsentStore.shared.grant()
+            shared.consentDidChange()
+            trackSessionStartIfConsented()
+        } else {
+            AnalyticsConsentStore.shared.revoke()
+            shared.consentDidChange()
+        }
     }
 
     static func trackSessionStartIfConsented() {
+        guard AnalyticsConsentStore.shared.isGranted else { return }
+        guard !sessionSpineEmitted else { return }
+        sessionSpineEmitted = true
         shared.track(.appSessionStarted, [
             "is_first_launch": .bool(currentSessionIsFirstLaunch),
             "cold_start": .bool(true)
         ])
+        shared.track(.appOpened, [
+            "is_first_launch": .bool(currentSessionIsFirstLaunch),
+            "cold_start": .bool(true),
+            "surface": .string("ios")
+        ])
+        if currentSessionIsFirstLaunch {
+            shared.track(.installStarted, ["surface": .string("ios")])
+        }
     }
 
     static func trackSessionSpineAfterFirstGrant() {

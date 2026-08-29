@@ -8,6 +8,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- First-party collector now rate-limits before buffering, rejects unreviewed
+  collector hosts (including non-default ports and credentials), drops events
+  that miss their per-event schema, remints a session spine after revoke,
+  finishes device-id creation before the browser transport marks itself
+  started, bounds client timestamps, and does not recapture campaign
+  attribution after decline. Website `app.opened` accepts page surfaces.
+  Funnel events require a surface. Allowlisted product events require
+  their taxonomy properties after sanitize (`arena.vote.recorded` needs
+  `choice`/`rubric`; `auth.sign_in.completed` needs `method`/`outcome`;
+  `download.cta.clicked` needs `placement`; `pricing.cta.clicked` needs
+  `plan`; `nav.external.clicked` needs `destination`;
+  `consent.analytics.granted` needs bounded `consent_version`). This
+  website collector rejects native funnel surfaces and `install.started`.
+  Per-event property sets drop cross-event dimensions and stamp the
+  registry category. The session marker is written only when the
+  collector can send. `email.captured` dedupes per hashed account, not
+  the whole browser. `error.handled` requires bounded `error_category`
+  plus `surface`. The collector stamps `platform: web` on every event.
+  Website collector drops `nav.route.changed`. Email-capture markers are
+  written only when the collector can send. Extension first-activation
+  ignores a synced opt-in setting. `app.session.started` requires
+  `is_first_launch` and `cold_start`; website `boot()` stamps both.
+  Pre-consent email captures keep a hashed pending signal on the
+  session store and flush it from that same store on grant. `screen.viewed` requires `is_first_view`. Every accepted website
+  event needs a website `surface`.   Foreign origins are rejected before
+  the collector rate limiter. `email.captured` `source` is the bounded
+  auth enum. Website events carry a per-tab UUID `session_id` from a
+  CSPRNG.
+  Production hosting may only pin `collect.burnbar.ai`; staging may only
+  pin `collect-staging.burnbar.ai`. Rejected campaign params clear the
+  stored bag. `email.captured` fires once per fresh account, never a
+  restored auth session. The collector reuses one isolate-local limiter
+  when the Wrangler binding is absent.
 - `openburnbar app install` (npm 0.2.2) no longer aborts a verified macOS DMG when the
   public feed advertises a SemVer tag with `+repair.N` (for example
   `1.0.40+repair.34` build 81) and the mounted app's
@@ -62,6 +95,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   parses SQLite timestamps without a shared `DateFormatter`.
 
 ### Added
+- **Opt-in Amplitude funnel contract** — shared CMO acquisition events
+  (`page.viewed`, `app.opened`, `cta.clicked`, `download.clicked`,
+  `install.started`, `email.captured`) in `analytics/funnel-contract.ts`,
+  wired through the existing default-off consent gate. The marketing site
+  now POSTs to a first-party collector (`workers/analytics-collector/`) so
+  the browser never holds `AMPLITUDE_API_KEY`. Production project is
+  OpenBurnBar `830583`; Dev is `830581`. CubeLove `852537` and Hormiga
+  `703455` / `799824` are rejected. Native apps emit `app.opened` /
+  `install.started` only after the existing Settings opt-in (still off by
+  default). The VS Code extension emits `install.started` on first activation
+  after opt-in. Official `release.yml` injects optional native and extension
+  keys; unset keeps shipping binaries dark. The collector drops unbounded
+  / phone-shaped property values before Amplitude. `csp:check` stays on the committed dark CSP;
+  `deploy-hosting.yml` runs `csp:update` when `PUBLIC_ANALYTICS_COLLECTOR_URL`
+  is set. Docs: `README.md` § Opt-in analytics, `docs/analytics/`.
 - **Monthly Recap** (`docs/RECAP.md`) — a new destination that reads a calendar
   month of AI usage back as an editorial deck of cards: favourite model and
   model+harness pairing, weekday and late-night habits, streaks, project focus,

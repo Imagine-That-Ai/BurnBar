@@ -31,6 +31,14 @@ public enum AnalyticsEvent: String, CaseIterable, Sendable {
     case errorHandled = "error.handled"
     case consentAnalyticsGranted = "consent.analytics.granted"
 
+    // MARK: CMO acquisition funnel (taxonomy-legal aliases of page_viewed / app_opened / …)
+    case pageViewed = "page.viewed"
+    case appOpened = "app.opened"
+    case ctaClicked = "cta.clicked"
+    case downloadClicked = "download.clicked"
+    case installStarted = "install.started"
+    case emailCaptured = "email.captured"
+
     // MARK: Tier 2 — dashboard (shared with macOS; iOS reuses the parameterized set)
     case dashboardTimeRangeChanged = "dashboard.time_range.changed"
     case dashboardUnitToggled = "dashboard.unit.toggled"
@@ -75,17 +83,18 @@ public enum AnalyticsEvent: String, CaseIterable, Sendable {
     /// embedded in the name). Default is `primaryAction`.
     public var category: AnalyticsCategory {
         switch self {
-        case .appSessionStarted, .appSessionEnded, .appForegrounded, .appBackgrounded,
+        case .appSessionStarted, .appOpened, .installStarted, .appSessionEnded, .appForegrounded, .appBackgrounded,
              .authSignedOut, .onboardingStarted, .onboardingDismissed, .consentAnalyticsGranted,
              .chatGenerationCompleted, .quotaRefreshSucceeded, .keyboardActivated:
             return .lifecycle
         case .appStartupFailed, .errorHandled, .chatGenerationFailed, .quotaRefreshFailed:
             return .error
-        case .screenViewed, .navRouteChanged, .onboardingStepViewed,
+        case .screenViewed, .pageViewed, .navRouteChanged, .onboardingStepViewed,
              .mobileTabSelected, .widgetRendered:
             return .screenView
         case .authSignInCompleted, .authSignUpCompleted, .authAccountDeleted,
-             .onboardingCompleted, .subscriptionUpgradeInitiated:
+             .onboardingCompleted, .subscriptionUpgradeInitiated,
+             .ctaClicked, .downloadClicked, .emailCaptured:
             return .conversionAuth
         default:
             return .primaryAction

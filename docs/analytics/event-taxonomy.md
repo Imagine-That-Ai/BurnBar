@@ -109,7 +109,7 @@ Instrumentation call sites never pass them.
 
 | Property             | Type    | Notes                                                             |
 |----------------------|---------|-------------------------------------------------------------------|
-| `platform`           | enum    | `macos` \| `ios` \| `ipados` \| `widget` \| `keyboard` \| `android` \| `web` \| `console` \| `vscode` \| `backend` |
+| `platform`           | enum    | `macos` \| `ios` \| `ipados` \| `widget` \| `keyboard` \| `android` \| `linux` \| `web` \| `console` \| `vscode` \| `backend` |
 | `app_version`        | string  | Marketing version, e.g. `2.4.1`                                   |
 | `app_build`          | string  | Build number                                                     |
 | `surface`            | enum    | Current surface/area (see surface enum below); also passed on `screen.viewed` |
@@ -197,6 +197,25 @@ these parameterized events is intentional ("one action = one event + properties"
 | `error.handled`                | error           | `error_category`, `surface`, `code?`                                       |
 | `consent.analytics.granted`    | lifecycle       | `consent_version` (only event emitted at the moment of opt-in)            |
 | `feature.used`                 | primary_action  | `feature` (bounded id), `outcome`, `duration_ms_bucket?` — the privacy-preserving TelemetryService fan-out (feature id + outcome + bucketed duration only) |
+
+### Marketing funnel (CMO acquisition contract)
+
+Small shared acquisition set. Consent required. `product` is always `burnbar`.
+CMO logical names map to these taxonomy-legal wire names:
+
+| CMO name | Wire name | Category | Notes |
+|----------|-----------|----------|-------|
+| `page_viewed` | `page.viewed` | screen_view | Website page view (also emits existing `screen.viewed`) |
+| `app_opened` | `app.opened` | lifecycle | Opt-in app open (also emits existing `app.session.started`) |
+| `cta_clicked` | `cta.clicked` | conversion_auth | Pricing / generic CTA |
+| `download_clicked` | `download.clicked` | conversion_auth | Download CTA (also emits existing `download.cta.clicked`) |
+| `install_started` | `install.started` | lifecycle | First launch after install, opt-in only |
+| `email_captured` | `email.captured` | conversion_auth | Capture happened (`captured:true`); **never** a raw email |
+
+Shared funnel properties: `product=burnbar`, `surface` (`macos`\|`ios`\|`android`\|`web`\|`extension` on native; website page surface stays the bounded page enum), `app_version`, optional `utm_*`, `click_id`, `campaign`, `slate_id`, `post_id`.
+
+Amplitude routing: production project `830583`, dev project `830581`. Never CubeLove `852537` or Hormiga `703455` / `799824`.
+The website browser never holds `AMPLITUDE_API_KEY`; it POSTs to a first-party collector URL.
 
 `setting_key` enumerates the togglable settings (e.g. `appearance_mode`, `launch_at_login`,
 `conversation_indexing`, `cli_assistant`, `default_time_range`, `usage_display_mode`,
@@ -305,15 +324,21 @@ who emits what.
 
 ## Tier 2 — Website surfaces (`platform: web`)
 
-Marketing-site conversions. Emitted by `website/src/lib/analytics` through the same consent gate;
-the Amplitude Browser SDK is **dynamically imported only after opt-in** (zero bytes pre-consent).
-The site also emits the Tier 1 spine: `app.session.started` (once per tab session),
-`screen.viewed` (every page; `surface` from the page super-property), `consent.analytics.granted`,
+Marketing-site conversions. Emitted by `website/src/lib/analytics` through the same consent gate.
+The browser POSTs to a first-party collector (`PUBLIC_ANALYTICS_COLLECTOR_URL`); it never
+holds an Amplitude API key. No collector URL → the site stays dark even after opt-in.
+The site also emits the Tier 1 spine: `app.session.started` (once per tab session;
+`is_first_launch` from a durable browser marker, `cold_start: true` on that first
+tab boot),
+`screen.viewed` (every page; `surface` from the page super-property,
+`is_first_view` from a per-tab marker), a per-tab UUID `session_id` on
+every event, `page.viewed`,
+`app.opened`, `consent.analytics.granted`,
 and — on the Hermes connect / sign-in flow — `auth.sign_in.completed` and `error.handled`.
 
 | Event                     | Category        | Properties                                                              |
 |---------------------------|-----------------|------------------------------------------------------------------------|
-| `download.cta.clicked`    | conversion_auth | `placement` (`header`\|`mobile_nav`\|`hero`\|`pricing`\|`footer`), `platform?` (`macos`\|`ios`\|`android`) |
+| `download.cta.clicked`    | conversion_auth | `placement` (`header`\|`mobile_nav`\|`hero`\|`pricing`\|`footer`), `target_platform?` (`macos`\|`ios`\|`android`\|`linux`) — website `platform` stays `web` |
 | `pricing.plan.viewed`     | screen_view     | — *(impression; the page is in `surface`. Fires once when the plans grid scrolls into view)* |
 | `pricing.cta.clicked`     | conversion_auth | `plan` (`free`\|`cloud`\|`cloud_pro`\|`ultra`)                          |
 | `nav.external.clicked`    | primary_action  | `destination` (`github`\|`discord`\|`docs`\|…; bounded outbound targets) |
@@ -356,6 +381,8 @@ Apple/GitHub/passkey), `settings.changed`, `error.handled`, `consent.analytics.g
 Gated on BOTH the extension's opt-in setting AND VS Code's telemetry signal
 (`vscode.env.isTelemetryEnabled`); it fans out alongside the existing telemetry, never replacing it.
 Also emits Tier 1 `error.handled` + `consent.analytics.granted`.
+Every sent event carries a per-activation UUID `session_id` (rotated each host
+launch; **not** a user id). Dark activations do not mint one.
 
 | Event                       | Category       | Properties                                                                 |
 |-----------------------------|----------------|----------------------------------------------------------------------------|

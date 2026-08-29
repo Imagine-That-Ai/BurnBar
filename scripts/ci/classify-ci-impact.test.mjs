@@ -29,6 +29,17 @@ test("launch-evidence attestation JSON is no-product (honest skip/require)", () 
   }
 });
 
+test("analytics collector sources select the cheap web lane", () => {
+  for (const path of [
+    "analytics/funnel-contract.ts",
+    "workers/analytics-collector/src/handler.ts",
+  ]) {
+    const result = classifyPaths([path]);
+    assert.equal(result.full, false, path);
+    assert.equal(result.web, true, path);
+  }
+});
+
 test("plugins/openburnbar sources select only the cheap web lane", () => {
   for (const path of [
     "plugins/openburnbar/scripts/validate.mjs",

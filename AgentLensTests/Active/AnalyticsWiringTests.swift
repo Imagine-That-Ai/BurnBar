@@ -22,6 +22,7 @@ final class AnalyticsSuperPropertiesTests: XCTestCase {
             locale: "en_US", sessionId: "sess-1", consentVersion: "1"
         )
         let d = sp.asDictionary()
+        XCTAssertEqual(d["product"], .string("burnbar"))
         XCTAssertEqual(d["platform"], .string("macos"))
         XCTAssertEqual(d["app_version"], .string("2.4.1"))
         XCTAssertEqual(d["app_build"], .string("123"))

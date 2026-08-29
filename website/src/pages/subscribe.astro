@@ -628,6 +628,10 @@ const subscriptionCatalog = Object.fromEntries(
   } from "firebase/auth";
   import { httpsCallable } from "firebase/functions";
   import { auth, functions, googleProvider, appleProvider, appCheck } from "../lib/firebaseClient";
+  import {
+    authCaptureSourceFromProviderId,
+    trackEmailCapturedIfNewAccount
+  } from "../lib/analytics";
 
   type TierID = "cloud" | "cloud_pro" | "ultra";
   type Cadence = "monthly" | "annual";
@@ -736,7 +740,11 @@ const subscriptionCatalog = Object.fromEntries(
   async function signIn(provider: AuthProvider) {
     showState("checking");
     try {
-      await signInWithPopup(auth, provider);
+      const credential = await signInWithPopup(auth, provider);
+      trackEmailCapturedIfNewAccount(
+        credential.user,
+        authCaptureSourceFromProviderId(provider.providerId)
+      );
     } catch (error: unknown) {
       const { code } = callableError(error);
       if (
@@ -887,7 +895,17 @@ const subscriptionCatalog = Object.fromEntries(
 
   updateSelection();
   void appCheck;
-  void getRedirectResult(auth).catch(() => undefined);
+  void getRedirectResult(auth)
+    .then((result) => {
+      if (!result?.user) return;
+      trackEmailCapturedIfNewAccount(
+        result.user,
+        authCaptureSourceFromProviderId(
+          result.providerId || result.user.providerData[0]?.providerId || ""
+        )
+      );
+    })
+    .catch(() => undefined);
   onAuthStateChanged(auth, (user) => {
     currentUser = user;
     if (user) {

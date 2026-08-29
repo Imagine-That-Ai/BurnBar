@@ -532,6 +532,82 @@ Support expectations live in [SUPPORT.md](SUPPORT.md).
 
 ---
 
+## Opt-in analytics (Amplitude)
+
+OpenBurnBar is local-first. **Usage analytics are off by default.** Nothing leaves the device or the marketing site until the person explicitly opts in. Public copy that says no telemetry / no account stays honest: the default path still sends nothing.
+
+This repo already had a consent-gated Amplitude stack (macOS, iOS, Android, website, console, extension, backend). Production Amplitude project **OpenBurnBar** (`830583`) was empty (0 ingestion sources) at instrumentation time — the code existed, but live keys were not shipping events. This section is the operator contract for turning that path on without breaking the default-off promise.
+
+### Projects (do not mix products)
+
+| Project | Amplitude appId | Use |
+|---------|-----------------|-----|
+| **OpenBurnBar** (prod) | `830583` | Production builds / burnbar.ai after opt-in |
+| **OpenBurnBar Dev** | `830581` | Local, staging, CI |
+| CubeLove | `852537` | **Forbidden** for BurnBar events |
+| Hormiga | `703455` / `799824` | **Forbidden** for BurnBar events |
+
+### Secrets — never commit, never put in the browser
+
+| Variable | Where | Who sees it |
+|----------|-------|-------------|
+| `AMPLITUDE_API_KEY` | Collector Worker secret, Functions, native CI inject | Server / build machine only |
+| `AMPLITUDE_PROJECT_ID` | Collector Worker var (`830583` prod / `830581` dev) | Server only |
+| `PUBLIC_ANALYTICS_COLLECTOR_URL` | Website Astro build env | Browser — this is a first-party URL, **not** an Amplitude key |
+| `BURNBAR_AMPLITUDE_API_KEY` | macOS / iOS / widget / keyboard build inject | Native binary after CI inject; empty in git. Official `release.yml` calls `inject-amplitude-config.sh` on the Mac app and passes the key as an iOS `xcodebuild archive` setting (`project.yml` → Info.plist). It does not patch already-signed archive plists. Unset keeps shipping binaries dark. |
+| `OPENBURNBAR_AMPLITUDE_API_KEY` | Android Gradle / `local.properties` | Native binary after inject; empty in git. Official `release.yml` exports it on the signed bundle step. Unset keeps shipping binaries dark. |
+| `BURNBAR_EXTENSION_AMPLITUDE_API_KEY` | VS Code / Cursor extension build inject | Official `release.yml` runs `inject-amplitude-extension-config.sh` before `tsc`. Unset leaves the placeholder and keeps the packaged extension dark. |
+
+The marketing site (`website/`, burnbar.ai) **never** embeds `AMPLITUDE_API_KEY`. It POSTs consented events to `PUBLIC_ANALYTICS_COLLECTOR_URL`. The collector lives at `workers/analytics-collector/` and forwards to Amplitude HTTP V2 (`https://api2.amplitude.com/2/httpapi`) using the server-side key. If the collector URL or key is unset, the recorder stays dark even after opt-in.
+
+Official hosting builds read an optional GitHub Actions variable (empty keeps the artifact dark):
+
+- Production (`deploy-hosting.yml`): `vars.PUBLIC_ANALYTICS_COLLECTOR_URL`
+- Staging (`deploy-staging.yml`): `vars.STAGING_ANALYTICS_COLLECTOR_URL`
+
+Do not commit a collector URL. Set the variable only after the Worker is deployed and the matching origin is in the marketing CSP. Local / PR builds stay empty by default.
+
+```bash
+# Website (browser) — collector URL only
+export PUBLIC_ANALYTICS_COLLECTOR_URL="https://collect.burnbar.ai"
+
+# Collector Worker — Amplitude key + OpenBurnBar project id (prod 830583 or Dev 830581)
+wrangler secret put AMPLITUDE_API_KEY
+# wrangler.toml defaults AMPLITUDE_PROJECT_ID=830581 (Dev). Override to 830583 for prod.
+```
+
+Native apps still use the official Amplitude SDKs behind the existing Settings toggle (default **off**). Do not flip that toggle on in code.
+
+### Funnel events
+
+CMO names map to taxonomy-legal wire names in `analytics/funnel-contract.ts`:
+
+| CMO name | Wire name |
+|----------|-----------|
+| `page_viewed` | `page.viewed` |
+| `app_opened` | `app.opened` |
+| `cta_clicked` | `cta.clicked` |
+| `download_clicked` | `download.clicked` |
+| `install_started` | `install.started` |
+| `email_captured` | `email.captured` (never a raw email) |
+
+Properties: `product=burnbar`, `app_version`, optional `utm_*` / `click_id` / `campaign` / `slate_id` / `post_id`. Consent required.
+
+### How to verify an event in Amplitude
+
+1. Build the website with `PUBLIC_ANALYTICS_COLLECTOR_URL` pointing at a collector that has the **Dev** key and project `830581`.
+2. Open the site, click **Enable analytics** (do not skip the banner).
+3. Load a page or click a real download (DMG / Linux artifact / App Store). The collector should POST to Amplitude HTTP V2 and return `events_forwarded >= 1`. Header / nav “Download” links are page navigation (`download.cta.clicked`) and do not emit `download.clicked`.
+4. In Amplitude → OpenBurnBar Dev (`830581`) → Events This Month, look for `page.viewed` / `cta.clicked` / `download.clicked`.
+5. Confirm the event is **not** in CubeLove (`852537`) or Hormiga (`703455`).
+6. Load the same site **without** accepting the banner: DevTools → Network should show **zero** requests to the collector and **zero** requests to `api2.amplitude.com`.
+
+Public marketing version in captions is **1.0.40**. Do not advertise `npx` as a proven install path.
+
+See [`docs/analytics/event-taxonomy.md`](docs/analytics/event-taxonomy.md) and [`docs/analytics/ingestion-verification.md`](docs/analytics/ingestion-verification.md).
+
+---
+
 ## Security
 
 ### App Sandbox

@@ -42,8 +42,14 @@ struct PrivacyIndexingSettingsView: View {
         Binding(
             get: { AnalyticsConsentStore.shared.isGranted },
             set: { isOn in
-                if isOn { AnalyticsConsentStore.shared.grant() } else { AnalyticsConsentStore.shared.revoke() }
-                Analytics.shared.consentDidChange()
+                if isOn {
+                    AnalyticsConsentStore.shared.grant()
+                    Analytics.shared.consentDidChange()
+                    Analytics.trackFunnelSessionStartIfConsented()
+                } else {
+                    AnalyticsConsentStore.shared.revoke()
+                    Analytics.shared.consentDidChange()
+                }
             }
         )
     }

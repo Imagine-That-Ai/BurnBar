@@ -1364,6 +1364,11 @@ jobs:
           OPENBURNBAR_SENTRY_DSN: ${{ secrets.OPENBURNBAR_SENTRY_DSN }}
         run: bash ./scripts/ci/inject-sentry-config-ios.sh
 
+      - name: Inject Amplitude config
+        env:
+          BURNBAR_AMPLITUDE_API_KEY: ${{ secrets.BURNBAR_AMPLITUDE_API_KEY }}
+        run: bash ./scripts/ci/inject-amplitude-config.sh
+
       - name: Install Rust toolchain for libsignal Swift FFI
         uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
         with:
@@ -1495,6 +1500,7 @@ jobs:
           OPENBURNBAR_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.OPENBURNBAR_ANDROID_KEYSTORE_PASSWORD }}
           OPENBURNBAR_ANDROID_KEY_ALIAS: ${{ secrets.OPENBURNBAR_ANDROID_KEY_ALIAS }}
           OPENBURNBAR_ANDROID_KEY_PASSWORD: ${{ secrets.OPENBURNBAR_ANDROID_KEY_PASSWORD }}
+          OPENBURNBAR_AMPLITUDE_API_KEY: ${{ secrets.OPENBURNBAR_AMPLITUDE_API_KEY }}
         run: |
           if [[ -z "${OPENBURNBAR_ANDROID_KEYSTORE_PATH:-}" || ! -f "$OPENBURNBAR_ANDROID_KEYSTORE_PATH" ]]; then
             echo "::error::Android release keystore was not injected at OPENBURNBAR_ANDROID_KEYSTORE_PATH."
@@ -1572,6 +1578,11 @@ jobs:
         env:
           BURNBAR_EXTENSION_SENTRY_DSN: ${{ secrets.BURNBAR_EXTENSION_SENTRY_DSN }}
         run: bash scripts/ci/inject-sentry-config-extension.sh
+
+      - name: Inject extension Amplitude API key
+        env:
+          BURNBAR_EXTENSION_AMPLITUDE_API_KEY: ${{ secrets.BURNBAR_EXTENSION_AMPLITUDE_API_KEY }}
+        run: bash scripts/ci/inject-amplitude-extension-config.sh
 
       - name: Build extension
         run: npm run --prefix extensions/openburnbar build
@@ -3068,6 +3079,7 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           RELEASE_COMMIT: ${{ needs.release-preflight.outputs.release_commit }}
           VERSION: ${{ needs.release-preflight.outputs.version }}
+          BURNBAR_AMPLITUDE_API_KEY: ${{ secrets.BURNBAR_AMPLITUDE_API_KEY }}
         run: |
           set -euo pipefail
           archive="$RUNNER_TEMP/OpenBurnBarMobile.xcarchive"
@@ -3112,6 +3124,7 @@ jobs:
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
             MARKETING_VERSION="$apple_version" \
             CURRENT_PROJECT_VERSION="$build_number" \
+            BURNBAR_AMPLITUDE_API_KEY="${BURNBAR_AMPLITUDE_API_KEY:-}" \
             DOMAIN_CORE_BUILD_PROFILE="$DOMAIN_CORE_BUILD_PROFILE" \
             DOMAIN_CORE_BUILD_AUTHORITY="$DOMAIN_CORE_BUILD_AUTHORITY" \
             DOMAIN_CORE_DISTRIBUTION="$DOMAIN_CORE_DISTRIBUTION" \
@@ -3127,6 +3140,10 @@ jobs:
             DOMAIN_CORE_CLOUDVAULT_SEARCH_MODE="$DOMAIN_CORE_CLOUDVAULT_SEARCH_MODE" \
             DOMAIN_CORE_HERMES_MODE="$DOMAIN_CORE_HERMES_MODE" \
             DOMAIN_CORE_PRICING_MODE="$DOMAIN_CORE_PRICING_MODE"
+
+          # Path A only: BURNBAR_AMPLITUDE_API_KEY is already on xcodebuild archive
+          # (project.yml → Info.plist). Do not patch signed archive plists here —
+          # that breaks codesign --verify --deep --strict on the archive and IPA.
 
           xcodebuild -exportArchive \
             -archivePath "$archive" \

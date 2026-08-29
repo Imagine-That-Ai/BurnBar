@@ -130,6 +130,7 @@ struct OpenBurnBarMobileApp: App {
         // re-emitting the grant event, then record this app session. Both are
         // no-ops (and the SDK is never constructed) unless consent is granted and
         // an Amplitude key is configured — see MobileAnalytics / AmplitudeTransport.
+        MobileAnalytics.captureLaunchContext()
         MobileAnalytics.shared.startIfConsented()
         MobileAnalytics.trackSessionStartIfConsented()
         MobileAnalytics.markLaunchSeen()

@@ -261,8 +261,8 @@ const leakageUrl = `${SITE.github}/blob/main/docs/pensieve-leakage-analysis.md`;
 
       <ul class="never__list">
         <li>
-          <strong>No telemetry by default.</strong> No analytics. No crash reports unless you turn on
-          Sentry diagnostics.
+          <strong>No telemetry by default.</strong> No analytics unless you turn on the Amplitude opt-in.
+          No crash reports unless you turn on Sentry diagnostics.
         </li>
         <li>
           <strong>No API keys read</strong> for local-only usage tracking. Local tracking reads usage
@@ -293,6 +293,15 @@ const leakageUrl = `${SITE.github}/blob/main/docs/pensieve-leakage-analysis.md`;
       </header>
 
       <ul class="optins__list">
+        <li class="glass-pane">
+          <h3>Amplitude product analytics</h3>
+          <p>
+            Off by default. On the website, accept the consent banner; in the apps, enable
+            <em>Settings → Privacy</em>. Events are feature identifiers and funnel counts — never
+            conversation content, file paths, or raw emails. Revoke the same toggle or banner to
+            stop sending and, on the website, mint a new anonymous device id on the next grant.
+          </p>
+        </li>
         <li class="glass-pane">
           <h3>Firebase sync</h3>
           <p>

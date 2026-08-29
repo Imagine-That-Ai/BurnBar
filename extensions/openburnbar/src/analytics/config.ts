@@ -9,9 +9,8 @@
  * the real per-environment key (separate dev/staging vs production Amplitude
  * projects) just before `tsc` runs:
  *
- *   scripts/ci/inject-amplitude-config.sh   (extend its TARGET to this file:
- *     sed -i "s|__AMPLITUDE_API_KEY__|$BURNBAR_EXTENSION_AMPLITUDE_API_KEY|g" \
- *       extensions/openburnbar/src/analytics/config.ts)
+ *   BURNBAR_EXTENSION_AMPLITUDE_API_KEY=… \
+ *     bash scripts/ci/inject-amplitude-extension-config.sh
  *
  * With no key the placeholder is left in place, `resolveAmplitudeApiKey()`
  * returns `''`, and the recorder's key+consent gate keeps analytics DARK by

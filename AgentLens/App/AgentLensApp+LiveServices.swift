@@ -117,7 +117,10 @@ extension OpenBurnBarApp {
         OpenBurnBarApp.didStartLiveServices = true
         guard !OpenBurnBarRuntime.shouldUseTestStubScene else { return }
 
-        Analytics.shared.track(.appSessionStarted)
+        let isFirstLaunch = context.settingsManager.isFirstLaunch
+        Analytics.rememberFirstLaunch(isFirstLaunch)
+        context.settingsManager.markHasLaunchedBefore()
+        Analytics.trackFunnelSessionStartIfConsented()
 
         #if canImport(AppKit) && !DISTRIBUTION_MAS
         // Wire the trust sheet before anything can ask for a permission. The ladder

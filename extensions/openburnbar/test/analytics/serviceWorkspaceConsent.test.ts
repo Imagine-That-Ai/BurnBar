@@ -85,19 +85,22 @@ vi.mock(
 );
 
 import { CONSENT_STORAGE_KEY } from '../../src/analytics/consent';
-import { OpenBurnBarAnalyticsService, type AnalyticsServiceHostContext } from '../../src/analytics/service';
+import {
+  INSTALL_MARKER_KEY,
+  OpenBurnBarAnalyticsService,
+  resolveFirstActivation,
+  type AnalyticsServiceHostContext
+} from '../../src/analytics/service';
 
 const PROMPT_SETTING = 'openburnbar.analytics.enabled';
 const PROMPT_SEEN_KEY = 'openburnbar.analytics.promptSeen';
+const DEVICE_ID_KEY = 'openburnbar.analytics.deviceId';
 
-function createHostContext() {
-  const storage = new Map<string, unknown>();
+function createHostContext(initial: Record<string, unknown> = {}) {
+  const storage = new Map<string, unknown>(Object.entries(initial));
   const context: AnalyticsServiceHostContext = {
     globalState: {
-      get: (key: string) => {
-        const value = storage.get(key);
-        return typeof value === 'string' ? value : undefined;
-      },
+      get: (key: string) => storage.get(key),
       update: async (key: string, value: unknown) => {
         storage.set(key, value);
       }
@@ -167,5 +170,68 @@ describe('OpenBurnBarAnalyticsService global opt-in boundary', () => {
 
   it('declares the analytics opt-in as user-scoped in the extension manifest', () => {
     expect(analyticsConsentScopeFromManifest()).toBe('application');
+  });
+});
+
+describe('OpenBurnBarAnalyticsService first activation', () => {
+  beforeEach(() => {
+    vscodeState.globalValue = undefined;
+    vscodeState.workspaceValue = undefined;
+    vscodeState.inspectAvailable = true;
+    vscodeState.configurationListener = undefined;
+    vscodeState.showInformationMessage.mockReset();
+  });
+
+  it('treats an empty install as first activation and writes the marker', () => {
+    const { context, storage } = createHostContext();
+    expect(resolveFirstActivation(context)).toBe(true);
+
+    OpenBurnBarAnalyticsService.initialize(context);
+
+    expect(storage.get(INSTALL_MARKER_KEY)).toBe(true);
+    expect(resolveFirstActivation(context)).toBe(false);
+  });
+
+  it('does not treat a newly minted device id as prior-install evidence', () => {
+    const { context, storage } = createHostContext();
+    expect(storage.get(DEVICE_ID_KEY)).toBeUndefined();
+    expect(resolveFirstActivation(context)).toBe(true);
+
+    OpenBurnBarAnalyticsService.initialize(context);
+
+    expect(typeof storage.get(DEVICE_ID_KEY)).toBe('string');
+    expect(String(storage.get(DEVICE_ID_KEY)).length).toBeGreaterThan(0);
+    // This process already captured first-activation=true; later activations
+    // use the dedicated marker, not the device id minted during this boot.
+    expect(storage.get(INSTALL_MARKER_KEY)).toBe(true);
+  });
+
+  it('is not a first activation when the analytics prompt was already handled', () => {
+    const { context } = createHostContext({ [PROMPT_SEEN_KEY]: true });
+    expect(resolveFirstActivation(context)).toBe(false);
+    OpenBurnBarAnalyticsService.initialize(context);
+    expect(resolveFirstActivation(context)).toBe(false);
+  });
+
+  it('is not a first activation when a prior device id already exists', () => {
+    const { context } = createHostContext({ [DEVICE_ID_KEY]: 'already-installed-uuid' });
+    expect(resolveFirstActivation(context)).toBe(false);
+  });
+
+  it('is not a first activation when consent was already granted or declined', () => {
+    expect(
+      resolveFirstActivation(createHostContext({ [CONSENT_STORAGE_KEY]: 'granted' }).context)
+    ).toBe(false);
+    expect(
+      resolveFirstActivation(createHostContext({ [CONSENT_STORAGE_KEY]: 'declined' }).context)
+    ).toBe(false);
+  });
+
+  it('is still a first activation when only the synced global opt-in is present', () => {
+    vscodeState.globalValue = true;
+    const { context, storage } = createHostContext();
+    expect(resolveFirstActivation(context)).toBe(true);
+    OpenBurnBarAnalyticsService.initialize(context);
+    expect(storage.get(INSTALL_MARKER_KEY)).toBe(true);
   });
 });

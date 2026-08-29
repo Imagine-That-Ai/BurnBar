@@ -31,6 +31,14 @@ enum class AnalyticsEvent(val wire: String, val category: AnalyticsCategory) {
     CONSENT_ANALYTICS_GRANTED("consent.analytics.granted", AnalyticsCategory.LIFECYCLE),
     FEATURE_USED("feature.used", AnalyticsCategory.PRIMARY_ACTION),
 
+    // CMO acquisition funnel (taxonomy-legal aliases of page_viewed / app_opened / …)
+    PAGE_VIEWED("page.viewed", AnalyticsCategory.SCREEN_VIEW),
+    APP_OPENED("app.opened", AnalyticsCategory.LIFECYCLE),
+    CTA_CLICKED("cta.clicked", AnalyticsCategory.CONVERSION_AUTH),
+    DOWNLOAD_CLICKED("download.clicked", AnalyticsCategory.CONVERSION_AUTH),
+    INSTALL_STARTED("install.started", AnalyticsCategory.LIFECYCLE),
+    EMAIL_CAPTURED("email.captured", AnalyticsCategory.CONVERSION_AUTH),
+
     // ── Tier 1 — subscription / upgrade funnel (shared) ──
     SUBSCRIPTION_UPGRADE_INITIATED("subscription.upgrade.initiated", AnalyticsCategory.CONVERSION_AUTH),
 

@@ -2,8 +2,10 @@
 
 The marketing website for OpenBurnBar — `burnbar.ai`.
 
-Static site, no analytics, no third-party fonts loaded remotely, no JavaScript
-shipped to users beyond a tiny header script. Built with [Astro](https://astro.build).
+Static site. Usage analytics are **off by default** and stay dark unless the
+visitor accepts the consent banner **and** `PUBLIC_ANALYTICS_COLLECTOR_URL` is
+set at build time. The browser never receives an Amplitude API key. Fonts are
+self-hosted. Built with [Astro](https://astro.build).
 
 ## Stack
 
@@ -46,6 +48,24 @@ npm ci
 npm run dev    # http://127.0.0.1:4321
 ```
 
+Optional opt-in analytics (still dark until the visitor accepts the banner):
+
+```sh
+export PUBLIC_ANALYTICS_COLLECTOR_URL="https://collect.burnbar.ai"
+# Never set PUBLIC_AMPLITUDE_API_KEY in the browser build.
+```
+
+Official hosting builds use `vars.PUBLIC_ANALYTICS_COLLECTOR_URL` (production)
+and `vars.STAGING_ANALYTICS_COLLECTOR_URL` (staging). Production deploys pin
+`ANALYTICS_COLLECTOR_LANE=production` to `https://collect.burnbar.ai`; staging
+pins `staging` to `https://collect-staging.burnbar.ai`. Unset lane (local / PR
+`csp:check`) still accepts either reviewed host plus localhost. Unset URL
+keeps the artifact dark. A nonempty value that is not a reviewed collector
+origin (`https://collect.burnbar.ai`, `https://collect-staging.burnbar.ai`, or
+`http(s)://localhost|127.0.0.1` when no lane is set) fails `csp:check`,
+`csp:update`, and the website build — it must not deploy a collector-less or
+takeover `connect-src`. Set them only after the collector Worker is deployed.
+
 ## Build
 
 ```sh
@@ -75,6 +95,10 @@ Runs:
 `website/dist/`, but it must not refresh router-rundown history.
 If a legitimate inline script/style changes, run `npm run build:offline` and
 then `npm run csp:update` to refresh `firebase.json` before re-running verify.
+`csp:check` always compares the committed dark `connect-src`. A nonempty
+`PUBLIC_ANALYTICS_COLLECTOR_URL` is applied only by `csp:update` at deploy.
+Staging `build-hosting-candidate` always runs `csp:update` after `build:staging`
+and ships the reviewed `firebase.json` in the hosting artifact.
 
 For a manual visual pass:
 

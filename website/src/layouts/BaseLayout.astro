@@ -101,9 +101,9 @@ const fullTitle =
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
 
     <!-- Analytics: opt-in only. Nothing loads or sends until the visitor
-         accepts the consent banner; the Amplitude chunk is never even fetched
-         pre-consent. Enforced by src/lib/analytics (consent gate) + the bundled
-         (never inline/CDN) script in ConsentBanner.astro. -->
+         accepts the consent banner. The browser POSTs to a first-party collector
+         URL and never holds an Amplitude API key. Enforced by src/lib/analytics
+         (consent gate) + the bundled script in ConsentBanner.astro. -->
 
     <!-- Preconnect: none. We self-host fonts. Preload only the two latin
          Fraunces faces (display font gates hero/LCP text); unicode-range

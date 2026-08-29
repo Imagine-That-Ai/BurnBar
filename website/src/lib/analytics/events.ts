@@ -23,6 +23,14 @@ export const EVENT = {
   pricingCtaClicked: "pricing.cta.clicked",
   navExternalClicked: "nav.external.clicked",
 
+  // CMO acquisition funnel (taxonomy-legal aliases of page_viewed / app_opened / …)
+  pageViewed: "page.viewed",
+  appOpened: "app.opened",
+  ctaClicked: "cta.clicked",
+  downloadClicked: "download.clicked",
+  installStarted: "install.started",
+  emailCaptured: "email.captured",
+
   // BurnBench Arena — the vote page uses the "neural" skin.
   // Exposure is emitted once per session; `played` reports that a voter
   // actually used an artifact (the engagement half of the judgement), and the
@@ -50,12 +58,15 @@ export type AnalyticsCategory =
 
 const LIFECYCLE = new Set<string>([
   EVENT.appSessionStarted,
+  EVENT.appOpened,
+  EVENT.installStarted,
   EVENT.authSignedOut,
   EVENT.consentAnalyticsGranted
 ]);
 
 const SCREEN_VIEW = new Set<string>([
   EVENT.screenViewed,
+  EVENT.pageViewed,
   EVENT.navRouteChanged,
   EVENT.pricingPlanViewed
 ]);
@@ -64,7 +75,10 @@ const CONVERSION_AUTH = new Set<string>([
   EVENT.authSignInCompleted,
   EVENT.authSignUpCompleted,
   EVENT.downloadCtaClicked,
-  EVENT.pricingCtaClicked
+  EVENT.downloadClicked,
+  EVENT.ctaClicked,
+  EVENT.pricingCtaClicked,
+  EVENT.emailCaptured
 ]);
 
 const ERROR = new Set<string>([EVENT.errorHandled]);

@@ -275,8 +275,22 @@ final class AppearanceSettings {
         // coordinator so a fresh suite stays consistent. Defaults to `.aurora`.
         self.dashboardLayout = DashboardLayout.current
         self.dashboardLaunchSurface = DashboardLaunchSurface.current
-        let hasLaunched = persistence.bool(forKey: "hasLaunchedBefore")
-        self.showInMenuBar = hasLaunched ? persistence.bool(forKey: "showInMenuBar") : true
+        // First-launch default: menu bar visible. After first launch, honor the
+        // stored value (false if the user hid it).
+        //
+        // Do not use `hasLaunchedBefore` as a proxy for this key. Swift `didSet`
+        // does not run during `init`, so a fresh install that leaves the toggle
+        // untouched never persists `showInMenuBar`. The first-party funnel then
+        // writes `hasLaunchedBefore` during startup; the next process would take
+        // the "already launched" branch and `bool(forKey:)` would treat the
+        // absent key as `false` — hiding the menu-bar extra in an LSUIElement
+        // app with no default Dock icon.
+        if persistence.objectExists(forKey: "showInMenuBar") {
+            self.showInMenuBar = persistence.bool(forKey: "showInMenuBar")
+        } else {
+            self.showInMenuBar = true
+            persistence.set(true, forKey: "showInMenuBar")
+        }
         self.colorfulMenuBarIcon = persistence.bool(forKey: "colorfulMenuBarIcon")
         self.usePremiumSOTAUX = persistence.bool(forKey: "usePremiumSOTAUX")
         // Opt new installs into the live provider-glyph swarm backdrop so the
