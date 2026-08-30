@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Bumped Mac `CURRENT_PROJECT_VERSION` to `82` so the next `1.0.40+repair.N`
+  cut is strictly newer than live `1.0.40+repair.34` build 81. The in-app
+  updater compares numeric `CFBundleVersion` first and refuses same-build
+  installs, so a same-build repair tag would package but never replace the
+  installed app.
 - Fixed official macOS builds getting stuck on “Anonymous Account” after Google
   Sign-In returned a Keychain error. OpenBurnBar now ships GoogleSignIn 9.2.0
   with GTMAppAuth 5.0.0, which stores OAuth state in the app-scoped
