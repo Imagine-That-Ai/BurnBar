@@ -78,6 +78,42 @@ trap cleanup EXIT
 
 acquire_lock
 
+# Floor validation reads Package.resolved. Do that only after the whole-check
+# lock is held, otherwise a concurrent resolver can be mid-write and this
+# JSON parser can crash on a truncated lockfile before it ever queues.
+python3 - "$lockfile_path" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+lockfile = Path(sys.argv[1])
+pins = {
+    pin["identity"]: pin["state"].get("version")
+    for pin in json.loads(lockfile.read_text())["pins"]
+}
+minimum_versions = {
+    # GoogleSignIn 9.0.0 + GTMAppAuth 5.0.0 moved macOS OAuth state
+    # from the collision-prone global `auth` item in the file-based
+    # Keychain to the app-scoped data-protection Keychain.
+    "googlesignin-ios": (9, 0, 0),
+    "gtmappauth": (5, 0, 0),
+}
+
+for identity, minimum in minimum_versions.items():
+    version = pins.get(identity)
+    if not version:
+        raise SystemExit(f"Missing required SwiftPM pin: {identity}")
+    try:
+        actual = tuple(int(part) for part in version.split("."))
+    except ValueError as error:
+        raise SystemExit(f"Invalid semantic version for {identity}: {version}") from error
+    if actual < minimum:
+        required = ".".join(str(part) for part in minimum)
+        raise SystemExit(
+            f"{identity} {version} is below the macOS Keychain-safe minimum {required}"
+        )
+PY
+
 lockfile_snapshot="$(mktemp "$repo_root/.derived-data/openburnbar-lock-check.Package.resolved.XXXXXX")"
 cp "$lockfile_path" "$lockfile_snapshot"
 

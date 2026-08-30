@@ -326,10 +326,13 @@ final class AccountManager {
             googleUser = try await googleSignInResult(presentingWindow: window).user
         } catch {
             Self.logAuthFailure("Google Sign-In", error)
-            guard Self.isGoogleSignInKeychainError(error),
-                  Self.clearGoogleSignInKeychainState(accessGroup: firebaseAuthAccessGroup) else {
+            guard Self.isGoogleSignInKeychainError(error) else {
                 throw error
             }
+            // GoogleSignIn 9 + GTMAppAuth 5 keep OAuth state in the app-scoped
+            // data-protection Keychain. Let the SDK clear that exact store;
+            // manually deleting the legacy file-based `auth` service can match
+            // another app's item and fail with errSecInvalidOwnerEdit (-25244).
             GIDSignIn.sharedInstance.signOut()
             do {
                 googleUser = try await googleSignInResult(presentingWindow: window).user
@@ -790,53 +793,6 @@ final class AccountManager {
                 || field.localizedCaseInsensitiveContains("gtmappauth")
                 || field.localizedCaseInsensitiveContains("appauth")
         }
-    }
-
-    private static func clearGoogleSignInKeychainState(accessGroup: String?) -> Bool {
-        var statuses = [
-            ("default", deleteGoogleSignInAuthState(accessGroup: nil, useDataProtectionKeychain: false), false),
-            ("default-dp", deleteGoogleSignInAuthState(accessGroup: nil, useDataProtectionKeychain: true), true)
-        ]
-        if let accessGroup {
-            statuses.append(contentsOf: [
-                (
-                    "access-group",
-                    deleteGoogleSignInAuthState(accessGroup: accessGroup, useDataProtectionKeychain: false),
-                    false
-                ),
-                (
-                    "access-group-dp",
-                    deleteGoogleSignInAuthState(accessGroup: accessGroup, useDataProtectionKeychain: true),
-                    true
-                )
-            ])
-        }
-
-        for (label, status, _) in statuses {
-            authLogger.info("Google Sign-In keychain cleanup \(label, privacy: .public) status=\(status)")
-        }
-
-        return statuses.allSatisfy { _, status, isDataProtectionQuery in
-            isRecoverableKeychainDeleteStatus(status, allowMissingEntitlement: isDataProtectionQuery)
-        }
-    }
-
-    private static func deleteGoogleSignInAuthState(
-        accessGroup: String?,
-        useDataProtectionKeychain: Bool
-    ) -> OSStatus {
-        var query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "auth",
-            kSecAttrAccount as String: "OAuth"
-        ]
-        if let accessGroup {
-            query[kSecAttrAccessGroup as String] = accessGroup
-        }
-        if useDataProtectionKeychain {
-            query[kSecUseDataProtectionKeychain as String] = true
-        }
-        return SecItemDelete(query as CFDictionary)
     }
 
     private static func isFirebaseAuthKeychainError(_ error: Error) -> Bool {

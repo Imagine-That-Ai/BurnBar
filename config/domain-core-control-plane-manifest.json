@@ -65,7 +65,7 @@
     "scripts/build-domain-core-xcframework.sh": ["a67566bc304c3755","68106f1c10fca7cb","8517d39f98fce54b","ff4da7fa32241ca5"],
     "scripts/build-iroh-xcframework.sh": ["6b2f0aa378306786","07c0b754f255148b","76f0780670946f10","d0e10704a834e116"],
     "scripts/build-macos-website-release.sh": ["8b61b6a3ded5e055","2d10f347af5bf79e","650fc7570b999d8c","c488598557352628"],
-    "scripts/check-openburnbar-app-swiftpm-lock.sh": ["ed6637aa5cabb164","e80f440a97f418f5","a48017d45218be44","e132944ac47b72e3"],
+    "scripts/check-openburnbar-app-swiftpm-lock.sh": ["7f6151f72cbcc3d6","3e77d7d8ad910b41","dd9fd3b02f83f37f","43f102fb492b18a8"],
     "scripts/ci/await-burnbar-ci-gate.mjs": ["8de4d07f66f0efc8","bc777b324f2e70f0","84b49f5bf7086fef","34580de94d8d2f43"],
     "scripts/ci/build-corresponding-source-archive.sh": ["5230387c630b59bd","ff0f62c93074d3eb","87dfed46bdd81309","cd4812a7f9820cb2"],
     "scripts/ci/canonical-candidate-commit.mjs": ["2abed26f6794d179","47900f51fe2d452c","0b6abdb12eb457d5","49effcb1ab18d341"],

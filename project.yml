@@ -72,7 +72,7 @@ packages:
     from: "12.15.0"
   GoogleSignIn:
     url: https://github.com/google/GoogleSignIn-iOS
-    from: "8.0.0"
+    from: "9.2.0"
   Sentry:
     url: https://github.com/getsentry/sentry-cocoa
     from: "8.0.0"
