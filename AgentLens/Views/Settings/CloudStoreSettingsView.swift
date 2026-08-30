@@ -42,6 +42,7 @@ struct CloudStoreSettingsView: View {
     @State private var pendingBackupChatThreads = 0
     @State private var didRequestAutomaticCatchUp = false
     @State private var showingHostedMCPUnlock = false
+    @State private var showingMemoryWalkthrough = false
 
     /// Hosted Remote MCP requires Cloud Pro. When the member doesn't hold it,
     /// the card wears the tier lock badge and routes its setup action to the
@@ -1363,9 +1364,9 @@ struct CloudStoreSettingsView: View {
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
 
-                remoteMCPCommandRow(label: "Endpoint", value: "https://mcp.burnbar.ai/mcp")
-                remoteMCPCommandRow(label: "Stdio shim", value: "openburnbar-mcp-remote mcp serve")
-                remoteMCPCommandRow(label: "Doctor", value: "openburnbar mcp doctor")
+                remoteMCPCommandRow(label: "Endpoint", value: MemoryWalkthroughContent.endpoint)
+                remoteMCPCommandRow(label: "Stdio shim", value: MemoryWalkthroughContent.shimCommand)
+                remoteMCPCommandRow(label: "Doctor", value: MemoryWalkthroughContent.doctorCommand)
 
                 MacRemoteMCPConnectedClientsSection(store: remoteMCPClients)
 
@@ -1404,6 +1405,19 @@ struct CloudStoreSettingsView: View {
                         .foregroundStyle(DesignSystem.Colors.ember)
                     }
                     .buttonStyle(.plain)
+
+                    Button {
+                        showingMemoryWalkthrough = true
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "brain.head.profile")
+                            Text("How Memory works")
+                        }
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(DesignSystem.Colors.ember)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Take the one-minute tour of memory and the Memory MCP")
                 }
             }
             .padding(20)
@@ -1416,6 +1430,9 @@ struct CloudStoreSettingsView: View {
         .onDisappear { remoteMCPClients.stopListening() }
         .sheet(isPresented: $showingHostedMCPUnlock) {
             FeatureUnlockSheet(feature: GatedFeature.gatedFeature(.hostedMCP))
+        }
+        .sheet(isPresented: $showingMemoryWalkthrough) {
+            MemoryMCPWalkthroughView()
         }
     }
 
