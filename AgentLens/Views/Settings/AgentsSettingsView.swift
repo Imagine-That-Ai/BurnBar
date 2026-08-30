@@ -822,6 +822,97 @@ struct AgentsAdvancedView: View {
     }
 }
 
+private struct QuotaPopoverSpaceControls: View {
+    @Bindable var settingsManager: SettingsManager
+
+    private var layout: PopoverTrayLayout { settingsManager.popoverTrayLayout }
+    private var spec: PopoverTraySectionSpec {
+        layout.spec(for: .quotas) ?? PopoverTraySectionSpec(id: .quotas)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            SettingsToggle(
+                title: "Show quotas in the popover",
+                subtitle: spec.isHidden
+                    ? "Hidden. The tray closes the gap — no blank hole and no fake zero."
+                    : "The quotas block shares the tray with every other section.",
+                icon: "gauge.with.dots.needle.67percent",
+                isOn: Binding(
+                    get: { !spec.isHidden },
+                    set: { visible in
+                        var next = layout
+                        next.setHidden(.quotas, hidden: !visible)
+                        settingsManager.popoverTrayLayout = next
+                    }
+                )
+            )
+
+            if !spec.isHidden {
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                    HStack {
+                        Text(spec.isCollapsed ? "Collapsed to a labeled strip" : "Space relative to other sections")
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        Spacer()
+                        Button(spec.isCollapsed ? "Expand" : "Collapse") {
+                            var next = layout
+                            next.setCollapsed(.quotas, collapsed: !spec.isCollapsed)
+                            settingsManager.popoverTrayLayout = next
+                        }
+                        .buttonStyle(.link)
+                        .font(DesignSystem.Typography.tiny)
+                    }
+
+                    if !spec.isCollapsed {
+                        HStack(spacing: DesignSystem.Spacing.sm) {
+                            Slider(
+                                value: Binding(
+                                    get: { spec.effectiveWeight },
+                                    set: { newValue in
+                                        var next = layout
+                                        next.setWeight(.quotas, weight: newValue)
+                                        if spec.pinnedHeight != nil {
+                                            next.setPinnedHeight(.quotas, height: nil)
+                                        }
+                                        settingsManager.popoverTrayLayout = next
+                                    }
+                                ),
+                                in: PopoverTrayLayoutMath.minWeight...PopoverTrayLayoutMath.maxWeight
+                            )
+                            .accessibilityLabel("Quotas space in the popover")
+                            Text(shareLabel)
+                                .font(DesignSystem.Typography.tiny)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(DesignSystem.Colors.amber)
+                                .monospacedDigit()
+                                .frame(width: 40, alignment: .trailing)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(DesignSystem.Spacing.md)
+        .background(panelFill)
+        .overlay(panelStroke)
+    }
+
+    private var shareLabel: String {
+        let share = PopoverTrayLayoutMath.relativeShare(of: .quotas, in: layout)
+        return "\(Int((share * 100).rounded()))%"
+    }
+
+    private var panelFill: some View {
+        RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+            .fill(DesignSystem.Colors.surfaceElevated.opacity(0.32))
+    }
+
+    private var panelStroke: some View {
+        RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+            .stroke(DesignSystem.Colors.border.opacity(0.45), lineWidth: 0.5)
+    }
+}
+
 private struct QuotaDisplaySettingsPanel: View {
     @Bindable var settingsManager: SettingsManager
     @Bindable var quotaService: ProviderQuotaService
@@ -849,7 +940,7 @@ private struct QuotaDisplaySettingsPanel: View {
                     Text("Quota popover")
                         .font(DesignSystem.Typography.headline)
                         .foregroundStyle(DesignSystem.Colors.textPrimary)
-                    Text("Choose which provider quotas appear in the menu-bar drop-down.")
+                    Text("Choose which provider quotas appear in the menu-bar drop-down, and how much of the tray the quotas block occupies.")
                         .font(DesignSystem.Typography.tiny)
                         .foregroundStyle(DesignSystem.Colors.textMuted)
                         .fixedSize(horizontal: false, vertical: true)
@@ -872,6 +963,8 @@ private struct QuotaDisplaySettingsPanel: View {
                             )
                     )
             }
+
+            QuotaPopoverSpaceControls(settingsManager: settingsManager)
 
             // Cumulative toggle card
             SettingsToggle(

@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import OpenBurnBarCore
 
 // MARK: - Menu Bar Popover View
 
@@ -58,13 +59,8 @@ struct MenuBarPopoverView: View {
 
     @AppStorage("popoverTrayWidth") private var storedPopoverTrayWidth = 340.0
     @AppStorage("popoverTrayHeight") private var storedPopoverTrayHeight = 540.0
-    @AppStorage("popoverTraySectionOrder") private var storedPopoverTraySectionOrder = ""
-    @AppStorage("popoverTraySectionHeights") private var storedPopoverTraySectionHeightsJSON = "{}"
     @AppStorage("hasResetScrambledPopoverLayoutV2") private var hasResetScrambledPopoverLayoutV2 = false
     @AppStorage(LiquidGlassTransparency.storageKey) private var rawGlassTransparency: Double = 0
-
-    private static let minTraySectionHeight: CGFloat = 80
-    private static let maxTraySectionHeight: CGFloat = 720
 
     private var isScanning: Bool { aggregator?.isRefreshing ?? false }
 
@@ -80,31 +76,23 @@ struct MenuBarPopoverView: View {
         clampPopoverHeight(CGFloat(storedPopoverTrayHeight))
     }
 
-    private var popoverScrollMaxHeight: CGFloat {
-        max(popoverViewportHeight - 285, 210)
-    }
-
-    private var availableTraySections: [PopoverTraySection] {
-        PopoverTraySection.allCases.filter { section in
-            switch section {
-            case .chat:
-                return chatController != nil
-            case .mercury:
-                return runtimeContext?.mercuryRouter != nil
-            default:
-                return true
-            }
+    private var availableTraySectionIDs: Set<PopoverTraySectionID> {
+        var ids = Set(PopoverTraySectionID.allCases)
+        if chatController == nil {
+            ids.remove(.chat)
         }
+        if runtimeContext?.mercuryRouter == nil {
+            ids.remove(.mercury)
+        }
+        return ids
     }
 
-    private var orderedTraySections: [PopoverTraySection] {
-        let available = availableTraySections
-        let decoded = storedPopoverTraySectionOrder
-            .split(separator: ",")
-            .compactMap { PopoverTraySection(rawValue: String($0)) }
-            .filter { available.contains($0) }
-        let appended = decoded + available.filter { !decoded.contains($0) }
-        return appended.isEmpty ? available : appended
+    private var trayLayout: PopoverTrayLayout {
+        settingsManager.popoverTrayLayout
+    }
+
+    private var visibleTraySections: [PopoverTraySectionSpec] {
+        trayLayout.visibleSections(available: availableTraySectionIDs)
     }
 
     private var menuBarSparklineSeries: [Double] {
@@ -242,21 +230,7 @@ struct MenuBarPopoverView: View {
                     #endif
                     popoverDivider
 
-                    QuotaPopoverBar(
-                        quotaService: quotaService ?? ProviderQuotaService.shared,
-                        settingsManager: settingsManager,
-                        dataStore: dataStore,
-                        onCustomizeQuotas: {
-                            SettingsDeepLinkRouting.routeToQuotaDisplay()
-                            dismiss()
-                            onOpenSettings()
-                        }
-                    )
-                    popoverDivider
-
-                    ScrollView(.vertical, showsIndicators: true) {
-                        trayContent
-                    }
+                    trayBody
                     .frame(width: popoverWidth)
                     .frame(maxHeight: .infinity)
                     .contentShape(Rectangle())
@@ -306,7 +280,7 @@ struct MenuBarPopoverView: View {
         .onAppear {
             if !hasResetScrambledPopoverLayoutV2 {
                 storedPopoverTrayHeight = 540.0
-                storedPopoverTraySectionOrder = ""
+                settingsManager.popoverTrayLayout = .default()
                 hasResetScrambledPopoverLayoutV2 = true
             }
             clampStoredPopoverSize()
@@ -451,36 +425,154 @@ struct MenuBarPopoverView: View {
 
     // MARK: - Tray Layout
 
-    private var trayContent: some View {
-        VStack(spacing: 0) {
-            let sections = orderedTraySections
-            ForEach(Array(sections.enumerated()), id: \.element.id) { index, section in
-                traySection(section)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .frame(height: customTrayHeight(for: section), alignment: .top)
-                    .clipped()
-                    .background(traySectionIntrinsicMeasurement(for: section))
-                    .contentShape(Rectangle())
-                    .onHover { hovering in
-                        withAnimation(.easeInOut(duration: 0.12)) {
-                            hoveredSectionID = hovering ? section.id : nil
-                        }
-                    }
-                    .overlay(alignment: .topTrailing) {
-                        if hoveredSectionID == section.id {
-                            trayReorderControls(for: section, at: index, totalCount: sections.count)
-                                .transition(.opacity)
-                        }
-                    }
-                resizableTrayDivider(for: section, showsLine: index < sections.count - 1)
-            }
+    private var trayBody: some View {
+        GeometryReader { proxy in
+            trayBodyContent(size: proxy.size)
         }
-        .animation(DesignSystem.Animation.snappy, value: orderedTraySections)
     }
 
     @ViewBuilder
-    private func traySection(_ section: PopoverTraySection) -> some View {
+    private func trayBodyContent(size: CGSize) -> some View {
+        let sections = visibleTraySections
+        if sections.isEmpty {
+            allSectionsHiddenState
+                .frame(width: size.width, height: size.height)
+        } else {
+            trayAllocatedStack(sections: sections, size: size)
+        }
+    }
+
+    @ViewBuilder
+    private func trayAllocatedStack(sections: [PopoverTraySectionSpec], size: CGSize) -> some View {
+        let heights = PopoverTrayLayoutMath.allocate(
+            layout: trayLayout,
+            available: availableTraySectionIDs,
+            bodyHeight: Double(size.height)
+        )
+        let contentHeight = CGFloat(PopoverTrayLayoutMath.contentHeight(of: heights))
+        if contentHeight > size.height + 0.5 {
+            ScrollView(.vertical, showsIndicators: true) {
+                traySectionStack(sections: sections, heights: heights)
+            }
+        } else {
+            traySectionStack(sections: sections, heights: heights)
+                .frame(width: size.width, height: size.height, alignment: .top)
+        }
+    }
+
+    private func traySectionStack(
+        sections: [PopoverTraySectionSpec],
+        heights: [PopoverTraySectionID: Double]
+    ) -> some View {
+        VStack(spacing: 0) {
+            ForEach(Array(sections.enumerated()), id: \.element.id) { index, spec in
+                traySlot(
+                    spec,
+                    allocatedHeight: CGFloat(heights[spec.id] ?? PopoverTrayLayoutMath.defaultMinHeight),
+                    at: index,
+                    totalCount: sections.count
+                )
+                if index < sections.count - 1 {
+                    if spec.isCollapsed {
+                        collapsedTrayDivider
+                    } else {
+                        resizableTrayDivider(for: spec.id, showsLine: true)
+                    }
+                }
+            }
+        }
+        .animation(DesignSystem.Animation.snappy, value: sections.map(\.id))
+        .animation(DesignSystem.Animation.snappy, value: sections.map(\.isCollapsed))
+        .animation(DesignSystem.Animation.snappy, value: sections.map(\.isHidden))
+    }
+
+    @ViewBuilder
+    private func traySlot(
+        _ spec: PopoverTraySectionSpec,
+        allocatedHeight: CGFloat,
+        at index: Int,
+        totalCount: Int
+    ) -> some View {
+        Group {
+            if spec.isCollapsed {
+                CollapsedPopoverTraySectionHeader(
+                    title: spec.id.accessibilityLabel.uppercased(),
+                    onExpand: {
+                        withAnimation(DesignSystem.Animation.snappy) {
+                            mutateTrayLayout { $0.setCollapsed(spec.id, collapsed: false) }
+                        }
+                    }
+                )
+            } else {
+                traySection(spec.id)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(height: allocatedHeight, alignment: .top)
+        .clipped()
+        .background(traySectionIntrinsicMeasurement(for: spec.id))
+        .contentShape(Rectangle())
+        .onHover { hovering in
+            withAnimation(.easeInOut(duration: 0.12)) {
+                hoveredSectionID = hovering ? spec.id.rawValue : nil
+            }
+        }
+        .overlay(alignment: .topTrailing) {
+            if hoveredSectionID == spec.id.rawValue {
+                trayReorderControls(for: spec, at: index, totalCount: totalCount)
+                    .transition(.opacity)
+            }
+        }
+        .accessibilityIdentifier("popover.section.\(spec.id.rawValue)")
+    }
+
+    private var collapsedTrayDivider: some View {
+        Rectangle()
+            .fill(colorScheme == .dark ? Color.white.opacity(0.10) : Color.black.opacity(0.09))
+            .frame(height: 0.5)
+            .padding(.horizontal, 12)
+            .frame(height: CGFloat(PopoverTrayLayoutMath.dividerHeight))
+    }
+
+    private var allSectionsHiddenState: some View {
+        VStack(spacing: DesignSystem.Spacing.md) {
+            Image(systemName: "rectangle.split.1x2")
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+            Text("Every section is hidden")
+                .font(DesignSystem.Typography.body)
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
+            Text("Show sections again in Settings under Appearance, Menu Bar. Hidden blocks leave no blank gap.")
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, DesignSystem.Spacing.lg)
+            Button("Restore default layout") {
+                withAnimation(DesignSystem.Animation.snappy) {
+                    mutateTrayLayout { $0.restoreDefaults() }
+                }
+            }
+            .buttonStyle(.link)
+            .font(DesignSystem.Typography.caption)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityIdentifier("popover.layout.empty")
+    }
+
+    @ViewBuilder
+    private func traySection(_ section: PopoverTraySectionID) -> some View {
         switch section {
+        case .quotas:
+            QuotaPopoverBar(
+                quotaService: quotaService ?? ProviderQuotaService.shared,
+                settingsManager: settingsManager,
+                dataStore: dataStore,
+                onCustomizeQuotas: {
+                    SettingsDeepLinkRouting.routeToQuotaDisplay()
+                    dismiss()
+                    onOpenSettings()
+                }
+            )
         case .insights:
             InsightCardView(
                 insights: insights,
@@ -548,36 +640,58 @@ struct MenuBarPopoverView: View {
         }
     }
 
-    private func trayReorderControls(for section: PopoverTraySection, at index: Int, totalCount: Int) -> some View {
+    private func trayReorderControls(for spec: PopoverTraySectionSpec, at index: Int, totalCount: Int) -> some View {
         HStack(spacing: 0) {
             Button {
-                moveTraySection(section, offset: -1)
+                mutateTrayLayout { $0.move(spec.id, offset: -1) }
             } label: {
                 Image(systemName: "chevron.up")
             }
             .disabled(index == 0)
-            .accessibilityLabel("Move \(section.accessibilityLabel) up")
-            .popoverTooltip("Move \(section.accessibilityLabel) up")
+            .accessibilityLabel("Move \(spec.id.accessibilityLabel) up")
+            .popoverTooltip("Move \(spec.id.accessibilityLabel) up")
 
             Button {
-                moveTraySection(section, offset: 1)
+                mutateTrayLayout { $0.move(spec.id, offset: 1) }
             } label: {
                 Image(systemName: "chevron.down")
             }
             .disabled(index >= totalCount - 1)
-            .accessibilityLabel("Move \(section.accessibilityLabel) down")
-            .popoverTooltip("Move \(section.accessibilityLabel) down")
+            .accessibilityLabel("Move \(spec.id.accessibilityLabel) down")
+            .popoverTooltip("Move \(spec.id.accessibilityLabel) down")
 
-            if customTrayHeight(for: section) != nil {
+            Button {
+                withAnimation(DesignSystem.Animation.snappy) {
+                    mutateTrayLayout { $0.setCollapsed(spec.id, collapsed: !spec.isCollapsed) }
+                }
+            } label: {
+                Image(systemName: spec.isCollapsed ? "rectangle.expand.vertical" : "rectangle.compress.vertical")
+            }
+            .accessibilityLabel(spec.isCollapsed
+                ? "Expand \(spec.id.accessibilityLabel)"
+                : "Collapse \(spec.id.accessibilityLabel)")
+            .popoverTooltip(spec.isCollapsed ? "Expand" : "Collapse")
+
+            Button {
+                withAnimation(DesignSystem.Animation.snappy) {
+                    mutateTrayLayout { $0.setHidden(spec.id, hidden: true) }
+                }
+            } label: {
+                Image(systemName: "eye.slash")
+            }
+            .accessibilityLabel("Hide \(spec.id.accessibilityLabel)")
+            .popoverTooltip("Hide")
+
+            if spec.pinnedHeight != nil {
                 Button {
                     withAnimation(DesignSystem.Animation.snappy) {
-                        setCustomTrayHeight(nil, for: section)
+                        mutateTrayLayout { $0.setPinnedHeight(spec.id, height: nil) }
                     }
                 } label: {
                     Image(systemName: "arrow.counterclockwise")
                 }
-                .accessibilityLabel("Reset \(section.accessibilityLabel) height")
-                .popoverTooltip("Reset \(section.accessibilityLabel) height")
+                .accessibilityLabel("Reset \(spec.id.accessibilityLabel) height")
+                .popoverTooltip("Reset height")
             }
         }
         .font(.system(size: 9, weight: .semibold))
@@ -663,30 +777,10 @@ struct MenuBarPopoverView: View {
         }
     }
 
-    private func setTraySectionOrder(_ sections: [PopoverTraySection]) {
-        let available = availableTraySections
-        let normalized = sections.filter { available.contains($0) }
-            + available.filter { !sections.contains($0) }
-        storedPopoverTraySectionOrder = normalized.map(\.rawValue).joined(separator: ",")
-    }
-
-    private func moveTraySection(_ section: PopoverTraySection, offset: Int) {
-        let sections = orderedTraySections
-        guard let currentIndex = sections.firstIndex(of: section) else { return }
-        moveTraySection(section, toSlot: currentIndex + offset)
-    }
-
-    private func moveTraySection(_ section: PopoverTraySection, toSlot slot: Int) {
-        var sections = orderedTraySections
-        guard let currentIndex = sections.firstIndex(of: section) else { return }
-
-        sections.remove(at: currentIndex)
-        let adjustedSlot = slot > currentIndex ? slot - 1 : slot
-        let clampedSlot = min(max(adjustedSlot, 0), sections.count)
-        sections.insert(section, at: clampedSlot)
-        withAnimation(DesignSystem.Animation.snappy) {
-            setTraySectionOrder(sections)
-        }
+    private func mutateTrayLayout(_ mutate: (inout PopoverTrayLayout) -> Void) {
+        var next = trayLayout
+        mutate(&next)
+        settingsManager.popoverTrayLayout = next
     }
 
     private func clampStoredPopoverSize() {
@@ -706,50 +800,33 @@ struct MenuBarPopoverView: View {
 
     // MARK: - Per-section resize
 
-    private var traySectionHeights: [String: CGFloat] {
-        guard let data = storedPopoverTraySectionHeightsJSON.data(using: .utf8),
-              let decoded = try? JSONDecoder().decode([String: Double].self, from: data) else {
-            return [:]
-        }
-        var result: [String: CGFloat] = [:]
-        for (key, value) in decoded {
-            result[key] = CGFloat(value)
-        }
-        return result
+    private func customTrayHeight(for section: PopoverTraySectionID) -> CGFloat? {
+        trayLayout.spec(for: section)?.pinnedHeight.map { CGFloat($0) }
     }
 
-    private func customTrayHeight(for section: PopoverTraySection) -> CGFloat? {
-        traySectionHeights[section.rawValue].map { clampTraySectionHeight($0) }
-    }
-
-    private func setCustomTrayHeight(_ height: CGFloat?, for section: PopoverTraySection) {
-        var dict: [String: Double] = [:]
-        for (key, value) in traySectionHeights {
-            dict[key] = Double(value)
-        }
-        if let height {
-            dict[section.rawValue] = Double(clampTraySectionHeight(height))
-        } else {
-            dict.removeValue(forKey: section.rawValue)
-        }
-        if let data = try? JSONEncoder().encode(dict),
-           let json = String(data: data, encoding: .utf8) {
-            storedPopoverTraySectionHeightsJSON = json
+    private func setCustomTrayHeight(_ height: CGFloat?, for section: PopoverTraySectionID) {
+        mutateTrayLayout { layout in
+            layout.setPinnedHeight(section, height: height.map { Double($0) })
         }
     }
 
-    private func clampTraySectionHeight(_ height: CGFloat) -> CGFloat {
-        min(max(height, Self.minTraySectionHeight), Self.maxTraySectionHeight)
+    private func clampTraySectionHeight(_ height: CGFloat, for section: PopoverTraySectionID) -> CGFloat {
+        let spec = trayLayout.spec(for: section) ?? PopoverTraySectionSpec(id: section)
+        CGFloat(PopoverTrayLayoutMath.clamp(
+            Double(height),
+            min: spec.effectiveMinHeight,
+            max: spec.effectiveMaxHeight
+        ))
     }
 
-    private func resizeStartHeight(for section: PopoverTraySection) -> CGFloat {
+    private func resizeStartHeight(for section: PopoverTraySectionID) -> CGFloat {
         customTrayHeight(for: section)
             ?? intrinsicTraySectionHeights[section.rawValue]
-            ?? 200
+            ?? CGFloat(PopoverTrayLayoutMath.defaultMinHeight)
     }
 
     @ViewBuilder
-    private func traySectionIntrinsicMeasurement(for section: PopoverTraySection) -> some View {
+    private func traySectionIntrinsicMeasurement(for section: PopoverTraySectionID) -> some View {
         GeometryReader { proxy in
             Color.clear
                 .onAppear {
@@ -765,7 +842,7 @@ struct MenuBarPopoverView: View {
     }
 
     @ViewBuilder
-    private func resizableTrayDivider(for section: PopoverTraySection, showsLine: Bool) -> some View {
+    private func resizableTrayDivider(for section: PopoverTraySectionID, showsLine: Bool) -> some View {
         ResizableTraySectionDivider(
             showsLine: showsLine,
             hasCustomHeight: customTrayHeight(for: section) != nil,
@@ -775,7 +852,10 @@ struct MenuBarPopoverView: View {
                     activeTrayResizeSection = section.rawValue
                     activeTrayResizeStartHeight = resizeStartHeight(for: section)
                 }
-                let newHeight = clampTraySectionHeight(activeTrayResizeStartHeight + translationY)
+                let newHeight = clampTraySectionHeight(
+                    activeTrayResizeStartHeight + translationY,
+                    for: section
+                )
                 setCustomTrayHeight(newHeight, for: section)
             },
             onResizeEnded: {
@@ -1671,31 +1751,31 @@ struct GlassIconButton<Label: View>: View {
     }
 }
 
-private enum PopoverTraySection: String, CaseIterable, Identifiable {
-    case insights
-    case summary
-    case providers
-    case mercury
-    case chat
-    case quickSwitch
+private struct CollapsedPopoverTraySectionHeader: View {
+    let title: String
+    let onExpand: () -> Void
 
-    var id: String { rawValue }
-
-    var accessibilityLabel: String {
-        switch self {
-        case .insights:
-            return "Insights"
-        case .summary:
-            return "Summary"
-        case .providers:
-            return "Providers"
-        case .mercury:
-            return "Mercury"
-        case .chat:
-            return "Chat"
-        case .quickSwitch:
-            return "Quick Switch"
+    var body: some View {
+        Button(action: onExpand) {
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                Text(title)
+                    .font(DesignSystem.Typography.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                Text("Collapsed")
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+            }
+            .padding(.horizontal, DesignSystem.Spacing.lg)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .accessibilityHint("Expands this section")
     }
 }
 
