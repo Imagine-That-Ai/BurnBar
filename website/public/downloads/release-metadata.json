@@ -1,15 +1,15 @@
 {
   "appcast": "appcast.xml",
-  "build_timestamp": "2026-08-28T10:06:01Z",
+  "build_timestamp": "2026-08-30T16:17:04Z",
   "channel": "direct-download",
-  "commit": "6940dc3b006460b0b07237537a1cade05be1cc1b",
-  "correspondingSource": "OpenBurnBar-1.0.40+repair.34-corresponding-source.tar.gz",
+  "commit": "b9ae1b68036c9b189cc097ea5b17f7cf9850c473",
+  "correspondingSource": "OpenBurnBar-1.0.40+repair.36-corresponding-source.tar.gz",
   "latestMetadata": "latest-macos.json",
   "runner_arch": "ARM64",
-  "runner_name": "GitHub Actions 1000817035",
+  "runner_name": "GitHub Actions 1000826191",
   "runner_os": "macOS",
   "sparkleEdSignaturePresent": true,
-  "tag": "v1.0.40+repair.34",
+  "tag": "v1.0.40+repair.36",
   "updateBaseUrl": "https://downloads.burnbar.ai",
-  "version": "1.0.40+repair.34"
+  "version": "1.0.40+repair.36"
 }

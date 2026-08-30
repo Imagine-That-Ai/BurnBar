@@ -34,7 +34,7 @@ const releaseDocs = read("docs/RELEASE_MACOS.md");
 // This is intentionally duplicated from SITE. Changing the public DMG URL must
 // update this audited live URL in the same PR, after the replacement artifact is
 // published and manually verified.
-const AUDITED_LIVE_MAC_DOWNLOAD_URL = "https://downloads.burnbar.ai/OpenBurnBar-1.0.40+repair.34-macOS.dmg";
+const AUDITED_LIVE_MAC_DOWNLOAD_URL = "https://downloads.burnbar.ai/OpenBurnBar-1.0.40+repair.36-macOS.dmg";
 
 const TRUSTED_GITHUB_RELEASE_PATH =
   /^\/Imagine-That-Ai\/BurnBar\/releases\/download\/[^/%]+(?:\/OpenBurnBar-[A-Za-z0-9._+-]+-macOS\.dmg)?$/;
