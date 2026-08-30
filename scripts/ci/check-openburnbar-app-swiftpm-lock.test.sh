@@ -12,6 +12,31 @@ cleanup() {
 
 trap cleanup EXIT
 
+write_lockfile() {
+  local path="$1"
+  local google_sign_in_version="${2:-9.2.0}"
+  local gtm_app_auth_version="${3:-5.0.0}"
+  cat >"$path" <<EOF
+{
+  "pins": [
+    {
+      "identity": "googlesignin-ios",
+      "state": {
+        "version": "${google_sign_in_version}"
+      }
+    },
+    {
+      "identity": "gtmappauth",
+      "state": {
+        "version": "${gtm_app_auth_version}"
+      }
+    }
+  ],
+  "version": 3
+}
+EOF
+}
+
 make_fixture() {
   local name="$1"
   local root="$fixture_root/$name"
@@ -20,8 +45,8 @@ make_fixture() {
     "$root/OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm" \
     "$root/fake-bin"
   cp "$script_under_test" "$root/scripts/check-openburnbar-app-swiftpm-lock.sh"
-  printf 'committed-lockfile\n' \
-    >"$root/OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
+  write_lockfile \
+    "$root/OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
   git -C "$root" init -q
   git -C "$root" add OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
   git -C "$root" \
@@ -99,7 +124,7 @@ run_fixture() {
   local lockfile="$root/OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
   local expected="$root/expected.Package.resolved"
   local attempts="$root/attempts"
-  printf 'committed-lockfile\n' >"$expected"
+  cp "$lockfile" "$expected"
   FIREBASE_SOURCE_FIRESTORE=0 \
     PATH="$root/fake-bin:$PATH" \
     FAKE_MODE="$mode" \
@@ -150,13 +175,32 @@ cmp -s \
   "$failure_root/expected.Package.resolved" \
   "$failure_root/OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
 
+for floor_case in "googlesignin-ios:8.0.0:5.0.0" "gtmappauth:9.2.0:4.1.1"; do
+  IFS=: read -r identity google_sign_in_version gtm_app_auth_version <<<"$floor_case"
+  floor_root="$(make_fixture "below-floor-${identity}")"
+  floor_lockfile="$floor_root/OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
+  write_lockfile "$floor_lockfile" "$google_sign_in_version" "$gtm_app_auth_version"
+  set +e
+  floor_output="$(bash "$floor_root/scripts/check-openburnbar-app-swiftpm-lock.sh" 2>&1)"
+  floor_status=$?
+  set -e
+  if (( floor_status == 0 )); then
+    echo "Expected ${identity} below-floor lockfile to fail" >&2
+    exit 1
+  fi
+  if [[ "$floor_output" != *"${identity}"*"below the macOS Keychain-safe minimum"* ]]; then
+    echo "Expected ${identity} below-floor failure to name the Keychain-safe minimum" >&2
+    exit 1
+  fi
+done
+
 # Regression: concurrent invocations in the same checkout must serialize on the
 # whole-check lock. Without it, the hard-failure invocation restores its clean
 # snapshot after the drifting invocation has written legitimate resolver drift
 # but before that invocation diffs, so real drift would be masked as exit 0.
 concurrent_root="$(make_fixture concurrent)"
 concurrent_lockfile="$concurrent_root/OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
-printf 'committed-lockfile\n' >"$concurrent_root/expected.Package.resolved"
+cp "$concurrent_lockfile" "$concurrent_root/expected.Package.resolved"
 drift_written_flag="$concurrent_root/drift-written"
 peer_done_flag="$concurrent_root/peer-done"
 

@@ -18,6 +18,39 @@ if [[ ! -f "$lockfile_path" ]]; then
   exit 1
 fi
 
+python3 - "$lockfile_path" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+lockfile = Path(sys.argv[1])
+pins = {
+    pin["identity"]: pin["state"].get("version")
+    for pin in json.loads(lockfile.read_text())["pins"]
+}
+minimum_versions = {
+    # GoogleSignIn 9.0.0 + GTMAppAuth 5.0.0 moved macOS OAuth state
+    # from the collision-prone global `auth` item in the file-based
+    # Keychain to the app-scoped data-protection Keychain.
+    "googlesignin-ios": (9, 0, 0),
+    "gtmappauth": (5, 0, 0),
+}
+
+for identity, minimum in minimum_versions.items():
+    version = pins.get(identity)
+    if not version:
+        raise SystemExit(f"Missing required SwiftPM pin: {identity}")
+    try:
+        actual = tuple(int(part) for part in version.split("."))
+    except ValueError as error:
+        raise SystemExit(f"Invalid semantic version for {identity}: {version}") from error
+    if actual < minimum:
+        required = ".".join(str(part) for part in minimum)
+        raise SystemExit(
+            f"{identity} {version} is below the macOS Keychain-safe minimum {required}"
+        )
+PY
+
 mkdir -p "$repo_root/.derived-data"
 mkdir -p "$cache_dir"
 

@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Fixed official macOS builds getting stuck on “Anonymous Account” after Google
+  Sign-In returned a Keychain error. OpenBurnBar now ships GoogleSignIn 9.2.0
+  with GTMAppAuth 5.0.0, which stores OAuth state in the app-scoped
+  data-protection Keychain instead of the collision-prone global `auth` item.
+  Recovery now asks GoogleSignIn to clear its own store rather than manually
+  deleting a legacy item that may belong to another app, and the lockfile gate
+  rejects regressions below the Keychain-safe dependency floor.
 - `openburnbar app install` (npm 0.2.2) no longer aborts a verified macOS DMG when the
   public feed advertises a SemVer tag with `+repair.N` (for example
   `1.0.40+repair.34` build 81) and the mounted app's
