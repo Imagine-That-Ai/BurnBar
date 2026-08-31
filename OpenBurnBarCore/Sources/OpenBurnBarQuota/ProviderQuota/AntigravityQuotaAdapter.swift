@@ -177,7 +177,7 @@ public struct AntigravityQuotaAdapter: ProviderQuotaAdapter {
             var sawAnyEvent = false
 
             if let historyScan, historyScan.inWindowCount > 0 {
-                inWindowCount += historyScan.inWindowCount
+                inWindowCount = max(inWindowCount, historyScan.inWindowCount)
                 if let ts = historyScan.earliestInWindowTimestamp {
                     earliestInWindowTimestamp = min(earliestInWindowTimestamp ?? ts, ts)
                 }
@@ -185,7 +185,7 @@ public struct AntigravityQuotaAdapter: ProviderQuotaAdapter {
             }
 
             if transcriptScan.inWindowCount > 0 {
-                inWindowCount += transcriptScan.inWindowCount
+                inWindowCount = max(inWindowCount, transcriptScan.inWindowCount)
                 if let ts = transcriptScan.earliestInWindowTimestamp {
                     earliestInWindowTimestamp = min(earliestInWindowTimestamp ?? ts, ts)
                 }
@@ -346,7 +346,7 @@ public struct AntigravityQuotaAdapter: ProviderQuotaAdapter {
                         }
                     }
 
-                    if source == "MODEL" && type == "PLANNER_RESPONSE" {
+                    if (source == "MODEL" && type == "PLANNER_RESPONSE") || source == "USER_EXPLICIT" || type == "USER_INPUT" || source == "USER" {
                         if let createdAtStr,
                            let date = ThreadSafeISO8601DateFormatter.parse(createdAtStr) {
                             let tsMs = date.timeIntervalSince1970 * 1000.0

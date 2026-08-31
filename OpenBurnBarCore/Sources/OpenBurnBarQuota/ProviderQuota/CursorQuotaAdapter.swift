@@ -235,21 +235,21 @@ public struct CursorQuotaAdapter: ProviderQuotaAdapter {
                     plan.apiPercentUsed.map { b in (a + b) / 2 } ?? a
                 }
 
-            if planLimit > 0 || planUsed > 0 {
-                // The plan bucket reports dollars (Cursor's API returns cents,
-                // converted above). The fill fraction is driven by `usedPercent`
-                // so the gauge looks identical; only the side labels change to
-                // currency once `unit: .currency` flows through to the views.
+            if planLimit > 0 || planUsed > 0 || totalPercent != nil {
+                // The plan bucket reports dollars when limit > 0, percent otherwise.
+                let planRemaining = planLimit > planUsed
+                    ? max(planLimit - planUsed, 0)
+                    : (totalPercent.map { max(100 - $0, 0) } ?? max(planLimit - planUsed, 0))
                 buckets.append(ProviderQuotaBucket(
                     key: "cursor-plan",
                     label: "Included usage",
                     windowKind: .monthly,
-                    usedValue: planUsed,
-                    limitValue: planLimit,
-                    remainingValue: max(planLimit - planUsed, 0),
+                    usedValue: planLimit > 0 ? planUsed : (totalPercent ?? planUsed),
+                    limitValue: planLimit > 0 ? planLimit : 100,
+                    remainingValue: planRemaining,
                     usedPercent: totalPercent,
                     resetsAt: resetsAt,
-                    unit: .currency,
+                    unit: planLimit > 0 ? .currency : .percent,
                     isEstimated: false
                 ))
             }

@@ -139,7 +139,7 @@ public enum FlexibleQuotaBucketNormalizer {
         // Z.ai uses unit+number fields to distinguish quota windows
         let zaiUnit = provider == .zai ? number(in: dictionary, keys: ["unit"]) : nil
         let zaiNumber = provider == .zai ? number(in: dictionary, keys: ["number"]) : nil
-        let windowKind = inferWindowKind(
+        var windowKind = inferWindowKind(
             from: intervalHint ?? rawLabel,
             provider: provider,
             intervalStart: intervalStart,
@@ -152,6 +152,14 @@ public enum FlexibleQuotaBucketNormalizer {
             unit: zaiUnit,
             number: zaiNumber
         )
+        if windowKind == .custom {
+            windowKind = inferWindowKind(
+                from: intervalHint ?? label,
+                provider: provider,
+                intervalStart: intervalStart,
+                resetsAt: resetsAt
+            )
+        }
         let unit = inferUnit(provider: provider, label: rawLabel, dictionary: dictionary, usedPercent: usedPercent, limitValue: limitValue)
         var normalizedRemaining: Double?
         if unit == .percent, let usedPercent {
