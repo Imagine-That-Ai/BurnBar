@@ -7,9 +7,16 @@ import OpenBurnBarSQLiteReader
 /// Reports Windsurf (Codeium) plan quota, daily/weekly rate limits, flex credits,
 /// and flow actions from its local `state.vscdb` global storage database.
 public struct WindsurfQuotaAdapter: ProviderQuotaAdapter {
-    public init() {}
+    public let vscdbPathOverride: String?
 
-    private static var candidateVscdbPaths: [String] {
+    public init(vscdbPathOverride: String? = nil) {
+        self.vscdbPathOverride = vscdbPathOverride
+    }
+
+    private var candidateVscdbPaths: [String] {
+        if let override = vscdbPathOverride {
+            return [override]
+        }
         let home = NSHomeDirectory()
         return [
             "\(home)/Library/Application Support/Windsurf - Next/User/globalStorage/state.vscdb",
@@ -20,7 +27,7 @@ public struct WindsurfQuotaAdapter: ProviderQuotaAdapter {
     }
 
     public func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
-        for path in Self.candidateVscdbPaths {
+        for path in candidateVscdbPaths {
             guard FileManager.default.fileExists(atPath: path) else { continue }
             if let snapshot = try? parseStateDB(atPath: path) {
                 return snapshot
