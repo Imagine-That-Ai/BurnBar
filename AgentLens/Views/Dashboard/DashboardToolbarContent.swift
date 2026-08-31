@@ -319,8 +319,12 @@ extension DashboardView {
         // half-adaptive: every label below reads `\.backdropInk` and gets the
         // family the sampler sized for whatever the kernel is painting.
         .resolvingBackdropInk(
-            liveBackdropActive: dashboardLiveBackdropActive,
-            profile: dashboardActiveReadabilityProfile
+            liveBackdropActive: false,
+            profile: BackdropReadabilityProfile.nativeFallback(
+                colorScheme: dashboardKernelColorScheme,
+                appearanceSkin: settingsManager.appearanceSkin,
+                liveBackdropActive: false
+            )
         )
     }
 
@@ -348,28 +352,19 @@ extension DashboardView {
 
     /// The ink the chrome draws with.
     ///
-    /// Resolved here rather than read from `\.backdropInk` because the deck rows
-    /// are computed properties of `DashboardView` itself, and a view cannot read
-    /// an environment value it injects into its own output. The injection in
-    /// `dashboardCommandDeck` is still what serves the real child views —
-    /// `DashboardLayoutSwitcher`, `DashboardQuickAccessRail`,
-    /// `BurnRailAppearanceQuickMenu` — so both paths resolve the same family.
+    /// Sized for the frosted cockpit chrome plate (`.burnBarGlass(.cockpit, role: .chrome)`),
+    /// guaranteeing crisp, high-contrast text and icons (>= 4.5:1 WCAG) across both light
+    /// and dark appearance modes rather than inheriting transparent canvas sampling.
     var dashboardChromeInk: BackdropInk {
-        BackdropInk.resolve(
-            liveBackdropActive: dashboardLiveBackdropActive,
-            profile: dashboardActiveReadabilityProfile
+        BackdropInk.resolveForPlate(
+            skin: settingsManager.appearanceSkin,
+            colorScheme: dashboardKernelColorScheme
         )
     }
 
-    /// The tone of the chrome plate, for the few places that need a
-    /// `ColorScheme` rather than a colour — brand glyph contrast discs, mostly.
-    ///
-    /// Under a live backdrop the sampled profile knows better than the app's
-    /// appearance does, which is the whole reason it is sampled.
+    /// The tone of the chrome plate, matching the current kernel appearance scheme.
     var dashboardChromeColorScheme: ColorScheme {
-        dashboardLiveBackdropActive
-            ? dashboardActiveReadabilityProfile.interfaceColorScheme
-            : dashboardKernelColorScheme
+        dashboardKernelColorScheme
     }
 
     private var dashboardDeckLeading: some View {
@@ -419,11 +414,20 @@ extension DashboardView {
             .padding(2.5)
             .background(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(DesignSystem.Colors.surface.opacity(0.34))
+                    .fill(
+                        dashboardChromeColorScheme == .dark
+                            ? DesignSystem.Colors.surface.opacity(0.34)
+                            : Color.black.opacity(0.05)
+                    )
             )
             .overlay {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(dashboardChromeInk.hairline.opacity(0.5), lineWidth: 0.5)
+                    .stroke(
+                        dashboardChromeColorScheme == .dark
+                            ? dashboardChromeInk.hairline.opacity(0.5)
+                            : Color.black.opacity(0.08),
+                        lineWidth: 0.5
+                    )
             }
         }
         .fixedSize(horizontal: true, vertical: false)
@@ -449,7 +453,11 @@ extension DashboardView {
                 .background {
                     if selected {
                         RoundedRectangle(cornerRadius: 9.5, style: .continuous)
-                            .fill(DesignSystem.Colors.ember.opacity(0.2))
+                            .fill(
+                                dashboardChromeColorScheme == .dark
+                                    ? DesignSystem.Colors.ember.opacity(0.24)
+                                    : DesignSystem.Colors.ember.opacity(0.18)
+                            )
                     }
                 }
                 .contentShape(RoundedRectangle(cornerRadius: 9.5, style: .continuous))
@@ -552,12 +560,14 @@ extension DashboardView {
             insetShape.fill(
                 dashboardChromeColorScheme == .dark
                     ? Color.black.opacity(0.18)
-                    : Color.white.opacity(0.22)
+                    : Color.black.opacity(0.04)
             )
         )
         .overlay {
             insetShape.stroke(
-                dashboardChromeInk.hairline.opacity(0.38),
+                dashboardChromeColorScheme == .dark
+                    ? dashboardChromeInk.hairline.opacity(0.38)
+                    : Color.black.opacity(0.08),
                 lineWidth: 0.5
             )
         }
