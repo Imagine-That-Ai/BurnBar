@@ -79,6 +79,31 @@ public final class AntigravityParser: LogParser, Sendable {
 
     private let settingsCache = Locked<SettingsCacheEntry?>(nil)
 
+    private func candidateBasePaths() -> [String] {
+        if let override = logDirectoryOverride {
+            return [(override as NSString).expandingTildeInPath]
+        }
+        return [
+            ("~/.gemini/antigravity" as NSString).expandingTildeInPath,
+            ("~/.gemini/antigravity-cli" as NSString).expandingTildeInPath,
+            ("~/.antigravity" as NSString).expandingTildeInPath
+        ]
+    }
+
+    private func resolveSettingsURL(candidateRoots: [String]) -> URL? {
+        for root in candidateRoots {
+            let url = URL(fileURLWithPath: root).appendingPathComponent("settings.json")
+            if fileManager.fileExists(atPath: url.path) {
+                return url
+            }
+        }
+        let geminiSettings = URL(fileURLWithPath: ("~/.gemini/settings.json" as NSString).expandingTildeInPath)
+        if fileManager.fileExists(atPath: geminiSettings.path) {
+            return geminiSettings
+        }
+        return nil
+    }
+
     public func parse() async throws -> ParseResult {
         try await parse(options: .default)
     }
@@ -87,14 +112,8 @@ public final class AntigravityParser: LogParser, Sendable {
         sessionScanCount.write(0)
         sessionCacheHitCount.write(0)
         let gate = ParserFileReadGate(options: options, fileManager: fileManager)
-        let basePath = ((logDirectoryOverride ?? "~/.gemini/antigravity-cli") as NSString).expandingTildeInPath
-        let brainPath = (basePath as NSString).appendingPathComponent("brain")
-
-        guard fileManager.fileExists(atPath: brainPath) else {
-            return ParseResult(usages: [], conversations: [])
-        }
-
-        let settingsURL = URL(fileURLWithPath: basePath).appendingPathComponent("settings.json")
+        let basePaths = candidateBasePaths()
+        let settingsURL = resolveSettingsURL(candidateRoots: basePaths)
         let fallbackModelName = try configuredFallbackModel(
             at: settingsURL,
             options: options,
@@ -106,6 +125,7 @@ public final class AntigravityParser: LogParser, Sendable {
         var conversations: [ConversationRecord] = []
         var parseCache = cacheStore.load()
         var activePaths = Set<String>()
+        var seenSessionIds = Set<String>()
         var cacheMutated = false
         defer {
             if cacheMutated {
@@ -113,63 +133,69 @@ public final class AntigravityParser: LogParser, Sendable {
             }
         }
 
-        let brainURL = URL(fileURLWithPath: brainPath)
-        let conversationDirs = (try? fileManager.contentsOfDirectory(at: brainURL, includingPropertiesForKeys: [.isDirectoryKey]))?.filter {
-            (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
-        } ?? []
+        for basePath in basePaths {
+            let brainPath = (basePath as NSString).appendingPathComponent("brain")
+            guard fileManager.fileExists(atPath: brainPath) else { continue }
+            let brainURL = URL(fileURLWithPath: brainPath)
+            let conversationDirs = (try? fileManager.contentsOfDirectory(at: brainURL, includingPropertiesForKeys: [.isDirectoryKey]))?.filter {
+                (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+            } ?? []
 
-        for conversationDir in conversationDirs {
-            let sessionId = conversationDir.lastPathComponent
-            let logsDir = conversationDir
-                .appendingPathComponent(".system_generated")
-                .appendingPathComponent("logs")
+            for conversationDir in conversationDirs {
+                let sessionId = conversationDir.lastPathComponent
+                guard seenSessionIds.insert(sessionId).inserted else { continue }
 
-            let fullTranscript = logsDir.appendingPathComponent("transcript_full.jsonl")
-            let truncatedTranscript = logsDir.appendingPathComponent("transcript.jsonl")
-            let transcriptFile = fileManager.fileExists(atPath: fullTranscript.path) ? fullTranscript : truncatedTranscript
+                let logsDir = conversationDir
+                    .appendingPathComponent(".system_generated")
+                    .appendingPathComponent("logs")
 
-            guard fileManager.fileExists(atPath: transcriptFile.path) else { continue }
-            let cacheKey = transcriptFile.standardizedFileURL.path
-            activePaths.insert(cacheKey)
-            guard try gate.shouldRead(transcriptFile) else { continue }
+                let fullTranscript = logsDir.appendingPathComponent("transcript_full.jsonl")
+                let truncatedTranscript = logsDir.appendingPathComponent("transcript.jsonl")
+                let transcriptFile = fileManager.fileExists(atPath: fullTranscript.path) ? fullTranscript : truncatedTranscript
 
-            let signature = FileSignature(for: transcriptFile, using: fileManager).map {
-                AntigravityCacheSignature(transcript: $0, fallbackModel: fallbackModelName)
-            }
-            if !options.includeConversationBodies,
-               let signature,
-               let cached = parseCache.fileEntries[cacheKey],
-               cached.signature == signature {
-                sessionCacheHitCount.withLock { $0 += 1 }
-                usages.append(cached.totals.makeUsage(provider: .antigravity, sessionId: sessionId))
-                continue
-            }
+                guard fileManager.fileExists(atPath: transcriptFile.path) else { continue }
+                let cacheKey = transcriptFile.standardizedFileURL.path
+                activePaths.insert(cacheKey)
+                guard try gate.shouldRead(transcriptFile) else { continue }
 
-            sessionScanCount.withLock { $0 += 1 }
-            do {
-                if let pair = try parseSession(
-                    transcriptFile: transcriptFile,
-                    sessionId: sessionId,
-                    fallbackModel: fallbackModelName,
-                    includeConversationBodies: options.includeConversationBodies
-                ) {
-                    if let usage = pair.usage {
-                        usages.append(usage)
-                        if let signature {
-                            parseCache.fileEntries[cacheKey] = CachedUsageEntry(signature: signature, usage: usage)
-                            cacheMutated = true
+                let signature = FileSignature(for: transcriptFile, using: fileManager).map {
+                    AntigravityCacheSignature(transcript: $0, fallbackModel: fallbackModelName)
+                }
+                if !options.includeConversationBodies,
+                   let signature,
+                   let cached = parseCache.fileEntries[cacheKey],
+                   cached.signature == signature {
+                    sessionCacheHitCount.withLock { $0 += 1 }
+                    usages.append(cached.totals.makeUsage(provider: .antigravity, sessionId: sessionId))
+                    continue
+                }
+
+                sessionScanCount.withLock { $0 += 1 }
+                do {
+                    if let pair = try parseSession(
+                        transcriptFile: transcriptFile,
+                        sessionId: sessionId,
+                        fallbackModel: fallbackModelName,
+                        includeConversationBodies: options.includeConversationBodies
+                    ) {
+                        if let usage = pair.usage {
+                            usages.append(usage)
+                            if let signature {
+                                parseCache.fileEntries[cacheKey] = CachedUsageEntry(signature: signature, usage: usage)
+                                cacheMutated = true
+                            }
+                        }
+                        if options.includeConversationBodies, let conv = pair.conversation {
+                            conversations.append(conv)
                         }
                     }
-                    if options.includeConversationBodies, let conv = pair.conversation {
-                        conversations.append(conv)
-                    }
+                } catch let error as SessionContentReadError {
+                    gate.recordContentReadFailure(for: transcriptFile)
+                    ParserDiagnostics.silentFailure(
+                        "antigravity_transcript_unreadable path=\(transcriptFile.path)",
+                        error: error.underlying
+                    )
                 }
-            } catch let error as SessionContentReadError {
-                gate.recordContentReadFailure(for: transcriptFile)
-                ParserDiagnostics.silentFailure(
-                    "antigravity_transcript_unreadable path=\(transcriptFile.path)",
-                    error: error.underlying
-                )
             }
         }
 
@@ -185,13 +211,13 @@ public final class AntigravityParser: LogParser, Sendable {
     }
 
     private func configuredFallbackModel(
-        at settingsURL: URL,
+        at settingsURL: URL?,
         options: LogParseOptions,
         fileManager: FileManager,
         readGate: ParserFileReadGate
     ) throws -> String {
         let defaultModel = "Claude Opus 4.6 (Thinking)"
-        guard fileManager.fileExists(atPath: settingsURL.path) else {
+        guard let settingsURL, fileManager.fileExists(atPath: settingsURL.path) else {
             settingsCache.withLock { $0 = nil }
             return defaultModel
         }
@@ -565,21 +591,19 @@ public final class AntigravityParser: LogParser, Sendable {
         }
 
         let afterTo = afterPrefix[toRange.upperBound...]
-
-        // The model name ends at a period followed by whitespace/end, NOT a bare period
-        // (model names like "Claude Opus 4.6 (Thinking)" contain dots in version numbers)
-        let modelEnd: String.Index
-        if let dotSpaceRange = afterTo.range(of: ". ") {
-            modelEnd = dotSpaceRange.lowerBound
-        } else if let dotNewline = afterTo.range(of: ".\n") {
-            modelEnd = dotNewline.lowerBound
-        } else if afterTo.hasSuffix(".") {
-            modelEnd = afterTo.index(before: afterTo.endIndex)
-        } else {
-            modelEnd = afterTo.endIndex
+        var candidate = String(afterTo)
+        if let tagEndRange = candidate.range(of: "</") {
+            candidate = String(candidate[..<tagEndRange.lowerBound])
+        }
+        if let dotSpaceRange = candidate.range(of: ". ") {
+            candidate = String(candidate[..<dotSpaceRange.lowerBound])
+        } else if let dotNewline = candidate.range(of: ".\n") {
+            candidate = String(candidate[..<dotNewline.lowerBound])
+        } else if candidate.hasSuffix(".") {
+            candidate = String(candidate.dropLast())
         }
 
-        let model = String(afterTo[..<modelEnd]).trimmingCharacters(in: .whitespacesAndNewlines)
+        let model = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
         return model.isEmpty ? nil : model
     }
 

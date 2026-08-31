@@ -171,8 +171,8 @@ final class AntigravityQuotaAdapterTests: XCTestCase {
         XCTAssertEqual(snapshot.sourceKind, .localCLI)
         XCTAssertEqual(snapshot.confidence, .estimated)
 
-        // One bucket per model tier (7 total)
-        XCTAssertEqual(snapshot.buckets.count, 7)
+        // One bucket per model tier
+        XCTAssertEqual(snapshot.buckets.count, AntigravityQuotaAdapter.availableModels.count)
 
         // --- Active model bucket (Claude Opus 4.6) ---
         let activeBucket = snapshot.buckets.first(where: { $0.label.contains("(Active)") })
@@ -235,7 +235,7 @@ final class AntigravityQuotaAdapterTests: XCTestCase {
         let snapshot = try await adapter.fetch(context: context)
 
         XCTAssertEqual(snapshot.sourceKind, .localCLI)
-        XCTAssertEqual(snapshot.buckets.count, 7)
+        XCTAssertEqual(snapshot.buckets.count, AntigravityQuotaAdapter.availableModels.count)
 
         // Active bucket should default to Claude Opus 4.6 (Thinking)
         let activeBucket = snapshot.buckets.first(where: { $0.label.contains("(Active)") })
@@ -278,7 +278,7 @@ final class AntigravityQuotaAdapterTests: XCTestCase {
         let snapshot = try await adapter.fetch(context: context)
 
         XCTAssertEqual(snapshot.sourceKind, .localCLI, snapshot.statusMessage ?? "")
-        XCTAssertEqual(snapshot.buckets.count, 7)
+        XCTAssertEqual(snapshot.buckets.count, AntigravityQuotaAdapter.availableModels.count)
 
         let activeBucket = snapshot.buckets.first(where: { $0.label.contains("(Active)") })
         XCTAssertNotNil(activeBucket, "Expected active bucket; buckets=\(snapshot.buckets.map(\.label))")
@@ -300,5 +300,43 @@ final class AntigravityQuotaAdapterTests: XCTestCase {
         }
 
         XCTAssertEqual(snapshot.statusMessage?.contains("Gemini 3.5 Flash (Medium)"), true)
+    }
+
+    func testFetch_fromBrainTranscripts_whenHistoryMissing_computesQuotaAndModel() async throws {
+        let adapter = AntigravityQuotaAdapter()
+        let now = Date(timeIntervalSince1970: Self.referenceEpochMs / 1000.0)
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+
+        // Write brain transcripts to ~/.gemini/antigravity/brain/<session>/...
+        let sessionDir = tempDirectoryURL.appendingPathComponent(".gemini/antigravity/brain/mock-session-1/.system_generated/logs")
+        try fileManager.createDirectory(at: sessionDir, withIntermediateDirectories: true)
+        let transcriptURL = sessionDir.appendingPathComponent("transcript.jsonl")
+
+        let t1 = formatter.string(from: now.addingTimeInterval(-2 * 3600))
+        let t2 = formatter.string(from: now.addingTimeInterval(-1 * 3600))
+
+        let lines = [
+            "{\"source\":\"USER_EXPLICIT\",\"type\":\"USER_INPUT\",\"content\":\"<USER_SETTINGS_CHANGE>The user changed setting `Model Selection` from None to Gemini 3.7 Flash (High).</USER_SETTINGS_CHANGE>\"}",
+            "{\"source\":\"MODEL\",\"type\":\"PLANNER_RESPONSE\",\"created_at\":\"\(t1)\"}",
+            "{\"source\":\"MODEL\",\"type\":\"PLANNER_RESPONSE\",\"created_at\":\"\(t2)\"}"
+        ]
+        try lines.joined(separator: "\n").write(to: transcriptURL, atomically: true, encoding: .utf8)
+
+        let context = try makeContext()
+        let snapshot = try await adapter.fetch(context: context)
+
+        XCTAssertEqual(snapshot.sourceKind, .localCLI)
+        XCTAssertEqual(snapshot.buckets.count, AntigravityQuotaAdapter.availableModels.count)
+
+        let activeBucket = snapshot.buckets.first(where: { $0.label.contains("(Active)") })
+        XCTAssertNotNil(activeBucket)
+        if let active = activeBucket {
+            XCTAssertTrue(active.label.contains("Gemini 3.7 Flash (High)"))
+            XCTAssertEqual(active.usedValue, 2.0)
+            XCTAssertEqual(active.limitValue, 600.0)
+            XCTAssertEqual(active.remainingValue, 598.0)
+            XCTAssertNotNil(active.resetsAt)
+        }
     }
 }

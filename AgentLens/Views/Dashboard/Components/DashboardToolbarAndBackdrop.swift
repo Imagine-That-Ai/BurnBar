@@ -93,7 +93,7 @@ struct DashboardBackdrop: View {
     /// field can be re-synthesised behind a plate and refracted. Turning it off restores
     /// the 32 named WebGL kernels — and, necessarily, the flat glass that comes with a
     /// backdrop nothing can sample.
-    @AppStorage(BurnBarGlassFieldPreferences.nativeFieldKey) private var useNativeGlassField: Bool = true
+    @AppStorage(BurnBarGlassFieldPreferences.nativeFieldKey) private var useNativeGlassField: Bool = false
     @Environment(\.burnBarFleetDriver) private var fleetDriver
 
     /// Clear-side adjustment (0…1). Toward 1 the window's own plates fade so

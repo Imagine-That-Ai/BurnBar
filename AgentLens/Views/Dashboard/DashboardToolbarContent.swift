@@ -194,12 +194,26 @@ extension DashboardView {
             .accessibilityHint("Mines session logs and updates the dashboard chart and Burn total.")
             .accessibilityIdentifier(OBBAccessibilityID.dashboardRefreshButton)
 
-            BurnRailSettingsButton {
-                presentSettings()
-            }
+            BurnBarProfileAvatarButton(
+                size: .toolbar,
+                onOpenSettings: { presentSettings() },
+                onOpenSettingsTab: { tab in
+                    UserDefaults.standard.set(tab.rawValue, forKey: SettingsDeepLinkRouting.pendingTabKey)
+                    presentSettings()
+                },
+                onOpenSettingsItem: { item in
+                    presentSettings(itemID: item)
+                },
+                isScanning: isScanning,
+                onImport: { runScan() },
+                onRecount: { runRecount() },
+                canRunRecount: canRunRecount,
+                mtdSpendFormatted: settingsManager.formatUsageMetric(
+                    cost: totalCostForTimeRange,
+                    tokens: totalTokensForTimeRange
+                )
+            )
             .accessibilityIdentifier(OBBAccessibilityID.dashboardSettingsButton)
-
-            commandDeckOverflow
         }
     }
 
@@ -548,24 +562,27 @@ extension DashboardView {
     }
 
     private var dashboardDeckActions: some View {
-        HStack(spacing: 6) {
-            Button(action: runScan) {
-                Image(systemName: "arrow.triangle.2.circlepath")
-                    .font(.system(size: 12 * dashboardDeckScale, weight: .semibold))
-                    .foregroundStyle(isScanning ? DesignSystem.Colors.ember : dashboardChromeInk.icon)
-                    .rotationEffect(.degrees(isScanning ? 360 : 0))
-                    .animation(isScanning ? .linear(duration: 0.8).repeatForever(autoreverses: false) : .default, value: isScanning)
-                    .frame(width: 28 * dashboardDeckScale, height: 28 * dashboardDeckScale)
-            }
-            .buttonStyle(.plain)
-            .disabled(isScanning || aggregator == nil)
-            .help(isScanning ? "Mining session logs…" : "Refresh token spend")
-
-            BurnRailSettingsButton { presentSettings() }
-
-            commandDeckOverflow
-        }
-        .fixedSize(horizontal: true, vertical: false)
+        BurnBarProfileAvatarButton(
+            size: .toolbar,
+            onOpenSettings: { presentSettings() },
+                onOpenSettingsTab: { tab in
+                    UserDefaults.standard.set(tab.rawValue, forKey: SettingsDeepLinkRouting.pendingTabKey)
+                    presentSettings()
+                },
+                onOpenSettingsItem: { item in
+                    presentSettings(itemID: item)
+                },
+                isScanning: isScanning,
+                onImport: { runScan() },
+                onRecount: { runRecount() },
+                canRunRecount: canRunRecount,
+                mtdSpendFormatted: settingsManager.formatUsageMetric(
+                    cost: totalCostForTimeRange,
+                    tokens: totalTokensForTimeRange
+                )
+            )
+            .accessibilityIdentifier(OBBAccessibilityID.dashboardSettingsButton)
+            .fixedSize(horizontal: true, vertical: false)
     }
 
     private var dashboardDeckStatusRail: some View {

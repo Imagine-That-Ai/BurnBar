@@ -78,7 +78,7 @@ extension AgentProvider {
         case .piAgent: return "*.jsonl"
         case .augment: return "*.jsonl"
         case .geminiCLI: return "*.json"
-        case .antigravity: return "history.jsonl"
+        case .antigravity: return "*.jsonl"
         case .cursorAgent: return "*.jsonl"
         case .goose: return "sessions.db"
         case .openClaw: return "*.jsonl"

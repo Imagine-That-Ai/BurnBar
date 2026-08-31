@@ -303,7 +303,7 @@ final class OpenBurnBarGlassHostingController: NSViewController {
 
         if #available(macOS 26.0, *) {
             let glassView = NSGlassEffectView()
-            glassView.style = .clear
+            glassView.style = .regular
             glassView.cornerRadius = 22
             glassView.tintColor = nil
             glassView.contentView = contentController.view

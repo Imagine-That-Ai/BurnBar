@@ -52,6 +52,10 @@ public struct BurnBarLiveModelAccountDescriptor: Codable, Hashable, Sendable {
         self.lastRefreshAt = lastRefreshAt
         self.lastError = lastError
     }
+
+    public var routeEligible: Bool {
+        enabled && hasCredential && (quotaState == .healthy || quotaState == .unknown)
+    }
 }
 
 public struct BurnBarLiveAdvertisedModel: Codable, Hashable, Sendable {

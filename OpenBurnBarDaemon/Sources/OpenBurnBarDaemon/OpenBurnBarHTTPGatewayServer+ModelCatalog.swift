@@ -289,7 +289,7 @@ extension BurnBarHTTPGatewayServer {
                     response: GatewayHTTPResponse(
                         status: failure.statusCode == 429 ? 429 : 503,
                         headers: headers,
-                        body: errorBody(detail)
+                        body: Data(errorBody(detail).utf8)
                     )
                 )
             }
@@ -314,7 +314,7 @@ extension BurnBarHTTPGatewayServer {
             }
             return (
                 failureMessage: "All configured \(providerName) accounts are cooling down.",
-                response: GatewayHTTPResponse(status: 429, headers: headers, body: errorBody(detail))
+                response: GatewayHTTPResponse(status: 429, headers: headers, body: Data(errorBody(detail).utf8))
             )
         }
 

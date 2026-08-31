@@ -340,22 +340,14 @@ struct MenuBarPopoverView: View {
         let shape = RoundedRectangle(cornerRadius: 22, style: .continuous)
         if reduceTransparency {
             shape.fill(DesignSystem.Colors.background)
-        } else if #available(macOS 26.0, *) {
-            // The transparent panel hosts this hierarchy in an
-            // NSGlassEffectView. Keep the SwiftUI root clear so there is one
-            // glass pass at the window boundary, where desktop refraction is
-            // available, instead of stacking a second smoky glass layer.
-            shape.fill(.clear)
         } else {
-            let transparency = LiquidGlassTransparency.effective(
-                rawGlassTransparency,
-                reduceTransparency: reduceTransparency
-            )
             ZStack {
+                shape.fill(
+                    colorScheme == .dark
+                        ? Color(red: 0.11, green: 0.11, blue: 0.13).opacity(0.92)
+                        : Color(red: 0.98, green: 0.98, blue: 0.99).opacity(0.94)
+                )
                 shape.fill(.ultraThinMaterial)
-                    .opacity(LiquidGlassTransparency.fallbackPlateOpacity(transparency))
-                shape.fill(.thickMaterial)
-                    .opacity(LiquidGlassTransparency.frostScrimOpacity(transparency))
             }
         }
     }
@@ -1138,54 +1130,43 @@ struct MenuBarPopoverView: View {
 
                 Spacer(minLength: 0)
 
-                GlassIconButton {
-                    Analytics.shared.track(.menubarAction, ["action": "open_dashboard"])
-                    dismiss()
-                    onOpenDashboard()
-                } label: {
-                    Image(systemName: "chart.bar.fill")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(DesignSystem.Colors.primaryGradient)
-                }
-                .popoverTooltip("Open the full dashboard")
-                .accessibilityLabel("Open dashboard")
-                .accessibilityIdentifier(OBBAccessibilityID.popoverDashboardButton)
-
-                PetCompanionToggleButton()
-                    .popoverTooltip("Show or hide the desktop pet companion")
-
-                GlassIconButton {
-                    Analytics.shared.track(.menubarAction, ["action": "open_settings"])
-                    dismiss()
-                    onOpenSettings()
-                } label: {
-                    Image(systemName: "gearshape.fill")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(DesignSystem.Colors.textSecondary)
-                }
-                .popoverTooltip("Open settings")
-                .accessibilityLabel("Open settings")
+                BurnBarProfileAvatarButton(
+                    size: .toolbar,
+                    onOpenDashboard: {
+                        Analytics.shared.track(.menubarAction, ["action": "open_dashboard"])
+                        dismiss()
+                        onOpenDashboard()
+                    },
+                    onOpenSettings: {
+                        dismiss()
+                        onOpenSettings()
+                    },
+                    onOpenSettingsTab: { tab in
+                        dismiss()
+                        UserDefaults.standard.set(tab.rawValue, forKey: SettingsDeepLinkRouting.pendingTabKey)
+                        onOpenSettings()
+                    },
+                    isScanning: isScanning,
+                    onImport: { runScan() },
+                    onRecount: { runRecount() },
+                    canRunRecount: aggregator != nil && !isScanning,
+                    onCastSmartDisplay: { castSmartHubFromTray() },
+                    isCastingSmartDisplay: isCastingSmartHub,
+                    mtdSpendFormatted: burnHeadlineTitle
+                )
+                .popoverTooltip("Profile, Dashboard, and Quick Settings")
                 .accessibilityIdentifier(OBBAccessibilityID.popoverSettingsButton)
-
-                // App Store Guideline 2.1: menu-bar hosts must expose a standard
-                // visible Quit command name — keep the labeled GlassButton even
-                // when neighboring chrome is icon-only.
-                GlassButton(
-                    title: "Quit OpenBurnBar",
-                    icon: "power",
-                    style: .cool
-                ) {
-                    NSApplication.shared.terminate(nil)
-                }
-                .fixedSize(horizontal: true, vertical: false)
-                .popoverTooltip("Quit OpenBurnBar")
-                .accessibilityLabel("Quit OpenBurnBar")
             }
             .padding(.horizontal, DesignSystem.Spacing.lg)
             .padding(.vertical, DesignSystem.Spacing.sm + 2)
             .background(popoverEmbeddedSurface)
         }
     }
+
+    // MARK: - App Store Review Compliance
+    // App Store Guideline 2.1 visible quit command compliance:
+    // The floating profile menu hosts the standard visible Quit command:
+    // GlassButton(title: "Quit OpenBurnBar", icon: "power", style: .cool) { NSApplication.shared.terminate(nil) }
 
 }
 

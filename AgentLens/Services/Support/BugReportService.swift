@@ -5,7 +5,7 @@ import AppKit
 @preconcurrency import FirebaseFunctions
 import OSLog
 
-public struct BugReportSubmission: Sendable {
+public struct BugReportSubmission: @unchecked Sendable {
     public let title: String
     public let description: String
     public let platform: String

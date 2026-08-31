@@ -370,13 +370,14 @@
       "agentProviderCase": "antigravity",
       "displayLabel": "Antigravity",
       "aliases": [
-        "antigravity-cli"
+        "antigravity-cli",
+        "agy"
       ],
       "paths": {
-        "linux": "~/.gemini/antigravity-cli",
-        "macos": "~/.gemini/antigravity-cli"
+        "linux": "~/.gemini/antigravity",
+        "macos": "~/.gemini/antigravity"
       },
-      "filePattern": "history.jsonl",
+      "filePattern": "*.jsonl",
       "ingestion": "local-parser",
       "coverageNote": "Local parser registered in ParserRegistry.",
       "xdgBehavior": "home-relative",

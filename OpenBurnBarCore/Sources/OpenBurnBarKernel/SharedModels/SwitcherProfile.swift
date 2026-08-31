@@ -85,7 +85,7 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
         switch self {
         case .codex: return "CodexLogo"
         case .claude: return "ClaudeCodeLogo"
-        case .opencode: return nil
+        case .opencode: return "OpenCodeLogo"
         case .droid: return "FactoryLogo"
         case .forge: return "ForgeLogo"
         case .antigravity: return "AntigravityLogo"
@@ -143,6 +143,7 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
             return [
                 "/usr/local/bin/opencode",
                 "/opt/homebrew/bin/opencode",
+                "$HOME/.local/bin/opencode",
                 "$HOME/.opencode/bin/opencode"
             ]
         case .droid:
@@ -165,6 +166,9 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
                 "/usr/local/bin/agy",
                 "/opt/homebrew/bin/agy",
                 "$HOME/.local/bin/agy",
+                "$HOME/.gemini/antigravity/bin/agy",
+                "$HOME/.gemini/antigravity/agy",
+                "$HOME/.gemini/antigravity/bin/antigravity",
                 "$HOME/.antigravity/bin/agy",
                 "$HOME/.gemini/antigravity-cli/agy"
             ]
@@ -179,6 +183,7 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
             return [
                 "/usr/local/bin/cursor-agent",
                 "/opt/homebrew/bin/cursor-agent",
+                "$HOME/.local/bin/cursor-agent",
                 "$HOME/.cursor-agent/bin/cursor-agent"
             ]
         case .omp:

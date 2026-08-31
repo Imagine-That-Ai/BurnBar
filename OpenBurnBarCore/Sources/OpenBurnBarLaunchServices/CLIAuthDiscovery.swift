@@ -198,16 +198,18 @@ public enum CLIAuthDiscovery {
                 accountDescription: exists ? "Forge local profile" : nil
             )
         case .antigravity:
+            let geminiConfigDir = "\(home)/.gemini/antigravity"
             let primaryConfigDir = normalizedConfigDirectory(
                 configDirectoryOverride,
-                fallback: "\(home)/.antigravity"
+                fallback: FileManager.default.fileExists(atPath: geminiConfigDir) ? geminiConfigDir : "\(home)/.antigravity"
             )
             let legacyConfigDir = "\(home)/.gemini/antigravity-cli"
             let exists = FileManager.default.fileExists(atPath: primaryConfigDir)
+                || FileManager.default.fileExists(atPath: geminiConfigDir)
                 || FileManager.default.fileExists(atPath: legacyConfigDir)
             let configDir = FileManager.default.fileExists(atPath: primaryConfigDir)
                 ? primaryConfigDir
-                : legacyConfigDir
+                : (FileManager.default.fileExists(atPath: geminiConfigDir) ? geminiConfigDir : legacyConfigDir)
             let authState: CLIAuthState = executablePath == nil ? .notInstalled : (exists ? .authenticated(lastRefresh: nil) : .notAuthenticated)
             return CLIAuthInfo(
                 cliType: cliType,

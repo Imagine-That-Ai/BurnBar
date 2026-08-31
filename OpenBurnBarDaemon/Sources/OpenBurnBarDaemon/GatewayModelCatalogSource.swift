@@ -23,7 +23,7 @@ actor GatewayModelCatalogSource {
     private let configStore: BurnBarConfigStore
     private let session: URLSession
     private let droidProcessRunner: any FactoryDroidProcessRunning
-    private let modelHealthStore: BurnBarGatewayModelHealthStore
+    let modelHealthStore: BurnBarGatewayModelHealthStore
     private let cacheTTL: TimeInterval
     private let logger: any BurnBarDaemonLogging
     private let clock: @Sendable () -> Date

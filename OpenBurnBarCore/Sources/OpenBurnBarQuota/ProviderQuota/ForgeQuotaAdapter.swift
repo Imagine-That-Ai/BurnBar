@@ -37,9 +37,23 @@ public struct ForgeQuotaAdapter: ProviderQuotaAdapter {
 
     // MARK: - Constants
 
-    private static let forgeDBPath = ("~/forge/.forge.db" as NSString).expandingTildeInPath
-    private static let forgeTOMLPath = ("~/forge/.forge.toml" as NSString).expandingTildeInPath
-    private static let forgeHistoryPath = ("~/forge/.forge_history" as NSString).expandingTildeInPath
+    private static var candidateDBPaths: [String] {
+        [
+            ("~/.forge/.forge.db" as NSString).expandingTildeInPath,
+            ("~/.forge/sessions/.forge.db" as NSString).expandingTildeInPath,
+            ("~/forge/.forge.db" as NSString).expandingTildeInPath,
+            ("~/.forge.db" as NSString).expandingTildeInPath
+        ]
+    }
+
+    private static var candidateTOMLPaths: [String] {
+        [
+            ("~/.forge/.forge.toml" as NSString).expandingTildeInPath,
+            ("~/.forge/forge.toml" as NSString).expandingTildeInPath,
+            ("~/forge/.forge.toml" as NSString).expandingTildeInPath,
+            ("~/.forge.toml" as NSString).expandingTildeInPath
+        ]
+    }
 
     // MARK: - Fetch
 
@@ -135,13 +149,10 @@ public struct ForgeQuotaAdapter: ProviderQuotaAdapter {
         let uniqueFilesChanged: Int
         let modelId: String?
         let providerId: String?
+        let detected: Bool
 
         var hasData: Bool {
-            // Forge is "detected" if the DB exists and has conversations,
-            // OR if the TOML config exists (installed but no conversations yet)
-            conversationCount > 0
-                || FileManager.default.fileExists(atPath: forgeTOMLPath)
-                || FileManager.default.fileExists(atPath: forgeDBPath)
+            conversationCount > 0 || detected
         }
     }
 
@@ -152,10 +163,13 @@ public struct ForgeQuotaAdapter: ProviderQuotaAdapter {
         var uniqueFiles = Set<String>()
         var modelId: String?
         var providerId: String?
+        var detected = false
 
-        if FileManager.default.fileExists(atPath: Self.forgeDBPath) {
+        for dbPath in Self.candidateDBPaths {
+            guard FileManager.default.fileExists(atPath: dbPath) else { continue }
+            detected = true
             do {
-                let reader = try SQLiteConnection.openReadOnly(path: Self.forgeDBPath)
+                let reader = try SQLiteConnection.openReadOnly(path: dbPath)
                 defer { reader.close() }
                 let countRows = try reader.query("SELECT COUNT(*) AS c FROM conversations", arguments: [])
                 if let row = countRows.first, let n = row.int64("c") ?? row.int("c").map(Int64.init) {
@@ -177,14 +191,17 @@ public struct ForgeQuotaAdapter: ProviderQuotaAdapter {
                         }
                     }
                 }
+                break
             } catch {
                 // Best-effort local metadata; omit DB-derived buckets when unreadable.
             }
         }
 
         // Read TOML config for model/provider
-        if FileManager.default.fileExists(atPath: Self.forgeTOMLPath),
-           let tomlContent = try? String(contentsOfFile: Self.forgeTOMLPath, encoding: .utf8) { // try?-ok(optional config read)
+        for tomlPath in Self.candidateTOMLPaths {
+            guard FileManager.default.fileExists(atPath: tomlPath),
+                  let tomlContent = try? String(contentsOfFile: tomlPath, encoding: .utf8) else { continue }
+            detected = true
             // Simple TOML parsing for [session] section
             var inSession = false
             for line in tomlContent.split(separator: "\n") {
@@ -209,6 +226,7 @@ public struct ForgeQuotaAdapter: ProviderQuotaAdapter {
                     }
                 }
             }
+            break
         }
 
         return ForgeMetadata(
@@ -217,7 +235,8 @@ public struct ForgeQuotaAdapter: ProviderQuotaAdapter {
             totalLinesChanged: totalLinesChanged,
             uniqueFilesChanged: uniqueFiles.count,
             modelId: modelId,
-            providerId: providerId
+            providerId: providerId,
+            detected: detected
         )
     }
 

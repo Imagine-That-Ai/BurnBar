@@ -122,8 +122,13 @@ public struct AugmentQuotaAdapter: ProviderQuotaAdapter {
 
 public struct GooseQuotaAdapter: ProviderQuotaAdapter {
     public func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
-        let gooseDir = ("~/.config/goose" as NSString).expandingTildeInPath
-        let installed = FileManager.default.fileExists(atPath: gooseDir)
+        let candidates = [
+            ("~/.config/goose" as NSString).expandingTildeInPath,
+            ("~/Library/Application Support/Block/goose" as NSString).expandingTildeInPath,
+            ("~/.local/share/goose" as NSString).expandingTildeInPath,
+            ("~/.goose" as NSString).expandingTildeInPath
+        ]
+        let installed = candidates.contains { FileManager.default.fileExists(atPath: $0) }
 
         return ProviderQuotaSnapshot(
             provider: .goose,
@@ -132,7 +137,7 @@ public struct GooseQuotaAdapter: ProviderQuotaAdapter {
             confidence: installed ? .exact : .unavailable,
             managementURL: installed ? nil : "https://block.github.io/goose/",
             statusMessage: installed
-                ? "Goose detected â sessions tracked via local data."
+                ? "Goose detected — sessions tracked via local data."
                 : "Goose not detected. Install from block.github.io/goose/.",
             buckets: []
         )
@@ -178,8 +183,15 @@ public struct OpenClaudeQuotaAdapter: ProviderQuotaAdapter {
 
 public struct WindsurfQuotaAdapter: ProviderQuotaAdapter {
     public func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
-        let windsurfDir = ("~/Library/Application Support/Windsurf - Next" as NSString).expandingTildeInPath
-        let installed = FileManager.default.fileExists(atPath: windsurfDir)
+        let candidates = [
+            ("~/Library/Application Support/Windsurf - Next" as NSString).expandingTildeInPath,
+            ("~/Library/Application Support/Windsurf" as NSString).expandingTildeInPath,
+            ("~/.config/Windsurf - Next" as NSString).expandingTildeInPath,
+            ("~/.config/Windsurf" as NSString).expandingTildeInPath,
+            ("~/.codeium/windsurf" as NSString).expandingTildeInPath,
+            ("~/.codeium/windsurf-next" as NSString).expandingTildeInPath
+        ]
+        let installed = candidates.contains { FileManager.default.fileExists(atPath: $0) }
 
         return ProviderQuotaSnapshot(
             provider: .windsurf,
@@ -188,7 +200,7 @@ public struct WindsurfQuotaAdapter: ProviderQuotaAdapter {
             confidence: installed ? .exact : .unavailable,
             managementURL: installed ? nil : "https://codeium.com/windsurf",
             statusMessage: installed
-                ? "Windsurf detected â IDE usage tracking via local data."
+                ? "Windsurf detected — IDE usage tracking via local data."
                 : "Windsurf not installed. Download from codeium.com/windsurf.",
             buckets: []
         )
