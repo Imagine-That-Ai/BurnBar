@@ -323,6 +323,16 @@ enum SettingsManifest {
             keywords: ["search", "index", "embeddings", "rag", "rerank"],
             helpText: "Indexed transcripts never leave this Mac unless cloud backup is enabled."
         ),
+        SettingsItem(
+            id: "general.indexing.memory",
+            tab: .general,
+            pageRoute: .indexing,
+            anchorID: SettingsAnchor.indexingMemory,
+            title: "Memory (Pensieve) Controls",
+            subtitle: "On-device memory: learning toggle, high-recall, review pending, reset, sealed cloud backup opt-in",
+            keywords: ["memory", "pensieve", "remember", "recall", "learn", "preferences", "consent", "reset memory", "review memories", "approved memories", "high-recall", "memory controls"],
+            helpText: "Opens the on-device Memory controls. Free on this Mac — no Cloud plan required; sealed cloud backup of approved memories is a separate opt-in."
+        ),
 
         // MARK: General → Session summaries
 
@@ -987,6 +997,7 @@ enum SettingsManifest {
         SettingsAnchor.defaultsUsageMode,
         SettingsAnchor.refreshInterval,
         SettingsAnchor.indexingToggle,
+        SettingsAnchor.indexingMemory,
         SettingsAnchor.summariesAuto,
         SettingsAnchor.aiInboxOverview,
         SettingsAnchor.aiInboxEnable,

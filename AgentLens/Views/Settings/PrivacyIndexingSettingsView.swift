@@ -152,6 +152,10 @@ struct PrivacyIndexingSettingsView: View {
                     .buttonStyle(.plain)
                 }
                 .padding(.horizontal, DesignSystem.Spacing.lg)
+                // Deep-link target for the Memory walkthrough's "Show me" and
+                // Settings search: scrolls the Memory section into view and
+                // paints the halo on arrival.
+                .settingsAnchor(SettingsAnchor.indexingMemory)
 
                 Divider().background(DesignSystem.Colors.border)
 

@@ -150,3 +150,76 @@ export const searchKnowledge = onCall(
     },
   ),
 );
+
+export const listKnowledgeChunks = onCall(
+  { region: FUNCTIONS_REGION, enforceAppCheck: getConfig().enforceAppCheck, maxInstances: 50 },
+  wrapCallableHandler(
+    "listKnowledgeChunks",
+    async (
+      request: CallableRequest<{
+        sourceKind?: unknown;
+        slugHmac?: unknown;
+        limit?: unknown;
+        startAfterId?: unknown;
+      }>,
+    ) => {
+      const uid = request.auth?.uid;
+      if (!uid) throw new HttpsError("unauthenticated", "Sign in to list your knowledge chunks.");
+      enforceAuthAndAppCheck(request, uid);
+      await checkKnowledgeSearchRateLimit(uid);
+      await assertActiveBurnBarCloudProEntitlement(uid);
+
+      const parsedLimit = Number(request.data?.limit ?? 50);
+      const limit = Number.isFinite(parsedLimit)
+        ? Math.max(1, Math.min(Math.floor(parsedLimit), 100))
+        : 50;
+      const sourceKindRaw = boundedTrimmedString(request.data?.sourceKind, "sourceKind", 64, false);
+      if (sourceKindRaw && !SOURCE_KINDS.has(sourceKindRaw)) {
+        throw new HttpsError("invalid-argument", `sourceKind must be one of: ${[...SOURCE_KINDS].join(", ")}.`);
+      }
+      const slugHmac =
+        request.data?.slugHmac !== undefined ? requireHexDigest(request.data?.slugHmac, "slugHmac") : undefined;
+      const startAfterId = boundedTrimmedString(request.data?.startAfterId, "startAfterId", 128, false);
+
+      // Same v0 floor as searchKnowledge: never return stranded legacy rows
+      // whose dedupHash is a cleartext SHA-256 confirm-the-guess oracle.
+      let query: Query = db
+        .collection(`users/${uid}/cloud_search_knowledge`)
+        .where("dedupHashVersion", "==", 1);
+      if (sourceKindRaw) query = query.where("sourceKind", "==", sourceKindRaw);
+      if (slugHmac) query = query.where("slugHmac", "==", slugHmac);
+
+      query = query.orderBy("__name__").limit(limit + 1);
+
+      if (startAfterId) {
+        query = query.startAfter(startAfterId);
+      }
+
+      const snap = await query.get();
+      const hasMore = snap.docs.length > limit;
+      const docs = snap.docs.slice(0, limit);
+
+      const chunks = docs.map((doc) => {
+        const signalEnvelope = doc.get("signalEnvelope");
+        return {
+          vectorId: doc.id,
+          ciphertext: doc.get("sealedCiphertext"),
+          sealedMetadata: doc.get("sealedMetadata"),
+          ...(signalEnvelope === undefined ? {} : { signalEnvelope }),
+          sourceKind: doc.get("sourceKind") ?? "repo_docs",
+          slugHmac: doc.get("slugHmac"),
+          dedupHash: doc.get("dedupHash"),
+          byteCount: doc.get("byteCount") ?? 0,
+          updatedAtMillis: doc.get("updatedAtMillis") ?? (doc.get("updatedAt")?.toMillis?.() ?? Date.now()),
+        };
+      });
+
+      return {
+        ok: true,
+        chunks,
+        hasMore,
+        nextStartAfterId: hasMore && docs.length > 0 ? docs[docs.length - 1].id : null,
+      };
+    },
+  ),
+);

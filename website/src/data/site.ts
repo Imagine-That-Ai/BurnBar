@@ -10,6 +10,10 @@ export const SITE = {
   twitter: "",
   github: "https://github.com/Imagine-That-Ai/BurnBar",
   releasesUrl: "https://github.com/Imagine-That-Ai/BurnBar/releases",
+  // The member console (apps/console) — sign in to see and control everything
+  // BurnBar holds for you. Linked from the header More menu, the footer trust
+  // column, and the privacy page's data-domain inventory.
+  consoleUrl: "https://app.burnbar.ai",
   // burnbar.ai has live MX (Namecheap forwarding); openburnbar.app was never
   // registered — mail to it bounced as NXDOMAIN (diligence 2026-06-11 NB-1).
   supportContact: "support@burnbar.ai",
@@ -174,6 +178,7 @@ export const NAV_FOOTER = {
     { href: "/trust", label: "Open & secure" },
     { href: "/privacy", label: "Privacy model" },
     { href: "/privacy#data-domains", label: "What we can see" },
+    { href: SITE.consoleUrl, label: "Your data console", external: true },
     { href: "/security", label: "Security model" },
     { href: "/mcp", label: "MCP integration" },
     { href: "/legal/source", label: "Source offer" },

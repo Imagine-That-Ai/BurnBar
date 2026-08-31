@@ -200,6 +200,7 @@ enum SettingsAnchor {
 
     // General → Indexing
     static let indexingToggle = "general.indexing.enabled"
+    static let indexingMemory = "general.indexing.memory"
 
     // General → Summaries
     static let summariesAuto = "general.summaries.auto"

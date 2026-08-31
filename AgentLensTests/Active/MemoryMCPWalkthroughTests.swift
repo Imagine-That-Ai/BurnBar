@@ -35,6 +35,26 @@ final class MemoryMCPWalkthroughTests: XCTestCase {
         XCTAssertEqual(MemoryWalkthroughContent.setupURL.absoluteString, "https://burnbar.ai/product")
     }
 
+    func testMacCloudConsoleURLsPointAtTheLiveConsole() {
+        // Every macOS surface that offers the web console (Cloud pane, the
+        // walkthrough's "Open Pensieve online", the Data & Privacy landing)
+        // must route members to the real deployed console, not a typo'd host.
+        XCTAssertEqual(MacCloudConsoleURLs.root.absoluteString, "https://app.burnbar.ai")
+        XCTAssertEqual(MacCloudConsoleURLs.pensieve.absoluteString, "https://app.burnbar.ai/pensieve")
+        XCTAssertEqual(
+            MemoryWalkthroughContent.consoleURL.absoluteString, "https://app.burnbar.ai/pensieve",
+            "The walkthrough's online action must deep-link to the Pensieve dashboard, not the console root"
+        )
+    }
+
+    func testControlStepSurfacesTheWebConsole() {
+        let step = MemoryWalkthroughContent.steps[4]
+        XCTAssertTrue(
+            step.body.contains("app.burnbar.ai"),
+            "The Control page must tell members the same data is visible and governable in the web console"
+        )
+    }
+
     func testRecallStepTeachesExamplePrompts() {
         let recallStep = MemoryWalkthroughContent.steps[3]
         XCTAssertFalse(recallStep.chips.isEmpty, "The recall page must show example prompts")
@@ -62,6 +82,84 @@ final class MemoryMCPWalkthroughTests: XCTestCase {
                 "Spotlight anchor \(anchor) must have a manifest item or the deep link will 404"
             )
         }
+    }
+
+    // MARK: - Spotlight destinations are real, actionable controls
+
+    func testZeroSetupStepSpotlightsOnDeviceMemoryControls() {
+        let step = MemoryWalkthroughContent.steps[1]
+        XCTAssertEqual(
+            step.tourAnchor, SettingsAnchor.indexingMemory,
+            "The 'saves itself' page must land on the real on-device Memory controls, not the decorative Cloud hero"
+        )
+        XCTAssertEqual(step.findPath, "Settings › General › Indexing")
+
+        let item = SettingsManifest.all.first { $0.anchorID == step.tourAnchor }
+        XCTAssertEqual(item?.tab, .general)
+        XCTAssertEqual(item?.pageRoute, .indexing)
+    }
+
+    func testZeroSetupCopyDoesNotSellCloudProAsTheSwitch() {
+        let step = MemoryWalkthroughContent.steps[1]
+        XCTAssertFalse(
+            step.body.contains("Sign in once with Cloud Pro"),
+            "Local memory is consent-gated, not Cloud-Pro-gated; the copy must not sell a paywall as the switch"
+        )
+        XCTAssertTrue(step.body.contains("this Mac"), "The copy must say memory runs on-device")
+        XCTAssertTrue(step.body.contains("free"), "The copy must tell the user the controls are free")
+    }
+
+    func testConnectStepSpotlightsTheRealLinkCLIAction() {
+        let step = MemoryWalkthroughContent.steps[2]
+        XCTAssertEqual(step.tourAnchor, SettingsAnchor.cloudRemoteMCPConnect)
+        XCTAssertTrue(step.body.contains("Link this Mac's CLI"))
+
+        let item = SettingsManifest.all.first { $0.anchorID == SettingsAnchor.cloudRemoteMCPConnect }
+        XCTAssertTrue(
+            item?.title.contains("Link this Mac's CLI") ?? false,
+            "The connect anchor's manifest item must name the same action the walkthrough tells the user to tap"
+        )
+    }
+
+    func testControlStepSpotlightsThePensieveWorkbench() {
+        let step = MemoryWalkthroughContent.steps[4]
+        XCTAssertEqual(step.tourAnchor, SettingsAnchor.dataControlCenterInventory)
+
+        let item = SettingsManifest.all.first { $0.anchorID == step.tourAnchor }
+        XCTAssertEqual(item?.pageRoute, .dataControlCenterRoot)
+
+        // The Control page must be honest about what's free vs. Cloud Pro so
+        // a free user never reads a promise that dead-ends on a paywall.
+        XCTAssertTrue(step.body.contains("General › Indexing"), "Free on-device controls must be named")
+        XCTAssertTrue(step.body.contains("Cloud Pro"), "The workbench's tier requirement must be named")
+    }
+
+    func testSpotlightPreviewsMatchTheirDestinations() {
+        for step in MemoryWalkthroughContent.steps where step.tourAnchor != nil {
+            XCTAssertNotNil(step.previewIcon, "Step \(step.id) has a spotlight but no preview icon")
+            XCTAssertFalse(step.previewTitle?.isEmpty ?? true,
+                           "Step \(step.id) has a spotlight but no preview title")
+            XCTAssertFalse(step.previewSubtitle?.isEmpty ?? true,
+                           "Step \(step.id) has a spotlight but no preview subtitle")
+        }
+        for step in MemoryWalkthroughContent.steps where step.tourAnchor == nil {
+            XCTAssertNil(step.previewIcon, "Step \(step.id) has no spotlight but carries a stray preview icon")
+            XCTAssertNil(step.previewTitle, "Step \(step.id) has no spotlight but carries a stray preview title")
+            XCTAssertNil(step.previewSubtitle, "Step \(step.id) has no spotlight but carries a stray preview subtitle")
+        }
+    }
+
+    func testOnDeviceMemoryControlsAreSearchable() {
+        let hits = SettingsSearchEngine.search("memory controls", in: SettingsManifest.all)
+        XCTAssertTrue(
+            hits.contains(where: { $0.id == "general.indexing.memory" }),
+            "Searching 'memory controls' must surface the on-device Memory section"
+        )
+        let pensieveHits = SettingsSearchEngine.search("pensieve", in: SettingsManifest.all)
+        XCTAssertTrue(
+            pensieveHits.contains(where: { $0.id == "general.indexing.memory" }),
+            "A Pensieve search must surface the free on-device controls, not only Cloud surfaces"
+        )
     }
 
     func testSpotlightPagesCarryFindPaths() {

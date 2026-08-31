@@ -56,42 +56,47 @@ struct CloudStoreSettingsView: View {
             EmberSurfaceBackground()
                 .ignoresSafeArea()
 
-            ScrollView {
-                VStack(spacing: 28) {
-                    hero
-                        .padding(.horizontal, 28)
-                        .padding(.top, 24)
-                        .settingsAnchor(SettingsAnchor.cloudOverview)
-
-                    if entitlement.isActive {
-                        auroraMemberCard
+            // The deep-link container lets search results and the Memory
+            // walkthrough's "Show me" buttons actually scroll to and halo
+            // their target rows (hero, backup toggle, Remote MCP card).
+            SettingsDeepLinkScrollContainer(route: .cloudRoot) { _ in
+                ScrollView {
+                    VStack(spacing: 28) {
+                        hero
                             .padding(.horizontal, 28)
+                            .padding(.top, 24)
+                            .settingsAnchor(SettingsAnchor.cloudOverview)
+
+                        if entitlement.isActive {
+                            auroraMemberCard
+                                .padding(.horizontal, 28)
+                        }
+
+                        // The full four-tier pricing lineup — matches the marketing
+                        // site exactly (Local · Cloud · Cloud Pro · Cloud Ultra).
+                        // Shown to everyone: free users to subscribe, members to
+                        // compare and upgrade (a Cloud member can jump to Ultra).
+                        tierLineup
+                            .padding(.horizontal, 28)
+
+                        purchaseSupportRow
+                            .padding(.horizontal, 28)
+
+                        backupSyncCard
+                            .padding(.horizontal, 28)
+                            .settingsAnchor(SettingsAnchor.cloudSyncToggle)
+
+                        capabilityLineup
+                            .padding(.horizontal, 28)
+
+                        remoteMCPCard
+                            .padding(.horizontal, 28)
+
+                        trustCard
+                            .padding(.horizontal, 28)
+
+                        Spacer(minLength: 36)
                     }
-
-                    // The full four-tier pricing lineup — matches the marketing
-                    // site exactly (Local · Cloud · Cloud Pro · Cloud Ultra).
-                    // Shown to everyone: free users to subscribe, members to
-                    // compare and upgrade (a Cloud member can jump to Ultra).
-                    tierLineup
-                        .padding(.horizontal, 28)
-
-                    purchaseSupportRow
-                        .padding(.horizontal, 28)
-
-                    backupSyncCard
-                        .padding(.horizontal, 28)
-                        .settingsAnchor(SettingsAnchor.cloudSyncToggle)
-
-                    capabilityLineup
-                        .padding(.horizontal, 28)
-
-                    remoteMCPCard
-                        .padding(.horizontal, 28)
-
-                    trustCard
-                        .padding(.horizontal, 28)
-
-                    Spacer(minLength: 36)
                 }
             }
         }
@@ -1366,9 +1371,7 @@ struct CloudStoreSettingsView: View {
                     .fixedSize(horizontal: false, vertical: true)
 
                 remoteMCPCommandRow(label: "Endpoint", value: MemoryWalkthroughContent.endpoint)
-                    .settingsAnchor(SettingsAnchor.cloudRemoteMCP)
                 remoteMCPCommandRow(label: "Stdio shim", value: MemoryWalkthroughContent.shimCommand)
-                    .settingsAnchor(SettingsAnchor.cloudRemoteMCPConnect)
                 remoteMCPCommandRow(label: "Doctor", value: MemoryWalkthroughContent.doctorCommand)
                     .settingsAnchor(SettingsAnchor.cloudRemoteMCPDoctor)
 
@@ -1409,6 +1412,9 @@ struct CloudStoreSettingsView: View {
                         .foregroundStyle(DesignSystem.Colors.ember)
                     }
                     .buttonStyle(.plain)
+                    // The walkthrough's Connect spotlight lands here — on the
+                    // button that performs the link, not the static shim row.
+                    .settingsAnchor(SettingsAnchor.cloudRemoteMCPConnect)
 
                     Button {
                         showingMemoryWalkthrough = true
@@ -1423,6 +1429,17 @@ struct CloudStoreSettingsView: View {
                     .buttonStyle(.plain)
                     .help("Take the one-minute tour of memory and the Memory MCP")
                     .settingsAnchor(SettingsAnchor.cloudMemoryTour)
+
+                    Link(destination: MacCloudConsoleURLs.root) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "globe")
+                            Text("Open the Data console")
+                        }
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(DesignSystem.Colors.ember)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Opens app.burnbar.ai — your Data & Privacy Control Center on the web")
                 }
             }
             .padding(20)

@@ -171,6 +171,48 @@ internal fun MercuryFcmService.postRoutedOsNotification(data: Map<String, String
     }
 }
 
+internal fun MercuryFcmService.postDeviceApprovalNotification(data: Map<String, String>) {
+    ensureAgentReplyChannel()
+    val deviceName = data["device_name"] ?: "New device"
+    val platform = data["platform"] ?: "Web"
+    val deviceId = data["device_id"] ?: ""
+    val deepLink = data["deep_link"] ?: "openburnbar://approve-device?deviceId=${Uri.encode(deviceId)}"
+    val eventId = "device-approval-$deviceId"
+
+    val openIntent =
+        Intent(this, MainActivity::class.java).apply {
+            action = Intent.ACTION_VIEW
+            this.data = Uri.parse(deepLink)
+            putExtra(MainActivity.EXTRA_EVENT_ID, eventId)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        }
+    openIntent.setPackage(packageName)
+    val openPending =
+        PendingIntent.getActivity(
+            this,
+            eventId.hashCode(),
+            openIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+    val notification =
+        NotificationCompat.Builder(this, MercuryFcmService.AGENT_REPLY_CHANNEL_ID)
+            .setSmallIcon(com.openburnbar.R.drawable.ic_mercury_call)
+            .setContentTitle("New Device Approval Request")
+            .setContentText("$deviceName ($platform) is requesting access to your vault.")
+            .setContentIntent(openPending)
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .build()
+    try {
+        NotificationManagerCompat.from(this).notify(eventId.hashCode(), notification)
+    } catch (error: SecurityException) {
+        android.util.Log.w(
+            "BurnBar",
+            "device_approval_notification_post_denied event=$eventId reason=${error.message}",
+        )
+    }
+}
+
 private suspend fun resolveThreadId(eventId: String): String? {
     val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return null
     return try {

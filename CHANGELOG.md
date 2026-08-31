@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **app.burnbar.ai is now reachable from every surface.** The member Data &
+  Privacy Control Center existed only as a bare URL — nothing linked to it.
+  The website's header More menu, mobile nav, footer trust column, and the
+  privacy page's data-domain inventory now link to the console; the Mac app
+  gained "Open the Data console" on Settings › Cloud, an "Open the web
+  console" action on the Data & Privacy landing's free-options card, and a
+  third walkthrough verb "Open Pensieve online" (step 4) deep-linking to
+  app.burnbar.ai/pensieve. Console URLs are pinned by tests
+  (`MacCloudConsoleURLs`) so the host can't silently drift.
 - **Living fluid aurora kernel emblem** (`MemoryConsentSheet`) — the first-run
   memory-consent modal's flat circle-and-`brain.head.profile` glyph is now a
   circular living aurora in BurnBar's colours: three luminous fluid ribbons
@@ -27,6 +36,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Symbol owed VoiceOver. Pinned by `FluidAuroraKernelTests` (12 tests).
 
 ### Fixed
+- Bumped Mac `CURRENT_PROJECT_VERSION` to `83` so `1.0.40+repair.37` is
+  strictly newer than live `1.0.40+repair.36` build 82. The in-app updater
+  compares numeric `CFBundleVersion` first and refuses same-build installs.
+- Console Profile no longer treats a present-but-zeroed `all_time` rollup as
+  healthy. The cheap scheduled path can write that document before any device
+  has published usage, which hid Re-sync and skipped the one-time
+  `rebuildUsageRollups` pass. A zeroed or pre-v3 rollup now auto-rebuilds once
+  per session and keeps the Re-sync CTA visible until real activity lands.
+- New companion devices now fan out a high-priority approval push to existing
+  Mac / iOS / Android devices, with a menu-bar banner, `openburnbar://approve-device`
+  deep link, and Android FCM handling so the request is visible instead of
+  sitting silently in Settings.
+- Pensieve on app.burnbar.ai can list and browse the member's own knowledge
+  chunks (`listKnowledgeChunks`) instead of search-only, and escrow device /
+  identity docs are owner-readable so the console Trust flow can actually load.
 - The Memory (Pensieve) walkthrough's "Show me" buttons now land on real,
   actionable controls. The "It saves itself" page routes to the on-device
   Memory section in Settings › General › Indexing (previously the decorative

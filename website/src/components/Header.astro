@@ -16,6 +16,7 @@ const PRODUCT_DROPDOWN = [
 const MORE_DROPDOWN = [
   { href: "/trust", label: "Trust" },
   { href: "/privacy", label: "Privacy" },
+  { href: SITE.consoleUrl, label: "Your data console" },
   { href: "/security", label: "Security" },
   { href: "/mcp", label: "MCP" },
   { href: "/support", label: "Support" },
@@ -47,7 +48,8 @@ const MOBILE_NAV = [
   { href: "/pricing", label: "Pricing" },
   { href: "/trust", label: "Trust" },
   { href: "/faq", label: "FAQ" },
-  { href: "/download", label: "Download" }
+  { href: "/download", label: "Download" },
+  { href: SITE.consoleUrl, label: "Your data console" }
 ];
 
 function isActive(href: string): boolean {

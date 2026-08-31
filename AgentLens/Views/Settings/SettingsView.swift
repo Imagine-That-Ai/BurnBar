@@ -785,14 +785,27 @@ private enum AccountActionError: LocalizedError {
     SettingsView(settingsManager: SettingsManager(), dataStore: store)
 }
 
+/// Pure decision for `DataControlCenterSettingsLanding`: a deep link whose
+/// anchor targets the Control Center opens the workbench outright when the
+/// vault tier is held; otherwise the locked landing stays up and shows the
+/// free on-device options. Plain sidebar navigation (no pending anchor) never
+/// flings a sheet open.
+enum DataControlCenterLandingPolicy {
+    static func shouldAutoOpen(pendingAnchor: String?, isUnlocked: Bool) -> Bool {
+        isUnlocked && pendingAnchor == SettingsAnchor.dataControlCenterInventory
+    }
+}
+
 private struct DataControlCenterSettingsLanding: View {
     let onOpen: () -> Void
 
     @StateObject private var entitlement = MacCloudEntitlementStore.shared
+    @Environment(SettingsRouter.self) private var router: SettingsRouter?
 
     /// The Data Vault / agent-memory workbench requires Cloud Pro. When the
     /// member doesn't yet hold it, the landing wears the evocative unlock veil
-    /// over a blurred teaser of the workbench affordance instead of opening.
+    /// over a blurred teaser of the workbench affordance instead of opening —
+    /// with the free, on-device Memory controls offered plainly below it.
     private var isUnlocked: Bool {
         entitlement.cloudTier.satisfies(GatedFeature.gatedFeature(.dataVault).requiredTier)
     }
@@ -802,12 +815,105 @@ private struct DataControlCenterSettingsLanding: View {
             if isUnlocked {
                 landingCard
             } else {
-                FeatureLockedVeil(feature: GatedFeature.gatedFeature(.dataVault)) {
-                    landingCard
-                }
+                lockedContent
             }
         }
-        .onAppear { entitlement.start() }
+        .onAppear {
+            entitlement.start()
+            openIfDeepLinked()
+        }
+        // Covers arriving while this pane is already on screen (the tour's
+        // "Show me" reuses the open Settings window) and the tier resolving a
+        // beat after the pane first appears.
+        .onChange(of: router?.pendingAnchor) { _, _ in openIfDeepLinked() }
+        .onChange(of: entitlement.cloudTier) { _, _ in openIfDeepLinked() }
+    }
+
+    /// Makes the deep-link promise real: the "Data & Privacy Control Center"
+    /// manifest item and the walkthrough's "Show me" say they *open* the
+    /// Pensieve workbench, so when a pending anchor for it is present and the
+    /// member holds the vault tier, open it instead of parking on this
+    /// landing. When the tier doesn't unlock the vault we leave the locked
+    /// landing up — its free-options card shows the controls that work today.
+    private func openIfDeepLinked() {
+        guard DataControlCenterLandingPolicy.shouldAutoOpen(
+            pendingAnchor: router?.pendingAnchor,
+            isUnlocked: isUnlocked
+        ) else { return }
+        router?.consumePendingAnchor(SettingsAnchor.dataControlCenterInventory)
+        if router?.highlightedAnchor == SettingsAnchor.dataControlCenterInventory {
+            router?.highlightedAnchor = nil
+        }
+        onOpen()
+    }
+
+    /// The gated state: the unlock veil explains what Cloud Pro adds, and the
+    /// card pinned beneath it lists what the member can do *right now* — so a
+    /// free user never dead-ends on a paywall with no next step.
+    private var lockedContent: some View {
+        VStack(spacing: 0) {
+            FeatureLockedVeil(feature: GatedFeature.gatedFeature(.dataVault)) {
+                landingCard
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            freeOptionsCard
+                .padding(DesignSystem.Spacing.lg)
+        }
+    }
+
+    private var freeOptionsCard: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            Text("ON THIS MAC — FREE, NO ACCOUNT NEEDED")
+                .font(.system(size: 10, weight: .heavy))
+                .tracking(1.8)
+                .foregroundStyle(DesignSystem.Colors.teal)
+
+            Text("Memory already works locally. These controls are yours right now:")
+                .font(DesignSystem.Typography.caption)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: DesignSystem.Spacing.md) {
+                Button {
+                    _ = SettingsDeepLinkRouting.route(to: "general.indexing.memory")
+                } label: {
+                    Label("Open on-device Memory controls", systemImage: "slider.horizontal.3")
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(DesignSystem.Colors.teal)
+                .accessibilityLabel("Open on-device Memory controls in Indexing settings")
+
+                Button {
+                    _ = SettingsDeepLinkRouting.route(to: "cloud.memoryTour")
+                } label: {
+                    Label("How Memory works — tour", systemImage: "brain.head.profile")
+                }
+                .buttonStyle(.bordered)
+                .tint(PensieveTheme.brassCore)
+
+                Link(destination: MacCloudConsoleURLs.root) {
+                    Label("Open the web console", systemImage: "globe")
+                }
+                .buttonStyle(.bordered)
+                .tint(DesignSystem.Colors.teal)
+                .help("Opens app.burnbar.ai — see and control everything BurnBar holds for you, from any browser")
+            }
+
+            Text("Review what BurnBar learned, turn learning on or off, reset it, or opt into sealed cloud backup — no Cloud plan required. The Control Center workbench above adds vault-wide inventory, export, and Panic revoke; the same surfaces live on the web at app.burnbar.ai.")
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(DesignSystem.Spacing.lg)
+        .background(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
+                .fill(DesignSystem.Colors.surface)
+                .overlay(
+                    RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
+                        .stroke(DesignSystem.Colors.borderSubtle, lineWidth: 1)
+                )
+        )
     }
 
     private var landingCard: some View {
@@ -833,14 +939,10 @@ private struct DataControlCenterSettingsLanding: View {
                 .disabled(!isUnlocked)
                 .settingsAnchor(SettingsAnchor.dataControlCenterInventory)
                 Button {
+                    // `route(to:)` already posts the open-settings-item
+                    // notification, so the live router jumps even when the
+                    // user taps this from this already-open landing.
                     _ = SettingsDeepLinkRouting.route(to: "cloud.memoryTour")
-                    // Also open Settings to Cloud so the tour sheet is reachable
-                    // even when the user taps this from an already-open Data &
-                    // Privacy landing without going through search.
-                    NotificationCenter.default.post(
-                        name: Notification.Name("openburnbar.openSettingsItem"),
-                        object: "cloud.memoryTour"
-                    )
                 } label: {
                     Label("How Memory works — one-minute tour", systemImage: "brain.head.profile")
                 }

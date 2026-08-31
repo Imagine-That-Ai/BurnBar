@@ -7,6 +7,14 @@ enum MacCloudStoreLegalURLs {
     static let terms = URL(string: "https://burnbar.ai/legal/terms")!
 }
 
+/// The member web console at app.burnbar.ai — the Data & Privacy Control
+/// Center on the web. One source of truth for every macOS surface that links
+/// out to it (Cloud pane, Memory walkthrough, Data & Privacy landing).
+enum MacCloudConsoleURLs {
+    static let root = URL(string: "https://app.burnbar.ai")!
+    static let pensieve = URL(string: "https://app.burnbar.ai/pensieve")!
+}
+
 struct MacCloudStoreLegalLinks: View {
     var body: some View {
         HStack(spacing: 8) {

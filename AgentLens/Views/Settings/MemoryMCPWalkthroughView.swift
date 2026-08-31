@@ -22,6 +22,38 @@ struct MemoryWalkthroughStep: Identifiable, Equatable {
     let tourAnchor: String?
     /// Human-readable breadcrumbs for the spotlight preview.
     let findPath: String?
+    /// Miniature preview of the destination rendered inside the spotlight card.
+    /// Nil on pages without a spotlight. Kept in the content layer so tests can
+    /// pin the preview copy against the destination it promises.
+    let previewIcon: String?
+    let previewTitle: String?
+    let previewSubtitle: String?
+
+    init(
+        id: Int,
+        symbol: String,
+        eyebrow: String,
+        title: String,
+        body: String,
+        chips: [String],
+        tourAnchor: String?,
+        findPath: String?,
+        previewIcon: String? = nil,
+        previewTitle: String? = nil,
+        previewSubtitle: String? = nil
+    ) {
+        self.id = id
+        self.symbol = symbol
+        self.eyebrow = eyebrow
+        self.title = title
+        self.body = body
+        self.chips = chips
+        self.tourAnchor = tourAnchor
+        self.findPath = findPath
+        self.previewIcon = previewIcon
+        self.previewTitle = previewTitle
+        self.previewSubtitle = previewSubtitle
+    }
 }
 
 enum MemoryWalkthroughContent {
@@ -34,6 +66,9 @@ enum MemoryWalkthroughContent {
     static let doctorCommand = "openburnbar mcp doctor"
     /// The guided setup page on the web.
     static let setupURL = URL(string: "https://burnbar.ai/product")!
+    /// The member's web console — where sealed data is visible and governed
+    /// from any browser, not just this Mac.
+    static let consoleURL = MacCloudConsoleURLs.pensieve
 
     static let steps: [MemoryWalkthroughStep] = [
         MemoryWalkthroughStep(
@@ -49,12 +84,15 @@ enum MemoryWalkthroughContent {
         MemoryWalkthroughStep(
             id: 1,
             symbol: "checkmark.seal.fill",
-            eyebrow: "Zero setup",
-            title: "It saves itself.",
-            body: "Sign in once with Cloud Pro and memory turns itself on. When a chat ends, I distill the useful facts and seal them with your vault key. I never interrupt a conversation and never spend your AI credits.",
+            eyebrow: "On this Mac",
+            title: "It saves itself — once you say yes.",
+            body: "Memory runs on this Mac, no account needed. Nothing is read until you allow it: OpenBurnBar asks first, then I distill the useful facts — decisions, fixes, preferences — and keep them sealed locally. On/off, high-recall, review, and reset live here, free for everyone.",
             chips: [],
-            tourAnchor: SettingsAnchor.cloudOverview,
-            findPath: "Settings › Cloud"
+            tourAnchor: SettingsAnchor.indexingMemory,
+            findPath: "Settings › General › Indexing",
+            previewIcon: "brain.head.profile",
+            previewTitle: "Memory controls",
+            previewSubtitle: "On-device · consent first · review or reset anytime"
         ),
         MemoryWalkthroughStep(
             id: 2,
@@ -64,7 +102,10 @@ enum MemoryWalkthroughContent {
             body: "Any MCP client — Codex, Claude Code, Droid, Kimi — can ask your memory questions. Tap \"Link this Mac's CLI\" on the Remote MCP card and BurnBar configures supported tools for you, or copy these by hand:",
             chips: [],
             tourAnchor: SettingsAnchor.cloudRemoteMCPConnect,
-            findPath: "Settings › Cloud › Remote MCP"
+            findPath: "Settings › Cloud › Remote MCP",
+            previewIcon: "point.3.connected.trianglepath.dotted",
+            previewTitle: "Remote MCP",
+            previewSubtitle: "Link this Mac's CLI  ·  Endpoint  ·  Doctor"
         ),
         MemoryWalkthroughStep(
             id: 3,
@@ -86,10 +127,13 @@ enum MemoryWalkthroughContent {
             symbol: "lock.shield.fill",
             eyebrow: "Control",
             title: "You're in control.",
-            body: "Settings › Data & Privacy shows every record with a live \"% sealed\" gauge. Export everything as JSON, forget a single memory or a whole category, or hit Panic to revoke all access instantly.",
+            body: "Everything I keep is yours to inspect. Review pending memories, reset them, or opt into sealed cloud backup in Settings › General › Indexing — free for everyone. With Cloud Pro, Settings › Data & Privacy opens the full Pensieve workbench: every record with a live \"% sealed\" gauge, JSON export, single-memory or whole-category forgetting, and Panic to revoke all access instantly. The same control lives on the web at app.burnbar.ai — sign in from any browser and it's all there: your data, your keys.",
             chips: [],
             tourAnchor: SettingsAnchor.dataControlCenterInventory,
-            findPath: "Settings › Data & Privacy"
+            findPath: "Settings › Data & Privacy",
+            previewIcon: "lock.shield.fill",
+            previewTitle: "Data & Privacy Control Center",
+            previewSubtitle: "Every record · Export · Forget · Panic (Cloud Pro)"
         ),
     ]
 }
@@ -221,7 +265,7 @@ struct MemoryMCPWalkthroughView: View {
             }
 
             if let anchor = step.tourAnchor, let path = step.findPath {
-                spotlightPreview(anchor: anchor, path: path, stepID: step.id)
+                spotlightPreview(step: step, anchor: anchor, path: path)
             }
 
             if step.id == 2 {
@@ -269,7 +313,7 @@ struct MemoryMCPWalkthroughView: View {
 
     // MARK: Spotlight preview (where to find it + Show me)
 
-    private func spotlightPreview(anchor: String, path: String, stepID: Int) -> some View {
+    private func spotlightPreview(step: MemoryWalkthroughStep, anchor: String, path: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
                 Image(systemName: "scope")
@@ -281,11 +325,7 @@ struct MemoryMCPWalkthroughView: View {
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
                 Spacer()
                 Button {
-                    dismiss()
-                    // Give the sheet dismiss animation a tick before routing.
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
-                        MemoryWalkthroughNavigator.show(anchor: anchor)
-                    }
+                    routeToSpotlight(anchor)
                 } label: {
                     HStack(spacing: 4) {
                         Text("Show me")
@@ -302,7 +342,7 @@ struct MemoryMCPWalkthroughView: View {
             // warm amber halo — the same highlight SettingsAnchorModifier
             // paints on arrival.
             HStack(spacing: 10) {
-                Image(systemName: previewIcon(for: stepID))
+                Image(systemName: step.previewIcon ?? "scope")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(PensieveTheme.brassCore)
                     .frame(width: 26, height: 26)
@@ -311,10 +351,10 @@ struct MemoryMCPWalkthroughView: View {
                             .fill(PensieveTheme.brassCore.opacity(0.14))
                     )
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(previewTitle(for: stepID))
+                    Text(step.previewTitle ?? "")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(DesignSystem.Colors.textPrimary)
-                    Text(previewSubtitle(for: stepID))
+                    Text(step.previewSubtitle ?? "")
                         .font(.system(size: 11))
                         .foregroundStyle(DesignSystem.Colors.textSecondary)
                         .lineLimit(1)
@@ -344,33 +384,6 @@ struct MemoryMCPWalkthroughView: View {
         )
     }
 
-    private func previewIcon(for stepID: Int) -> String {
-        switch stepID {
-        case 1: return "person.crop.circle.badge.checkmark"
-        case 2: return "point.3.connected.trianglepath.dotted"
-        case 4: return "lock.shield.fill"
-        default: return "scope"
-        }
-    }
-
-    private func previewTitle(for stepID: Int) -> String {
-        switch stepID {
-        case 1: return "OpenBurnBar Cloud"
-        case 2: return "Remote MCP"
-        case 4: return "Data & Privacy Control Center"
-        default: return ""
-        }
-    }
-
-    private func previewSubtitle(for stepID: Int) -> String {
-        switch stepID {
-        case 1: return "Sign in — memory turns on by itself"
-        case 2: return "Link this Mac's CLI  ·  Endpoint  ·  Doctor"
-        case 4: return "Every record · Export · Forget · Panic"
-        default: return ""
-        }
-    }
-
     // MARK: Connect page (copyable rows)
 
     private var connectRows: some View {
@@ -382,6 +395,15 @@ struct MemoryMCPWalkthroughView: View {
                 .font(DesignSystem.Typography.tiny)
                 .foregroundStyle(DesignSystem.Colors.textMuted)
                 .fixedSize(horizontal: false, vertical: true)
+            Link(destination: MemoryWalkthroughContent.setupURL) {
+                HStack(spacing: 6) {
+                    Text("Open the guided setup page")
+                    Image(systemName: "arrow.up.right.square.fill")
+                }
+                .font(DesignSystem.Typography.caption)
+                .foregroundStyle(PensieveTheme.brassCore)
+            }
+            .accessibilityLabel("Open the guided Remote MCP setup page")
         }
     }
 
@@ -436,27 +458,60 @@ struct MemoryMCPWalkthroughView: View {
 
     // MARK: Control page actions
 
+    /// Step 4's verbs. "Open the Pensieve" routes to the Data & Privacy deep
+    /// link, which opens the workbench outright when the member holds the
+    /// vault tier and otherwise lands on the landing's free-options card.
+    /// "Open my Memory controls" goes straight to the on-device controls that
+    /// work for everyone, no account required. "Open Pensieve online" hands
+    /// the member to the web console, where the same data is visible and
+    /// governable from any browser.
     private var controlActions: some View {
         HStack(spacing: 16) {
-            Link(destination: MemoryWalkthroughContent.setupURL) {
-                HStack(spacing: 6) {
-                    Text("Open Remote MCP setup")
-                    Image(systemName: "arrow.up.right.square.fill")
-                }
-                .font(DesignSystem.Typography.caption)
-                .foregroundStyle(PensieveTheme.brassCore)
-            }
             Button {
-                AppCommandRouter.shared.handleLinkCli()
+                routeToSpotlight(SettingsAnchor.dataControlCenterInventory)
             } label: {
                 HStack(spacing: 6) {
-                    Image(systemName: "terminal.fill")
-                    Text("Link this Mac's CLI")
+                    Image(systemName: "lock.shield.fill")
+                    Text("Open the Pensieve")
                 }
                 .font(DesignSystem.Typography.caption)
                 .foregroundStyle(PensieveTheme.brassCore)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Open the Pensieve workbench in Settings")
+
+            Button {
+                routeToSpotlight(SettingsAnchor.indexingMemory)
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "slider.horizontal.3")
+                    Text("Open my Memory controls")
+                }
+                .font(DesignSystem.Typography.caption)
+                .foregroundStyle(PensieveTheme.brassCore)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Open on-device Memory controls in Settings")
+
+            Link(destination: MemoryWalkthroughContent.consoleURL) {
+                HStack(spacing: 6) {
+                    Image(systemName: "globe")
+                    Text("Open Pensieve online")
+                }
+                .font(DesignSystem.Typography.caption)
+                .foregroundStyle(PensieveTheme.brassCore)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Open the Pensieve console at app.burnbar.ai in your browser")
+        }
+    }
+
+    /// Dismiss the sheet, then drive Settings to the anchor once the dismiss
+    /// animation has had a tick to settle.
+    private func routeToSpotlight(_ anchor: String) {
+        dismiss()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
+            MemoryWalkthroughNavigator.show(anchor: anchor)
         }
     }
 

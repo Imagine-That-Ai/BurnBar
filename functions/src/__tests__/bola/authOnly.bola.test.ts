@@ -34,6 +34,8 @@ export const AUTH_ONLY_CALLABLES = [
   "listPendingCloudVaultRotationRequirements",
   "getDataDomainUsage",
   "searchKnowledge",
+  "listKnowledgeChunks",
+  "submitBugReport",
   "exportUserData",
   "deleteUserCloudData",
   "revokeAllAccess",

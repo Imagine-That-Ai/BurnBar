@@ -79,6 +79,13 @@ final class AppCommandRouter {
         // so the route would be declared and unreachable.
         case "quota", "inbox", "home", "recap":
             return routeDashboardDeepLink?(url) ?? false
+        case "approve-device", "device-approval", "devices":
+            Task { @MainActor in
+                _ = SettingsDeepLinkRouting.route(to: SettingsAnchor.trustedDevices)
+                PendingDeviceApprovalModel.shared.isDismissed = false
+                await PendingDeviceApprovalModel.shared.refresh()
+            }
+            return true
         case "link-cli":
             return handleLinkCli()
         default:
