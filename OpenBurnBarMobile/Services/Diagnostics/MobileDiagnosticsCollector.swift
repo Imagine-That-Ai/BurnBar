@@ -16,15 +16,15 @@ public enum MobileDiagnosticsCollector {
         public let thermalState: String
         public let timestamp: String
 
-        public var asDictionary: [String: Any] {
+        public var asDictionary: [String: String] {
             [
                 "osVersion": osVersion,
                 "deviceModel": deviceModel,
                 "appVersion": appVersion,
                 "appBuild": appBuild,
-                "batteryLevel": batteryLevel,
+                "batteryLevel": String(batteryLevel),
                 "thermalState": thermalState,
-                "timestamp": timestamp,
+                "timestamp": timestamp
             ]
         }
     }

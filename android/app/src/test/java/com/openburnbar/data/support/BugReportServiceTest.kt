@@ -72,4 +72,55 @@ class BugReportServiceTest {
         assertEquals("shiba", map["board"])
         assertEquals("1234567890", map["timestamp"])
     }
+
+    @Test
+    fun `callablePayload includes optional fields and diagnostics`() {
+        val submission =
+            BugReportSubmission(
+                title = "[Bug] Crash on settings tap",
+                description = "Settings tab threw null pointer exception",
+                platform = "Android",
+                appVersion = "1.2.0",
+                osVersion = "Android 14 (API 34)",
+                deviceModel = "Google Pixel 8",
+                diagnostics = mapOf("battery" to "95%"),
+                logsSnippet = "stack",
+                autoDispenseCLI = false,
+                requestedRuntime = "claude",
+                targetProject = "BurnBar",
+            )
+
+        val payload = BugReportService.callablePayload(submission)
+        assertEquals("[Bug] Crash on settings tap", payload["title"])
+        assertEquals("Android", payload["platform"])
+        assertEquals(false, payload["autoDispenseCLI"])
+        assertEquals("1.2.0", payload["appVersion"])
+        assertEquals("stack", payload["logsSnippet"])
+        assertEquals("claude", payload["requestedRuntime"])
+        assertEquals("BurnBar", payload["targetProject"])
+        @Suppress("UNCHECKED_CAST")
+        assertEquals("95%", (payload["diagnostics"] as Map<String, String>)["battery"])
+    }
+
+    @Test
+    fun `parseSubmissionResult maps linear issue and missionId`() {
+        val result =
+            BugReportService.parseSubmissionResult(
+                mapOf(
+                    "reportId" to "rep_abc123",
+                    "missionId" to "mission_bug_rep_abc123",
+                    "linearIssue" to mapOf(
+                        "identifier" to "BB-88",
+                        "url" to "https://linear.app/openburnbar/issue/BB-88",
+                        "mock" to false,
+                    ),
+                ),
+            )
+
+        assertEquals("rep_abc123", result.reportId)
+        assertEquals("BB-88", result.linearIdentifier)
+        assertEquals("https://linear.app/openburnbar/issue/BB-88", result.linearUrl)
+        assertFalse(result.isMock)
+        assertEquals("mission_bug_rep_abc123", result.missionId)
+    }
 }

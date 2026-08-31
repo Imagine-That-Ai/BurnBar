@@ -337,12 +337,7 @@ private fun BugReportFormContent(
 }
 
 @Composable
-private fun BugReportSubmitButton(
-    title: String,
-    isSubmitting: Boolean,
-    autoDispenseCLI: Boolean,
-    onSubmit: () -> Unit,
-) {
+private fun BugReportSubmitButton(title: String, isSubmitting: Boolean, autoDispenseCLI: Boolean, onSubmit: () -> Unit) {
     Button(
         onClick = onSubmit,
         modifier = Modifier.fillMaxWidth(),
@@ -387,12 +382,7 @@ private fun BugReportCategoryRow(category: String, onCategoryChange: (String) ->
 }
 
 @Composable
-private fun BugReportToggleRow(
-    title: String,
-    subtitle: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-) {
+private fun BugReportToggleRow(title: String, subtitle: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,

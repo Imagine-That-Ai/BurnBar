@@ -1819,4 +1819,3 @@ private struct ResizableTraySectionDivider: View {
         onOpenSettings: {}
     )
 }
-

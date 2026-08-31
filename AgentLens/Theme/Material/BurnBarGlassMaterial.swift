@@ -338,7 +338,7 @@ private struct BurnBarGlassModifier<S: InsettableShape>: ViewModifier {
             (scheme == .dark ? DesignSystem.Colors.surface : DesignSystem.Colors.surfaceElevated)
                 .opacity(baseOpacity * (0.85 + 0.15 * spec.scrim))
 
-            if role != .content && spec.ambience > 0.1, let tint = tint {
+            if role != .content && spec.ambience > 0.1, let tint {
                 tint.opacity(0.04 * spec.ambience)
             }
         }

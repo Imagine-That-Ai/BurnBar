@@ -1094,6 +1094,14 @@
       "removalCondition": "Same pensieve/knowledge domain."
     },
     {
+      "id": "call.submitBugReport",
+      "name": "submitBugReport",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.call.submit-bug-report",
+      "owner": "mobile-apps",
+      "removalCondition": "Add TypeSpec support/bug-report callable contract covering Linear issue creation and optional CLI mission dispatch."
+    },
+    {
       "id": "call.getProfileAvatarDownloadUrl",
       "name": "getProfileAvatarDownloadUrl",
       "kind": "legacy-boundary",

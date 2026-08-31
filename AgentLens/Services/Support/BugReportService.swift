@@ -5,14 +5,14 @@ import AppKit
 @preconcurrency import FirebaseFunctions
 import OSLog
 
-public struct BugReportSubmission: @unchecked Sendable {
+public struct BugReportSubmission: Sendable {
     public let title: String
     public let description: String
     public let platform: String
     public let appVersion: String?
     public let osVersion: String?
     public let deviceModel: String?
-    public let diagnostics: [String: Any]?
+    public let diagnostics: [String: String]?
     public let logsSnippet: String?
     public let screenshotBase64: String?
     public let autoDispenseCLI: Bool
@@ -26,7 +26,7 @@ public struct BugReportSubmission: @unchecked Sendable {
         appVersion: String? = nil,
         osVersion: String? = nil,
         deviceModel: String? = nil,
-        diagnostics: [String: Any]? = nil,
+        diagnostics: [String: String]? = nil,
         logsSnippet: String? = nil,
         screenshotBase64: String? = nil,
         autoDispenseCLI: Bool = true,
@@ -81,7 +81,7 @@ public enum BugReportService {
             "title": submission.title,
             "description": submission.description,
             "platform": submission.platform,
-            "autoDispenseCLI": submission.autoDispenseCLI,
+            "autoDispenseCLI": submission.autoDispenseCLI
         ]
 
         if let v = submission.appVersion { payload["appVersion"] = v }

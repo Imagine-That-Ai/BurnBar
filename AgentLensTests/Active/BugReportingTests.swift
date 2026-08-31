@@ -17,9 +17,9 @@ final class BugReportingTests: XCTestCase {
         XCTAssertEqual(snapshot.activeProviders, ["claude", "codex"])
 
         let dict = snapshot.asDictionary
-        XCTAssertEqual(dict["osVersion"] as? String, snapshot.osVersion)
-        XCTAssertEqual(dict["macModel"] as? String, snapshot.macModel)
-        XCTAssertEqual(dict["isDaemonConnected"] as? Bool, true)
+        XCTAssertEqual(dict["osVersion"], snapshot.osVersion)
+        XCTAssertEqual(dict["macModel"], snapshot.macModel)
+        XCTAssertEqual(dict["isDaemonConnected"], "true")
     }
 
     func testBugInvestigationMissionRuntimeResolution() {
@@ -38,7 +38,7 @@ final class BugReportingTests: XCTestCase {
             "targetProject": "BurnBar",
             "missionKind": "bug_investigation",
             "commandsAllowed": true,
-            "fileEditsAllowed": true,
+            "fileEditsAllowed": true
         ]
 
         let prompt = CLIAgentMissionRuntimePlanner.prompt(

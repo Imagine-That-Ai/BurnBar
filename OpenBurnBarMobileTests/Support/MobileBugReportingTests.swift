@@ -12,8 +12,8 @@ final class MobileBugReportingTests: XCTestCase {
         XCTAssertFalse(snapshot.timestamp.isEmpty)
 
         let dict = snapshot.asDictionary
-        XCTAssertEqual(dict["osVersion"] as? String, snapshot.osVersion)
-        XCTAssertEqual(dict["deviceModel"] as? String, snapshot.deviceModel)
+        XCTAssertEqual(dict["osVersion"], snapshot.osVersion)
+        XCTAssertEqual(dict["deviceModel"], snapshot.deviceModel)
     }
 
     func testMobileBugReportSubmissionModel() {
@@ -24,7 +24,7 @@ final class MobileBugReportingTests: XCTestCase {
             appVersion: "1.4.0",
             osVersion: "iOS 18.2",
             deviceModel: "iPhone 16 Pro",
-            diagnostics: ["battery": 0.85],
+            diagnostics: ["battery": "0.85"],
             autoDispenseCLI: true,
             requestedRuntime: "claude"
         )

@@ -211,15 +211,41 @@ extension BurnBarHTTPGatewayServer {
             return routeKeysByFamily
         }
 
+        // Disabled advertisements (including muted aliases) must stay unroutable.
+        // Do not resurrect them through namespace/vendor fallback.
+        if let configSnapshot = try? await configStore.snapshot() {
+            let providersToCheck: [BurnBarProviderSettings]
+            if let providerID = requestedModel.providerID {
+                providersToCheck = configSnapshot.providers.filter {
+                    $0.providerID.caseInsensitiveCompare(providerID) == .orderedSame
+                }
+            } else {
+                providersToCheck = configSnapshot.providers
+            }
+            if providersToCheck.contains(where: {
+                !$0.isModelAdvertisementEnabled(requestedModel.modelID)
+            }) {
+                return [:]
+            }
+        }
+
+        // Ollama `:cloud` / `-cloud` IDs are admitted only by the live catalog page.
+        // Dynamic provider fallback must not invent a cloud route that `/search` did not list.
+        if OllamaCloudModelRoutingPolicy.cloudAliasBaseModelID(from: normalizedModelID) != nil {
+            return routeKeysByFamily
+        }
+
         // Dynamic fallback: If no static advertised row matched, check if an enabled,
         // route-eligible provider exists that can claim or dynamically serve this model
         // (e.g. Anthropic serving dynamic `claude-*` IDs, or OpenAI serving `gpt-*`).
-        let claimingProviderID = requestedModel.providerID
+        // A nil claim must not spray the request across every eligible account.
+        guard let claimingProviderID = requestedModel.providerID
             ?? configStore.catalogSupport.providerNamespaceClaim(forModelID: normalizedModelID)
-            ?? catalog.vendorForModel(named: normalizedModelID)?.id
+            ?? catalog.vendorForModel(named: normalizedModelID)?.id else {
+            return routeKeysByFamily
+        }
         for account in snapshot.accounts where account.routeEligible {
-            if let claimingProviderID,
-               account.providerID.caseInsensitiveCompare(claimingProviderID) != .orderedSame {
+            if account.providerID.caseInsensitiveCompare(claimingProviderID) != .orderedSame {
                 continue
             }
             guard configStore.catalogSupport.modelID(normalizedModelID, isNamespaceSafeFor: account.providerID) else {

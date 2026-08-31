@@ -20,18 +20,18 @@ public enum SystemDiagnosticsCollector {
         public let activeProviders: [String]
         public let timestamp: String
 
-        public var asDictionary: [String: Any] {
+        public var asDictionary: [String: String] {
             [
                 "osVersion": osVersion,
                 "macModel": macModel,
                 "appVersion": appVersion,
                 "appBuild": appBuild,
-                "memoryUsageMB": memoryUsageMB,
-                "physicalMemoryGB": physicalMemoryGB,
+                "memoryUsageMB": String(memoryUsageMB),
+                "physicalMemoryGB": String(physicalMemoryGB),
                 "thermalState": thermalState,
-                "isDaemonConnected": isDaemonConnected,
-                "activeProviders": activeProviders,
-                "timestamp": timestamp,
+                "isDaemonConnected": isDaemonConnected ? "true" : "false",
+                "activeProviders": activeProviders.joined(separator: ","),
+                "timestamp": timestamp
             ]
         }
     }
