@@ -368,12 +368,12 @@ struct HomeSpendChart: View {
     /// Room reserved along the bottom for the time axis, and along the top for controls.
     private static let axisInset: CGFloat = 22
     private static let headerInset: CGFloat = 34
-    /// Gap between the ceiling and the control strip, so a clipped peak's stroke and
-    /// marker have room to render instead of being sliced in half by the header.
-    private static let crestHeadroom: CGFloat = 5
-    /// Catmull-Rom tension. Below 1 the curve tightens toward a polyline; this is high
-    /// enough to read as a curve and low enough not to overshoot into negative spend.
-    private static let tension: CGFloat = 0.86
+    /// Gap between the ceiling and the control strip, so a peak's stroke, glow, and
+    /// marker have generous breathing room without hitting or clipping the header.
+    private static let crestHeadroom: CGFloat = 14
+    /// Catmull-Rom tension. Balanced to render soft, continuous curves with natural
+    /// rounded summits without overshooting into negative spend.
+    private static let tension: CGFloat = 0.90
     /// Fraction of the legend strip given over to the "there is more" falloff.
     private static let legendFade: CGFloat = 0.05
     private static let hiddenSeparator = "\n"
