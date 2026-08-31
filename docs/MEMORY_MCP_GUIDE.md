@@ -5,10 +5,18 @@ decisions, fixes, preferences, project facts — and hands them back to any AI
 tool you use. Everything is sealed with a key only your devices hold; our
 servers store only scrambled data they cannot read.
 
-The same tour ships inside the app: **Settings › Cloud › Remote MCP › “How
-Memory works”** opens a five-page walkthrough modal
+The same tour ships inside the app as a guided walkthrough with spotlights:
+**Settings › Cloud › Remote MCP › “How Memory works”** opens a five-page modal
 (`AgentLens/Views/Settings/MemoryMCPWalkthroughView.swift`) whose copy is
-pinned by `MemoryMCPWalkthroughTests`.
+pinned by `MemoryMCPWalkthroughTests`. Each spotlight page previews the real
+control and offers a **Show me** button that takes you straight to it; the tour
+is also reachable from **Help › How Memory Works…** (⇧⌘M), from **Settings
+search** (“memory tour”, “pensieve tour”, “how memory works”), and from the
+**Data & Privacy** landing.
+
+Inside the tour, the voice is Pensieve — the memory basin itself — speaking in
+plain language so a non-technical reader can finish in under a minute and still
+remember where every control lives.
 
 ## The 60-second setup
 

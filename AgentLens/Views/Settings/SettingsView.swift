@@ -831,6 +831,15 @@ private struct DataControlCenterSettingsLanding: View {
                 .buttonStyle(.borderedProminent)
                 .tint(DesignSystem.Colors.teal)
                 .disabled(!isUnlocked)
+                .settingsAnchor(SettingsAnchor.dataControlCenterInventory)
+                Button {
+                    _ = SettingsDeepLinkRouting.route(to: "cloud.memoryTour")
+                } label: {
+                    Label("How Memory works — one-minute tour", systemImage: "brain.head.profile")
+                }
+                .buttonStyle(.bordered)
+                .tint(PensieveTheme.brassCore)
+                .help("Take the Pensieve tour: what memory is, where to connect, how to recall, where to govern it")
             }
             .padding(32)
             .background(

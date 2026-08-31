@@ -75,13 +75,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Memory walkthrough modal + guide** (`docs/MEMORY_MCP_GUIDE.md`) — a
-  five-page, under-a-minute tour of Memory (Pensieve) and the Memory MCP,
-  presented from the Remote MCP card in Settings › Cloud via “How Memory
-  works”. It covers what memory is, that it saves itself at session end, how
-  to connect other AI tools (copyable endpoint/shim/doctor rows), how to ask
-  for things back, and the Data & Privacy controls (export, forget, Panic).
-  The walkthrough copy lives in `MemoryWalkthroughContent` and is pinned
-  against the live endpoint and shim command by `MemoryMCPWalkthroughTests`.
+  five-page, under-a-minute guided tour of Memory (Pensieve) and the Memory
+  MCP with a friendly Pensieve voice, spotlight previews, and “Show me” deep
+  links that take the reader straight to the real controls. Three persistent
+  entry points: the Remote MCP card's “How Memory works” button, **Help › How
+  Memory Works…** (⇧⌘M), **Settings search** (“memory tour”, “pensieve tour”,
+  “how memory works”), and a link on the **Data & Privacy** landing. Each
+  tour page previews the destination card with an amber halo and drives the
+  user via manifest routing to anchored rows in Settings › Cloud (including
+  the new `cloud.remoteMCP`/`cloud.remoteMCP.connect`/`cloud.remoteMCP.doctor`
+  scroll anchors) or Settings › Data & Privacy. Copyable endpoint/shim/doctor
+  rows, example recall prompts, and export/forget/Panic controls stay on their
+  pages. Content lives in `MemoryWalkthroughContent` and is pinned against the
+  live endpoint and shim command by `MemoryMCPWalkthroughTests`.
 - **Monthly Recap** (`docs/RECAP.md`) — a new destination that reads a calendar
   month of AI usage back as an editorial deck of cards: favourite model and
   model+harness pairing, weekday and late-night habits, streaks, project focus,

@@ -1358,6 +1358,7 @@ struct CloudStoreSettingsView: View {
                         TierLockBadge(tier: GatedFeature.gatedFeature(.hostedMCP).requiredTier)
                     }
                 }
+                .settingsAnchor(SettingsAnchor.cloudRemoteMCP)
 
                 Text("Connect Codex, Claude Code, Droid, Kimi, Forge, or any MCP client to encrypted hosted session-memory search. Direct HTTP uses the hosted endpoint; the local shim keeps decrypted snippets on-device.")
                     .font(.system(size: 12))
@@ -1365,8 +1366,11 @@ struct CloudStoreSettingsView: View {
                     .fixedSize(horizontal: false, vertical: true)
 
                 remoteMCPCommandRow(label: "Endpoint", value: MemoryWalkthroughContent.endpoint)
+                    .settingsAnchor(SettingsAnchor.cloudRemoteMCP)
                 remoteMCPCommandRow(label: "Stdio shim", value: MemoryWalkthroughContent.shimCommand)
+                    .settingsAnchor(SettingsAnchor.cloudRemoteMCPConnect)
                 remoteMCPCommandRow(label: "Doctor", value: MemoryWalkthroughContent.doctorCommand)
+                    .settingsAnchor(SettingsAnchor.cloudRemoteMCPDoctor)
 
                 MacRemoteMCPConnectedClientsSection(store: remoteMCPClients)
 
@@ -1418,6 +1422,7 @@ struct CloudStoreSettingsView: View {
                     }
                     .buttonStyle(.plain)
                     .help("Take the one-minute tour of memory and the Memory MCP")
+                    .settingsAnchor(SettingsAnchor.cloudMemoryTour)
                 }
             }
             .padding(20)

@@ -18,6 +18,10 @@ struct MemoryWalkthroughStep: Identifiable, Equatable {
     let body: String
     /// Example prompts or short supporting lines rendered as chips (optional).
     let chips: [String]
+    /// Where to find the thing this page is about (nil for purely conceptual pages).
+    let tourAnchor: String?
+    /// Human-readable breadcrumbs for the spotlight preview.
+    let findPath: String?
 }
 
 enum MemoryWalkthroughContent {
@@ -37,24 +41,30 @@ enum MemoryWalkthroughContent {
             symbol: "brain.head.profile",
             eyebrow: "Meet Memory",
             title: "Your AI chats, remembered.",
-            body: "BurnBar quietly remembers what matters from your AI conversations — decisions, fixes, preferences, project facts — and hands them back to any AI tool you use. Everything is sealed with a key only your devices hold.",
-            chips: []
+            body: "Hello — I'm Pensieve, BurnBar's memory basin. I quietly remember what matters from your AI conversations — decisions, fixes, preferences, project facts — and hand them back to any AI tool you use. Everything is sealed with a key only your devices hold.",
+            chips: [],
+            tourAnchor: nil,
+            findPath: nil
         ),
         MemoryWalkthroughStep(
             id: 1,
             symbol: "checkmark.seal.fill",
             eyebrow: "Zero setup",
             title: "It saves itself.",
-            body: "Sign in once with Cloud Pro and memory turns itself on. When a chat ends, BurnBar distills the useful facts and seals them with your vault key. It never interrupts a conversation and never spends your AI credits.",
-            chips: []
+            body: "Sign in once with Cloud Pro and memory turns itself on. When a chat ends, I distill the useful facts and seal them with your vault key. I never interrupt a conversation and never spend your AI credits.",
+            chips: [],
+            tourAnchor: SettingsAnchor.cloudOverview,
+            findPath: "Settings › Cloud"
         ),
         MemoryWalkthroughStep(
             id: 2,
             symbol: "point.3.connected.trianglepath.dotted",
             eyebrow: "Connect",
             title: "Plug in your other AI tools.",
-            body: "Any MCP client — Codex, Claude Code, Droid, Kimi — can ask your memory questions. Tap “Link this Mac’s CLI” on the Remote MCP card and BurnBar configures supported tools for you, or copy these by hand:",
-            chips: []
+            body: "Any MCP client — Codex, Claude Code, Droid, Kimi — can ask your memory questions. Tap \"Link this Mac's CLI\" on the Remote MCP card and BurnBar configures supported tools for you, or copy these by hand:",
+            chips: [],
+            tourAnchor: SettingsAnchor.cloudRemoteMCPConnect,
+            findPath: "Settings › Cloud › Remote MCP"
         ),
         MemoryWalkthroughStep(
             id: 3,
@@ -67,17 +77,38 @@ enum MemoryWalkthroughContent {
                 "Resume the conversation where we fixed the login bug.",
                 "What did I decide about caching, and why?",
                 "Summarize what we shipped this week.",
-            ]
+            ],
+            tourAnchor: nil,
+            findPath: nil
         ),
         MemoryWalkthroughStep(
             id: 4,
             symbol: "lock.shield.fill",
             eyebrow: "Control",
             title: "You're in control.",
-            body: "Settings › Data & Privacy shows every record with a live “% sealed” gauge. Export everything as JSON, forget a single memory or a whole category, or hit Panic to revoke all access instantly.",
-            chips: []
+            body: "Settings › Data & Privacy shows every record with a live \"% sealed\" gauge. Export everything as JSON, forget a single memory or a whole category, or hit Panic to revoke all access instantly.",
+            chips: [],
+            tourAnchor: SettingsAnchor.dataControlCenterInventory,
+            findPath: "Settings › Data & Privacy"
         ),
     ]
+}
+
+/// Opens the right Settings page for a walkthrough spotlight anchor.
+///
+/// Uses the manifest + deep-link routing so the destination scrolls and
+/// highlights exactly the same row the walkthrough previews.
+enum MemoryWalkthroughNavigator {
+    static func show(anchor: String) {
+        guard let item = SettingsManifest.all.first(where: { $0.anchorID == anchor }) else { return }
+        Task { @MainActor in
+            _ = SettingsDeepLinkRouting.route(to: item.id)
+            // Also ensure Settings itself is open — AppCommandRouter is the
+            // canonical opener; if the app is already showing Settings this
+            // is a no-op and the router notification does the navigation.
+            AppCommandRouter.shared.openSettings?()
+        }
+    }
 }
 
 /// Clamped pager state for the walkthrough — extracted so navigation rules are
@@ -104,10 +135,11 @@ struct MemoryWalkthroughPager: Equatable {
 
 // MARK: - Memory (Pensieve) walkthrough sheet
 
-/// A five-page, under-a-minute modal that teaches the memory MCP end to end:
-/// what memory is, that it saves itself, how to connect AI tools, how to
-/// recall, and where the governance controls live. Presented from the Remote
-/// MCP card in Settings › Cloud.
+/// A five-page, under-a-minute guided tour that teaches the memory MCP end to
+/// end — with a friendly Pensieve voice, copyable connection rows, and
+/// "Show me" buttons that spotlight and drive the user to the real Settings
+/// controls. Presented from Settings › Cloud › Remote MCP, the Help menu, and
+/// Settings search ("memory tour").
 struct MemoryMCPWalkthroughView: View {
     @State private var pager = MemoryWalkthroughPager(count: MemoryWalkthroughContent.steps.count)
     /// Bumped when a copy row is tapped so the glyph flips to a checkmark briefly.
@@ -188,6 +220,10 @@ struct MemoryMCPWalkthroughView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
+            if let anchor = step.tourAnchor, let path = step.findPath {
+                spotlightPreview(anchor: anchor, path: path, stepID: step.id)
+            }
+
             if step.id == 2 {
                 connectRows
             }
@@ -195,7 +231,7 @@ struct MemoryMCPWalkthroughView: View {
             if step.chips.isEmpty == false {
                 VStack(alignment: .leading, spacing: 8) {
                     ForEach(step.chips, id: \.self) { chip in
-                        Text("“\(chip)”")
+                        Text("\"\(chip)\"")
                             .font(DesignSystem.Typography.caption)
                             .italic()
                             .foregroundStyle(DesignSystem.Colors.teal)
@@ -229,6 +265,110 @@ struct MemoryMCPWalkthroughView: View {
                 .foregroundStyle(PensieveTheme.mercuryBright)
         }
         .accessibilityHidden(true)
+    }
+
+    // MARK: Spotlight preview (where to find it + Show me)
+
+    private func spotlightPreview(anchor: String, path: String, stepID: Int) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: "scope")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(PensieveTheme.brassCore)
+                Text("Find it at \(path)")
+                    .font(.system(size: 10, weight: .semibold))
+                    .tracking(0.6)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                Spacer()
+                Button {
+                    dismiss()
+                    // Give the sheet dismiss animation a tick before routing.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
+                        MemoryWalkthroughNavigator.show(anchor: anchor)
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Text("Show me")
+                        Image(systemName: "arrow.right.circle.fill")
+                    }
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(PensieveTheme.brassCore)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Show \(path) in Settings")
+            }
+
+            // Miniature preview that mirrors the real card's shape with a
+            // warm amber halo — the same highlight SettingsAnchorModifier
+            // paints on arrival.
+            HStack(spacing: 10) {
+                Image(systemName: previewIcon(for: stepID))
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(PensieveTheme.brassCore)
+                    .frame(width: 26, height: 26)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(PensieveTheme.brassCore.opacity(0.14))
+                    )
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(previewTitle(for: stepID))
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    Text(previewSubtitle(for: stepID))
+                        .font(.system(size: 11))
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        .lineLimit(1)
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                    .fill(DesignSystem.Colors.surface.opacity(0.7))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                    .stroke(DesignSystem.Colors.amber.opacity(0.35), lineWidth: 1)
+                    .shadow(color: DesignSystem.Colors.amber.opacity(0.18), radius: 8, y: 2)
+            )
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
+                .fill(DesignSystem.Colors.amber.opacity(0.06))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
+                .stroke(DesignSystem.Colors.amber.opacity(0.18), lineWidth: 0.5)
+        )
+    }
+
+    private func previewIcon(for stepID: Int) -> String {
+        switch stepID {
+        case 1: return "person.crop.circle.badge.checkmark"
+        case 2: return "point.3.connected.trianglepath.dotted"
+        case 4: return "lock.shield.fill"
+        default: return "scope"
+        }
+    }
+
+    private func previewTitle(for stepID: Int) -> String {
+        switch stepID {
+        case 1: return "OpenBurnBar Cloud"
+        case 2: return "Remote MCP"
+        case 4: return "Data & Privacy Control Center"
+        default: return ""
+        }
+    }
+
+    private func previewSubtitle(for stepID: Int) -> String {
+        switch stepID {
+        case 1: return "Sign in — memory turns on by itself"
+        case 2: return "Link this Mac's CLI  ·  Endpoint  ·  Doctor"
+        case 4: return "Every record · Export · Forget · Panic"
+        default: return ""
+        }
     }
 
     // MARK: Connect page (copyable rows)
@@ -311,7 +451,7 @@ struct MemoryMCPWalkthroughView: View {
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "terminal.fill")
-                    Text("Link this Mac’s CLI")
+                    Text("Link this Mac's CLI")
                 }
                 .font(DesignSystem.Typography.caption)
                 .foregroundStyle(PensieveTheme.brassCore)

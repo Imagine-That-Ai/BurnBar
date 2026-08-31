@@ -489,6 +489,42 @@ enum SettingsManifest {
             subtitle: "Hosted refresh, backup, remote MCP clients, and member status",
             keywords: ["cloud", "member", "pro", "hosted", "backup", "remote mcp", "subscription", "billing", "relay"]
         ),
+        SettingsItem(
+            id: "cloud.remoteMCP",
+            tab: .cloud,
+            pageRoute: .cloudRoot,
+            anchorID: SettingsAnchor.cloudRemoteMCP,
+            title: "Remote MCP — Memory for your AI tools",
+            subtitle: "Connect Codex, Claude Code, and more to your sealed Pensieve memory",
+            keywords: ["remote mcp", "mcp", "memory", "pensieve", "recall", "sealed", "search", "codex", "claude code", "droid", "kimi", "endpoint", "shim", "hosted mcp", "tour", "how memory works"]
+        ),
+        SettingsItem(
+            id: "cloud.remoteMCP.connect",
+            tab: .cloud,
+            pageRoute: .cloudRoot,
+            anchorID: SettingsAnchor.cloudRemoteMCPConnect,
+            title: "Link this Mac's CLI (Remote MCP)",
+            subtitle: "One-tap setup for supported AI tools — or copy the endpoint by hand",
+            keywords: ["link cli", "remote mcp", "mcp", "endpoint", "shim", "connect", "setup", "codex", "claude code"]
+        ),
+        SettingsItem(
+            id: "cloud.remoteMCP.doctor",
+            tab: .cloud,
+            pageRoute: .cloudRoot,
+            anchorID: SettingsAnchor.cloudRemoteMCPDoctor,
+            title: "Memory MCP Doctor",
+            subtitle: "Check that the memory link is healthy",
+            keywords: ["doctor", "remote mcp", "mcp", "diagnose", "health check", "troubleshoot", "link", "connection"]
+        ),
+        SettingsItem(
+            id: "cloud.memoryTour",
+            tab: .cloud,
+            pageRoute: .cloudRoot,
+            anchorID: SettingsAnchor.cloudMemoryTour,
+            title: "How Memory works — one-minute tour",
+            subtitle: "Meet the Pensieve, see the controls, learn the recall prompts",
+            keywords: ["memory tour", "how memory works", "pensieve tour", "walkthrough", "memory mcp tour", "guide", "recall", "sealed", "tour"]
+        ),
 
         // MARK: Agents (unified Connections + Account Switcher + AI Environments tab)
 
@@ -969,6 +1005,10 @@ enum SettingsManifest {
         SettingsAnchor.accountSubscription,
         SettingsAnchor.accountDelete,
         SettingsAnchor.cloudOverview,
+        SettingsAnchor.cloudRemoteMCP,
+        SettingsAnchor.cloudRemoteMCPConnect,
+        SettingsAnchor.cloudRemoteMCPDoctor,
+        SettingsAnchor.cloudMemoryTour,
         SettingsAnchor.agentsAccounts,
         SettingsAnchor.agentsCLIs,
         SettingsAnchor.agentsRuntimes,

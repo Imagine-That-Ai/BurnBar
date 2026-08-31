@@ -238,6 +238,10 @@ enum SettingsAnchor {
 
     // Cloud
     static let cloudOverview = "cloud.overview"
+    static let cloudRemoteMCP = "cloud.remoteMCP"
+    static let cloudRemoteMCPConnect = "cloud.remoteMCP.connect"
+    static let cloudRemoteMCPDoctor = "cloud.remoteMCP.doctor"
+    static let cloudMemoryTour = "cloud.memoryTour"
 
     // Agents (the unified Connections + Account Switcher + AI Environments tab).
     static let agentsAccounts = "agents.accounts"

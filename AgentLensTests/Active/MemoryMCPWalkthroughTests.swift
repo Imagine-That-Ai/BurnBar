@@ -32,7 +32,7 @@ final class MemoryMCPWalkthroughTests: XCTestCase {
         XCTAssertEqual(MemoryWalkthroughContent.endpoint, "https://mcp.burnbar.ai/mcp")
         XCTAssertEqual(MemoryWalkthroughContent.shimCommand, "openburnbar-mcp-remote mcp serve")
         XCTAssertEqual(MemoryWalkthroughContent.doctorCommand, "openburnbar mcp doctor")
-        XCTAssertEqual(MemoryWalkthroughContent.setupURL?.absoluteString, "https://burnbar.ai/product")
+        XCTAssertEqual(MemoryWalkthroughContent.setupURL.absoluteString, "https://burnbar.ai/product")
     }
 
     func testRecallStepTeachesExamplePrompts() {
@@ -47,6 +47,40 @@ final class MemoryMCPWalkthroughTests: XCTestCase {
         let controlStep = MemoryWalkthroughContent.steps[4]
         XCTAssertTrue(controlStep.body.contains("Data & Privacy"))
         XCTAssertTrue(controlStep.body.contains("Panic"))
+    }
+
+    func testSpotlightAnchorsAreRealManifestAnchors() {
+        let anchored = MemoryWalkthroughContent.steps.compactMap(\.tourAnchor)
+        XCTAssertFalse(anchored.isEmpty, "At least one tour page should spotlight a real control")
+        for anchor in anchored {
+            XCTAssertTrue(
+                SettingsManifest.visibleAnchorIDs.contains(anchor),
+                "Spotlight anchor \(anchor) must be a visible anchor so Show me can scroll and halo it"
+            )
+            XCTAssertNotNil(
+                SettingsManifest.all.first(where: { $0.anchorID == anchor }),
+                "Spotlight anchor \(anchor) must have a manifest item or the deep link will 404"
+            )
+        }
+    }
+
+    func testSpotlightPagesCarryFindPaths() {
+        for step in MemoryWalkthroughContent.steps where step.tourAnchor != nil {
+            XCTAssertNotNil(step.findPath, "Step \(step.id) spotlights \(step.tourAnchor ?? "") but has no findPath breadcrumb")
+            XCTAssertFalse(step.findPath?.isEmpty ?? true)
+        }
+        for step in MemoryWalkthroughContent.steps where step.tourAnchor == nil {
+            XCTAssertNil(step.findPath, "Step \(step.id) has no spotlight anchor but carries a stray findPath")
+        }
+    }
+
+    func testMemoryTourIsDiscoverableViaSearch() {
+        let ids = Set(SettingsManifest.all.map(\.id))
+        XCTAssertTrue(ids.contains("cloud.memoryTour"), "The Help/search re-entry must be a manifest item so ⌘K can find it")
+        let hits = SettingsSearchEngine.search("memory tour", in: SettingsManifest.all)
+        XCTAssertTrue(hits.contains(where: { $0.id == "cloud.memoryTour" }), "Searching 'memory tour' must surface the tour")
+        let pensieveHits = SettingsSearchEngine.search("pensieve tour", in: SettingsManifest.all)
+        XCTAssertTrue(pensieveHits.contains(where: { $0.id == "cloud.memoryTour" }))
     }
 
     // MARK: - Pager

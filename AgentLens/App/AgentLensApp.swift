@@ -501,6 +501,13 @@ struct OpenBurnBarApp: App {
                     }
                     .keyboardShortcut(",", modifiers: .command)
                 }
+                CommandGroup(replacing: .help) {
+                    Button("How Memory Works…") {
+                        _ = SettingsDeepLinkRouting.route(to: "cloud.memoryTour")
+                        AppCommandRouter.shared.openSettings?()
+                    }
+                    .keyboardShortcut("m", modifiers: [.command, .shift])
+                }
                 #if DEBUG
                 CommandMenu("Debug") {
                     Button(
