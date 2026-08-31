@@ -522,13 +522,7 @@ public struct BurnBarLiveModelCatalog: Sendable {
         guard configuration.provider.id.caseInsensitiveCompare("anthropic") == .orderedSame else {
             return false
         }
-        if account.accountID.caseInsensitiveCompare("current-claude-code-login") == .orderedSame {
-            return true
-        }
-        return configuration.settings.credentialSlots.contains { slot in
-            slot.slotID.caseInsensitiveCompare(account.accountID) == .orderedSame
-                && slot.authMethodID?.caseInsensitiveCompare("anthropic-claude-oauth") == .orderedSame
-        }
+        return true
     }
 
     /// Emit one synthetic advertised row per `BurnBarModelVariant` whose

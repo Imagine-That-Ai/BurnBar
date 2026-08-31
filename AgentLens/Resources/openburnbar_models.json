@@ -1,5 +1,19 @@
 [
   {
+    "modelID": "claude-opus-5",
+    "modelDisplay": "Claude Opus 5",
+    "providerID": "anthropic",
+    "providerDisplay": "Anthropic",
+    "tier": "flagship"
+  },
+  {
+    "modelID": "claude-fable-5",
+    "modelDisplay": "Claude Fable 5",
+    "providerID": "anthropic",
+    "providerDisplay": "Anthropic",
+    "tier": "mid"
+  },
+  {
     "modelID": "claude-opus-4-8",
     "modelDisplay": "Claude Opus 4.8",
     "providerID": "anthropic",

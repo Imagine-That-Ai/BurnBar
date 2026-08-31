@@ -38,6 +38,8 @@ final class AppCommandRouter {
     var openConversationSearch: (() -> Void)?
     var openChatPanel: (() -> Void)?
     var openSettings: (() -> Void)?
+    var openBugReport: (() -> Void)?
+    var openHelpSupport: (() -> Void)?
     var makeMenuBarPopoverContent: ((_ onDismiss: @escaping () -> Void) -> AnyView)? {
         didSet {
             // Reprime menu-bar popover content when the real factory lands and
@@ -64,6 +66,12 @@ final class AppCommandRouter {
             return true
         case "search", "chat":
             openConversationSearch?()
+            return true
+        case "bug-report", "bug", "feedback":
+            openBugReport?()
+            return true
+        case "help", "support":
+            openHelpSupport?()
             return true
         // `home` belongs here too: NavigationCoordinator.handleDeepLink implements
         // it, but a host missing from this list never reaches that handler — it

@@ -834,6 +834,13 @@ private struct DataControlCenterSettingsLanding: View {
                 .settingsAnchor(SettingsAnchor.dataControlCenterInventory)
                 Button {
                     _ = SettingsDeepLinkRouting.route(to: "cloud.memoryTour")
+                    // Also open Settings to Cloud so the tour sheet is reachable
+                    // even when the user taps this from an already-open Data &
+                    // Privacy landing without going through search.
+                    NotificationCenter.default.post(
+                        name: Notification.Name("openburnbar.openSettingsItem"),
+                        object: "cloud.memoryTour"
+                    )
                 } label: {
                     Label("How Memory works — one-minute tour", systemImage: "brain.head.profile")
                 }

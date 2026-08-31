@@ -343,6 +343,12 @@ struct SettingsHubView: View {
                 }
 
                 Section {
+                    NavigationLink(destination: MobileHelpSupportHubView()) {
+                        SettingsLabel(icon: "questionmark.circle.fill", color: .blue, title: "Help & Support")
+                    }
+                } header: { groupHeader("Support") }
+
+                Section {
                     LabeledContent("Version", value: marketingVersion)
                         .settingsAnchor(SettingsAnchor.aboutVersion)
                     LabeledContent("Build", value: buildVersion)

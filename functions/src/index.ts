@@ -96,6 +96,7 @@ export {
   publishMissionApprovalCeiling,
   redeemMissionApprovalAnswer,
 } from "./callables/missionApprovalAnswers.js";
+export { submitBugReport } from "./callables/bugReporting.js";
 
 export {
   createPiAgentPairing,

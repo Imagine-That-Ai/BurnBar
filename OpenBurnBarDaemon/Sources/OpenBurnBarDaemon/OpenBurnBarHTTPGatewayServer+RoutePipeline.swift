@@ -353,7 +353,7 @@ extension BurnBarHTTPGatewayServer {
                         requestedCanonicalModelID: nil,
                         route: nil,
                         finalStatus: .rejected,
-                        httpStatus: 503,
+                        httpStatus: rejection.response.status,
                         attempts: routeLogAttempts.attempts,
                         failureMessage: rejection.failureMessage
                     )

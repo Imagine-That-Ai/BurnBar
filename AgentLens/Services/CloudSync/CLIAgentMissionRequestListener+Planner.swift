@@ -69,6 +69,8 @@ enum CLIAgentMissionRuntimePlanner {
         switch missionKind {
         case "diligence", "security":
             return CLIAgentMissionBackend(chatBackend: firstEnabled([.claude, .codex, .hermes, .piAgent, .openclaw, .droid, .forge, .antigravity, .cursorAgent, .junie, .fx]) ?? .codex)
+        case "bug_investigation":
+            return CLIAgentMissionBackend(chatBackend: firstEnabled([.claude, .codex, .antigravity, .droid, .forge, .hermes, .piAgent, .cursorAgent, .junie, .fx]) ?? .claude)
         case "creative", "accretive", "ui_improvement", "custom":
             return CLIAgentMissionBackend(chatBackend: firstEnabled([.openclaw, .antigravity, .cursorAgent, .codex, .hermes, .piAgent, .claude, .forge, .droid, .junie, .fx]) ?? .hermes)
         case "debt", "modernization", "provider_routing", "cost_efficiency", "project_focus":
@@ -94,6 +96,19 @@ enum CLIAgentMissionRuntimePlanner {
         let commandsAllowed = (data["commandsAllowed"] as? Bool) ?? false
         let fileEditsAllowed = (data["fileEditsAllowed"] as? Bool) ?? false
         let missionKind = (data["missionKind"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if missionKind == "bug_investigation" {
+            return """
+            You are \(backend.displayName), investigating a bug report filed into Linear and assigned to this Mac workspace.
+
+            Mission: \(title)
+            Source: \(source)
+            Target project: \(targetProject)
+            Commands allowed: \(commandsAllowed ? "yes" : "no")
+            File edits allowed: \(fileEditsAllowed ? "yes" : "no")
+
+            \(prompt)
+            """
+        }
         if source == "ios-chat" || missionKind == "chat" {
             return """
             You are \(backend.displayName), continuing a normal chat that the user started from OpenBurnBar mobile.

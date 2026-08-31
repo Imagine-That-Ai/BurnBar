@@ -505,8 +505,28 @@ struct OpenBurnBarApp: App {
                     Button("How Memory Works…") {
                         _ = SettingsDeepLinkRouting.route(to: "cloud.memoryTour")
                         AppCommandRouter.shared.openSettings?()
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            // The deep link lands on Cloud › Remote MCP; the card's
+                            // Help action is the tour entry. Re-route to the tour's
+                            // specific anchor so the card highlights even when the
+                            // deep-link pendingItem already drove navigation.
+                            if let item = SettingsDeepLinkRouting.item(matching: "cloud.memoryTour") {
+                                NotificationCenter.default.post(
+                                    name: SettingsDeepLinkRouting.openSettingsItemNotification,
+                                    object: item.id
+                                )
+                            }
+                        }
                     }
                     .keyboardShortcut("m", modifiers: [.command, .shift])
+                    Divider()
+                    Button("Report Bug or Feedback…") {
+                        AppCommandRouter.shared.openBugReport?()
+                    }
+                    .keyboardShortcut("b", modifiers: [.command, .option])
+                    Button("Help & Support") {
+                        AppCommandRouter.shared.openHelpSupport?()
+                    }
                 }
                 #if DEBUG
                 CommandMenu("Debug") {

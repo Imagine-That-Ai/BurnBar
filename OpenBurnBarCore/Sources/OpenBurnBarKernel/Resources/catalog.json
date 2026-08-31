@@ -14,6 +14,76 @@
       "formatFamily": "anthropic",
       "models": [
         {
+          "id": "claude-opus-5-family",
+          "displayName": "Claude Opus 5",
+          "visibility": "public",
+          "aliases": [
+            "claude-opus-5"
+          ],
+          "matchers": [
+            {
+              "all": [
+                "claude",
+                "opus",
+                "5"
+              ],
+              "any": [],
+              "none": []
+            },
+            {
+              "all": [
+                "claude-opus-5"
+              ],
+              "any": [],
+              "none": []
+            }
+          ],
+          "pricing": {
+            "inputPerMToken": 5,
+            "outputPerMToken": 25,
+            "cacheCreationPerMToken": 6.25,
+            "cacheReadPerMToken": 0.5
+          },
+          "canonicalModelID": "claude-opus-5",
+          "capabilityClassID": "anthropic:opus",
+          "capabilityClassRank": 120
+        },
+        {
+          "id": "claude-fable-5-family",
+          "displayName": "Claude Fable 5",
+          "visibility": "public",
+          "aliases": [
+            "claude-fable-5"
+          ],
+          "matchers": [
+            {
+              "all": [
+                "claude",
+                "fable",
+                "5"
+              ],
+              "any": [],
+              "none": []
+            },
+            {
+              "all": [
+                "claude-fable-5"
+              ],
+              "any": [],
+              "none": []
+            }
+          ],
+          "pricing": {
+            "inputPerMToken": 3,
+            "outputPerMToken": 15,
+            "cacheCreationPerMToken": 3.75,
+            "cacheReadPerMToken": 0.3
+          },
+          "canonicalModelID": "claude-fable-5",
+          "capabilityClassID": "anthropic:fable",
+          "capabilityClassRank": 80
+        },
+        {
           "id": "claude-opus-4-8-family",
           "displayName": "Claude Opus 4.8",
           "visibility": "public",
