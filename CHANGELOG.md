@@ -7,7 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Living fluid aurora kernel emblem** (`MemoryConsentSheet`) — the first-run
+  memory-consent modal's flat circle-and-`brain.head.profile` glyph is now a
+  circular living aurora in BurnBar's colours: three luminous fluid ribbons
+  (whimsy → mint → lavender → ember) drifting over a deep ground with a
+  breathing specular core, composited as native SwiftUI content. New
+  `FluidAuroraKernelView` is reusable at any diameter; the motion is pure
+  wrapped-phase math (`FluidAuroraMotion`, sine/cosine tracks on mutually
+  incommensurate 2.9–37s periods, so the loop never phase-locks or stutters on
+  long-lived sheets), and the palette (`FluidAuroraKernelPalette`) resolves
+  through the adaptive design tokens with two new house stops — `auroraMint`
+  and `auroraLavender` — declared in the same `Color.adaptive` dialect as the
+  rest of the theme. Light mode renders the ribbons as a quieter pearl
+  watermark (no glow headroom on cream), Reduce Transparency sinks the kernel
+  into a near-opaque printed tint, and Reduce Motion resolves to the authored
+  time-zero still pose — a fanned three-layer silhouette, not a paused
+  arbitrary frame. The emblem keeps the "Memory" accessibility label the SF
+  Symbol owed VoiceOver. Pinned by `FluidAuroraKernelTests` (12 tests).
+
 ### Fixed
+- The Memory (Pensieve) walkthrough's "Show me" buttons now land on real,
+  actionable controls. The "It saves itself" page routes to the on-device
+  Memory section in Settings › General › Indexing (previously the decorative
+  Cloud hero) and its copy no longer claims Cloud Pro is the switch — local
+  memory is consent-gated and free. The Connect page spotlights the actual
+  "Link this Mac's CLI" button (previously the static Stdio shim row). The
+  Control page's destination now opens the Pensieve workbench outright for
+  Cloud Pro members instead of parking on the Data & Privacy landing, and
+  free members arriving there get a new "On this Mac — free, no account
+  needed" card with working actions (Memory controls, tour) instead of a
+  dead-end paywall. The Indexing & Search page also gained its missing scroll
+  view so the Memory controls below the fold are reachable at all, and
+  Settings › Cloud deep links now scroll to and highlight their targets.
 - Bumped Mac `CURRENT_PROJECT_VERSION` to `82` so the next `1.0.40+repair.N`
   cut is strictly newer than live `1.0.40+repair.34` build 81. The in-app
   updater compares numeric `CFBundleVersion` first and refuses same-build
