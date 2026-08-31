@@ -38,7 +38,7 @@ export interface LinearClientConfig {
 }
 
 const DEFAULT_LINEAR_API_URL = "https://api.linear.app/graphql";
-const DEFAULT_TEAM_KEY = "BB";
+const DEFAULT_TEAM_KEY = "IMA";
 
 export class LinearClient {
   private readonly apiKey: string | undefined;

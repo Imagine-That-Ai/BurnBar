@@ -6,6 +6,7 @@
  */
 
 import { FieldValue } from "firebase-admin/firestore";
+import { defineSecret } from "firebase-functions/params";
 import { HttpsError } from "firebase-functions/v2/https";
 import { randomUUID } from "node:crypto";
 
@@ -17,6 +18,18 @@ import { resilientFetch } from "../resilienceHelpers.js";
 import { boundedTrimmedString } from "./shared/validators.js";
 
 const FUNCTIONS_REGION = "us-central1";
+const LINEAR_API_KEY = defineSecret("LINEAR_API_KEY");
+const SLACK_BUG_REPORT_WEBHOOK = defineSecret("SLACK_BUG_REPORT_WEBHOOK");
+
+function resolveSecret(secret: ReturnType<typeof defineSecret>, envFallback?: string): string | undefined {
+  try {
+    const val = secret.value();
+    if (val && val.trim().length > 0) return val.trim();
+  } catch {
+    // .value() throws when not inside a secret-bound request (e.g., local tests)
+  }
+  return envFallback;
+}
 
 export interface SubmitBugReportRequest {
   title: string;
@@ -127,7 +140,7 @@ async function notifySlackBugReport(params: {
   platform: string;
   missionId?: string;
 }): Promise<void> {
-  const webhookUrl = process.env.SLACK_BUG_REPORT_WEBHOOK || process.env.SLACK_WEBHOOK_URL;
+  const webhookUrl = resolveSecret(SLACK_BUG_REPORT_WEBHOOK, process.env.SLACK_BUG_REPORT_WEBHOOK || process.env.SLACK_WEBHOOK_URL);
   if (!webhookUrl) {
     return;
   }
@@ -165,6 +178,7 @@ export const submitBugReport = onCallProduction<SubmitBugReportRequest, SubmitBu
     region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 50,
+    secrets: [LINEAR_API_KEY, SLACK_BUG_REPORT_WEBHOOK],
   },
   async (request) => {
     const uid = request.auth?.uid;
@@ -197,7 +211,8 @@ export const submitBugReport = onCallProduction<SubmitBugReportRequest, SubmitBu
     const reportId = `rep_${Date.now()}_${randomUUID().slice(0, 8)}`;
 
     // 1. Create Linear Issue
-    const linearClient = new LinearClient();
+    const apiKey = resolveSecret(LINEAR_API_KEY, process.env.LINEAR_API_KEY || process.env.LINEAR_TOKEN);
+    const linearClient = new LinearClient({ apiKey });
     const linearInput: LinearIssueInput = {
       title: rawTitle,
       description: rawDescription,
