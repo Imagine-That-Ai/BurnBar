@@ -216,6 +216,22 @@ public struct MissionRuntimeCatalog: Sendable, Equatable {
             platforms: [.macos, .linux]
         ),
         Row(
+            id: "goose",
+            wireAliases: ["goose", "block-goose", "block_goose"],
+            displayName: "Goose",
+            surfaces: [.switcher, .missionCreate, .missionEvent, .missionMirror, .missionReceipt, .grantRuntime],
+            launch: .none,
+            platforms: [.macos, .linux, .windows]
+        ),
+        Row(
+            id: "windsurf",
+            wireAliases: ["windsurf", "codeium-windsurf"],
+            displayName: "Windsurf",
+            surfaces: [.switcher, .missionCreate, .missionEvent, .missionMirror, .missionReceipt, .grantRuntime],
+            launch: .none,
+            platforms: [.macos, .linux, .windows]
+        ),
+        Row(
             id: "auto",
             wireAliases: ["auto"],
             displayName: "Auto",

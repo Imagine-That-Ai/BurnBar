@@ -236,8 +236,10 @@ public final class GeminiCLIParser: LogParser, Sendable {
         if let m = json["model"] as? String, !m.isEmpty {
             acc.model = TokenExtractionUtility.normalizeModelName(m)
         }
-
         // Token usage — check multiple locations
+        if let tokens = json["tokens"] as? [String: Any] {
+            accumulateUsage(tokens, into: &acc)
+        }
         if let usage = json["usage"] as? [String: Any] {
             accumulateUsage(usage, into: &acc)
         }
@@ -249,11 +251,11 @@ public final class GeminiCLIParser: LogParser, Sendable {
             accumulateUsage(usage, into: &acc)
         }
         // Content for conversation record
-        let role = (json["role"] as? String ?? (json["message"] as? [String: Any])?["role"] as? String ?? "").lowercased()
+        let role = (json["role"] as? String ?? (json["message"] as? [String: Any])?["role"] as? String ?? json["type"] as? String ?? "").lowercased()
         let content = extractContent(from: json)
 
         if !content.isEmpty {
-            let isAssistant = role == "model" || role == "assistant"
+            let isAssistant = role == "model" || role == "assistant" || role == "gemini"
             if role == "user" {
                 acc.userChars += content.count
                 acc.userWords += content.split { $0.isWhitespace || $0.isNewline }.count
@@ -284,18 +286,18 @@ public final class GeminiCLIParser: LogParser, Sendable {
     private func accumulateUsage(_ usage: [String: Any], into acc: inout GeminiSessionAccumulator) {
         // Gemini uses promptTokenCount/candidatesTokenCount or standard names
         let input = TokenExtractionUtility.firstIntValue(in: usage, paths: [
-            ["input_tokens"], ["prompt_tokens"], ["promptTokenCount"],
+            ["input"], ["input_tokens"], ["prompt_tokens"], ["promptTokenCount"],
             ["inputTokens"], ["promptTokens"]
         ]) ?? 0
         let output = TokenExtractionUtility.firstIntValue(in: usage, paths: [
-            ["output_tokens"], ["completion_tokens"], ["candidatesTokenCount"],
+            ["output"], ["output_tokens"], ["completion_tokens"], ["candidatesTokenCount"],
             ["outputTokens"], ["completionTokens"]
         ]) ?? 0
         let exclusiveCached = TokenExtractionUtility.firstIntValue(in: usage, paths: [
             ["cache_read_input_tokens"]
         ]) ?? 0
         let inclusiveCached = TokenExtractionUtility.firstIntValue(in: usage, paths: [
-            ["cached_tokens"], ["cachedContentTokenCount"]
+            ["cached"], ["cached_tokens"], ["cachedContentTokenCount"]
         ]) ?? 0
         let cacheRead = exclusiveCached > 0 ? exclusiveCached : inclusiveCached
         let ledgerInput = inclusiveCached > 0 && exclusiveCached == 0 ? max(input - inclusiveCached, 0) : input

@@ -40,6 +40,8 @@ public struct ForgeQuotaAdapter: ProviderQuotaAdapter {
     private static var candidateDBPaths: [String] {
         [
             ("~/.forge/.forge.db" as NSString).expandingTildeInPath,
+            ("~/.forge/database.sqlite" as NSString).expandingTildeInPath,
+            ("~/.forge/forge.db" as NSString).expandingTildeInPath,
             ("~/.forge/sessions/.forge.db" as NSString).expandingTildeInPath,
             ("~/forge/.forge.db" as NSString).expandingTildeInPath,
             ("~/.forge.db" as NSString).expandingTildeInPath

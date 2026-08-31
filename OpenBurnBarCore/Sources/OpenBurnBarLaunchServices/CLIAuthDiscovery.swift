@@ -419,6 +419,87 @@ public enum CLIAuthDiscovery {
                 configDirectory: hasConfig ? configDir : normalizedNonEmpty(configDir),
                 accountDescription: hasRecordedSessions ? "fx local sessions" : nil
             )
+
+        case .hermes:
+            let configDir = normalizedConfigDirectory(
+                configDirectoryOverride,
+                fallback: "\(home)/.hermes"
+            )
+            let exists = FileManager.default.fileExists(atPath: configDir)
+            let authState: CLIAuthState = executablePath == nil ? .notInstalled : (exists ? .authenticated(lastRefresh: nil) : .notAuthenticated)
+            return CLIAuthInfo(
+                cliType: cliType,
+                isInstalled: executablePath != nil,
+                executablePath: executablePath,
+                authState: authState,
+                configDirectory: exists ? configDir : normalizedNonEmpty(configDir),
+                accountDescription: exists ? "Hermes local profile" : nil
+            )
+
+        case .goose:
+            let configDir = normalizedConfigDirectory(
+                configDirectoryOverride,
+                fallback: "\(home)/.config/goose"
+            )
+            let altConfigDir = "\(home)/.goose"
+            let exists = FileManager.default.fileExists(atPath: configDir) || FileManager.default.fileExists(atPath: altConfigDir)
+            let resolvedDir = FileManager.default.fileExists(atPath: configDir) ? configDir : altConfigDir
+            let authState: CLIAuthState = executablePath == nil ? .notInstalled : (exists ? .authenticated(lastRefresh: nil) : .notAuthenticated)
+            return CLIAuthInfo(
+                cliType: cliType,
+                isInstalled: executablePath != nil,
+                executablePath: executablePath,
+                authState: authState,
+                configDirectory: exists ? resolvedDir : normalizedNonEmpty(configDir),
+                accountDescription: exists ? "Goose local profile" : nil
+            )
+
+        case .windsurf:
+            let configDir = "\(home)/Library/Application Support/Windsurf - Next/User/globalStorage"
+            let altConfigDir = "\(home)/Library/Application Support/Windsurf/User/globalStorage"
+            let exists = FileManager.default.fileExists(atPath: configDir) || FileManager.default.fileExists(atPath: altConfigDir)
+            let resolvedDir = FileManager.default.fileExists(atPath: configDir) ? configDir : altConfigDir
+            let authState: CLIAuthState = exists ? .authenticated(lastRefresh: nil) : (executablePath != nil ? .notAuthenticated : .notInstalled)
+            return CLIAuthInfo(
+                cliType: cliType,
+                isInstalled: executablePath != nil || exists,
+                executablePath: executablePath,
+                authState: authState,
+                configDirectory: exists ? resolvedDir : normalizedNonEmpty(configDir),
+                accountDescription: exists ? "Windsurf profile" : nil
+            )
+
+        case .openClaude:
+            let configDir = normalizedConfigDirectory(
+                configDirectoryOverride,
+                fallback: "\(home)/.openclaude"
+            )
+            let exists = FileManager.default.fileExists(atPath: configDir)
+            let authState: CLIAuthState = executablePath == nil ? .notInstalled : (exists ? .authenticated(lastRefresh: nil) : .notAuthenticated)
+            return CLIAuthInfo(
+                cliType: cliType,
+                isInstalled: executablePath != nil,
+                executablePath: executablePath,
+                authState: authState,
+                configDirectory: exists ? configDir : normalizedNonEmpty(configDir),
+                accountDescription: exists ? "OpenClaude profile" : nil
+            )
+
+        case .openClaw:
+            let configDir = normalizedConfigDirectory(
+                configDirectoryOverride,
+                fallback: "\(home)/.openclaw"
+            )
+            let exists = FileManager.default.fileExists(atPath: configDir)
+            let authState: CLIAuthState = executablePath == nil ? .notInstalled : (exists ? .authenticated(lastRefresh: nil) : .notAuthenticated)
+            return CLIAuthInfo(
+                cliType: cliType,
+                isInstalled: executablePath != nil,
+                executablePath: executablePath,
+                authState: authState,
+                configDirectory: exists ? configDir : normalizedNonEmpty(configDir),
+                accountDescription: exists ? "OpenClaw profile" : nil
+            )
         }
         #endif
     }

@@ -24,6 +24,7 @@ public struct AntigravityQuotaAdapter: ProviderQuotaAdapter {
         ModelTier(name: "Gemini 3.7 Flash (Low)", windowCap: 1200),
         ModelTier(name: "Gemini 3.5 Flash (High)", windowCap: 600),
         ModelTier(name: "Gemini 3.5 Flash (Medium)", windowCap: 900),
+        ModelTier(name: "Gemini 3.5 Flash (Low)", windowCap: 1200),
         ModelTier(name: "Gemini 3.1 Pro (High)", windowCap: 150),
         ModelTier(name: "Gemini 3.1 Pro (Low)", windowCap: 300),
         ModelTier(name: "Claude Sonnet 4.6 (Thinking)", windowCap: 120),

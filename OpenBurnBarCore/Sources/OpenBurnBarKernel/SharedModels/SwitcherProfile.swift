@@ -59,6 +59,11 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
     case junie
     case primeAgent = "prime-agent"
     case fx
+    case hermes
+    case goose
+    case windsurf
+    case openClaude = "openclaude"
+    case openClaw = "openclaw"
 
     public var displayName: String {
         switch self {
@@ -77,6 +82,11 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
         case .junie: return "Junie"
         case .primeAgent: return "Prime Agent"
         case .fx: return "fx"
+        case .hermes: return "Hermes"
+        case .goose: return "Goose"
+        case .windsurf: return "Windsurf"
+        case .openClaude: return "OpenClaude"
+        case .openClaw: return "OpenClaw"
         }
     }
 
@@ -98,6 +108,11 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
         case .junie: return "JunieLogo"
         case .primeAgent: return "PrimeAgentLogo"
         case .fx: return "FxLogo"
+        case .hermes: return "HermesLogo"
+        case .goose: return "GooseLogo"
+        case .windsurf: return "WindsurfLogo"
+        case .openClaude: return "ClaudeCodeLogo"
+        case .openClaw: return "OpenClawLogo"
         }
     }
 
@@ -119,6 +134,11 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
         case .junie: return "junie"
         case .primeAgent: return "prime-agent"
         case .fx: return "fx"
+        case .hermes: return "hermes"
+        case .goose: return "goose"
+        case .windsurf: return "windsurf"
+        case .openClaude: return "openclaude"
+        case .openClaw: return "openclaw"
         }
     }
 
@@ -235,12 +255,43 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
                 "/usr/local/bin/fx",
                 "/opt/homebrew/bin/fx"
             ]
+        case .hermes:
+            return [
+                "/usr/local/bin/hermes",
+                "/opt/homebrew/bin/hermes",
+                "$HOME/.local/bin/hermes",
+                "$HOME/.hermes/bin/hermes"
+            ]
+        case .goose:
+            return [
+                "/usr/local/bin/goose",
+                "/opt/homebrew/bin/goose",
+                "$HOME/.local/bin/goose",
+                "$HOME/.cargo/bin/goose"
+            ]
+        case .windsurf:
+            return [
+                "/usr/local/bin/windsurf",
+                "/opt/homebrew/bin/windsurf",
+                "$HOME/.local/bin/windsurf",
+                "/Applications/Windsurf.app/Contents/MacOS/Windsurf",
+                "/Applications/Windsurf - Next.app/Contents/MacOS/Windsurf - Next"
+            ]
+        case .openClaude:
+            return [
+                "/usr/local/bin/openclaude",
+                "/opt/homebrew/bin/openclaude",
+                "$HOME/.local/bin/openclaude"
+            ]
+        case .openClaw:
+            return [
+                "/usr/local/bin/openclaw",
+                "/opt/homebrew/bin/openclaw",
+                "$HOME/.local/bin/openclaw"
+            ]
         }
     }
 
-    /// The OpenBurnBar provider this CLI profile drains quota from. Bridges the
-    /// launch-profile world to the canonical provider catalog so drain-target
-    /// selection, quota surfaces, and brand logos all speak the same language.
     /// The OpenBurnBar provider this CLI profile drains quota from. Bridges the
     /// launch-profile world to the canonical provider catalog so drain-target
     /// selection, quota surfaces, and brand logos all speak the same language.
@@ -267,6 +318,11 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
         case .junie: return .junie
         case .primeAgent: return .primeAgent
         case .fx: return .fx
+        case .hermes: return .hermes
+        case .goose: return .goose
+        case .windsurf: return .windsurf
+        case .openClaude: return .openClaude
+        case .openClaw: return .openClaw
         }
     }
 

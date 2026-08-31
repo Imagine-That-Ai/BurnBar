@@ -179,33 +179,7 @@ public struct OpenClaudeQuotaAdapter: ProviderQuotaAdapter {
     }
 }
 
-// MARK: - Windsurf
 
-public struct WindsurfQuotaAdapter: ProviderQuotaAdapter {
-    public func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
-        let candidates = [
-            ("~/Library/Application Support/Windsurf - Next" as NSString).expandingTildeInPath,
-            ("~/Library/Application Support/Windsurf" as NSString).expandingTildeInPath,
-            ("~/.config/Windsurf - Next" as NSString).expandingTildeInPath,
-            ("~/.config/Windsurf" as NSString).expandingTildeInPath,
-            ("~/.codeium/windsurf" as NSString).expandingTildeInPath,
-            ("~/.codeium/windsurf-next" as NSString).expandingTildeInPath
-        ]
-        let installed = candidates.contains { FileManager.default.fileExists(atPath: $0) }
-
-        return ProviderQuotaSnapshot(
-            provider: .windsurf,
-            fetchedAt: Date(),
-            source: installed ? .localSession : .unavailable,
-            confidence: installed ? .exact : .unavailable,
-            managementURL: installed ? nil : "https://codeium.com/windsurf",
-            statusMessage: installed
-                ? "Windsurf detected — IDE usage tracking via local data."
-                : "Windsurf not installed. Download from codeium.com/windsurf.",
-            buckets: []
-        )
-    }
-}
 
 // MARK: - Gemini CLI
 

@@ -310,22 +310,27 @@ public enum FlexibleQuotaBucketNormalizer {
     ) -> String {
         let lowercased = label.lowercased()
         if provider == .zai {
-            if lowercased.contains("tokens_limit") {
+            if lowercased.contains("tokens_limit") || lowercased.contains("credit_limit") || lowercased.contains("credits_limit") {
                 // Z.ai API uses unit+number to distinguish windows:
-                //   unit=3, number=5 → 5-hour rolling token quota
-                //   unit=6, number=1 → weekly token quota
+                //   unit=3, number=5 → 5-hour rolling token/credit quota
+                //   unit=6, number=1 → weekly token/credit quota
+                //   unit=5, number=1 → monthly MCP/Tool quota
+                let prefix = lowercased.contains("credit") ? "Credit usage" : "Token usage"
                 if let unit, let number {
                     if Int(unit) == 6 && Int(number) == 1 {
-                        return "Token usage (Weekly)"
+                        return "\(prefix) (Weekly)"
                     }
                     if Int(unit) == 3 && Int(number) == 5 {
-                        return "Token usage (5-hour)"
+                        return "\(prefix) (5-hour)"
+                    }
+                    if Int(unit) == 5 && Int(number) == 1 {
+                        return "MCP usage (1 month)"
                     }
                 }
                 // Fallback if unit/number not available
-                return "Token usage (5-hour)"
+                return "\(prefix) (5-hour)"
             }
-            if lowercased.contains("time_limit") {
+            if lowercased.contains("time_limit") || lowercased.contains("tool") {
                 return "MCP usage (1 month)"
             }
         }

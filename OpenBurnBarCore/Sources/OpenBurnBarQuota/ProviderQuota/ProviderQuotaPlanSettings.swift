@@ -42,6 +42,24 @@ public enum FactoryQuotaPlanTier: String, CaseIterable, Codable, Identifiable, S
         }
     }
 
+    public var fiveHourTokenCap: Double? {
+        switch self {
+        case .unknown: return nil
+        case .pro: return 500_000
+        case .plus: return 2_500_000
+        case .max: return 5_000_000
+        }
+    }
+
+    public var sevenDayTokenCap: Double? {
+        switch self {
+        case .unknown: return nil
+        case .pro: return 5_000_000
+        case .plus: return 25_000_000
+        case .max: return 50_000_000
+        }
+    }
+
     public var monthlyTokenCap: Double? {
         switch self {
         case .unknown: return nil

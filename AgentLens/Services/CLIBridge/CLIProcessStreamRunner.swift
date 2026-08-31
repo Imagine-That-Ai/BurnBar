@@ -482,7 +482,7 @@ struct CLIProcessStreamRunner: Sendable {
         case .claude:
             return .claudeCode
         case .opencode:
-            return .openClaw
+            return .openCode
         case .droid:
             return .factory
         case .forge:
@@ -507,6 +507,16 @@ struct CLIProcessStreamRunner: Sendable {
             return .primeAgent
         case .fx:
             return .fx
+        case .hermes:
+            return .hermes
+        case .goose:
+            return .goose
+        case .windsurf:
+            return .windsurf
+        case .openClaude:
+            return .openClaude
+        case .openClaw:
+            return .openClaw
         }
     }
 

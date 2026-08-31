@@ -568,6 +568,11 @@ extension AccountSwitcherSettingsView {
                 case .fx: "FxLogo"
                 case .omp: "OMPLogo"
                 case .primeAgent: "PrimeAgentLogo"
+                case .hermes: "HermesLogo"
+                case .goose: "GooseLogo"
+                case .windsurf: "WindsurfLogo"
+                case .openClaude: "ClaudeCodeLogo"
+                case .openClaw: "OpenClawLogo"
                 }
                 groups.append(ProfileGroup(
                     key: cliType.rawValue,

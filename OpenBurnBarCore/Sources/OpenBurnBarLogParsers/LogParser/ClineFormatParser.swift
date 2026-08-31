@@ -211,9 +211,29 @@ public final class ClineFormatParser: LogParser, Sendable {
             }
         }
 
-        let hasUsage = inputTokens > 0 || outputTokens > 0 || cacheCreationTokens > 0 || cacheReadTokens > 0
+        var hasUsage = inputTokens > 0 || outputTokens > 0 || cacheCreationTokens > 0 || cacheReadTokens > 0
 
-        // Fallback estimation if no usage data
+        // Check ui_messages.json for exact token telemetry if not present in conversation history
+        if !hasUsage {
+            let uiMessagesFile = historyFile.deletingLastPathComponent().appendingPathComponent("ui_messages.json")
+            if let uiData = try? Data(contentsOf: uiMessagesFile),
+               let uiArray = try? JSONSerialization.jsonObject(with: uiData) as? [[String: Any]] {
+                for msg in uiArray {
+                    if let say = msg["say"] as? String, say == "api_req_started" || say == "api_req_finished",
+                       let text = msg["text"] as? String,
+                       let textData = text.data(using: .utf8),
+                       let reqJson = try? JSONSerialization.jsonObject(with: textData) as? [String: Any] {
+                        if let tIn = reqJson["tokensIn"] as? Int { inputTokens += tIn }
+                        if let tOut = reqJson["tokensOut"] as? Int { outputTokens += tOut }
+                        if let cW = reqJson["cacheWrites"] as? Int { cacheCreationTokens += cW }
+                        if let cR = reqJson["cacheReads"] as? Int { cacheReadTokens += cR }
+                    }
+                }
+                hasUsage = inputTokens > 0 || outputTokens > 0 || cacheCreationTokens > 0 || cacheReadTokens > 0
+            }
+        }
+
+        // Fallback estimation if still no usage data
         if !hasUsage {
             let userChars = userWords * 5
             let assistantChars = assistantWords * 5

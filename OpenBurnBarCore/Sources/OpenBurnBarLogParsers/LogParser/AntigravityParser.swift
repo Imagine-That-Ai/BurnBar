@@ -97,9 +97,11 @@ public final class AntigravityParser: LogParser, Sendable {
                 return url
             }
         }
-        let geminiSettings = URL(fileURLWithPath: ("~/.gemini/settings.json" as NSString).expandingTildeInPath)
-        if fileManager.fileExists(atPath: geminiSettings.path) {
-            return geminiSettings
+        if logDirectoryOverride == nil {
+            let geminiSettings = URL(fileURLWithPath: ("~/.gemini/settings.json" as NSString).expandingTildeInPath)
+            if fileManager.fileExists(atPath: geminiSettings.path) {
+                return geminiSettings
+            }
         }
         return nil
     }

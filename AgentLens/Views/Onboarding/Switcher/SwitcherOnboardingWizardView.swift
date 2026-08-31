@@ -39,6 +39,11 @@ struct OnboardingProvider: Identifiable, Equatable {
         case fxCLI
         case ompCLI
         case primeAgentCLI
+        case hermesCLI
+        case gooseCLI
+        case windsurfCLI
+        case openClaudeCLI
+        case openClawCLI
     }
 
     static let defaultOrder: [OnboardingProvider] = [
@@ -60,7 +65,12 @@ struct OnboardingProvider: Identifiable, Equatable {
         OnboardingProvider(id: "juniecli", label: "Junie CLI", icon: "terminal.fill", bundledLogoName: "JunieLogo", color: Color(hex: "48E054"), kind: .junieCLI),
         OnboardingProvider(id: "fxcli", label: "fx CLI", icon: "terminal.fill", bundledLogoName: "FxLogo", color: Color.adaptive(light: "171717", dark: "FFFFFF"), kind: .fxCLI),
         OnboardingProvider(id: "ompcli", label: "OMP CLI", icon: "command", bundledLogoName: "OMPLogo", color: Color(hex: "EC4899"), kind: .ompCLI),
-        OnboardingProvider(id: "primeagentcli", label: "Prime Agent", icon: "terminal.fill", bundledLogoName: "PrimeAgentLogo", color: Color(hex: "582CFF"), kind: .primeAgentCLI)
+        OnboardingProvider(id: "primeagentcli", label: "Prime Agent", icon: "terminal.fill", bundledLogoName: "PrimeAgentLogo", color: Color(hex: "582CFF"), kind: .primeAgentCLI),
+        OnboardingProvider(id: "hermescli", label: "Hermes CLI", icon: "wind", bundledLogoName: "HermesLogo", color: Color(hex: "38BDF8"), kind: .hermesCLI),
+        OnboardingProvider(id: "goosecli", label: "Goose CLI", icon: "bird.fill", bundledLogoName: "GooseLogo", color: Color(hex: "F59E0B"), kind: .gooseCLI),
+        OnboardingProvider(id: "windsurfcli", label: "Windsurf CLI", icon: "sailboat.fill", bundledLogoName: "WindsurfLogo", color: Color(hex: "06B6D4"), kind: .windsurfCLI),
+        OnboardingProvider(id: "openclaudecli", label: "OpenClaude CLI", icon: "terminal.fill", bundledLogoName: "ClaudeCodeLogo", color: Color(hex: "D97706"), kind: .openClaudeCLI),
+        OnboardingProvider(id: "openclawcli", label: "OpenClaw CLI", icon: "terminal.fill", bundledLogoName: "OpenClawLogo", color: Color(hex: "10B981"), kind: .openClawCLI)
     ]
 }
 
