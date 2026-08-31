@@ -18,8 +18,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Build
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -44,9 +42,7 @@ import com.openburnbar.data.models.AndroidDiagnosticsSnapshot
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HelpSupportScreen(
-    onBack: () -> Unit,
-) {
+fun HelpSupportScreen(onBack: () -> Unit) {
     var showBugReportSheet by remember { mutableStateOf(false) }
     val snapshot = remember { AndroidDiagnosticsSnapshot() }
 
@@ -64,20 +60,20 @@ fun HelpSupportScreen(
     ) { innerPadding ->
         Column(
             modifier =
-                Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-                    .padding(horizontal = 16.dp)
-                    .verticalScroll(rememberScrollState()),
+            Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .padding(horizontal = 16.dp)
+                .verticalScroll(rememberScrollState()),
         ) {
             Spacer(modifier = Modifier.height(8.dp))
 
             // Report a Bug Action Card
             Card(
                 modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .clickable { showBugReportSheet = true },
+                Modifier
+                    .fillMaxWidth()
+                    .clickable { showBugReportSheet = true },
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
                 shape = RoundedCornerShape(12.dp),
             ) {

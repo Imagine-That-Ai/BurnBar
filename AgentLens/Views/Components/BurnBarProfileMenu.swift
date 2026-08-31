@@ -22,12 +22,11 @@ struct BurnBarProfileMenu: View {
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(SettingsManager.self) private var settingsManager
+    @Environment(AccountManager.self) private var accountManager
     @StateObject private var entitlement = MacCloudEntitlementStore.shared
     @AppStorage(PetCompanionFeature.DefaultsKey.enabled) private var petCompanionEnabled = false
     @AppStorage(KernelBackdropPreferences.enabledKey) private var useKernelBackdrop = false
     @AppStorage(KernelBackdropPreferences.kernelKey) private var backdropKernel = KernelCatalog.defaultID
-
-    private var accountManager: AccountManager { AccountManager.shared }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -619,8 +618,7 @@ struct BurnBarProfileAvatarButton: View {
     @State private var isMenuPresented = false
     @State private var isHovered = false
     @StateObject private var entitlement = MacCloudEntitlementStore.shared
-
-    private var accountManager: AccountManager { AccountManager.shared }
+    @Environment(AccountManager.self) private var accountManager
 
     var body: some View {
         Button {

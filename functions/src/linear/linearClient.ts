@@ -22,7 +22,7 @@ export interface LinearIssueInput {
   labels?: string[];
 }
 
-export interface LinearIssueResult {
+interface LinearIssueResult {
   id: string;
   identifier: string;
   title: string;
@@ -31,7 +31,7 @@ export interface LinearIssueResult {
   error?: string;
 }
 
-export interface LinearClientConfig {
+interface LinearClientConfig {
   apiKey?: string;
   teamKey?: string;
   apiUrl?: string;

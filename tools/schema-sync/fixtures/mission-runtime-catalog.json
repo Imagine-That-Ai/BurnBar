@@ -163,6 +163,22 @@
       "platforms": ["macos", "linux"]
     },
     {
+      "id": "goose",
+      "wireAliases": ["goose", "block-goose", "block_goose"],
+      "displayName": "Goose",
+      "surfaces": ["switcher", "mission_create", "mission_event", "mission_mirror", "mission_receipt", "grant_runtime"],
+      "launch": "none",
+      "platforms": ["macos", "linux", "windows"]
+    },
+    {
+      "id": "windsurf",
+      "wireAliases": ["windsurf", "codeium-windsurf"],
+      "displayName": "Windsurf",
+      "surfaces": ["switcher", "mission_create", "mission_event", "mission_mirror", "mission_receipt", "grant_runtime"],
+      "launch": "none",
+      "platforms": ["macos", "linux", "windows"]
+    },
+    {
       "id": "auto",
       "wireAliases": ["auto"],
       "displayName": "Auto",

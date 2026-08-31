@@ -31,7 +31,7 @@ function resolveSecret(secret: ReturnType<typeof defineSecret>, envFallback?: st
   return envFallback;
 }
 
-export interface SubmitBugReportRequest {
+interface SubmitBugReportRequest {
   title: string;
   description: string;
   platform?: "macOS" | "iOS" | "Android" | "cli" | "unknown";

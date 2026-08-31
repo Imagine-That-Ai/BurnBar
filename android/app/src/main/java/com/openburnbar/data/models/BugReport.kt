@@ -38,13 +38,12 @@ data class AndroidDiagnosticsSnapshot(
     val board: String = Build.BOARD,
     val timestamp: String = System.currentTimeMillis().toString(),
 ) {
-    fun toMap(): Map<String, String> =
-        mapOf(
-            "osVersion" to osVersion,
-            "deviceModel" to deviceModel,
-            "appVersion" to appVersion,
-            "appBuild" to appBuild,
-            "board" to board,
-            "timestamp" to timestamp,
-        )
+    fun toMap(): Map<String, String> = mapOf(
+        "osVersion" to osVersion,
+        "deviceModel" to deviceModel,
+        "appVersion" to appVersion,
+        "appBuild" to appBuild,
+        "board" to board,
+        "timestamp" to timestamp,
+    )
 }

@@ -207,6 +207,20 @@ public sealed class MissionRuntimeCatalog
             MissionRuntimeLaunch.None,
             new[] { MissionRuntimePlatform.Macos, MissionRuntimePlatform.Linux }),
         new MissionRuntimeRow(
+            "goose",
+            new[] { "goose", "block-goose", "block_goose" },
+            "Goose",
+            new[] { MissionRuntimeSurface.Switcher, MissionRuntimeSurface.MissionCreate, MissionRuntimeSurface.MissionEvent, MissionRuntimeSurface.MissionMirror, MissionRuntimeSurface.MissionReceipt, MissionRuntimeSurface.GrantRuntime },
+            MissionRuntimeLaunch.None,
+            new[] { MissionRuntimePlatform.Macos, MissionRuntimePlatform.Linux, MissionRuntimePlatform.Windows }),
+        new MissionRuntimeRow(
+            "windsurf",
+            new[] { "windsurf", "codeium-windsurf" },
+            "Windsurf",
+            new[] { MissionRuntimeSurface.Switcher, MissionRuntimeSurface.MissionCreate, MissionRuntimeSurface.MissionEvent, MissionRuntimeSurface.MissionMirror, MissionRuntimeSurface.MissionReceipt, MissionRuntimeSurface.GrantRuntime },
+            MissionRuntimeLaunch.None,
+            new[] { MissionRuntimePlatform.Macos, MissionRuntimePlatform.Linux, MissionRuntimePlatform.Windows }),
+        new MissionRuntimeRow(
             "auto",
             new[] { "auto" },
             "Auto",

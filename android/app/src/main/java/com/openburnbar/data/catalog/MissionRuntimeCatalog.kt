@@ -350,6 +350,22 @@ data class MissionRuntimeCatalog(
             platforms = setOf(Platform.MACOS, Platform.LINUX),
         ),
         Row(
+            id = "goose",
+            wireAliases = listOf("goose", "block-goose", "block_goose"),
+            displayName = "Goose",
+            surfaces = setOf(Surface.SWITCHER, Surface.MISSION_CREATE, Surface.MISSION_EVENT, Surface.MISSION_MIRROR, Surface.MISSION_RECEIPT, Surface.GRANT_RUNTIME),
+            launch = Launch.NONE,
+            platforms = setOf(Platform.MACOS, Platform.LINUX, Platform.WINDOWS),
+        ),
+        Row(
+            id = "windsurf",
+            wireAliases = listOf("windsurf", "codeium-windsurf"),
+            displayName = "Windsurf",
+            surfaces = setOf(Surface.SWITCHER, Surface.MISSION_CREATE, Surface.MISSION_EVENT, Surface.MISSION_MIRROR, Surface.MISSION_RECEIPT, Surface.GRANT_RUNTIME),
+            launch = Launch.NONE,
+            platforms = setOf(Platform.MACOS, Platform.LINUX, Platform.WINDOWS),
+        ),
+        Row(
             id = "auto",
             wireAliases = listOf("auto"),
             displayName = "Auto",

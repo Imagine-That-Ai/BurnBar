@@ -82,8 +82,6 @@ final class AppCommandRouter {
         case "approve-device", "device-approval", "devices":
             Task { @MainActor in
                 _ = SettingsDeepLinkRouting.route(to: SettingsAnchor.trustedDevices)
-                PendingDeviceApprovalModel.shared.isDismissed = false
-                await PendingDeviceApprovalModel.shared.refresh()
             }
             return true
         case "link-cli":

@@ -128,7 +128,7 @@ describe("LinearClient", () => {
     });
 
     const client = new LinearClient({
-      apiKey: "lin_api_invalid_key",
+      apiKey: "test-linear-invalid-key",
       teamKey: "BB",
     });
 

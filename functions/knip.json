@@ -16,7 +16,7 @@
     ".dependency-cruiser.cjs"
   ],
   "ignoreIssues": {
-    "src/types/legacy/{connections,insights-digest,insights-spec,media,quota-usage}.ts": ["exports", "types"]
+    "src/types/legacy/{connections,insights-digest,insights-spec,media,quota-usage,bug-report}.ts": ["exports", "types"]
   },
   "ignoreDependencies": [
     "@openburnbar/domain-core-wasm",

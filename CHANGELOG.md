@@ -47,7 +47,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New companion devices now fan out a high-priority approval push to existing
   Mac / iOS / Android devices, with a menu-bar banner, `openburnbar://approve-device`
   deep link, and Android FCM handling so the request is visible instead of
-  sitting silently in Settings.
+  sitting silently in Settings. The banner polls the existing device-trust
+  gateway instead of opening a raw Firestore listener from the popover.
+- Restored Goose and Windsurf as first-class mission-runtime catalog rows in
+  the schema-sync fixture. They had been generated-only, so catalog `--check`
+  deleted them on regen.
 - Pensieve on app.burnbar.ai can list and browse the member's own knowledge
   chunks (`listKnowledgeChunks`) instead of search-only, and escrow device /
   identity docs are owner-readable so the console Trust flow can actually load.

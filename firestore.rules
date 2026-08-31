@@ -94,10 +94,13 @@ service cloud.firestore {
           "agy",
           "antigravity",
           "auto",
+          "block_goose",
+          "block-goose",
           "claude",
           "claude_code",
           "claude-code",
           "claudecode",
+          "codeium-windsurf",
           "codex",
           "cursor",
           "cursor_agent",
@@ -117,6 +120,7 @@ service cloud.firestore {
           "geminicli",
           "google-antigravity",
           "googleantigravity",
+          "goose",
           "grok",
           "grok-agent",
           "grok-build",
@@ -149,6 +153,7 @@ service cloud.firestore {
           "primeAgent",
           "vercel-fx",
           "vercelfx",
+          "windsurf",
           "xai"
         ];
     }

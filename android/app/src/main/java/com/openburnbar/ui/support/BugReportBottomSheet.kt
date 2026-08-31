@@ -2,7 +2,6 @@ package com.openburnbar.ui.support
 
 import android.content.Intent
 import android.net.Uri
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -55,10 +54,7 @@ import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun BugReportBottomSheet(
-    onDismiss: () -> Unit,
-    service: BugReportService = remember { BugReportService() },
-) {
+fun BugReportBottomSheet(onDismiss: () -> Unit, service: BugReportService = remember { BugReportService() }) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -89,10 +85,10 @@ fun BugReportBottomSheet(
     ) {
         Column(
             modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp, vertical = 8.dp)
-                    .verticalScroll(rememberScrollState()),
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 8.dp)
+                .verticalScroll(rememberScrollState()),
         ) {
             // Header
             Row(
@@ -117,9 +113,9 @@ fun BugReportBottomSheet(
                 // Success State
                 Column(
                     modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 24.dp),
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     Icon(

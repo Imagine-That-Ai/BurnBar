@@ -14,7 +14,7 @@ import { pushWithResilience } from "./resilienceHelpers.js";
 
 const DEVICE_COLLECTION = "devices";
 
-export interface FanoutDeviceApprovalArgs {
+interface FanoutDeviceApprovalArgs {
   uid: string;
   deviceId: string;
   deviceName: string;
@@ -24,7 +24,7 @@ export interface FanoutDeviceApprovalArgs {
   messaging?: Pick<ReturnType<typeof getMessaging>, "send">;
 }
 
-export interface FanoutDeviceApprovalResult {
+interface FanoutDeviceApprovalResult {
   sent: number;
   skipped: number;
   failed: number;
