@@ -28,9 +28,24 @@ vi.mock("../linear/linearClient.js", () => ({
   },
 }));
 
-import { submitBugReport, type SubmitBugReportResponse } from "../callables/bugReporting.js";
+import { submitBugReport } from "../callables/bugReporting.js";
 
 const run = callableRunner(submitBugReport);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function expectBugReportResult(value: unknown): asserts value is {
+  ok: true;
+  reportId: string;
+  linearIssue: unknown;
+  missionId?: string;
+} {
+  if (!isRecord(value) || value.ok !== true || typeof value.reportId !== "string") {
+    throw new Error("expected submitBugReport result");
+  }
+}
 
 function authed(data: Record<string, unknown>, uid = ALICE_UID) {
   return {
@@ -84,7 +99,8 @@ describe("submitBugReport callable", () => {
       autoDispenseCLI: true,
     };
 
-    const res = (await run(authed(payload))) as SubmitBugReportResponse;
+    const res = await run(authed(payload));
+    expectBugReportResult(res);
     expect(res.ok).toBe(true);
     expect(res.reportId).toMatch(/^rep_\d+_/);
     expect(res.linearIssue).toEqual({
@@ -94,6 +110,8 @@ describe("submitBugReport callable", () => {
       mock: true,
     });
     expect(res.missionId).toBe(`mission_bug_${res.reportId}`);
+    const missionId = res.missionId;
+    expect(missionId).toEqual(expect.stringMatching(/^mission_bug_/));
 
     // Check Firestore bug_reports doc
     const reportDoc = mocks.store.get(`users/${ALICE_UID}/bug_reports/${res.reportId}`);
@@ -102,12 +120,11 @@ describe("submitBugReport callable", () => {
     expect(reportDoc?.platform).toBe("macOS");
     expect(reportDoc?.status).toBe("submitted");
     // Ensure sensitive fields were redacted
-    const diag = reportDoc?.diagnostics as Record<string, unknown>;
-    expect(diag?.secretApiKey).toBe("[REDACTED]");
-    expect(diag?.memoryMB).toBe(120);
+    expect(JSON.stringify(reportDoc?.diagnostics)).toContain('"secretApiKey":"[REDACTED]"');
+    expect(JSON.stringify(reportDoc?.diagnostics)).toContain('"memoryMB":120');
 
     // Check Firestore cli_agent_mission_requests doc
-    const missionDoc = mocks.store.get(`users/${ALICE_UID}/cli_agent_mission_requests/${res.missionId!}`);
+    const missionDoc = mocks.store.get(`users/${ALICE_UID}/cli_agent_mission_requests/${missionId}`);
     expect(missionDoc).toBeDefined();
     expect(missionDoc?.missionKind).toBe("bug_investigation");
     expect(missionDoc?.requestedRuntime).toBe("claude");
@@ -128,7 +145,8 @@ describe("submitBugReport callable", () => {
       autoDispenseCLI: false,
     };
 
-    const res = (await run(authed(payload))) as SubmitBugReportResponse;
+    const res = await run(authed(payload));
+    expectBugReportResult(res);
     expect(res.ok).toBe(true);
     expect(res.missionId).toBeUndefined();
     expect(mocks.store.get(`users/${ALICE_UID}/bug_reports/${res.reportId}`)).toBeDefined();
@@ -146,7 +164,8 @@ describe("submitBugReport callable", () => {
       platform: "macOS",
     };
 
-    const res = (await run(authed(payload))) as SubmitBugReportResponse;
+    const res = await run(authed(payload));
+    expectBugReportResult(res);
     expect(res.ok).toBe(true);
     expect(mocks.resilientFetch).toHaveBeenCalledWith(
       "slack:notifyBugReport",

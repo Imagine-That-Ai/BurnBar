@@ -28,7 +28,9 @@ public struct MobileHelpSupportHubView: View {
             }
 
             Section("Report an Issue") {
-                Button(action: { showingBugReport = true }) {
+                Button {
+                    showingBugReport = true
+                } label: {
                     HStack(spacing: 12) {
                         Image(systemName: "ladybug.fill")
                             .font(.system(size: 20))

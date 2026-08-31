@@ -17,4 +17,3 @@ export * from "./legacy/config.js";
 export * from "./legacy/insights-spec.js";
 export * from "./legacy/insights-digest.js";
 export * from "./legacy/media.js";
-export * from "./legacy/bug-report.js";

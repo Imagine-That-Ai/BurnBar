@@ -179,8 +179,6 @@ public struct OpenClaudeQuotaAdapter: ProviderQuotaAdapter {
     }
 }
 
-
-
 // MARK: - Gemini CLI
 
 public struct GeminiCLIQuotaAdapter: ProviderQuotaAdapter {

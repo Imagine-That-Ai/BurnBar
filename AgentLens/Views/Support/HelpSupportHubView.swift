@@ -72,7 +72,9 @@ public struct HelpSupportHubView: View {
                 .font(.headline)
 
             HStack(spacing: 16) {
-                Button(action: { showingBugReportSheet = true }) {
+                Button {
+                    showingBugReportSheet = true
+                } label: {
                     HStack(spacing: 10) {
                         Image(systemName: "ladybug.fill")
                             .font(.system(size: 18))

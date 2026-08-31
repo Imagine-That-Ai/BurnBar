@@ -104,7 +104,9 @@ public struct MobileBugReportSheetView: View {
             }
 
             Section {
-                Button(action: { Task { await submitReport() } }) {
+                Button {
+                    Task { await submitReport() }
+                } label: {
                     HStack {
                         Spacer()
                         if isSubmitting {

@@ -117,7 +117,7 @@ enum MemoryWalkthroughContent {
                 "What do you remember about the auth refactor?",
                 "Resume the conversation where we fixed the login bug.",
                 "What did I decide about caching, and why?",
-                "Summarize what we shipped this week.",
+                "Summarize what we shipped this week."
             ],
             tourAnchor: nil,
             findPath: nil
@@ -127,14 +127,20 @@ enum MemoryWalkthroughContent {
             symbol: "lock.shield.fill",
             eyebrow: "Control",
             title: "You're in control.",
-            body: "Everything I keep is yours to inspect. Review pending memories, reset them, or opt into sealed cloud backup in Settings › General › Indexing — free for everyone. With Cloud Pro, Settings › Data & Privacy opens the full Pensieve workbench: every record with a live \"% sealed\" gauge, JSON export, single-memory or whole-category forgetting, and Panic to revoke all access instantly. The same control lives on the web at app.burnbar.ai — sign in from any browser and it's all there: your data, your keys.",
+            body: """
+            Everything I keep is yours to inspect. Review pending memories, reset them, \
+            or opt into sealed cloud backup in Settings › General › Indexing — free for everyone. \
+            With Cloud Pro, Settings › Data & Privacy opens the full Pensieve workbench: \
+            every record with a live \"% sealed\" gauge, JSON export, forgetting, and Panic. \
+            The same control lives on the web at app.burnbar.ai.
+            """,
             chips: [],
             tourAnchor: SettingsAnchor.dataControlCenterInventory,
             findPath: "Settings › Data & Privacy",
             previewIcon: "lock.shield.fill",
             previewTitle: "Data & Privacy Control Center",
             previewSubtitle: "Every record · Export · Forget · Panic (Cloud Pro)"
-        ),
+        )
     ]
 }
 

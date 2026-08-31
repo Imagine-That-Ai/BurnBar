@@ -60,12 +60,15 @@ public struct BugReportSheetView: View {
 
             Spacer()
 
-            Button(action: { dismiss() }) {
+            Button {
+                dismiss()
+            } label: {
                 Image(systemName: "xmark.circle.fill")
                     .foregroundColor(.secondary)
                     .font(.system(size: 16))
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Close")
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 14)
@@ -186,7 +189,9 @@ public struct BugReportSheetView: View {
 
             Spacer()
 
-            Button(action: { Task { await submitReport() } }) {
+            Button {
+                Task { await submitReport() }
+            } label: {
                 HStack(spacing: 6) {
                     if isSubmitting {
                         ProgressView()

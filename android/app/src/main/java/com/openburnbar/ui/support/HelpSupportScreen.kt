@@ -67,76 +67,11 @@ fun HelpSupportScreen(onBack: () -> Unit) {
                 .verticalScroll(rememberScrollState()),
         ) {
             Spacer(modifier = Modifier.height(8.dp))
-
-            // Report a Bug Action Card
-            Card(
-                modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .clickable { showBugReportSheet = true },
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
-                shape = RoundedCornerShape(12.dp),
-            ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(
-                        Icons.Default.Build,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(32.dp),
-                    )
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Report a Bug", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        Text(
-                            "Creates Linear ticket & auto-dispenses CLI agent on your Mac",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
-                        )
-                    }
-                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null)
-                }
-            }
-
+            ReportBugCard(onClick = { showBugReportSheet = true })
             Spacer(modifier = Modifier.height(16.dp))
-
-            // Device Diagnostics Section
-            Text("Device Health & Diagnostics", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    DiagnosticRow(label = "Android OS", value = snapshot.osVersion)
-                    DiagnosticRow(label = "Device Model", value = snapshot.deviceModel)
-                    DiagnosticRow(label = "App Version", value = "${snapshot.appVersion} (${snapshot.appBuild})")
-                    DiagnosticRow(label = "Hardware Board", value = snapshot.board)
-                }
-            }
-
+            DeviceDiagnosticsCard(snapshot = snapshot)
             Spacer(modifier = Modifier.height(20.dp))
-
-            // Troubleshooting Section
-            Text("Troubleshooting", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Spacer(modifier = Modifier.height(8.dp))
-
-            TroubleshootingCard(
-                title = "Mac CLI Agent Not Responding",
-                description = "Ensure OpenBurnBar is running on your Mac and has permission to execute CLI missions.",
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            TroubleshootingCard(
-                title = "Quota Sync Issues",
-                description = "Verify network connectivity or re-authenticate your provider credentials in the web/desktop app.",
-            )
-
+            TroubleshootingSection()
             Spacer(modifier = Modifier.height(24.dp))
         }
     }
@@ -144,6 +79,73 @@ fun HelpSupportScreen(onBack: () -> Unit) {
     if (showBugReportSheet) {
         BugReportBottomSheet(onDismiss = { showBugReportSheet = false })
     }
+}
+
+@Composable
+private fun ReportBugCard(onClick: () -> Unit) {
+    Card(
+        modifier =
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+        shape = RoundedCornerShape(12.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.Default.Build,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(32.dp),
+            )
+            Spacer(modifier = Modifier.width(16.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Report a Bug", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(
+                    "Creates Linear ticket & auto-dispenses CLI agent on your Mac",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
+                )
+            }
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null)
+        }
+    }
+}
+
+@Composable
+private fun DeviceDiagnosticsCard(snapshot: AndroidDiagnosticsSnapshot) {
+    Text("Device Health & Diagnostics", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+    Spacer(modifier = Modifier.height(8.dp))
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            DiagnosticRow(label = "Android OS", value = snapshot.osVersion)
+            DiagnosticRow(label = "Device Model", value = snapshot.deviceModel)
+            DiagnosticRow(label = "App Version", value = "${snapshot.appVersion} (${snapshot.appBuild})")
+            DiagnosticRow(label = "Hardware Board", value = snapshot.board)
+        }
+    }
+}
+
+@Composable
+private fun TroubleshootingSection() {
+    Text("Troubleshooting", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+    Spacer(modifier = Modifier.height(8.dp))
+    TroubleshootingCard(
+        title = "Mac CLI Agent Not Responding",
+        description = "Ensure OpenBurnBar is running on your Mac and has permission to execute CLI missions.",
+    )
+    Spacer(modifier = Modifier.height(8.dp))
+    TroubleshootingCard(
+        title = "Quota Sync Issues",
+        description = "Verify network connectivity or re-authenticate your provider credentials in the web/desktop app.",
+    )
 }
 
 @Composable

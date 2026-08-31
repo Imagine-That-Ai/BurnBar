@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { LinearClient, LinearIssueInput } from "../linear/linearClient.js";
+import { LinearClient } from "../linear/linearClient.js";
 
 const mocks = vi.hoisted(() => ({
   resilientFetch: vi.fn(),
@@ -20,7 +20,7 @@ describe("LinearClient", () => {
 
   it("generates structured markdown with diagnostics and logs", () => {
     const client = new LinearClient();
-    const input: LinearIssueInput = {
+    const input = {
       title: "UI crash on tapping sync",
       description: "App freezes when tapping quota sync button in settings.",
       platform: "iOS",
@@ -35,7 +35,7 @@ describe("LinearClient", () => {
       logsSnippet: "[ERROR] QuotaSyncWorker: Socket timed out after 5000ms\n[INFO] Retrying in 2s",
     };
 
-    const markdown = client.formatMarkdownDescription(input);
+    const markdown = client.formatMarkdownDescription({ ...input, platform: "iOS" });
     expect(markdown).toContain("### Description");
     expect(markdown).toContain("App freezes when tapping quota sync button in settings.");
     expect(markdown).toContain("### Environment");

@@ -14,13 +14,31 @@ import { pushWithResilience } from "./resilienceHelpers.js";
 
 const DEVICE_COLLECTION = "devices";
 
+interface DeviceApprovalDoc {
+  id: string;
+  data(): Record<string, unknown> | undefined;
+  ref: {
+    set(data: Record<string, unknown>, options: { merge: boolean }): Promise<unknown>;
+  };
+}
+
+interface DeviceApprovalFirestore {
+  collection(path: string): {
+    doc(id: string): {
+      collection(path: string): {
+        get(): Promise<{ docs: DeviceApprovalDoc[] }>;
+      };
+    };
+  };
+}
+
 interface FanoutDeviceApprovalArgs {
   uid: string;
   deviceId: string;
   deviceName: string;
   platform: string;
   safetyCode?: string;
-  firestore?: FirebaseFirestore.Firestore;
+  firestore?: DeviceApprovalFirestore;
   messaging?: Pick<ReturnType<typeof getMessaging>, "send">;
 }
 

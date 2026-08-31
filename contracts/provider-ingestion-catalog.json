@@ -374,8 +374,8 @@
         "agy"
       ],
       "paths": {
-        "linux": "~/.gemini/antigravity",
-        "macos": "~/.gemini/antigravity"
+        "linux": "~/.gemini/antigravity-cli",
+        "macos": "~/.gemini/antigravity-cli"
       },
       "filePattern": "*.jsonl",
       "ingestion": "local-parser",

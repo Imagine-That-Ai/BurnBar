@@ -55,7 +55,7 @@ describe("deviceApprovalPush", () => {
           }),
         }),
       }),
-    } as unknown as FirebaseFirestore.Firestore;
+    };
 
     const result = await fanoutDeviceApprovalRequest({
       uid: "user_test_123",
