@@ -178,7 +178,7 @@ final class AgentReplyNotificationService: NSObject, ObservableObject {
         // Both push families register here rather than in separate `configure`
         // calls: `setNotificationCategories` REPLACES the whole set, so a second
         // registration elsewhere would silently drop the first one's actions.
-        center.setNotificationCategories([Self.agentReplyCategory, Self.aiInboxCategory])
+        center.setNotificationCategories([Self.agentReplyCategory, Self.aiInboxCategory, Self.deviceApprovalCategory])
         Messaging.messaging().delegate = self
         requestAuthorizationAndRegister(application: application)
         updateLifecycle("active")

@@ -200,6 +200,7 @@ enum SettingsAnchor {
 
     // General → Indexing
     static let indexingToggle = "general.indexing.enabled"
+    static let indexingMemory = "general.indexing.memory"
 
     // General → Summaries
     static let summariesAuto = "general.summaries.auto"
@@ -238,6 +239,10 @@ enum SettingsAnchor {
 
     // Cloud
     static let cloudOverview = "cloud.overview"
+    static let cloudRemoteMCP = "cloud.remoteMCP"
+    static let cloudRemoteMCPConnect = "cloud.remoteMCP.connect"
+    static let cloudRemoteMCPDoctor = "cloud.remoteMCP.doctor"
+    static let cloudMemoryTour = "cloud.memoryTour"
 
     // Agents (the unified Connections + Account Switcher + AI Environments tab).
     static let agentsAccounts = "agents.accounts"

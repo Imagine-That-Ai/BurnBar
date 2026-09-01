@@ -96,6 +96,7 @@ export {
   publishMissionApprovalCeiling,
   redeemMissionApprovalAnswer,
 } from "./callables/missionApprovalAnswers.js";
+export { submitBugReport } from "./callables/bugReporting.js";
 
 export {
   createPiAgentPairing,
@@ -158,7 +159,7 @@ export {
   detectStalePendingCloudVaultRotations,
 } from "./cloudVaultRotationResilience.js";
 export { getDataDomainUsage } from "./callables/dataDomainUsage.js";
-export { searchKnowledge } from "./callables/knowledgeSearch.js";
+export { searchKnowledge, listKnowledgeChunks } from "./callables/knowledgeSearch.js";
 export { exportUserData } from "./callables/dataExport.js";
 export { deleteDomainData } from "./callables/dataDeletion.js";
 export { setupRecovery, confirmRecovery, listRecovery } from "./callables/recovery.js";

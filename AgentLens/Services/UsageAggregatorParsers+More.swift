@@ -17,7 +17,7 @@ private func logLineObject(_ value: Any?) -> LogLineJSONObject? {
 
 final class ModelFilterParser: OpenBurnBarCore.LogParser, Sendable {
     let provider: AgentProvider
-    private let modelPattern: String
+    private let modelPatterns: [String]
     private let fileManager: FileManager
     private let appPaths: OpenBurnBarCore.OpenBurnBarAppPaths
     private let sessionsURL: URL
@@ -35,7 +35,10 @@ final class ModelFilterParser: OpenBurnBarCore.LogParser, Sendable {
             try FileHandle(forReadingFrom: url)
         }
     ) {
-        self.modelPattern = modelPattern.lowercased()
+        self.modelPatterns = modelPattern.lowercased()
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
         self.provider = provider
         self.fileManager = fileManager
         self.appPaths = appPaths
@@ -386,10 +389,10 @@ final class ModelFilterParser: OpenBurnBarCore.LogParser, Sendable {
         }
 
         let modelFromSettings = settingsModel.flatMap { m in
-            m.lowercased().contains(modelPattern) ? m : nil
+            modelPatterns.contains(where: { m.lowercased().contains($0) }) ? m : nil
         }
         let resolvedModel = modelFromSettings ?? inlineModel
-        guard let model = resolvedModel, model.lowercased().contains(modelPattern) else {
+        guard let model = resolvedModel, modelPatterns.contains(where: { model.lowercased().contains($0) }) else {
             return nil
         }
 

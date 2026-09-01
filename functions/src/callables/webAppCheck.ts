@@ -28,6 +28,7 @@ import { enforceAuthAndAppCheck } from "../auth.js";
 import { db } from "../adminRuntime.js";
 import { logInfo, wrapCallableHandler } from "../logging.js";
 import { boundedTrimmedString } from "./shared.js";
+import { fanoutDeviceApprovalRequest } from "../deviceApprovalPush.js";
 import { stripUndefinedObject } from "../guards.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 
@@ -181,6 +182,17 @@ export const registerBrowserEscrowDevice = onCall(
         message: "browser_escrow_device_registered",
         device_id: escrowDeviceId,
         platform: ESCROW_WEB_PLATFORM,
+      });
+
+      // Fan out device approval push notifications to existing companion devices
+      void fanoutDeviceApprovalRequest({
+        uid,
+        deviceId: escrowDeviceId,
+        deviceName,
+        platform: ESCROW_WEB_PLATFORM,
+        safetyCode: fingerprint.slice(0, 8),
+      }).catch((err) => {
+        logInfo({ event: "browser_device_approval_fanout_error", error: String(err) });
       });
 
       return { ok: true, escrowDeviceId, status: "pending" };

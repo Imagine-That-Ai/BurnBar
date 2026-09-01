@@ -212,6 +212,36 @@ public enum CLIQuotaExhaustionClassifier {
                 "vercel quota",
                 "vercel fx quota"
             ]
+        case .hermes:
+            cliSpecificPatterns = [
+                "hermes quota",
+                "hermes limit",
+                "hermes session limit"
+            ]
+        case .goose:
+            cliSpecificPatterns = [
+                "goose quota",
+                "goose limit",
+                "block goose quota"
+            ]
+        case .windsurf:
+            cliSpecificPatterns = [
+                "windsurf quota",
+                "windsurf limit",
+                "codeium quota",
+                "flex credit"
+            ]
+        case .openClaude:
+            cliSpecificPatterns = [
+                "openclaude quota",
+                "claude code usage limit",
+                "anthropic quota"
+            ]
+        case .openClaw:
+            cliSpecificPatterns = [
+                "openclaw quota",
+                "openclaw limit"
+            ]
         }
 
         let candidates = trimmed
@@ -242,6 +272,7 @@ public enum CLIQuotaExhaustionClassifier {
             if cliSpecificPatterns.contains(where: normalized.contains)
                 && (normalized.contains("limit reached")
                     || normalized.contains("limit exceeded")
+                    || normalized.contains("quota reached")
                     || normalized.contains("quota exhausted")
                     || normalized.contains("quota exceeded")
                     || normalized.contains("exhaust")) {

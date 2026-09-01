@@ -124,7 +124,7 @@ extension View {
 /// able to ask this question without importing the views that own the backdrop.
 enum BurnBarGlassFieldPreferences {
     static let nativeFieldKey = "useNativeGlassField"
-    static let nativeFieldDefault = true
+    static let nativeFieldDefault = false
 
     /// Whether plates may re-synthesise the field.
     ///

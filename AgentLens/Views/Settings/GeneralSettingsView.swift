@@ -437,16 +437,22 @@ struct IndexingOverviewDetailView: View {
 
     var body: some View {
         SettingsDeepLinkScrollContainer(route: .indexing) { _ in
-            PrivacyIndexingSettingsView(
-                settingsManager: settingsManager,
-                dataStore: dataStore,
-                sharedFeaturesAvailable: sharedFeaturesAvailable,
-                memoryService: memoryService,
-                runtimeContext: runtimeContext
-            )
-            .padding(DesignSystem.Spacing.lg)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .settingsAnchor(SettingsAnchor.indexingToggle)
+            // The ScrollView is load-bearing twice over: without it the page's
+            // lower half (Memory controls, index provider, reranking) is
+            // clipped and unreachable on shorter windows, and deep-link
+            // anchors have nothing to scroll.
+            ScrollView {
+                PrivacyIndexingSettingsView(
+                    settingsManager: settingsManager,
+                    dataStore: dataStore,
+                    sharedFeaturesAvailable: sharedFeaturesAvailable,
+                    memoryService: memoryService,
+                    runtimeContext: runtimeContext
+                )
+                .padding(DesignSystem.Spacing.lg)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .settingsAnchor(SettingsAnchor.indexingToggle)
+            }
         }
         .background(DesignSystem.Colors.background)
         .navigationTitle("Indexing & Search")

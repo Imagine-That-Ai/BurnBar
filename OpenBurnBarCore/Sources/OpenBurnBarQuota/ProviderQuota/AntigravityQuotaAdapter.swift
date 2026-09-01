@@ -19,8 +19,12 @@ public struct AntigravityQuotaAdapter: ProviderQuotaAdapter {
     }
 
     static let availableModels: [ModelTier] = [
+        ModelTier(name: "Gemini 3.7 Flash (High)", windowCap: 600),
+        ModelTier(name: "Gemini 3.7 Flash (Medium)", windowCap: 900),
+        ModelTier(name: "Gemini 3.7 Flash (Low)", windowCap: 1200),
         ModelTier(name: "Gemini 3.5 Flash (High)", windowCap: 600),
         ModelTier(name: "Gemini 3.5 Flash (Medium)", windowCap: 900),
+        ModelTier(name: "Gemini 3.5 Flash (Low)", windowCap: 1200),
         ModelTier(name: "Gemini 3.1 Pro (High)", windowCap: 150),
         ModelTier(name: "Gemini 3.1 Pro (Low)", windowCap: 300),
         ModelTier(name: "Claude Sonnet 4.6 (Thinking)", windowCap: 120),
@@ -53,6 +57,38 @@ public struct AntigravityQuotaAdapter: ProviderQuotaAdapter {
             .replacingOccurrences(of: ".", with: "_")
     }
 
+    private static func candidateRoots(from context: ProviderQuotaAdapterContext) -> [URL] {
+        var candidates: [URL] = []
+        candidates.append(context.homeDirectoryURL.appendingPathComponent(".gemini/antigravity", isDirectory: true))
+        candidates.append(context.homeDirectoryURL.appendingPathComponent(".gemini/antigravity-cli", isDirectory: true))
+        candidates.append(context.homeDirectoryURL.appendingPathComponent(".antigravity", isDirectory: true))
+        return candidates
+    }
+
+    private static func resolveHistoryURL(candidateRoots: [URL], fileManager: FileManager) -> URL? {
+        for root in candidateRoots {
+            let url = root.appendingPathComponent("history.jsonl")
+            if fileManager.fileExists(atPath: url.path) {
+                return url
+            }
+        }
+        return nil
+    }
+
+    private static func resolveSettingsURL(candidateRoots: [URL], context: ProviderQuotaAdapterContext) -> URL? {
+        for root in candidateRoots {
+            let url = root.appendingPathComponent("settings.json")
+            if context.fileManager.fileExists(atPath: url.path) {
+                return url
+            }
+        }
+        let geminiSettings = context.homeDirectoryURL.appendingPathComponent(".gemini/settings.json")
+        if context.fileManager.fileExists(atPath: geminiSettings.path) {
+            return geminiSettings
+        }
+        return nil
+    }
+
     // MARK: - Fetch
 
     /// Test-only deterministic clock override. Release builds never honor this
@@ -82,50 +118,100 @@ public struct AntigravityQuotaAdapter: ProviderQuotaAdapter {
     }
 
     public func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
-        let historyURL = context.homeDirectoryURL.appendingPathComponent(".gemini/antigravity-cli/history.jsonl")
-        let settingsURL = context.homeDirectoryURL.appendingPathComponent(".gemini/antigravity-cli/settings.json")
+        let roots = Self.candidateRoots(from: context)
+        let historyURL = Self.resolveHistoryURL(candidateRoots: roots, fileManager: context.fileManager)
+        let settingsURL = Self.resolveSettingsURL(candidateRoots: roots, context: context)
         let now = Self.referenceDate(from: context)
 
-        guard context.fileManager.fileExists(atPath: historyURL.path) else {
+        // Check if any candidate base directory exists
+        let hasAnySource = historyURL != nil || roots.contains {
+            context.fileManager.fileExists(atPath: $0.path)
+        }
+
+        guard hasAnySource else {
             return ProviderQuotaSnapshot(
                 provider: .antigravity,
                 fetchedAt: now,
                 source: .unavailable,
                 confidence: .unavailable,
                 managementURL: nil,
-                statusMessage: "Antigravity history log not found at ~/.gemini/antigravity-cli/history.jsonl",
+                statusMessage: "Antigravity session logs not found at ~/.gemini/antigravity or ~/.gemini/antigravity-cli",
                 buckets: []
             )
         }
 
         do {
-            // --- Determine active model ---
-            let activeModelName: String = {
-                guard context.fileManager.fileExists(atPath: settingsURL.path),
-                      let settingsData = try? Data(contentsOf: settingsURL), // try?-ok(settings read fallback)
-                      let settings = try? JSONDecoder().decode(SettingsFile.self, from: settingsData), // try?-ok(decode default fallback)
-                      let model = settings.model, !model.isEmpty else {
-                    return Self.defaultModelName
-                }
-                return model
-            }()
-
-            // --- Parse history events in rolling 5h quota window ---
             let windowSeconds = Self.quotaWindowSeconds
-            guard let scan = Self.scanHistoryLog(
-                at: historyURL,
-                fileManager: context.fileManager,
-                now: now
-            ) else {
-                throw NSError(
-                    domain: "AntigravityQuotaAdapter",
-                    code: 1,
-                    userInfo: [NSLocalizedDescriptionKey: "Failed to decode history file as UTF-8"]
+            var historyScan: HistoryLogScan?
+            if let historyURL {
+                historyScan = Self.scanHistoryLog(
+                    at: historyURL,
+                    fileManager: context.fileManager,
+                    now: now
                 )
             }
-            let usedCount = Double(scan.inWindowCount)
+
+            let transcriptScan = Self.scanTranscripts(
+                candidateRoots: roots,
+                fileManager: context.fileManager,
+                now: now
+            )
+
+            // Determine active model
+            let activeModelName: String = {
+                if let settingsURL,
+                   context.fileManager.fileExists(atPath: settingsURL.path),
+                   let settingsData = try? Data(contentsOf: settingsURL),
+                   let settings = try? JSONDecoder().decode(SettingsFile.self, from: settingsData),
+                   let model = settings.model, !model.isEmpty {
+                    return model
+                }
+                if let model = transcriptScan.latestModel, !model.isEmpty {
+                    return model
+                }
+                return Self.defaultModelName
+            }()
+
+            // Combine in-window event count and earliest reset timestamp
+            var inWindowCount = 0
+            var earliestInWindowTimestamp: Double?
+            var sawAnyEvent = false
+
+            if let historyScan, historyScan.inWindowCount > 0 {
+                inWindowCount = max(inWindowCount, historyScan.inWindowCount)
+                if let ts = historyScan.earliestInWindowTimestamp {
+                    earliestInWindowTimestamp = min(earliestInWindowTimestamp ?? ts, ts)
+                }
+                sawAnyEvent = true
+            }
+
+            if transcriptScan.inWindowCount > 0 {
+                inWindowCount = max(inWindowCount, transcriptScan.inWindowCount)
+                if let ts = transcriptScan.earliestInWindowTimestamp {
+                    earliestInWindowTimestamp = min(earliestInWindowTimestamp ?? ts, ts)
+                }
+                sawAnyEvent = true
+            }
+
+            if !sawAnyEvent {
+                sawAnyEvent = (historyScan?.sawAnyEvent == true) || transcriptScan.sawAnyEvent
+            }
+
+            guard sawAnyEvent else {
+                return ProviderQuotaSnapshot(
+                    provider: .antigravity,
+                    fetchedAt: now,
+                    source: .unavailable,
+                    confidence: .unavailable,
+                    managementURL: nil,
+                    statusMessage: "Antigravity session logs not found at ~/.gemini/antigravity or ~/.gemini/antigravity-cli",
+                    buckets: []
+                )
+            }
+
+            let usedCount = Double(inWindowCount)
             var resetsAt: Date?
-            if let earliestTimestamp = scan.earliestInWindowTimestamp {
+            if let earliestTimestamp = earliestInWindowTimestamp {
                 resetsAt = Date(timeIntervalSince1970: earliestTimestamp / 1000.0)
                     .addingTimeInterval(windowSeconds)
             }
@@ -185,10 +271,129 @@ public struct AntigravityQuotaAdapter: ProviderQuotaAdapter {
                 source: .unavailable,
                 confidence: .unavailable,
                 managementURL: nil,
-                statusMessage: "Error reading Antigravity history: \(error.localizedDescription)",
+                statusMessage: "Error reading Antigravity session logs: \(error.localizedDescription)",
                 buckets: []
             )
         }
+    }
+
+    // MARK: - Transcript Scanning Fallback
+
+    struct TranscriptScanResult: Equatable, Sendable {
+        var inWindowCount: Int
+        var earliestInWindowTimestamp: Double?
+        var latestModel: String?
+        var sawAnyEvent: Bool
+        var bytesRead: Int
+    }
+
+    static func scanTranscripts(
+        candidateRoots: [URL],
+        fileManager: FileManager,
+        now: Date
+    ) -> TranscriptScanResult {
+        let windowSeconds = quotaWindowSeconds
+        let cutoff = now.addingTimeInterval(-windowSeconds)
+        let cutoffMs = cutoff.timeIntervalSince1970 * 1000.0
+        let nowMs = now.timeIntervalSince1970 * 1000.0
+
+        var inWindowCount = 0
+        var earliestInWindowTimestamp: Double?
+        var latestModel: String?
+        var sawAnyEvent = false
+        var bytesRead = 0
+        var seenSessionIds = Set<String>()
+
+        for root in candidateRoots {
+            let brainDir = root.appendingPathComponent("brain", isDirectory: true)
+            guard fileManager.fileExists(atPath: brainDir.path) else { continue }
+            guard let sessionDirs = try? fileManager.contentsOfDirectory(
+                at: brainDir,
+                includingPropertiesForKeys: [.contentModificationDateKey, .isDirectoryKey]
+            ) else { continue }
+
+            for sessionDir in sessionDirs {
+                let sessionId = sessionDir.lastPathComponent
+                guard seenSessionIds.insert(sessionId).inserted else { continue }
+
+                let logsDir = sessionDir.appendingPathComponent(".system_generated/logs", isDirectory: true)
+                let transcriptFile = logsDir.appendingPathComponent("transcript.jsonl")
+                let transcriptFullPath = logsDir.appendingPathComponent("transcript_full.jsonl")
+                let file = fileManager.fileExists(atPath: transcriptFullPath.path) ? transcriptFullPath : transcriptFile
+                guard fileManager.fileExists(atPath: file.path) else { continue }
+
+                guard let attrs = try? fileManager.attributesOfItem(atPath: file.path),
+                      let mtime = attrs[.modificationDate] as? Date else { continue }
+
+                sawAnyEvent = true
+                guard mtime >= cutoff else { continue }
+
+                guard let data = try? Data(contentsOf: file),
+                      let text = String(data: data, encoding: .utf8) else { continue }
+                bytesRead += data.count
+
+                for line in text.split(separator: "\n", omittingEmptySubsequences: true) {
+                    guard let lineData = line.data(using: .utf8),
+                          let json = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any] else { continue }
+
+                    let source = json["source"] as? String ?? ""
+                    let type = json["type"] as? String ?? ""
+                    let content = json["content"] as? String ?? ""
+                    let createdAtStr = json["created_at"] as? String
+
+                    if (source == "USER_EXPLICIT" || type == "USER_INPUT") && content.contains("Model Selection") {
+                        if let model = extractModelFromSettingsChange(content) {
+                            latestModel = model
+                        }
+                    }
+
+                    if (source == "MODEL" && type == "PLANNER_RESPONSE") || source == "USER_EXPLICIT" || type == "USER_INPUT" || source == "USER" {
+                        if let createdAtStr,
+                           let date = ThreadSafeISO8601DateFormatter.parse(createdAtStr) {
+                            let tsMs = date.timeIntervalSince1970 * 1000.0
+                            if tsMs >= cutoffMs && tsMs <= nowMs {
+                                inWindowCount += 1
+                                earliestInWindowTimestamp = min(earliestInWindowTimestamp ?? tsMs, tsMs)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return TranscriptScanResult(
+            inWindowCount: inWindowCount,
+            earliestInWindowTimestamp: earliestInWindowTimestamp,
+            latestModel: latestModel,
+            sawAnyEvent: sawAnyEvent,
+            bytesRead: bytesRead
+        )
+    }
+
+    private static func extractModelFromSettingsChange(_ content: String) -> String? {
+        guard content.contains("Model Selection") else { return nil }
+        guard let range = content.range(of: "Model Selection` from ", options: .caseInsensitive) else {
+            return nil
+        }
+        let afterPrefix = content[range.upperBound...]
+        guard let toRange = afterPrefix.range(of: " to ", options: .caseInsensitive) else {
+            return nil
+        }
+        let afterTo = afterPrefix[toRange.upperBound...]
+        var candidate = String(afterTo)
+        if let tagEndRange = candidate.range(of: "</") {
+            candidate = String(candidate[..<tagEndRange.lowerBound])
+        }
+        if let dotSpaceRange = candidate.range(of: ". ") {
+            candidate = String(candidate[..<dotSpaceRange.lowerBound])
+        } else if let dotNewline = candidate.range(of: ".\n") {
+            candidate = String(candidate[..<dotNewline.lowerBound])
+        } else if candidate.hasSuffix(".") {
+            candidate = String(candidate.dropLast())
+        }
+
+        let model = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
+        return model.isEmpty ? nil : model
     }
 
     // MARK: - JSONL tail scan

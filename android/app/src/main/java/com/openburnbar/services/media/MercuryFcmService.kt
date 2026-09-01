@@ -77,6 +77,10 @@ class MercuryFcmService : FirebaseMessagingService() {
             serviceScope.launch { postAgentReplyNotification(data) }
             return
         }
+        if (type == "device_approval_request") {
+            postDeviceApprovalNotification(data)
+            return
+        }
         if (type == "ai_inbox_item") {
             postAIInboxNotification(data)
             return

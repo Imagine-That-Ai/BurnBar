@@ -52,6 +52,12 @@ extension OpenBurnBarApp {
                 runtimeContext: context
             )
         }
+        router.openBugReport = {
+            windowManager.openBugReport()
+        }
+        router.openHelpSupport = {
+            windowManager.openHelpSupport()
+        }
         router.makeMenuBarPopoverContent = { onDismiss in
             AnyView(
                 MenuBarPopoverView(

@@ -225,4 +225,58 @@ final class CLIAuthDiscoveryTests: XCTestCase {
             .apiKeyPresent
         )
     }
+
+    func test_newCLIDiscoveryTreatsConfigHomeAsAuth() throws {
+        let tempRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-new-cli-auth-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+        let cases: [(SwitcherCLIProfileType, String, String)] = [
+            (.hermes, ".hermes", "Hermes local profile"),
+            (.goose, ".config/goose", "Goose local profile"),
+            (.openClaude, ".openclaude", "OpenClaude profile"),
+            (.openClaw, ".openclaw", "OpenClaw profile")
+        ]
+
+        for (cliType, relativeConfig, accountDescription) in cases {
+            let configDir = tempRoot.appendingPathComponent(relativeConfig, isDirectory: true)
+            let executableURL = tempRoot.appendingPathComponent(cliType.executableName)
+            try FileManager.default.createDirectory(at: configDir, withIntermediateDirectories: true)
+            try "#!/bin/sh\n".write(to: executableURL, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executableURL.path)
+            CLILaunchAdapter.executableResolver = { $0 == cliType ? executableURL : nil }
+            CLILaunchAdapter.environmentProvider = { [:] }
+
+            // Goose also probes `~/.goose`, so a missing override is not hermetic there.
+            if cliType != .goose {
+                let missing = CLIAuthDiscovery.discoverAuthState(
+                    for: cliType,
+                    configDirectoryOverride: configDir.appendingPathComponent("missing").path
+                )
+                XCTAssertEqual(missing.authState, .notAuthenticated, cliType.rawValue)
+            }
+
+            let present = CLIAuthDiscovery.discoverAuthState(
+                for: cliType,
+                configDirectoryOverride: configDir.path
+            )
+            XCTAssertEqual(present.authState, .authenticated(lastRefresh: nil), cliType.rawValue)
+            XCTAssertEqual(present.accountDescription, accountDescription, cliType.rawValue)
+        }
+
+        let windsurf = CLIAuthDiscovery.discoverAuthState(for: .windsurf)
+        XCTAssertEqual(windsurf.cliType, .windsurf)
+
+        let antigravityGemini = tempRoot.appendingPathComponent(".gemini/antigravity", isDirectory: true)
+        try FileManager.default.createDirectory(at: antigravityGemini, withIntermediateDirectories: true)
+        let antigravityExecutable = tempRoot.appendingPathComponent("agy")
+        try "#!/bin/sh\n".write(to: antigravityExecutable, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: antigravityExecutable.path)
+        CLILaunchAdapter.executableResolver = { $0 == .antigravity ? antigravityExecutable : nil }
+        let antigravity = CLIAuthDiscovery.discoverAuthState(
+            for: .antigravity,
+            configDirectoryOverride: antigravityGemini.path
+        )
+        XCTAssertEqual(antigravity.authState, .authenticated(lastRefresh: nil))
+    }
 }

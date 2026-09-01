@@ -1212,6 +1212,16 @@ struct ConnectionsSettingsView: View {
             return AgentProvider.omp.providerID
         case .primeAgent:
             return AgentProvider.primeAgent.providerID
+        case .hermes:
+            return AgentProvider.hermes.providerID
+        case .goose:
+            return AgentProvider.goose.providerID
+        case .windsurf:
+            return AgentProvider.windsurf.providerID
+        case .openClaude:
+            return AgentProvider.openClaude.providerID
+        case .openClaw:
+            return AgentProvider.openClaw.providerID
         }
     }
 
@@ -1587,6 +1597,16 @@ struct ConnectionsSettingsView: View {
             return AgentProvider.omp.providerID
         case .primeAgent:
             return AgentProvider.primeAgent.providerID
+        case .hermes:
+            return AgentProvider.hermes.providerID
+        case .goose:
+            return AgentProvider.goose.providerID
+        case .windsurf:
+            return AgentProvider.windsurf.providerID
+        case .openClaude:
+            return AgentProvider.openClaude.providerID
+        case .openClaw:
+            return AgentProvider.openClaw.providerID
         }
     }
 

@@ -304,10 +304,10 @@ public enum AgentProviderIngestionCatalog {
             agentProviderCase: "antigravity",
             providerID: "antigravity",
             displayLabel: "Antigravity",
-            aliases: ["antigravity-cli"],
+            aliases: ["antigravity-cli", "agy"],
             linuxLogicalPath: "~/.gemini/antigravity-cli",
             macOSLogicalPath: "~/.gemini/antigravity-cli",
-            filePattern: "history.jsonl",
+            filePattern: "*.jsonl",
             ingestion: .localParser,
             coverageNote: "Local parser registered in ParserRegistry.",
             quotaSignal: true

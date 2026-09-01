@@ -170,18 +170,91 @@ public extension ProviderQuotaSnapshot {
         let quotaProvider = AgentProvider.fromProviderID(providerID)
             ?? AgentProvider.fromPersistedToken(provider)
             ?? AgentProvider(rawValue: provider)
-        guard quotaProvider == .zai else { return 0 }
-        let lowercased = bucket.label.lowercased()
-        if lowercased.contains("token") || lowercased.contains("api") {
-            return 0
+        let lowercasedKey = bucket.key.lowercased()
+        let lowercasedLabel = bucket.label.lowercased()
+        let marker = "\(lowercasedKey) \(lowercasedLabel)"
+
+        // Demote auxiliary/non-plan buckets across all providers:
+        if marker.contains("on-demand") || marker.contains("ondemand") || marker.contains("extra usage") || marker.contains("pay-as-you-go") || marker.contains("payg") {
+            return 20
         }
-        if lowercased.contains("mcp") || lowercased.contains("tool") || lowercased.contains("time_limit") || lowercased.contains("time limit") {
-            return 2
+        if marker.contains("cache") || marker.contains("hit rate") || marker.contains("passthrough") || marker.contains("custom proxy") {
+            return 30
         }
-        if lowercased == "limits" || lowercased == "limit" {
-            return 3
+        if marker.contains("droid core") || marker.contains("open-weight") {
+            return 25
         }
-        return 1
+        if marker.contains("mcp") || marker.contains("tool") {
+            return 15
+        }
+
+        switch quotaProvider {
+        case .cursor:
+            if marker.contains("cursor-plan") || marker.contains("included usage") {
+                return 0
+            }
+            if marker.contains("cursor-auto") || marker.contains("auto + composer") {
+                return 1
+            }
+            if marker.contains("cursor-api") || marker.contains("api usage") {
+                return 2
+            }
+            return 5
+
+        case .factory:
+            if marker.contains("7d") || marker.contains("7-day") || marker.contains("weekly") {
+                return 0
+            }
+            if marker.contains("standard") {
+                return 1
+            }
+            if marker.contains("30d") || marker.contains("monthly") {
+                return 2
+            }
+            return 5
+
+        case .claudeCode, .openClaude:
+            if marker.contains("five-hour") || marker.contains("5-hour") || marker.contains("5h") {
+                return 0
+            }
+            if marker.contains("seven-day") || marker.contains("7-day") || marker.contains("7d") {
+                return 1
+            }
+            return 5
+
+        case .antigravity:
+            if marker.contains("active") {
+                return 0
+            }
+            return 5
+
+        case .zai:
+            if marker.contains("5-hour") || marker.contains("5hour") || marker.contains("5h") {
+                return 0
+            }
+            if marker.contains("weekly") || marker.contains("7d") || marker.contains("7-day") {
+                return 1
+            }
+            if marker.contains("token") || marker.contains("api") {
+                return 2
+            }
+            if marker.contains("time_limit") || marker.contains("time limit") {
+                return 15
+            }
+            if marker == "limits" || marker == "limit" {
+                return 18
+            }
+            return 5
+
+        default:
+            switch bucket.windowKind {
+            case .rollingHours, .daily: return 0
+            case .weekly, .rollingDays: return 1
+            case .monthly: return 2
+            case .lifetime: return 3
+            case .custom: return 4
+            }
+        }
     }
 
     public var managementLink: URL? {

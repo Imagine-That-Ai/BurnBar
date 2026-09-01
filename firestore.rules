@@ -94,10 +94,13 @@ service cloud.firestore {
           "agy",
           "antigravity",
           "auto",
+          "block_goose",
+          "block-goose",
           "claude",
           "claude_code",
           "claude-code",
           "claudecode",
+          "codeium-windsurf",
           "codex",
           "cursor",
           "cursor_agent",
@@ -117,6 +120,7 @@ service cloud.firestore {
           "geminicli",
           "google-antigravity",
           "googleantigravity",
+          "goose",
           "grok",
           "grok-agent",
           "grok-build",
@@ -149,6 +153,7 @@ service cloud.firestore {
           "primeAgent",
           "vercel-fx",
           "vercelfx",
+          "windsurf",
           "xai"
         ];
     }
@@ -4525,6 +4530,7 @@ service cloud.firestore {
               && !("createdAt" in d)));
       }
 
+      allow read: if ownsUserNamespace(userId);
       allow create: if ownsUserNamespace(userId)
         && escrowDeviceDocumentLimits()
         && hasNoPlaintextSecretFields()
@@ -4684,6 +4690,7 @@ service cloud.firestore {
             && d.publicKeyJwk.y.size() <= 80));
       }
 
+      allow read: if ownsUserNamespace(userId);
       allow create: if ownsUserNamespace(userId)
         && escrowDocumentLimits()
         && hasNoPlaintextSecretFields()
@@ -4771,6 +4778,7 @@ service cloud.firestore {
           && request.resource.data.keyVersion == get(signalIdentityDevicePath()).data.keyVersion;
       }
 
+      allow read: if ownsUserNamespace(userId);
       allow create: if ownsUserNamespace(userId)
         && escrowDocumentLimits()
         && hasNoPlaintextSecretFields()

@@ -194,12 +194,26 @@ extension DashboardView {
             .accessibilityHint("Mines session logs and updates the dashboard chart and Burn total.")
             .accessibilityIdentifier(OBBAccessibilityID.dashboardRefreshButton)
 
-            BurnRailSettingsButton {
-                presentSettings()
-            }
+            BurnBarProfileAvatarButton(
+                size: .toolbar,
+                onOpenSettings: { presentSettings() },
+                onOpenSettingsTab: { tab in
+                    UserDefaults.standard.set(tab.rawValue, forKey: SettingsDeepLinkRouting.pendingTabKey)
+                    presentSettings()
+                },
+                onOpenSettingsItem: { item in
+                    presentSettings(itemID: item)
+                },
+                isScanning: isScanning,
+                onImport: { runScan() },
+                onRecount: { runRecount() },
+                canRunRecount: canRunRecount,
+                mtdSpendFormatted: settingsManager.formatUsageMetric(
+                    cost: totalCostForTimeRange,
+                    tokens: totalTokensForTimeRange
+                )
+            )
             .accessibilityIdentifier(OBBAccessibilityID.dashboardSettingsButton)
-
-            commandDeckOverflow
         }
     }
 
@@ -305,8 +319,12 @@ extension DashboardView {
         // half-adaptive: every label below reads `\.backdropInk` and gets the
         // family the sampler sized for whatever the kernel is painting.
         .resolvingBackdropInk(
-            liveBackdropActive: dashboardLiveBackdropActive,
-            profile: dashboardActiveReadabilityProfile
+            liveBackdropActive: false,
+            profile: BackdropReadabilityProfile.nativeFallback(
+                colorScheme: dashboardKernelColorScheme,
+                appearanceSkin: settingsManager.appearanceSkin,
+                liveBackdropActive: false
+            )
         )
     }
 
@@ -334,28 +352,19 @@ extension DashboardView {
 
     /// The ink the chrome draws with.
     ///
-    /// Resolved here rather than read from `\.backdropInk` because the deck rows
-    /// are computed properties of `DashboardView` itself, and a view cannot read
-    /// an environment value it injects into its own output. The injection in
-    /// `dashboardCommandDeck` is still what serves the real child views —
-    /// `DashboardLayoutSwitcher`, `DashboardQuickAccessRail`,
-    /// `BurnRailAppearanceQuickMenu` — so both paths resolve the same family.
+    /// Sized for the frosted cockpit chrome plate (`.burnBarGlass(.cockpit, role: .chrome)`),
+    /// guaranteeing crisp, high-contrast text and icons (>= 4.5:1 WCAG) across both light
+    /// and dark appearance modes rather than inheriting transparent canvas sampling.
     var dashboardChromeInk: BackdropInk {
-        BackdropInk.resolve(
-            liveBackdropActive: dashboardLiveBackdropActive,
-            profile: dashboardActiveReadabilityProfile
+        BackdropInk.resolveForPlate(
+            skin: settingsManager.appearanceSkin,
+            colorScheme: dashboardKernelColorScheme
         )
     }
 
-    /// The tone of the chrome plate, for the few places that need a
-    /// `ColorScheme` rather than a colour — brand glyph contrast discs, mostly.
-    ///
-    /// Under a live backdrop the sampled profile knows better than the app's
-    /// appearance does, which is the whole reason it is sampled.
+    /// The tone of the chrome plate, matching the current kernel appearance scheme.
     var dashboardChromeColorScheme: ColorScheme {
-        dashboardLiveBackdropActive
-            ? dashboardActiveReadabilityProfile.interfaceColorScheme
-            : dashboardKernelColorScheme
+        dashboardKernelColorScheme
     }
 
     private var dashboardDeckLeading: some View {
@@ -405,11 +414,20 @@ extension DashboardView {
             .padding(2.5)
             .background(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(DesignSystem.Colors.surface.opacity(0.34))
+                    .fill(
+                        dashboardChromeColorScheme == .dark
+                            ? DesignSystem.Colors.surface.opacity(0.34)
+                            : Color.black.opacity(0.05)
+                    )
             )
             .overlay {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(dashboardChromeInk.hairline.opacity(0.5), lineWidth: 0.5)
+                    .stroke(
+                        dashboardChromeColorScheme == .dark
+                            ? dashboardChromeInk.hairline.opacity(0.5)
+                            : Color.black.opacity(0.08),
+                        lineWidth: 0.5
+                    )
             }
         }
         .fixedSize(horizontal: true, vertical: false)
@@ -435,7 +453,11 @@ extension DashboardView {
                 .background {
                     if selected {
                         RoundedRectangle(cornerRadius: 9.5, style: .continuous)
-                            .fill(DesignSystem.Colors.ember.opacity(0.2))
+                            .fill(
+                                dashboardChromeColorScheme == .dark
+                                    ? DesignSystem.Colors.ember.opacity(0.24)
+                                    : DesignSystem.Colors.ember.opacity(0.18)
+                            )
                     }
                 }
                 .contentShape(RoundedRectangle(cornerRadius: 9.5, style: .continuous))
@@ -447,11 +469,8 @@ extension DashboardView {
     }
 
     private var dashboardDeckChart: some View {
-        let insetShape = RoundedRectangle(
-            cornerRadius: min(20, dashboardDeckHeight / 3.2),
-            style: .continuous
-        )
-        return HStack(spacing: 12 * dashboardDeckScale) {
+        let insetShape = Capsule(style: .continuous)
+        return HStack(spacing: 10 * dashboardDeckScale) {
             Button {
                 withAnimation(DesignSystem.Animation.standard) {
                     navigate(to: .charts)
@@ -474,7 +493,7 @@ extension DashboardView {
                                 cost: totalCostForTimeRange,
                                 tokens: totalTokensForTimeRange
                             ))
-                            .font(.system(size: 22 * dashboardDeckScale, weight: .bold, design: .rounded))
+                            .font(.system(size: 20 * dashboardDeckScale, weight: .bold, design: .rounded))
                             .monospacedDigit()
                             .foregroundStyle(dashboardChromeInk.primary)
                             .contentTransition(.numericText())
@@ -486,7 +505,7 @@ extension DashboardView {
                             }
                         }
                     }
-                    .frame(minWidth: 112 * dashboardDeckScale, alignment: .leading)
+                    .frame(minWidth: 108 * dashboardDeckScale, alignment: .leading)
 
                     DashboardIslandSparkline(
                         samples: burnRailSparkline,
@@ -494,9 +513,7 @@ extension DashboardView {
                         timeRange: selectedTimeRange
                     )
                         .frame(minWidth: 200, maxWidth: .infinity)
-                        // The sparkline is the one element that has real room to
-                        // give back: at 74pt it set the deck's floor by itself.
-                        .frame(height: max(30, dashboardDeckHeight - 32))
+                        .frame(height: max(28, dashboardDeckHeight - 34))
                 }
             }
             .buttonStyle(.plain)
@@ -520,11 +537,11 @@ extension DashboardView {
                 .padding(.vertical, 5)
                 .background(
                     Capsule(style: .continuous)
-                        .fill(DesignSystem.Colors.surface.opacity(0.4))
+                        .fill(DesignSystem.Colors.surface.opacity(0.35))
                 )
                 .overlay(
                     Capsule(style: .continuous)
-                        .stroke(dashboardChromeInk.hairline.opacity(0.6), lineWidth: 0.5)
+                        .stroke(dashboardChromeInk.hairline.opacity(0.45), lineWidth: 0.5)
                 )
                 .contentShape(Capsule(style: .continuous))
             }
@@ -537,35 +554,49 @@ extension DashboardView {
             }
         }
         .padding(.horizontal, 14 * dashboardDeckScale)
-        .padding(.vertical, 5)
+        .padding(.vertical, 4)
         .frame(minWidth: 420, maxWidth: .infinity)
-        .background(insetShape.fill(DesignSystem.Colors.surface.opacity(0.3)))
+        .background(
+            insetShape.fill(
+                dashboardChromeColorScheme == .dark
+                    ? Color.black.opacity(0.18)
+                    : Color.black.opacity(0.04)
+            )
+        )
         .overlay {
-            insetShape.stroke(DesignSystem.Colors.ember.opacity(0.2), lineWidth: 0.75)
+            insetShape.stroke(
+                dashboardChromeColorScheme == .dark
+                    ? dashboardChromeInk.hairline.opacity(0.38)
+                    : Color.black.opacity(0.08),
+                lineWidth: 0.5
+            )
         }
         .clipShape(insetShape, style: FillStyle(antialiased: true))
         .contentShape(insetShape)
     }
 
     private var dashboardDeckActions: some View {
-        HStack(spacing: 6) {
-            Button(action: runScan) {
-                Image(systemName: "arrow.triangle.2.circlepath")
-                    .font(.system(size: 12 * dashboardDeckScale, weight: .semibold))
-                    .foregroundStyle(isScanning ? DesignSystem.Colors.ember : dashboardChromeInk.icon)
-                    .rotationEffect(.degrees(isScanning ? 360 : 0))
-                    .animation(isScanning ? .linear(duration: 0.8).repeatForever(autoreverses: false) : .default, value: isScanning)
-                    .frame(width: 28 * dashboardDeckScale, height: 28 * dashboardDeckScale)
-            }
-            .buttonStyle(.plain)
-            .disabled(isScanning || aggregator == nil)
-            .help(isScanning ? "Mining session logs…" : "Refresh token spend")
-
-            BurnRailSettingsButton { presentSettings() }
-
-            commandDeckOverflow
-        }
-        .fixedSize(horizontal: true, vertical: false)
+        BurnBarProfileAvatarButton(
+            size: .toolbar,
+            onOpenSettings: { presentSettings() },
+                onOpenSettingsTab: { tab in
+                    UserDefaults.standard.set(tab.rawValue, forKey: SettingsDeepLinkRouting.pendingTabKey)
+                    presentSettings()
+                },
+                onOpenSettingsItem: { item in
+                    presentSettings(itemID: item)
+                },
+                isScanning: isScanning,
+                onImport: { runScan() },
+                onRecount: { runRecount() },
+                canRunRecount: canRunRecount,
+                mtdSpendFormatted: settingsManager.formatUsageMetric(
+                    cost: totalCostForTimeRange,
+                    tokens: totalTokensForTimeRange
+                )
+            )
+            .accessibilityIdentifier(OBBAccessibilityID.dashboardSettingsButton)
+            .fixedSize(horizontal: true, vertical: false)
     }
 
     private var dashboardDeckStatusRail: some View {
@@ -891,19 +922,19 @@ private struct DashboardIslandSparkline: View {
     var body: some View {
         Chart {
             RuleMark(y: .value("Baseline", 0))
-                .foregroundStyle(DesignSystem.Colors.border.opacity(0.32))
+                .foregroundStyle(DesignSystem.Colors.border.opacity(0.25))
 
             ForEach(points) { point in
                 AreaMark(
                     x: .value("Time", point.date),
                     y: .value("Normalized token spend", point.value)
                 )
-                .interpolationMethod(.monotone)
+                .interpolationMethod(.catmullRom)
                 .foregroundStyle(
                     LinearGradient(
                         colors: [
-                            DesignSystem.Colors.ember.opacity(0.48),
-                            DesignSystem.Colors.whimsy.opacity(0.20),
+                            DesignSystem.Colors.ember.opacity(0.40),
+                            DesignSystem.Colors.whimsy.opacity(0.15),
                             .clear
                         ],
                         startPoint: .top,
@@ -915,8 +946,8 @@ private struct DashboardIslandSparkline: View {
                     x: .value("Time", point.date),
                     y: .value("Normalized token spend", point.value)
                 )
-                .interpolationMethod(.monotone)
-                .lineStyle(StrokeStyle(lineWidth: 2.1, lineCap: .round, lineJoin: .round))
+                .interpolationMethod(.catmullRom)
+                .lineStyle(StrokeStyle(lineWidth: 2.0, lineCap: .round, lineJoin: .round))
                 .foregroundStyle(
                     LinearGradient(
                         colors: [DesignSystem.Colors.whimsy, DesignSystem.Colors.ember, DesignSystem.Colors.blaze],
@@ -927,14 +958,14 @@ private struct DashboardIslandSparkline: View {
             }
         }
         .chartXScale(domain: range)
-        .chartYScale(domain: 0...1.04)
+        .chartYScale(domain: 0...1.22)
         .chartXAxis {
             AxisMarks(position: .bottom, values: labelDates) { value in
                 if let date = value.as(Date.self) {
                     AxisValueLabel(anchor: labelAnchor(for: date)) {
                         Text(label(for: date))
-                            .font(.system(size: 8.5, weight: .medium, design: .rounded))
-                            .foregroundStyle(ink.subtle)
+                            .font(.system(size: 8.0, weight: .medium, design: .rounded))
+                            .foregroundStyle(ink.subtle.opacity(0.85))
                             .monospacedDigit()
                     }
                 }
@@ -944,6 +975,8 @@ private struct DashboardIslandSparkline: View {
         .chartPlotStyle { plot in
             plot.background(.clear)
         }
+        .padding(.horizontal, 4)
+        .padding(.top, 2)
         .accessibilityLabel("Token spend from \(label(for: range.lowerBound)) to \(label(for: range.upperBound))")
     }
 

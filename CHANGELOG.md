@@ -7,7 +7,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **app.burnbar.ai is now reachable from every surface.** The member Data &
+  Privacy Control Center existed only as a bare URL — nothing linked to it.
+  The website's header More menu, mobile nav, footer trust column, and the
+  privacy page's data-domain inventory now link to the console; the Mac app
+  gained "Open the Data console" on Settings › Cloud, an "Open the web
+  console" action on the Data & Privacy landing's free-options card, and a
+  third walkthrough verb "Open Pensieve online" (step 4) deep-linking to
+  app.burnbar.ai/pensieve. Console URLs are pinned by tests
+  (`MacCloudConsoleURLs`) so the host can't silently drift.
+- **Living fluid aurora kernel emblem** (`MemoryConsentSheet`) — the first-run
+  memory-consent modal's flat circle-and-`brain.head.profile` glyph is now a
+  circular living aurora in BurnBar's colours: three luminous fluid ribbons
+  (whimsy → mint → lavender → ember) drifting over a deep ground with a
+  breathing specular core, composited as native SwiftUI content. New
+  `FluidAuroraKernelView` is reusable at any diameter; the motion is pure
+  wrapped-phase math (`FluidAuroraMotion`, sine/cosine tracks on mutually
+  incommensurate 2.9–37s periods, so the loop never phase-locks or stutters on
+  long-lived sheets), and the palette (`FluidAuroraKernelPalette`) resolves
+  through the adaptive design tokens with two new house stops — `auroraMint`
+  and `auroraLavender` — declared in the same `Color.adaptive` dialect as the
+  rest of the theme. Light mode renders the ribbons as a quieter pearl
+  watermark (no glow headroom on cream), Reduce Transparency sinks the kernel
+  into a near-opaque printed tint, and Reduce Motion resolves to the authored
+  time-zero still pose — a fanned three-layer silhouette, not a paused
+  arbitrary frame. The emblem keeps the "Memory" accessibility label the SF
+  Symbol owed VoiceOver. Pinned by `FluidAuroraKernelTests` (12 tests).
+
 ### Fixed
+- Bumped Mac `CURRENT_PROJECT_VERSION` to `83` so `1.0.40+repair.37` is
+  strictly newer than live `1.0.40+repair.36` build 82. The in-app updater
+  compares numeric `CFBundleVersion` first and refuses same-build installs.
+- Console Profile no longer treats a present-but-zeroed `all_time` rollup as
+  healthy. The cheap scheduled path can write that document before any device
+  has published usage, which hid Re-sync and skipped the one-time
+  `rebuildUsageRollups` pass. A zeroed or pre-v3 rollup now auto-rebuilds once
+  per session and keeps the Re-sync CTA visible until real activity lands.
+- New companion devices now fan out a high-priority approval push to existing
+  Mac / iOS / Android devices, with a menu-bar banner, `openburnbar://approve-device`
+  deep link, and Android FCM handling so the request is visible instead of
+  sitting silently in Settings. The banner polls the existing device-trust
+  gateway instead of opening a raw Firestore listener from the popover.
+- Restored Goose and Windsurf as first-class mission-runtime catalog rows in
+  the schema-sync fixture. They had been generated-only, so catalog `--check`
+  deleted them on regen.
+- Pensieve on app.burnbar.ai can list and browse the member's own knowledge
+  chunks (`listKnowledgeChunks`) instead of search-only, and escrow device /
+  identity docs are owner-readable so the console Trust flow can actually load.
+- The Memory (Pensieve) walkthrough's "Show me" buttons now land on real,
+  actionable controls. The "It saves itself" page routes to the on-device
+  Memory section in Settings › General › Indexing (previously the decorative
+  Cloud hero) and its copy no longer claims Cloud Pro is the switch — local
+  memory is consent-gated and free. The Connect page spotlights the actual
+  "Link this Mac's CLI" button (previously the static Stdio shim row). The
+  Control page's destination now opens the Pensieve workbench outright for
+  Cloud Pro members instead of parking on the Data & Privacy landing, and
+  free members arriving there get a new "On this Mac — free, no account
+  needed" card with working actions (Memory controls, tour) instead of a
+  dead-end paywall. The Indexing & Search page also gained its missing scroll
+  view so the Memory controls below the fold are reachable at all, and
+  Settings › Cloud deep links now scroll to and highlight their targets.
 - Bumped Mac `CURRENT_PROJECT_VERSION` to `82` so the next `1.0.40+repair.N`
   cut is strictly newer than live `1.0.40+repair.34` build 81. The in-app
   updater compares numeric `CFBundleVersion` first and refuses same-build
@@ -74,6 +134,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   parses SQLite timestamps without a shared `DateFormatter`.
 
 ### Added
+- **Memory walkthrough modal + guide** (`docs/MEMORY_MCP_GUIDE.md`) — a
+  five-page, under-a-minute guided tour of Memory (Pensieve) and the Memory
+  MCP with a friendly Pensieve voice, spotlight previews, and “Show me” deep
+  links that take the reader straight to the real controls. Three persistent
+  entry points: the Remote MCP card's “How Memory works” button, **Help › How
+  Memory Works…** (⇧⌘M), **Settings search** (“memory tour”, “pensieve tour”,
+  “how memory works”), and a link on the **Data & Privacy** landing. Each
+  tour page previews the destination card with an amber halo and drives the
+  user via manifest routing to anchored rows in Settings › Cloud (including
+  the new `cloud.remoteMCP`/`cloud.remoteMCP.connect`/`cloud.remoteMCP.doctor`
+  scroll anchors) or Settings › Data & Privacy. Copyable endpoint/shim/doctor
+  rows, example recall prompts, and export/forget/Panic controls stay on their
+  pages. Content lives in `MemoryWalkthroughContent` and is pinned against the
+  live endpoint and shim command by `MemoryMCPWalkthroughTests`.
 - **Monthly Recap** (`docs/RECAP.md`) — a new destination that reads a calendar
   month of AI usage back as an editorial deck of cards: favourite model and
   model+harness pairing, weekday and late-night habits, streaks, project focus,

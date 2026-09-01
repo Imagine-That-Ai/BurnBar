@@ -137,13 +137,13 @@ struct BurnBarTopRail: View {
 
             BurnRailTelemetryHero(telemetry: telemetry)
 
-            BurnRailActionsSection(
+            BurnRailProfileAvatarMenu(
+                onSettings: onSettings,
                 isScanning: isScanning,
                 onImport: onImport,
-                onRecount: onRecount
+                onRecount: onRecount,
+                mtdSpendFormatted: telemetry.headlineValue
             )
-
-            BurnRailSettingsButton(onSettings: onSettings)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
@@ -1011,19 +1011,50 @@ struct BurnRailActionsSection: View {
     }
 }
 
-// MARK: - Settings button (standalone)
+// MARK: - Profile Avatar Menu (Standalone / Top Rail)
 
-/// Standalone settings gear. Lives in its own ``ToolbarItem`` slot so the
-/// macOS toolbar never crowds it off-screen when the window is narrow. The
-/// capsule surface matches ``BurnRailActionsSection`` for visual continuity.
-struct BurnRailSettingsButton: View {
+/// Floating profile menu avatar replacing the standalone settings gear in the top rail.
+struct BurnRailProfileAvatarMenu: View {
     var onSettings: () -> Void
+    var onOpenSettingsTab: ((SettingsTab) -> Void)?
+    var onOpenSettingsItem: ((String) -> Void)?
+    var isScanning: Bool = false
+    var onImport: (() -> Void)?
+    var onRecount: (() -> Void)?
+    var canRunRecount: Bool = true
+    var mtdSpendFormatted: String?
 
     var body: some View {
-        BurnRailGhostIconButton(
-            symbol: "gearshape",
-            help: "Settings",
-            action: onSettings
+        BurnBarProfileAvatarButton(
+            size: .toolbar,
+            onOpenSettings: onSettings,
+            onOpenSettingsTab: onOpenSettingsTab,
+            onOpenSettingsItem: onOpenSettingsItem,
+            isScanning: isScanning,
+            onImport: onImport,
+            onRecount: onRecount,
+            canRunRecount: canRunRecount,
+            mtdSpendFormatted: mtdSpendFormatted
+        )
+    }
+}
+
+// MARK: - Settings button (standalone profile avatar)
+
+/// Standalone profile avatar menu replacing the legacy settings gear. Lives in its own
+/// ``ToolbarItem`` slot so the macOS toolbar never crowds it off-screen when the window is narrow.
+struct BurnRailSettingsButton: View {
+    var onSettings: () -> Void
+    var isScanning: Bool = false
+    var onImport: (() -> Void)?
+    var onRecount: (() -> Void)?
+
+    var body: some View {
+        BurnRailProfileAvatarMenu(
+            onSettings: onSettings,
+            isScanning: isScanning,
+            onImport: onImport,
+            onRecount: onRecount
         )
     }
 }

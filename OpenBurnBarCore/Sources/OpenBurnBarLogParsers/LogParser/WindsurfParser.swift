@@ -69,6 +69,28 @@ public final class WindsurfParser: LogParser, Sendable {
 
     // MARK: - Paths
 
+    private func candidateCascadeDirectories() -> [String] {
+        if let override = cascadeDirectoryOverride {
+            return [(override as NSString).expandingTildeInPath]
+        }
+        return [
+            ("~/.codeium/windsurf-next/cascade" as NSString).expandingTildeInPath,
+            ("~/.codeium/windsurf/cascade" as NSString).expandingTildeInPath
+        ]
+    }
+
+    private func candidateGlobalStoragePaths() -> [String] {
+        if let override = globalStorageOverride {
+            return [(override as NSString).expandingTildeInPath]
+        }
+        return [
+            ("~/Library/Application Support/Windsurf - Next/User/globalStorage" as NSString).expandingTildeInPath,
+            ("~/Library/Application Support/Windsurf/User/globalStorage" as NSString).expandingTildeInPath,
+            ("~/.config/Windsurf - Next/User/globalStorage" as NSString).expandingTildeInPath,
+            ("~/.config/Windsurf/User/globalStorage" as NSString).expandingTildeInPath
+        ]
+    }
+
     private static let cascadeDirectory = "~/.codeium/windsurf-next/cascade"
     private static let globalStoragePath = "~/Library/Application Support/Windsurf - Next/User/globalStorage"
     private static let workspaceStoragePath = "~/Library/Application Support/Windsurf - Next/User/workspaceStorage"
@@ -103,8 +125,9 @@ public final class WindsurfParser: LogParser, Sendable {
             }
         }
 
-        let globalPath = ((globalStorageOverride ?? Self.globalStoragePath) as NSString).expandingTildeInPath
-        let stateDBURL = URL(fileURLWithPath: (globalPath as NSString).appendingPathComponent("state.vscdb"))
+        let primaryGlobalPath = candidateGlobalStoragePaths().first(where: { fileManager.fileExists(atPath: $0) })
+            ?? ((globalStorageOverride ?? Self.globalStoragePath) as NSString).expandingTildeInPath
+        let stateDBURL = URL(fileURLWithPath: (primaryGlobalPath as NSString).appendingPathComponent("state.vscdb"))
         let stateDBSignature = FileSetSignature(databaseURL: stateDBURL, using: fileManager)
         let stateDBWasCached = Self.stateDBCache.withLock {
             $0.entriesByDBPath[stateDBURL.path]?.signature == stateDBSignature && $0.entriesByDBPath[stateDBURL.path] != nil
@@ -118,8 +141,8 @@ public final class WindsurfParser: LogParser, Sendable {
             canReadStateDB = false
         }
 
-        let cascadeDir = ((cascadeDirectoryOverride ?? Self.cascadeDirectory) as NSString).expandingTildeInPath
-        if fileManager.fileExists(atPath: cascadeDir) {
+        for cascadeDir in candidateCascadeDirectories() {
+            guard fileManager.fileExists(atPath: cascadeDir) else { continue }
             let cascadeURL = URL(fileURLWithPath: cascadeDir, isDirectory: true)
             let allFiles = (try? fileManager.contentsOfDirectory(
                 at: cascadeURL,
@@ -300,32 +323,33 @@ public final class WindsurfParser: LogParser, Sendable {
     }
 
     private func ensureStateDBCache() -> StateDBCache.Entry {
-        let globalPath = ((globalStorageOverride ?? Self.globalStoragePath) as NSString).expandingTildeInPath
-        let dbPath = (globalPath as NSString).appendingPathComponent("state.vscdb")
-        let dbURL = URL(fileURLWithPath: dbPath)
-        let signature = FileSetSignature(databaseURL: dbURL, using: fileManager)
-        if let cached = Self.stateDBCache.withLock({
-            $0.entriesByDBPath[dbPath]
-        }), cached.signature == signature {
-            return cached.entry
-        }
-
-        var models: [String: String] = [:]
-        var workspaces: [String: String] = [:]
-        var titles: [String: String] = [:]
-
-        if fileManager.fileExists(atPath: dbPath) {
-            _ = readStateDBKeys(atPath: dbPath, models: &models, workspaces: &workspaces, titles: &titles)
-        }
-
-        let entry = StateDBCache.Entry(models: models, workspaces: workspaces, titles: titles)
-        return Self.stateDBCache.withLock {
-            if let cached = $0.entriesByDBPath[dbPath], cached.signature == signature {
+        for globalPath in candidateGlobalStoragePaths() {
+            let dbPath = (globalPath as NSString).appendingPathComponent("state.vscdb")
+            guard fileManager.fileExists(atPath: dbPath) else { continue }
+            let dbURL = URL(fileURLWithPath: dbPath)
+            let signature = FileSetSignature(databaseURL: dbURL, using: fileManager)
+            if let cached = Self.stateDBCache.withLock({
+                $0.entriesByDBPath[dbPath]
+            }), cached.signature == signature {
                 return cached.entry
             }
-            $0.entriesByDBPath[dbPath] = StateDBCache.Cached(signature: signature, entry: entry)
-            return entry
+
+            var models: [String: String] = [:]
+            var workspaces: [String: String] = [:]
+            var titles: [String: String] = [:]
+
+            _ = readStateDBKeys(atPath: dbPath, models: &models, workspaces: &workspaces, titles: &titles)
+
+            let entry = StateDBCache.Entry(models: models, workspaces: workspaces, titles: titles)
+            return Self.stateDBCache.withLock {
+                if let cached = $0.entriesByDBPath[dbPath], cached.signature == signature {
+                    return cached.entry
+                }
+                $0.entriesByDBPath[dbPath] = StateDBCache.Cached(signature: signature, entry: entry)
+                return entry
+            }
         }
+        return StateDBCache.Entry(models: [:], workspaces: [:], titles: [:])
     }
 
     /// Reads the `codeium.windsurf` key from a state.vscdb and extracts trajectory metadata.

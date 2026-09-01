@@ -4,10 +4,13 @@ export const MISSION_RUNTIME_CREATE_TOKENS = [
   "agy",
   "antigravity",
   "auto",
+  "block_goose",
+  "block-goose",
   "claude",
   "claude_code",
   "claude-code",
   "claudecode",
+  "codeium-windsurf",
   "codex",
   "cursor",
   "cursor_agent",
@@ -27,6 +30,7 @@ export const MISSION_RUNTIME_CREATE_TOKENS = [
   "geminicli",
   "google-antigravity",
   "googleantigravity",
+  "goose",
   "grok",
   "grok-agent",
   "grok-build",
@@ -59,6 +63,7 @@ export const MISSION_RUNTIME_CREATE_TOKENS = [
   "primeAgent",
   "vercel-fx",
   "vercelfx",
+  "windsurf",
   "xai"
 ] as const;
 
@@ -66,10 +71,13 @@ export const MISSION_RUNTIME_EVENT_TOKENS = [
   "agy",
   "antigravity",
   "auto",
+  "block_goose",
+  "block-goose",
   "claude",
   "claude_code",
   "claude-code",
   "claudecode",
+  "codeium-windsurf",
   "codex",
   "cursor",
   "cursor_agent",
@@ -89,6 +97,7 @@ export const MISSION_RUNTIME_EVENT_TOKENS = [
   "geminicli",
   "google-antigravity",
   "googleantigravity",
+  "goose",
   "grok",
   "grok-agent",
   "grok-build",
@@ -121,16 +130,20 @@ export const MISSION_RUNTIME_EVENT_TOKENS = [
   "primeAgent",
   "vercel-fx",
   "vercelfx",
+  "windsurf",
   "xai"
 ] as const;
 
 export const ALLOWED_GRANT_RUNTIMES = new Set<string>([
   "agy",
   "antigravity",
+  "block_goose",
+  "block-goose",
   "claude",
   "claude_code",
   "claude-code",
   "claudecode",
+  "codeium-windsurf",
   "codex",
   "cursor",
   "cursor_agent",
@@ -150,6 +163,7 @@ export const ALLOWED_GRANT_RUNTIMES = new Set<string>([
   "geminicli",
   "google-antigravity",
   "googleantigravity",
+  "goose",
   "grok",
   "grok-agent",
   "grok-build",
@@ -181,6 +195,7 @@ export const ALLOWED_GRANT_RUNTIMES = new Set<string>([
   "primeAgent",
   "vercel-fx",
   "vercelfx",
+  "windsurf",
   "xai"
 ]);
 
@@ -244,6 +259,11 @@ const ALIAS_TO_ID: Record<string, string> = {
   "vercelfx": "fx",
   "opencode": "opencode",
   "ollama": "ollama",
+  "goose": "goose",
+  "block-goose": "goose",
+  "block_goose": "goose",
+  "windsurf": "windsurf",
+  "codeium-windsurf": "windsurf",
   "auto": "auto"
 };
 

@@ -280,6 +280,32 @@ export const searchKnowledge = (payload: {
   limit?: number;
 }) => call<typeof payload, SearchKnowledgeResponse>("searchKnowledge", payload);
 
+export interface KnowledgeChunkItem {
+  vectorId: string;
+  ciphertext: unknown;
+  sealedMetadata: unknown;
+  signalEnvelope?: unknown;
+  sourceKind: string;
+  slugHmac?: string;
+  dedupHash?: string;
+  byteCount: number;
+  updatedAtMillis: number;
+}
+
+export interface ListKnowledgeChunksResponse {
+  ok: boolean;
+  chunks: KnowledgeChunkItem[];
+  hasMore: boolean;
+  nextStartAfterId: string | null;
+}
+
+export const listKnowledgeChunks = (payload?: {
+  sourceKind?: string;
+  slugHmac?: string;
+  limit?: number;
+  startAfterId?: string;
+}) => call<typeof payload, ListKnowledgeChunksResponse>("listKnowledgeChunks", payload ?? {});
+
 // ── Passkeys ───────────────────────────────────────────────────────────────
 export const registerPasskey = () =>
   call<void, { ok: boolean; options: PublicKeyCredentialCreationOptionsJSON }>("registerPasskey");

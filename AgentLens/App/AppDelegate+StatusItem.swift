@@ -404,6 +404,10 @@ extension AppDelegate {
         let menu = NSMenu()
         let dashboard = menu.addItem(withTitle: "Open Dashboard", action: #selector(openDashboardAction(_:)), keyEquivalent: "d"); dashboard.target = self
         let settings = menu.addItem(withTitle: "Settings...", action: #selector(openSettingsAction(_:)), keyEquivalent: ","); settings.target = self
+        let helpSupport = menu.addItem(withTitle: "Help & Support", action: #selector(openHelpSupportAction(_:)), keyEquivalent: ""); helpSupport.target = self
+        let bugReport = menu.addItem(withTitle: "Report Bug or Feedback...", action: #selector(openBugReportAction(_:)), keyEquivalent: "b")
+        bugReport.keyEquivalentModifierMask = [.command, .option]
+        bugReport.target = self
 #if !DISTRIBUTION_MAS
         // cov:ignore on the next line -- status-menu wiring; behavior is
         // line-gated in the DirectDownload* companion tests.
@@ -422,6 +426,14 @@ extension AppDelegate {
 
     @objc private func openSettingsAction(_ sender: Any?) {
         AppCommandRouter.shared.openSettings?()
+    }
+
+    @objc private func openBugReportAction(_ sender: Any?) {
+        AppCommandRouter.shared.openBugReport?()
+    }
+
+    @objc private func openHelpSupportAction(_ sender: Any?) {
+        AppCommandRouter.shared.openHelpSupport?()
     }
 
 #if !DISTRIBUTION_MAS

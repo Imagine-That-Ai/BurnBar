@@ -49,6 +49,13 @@ function atRestEnvelope(overrides = {}) {
       formatVersion: 1,
       ...(overrides.binding || {}),
     },
+    senderAuth: {
+      senderIdentityKeyId: "sender-device-1",
+      senderIdentityKeyB64: Buffer.alloc(33, 7).toString("base64"),
+      signatureB64: Buffer.alloc(64, 7).toString("base64"),
+      signatureVersion: 1,
+      ...(overrides.senderAuth || {}),
+    },
     ...(overrides.envelope || {}),
   };
 }

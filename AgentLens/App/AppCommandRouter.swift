@@ -38,6 +38,8 @@ final class AppCommandRouter {
     var openConversationSearch: (() -> Void)?
     var openChatPanel: (() -> Void)?
     var openSettings: (() -> Void)?
+    var openBugReport: (() -> Void)?
+    var openHelpSupport: (() -> Void)?
     var makeMenuBarPopoverContent: ((_ onDismiss: @escaping () -> Void) -> AnyView)? {
         didSet {
             // Reprime menu-bar popover content when the real factory lands and
@@ -65,12 +67,23 @@ final class AppCommandRouter {
         case "search", "chat":
             openConversationSearch?()
             return true
+        case "bug-report", "bug", "feedback":
+            openBugReport?()
+            return true
+        case "help", "support":
+            openHelpSupport?()
+            return true
         // `home` belongs here too: NavigationCoordinator.handleDeepLink implements
         // it, but a host missing from this list never reaches that handler — it
         // falls through to `default` and is handed to the Google Sign-In fallback,
         // so the route would be declared and unreachable.
         case "quota", "inbox", "home", "recap":
             return routeDashboardDeepLink?(url) ?? false
+        case "approve-device", "device-approval", "devices":
+            Task { @MainActor in
+                _ = SettingsDeepLinkRouting.route(to: SettingsAnchor.trustedDevices)
+            }
+            return true
         case "link-cli":
             return handleLinkCli()
         default:

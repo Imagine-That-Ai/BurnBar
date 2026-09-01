@@ -34,6 +34,7 @@ import {
   formatCompact,
   formatUsd,
 } from "@/components/dashboard/cards/primitives";
+import { RefreshCw } from "lucide-react";
 import { BrandLogo } from "@/components/BrandLogo";
 import { cn } from "@/lib/utils";
 
@@ -292,15 +293,27 @@ export default function ProfilePage() {
           <h1 className="font-display text-3xl text-content-bright">{displayName}</h1>
           {handle && <p className="mt-1 text-sm text-content-mute">{handle}</p>}
         </div>
-        {joinedDays != null && (
-          <span className="folio text-content-dim">Joined {joinedDays} days ago</span>
-        )}
+        <div className="flex items-center gap-3 mt-1">
+          {joinedDays != null && (
+            <span className="folio text-content-dim">Joined {joinedDays} days ago</span>
+          )}
+          <button
+            type="button"
+            onClick={() => reload(true)}
+            disabled={syncing || loading}
+            className="inline-flex items-center gap-1.5 rounded-full border border-glass-line px-3 py-1 text-xs text-content-dim transition-colors hover:border-accent hover:text-content-bright disabled:opacity-50"
+            title="Re-read and compute usage rollups from cloud usage events"
+          >
+            <RefreshCw className={cn("size-3", syncing && "animate-spin text-[color:var(--accent-deep)]")} />
+            <span>{syncing ? "Syncing…" : "Sync Usage"}</span>
+          </button>
+        </div>
       </header>
 
       {error && (
         <div
           role="alert"
-          className="mt-token-6 text-sm"
+          className="mt-token-6 text-sm text-center"
           style={{ color: "var(--color-seal-crimson)" }}
         >
           {error}
@@ -309,21 +322,24 @@ export default function ProfilePage() {
       {syncing && (
         <p role="status" className="reveal mt-token-6 text-center text-sm text-content-mute">
           <span className="animate-pulse">Syncing your usage history…</span>{" "}
-          <span className="text-content-dim">first sync counts every historical event.</span>
+          <span className="text-content-dim">aggregating tokens, runs, and streaks across all models.</span>
         </p>
       )}
       {!error && !loading && !syncing && source === "empty" && (
-        <p className="mt-token-6 text-center text-sm text-content-mute">
-          No usage has synced from your devices yet — this page fills in as the
-          BurnBar app reports usage to your account.{" "}
+        <div className="mt-token-6 rounded-lg border border-glass-line bg-surface p-token-4 text-center text-sm text-content-mute">
+          <p className="text-content-bright font-medium mb-1">No usage synced to cloud yet</p>
+          <p className="text-xs text-content-dim mb-3">
+            Open the BurnBar Mac app popover and click the <strong className="text-content-bright">🔄 Refresh</strong> icon at the top right to upload your local sessions.
+          </p>
           <button
             type="button"
             onClick={() => reload(true)}
-            className="font-medium text-[color:var(--accent-deep)] underline-offset-2 hover:underline"
+            className="inline-flex items-center gap-1.5 rounded-md bg-[color:var(--accent-wash)] px-3 py-1.5 text-xs font-semibold text-[color:var(--accent-deep)] transition hover:opacity-90"
           >
-            Re-sync now
+            <RefreshCw className="size-3" />
+            Check & Re-sync Now
           </button>
-        </p>
+        </div>
       )}
 
       {/* Lifetime stat row — a divided bar on sm+, individual tiles on mobile. */}

@@ -1237,6 +1237,52 @@
       ]
     },
     {
+      "collectionGroup": "cloud_search_knowledge",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "dedupHashVersion",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "sourceKind",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "cloud_search_knowledge",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "dedupHashVersion",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "slugHmac",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "cloud_search_knowledge",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "dedupHashVersion",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "sourceKind",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "slugHmac",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "remote_mcp_grants",
       "queryScope": "COLLECTION",
       "fields": [

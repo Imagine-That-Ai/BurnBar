@@ -40,7 +40,18 @@ const year = new Date().getFullYear();
           {
             NAV_FOOTER.trust.map((item) => (
               <li>
-                <a href={item.href}>{item.label}</a>
+                <a
+                  href={item.href}
+                  target={item.external ? "_blank" : undefined}
+                  rel={item.external ? "noopener noreferrer" : undefined}
+                >
+                  {item.label}
+                  {item.external && (
+                    <span class="ext" aria-hidden="true">
+                      ↗
+                    </span>
+                  )}
+                </a>
               </li>
             ))
           }

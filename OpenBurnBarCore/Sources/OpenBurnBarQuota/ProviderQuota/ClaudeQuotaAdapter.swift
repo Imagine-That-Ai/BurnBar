@@ -562,7 +562,7 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
     /// we can't recognize the tier — in that case the JSONL buckets
     /// render token counts only (still useful, just without percentages).
     private func inferredCaps(from credentials: ClaudeOAuthCredentials?) -> ClaudePlanCaps? {
-        guard let credentials else { return nil }
+        guard let credentials else { return .pro }
         let tier = credentials.rateLimitTier.lowercased()
         let sub = credentials.subscriptionType.lowercased()
         let combined = tier + " " + sub
@@ -575,7 +575,7 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         if combined.contains("pro") {
             return .pro
         }
-        return nil
+        return .pro
     }
 
     // MARK: - File Discovery

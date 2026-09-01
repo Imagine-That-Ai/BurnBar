@@ -198,16 +198,10 @@ enum MaterialTier: Equatable, Sendable {
         // No Metal device (a VM, a stripped CI box) is the only automatic downgrade.
         if MTLCreateSystemDefaultDevice() == nil { return .flat }
 
-        // The shader is the material, on every OS version — NOT a fallback for old ones.
-        //
-        // This previously returned `.system` on macOS 26+, which meant the hand-authored
-        // lens never executed on a modern Mac: the newest machines got Apple's generic
-        // frosted material and the oldest got BurnBar's optics, which is exactly
-        // backwards. `glassEffect` is a fine system chrome material, but it is not this
-        // product's material — it has no dispersion, no caustics, no subsurface scatter,
-        // and no cursor-tracked specular. Use it only where matching system chrome
-        // matters more than identity, opted into explicitly.
-        return .shader
+        if #available(macOS 26, *) {
+            return .system
+        }
+        return .flat
     }
 }
 
@@ -307,14 +301,11 @@ private struct BurnBarGlassModifier<S: InsettableShape>: ViewModifier {
                                 tier: tier, tint: tint
                             )
                         )
-                    // Legibility rides under the text only. A scrim across the whole
-                    // plate flattens the optics beside the text as well as behind it.
-                    // Just enough to seat the text; the body carries legibility now.
                     shape.fill(
-                        (scheme == .dark ? Color.black : Color.white).opacity(0.10 + 0.16 * spec.scrim)
+                        (scheme == .dark ? Color.black : Color.white).opacity(0.04 + 0.08 * spec.scrim)
                     )
-                    .blur(radius: 22)
-                    .padding(14 + spec.thickness * 18)
+                    .blur(radius: 16)
+                    .padding(10 + spec.thickness * 12)
                 }
                 .clipShape(shape)
             }
@@ -327,83 +318,30 @@ private struct BurnBarGlassModifier<S: InsettableShape>: ViewModifier {
             )
     }
 
-    /// The plate's interior: what the lens actually bends.
-    ///
-    /// Deliberately *structured*. A gradient wash refracts to itself and the optics
-    /// vanish — the lens needs edges and colour transitions to displace. These bands are
-    /// derived from `BurnBarAmbient`, so the light inside the glass is the live provider
-    /// mix rather than decoration.
+    /// The plate's interior: translucent Liquid Glass over the live backdrop.
     @ViewBuilder
     private func interior(_ spec: GlassSpec) -> some View {
-        let key = tint ?? ambient.key
-        let counter = ambient.counter
         ZStack {
-            if field.isAvailable {
-                // The page's own weather, recomputed at this plate's position.
-                //
-                // This is the line the whole programme was for. Before it, the lens was
-                // handed a near-opaque fill plus three gradients and asked to refract
-                // them — every optical term computed correctly against a surface with
-                // nothing in it, which is precisely why it read as frost. Now the thing
-                // being bent is the field itself, registered to the page, so what comes
-                // out the other side of the glass is the backdrop, displaced.
-                //
-                // No `.opacity(0.82…)` ground under it: the field is already opaque and
-                // already the correct page colour, and a substrate on top would put the
-                // old flat fill straight back.
-                BurnBarFieldInterior()
-            } else {
-                // No field mounted — a static skin, Editorial paper, or a WebGL kernel
-                // the plate cannot re-synthesise. Fall back to the authored interior,
-                // which is exactly the pre-field behaviour.
-                (scheme == .dark ? DesignSystem.Colors.surface : DesignSystem.Colors.surfaceElevated)
-                    .opacity(0.82 + 0.16 * spec.scrim)
+            let baseOpacity: Double = {
+                switch role {
+                case .content:
+                    return scheme == .dark ? 0.60 : 0.68
+                case .chrome:
+                    return 0.38
+                case .instrument:
+                    return 0.48
+                }
+            }()
+
+            shape.fill(.ultraThinMaterial)
+
+            (scheme == .dark ? DesignSystem.Colors.surface : DesignSystem.Colors.surfaceElevated)
+                .opacity(baseOpacity * (0.85 + 0.15 * spec.scrim))
+
+            if role != .content && spec.ambience > 0.1, let tint {
+                tint.opacity(0.04 * spec.ambience)
             }
-
-            // Two offset lobes: light arriving from two directions rather than a wash.
-            //
-            // Held well back over a live field, which already carries the provider
-            // colour — at full strength they would wash out the very weather the lens is
-            // there to bend. They stay because an idle fleet makes the field nearly
-            // flat, and a lens with nothing to displace has nothing to show.
-            let lobe = field.isAvailable ? 0.34 : 1.0
-            RadialGradient(
-                colors: [key.opacity((0.55 * spec.ambience + 0.20) * lobe), .clear],
-                center: .topLeading,
-                startRadius: 0,
-                endRadius: 260
-            )
-            RadialGradient(
-                colors: [counter.opacity((0.70 * spec.ambience + 0.22) * lobe), .clear],
-                center: .bottomTrailing,
-                startRadius: 0,
-                endRadius: 240
-            )
-
-            // Internal depth, NOT a pattern.
-            //
-            // This was a set of hard diagonal striations, added so the lens would have
-            // edges to bend. That was a debugging aid for the shader and it had no
-            // business shipping — it read as barber-pole stripes across every panel.
-            // A material's interior should be felt, never counted.
-            //
-            // What replaces it: a soft vertical falloff, which gives the body a sense of
-            // depth (light entering the top, absorbed toward the bottom) without drawing
-            // a single line the eye can resolve.
-            LinearGradient(
-                colors: [
-                    .white.opacity((0.05 + 0.04 * spec.specular) * lobe),
-                    .clear,
-                    .black.opacity((0.10 + 0.08 * spec.thickness) * lobe)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
         }
-        // One raster boundary for the whole interior. `layerEffect` samples the layer it
-        // is attached to, and without this the field, the lobes and the depth gradient
-        // are not guaranteed to be flattened into one before the lens reads them — the
-        // proven idiom from `GlassProofSnapshots.lensedPlate`.
         .compositingGroup()
     }
 
@@ -468,23 +406,7 @@ private struct LensModifier<S: Shape>: ViewModifier {
         case .flat:
             content
         case .system:
-            if #available(macOS 26, *) {
-                // Hand the optics to the OS so BurnBar's chrome matches system chrome.
-                // `Glass` has exactly `.regular` / `.clear` / `.identity` — there is no
-                // `.prominent`, despite what several widely-copied guides claim.
-                // Carry the spec through rather than reducing it to on/off. `Glass` has
-                // exactly .regular/.clear/.identity (no .prominent), so the axes that can
-                // still be expressed are the tint and whether the surface is interactive;
-                // the rest is the system's to render.
-                content.glassEffect(
-                    spec.lensing > 0
-                        ? .regular.tint((tint ?? ambient.key).opacity(0.10 + 0.14 * spec.ambience))
-                        : .identity,
-                    in: shape
-                )
-            } else {
-                content
-            }
+            content
         case .shader:
             content
                 .visualEffect { [spec, radius, light, ambient] effect, proxy in

@@ -209,7 +209,7 @@ final class SwitcherCLIAuthCoordinator {
             return false
         case .opencode:
             return false
-        case .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie, .primeAgent, .fx:
+        case .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie, .primeAgent, .fx, .hermes, .goose, .windsurf, .openClaude, .openClaw:
             if case .authenticated = authInfo.authState {
                 return true
             }
@@ -399,7 +399,7 @@ final class SwitcherCLIAuthCoordinator {
             candidates = [["login"], ["auth", "login"]]
         case .claude:
             candidates = [["auth", "login"], ["login"]]
-        case .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie, .primeAgent, .fx:
+        case .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie, .primeAgent, .fx, .hermes, .goose, .windsurf, .openClaude, .openClaw:
             candidates = []
         }
 
@@ -440,6 +440,16 @@ final class SwitcherCLIAuthCoordinator {
             return ["OMP_HOME", "OMP_CONFIG_HOME"]
         case .primeAgent:
             return ["PRIME_HOME", "PRIME_AGENT_HOME"]
+        case .hermes:
+            return ["HERMES_HOME", "HERMES_CONFIG_PATH"]
+        case .goose:
+            return ["GOOSE_HOME", "GOOSE_PATH_ROOT"]
+        case .windsurf:
+            return ["WINDSURF_HOME", "CODEIUM_HOME"]
+        case .openClaude:
+            return ["OPENCLAUDE_CONFIG_DIR"]
+        case .openClaw:
+            return ["OPENCLAW_HOME", "OPENCLAW_CONFIG_PATH"]
         }
     }
 
@@ -592,6 +602,16 @@ final class SwitcherCLIAuthCoordinator {
             installHint = "Reinstall OMP, then retry Add Account."
         case .primeAgent:
             installHint = "Reinstall Prime Agent (npm install -g prime-agent), then retry Add Account."
+        case .hermes:
+            installHint = "Reinstall Hermes, then retry Add Account."
+        case .goose:
+            installHint = "Reinstall Goose (curl -fsSL https://github.com/block/goose/releases | bash), then retry Add Account."
+        case .windsurf:
+            installHint = "Reinstall Windsurf from codeium.com/windsurf, then retry Add Account."
+        case .openClaude:
+            installHint = "Reinstall OpenClaude, then retry Add Account."
+        case .openClaw:
+            installHint = "Reinstall OpenClaw, then retry Add Account."
         }
 
         let reason: String

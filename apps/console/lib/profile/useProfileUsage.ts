@@ -6,6 +6,7 @@ import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebaseClient";
 import { useAuth } from "@/lib/useAuth";
 import { rebuildUsageRollups } from "@/lib/api";
+import { needsProfileRebuild } from "@/lib/profile/rollupHealth";
 import { emptyRollup, normalizeRollup, type UsageRollup } from "@/lib/usage";
 
 export type ProfileSource = "live" | "empty";
@@ -28,11 +29,12 @@ export interface ProfileUsageResult {
  * Reads the member's lifetime usage for the profile page:
  *   users/{uid}/usage_rollups/all_time → totals + full-history daily series
  *
- * A missing doc almost always means the rollup pipeline has never computed for
- * this account (history predates the counters), so the first "empty" read of a
- * session automatically fires the deployed `rebuildUsageRollups` callable and
- * re-reads once — the page fills itself in instead of sitting at a lying zero.
- * Guarded by a sessionStorage marker so a failed/slow recompute never loops.
+ * A missing *or zeroed* `all_time` doc almost always means the rollup pipeline
+ * has never counted this account (history predates the counters, or the cheap
+ * scheduled path wrote zeros before any device published), so the first empty
+ * read of a session automatically fires `rebuildUsageRollups` and re-reads
+ * once — the page fills itself in instead of sitting at a lying zero. Guarded
+ * by a sessionStorage marker so a failed/slow recompute never loops.
  *
  * Same fail-soft discipline as useDashboardUsage: a denied or missing doc
  * degrades to a zeroed "empty" state, never throws, never mocks.
@@ -75,24 +77,6 @@ export function useProfileUsage(): ProfileUsageResult {
       return snap.exists() ? normalizeRollup(snap.data(), "all_time") : null;
     };
 
-    // A pre-v3 `all_time` document normalizes fine, so a "does it exist" check
-    // reports it as healthy — but it has no execution-source/combo counters, and
-    // the scheduled cheap path only recomputes FROM those counters. Left alone,
-    // an existing account's lifetime harness/model breakdown would stay empty
-    // (or show only post-upgrade activity) forever. Treat "has lifetime activity
-    // but no v3 breakdown" as incomplete and give it the same one-time forced
-    // rebuild a missing document gets.
-    const isPreV3 = (candidate: UsageRollup | null): boolean => {
-      if (!candidate) return false;
-      const hasActivity =
-        candidate.dailyPoints.length > 0 || candidate.totals.tokens > 0;
-      const hasV3Breakdown =
-        Object.keys(candidate.dailyProviderTokens).length > 0 ||
-        candidate.comboSummaries.length > 0 ||
-        candidate.executionSourceSummaries.length > 0;
-      return hasActivity && !hasV3Breakdown;
-    };
-
     const run = async () => {
       if (shouldRebuild) {
         setSyncing(true);
@@ -104,9 +88,10 @@ export function useProfileUsage(): ProfileUsageResult {
       }
       let result = await readRollup();
 
-      // Auto first-sync, once per session per account. Also covers the pre-v3
-      // upgrade case, not just a missing document.
-      if ((!result || isPreV3(result)) && !shouldRebuild && !autoSyncDone(uid)) {
+      // Auto first-sync, once per session per account. Covers a missing
+      // document, a present-but-zeroed document (cheap path wrote zeros
+      // before any device published), and the pre-v3 upgrade case.
+      if (needsProfileRebuild(result) && !shouldRebuild && !autoSyncDone(uid)) {
         markAutoSync(uid);
         if (!cancelled) setSyncing(true);
         try {
@@ -118,11 +103,11 @@ export function useProfileUsage(): ProfileUsageResult {
       }
 
       if (cancelled) return;
-      if (result) {
+      if (result && !needsProfileRebuild(result)) {
         setRollup(result);
         setSource("live");
       } else {
-        setRollup(emptyRollup("all_time"));
+        setRollup(result ?? emptyRollup("all_time"));
         setSource("empty");
       }
     };
