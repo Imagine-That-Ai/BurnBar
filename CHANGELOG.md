@@ -36,6 +36,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Symbol owed VoiceOver. Pinned by `FluidAuroraKernelTests` (12 tests).
 
 ### Fixed
+- Android Gradle manifests under `android/` no longer force a full CI run.
+  `build.gradle(.kts)`, `settings.gradle(.kts)`, and `gradle.properties` still
+  fail closed when they sit outside that tree, but an android-only Dependabot
+  bump (BurnBar #2464) was matching the catch-all filename rule and waking
+  Daemon PR Gate on macos-26 for a change that cannot reach the Swift daemon.
+  Wrapper scripts and Kotlin sources were already android-owned. Same
+  lane-local exemption shape as the Signal envelope and Safari npm manifests.
 - Bumped Mac `CURRENT_PROJECT_VERSION` to `83` so `1.0.40+repair.37` is
   strictly newer than live `1.0.40+repair.36` build 82. The in-app updater
   compares numeric `CFBundleVersion` first and refuses same-build installs.

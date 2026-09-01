@@ -105,7 +105,7 @@ test("the migrated Domain Core trigger policy routes every governed glob", () =>
 test("dependency manifests and security or release workflows force full CI", () => {
   for (const path of [
     "Cargo.lock",
-    "android/build.gradle.kts",
+    "build.gradle.kts",
     ".github/workflows/deploy-production.yml",
     "governance/branch-protection.main.json",
     "windows/tests/managed-runtime/OpenBurnBar.App.ManagedAgentRuntime.Tests.csproj",
@@ -117,6 +117,58 @@ test("dependency manifests and security or release workflows force full CI", () 
     for (const lane of LANES)
       assert.equal(result[lane], true, `${path}:${lane}`);
   }
+});
+
+test("android Gradle manifests select android, not macos or daemon", () => {
+  const laneLocal = classifyPaths([
+    "android/build.gradle.kts",
+    "android/gradle.properties",
+    "android/openburnbar-iroh-relay/build.gradle.kts",
+    "android/gradle/wrapper/gradle-wrapper.properties",
+    "android/gradlew",
+  ]);
+  assert.equal(laneLocal.full, false);
+  assert.equal(laneLocal.reason, "owned-paths");
+  assert.equal(laneLocal.android, true);
+  assert.equal(laneLocal.macos, false);
+  assert.equal(laneLocal.mobile, false);
+  assert.equal(laneLocal.rust, false);
+  assert.equal(laneLocal.daemon, false);
+  assert.equal(laneLocal.functions, false);
+  assert.equal(laneLocal.web, false);
+  assert.equal(laneLocal.console, false);
+
+  // Dependabot #2464 shape: android-only files, some of which are Domain Core
+  // governed (`settings.gradle.kts`, `app/build.gradle.kts`, domain-core
+  // module). Those must still select rust. They must not fail-closed to a
+  // full run that wakes macos-26 Daemon PR Gate.
+  const dependabotAndroid = classifyPaths([
+    "android/app/build.gradle.kts",
+    "android/build.gradle.kts",
+    "android/burnbar-remote/build.gradle.kts",
+    "android/gradle/wrapper/gradle-wrapper.jar",
+    "android/gradle/wrapper/gradle-wrapper.properties",
+    "android/gradlew",
+    "android/macrobenchmark/build.gradle.kts",
+    "android/openburnbar-domain-core/build.gradle.kts",
+    "android/openburnbar-iroh-relay/build.gradle.kts",
+  ]);
+  assert.equal(dependabotAndroid.full, false);
+  assert.equal(dependabotAndroid.android, true);
+  assert.equal(dependabotAndroid.rust, true);
+  assert.equal(dependabotAndroid.macos, false);
+  assert.equal(dependabotAndroid.daemon, false);
+});
+
+test("android Gradle manifests mixed with AgentLens still wake macos", () => {
+  const result = classifyPaths([
+    "android/app/build.gradle.kts",
+    "AgentLens/Services/LogParser/GrokParser.swift",
+  ]);
+  assert.equal(result.full, false);
+  assert.equal(result.android, true);
+  assert.equal(result.macos, true);
+  assert.equal(result.daemon, false);
 });
 
 test("signal-envelope-contracts npm lockfile selects functions, not macos", () => {

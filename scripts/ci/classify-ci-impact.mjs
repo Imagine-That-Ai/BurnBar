@@ -68,12 +68,25 @@ const SAFARI_EXTENSION_NPM_MANIFESTS = Object.freeze([
   /^extensions\/safari\/(?:package\.json|package-lock\.json)$/,
 ]);
 
+// Android Gradle manifests match the catch-all `build.gradle(.kts)` /
+// `settings.gradle(.kts)` / `gradle.properties` FULL_PATTERNS. Those filenames
+// are fail-closed full when they sit at the repo root or in another ecosystem,
+// but under `android/` they are the Android product graph only. Without this
+// exemption an android-only Dependabot bump (BurnBar #2464) wakes Daemon PR
+// Gate on macos-26 for a change that cannot reach the Swift daemon. Wrapper
+// scripts, version catalogs, and Kotlin sources are already android-owned
+// without hitting FULL_PATTERNS.
+const ANDROID_GRADLE_MANIFESTS = Object.freeze([
+  /^android\/(?:.*\/)?(?:build\.gradle(?:\.kts)?|settings\.gradle(?:\.kts)?|gradle\.properties)$/,
+]);
+
 // Paths that look repo-wide by filename but are provably lane-local. Every
 // entry must ALSO be owned by a LANE_PATTERNS rule below, or it falls into
 // `ambiguous` and fails closed to a full run regardless of this exemption.
 const FULL_PATTERN_EXEMPTIONS = Object.freeze([
   ...NODE_SIGNAL_ENVELOPE_CONTRACTS,
   ...SAFARI_EXTENSION_NPM_MANIFESTS,
+  ...ANDROID_GRADLE_MANIFESTS,
 ]);
 
 const FULL_PATTERNS = [
