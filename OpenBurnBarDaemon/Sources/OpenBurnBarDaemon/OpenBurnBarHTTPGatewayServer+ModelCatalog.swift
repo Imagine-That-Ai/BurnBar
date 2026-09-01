@@ -235,6 +235,28 @@ extension BurnBarHTTPGatewayServer {
             return routeKeysByFamily
         }
 
+        // If the live catalog already considered this request (muted, exhausted,
+        // auth-blocked, or simply not eligible), do not invent a second path.
+        let hasExactAdvertisedRow = snapshot.models.contains { model in
+            if let providerID = requestedModel.providerID,
+               model.providerID.caseInsensitiveCompare(providerID) != .orderedSame {
+                return false
+            }
+            if let accountID = requestedModel.accountID,
+               model.accountID.caseInsensitiveCompare(accountID) != .orderedSame {
+                return false
+            }
+            return modelMatchesRequested(
+                model,
+                normalizedRequestedModelID: normalizedModelID,
+                providerID: model.providerID,
+                catalog: catalog
+            )
+        }
+        if hasExactAdvertisedRow {
+            return routeKeysByFamily
+        }
+
         // Dynamic fallback: If no static advertised row matched, check if an enabled,
         // route-eligible provider exists that can claim or dynamically serve this model
         // (e.g. Anthropic serving dynamic `claude-*` IDs, or OpenAI serving `gpt-*`).
@@ -246,6 +268,10 @@ extension BurnBarHTTPGatewayServer {
         }
         for account in snapshot.accounts where account.routeEligible {
             if account.providerID.caseInsensitiveCompare(claimingProviderID) != .orderedSame {
+                continue
+            }
+            if let accountID = requestedModel.accountID,
+               account.accountID.caseInsensitiveCompare(accountID) != .orderedSame {
                 continue
             }
             guard configStore.catalogSupport.modelID(normalizedModelID, isNamespaceSafeFor: account.providerID) else {
@@ -268,110 +294,35 @@ extension BurnBarHTTPGatewayServer {
         requestedModel: GatewayRequestedModel,
         requestPath: String
     ) async -> (failureMessage: String, response: GatewayHTTPResponse)? {
-        let providerID = requestedModel.providerID
-            ?? (requestPath == "/v1/messages" ? "anthropic" : nil)
-            ?? configStore.catalogSupport.providerNamespaceClaim(forModelID: requestedModel.modelID)
-            ?? configStore.catalogSupport.catalog.vendorForModel(named: requestedModel.modelID)?.id
+        let providerID = requestedModel.providerID ?? (requestPath == "/v1/messages" ? "anthropic" : nil)
         guard let providerID else { return nil }
-
-        let configSnapshot = try? await configStore.snapshot()
-        guard let providerSettings = configSnapshot?.providerSettings(id: providerID),
-              providerSettings.isEnabled else {
+        guard providerID.caseInsensitiveCompare("anthropic") == .orderedSame else {
             return nil
         }
 
-        let accountID = requestedModel.accountID ?? providerSettings.preferredCredentialSlotID
+        let configSnapshot = try? await configStore.snapshot()
+        let providerSettings = configSnapshot?.providerSettings(id: providerID)
+        let accountID = requestedModel.accountID ?? providerSettings?.preferredCredentialSlotID
         let selectedSlot = accountID.flatMap { selectedAccountID in
-            providerSettings.credentialSlots.first {
+            providerSettings?.credentialSlots.first {
                 $0.slotID.caseInsensitiveCompare(selectedAccountID) == .orderedSame
             }
         }
-        let targetSlots: [BurnBarProviderCredentialSlot]
-        if let selectedSlot {
-            targetSlots = [selectedSlot]
-        } else {
-            let enabled = providerSettings.credentialSlots.filter { $0.isEnabled }
-            targetSlots = enabled.isEmpty ? providerSettings.credentialSlots : enabled
-        }
-        guard !targetSlots.isEmpty else { return nil }
+        let isClaudeOAuthSlot = selectedSlot?.authMethodID?
+            .caseInsensitiveCompare("anthropic-claude-oauth") == .orderedSame
+            || selectedSlot?.slotID.caseInsensitiveCompare("current-claude-code-login") == .orderedSame
+        guard isClaudeOAuthSlot else { return nil }
 
-        let providerName = configStore.catalogSupport.provider(id: providerID)?.displayName ?? providerID
-        let now = Date()
-
-        // 0. Active recent-failure circuit breaker in modelHealthStore
-        let formatFamily = requestPath == "/v1/messages" ? BurnBarProviderFormatFamily.anthropic : .openaiCompat
-        for slot in targetSlots {
-            if let failure = await catalogSource.modelHealthStore.activeFailure(
-                modelID: requestedModel.modelID,
-                providerID: providerID,
-                accountID: slot.slotID,
-                formatFamily: formatFamily
-            ) {
-                let detail = failure.message
-                let seconds = max(1, Int(failure.blockedUntil.timeIntervalSince(now)))
-                let headers = ["Content-Type": "application/json", "Retry-After": String(seconds)]
-                return (
-                    failureMessage: "Route temporarily blocked for \(clientModelID): \(failure.message)",
-                    response: GatewayHTTPResponse(
-                        status: failure.statusCode == 429 ? 429 : 503,
-                        headers: headers,
-                        body: Data(errorBody(detail).utf8)
-                    )
-                )
-            }
-        }
-
-        // 1. All target slots cooling down (e.g. HTTP 429 rate limits)
-        let coolingSlots = targetSlots.filter {
-            BurnBarProviderCredentialSlotRoutingPolicy.effectiveStatus(for: $0, now: now) == .coolingDown
-        }
-        if !coolingSlots.isEmpty && coolingSlots.count == targetSlots.count {
-            let nextRetry = coolingSlots.compactMap { slot in
-                slot.cooldownUntil
-                    ?? slot.lastQuotaResetsAt
-                    ?? BurnBarProviderCredentialSlotRoutingPolicy.resetDate(from: slot.lastStatusMessage)
-            }.min()
-            let retrySuffix = nextRetry.map { " Retry after \($0.formatted(date: .abbreviated, time: .standard))." } ?? ""
-            let detail = "All configured \(providerName) accounts are temporarily cooling down after receiving rate limit (HTTP 429) responses.\(retrySuffix)"
-            var headers = ["Content-Type": "application/json"]
-            if let nextRetry {
-                let seconds = max(1, Int(nextRetry.timeIntervalSince(now)))
-                headers["Retry-After"] = String(seconds)
-            }
-            return (
-                failureMessage: "All configured \(providerName) accounts are cooling down.",
-                response: GatewayHTTPResponse(status: 429, headers: headers, body: Data(errorBody(detail).utf8))
-            )
-        }
-
-        // 2. All target slots exhausted
-        let exhaustedSlots = targetSlots.filter {
-            BurnBarProviderCredentialSlotRoutingPolicy.effectiveStatus(for: $0, now: now) == .exhausted
-        }
-        if !exhaustedSlots.isEmpty && exhaustedSlots.count == targetSlots.count {
-            let detail = "All configured \(providerName) accounts have exhausted their quota."
-            return (
-                failureMessage: "All configured \(providerName) accounts are exhausted.",
-                response: jsonResponse(status: 429, body: errorBody(detail))
-            )
-        }
-
-        // 3. All target slots disabled
-        if targetSlots.allSatisfy({ !$0.isEnabled }) {
-            let detail = "All configured credential slots for \(providerName) are disabled. Enable a slot in OpenBurnBar Settings > Connections."
-            return (
-                failureMessage: "All configured \(providerName) slots are disabled.",
-                response: jsonResponse(status: 503, body: errorBody(detail))
-            )
-        }
-
-        // 4. Missing secret or authentication failure (401/403)
-        let liveSnapshot = try? await catalogSource.snapshot()
-        let catalog = configStore.catalogSupport.catalog
-        let hasAuthRejection = targetSlots.contains { slot in
-            slot.status == .missingSecret || (liveSnapshot?.models.contains { model in
+        let requiresAuthenticationRecovery: Bool
+        switch selectedSlot?.status {
+        case .missingSecret:
+            requiresAuthenticationRecovery = true
+        case .ready:
+            let liveSnapshot = try? await catalogSource.snapshot()
+            let catalog = configStore.catalogSupport.catalog
+            requiresAuthenticationRecovery = liveSnapshot?.models.contains { model in
                 model.providerID.caseInsensitiveCompare(providerID) == .orderedSame
-                    && model.accountID.caseInsensitiveCompare(slot.slotID) == .orderedSame
+                    && model.accountID.caseInsensitiveCompare(selectedSlot?.slotID ?? "") == .orderedSame
                     && modelMatchesRequested(
                         model,
                         normalizedRequestedModelID: requestedModel.modelID.lowercased(),
@@ -380,32 +331,27 @@ extension BurnBarHTTPGatewayServer {
                     )
                     && model.routeEligible == false
                     && Self.isCredentialRejection(model.lastError)
-            } == true)
+            } == true
+        case .coolingDown, .exhausted, .disabled, .none:
+            requiresAuthenticationRecovery = false
         }
-        if hasAuthRejection {
-            let accountLabel = selectedSlot?.label.trimmingCharacters(in: .whitespacesAndNewlines)
-            let accountDetail: String
-            if let accountLabel, !accountLabel.isEmpty {
-                accountDetail = "\(providerName) account '\(accountLabel)'"
-            } else {
-                accountDetail = providerName
-            }
-            let isClaudeOAuthSlot = targetSlots.contains {
-                $0.authMethodID?.caseInsensitiveCompare("anthropic-claude-oauth") == .orderedSame
-                    || $0.slotID.caseInsensitiveCompare("current-claude-code-login") == .orderedSame
-            }
-            let recovery = isClaudeOAuthSlot
-                ? "Run `claude auth login` or reconnect Anthropic in OpenBurnBar Settings > Connections."
-                : "Update the API key in OpenBurnBar Settings > Connections."
-            let detail = "No eligible route for \(clientModelID) on \(requestPath). "
-                + "The configured \(accountDetail) credential is missing or expired. \(recovery)"
-            return (
-                failureMessage: "Credential unavailable for \(clientModelID).",
-                response: jsonResponse(status: 503, body: errorBody(detail))
-            )
-        }
+        guard requiresAuthenticationRecovery else { return nil }
 
-        return nil
+        let accountLabel = selectedSlot?.label.trimmingCharacters(in: .whitespacesAndNewlines)
+        let providerName = configStore.catalogSupport.provider(id: providerID)?.displayName ?? providerID
+        let accountDetail: String
+        if let accountLabel, !accountLabel.isEmpty {
+            accountDetail = "\(providerName) account '\(accountLabel)'"
+        } else {
+            accountDetail = providerName
+        }
+        let recovery = "Run `claude auth login` or reconnect Anthropic in OpenBurnBar Settings > Connections."
+        let detail = "No eligible route for \(clientModelID) on \(requestPath). "
+            + "The configured \(accountDetail) credential is missing or expired. \(recovery)"
+        return (
+            failureMessage: "Credential unavailable for \(clientModelID).",
+            response: jsonResponse(status: 503, body: errorBody(detail))
+        )
     }
 
     private static func isCredentialRejection(_ message: String?) -> Bool {
@@ -674,11 +620,8 @@ extension BurnBarHTTPGatewayServer {
         let requestedCloudID = supportsOllamaCloudAliases
             ? OllamaCloudModelRoutingPolicy.canonicalCloudModelID(normalizedRequestedModelID)
             : nil
-        if let advertisedCloudID, let requestedCloudID, advertisedCloudID == requestedCloudID {
-            return true
-        }
-        if supportsOllamaCloudAliases, (advertisedCloudID != nil) != (requestedCloudID != nil) {
-            return false
+        if supportsOllamaCloudAliases, advertisedCloudID != nil || requestedCloudID != nil {
+            return advertisedCloudID == requestedCloudID
         }
         if !supportsOllamaCloudAliases,
            normalizedAdvertisedModelID.hasSuffix(":cloud") != normalizedRequestedModelID.hasSuffix(":cloud") {
