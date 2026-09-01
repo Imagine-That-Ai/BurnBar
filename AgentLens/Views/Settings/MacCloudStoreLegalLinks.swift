@@ -3,16 +3,23 @@ import Foundation
 import OpenBurnBarCore
 
 enum MacCloudStoreLegalURLs {
-    static let privacy = URL(string: "https://burnbar.ai/legal/privacy-policy")!
-    static let terms = URL(string: "https://burnbar.ai/legal/terms")!
+    static let privacy = requiredURL("https://burnbar.ai/legal/privacy-policy")
+    static let terms = requiredURL("https://burnbar.ai/legal/terms")
 }
 
 /// The member web console at app.burnbar.ai — the Data & Privacy Control
 /// Center on the web. One source of truth for every macOS surface that links
 /// out to it (Cloud pane, Memory walkthrough, Data & Privacy landing).
 enum MacCloudConsoleURLs {
-    static let root = URL(string: "https://app.burnbar.ai")!
-    static let pensieve = URL(string: "https://app.burnbar.ai/pensieve")!
+    static let root = requiredURL("https://app.burnbar.ai")
+    static let pensieve = requiredURL("https://app.burnbar.ai/pensieve")
+}
+
+private func requiredURL(_ string: String) -> URL {
+    guard let url = URL(string: string) else {
+        preconditionFailure("Invalid compile-time URL: \(string)")
+    }
+    return url
 }
 
 struct MacCloudStoreLegalLinks: View {
