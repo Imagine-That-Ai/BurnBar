@@ -272,6 +272,7 @@ public enum CLIQuotaExhaustionClassifier {
             if cliSpecificPatterns.contains(where: normalized.contains)
                 && (normalized.contains("limit reached")
                     || normalized.contains("limit exceeded")
+                    || normalized.contains("quota reached")
                     || normalized.contains("quota exhausted")
                     || normalized.contains("quota exceeded")
                     || normalized.contains("exhaust")) {
