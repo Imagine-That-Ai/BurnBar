@@ -130,7 +130,9 @@ ANDROID_DIFF_COVERAGE_ALLOWLIST_JSON="$(cat <<'JSON'
   "android/app/src/main/java/com/openburnbar/ui/you/CloudSyncDetailsView.kt": "Compose Cloud Sync details rendering; local JVM coverage cannot prove recomposition/layout, while sync-health policy remains JVM-covered.",
   "android/app/src/main/java/com/openburnbar/ui/you/IdentityHeroSections.kt": "Compose identity-hero rendering; local JVM coverage cannot prove recomposition/layout, while backing stores remain JVM-covered.",
   "android/app/src/main/java/com/openburnbar/ui/support/BugReportBottomSheet.kt": "Compose bug-report sheet rendering; JVM unit coverage cannot prove recomposition/layout, while BugReportSubmission mapping remains JVM-covered by BugReportServiceTest.",
-  "android/app/src/main/java/com/openburnbar/ui/support/HelpSupportScreen.kt": "Compose Help & Support rendering; JVM unit coverage cannot prove recomposition/layout, while AndroidDiagnosticsSnapshot mapping remains JVM-covered by BugReportServiceTest."
+  "android/app/src/main/java/com/openburnbar/ui/support/HelpSupportScreen.kt": "Compose Help & Support rendering; JVM unit coverage cannot prove recomposition/layout, while AndroidDiagnosticsSnapshot mapping remains JVM-covered by BugReportServiceTest.",
+  "android/app/src/main/java/com/openburnbar/support/ShakeDetector.kt": "Android SensorEventListener glue: SensorEvent/SensorManager gravity normalization cannot execute under local JVM JaCoCo; shake threshold and slop-window policy remain JVM-covered by ShakeDetectorTest.",
+  "android/app/src/main/java/com/openburnbar/data/support/BugReportService.kt": "Firebase Functions callable transport for submitBugReport: Log/Firebase SDK runtime cannot execute under local JVM JaCoCo; payload mapping and response parsing remain JVM-covered by BugReportServiceTest."
 }
 JSON
 )"

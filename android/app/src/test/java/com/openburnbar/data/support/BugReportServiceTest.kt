@@ -98,8 +98,31 @@ class BugReportServiceTest {
         assertEquals("stack", payload["logsSnippet"])
         assertEquals("claude", payload["requestedRuntime"])
         assertEquals("BurnBar", payload["targetProject"])
-        @Suppress("UNCHECKED_CAST")
-        assertEquals("95%", (payload["diagnostics"] as Map<String, String>)["battery"])
+        val diagnostics = payload["diagnostics"]
+        require(diagnostics is Map<*, *>) { "diagnostics should be a string map" }
+        assertEquals("95%", diagnostics["battery"])
+    }
+
+    @Test
+    fun `callablePayload omits optional fields when they are absent`() {
+        val payload =
+            BugReportService.callablePayload(
+                BugReportSubmission(
+                    title = "[Bug] Minimal",
+                    description = "No extras",
+                    platform = "Android",
+                    autoDispenseCLI = true,
+                ),
+            )
+
+        assertEquals("[Bug] Minimal", payload["title"])
+        assertEquals("Android", payload["platform"])
+        assertEquals(true, payload["autoDispenseCLI"])
+        assertFalse(payload.containsKey("appVersion"))
+        assertFalse(payload.containsKey("diagnostics"))
+        assertFalse(payload.containsKey("logsSnippet"))
+        assertFalse(payload.containsKey("requestedRuntime"))
+        assertFalse(payload.containsKey("targetProject"))
     }
 
     @Test
@@ -122,5 +145,25 @@ class BugReportServiceTest {
         assertEquals("https://linear.app/openburnbar/issue/BB-88", result.linearUrl)
         assertFalse(result.isMock)
         assertEquals("mission_bug_rep_abc123", result.missionId)
+    }
+
+    @Test
+    fun `parseSubmissionResult uses defaults when linear issue is missing`() {
+        val result = BugReportService.parseSubmissionResult(mapOf("reportId" to "rep_1"))
+        assertEquals("rep_1", result.reportId)
+        assertEquals("BB-ISSUE", result.linearIdentifier)
+        assertEquals("https://linear.app", result.linearUrl)
+        assertFalse(result.isMock)
+        assertEquals(null, result.missionId)
+    }
+
+    @Test
+    fun `parseSubmissionResult rejects a non-map payload`() {
+        try {
+            BugReportService.parseSubmissionResult("nope")
+            org.junit.Assert.fail("Expected invalid server payload to throw")
+        } catch (error: IllegalStateException) {
+            assertEquals("Invalid response from server.", error.message)
+        }
     }
 }
