@@ -311,46 +311,80 @@ extension BurnBarHTTPGatewayServer {
         let isClaudeOAuthSlot = selectedSlot?.authMethodID?
             .caseInsensitiveCompare("anthropic-claude-oauth") == .orderedSame
             || selectedSlot?.slotID.caseInsensitiveCompare("current-claude-code-login") == .orderedSame
-        guard isClaudeOAuthSlot else { return nil }
+        if isClaudeOAuthSlot {
+            let requiresAuthenticationRecovery: Bool
+            switch selectedSlot?.status {
+            case .missingSecret:
+                requiresAuthenticationRecovery = true
+            case .ready:
+                let liveSnapshot = try? await catalogSource.snapshot()
+                let catalog = configStore.catalogSupport.catalog
+                requiresAuthenticationRecovery = liveSnapshot?.models.contains { model in
+                    model.providerID.caseInsensitiveCompare(providerID) == .orderedSame
+                        && model.accountID.caseInsensitiveCompare(selectedSlot?.slotID ?? "") == .orderedSame
+                        && modelMatchesRequested(
+                            model,
+                            normalizedRequestedModelID: requestedModel.modelID.lowercased(),
+                            providerID: providerID,
+                            catalog: catalog
+                        )
+                        && model.routeEligible == false
+                        && Self.isCredentialRejection(model.lastError)
+                } == true
+            case .coolingDown, .exhausted, .disabled, .none:
+                requiresAuthenticationRecovery = false
+            }
+            guard requiresAuthenticationRecovery else { return nil }
 
-        let requiresAuthenticationRecovery: Bool
-        switch selectedSlot?.status {
-        case .missingSecret:
-            requiresAuthenticationRecovery = true
-        case .ready:
-            let liveSnapshot = try? await catalogSource.snapshot()
-            let catalog = configStore.catalogSupport.catalog
-            requiresAuthenticationRecovery = liveSnapshot?.models.contains { model in
-                model.providerID.caseInsensitiveCompare(providerID) == .orderedSame
-                    && model.accountID.caseInsensitiveCompare(selectedSlot?.slotID ?? "") == .orderedSame
-                    && modelMatchesRequested(
-                        model,
-                        normalizedRequestedModelID: requestedModel.modelID.lowercased(),
-                        providerID: providerID,
-                        catalog: catalog
-                    )
-                    && model.routeEligible == false
-                    && Self.isCredentialRejection(model.lastError)
-            } == true
-        case .coolingDown, .exhausted, .disabled, .none:
-            requiresAuthenticationRecovery = false
+            let accountLabel = selectedSlot?.label.trimmingCharacters(in: .whitespacesAndNewlines)
+            let providerName = configStore.catalogSupport.provider(id: providerID)?.displayName ?? providerID
+            let accountDetail: String
+            if let accountLabel, !accountLabel.isEmpty {
+                accountDetail = "\(providerName) account '\(accountLabel)'"
+            } else {
+                accountDetail = providerName
+            }
+            let recovery = "Run `claude auth login` or reconnect Anthropic in OpenBurnBar Settings > Connections."
+            let detail = "No eligible route for \(clientModelID) on \(requestPath). "
+                + "The configured \(accountDetail) credential is missing or expired. \(recovery)"
+            return (
+                failureMessage: "Credential unavailable for \(clientModelID).",
+                response: jsonResponse(status: 503, body: errorBody(detail))
+            )
         }
-        guard requiresAuthenticationRecovery else { return nil }
 
-        let accountLabel = selectedSlot?.label.trimmingCharacters(in: .whitespacesAndNewlines)
-        let providerName = configStore.catalogSupport.provider(id: providerID)?.displayName ?? providerID
-        let accountDetail: String
-        if let accountLabel, !accountLabel.isEmpty {
-            accountDetail = "\(providerName) account '\(accountLabel)'"
+        // Anthropic API-key cooling is a rate-limit, not a missing route. Keep
+        // this Anthropic-only so exhausted Z.ai / other providers still 503.
+        let now = Date()
+        let targetSlots: [BurnBarProviderCredentialSlot]
+        if let selectedSlot {
+            targetSlots = [selectedSlot]
         } else {
-            accountDetail = providerName
+            let enabled = providerSettings?.credentialSlots.filter { $0.isEnabled } ?? []
+            targetSlots = enabled.isEmpty ? (providerSettings?.credentialSlots ?? []) : enabled
         }
-        let recovery = "Run `claude auth login` or reconnect Anthropic in OpenBurnBar Settings > Connections."
-        let detail = "No eligible route for \(clientModelID) on \(requestPath). "
-            + "The configured \(accountDetail) credential is missing or expired. \(recovery)"
+        guard !targetSlots.isEmpty else { return nil }
+        let coolingSlots = targetSlots.filter {
+            BurnBarProviderCredentialSlotRoutingPolicy.effectiveStatus(for: $0, now: now) == .coolingDown
+        }
+        guard !coolingSlots.isEmpty, coolingSlots.count == targetSlots.count else {
+            return nil
+        }
+        let nextRetry = coolingSlots.compactMap { slot in
+            slot.cooldownUntil
+                ?? slot.lastQuotaResetsAt
+                ?? BurnBarProviderCredentialSlotRoutingPolicy.resetDate(from: slot.lastStatusMessage)
+        }.min()
+        let retrySuffix = nextRetry.map { " Retry after \($0.formatted(date: .abbreviated, time: .standard))." } ?? ""
+        let providerName = configStore.catalogSupport.provider(id: providerID)?.displayName ?? providerID
+        let detail = "All configured \(providerName) accounts are temporarily cooling down after receiving rate limit (HTTP 429) responses.\(retrySuffix)"
+        var headers = ["Content-Type": "application/json"]
+        if let nextRetry {
+            headers["Retry-After"] = String(max(1, Int(nextRetry.timeIntervalSince(now))))
+        }
         return (
-            failureMessage: "Credential unavailable for \(clientModelID).",
-            response: jsonResponse(status: 503, body: errorBody(detail))
+            failureMessage: "All configured \(providerName) accounts are cooling down.",
+            response: GatewayHTTPResponse(status: 429, headers: headers, body: Data(errorBody(detail).utf8))
         )
     }
 
