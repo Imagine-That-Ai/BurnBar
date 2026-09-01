@@ -1,6 +1,5 @@
 import SwiftUI
 import AppKit
-import OpenBurnBarCore
 
 // MARK: - Memory (Pensieve) walkthrough content
 //

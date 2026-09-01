@@ -13,7 +13,7 @@ public struct WindsurfQuotaAdapter: ProviderQuotaAdapter {
             "\(home)/Library/Application Support/Windsurf - Next/User/globalStorage/state.vscdb",
             "\(home)/Library/Application Support/Windsurf/User/globalStorage/state.vscdb",
             "\(home)/.config/Windsurf - Next/User/globalStorage/state.vscdb",
-            "\(home)/.config/Windsurf/User/globalStorage/state.vscdb",
+            "\(home)/.config/Windsurf/User/globalStorage/state.vscdb"
         ]
         for path in paths where FileManager.default.fileExists(atPath: path) {
             if let snapshot = try? parseStateDB(atPath: path) { return snapshot }
@@ -42,7 +42,7 @@ public struct WindsurfQuotaAdapter: ProviderQuotaAdapter {
             percentBucket(quota, remaining: "dailyRemainingPercent", reset: "dailyResetAtUnix", key: "windsurf-daily", label: "Daily quota", window: .daily),
             percentBucket(quota, remaining: "weeklyRemainingPercent", reset: "weeklyResetAtUnix", key: "windsurf-weekly", label: "Weekly quota", window: .rollingDays),
             creditBucket(usage, limit: "flexCredits", remaining: "remainingFlexCredits", used: "usedFlexCredits", key: "windsurf-flex-credits", label: "Flex credits", unit: .credits),
-            creditBucket(usage, limit: "flowActions", remaining: "remainingFlowActions", used: "usedFlowActions", key: "windsurf-flow-actions", label: "Flow actions", unit: .requests),
+            creditBucket(usage, limit: "flowActions", remaining: "remainingFlowActions", used: "usedFlowActions", key: "windsurf-flow-actions", label: "Flow actions", unit: .requests)
         ].compactMap { $0 }
         return ProviderQuotaSnapshot(
             provider: .windsurf, fetchedAt: Date(), source: .localSession, confidence: .exact,

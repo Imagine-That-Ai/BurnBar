@@ -1,5 +1,5 @@
 import AppKit
-import OpenBurnBarCore
+import OpenBurnBarUI
 import SwiftUI
 
 // MARK: - Avatar Sizing
