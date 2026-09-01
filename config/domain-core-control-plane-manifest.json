@@ -29,7 +29,7 @@
     "android/openburnbar-domain-core/src/androidTest/java/com/openburnbar/domaincore/DomainCoreNativeLoadTest.kt": ["15bfca20552dd590","81f7575544f28e18","2ab6e6a2a0918b75","37b7ba54f01f0155"],
     "android/openburnbar-domain-core/src/main/java/uniffi/openburnbar_domain_ffi/openburnbar_domain_ffi.kt": ["a5707fd59adb8c5a","885ff2d1f7ea68d2","60c397c9d04d4232","900249b5cce3e512"],
     "android/settings.gradle.kts": ["b499ea82e56d478a","5b31cd4d9cdac187","74d9f86954fbbeed","64e846506d40a45a"],
-    "apps/console/package-lock.json": ["e25ff48559fd98bd","04c1167105344ca1","73b9a4247e60543e","b23de9385d2606e0"],
+    "apps/console/package-lock.json": ["094380887c6cb3c9","bd2e7fa71a833b5d","c81cc15687c0ba36","1ba763dc3542440b"],
     "apps/console/package.json": ["b39c86ad589d90a2","2a65e1dd009a2cdb","88f0544855bcc94f","8b49375b29781a13"],
     "config/domain-core-build-profiles.json": ["6de1031373a3a9a1","aa5844e9f5ae3117","688f8d1371467d4d","08890752d95860e9"],
     "config/domain-core-ci-paths.json": ["6570ca474ae73e4f","1e31de10d3757301","3b14cdc9ca191699","a4e1734e6108f80d"],
