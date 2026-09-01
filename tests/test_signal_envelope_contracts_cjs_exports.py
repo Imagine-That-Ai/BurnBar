@@ -53,6 +53,12 @@ def test_functions_runtime_can_require_signal_envelope_contracts() -> None:
             mode: "at-rest",
             formatVersion: 1,
           },
+          senderAuth: {
+            senderIdentityKeyId: "sender-device-1",
+            senderIdentityKeyB64: Buffer.alloc(33, 7).toString("base64"),
+            signatureB64: Buffer.alloc(64, 7).toString("base64"),
+            signatureVersion: 1,
+          },
         };
 
         assert.equal(typeof contracts.sanitizeCloudVaultSignalEnvelope, "function");

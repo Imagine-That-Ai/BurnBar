@@ -12,13 +12,14 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 import {
   discoverDomainCoreControlPlane,
   verifyDomainCoreControlPlane,
 } from "./verify-domain-core-control-plane.mjs";
 
-const ROOT = resolve(new URL("../..", import.meta.url).pathname);
+const ROOT = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const MANIFEST = JSON.parse(
   readFileSync(
     new URL(
