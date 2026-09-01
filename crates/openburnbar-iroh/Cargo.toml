@@ -31,13 +31,13 @@ iroh-services = "=1.0.0-rc.0"
 # Async runtime + utilities used by iroh.
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "io-util"] }
 tokio-stream = "0.1"
-thiserror = "1"
+thiserror = "2"
 serde = { version = "1", features = ["derive"] }
 
 # UniFFI surface used by `OpenBurnBarIroh` Swift package. The proc-macro
 # attribute path (`#[uniffi::export]`) is the modern, scaffolding-free way to
 # expose Rust APIs — no .udl file required.
-uniffi = { version = "0.28", features = ["cli"] }
+uniffi = { version = "0.32", features = ["cli"] }
 
 # Ed25519 pairing signatures live in OpenBurnBarCore (Swift CryptoKit). The
 # Rust side only needs the iroh secret-key representation, which iroh exposes
@@ -54,7 +54,7 @@ uniffi = { version = "0.28", features = ["cli"] }
 jni = "0.22"
 
 [build-dependencies]
-uniffi = { version = "0.28", features = ["build"] }
+uniffi = { version = "0.32", features = ["build"] }
 
 [lints.clippy]
 unwrap_used = "deny"
