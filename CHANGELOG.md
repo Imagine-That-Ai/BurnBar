@@ -36,6 +36,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Symbol owed VoiceOver. Pinned by `FluidAuroraKernelTests` (12 tests).
 
 ### Fixed
+- Console Profile compact counts now use B and T, so a trillion-token lifetime
+  total reads as `1.09T` instead of `1085491M`. Model, harness, and combo labels
+  wrap instead of clipping, and harness/combo breakdowns stay visible on
+  narrow screens.
+- The menu-bar pending-device banner lists every waiting device instead of only
+  the first, shows why Approve cannot run from an untrusted Mac, and deep-links
+  to Settings › Trusted Devices instead of hanging on a silent self-approve.
+- **Safari extension-enable clicks no longer share an active global event tap with
+  text expansion.** macOS global expansion now observes key-down events passively,
+  lets the original event reach the focused app, and asynchronously replaces only
+  the verified trailing trigger token. This removes OpenBurnBar's active input
+  interception from Safari's extension-permission flow while preserving static
+  global snippets and secure-surface protections.
 - Bumped Mac `CURRENT_PROJECT_VERSION` to `83` so `1.0.40+repair.37` is
   strictly newer than live `1.0.40+repair.36` build 82. The in-app updater
   compares numeric `CFBundleVersion` first and refuses same-build installs.

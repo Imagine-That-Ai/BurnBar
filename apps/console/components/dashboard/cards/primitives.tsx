@@ -24,13 +24,44 @@ export function formatUsd(n: number): string {
   return "$" + withThousands(int ?? "0") + "." + (frac ?? "00");
 }
 
-/** "1.2M", "12.3K", "742". */
+/**
+ * Compact count: "742", "12.3K", "1.2M", "1.09B", "1.09T".
+ *
+ * Million was the old ceiling, so a trillion-token lifetime total rendered as
+ * "1085491M". Billion / trillion keep the headline readable. Deterministic
+ * (no Intl) so prerender and client stay byte-identical.
+ */
 export function formatCompact(n: number): string {
   if (!Number.isFinite(n)) return "—";
   const abs = Math.abs(n);
-  if (abs >= 1_000_000) return (n / 1_000_000).toFixed(abs >= 10_000_000 ? 0 : 1) + "M";
-  if (abs >= 1_000) return (n / 1_000).toFixed(abs >= 10_000 ? 0 : 1) + "K";
+  if (abs < 1_000) return withThousands(Math.round(n).toString());
+
+  const units = [
+    { value: 1_000_000_000_000, suffix: "T", smallDp: 2 },
+    { value: 1_000_000_000, suffix: "B", smallDp: 2 },
+    { value: 1_000_000, suffix: "M", smallDp: 1 },
+    { value: 1_000, suffix: "K", smallDp: 1 },
+  ] as const;
+
+  for (let i = 0; i < units.length; i++) {
+    const unit = units[i]!;
+    if (abs < unit.value) continue;
+    const formatted = formatCompactUnit(n, unit.value, unit.suffix, unit.smallDp);
+    // 999.6M → 1000M after rounding; bump to the next larger suffix.
+    if (Math.abs(Number.parseFloat(formatted)) >= 1000 && i > 0) {
+      const next = units[i - 1]!;
+      return formatCompactUnit(n, next.value, next.suffix, next.smallDp);
+    }
+    return formatted;
+  }
   return withThousands(Math.round(n).toString());
+}
+
+function formatCompactUnit(n: number, divisor: number, suffix: string, smallDp: number): string {
+  const scaled = Math.abs(n) / divisor;
+  const dp = smallDp === 2 ? (scaled >= 100 ? 0 : scaled >= 10 ? 1 : 2) : scaled >= 10 ? 0 : 1;
+  const body = (n / divisor).toFixed(dp).replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "");
+  return body + suffix;
 }
 
 /** 0..1 → "62%". */

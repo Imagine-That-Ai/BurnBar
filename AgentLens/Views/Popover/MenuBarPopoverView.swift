@@ -246,7 +246,11 @@ struct MenuBarPopoverView: View {
                         compact: true,
                         horizontalInset: DesignSystem.Spacing.sm,
                         topInset: DesignSystem.Spacing.xs,
-                        onOpenSettings: onOpenSettings
+                        onOpenSettings: {
+                            SettingsDeepLinkRouting.route(to: "devices.trusted")
+                            dismiss()
+                            onOpenSettings()
+                        }
                     )
                         .frame(width: popoverWidth)
                     popoverDivider

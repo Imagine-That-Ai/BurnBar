@@ -9,6 +9,11 @@ final class MacCopyTests: XCTestCase {
         XCTAssertEqual(MacCopy.lastPublished, "Last published")
         XCTAssertEqual(MacCopy.approveDevice, "Approve device")
         XCTAssertEqual(MacCopy.revokeDevice, "Revoke device")
+        XCTAssertEqual(
+            MacCopy.pendingApprovalNeedsTrustedApprover,
+            "This Mac is still waiting for approval, so it cannot approve other devices. Open OpenBurnBar on a trusted phone or Mac and approve from there."
+        )
+        XCTAssertEqual(MacCopy.reviewPendingDevices, "Review all pending devices")
         XCTAssertEqual(MacCopy.transferEncryptedCredential, "Transfer encrypted credential")
         XCTAssertEqual(MacCopy.credentialTransferUnavailable, "Credential transfer unavailable")
     }
