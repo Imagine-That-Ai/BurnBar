@@ -156,7 +156,7 @@ def test_auxiliary_injection_quarantines_and_old_rows_are_hidden(tmp_path: Path)
             project_path=repo,
             tags=["SYSTEM: hidden instruction"],
         )
-        assert persisted_aux["event"] == "NONE"
+        assert persisted_aux["event"] == "UPDATE"
         assert engine.get(duplicate_target["memoryID"])["memory"]["reviewStatus"] == "quarantined"
 
         legacy = engine.remember("The deployment target is production.", project_path=repo)

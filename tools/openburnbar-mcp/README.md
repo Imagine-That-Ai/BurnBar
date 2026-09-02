@@ -241,9 +241,11 @@ against mem0 / Mixedbread: [`docs/superpowers/2026-09-02-memory-mcp-v2-design.md
   `burnbar_forget` uses that id for the daemon-side forget (a row that was
   never mirrored reports `mirror.status: skipped` instead of sending the
   engine's local id). If the daemon is unavailable, a metadata-only tombstone
-  retains its id for a later `burnbar_forget` retry and clears only after the
-  daemon confirms deletion. Mirror provenance uses only the engine-gated
-  `sourceRef`, never the caller's raw source string.
+  retains its id and original project path for a later `burnbar_forget` retry,
+  and clears only after the daemon reports `localDeleted: true`. Mirror
+  provenance uses only the engine-gated `sourceRef`, never the caller's raw
+  source string. Only approved rows are mirrored; quarantined, rejected, and
+  secret rows stay local.
 - **Legacy daemon memories migrate themselves.** Memories written by the
   pre-engine `burnbar_remember` or by the app into the daemon-owned
   `agent_memories` store are imported into the engine store once, on the
@@ -252,13 +254,15 @@ against mem0 / Mixedbread: [`docs/superpowers/2026-09-02-memory-mcp-v2-design.md
   legacy_daemon`, `metadata.legacyMemoryID`). The outcome is reported as
   `legacyMigration` on those responses and in `burnbar_memory_doctor`; when
   the app database is unreadable (signed install) it is a status, never an
-  error. Transient unavailable or capability-disabled outcomes are not cached
-  and retry on the next read.
+  error. Migration paginates the complete active daemon ledger rather than
+  stopping at 2,000 rows. Transient unavailable or capability-disabled
+  outcomes are not cached and retry on the next read.
 - **Encrypted at rest.** Bodies and history bodies are AES-256-GCM sealed with
   a key the engine owns (`openburnbar-memory.key`, mode 0600, published
   atomically so two first-run processes cannot truncate each other's key, or
   `OPENBURNBAR_MEMORY_KEY_BASE64`). The database and its WAL / SHM sidecars are
-  mode 0600. Vectors and metadata are plaintext, the same posture as the app's
+  mode 0600. A missing or invalid key for a populated store fails closed rather
+  than replacing the only key reference. Vectors and metadata are plaintext, the same posture as the app's
   on-disk `VectorIndexes/`. No FTS table is written; BM25 runs in-process over
   one project's decrypted bodies. Reinforcement history and the ingest replay
   table hold hashes and labels, never bodies.
@@ -299,6 +303,8 @@ against mem0 / Mixedbread: [`docs/superpowers/2026-09-02-memory-mcp-v2-design.md
   legacy rows detected by the read-time backstop. Explicit review reads keep
   their JSON shape but wrap free-form values, injection-bearing metadata keys,
   and history metadata as untrusted data.
+  `burnbar_memory_export` applies the same shape-preserving wrappers, including
+  to quarantined rows and retained secret text.
 - **Experimental: retain secrets.** `retain` stores the verbatim text in an
   encrypted vault table, keeps a redacted, searchable body in the main store,
   and hides the memory from default recall. It needs
@@ -312,6 +318,7 @@ against mem0 / Mixedbread: [`docs/superpowers/2026-09-02-memory-mcp-v2-design.md
 - **Structured refusals.** Malformed JSON in `filters`, `metadata`, `facts`,
   or `memories` returns `INVALID_JSON_ARGUMENT` (never a silently widened
   query); filter `AND` / `OR` clauses must be non-empty arrays of objects.
+  Invalid `expires_at` values are rejected instead of becoming immortal rows.
   Editing a memory's text to match another active memory returns
   `DUPLICATE_BODY`; re-remembering text whose memory was rejected in review
   returns `NONE` with `PREVIOUSLY_REJECTED` (re-approve it with
@@ -321,8 +328,11 @@ against mem0 / Mixedbread: [`docs/superpowers/2026-09-02-memory-mcp-v2-design.md
   original id. `tags=[]` / `entities=[]` on `burnbar_memory_update` clear the
   field; omit the argument to keep it. `burnbar_recall_pack` budgets the whole
   serialized pack (floor 192 tokens: the envelope plus one truncated line),
-  keeps each memory on one line, and neutralizes pack sentinels inside bodies.
-- **Cross-store lifecycle.** Supersession and confirmed bulk deletion forget
+  keeps each memory on one line, neutralizes pack sentinels inside bodies, and
+  reinforces only memories that actually fit. Import skips retired rows from
+  historical exports so obsolete facts cannot become active again.
+- **Cross-store lifecycle.** Supersession, negation/`DELETE`, quarantine, and
+  confirmed bulk deletion forget
   the corresponding daemon mirrors. Failed daemon deletes retain only the
   local-to-daemon id tombstone and can be retried after the local row is gone.
   Update, review, and import writes also reconcile the mirror; body changes
@@ -330,6 +340,8 @@ against mem0 / Mixedbread: [`docs/superpowers/2026-09-02-memory-mcp-v2-design.md
   and the recorded body hash makes an interrupted transition safely retryable.
   A project-scoped reindex leaves other projects' old-version vectors intact,
   and a transient Ollama startup miss is retried without restarting the MCP.
+  Concurrent duplicate inserts serialize lookup plus insertion, and embedding
+  HTTP calls complete before SQLite write locks are taken.
 - **Quality.** `eval_memory.py` scores lexical vs hybrid recall on a 40-memory
   / 30-paraphrase gold set against your local Ollama model.
 

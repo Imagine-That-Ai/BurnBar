@@ -225,7 +225,7 @@ def test_explicit_supersedes_and_immutable(tmp_path: Path) -> None:
     with _engine(tmp_path) as engine:
         base = engine.remember("Default branch is main.", project_path=repo, immutable=True)
         replacement = engine.remember("Default branch is trunk.", project_path=repo, supersedes=[base["memoryID"]])
-        assert replacement["event"] == "UPDATE"
+        assert replacement["event"] == "ADD" and replacement["superseded"] == []
         # Immutable memories refuse retirement and refuse edits.
         assert engine.get(base["memoryID"])["memory"]["validTo"] is None
         blocked = engine.update(base["memoryID"], text="Default branch is develop.")
@@ -287,7 +287,7 @@ def test_memorize_is_idempotent_and_reports_decisions(tmp_path: Path) -> None:
         first = engine.memorize(project_path=repo, messages=TRANSCRIPT, source_ref="conv-1")
         assert first["status"] == "ok" and first["extractor"] == "heuristic"
         assert first["summary"]["ADD"] >= 3
-        replay = engine.memorize(project_path=repo, messages=TRANSCRIPT)
+        replay = engine.memorize(project_path=repo, messages=TRANSCRIPT, source_ref="conv-1")
         assert replay["code"] == "ALREADY_INGESTED"
         forced = engine.memorize(project_path=repo, messages=TRANSCRIPT, force=True)
         assert forced["summary"]["NONE"] == first["summary"]["ADD"]

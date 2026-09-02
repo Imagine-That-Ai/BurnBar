@@ -496,7 +496,7 @@ class KeyRing:
         key_path = db_path.with_name(db_path.stem + ".key")
         raw = cls._read_key(key_path)
         if raw is None:
-            raw = cls._publish_key(key_path, secrets.token_bytes(32))
+            raw = cls._publish_key(key_path, secrets.token_bytes(32), db_path=db_path)
         with contextlib.suppress(OSError):
             os.chmod(key_path, 0o600)
         return cls(raw, sha256_hex(raw)[:12], "file")
@@ -516,15 +516,46 @@ class KeyRing:
         return raw if len(raw) == 32 else None
 
     @staticmethod
-    def _publish_key(key_path: Path, raw: bytes) -> bytes:
+    def _store_has_encrypted_rows(db_path: Path) -> bool:
+        if not db_path.exists() or db_path.stat().st_size == 0:
+            return False
+        try:
+            conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+            try:
+                tables = {
+                    str(row[0])
+                    for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'").fetchall()
+                }
+                encrypted_tables = {
+                    "memories": "body_cipher",
+                    "memory_history": "before_cipher IS NOT NULL OR after_cipher IS NOT NULL",
+                    "memory_vault": "secret_cipher",
+                }
+                for table, predicate in encrypted_tables.items():
+                    if table not in tables:
+                        continue
+                    where = predicate if " " in predicate else f"{predicate} IS NOT NULL"
+                    if conn.execute(f"SELECT 1 FROM {table} WHERE {where} LIMIT 1").fetchone():  # noqa: S608 -- fixed table/predicate literals
+                        return True
+                return False
+            finally:
+                conn.close()
+        except (OSError, sqlite3.Error):
+            # An invalid key plus an unreadable, non-empty store is not a first
+            # run. Refuse to destroy the only key reference.
+            return True
+
+    @staticmethod
+    def _publish_key(key_path: Path, raw: bytes, *, db_path: Path | None = None) -> bytes:
         """Publish `raw` at `key_path` and return the key in force.
 
         Publication is serialized with an advisory lock (`<stem>.lock`) so
         two first-run processes cannot each write a different key: the loser
         re-reads under the lock and adopts the winner's key. The key is written
         to a private temp file and moved into place atomically, which also
-        repairs a file that exists but holds no valid key (a crash between
-        create and write cannot have encrypted anything).
+        repairs an invalid key only while the store has no encrypted rows. A
+        missing or damaged key for a populated store fails closed: replacing
+        it would make every encrypted body permanently undecryptable.
         """
         key_path.parent.mkdir(parents=True, exist_ok=True)
         published = KeyRing._read_key(key_path)
@@ -538,6 +569,10 @@ class KeyRing:
             published = KeyRing._read_key(key_path)
             if published is not None:
                 return published
+            if db_path is not None and KeyRing._store_has_encrypted_rows(db_path):
+                raise RuntimeError(
+                    f"memory key is missing or invalid for populated store {db_path}; restore the original key"
+                )
             tmp_path = key_path.with_name(f"{key_path.stem}.{os.getpid()}.{secrets.token_hex(4)}.tmp")
             fd = os.open(str(tmp_path), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
             try:
@@ -1870,7 +1905,19 @@ def _is_expired(expires_at: str | None, now: datetime) -> bool:
     if not expires_at:
         return False
     parsed = _parse_iso(expires_at)
-    return parsed is not None and parsed <= now
+    return parsed is None or parsed <= now
+
+
+def _normalize_expiration(expires_at: str | None) -> str | None:
+    if expires_at is None:
+        return None
+    text = str(expires_at).strip()
+    if not text:
+        return None
+    parsed = _parse_iso(text)
+    if parsed is None:
+        raise ValueError("expiresAt must be a valid ISO-8601 timestamp")
+    return text
 
 
 class MemoryEngine:
@@ -1900,8 +1947,10 @@ class MemoryEngine:
         config: EngineConfig | None = None,
     ) -> MemoryEngine:
         path = db_path or default_db_path()
-        conn = open_store(path)
+        # Resolve the key before opening/migrating the database so a missing or
+        # corrupt key for a populated store fails without mutating that store.
         keyring = KeyRing.load(path)
+        conn = open_store(path)
         return cls(conn, keyring=keyring, provider=embedding_provider(provider), config=config, db_path=path)
 
     def _commit(self) -> None:
@@ -1917,7 +1966,14 @@ class MemoryEngine:
         if self.db_path is not None:
             secure_store_files(self.db_path)
 
-    def record_daemon_mirror(self, memory_id: str, daemon_memory_id: str, *, body_hash: str | None = None) -> None:
+    def record_daemon_mirror(
+        self,
+        memory_id: str,
+        daemon_memory_id: str,
+        *,
+        body_hash: str | None = None,
+        project_path: str | None = None,
+    ) -> None:
         """Persist the daemon id until cross-store deletion succeeds.
 
         The mapping doubles as a durable forget tombstone after the local row
@@ -1930,8 +1986,8 @@ class MemoryEngine:
             "INSERT OR REPLACE INTO engine_meta (key, value) VALUES (?, ?)",
             (
                 f"daemon_mirror:{memory_id}",
-                _json_dumps({"daemonMemoryID": daemon_memory_id, "bodyHash": body_hash})
-                if body_hash
+                _json_dumps({"daemonMemoryID": daemon_memory_id, "bodyHash": body_hash, "projectPath": project_path})
+                if body_hash or project_path
                 else daemon_memory_id,
             ),
         )
@@ -1957,6 +2013,14 @@ class MemoryEngine:
         ).fetchone()
         parsed = _json_loads(row["value"], None) if row is not None else None
         return str(parsed["bodyHash"]) if isinstance(parsed, dict) and parsed.get("bodyHash") else None
+
+    def daemon_mirror_project_path(self, memory_id: str) -> str | None:
+        row = self.conn.execute(
+            "SELECT value FROM engine_meta WHERE key = ?",
+            (f"daemon_mirror:{memory_id}",),
+        ).fetchone()
+        parsed = _json_loads(row["value"], None) if row is not None else None
+        return str(parsed["projectPath"]) if isinstance(parsed, dict) and parsed.get("projectPath") else None
 
     def project_path_for_memory(self, memory_id: str) -> str | None:
         row = self.conn.execute(
@@ -2040,7 +2104,9 @@ class MemoryEngine:
             updated_at=str(row["updated_at"]),
             vector=vector,
         )
-        memory.tokens = tokenize(" ".join([memory.body, " ".join(memory.tags), " ".join(memory.entities)]))
+        memory.tokens = tokenize(
+            " ".join([memory.body, " ".join(memory.tags), " ".join(memory.entities), memory.source_ref or ""])
+        )
         return memory
 
     _SELECT = """
@@ -2073,6 +2139,12 @@ class MemoryEngine:
             int(stamp_row["a"]),
             f"{stamp_row['l']}|{float(stamp_row['s']):.6f}",
         )
+        vector_where = where + " AND v.embedding_version = ?"
+        vector_row = self.conn.execute(
+            f"SELECT COUNT(*) AS c, COALESCE(MAX(v.rowid), 0) AS r FROM memory_vectors AS v JOIN memories AS m ON m.rowid = v.memory_rowid {vector_where}",  # noqa: S608 -- `where` is one of the fixed literals above
+            params[1:] + [version],
+        ).fetchone()
+        stamp = (*stamp[:3], f"{stamp[3]}|vectors:{int(vector_row['c'])}:{int(vector_row['r'])}")
         cache_key = f"{project_id}|{include_personal_cross_project}|{include_cross_project}|{version}"
         cached = _PROJECT_CACHE.get(cache_key)
         if cached and cached[0] == stamp:
@@ -2132,8 +2204,23 @@ class MemoryEngine:
             normalized_messages = [{"role": "user", "content": str(text)}]
         # The idempotency key is per project: the same transcript memorized for
         # two repositories must produce two sets of project-scoped memories.
+        extractor_identity = (extractor or os.environ.get(EXTRACTOR_ENV, "heuristic")).strip().lower() or "heuristic"
         source_material = _json_dumps(
-            {"project": project_id, "messages": normalized_messages, "facts": list(facts or [])}
+            {
+                "project": project_id,
+                "messages": normalized_messages,
+                "facts": list(facts or []),
+                "extractor": extractor_identity,
+                "maxFacts": max(1, min(int(max_facts), 64)),
+                "sourceKind": source_kind,
+                "sourceRef": source_ref,
+                "defaultScope": default_scope,
+                "defaultTags": normalize_tags(default_tags),
+                "metadata": metadata or {},
+                "secretPolicy": self.config.secret_policy,
+                "piiPolicy": self.config.pii_policy,
+                "retainAllowed": self.config.retain_allowed,
+            }
         )
         source_hash = sha256_hex(source_material)
         if not force:
@@ -2314,6 +2401,24 @@ class MemoryEngine:
     ) -> dict[str, Any]:
         kind = normalize_kind(fact.kind)
         scope = normalize_scope(fact.scope, kind)
+        try:
+            fact.expires_at = _normalize_expiration(fact.expires_at)
+        except ValueError as exc:
+            audit_event(
+                self.conn,
+                action="memory.expiration_rejected",
+                project_id=project_id,
+                subject_id=None,
+                labels=["invalid_expiration"],
+                actor=self.config.actor,
+            )
+            return {
+                "event": "REJECT",
+                "code": "INVALID_EXPIRATION",
+                "reason": str(exc),
+                "kind": kind,
+                "scope": scope,
+            }
         gate = apply_gate(
             fact.text,
             secret_policy=self.config.secret_policy,
@@ -2389,7 +2494,12 @@ class MemoryEngine:
         reinforce_injection = [f"aux:{label}" for label in auxiliary_injection_labels(fact.tags, entities, {}, None)]
         relations = extract_relations(body)
         vector = self.provider.embed([body])[0] if self.provider.available else None
-        tokens = tokenize(" ".join([body, " ".join(fact.tags), " ".join(entities)]))
+        tokens = tokenize(" ".join([body, " ".join(fact.tags), " ".join(entities), fact.source_ref or ""]))
+
+        # Serialize the exact-duplicate lookup with insertion. Embeddings and
+        # all other external work are complete before taking the write lock.
+        if not self.conn.in_transaction:
+            self.conn.execute("BEGIN IMMEDIATE")
 
         # Exact duplicate in the same project/scope → reinforce, unless the row
         # was rejected in review (stays hidden) or has expired (reactivated).
@@ -2441,38 +2551,60 @@ class MemoryEngine:
         supersede_targets: list[str] = [item for item in fact.supersedes if any(mem.id == item for mem in active)]
         retire_targets: list[str] = []
         if not supersede_targets:
-            near = self._nearest(vector, tokens, candidates)
-            if near is not None:
-                return self._reinforce(
-                    near[1].id,
-                    fact,
-                    entities,
-                    reason=f"near duplicate (sim={near[0]:.2f})",
-                    incoming_body=body,
-                    labels=gate.labels,
-                    quarantine_labels=reinforce_injection,
+            conflict_first = NEGATION_RE.search(body) is not None or SWITCH_RE.search(body) is not None
+            if conflict_first:
+                supersede_targets, retire_targets = self._resolve_conflicts(
+                    project_id=project_id,
+                    body=body,
+                    relations=relations,
+                    vector=vector,
+                    tokens=tokens,
+                    candidates=candidates,
                 )
-            supersede_targets, retire_targets = self._resolve_conflicts(
-                project_id=project_id,
-                body=body,
-                relations=relations,
-                vector=vector,
-                tokens=tokens,
-                candidates=candidates,
-            )
+            else:
+                near = self._nearest(vector, tokens, candidates)
+                if near is not None:
+                    return self._reinforce(
+                        near[1].id,
+                        fact,
+                        entities,
+                        reason=f"near duplicate (sim={near[0]:.2f})",
+                        incoming_body=body,
+                        labels=gate.labels,
+                        quarantine_labels=reinforce_injection,
+                    )
+                supersede_targets, retire_targets = self._resolve_conflicts(
+                    project_id=project_id,
+                    body=body,
+                    relations=relations,
+                    vector=vector,
+                    tokens=tokens,
+                    candidates=candidates,
+                )
 
         if retire_targets and not supersede_targets:
-            for target in retire_targets:
-                self._retire(target, reason="negated by new statement", replacement=None)
+            retired_targets = [
+                target
+                for target in retire_targets
+                if self._retire(target, reason="negated by new statement", replacement=None)
+            ]
+            if not retired_targets:
+                return {
+                    "event": "NONE",
+                    "code": "IMMUTABLE_CONFLICT",
+                    "reason": "matching memories are immutable and were not retired",
+                    "kind": kind,
+                    "scope": scope,
+                }
             audit_event(
                 self.conn,
                 action="memory.retire",
                 project_id=project_id,
                 subject_id=None,
-                labels=[f"retired:{len(retire_targets)}"],
+                labels=[f"retired:{len(retired_targets)}"],
                 actor=self.config.actor,
             )
-            return {"event": "DELETE", "retired": retire_targets, "kind": kind, "scope": scope, "text": body}
+            return {"event": "DELETE", "retired": retired_targets, "kind": kind, "scope": scope, "text": body}
 
         # UNIQUE(project_id, scope, body_hash) spans retired rows too. A fact that
         # reverts to an earlier statement (A -> B -> A) brings the retired row back
@@ -2587,16 +2719,24 @@ class MemoryEngine:
                 "INSERT INTO memory_vault (memory_id, project_id, secret_cipher, secret_nonce, key_id, labels_json, created_at) VALUES (?,?,?,?,?,?,?)",
                 (memory_id, project_id, vault_cipher, vault_nonce, self.keyring.key_id, _json_dumps(gate.labels), ts),
             )
-        for target in supersede_targets:
-            self._retire(target, reason="superseded", replacement=memory_id)
+        retired_supersede_targets = [
+            target for target in supersede_targets if self._retire(target, reason="superseded", replacement=memory_id)
+        ]
+        if retired_supersede_targets != supersede_targets:
+            self.conn.execute(
+                "UPDATE memories SET supersedes_json = ? WHERE id = ?",
+                (_json_dumps(retired_supersede_targets), memory_id),
+            )
         self._history(
             memory_id,
             project_id,
-            "reactivated" if reactivated_id else ("created" if not supersede_targets else "created_superseding"),
+            "reactivated"
+            if reactivated_id
+            else ("created" if not retired_supersede_targets else "created_superseding"),
             None,
             body,
             {
-                "supersedes": supersede_targets,
+                "supersedes": retired_supersede_targets,
                 "previouslySupersededBy": (retired["superseded_by"] if retired is not None else None),
             },
         )
@@ -2629,14 +2769,16 @@ class MemoryEngine:
             )
         audit_event(
             self.conn,
-            action="memory.reactivate" if reactivated_id else ("memory.update" if supersede_targets else "memory.add"),
+            action="memory.reactivate"
+            if reactivated_id
+            else ("memory.update" if retired_supersede_targets else "memory.add"),
             project_id=project_id,
             subject_id=memory_id,
             labels=[f"kind:{kind}", f"scope:{scope}", f"sensitivity:{gate.sensitivity}", f"review:{review_status}"],
             actor=self.config.actor,
         )
         decision: dict[str, Any] = {
-            "event": "UPDATE" if (supersede_targets or reactivated_id) else "ADD",
+            "event": "UPDATE" if (retired_supersede_targets or reactivated_id) else "ADD",
             "memoryID": memory_id,
             "kind": kind,
             "scope": scope,
@@ -2648,7 +2790,7 @@ class MemoryEngine:
             "reviewStatus": review_status,
             "labels": gate.labels,
             "injectionLabels": injection,
-            "superseded": supersede_targets,
+            "superseded": retired_supersede_targets,
             "entities": entities,
             "relations": [{"subject": s, "predicate": p, "object": o} for s, p, o in relations],
             "embedded": vector is not None,
@@ -2799,7 +2941,12 @@ class MemoryEngine:
         confidence = max(existing.confidence, fact.confidence)
         access = existing.access_count + 1
         ts = now_iso()
-        review_status = "quarantined" if quarantine_labels else existing.review_status
+        if fact.review_status == "rejected":
+            review_status = "rejected"
+        elif quarantine_labels or fact.review_status == "quarantined":
+            review_status = "quarantined"
+        else:
+            review_status = existing.review_status
         self.conn.execute(
             "UPDATE memories SET tags_json = ?, entities_json = ?, confidence = ?, access_count = ?, salience = ?, review_status = ?, updated_at = ? WHERE id = ?",
             (
@@ -2839,7 +2986,7 @@ class MemoryEngine:
                 actor=self.config.actor,
             )
         decision: dict[str, Any] = {
-            "event": "UPDATE" if reactivate else "NONE",
+            "event": "UPDATE" if (reactivate or review_status != existing.review_status) else "NONE",
             "memoryID": memory_id,
             "reason": reason,
             "kind": existing.kind,
@@ -2897,10 +3044,10 @@ class MemoryEngine:
             found.update(str(row["id"]) for row in self.conn.execute(missing_sql, chunk).fetchall())
         return [item for item in wanted if item not in found]
 
-    def _retire(self, memory_id: str, *, reason: str, replacement: str | None) -> None:
+    def _retire(self, memory_id: str, *, reason: str, replacement: str | None) -> bool:
         row = self._get_row(memory_id)
         if row is None or row["valid_to"] is not None:
-            return
+            return False
         if bool(row["immutable"]):
             self._history(
                 memory_id,
@@ -2910,7 +3057,7 @@ class MemoryEngine:
                 None,
                 {"reason": reason, "replacement": replacement},
             )
-            return
+            return False
         ts = now_iso()
         self.conn.execute(
             "UPDATE memories SET valid_to = ?, superseded_by = ?, updated_at = ? WHERE id = ?",
@@ -2919,6 +3066,7 @@ class MemoryEngine:
         self._history(
             memory_id, str(row["project_id"]), "retired", None, None, {"reason": reason, "replacement": replacement}
         )
+        return True
 
     def _history(
         self, memory_id: str, project_id: str, event: str, before: str | None, after: str | None, meta: dict[str, Any]
@@ -3005,10 +3153,8 @@ class MemoryEngine:
                 return False
             if memory.sensitivity == "secret" and not include_secrets:
                 return False
-            if not include_expired and memory.expires_at:
-                expires = _parse_iso(memory.expires_at)
-                if expires is not None and expires <= now:
-                    return False
+            if not include_expired and _is_expired(memory.expires_at, now):
+                return False
             if memory.confidence < min_confidence:
                 return False
             if wanted_kinds and memory.kind not in wanted_kinds:
@@ -3091,16 +3237,7 @@ class MemoryEngine:
         top = results[:lim]
 
         if reinforce and top:
-            ts = now_iso()
-            for _, memory, _ in top:
-                self.conn.execute(
-                    "UPDATE memories SET access_count = access_count + 1, last_accessed_at = ?, salience = ? WHERE id = ?",
-                    (ts, self.compute_salience(memory.kind, memory.confidence, memory.access_count + 1), memory.id),
-                )
-            self._commit()
-            # Reinforcement does not move `updated_at`, so the per-project cache stamp
-            # would not notice it; drop the cache so the next recall sees fresh counts.
-            self._invalidate_cache()
+            self._reinforce_recall_ids([memory.id for _, memory, _ in top])
 
         output = []
         for score, memory, extra in top:
@@ -3142,7 +3279,8 @@ class MemoryEngine:
         """Token-bounded, prompt-ready block. `tokensUsed` measures the whole
         serialized pack (envelope included) and never exceeds `tokenBudget`;
         the budget floor covers the envelope plus one truncated line."""
-        recalled = self.recall(query, project_path=project_path, limit=limit, wrap=None, **kwargs)
+        kwargs.pop("reinforce", None)
+        recalled = self.recall(query, project_path=project_path, limit=limit, wrap=None, reinforce=False, **kwargs)
         budget = max(PACK_TOKEN_BUDGET_FLOOR, int(token_budget))
         header_query = re.sub(r"\s+", " ", query or "").strip()[:200]
 
@@ -3197,6 +3335,9 @@ class MemoryEngine:
             truncated = True
             pack = render(lines, included)
             tokens_used = _estimate_tokens(pack)
+        included_ids = [str(item["memoryID"]) for item in recalled["results"][:included]]
+        if included_ids:
+            self._reinforce_recall_ids(included_ids)
         return {
             "status": "ok",
             "query": query,
@@ -3206,10 +3347,33 @@ class MemoryEngine:
             "truncated": truncated,
             "considered": len(recalled["results"]),
             "pack": pack,
-            "memoryIDs": [item["memoryID"] for item in recalled["results"][:included]],
+            "memoryIDs": included_ids,
             "trustSignal": {"untrustedContentWrapped": wrap is not None, "wrappedCount": included if wrap else 0},
             **{key: recalled[key] for key in ("projectID", "projectRoot", "projectName")},
         }
+
+    def _reinforce_recall_ids(self, memory_ids: Sequence[str]) -> None:
+        if not memory_ids:
+            return
+        placeholders = ",".join("?" * len(memory_ids))
+        rows = self.conn.execute(
+            f"SELECT id, kind, confidence, access_count FROM memories WHERE id IN ({placeholders})",  # noqa: S608 -- placeholders only
+            list(memory_ids),
+        ).fetchall()
+        ts = now_iso()
+        for row in rows:
+            access_count = int(row["access_count"]) + 1
+            self.conn.execute(
+                "UPDATE memories SET access_count = ?, last_accessed_at = ?, salience = ? WHERE id = ?",
+                (
+                    access_count,
+                    ts,
+                    self.compute_salience(str(row["kind"]), float(row["confidence"]), access_count),
+                    str(row["id"]),
+                ),
+            )
+        self._commit()
+        self._invalidate_cache()
 
     def _open_vault(self, memory_id: str, project_id: str) -> str | None:
         row = self.conn.execute(
@@ -3333,6 +3497,19 @@ class MemoryEngine:
                 "memoryID": memory_id,
                 "reason": "memory is immutable; pass immutable=false first",
             }
+        try:
+            new_expires = _normalize_expiration(expires_at) if expires_at is not None else existing.expires_at
+        except ValueError as exc:
+            audit_event(
+                self.conn,
+                action="memory.expiration_rejected",
+                project_id=existing.project_id,
+                subject_id=memory_id,
+                labels=["invalid_expiration"],
+                actor=self.config.actor,
+            )
+            self._commit()
+            return {"status": "rejected", "code": "INVALID_EXPIRATION", "memoryID": memory_id, "reason": str(exc)}
         new_kind = normalize_kind(kind, existing.kind) if kind else existing.kind
         new_scope = normalize_scope(scope, new_kind) if scope else existing.scope
         new_tags = normalize_tags(tags) if tags is not None else existing.tags
@@ -3405,12 +3582,21 @@ class MemoryEngine:
             body_after = gate.body.strip()[:MAX_BODY_CHARS]
             sensitivity = gate.sensitivity
             labels = sorted(set(labels + gate.labels))
+            changes["body"] = True
         body_hash = sha256_hex(body_after.lower())
+        updated_vector = None
+        if changes.get("body") and self.provider.available:
+            updated_vector = self.provider.embed([body_after])[0]
+        started_transaction = not self.conn.in_transaction
+        if started_transaction:
+            self.conn.execute("BEGIN IMMEDIATE")
         clash = self.conn.execute(
             "SELECT id FROM memories WHERE project_id = ? AND scope = ? AND body_hash = ? AND valid_to IS NULL AND id != ?",
             (existing.project_id, new_scope, body_hash, memory_id),
         ).fetchone()
         if clash is not None:
+            if started_transaction:
+                self.conn.rollback()
             return {
                 "status": "conflict",
                 "code": "DUPLICATE_BODY",
@@ -3438,7 +3624,6 @@ class MemoryEngine:
             else:
                 # The new body carries no retained secret: drop any stale vault entry.
                 self.conn.execute("DELETE FROM memory_vault WHERE memory_id = ?", (memory_id,))
-            changes["body"] = True
             new_entities = list(dict.fromkeys(list(new_entities) + extract_entities(body_after)))[:16]
         cipher, nonce = self._seal_body(memory_id, existing.project_id, body_after)
         update_injection = injection_labels(body_after) + [
@@ -3466,7 +3651,7 @@ class MemoryEngine:
                 new_conf,
                 self.compute_salience(new_kind, new_conf, existing.access_count),
                 _json_dumps(new_meta),
-                expires_at if expires_at is not None else existing.expires_at,
+                new_expires,
                 1 if (immutable if immutable is not None else existing.immutable) else 0,
                 _json_dumps(new_entities),
                 sensitivity,
@@ -3474,7 +3659,9 @@ class MemoryEngine:
                 ts,
                 # A changed body invalidates the old vector; `_embed_rows` sets
                 # the version again only when the provider returns a vector.
-                None if changes.get("body") else existing.embedding_version,
+                (self.provider.version_id if updated_vector is not None else None)
+                if changes.get("body")
+                else existing.embedding_version,
                 memory_id,
             ),
         )
@@ -3486,8 +3673,16 @@ class MemoryEngine:
                     (existing.project_id, memory_id, subject, predicate, obj, _slot_key(subject, predicate), new_conf),
                 )
             self.conn.execute("DELETE FROM memory_vectors WHERE memory_rowid = ?", (existing.rowid,))
-            self._embed_rows([memory_id])
-        new_expires = expires_at if expires_at is not None else existing.expires_at
+            if updated_vector is not None:
+                self.conn.execute(
+                    "INSERT INTO memory_vectors (memory_rowid, embedding_version, dimension, vector) VALUES (?, ?, ?, ?)",
+                    (
+                        existing.rowid,
+                        self.provider.version_id,
+                        len(updated_vector),
+                        encode_vector(updated_vector),
+                    ),
+                )
         new_immutable = immutable if immutable is not None else existing.immutable
         for key, before, after in (
             ("kind", existing.kind, new_kind),
@@ -3941,9 +4136,16 @@ class MemoryEngine:
         self, items: Sequence[dict[str, Any]], *, project_path: str | None, source_kind: str = "import"
     ) -> dict[str, Any]:
         decisions = []
+        historical_skipped = 0
         project_id, root = resolve_project(self.conn, project_path)
         for raw in items:
             if not isinstance(raw, dict):
+                continue
+            if raw.get("validTo") or raw.get("valid_to"):
+                # Historical export rows are archival evidence, not active
+                # import candidates. Skipping them prevents retired facts from
+                # becoming recallable again when an archive is restored.
+                historical_skipped += 1
                 continue
             fact = Fact.from_mapping({**raw, "text": raw.get("body") or raw.get("text")})
             if fact is None:
@@ -3977,7 +4179,13 @@ class MemoryEngine:
             event: sum(1 for item in decisions if item["event"] == event)
             for event in ("ADD", "UPDATE", "NONE", "DELETE", "REJECT")
         }
-        return {"status": "ok", "summary": summary, "decisions": decisions, **project_payload(project_id, root)}
+        return {
+            "status": "ok",
+            "summary": summary,
+            "decisions": decisions,
+            "historicalSkipped": historical_skipped,
+            **project_payload(project_id, root),
+        }
 
     def import_legacy(self, items: Sequence[dict[str, Any]], *, project_path: str | None) -> dict[str, Any]:
         """Import rows from the daemon-owned `agent_memories` store exactly once.

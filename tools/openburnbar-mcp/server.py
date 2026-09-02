@@ -1705,8 +1705,8 @@ def _memory_mirror_remember(decision: dict[str, Any], project_path: str | None) 
     """
     if decision.get("event") not in ("ADD", "UPDATE"):
         return {"status": "skipped", "reason": f"event {decision.get('event')} is not mirrored"}
-    if decision.get("sensitivity") == "secret" or decision.get("reviewStatus") == "quarantined":
-        return {"status": "skipped", "reason": "secret or quarantined memories never leave the engine store"}
+    if decision.get("sensitivity") == "secret" or decision.get("reviewStatus") != "approved":
+        return {"status": "skipped", "reason": "secret or non-approved memories never leave the engine store"}
     if not _memory_mirror_enabled():
         return {
             "status": "disabled",
@@ -1751,7 +1751,15 @@ def _memory_mirror_forget(daemon_memory_id: str | None, project_path: str | None
         "daemon.memory.forget", {"memoryID": daemon_memory_id, "projectPath": project_path}
     )
     if authority.get("mode") == "daemon":
-        return {"status": "mirrored", "daemonMemoryID": daemon_memory_id, "result": authority.get("result")}
+        result = authority.get("result") or {}
+        if result.get("localDeleted") is False:
+            return {
+                "status": "not_found",
+                "daemonMemoryID": daemon_memory_id,
+                "result": result,
+                "reason": "daemon did not confirm deletion; mirror tombstone retained for retry",
+            }
+        return {"status": "mirrored", "daemonMemoryID": daemon_memory_id, "result": result}
     return {
         "status": "unreachable" if authority.get("code") == "DAEMON_WRITE_REQUIRED" else "rejected",
         "reason": authority.get("reason"),
@@ -1767,7 +1775,17 @@ def _memory_mirror_forget_many(
         daemon_memory_id = engine.daemon_mirror_id(memory_id)
         if not daemon_memory_id:
             continue
-        mirror = _memory_mirror_forget(daemon_memory_id, project_path)
+        memory_project_path = (
+            engine.daemon_mirror_project_path(memory_id) or engine.project_path_for_memory(memory_id) or project_path
+        )
+        if memory_project_path and engine.daemon_mirror_project_path(memory_id) is None:
+            engine.record_daemon_mirror(
+                memory_id,
+                daemon_memory_id,
+                body_hash=engine.daemon_mirror_body_hash(memory_id),
+                project_path=memory_project_path,
+            )
+        mirror = _memory_mirror_forget(daemon_memory_id, memory_project_path)
         results.append({"memoryID": memory_id, "daemonMemoryID": daemon_memory_id, **mirror})
         if mirror.get("status") == "mirrored":
             engine.clear_daemon_mirror(memory_id)
@@ -1794,6 +1812,14 @@ def _memory_public_decision(memory: dict[str, Any]) -> dict[str, Any]:
         "sensitivity": memory.get("sensitivity"),
         "reviewStatus": memory.get("reviewStatus"),
     }
+
+
+def _memory_mirror_retire_ids(decision: dict[str, Any]) -> list[str]:
+    retired = list(decision.get("superseded") or []) + list(decision.get("retired") or [])
+    memory_id = decision.get("memoryID")
+    if memory_id and (decision.get("sensitivity") == "secret" or decision.get("reviewStatus") != "approved"):
+        retired.append(str(memory_id))
+    return list(dict.fromkeys(str(item) for item in retired if item))
 
 
 def _memory_mirror_updated(
@@ -1835,6 +1861,7 @@ def _memory_mirror_updated(
             memory_id,
             str(mirror["daemonMemoryID"]),
             body_hash=current_body_hash,
+            project_path=project_path,
         )
     if previous_forget:
         mirror["previousForget"] = previous_forget
@@ -1954,38 +1981,47 @@ def _legacy_daemon_memories(project_path: str | None) -> list[dict[str, Any]]:
         if "agent_memories" not in pcm.table_names(conn):
             return []
         project_id = _legacy_project_id(conn, pcm.project_root(project_path))
-        rows = conn.execute(
-            "SELECT * FROM agent_memories WHERE (project_id = ? OR scope = 'personal') AND valid_to IS NULL ORDER BY updated_at ASC LIMIT 2000",
-            (project_id,),
-        ).fetchall()
         items: list[dict[str, Any]] = []
-        for row in rows:
-            review_status = str(_legacy_row_get(row, "review_status", "approved") or "approved").lower()
-            if review_status in ("forgotten", "rejected"):
-                continue
-            memory_id = str(_legacy_row_get(row, "id", ""))
-            row_project = str(_legacy_row_get(row, "project_id", ""))
-            body = pcm.project_memory_section_body(conn, row_project, memory_id)
-            if not memory_id or not body:
-                continue
-            tags = _legacy_row_get(row, "tags_json", "[]")
-            try:
-                tags_list = json.loads(str(tags)) if isinstance(tags, str) else list(tags or [])
-            except ValueError:
-                tags_list = []
-            items.append(
-                {
-                    "legacyMemoryID": memory_id,
-                    "text": body,
-                    "kind": _legacy_row_get(row, "kind", "fact"),
-                    "scope": _legacy_row_get(row, "scope", "project"),
-                    "confidence": _legacy_row_get(row, "confidence", 1.0),
-                    "tags": tags_list if isinstance(tags_list, list) else [],
-                    "source_ref": _legacy_row_get(row, "source_path"),
-                    "review_status": review_status,
-                    "metadata": {"legacyProjectID": row_project, "legacyUpdatedAt": _legacy_row_get(row, "updated_at")},
-                }
-            )
+        page_size = 500
+        offset = 0
+        while True:
+            rows = conn.execute(
+                "SELECT * FROM agent_memories WHERE (project_id = ? OR scope = 'personal') AND valid_to IS NULL ORDER BY updated_at ASC, id ASC LIMIT ? OFFSET ?",
+                (project_id, page_size, offset),
+            ).fetchall()
+            if not rows:
+                break
+            offset += len(rows)
+            for row in rows:
+                review_status = str(_legacy_row_get(row, "review_status", "approved") or "approved").lower()
+                if review_status in ("forgotten", "rejected"):
+                    continue
+                memory_id = str(_legacy_row_get(row, "id", ""))
+                row_project = str(_legacy_row_get(row, "project_id", ""))
+                body = pcm.project_memory_section_body(conn, row_project, memory_id)
+                if not memory_id or not body:
+                    continue
+                tags = _legacy_row_get(row, "tags_json", "[]")
+                try:
+                    tags_list = json.loads(str(tags)) if isinstance(tags, str) else list(tags or [])
+                except ValueError:
+                    tags_list = []
+                items.append(
+                    {
+                        "legacyMemoryID": memory_id,
+                        "text": body,
+                        "kind": _legacy_row_get(row, "kind", "fact"),
+                        "scope": _legacy_row_get(row, "scope", "project"),
+                        "confidence": _legacy_row_get(row, "confidence", 1.0),
+                        "tags": tags_list if isinstance(tags_list, list) else [],
+                        "source_ref": _legacy_row_get(row, "source_path"),
+                        "review_status": review_status,
+                        "metadata": {
+                            "legacyProjectID": row_project,
+                            "legacyUpdatedAt": _legacy_row_get(row, "updated_at"),
+                        },
+                    }
+                )
         return items
 
 
@@ -2088,13 +2124,15 @@ def burnbar_remember(
             mirror = _memory_mirror_remember(result, project_path)
             result["mirror"] = mirror
             if mirror.get("status") == "mirrored" and mirror.get("daemonMemoryID"):
+                memory_project_path = engine.project_path_for_memory(str(result["memoryID"])) or project_path
                 engine.record_daemon_mirror(
                     str(result["memoryID"]),
                     str(mirror["daemonMemoryID"]),
                     body_hash=me.sha256_hex(str(result.get("text") or "")),
+                    project_path=memory_project_path,
                 )
             result["supersededMirror"] = _memory_mirror_forget_many(
-                engine, list(result.get("superseded") or []), project_path
+                engine, _memory_mirror_retire_ids(result), project_path
             )
     return json.dumps(result, indent=2, default=str)
 
@@ -2181,18 +2219,20 @@ def burnbar_memorize(
             force=force,
         )
         for decision in result.get("decisions", []):
-            if decision.get("event") in ("ADD", "UPDATE"):
-                mirror = _memory_mirror_remember(decision, project_path)
-                mirrors.append({"memoryID": decision.get("memoryID"), **mirror})
-                if mirror.get("status") == "mirrored" and mirror.get("daemonMemoryID") and decision.get("memoryID"):
-                    engine.record_daemon_mirror(
-                        str(decision["memoryID"]),
-                        str(mirror["daemonMemoryID"]),
-                        body_hash=me.sha256_hex(str(decision.get("text") or "")),
-                    )
-                mirrors[-1]["supersededMirror"] = _memory_mirror_forget_many(
-                    engine, list(decision.get("superseded") or []), project_path
+            retire_ids = _memory_mirror_retire_ids(decision)
+            if decision.get("event") not in ("ADD", "UPDATE") and not retire_ids:
+                continue
+            mirror = _memory_mirror_remember(decision, project_path)
+            mirrors.append({"memoryID": decision.get("memoryID"), **mirror})
+            if mirror.get("status") == "mirrored" and mirror.get("daemonMemoryID") and decision.get("memoryID"):
+                memory_project_path = engine.project_path_for_memory(str(decision["memoryID"])) or project_path
+                engine.record_daemon_mirror(
+                    str(decision["memoryID"]),
+                    str(mirror["daemonMemoryID"]),
+                    body_hash=me.sha256_hex(str(decision.get("text") or "")),
+                    project_path=memory_project_path,
                 )
+            mirrors[-1]["supersededMirror"] = _memory_mirror_forget_many(engine, retire_ids, project_path)
     result["mirror"] = mirrors
     return json.dumps(result, indent=2, default=str)
 
@@ -2471,10 +2511,19 @@ def burnbar_forget(memory_id: str, project_path: str | None = None) -> str:
         return denied
     with _memory_engine() as engine:
         daemon_memory_id = engine.daemon_mirror_id(memory_id)
+        recorded_project_path = engine.daemon_mirror_project_path(memory_id)
+        memory_project_path = recorded_project_path or engine.project_path_for_memory(memory_id) or project_path
+        if daemon_memory_id and memory_project_path and recorded_project_path is None:
+            engine.record_daemon_mirror(
+                memory_id,
+                daemon_memory_id,
+                body_hash=engine.daemon_mirror_body_hash(memory_id),
+                project_path=memory_project_path,
+            )
         result = engine.forget(memory_id, project_path=project_path)
         result.pop("mirrorRef", None)
         if result.get("status") == "ok" or daemon_memory_id:
-            mirror = _memory_mirror_forget(daemon_memory_id, project_path)
+            mirror = _memory_mirror_forget(daemon_memory_id, memory_project_path)
             result["mirror"] = mirror
             if result.get("status") == "not_found" and daemon_memory_id:
                 result.update(status="ok", localStatus="already_deleted", retriedPendingMirror=True)
@@ -2568,16 +2617,22 @@ def burnbar_memory_export(
     if denied := _capability_denial("burnbar_memory_export", "sensitive_read"):
         return denied
     with _memory_engine() as engine:
-        return json.dumps(
-            engine.export(
-                project_path=project_path,
-                include_superseded=include_superseded,
-                include_secrets=include_secrets,
-                all_projects=all_projects,
-            ),
-            indent=2,
-            default=str,
+        result = engine.export(
+            project_path=project_path,
+            include_superseded=include_superseded,
+            include_secrets=include_secrets,
+            all_projects=all_projects,
         )
+    result["memories"] = [
+        _memory_wrap_record(item, source_tool="burnbar_memory_export")
+        for item in result.get("memories", [])
+        if isinstance(item, dict)
+    ]
+    result["trustSignal"] = {
+        "untrustedContentWrapped": True,
+        "wrappedCount": len(result["memories"]),
+    }
+    return json.dumps(result, indent=2, default=str)
 
 
 @mcp.tool()
@@ -2606,22 +2661,23 @@ def burnbar_memory_import(memories: list[dict[str, Any]] | str, project_path: st
         result = engine.import_memories(payload, project_path=project_path)
         mirrors: list[dict[str, Any]] = []
         for decision in result.get("decisions", []):
-            if decision.get("event") not in ("ADD", "UPDATE"):
+            retire_ids = _memory_mirror_retire_ids(decision)
+            if decision.get("event") not in ("ADD", "UPDATE") and not retire_ids:
                 continue
             mirror = _memory_mirror_remember(decision, project_path)
             if mirror.get("status") == "mirrored" and mirror.get("daemonMemoryID") and decision.get("memoryID"):
+                memory_project_path = engine.project_path_for_memory(str(decision["memoryID"])) or project_path
                 engine.record_daemon_mirror(
                     str(decision["memoryID"]),
                     str(mirror["daemonMemoryID"]),
                     body_hash=me.sha256_hex(str(decision.get("text") or "")),
+                    project_path=memory_project_path,
                 )
             mirrors.append(
                 {
                     "memoryID": decision.get("memoryID"),
                     **mirror,
-                    "supersededMirror": _memory_mirror_forget_many(
-                        engine, list(decision.get("superseded") or []), project_path
-                    ),
+                    "supersededMirror": _memory_mirror_forget_many(engine, retire_ids, project_path),
                 }
             )
         result["mirror"] = mirrors

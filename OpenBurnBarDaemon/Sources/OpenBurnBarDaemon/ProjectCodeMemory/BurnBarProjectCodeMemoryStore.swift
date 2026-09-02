@@ -496,10 +496,7 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                 })
             }
             let candidatesByID = Dictionary(uniqueKeysWithValues: candidates.map { ($0.row.id, $0) })
-            let salienceRows = try queryRows(
-                "SELECT memory_id, hit_count, last_reinforced_at FROM memory_salience",
-                []
-            )
+            let salienceRows = try salienceRows(candidateIDs: candidatesByID.keys.sorted())
             let salienceByID = Dictionary(uniqueKeysWithValues: salienceRows.map { row in
                 (row.string(0), (hitCount: Int(row.int64(1)), lastReinforcedAt: row.optionalString(2)))
             })

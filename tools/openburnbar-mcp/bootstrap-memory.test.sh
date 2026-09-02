@@ -17,6 +17,11 @@ cp \
   "${FIXTURE_DIR}/"
 chmod +x "${FIXTURE_DIR}/bootstrap-memory.sh" "${FIXTURE_DIR}/launch-memory.sh"
 
+grep -Fq 'sys.version_info >= (3, 11)' "${FIXTURE_DIR}/launch-memory.sh" || {
+  echo "FAIL: launcher accepts an existing venv without enforcing Python 3.11+" >&2
+  exit 1
+}
+
 # A start-and-exit fixture lets the launcher prove it bootstraps a missing venv
 # and execs Python without leaving a real MCP server waiting on stdio.
 cat >"${FIXTURE_DIR}/server.py" <<'PY'

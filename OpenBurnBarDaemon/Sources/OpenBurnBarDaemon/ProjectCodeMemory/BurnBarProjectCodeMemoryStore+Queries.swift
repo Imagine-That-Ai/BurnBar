@@ -524,6 +524,20 @@ extension BurnBarProjectCodeMemoryStore {
         return ranked
     }
 
+    /// Salience state for only the rows that can participate in this recall.
+    func salienceRows(candidateIDs: [String]) throws -> [SQLiteRow] {
+        var result: [SQLiteRow] = []
+        for chunkStart in stride(from: 0, to: candidateIDs.count, by: 500) {
+            let chunk = Array(candidateIDs[chunkStart..<min(chunkStart + 500, candidateIDs.count)])
+            let placeholders = Array(repeating: "?", count: chunk.count).joined(separator: ", ")
+            result += try queryRows(
+                "SELECT memory_id, hit_count, last_reinforced_at FROM memory_salience WHERE memory_id IN (\(placeholders))",
+                chunk.map { SQLiteBind.text($0) }
+            )
+        }
+        return result
+    }
+
     private func missingIndexDegradation(projectID: String) -> BurnBarProjectCodeDegradation {
         BurnBarProjectCodeDegradation(
             code: "INDEX_MISSING",

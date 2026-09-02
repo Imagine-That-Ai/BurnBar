@@ -651,6 +651,30 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         )
     }
 
+    func testMemorySalienceLookupReadsOnlyRecallCandidates() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "memory-salience-scope-test"),
+            embeddingProvider: DisabledEmbeddingProvider()
+        )
+        let timestamp = "2026-09-02T00:00:00Z"
+        for id in ["candidate", "unrelated"] {
+            try store.execute(
+                """
+                INSERT INTO memory_salience
+                    (memory_id, salience, hit_count, last_reinforced_at, corroboration, source_trust, computed_at, updated_at)
+                VALUES (?, 1.0, 7, ?, 1, 1.0, ?, ?)
+                """,
+                [.text(id), .text(timestamp), .text(timestamp), .text(timestamp)]
+            )
+        }
+
+        let rows = try store.salienceRows(candidateIDs: ["candidate"])
+
+        XCTAssertEqual(rows.map { $0.string(0) }, ["candidate"])
+    }
+
     func testQuarantineLifecycleIsDaemonOwnedAndFailClosedForRecall() throws {
         let fixture = try makeFixture()
         let store = try BurnBarProjectCodeMemoryStore(

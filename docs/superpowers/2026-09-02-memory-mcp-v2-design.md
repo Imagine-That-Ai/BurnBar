@@ -284,6 +284,22 @@ Round 2 (`tests/test_memory_engine_hardening_round2.py`):
 - Daemon (Swift): the BM25 document keeps `sourcePath`, and semantic recall
   reads only the candidates' vectors.
 
+Round 3 (`tests/test_memory_engine_hardening_round3.py`):
+
+- Missing or corrupt keys fail closed for populated stores; concurrent
+  duplicate insertion is serialized; embedding work happens before the write
+  lock; cache stamps observe vectors added by another process.
+- Ingest identity covers scope, tags, metadata, extractor and provenance;
+  invalid expirations are rejected; lexical recall indexes `sourceRef`; packs
+  reinforce only returned rows; historical imports skip retired rows; immutable
+  memories are never reported as superseded.
+- Mirror cleanup covers reconciliation `DELETE` events and reinforcement that
+  moves a row into quarantine. Only approved imports mirror, daemon deletes
+  must confirm `localDeleted`, and retry tombstones retain the original project
+  path. Exported content is wrapped at the MCP boundary.
+- Legacy migration paginates past 2,000 rows, the launcher rejects pre-3.11
+  venvs, and daemon salience reads bind only the current recall candidates.
+
 ## 7. Follow-up closure and remaining non-goals
 
 - The signed write bridge and daemon-side ranking parity are included: the
