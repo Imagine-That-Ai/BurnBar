@@ -83,7 +83,10 @@ So:
 - The daemon's own `agent_memories` body authority remains intact. Its recall
   path reuses the existing `memory_embedding_refs` and `memory_salience`
   sidecars for BM25 + NLEmbedding reciprocal-rank fusion and deterministic
-  salience parity. The engine is not a
+  salience parity. Quarantined/rejected daemon bodies are held in the
+  SQLCipher-protected `memory_quarantine_bodies` table and stay out of
+  `project_memory_snapshots`; approval atomically moves a body into the
+  snapshot, while rejection moves it back out. The engine is not a
   fourth *body* store in the master-plan sense: the master plan's concern was
   divergence and cloud-sync surface, and the engine store never syncs.
 

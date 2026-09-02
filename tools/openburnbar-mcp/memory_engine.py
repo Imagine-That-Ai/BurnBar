@@ -80,6 +80,13 @@ KINDS = (
     "note",
     "other",
 )
+KIND_ALIASES = {
+    "pref": "preference",
+    "prefs": "preference",
+    "bug": "gotcha",
+    "arch": "architecture",
+    "task": "todo",
+}
 PERSONAL_KINDS = frozenset({"preference", "profile", "relationship"})
 KIND_WEIGHTS = {
     "decision": 1.0,
@@ -329,8 +336,17 @@ def normalize_kind(kind: str | None, default: str = "fact") -> str:
     raw = (kind or "").strip().lower()
     if raw in KINDS:
         return raw
-    aliases = {"pref": "preference", "prefs": "preference", "bug": "gotcha", "arch": "architecture", "task": "todo"}
-    return aliases.get(raw, default)
+    return KIND_ALIASES.get(raw, default)
+
+
+def normalize_kind_strict(kind: str) -> str:
+    """Normalize an explicit kind without applying a destructive default."""
+    raw = str(kind).strip().lower()
+    if raw in KINDS:
+        return raw
+    if raw in KIND_ALIASES:
+        return KIND_ALIASES[raw]
+    raise ValueError(f"kind must be one of: {', '.join(KINDS)}")
 
 
 def normalize_scope(scope: str | None, kind: str) -> str:
@@ -1282,6 +1298,7 @@ class Fact:
     expires_at: str | None = None
     immutable: bool = False
     review_status: str | None = None
+    sensitivity: str | None = None
 
     @classmethod
     def from_mapping(cls, raw: Any) -> Fact | None:
@@ -1306,6 +1323,7 @@ class Fact:
         source_ref = raw.get("source_ref") or raw.get("sourceRef")
         expires_at = raw.get("expires_at") or raw.get("expiresAt")
         review_status = raw.get("review_status") or raw.get("reviewStatus")
+        sensitivity = str(raw.get("sensitivity") or "").strip().lower()
         return cls(
             text=text[:MAX_BODY_CHARS],
             kind=kind,
@@ -1319,6 +1337,7 @@ class Fact:
             expires_at=str(expires_at) if expires_at else None,
             immutable=bool(raw.get("immutable", False)),
             review_status=str(review_status).strip().lower() if review_status else None,
+            sensitivity=sensitivity if sensitivity in SENSITIVITIES else None,
         )
 
 
@@ -1809,14 +1828,20 @@ class EngineConfig:
     retain_allowed: bool = False
     actor: str = ENGINE_ACTOR
 
+    def __post_init__(self) -> None:
+        if self.secret_policy not in SECRET_POLICIES:
+            self.secret_policy = "redact"  # noqa: S105 — policy selector, not a credential
+        if self.pii_policy not in PII_POLICIES:
+            # A misspelled privacy policy must never become implicit consent
+            # to retain or send raw PII to an extractor/embedding provider.
+            self.pii_policy = "reject"
+
     @classmethod
     def from_env(cls, retain_allowed: bool = False) -> EngineConfig:
         gate_policy = os.environ.get(SECRET_POLICY_ENV, "redact").strip().lower() or "redact"
         if gate_policy not in SECRET_POLICIES:
             gate_policy = "redact"
         pii_policy = os.environ.get(PII_POLICY_ENV, "keep").strip().lower() or "keep"
-        if pii_policy not in PII_POLICIES:
-            pii_policy = "keep"
         return cls(secret_policy=gate_policy, pii_policy=pii_policy, retain_allowed=retain_allowed)
 
 
@@ -2511,6 +2536,11 @@ class MemoryEngine:
                 "kind": kind,
                 "scope": scope,
             }
+        if fact.sensitivity == "secret":
+            # A redacted export intentionally omits the vault plaintext while
+            # retaining its classification. Restoring it must stay local-only
+            # even though the already-redacted body no longer trips the gate.
+            gate.sensitivity = "secret"
         fact.tags = normalize_tags(aux.tags)
         fact.entities = list(aux.entities)
         fact.metadata = dict(aux.metadata)
@@ -2594,7 +2624,11 @@ class MemoryEngine:
             )
             if gate.action == "retain" and gate.vault_body is not None:
                 # Different secrets redact to the same body: keep the vault current.
-                decision["secretRotated"] = self._rotate_vault(str(exact["id"]), project_id, gate)
+                changed = self._rotate_vault(str(exact["id"]), project_id, gate)
+                decision["secretRotated"] = changed
+                decision["sensitivity"] = "secret"
+                if changed:
+                    decision["event"] = "UPDATE"
             return decision
 
         active = self._load_active(project_id, include_personal_cross_project=(scope == "personal"))
@@ -2637,7 +2671,11 @@ class MemoryEngine:
                         if gate.action == "retain" and gate.vault_body is not None:
                             # A personal match may be owned by another project;
                             # vault AAD always follows the memory owner.
-                            decision["secretRotated"] = self._rotate_vault(near[1].id, near[1].project_id, gate)
+                            changed = self._rotate_vault(near[1].id, near[1].project_id, gate)
+                            decision["secretRotated"] = changed
+                            decision["sensitivity"] = "secret"
+                            if changed:
+                                decision["event"] = "UPDATE"
                         return decision
                     supersede_targets, retire_targets = self._resolve_conflicts(
                         project_id=project_id,
@@ -3014,8 +3052,9 @@ class MemoryEngine:
             review_status = "quarantined"
         else:
             review_status = existing.review_status
+        sensitivity = "secret" if fact.sensitivity == "secret" else existing.sensitivity
         self.conn.execute(
-            "UPDATE memories SET tags_json = ?, entities_json = ?, confidence = ?, access_count = ?, salience = ?, review_status = ?, updated_at = ? WHERE id = ?",
+            "UPDATE memories SET tags_json = ?, entities_json = ?, confidence = ?, access_count = ?, salience = ?, review_status = ?, sensitivity = ?, updated_at = ? WHERE id = ?",
             (
                 _json_dumps(merged_tags),
                 _json_dumps(merged_entities),
@@ -3023,6 +3062,7 @@ class MemoryEngine:
                 access,
                 self.compute_salience(existing.kind, confidence, access),
                 review_status,
+                sensitivity,
                 ts,
                 memory_id,
             ),
@@ -3052,7 +3092,9 @@ class MemoryEngine:
                 labels=sorted(set(quarantine_labels)),
                 actor=self.config.actor,
             )
-        daemon_visible_changed = merged_tags != existing.tags or confidence != existing.confidence
+        daemon_visible_changed = (
+            merged_tags != existing.tags or confidence != existing.confidence or sensitivity != existing.sensitivity
+        )
         decision: dict[str, Any] = {
             "event": "UPDATE"
             if (reactivate or review_status != existing.review_status or daemon_visible_changed)
@@ -3066,7 +3108,7 @@ class MemoryEngine:
             "confidence": confidence,
             "sourceRef": existing.source_ref,
             "expiresAt": fact.expires_at if reactivate else existing.expires_at,
-            "sensitivity": existing.sensitivity,
+            "sensitivity": sensitivity,
             "reviewStatus": review_status,
         }
         if reactivate:
@@ -3076,9 +3118,20 @@ class MemoryEngine:
     def _rotate_vault(self, memory_id: str, project_id: str, gate: GateDecision) -> bool:
         """Replace a retained secret when a duplicate redacted body arrives with a
         different verbatim text. Returns True when the vault changed."""
-        current = self._open_vault(memory_id, project_id)
-        if current == gate.vault_body or gate.vault_body is None:
+        if gate.vault_body is None:
             return False
+        current = self._open_vault(memory_id, project_id)
+        sensitivity = self.conn.execute(
+            "SELECT sensitivity FROM memories WHERE id = ? AND project_id = ?", (memory_id, project_id)
+        ).fetchone()
+        promoted = sensitivity is not None and str(sensitivity["sensitivity"]) != "secret"
+        if current == gate.vault_body:
+            if promoted:
+                self.conn.execute(
+                    "UPDATE memories SET sensitivity = 'secret', updated_at = ? WHERE id = ? AND project_id = ?",
+                    (now_iso(), memory_id, project_id),
+                )
+            return promoted
         vault_cipher, vault_nonce = self.keyring.seal(gate.vault_body, f"{memory_id}|{project_id}|vault")
         self.conn.execute(
             "INSERT OR REPLACE INTO memory_vault (memory_id, project_id, secret_cipher, secret_nonce, key_id, labels_json, created_at) VALUES (?,?,?,?,?,?,?)",
@@ -3091,6 +3144,10 @@ class MemoryEngine:
                 _json_dumps(gate.labels),
                 now_iso(),
             ),
+        )
+        self.conn.execute(
+            "UPDATE memories SET sensitivity = 'secret', updated_at = ? WHERE id = ? AND project_id = ?",
+            (now_iso(), memory_id, project_id),
         )
         self._history(memory_id, project_id, "vault_rotated", None, None, {"labels": sorted(set(gate.labels))})
         audit_event(
@@ -3611,7 +3668,14 @@ class MemoryEngine:
         expires_at: str | None = None,
         immutable: bool | None = None,
         entities: Sequence[str] | None = None,
+        _conflict_retries: int = 3,
     ) -> dict[str, Any]:
+        # Snapshot the row without holding SQLite's writer lock while an
+        # embedding provider runs. The version is checked again under
+        # BEGIN IMMEDIATE below, so concurrent field updates are retried from
+        # their fresh state instead of being overwritten by this snapshot.
+        if self.conn.in_transaction:
+            self._commit()
         row = self._get_row(memory_id)
         if row is None:
             return {"status": "not_found", "memoryID": memory_id}
@@ -3724,16 +3788,40 @@ class MemoryEngine:
         updated_vector = None
         if changes.get("body") and self.provider.available:
             updated_vector = self.provider.embed([body_after])[0]
-        started_transaction = not self.conn.in_transaction
-        if started_transaction:
-            self.conn.execute("BEGIN IMMEDIATE")
+        self.conn.execute("BEGIN IMMEDIATE")
+        current = self.conn.execute("SELECT updated_at FROM memories WHERE id = ?", (memory_id,)).fetchone()
+        if current is None:
+            self.conn.rollback()
+            return {"status": "not_found", "memoryID": memory_id}
+        if str(current["updated_at"]) != existing.updated_at:
+            self.conn.rollback()
+            if _conflict_retries <= 0:
+                return {
+                    "status": "conflict",
+                    "code": "CONCURRENT_UPDATE",
+                    "memoryID": memory_id,
+                    "reason": "memory changed concurrently; retry the update",
+                }
+            return self.update(
+                memory_id,
+                text=text,
+                kind=kind,
+                scope=scope,
+                tags=tags,
+                add_tags=add_tags,
+                confidence=confidence,
+                metadata=metadata,
+                expires_at=expires_at,
+                immutable=immutable,
+                entities=entities,
+                _conflict_retries=_conflict_retries - 1,
+            )
         clash = self.conn.execute(
             "SELECT id, valid_to FROM memories WHERE project_id = ? AND scope = ? AND body_hash = ? AND id != ?",
             (existing.project_id, new_scope, body_hash, memory_id),
         ).fetchone()
         if clash is not None:
-            if started_transaction:
-                self.conn.rollback()
+            self.conn.rollback()
             return {
                 "status": "conflict",
                 "code": "DUPLICATE_BODY",
@@ -3941,7 +4029,16 @@ class MemoryEngine:
             where.append("scope = ?")
             params.append(scope)
         if kinds:
-            normalized = sorted({normalize_kind(k) for k in kinds})
+            try:
+                normalized = sorted({normalize_kind_strict(k) for k in kinds})
+            except ValueError as exc:
+                return {
+                    "status": "rejected",
+                    "code": "INVALID_KIND",
+                    "reason": str(exc),
+                    "allowed": list(KINDS),
+                    **project_payload(project_id, root),
+                }
             where.append(f"kind IN ({','.join('?' * len(normalized))})")
             params.extend(normalized)
         rows = self.conn.execute(f"SELECT rowid, id FROM memories WHERE {' AND '.join(where)}", params).fetchall()  # noqa: S608 — fixed column names, bound values
@@ -4001,10 +4098,11 @@ class MemoryEngine:
         self, *, project_path: str | None, limit: int = 100, include_cross_project: bool = False
     ) -> dict[str, Any]:
         project_id, root = resolve_project(self.conn, project_path)
+        now = datetime.now(UTC)
         pool = [
             memory
             for memory in self._load_active(project_id, include_cross_project=include_cross_project)
-            if memory.review_status == "approved"
+            if memory.review_status == "approved" and not _is_expired(memory.expires_at, now)
         ]
         counts: dict[str, dict[str, Any]] = {}
         for memory in pool:
@@ -4021,7 +4119,12 @@ class MemoryEngine:
 
     def relations(self, *, project_path: str | None, entity: str | None = None, limit: int = 200) -> dict[str, Any]:
         project_id, root = resolve_project(self.conn, project_path)
-        active = [memory for memory in self._load_active(project_id) if memory.review_status == "approved"]
+        now = datetime.now(UTC)
+        active = [
+            memory
+            for memory in self._load_active(project_id)
+            if memory.review_status == "approved" and not _is_expired(memory.expires_at, now)
+        ]
         active_ids = {memory.id for memory in active}
         rows = list(
             self.conn.execute(

@@ -235,7 +235,7 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
     static let minimumSemanticCodeCosineScore = 0.20
     /// Bump when the code-store schema changes; surfaced by operator diagnostics so an
     /// operator can confirm which schema generation a daemon's index DB is running.
-    static let schemaVersion = 2
+    static let schemaVersion = 3
 
     var db: OpaquePointer?
     let dbQueue = DispatchQueue(label: "com.openburnbar.daemon.project-code-memory.sqlite")
@@ -325,17 +325,34 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
             let tagsJSON = try encodeJSONString(request.tags)
             try execute("BEGIN IMMEDIATE", [])
             do {
-                try upsertProjectMemorySection(
-                    projectID: projectID,
-                    projectDisplayName: root.lastPathComponent,
-                    memoryID: memoryID,
-                    body: body,
-                    kind: request.kind,
-                    scope: request.scope,
-                    tags: request.tags,
-                    sourcePath: request.sourcePath,
-                    now: now
-                )
+                if reviewStatus == .approved {
+                    try upsertProjectMemorySection(
+                        projectID: projectID,
+                        projectDisplayName: root.lastPathComponent,
+                        memoryID: memoryID,
+                        body: body,
+                        kind: request.kind,
+                        scope: request.scope,
+                        tags: request.tags,
+                        sourcePath: request.sourcePath,
+                        now: now
+                    )
+                    try removeQuarantineMemoryBody(projectID: projectID, memoryID: memoryID)
+                } else {
+                    // Quarantined input remains reviewable in a dedicated
+                    // encrypted-at-rest holding table, never in the default
+                    // project-memory snapshot returned to agents.
+                    try removeProjectMemorySection(
+                        projectID: projectID,
+                        projectDisplayName: root.lastPathComponent,
+                        memoryID: memoryID,
+                        now: now
+                    )
+                    try upsertQuarantineMemoryBody(projectID: projectID, memoryID: memoryID, body: body, now: now)
+                }
+                let bodyReference = reviewStatus == .approved
+                    ? Self.memoryBodyReference(memoryID: memoryID, projectID: projectID)
+                    : Self.quarantineBodyReference(memoryID: memoryID, projectID: projectID)
                 try execute(
                     """
                     INSERT INTO agent_memories
@@ -354,7 +371,7 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                     """,
                     [
                         .text(memoryID), .text(projectID), .text(request.kind), .text(request.scope),
-                        .double(request.confidence), .text(bodyRef), .text(Self.memoryBodyReference(memoryID: memoryID, projectID: projectID)),
+                        .double(request.confidence), .text(bodyRef), .text(bodyReference),
                         .text(tagsJSON), request.sourcePath.map(SQLiteBind.text) ?? .null, .text(now),
                         .text(reviewStatus.rawValue), .text(now), .text(now)
                     ]
@@ -471,7 +488,12 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                     )
                 }
                 .compactMap { row -> MemoryRecallCandidate? in
-                    let body = try projectMemorySectionBody(projectID: row.projectID, memoryID: row.id)
+                    let body: String?
+                    if row.reviewStatus == .approved {
+                        body = try projectMemorySectionBody(projectID: row.projectID, memoryID: row.id)
+                    } else {
+                        body = try quarantineMemoryBody(projectID: row.projectID, memoryID: row.id)
+                    }
                     if body == nil, row.reviewStatus != .forgotten || request.includeForgotten == false {
                         return nil
                     }
@@ -606,6 +628,7 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                     memoryID: memoryID,
                     now: Self.isoNow()
                 )
+                try removeQuarantineMemoryBody(projectID: projectID, memoryID: memoryID)
                 // Keep a metadata tombstone so every forget remains visible to the
                 // daemon-owned review/audit feed across reloads and devices. The sealed
                 // body is removed above and the row is excluded from normal recall.
@@ -629,56 +652,6 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                     memoryID: memoryID,
                     localDeleted: existed,
                     cloudDeletePending: false,
-                    auditHash: auditHash
-                )
-            } catch {
-                try? execute("ROLLBACK", [])
-                throw error
-            }
-        }
-    }
-
-    func setReviewStatus(
-        _ request: BurnBarProjectMemoryReviewStatusRequest
-    ) throws -> BurnBarProjectMemoryReviewStatusResponse {
-        let traceID = TraceContextBridge.currentContext().traceID
-        let root = try projectRoot(request.projectPath)
-        let projectID = try resolveProjectIdentity(root: root).projectID
-        let memoryID = request.memoryID.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard memoryID.isEmpty == false else {
-            throw BurnBarProjectCodeMemoryStoreError.memoryNotFound(memoryID)
-        }
-        guard request.status == .quarantined || request.status == .approved || request.status == .rejected else {
-            throw BurnBarProjectCodeMemoryStoreError.invalidMemoryReviewStatus(request.status.rawValue)
-        }
-
-        return try databaseSync {
-            let exists = try fetchInt(
-                "SELECT COUNT(*) FROM agent_memories WHERE id = ? AND project_id = ?",
-                [.text(memoryID), .text(projectID)]
-            ) > 0
-            guard exists else {
-                throw BurnBarProjectCodeMemoryStoreError.memoryNotFound(memoryID)
-            }
-            try execute("BEGIN IMMEDIATE", [])
-            do {
-                try execute(
-                    "UPDATE agent_memories SET review_status = ?, updated_at = ? WHERE id = ? AND project_id = ?",
-                    [.text(request.status.rawValue), .text(Self.isoNow()), .text(memoryID), .text(projectID)]
-                )
-                let auditHash = try auditEvent(
-                    action: "memory.review_status",
-                    domain: "memory",
-                    projectID: projectID,
-                    subjectID: memoryID,
-                    labels: ["review_status:\(request.status.rawValue)"]
-                )
-                try execute("COMMIT", [])
-                return BurnBarProjectMemoryReviewStatusResponse(
-                    traceID: traceID,
-                    projectID: projectID,
-                    memoryID: memoryID,
-                    status: request.status,
                     auditHash: auditHash
                 )
             } catch {
@@ -1247,7 +1220,7 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
     }
 #endif
 
-    private func auditEvent(
+    func auditEvent(
         action: String,
         domain: String,
         projectID: String?,

@@ -262,6 +262,22 @@ extension BurnBarProjectCodeMemoryStore {
         )
         try execute(
             """
+            CREATE TABLE IF NOT EXISTS memory_quarantine_bodies (
+                memory_id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                body TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """,
+            []
+        )
+        try execute(
+            "CREATE INDEX IF NOT EXISTS memory_quarantine_bodies_project_idx ON memory_quarantine_bodies(project_id)",
+            []
+        )
+        try execute(
+            """
             CREATE TABLE IF NOT EXISTS memory_salience (
                 memory_id TEXT PRIMARY KEY,
                 salience REAL NOT NULL,

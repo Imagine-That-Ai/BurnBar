@@ -762,6 +762,95 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         XCTAssertTrue(audit.events.contains { $0.action == "memory.forget" && $0.labels.contains("review_status:forgotten") })
     }
 
+    func testQuarantinedBodyStaysOutOfProjectSnapshotUntilApproval() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "memory-quarantine-storage-test")
+        )
+        let body = "Hold this deployment fact for explicit review."
+        let candidate = try store.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: body,
+                projectPath: fixture.project.path,
+                reviewStatus: .quarantined
+            )
+        )
+
+        var snapshots = try sqliteStrings(
+            database: fixture.database,
+            sql: "SELECT snapshotJSON FROM project_memory_snapshots"
+        )
+        XCTAssertFalse(snapshots.joined(separator: "\n").contains(body))
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT body FROM memory_quarantine_bodies WHERE memory_id = \(sqlLiteral(candidate.memoryID))"
+            ),
+            [body]
+        )
+        let reviewFeed = try store.recall(
+            BurnBarProjectMemoryRecallRequest(
+                query: "memory review",
+                projectPath: fixture.project.path,
+                includeQuarantined: true
+            )
+        )
+        XCTAssertEqual(reviewFeed.hits.first?.bodyRedacted, body)
+
+        _ = try store.setReviewStatus(
+            BurnBarProjectMemoryReviewStatusRequest(
+                memoryID: candidate.memoryID,
+                projectPath: fixture.project.path,
+                status: .approved
+            )
+        )
+        snapshots = try sqliteStrings(
+            database: fixture.database,
+            sql: "SELECT snapshotJSON FROM project_memory_snapshots"
+        )
+        XCTAssertTrue(snapshots.joined(separator: "\n").contains(body))
+        XCTAssertEqual(
+            try sqliteInt(
+                database: fixture.database,
+                sql: "SELECT COUNT(*) FROM memory_quarantine_bodies WHERE memory_id = \(sqlLiteral(candidate.memoryID))"
+            ),
+            0
+        )
+
+        _ = try store.setReviewStatus(
+            BurnBarProjectMemoryReviewStatusRequest(
+                memoryID: candidate.memoryID,
+                projectPath: fixture.project.path,
+                status: .rejected
+            )
+        )
+        snapshots = try sqliteStrings(
+            database: fixture.database,
+            sql: "SELECT snapshotJSON FROM project_memory_snapshots"
+        )
+        XCTAssertFalse(snapshots.joined(separator: "\n").contains(body))
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT body FROM memory_quarantine_bodies WHERE memory_id = \(sqlLiteral(candidate.memoryID))"
+            ),
+            [body]
+        )
+        let reopened = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "memory-quarantine-reopen-test")
+        )
+        let reopenedFeed = try reopened.recall(
+            BurnBarProjectMemoryRecallRequest(
+                query: "memory review",
+                projectPath: fixture.project.path,
+                includeQuarantined: true
+            )
+        )
+        XCTAssertEqual(reopenedFeed.hits.first?.bodyRedacted, body)
+    }
+
     func testRememberStoresBodyInProjectMemorySnapshotNotAgentIndex() throws {
         let fixture = try makeFixture()
         let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))

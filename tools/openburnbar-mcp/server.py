@@ -1824,7 +1824,12 @@ def _memory_mirror_remember(decision: dict[str, Any], project_path: str | None) 
     return {"status": "unreachable", "reason": reason}
 
 
-def _memory_mirror_forget(daemon_memory_id: str | None, project_path: str | None) -> dict[str, Any]:
+def _memory_mirror_forget(
+    daemon_memory_id: str | None,
+    project_path: str | None,
+    *,
+    absence_is_success: bool = True,
+) -> dict[str, Any]:
     if not _memory_mirror_enabled():
         return {"status": "disabled"}
     if not daemon_memory_id:
@@ -1838,11 +1843,22 @@ def _memory_mirror_forget(daemon_memory_id: str | None, project_path: str | None
     if authority.get("mode") == "daemon":
         result = authority.get("result") or {}
         if result.get("localDeleted") is False:
+            if not absence_is_success:
+                return {
+                    "status": "not_found",
+                    "daemonMemoryID": daemon_memory_id,
+                    "result": result,
+                    "reason": "daemon copy was absent from the probed non-owning project",
+                }
             return {
-                "status": "not_found",
+                # The owning daemon authoritatively confirmed there is no copy
+                # left to retire. Treat that as idempotent success so stale
+                # local mappings can clear and an updated row can be remirrored.
+                "status": "mirrored",
                 "daemonMemoryID": daemon_memory_id,
                 "result": result,
-                "reason": "daemon did not confirm deletion; mirror tombstone retained for retry",
+                "alreadyAbsent": True,
+                "reason": "daemon copy was already absent",
             }
         return {"status": "mirrored", "daemonMemoryID": daemon_memory_id, "result": result}
     return {
@@ -1994,7 +2010,11 @@ def _memory_mirror_committed_decision(
         # while recording the owner's path. Probe that requested project first
         # to repair such mappings; a not-found result falls through to the
         # owner-path delete in `_memory_mirror_updated`.
-        cross_project_forget = _memory_mirror_forget(previous_daemon_id, requested_project_path)
+        cross_project_forget = _memory_mirror_forget(
+            previous_daemon_id,
+            requested_project_path,
+            absence_is_success=False,
+        )
         if cross_project_forget.get("status") == "mirrored":
             engine.clear_daemon_mirror(memory_id)
         elif cross_project_forget.get("status") != "not_found":

@@ -156,7 +156,9 @@ def test_retain_mode_rotates_the_vault_when_the_redacted_body_deduplicates(tmp_p
         second = engine.remember(
             f"The deploy token is {FAKE_GITHUB_TOKEN_B} and lives in 1Password.", project_path=repo
         )
-        assert second["event"] == "NONE" and second["memoryID"] == first["memoryID"] and second["secretRotated"] is True
+        assert second["event"] == "UPDATE"
+        assert second["memoryID"] == first["memoryID"] and second["secretRotated"] is True
+        assert second["sensitivity"] == "secret"
         shown = engine.recall("deploy token", project_path=repo, include_secrets=True)["results"]
         assert FAKE_GITHUB_TOKEN_B in shown[0]["secretText"] and FAKE_GITHUB_TOKEN not in shown[0]["secretText"]
         actions = [event["action"] for event in engine.audit_trail(project_path=repo)["events"]]

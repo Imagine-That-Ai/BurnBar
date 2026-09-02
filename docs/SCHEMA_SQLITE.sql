@@ -393,6 +393,19 @@ CREATE TABLE memory_embedding_refs (
 
 CREATE INDEX memory_embedding_refs_version_idx ON memory_embedding_refs(embedding_version_id, dimension);
 
+-- Daemon review holding area inside the SQLCipher database. Quarantined and
+-- rejected bodies stay out of project_memory_snapshots until explicitly
+-- approved, so the default project-memory surface cannot expose them.
+CREATE TABLE memory_quarantine_bodies (
+  memory_id  TEXT NOT NULL PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  body       TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX memory_quarantine_bodies_project_idx ON memory_quarantine_bodies(project_id);
+
 CREATE TABLE memory_body_snapshots (
   id            TEXT NOT NULL PRIMARY KEY,
   memory_id     TEXT NOT NULL UNIQUE,

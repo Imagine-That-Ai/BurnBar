@@ -242,14 +242,14 @@ def test_daemon_delete_requires_confirmation_and_reuses_stored_project_path(
             body_hash=engine.daemon_mirror_body_hash(stored["memoryID"]),
         )
     first = json.loads(server.burnbar_forget(stored["memoryID"], project_path=repo_b))
-    assert first["mirror"]["status"] == "not_found"
+    assert first["mirror"]["status"] == "mirrored"
+    assert first["mirror"]["alreadyAbsent"] is True
     assert forget_calls[0]["projectPath"] == repo_a
     with server._memory_engine() as engine:
-        assert engine.daemon_mirror_id(stored["memoryID"]) == daemon_id
-        assert engine.daemon_mirror_project_path(stored["memoryID"]) == repo_a
+        assert engine.daemon_mirror_id(stored["memoryID"]) is None
     retried = json.loads(server.burnbar_forget(stored["memoryID"]))
-    assert retried["mirror"]["status"] == "mirrored"
-    assert forget_calls[1]["projectPath"] == repo_a
+    assert retried["status"] == "not_found" and "mirror" not in retried
+    assert len(forget_calls) == 1
 
 
 def test_delete_reconciliation_and_quarantine_reinforcement_retire_mirrors(
