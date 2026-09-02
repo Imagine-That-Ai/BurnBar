@@ -1919,10 +1919,14 @@ def _memory_public_decision(memory: dict[str, Any]) -> dict[str, Any]:
 def _memory_mirror_retire_ids(decision: dict[str, Any]) -> list[str]:
     retired = list(decision.get("superseded") or []) + list(decision.get("retired") or [])
     memory_id = decision.get("memoryID")
-    if memory_id and (
-        decision.get("sensitivity") == "secret"
-        or decision.get("reviewStatus") != "approved"
-        or decision.get("expiresAt")
+    if (
+        memory_id
+        and decision.get("event") in ("ADD", "UPDATE")
+        and (
+            decision.get("sensitivity") == "secret"
+            or decision.get("reviewStatus") != "approved"
+            or decision.get("expiresAt")
+        )
     ):
         retired.append(str(memory_id))
     return list(dict.fromkeys(str(item) for item in retired if item))
@@ -2650,6 +2654,9 @@ def burnbar_memory_update(
                 project_path=memory_project_path,
                 body_changed=result.get("changes", {}).get("body") is True,
             )
+            memory = result.get("memory")
+            if isinstance(memory, dict) and memory.get("reviewStatus") != "approved":
+                result["memory"] = _memory_wrap_record(memory, source_tool="burnbar_memory_update")
     return json.dumps(result, indent=2, default=str)
 
 

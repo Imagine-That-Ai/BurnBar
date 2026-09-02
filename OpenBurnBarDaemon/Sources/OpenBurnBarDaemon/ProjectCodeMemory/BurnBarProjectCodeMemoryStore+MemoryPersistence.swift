@@ -48,6 +48,65 @@ extension BurnBarProjectCodeMemoryStore {
                 ]
             )
         }
+        let legacyReviewRows = try queryRows(
+            """
+            SELECT id, project_id, updated_at
+            FROM agent_memories
+            WHERE body_redacted LIKE 'Project Memory snapshot ref:%'
+              AND review_status IN ('quarantined', 'rejected')
+            """,
+            []
+        )
+        for row in legacyReviewRows {
+            let memoryID = row.string(0)
+            let projectID = row.string(1)
+            let now = row.optionalString(2) ?? Self.isoNow()
+            guard let body = try projectMemorySectionBody(projectID: projectID, memoryID: memoryID) else { continue }
+            try upsertQuarantineMemoryBody(projectID: projectID, memoryID: memoryID, body: body, now: now)
+            try removeProjectMemorySection(
+                projectID: projectID,
+                projectDisplayName: projectID,
+                memoryID: memoryID,
+                now: now
+            )
+            try execute(
+                "UPDATE agent_memories SET body_redacted = ? WHERE id = ? AND project_id = ?",
+                [.text(Self.quarantineBodyReference(memoryID: memoryID, projectID: projectID)), .text(memoryID), .text(projectID)]
+            )
+        }
+    }
+
+    func backfillMemoryEmbeddings() throws {
+        guard embeddingProvider.isAvailable else { return }
+        let rows = try queryRows(
+            """
+            SELECT m.id, m.project_id
+            FROM agent_memories AS m
+            LEFT JOIN memory_embedding_refs AS e
+              ON e.memory_id = m.id AND e.embedding_version_id = ?
+            WHERE m.review_status = 'approved' AND m.valid_to IS NULL AND e.memory_id IS NULL
+            """,
+            [.text(embeddingProvider.versionID)]
+        )
+        for row in rows {
+            let memoryID = row.string(0)
+            let projectID = row.string(1)
+            guard let body = try projectMemorySectionBody(projectID: projectID, memoryID: memoryID),
+                  let vector = embeddingProvider.embed(body),
+                  vector.count == embeddingProvider.dimension else { continue }
+            let norm = vector.reduce(0.0) { $0 + Double($1 * $1) }.squareRoot()
+            try execute(
+                """
+                INSERT OR REPLACE INTO memory_embedding_refs
+                    (memory_id, embedding_version_id, dimension, vector, norm, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    .text(memoryID), .text(embeddingProvider.versionID), .int(vector.count),
+                    .blob(BurnBarCodeVectorCodec.encode(vector)), .double(norm), .text(Self.isoNow())
+                ]
+            )
+        }
     }
 
     func setReviewStatus(

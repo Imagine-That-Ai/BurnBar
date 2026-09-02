@@ -2467,6 +2467,14 @@ class MemoryEngine:
         extractor: str,
     ) -> dict[str, Any]:
         kind = normalize_kind(fact.kind)
+        if fact.review_status is not None and fact.review_status not in REVIEW_STATUSES:
+            return {
+                "event": "REJECT",
+                "code": "INVALID_REVIEW_STATUS",
+                "reason": f"reviewStatus must be one of: {', '.join(REVIEW_STATUSES)}",
+                "kind": kind,
+                "allowed": list(REVIEW_STATUSES),
+            }
         try:
             scope = normalize_scope(fact.scope, kind)
         except ValueError as exc:
@@ -2609,6 +2617,23 @@ class MemoryEngine:
                     "code": "PREVIOUSLY_REJECTED",
                     "memoryID": str(exact["id"]),
                     "reason": "an identical memory was rejected in review; re-approve it with burnbar_memory_review",
+                    "kind": kind,
+                    "scope": scope,
+                }
+            if review_status != "approved" and str(exact["review_status"]) == "approved":
+                audit_event(
+                    self.conn,
+                    action="memory.reinforce_blocked",
+                    project_id=project_id,
+                    subject_id=str(exact["id"]),
+                    labels=[f"incoming_review:{review_status}"],
+                    actor=self.config.actor,
+                )
+                return {
+                    "event": "NONE",
+                    "code": "NON_APPROVED_DUPLICATE",
+                    "memoryID": str(exact["id"]),
+                    "reason": "non-approved duplicate cannot change an approved memory",
                     "kind": kind,
                     "scope": scope,
                 }
@@ -3527,6 +3552,8 @@ class MemoryEngine:
     def _reinforce_recall_ids(self, memory_ids: Sequence[str]) -> None:
         if not memory_ids:
             return
+        if not self.conn.in_transaction:
+            self.conn.execute("BEGIN IMMEDIATE")
         placeholders = ",".join("?" * len(memory_ids))
         rows = self.conn.execute(
             f"SELECT id, kind, confidence, access_count FROM memories WHERE id IN ({placeholders})",  # noqa: S608 -- placeholders only
@@ -3624,6 +3651,14 @@ class MemoryEngine:
             where.append("EXISTS (SELECT 1 FROM json_each(m.tags_json) AS tag WHERE tag.value = ?)")
             params.append(tag)
         if filters:
+            invalid_filter = _invalid_filter_reason(filters)
+            if invalid_filter:
+                return {
+                    "status": "rejected",
+                    "code": "INVALID_FILTER",
+                    "reason": invalid_filter,
+                    **project_payload(project_id, root),
+                }
             filter_sql, filter_params = _compile_filter_sql(filters)
             where.append(filter_sql)
             params.extend(filter_params)
@@ -4758,6 +4793,34 @@ def _compile_filter_comparison(key: str, operator: str, expected: Any) -> tuple[
     if comparison is None:
         return "0", []
     return f"{expression} {comparison} ?", [expected]
+
+
+def _invalid_filter_reason(filters: Any) -> str | None:
+    if not isinstance(filters, dict) or not filters:
+        return "filters must be a non-empty object"
+    for key, expected in filters.items():
+        if key in {"AND", "OR"}:
+            if not isinstance(expected, list) or not expected:
+                return f"{key} must contain non-empty filter objects"
+            for child in expected:
+                reason = _invalid_filter_reason(child)
+                if reason:
+                    return reason
+            continue
+        field = _FILTER_SQL_FIELDS.get(key)
+        field_type = field[1] if field else "json"
+        if isinstance(expected, list):
+            comparisons = {"in": expected}
+        elif isinstance(expected, dict) and expected and all(op in FILTER_OPERATORS for op in expected):
+            comparisons = expected
+        else:
+            comparisons = {"eq": expected}
+        if isinstance(expected, dict) and (not expected or not all(op in FILTER_OPERATORS for op in expected)):
+            continue
+        for operator, value in comparisons.items():
+            if operator in {"eq", "ne"} and field_type in {"text", "number"} and isinstance(value, (list, dict)):
+                return f"{key}.{operator} requires a scalar operand"
+    return None
 
 
 def _compile_filter_sql(filters: dict[str, Any]) -> tuple[str, list[Any]]:

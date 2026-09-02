@@ -275,6 +275,7 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
         dbQueue.setSpecific(key: projectCodeMemoryQueueKey, value: dbQueueID)
         try databaseSync {
             try bootstrapSchema()
+            try backfillMemoryEmbeddings()
         }
         // The code-memory store contains indexed source text and memory
         // references. Tighten the primary file on every open so snapshot export
