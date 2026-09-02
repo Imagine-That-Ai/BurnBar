@@ -95,7 +95,41 @@ test("the migrated Domain Core trigger policy routes every governed glob", () =>
       .replaceAll("**", "nested/owned.txt")
       .replaceAll("*", "owned")
       .replaceAll("?", "x");
-    assert.equal(classifyPaths([representative]).rust, true, glob);
+    // Every governed path stays owned by the domain core -- product paths run
+    // the native fleet, evidence machinery runs the promotion contracts. What
+    // no governed glob may ever do is fall through to SAFE or ambiguous.
+    const result = classifyPaths([representative]);
+    assert.equal(
+      result.rust || result.rustTooling,
+      true,
+      `${glob} must stay domain-core owned`,
+    );
+  }
+  // Machinery routes to the contracts lane only: no macOS fleet for verifier,
+  // config, or evidence-doc edits.
+  for (const path of [
+    "scripts/ci/verify-domain-core-control-plane.mjs",
+    "scripts/lib/domain-core-activation.mjs",
+    "scripts/ops/create-domain-core-stable-receipt.py",
+    "config/domain-core-control-plane-manifest.json",
+    "config/domain-core-build-profiles.json",
+    "tests/test_domain_core_union_gate.py",
+    ".github/workflows/domain-core-ios-release-evidence.yml",
+    "docs/SHARED_RUST_DOMAIN_CORE_ROADMAP.md",
+  ]) {
+    const result = classifyPaths([path]);
+    assert.equal(result.rustTooling, true, `${path} -> rustTooling`);
+    assert.equal(result.rust, false, `${path} must not wake the native fleet`);
+  }
+  // Product paths still run the fleet.
+  for (const path of [
+    "crates/openburnbar-domain-core/domain-ffi/src/lib.rs",
+    "Vendor/openburnbar-domain-core.aar",
+    "OpenBurnBarCore/Sources/OpenBurnBarDomainCore/Generated/x.swift",
+    "windows/app/OpenBurnBar.App.Configuration/DomainCoreBuildProfileResolver.cs",
+    ".github/workflows/domain-core.yml",
+  ]) {
+    assert.equal(classifyPaths([path]).rust, true, path);
   }
   for (const path of [
     "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/HermesRatchetCrypto.swift",
