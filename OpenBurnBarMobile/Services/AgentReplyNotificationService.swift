@@ -712,15 +712,6 @@ final class AgentReplyNotificationService: NSObject, ObservableObject {
         )
     }()
 
-    private static let deviceApprovalCategory: UNNotificationCategory = {
-        let open = UNNotificationAction(identifier: openActionID, title: "Review", options: [.foreground])
-        return UNNotificationCategory(
-            identifier: "DEVICE_APPROVAL_REQUEST",
-            actions: [open],
-            intentIdentifiers: [],
-            options: [.customDismissAction]
-        )
-    }()
 }
 
 extension AgentReplyNotificationService: UNUserNotificationCenterDelegate {
