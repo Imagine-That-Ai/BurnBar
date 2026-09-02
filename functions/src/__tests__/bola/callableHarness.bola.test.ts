@@ -44,9 +44,36 @@ describe("callableBolaHarness sanity", () => {
         exportedName: "getEncryptedProjectMemorySnapshot",
         run: callableRunner(succeeding),
         expectedOutcome: "throws",
-        expectedCode: "not-found",
+        expectedCode: "permission-denied",
       }),
     ).rejects.toThrow(/expected callable to reject/);
+  });
+
+  it("tier2CallableProof rejects an expectedCode that disagrees with the generated ledger", async () => {
+    const store = new Map<string, Record<string, unknown>>();
+    const succeeding = { run: async () => ({ ok: true }) };
+
+    await expect(
+      tier2CallableProof(store, {
+        exportedName: "getEncryptedProjectMemorySnapshot",
+        run: callableRunner(succeeding),
+        expectedOutcome: "throws",
+        expectedCode: "not-found",
+      }),
+    ).rejects.toThrow(/disagrees with the generated BOLA ledger/);
+  });
+
+  it("tier2CallableProof refuses a rejection proof for a ledger no-side-effect endpoint", async () => {
+    const store = new Map<string, Record<string, unknown>>();
+    const succeeding = { run: async () => ({ ok: true }) };
+
+    await expect(
+      tier2CallableProof(store, {
+        exportedName: "deleteProviderCredential",
+        run: callableRunner(succeeding),
+        expectedOutcome: "throws",
+      }),
+    ).rejects.toThrow(/records a no-side-effect outcome/);
   });
 
   it("treats Firestore delete sentinels identifiable by constructor name as deletes", async () => {

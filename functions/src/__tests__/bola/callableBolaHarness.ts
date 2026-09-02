@@ -29,7 +29,6 @@ export const BOLA_STRICT_CODE_ENDPOINTS = new Set([
   "registerIrohControllerRoute",
   "registerLinuxAppCheckDevice",
   "repairTrustedSignalIdentity",
-  "resolveActiveIrohControllerRoutes",
   "respondHermesGatewayApproval",
   "revokeEscrowDeviceTrust",
   "revokeHermesGatewayClient",
@@ -438,7 +437,29 @@ export async function tier2CallableProof(
     expectedCode: requestedExpectedCode,
     strictCode = BOLA_STRICT_CODE_ENDPOINTS.has(exportedName) || BOLA_STRICT_CODE_PENDING.has(exportedName),
   } = options;
-  const expectedCode = requestedExpectedCode ?? BOLA_EXPECTED_CODES[exportedName] ?? "not-found";
+  // The generated ledger is authoritative: a call site may restate its code
+  // but never override it, and a proof's outcome must agree with the ledger.
+  const ledgerCode = BOLA_EXPECTED_CODES[exportedName];
+  if (requestedExpectedCode !== undefined && ledgerCode !== undefined && requestedExpectedCode !== ledgerCode) {
+    throw new Error(
+      `${exportedName}: expectedCode "${requestedExpectedCode}" disagrees with the generated BOLA ledger ("${ledgerCode}"); ` +
+        "update BOLA_MEASURED_EXPECTED_CODES in functions/scripts/generate-endpoint-catalog.mjs and regenerate instead of overriding it",
+    );
+  }
+  if (expectedOutcome === "throws" && ledgerCode === "no-side-effect") {
+    throw new Error(
+      `${exportedName}: the generated BOLA ledger records a no-side-effect outcome but this proof expects a rejection; ` +
+        'measure the denial code or opt into expectedOutcome: "no-side-effect"',
+    );
+  }
+  if (expectedOutcome === "no-side-effect" && ledgerCode !== undefined && ledgerCode !== "no-side-effect") {
+    throw new Error(
+      `${exportedName}: the generated BOLA ledger records a ${ledgerCode} rejection but this proof lets the callable succeed; ` +
+        "assert the rejection or regenerate the ledger",
+    );
+  }
+  const expectedCode: BolaExpectedCode =
+    ledgerCode !== undefined && ledgerCode !== "no-side-effect" ? ledgerCode : (requestedExpectedCode ?? "not-found");
 
   store.clear();
   seedBolaVictimTenant(store, exportedName);

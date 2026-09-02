@@ -179,6 +179,35 @@ describe("bola coverage registry", () => {
       expect(BOLA_STRICT_CODE_ENDPOINTS.has(name), name).toBe(false);
       expect(BOLA_STRICT_CODE_PENDING.get(name), name).toBe(BOLA_EXPECTED_CODES[name]);
     }
+    // Shrinkage must be graduation, not omission: anything that left the
+    // pending ledger since the baseline has to be in the strict set now.
+    for (const name of BOLA_STRICT_CODE_PENDING_BASELINE) {
+      if (BOLA_STRICT_CODE_PENDING.has(name)) continue;
+      expect(
+        BOLA_STRICT_CODE_ENDPOINTS.has(name),
+        `${name} left BOLA_STRICT_CODE_PENDING without graduating to BOLA_STRICT_CODE_ENDPOINTS`,
+      ).toBe(true);
+    }
+  });
+
+  it("records no-side-effect outcomes explicitly instead of inventing a denial code", () => {
+    const byName = new Map(endpointAuthorizationMatrix.map((entry) => [entry.exportedName, entry]));
+    for (const [name, code] of Object.entries(BOLA_EXPECTED_CODES)) {
+      const refs = (byName.get(name)?.bolaCoverage ?? []).filter(
+        (ref) => ref.kind === "runtime-cross-user" && ref.covers.includes(name),
+      );
+      const codedRef = refs.find((ref) => typeof ref.expectedCode === "string");
+      if (code === "no-side-effect") {
+        expect(codedRef, `${name} ledger says no-side-effect but a ref carries a measured code`).toBeUndefined();
+        expect(
+          refs.some((ref) => ref.expectedOutcome === "no-side-effect"),
+          `${name} ledger says no-side-effect without a no-side-effect runtime ref`,
+        ).toBe(true);
+        expect(BOLA_STRICT_CODE_ENDPOINTS.has(name), `${name} cannot be strict without a measured denial`).toBe(false);
+      } else {
+        expect(codedRef?.expectedCode, `${name} ledger code must come from its runtime ref`).toBe(code);
+      }
+    }
   });
 
   it("does not duplicate tier2CallableProof invocations per test case", () => {

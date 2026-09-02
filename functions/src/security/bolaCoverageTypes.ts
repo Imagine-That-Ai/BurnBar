@@ -23,6 +23,13 @@ export type BolaExpectedCode =
   | "invalid-argument"
   | "already-exists";
 
+/**
+ * What the generated BOLA ledger records per object-id endpoint: a measured
+ * denial code, or an explicit no-side-effect outcome for auth-scoped endpoints
+ * whose cross-user invocation may succeed without touching victim rows.
+ */
+export type BolaLedgerCode = BolaExpectedCode | "no-side-effect";
+
 export type BolaCoverageRef = {
   file: string;
   test: string;
