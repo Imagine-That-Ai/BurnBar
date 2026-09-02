@@ -16,7 +16,7 @@ after the fact.
    prefer revision rollback — it needs no preflight:
 
    ```bash
-   ./scripts/rollback-revision.sh   # Cloud Run service revision pin
+   ./scripts/ops/rollback-revision.sh   # Cloud Run service revision pin
    ./scripts/rollback.sh            # functions rollback helper
    ```
 

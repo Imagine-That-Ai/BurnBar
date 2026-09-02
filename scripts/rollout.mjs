@@ -23,7 +23,7 @@
  *
  * Prerequisites:
  *   - firebase CLI authenticated: firebase login
- *   - Project set: firebase use openburnbar
+ *   - Project set: firebase use burnbar
  *   - Service account with Remote Config Admin role
  *
  * Rollout rings:
