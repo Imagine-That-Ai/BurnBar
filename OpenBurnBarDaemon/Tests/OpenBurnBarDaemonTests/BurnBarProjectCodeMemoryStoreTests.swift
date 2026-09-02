@@ -545,6 +545,32 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         XCTAssertEqual(BurnBarMemoryRanking.tokenize("café foo_bar"), ["caf", "foo_bar", "foo", "bar"])
     }
 
+    func testMemoryRecallMatchesSourcePathTokens() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "memory-source-path-test"))
+        let runbook = try store.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: "Cut the tag after the smoke checks pass.",
+                projectPath: fixture.project.path,
+                kind: "procedure",
+                sourcePath: "docs/release/runbook.md"
+            )
+        )
+        _ = try store.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: "Use purple accents for the dashboard.",
+                projectPath: fixture.project.path,
+                kind: "preference"
+            )
+        )
+
+        // The body never says "release" or "runbook": only the source path carries those tokens.
+        let recall = try store.recall(
+            BurnBarProjectMemoryRecallRequest(query: "release runbook", projectPath: fixture.project.path)
+        )
+        XCTAssertEqual(recall.hits.first?.memoryID, runbook.memoryID)
+    }
+
     func testMemoryRecallFindsSemanticOnlyMatchFromStoredVectors() throws {
         let fixture = try makeFixture()
         let store = try BurnBarProjectCodeMemoryStore(

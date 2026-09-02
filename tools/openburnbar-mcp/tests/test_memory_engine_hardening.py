@@ -276,7 +276,7 @@ def test_recall_pack_enforces_the_budget_for_the_first_result(tmp_path: Path) ->
             project_path=repo,
         )
         pack = engine.recall_pack("daemon socket protocol", project_path=repo, token_budget=64)
-        assert pack["included"] == 1 and pack["tokensUsed"] <= 64 and pack["truncated"] is True
+        assert pack["included"] == 1 and pack["tokensUsed"] <= pack["tokenBudget"] and pack["truncated"] is True
         assert "…" in pack["pack"]
 
 

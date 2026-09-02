@@ -250,6 +250,26 @@ Every finding is pinned by a test in `tests/test_memory_engine_hardening.py`:
   ingest idempotency is per project, and exports re-import with their
   `expiresAt` / `sourceRef`.
 
+Round 2 (`tests/test_memory_engine_hardening_round2.py`):
+
+- The audit-chain head is read under `BEGIN IMMEDIATE`, and key publication
+  is serialized with an advisory lock, so concurrent MCP processes cannot
+  break the chain or replace each other's key. Opening the store no longer
+  leaves an implicit write transaction open.
+- Injection screening covers tags, entities, metadata, and `source_ref`;
+  the mirror receives the gated `sourceRef`; pack sentinels are injection
+  sentinels and are neutralized inside pack lines; the pack budget covers
+  the envelope (floor 192 tokens).
+- A failed daemon-side forget leaves a tombstone that later calls retry;
+  a fact that reverts to a retired statement reactivates that row; retain
+  mode rotates the vault on duplicate redacted bodies; forgetting a memory
+  invalidates the ingest receipts that named it; imports keep `rejected`;
+  update history records every mutable field; doctor reports the store it
+  opened; relations include personal memories from other projects; legacy
+  migration retries non-terminal outcomes.
+- Daemon (Swift): the BM25 document keeps `sourcePath`, and semantic recall
+  reads only the candidates' vectors.
+
 ## 7. Follow-up closure and remaining non-goals
 
 - The signed write bridge and daemon-side ranking parity are included: the

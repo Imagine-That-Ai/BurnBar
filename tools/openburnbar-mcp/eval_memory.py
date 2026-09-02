@@ -57,7 +57,7 @@ GOLD: list[dict[str, object]] = [
     },
     {
         "id": "cli",
-        "text": "openburnbar-cli exposes search-sql and recall but has no memory write subcommand.",
+        "text": "openburnbar-cli exposes search-sql and recall for reads, and memory-remember / memory-forget as the signed write courier the local memory MCP mirrors through.",
         "kind": "fact",
     },
     {

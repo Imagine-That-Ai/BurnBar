@@ -443,7 +443,7 @@ def test_recall_pack_respects_budget(tmp_path: Path) -> None:
         _seed(engine, repo)
         pack = engine.recall_pack("daemon CI PR", project_path=repo, token_budget=40)
         assert (
-            pack["included"] >= 1 and pack["tokensUsed"] <= pack["tokenBudget"] == 64
+            pack["included"] >= 1 and pack["tokensUsed"] <= pack["tokenBudget"] == me.PACK_TOKEN_BUDGET_FLOOR
         )  # budget floor is 64; never exceeded
         assert pack["pack"].startswith("OPENBURNBAR_MEMORY_PACK_V1") and pack["pack"].endswith(
             "END_OPENBURNBAR_MEMORY_PACK_V1"

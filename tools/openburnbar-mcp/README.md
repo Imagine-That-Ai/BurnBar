@@ -286,7 +286,11 @@ against mem0 / Mixedbread: [`docs/superpowers/2026-09-02-memory-mcp-v2-design.md
   decoded and redacted at their surface span. A secret that only appears once
   line continuations or adjacent string literals are joined cannot be redacted
   in place, so `redact` refuses that write (`SECRET_DETECTED`) rather than
-  storing a reconstructable form.
+  storing a reconstructable form. In `retain` mode, re-remembering the same
+  sentence with a rotated secret keeps one memory and replaces the vault
+  entry (`secretRotated: true`). Prompt-injection screening covers tags,
+  entities, metadata, and `source_path` as well as the body; a hit in any of
+  them quarantines the memory.
 - **Experimental: retain secrets.** `retain` stores the verbatim text in an
   encrypted vault table, keeps a redacted, searchable body in the main store,
   and hides the memory from default recall. It needs
@@ -303,8 +307,12 @@ against mem0 / Mixedbread: [`docs/superpowers/2026-09-02-memory-mcp-v2-design.md
   `DUPLICATE_BODY`; re-remembering text whose memory was rejected in review
   returns `NONE` with `PREVIOUSLY_REJECTED` (re-approve it with
   `burnbar_memory_review`), while an expired duplicate is reactivated
-  (`UPDATE`, `reactivated: true`). `tags=[]` / `entities=[]` on
-  `burnbar_memory_update` clear the field; omit the argument to keep it.
+  (`UPDATE`, `reactivated: true`), and a fact that reverts to an earlier
+  statement (A, then B, then A again) brings the retired row back under its
+  original id. `tags=[]` / `entities=[]` on `burnbar_memory_update` clear the
+  field; omit the argument to keep it. `burnbar_recall_pack` budgets the whole
+  serialized pack (floor 192 tokens: the envelope plus one truncated line),
+  keeps each memory on one line, and neutralizes pack sentinels inside bodies.
 - **Quality.** `eval_memory.py` scores lexical vs hybrid recall on a 40-memory
   / 30-paraphrase gold set against your local Ollama model.
 
