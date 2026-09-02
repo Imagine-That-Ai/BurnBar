@@ -376,11 +376,7 @@ private fun firstNonEmpty(vararg values: String?): String? {
     return null
 }
 
-private fun deviceApprovalFallbackEventId(
-    type: String,
-    deviceId: String?,
-    createdAt: String?,
-): String? {
+private fun deviceApprovalFallbackEventId(type: String, deviceId: String?, createdAt: String?): String? {
     if (type != "device_approval_request" || createdAt == null) return null
     return if (deviceId != null) "device-approval-$deviceId-$createdAt" else "device-approval-$createdAt"
 }
