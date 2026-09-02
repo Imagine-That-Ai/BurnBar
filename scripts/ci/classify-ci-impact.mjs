@@ -110,6 +110,11 @@ const LANE_PATTERNS = {
     /^extensions\/openburnbar\/media\/app-icon-128\.png$/,
     /^scripts\/(?:test-openburnbar-app|diff-coverage)(?:[^/]*)$/,
     /^\.github\/workflows\/app-pr-gate\.yml$/,
+    // The PR-lane app compile gate runs this script; without ownership an
+    // edit to either would re-run nothing on the PR path (the §1.2
+    // trigger-vs-checked drift in docs/CI_RELEASE_RUNBOOK.md).
+    /^scripts\/ci\/headless-app-build\.sh$/,
+    /^\.github\/workflows\/macos-app-compile-gate\.yml$/,
   ],
   mobile: [
     /^OpenBurnBarMobile\//,

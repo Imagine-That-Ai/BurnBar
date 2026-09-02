@@ -143,6 +143,37 @@ while the ruleset is active.
   thread**, or a check that was **cancelled** (cancelled ≠ failed, but also ≠
   passed). Check both before assuming CI is broken.
 
+### 4.1 The macOS App Compile Gate (added 2026-08-22)
+
+`macos-app-compile-gate.yml` compiles the full macOS app graph (scheme
+`OpenBurnBar`, Debug, build-only, via `scripts/ci/headless-app-build.sh`) at PR
+time. It exists because PR #2379 merged an uncompilable AgentLens line with
+every check green — no PR workflow compiled the app — and the break surfaced
+days later in the release lane's first full app compile, burning release
+attempt repair.13 (fixed in #2404).
+
+- **Scope:** the ci-impact classifier arms it only for `macos` or `daemon`
+  candidates (the app-side daemon targets compile daemon sources).
+  `project.yml`, `OpenBurnBar.xcodeproj`, `Vendor/`, and every
+  `Package.resolved` fail closed to full CI, which includes both lanes.
+- **Where it walls:** the `macOS App Compile Gate` context is in
+  `governance/burnbar-ci-gate.json` (the merge-queue set) and deliberately
+  **not** in `burnbar-ci-gate.fast.json` — the ~10-minute PR eligibility door
+  is unchanged; the queue fail-closes on the compile for app-graph candidates.
+- **What it proves / doesn't:** Debug typecheck+compile of AgentLens, the
+  app-linked Core/Kernel products, app-side daemon targets, CloudSync, and the
+  Safari appex. It does **not** compile the app in Release (hosted macos-26
+  cannot WMO+CMO the app — #2403), run tests, or exercise signing; those stay
+  in the release lane, app-pr-gate.yml, and the harness.
+- **Cost knobs:** repo var `MACOS_GATE_POOL` (`fleet` / `paid` / hosted
+  default) routes the runner; warm runs restore the headless post-merge lane's
+  SPM + Signal FFI caches. If queue latency becomes unacceptable, removing the
+  one context line from `burnbar-ci-gate.json` reverts the gate to
+  PR-visible-but-not-queue-blocking without touching the workflow — that json
+  is control-plane pinned, so rerun
+  `node scripts/ci/verify-domain-core-control-plane.mjs --write` from the same
+  tree in the same commit (§2, step 1).
+
 ---
 
 ## 5. Release: what actually gates what

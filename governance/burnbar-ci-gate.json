@@ -34,6 +34,7 @@
     "Hosted MCP Isolation Proofs (local, deterministic)",
     "Hosted MCP Security Smoke",
     "No new suppressions",
+    "macOS App Compile Gate",
     "OSV Scanner (open source vulnerabilities)",
     "PR Native Gate",
     "PR Windows Gate",

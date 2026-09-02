@@ -1,0 +1,168 @@
+name: macOS App Compile Gate (Swift)
+
+# PR-lane compile wall for the macOS AgentLens app (scheme OpenBurnBar).
+#
+# WHY (incident 2026-08-22): PR #2379 merged an uncompilable call in
+# AgentLens/Services/CLIBridge/CLIProcessStreamRunner.swift with every PR check
+# green, because no PR workflow compiled the app — daemon-pr-gate.yml's
+# "Release build" job only runs `swift build` on OpenBurnBarDaemon. The break
+# was caught days later by the release lane's first full app compile (run
+# 32546642856), burning a release attempt; the nightly headless lane had been
+# red since the merge with nobody watching. Fixed in PR #2404; this gate makes
+# that class of break fail at PR time.
+#
+# WHAT IT PROVES: the full app graph — AgentLens/**, app-linked
+# OpenBurnBarCore (incl. the OpenBurnBarKernel/Engine products), the app-side
+# OpenBurnBarDaemon targets (P-18 mirrors of the daemon package), CloudSync,
+# and the embedded Safari appex — typechecks and compiles in Debug via
+# scripts/ci/headless-app-build.sh (the recipe already proven on the
+# post-merge/nightly headless lane). FIREBASE_SOURCE_FIRESTORE=1 is forced
+# inside the script on both resolve and build (iOS 27 gRPC/Firestore
+# source-build guard: without it Package.resolved silently regresses to the
+# broken grpc-binary graph).
+#
+# WHAT IT DOES NOT PROVE (deliberate Debug-lane tradeoff):
+#   * Release-configuration compiles of the APP. Hosted macos-26 runners
+#     cannot whole-module-compile the app in Release (WMO+CMO out-of-memories
+#     swift-frontend — #2403 moved the release lane to
+#     SWIFT_COMPILATION_MODE=incremental). Debug catches the missing-member /
+#     typecheck class that burned repair.13 at a fraction of the cost; app
+#     `#if !DEBUG` branches remain covered only by the release lane. The
+#     daemon's release-mode compile stays in daemon-pr-gate.yml.
+#   * Tests. `xcodebuild build` only — the smoke catalog and full XCTest
+#     corpus remain in app-pr-gate.yml (post-merge/nightly) and
+#     openburnbar-pr-harness.yml.
+#   * Link/runtime behavior of signed bundles (release lane).
+#
+# COST CONTROL: the ci-impact classifier scopes the compile to candidates that
+# touch the app graph (macos or daemon lanes; project.yml, OpenBurnBar.xcodeproj,
+# Vendor/ and every Package.resolved fail closed to full via FULL_PATTERNS, and
+# the classifier's macos lane owns scripts/ci/headless-app-build.sh and this
+# workflow — the §1.2 trigger-vs-checked rule in docs/CI_RELEASE_RUNBOOK.md).
+# The summary context below sits in governance/burnbar-ci-gate.json (the
+# merge-queue set) and deliberately NOT in burnbar-ci-gate.fast.json, so the
+# fast PR eligibility door stays ~10 minutes and the queue fail-closes on the
+# compile. SPM + Signal FFI caches are shared with the headless post-merge
+# lane, so warm PR runs restore main-built artifacts instead of rebuilding
+# libsignal.
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    branches: [main]
+    # No `labeled` here: with per-ref cancel-in-progress, a factory label
+    # event would cancel the in-flight compile and restart it from scratch
+    # (label self-assassination). The classifier's full-ci label still takes
+    # effect on the next synchronize or a manual dispatch.
+    types: [opened, synchronize, reopened, ready_for_review]
+  merge_group:
+    branches: [main]
+    types: [checks_requested]
+  workflow_dispatch:
+
+concurrency:
+  group: macos-app-compile-gate-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  classify:
+    uses: ./.github/workflows/ci-impact.yml
+
+  app-compile:
+    name: macOS app compile (scheme OpenBurnBar, Debug)
+    # Routing (cost + security): pull-request and merge-queue candidates may both
+    # contain untrusted PR code, so they run only on isolated hosted macOS pools.
+    # Set repo var MACOS_GATE_POOL=paid to force the capped hosted pool for a
+    # billed fast burst.
+    runs-on: ${{ vars.MACOS_GATE_POOL == 'fleet' && fromJSON('["self-hosted","macOS","burnbar-swift"]') || vars.MACOS_GATE_POOL == 'paid' && fromJSON('{"group":"burnbar-ci-paid"}') || 'macos-26' }}
+    # Warm-cache runs are ~15–25 minutes; a cold SPM cache + libsignal FFI
+    # build on a hosted runner needs the same headroom as the headless lane.
+    # Stays under governance/burnbar-ci-gate.json's 240-minute component budget.
+    timeout-minutes: 90
+    needs: classify
+    # The app graph compiles daemon sources too (project.yml's app-side
+    # OpenBurnBarDaemon targets mirror the package), so daemon-lane candidates
+    # must also prove the app still builds.
+    if: (needs.classify.outputs.macos == 'true' || needs.classify.outputs.daemon == 'true') && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          submodules: false
+
+      - name: Initialize libsignal submodule with retry
+        run: bash scripts/ci/update-submodules-with-retry.sh Vendor/libsignal
+
+      - name: Resolve Signal FFI cache identity
+        id: signal-ffi-cache
+        run: echo "sha=$(git -C Vendor/libsignal rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache macOS Signal FFI artifact
+        # Same key as the headless post-merge lane and app-pr-gate, so PR runs
+        # restore the main-built artifact instead of rebuilding libsignal.
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        with:
+          path: Vendor/OpenBurnBarSignalFfiMac.xcframework
+          key: ${{ runner.os }}-signal-ffi-macos-${{ steps.signal-ffi-cache.outputs.sha }}-${{ hashFiles('scripts/build-signal-ffi-xcframework.sh', 'scripts/lib/prepare-signal-ffi-xcframework.sh') }}
+
+      - name: Cache Swift Package Manager dependencies
+        # Shared key family with headless-app-build.yml (same script, same
+        # .spm-cache/.derived-data layout) so PR runs restore the post-merge
+        # lane's main-scope caches via the default-branch fallback.
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        with:
+          path: |
+            .spm-cache
+            .derived-data
+          key: ${{ runner.os }}-headless-app-spm-${{ hashFiles('**/Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-headless-app-spm-
+            ${{ runner.os }}-app-spm-
+            ${{ runner.os }}-spm-
+
+      - name: Install Rust toolchain for libsignal Swift FFI
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
+        with:
+          toolchain: stable
+
+      - name: Ensure libsignal native toolchain (protoc + cmake)
+        uses: ./.github/actions/ensure-libsignal-toolchain
+
+      - name: Compile the macOS app (scheme OpenBurnBar, Debug, build-only)
+        # scripts/ci/headless-app-build.sh runs `xcodebuild build -scheme
+        # OpenBurnBar` for platform=macOS with code signing off and forces
+        # FIREBASE_SOURCE_FIRESTORE=1 on the resolve+build path. The Mac-only
+        # FFI slice keeps a cache-miss libsignal build as cheap as possible.
+        run: >-
+          SIGNAL_FFI_BUILD_TARGETS=aarch64-apple-darwin
+          ./scripts/ci/headless-app-build.sh
+
+  macos-app-compile-gate:
+    name: macOS App Compile Gate
+    needs: [classify, app-compile]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require the selected app compile
+        env:
+          CLASSIFIER_RESULT: ${{ needs.classify.result }}
+          REQUIRED: ${{ needs.classify.outputs.macos == 'true' || needs.classify.outputs.daemon == 'true' }}
+          COMPILE_RESULT: ${{ needs.app-compile.result }}
+          # Draft PRs (the spike lane) skip the compile by design; expect the
+          # skip instead of going red on every draft. The ready_for_review
+          # trigger re-runs the gate with the compile armed.
+          IS_DRAFT: ${{ github.event_name == 'pull_request' && github.event.pull_request.draft == true }}
+        run: |
+          set -euo pipefail
+          [[ "$CLASSIFIER_RESULT" == "success" ]] || { echo "::error::Impact classifier failed."; exit 1; }
+          expected=skipped
+          if [[ "$REQUIRED" == "true" && "$IS_DRAFT" != "true" ]]; then
+            expected=success
+          fi
+          if [[ "$COMPILE_RESULT" != "$expected" ]]; then
+            echo "::error::macOS app compile ended $COMPILE_RESULT; expected $expected."
+            exit 1
+          fi
