@@ -1,0 +1,18 @@
+[
+  {
+    "path": ".github/workflows/deploy-hosting.yml",
+    "line": 183,
+    "pin": 24,
+    "reason": "Deploy-lane release code (classifier FULL pattern) — cannot be validated on a PR. Convert when the deploy lane has one green deploy-hosting run whose Node version can be observed (human queue items 11-14).",
+    "owner": "Ajnunezg",
+    "expiresOn": "2026-12-01"
+  },
+  {
+    "path": ".github/workflows/domain-core-console-release-evidence.yml",
+    "line": 97,
+    "pin": 24,
+    "reason": "Release-evidence lane code (classifier FULL pattern) — cannot be validated on a PR. Convert with the deploy-lane Node observation above (human queue items 11-14).",
+    "owner": "Ajnunezm",
+    "expiresOn": "2026-12-01"
+  }
+]

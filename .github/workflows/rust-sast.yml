@@ -71,7 +71,7 @@ jobs:
         include:
           - crate: openburnbar-iroh
             path: crates/openburnbar-iroh
-            toolchain: stable
+            toolchain: "1.96.0"
           - crate: burnbar-remote
             path: crates/burnbar-remote
             toolchain: "1.94.0"
@@ -158,7 +158,7 @@ jobs:
         include:
           - crate: openburnbar-iroh
             path: crates/openburnbar-iroh
-            toolchain: stable
+            toolchain: "1.96.0"
           - crate: burnbar-remote
             path: crates/burnbar-remote
             toolchain: "1.94.0"
