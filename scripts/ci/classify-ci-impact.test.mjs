@@ -54,6 +54,9 @@ test("isolated tests select only their owning product", () => {
   const app = classifyPaths(["AgentLensTests/QuotaTests.swift"]);
   assert.equal(app.macos, true);
   assert.equal(app.mobile, false);
+  const mobile = classifyPaths(["OpenBurnBarMobile/Foo.swift"]);
+  assert.equal(mobile.mobile, true);
+  assert.equal(mobile.macos, false);
   const functions = classifyPaths(["functions/src/billing.test.ts"]);
   assert.equal(functions.functions, true);
   assert.equal(functions.macos, false);

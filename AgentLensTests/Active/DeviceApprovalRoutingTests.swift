@@ -1,5 +1,6 @@
+#if canImport(AppKit)
 import XCTest
-@testable import OpenBurnBarCore
+@testable import OpenBurnBar
 
 final class DeviceApprovalRoutingTests: XCTestCase {
     @MainActor
@@ -19,3 +20,4 @@ final class DeviceApprovalRoutingTests: XCTestCase {
         XCTAssertTrue(handledDevices)
     }
 }
+#endif

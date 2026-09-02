@@ -212,7 +212,7 @@ isolated_test_filters=(
     "OpenBurnBarTests/ProjectionPipelineServiceMattersTests"
     "OpenBurnBarTests/ProjectionStoreLifecycleTests"
 )
-isolated_test_expected_count=133
+isolated_test_expected_count=138
 main_skip_test_filters=()
 run_isolated_test_phase=0
 if ((${#test_filters[@]} == 1)) && [[ "${test_filters[0]}" == "OpenBurnBarTests" ]]; then
