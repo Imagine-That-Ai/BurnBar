@@ -177,12 +177,14 @@ internal fun MercuryFcmService.postDeviceApprovalNotification(data: Map<String, 
     val platform = data["platform"] ?: "Web"
     val deviceId = data["device_id"] ?: ""
     val deepLink = data["deep_link"] ?: "openburnbar://approve-device?deviceId=${Uri.encode(deviceId)}"
-    val eventId = "device-approval-$deviceId"
+    val envelope = MobileOsIntegrationPolicy.envelope(data)
+    val eventId = envelope.eventId.ifBlank { "device-approval-$deviceId" }
 
     val openIntent =
         Intent(this, MainActivity::class.java).apply {
             action = Intent.ACTION_VIEW
             this.data = Uri.parse(deepLink)
+            MobileOsIntentNavigation.putEnvelopeExtras(this, data)
             putExtra(MainActivity.EXTRA_EVENT_ID, eventId)
             putExtra(MainActivity.EXTRA_PUSH_TYPE, "device_approval_request")
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)

@@ -206,6 +206,7 @@ class MainActivity : FragmentActivity() {
         const val EXTRA_EVENT_ID = "event_id"
         const val EXTRA_UID = "uid"
         const val EXTRA_EXPIRES_AT_MILLIS = "expires_at_millis"
+        const val EXTRA_CREATED_AT_MILLIS = "created_at_millis"
         const val EXTRA_PUSH_TYPE = "type"
     }
 }
