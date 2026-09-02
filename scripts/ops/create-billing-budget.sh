@@ -27,17 +27,43 @@ elif [[ -n "${1:-}" ]]; then
   exit 2
 fi
 
+# The committed budget contract (governance/ops-billing-budget.json) is the
+# source of truth for name, amount, thresholds, and topic; the live drift check
+# (scripts/ops/check-billing-budget-drift.mjs) compares against the same file.
+BUDGET_MANIFEST="governance/ops-billing-budget.json"
+manifest_field() {
+  python3 - "${BUDGET_MANIFEST}" "$1" <<'JSONFIELD'
+import json, sys
+value = json.load(open(sys.argv[1]))[sys.argv[2]]
+print(" ".join(str(v) for v in value) if isinstance(value, list) else value)
+JSONFIELD
+}
 BILLING_ACCOUNT="${BILLING_ACCOUNT:-<billing-account-id>}"
-PROJECT_ID="${PROJECT_ID:-burnbar}"
-BUDGET_NAME="burnbar-ops-alert-budget"
-BUDGET_AMOUNT="${BUDGET_AMOUNT:-200}"
-PUBSUB_TOPIC="projects/${PROJECT_ID}/topics/ops-billing-alerts"
+PROJECT_ID="${PROJECT_ID:-$(manifest_field projectId)}"
+BUDGET_NAME="$(manifest_field displayName)"
+BUDGET_AMOUNT="${BUDGET_AMOUNT:-$(manifest_field amountUsd)}"
+TOPIC_NAME="$(basename "$(manifest_field pubsubTopic)")"
+PUBSUB_TOPIC="projects/${PROJECT_ID}/topics/${TOPIC_NAME}"
+THRESHOLD_ARGS=()
+for percent in $(manifest_field thresholdPercents); do
+  THRESHOLD_ARGS+=("--threshold-rule=percent=${percent}")
+done
+# --filter-projects scopes the budget to this project; without it the budget
+# watches the whole billing account.
+CREATE_ARGS=(
+  --billing-account="${BILLING_ACCOUNT}"
+  --display-name="${BUDGET_NAME}"
+  --budget-amount="${BUDGET_AMOUNT}USD"
+  --filter-projects="projects/${PROJECT_ID}"
+  "${THRESHOLD_ARGS[@]}"
+  --notifications-rule-pubsub-topic="${PUBSUB_TOPIC}"
+)
 
 if $DRY_RUN; then
   echo "DRY-RUN (export BILLING_ACCOUNT=<billing account id> to run for real):"
+  echo "DRY-RUN: gcloud pubsub topics describe '${TOPIC_NAME}' --project='${PROJECT_ID}' || gcloud pubsub topics create '${TOPIC_NAME}' --project='${PROJECT_ID}'"
   echo "DRY-RUN: gcloud billing budgets list --billing-account='${BILLING_ACCOUNT}' --filter='displayName=\"${BUDGET_NAME}\"' --format='value(name)'"
-  echo "DRY-RUN: gcloud billing budgets create --billing-account='${BILLING_ACCOUNT}' --display-name='${BUDGET_NAME}' --budget-amount='${BUDGET_AMOUNT}USD' --threshold-rule=percent=0.5 --threshold-rule=percent=0.9 --threshold-rule=percent=1.0 --notifications-rule-pubsub-topic='${PUBSUB_TOPIC}'"
-  echo "DRY-RUN: (one-time, if the topic does not exist yet) gcloud pubsub topics create ops-billing-alerts --project='${PROJECT_ID}'"
+  echo "DRY-RUN: gcloud billing budgets create ${CREATE_ARGS[*]}"
   exit 0
 fi
 
@@ -45,6 +71,12 @@ BILLING_ACCOUNT="${BILLING_ACCOUNT:?set BILLING_ACCOUNT (the billing account id)
 if [[ "${BILLING_ACCOUNT}" == "<billing-account-id>" ]]; then
   echo "BILLING_ACCOUNT is not set (see --dry-run for the commands it would run)" >&2
   exit 1
+fi
+
+# The notification topic must exist before the budget references it.
+if ! gcloud pubsub topics describe "${TOPIC_NAME}" --project="${PROJECT_ID}" >/dev/null 2>&1; then
+  echo "Creating Pub/Sub topic '${TOPIC_NAME}' in project '${PROJECT_ID}'..."
+  gcloud pubsub topics create "${TOPIC_NAME}" --project="${PROJECT_ID}"
 fi
 
 # Idempotent: a budget with this display name is not created twice.
@@ -59,15 +91,8 @@ if [[ -n "${existing}" ]]; then
   exit 0
 fi
 
-echo "Creating billing budget '${BUDGET_NAME}' (amount: \$${BUDGET_AMOUNT}, thresholds: 50%/90%/100%, topic: ${PUBSUB_TOPIC})..."
-gcloud billing budgets create \
-  --billing-account="${BILLING_ACCOUNT}" \
-  --display-name="${BUDGET_NAME}" \
-  --budget-amount="${BUDGET_AMOUNT}USD" \
-  --threshold-rule=percent=0.5 \
-  --threshold-rule=percent=0.9 \
-  --threshold-rule=percent=1.0 \
-  --notifications-rule-pubsub-topic="${PUBSUB_TOPIC}"
+echo "Creating billing budget '${BUDGET_NAME}' (amount: \$${BUDGET_AMOUNT}, project filter: ${PROJECT_ID}, thresholds: $(manifest_field thresholdPercents), topic: ${PUBSUB_TOPIC})..."
+gcloud billing budgets create "${CREATE_ARGS[@]}"
 
 echo "Done. The budget's Pub/Sub notifications feed the alert plane verified by"
 echo "scripts/ops/check-ops-alert-plane-drift.mjs (schedule lanes in ops-plane-verify.yml)."

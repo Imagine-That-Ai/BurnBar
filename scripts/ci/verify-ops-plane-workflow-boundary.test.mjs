@@ -132,8 +132,8 @@ expect(
   (root) =>
     mutate(root, (text) =>
       text.replace(
-        "          workload_identity_provider: ${{ vars.OPS_VERIFY_WIF_PROVIDER }}\n          service_account: ${{ vars.OPS_VERIFY_SERVICE_ACCOUNT }}\n\n      - name: Branch-protection drift — live (ruleset + classic) vs committed source of truth\n        env:\n          GH_TOKEN: ${{ github.token }}\n          OPENBURNBAR_GOVERNANCE_REPO: ${{ github.repository }}\n          OPENBURNBAR_GOVERNANCE_ORG: ${{ github.repository_owner }}\n        run: node scripts/ops/check-branch-protection-drift.mjs\n\n      - name: Ops alert-plane drift — live GCP policies vs committed manifest\n        env:\n          GCLOUD_PROJECT: burnbar\n        run: node scripts/ops/check-ops-alert-plane-drift.mjs\n\n  detect-secrets:",
-        "          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}\n          service_account: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}\n\n      - name: Branch-protection drift — live (ruleset + classic) vs committed source of truth\n        env:\n          GH_TOKEN: ${{ github.token }}\n          OPENBURNBAR_GOVERNANCE_REPO: ${{ github.repository }}\n          OPENBURNBAR_GOVERNANCE_ORG: ${{ github.repository_owner }}\n        run: node scripts/ops/check-branch-protection-drift.mjs\n\n      - name: Ops alert-plane drift — live GCP policies vs committed manifest\n        env:\n          GCLOUD_PROJECT: burnbar\n        run: node scripts/ops/check-ops-alert-plane-drift.mjs\n\n  detect-secrets:",
+        "          workload_identity_provider: ${{ vars.OPS_VERIFY_WIF_PROVIDER }}\n          service_account: ${{ vars.OPS_VERIFY_SERVICE_ACCOUNT }}\n",
+        "          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}\n          service_account: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}\n",
       ),
     ),
   1,

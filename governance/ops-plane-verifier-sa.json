@@ -6,31 +6,39 @@
     "roles/monitoring.viewer",
     "roles/billing.viewer",
     "roles/logging.viewer",
-    "roles/iam.securityReviewer"
+    "roles/iam.securityReviewer",
+    "roles/cloudfunctions.viewer",
+    "roles/run.viewer"
   ],
   "roleConstraints": {
     "noWriterRoles": true,
-    "rationale": "The lanes this identity serves are drift DETECTORS. A writer role here would let a CI compromise mutate the alert plane it is supposed to guard (and would contradict the fail-closed drift contract: the file wins, live is the bug)."
+    "rationale": "The lanes this identity serves are drift DETECTORS. A writer role here would let a CI compromise mutate the alert plane it is supposed to guard (and would contradict the fail-closed drift contract: the file wins, live is the bug). cloudfunctions.viewer and run.viewer exist only so deploy-freshness can list Cloud Functions and get Cloud Run services (scripts/ci/check-deploy-freshness.mjs); both are read-only."
   },
   "workloadIdentityFederation": {
     "binding": "principalSet://iam.googleapis.com/projects/<gcp-project-number>/locations/global/workloadIdentityPools/github-oidc/attribute.repository/Imagine-That-Ai/BurnBar",
-    "assertion": "The Google Cloud identity is only minted for OIDC tokens from the `Imagine-That-Ai/BurnBar` repository. Tokens from forks or other repos cannot authenticate as this identity.",
-    "authAction": "google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 (v3.0.0)"
+    "assertion": "The Google Cloud identity is minted only for OIDC tokens from scheduled or dispatched runs of ops-plane-verify.yml and ops-confidence.yml on refs/heads/main of Imagine-That-Ai/BurnBar: the provider's attribute condition pins repository, ref, and job_workflow_ref, so a same-repository PR branch (or any other workflow) cannot impersonate ops-verifier even though the service-account binding is the repository principal set (same pattern as docs/ops/STAGING.md).",
+    "authAction": "google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 (v3.0.0)",
+    "providerAttributeCondition": "assertion.repository=='Imagine-That-Ai/BurnBar' && assertion.ref=='refs/heads/main' && (assertion.job_workflow_ref=='Imagine-That-Ai/BurnBar/.github/workflows/ops-plane-verify.yml@refs/heads/main' || assertion.job_workflow_ref=='Imagine-That-Ai/BurnBar/.github/workflows/ops-confidence.yml@refs/heads/main')"
   },
   "provisioning": {
     "owner": "Alberto",
-    "humanQueueItems": ["7", "8", "9"],
+    "humanQueueItems": [
+      "7",
+      "8",
+      "9"
+    ],
     "gcloud": [
-      "gcloud iam service-accounts create ops-verifier --project=<gcp-project-number> --display-name='Ops plane verifier (viewer-only)'",
-      "gcloud projects add-iam-policy-binding burnbar --member='serviceAccount:ops-verifier@burnbar.iam.gserviceaccount.com' --role='roles/monitoring.viewer'",
-      "gcloud projects add-iam-policy-binding burnbar --member='serviceAccount:ops-verifier@burnbar.iam.gserviceaccount.com' --role='roles/billing.viewer'",
-      "gcloud projects add-iam-policy-binding burnbar --member='serviceAccount:ops-verifier@burnbar.iam.gserviceaccount.com' --role='roles/logging.viewer'",
-      "gcloud projects add-iam-policy-binding burnbar --member='serviceAccount:ops-verifier@burnbar.iam.gserviceaccount.com' --role='roles/iam.securityReviewer'",
-      "gcloud iam workload-identity-pools providers create-oidc github-oidc --location=global --workload-identity-pool=github-oidc --issuer-uri='https://token.actions.githubusercontent.com' --attribute-mapping='google.subject=assertion.sub,attribute.repository=assertion.repository' --attribute-condition='assertion.repository==\"Imagine-That-Ai/BurnBar\"'"
+      "gcloud iam service-accounts create ops-verifier --project=burnbar --display-name='Ops plane verifier (viewer-only)'",
+      "for ROLE in roles/monitoring.viewer roles/billing.viewer roles/logging.viewer roles/iam.securityReviewer roles/cloudfunctions.viewer roles/run.viewer; do gcloud projects add-iam-policy-binding burnbar --member='serviceAccount:ops-verifier@burnbar.iam.gserviceaccount.com' --role=\"$ROLE\"; done",
+      "gcloud iam workload-identity-pools describe github-oidc --project=burnbar --location=global >/dev/null 2>&1 || gcloud iam workload-identity-pools create github-oidc --project=burnbar --location=global --display-name='GitHub OIDC'",
+      "gcloud iam workload-identity-pools providers create-oidc github-oidc --project=burnbar --location=global --workload-identity-pool=github-oidc --issuer-uri='https://token.actions.githubusercontent.com' --attribute-mapping='google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.ref=assertion.ref,attribute.job_workflow_ref=assertion.job_workflow_ref' --attribute-condition=\"assertion.repository=='Imagine-That-Ai/BurnBar' && assertion.ref=='refs/heads/main' && (assertion.job_workflow_ref=='Imagine-That-Ai/BurnBar/.github/workflows/ops-plane-verify.yml@refs/heads/main' || assertion.job_workflow_ref=='Imagine-That-Ai/BurnBar/.github/workflows/ops-confidence.yml@refs/heads/main')\"",
+      "PROJECT_NUMBER=$(gcloud projects describe burnbar --format='value(projectNumber)')",
+      "gcloud iam service-accounts add-iam-policy-binding ops-verifier@burnbar.iam.gserviceaccount.com --project=burnbar --role='roles/iam.workloadIdentityUser' --member=\"principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/github-oidc/attribute.repository/Imagine-That-Ai/BurnBar\""
     ],
     "githubRepoVariables": [
-      "gh variable set OPS_VERIFY_WIF_PROVIDER --body 'projects/<gcp-project-number>/locations/global/workloadIdentityPools/github-oidc/providers/github-oidc'",
-      "gh variable set OPS_VERIFY_SERVICE_ACCOUNT --body 'ops-verifier@burnbar.iam.gserviceaccount.com'"
+      "gh variable set OPS_VERIFY_WIF_PROVIDER --body \"projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/github-oidc/providers/github-oidc\"",
+      "gh variable set OPS_VERIFY_SERVICE_ACCOUNT --body 'ops-verifier@burnbar.iam.gserviceaccount.com'",
+      "gh variable set OPS_BILLING_ACCOUNT --body '<billing-account-id>'   # lets alert-plane-drift compare the live budget with governance/ops-billing-budget.json"
     ]
   },
   "behaviorUntilProvisioned": {
@@ -41,5 +49,10 @@
     "The GCP_SA_KEY protected lane (`verify` job) is unchanged — it keeps `environment: production` + `credentials_json` and is asserted by scripts/ci/verify-ops-plane-workflow-boundary.mjs (invariant SWAP, not deletion).",
     "No deploy/age_days custom metric: that would need roles/monitoring.metricWriter, a write role this identity must never hold (human queue item 8).",
     "No budget-notification Cloud Function: applying the budget stays a human-run script (scripts/ops/create-billing-budget.sh --dry-run first)."
-  ]
+  ],
+  "budgetDrift": {
+    "committed": "governance/ops-billing-budget.json",
+    "check": "scripts/ops/check-billing-budget-drift.mjs",
+    "detail": "The alert-plane-drift lane reads the live budget (gcloud billing budgets list, roles/billing.viewer) and fails closed on a missing budget, a changed amount, thresholds, project filter, or notification topic, and on a missing OPS_BILLING_ACCOUNT variable (billing-account-not-configured)."
+  }
 }

@@ -24,6 +24,8 @@ on:
       - "scripts/lib/ops-alert-plane-drift.mjs"
       - "scripts/ops/check-branch-protection-drift.*"
       - "scripts/ops/check-ops-alert-plane-drift.*"
+      - "scripts/ops/check-billing-budget-drift.*"
+      - "governance/ops-billing-budget.json"
       - "scripts/ops/verify-github-governance.sh"
       - "governance/branch-protection.main.json"
       - "functions/scripts/ops-alert-policy-definitions.mjs"
@@ -59,6 +61,9 @@ jobs:
       - name: Ops alert-plane drift check — offline self-test
         run: node --test scripts/ops/check-ops-alert-plane-drift.test.mjs
 
+      - name: Billing budget drift check — offline self-test
+        run: node --test scripts/ops/check-billing-budget-drift.test.mjs
+
       - name: Syntax-check reworked GitHub governance verifier
         run: bash -n scripts/ops/verify-github-governance.sh
 
@@ -77,8 +82,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     concurrency:
-      group: alert-plane-drift-${{ github.event_name }}-${{ github.ref }}
-      cancel-in-progress: true
+      # Shares the apply lane's group so a drift READ never overlaps an
+      # activate-production-ops-plane.sh apply (which mutates the policies being
+      # read); it queues behind the apply instead of observing a half-applied set.
+      group: ops-plane-apply
+      cancel-in-progress: false
     permissions:
       contents: read
       id-token: write
@@ -86,6 +94,7 @@ jobs:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
       - name: Fail closed when the ops-verifier WIF is not provisioned
+        id: wif
         env:
           OPS_VERIFY_WIF_PROVIDER: ${{ vars.OPS_VERIFY_WIF_PROVIDER }}
           OPS_VERIFY_SERVICE_ACCOUNT: ${{ vars.OPS_VERIFY_SERVICE_ACCOUNT }}
@@ -100,12 +109,17 @@ jobs:
           node-version: 22
 
       - name: Authenticate to Google Cloud (ops-verifier, viewer-only WIF)
+        id: auth
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0 (node24-native)
         with:
           workload_identity_provider: ${{ vars.OPS_VERIFY_WIF_PROVIDER }}
           service_account: ${{ vars.OPS_VERIFY_SERVICE_ACCOUNT }}
 
+      # The three live checks below are independent planes; each runs whenever
+      # authentication succeeded so one red surface never hides evidence about
+      # another (same contract as the protected `verify` lane).
       - name: Branch-protection drift — live (ruleset + classic) vs committed source of truth
+        if: always() && steps.auth.outcome == 'success'
         env:
           GH_TOKEN: ${{ github.token }}
           OPENBURNBAR_GOVERNANCE_REPO: ${{ github.repository }}
@@ -113,9 +127,16 @@ jobs:
         run: node scripts/ops/check-branch-protection-drift.mjs
 
       - name: Ops alert-plane drift — live GCP policies vs committed manifest
+        if: always() && steps.auth.outcome == 'success'
         env:
           GCLOUD_PROJECT: burnbar
         run: node scripts/ops/check-ops-alert-plane-drift.mjs
+
+      - name: Billing budget drift — live budget vs governance/ops-billing-budget.json
+        if: always() && steps.auth.outcome == 'success'
+        env:
+          OPS_BILLING_ACCOUNT: ${{ vars.OPS_BILLING_ACCOUNT }}
+        run: node scripts/ops/check-billing-budget-drift.mjs
 
   detect-secrets:
     runs-on: ubuntu-latest
@@ -217,6 +238,12 @@ jobs:
         env:
           GCLOUD_PROJECT: burnbar
         run: node scripts/ops/check-ops-alert-plane-drift.mjs
+
+      - name: Billing budget drift — live budget vs governance/ops-billing-budget.json
+        if: always()
+        env:
+          OPS_BILLING_ACCOUNT: ${{ vars.OPS_BILLING_ACCOUNT }}
+        run: node scripts/ops/check-billing-budget-drift.mjs
 
       - name: Collect Firebase security evidence
         env:
