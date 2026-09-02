@@ -1,21 +1,109 @@
 import { expect } from "vitest";
 
 import { runFakeFirestoreTransaction } from "../fakeFirestoreTransaction.js";
+import type { BolaExpectedCode } from "../../security/bolaCoverageTypes.js";
 
 import { seedBolaVictimTenant } from "./bolaVictimSeeds.generated.js";
+import { BOLA_EXPECTED_CODES } from "./bolaExpectedCodes.generated.js";
 
-type BolaExpectedCode = "permission-denied" | "not-found" | "failed-precondition" | "unauthenticated";
 type BolaExpectedOutcome = "throws" | "no-side-effect";
 
-/** Endpoints requiring strict denial codes (not generic invalid-argument). */
+/** Endpoints whose measured denial code is required by the BOLA harness. */
 export const BOLA_STRICT_CODE_ENDPOINTS = new Set([
+  "adoptProviderAccountForDevice",
+  "approveHermesGatewayDeviceGrant",
+  "approveLinuxAppCheckDevice",
   "burnBarHermesGateway",
   "cancelCredentialTransfer",
   "completeCredentialTransfer",
-  "consumeCredentialTransfer",
+  "deleteProviderAccount",
+  "getHermesGatewayAttachmentDownloadUrl",
+  "issueIrohControllerRouteChallenge",
+  "issueLinuxAppCheckChallenge",
+  "issuePhoneControlEnrollmentGrant",
+  "issueTrustedSignalIdentityRepairChallenge",
+  "listLinuxAppCheckDevices",
+  "mintLinuxAppCheckToken",
   "pollCliLink",
+  "refreshProviderAccountQuota",
+  "registerIrohControllerRoute",
+  "registerLinuxAppCheckDevice",
+  "repairTrustedSignalIdentity",
+  "resolveActiveIrohControllerRoutes",
+  "respondHermesGatewayApproval",
+  "revokeEscrowDeviceTrust",
+  "revokeHermesGatewayClient",
+  "revokeIrohControllerRoute",
+  "revokeLinuxAppCheckDevice",
+  "rotateHermesGatewayClientToken",
   "triggerVoIPCall",
+  "updateProviderAccount",
+  "uploadProviderQuotaSnapshot",
   "validateOpenTimestampsProof",
+]);
+
+/** Endpoints whose measured cross-tenant denial still needs handler alignment. */
+export const BOLA_STRICT_CODE_PENDING: ReadonlyMap<string, BolaExpectedCode> = new Map([
+  ["appendCliAgentMissionEvent", "invalid-argument"],
+  ["approveEscrowDeviceTrust", "invalid-argument"],
+  ["beginBurnbarAttachment", "invalid-argument"],
+  ["beginEncryptedSessionBlobUpload", "permission-denied"],
+  ["cancelCliAgentMission", "invalid-argument"],
+  ["claimCliAgentMission", "invalid-argument"],
+  ["claimSignalPrekeyBundle", "failed-precondition"],
+  ["commitEncryptedProjectMemorySnapshot", "permission-denied"],
+  ["commitEncryptedSearchIndexBatch", "permission-denied"],
+  ["commitKnowledgeBatch", "permission-denied"],
+  ["completeCliLink", "permission-denied"],
+  ["completeHermesPairing", "permission-denied"],
+  ["completePiAgentPairing", "permission-denied"],
+  ["composeBurnbarAttachment", "invalid-argument"],
+  ["configureKnowledgeSource", "permission-denied"],
+  ["confirmRecovery", "invalid-argument"],
+  ["connectHostedQuotaAccount", "invalid-argument"],
+  ["connectKnowledgeRepo", "permission-denied"],
+  ["connectProviderAccount", "invalid-argument"],
+  ["connectSelfHostedQuotaAccount", "invalid-argument"],
+  ["createCliAgentMission", "invalid-argument"],
+  ["createCredentialTransfer", "already-exists"],
+  ["createHermesPairing", "permission-denied"],
+  ["createPiAgentPairing", "permission-denied"],
+  ["deleteBurnbarAttachment", "invalid-argument"],
+  ["deleteHostedQuotaCredentials", "invalid-argument"],
+  ["deleteKnowledgeSource", "permission-denied"],
+  ["disconnectKnowledgeRepo", "permission-denied"],
+  ["enqueueHermesGatewayEvent", "failed-precondition"],
+  ["finalizeBurnbarAttachment", "invalid-argument"],
+  ["getEncryptedProjectMemorySnapshot", "permission-denied"],
+  ["getEncryptedSessionBlobDownloadUrl", "permission-denied"],
+  ["mintBurnbarAttachmentPartURL", "invalid-argument"],
+  ["publishAgentGrantAuthority", "permission-denied"],
+  ["publishIrohPairingPublicKey", "permission-denied"],
+  ["publishIrohPairingRecord", "permission-denied"],
+  ["publishMissionApprovalCeiling", "invalid-argument"],
+  ["publishPhoneControlAuthority", "permission-denied"],
+  ["publishRelaySenderKey", "permission-denied"],
+  ["publishSignalPrekeyBundle", "failed-precondition"],
+  ["queryConversations", "permission-denied"],
+  ["queueAgentCapabilityGrantRequest", "invalid-argument"],
+  ["recordSignalRotation", "failed-precondition"],
+  ["recordSignalSession", "failed-precondition"],
+  ["redeemMissionApprovalAnswer", "invalid-argument"],
+  ["registerEscrowDevice", "invalid-argument"],
+  ["respondMissionApproval", "invalid-argument"],
+  ["revokeHermesConnection", "permission-denied"],
+  ["revokeIrohPairingRecord", "permission-denied"],
+  ["revokePiAgentConnection", "permission-denied"],
+  ["rotateCloudVaultKey", "permission-denied"],
+  ["searchEncryptedConversationIndex", "permission-denied"],
+  ["setHermesGatewayOversightMode", "failed-precondition"],
+  ["signalPrekeyWatermark", "failed-precondition"],
+  ["submitAgentNotificationReply", "invalid-argument"],
+  ["ticketBurnbarAttachmentDownload", "invalid-argument"],
+  ["updateCliAgentMissionStatus", "invalid-argument"],
+  ["updateHermesConnectionStatus", "permission-denied"],
+  ["updatePiAgentConnectionStatus", "permission-denied"],
+  ["consumeCredentialTransfer", "permission-denied"],
 ]);
 
 export const ALICE_UID = "alice-bola-uid";
@@ -102,37 +190,6 @@ export function callableRunner(candidate: unknown): <Result = unknown>(request: 
   return async (request: unknown) => run.call(candidate, request);
 }
 
-const DENIAL_MESSAGE_PATTERNS: Record<
-  "permission-denied" | "not-found" | "failed-precondition" | "unauthenticated",
-  RegExp
-> = {
-  "permission-denied": /permission[- ]denied|does not belong|belongs to another|forbidden|does not own namespace/i,
-  "not-found": /not[- ]found|no .* found|invalid or expired|does not exist|account not found|does not exist/i,
-  "failed-precondition": /failed[- ]precondition|already (?:used|consumed)|expired|not available|is required/i,
-  unauthenticated: /unauthenticated|sign[- ]in required/i,
-};
-
-const DENIAL_HTTPS_CODES: Record<
-  "permission-denied" | "not-found" | "failed-precondition" | "unauthenticated",
-  Set<string>
-> = {
-  "permission-denied": new Set(["permission-denied", "invalid-argument"]),
-  "not-found": new Set(["not-found", "invalid-argument"]),
-  "failed-precondition": new Set(["failed-precondition", "invalid-argument"]),
-  unauthenticated: new Set(["unauthenticated", "invalid-argument"]),
-};
-
-const ANY_CALLABLE_DENIAL_CODE = new Set([
-  "permission-denied",
-  "not-found",
-  "failed-precondition",
-  "unauthenticated",
-  "invalid-argument",
-  "resource-exhausted",
-  "already-exists",
-  "aborted",
-]);
-
 function isHarnessAssertionFailure(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   return (
@@ -145,7 +202,7 @@ function isHarnessAssertionFailure(error: unknown): boolean {
 export async function expectCallableDenial(
   run: (request: unknown) => Promise<unknown>,
   request: unknown,
-  expectedCode: "permission-denied" | "not-found" | "failed-precondition" | "unauthenticated",
+  expectedCode: BolaExpectedCode,
   options: { strictCode?: boolean } = {},
 ): Promise<void> {
   const { strictCode = false } = options;
@@ -158,28 +215,12 @@ export async function expectCallableDenial(
     const rawCode = error && typeof error === "object" ? Reflect.get(error, "code") : undefined;
     const code = typeof rawCode === "string" ? rawCode : undefined;
     if (strictCode) {
-      if (code === expectedCode || (code && DENIAL_HTTPS_CODES[expectedCode].has(code))) {
-        return;
-      }
-      const message = error instanceof Error ? error.message : String(error);
-      if (DENIAL_MESSAGE_PATTERNS[expectedCode].test(message)) {
-        return;
-      }
-      throw error;
-    }
-    if (code && ANY_CALLABLE_DENIAL_CODE.has(code)) {
+      if (code !== expectedCode) throw error;
       return;
     }
-    if (code && (code.includes(expectedCode) || code === expectedCode || DENIAL_HTTPS_CODES[expectedCode].has(code))) {
-      return;
-    }
-    const message = error instanceof Error ? error.message : String(error);
-    if (DENIAL_MESSAGE_PATTERNS[expectedCode].test(message)) {
-      return;
-    }
-    if (code && code.toLowerCase().includes(expectedCode)) {
-      return;
-    }
+    // Non-strict callers still require the declared code. The old generic
+    // code and message-pattern fallbacks masked contract drift.
+    if (code === expectedCode) return;
     throw error;
   }
   expect.fail(`expected callable to reject with ${expectedCode}`);
@@ -394,9 +435,10 @@ export async function tier2CallableProof(
     run,
     payload,
     expectedOutcome = "throws",
-    expectedCode = "not-found",
-    strictCode = BOLA_STRICT_CODE_ENDPOINTS.has(exportedName),
+    expectedCode: requestedExpectedCode,
+    strictCode = BOLA_STRICT_CODE_ENDPOINTS.has(exportedName) || BOLA_STRICT_CODE_PENDING.has(exportedName),
   } = options;
+  const expectedCode = requestedExpectedCode ?? BOLA_EXPECTED_CODES[exportedName] ?? "not-found";
 
   store.clear();
   seedBolaVictimTenant(store, exportedName);

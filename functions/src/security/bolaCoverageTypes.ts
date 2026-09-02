@@ -15,7 +15,13 @@ export type BolaCoverageKind =
   | "platform-trigger"
   | "not-applicable-public";
 
-export type BolaExpectedCode = "permission-denied" | "not-found" | "failed-precondition" | "unauthenticated";
+export type BolaExpectedCode =
+  | "permission-denied"
+  | "not-found"
+  | "failed-precondition"
+  | "unauthenticated"
+  | "invalid-argument"
+  | "already-exists";
 
 export type BolaCoverageRef = {
   file: string;

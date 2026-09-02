@@ -2,7 +2,11 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { BOLA_STRICT_CODE_ENDPOINTS } from "./bola/callableBolaHarness.js";
+import {
+  BOLA_STRICT_CODE_ENDPOINTS,
+  BOLA_STRICT_CODE_PENDING,
+} from "./bola/callableBolaHarness.js";
+import { BOLA_EXPECTED_CODES } from "./bola/bolaExpectedCodes.generated.js";
 import { endpointAuthorizationMatrix } from "../security/endpointAuthorizationMatrix.js";
 import { validateEndpointBolaCoverage } from "../security/bolaCoverageValidators.js";
 
@@ -39,6 +43,69 @@ const TIER2_ISOLATION_ENDPOINTS = new Set(
     )
     .map((entry) => entry.exportedName),
 );
+
+const BOLA_STRICT_CODE_PENDING_BASELINE = new Set([
+  "appendCliAgentMissionEvent",
+  "approveEscrowDeviceTrust",
+  "beginBurnbarAttachment",
+  "beginEncryptedSessionBlobUpload",
+  "cancelCliAgentMission",
+  "claimCliAgentMission",
+  "claimSignalPrekeyBundle",
+  "commitEncryptedProjectMemorySnapshot",
+  "commitEncryptedSearchIndexBatch",
+  "commitKnowledgeBatch",
+  "completeCliLink",
+  "completeHermesPairing",
+  "completePiAgentPairing",
+  "composeBurnbarAttachment",
+  "configureKnowledgeSource",
+  "confirmRecovery",
+  "connectHostedQuotaAccount",
+  "connectKnowledgeRepo",
+  "connectProviderAccount",
+  "connectSelfHostedQuotaAccount",
+  "createCliAgentMission",
+  "createCredentialTransfer",
+  "createHermesPairing",
+  "createPiAgentPairing",
+  "deleteBurnbarAttachment",
+  "deleteHostedQuotaCredentials",
+  "deleteKnowledgeSource",
+  "disconnectKnowledgeRepo",
+  "enqueueHermesGatewayEvent",
+  "finalizeBurnbarAttachment",
+  "getEncryptedProjectMemorySnapshot",
+  "getEncryptedSessionBlobDownloadUrl",
+  "mintBurnbarAttachmentPartURL",
+  "publishAgentGrantAuthority",
+  "publishIrohPairingPublicKey",
+  "publishIrohPairingRecord",
+  "publishMissionApprovalCeiling",
+  "publishPhoneControlAuthority",
+  "publishRelaySenderKey",
+  "publishSignalPrekeyBundle",
+  "queryConversations",
+  "queueAgentCapabilityGrantRequest",
+  "recordSignalRotation",
+  "recordSignalSession",
+  "redeemMissionApprovalAnswer",
+  "registerEscrowDevice",
+  "respondMissionApproval",
+  "revokeHermesConnection",
+  "revokeIrohPairingRecord",
+  "revokePiAgentConnection",
+  "rotateCloudVaultKey",
+  "searchEncryptedConversationIndex",
+  "setHermesGatewayOversightMode",
+  "signalPrekeyWatermark",
+  "submitAgentNotificationReply",
+  "ticketBurnbarAttachmentDownload",
+  "updateCliAgentMissionStatus",
+  "updateHermesConnectionStatus",
+  "updatePiAgentConnectionStatus",
+  "consumeCredentialTransfer",
+]);
 
 describe("bola coverage registry", () => {
   it("matrix covers every exported Cloud Function from index.ts", () => {
@@ -88,6 +155,29 @@ describe("bola coverage registry", () => {
     expect(TIER2_ISOLATION_ENDPOINTS.size).toBeGreaterThanOrEqual(60);
     for (const name of P0_RUNTIME_PROOFS) {
       expect(TIER2_ISOLATION_ENDPOINTS).toContain(name);
+    }
+  });
+
+  it("assigns one expected denial code to every object-id endpoint", () => {
+    const objectIdNames = endpointAuthorizationMatrix
+      .filter((entry) => entry.objectIdsFromClient.length > 0)
+      .map((entry) => entry.exportedName)
+      .sort((left, right) => left.localeCompare(right));
+    const expectedCodeNames = Object.keys(BOLA_EXPECTED_CODES).sort((left, right) => left.localeCompare(right));
+
+    expect(expectedCodeNames).toEqual(objectIdNames);
+    for (const name of objectIdNames) {
+      expect(BOLA_EXPECTED_CODES[name], name).toBeTruthy();
+    }
+  });
+
+  it("keeps the strict-code pending ledger shrink-only", () => {
+    const pendingNames = [...BOLA_STRICT_CODE_PENDING.keys()];
+    expect(new Set(pendingNames).size).toBe(pendingNames.length);
+    for (const name of pendingNames) {
+      expect(BOLA_STRICT_CODE_PENDING_BASELINE, name).toContain(name);
+      expect(BOLA_STRICT_CODE_ENDPOINTS.has(name), name).toBe(false);
+      expect(BOLA_STRICT_CODE_PENDING.get(name), name).toBe(BOLA_EXPECTED_CODES[name]);
     }
   });
 

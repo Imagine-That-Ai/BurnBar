@@ -126,7 +126,7 @@ describe("BOLA — hermesGateway callables", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "enqueueHermesGatewayEvent",
       run,
-      expectedCode: "not-found",
+      expectedCode: "failed-precondition",
       expectedOutcome: "throws",
       payload: {
         clientId: "bob-client",
@@ -145,7 +145,7 @@ describe("BOLA — hermesGateway callables", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "setHermesGatewayOversightMode",
       run,
-      expectedCode: "not-found",
+      expectedCode: "failed-precondition",
       expectedOutcome: "throws",
       payload: { clientId: "bob-client", mode: "supervised" },
     });

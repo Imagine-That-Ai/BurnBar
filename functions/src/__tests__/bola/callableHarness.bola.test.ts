@@ -19,6 +19,22 @@ describe("callableBolaHarness sanity", () => {
     expect(failed).toBe(true);
   });
 
+  it("expectCallableDenial rejects a mismatched code without fallback matching", async () => {
+    const mismatched = {
+      run: async () => {
+        throw Object.assign(new Error("Resource not found"), { code: "permission-denied" });
+      },
+    };
+
+    await expect(
+      expectCallableDenial(
+        callableRunner(mismatched),
+        callableRequest("u", {}),
+        "not-found",
+      ),
+    ).rejects.toMatchObject({ code: "permission-denied" });
+  });
+
   it("tier2CallableProof fails successful calls when throws is expected", async () => {
     const store = new Map<string, Record<string, unknown>>();
     const succeeding = { run: async () => ({ ok: true }) };
