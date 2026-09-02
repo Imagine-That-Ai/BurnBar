@@ -21,6 +21,7 @@ jobs:
   collect:
     name: Check production deploy history and health
     runs-on: ubuntu-latest
+    # reason: cap on a new observation job (GitHub API reads only), not a raise.
     timeout-minutes: 15
     outputs:
       status: ${{ steps.collect.outputs.status }}
@@ -38,6 +39,9 @@ jobs:
 
       - name: Collect deploy runs and public health
         id: collect
+        # reason: the collector must not abort the job before the scoreboard is
+        # uploaded; "Fail closed on red or unavailable" below re-fails the job
+        # from steps.collect.outputs.status, and open-failure-issue pages on it.
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
