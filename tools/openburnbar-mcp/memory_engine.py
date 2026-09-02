@@ -1468,7 +1468,7 @@ def ollama_extract(transcript: str, max_facts: int, model: str, base_url: str, t
 ExtractorFn = Callable[[str, int], list[Fact]]
 
 
-def gate_transcript(transcript: str) -> tuple[str | None, dict[str, Any]]:
+def gate_transcript(transcript: str, *, pii_policy: str = "keep") -> tuple[str | None, dict[str, Any]]:
     """Gate a rendered transcript before it leaves the process.
 
     Returns (safe transcript or None, report). The transcript is withheld
@@ -1476,7 +1476,7 @@ def gate_transcript(transcript: str) -> tuple[str | None, dict[str, Any]]:
     joined form that cannot be redacted in place; otherwise secrets are
     redacted and the redacted rendering is returned.
     """
-    findings = scan_text(transcript, pii_policy="keep")
+    findings = scan_text(transcript, pii_policy=pii_policy)
     if not findings.corpus_available:
         return None, {
             "redacted": False,
@@ -1491,11 +1491,18 @@ def gate_transcript(transcript: str) -> tuple[str | None, dict[str, Any]]:
             "reason": "secret detected in a joined or continued form that cannot be redacted; transcript withheld from the external extractor",
             "labels": findings.secret_labels,
         }
+    if findings.has_pii and pii_policy == "reject":
+        return None, {
+            "redacted": False,
+            "withheld": True,
+            "reason": "PII policy is reject; transcript withheld from the external extractor",
+            "labels": findings.pii_labels,
+        }
     return findings.redacted_text, {
-        "redacted": findings.has_secret,
+        "redacted": findings.redacted_text != transcript,
         "withheld": False,
         "reason": None,
-        "labels": findings.secret_labels,
+        "labels": sorted(set(findings.secret_labels + findings.pii_labels)),
     }
 
 
@@ -1935,6 +1942,21 @@ class MemoryEngine:
         self.provider = provider
         self.config = config or EngineConfig()
         self.db_path = db_path
+        self.conn.create_function(
+            "memory_aux_is_injection",
+            4,
+            lambda tags, entities, metadata, source_ref: int(
+                bool(
+                    auxiliary_injection_labels(
+                        _json_loads(tags, []),
+                        _json_loads(entities, []),
+                        _json_loads(metadata, {}),
+                        source_ref,
+                    )
+                )
+            ),
+            deterministic=True,
+        )
 
     # ----- construction helpers -----------------------------------------
 
@@ -2114,6 +2136,7 @@ class MemoryEngine:
         FROM memories AS m
         LEFT JOIN memory_vectors AS v ON v.memory_rowid = m.rowid AND v.embedding_version = ?
     """
+    _SELECT_NO_VECTOR = "SELECT m.rowid AS rowid, m.* FROM memories AS m "
 
     def _load_active(
         self, project_id: str, *, include_personal_cross_project: bool = True, include_cross_project: bool = False
@@ -2260,7 +2283,9 @@ class MemoryEngine:
                 # process (claude -p, an Ollama endpoint, a caller-supplied
                 # function). It only ever sees a gated transcript, and nothing
                 # leaves when the gate itself cannot run.
-                safe_transcript, transcript_gate = gate_transcript(render_transcript(normalized_messages))
+                safe_transcript, transcript_gate = gate_transcript(
+                    render_transcript(normalized_messages), pii_policy=self.config.pii_policy
+                )
                 if safe_transcript is None:
                     extraction_error = f"{extractor_name}: {transcript_gate.get('reason')}"
                     extractor_name = "heuristic"
@@ -2493,6 +2518,12 @@ class MemoryEngine:
         # quarantine an otherwise clean existing row.
         reinforce_injection = [f"aux:{label}" for label in auxiliary_injection_labels(fact.tags, entities, {}, None)]
         relations = extract_relations(body)
+        # Project resolution or a prior item in a batch may have left a write
+        # transaction open. External embedding must never run while that lock
+        # is held; each fact remains independently durable and the batch
+        # receipt is written after all facts complete.
+        if self.conn.in_transaction:
+            self._commit()
         vector = self.provider.embed([body])[0] if self.provider.available else None
         tokens = tokenize(" ".join([body, " ".join(fact.tags), " ".join(entities), fact.source_ref or ""]))
 
@@ -2564,7 +2595,7 @@ class MemoryEngine:
             else:
                 near = self._nearest(vector, tokens, candidates)
                 if near is not None:
-                    return self._reinforce(
+                    decision = self._reinforce(
                         near[1].id,
                         fact,
                         entities,
@@ -2573,6 +2604,12 @@ class MemoryEngine:
                         labels=gate.labels,
                         quarantine_labels=reinforce_injection,
                     )
+                    if gate.action == "retain" and gate.vault_body is not None:
+                        # Near duplicates can redact to different bodies while
+                        # still representing the same credential-bearing fact.
+                        # The retained vault must follow the newest secret.
+                        decision["secretRotated"] = self._rotate_vault(near[1].id, project_id, gate)
+                    return decision
                 supersede_targets, retire_targets = self._resolve_conflicts(
                     project_id=project_id,
                     body=body,
@@ -2985,8 +3022,11 @@ class MemoryEngine:
                 labels=sorted(set(quarantine_labels)),
                 actor=self.config.actor,
             )
+        daemon_visible_changed = merged_tags != existing.tags or confidence != existing.confidence
         decision: dict[str, Any] = {
-            "event": "UPDATE" if (reactivate or review_status != existing.review_status) else "NONE",
+            "event": "UPDATE"
+            if (reactivate or review_status != existing.review_status or daemon_visible_changed)
+            else "NONE",
             "memoryID": memory_id,
             "reason": reason,
             "kind": existing.kind,
@@ -3123,6 +3163,30 @@ class MemoryEngine:
         query_text = (query or "").strip()
         lim = max(1, min(int(limit), 100))
         now = datetime.now(UTC)
+        since_dt, until_dt = _parse_iso(since), _parse_iso(until)
+        if since and since.strip() and since_dt is None:
+            return {
+                "status": "unavailable",
+                "code": "INVALID_TIMESTAMP",
+                "argument": "since",
+                "reason": "since must be a valid ISO-8601 timestamp",
+                **project_payload(project_id, root),
+            }
+        if until and until.strip() and until_dt is None:
+            return {
+                "status": "unavailable",
+                "code": "INVALID_TIMESTAMP",
+                "argument": "until",
+                "reason": "until must be a valid ISO-8601 timestamp",
+                **project_payload(project_id, root),
+            }
+        if since_dt and until_dt and since_dt > until_dt:
+            return {
+                "status": "unavailable",
+                "code": "INVALID_TIME_RANGE",
+                "reason": "since must not be later than until",
+                **project_payload(project_id, root),
+            }
         if include_superseded:
             rows = self.conn.execute(
                 self._SELECT
@@ -3139,7 +3203,6 @@ class MemoryEngine:
         wanted_kinds = {normalize_kind(k) for k in kinds} if kinds else None
         wanted_tags = set(normalize_tags(list(tags))) if tags else None
         wanted_entities = {str(item).lower() for item in entities} if entities else None
-        since_dt, until_dt = _parse_iso(since), _parse_iso(until)
         scope_norm = (scope or "all").strip().lower()
 
         def allowed(memory: ActiveMemory) -> bool:
@@ -3420,7 +3483,7 @@ class MemoryEngine:
     ) -> dict[str, Any]:
         project_id, root = resolve_project(self.conn, project_path)
         where = ["1=1"]
-        params: list[Any] = [self.provider.version_id]
+        params: list[Any] = []
         if not include_cross_project:
             where.append("(m.project_id = ? OR m.scope = 'personal')")
             params.append(project_id)
@@ -3429,12 +3492,32 @@ class MemoryEngine:
         if scope and scope != "all":
             where.append("m.scope = ?")
             params.append(scope)
-        if review_status:
+        if review_status == "approved":
+            where.append(
+                "m.review_status = 'approved' AND memory_aux_is_injection(m.tags_json, m.entities_json, m.metadata_json, m.source_ref) = 0"
+            )
+        elif review_status == "quarantined":
+            where.append(
+                "(m.review_status = 'quarantined' OR (m.review_status = 'approved' AND memory_aux_is_injection(m.tags_json, m.entities_json, m.metadata_json, m.source_ref) = 1))"
+            )
+        elif review_status:
             where.append("m.review_status = ?")
             params.append(review_status)
         if sensitivity:
             where.append("m.sensitivity = ?")
             params.append(sensitivity)
+        wanted_kinds = sorted({normalize_kind(k) for k in kinds}) if kinds else []
+        if wanted_kinds:
+            where.append("m.kind IN (" + ",".join("?" for _ in wanted_kinds) + ")")
+            params.extend(wanted_kinds)
+        wanted_tags = normalize_tags(list(tags)) if tags else []
+        for tag in wanted_tags:
+            where.append("EXISTS (SELECT 1 FROM json_each(m.tags_json) AS tag WHERE tag.value = ?)")
+            params.append(tag)
+        if filters:
+            filter_sql, filter_params = _compile_filter_sql(filters)
+            where.append(filter_sql)
+            params.extend(filter_params)
         order_sql = {
             "updated_desc": "m.updated_at DESC",
             "updated_asc": "m.updated_at ASC",
@@ -3442,27 +3525,20 @@ class MemoryEngine:
             "salience_desc": "m.salience DESC, m.updated_at DESC",
             "access_desc": "m.access_count DESC, m.updated_at DESC",
         }.get(order, "m.updated_at DESC")
-        rows = self.conn.execute(
-            self._SELECT + "WHERE " + " AND ".join(where) + f" ORDER BY {order_sql}", params
-        ).fetchall()
-        memories = [item for item in (self._row_to_memory(row) for row in rows) if item is not None]
-        wanted_kinds = {normalize_kind(k) for k in kinds} if kinds else None
-        wanted_tags = set(normalize_tags(list(tags))) if tags else None
-        filtered = [
-            memory
-            for memory in memories
-            if (not review_status or memory.review_status == review_status)
-            and (not wanted_kinds or memory.kind in wanted_kinds)
-            and (not wanted_tags or wanted_tags.issubset(set(memory.tags)))
-            and (not filters or match_filters(memory, filters))
-        ]
         size = max(1, min(int(page_size), 200))
         page_index = max(1, int(page))
         start = (page_index - 1) * size
-        chunk = filtered[start : start + size]
+        where_sql = "WHERE " + " AND ".join(where)
+        count_sql = "SELECT COUNT(*) FROM memories AS m " + where_sql  # noqa: S608 -- reason: clauses come from fixed mappings; all values are bound
+        total = int(self.conn.execute(count_sql, params).fetchone()[0])
+        rows = self.conn.execute(
+            self._SELECT_NO_VECTOR + where_sql + f" ORDER BY {order_sql} LIMIT ? OFFSET ?",
+            [*params, size, start],
+        ).fetchall()
+        chunk = [item for item in (self._row_to_memory(row) for row in rows) if item is not None]
         return {
             "status": "ok",
-            "total": len(filtered),
+            "total": total,
             "page": page_index,
             "pageSize": size,
             "results": [memory.public() for memory in chunk],
@@ -4198,6 +4274,7 @@ class MemoryEngine:
         project_id, root = resolve_project(self.conn, project_path)
         imported = 0
         skipped = 0
+        retryable = 0
         decisions: list[dict[str, Any]] = []
         for raw in items:
             if not isinstance(raw, dict):
@@ -4223,12 +4300,26 @@ class MemoryEngine:
                 source_hash=key,
                 extractor="legacy-import",
             )
+            decision["legacyMemoryID"] = legacy_id
             decisions.append(decision)
-            self.conn.execute(
-                "INSERT OR REPLACE INTO memory_ingest (source_hash, project_id, ts, decisions_json) VALUES (?, ?, ?, ?)",
-                (key, project_id, now_iso(), _json_dumps([_ingest_decision(decision)])),
+            terminal = decision["event"] in ("ADD", "UPDATE", "DELETE") or (
+                decision["event"] == "NONE" and decision.get("code") != "PREVIOUSLY_REJECTED"
             )
-            if decision["event"] in ("ADD", "UPDATE", "NONE"):
+            if terminal:
+                self.conn.execute(
+                    "INSERT OR REPLACE INTO memory_ingest (source_hash, project_id, ts, decisions_json) VALUES (?, ?, ?, ?)",
+                    (key, project_id, now_iso(), _json_dumps([_ingest_decision(decision)])),
+                )
+                if decision.get("memoryID"):
+                    self.record_daemon_mirror(
+                        str(decision["memoryID"]),
+                        legacy_id,
+                        body_hash=sha256_hex(str(decision.get("text") or raw.get("text") or "")),
+                        project_path=str(raw.get("legacyProjectPath") or root),
+                    )
+            else:
+                retryable += 1
+            if terminal and decision["event"] in ("ADD", "UPDATE", "NONE"):
                 imported += 1
         audit_event(
             self.conn,
@@ -4245,6 +4336,7 @@ class MemoryEngine:
             "status": "ok",
             "imported": imported,
             "skipped": skipped,
+            "retryable": retryable,
             "decisions": decisions,
             **project_payload(project_id, root),
         }
@@ -4374,6 +4466,139 @@ def _resolve_field(memory: ActiveMemory, key: str) -> Any:
         else:
             return None
     return value
+
+
+_FILTER_SQL_FIELDS: dict[str, tuple[str, str]] = {
+    "kind": ("m.kind", "text"),
+    "scope": ("m.scope", "text"),
+    "confidence": ("m.confidence", "number"),
+    "salience": ("m.salience", "number"),
+    "sensitivity": ("m.sensitivity", "text"),
+    "reviewStatus": (
+        "CASE WHEN m.review_status = 'approved' AND memory_aux_is_injection(m.tags_json, m.entities_json, m.metadata_json, m.source_ref) = 1 THEN 'quarantined' ELSE m.review_status END",
+        "text",
+    ),
+    "review_status": (
+        "CASE WHEN m.review_status = 'approved' AND memory_aux_is_injection(m.tags_json, m.entities_json, m.metadata_json, m.source_ref) = 1 THEN 'quarantined' ELSE m.review_status END",
+        "text",
+    ),
+    "tags": ("m.tags_json", "array"),
+    "entities": ("m.entities_json", "array"),
+    "createdAt": ("m.created_at", "text"),
+    "created_at": ("m.created_at", "text"),
+    "updatedAt": ("m.updated_at", "text"),
+    "updated_at": ("m.updated_at", "text"),
+    "accessCount": ("m.access_count", "number"),
+    "sourceKind": ("m.source_kind", "text"),
+    "source_kind": ("m.source_kind", "text"),
+    "sourceRef": ("m.source_ref", "text"),
+    "extractor": ("m.extractor", "text"),
+    "projectID": ("m.project_id", "text"),
+}
+
+
+def _metadata_filter_field(key: str) -> tuple[str, str]:
+    parts = key.split(".")
+    if parts[0] == "metadata":
+        parts = parts[1:]
+    if not parts:
+        return "m.metadata_json", "json"
+    path = "$" + "".join("." + json.dumps(part, ensure_ascii=True) for part in parts)
+    quoted_path = "'" + path.replace("'", "''") + "'"
+    return f"json_extract(m.metadata_json, {quoted_path})", f"json_type(m.metadata_json, {quoted_path})"
+
+
+def _compile_filter_comparison(key: str, operator: str, expected: Any) -> tuple[str, list[Any]]:
+    field = _FILTER_SQL_FIELDS.get(key)
+    if field is None:
+        expression, field_type = _metadata_filter_field(key)
+    else:
+        expression, field_type = field
+
+    if operator in {"contains", "not_contains"}:
+        if field_type == "array":
+            contains_sql = f"EXISTS (SELECT 1 FROM json_each({expression}) AS item WHERE item.value = ?)"  # noqa: S608 -- reason: expression comes from a fixed field map or escaped JSON path
+            params = [expected]
+        elif field_type == "text":
+            contains_sql = f"instr(lower(COALESCE(CAST({expression} AS TEXT), '')), lower(CAST(? AS TEXT))) > 0"
+            params = [expected]
+        elif field_type == "number":
+            contains_sql, params = "0", []
+        elif field_type == "json":
+            contains_sql, params = "0", []
+        else:
+            contains_sql = (
+                f"COALESCE((({field_type} = 'array' AND EXISTS "  # noqa: S608 -- reason: expressions come from a fixed field map or escaped JSON path
+                f"(SELECT 1 FROM json_each({expression}) AS item WHERE item.value = ?)) "
+                f"OR ({field_type} = 'text' AND "
+                f"instr(lower(CAST({expression} AS TEXT)), lower(CAST(? AS TEXT))) > 0)), 0)"
+            )
+            params = [expected, expected]
+        return (f"NOT ({contains_sql})" if operator == "not_contains" else contains_sql), params
+
+    if operator in {"in", "nin"}:
+        values = list(expected) if isinstance(expected, (list, tuple, set)) else [expected]
+        if not values:
+            return ("1" if operator == "nin" else "0"), []
+        has_none = any(value is None for value in values)
+        concrete = [value for value in values if value is not None]
+        membership = ""
+        if concrete:
+            placeholders = ",".join("?" for _ in concrete)
+            membership = f"{expression} {'NOT IN' if operator == 'nin' else 'IN'} ({placeholders})"
+        if operator == "in":
+            parts = ([membership] if membership else []) + ([f"{expression} IS NULL"] if has_none else [])
+            return "(" + " OR ".join(parts) + ")", concrete
+        parts = ([membership] if membership else []) + ([f"{expression} IS NOT NULL"] if has_none else [])
+        if not has_none:
+            parts.append(f"{expression} IS NULL")
+        return "(" + " AND ".join(parts) + ")" if has_none else "(" + " OR ".join(parts) + ")", concrete
+
+    if operator in {"eq", "ne"}:
+        if expected is None:
+            return f"{expression} IS {'NOT ' if operator == 'ne' else ''}NULL", []
+        if isinstance(expected, (list, dict)):
+            comparison = "!=" if operator == "ne" else "="
+            return f"json({expression}) {comparison} json(?)", [_json_dumps(expected)]
+        return f"{expression} IS {'NOT ' if operator == 'ne' else ''}?", [expected]
+
+    comparison = {"gt": ">", "gte": ">=", "lt": "<", "lte": "<="}.get(operator)
+    if comparison is None:
+        return "0", []
+    return f"{expression} {comparison} ?", [expected]
+
+
+def _compile_filter_sql(filters: dict[str, Any]) -> tuple[str, list[Any]]:
+    """Compile the validated mem0 filter grammar to bound list I/O in SQL."""
+    if not isinstance(filters, dict) or not filters:
+        return "0", []
+    clauses: list[str] = []
+    params: list[Any] = []
+    for key, expected in filters.items():
+        if key in {"AND", "OR"}:
+            if not isinstance(expected, list) or not expected:
+                clauses.append("0")
+                continue
+            nested = [_compile_filter_sql(item) for item in expected if isinstance(item, dict) and item]
+            if len(nested) != len(expected):
+                clauses.append("0")
+                continue
+            clauses.append("(" + (" AND " if key == "AND" else " OR ").join(item[0] for item in nested) + ")")
+            for _sql, nested_params in nested:
+                params.extend(nested_params)
+            continue
+        comparisons = (
+            expected
+            if isinstance(expected, dict) and expected and all(operator in FILTER_OPERATORS for operator in expected)
+            else {"in": expected}
+            if isinstance(expected, list)
+            else {"eq": expected}
+        )
+        for operator, value in comparisons.items():
+            sql, comparison_params = _compile_filter_comparison(key, operator, value)
+            clauses.append(sql)
+            params.extend(comparison_params)
+    return "(" + " AND ".join(clauses) + ")", params
 
 
 def _compare(actual: Any, operator: str, expected: Any) -> bool:

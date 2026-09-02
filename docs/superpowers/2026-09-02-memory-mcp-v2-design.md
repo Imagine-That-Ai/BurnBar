@@ -171,7 +171,10 @@ engine_meta(key PK, value)
    half-life (30d for `event`/`todo`, 365d otherwise) × access boost
    (`1 + 0.1·log2(1+access)` capped at 1.5).
 6. Filter: kind, scope, tags, entities, metadata operators, since/until,
-   min_confidence, sensitivity, review status, expiry, supersession.
+   min_confidence, sensitivity, review status, expiry, supersession. List
+   filters, counts, ordering, and pagination execute in SQLite without joining
+   vector blobs or decrypting rows outside the requested page. Invalid time
+   bounds fail closed instead of widening recall.
 7. Touch `access_count`/`last_accessed_at` on returned rows (reinforcement),
    wrap every body with the untrusted-content wrapper, return `score`,
    `matchedBy`, `why`.
@@ -198,6 +201,12 @@ Capabilities: `memory_write` (new; on when `local_write`, operator profile,
 `BURNBAR_MCP_TOOLSET=memory` and the env is not explicitly `false`),
 `memory_secret_retain` (new; explicit env only), `sensitive_read` (export,
 `include_secrets`).
+
+External extractors receive the transcript only after both secret and the
+configured PII policy have run. `redact` removes detected PII before the
+subprocess or loopback request; `reject` withholds the transcript entirely.
+Quarantined write decisions are returned through the same untrusted-data
+wrapper as read results.
 
 ## 6. Deliberate contract changes
 

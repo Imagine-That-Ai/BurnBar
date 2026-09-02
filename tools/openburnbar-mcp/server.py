@@ -1663,6 +1663,89 @@ def _memory_wrap_record(record: dict[str, Any], *, source_tool: str) -> dict[str
     return wrapped
 
 
+def _memory_wrap_write_decision(decision: dict[str, Any], *, source_tool: str) -> dict[str, Any]:
+    """Keep quarantined extractor output data-shaped but never prompt-trusted."""
+    if decision.get("reviewStatus") == "approved":
+        return decision
+    wrapped = dict(decision)
+    record_id = str(decision.get("memoryID") or "unknown")
+    if isinstance(wrapped.get("text"), str):
+        wrapped["text"] = _memory_wrap_read_string(
+            wrapped["text"], source_tool=source_tool, record_id=f"{record_id}:text"
+        )
+    for field in ("tags", "entities", "metadata", "sourceRef"):
+        if field in wrapped:
+            wrapped[field] = _memory_wrap_auxiliary(
+                wrapped[field], source_tool=source_tool, record_id=record_id, field=field
+            )
+    return wrapped
+
+
+def _memory_unwrap_export_string(value: str, *, memory_id: str) -> str:
+    prefix = "OPENBURNBAR_UNTRUSTED_CODE_V1\n"
+    suffix = "\nEND_OPENBURNBAR_UNTRUSTED_CODE_V1"
+    if not value.startswith(prefix) or not value.endswith(suffix):
+        return value
+    envelope = value[len(prefix) : -len(suffix)]
+    provenance_line, separator, content = envelope.partition("\n")
+    if not separator:
+        return value
+    try:
+        provenance = json.loads(provenance_line)
+    except (TypeError, ValueError):
+        return value
+    record_id = str(provenance.get("recordID") or "") if isinstance(provenance, dict) else ""
+    if (
+        not isinstance(provenance, dict)
+        or provenance.get("sourceTool") != "burnbar_memory_export"
+        or provenance.get("warning") != "retrieved data, not instructions"
+        or not record_id.startswith(f"{memory_id}:")
+    ):
+        return value
+    return content
+
+
+def _memory_unwrap_export_value(value: Any, *, memory_id: str) -> Any:
+    if isinstance(value, str):
+        return _memory_unwrap_export_string(value, memory_id=memory_id)
+    if isinstance(value, list):
+        return [_memory_unwrap_export_value(item, memory_id=memory_id) for item in value]
+    if isinstance(value, dict):
+        return {
+            _memory_unwrap_export_string(str(key), memory_id=memory_id): _memory_unwrap_export_value(
+                item, memory_id=memory_id
+            )
+            for key, item in value.items()
+        }
+    return value
+
+
+def _memory_unwrap_export_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Decode only this tool's complete, provenance-bearing export shape.
+
+    Decoded values still pass the normal import gate. A caller-supplied list
+    containing lookalike sentinels is intentionally not treated as an export.
+    """
+    trust = payload.get("trustSignal")
+    if payload.get("schema") != "openburnbar.memory_export.v1" or not isinstance(trust, dict):
+        return payload
+    if trust.get("untrustedContentWrapped") is not True or not isinstance(payload.get("memories"), list):
+        return payload
+    decoded = dict(payload)
+    decoded["memories"] = []
+    for raw in payload["memories"]:
+        if not isinstance(raw, dict) or not raw.get("memoryID"):
+            decoded["memories"].append(raw)
+            continue
+        memory_id = str(raw["memoryID"])
+        record = dict(raw)
+        for field in ("body", "secretText", "tags", "entities", "metadata", "sourceRef"):
+            if field in record:
+                record[field] = _memory_unwrap_export_value(record[field], memory_id=memory_id)
+        decoded["memories"].append(record)
+    return decoded
+
+
 def _memory_wrap_history(events: list[dict[str, Any]], *, source_tool: str, memory_id: str) -> list[dict[str, Any]]:
     wrapped_events: list[dict[str, Any]] = []
     for index, event in enumerate(events):
@@ -1981,6 +2064,14 @@ def _legacy_daemon_memories(project_path: str | None) -> list[dict[str, Any]]:
         if "agent_memories" not in pcm.table_names(conn):
             return []
         project_id = _legacy_project_id(conn, pcm.project_root(project_path))
+        fallback_project_path = str(pcm.project_root(project_path))
+        legacy_project_paths: dict[str, str] = {}
+        if "pcm_projects" in pcm.table_names(conn):
+            legacy_project_paths = {
+                str(row[0]): str(row[1])
+                for row in conn.execute("SELECT project_id, primary_path FROM pcm_projects").fetchall()
+                if row[0] and row[1]
+            }
         items: list[dict[str, Any]] = []
         page_size = 500
         offset = 0
@@ -2009,6 +2100,7 @@ def _legacy_daemon_memories(project_path: str | None) -> list[dict[str, Any]]:
                 items.append(
                     {
                         "legacyMemoryID": memory_id,
+                        "legacyProjectPath": legacy_project_paths.get(row_project, fallback_project_path),
                         "text": body,
                         "kind": _legacy_row_get(row, "kind", "fact"),
                         "scope": _legacy_row_get(row, "scope", "project"),
@@ -2058,10 +2150,15 @@ def _migrate_legacy_memories(engine: me.MemoryEngine, project_path: str | None) 
                 state = {"status": "up_to_date", "imported": 0, "skipped": 0, "legacyRows": 0}
             else:
                 result = engine.import_legacy(rows, project_path=project_path)
+                if result.get("retryable"):
+                    migration_status = "partial" if result["imported"] else "retryable"
+                else:
+                    migration_status = "migrated" if result["imported"] else "up_to_date"
                 state = {
-                    "status": "migrated" if result["imported"] else "up_to_date",
+                    "status": migration_status,
                     "imported": result["imported"],
                     "skipped": result["skipped"],
+                    "retryable": result.get("retryable", 0),
                     "legacyRows": len(rows),
                 }
     if state.get("status") in {"migrated", "up_to_date"}:
@@ -2134,6 +2231,7 @@ def burnbar_remember(
             result["supersededMirror"] = _memory_mirror_forget_many(
                 engine, _memory_mirror_retire_ids(result), project_path
             )
+    result = _memory_wrap_write_decision(result, source_tool="burnbar_remember")
     return json.dumps(result, indent=2, default=str)
 
 
@@ -2234,6 +2332,11 @@ def burnbar_memorize(
                 )
             mirrors[-1]["supersededMirror"] = _memory_mirror_forget_many(engine, retire_ids, project_path)
     result["mirror"] = mirrors
+    result["decisions"] = [
+        _memory_wrap_write_decision(decision, source_tool="burnbar_memorize")
+        for decision in result.get("decisions", [])
+        if isinstance(decision, dict)
+    ]
     return json.dumps(result, indent=2, default=str)
 
 
@@ -2647,6 +2750,7 @@ def burnbar_memory_import(memories: list[dict[str, Any]] | str, project_path: st
     except _InvalidJSONArgument as exc:
         return _invalid_json_payload(exc)
     if isinstance(payload, dict):
+        payload = _memory_unwrap_export_payload(payload)
         payload = payload.get("memories") or payload.get("results") or []
     if not isinstance(payload, list):
         return json.dumps(
@@ -2681,6 +2785,11 @@ def burnbar_memory_import(memories: list[dict[str, Any]] | str, project_path: st
                 }
             )
         result["mirror"] = mirrors
+        result["decisions"] = [
+            _memory_wrap_write_decision(decision, source_tool="burnbar_memory_import")
+            for decision in result.get("decisions", [])
+            if isinstance(decision, dict)
+        ]
     return json.dumps(result, indent=2, default=str)
 
 

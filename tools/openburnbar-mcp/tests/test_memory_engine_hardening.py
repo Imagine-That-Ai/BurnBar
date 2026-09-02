@@ -169,6 +169,10 @@ def test_auxiliary_injection_quarantines_and_old_rows_are_hidden(tmp_path: Path)
         assert engine.get(legacy["memoryID"])["memory"]["reviewStatus"] == "quarantined"
         approved = engine.list(project_path=repo, review_status="approved")
         assert legacy["memoryID"] not in {item["memoryID"] for item in approved["results"]}
+        approved_filter = engine.list(project_path=repo, filters={"reviewStatus": "approved"})
+        quarantined_filter = engine.list(project_path=repo, filters={"reviewStatus": "quarantined"})
+        assert legacy["memoryID"] not in {item["memoryID"] for item in approved_filter["results"]}
+        assert legacy["memoryID"] in {item["memoryID"] for item in quarantined_filter["results"]}
 
 
 # ---------------------------------------------------------------------------

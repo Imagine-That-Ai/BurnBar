@@ -166,7 +166,7 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` and add t
 | `burnbar_forget` | **Write** hard-delete one memory (body, vectors, history, relations, vault) with a label-only audit event; mirrored to the daemon when reachable |
 | `burnbar_forget_all` | **Write** two-step bulk delete for a project (optionally scope / kinds); requires `confirm="DELETE"` |
 | `burnbar_memory_entities` / `burnbar_memory_relations` | Entities mentioned by memories, and heuristic (subject, predicate, object) relations |
-| `burnbar_memory_export` / `burnbar_memory_import` | JSON export (requires `sensitive_read`; retained secrets excluded unless asked) and import through the same gate |
+| `burnbar_memory_export` / `burnbar_memory_import` | JSON export (requires `sensitive_read`; retained secrets excluded unless asked) and machine-round-trippable import; export trust wrappers are provenance-checked, decoded, then every value passes the normal import gate again |
 | `burnbar_memory_reindex` | **Write** embed memories missing a vector for the active model version; purge stale-version vectors |
 | `burnbar_audit_trail` | Read the label-only memory audit hash chain, with chain verification |
 | `burnbar_memory_analytics` | Counts by kind / scope / sensitivity / review status, embedding coverage, vault entries, policy |
@@ -256,7 +256,9 @@ against mem0 / Mixedbread: [`docs/superpowers/2026-09-02-memory-mcp-v2-design.md
   the app database is unreadable (signed install) it is a status, never an
   error. Migration paginates the complete active daemon ledger rather than
   stopping at 2,000 rows. Transient unavailable or capability-disabled
-  outcomes are not cached and retry on the next read.
+  outcomes and recoverable gate rejections are not receipted or cached and
+  retry on the next read. Successful imports preserve the daemon memory id and
+  original project path so a later forget deletes the legacy daemon row too.
 - **Encrypted at rest.** Bodies and history bodies are AES-256-GCM sealed with
   a key the engine owns (`openburnbar-memory.key`, mode 0600, published
   atomically so two first-run processes cannot truncate each other's key, or

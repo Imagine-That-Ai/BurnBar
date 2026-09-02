@@ -168,7 +168,9 @@ def test_remember_dedups_and_reinforces(tmp_path: Path) -> None:
         )
         assert first["event"] == "ADD" and first["scope"] == "personal"
         assert first["confidence"] == 1.0 and first["tags"] == ["pr"]
-        assert second["event"] == "NONE" and second["memoryID"] == first["memoryID"]
+        # Reinforcement that changes daemon-visible tags is an UPDATE so the
+        # mirror is reconciled instead of retaining stale ranking inputs.
+        assert second["event"] == "UPDATE" and second["memoryID"] == first["memoryID"]
         stored = engine.get(first["memoryID"])["memory"]
         assert stored["accessCount"] == 1
         assert stored["tags"] == ["hygiene", "pr"]
