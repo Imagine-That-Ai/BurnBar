@@ -1,0 +1,71 @@
+name: Semgrep Swift (observing)
+
+# W0-10 (2026-09-01): Semgrep SAST over Swift sources — OBSERVING ONLY.
+#
+# Deliberately NOT a gate:
+#   - not in the Fast Feedback Gate `needs:` list (fast-feedback.yml),
+#   - not a required branch-protection context,
+#   - results upload as a SARIF *artifact* (upload-artifact), not to
+#     code scanning (no github/codeql-action/upload-sarif).
+# The CodeQL lane (codeql.yml, security-extended) is the Swift security
+# gate; this lane is an independent rule engine (semgrep OSS registry,
+# ruleset `p/swift` — public, no token) whose findings get read by humans
+# while we calibrate its false-positive rate. Promote it to a gate only
+# after the signal is trusted.
+#
+# Triggers: schedule + workflow_dispatch only (mirrors the codeql.yml
+# CI-cost posture; no push trigger).
+
+on:
+  schedule:
+    # 47 10 * * * — off the hour, and offset from codeql.yml (09:17) so the
+    # two macOS/ubuntu lanes do not contend for the shared concurrency slots.
+    - cron: "47 10 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: semgrep-swift-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  semgrep-swift:
+    name: semgrep (p/swift, observe)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v5
+        with:
+          python-version: "3.12"
+
+      # Pin the rule engine by exact version so findings are reproducible.
+      # (TODO(pilot): upgrade to the SHA-digest-pinned semgrep/semgrep
+      # container image once a digest for this version is recorded —
+      # keep the repo's pin-by-SHA convention for container images, as
+      # linux-release.yml does for its base images.)
+      - name: Install semgrep (pinned)
+        run: pip install --no-input "semgrep==1.94.0"
+
+      # Observing only: scan the public OSS Swift ruleset (no token, no
+      # proprietary rules), emit SARIF, upload as a plain artifact.
+      - name: semgrep scan (pinned p/swift snapshot)
+        run: |
+          # Rules are a vendored registry snapshot (scripts/ci/semgrep/p-swift.pinned.yaml)
+          # so the pinned engine sees the same rules on every run.
+          semgrep scan \
+            --config scripts/ci/semgrep/p-swift.pinned.yaml \
+            --sarif \
+            --output semgrep-swift.sarif \
+            --metrics=off
+
+      - name: Upload SARIF artifact (observing)
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: semgrep-swift-sarif
+          path: semgrep-swift.sarif
+          if-no-files-found: error
+          retention-days: 30
