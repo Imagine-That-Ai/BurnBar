@@ -1,17 +1,94 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import test from "node:test";
 import {
+  classifyAppGateRun,
   collectObservations,
+  emitMainRedCircuitBreaker,
+  evaluateMainRedCircuitBreaker,
   evaluateGate,
+  findFreezeOverride,
+  formatBreakerSummary,
   githubJson,
   isTransientGithubStatus,
   parseActionsJobRef,
+  parseQueuePullRequestNumber,
   pendingComponentAllowanceMs,
   reconcileStalledChecks,
+  resolveMainAppGateVerdict,
   stalledJobConclusion,
   resolveObservedSha,
+  selectValidFreezeOverride,
 } from "./await-burnbar-ci-gate.mjs";
+
+const MAIN_BASE_SHA = "base-sha";
+const MAIN_COMMITS = [
+  { sha: "main-tip" },
+  { sha: "docs-only" },
+  { sha: "code-red" },
+  { sha: MAIN_BASE_SHA },
+];
+
+function appGateJobs(
+  appConclusion = "success",
+  mobileConclusion = "success",
+  appLaneConclusion = "success",
+) {
+  return [
+    {
+      name: "App build + test (AgentLens)",
+      status: "completed",
+      conclusion: appConclusion,
+      html_url: "https://github.com/o/r/actions/runs/1/job/1",
+    },
+    {
+      name: "Mobile build + unit test",
+      status: "completed",
+      conclusion: mobileConclusion,
+      html_url: "https://github.com/o/r/actions/runs/1/job/2",
+    },
+    {
+      name: "AgentLens Rust + Swift build/test prerequisites",
+      status: "completed",
+      conclusion: appLaneConclusion,
+      html_url: "https://github.com/o/r/actions/runs/1/job/3",
+    },
+  ];
+}
+
+function mainApiFixture({
+  mergeBaseSha = MAIN_BASE_SHA,
+  commits = MAIN_COMMITS,
+  runs = [],
+  jobsByRun = {},
+  timelineByIssue = {},
+  calls = [],
+} = {}) {
+  return async (url) => {
+    calls.push(url);
+    const parsed = new URL(url);
+    const path = parsed.pathname;
+    if (path.includes("/compare/")) {
+      return { merge_base_commit: { sha: mergeBaseSha } };
+    }
+    if (path.endsWith("/commits")) return commits;
+    if (path.includes("/actions/workflows/") && path.endsWith("/runs")) {
+      const event = parsed.searchParams.get("event");
+      return {
+        workflow_runs: runs.filter(
+          (run) => !event || run.event === event,
+        ),
+      };
+    }
+    const jobsMatch = /\/actions\/runs\/(\d+)\/jobs$/u.exec(path);
+    if (jobsMatch) return { jobs: jobsByRun[jobsMatch[1]] ?? [] };
+    const timelineMatch = /\/issues\/(\d+)\/timeline$/u.exec(path);
+    if (timelineMatch) return timelineByIssue[timelineMatch[1]] ?? [];
+    throw new Error(`unexpected fixture URL: ${url}`);
+  };
+}
 
 test("workflow executes trusted base code and observes the exact candidate", () => {
   const workflow = readFileSync(
@@ -210,6 +287,16 @@ test("pull_request_target gate stays read-only and secret-free", () => {
     .filter((line) => line.trim())
     .map((line) => line.trim());
   assert.ok(scopes.length > 0, "permissions block must not be empty");
+  for (const requiredReadScope of [
+    "actions: read",
+    "pull-requests: read",
+    "issues: read",
+  ]) {
+    assert.ok(
+      scopes.includes(requiredReadScope),
+      `trusted gate must grant ${requiredReadScope} for main-verdict and override reads`,
+    );
+  }
   for (const scope of scopes) {
     assert.doesNotMatch(
       scope,
@@ -682,4 +769,237 @@ test("an unreadable job keeps waiting instead of inventing a verdict", async () 
     },
   );
   assert.equal(reconciled.size, 0);
+});
+
+test("stacked queue entries pass both modes with a no-verdict summary", async () => {
+  const calls = [];
+  const fetchJson = mainApiFixture({ calls, runs: [] });
+  const verdict = await resolveMainAppGateVerdict({
+    repository: "owner/repo",
+    baseSha: "temporary-merge-commit",
+    token: "token",
+    options: { fetchJson },
+  });
+  assert.equal(verdict.present, false);
+  assert.match(verdict.reason, /no completed app\/mobile run/u);
+  assert.ok(
+    calls.some((url) =>
+      url.includes(
+        "/actions/workflows/app-pr-gate.yml/runs?branch=main&event=push",
+      ),
+    ),
+  );
+  for (const mode of ["observe", "enforce"]) {
+    const decision = evaluateMainRedCircuitBreaker(verdict, { mode });
+    assert.equal(decision.pass, true);
+    assert.match(formatBreakerSummary(verdict, mode), /no completed/u);
+  }
+  const directory = mkdtempSync(join(tmpdir(), "burnbar-gate-missing-"));
+  const summary = join(directory, "summary.md");
+  try {
+    emitMainRedCircuitBreaker(
+      verdict,
+      evaluateMainRedCircuitBreaker(verdict, { mode: "observe" }),
+      "observe",
+      { GITHUB_STEP_SUMMARY: summary },
+    );
+    assert.match(readFileSync(summary, "utf8"), /no completed app\/mobile verdict/u);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("docs-only main push is skipped and the walk finds the older executed run", async () => {
+  const runs = [
+    {
+      id: 300,
+      event: "push",
+      status: "completed",
+      conclusion: "success",
+      head_sha: "docs-only",
+      created_at: "2026-09-01T12:00:00Z",
+    },
+    {
+      id: 299,
+      event: "push",
+      status: "completed",
+      conclusion: "failure",
+      head_sha: "code-red",
+      created_at: "2026-09-01T11:00:00Z",
+    },
+  ];
+  const verdict = await resolveMainAppGateVerdict({
+    repository: "owner/repo",
+    baseSha: MAIN_BASE_SHA,
+    token: "token",
+    options: {
+      fetchJson: mainApiFixture({
+        runs,
+        jobsByRun: {
+          300: appGateJobs("success", "skipped", "skipped"),
+          299: appGateJobs("failure", "success", "failure"),
+        },
+      }),
+    },
+  });
+  assert.equal(verdict.present, true);
+  assert.equal(verdict.conclusion, "failure");
+  assert.equal(verdict.run.id, 299);
+  assert.deepEqual(
+    verdict.rejectedRuns.map(({ run, reason }) => ({
+      id: run.id,
+      reason,
+    })),
+    [
+      {
+        id: 300,
+        reason:
+          "required jobs did not actually run: Mobile build + unit test, AgentLens Rust + Swift build/test prerequisites",
+      },
+    ],
+  );
+});
+
+test("classifier-skipped app and mobile lanes are no verdict, never green", () => {
+  const verdict = classifyAppGateRun(
+    {
+      id: 301,
+      status: "completed",
+      conclusion: "success",
+    },
+    appGateJobs("success", "skipped", "skipped"),
+  );
+  assert.equal(verdict.present, false);
+  assert.equal(
+    evaluateMainRedCircuitBreaker(verdict, { mode: "enforce" }).pass,
+    true,
+  );
+});
+
+test("completed failure passes in observe mode with a warning annotation", () => {
+  const verdict = classifyAppGateRun(
+    {
+      id: 302,
+      status: "completed",
+      conclusion: "failure",
+    },
+    appGateJobs("failure", "success", "failure"),
+  );
+  assert.equal(verdict.present, true);
+  const decision = evaluateMainRedCircuitBreaker(verdict, { mode: "observe" });
+  assert.equal(decision.pass, true);
+  assert.equal(decision.status, "failed_observed");
+
+  const lines = [];
+  const originalLog = console.log;
+  console.log = (line) => lines.push(line);
+  try {
+    emitMainRedCircuitBreaker(verdict, decision, "observe");
+  } finally {
+    console.log = originalLog;
+  }
+  assert.ok(
+    lines.some((line) => line.startsWith("::warning::")),
+    "observe mode must emit a warning annotation for a completed red",
+  );
+});
+
+test("completed failure fails enforce mode with the named blocker", () => {
+  const verdict = classifyAppGateRun(
+    {
+      id: 303,
+      status: "completed",
+      conclusion: "failure",
+    },
+    appGateJobs("failure", "success", "failure"),
+  );
+  const decision = evaluateMainRedCircuitBreaker(verdict, {
+    mode: "enforce",
+  });
+  assert.equal(decision.pass, false);
+  assert.equal(decision.blocker, "main-red-circuit-breaker");
+});
+
+test("Ajnunezg-labelled override passes enforce mode and records its audit fields", async () => {
+  const calls = [];
+  const event = {
+    event: "labeled",
+    id: 9876,
+    created_at: "2026-09-01T13:14:15Z",
+    label: { name: "ci-freeze-override" },
+    actor: { login: "Ajnunezg", id: 125839313 },
+  };
+  assert.equal(
+    parseQueuePullRequestNumber("gh-readonly-queue/main/pr-2405-abc123"),
+    2405,
+  );
+  const override = await findFreezeOverride(
+    "owner/repo",
+    2405,
+    "token",
+    {
+      fetchJson: mainApiFixture({
+        calls,
+        timelineByIssue: { 2405: [event] },
+      }),
+    },
+  );
+  assert.deepEqual(override, {
+    actor: "Ajnunezg",
+    actorId: 125839313,
+    eventId: 9876,
+    timestamp: "2026-09-01T13:14:15Z",
+    label: "ci-freeze-override",
+  });
+  const verdict = classifyAppGateRun(
+    { id: 304, status: "completed", conclusion: "failure" },
+    appGateJobs("failure", "success", "failure"),
+  );
+  const decision = evaluateMainRedCircuitBreaker(verdict, {
+    mode: "enforce",
+    override,
+  });
+  assert.equal(decision.pass, true);
+  assert.equal(decision.status, "overridden");
+
+  const directory = mkdtempSync(join(tmpdir(), "burnbar-gate-summary-"));
+  const summary = join(directory, "summary.md");
+  try {
+    emitMainRedCircuitBreaker(verdict, decision, "enforce", {
+      GITHUB_STEP_SUMMARY: summary,
+    });
+    const body = readFileSync(summary, "utf8");
+    assert.match(body, /actor=Ajnunezg/u);
+    assert.match(body, /event_id=9876/u);
+    assert.match(body, /timestamp=2026-09-01T13:14:15Z/u);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+  assert.ok(
+    calls.some((url) => url.includes("/issues/2405/timeline")),
+    "override must be read from the PR timeline",
+  );
+});
+
+test("override label applied by another actor is ignored", () => {
+  const unauthorized = selectValidFreezeOverride([
+    {
+      event: "labeled",
+      id: 9877,
+      created_at: "2026-09-01T13:14:16Z",
+      label: { name: "ci-freeze-override" },
+      actor: { login: "someone-else", id: 42 },
+    },
+  ]);
+  assert.equal(unauthorized, null);
+  const verdict = classifyAppGateRun(
+    { id: 305, status: "completed", conclusion: "failure" },
+    appGateJobs("failure", "success", "failure"),
+  );
+  const decision = evaluateMainRedCircuitBreaker(verdict, {
+    mode: "enforce",
+    override: unauthorized,
+  });
+  assert.equal(decision.pass, false);
+  assert.equal(decision.blocker, "main-red-circuit-breaker");
 });

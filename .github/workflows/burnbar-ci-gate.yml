@@ -18,6 +18,9 @@ permissions:
   contents: read
   checks: read
   statuses: read
+  actions: read
+  pull-requests: read
+  issues: read
 
 concurrency:
   group: burnbar-ci-gate-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}

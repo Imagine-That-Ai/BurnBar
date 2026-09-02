@@ -10,6 +10,20 @@ This is the operating model:
 - GitHub CI and branch protection are the mechanical merge gate.
 - Selected PRs should end as `MERGED`, `CLOSED`, or `OPEN_WITH_NAMED_BLOCKER`.
 
+## Main-red circuit breaker
+
+`BurnBar CI Gate` observes the latest completed `app-pr-gate` verdict that
+actually ran both the AgentLens app and mobile lanes on main. It is deliberately
+in `observe` mode tonight: missing verdicts pass and are recorded, while a
+completed red is annotated without blocking. Wave 1 flips the governance mode
+to `enforce`; only a current `ci-freeze-override` label applied by Alberto
+(`Ajnunezg`) can then override a completed main-red verdict, with the label
+event recorded for audit.
+
+The Mac app build stays off the merge door under `CHEAP_FAST`: it remains a
+post-merge/nightly proof, and the breaker reuses that already-paid main result
+instead of waking a hosted Mac for every merge candidate.
+
 The always-on machine owns the recurring automation and authenticated GitHub CLI setup. Other BurnBar machines should pull these repo instructions; they only need `gh` installed and authenticated if they will perform GitHub lifecycle actions themselves.
 
 Cross-agent visibility rule:

@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 
-import { readFileSync } from "node:fs";
+import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
 const PASSING = new Set(["success", "neutral", "skipped"]);
+const WORKFLOW_PASSING = new Set(["success", "neutral"]);
 // Cancelled is intentionally NOT a hard failure during the poll loop.
 // Merge-queue and concurrency cancellations routinely supersede a check run
 // before its replacement is registered; treating cancelled as terminal after a
@@ -19,8 +20,625 @@ const FAILING = new Set([
   "stale",
 ]);
 
+export const MAIN_APP_PR_GATE_WORKFLOW = "app-pr-gate.yml";
+export const MAIN_APP_GATE_JOB = "App build + test (AgentLens)";
+export const MAIN_APP_LANE_JOB =
+  "AgentLens Rust + Swift build/test prerequisites";
+export const MAIN_MOBILE_GATE_JOB = "Mobile build + unit test";
+export const CI_FREEZE_OVERRIDE_LABEL = "ci-freeze-override";
+export const CI_FREEZE_OVERRIDE_ACTOR = "Ajnunezg";
+export const CI_FREEZE_OVERRIDE_ACTOR_ID = 125839313;
+export const MAIN_RED_CIRCUIT_BREAKER = "main-red-circuit-breaker";
+
 export function resolveObservedSha(environment = process.env) {
   return environment.BURNBAR_CI_SHA || environment.GITHUB_SHA;
+}
+
+export function resolveBaseSha(environment = process.env) {
+  return (
+    environment.BURNBAR_BASE_SHA ||
+    environment.GITHUB_BASE_SHA ||
+    environment.GITHUB_SHA
+  );
+}
+
+function githubApiUrl(repository, path) {
+  return `https://api.github.com/repos/${repository}/${path}`;
+}
+
+function sortNewestFirst(values) {
+  return [...values].sort((left, right) => {
+    const leftTime = Date.parse(
+      left.created_at ?? left.updated_at ?? left.run_started_at ?? "",
+    );
+    const rightTime = Date.parse(
+      right.created_at ?? right.updated_at ?? right.run_started_at ?? "",
+    );
+    return (
+      (Number.isFinite(rightTime) ? rightTime : 0) -
+        (Number.isFinite(leftTime) ? leftTime : 0) ||
+      Number(right.id ?? 0) - Number(left.id ?? 0)
+    );
+  });
+}
+
+function isCompletedJob(job) {
+  return job?.status === "completed" && job?.conclusion != null;
+}
+
+function isRunJobSuccessful(job) {
+  return isCompletedJob(job) && PASSING.has(job.conclusion);
+}
+
+function jobByName(jobs, name) {
+  return jobs.find((job) => job?.name === name) ?? null;
+}
+
+function jobActuallyRan(job) {
+  return isCompletedJob(job) && job.conclusion !== "skipped";
+}
+
+function jobIsFailed(job) {
+  return jobActuallyRan(job) && !isRunJobSuccessful(job);
+}
+
+export function classifyAppGateRun(run, jobs) {
+  if (run?.status !== "completed") {
+    return {
+      present: false,
+      reason: "workflow run did not complete",
+    };
+  }
+
+  const appAggregate = jobByName(jobs, MAIN_APP_GATE_JOB);
+  const mobile = jobByName(jobs, MAIN_MOBILE_GATE_JOB);
+  const appLane = jobByName(jobs, MAIN_APP_LANE_JOB);
+  const requiredJobs = [
+    ["App build + test (AgentLens)", appAggregate],
+    ["Mobile build + unit test", mobile],
+  ];
+
+  // The aggregate job always runs with `if: always()`, including when the
+  // classifier skips both macOS lanes. Require the two named jobs to have
+  // actually completed and, when the underlying app lane is present in the
+  // API response, require that lane too. This makes a skipped classifier
+  // success a missing verdict rather than a green one without making fixture
+  // or GitHub API shape differences authoritative.
+  if (appLane) requiredJobs.push([MAIN_APP_LANE_JOB, appLane]);
+  const missing = requiredJobs
+    .filter(([, job]) => !job)
+    .map(([name]) => name);
+  const skippedOrIncomplete = requiredJobs
+    .filter(([, job]) => job && !jobActuallyRan(job))
+    .map(([name]) => name);
+  if (missing.length > 0 || skippedOrIncomplete.length > 0) {
+    return {
+      present: false,
+      reason:
+        missing.length > 0
+          ? `missing jobs: ${missing.join(", ")}`
+          : `required jobs did not actually run: ${skippedOrIncomplete.join(", ")}`,
+      run,
+      jobs: requiredJobs.map(([name, job]) => ({
+        name,
+        status: job?.status ?? null,
+        conclusion: job?.conclusion ?? null,
+      })),
+    };
+  }
+
+  const failed = requiredJobs
+    .filter(([, job]) => jobIsFailed(job))
+    .map(([name, job]) => ({
+      name,
+      conclusion: job.conclusion,
+      url: job.html_url ?? job.url ?? null,
+    }));
+  if (
+    failed.length === 0 &&
+    run.conclusion != null &&
+    !WORKFLOW_PASSING.has(run.conclusion)
+  ) {
+    failed.push({
+      name: "app-pr-gate workflow run",
+      conclusion: run.conclusion,
+      url: run.html_url ?? run.url ?? null,
+    });
+  }
+  return {
+    present: true,
+    conclusion: failed.length > 0 ? "failure" : "success",
+    failed,
+    run,
+    jobs: requiredJobs.map(([name, job]) => ({
+      name,
+      status: job.status,
+      conclusion: job.conclusion,
+      url: job.html_url ?? job.url ?? null,
+    })),
+  };
+}
+
+export async function resolveMainMergeBase(
+  repository,
+  baseSha,
+  token,
+  options = {},
+) {
+  if (!repository || !baseSha) {
+    throw new Error("repository and base SHA are required to resolve main");
+  }
+  const fetchJson = options.fetchJson ?? githubJson;
+  const comparison = await fetchJson(
+    githubApiUrl(repository, `compare/${baseSha}...main`),
+    token,
+  );
+  const mergeBaseSha = comparison?.merge_base_commit?.sha ?? null;
+  if (!mergeBaseSha) {
+    throw new Error(
+      `GitHub compare response did not contain a merge-base for ${baseSha} and main`,
+    );
+  }
+  return mergeBaseSha;
+}
+
+export async function listMainCommitsBackwards(
+  repository,
+  mergeBaseSha,
+  token,
+  options = {},
+) {
+  const fetchJson = options.fetchJson ?? githubJson;
+  const pageSize = options.pageSize ?? 100;
+  const commits = [];
+  for (let page = 1; ; page += 1) {
+    const payload = await fetchJson(
+      `${githubApiUrl(repository, `commits?sha=main`)}&per_page=${pageSize}&page=${page}`,
+      token,
+    );
+    const batch = Array.isArray(payload) ? payload : [];
+    commits.push(...batch);
+    const found = batch.some((commit) => commit?.sha === mergeBaseSha);
+    if (found) {
+      const index = commits.findIndex((commit) => commit?.sha === mergeBaseSha);
+      return {
+        mergeBaseSha,
+        commits: commits.slice(0, index + 1),
+        commitShas: new Set(
+          commits
+            .slice(0, index + 1)
+            .map((commit) => commit?.sha)
+            .filter(Boolean),
+        ),
+      };
+    }
+    if (batch.length < pageSize) break;
+  }
+  return {
+    mergeBaseSha,
+    commits: [],
+    commitShas: new Set(),
+  };
+}
+
+export async function listMainAppGateRuns(
+  repository,
+  token,
+  options = {},
+) {
+  const fetchJson = options.fetchJson ?? githubJson;
+  const workflow = options.workflow ?? MAIN_APP_PR_GATE_WORKFLOW;
+  const events = options.events ?? ["push", "schedule"];
+  const runs = [];
+  for (const event of events) {
+    const batch = await githubPages(
+      githubApiUrl(
+        repository,
+        `actions/workflows/${workflow}/runs?branch=main&event=${event}`,
+      ),
+      "workflow_runs",
+      token,
+      fetchJson,
+    );
+    runs.push(...batch);
+  }
+  const unique = new Map();
+  for (const run of runs) {
+    if (run?.id != null) unique.set(String(run.id), run);
+  }
+  return sortNewestFirst([...unique.values()]);
+}
+
+export async function listRunJobs(repository, runId, token, options = {}) {
+  const fetchJson = options.fetchJson ?? githubJson;
+  return githubPages(
+    githubApiUrl(repository, `actions/runs/${runId}/jobs?filter=latest`),
+    "jobs",
+    token,
+    fetchJson,
+  );
+}
+
+export async function resolveMainAppGateVerdict({
+  repository,
+  baseSha,
+  token,
+  options = {},
+}) {
+  const fetchJson = options.fetchJson ?? githubJson;
+  const mergeBaseSha = await resolveMainMergeBase(
+    repository,
+    baseSha,
+    token,
+    { fetchJson },
+  );
+  const history = await listMainCommitsBackwards(
+    repository,
+    mergeBaseSha,
+    token,
+    { fetchJson },
+  );
+  if (history.commitShas.size === 0) {
+    return {
+      present: false,
+      reason: `merge-base ${mergeBaseSha} was not found in main history`,
+      mergeBaseSha,
+    };
+  }
+
+  let runs = await listMainAppGateRuns(repository, token, {
+    fetchJson,
+    workflow: options.workflow,
+  });
+  if (options.asOf) {
+    const asOfMs = Date.parse(options.asOf);
+    if (Number.isFinite(asOfMs)) {
+      runs = runs.filter((run) => {
+        const createdMs = Date.parse(run.created_at ?? "");
+        return !Number.isFinite(createdMs) || createdMs <= asOfMs;
+      });
+    }
+  }
+
+  const eligibleRuns = runs.filter(
+    (run) =>
+      run?.status === "completed" &&
+      history.commitShas.has(run.head_sha ?? ""),
+  );
+  const rejectedRuns = [];
+  for (const run of eligibleRuns) {
+    let jobs;
+    try {
+      jobs = await listRunJobs(repository, run.id, token, { fetchJson });
+    } catch (error) {
+      // A completed run without readable job evidence is not a verdict. Keep
+      // walking backwards instead of trusting its aggregate conclusion.
+      rejectedRuns.push({
+        run,
+        reason: `jobs unreadable: ${error.message}`,
+      });
+      continue;
+    }
+    const classification = classifyAppGateRun(run, jobs);
+    if (classification.present) {
+      return {
+        ...classification,
+        mergeBaseSha,
+        rejectedRuns,
+      };
+    }
+    rejectedRuns.push({ run, reason: classification.reason });
+  }
+  return {
+    present: false,
+    reason: "no completed app/mobile run with both lanes actually executed",
+    mergeBaseSha,
+    rejectedRuns,
+  };
+}
+
+function readMergeGroupHeadRef(environment = process.env) {
+  const eventPath = environment.GITHUB_EVENT_PATH;
+  if (eventPath) {
+    try {
+      const event = JSON.parse(readFileSync(eventPath, "utf8"));
+      const headRef = event?.merge_group?.head_ref;
+      if (headRef) return headRef;
+    } catch {
+      // Fall through to the environment-only test/legacy path.
+    }
+  }
+  if (
+    environment.BURNBAR_HEAD_REF &&
+    (!environment.GITHUB_EVENT_NAME ||
+      environment.GITHUB_EVENT_NAME === "merge_group")
+  ) {
+    return environment.BURNBAR_HEAD_REF;
+  }
+  return environment.GITHUB_EVENT_NAME === "merge_group"
+    ? environment.GITHUB_HEAD_REF || null
+    : null;
+}
+
+export function parseQueuePullRequestNumber(headRef) {
+  const match = /^gh-readonly-queue\/main\/pr-(\d+)-[^/]+$/u.exec(
+    headRef ?? "",
+  );
+  return match ? Number(match[1]) : null;
+}
+
+function timelineActor(event) {
+  return event?.actor ?? event?.user ?? null;
+}
+
+export function selectValidFreezeOverride(
+  timeline,
+  {
+    label = CI_FREEZE_OVERRIDE_LABEL,
+    overrideActors = [CI_FREEZE_OVERRIDE_ACTOR],
+  } = {},
+) {
+  const allowed = new Set(overrideActors);
+  if (!allowed.has(CI_FREEZE_OVERRIDE_ACTOR)) return null;
+  const events = [...(Array.isArray(timeline) ? timeline : [])].sort(
+    (left, right) => {
+      const leftTime = Date.parse(left.created_at ?? "");
+      const rightTime = Date.parse(right.created_at ?? "");
+      return (
+        (Number.isFinite(leftTime) ? leftTime : 0) -
+          (Number.isFinite(rightTime) ? rightTime : 0) ||
+        Number(left.id ?? 0) - Number(right.id ?? 0)
+      );
+    },
+  );
+  let valid = null;
+  for (const event of events) {
+    if (event?.label?.name !== label) continue;
+    if (event.event === "unlabeled") {
+      valid = null;
+      continue;
+    }
+    if (event.event !== "labeled") continue;
+    const actor = timelineActor(event);
+    if (
+      actor?.login === CI_FREEZE_OVERRIDE_ACTOR &&
+      Number(actor.id) === CI_FREEZE_OVERRIDE_ACTOR_ID &&
+      event.id != null &&
+      event.created_at
+    ) {
+      valid = {
+        actor: actor.login,
+        actorId: Number(actor.id),
+        eventId: event.id ?? null,
+        timestamp: event.created_at ?? null,
+        label,
+      };
+    } else {
+      // An unauthorized labeling event never grants an override. It also
+      // clears an earlier valid event if it is the latest label operation.
+      valid = null;
+    }
+  }
+  return valid;
+}
+
+export async function findFreezeOverride(
+  repository,
+  pullRequestNumber,
+  token,
+  options = {},
+) {
+  if (!pullRequestNumber) return null;
+  const fetchJson = options.fetchJson ?? githubJson;
+  const timeline = await githubArrayPages(
+    githubApiUrl(repository, `issues/${pullRequestNumber}/timeline`),
+    token,
+    fetchJson,
+  );
+  return selectValidFreezeOverride(timeline, {
+    overrideActors: options.overrideActors,
+  });
+}
+
+function parseReplayWindow(value) {
+  const match = /^(\d+)([dhm])$/u.exec(value ?? "");
+  if (!match) {
+    throw new Error(
+      `--replay-window must be a positive duration such as 30d, got "${value}"`,
+    );
+  }
+  const amount = Number(match[1]);
+  if (!Number.isSafeInteger(amount) || amount <= 0) {
+    throw new Error(`--replay-window must be positive, got "${value}"`);
+  }
+  const multiplier = { m: 60_000, h: 3_600_000, d: 86_400_000 }[match[2]];
+  return amount * multiplier;
+}
+
+export function parseCliArguments(argv) {
+  let configPath = "governance/burnbar-ci-gate.json";
+  let replayWindow = null;
+  let reportPath = null;
+  for (let index = 0; index < argv.length; index += 1) {
+    const argument = argv[index];
+    if (argument === "--replay-window") {
+      replayWindow = argv[++index];
+      if (!replayWindow) throw new Error("--replay-window requires a value");
+    } else if (argument.startsWith("--replay-window=")) {
+      replayWindow = argument.slice("--replay-window=".length);
+    } else if (argument === "--report") {
+      reportPath = argv[++index];
+      if (!reportPath) throw new Error("--report requires a path");
+    } else if (argument.startsWith("--report=")) {
+      reportPath = argument.slice("--report=".length);
+    } else if (argument.startsWith("--")) {
+      throw new Error(`unknown option: ${argument}`);
+    } else if (configPath === "governance/burnbar-ci-gate.json") {
+      configPath = argument;
+    } else {
+      throw new Error(`unexpected positional argument: ${argument}`);
+    }
+  }
+  return { configPath, replayWindow, reportPath };
+}
+
+export async function measureVerdictAvailability({
+  repository,
+  token,
+  replayWindow,
+  now = Date.now(),
+  options = {},
+}) {
+  const windowMs = parseReplayWindow(replayWindow);
+  const fetchJson = options.fetchJson ?? githubJson;
+  const cutoff = now - windowMs;
+  const runs = await listMainAppGateRuns(repository, token, {
+    fetchJson,
+    workflow: options.workflow,
+  });
+  const samples = [];
+  for (const run of runs) {
+    const createdMs = Date.parse(run.created_at ?? "");
+    if (Number.isFinite(createdMs) && createdMs < cutoff) continue;
+    let verdict = null;
+    let error = null;
+    if (run.status === "completed") {
+      try {
+        const jobs = await listRunJobs(repository, run.id, token, { fetchJson });
+        verdict = classifyAppGateRun(run, jobs);
+      } catch (caught) {
+        error = caught instanceof Error ? caught.message : String(caught);
+      }
+    } else {
+      verdict = {
+        present: false,
+        reason: `workflow run status is ${run.status ?? "unknown"}`,
+      };
+    }
+    samples.push({
+      runId: run.id ?? null,
+      headSha: run.head_sha ?? null,
+      event: run.event ?? null,
+      createdAt: run.created_at ?? null,
+      present: verdict?.present === true,
+      ...(verdict?.reason ? { reason: verdict.reason } : {}),
+      ...(error ? { reason: `jobs unreadable: ${error}` } : {}),
+    });
+  }
+  const presentCount = samples.filter((sample) => sample.present).length;
+  return {
+    window: replayWindow,
+    generatedAt: new Date(now).toISOString(),
+    samples: samples.length,
+    presentCount,
+    verdictPresentRate:
+      samples.length > 0 ? presentCount / samples.length : null,
+    runs: samples,
+  };
+}
+
+function summaryPath(environment = process.env) {
+  return environment.GITHUB_STEP_SUMMARY || null;
+}
+
+function annotationValue(value) {
+  return String(value)
+    .replaceAll("%", "%25")
+    .replaceAll("\r", "%0D")
+    .replaceAll("\n", "%0A");
+}
+
+export function appendGateSummary(line, environment = process.env) {
+  const path = summaryPath(environment);
+  if (!path) return;
+  appendFileSync(path, `${line.trimEnd()}\n`);
+}
+
+export function formatBreakerSummary(verdict, mode) {
+  const base = verdict.mergeBaseSha
+    ? ` merge-base=${verdict.mergeBaseSha}`
+    : "";
+  const reason = verdict.reason
+    ? `\n- **Reason:** ${verdict.reason.replaceAll("\r", " ").replaceAll("\n", " ")}`
+    : "";
+  if (!verdict.present) {
+    return `### Main-red circuit breaker (${mode})\n\n- **Verdict:** no completed app/mobile verdict${base}; missing verdict passes in ${mode} mode.${reason}`;
+  }
+  const run = verdict.run?.id != null ? ` run=${verdict.run.id}` : "";
+  return `### Main-red circuit breaker (${mode})\n\n- **Verdict:** ${verdict.conclusion}${run}${base}.`;
+}
+
+export function evaluateMainRedCircuitBreaker(
+  verdict,
+  {
+    mode = "observe",
+    override = null,
+  } = {},
+) {
+  if (!verdict?.present) {
+    return { pass: true, status: "missing", override: null };
+  }
+  if (verdict.conclusion !== "failure") {
+    return { pass: true, status: "passed", override: null };
+  }
+  if (mode === "observe") {
+    return { pass: true, status: "failed_observed", override: null };
+  }
+  if (override) {
+    return { pass: true, status: "overridden", override };
+  }
+  return {
+    pass: false,
+    status: "failed",
+    blocker: MAIN_RED_CIRCUIT_BREAKER,
+    override: null,
+  };
+}
+
+export function emitMainRedCircuitBreaker(
+  verdict,
+  result,
+  mode,
+  environment = process.env,
+) {
+  const summary = formatBreakerSummary(verdict, mode);
+  const audit =
+    result.override == null
+      ? ""
+      : ` actor=${result.override.actor} actor_id=${result.override.actorId} event_id=${result.override.eventId} timestamp=${result.override.timestamp}`;
+  const blocker = result.blocker ? ` blocker=${result.blocker}` : "";
+  appendGateSummary(
+    `${summary}\n\n- **Decision:** ${result.status}${blocker}${audit}`,
+    environment,
+  );
+
+  if (!verdict.present) {
+    console.log(
+      `::notice::Main-red circuit breaker (${annotationValue(mode)}): no completed app/mobile verdict; missing verdict passes.${verdict.mergeBaseSha ? ` merge-base=${annotationValue(verdict.mergeBaseSha)}.` : ""}${verdict.reason ? ` reason=${annotationValue(verdict.reason)}` : ""}`,
+    );
+    return;
+  }
+  if (result.status === "failed_observed") {
+    console.log(
+      `::warning::Main-red circuit breaker (observe): app/mobile verdict failed on run ${annotationValue(verdict.run?.id ?? "unknown")}; merge remains unblocked.`,
+    );
+    return;
+  }
+  if (result.status === "overridden") {
+    console.log(
+      `::notice::Main-red circuit breaker overridden by ${annotationValue(result.override.actor)} (actor_id=${annotationValue(result.override.actorId)}, event_id=${annotationValue(result.override.eventId)}, timestamp=${annotationValue(result.override.timestamp)}).`,
+    );
+    return;
+  }
+  if (result.status === "failed") {
+    console.error(
+      `::error::${MAIN_RED_CIRCUIT_BREAKER}: completed app/mobile verdict failed on run ${annotationValue(verdict.run?.id ?? "unknown")}; no valid ${CI_FREEZE_OVERRIDE_LABEL} override.`,
+    );
+    return;
+  }
+  console.log(
+    `::notice::Main-red circuit breaker (${annotationValue(mode)}): completed app/mobile verdict ${annotationValue(verdict.conclusion)} on run ${annotationValue(verdict.run?.id ?? "unknown")}.`,
+  );
 }
 
 export function evaluateGate(required, observations, options = {}) {
@@ -135,15 +753,29 @@ export async function githubJson(url, token, options = {}) {
   }
 }
 
-async function githubPages(url, key, token) {
+async function githubPages(url, key, token, fetchJson = githubJson) {
   const values = [];
   for (let page = 1; ; page += 1) {
     const separator = url.includes("?") ? "&" : "?";
-    const payload = await githubJson(
+    const payload = await fetchJson(
       `${url}${separator}per_page=100&page=${page}`,
       token,
     );
     const batch = payload[key] ?? [];
+    values.push(...batch);
+    if (batch.length < 100) return values;
+  }
+}
+
+async function githubArrayPages(url, token, fetchJson = githubJson) {
+  const values = [];
+  for (let page = 1; ; page += 1) {
+    const separator = url.includes("?") ? "&" : "?";
+    const payload = await fetchJson(
+      `${url}${separator}per_page=100&page=${page}`,
+      token,
+    );
+    const batch = Array.isArray(payload) ? payload : [];
     values.push(...batch);
     if (batch.length < 100) return values;
   }
@@ -301,17 +933,159 @@ export async function reconcileStalledChecks(pending, options = {}) {
   return reconciled;
 }
 
-async function main() {
-  const config = JSON.parse(
-    readFileSync(process.argv[2] ?? "governance/burnbar-ci-gate.json", "utf8"),
+async function runVerdictAvailabilityReport({
+  repository,
+  token,
+  replayWindow,
+  reportPath,
+}) {
+  let report;
+  try {
+    report = await measureVerdictAvailability({
+      repository,
+      token,
+      replayWindow,
+    });
+  } catch (error) {
+    report = {
+      window: replayWindow,
+      generatedAt: new Date().toISOString(),
+      samples: 0,
+      presentCount: 0,
+      verdictPresentRate: null,
+      unverified: true,
+      error: error instanceof Error ? error.message : String(error),
+      runs: [],
+    };
+    console.error(
+      `::warning::Verdict availability is UNVERIFIED: ${annotationValue(report.error)}`,
+    );
+  }
+  writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`);
+  console.log(
+    `Verdict availability: ${report.presentCount}/${report.samples} samples present (${report.verdictPresentRate ?? "n/a"}).${report.unverified ? " UNVERIFIED." : ""} Report: ${reportPath}`,
   );
+}
+
+async function main() {
+  const args = parseCliArguments(process.argv.slice(2));
+  const config = JSON.parse(readFileSync(args.configPath, "utf8"));
   const repository = process.env.GITHUB_REPOSITORY;
   const sha = resolveObservedSha();
+  const baseSha = resolveBaseSha() || sha;
   const token = process.env.GITHUB_TOKEN;
-  if (!repository || !sha || !token)
-    throw new Error(
-      "GITHUB_REPOSITORY, BURNBAR_CI_SHA (or GITHUB_SHA), and GITHUB_TOKEN are required",
-    );
+  if (args.replayWindow) {
+    if (!args.reportPath)
+      throw new Error("--replay-window requires --report <path>");
+    if (!repository || !token) {
+      const report = {
+        window: args.replayWindow,
+        generatedAt: new Date().toISOString(),
+        samples: 0,
+        presentCount: 0,
+        verdictPresentRate: null,
+        unverified: true,
+        error:
+          "GITHUB_REPOSITORY and GITHUB_TOKEN are required for --replay-window",
+        runs: [],
+      };
+      console.error(
+        `::warning::Verdict availability is UNVERIFIED: ${annotationValue(report.error)}`,
+      );
+      writeFileSync(args.reportPath, `${JSON.stringify(report, null, 2)}\n`);
+      console.log(
+        `Verdict availability: 0/0 samples present (n/a). UNVERIFIED. Report: ${args.reportPath}`,
+      );
+      return;
+    }
+    await runVerdictAvailabilityReport({
+      repository,
+      token,
+      replayWindow: args.replayWindow,
+      reportPath: args.reportPath,
+    });
+    return;
+  }
+  if (!sha) {
+    throw new Error("BURNBAR_CI_SHA or GITHUB_SHA is required");
+  }
+
+  const mode = config.circuitBreaker?.mode ?? "observe";
+  if (mode !== "observe" && mode !== "enforce") {
+    throw new Error(`circuitBreaker.mode must be observe or enforce, got "${mode}"`);
+  }
+  if (!repository || !token) {
+    if (process.env.GITHUB_ACTIONS === "true") {
+      throw new Error(
+        "GITHUB_REPOSITORY and GITHUB_TOKEN are required inside GitHub Actions",
+      );
+    }
+    const mainVerdict = {
+      present: false,
+      reason:
+        "main verdict lookup unavailable: GITHUB_REPOSITORY and GITHUB_TOKEN are not set",
+      mergeBaseSha: null,
+    };
+    const breaker = evaluateMainRedCircuitBreaker(mainVerdict, { mode });
+    emitMainRedCircuitBreaker(mainVerdict, breaker, mode);
+    return;
+  }
+  let mainVerdict;
+  try {
+    mainVerdict = await resolveMainAppGateVerdict({
+      repository,
+      baseSha,
+      token,
+    });
+  } catch (error) {
+    // The breaker is explicitly observing-first: an unavailable lookup is no
+    // completed verdict, so it is reported as missing in both modes rather
+    // than being mistaken for a green or red main.
+    mainVerdict = {
+      present: false,
+      reason: `main verdict lookup unavailable: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+      mergeBaseSha: null,
+    };
+    console.error(`::warning::${annotationValue(mainVerdict.reason)}`);
+  }
+  let override = null;
+  const headRef = readMergeGroupHeadRef();
+  const pullRequestNumber = parseQueuePullRequestNumber(headRef);
+  if (
+    mode === "enforce" &&
+    mainVerdict.present &&
+    mainVerdict.conclusion === "failure" &&
+    pullRequestNumber !== null
+  ) {
+    try {
+      override = await findFreezeOverride(
+        repository,
+        pullRequestNumber,
+        token,
+        {
+          overrideActors: config.circuitBreaker?.overrideActors,
+        },
+      );
+    } catch (error) {
+      console.error(
+        `::warning::Unable to read ${CI_FREEZE_OVERRIDE_LABEL} timeline for PR #${pullRequestNumber}: ${annotationValue(
+          error instanceof Error ? error.message : String(error),
+        )}`,
+      );
+    }
+  }
+  const breaker = evaluateMainRedCircuitBreaker(mainVerdict, {
+    mode,
+    override,
+  });
+  emitMainRedCircuitBreaker(mainVerdict, breaker, mode);
+  if (!breaker.pass) {
+    process.exitCode = 1;
+    return;
+  }
+
   const deadline = Date.now() + Number(config.timeout_minutes) * 60_000;
   const componentBudgetMs =
     Number(config.component_runtime_budget_minutes ?? 0) * 60_000;
