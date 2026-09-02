@@ -126,3 +126,22 @@ gh pr checks <pr-number>
 
 That command should tell you whether the fast merge gate is green. It should
 not require waiting for the full harness.
+
+## Swift SAST lanes (W0-10, 2026-09-01)
+
+The nightly `codeql.yml` Swift lane runs a Metal toolchain **preflight**
+(`xcrun -f metal`) immediately after checkout, before any heavy Swift prep: a
+missing Metal toolchain now fails in seconds with a `::error::` naming the fix
+(the lane now runs `xcodebuild -downloadComponent MetalToolchain` itself; if
+that cannot install it, pick a runner image whose Xcode bundles the toolchain) instead of dying ~75 minutes into the
+traced build with `cannot execute tool 'metal'` (run 33517666151). The traced
+xcodebuild invocation lives in `scripts/ci/codeql-swift-build.sh` and the
+When `xcrun -f metal` finds no compiler, the lane first installs the Xcode `MetalToolchain` component (`xcodebuild -downloadComponent MetalToolchain`) and re-checks; Metal is a toolchain component, so no DerivedData cache can supply it. The
+lane is still bounded by the hosted-runner 150-minute cap: **if the traced
+Swift build exceeds the cap, park it as `OPEN_WITH_NAMED_BLOCKER: traced
+Swift build exceeds cap` — never raise `timeout-minutes`, never drop `swift`
+from the matrix.** Separately, `semgrep-swift.yml` runs Semgrep on a pinned
+snapshot of the public `p/swift` ruleset (`scripts/ci/semgrep/p-swift.pinned.yaml`, no token) on schedule + dispatch and uploads its SARIF as a
+plain artifact — it is **observe-only**: not in the Fast Feedback Gate
+`needs:` list, not a required context, no code-scanning upload. Promote it
+to a gate only after its false-positive rate is known.

@@ -212,7 +212,8 @@ struct OpenBurnBarMobileApp: App {
             livingThemeRequest = request
             return
         }
-        guard url.scheme?.lowercased() == "burnbar" else { return }
+        let scheme = url.scheme?.lowercased()
+        guard scheme == "burnbar" || scheme == "openburnbar" else { return }
         MobileOsDeepLinkApplier.apply(MobileOsIntegrationPolicy.route(url: url))
     }
 }

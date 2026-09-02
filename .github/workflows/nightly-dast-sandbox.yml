@@ -26,6 +26,8 @@ jobs:
     timeout-minutes: 30
     outputs:
       failed: ${{ steps.outcome.outputs.failed }}
+      failure_class: ${{ steps.outcome.outputs.failure_class }}
+      reason_code: ${{ steps.outcome.outputs.reason_code }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
@@ -33,17 +35,48 @@ jobs:
 
       - name: Run privileged-socket red-team gate
         id: redteam
+        env:
+          OPENBURNBAR_DAST_ARTIFACT_DIR: ${{ runner.temp }}/openburnbar-dast-redteam
         run: bash ./scripts/ci/privileged-socket-redteam-ci.sh
+
+      - name: Upload privileged red-team result
+        if: always()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: privileged-socket-redteam-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/openburnbar-dast-redteam/
+          if-no-files-found: warn
+          retention-days: 30
 
       - name: Record sandbox outcome
         id: outcome
         if: always()
         run: |
-          if [[ "${{ steps.redteam.outcome }}" == "failure" ]]; then
-            echo "failed=true" >> "$GITHUB_OUTPUT"
-            echo "::error title=Privileged socket red-team failed::Live privileged-socket proof failed in the sandbox lane. PR peer-auth unit tests remain the blocking control until a self-hosted privileged macOS runner is armed."
+          emit_outcome() {
+            {
+              echo "failed=$1"
+              echo "failure_class=$2"
+              echo "reason_code=$3"
+            } >> "$GITHUB_OUTPUT"
+          }
+          result_file="${{ runner.temp }}/openburnbar-dast-redteam/privileged-socket-redteam-result.json"
+          if [[ "${{ steps.redteam.outcome }}" == "success" ]]; then
+            emit_outcome "false" "" ""
           else
-            echo "failed=false" >> "$GITHUB_OUTPUT"
+            reason_code="privileged-redteam-failed"
+            failure_class="infra"
+            if [[ -f "$result_file" ]] && grep -q '"reasonCode": "privileged-binaries-missing"' "$result_file"; then
+              reason_code="privileged-binaries-missing"
+            elif [[ -f "$result_file" ]] && grep -q '"reasonCode": "' "$result_file"; then
+              reason_code="$(sed -n 's/.*"reasonCode": "\([^"]*\)".*/\1/p' "$result_file" | head -n 1)"
+            elif [[ "${{ steps.redteam.outcome }}" == "skipped" ]]; then
+              reason_code="privileged-redteam-skipped"
+            fi
+            if [[ -f "$result_file" ]] && grep -q '"failureClass": "product"' "$result_file"; then
+              failure_class="product"
+            fi
+            emit_outcome "true" "$failure_class" "$reason_code"
+            echo "::error title=Privileged socket red-team failed::reasonCode=$reason_code. Live privileged-socket proof failed in the sandbox lane."
           fi
 
   dast-website:
@@ -52,6 +85,8 @@ jobs:
     timeout-minutes: 30
     outputs:
       failed: ${{ steps.outcome.outputs.failed }}
+      failure_class: ${{ steps.outcome.outputs.failure_class }}
+      reason_code: ${{ steps.outcome.outputs.reason_code }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
@@ -70,11 +105,21 @@ jobs:
         id: outcome
         if: always()
         run: |
+          emit_outcome() {
+            {
+              echo "failed=$1"
+              echo "failure_class=$2"
+              echo "reason_code=$3"
+            } >> "$GITHUB_OUTPUT"
+          }
           if [[ "${{ steps.zap.outcome }}" == "failure" ]]; then
-            echo "failed=true" >> "$GITHUB_OUTPUT"
-            echo "::error title=Website DAST failed::The sandbox ZAP baseline failed. The issue lane records this without keeping nightly-e2e red."
+            emit_outcome "true" "product" "dast-website-scan-failed"
+            echo "::error title=Website DAST failed::reasonCode=dast-website-scan-failed. The sandbox ZAP baseline failed."
+          elif [[ "${{ steps.zap.outcome }}" == "success" ]]; then
+            emit_outcome "false" "" ""
           else
-            echo "failed=false" >> "$GITHUB_OUTPUT"
+            emit_outcome "true" "infra" "dast-website-scan-skipped"
+            echo "::error title=Website DAST unavailable::reasonCode=dast-website-scan-skipped. The security scan did not complete successfully."
           fi
 
   dast-functions:
@@ -83,6 +128,8 @@ jobs:
     timeout-minutes: 30
     outputs:
       failed: ${{ steps.outcome.outputs.failed }}
+      failure_class: ${{ steps.outcome.outputs.failure_class }}
+      reason_code: ${{ steps.outcome.outputs.reason_code }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
@@ -92,14 +139,31 @@ jobs:
 
       - name: Start Firebase Functions Emulator
         id: emulator
+        env:
+          DAST_ARTIFACT_DIR: ${{ runner.temp }}/openburnbar-dast-functions
         run: |
           set -euo pipefail
-          npm ci --prefix functions
-          npm run build --prefix functions
-          npm --prefix functions exec -- firebase emulators:start --project openburnbar-dev --only functions &
+          mkdir -p "$DAST_ARTIFACT_DIR"
+          npm ci --prefix functions 2>&1 | tee "$DAST_ARTIFACT_DIR/npm-ci.log"
+          npm run build --prefix functions 2>&1 | tee "$DAST_ARTIFACT_DIR/functions-build.log"
+          npm --prefix functions exec -- firebase emulators:start --project openburnbar-dev --only functions \
+            > "$DAST_ARTIFACT_DIR/firebase-emulator.log" 2>&1 &
+          echo "$!" > "$DAST_ARTIFACT_DIR/firebase-emulator.pid"
           # Readiness must be explicit. A dead emulator is a sandbox failure,
           # not a blind ZAP pass.
-          timeout 60 bash -c 'until curl -sf http://localhost:5001 >/dev/null; do sleep 2; done'
+          if ! timeout 60 bash -c 'until curl -sf http://localhost:5001 >/dev/null; do sleep 2; done'; then
+            echo "reasonCode=emulator-not-ready" | tee "$DAST_ARTIFACT_DIR/emulator-readiness.txt"
+            exit 1
+          fi
+
+      - name: Upload emulator and toolchain diagnostics
+        if: always()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: dast-functions-emulator-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/openburnbar-dast-functions/
+          if-no-files-found: warn
+          retention-days: 30
 
       - name: Run OWASP ZAP API scan against health endpoints
         id: zap
@@ -118,11 +182,30 @@ jobs:
         id: outcome
         if: always()
         run: |
-          if [[ "${{ steps.emulator.outcome }}" == "failure" || "${{ steps.zap.outcome }}" == "failure" ]]; then
-            echo "failed=true" >> "$GITHUB_OUTPUT"
-            echo "::error title=Functions DAST failed::The functions sandbox failed emulator readiness or ZAP scanning. The issue lane records this without keeping nightly-e2e red."
+          emit_outcome() {
+            {
+              echo "failed=$1"
+              echo "failure_class=$2"
+              echo "reason_code=$3"
+            } >> "$GITHUB_OUTPUT"
+          }
+          if [[ "${{ steps.emulator.outcome }}" != "success" ]]; then
+            reason_code="dast-functions-setup-failed"
+            if [[ -f "${{ runner.temp }}/openburnbar-dast-functions/emulator-readiness.txt" ]]; then
+              reason_code="emulator-not-ready"
+            elif [[ "${{ steps.emulator.outcome }}" == "skipped" ]]; then
+              reason_code="emulator-start-skipped"
+            fi
+            emit_outcome "true" "infra" "$reason_code"
+            echo "::error title=Functions DAST unavailable::reasonCode=$reason_code. The Functions sandbox did not become ready."
+          elif [[ "${{ steps.zap.outcome }}" == "failure" ]]; then
+            emit_outcome "true" "product" "dast-functions-scan-failed"
+            echo "::error title=Functions DAST failed::reasonCode=dast-functions-scan-failed. The ZAP API scan failed."
+          elif [[ "${{ steps.zap.outcome }}" == "success" ]]; then
+            emit_outcome "false" "" ""
           else
-            echo "failed=false" >> "$GITHUB_OUTPUT"
+            emit_outcome "true" "infra" "dast-functions-scan-skipped"
+            echo "::error title=Functions DAST unavailable::reasonCode=dast-functions-scan-skipped. The security scan did not complete successfully."
           fi
 
   open-failure-issue:
@@ -135,7 +218,8 @@ jobs:
         needs['dast-website'].outputs.failed == 'true' ||
         needs['dast-functions'].outputs.failed == 'true' ||
         contains(needs.*.result, 'failure') ||
-        contains(needs.*.result, 'cancelled')
+        contains(needs.*.result, 'cancelled') ||
+        contains(needs.*.result, 'skipped')
       )
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
@@ -151,6 +235,7 @@ jobs:
             ```json
             ${{ toJSON(needs) }}
             ```
+            Reason codes are emitted by each sandbox lane and remain red when a prerequisite is skipped.
           paging-slack-webhook: ${{ secrets.OPS_PAGING_SLACK_WEBHOOK }}
 
   close-resolved-issue:
@@ -162,7 +247,8 @@ jobs:
       needs['dast-website'].outputs.failed != 'true' &&
       needs['dast-functions'].outputs.failed != 'true' &&
       !contains(needs.*.result, 'failure') &&
-      !contains(needs.*.result, 'cancelled')
+      !contains(needs.*.result, 'cancelled') &&
+      !contains(needs.*.result, 'skipped')
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
       - name: Close resolved sandbox failure issue

@@ -37,6 +37,67 @@ const measurementMethod = Object.freeze({
   pairing: "batched visible-idle then fully-occluded-idle samples from one PID, paired by sample index",
   limitation: "window minimization is the deterministic fully occluded path; partial window overlap is not simulated",
 });
+const DEFAULT_EXEC_TIMEOUT_MS = 120_000;
+const INFRA_REASON_CODES = new Set([
+  "helper-timeout",
+  "no-backdrop-ack",
+  "launch-failed",
+]);
+
+class GateInfrastructureError extends Error {
+  constructor(reasonCode, message, cause) {
+    super(message, cause ? { cause } : undefined);
+    this.name = "GateInfrastructureError";
+    this.reasonCode = reasonCode;
+  }
+}
+
+function infrastructureFailure(reasonCode, message, cause) {
+  if (!INFRA_REASON_CODES.has(reasonCode)) {
+    throw new Error(`unsupported P-PERF-3 infrastructure reason code: ${reasonCode}`);
+  }
+  return new GateInfrastructureError(reasonCode, message, cause);
+}
+
+function isTimeoutError(error) {
+  return error?.code === "ETIMEDOUT"
+    || error?.killed === true
+    || /timed out|timeout/u.test(String(error?.message ?? error));
+}
+
+function errorDetail(error) {
+  return [
+    error?.message,
+    error?.stderr,
+    error?.stdout,
+  ].filter(Boolean).join("\n");
+}
+
+function normalizeHelperFailure(error) {
+  if (error?.reasonCode && INFRA_REASON_CODES.has(error.reasonCode)) return error;
+  const detail = errorDetail(error);
+  if (isTimeoutError(error)) {
+    return infrastructureFailure("helper-timeout", `macOS gate helper timed out: ${detail}`, error);
+  }
+  if (/backdrop|acknowledge|no backdrop response|render-loop/u.test(detail)) {
+    return infrastructureFailure("no-backdrop-ack", `backdrop readiness acknowledgement failed: ${detail}`, error);
+  }
+  return infrastructureFailure("launch-failed", `macOS gate helper failed: ${detail}`, error);
+}
+
+/**
+ * Keep the failure contract in one place so the CLI and its
+ * static/fixture tests cannot turn an infrastructure failure into a budget
+ * result or a green exit.
+ */
+export function classifyGateFailure(error) {
+  const reasonCode = INFRA_REASON_CODES.has(error?.reasonCode) ? error.reasonCode : null;
+  return {
+    status: reasonCode ? "infra-failed" : "failed",
+    reasonCode,
+    exitCode: reasonCode ? 3 : 1,
+  };
+}
 
 function assertFinitePositive(value, name) {
   if (!Number.isFinite(value) || value <= 0) {
@@ -232,15 +293,18 @@ export function summarizeAndEvaluatePairs(pairs, config) {
 
 export function parseArguments(argumentsToParse, defaultOutputPath) {
   let outputPath = defaultOutputPath;
+  const usageError = (message) => Object.assign(new Error(message), { usage: true });
   for (let index = 0; index < argumentsToParse.length; index += 1) {
     const argument = argumentsToParse[index];
     if (argument === "--output") {
-      if (index + 1 >= argumentsToParse.length) throw new Error("--output requires a path");
+      if (index + 1 >= argumentsToParse.length) {
+        throw usageError("--output requires a path");
+      }
       outputPath = path.resolve(argumentsToParse[index + 1]);
       index += 1;
       continue;
     }
-    throw new Error(
+    throw usageError(
       `unsupported argument ${argument}; the gate does not accept sample, result, app, or budget inputs`
     );
   }
@@ -258,10 +322,16 @@ async function sha256(filePath) {
 }
 
 async function run(command, argumentsToRun, options = {}) {
+  const { timeout: requestedTimeout, ...otherOptions } = options;
+  const timeout = Number.isFinite(requestedTimeout) && requestedTimeout > 0
+    ? requestedTimeout
+    : DEFAULT_EXEC_TIMEOUT_MS;
   const result = await execFile(command, argumentsToRun, {
     encoding: "utf8",
     maxBuffer: 8 * 1024 * 1024,
-    ...options,
+    timeout,
+    killSignal: "SIGTERM",
+    ...otherOptions,
   });
   return { stdout: result.stdout.trim(), stderr: result.stderr.trim() };
 }
@@ -276,16 +346,24 @@ async function runOptional(command, argumentsToRun) {
 
 async function compileHelper(directory) {
   const helperBinaryPath = path.join(directory, "macos-idle-occlusion-gate-helper");
-  await run("/usr/bin/xcrun", [
-    "swiftc",
-    helperSourcePath,
-    "-o",
-    helperBinaryPath,
-    "-framework",
-    "AppKit",
-    "-framework",
-    "CoreGraphics",
-  ]);
+  try {
+    await run("/usr/bin/xcrun", [
+      "swiftc",
+      helperSourcePath,
+      "-o",
+      helperBinaryPath,
+      "-framework",
+      "AppKit",
+      "-framework",
+      "CoreGraphics",
+    ]);
+  } catch (error) {
+    throw infrastructureFailure(
+      isTimeoutError(error) ? "helper-timeout" : "launch-failed",
+      `unable to compile the macOS gate helper: ${errorDetail(error)}`,
+      error,
+    );
+  }
   await access(helperBinaryPath, fsConstants.X_OK);
   return helperBinaryPath;
 }
@@ -293,9 +371,32 @@ async function compileHelper(directory) {
 async function helper(helperBinaryPath, command, pid, timeoutSeconds) {
   const argumentsToRun = [command, String(pid)];
   if (timeoutSeconds !== undefined) argumentsToRun.push(String(Math.ceil(timeoutSeconds * 1000)));
-  const { stdout } = await run(helperBinaryPath, argumentsToRun);
-  const parsed = JSON.parse(stdout);
-  if (parsed.pid !== pid) throw new Error(`helper returned pid ${parsed.pid}; expected ${pid}`);
+  let stdout;
+  try {
+    ({ stdout } = await run(helperBinaryPath, argumentsToRun, {
+      timeout: timeoutSeconds === undefined
+        ? DEFAULT_EXEC_TIMEOUT_MS
+        : Math.max(1_000, Math.ceil(timeoutSeconds * 1_000)),
+    }));
+  } catch (error) {
+    throw normalizeHelperFailure(error);
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(stdout);
+  } catch (error) {
+    throw infrastructureFailure(
+      "launch-failed",
+      `macOS gate helper returned invalid JSON: ${errorDetail(error)}`,
+      error,
+    );
+  }
+  if (parsed.pid !== pid) {
+    throw infrastructureFailure(
+      "launch-failed",
+      `helper returned pid ${parsed.pid}; expected ${pid}`,
+    );
+  }
   return parsed;
 }
 
@@ -407,9 +508,17 @@ async function collectBuildIdentity(config) {
   };
 }
 
-async function commandLineForPID(pid) {
-  const { stdout } = await run("/bin/ps", ["-ww", "-p", String(pid), "-o", "command="]);
-  return stdout;
+async function commandLineForPID(pid, timeoutSeconds) {
+  try {
+    const { stdout } = await run(
+      "/bin/ps",
+      ["-ww", "-p", String(pid), "-o", "command="],
+      timeoutSeconds === undefined ? {} : { timeout: timeoutSeconds * 1_000 },
+    );
+    return stdout;
+  } catch (error) {
+    throw normalizeHelperFailure(error);
+  }
 }
 
 async function findConflictingGateProcess(helperBinaryPath, buildIdentity, config) {
@@ -423,16 +532,24 @@ async function findConflictingGateProcess(helperBinaryPath, buildIdentity, confi
   const candidates = stdout.split(/\s+/).map(Number).filter((pid) => Number.isInteger(pid) && pid > 0);
   for (const pid of candidates) {
     try {
-      const current = await helper(helperBinaryPath, "status", pid);
-      const commandLine = await commandLineForPID(pid);
+      const timeout = config.measurement.stateTransitionTimeoutSeconds;
+      const current = await helper(helperBinaryPath, "status", pid, timeout);
+      const commandLine = await commandLineForPID(pid, timeout);
       const hasGateArguments = config.app.launchArguments.every((argument) => commandLine.includes(argument));
       if (current.executablePath === buildIdentity.executablePath
           && current.bundleIdentifier === config.app.expectedBundleIdentifier
           && hasGateArguments) {
         return { pid, commandLine, initialState: current };
       }
-    } catch {
-      // A candidate can exit between pgrep and inspection. It no longer conflicts.
+    } catch (error) {
+      // Any failed identity inspection is untrustworthy. Do not turn an
+      // uninspectable candidate into a fresh-run claim.
+      if (error instanceof GateInfrastructureError) throw error;
+      throw infrastructureFailure(
+        "launch-failed",
+        `unable to inspect existing OpenBurnBar pid ${pid}: ${errorDetail(error)}`,
+        error,
+      );
     }
   }
   return null;
@@ -443,13 +560,51 @@ async function waitForRegisteredProcess(helperBinaryPath, pid, timeoutSeconds) {
   let lastError;
   while (process.hrtime.bigint() < deadline) {
     try {
-      return await helper(helperBinaryPath, "status", pid);
+      return await helper(helperBinaryPath, "status", pid, timeoutSeconds);
     } catch (error) {
+      if (error?.reasonCode === "helper-timeout") throw error;
       lastError = error;
       await sleep(100);
     }
   }
-  throw new Error(`OpenBurnBar pid ${pid} did not register with AppKit: ${lastError?.message ?? "timeout"}`);
+  throw infrastructureFailure(
+    "launch-failed",
+    `OpenBurnBar pid ${pid} did not register with AppKit: ${lastError?.message ?? "timeout"}`,
+    lastError,
+  );
+}
+
+function waitForChildSpawn(child, timeoutSeconds) {
+  const timeoutMilliseconds = Math.max(1_000, Math.ceil(timeoutSeconds * 1_000));
+  return new Promise((resolve, reject) => {
+    let timer;
+    const cleanup = () => {
+      clearTimeout(timer);
+      child.removeListener("spawn", onSpawn);
+      child.removeListener("error", onError);
+    };
+    const onSpawn = () => {
+      cleanup();
+      resolve();
+    };
+    const onError = (error) => {
+      cleanup();
+      reject(infrastructureFailure(
+        "launch-failed",
+        `OpenBurnBar process failed to launch: ${errorDetail(error)}`,
+        error,
+      ));
+    };
+    timer = setTimeout(() => {
+      cleanup();
+      reject(infrastructureFailure(
+        "launch-failed",
+        `OpenBurnBar process did not spawn within ${timeoutMilliseconds}ms`,
+      ));
+    }, timeoutMilliseconds);
+    child.once("spawn", onSpawn);
+    child.once("error", onError);
+  });
 }
 
 export async function launchFreshProcess(
@@ -507,7 +662,7 @@ export async function launchFreshProcess(
     });
     child.once("spawn", closeLogHandle);
     child.once("error", closeLogHandle);
-    await once(child, "spawn");
+    await waitForChildSpawn(child, config.measurement.stateTransitionTimeoutSeconds);
     const pid = child.pid;
     const initialState = await waitForProcess(
       helperBinaryPath,
@@ -566,29 +721,48 @@ export function assertProcessIdentity(state, pid, buildIdentity, config, expecte
   const kernelArgumentIndex = config.app.launchArguments.indexOf("-backdropKernel");
   const expectedKernel = config.app.launchArguments[kernelArgumentIndex + 1];
   if (state.backdropReady !== true) {
-    throw new Error(`pid ${pid} did not acknowledge a ready backdrop engine`);
+    throw infrastructureFailure(
+      "no-backdrop-ack",
+      `pid ${pid} did not acknowledge a ready backdrop engine`,
+    );
   }
   if (state.backdropKernel !== expectedKernel) {
-    throw new Error(
+    throw infrastructureFailure(
+      "no-backdrop-ack",
       `pid ${pid} acknowledged kernel ${state.backdropKernel ?? "missing"}; expected ${expectedKernel}`
     );
   }
   const expectedActive = expectedVisibility === "visible";
   if (state.backdropActive !== expectedActive) {
-    throw new Error(`pid ${pid} backdrop active state did not match ${expectedVisibility}`);
+    throw infrastructureFailure(
+      "no-backdrop-ack",
+      `pid ${pid} backdrop active state did not match ${expectedVisibility}`,
+    );
   }
   if (state.backdropReducedMotion !== false) {
-    throw new Error(`pid ${pid} backdrop cannot prove animation while reduced motion is active`);
+    throw infrastructureFailure(
+      "no-backdrop-ack",
+      `pid ${pid} backdrop cannot prove animation while reduced motion is active`,
+    );
   }
   if (state.backdropRenderLoopScheduled !== expectedActive) {
-    throw new Error(`pid ${pid} backdrop render-loop state did not match ${expectedVisibility}`);
+    throw infrastructureFailure(
+      "no-backdrop-ack",
+      `pid ${pid} backdrop render-loop state did not match ${expectedVisibility}`,
+    );
   }
 }
 
-async function takeCPUSample(helperBinaryPath, pid, state, durationSeconds) {
-  const first = await helper(helperBinaryPath, "cpu", pid);
+async function takeCPUSample(
+  helperBinaryPath,
+  pid,
+  state,
+  durationSeconds,
+  helperTimeoutSeconds = DEFAULT_EXEC_TIMEOUT_MS / 1_000,
+) {
+  const first = await helper(helperBinaryPath, "cpu", pid, helperTimeoutSeconds);
   await sleep(durationSeconds * 1000);
-  const second = await helper(helperBinaryPath, "cpu", pid);
+  const second = await helper(helperBinaryPath, "cpu", pid, helperTimeoutSeconds);
   const durationNanoseconds = Number(BigInt(second.monotonicNanoseconds) - BigInt(first.monotonicNanoseconds));
   const cpuDeltaNanoseconds = Number(BigInt(second.cpuNanoseconds) - BigInt(first.cpuNanoseconds));
   if (!Number.isSafeInteger(durationNanoseconds) || durationNanoseconds <= 0) {
@@ -648,7 +822,8 @@ export async function measureMatchedPairs(
       helperBinaryPath,
       pid,
       "visible-idle",
-      config.measurement.sampleDurationSeconds
+      config.measurement.sampleDurationSeconds,
+      timeout
     ));
   }
 
@@ -671,7 +846,8 @@ export async function measureMatchedPairs(
       helperBinaryPath,
       pid,
       "occluded-idle",
-      config.measurement.sampleDurationSeconds
+      config.measurement.sampleDurationSeconds,
+      timeout
     );
     pairs.push({
       pairIndex,
@@ -691,7 +867,10 @@ async function writeEvidence(outputPath, evidence) {
 
 async function executeGate(argumentsToParse) {
   if (process.platform !== "darwin") {
-    throw new Error("P-PERF-3 real-process CPU gate requires macOS");
+    throw infrastructureFailure(
+      "launch-failed",
+      "P-PERF-3 real-process CPU gate requires macOS",
+    );
   }
   const rawConfig = JSON.parse(await readFile(configPath, "utf8"));
   const config = validateConfig(rawConfig);
@@ -739,6 +918,8 @@ async function executeGate(argumentsToParse) {
       gateVersion: config.gateVersion,
       runID,
       status: summary.pass ? "passed" : "failed",
+      failureClass: summary.pass ? null : "budget",
+      reasonCode: null,
       startedAt: startedAt.toISOString(),
       finishedAt: new Date().toISOString(),
       startedMonotonicNanoseconds: startedMonotonicNanoseconds.toString(),
@@ -793,12 +974,22 @@ async function executeGate(argumentsToParse) {
     return { outputPath, evidence };
   } catch (error) {
     if (!error.evidenceAlreadyWritten) {
+      const evidenceError = error.reasonCode
+        ? error
+        : infrastructureFailure(
+          "launch-failed",
+          `P-PERF-3 setup or measurement infrastructure failed: ${errorDetail(error)}`,
+          error,
+        );
       const failedAtMonotonicNanoseconds = process.hrtime.bigint();
+      const classification = classifyGateFailure(evidenceError);
       evidence = {
         schemaVersion: 1,
         gateVersion: rawConfig?.gateVersion ?? "unknown",
         runID,
-        status: "failed",
+        status: classification.status,
+        failureClass: classification.reasonCode ? "infra" : "unknown",
+        reasonCode: classification.reasonCode,
         startedAt: startedAt.toISOString(),
         finishedAt: new Date().toISOString(),
         startedMonotonicNanoseconds: startedMonotonicNanoseconds.toString(),
@@ -821,9 +1012,10 @@ async function executeGate(argumentsToParse) {
         measurementMethod,
         transitions: measurement?.transitions ?? null,
         matchedPairs: measurement?.pairs ?? null,
-        error: String(error.stack ?? error.message ?? error),
+        error: String(evidenceError.stack ?? evidenceError.message ?? evidenceError),
       };
       await writeEvidence(outputPath, evidence);
+      error = evidenceError;
     }
     throw error;
   } finally {
@@ -836,8 +1028,15 @@ export async function main(argumentsToParse = process.argv.slice(2)) {
   try {
     await executeGate(argumentsToParse);
   } catch (error) {
-    process.stderr.write(`error: ${error.message ?? error}\n`);
-    process.exitCode = 1;
+    const classifiedError = error?.reasonCode || error?.evidenceAlreadyWritten || error?.usage
+      ? error
+      : infrastructureFailure(
+        "launch-failed",
+        `P-PERF-3 could not start or complete its evidence run: ${errorDetail(error)}`,
+        error,
+      );
+    process.stderr.write(`error: ${classifiedError.message ?? classifiedError}\n`);
+    process.exitCode = classifyGateFailure(classifiedError).exitCode;
   }
 }
 

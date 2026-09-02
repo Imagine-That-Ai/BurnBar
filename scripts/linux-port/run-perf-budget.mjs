@@ -16,14 +16,28 @@ const matchedComparisonPath = path.join(outDir, 'matched-performance-comparison.
 
 fs.mkdirSync(outDir, { recursive: true });
 const budget = JSON.parse(fs.readFileSync(budgetPath, 'utf8'));
-const requiredMetrics = budget.nativeShell?.requiredMetrics ?? [];
+const requiredMetrics = Array.isArray(budget.nativeShell?.requiredMetrics)
+  ? budget.nativeShell.requiredMetrics
+  : [];
 const errors = [];
+const infraErrors = [];
+const budgetErrors = [];
+
+function addInfraError(message) {
+  errors.push(message);
+  infraErrors.push(message);
+}
+
+function addBudgetError(message) {
+  errors.push(message);
+  budgetErrors.push(message);
+}
 
 function readJSON(file) {
   if (!fs.existsSync(file)) return null;
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); }
   catch (error) {
-    errors.push(`invalid JSON in ${path.basename(file)}: ${error.message}`);
+    addInfraError(`invalid JSON in ${path.basename(file)}: ${error.message}`);
     return null;
   }
 }
@@ -36,7 +50,7 @@ function readRuntimeSamples() {
     .map((line, index) => {
       try { return JSON.parse(line); }
       catch (error) {
-        errors.push(`invalid runtime sample line ${index + 1}: ${error.message}`);
+        addInfraError(`invalid runtime sample line ${index + 1}: ${error.message}`);
         return null;
       }
     })
@@ -67,9 +81,10 @@ const desktopSession = readJSON(desktopSessionPath);
 const routeTranscript = readJSON(routeTranscriptPath);
 const matchedComparison = readJSON(matchedComparisonPath);
 const runtimeSamples = readRuntimeSamples();
-if (!desktopSession) errors.push('missing linux-desktop-session-report.json');
-if (!routeTranscript) errors.push('missing packaged-route-session-transcript.json');
-if (!matchedComparison) errors.push('missing matched-performance-comparison.json');
+if (requiredMetrics.length === 0) addInfraError('missing native shell required metrics');
+if (!desktopSession) addInfraError('missing linux-desktop-session-report.json');
+if (!routeTranscript) addInfraError('missing packaged-route-session-transcript.json');
+if (!matchedComparison) addInfraError('missing matched-performance-comparison.json');
 
 const metricInputs = {
   'app.start': {
@@ -99,17 +114,21 @@ const verdicts = requiredMetrics.map((name) => {
   const minimumSamples = budget.nativeShell.minimumSamples?.[name];
   const sampleCount = input.samples.length;
   const measured = stats !== null;
+  const validLimit = typeof limit === 'number' && Number.isFinite(limit) && limit >= 0;
+  const validMinimum = Number.isSafeInteger(minimumSamples) && minimumSamples > 0;
   const pass = measured &&
-    typeof limit === 'number' &&
-    Number.isSafeInteger(minimumSamples) &&
+    validLimit &&
+    validMinimum &&
     sampleCount >= minimumSamples &&
     stats.p95 <= limit;
-  if (!measured) errors.push(`missing measured samples for ${name}`);
+  if (!measured) addInfraError(`missing measured samples for ${name}`);
+  if (!validLimit) addInfraError(`missing or invalid p95 threshold for ${name}`);
+  if (!validMinimum) addInfraError(`missing or invalid minimum sample count for ${name}`);
   if (sampleCount < (minimumSamples ?? Number.POSITIVE_INFINITY)) {
-    errors.push(`${name} has ${sampleCount} samples; requires ${minimumSamples ?? 'a configured minimum'}`);
+    addInfraError(`${name} has ${sampleCount} samples; requires ${minimumSamples ?? 'a configured minimum'}`);
   }
-  if (stats && typeof limit === 'number' && stats.p95 > limit) {
-    errors.push(`${name} p95 ${stats.p95}ms exceeds ${limit}ms`);
+  if (stats && validLimit && stats.p95 > limit) {
+    addBudgetError(`${name} p95 ${stats.p95}ms exceeds ${limit}ms`);
   }
   return { name, unit: 'milliseconds', source: input.source, sampleCount, minimumSamples, limitP95Ms: limit, stats, measured, pass };
 });
@@ -118,11 +137,13 @@ const routeSources = runtimeSamples
   .filter((row) => row.name === 'route.navigation')
   .map((row) => String(row.source ?? ''));
 if (routeSources.some((source) => source.includes('route-render') || source.includes('route-state-loop'))) {
-  errors.push('route.navigation contains a pre-paint or placeholder source');
+  addInfraError('route.navigation contains a pre-paint or placeholder source');
 }
-if (matchedComparison?.pass !== true) errors.push('matched macOS/Linux performance comparison did not pass');
+if (matchedComparison && matchedComparison.pass !== true) {
+  addBudgetError('matched macOS/Linux performance comparison did not pass');
+}
 if (matchedComparison && matchedComparison.protocolVersion !== budget.matched?.protocolVersion) {
-  errors.push('matched comparison protocol does not match the budget');
+  addInfraError('matched comparison protocol does not match the budget');
 }
 
 const allPass = errors.length === 0 &&
@@ -152,6 +173,13 @@ const report = {
   matchedPerformance: matchedComparison,
   verdicts,
   errors,
+  infraErrors,
+  budgetErrors,
+  status: errors.length === 0 ? 'passed' : infraErrors.length > 0 ? 'infra-failed' : 'failed',
+  failureClass: errors.length === 0 ? null : infraErrors.length > 0 ? 'infra' : 'budget',
+  reasonCode: errors.length === 0
+    ? null
+    : infraErrors.length > 0 ? 'linux-performance-evidence-unavailable' : 'linux-performance-budget-failed',
   allPass
 };
 fs.writeFileSync(path.join(outDir, 'perf-budget.json'), JSON.stringify(report, null, 2) + '\n');
@@ -173,7 +201,10 @@ const trend = {
   matchedProfile: matchedComparison?.profile ?? null,
   matchedPass: matchedComparison?.pass === true,
   pass: allPass,
-  errors
+  errors,
+  status: report.status,
+  failureClass: report.failureClass,
+  reasonCode: report.reasonCode
 };
 fs.writeFileSync(path.join(outDir, 'perf-threshold-enforcement.json'), JSON.stringify(trend, null, 2) + '\n');
 
@@ -185,9 +216,16 @@ const macosComparison = {
   workloads: matchedComparison?.workloads ?? [],
   resources: matchedComparison?.resources ?? null,
   errors: matchedComparison?.errors ?? ['matched comparison missing'],
+  failureClass: matchedComparison?.pass === true ? null : matchedComparison ? 'budget' : 'infra',
+  reasonCode: matchedComparison?.pass === true
+    ? null
+    : matchedComparison ? 'linux-matched-performance-failed' : 'linux-matched-performance-evidence-unavailable',
   pass: matchedComparison?.pass === true
 };
 fs.writeFileSync(path.join(outDir, 'macos-perf-comparison.json'), JSON.stringify(macosComparison, null, 2) + '\n');
 
 console.log(JSON.stringify(report, null, 2));
+// Linux evidence keeps the existing non-zero failure contract for workflow
+// compatibility; the machine-readable status/failureClass/reasonCode fields
+// distinguish infrastructure evidence gaps from budget/product failures.
 process.exit(allPass ? 0 : 1);

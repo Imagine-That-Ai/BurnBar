@@ -195,6 +195,7 @@ object OsPendingNavigation {
                 routed.missionId?.takeIf { it.isNotBlank() }?.let { "mission/$it" } ?: "mission"
             MobileOsDestination.MERCURY_CALL ->
                 routed.connectionId?.takeIf { it.isNotBlank() }?.let { "mercury/call/$it" } ?: "mercury/call"
+            MobileOsDestination.DEVICES -> "you"
             else -> return
         }
         _pending.value = Request(
@@ -225,6 +226,7 @@ object MobileOsIntentNavigation {
         "event_id" to MainActivity.EXTRA_EVENT_ID,
         "uid" to MainActivity.EXTRA_UID,
         "expires_at_millis" to MainActivity.EXTRA_EXPIRES_AT_MILLIS,
+        "created_at_millis" to MainActivity.EXTRA_CREATED_AT_MILLIS,
         "type" to MainActivity.EXTRA_PUSH_TYPE,
     )
 
@@ -240,7 +242,9 @@ object MobileOsIntentNavigation {
 
     fun hasPushEnvelope(payload: Map<String, String>): Boolean = !payload["event_id"].isNullOrBlank() ||
         !payload["uid"].isNullOrBlank() ||
-        !payload["expires_at_millis"].isNullOrBlank()
+        !payload["expires_at_millis"].isNullOrBlank() ||
+        !payload["created_at_millis"].isNullOrBlank() ||
+        !payload["type"].isNullOrBlank()
 
     fun navigation(
         payload: Map<String, String>,

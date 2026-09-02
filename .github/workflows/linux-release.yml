@@ -544,6 +544,10 @@ jobs:
       - build-architecture
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    permissions:
+      attestations: write
+      contents: read
+      id-token: write
     # Stable tags remain behind the protected release environment. Feature
     # branch prerelease/nightly candidates need an unprotected environment so
     # exact-head signed evidence can be assembled before promotion.
@@ -720,6 +724,18 @@ jobs:
           node scripts/linux-port/materialize-linux-lifecycle-release-assets.mjs \
             --candidate-root "$GITHUB_WORKSPACE" \
             --output-root "$OPENBURNBAR_LINUX_RELEASE_OUT"
+
+      - name: Create GitHub SLSA provenance for Linux packages and checksums
+        id: build-provenance
+        uses: actions/attest-build-provenance@96278af6caaf10aea03fd8d33a09a777ca52d62f # v3.2.0
+        with:
+          subject-path: |
+            ${{ env.OPENBURNBAR_LINUX_RELEASE_OUT }}/artifacts/*.AppImage
+            ${{ env.OPENBURNBAR_LINUX_RELEASE_OUT }}/artifacts/*.pkg.tar.zst
+            ${{ env.OPENBURNBAR_LINUX_RELEASE_OUT }}/artifacts/*.deb
+            ${{ env.OPENBURNBAR_LINUX_RELEASE_OUT }}/artifacts/*.rpm
+            ${{ env.OPENBURNBAR_LINUX_RELEASE_OUT }}/artifacts/openburnbar-daemon-*
+            ${{ env.OPENBURNBAR_LINUX_RELEASE_OUT }}/sidecars/OpenBurnBar-${{ needs.resolve-release.outputs.version }}-linux-checksums.txt
 
       - name: Upload Linux release evidence
         if: always()

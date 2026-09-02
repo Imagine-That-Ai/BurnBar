@@ -178,7 +178,7 @@ final class AgentReplyNotificationService: NSObject, ObservableObject {
         // Both push families register here rather than in separate `configure`
         // calls: `setNotificationCategories` REPLACES the whole set, so a second
         // registration elsewhere would silently drop the first one's actions.
-        center.setNotificationCategories([Self.agentReplyCategory, Self.aiInboxCategory, Self.deviceApprovalCategory])
+        center.setNotificationCategories(Self.registeredCategories)
         Messaging.messaging().delegate = self
         requestAuthorizationAndRegister(application: application)
         updateLifecycle("active")
@@ -657,6 +657,42 @@ final class AgentReplyNotificationService: NSObject, ObservableObject {
         )
     }()
 
+    private nonisolated static let deviceApprovalApproveActionID = "DEVICE_APPROVAL_APPROVE"
+    private nonisolated static let deviceApprovalDenyActionID = "DEVICE_APPROVAL_DENY"
+    private static let deviceApprovalCategory: UNNotificationCategory = {
+        // Approve/Deny both foreground the app: the approval decision itself is
+        // made on the device-approval surface the payload's `deep_link`
+        // (`openburnbar://approve-device?deviceId=…`) routes to — never from
+        // the banner. `.authenticationRequired` matches the reply action: a
+        // vault-trust decision must not be answerable from a locked phone.
+        let approve = UNNotificationAction(
+            identifier: deviceApprovalApproveActionID,
+            title: "Approve",
+            options: [.authenticationRequired, .foreground]
+        )
+        let deny = UNNotificationAction(
+            identifier: deviceApprovalDenyActionID,
+            title: "Deny",
+            options: [.authenticationRequired, .destructive, .foreground]
+        )
+        return UNNotificationCategory(
+            identifier: "DEVICE_APPROVAL_REQUEST",
+            actions: [approve, deny],
+            intentIdentifiers: [],
+            options: [.customDismissAction]
+        )
+    }()
+
+    /// The single registration set for every notification category this
+    /// service owns (`setNotificationCategories` REPLACES the whole set).
+    /// Internal so the mobile test target can pin the set without growing the
+    /// public API.
+    static let registeredCategories: Set<UNNotificationCategory> = [
+        agentReplyCategory,
+        aiInboxCategory,
+        deviceApprovalCategory
+    ]
+
     private static let replyActionID = "AGENT_REPLY_INLINE_REPLY"
     private nonisolated static let openActionID = "AGENT_REPLY_OPEN"
     private static let agentReplyCategory: UNNotificationCategory = {
@@ -671,6 +707,16 @@ final class AgentReplyNotificationService: NSObject, ObservableObject {
         return UNNotificationCategory(
             identifier: "AGENT_REPLY",
             actions: [reply, open],
+            intentIdentifiers: [],
+            options: [.customDismissAction]
+        )
+    }()
+
+    private static let deviceApprovalCategory: UNNotificationCategory = {
+        let open = UNNotificationAction(identifier: openActionID, title: "Review", options: [.foreground])
+        return UNNotificationCategory(
+            identifier: "DEVICE_APPROVAL_REQUEST",
+            actions: [open],
             intentIdentifiers: [],
             options: [.customDismissAction]
         )
@@ -711,8 +757,14 @@ extension AgentReplyNotificationService: UNUserNotificationCenterDelegate {
         let payload = AgentReplyNotificationPayload(userInfo: userInfo)
         if payload == nil {
             let actionIdentifier = response.actionIdentifier
+            // A device-approval push is not an agent-reply payload: its
+            // Approve/Deny actions (and a plain tap) must all reach the same
+            // `deep_link` routing — the decision is made on the approval
+            // surface, not in the banner.
             guard actionIdentifier == UNNotificationDefaultActionIdentifier
-                || actionIdentifier == Self.openActionID else { return }
+                || actionIdentifier == Self.openActionID
+                || actionIdentifier == Self.deviceApprovalApproveActionID
+                || actionIdentifier == Self.deviceApprovalDenyActionID else { return }
             var fields: [String: String] = [:]
             for (key, value) in userInfo {
                 if let name = key as? String, let string = value as? String {

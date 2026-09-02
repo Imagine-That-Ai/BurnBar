@@ -1,0 +1,164 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://burnbar.ai/schemas/rollback-drill-receipt.schema.json",
+  "title": "OpenBurnBar Cloud Run rollback drill receipt",
+  "description": "Redaction-safe receipt for a Cloud Run revision-pin rollback drill. Project IDs, resource paths, service URLs, and operator identities are intentionally not part of this contract.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schemaVersion",
+    "generatedAt",
+    "mode",
+    "liveDrill",
+    "ok",
+    "drill",
+    "checks"
+  ],
+  "properties": {
+    "schema": {
+      "const": "openburnbar.rollback-drill-receipt.v1"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "mode": {
+      "enum": [
+        "fixture",
+        "live"
+      ]
+    },
+    "liveDrill": {
+      "type": "boolean"
+    },
+    "ok": {
+      "const": true
+    },
+    "drill": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "serviceName",
+        "region",
+        "targetRevision",
+        "trafficPercent",
+        "healthProbe"
+      ],
+      "properties": {
+        "kind": {
+          "const": "cloud-run-revision-pin"
+        },
+        "serviceName": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,62}$",
+          "description": "Cloud Run service name only; never a projects/... resource path or a host."
+        },
+        "region": {
+          "type": "string",
+          "pattern": "^[a-z]+-[a-z0-9]+$",
+          "description": "Cloud Run region only."
+        },
+        "targetRevision": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,62}$",
+          "description": "Cloud Run revision name only."
+        },
+        "trafficPercent": {
+          "const": 100
+        },
+        "healthProbe": {
+          "enum": [
+            "not-run",
+            "passed",
+            "warning"
+          ]
+        }
+      }
+    },
+    "checks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "revisionListLoaded",
+        "trafficPinned",
+        "liveGcloudSession"
+      ],
+      "properties": {
+        "revisionListLoaded": {
+          "const": true
+        },
+        "trafficPinned": {
+          "type": "boolean"
+        },
+        "liveGcloudSession": {
+          "type": "boolean"
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "mode": {
+            "const": "fixture"
+          }
+        },
+        "required": [
+          "mode"
+        ]
+      },
+      "then": {
+        "properties": {
+          "liveDrill": {
+            "const": false
+          },
+          "checks": {
+            "properties": {
+              "liveGcloudSession": {
+                "const": false
+              },
+              "trafficPinned": {
+                "const": false
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "mode": {
+            "const": "live"
+          }
+        },
+        "required": [
+          "mode"
+        ]
+      },
+      "then": {
+        "properties": {
+          "liveDrill": {
+            "const": true
+          },
+          "checks": {
+            "properties": {
+              "liveGcloudSession": {
+                "const": true
+              },
+              "trafficPinned": {
+                "const": true
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

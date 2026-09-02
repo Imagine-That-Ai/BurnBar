@@ -25,6 +25,11 @@ There are **two** rollback paths. Reach for the fast one first.
 **Full source rollback:**
 
 - Firebase CLI: `npm install -g firebase-tools && firebase login`
+- gcloud CLI: installed and authenticated for the live-source guard. The guard
+  reads the deployed `OPENBURNBAR_SOURCE_COMMIT` and refuses a rollback when
+  that commit is on no tag or remote branch (a deploy from an unpublished
+  checkout, #2195) or when the target is not an ancestor of it (not a
+  rollback). Use `--force` only after human verification.
 - Git tags synced: `git fetch --tags`
 - Authenticated with Firebase project (`firebase use --add`)
 
@@ -56,6 +61,19 @@ gcloud run services update-traffic <cloud-run-service> \
   --to-revisions=<revision>=100
 ```
 
+For an offline rehearsal, pass a revisions-list JSON fixture with
+`--revisions-json <file>` (or `ROLLBACK_REVISIONS_JSON`). Fixture mode only
+prints the plan; it cannot change traffic and cannot produce a live receipt.
+The live drill is deliberately separate and requires an authenticated gcloud
+session:
+
+```bash
+./scripts/ops/rollback-revision.sh <cloud-run-service> \
+  --project burnbar-staging \
+  --drill \
+  --receipt launch-evidence/rollback-drill-$(date -u +%F).json
+```
+
 To list candidate revisions by hand:
 
 ```bash
@@ -84,6 +102,11 @@ Use only when no good revision exists (see "When to fall back" above).
 ./scripts/rollback.sh --yes
 ```
 
+The source rollback refuses a target tag that is behind the live
+`OPENBURNBAR_SOURCE_COMMIT`; this protects fixes deployed from an uncommitted
+checkout. Verify the deployed source before using `--force` to override that
+guard.
+
 ## Manual Rollback Steps
 
 If the script fails, follow these manual steps:
@@ -102,12 +125,12 @@ If the script fails, follow these manual steps:
    ```bash
    npm ci --prefix functions
    npm run build --prefix functions
-   firebase deploy --only functions --project openburnbar
+   firebase deploy --only functions --project burnbar
    ```
 
 4. **Verify health:**
    ```bash
-   curl https://us-central1-openburnbar.cloudfunctions.net/healthCheck
+   curl https://us-central1-burnbar.cloudfunctions.net/healthCheck
    # Expected: { "status": "ok", ... }
    ```
 

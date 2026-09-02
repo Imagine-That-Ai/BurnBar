@@ -88,7 +88,7 @@ function HeaderStat({
         className,
       )}
     >
-      <span className="font-display text-2xl leading-none text-content-bright tabular-nums">
+      <span className="font-display text-2xl leading-none text-content-bright tabular-nums break-words [overflow-wrap:anywhere]">
         {value}
       </span>
       <span className="eyebrow">{label}</span>
@@ -99,9 +99,11 @@ function HeaderStat({
 
 function InsightRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="flex items-baseline justify-between gap-token-4 py-token-2">
-      <span className="text-sm text-content-mute">{label}</span>
-      <span className="text-right text-sm text-content-bright tabular-nums">{value}</span>
+    <div className="flex items-start justify-between gap-token-4 py-token-2">
+      <span className="shrink-0 text-sm text-content-mute">{label}</span>
+      <span className="min-w-0 text-right text-sm text-content-bright tabular-nums break-words [overflow-wrap:anywhere]">
+        {value}
+      </span>
     </div>
   );
 }
@@ -434,9 +436,8 @@ export default function ProfilePage() {
       </div>
 
       {/* Insights — a right rail on wide screens, stacked below on narrow ones.
-          The harness and combo blocks only appear from md up (they are the
-          "when there is space" detail) and only once the rollup actually
-          carries execution-source data. */}
+          Harness and combo blocks render whenever the rollup carries
+          execution-source data; labels wrap instead of clipping. */}
       <aside
         aria-label="Activity insights"
         className="reveal mt-token-12 grid content-start gap-token-8 sm:grid-cols-2 xl:mt-0 xl:grid-cols-1"
@@ -490,9 +491,11 @@ export default function ProfilePage() {
               </div>
               <ul className="mt-token-3 space-y-token-2">
                 {rail.topProviders.map((p) => (
-                  <li key={p.provider} className="flex items-center gap-2 text-sm">
+                  <li key={p.provider} className="flex items-start gap-2 text-sm">
                     <BrandLogo id={p.provider} label={p.provider} size={18} />
-                    <span className="truncate text-content-bright">{p.provider}</span>
+                    <span className="min-w-0 break-words text-content-bright [overflow-wrap:anywhere]">
+                      {p.provider}
+                    </span>
                     <span className="ml-auto shrink-0 text-content-mute tabular-nums">
                       {fmtMetric(rail.pv(p))}
                     </span>
@@ -537,13 +540,15 @@ export default function ProfilePage() {
               label="Most used model"
               value={
                 !pending && rail?.topModels[0] ? (
-                  <span className="inline-flex items-center gap-2">
+                  <span className="inline-flex min-w-0 items-start justify-end gap-2">
                     <BrandLogo
                       id={rail.topModels[0].provider}
                       label={rail.topModels[0].provider}
                       size={18}
                     />
-                    {rail.topModels[0].model}
+                    <span className="min-w-0 break-words text-left [overflow-wrap:anywhere]">
+                      {rail.topModels[0].model}
+                    </span>
                   </span>
                 ) : (
                   "—"
@@ -563,10 +568,12 @@ export default function ProfilePage() {
             <ul className="space-y-token-3">
               {rail.topModels.map((m) => (
                 <li key={`${m.provider}/${m.model}`}>
-                  <div className="mb-1 flex items-baseline justify-between gap-token-4">
-                    <span className="flex min-w-0 items-center gap-2">
+                  <div className="mb-1 flex items-start justify-between gap-token-4">
+                    <span className="flex min-w-0 items-start gap-2">
                       <BrandLogo id={m.provider} label={m.provider} size={18} />
-                      <span className="truncate text-sm text-content-bright">{m.model}</span>
+                      <span className="min-w-0 break-words text-sm text-content-bright [overflow-wrap:anywhere]">
+                        {m.model}
+                      </span>
                     </span>
                     <span className="shrink-0 text-sm text-content-mute tabular-nums">
                       {fmtMetric(rail.mv(m))}
@@ -587,15 +594,17 @@ export default function ProfilePage() {
         </div>
 
         {!pending && stats && rail && rail.topHarnesses.length > 0 && (
-          <div className="hidden md:block">
+          <div>
             <h2 className="eyebrow mb-token-3">Agent harnesses</h2>
             <ul className="space-y-token-3">
               {rail.topHarnesses.map((h) => (
                 <li key={h.sourceId}>
-                  <div className="mb-1 flex items-baseline justify-between gap-token-4">
-                    <span className="flex min-w-0 items-center gap-2">
+                  <div className="mb-1 flex items-start justify-between gap-token-4">
+                    <span className="flex min-w-0 items-start gap-2">
                       <BrandLogo id={h.sourceId} label={h.sourceName} />
-                      <span className="truncate text-sm text-content-bright">{h.sourceName}</span>
+                      <span className="min-w-0 break-words text-sm text-content-bright [overflow-wrap:anywhere]">
+                        {h.sourceName}
+                      </span>
                     </span>
                     <span className="shrink-0 text-sm text-content-mute tabular-nums">
                       {fmtMetric(rail.hv(h))}
@@ -609,15 +618,15 @@ export default function ProfilePage() {
         )}
 
         {!pending && stats && rail && rail.topCombos.length > 0 && (
-          <div className="hidden md:block">
+          <div>
             <h2 className="eyebrow mb-token-3">Combos</h2>
             <ul className="space-y-token-3">
               {rail.topCombos.map((c) => (
                 <li key={`${c.sourceId}/${c.provider}/${c.model}`}>
-                  <div className="mb-1 flex items-baseline justify-between gap-token-4">
-                    <span className="flex min-w-0 items-center gap-2">
+                  <div className="mb-1 flex items-start justify-between gap-token-4">
+                    <span className="flex min-w-0 items-start gap-2">
                       <BrandLogo id={c.sourceId} label={c.sourceName} />
-                      <span className="truncate text-sm text-content-bright">
+                      <span className="min-w-0 break-words text-sm text-content-bright [overflow-wrap:anywhere]">
                         {c.sourceName} <span className="text-content-dim">×</span> {c.model}
                       </span>
                     </span>

@@ -47,7 +47,7 @@ describe("BOLA — piAgent", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "revokePiAgentConnection",
       run,
-      expectedCode: "not-found",
+      expectedCode: "permission-denied",
       expectedOutcome: "throws",
     });
   });
@@ -61,7 +61,7 @@ describe("BOLA — piAgent", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "updatePiAgentConnectionStatus",
       run,
-      expectedCode: "not-found",
+      expectedCode: "permission-denied",
       expectedOutcome: "throws",
     });
   });

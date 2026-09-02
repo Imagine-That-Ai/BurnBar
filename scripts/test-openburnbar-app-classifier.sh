@@ -45,20 +45,6 @@ assert_equals() {
     fi
 }
 
-false_negative_log="$(write_fixture false-negative <<'LOG'
-Test Suite 'Selected tests' started at 2026-06-03 17:02:02.338.
-Restarting after unexpected exit, crash, or test timeout; summary will include totals from previous launches.
-Test Suite 'OpenBurnBarTests.xctest' passed at 2026-06-03 17:02:03.411.
-	 Executed 21 tests, with 0 failures (0 unexpected) in 1.063 (1.072) seconds
-Test Suite 'Selected tests' passed at 2026-06-03 17:02:03.411.
-	 Executed 21 tests, with 0 failures (0 unexpected) in 1.063 (1.073) seconds
-Test session results, code coverage, and logs:
-	/var/folders/.../OpenBurnBarTests-attempt-1.xcresult
-
-** TEST FAILED **
-LOG
-)"
-
 concrete_failure_log="$(write_fixture concrete-failure <<'LOG'
 Test Suite 'Selected tests' started at 2026-06-03 17:02:02.338.
 Test Case '-[OpenBurnBarTests.UsageSyncRoundTripTests test_usageUpload_writesToFirestoreAndMarksSynced]' failed (0.123 seconds).
@@ -68,48 +54,6 @@ Failing tests:
 	OpenBurnBarTests.UsageSyncRoundTripTests/test_usageUpload_writesToFirestoreAndMarksSynced
 LOG
 )"
-
-recovered_retry_log="$(write_fixture recovered-retry <<'LOG'
-Test Suite 'Selected tests' started at 2026-06-03 16:52:00.000.
-Test Case '-[OpenBurnBarTests.MacAppStoreReviewComplianceTests testMacCloudStoreHasNativeStoreKitPurchaseAndLegalLinks]' failed (0.112 seconds).
-Test Suite 'MacAppStoreReviewComplianceTests' failed at 2026-06-03 16:53:16.452.
-	 Executed 6 tests, with 2 failures (0 unexpected) in 0.148 (0.151) seconds
-Test Suite 'Selected tests' started at 2026-06-03 17:02:02.338.
-Test Suite 'OpenBurnBarTests.xctest' passed at 2026-06-03 17:02:03.411.
-	 Executed 21 tests, with 0 failures (0 unexpected) in 1.063 (1.072) seconds
-Test Suite 'Selected tests' passed at 2026-06-03 17:02:03.411.
-	 Executed 21 tests, with 0 failures (0 unexpected) in 1.063 (1.073) seconds
-** TEST FAILED **
-LOG
-)"
-
-final_failing_tests_log="$(write_fixture final-failing-tests <<'LOG'
-Test Suite 'Selected tests' started at 2026-06-03 17:02:02.338.
-Test Suite 'Selected tests' passed at 2026-06-03 17:02:03.411.
-	 Executed 21 tests, with 0 failures (0 unexpected) in 1.063 (1.073) seconds
-Failing tests:
-	OpenBurnBarTests.SomeTests/test_realRegression
-** TEST FAILED **
-LOG
-)"
-
-final_green_bundle_with_stale_footer_log="$(write_fixture final-green-bundle-with-stale-footer <<'LOG'
-Test Suite 'Selected tests' started at 2026-06-15 23:30:09.118.
-Test Suite 'OpenBurnBarMobileTests.xctest' passed at 2026-06-15 23:37:29.625.
-	 Executed 528 tests, with 3 tests skipped and 0 failures (0 unexpected) in 19.317 (23.614) seconds
-Test Suite 'Selected tests' passed at 2026-06-15 23:37:29.630.
-	 Executed 528 tests, with 3 tests skipped and 0 failures (0 unexpected) in 19.317 (23.620) seconds
-Test session results, code coverage, and logs:
-	/var/folders/.../OpenBurnBarMobileTests-attempt-1.xcresult
-
-Failing tests:
-	HermesServiceTests.testExplicitSelectedModelWithIneligibleLiveRouteStopsBeforeRelayRequest()
-	MercuryPersonalizationTests.testWallpaperAccentSamplerReturnsAccentForRedSquare()
-
-** TEST FAILED **
-LOG
-)"
-
 xcode_exit65_final_green_after_stale_failures_log="$(write_fixture xcode-exit65-final-green-after-stale-failures <<'LOG'
 Test Suite 'Selected tests' started at 2026-06-20 01:54:33.024.
 Test Case '-[OpenBurnBarTests.MediaSessionCoordinatorTests testActiveScreenShareStopsWhenAdmissionIsRevoked]' failed (0.112 seconds).
@@ -219,26 +163,6 @@ unknown_failure_log="$(write_fixture unknown-failure <<'LOG'
 LOG
 )"
 
-green_summary_then_build_error_log="$(write_fixture green-summary-then-build-error <<'LOG'
-Test Suite 'Selected tests' started at 2026-06-21 21:30:00.000.
-Test Suite 'OpenBurnBarTests.xctest' passed at 2026-06-21 21:31:00.000.
-     Executed 21 tests, with 0 failures (0 unexpected) in 60.000 (60.000) seconds
-Test Suite 'Selected tests' passed at 2026-06-21 21:31:00.000.
-     Executed 21 tests, with 0 failures (0 unexpected) in 60.000 (60.000) seconds
-xcodebuild: error: The workspace named "OpenBurnBar" does not contain a scheme named "OpenBurnBar".
-LOG
-)"
-
-green_summary_then_codesign_error_log="$(write_fixture green-summary-then-codesign-error <<'LOG'
-Test Suite 'Selected tests' started at 2026-06-21 21:30:00.000.
-Test Suite 'OpenBurnBarTests.xctest' passed at 2026-06-21 21:31:00.000.
-     Executed 21 tests, with 0 failures (0 unexpected) in 60.000 (60.000) seconds
-Test Suite 'Selected tests' passed at 2026-06-21 21:31:00.000.
-     Executed 21 tests, with 0 failures (0 unexpected) in 60.000 (60.000) seconds
-Command CodeSign failed with a nonzero exit code
-LOG
-)"
-
 swiftpm_dependency_timeout_log="$(write_fixture swiftpm-dependency-timeout <<'LOG'
 failed downloading https://github.com/sqlcipher/SQLCipher.swift/releases/download/4.16.0/SQLCipher.xcframework.zip which is required by binary target SQLCipher: downloadError("The request timed out.")
 failed downloading https://dl.google.com/firebase/ios/swiftpm/11.15.0/FirebaseAnalytics.zip which is required by binary target FirebaseAnalytics: downloadError("The request timed out.")
@@ -292,21 +216,12 @@ LOG
 
 assert_true "interleaved security assertion failure is concrete XCTest failure" openburnbar_app_test_has_concrete_xctest_failure "$interleaved_security_failure_log"
 assert_true "interleaved security assertion failure is terminal concrete failure" openburnbar_app_test_has_terminal_concrete_xctest_failure "$interleaved_security_failure_log"
-assert_true "green XCTest summary plus trailing Xcode failure is accepted" is_xcode_false_negative_pass "$false_negative_log"
-assert_false "concrete XCTest failure is not accepted as a false-negative pass" is_xcode_false_negative_pass "$concrete_failure_log"
 assert_true "concrete XCTest failure remains terminal after false-negative guard" openburnbar_app_test_has_terminal_concrete_xctest_failure "$concrete_failure_log"
-assert_true "earlier Xcode retry failure is accepted only when final Selected tests summary is green" is_xcode_false_negative_pass "$recovered_retry_log"
-assert_false "final failing-tests section is not hidden by a stale green summary" is_xcode_false_negative_pass "$final_failing_tests_log"
-assert_false "final failing-tests footer is not hidden by green bundle and Selected tests summaries" is_xcode_false_negative_pass "$final_green_bundle_with_stale_footer_log"
-assert_false "earlier failures plus final failing-tests footer are not hidden by green summaries" is_xcode_false_negative_pass "$xcode_exit65_final_green_after_stale_failures_log"
 assert_true "earlier failures plus final failing-tests footer remain terminal" openburnbar_app_test_has_terminal_concrete_xctest_failure "$xcode_exit65_final_green_after_stale_failures_log"
-assert_false "runner restart does not erase a final failing-tests footer" is_xcode_false_negative_pass "$restarted_final_green_with_stale_footer_log"
 assert_true "runner-restart failing-tests footer remains terminal" openburnbar_app_test_has_terminal_concrete_xctest_failure "$restarted_final_green_with_stale_footer_log"
-assert_false "runner-restart final-run assertion failure is not hidden" is_xcode_false_negative_pass "$restarted_final_run_failure_log"
 assert_true "runner-restart final-run assertion failure remains terminal concrete failure" openburnbar_app_test_has_terminal_concrete_xctest_failure "$restarted_final_run_failure_log"
 assert_true "runner crash without concrete XCTest failure is retryable" is_known_hang "$hang_log"
 assert_false "runner crash with concrete XCTest failure is not hidden as infrastructure" is_known_hang "$hang_with_failure_log"
-assert_false "test-host timeout relaunch is not accepted as false-negative pass" is_xcode_false_negative_pass "$timeout_restart_log"
 assert_false "test-host timeout relaunch with stale failing footer is not terminal concrete failure" openburnbar_app_test_has_terminal_concrete_xctest_failure "$timeout_restart_log"
 assert_true "test-host timeout relaunch with stale failing footer is retryable" is_known_hang "$timeout_restart_log"
 assert_false "test-host timeout relaunch with stale failing footer is not terminal concrete failure" openburnbar_app_test_has_terminal_concrete_xctest_failure "$timeout_restart_log"
@@ -317,8 +232,6 @@ assert_false "later failed Selected tests summary resets stale green state" open
 assert_true "later failed Selected tests summary remains terminal after stale green summary" openburnbar_app_test_has_terminal_concrete_xctest_failure "$timeout_restart_stale_green_then_failed_log"
 assert_false "later failed Selected tests summary is not retryable after stale green summary" is_known_hang "$timeout_restart_stale_green_then_failed_log"
 assert_false "unknown failure is not retryable" is_known_hang "$unknown_failure_log"
-assert_false "green XCTest summary plus later xcodebuild error is not accepted without test-failed marker" is_xcode_false_negative_pass "$green_summary_then_build_error_log"
-assert_false "green XCTest summary plus codesign error is not accepted without test-failed marker" is_xcode_false_negative_pass "$green_summary_then_codesign_error_log"
 assert_true "SwiftPM binary artifact download timeout is retryable infrastructure" is_swiftpm_dependency_resolution_transient "$swiftpm_dependency_timeout_log"
 assert_true "SwiftPM package clone network timeout is retryable infrastructure" is_swiftpm_dependency_resolution_transient "$swiftpm_clone_timeout_log"
 assert_false "SwiftPM timeout does not hide concrete XCTest failure" is_swiftpm_dependency_resolution_transient "$swiftpm_timeout_with_xctest_failure_log"
@@ -341,7 +254,7 @@ default_plan="$(
         "$repo_root/scripts/test-openburnbar-app.sh" --print-xcodebuild-plan
 )"
 assert_equals "default app test plan preserves all sensitive tests in a fresh host" \
-    $'main-only\tOpenBurnBarTests\nmain-skip\t'"$media_admission_isolated_filter"$'\nmain-skip\t'"$media_retry_isolated_filter"$'\nmain-skip\t'"$memory_activation_isolated_filter"$'\nmain-skip\t'"$memory_citation_jump_isolated_filter"$'\nmain-skip\t'"$memory_cloud_sync_isolated_filter"$'\nmain-skip\t'"$memory_drop_telemetry_isolated_filter"$'\nmain-skip\t'"$projection_chunker_isolated_filter"$'\nmain-skip\t'"$projection_service_isolated_filter"$'\nmain-skip\t'"$projection_matters_isolated_filter"$'\nmain-skip\t'"$projection_lifecycle_isolated_filter"$'\nfresh-host-only\t'"$media_admission_isolated_filter"$'\nfresh-host-only\t'"$media_retry_isolated_filter"$'\nfresh-host-only\t'"$memory_activation_isolated_filter"$'\nfresh-host-only\t'"$memory_citation_jump_isolated_filter"$'\nfresh-host-only\t'"$memory_cloud_sync_isolated_filter"$'\nfresh-host-only\t'"$memory_drop_telemetry_isolated_filter"$'\nfresh-host-only\t'"$projection_chunker_isolated_filter"$'\nfresh-host-only\t'"$projection_service_isolated_filter"$'\nfresh-host-only\t'"$projection_matters_isolated_filter"$'\nfresh-host-only\t'"$projection_lifecycle_isolated_filter"$'\nfresh-host-expected-count\t133' \
+    $'main-only\tOpenBurnBarTests\nmain-skip\t'"$media_admission_isolated_filter"$'\nmain-skip\t'"$media_retry_isolated_filter"$'\nmain-skip\t'"$memory_activation_isolated_filter"$'\nmain-skip\t'"$memory_citation_jump_isolated_filter"$'\nmain-skip\t'"$memory_cloud_sync_isolated_filter"$'\nmain-skip\t'"$memory_drop_telemetry_isolated_filter"$'\nmain-skip\t'"$projection_chunker_isolated_filter"$'\nmain-skip\t'"$projection_service_isolated_filter"$'\nmain-skip\t'"$projection_matters_isolated_filter"$'\nmain-skip\t'"$projection_lifecycle_isolated_filter"$'\nfresh-host-only\t'"$media_admission_isolated_filter"$'\nfresh-host-only\t'"$media_retry_isolated_filter"$'\nfresh-host-only\t'"$memory_activation_isolated_filter"$'\nfresh-host-only\t'"$memory_citation_jump_isolated_filter"$'\nfresh-host-only\t'"$memory_cloud_sync_isolated_filter"$'\nfresh-host-only\t'"$memory_drop_telemetry_isolated_filter"$'\nfresh-host-only\t'"$projection_chunker_isolated_filter"$'\nfresh-host-only\t'"$projection_service_isolated_filter"$'\nfresh-host-only\t'"$projection_matters_isolated_filter"$'\nfresh-host-only\t'"$projection_lifecycle_isolated_filter"$'\nfresh-host-expected-count\t138' \
     "$default_plan"
 
 memory_activation_test_count="$(

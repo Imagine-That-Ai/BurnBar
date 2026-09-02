@@ -16,11 +16,14 @@
 #   ./scripts/rollback.sh v1.0.1             # Roll back to a specific tag
 #   ./scripts/rollback.sh --dry-run          # Preview what would be rolled back
 #   ./scripts/rollback.sh --yes              # Non-interactive (skip confirmation)
+#   ./scripts/rollback.sh --force            # Override the live-source ancestry guard
 #   ./scripts/rollback.sh --allow-stale      # Permit auto-targeting a tag older
 #                                            # than the freshness window
 #
 # Prerequisites:
 #   - firebase CLI installed and authenticated
+#   - gcloud CLI installed and authenticated for the live-source guard (or
+#     human-verified --force)
 #   - FIREBASE_PROJECT environment variable set (or uses .firebaserc default)
 #   - SENTRY_DSN set to the production Functions Sentry ingest DSN
 #   - Git tags fetched: git fetch --tags
@@ -50,11 +53,13 @@ STALE_TAG_MAX_AGE_DAYS="${STALE_TAG_MAX_AGE_DAYS:-30}"
 DRY_RUN=false
 ASSUME_YES=false
 ALLOW_STALE=false
+FORCE=false
 TARGET_TAG=""
 for arg in "$@"; do
   case "$arg" in
     --dry-run) DRY_RUN=true ;;
     --yes|-y) ASSUME_YES=true ;;
+    --force) FORCE=true ;;
     --allow-stale) ALLOW_STALE=true ;;
     v*) TARGET_TAG="$arg" ;;
     *) echo "Unknown argument: $arg" >&2; exit 1 ;;
@@ -105,6 +110,86 @@ if ! git rev-parse "refs/tags/${TARGET_TAG}" &>/dev/null; then
   exit 1
 fi
 TARGET_COMMIT="$(git rev-parse "refs/tags/${TARGET_TAG}^{commit}")"
+
+# #2195: a Functions deploy can come from an uncommitted or unpushed checkout,
+# so rolling it back to an ancestor tag may silently discard fixes that are not
+# present on any tag or remote branch. Prefer an operator-supplied readback when
+# available; otherwise query the production Functions metadata. The guard is
+# fail-closed when production metadata is unavailable or not represented in the
+# local Git object database. `--force` is the explicit incident-owner override.
+ROLLBACK_PROJECT="${FIREBASE_PROJECT:-${GCLOUD_PROJECT:-${GOOGLE_CLOUD_PROJECT:-}}}"
+if [[ -z "$ROLLBACK_PROJECT" && -f "firebase.json" ]]; then
+  ROLLBACK_PROJECT="$(node -e "try{const r=require('./firebase.json');console.log(r.projectId||r.default||'')}catch{}" 2>/dev/null || echo "")"
+fi
+if [[ -z "$ROLLBACK_PROJECT" && -f ".firebaserc" ]]; then
+  ROLLBACK_PROJECT="$(python3 -c "
+import json, sys
+try:
+    with open('.firebaserc', encoding='utf-8') as f:
+        d = json.load(f)
+    print(d.get('projects', {}).get('default', ''))
+except Exception:
+    print('')
+" 2>/dev/null || echo "")"
+fi
+
+if [[ "$FORCE" != "true" ]]; then
+  LIVE_SOURCE_COMMITS="${OPENBURNBAR_LIVE_SOURCE_COMMIT:-${OPENBURNBAR_SOURCE_COMMIT:-}}"
+  if [[ -z "$LIVE_SOURCE_COMMITS" && -n "$ROLLBACK_PROJECT" ]]; then
+    if ! command -v gcloud >/dev/null 2>&1; then
+      echo "ERROR: cannot verify live OPENBURNBAR_SOURCE_COMMIT because gcloud is unavailable." >&2
+      echo "       Verify the deployed source commit, then re-run with --force if this rollback is intentional." >&2
+      exit 1
+    fi
+    LIVE_SOURCE_COMMITS="$(gcloud functions list \
+      --gen2 \
+      --project "$ROLLBACK_PROJECT" \
+      --format='value(serviceConfig.environmentVariables.OPENBURNBAR_SOURCE_COMMIT)' \
+      2>/dev/null || true)"
+  fi
+
+  if [[ -n "$LIVE_SOURCE_COMMITS" ]]; then
+    while IFS= read -r live_commit; do
+      [[ -z "$live_commit" ]] && continue
+      if [[ ! "$live_commit" =~ ^[a-fA-F0-9]{40}$ ]]; then
+        echo "ERROR: live OPENBURNBAR_SOURCE_COMMIT is missing or invalid; refusing rollback." >&2
+        echo "       Verify the deployed source metadata, then re-run with --force if intentional." >&2
+        exit 1
+      fi
+      live_commit="$(printf '%s' "$live_commit" | tr '[:upper:]' '[:lower:]')"
+      if [[ "$live_commit" == "$TARGET_COMMIT" ]]; then
+        continue
+      fi
+      if ! git cat-file -e "${live_commit}^{commit}" 2>/dev/null; then
+        echo "ERROR: live source commit ${live_commit} is not present in this checkout; refusing rollback." >&2
+        echo "       Fetch the deployed commit or re-run with --force after human verification." >&2
+        exit 1
+      fi
+      # The #2195 hazard is a deploy built from an uncommitted or unpushed
+      # checkout: it carries fixes that no tag or remote branch contains, and a
+      # rollback to an ancestor tag would discard them silently. So the guard
+      # is on the live commit's publication state, not on the rollback
+      # relationship itself (a routine rollback target is always an ancestor).
+      if [[ -z "$(git tag --contains "$live_commit" 2>/dev/null)" && \
+            -z "$(git branch -r --contains "$live_commit" 2>/dev/null)" ]]; then
+        echo "ERROR: live source commit ${live_commit} is not contained in any tag or remote branch; refusing rollback." >&2
+        echo "       The live deploy may contain unpublished fixes. Re-run with --force only after verification." >&2
+        exit 1
+      fi
+      # A target that is not behind the live commit is a sideways or forward
+      # move, not a rollback of what is deployed; that needs an explicit override.
+      if ! git merge-base --is-ancestor "$TARGET_COMMIT" "$live_commit"; then
+        echo "ERROR: target ${TARGET_TAG} (${TARGET_COMMIT}) is not an ancestor of live source commit ${live_commit}." >&2
+        echo "       This is not a rollback of the live deploy. Re-run with --force only after verification." >&2
+        exit 1
+      fi
+    done <<< "$LIVE_SOURCE_COMMITS"
+  elif [[ -n "$ROLLBACK_PROJECT" ]]; then
+    echo "ERROR: live OPENBURNBAR_SOURCE_COMMIT could not be verified; refusing rollback." >&2
+    echo "       Re-run with --force only after a human verifies the deployed source." >&2
+    exit 1
+  fi
+fi
 
 # Freshness guard: an auto-selected target older than the window is refused
 # unless --allow-stale is passed. An explicit tag argument is always honored.

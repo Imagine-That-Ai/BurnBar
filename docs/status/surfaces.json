@@ -1,0 +1,42 @@
+[
+  {
+    "id": "macos",
+    "tier": "primary",
+    "evidence": "docs/RELEASE_MACOS.md"
+  },
+  {
+    "id": "ios",
+    "tier": "mobile",
+    "evidence": "docs/IOS_APP_STORE_RELEASE_RUNBOOK.md"
+  },
+  {
+    "id": "android",
+    "tier": "mobile",
+    "evidence": "docs/runbooks/google-play-publishing.md"
+  },
+  {
+    "id": "windows",
+    "tier": "parity",
+    "evidence": "docs/windows-port/WINDOWS_PARITY_LEDGER.md"
+  },
+  {
+    "id": "linux",
+    "tier": "parity",
+    "evidence": "docs/linux-port/README.md"
+  },
+  {
+    "id": "daemon",
+    "tier": "service",
+    "evidence": "docs/architecture/README.md"
+  },
+  {
+    "id": "extension",
+    "tier": "integration",
+    "evidence": "extensions/openburnbar/README.md"
+  },
+  {
+    "id": "cli",
+    "tier": "integration",
+    "evidence": "README.md"
+  }
+]

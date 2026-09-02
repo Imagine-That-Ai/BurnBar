@@ -9,6 +9,7 @@ import OpenBurnBarKernel
 enum MobilePendingOsRoute: Equatable {
     case mercuryCall(connectionId: String?)
     case mission(missionId: String?)
+    case devices(deviceId: String?)
 }
 
 @MainActor
@@ -84,6 +85,11 @@ enum MobileOsDeepLinkApplier {
             var userInfo: [AnyHashable: Any] = [:]
             if let mission = routed.missionId { userInfo["missionId"] = mission }
             NotificationCenter.default.post(name: .init("ShowMissionConsole"), object: nil, userInfo: userInfo)
+        case .devices:
+            MobilePendingOsRouteStore.shared.stash(.devices(deviceId: routed.deviceId))
+            var userInfo: [AnyHashable: Any] = [:]
+            if let deviceId = routed.deviceId { userInfo["deviceId"] = deviceId }
+            NotificationCenter.default.post(name: .init("ShowDevices"), object: nil, userInfo: userInfo)
         case .unknown:
             break
         }

@@ -36,9 +36,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Symbol owed VoiceOver. Pinned by `FluidAuroraKernelTests` (12 tests).
 
 ### Fixed
-- Bumped Mac `CURRENT_PROJECT_VERSION` to `83` so `1.0.40+repair.37` is
-  strictly newer than live `1.0.40+repair.36` build 82. The in-app updater
-  compares numeric `CFBundleVersion` first and refuses same-build installs.
+- Console Profile compact counts now use B and T, so a trillion-token lifetime
+  total reads as `1.09T` instead of `1085491M`. Model, harness, and combo labels
+  wrap instead of clipping, and harness/combo breakdowns stay visible on
+  narrow screens.
+- The menu-bar pending-device banner lists every waiting device instead of only
+  the first, shows why Approve cannot run from an untrusted Mac, and deep-links
+  to Settings › Trusted Devices instead of hanging on a silent self-approve.
+- Tapping a new-computer approval banner on iPhone no longer crashes. The
+  missing `DEVICE_APPROVAL_REQUEST` category is registered, `openburnbar://`
+  and `burnbar://devices` both open You → Devices, and review stays explicit —
+  the tap never auto-approves. Android FCM taps land on Connected Devices the
+  same way. iOS `CURRENT_PROJECT_VERSION` is 85 so TestFlight can attach a new
+  IPA.
+- Bumped Mac and iOS `CURRENT_PROJECT_VERSION` to `85` and bound the owner-emergency release packet to `v1.0.40+repair.38` so the release is strictly newer than live `1.0.40+repair.36` build 82 and previous `v1.0.40+repair.37` tag. The in-app updater compares numeric `CFBundleVersion` first and refuses same-build installs.
 - Console Profile no longer treats a present-but-zeroed `all_time` rollup as
   healthy. The cheap scheduled path can write that document before any device
   has published usage, which hid Re-sync and skipped the one-time

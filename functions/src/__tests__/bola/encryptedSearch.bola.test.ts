@@ -63,7 +63,7 @@ describe("BOLA — encryptedSearch", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "beginEncryptedSessionBlobUpload",
       run,
-      expectedCode: "not-found",
+      expectedCode: "permission-denied",
       expectedOutcome: "throws",
     });
   });
@@ -77,7 +77,7 @@ describe("BOLA — encryptedSearch", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "getEncryptedSessionBlobDownloadUrl",
       run,
-      expectedCode: "not-found",
+      expectedCode: "permission-denied",
       expectedOutcome: "throws",
     });
   });
@@ -91,7 +91,7 @@ describe("BOLA — encryptedSearch", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "commitEncryptedSearchIndexBatch",
       run,
-      expectedCode: "not-found",
+      expectedCode: "permission-denied",
       expectedOutcome: "throws",
     });
   });
@@ -105,7 +105,7 @@ describe("BOLA — encryptedSearch", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "commitEncryptedProjectMemorySnapshot",
       run,
-      expectedCode: "not-found",
+      expectedCode: "permission-denied",
       expectedOutcome: "throws",
     });
   });
@@ -119,7 +119,7 @@ describe("BOLA — encryptedSearch", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "getEncryptedProjectMemorySnapshot",
       run,
-      expectedCode: "not-found",
+      expectedCode: "permission-denied",
       expectedOutcome: "throws",
     });
   });
@@ -155,7 +155,7 @@ describe("BOLA — encryptedSearch", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "searchEncryptedConversationIndex",
       run,
-      expectedCode: "not-found",
+      expectedCode: "permission-denied",
       expectedOutcome: "throws",
     });
   });
@@ -169,7 +169,7 @@ describe("BOLA — encryptedSearch", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "queryConversations",
       run,
-      expectedCode: "not-found",
+      expectedCode: "permission-denied",
       expectedOutcome: "throws",
     });
   });

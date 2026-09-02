@@ -239,8 +239,9 @@ jobs:
         run: |
           set -euo pipefail
           if [[ -z "${OPENAI_API_KEY}" ]]; then
-            echo "::notice::OPENAI_API_KEY is not configured. Add it under Settings -> Secrets and variables -> Actions."
+            echo "::error::OPENAI_API_KEY missing. Add it under Settings -> Secrets and variables -> Actions."
             echo "configured=false" >> "$GITHUB_OUTPUT"
+            exit 1
           else
             echo "configured=true" >> "$GITHUB_OUTPUT"
           fi
@@ -639,3 +640,48 @@ jobs:
               --title "$REPAIR_TITLE" \
               --body-file "$body"
           fi
+
+  fail-closed-summary:
+    name: Report repair-loop fail-closed reason
+    needs: [validate-provenance, repair-nightly-ci]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      PROVENANCE_SAFE: ${{ needs.validate-provenance.outputs.safe }}
+      PROVENANCE_REASON: ${{ needs.validate-provenance.outputs.reason }}
+      VALIDATION_RESULT: ${{ needs.validate-provenance.result }}
+      REPAIR_RESULT: ${{ needs.repair-nightly-ci.result }}
+    steps:
+      - name: Fail closed when repair proof is incomplete
+        run: |
+          set -euo pipefail
+          reason=""
+          if [[ -z "${OPENAI_API_KEY}" ]]; then
+            reason="OPENAI_API_KEY is missing"
+            echo "::error::OPENAI_API_KEY missing"
+          fi
+          if [[ "${PROVENANCE_SAFE}" != "true" || "${VALIDATION_RESULT}" != "success" || "${REPAIR_RESULT}" != "success" ]]; then
+            reason="${reason:+${reason}; }provenance safe=${PROVENANCE_SAFE:-unset}, validation=${VALIDATION_RESULT}, repair=${REPAIR_RESULT}; ${PROVENANCE_REASON:-no provenance reason}"
+            echo "::error::provenance/skip reason: ${reason}"
+          fi
+          if [[ -z "${reason}" ]]; then
+            {
+              echo "## Codex nightly repair proof"
+              echo
+              echo "Repair operator completed with trusted provenance and a configured API key."
+              echo "- provenance: ${PROVENANCE_SAFE}"
+              echo "- repair job: ${REPAIR_RESULT}"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          {
+            echo "## Codex nightly repair blocked"
+            echo
+            echo "**Reason:** ${reason}"
+            echo
+            echo "This workflow fails closed; a missing secret, unsafe provenance result, or skipped repair job is red."
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 1
