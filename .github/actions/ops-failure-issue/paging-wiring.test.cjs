@@ -27,7 +27,7 @@ const OPEN_WORKFLOWS = [
   { file: "linux-nightly.yml", lanes: ["linux-nightly"] },
   { file: "nightly-dast-sandbox.yml", lanes: ["nightly-sandbox"] },
   { file: "nightly-e2e.yml", lanes: ["nightly-e2e"] },
-  { file: "ops-confidence.yml", lanes: ["ops-confidence", "deploy-freshness"] },
+  { file: "ops-confidence.yml", lanes: ["ops-confidence", "deploy-freshness", "deploy-freshness-identity"] },
 ];
 
 const ACTION_USES = "./.github/actions/ops-failure-issue";
@@ -132,6 +132,11 @@ function workflowPreamble(relFile) {
 // Per-workflow wiring: open must page, close must not.
 // ---------------------------------------------------------------------------
 
+// Lanes that open a tracking issue but deliberately never page: W0-5 routes
+// verifier-identity failures (WIF/provisioning drift) to an issue without
+// treating them as a production freeze.
+const NO_PAGING_LANES = new Set(["deploy-freshness-identity"]);
+
 for (const { file, lanes } of OPEN_WORKFLOWS) {
   test(`${file} wires paging-slack-webhook on every mode: open and omits it on mode: close`, () => {
     const blocks = extractActionBlocks(file);
@@ -152,10 +157,17 @@ for (const { file, lanes } of OPEN_WORKFLOWS) {
     // Validate every open invocation independently: each must page and use one
     // of this workflow's explicitly expected lanes.
     for (const { lane, block } of openBlocks) {
-      assert.ok(
-        block.includes(PAGING_LINE),
-        `${file} mode: open block must wire paging-slack-webhook to the repo secret:\n${block}`,
-      );
+      if (NO_PAGING_LANES.has(lane)) {
+        assert.ok(
+          !/^\s+paging-slack-webhook:\s/m.test(block),
+          `${file} mode: open block for no-paging lane ${lane} must NOT wire paging-slack-webhook:\n${block}`,
+        );
+      } else {
+        assert.ok(
+          block.includes(PAGING_LINE),
+          `${file} mode: open block must wire paging-slack-webhook to the repo secret:\n${block}`,
+        );
+      }
       assert.ok(
         lanes.includes(lane),
         `${file} mode: open block must declare one of the exact expected lanes (${lanes.join(", ")}):\n${block}`,
