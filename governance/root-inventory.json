@@ -1,11 +1,11 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "inventoryKind": "tracked-root-blobs",
   "measuredFrom": "git ls-tree HEAD | awk '$2==\"blob\"'",
   "initialRootBlobCount": 57,
-  "measuredRootBlobCount": 48,
-  "maxRootBlobCount": 48,
-  "measurementNote": "The base checkout measured 57 root blobs, matching the plan. W0-11 moves eight reports and deletes one root image, so the committed inventory contains 48; the Linux DEB deletion is not a root-blob change.",
+  "measuredRootBlobCount": 50,
+  "maxRootBlobCount": 50,
+  "measurementNote": "The base checkout measured 57 root blobs, matching the plan. W0-11 moves eight reports and deletes one root image, so the committed inventory holds 48; W0-7 adds two toolchain pin files (global.json, .xcode-version) recorded as schema-v2 amendments below \u2014 the base freeze itself is untouched. The Linux DEB deletion is not a root-blob change.",
   "historicalRootPaths": [
     ".audit.out",
     ".firebaserc",
@@ -131,6 +131,10 @@
       "purpose": "Dependency-version consistency configuration."
     },
     {
+      "path": ".xcode-version",
+      "purpose": "The pinned Xcode major/range the openburnbar-test-matrix drift tripwire reads (W0-7 toolchain pins; ADR docs/ARCHITECTURE/011)."
+    },
+    {
       "path": "AGENTS.md",
       "purpose": "Canonical repository instructions for engineering agents."
     },
@@ -227,6 +231,10 @@
       "purpose": "Firestore authorization rules."
     },
     {
+      "path": "global.json",
+      "purpose": "The .NET floor (10.0, rollForward: latestFeature) for the C# binding lanes (W0-7 toolchain pins)."
+    },
+    {
       "path": "index.html",
       "purpose": "Static web entry point."
     },
@@ -257,6 +265,18 @@
     {
       "path": "storage.rules",
       "purpose": "Firebase Storage authorization rules."
+    }
+  ],
+  "amendments": [
+    {
+      "path": "global.json",
+      "addedBy": "Wave-0 W0-7",
+      "reason": "The .NET SDK resolves global.json by walking up from the project directory \u2014 it must live at the root. Floor: 10.0, rollForward: latestFeature (54 csproj files still target net8.0)."
+    },
+    {
+      "path": ".xcode-version",
+      "addedBy": "Wave-0 W0-7",
+      "reason": "The Xcode major/range pin file the openburnbar-test-matrix drift tripwire reads (dotfile convention alongside .nvmrc). ADR docs/ARCHITECTURE/011-toolchain-pins.md."
     }
   ]
 }

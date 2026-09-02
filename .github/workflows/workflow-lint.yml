@@ -375,6 +375,15 @@ jobs:
           node scripts/ci/verify-workflow-reachability.mjs
           node --test scripts/ci/verify-workflow-reachability.test.mjs
 
+      # Wave 0 W0-7: one pin per language. The checker (and its self-test)
+      # anchor .nvmrc / crates/*/rust-toolchain.toml / .xcode-version /
+      # global.json and fail closed on any floating channel or stale,
+      # expired exception in governance/toolchain-pin-exceptions.json.
+      - name: Verify toolchain pins
+        run: |
+          node scripts/ci/check-toolchain-pins.mjs
+          node scripts/ci/check-toolchain-pins.mjs --self-test
+
       # A macOS Swift job that builds libsignal without this preflight fails only
       # on the self-hosted half of the fleet, and only as an opaque cargo panic
       # ("is `cmake` not installed?"). That blocked the merge queue for days.

@@ -77,8 +77,23 @@ def load_manifest(path):
         return None, [f"cannot read {path}: {error}"]
 
     errors = []
-    if data.get("schemaVersion") != 1:
-        errors.append("schemaVersion must be 1")
+    version = data.get("schemaVersion")
+    if version not in (1, 2):
+        errors.append("schemaVersion must be 1 (frozen base) or 2 (base + explicit amendments)")
+    amendments = data.get("amendments", []) if version == 2 else []
+    if version == 2 and not isinstance(amendments, list):
+        errors.append("schemaVersion 2 requires an amendments array (explicit, attributed root-path additions)")
+    if isinstance(amendments, list):
+        for index, entry in enumerate(amendments):
+            if not isinstance(entry, dict):
+                errors.append(f"amendments[{index}] must be an object")
+                continue
+            for key in ("path", "addedBy", "reason"):
+                value = entry.get(key)
+                if not isinstance(value, str) or not value.strip():
+                    errors.append(f"amendments[{index}] is missing a non-empty {key}")
+            if isinstance(entry.get("path"), str) and "/" in entry["path"]:
+                errors.append(f"amendments[{index}] path is not a root path: {entry['path']}")
     entries = data.get("paths")
     if not isinstance(entries, list):
         return None, ["manifest paths must be an array"]
@@ -133,10 +148,13 @@ def load_manifest(path):
             errors.append(
                 "initialRootBlobCount does not match historicalRootPaths length"
             )
-        unknown = sorted(set(paths) - set(historical))
+        allowed = set(historical) | {
+            entry["path"] for entry in amendments if isinstance(entry, dict) and isinstance(entry.get("path"), str)
+        }
+        unknown = sorted(set(paths) - allowed)
         if unknown:
             errors.append(
-                "manifest contains root paths outside its original inventory: "
+                "manifest contains root paths outside its original inventory and amendments: "
                 + ", ".join(unknown)
             )
     return set(paths), errors

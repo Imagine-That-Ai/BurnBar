@@ -12,7 +12,7 @@
     "line": 97,
     "pin": 24,
     "reason": "Release-evidence lane code (classifier FULL pattern) — cannot be validated on a PR. Convert with the deploy-lane Node observation above (human queue items 11-14).",
-    "owner": "Ajnunezm",
+    "owner": "Ajnunezg",
     "expiresOn": "2026-12-01"
   }
 ]

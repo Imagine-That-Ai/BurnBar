@@ -110,7 +110,7 @@ function check(root, out) {
 
   // ---- pin files ----
   const nvmrc = readTrimmed(join(root, ".nvmrc"));
-  if (!nvmrc || !/^\d+$/.test(nvmrc)) fail(`.nvmrc must exist with a numeric Node major (got: ${JSON.stringify(nvmrc)})`);
+  if (!nvmrc || !/^\d+(\.\d+)*$/.test(nvmrc)) fail(`.nvmrc must exist with a Node version (major or major.minor.patch; got: ${JSON.stringify(nvmrc)})`);
   const xcode = readTrimmed(join(root, ".xcode-version"));
   if (!xcode || !/^(\^)?\d+(\.\d+)?$/.test(xcode)) fail(`.xcode-version must exist with a major or range (got: ${JSON.stringify(xcode)})`);
   const globalJsonPath = join(root, "global.json");
@@ -185,7 +185,9 @@ function check(root, out) {
       const node = nodeFileRe.exec(line);
       if (node) {
         const value = node[2].replace(/^["']|["']$/g, "");
-        if (nvmrc && value === nvmrc) return;
+        // .nvmrc may pin a full version (22.2.1); a workflow's bare literal
+        // pins the major — compatible when the major matches the pin's major.
+        if (nvmrc && (value === nvmrc || value === nvmrc.split(".")[0])) return;
         const exemption = exceptionFor(rel, lineNo);
         if (exemption) return;
         fail(`${rel}:${lineNo} — node-version ${value} does not match .nvmrc (${nvmrc}) and has no active exception entry`);
