@@ -14,7 +14,7 @@ const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.resolve(scriptDirectory, "../..");
 const DEFAULT_OUTPUT = path.join(repositoryRoot, "ci/nightly-health.json");
 const DEFAULT_LIMIT = 8;
-const SCHEDULED_RUN_MAX_AGE_MS = 36 * 60 * 60 * 1000;
+const SCHEDULED_RUN_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const GITHUB_API_DEFAULT = "https://api.github.com";
 
 /**

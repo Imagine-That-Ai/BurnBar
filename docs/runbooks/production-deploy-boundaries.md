@@ -51,7 +51,7 @@ without WIF credentials.
 `openburnbar-pr-harness`, `app-pr-gate`, `nightly-e2e`, `codeql`,
 `linux-nightly`, and `codex-nightly-ci-repair`. It reads workflow runs,
 run-scoped jobs, and Checks API metadata for `main`; missing runs, missing
-identity, runs older than 36 hours, skipped/incomplete/unknown jobs, and API
+identity, runs older than 24 hours, skipped/incomplete/unknown jobs, and API
 errors are red infrastructure rather than implicit green. The DAST sandbox and deploy
 observer remain separate scoreboards.
 
