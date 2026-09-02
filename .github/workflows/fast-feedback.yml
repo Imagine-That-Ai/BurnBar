@@ -42,6 +42,9 @@ jobs:
       - name: Verify Vendor binary checksums
         run: bash scripts/supply-chain/verify-vendor-checksums.sh
 
+      - name: Vendor checksum manifest controls
+        run: bash scripts/supply-chain/verify-vendor-checksums.test.sh
+
       - name: Verify supply-chain provenance documentation matrix
         run: node --test scripts/ci/verify-supply-chain-doc-matrix.test.mjs
 

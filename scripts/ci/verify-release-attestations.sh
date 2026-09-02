@@ -18,7 +18,8 @@ pinned by default to:
   - OIDC issuer: https://token.actions.githubusercontent.com
 
 Accepted predicate identities:
-  - https://slsa.dev/provenance/v1
+  - https://slsa.dev/provenance/v1 (must carry a SLSA v1 buildDefinition/runDetails
+    predicate with buildType https://openburnbar.dev/slsa/build-types/macos-release/v1)
   - https://openburnbar.dev/attestations/release-artifact/v1, only through
     LEGACY_PREDICATE_ACCEPTED_UNTIL_TAG below
 
@@ -44,6 +45,9 @@ shift || true
 repo="${OPENBURNBAR_GITHUB_REPO:-Imagine-That-Ai/BurnBar}"
 version="${tag#v}"
 SLSA_PREDICATE_TYPE="https://slsa.dev/provenance/v1"
+# SLSA-typed statements must carry a real SLSA v1 predicate whose buildType is
+# ours; the release facts are read from its parameters (see release.yml).
+SLSA_BUILD_TYPE="https://openburnbar.dev/slsa/build-types/macos-release/v1"
 LEGACY_PREDICATE_TYPE="https://openburnbar.dev/attestations/release-artifact/v1"
 # Sunset: legacy release-artifact predicates are accepted only through this
 # last known release. From the next tagged release, SLSA is the sole accepted
@@ -233,7 +237,7 @@ PY
       --certificate-oidc-issuer "$certificate_issuer" \
       "$asset" >/dev/null || return 1
 
-    python3 - "$asset" "$bundle_path" "$predicate_path" "$tag" "$version" "$repo" "$candidate_type" "$expected_runner_environment" <<'PY'
+    python3 - "$asset" "$bundle_path" "$predicate_path" "$tag" "$version" "$repo" "$candidate_type" "$expected_runner_environment" "$SLSA_PREDICATE_TYPE" "$SLSA_BUILD_TYPE" <<'PY'
 import base64
 import hashlib
 import json
@@ -308,8 +312,18 @@ if not isinstance(predicate, dict):
 if predicate != sidecar_predicate:
     raise SystemExit(f"{asset.name}: release predicate sidecar does not match the signed Sigstore bundle payload")
 
+slsa_predicate_type = sys.argv[9]
+slsa_build_type = sys.argv[10]
+is_slsa = predicate_type == slsa_predicate_type
+has_slsa_layout = isinstance(predicate.get("buildDefinition"), dict) and isinstance(predicate.get("runDetails"), dict)
+if is_slsa and not has_slsa_layout:
+    raise SystemExit(
+        f"{asset.name}: {predicate_type} statement does not carry a SLSA v1 predicate (buildDefinition/runDetails)"
+    )
+if not is_slsa and has_slsa_layout:
+    raise SystemExit(f"{asset.name}: {predicate_type} statement unexpectedly carries a SLSA v1 predicate layout")
+
 expected = {
-    "predicateType": predicate_type,
     "artifact.fileName": asset.name,
     "artifact.sha256": actual_sha256,
     "artifact.sizeBytes": asset.stat().st_size,
@@ -320,17 +334,38 @@ expected = {
     "runner.environment": expected_runner_environment,
 }
 
-checks = {
-    "predicateType": predicate.get("predicateType"),
-    "artifact.fileName": predicate.get("artifact", {}).get("fileName"),
-    "artifact.sha256": predicate.get("artifact", {}).get("sha256"),
-    "artifact.sizeBytes": predicate.get("artifact", {}).get("sizeBytes"),
-    "release.version": predicate.get("release", {}).get("version"),
-    "release.tag": predicate.get("release", {}).get("tag"),
-    "release.repository": predicate.get("release", {}).get("repository"),
-    "release.ref": predicate.get("release", {}).get("ref"),
-    "runner.environment": predicate.get("runner", {}).get("environment"),
-}
+if is_slsa:
+    build_definition = predicate["buildDefinition"]
+    external = build_definition.get("externalParameters", {})
+    internal = build_definition.get("internalParameters", {})
+    builder_id = predicate["runDetails"].get("builder", {}).get("id")
+    expected["buildDefinition.buildType"] = slsa_build_type
+    expected["runDetails.builder.id"] = f"https://github.com/{repo}/.github/workflows/release.yml@refs/tags/{tag}"
+    checks = {
+        "buildDefinition.buildType": build_definition.get("buildType"),
+        "runDetails.builder.id": builder_id,
+        "artifact.fileName": external.get("artifact", {}).get("fileName"),
+        "artifact.sha256": external.get("artifact", {}).get("sha256"),
+        "artifact.sizeBytes": external.get("artifact", {}).get("sizeBytes"),
+        "release.version": external.get("release", {}).get("version"),
+        "release.tag": external.get("release", {}).get("tag"),
+        "release.repository": external.get("release", {}).get("repository"),
+        "release.ref": external.get("release", {}).get("ref"),
+        "runner.environment": internal.get("runner", {}).get("environment"),
+    }
+else:
+    expected["predicateType"] = predicate_type
+    checks = {
+        "predicateType": predicate.get("predicateType"),
+        "artifact.fileName": predicate.get("artifact", {}).get("fileName"),
+        "artifact.sha256": predicate.get("artifact", {}).get("sha256"),
+        "artifact.sizeBytes": predicate.get("artifact", {}).get("sizeBytes"),
+        "release.version": predicate.get("release", {}).get("version"),
+        "release.tag": predicate.get("release", {}).get("tag"),
+        "release.repository": predicate.get("release", {}).get("repository"),
+        "release.ref": predicate.get("release", {}).get("ref"),
+        "runner.environment": predicate.get("runner", {}).get("environment"),
+    }
 
 for key, want in expected.items():
     got = checks.get(key)

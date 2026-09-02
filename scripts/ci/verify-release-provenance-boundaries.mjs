@@ -1278,7 +1278,7 @@ function verifySupplyChainWorkflow() {
     file,
     source,
     'git checkout --detach "$RELEASE_COMMIT"',
-    "cosign attest --yes",
+    "cosign attest-blob --yes",
     "provenance artifacts must be attested only after the resolved tag commit is checked out",
   );
   requireNoPattern(

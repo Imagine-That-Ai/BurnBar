@@ -19,7 +19,8 @@ usage() {
   cat <<'EOF'
 Usage: scripts/supply-chain/verify-vendor-checksums.sh [--manifest PATH] [--dir PATH]
 
-Verify every SHA-256 entry in the Vendor checksum manifest.
+Verify every SHA-256 entry in the Vendor checksum manifest, and that every
+Vendor binary has an entry.
 EOF
 }
 
@@ -60,6 +61,9 @@ command -v shasum >/dev/null 2>&1 || {
   exit 1
 }
 
+# shellcheck source=scripts/supply-chain/vendor-binaries.sh
+source "${ROOT_DIR}/scripts/supply-chain/vendor-binaries.sh"
+
 seen_paths=()
 expected_digests=()
 entry_count=0
@@ -94,6 +98,29 @@ done < "${MANIFEST}"
 
 if [[ "${entry_count}" -eq 0 ]]; then
   echo "FAIL: checksum manifest has no entries: ${MANIFEST}" >&2
+  exit 1
+fi
+
+# Coverage: every binary under the Vendor directory must have an entry. Entries
+# without a binary are rejected below as missing targets, so the manifest and
+# the tree can drift in neither direction.
+uncovered=()
+while IFS= read -r tracked_path; do
+  [[ -n "${tracked_path}" ]] || continue
+  covered=false
+  for seen_path in "${seen_paths[@]}"; do
+    if [[ "${seen_path}" == "${tracked_path}" || "${seen_path}" == "Vendor/${tracked_path}" ]]; then
+      covered=true
+      break
+    fi
+  done
+  if [[ "${covered}" != "true" ]]; then
+    uncovered+=("${tracked_path}")
+  fi
+done < <(list_vendor_binaries "${BASE_DIR}")
+if ((${#uncovered[@]} > 0)); then
+  echo "FAIL: Vendor binaries without a checksum entry: ${uncovered[*]}" >&2
+  echo "      Regenerate with scripts/supply-chain/refresh-vendor-checksums.sh" >&2
   exit 1
 fi
 

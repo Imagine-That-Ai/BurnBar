@@ -32,7 +32,12 @@ The macOS release verifier accepts the previously published
 `https://openburnbar.dev/attestations/release-artifact/v1` predicate only
 through `v1.0.40+repair.37`. It rejects that identity for
 `v1.0.40+repair.38` and every later tag; `https://slsa.dev/provenance/v1` is
-the only accepted macOS release predicate after the sunset. Unknown predicate
+the only accepted macOS release predicate after the sunset, and a statement of
+that type must carry a real SLSA v1 predicate (`buildDefinition` /
+`runDetails`, `buildType`
+`https://openburnbar.dev/slsa/build-types/macos-release/v1`); the release facts
+live in `buildDefinition.externalParameters` and the verifier rejects the
+legacy flat layout under the SLSA identity. Unknown predicate
 identities and bundles whose signed statement type differs from the sidecar
 are rejected. Linux and Windows platform predicates are separate contracts
 and are not accepted as macOS release predicates.
@@ -51,6 +56,7 @@ exact `gh attestation verify` commands in this matrix.
 | Windows ZIP + MSIX packages | GitHub Actions OIDC → SLSA build-provenance predicate | GitHub Artifact Attestation plus `cosign attest-blob` evidence |
 | SPDX SBOM | Same workflow job as its release build | `cosign attest-blob` bundle + release evidence asset |
 | Checksums file | SHA-256/SHA-512 entries for release subjects | GitHub Artifact Attestation where listed above + `cosign attest-blob` bundle |
+| Vendored binaries (`Vendor/*.aar`) | `Vendor/CHECKSUMS.sha256`, regenerated with `scripts/supply-chain/refresh-vendor-checksums.sh` after re-vendoring | Verified on every PR by `scripts/supply-chain/verify-vendor-checksums.sh` (every binary needs an entry, every entry needs a binary, digests must match); the AAR build recipes are not touched so their provenance fingerprints stay stable |
 | OpenVEX sidecar | Generated from the release SBOM | `cosign attest-blob` bundle + release evidence asset |
 
 Workflows:
@@ -65,8 +71,10 @@ Workflows:
   — creates GitHub SLSA attestations for Windows ZIP/MSIX/checksum subjects and
   publishes the platform's supplemental provenance evidence.
 - [`.github/workflows/supply-chain-provenance.yml`](../../.github/workflows/supply-chain-provenance.yml)
-  — standalone SBOM/VEX generation and provenance verification
-  (`workflow_dispatch`); it does not fabricate release artifacts.
+  — standalone SBOM/VEX generation plus keyless `cosign attest-blob`
+  attestation of those sidecars against the resolved tag commit
+  (`workflow_dispatch` or after a release run); it does not fabricate release
+  artifacts, and a failed attestation fails the run (no fallback).
 - [`.github/workflows/openburnbar-pr-harness.yml`](../../.github/workflows/openburnbar-pr-harness.yml)
   — PR SBOM + VEX + ecosystem deny checks.
 

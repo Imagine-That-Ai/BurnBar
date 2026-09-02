@@ -389,24 +389,3 @@ find "${AAR_STAGING}" -exec touch -h -t "${DETERMINISTIC_ZIP_TIME}" {} +
 
 log "DONE: ${AAR_PATH}"
 log "kotlin bindings: ${GENERATED_KT_DIR}"
-
-CHECKSUM_MANIFEST="${VENDOR_DIR}/CHECKSUMS.sha256"
-CHECKSUM_NAME="$(basename "${AAR_PATH}")"
-CHECKSUM_SHA256="$(shasum -a 256 "${AAR_PATH}" | awk '{print $1}')"
-[[ "${CHECKSUM_SHA256}" =~ ^[0-9a-fA-F]{64}$ ]] || \
-  abort "unable to compute SHA-256 for ${AAR_PATH}"
-CHECKSUM_TMP="$(mktemp "${CHECKSUM_MANIFEST}.XXXXXX")"
-if [[ -f "${CHECKSUM_MANIFEST}" ]]; then
-  awk -v target="${CHECKSUM_NAME}" '
-    /^[[:space:]]*#/ || NF == 0 { print; next }
-    {
-      path = $2
-      sub(/^\*/, "", path)
-      if (path != target) print
-    }
-  ' "${CHECKSUM_MANIFEST}" > "${CHECKSUM_TMP}"
-else
-  : > "${CHECKSUM_TMP}"
-fi
-printf '%s  %s\n' "${CHECKSUM_SHA256}" "${CHECKSUM_NAME}" >> "${CHECKSUM_TMP}"
-mv "${CHECKSUM_TMP}" "${CHECKSUM_MANIFEST}"

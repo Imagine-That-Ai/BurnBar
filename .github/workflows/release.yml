@@ -2503,6 +2503,7 @@ jobs:
 
           PROVENANCE_DIR="$RUNNER_TEMP/release-provenance-v${VERSION}"
           export PREDICATE_TYPE="https://slsa.dev/provenance/v1"
+          export SLSA_BUILD_TYPE="https://openburnbar.dev/slsa/build-types/macos-release/v1"
           mkdir -p "$PROVENANCE_DIR"
 
           attest_release_blob() {
@@ -2535,27 +2536,48 @@ jobs:
           if commit != release_commit:
               raise SystemExit(f"release checkout drifted: HEAD={commit}, expected={release_commit}")
 
+          artifact = {
+              "name": artifact_name,
+              "fileName": artifact_path.name,
+              "sha256": sha256,
+              "sizeBytes": artifact_path.stat().st_size,
+          }
+          release = {
+              "version": os.environ["VERSION"],
+              "tag": os.environ["RELEASE_TAG"],
+              "commit": release_commit,
+              "repository": os.environ.get("GITHUB_REPOSITORY", ""),
+              "ref": os.environ["RELEASE_REF"],
+              "workflow": os.environ.get("GITHUB_WORKFLOW", ""),
+              "runID": os.environ.get("GITHUB_RUN_ID", ""),
+              "runAttempt": os.environ.get("GITHUB_RUN_ATTEMPT", ""),
+          }
+          runner = {"environment": os.environ["RUNNER_ENVIRONMENT"]}
+          # A https://slsa.dev/provenance/v1 statement carries a real SLSA v1
+          # predicate (buildDefinition / runDetails); the release facts live in
+          # its parameters so SLSA-aware consumers and
+          # scripts/ci/verify-release-attestations.sh read the same layout.
+          server = os.environ.get("GITHUB_SERVER_URL", "https://github.com")
+          repository = os.environ.get("GITHUB_REPOSITORY", "")
           predicate = {
-              "schemaVersion": 1,
-              "predicateType": os.environ["PREDICATE_TYPE"],
-              "artifact": {
-                  "name": artifact_name,
-                  "fileName": artifact_path.name,
-                  "sha256": sha256,
-                  "sizeBytes": artifact_path.stat().st_size,
+              "buildDefinition": {
+                  "buildType": os.environ["SLSA_BUILD_TYPE"],
+                  "externalParameters": {"artifact": artifact, "release": release},
+                  "internalParameters": {"runner": runner},
+                  "resolvedDependencies": [
+                      {
+                          "uri": f"git+{server}/{repository}@{os.environ['RELEASE_REF']}",
+                          "digest": {"gitCommit": release_commit},
+                      }
+                  ],
               },
-              "release": {
-                  "version": os.environ["VERSION"],
-                  "tag": os.environ["RELEASE_TAG"],
-                  "commit": release_commit,
-                  "repository": os.environ.get("GITHUB_REPOSITORY", ""),
-                  "ref": os.environ["RELEASE_REF"],
-                  "workflow": os.environ.get("GITHUB_WORKFLOW", ""),
-                  "runID": os.environ.get("GITHUB_RUN_ID", ""),
-                  "runAttempt": os.environ.get("GITHUB_RUN_ATTEMPT", ""),
-              },
-              "runner": {
-                  "environment": os.environ["RUNNER_ENVIRONMENT"],
+              "runDetails": {
+                  "builder": {
+                      "id": f"{server}/{repository}/.github/workflows/release.yml@{os.environ['RELEASE_REF']}",
+                  },
+                  "metadata": {
+                      "invocationId": f"{server}/{repository}/actions/runs/{os.environ.get('GITHUB_RUN_ID', '')}/attempts/{os.environ.get('GITHUB_RUN_ATTEMPT', '')}",
+                  },
               },
           }
           predicate_path.write_text(json.dumps(predicate, indent=2, sort_keys=True) + "\n", encoding="utf-8")

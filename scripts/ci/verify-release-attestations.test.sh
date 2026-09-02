@@ -86,7 +86,7 @@ write_asset_with_sidecars() {
   local safe
   safe="$(safe_name "$name")"
   printf 'fixture asset: %s\n' "$name" >"$asset"
-  python3 - "$asset" "$release_dir/${safe}.predicate.json" "$release_dir/${safe}.sigstore.json" "$tag" "$version" "$name" "$sidecar_runner_environment" "$signed_runner_environment" "$sidecar_predicate_type" "$signed_predicate_type" <<'PY'
+  python3 - "$asset" "$release_dir/${safe}.predicate.json" "$release_dir/${safe}.sigstore.json" "$tag" "$version" "$name" "$sidecar_runner_environment" "$signed_runner_environment" "$sidecar_predicate_type" "$signed_predicate_type" "${FIXTURE_PREDICATE_LAYOUT:-auto}" <<'PY'
 import base64
 import hashlib
 import json
@@ -102,26 +102,49 @@ sidecar_runner_environment = sys.argv[7]
 signed_runner_environment = sys.argv[8]
 sidecar_predicate_type = sys.argv[9]
 signed_predicate_type = sys.argv[10]
-predicate = {
-    "predicateType": sidecar_predicate_type,
-    "artifact": {
-        "fileName": name,
-        "sha256": hashlib.sha256(asset.read_bytes()).hexdigest(),
-        "sizeBytes": asset.stat().st_size,
-    },
-    "release": {
-        "version": version,
-        "tag": tag,
-        "repository": "Imagine-That-Ai/BurnBar",
-        "ref": f"refs/tags/{tag}",
-    },
-    "runner": {
-        "environment": sidecar_runner_environment,
-    },
+layout = sys.argv[11] if len(sys.argv) > 11 else "auto"
+SLSA_TYPE = "https://slsa.dev/provenance/v1"
+SLSA_BUILD_TYPE = "https://openburnbar.dev/slsa/build-types/macos-release/v1"
+artifact = {
+    "fileName": name,
+    "sha256": hashlib.sha256(asset.read_bytes()).hexdigest(),
+    "sizeBytes": asset.stat().st_size,
 }
+release = {
+    "version": version,
+    "tag": tag,
+    "repository": "Imagine-That-Ai/BurnBar",
+    "ref": f"refs/tags/{tag}",
+}
+
+
+def build_predicate(runner_environment):
+    # Mirrors release.yml: SLSA-typed statements carry a SLSA v1 predicate,
+    # legacy-typed statements carry the flat legacy layout.
+    if sidecar_predicate_type == SLSA_TYPE and layout != "legacy":
+        return {
+            "buildDefinition": {
+                "buildType": SLSA_BUILD_TYPE,
+                "externalParameters": {"artifact": artifact, "release": release},
+                "internalParameters": {"runner": {"environment": runner_environment}},
+            },
+            "runDetails": {
+                "builder": {
+                    "id": f"https://github.com/Imagine-That-Ai/BurnBar/.github/workflows/release.yml@refs/tags/{tag}",
+                },
+            },
+        }
+    return {
+        "predicateType": sidecar_predicate_type,
+        "artifact": artifact,
+        "release": release,
+        "runner": {"environment": runner_environment},
+    }
+
+
+predicate = build_predicate(sidecar_runner_environment)
 predicate_path.write_text(json.dumps(predicate, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-signed_predicate = dict(predicate)
-signed_predicate["runner"] = {"environment": signed_runner_environment}
+signed_predicate = build_predicate(signed_runner_environment)
 statement = {
     "_type": "https://in-toto.io/Statement/v1",
     "predicateType": signed_predicate_type,
@@ -216,6 +239,11 @@ slsa_tag="v1.0.40+repair.38"
 new_release_fixture "$slsa_tag" "github-hosted" "github-hosted" "$slsa_predicate_type" >/dev/null
 run_case 0 slsa-predicate-after-sunset-passes \
   env PATH="$bin_dir:/usr/bin:/bin" FIXTURE_RELEASE_DIR="$tmp_root/releases" "$verifier" "$slsa_tag" "*macOS.dmg"
+
+slsa_legacy_layout_tag="v1.0.40+repair.39"
+FIXTURE_PREDICATE_LAYOUT=legacy new_release_fixture "$slsa_legacy_layout_tag" "github-hosted" "github-hosted" "$slsa_predicate_type" >/dev/null
+run_case 1 slsa-type-with-legacy-layout-fails \
+  env PATH="$bin_dir:/usr/bin:/bin" FIXTURE_RELEASE_DIR="$tmp_root/releases" "$verifier" "$slsa_legacy_layout_tag" "*macOS.dmg"
 
 unknown_predicate_tag="v1.0.40+repair.39"
 new_release_fixture "$unknown_predicate_tag" "github-hosted" "github-hosted" "https://example.invalid/unknown/v1" >/dev/null
