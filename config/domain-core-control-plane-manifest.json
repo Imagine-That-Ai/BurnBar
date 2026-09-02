@@ -72,7 +72,7 @@
     "scripts/ci/check-callable-validation.mjs": ["2741d3121d279727","c1ef0318a20852f8","819d6ed3c89d362d","aa8fb448faa10b9f"],
     "scripts/ci/check-firestore-deploy-drift.mjs": ["99b1c7716fa4ec06","1cfbd423fd360e7e","f0e3832a4a369068","b6aa81c00b9a1bd9"],
     "scripts/ci/check-firestore-ttl-declared.sh": ["153504222c6e65e1","73518479636768b4","ffcfadb7821d76d9","08460062baa8c6dc"],
-    "scripts/ci/check_agpl_legal_release_review.py": ["eb62112d1e662c0c","34a46398c86afdde","916e25ee340a5958","697fbca0d28f5db1"],
+    "scripts/ci/check_agpl_legal_release_review.py": ["2d007d6451206c89","d497977e84cef5a1","6b2fdee1c6c96841","5626800939685171"],
     "scripts/ci/check_burnbar_license_posture.py": ["e2fbf1a210ae8546","49b4c65dd1253d08","a64a89c4a19f8da2","7c4aac88a0da2164"],
     "scripts/ci/check_burnbar_release_preflight.py": ["d1272216a5184d6c","b49aee37d8783168","31fdb87183cb4dde","7c887a7520f9da0a"],
     "scripts/ci/check_cloudvault_at_rest_runtime.py": ["8d6803291144867a","e78a7b79c054aab3","2fc74e613f4d6b89","b0d919e7061ce575"],

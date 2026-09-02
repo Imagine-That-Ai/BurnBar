@@ -541,9 +541,7 @@ def validate_owner_attested_soft_approval(
             # while a packet from any other train still fails closed.
             packet_tag = repo.get("releaseTag")
             try:
-                same_train = isinstance(packet_tag, str) and compare_release_tags(
-                    packet_tag, expected_release_tag
-                ) == 0
+                same_train = isinstance(packet_tag, str) and compare_release_tags(packet_tag, expected_release_tag) == 0
             except ValueError:
                 same_train = False
             if not same_train:
