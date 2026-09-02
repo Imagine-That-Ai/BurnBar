@@ -79,6 +79,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="burnbar" />
+                <data android:scheme="openburnbar" />
             </intent-filter>
         </activity>
 

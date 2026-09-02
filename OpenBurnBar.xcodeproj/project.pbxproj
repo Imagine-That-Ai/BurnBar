@@ -1579,6 +1579,7 @@
 		8BED4953FD9052487E3A0C37 /* OpenBurnBarMobileApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11C462D1582E39D6543490D /* OpenBurnBarMobileApp.swift */; };
 		8C053845F38C58CCBDBD20C4 /* OpenAIUsageAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B414B81877E67ADE8671334 /* OpenAIUsageAPI.swift */; };
 		8C0C62CDF6470B976DF6AC4E /* PixelClockSettingsCardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEBE5A477DD3E2656A3D83B9 /* PixelClockSettingsCardTests.swift */; };
+		B82D5F8C3E29501B0D4F6C28 /* PendingDeviceApprovalModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A91C4E7B2D184F0A9C3E5B17 /* PendingDeviceApprovalModelTests.swift */; };
 		8C2E7F8B62A3ADB7B49E9419 /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = 537F95A9C47628B16A10BA7C /* Sentry */; };
 		8C60771E93CA9B42032F7D65 /* ComputerUseActivityIndex.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56F0CE13740E1AC02E64C44E /* ComputerUseActivityIndex.swift */; };
 		8C609F824647520556DDCA60 /* AuroraButtonStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED417E6A8FF066A97DE7DD2A /* AuroraButtonStyle.swift */; };
@@ -5771,6 +5772,7 @@
 		FE6FFBC700D218430E47C7C2 /* OpenAICompatibleChatGatewayClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAICompatibleChatGatewayClient.swift; sourceTree = "<group>"; };
 		FEA36D992B1CB9D62BCCC3B4 /* AppleRemoteDesktopRFBClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleRemoteDesktopRFBClientTests.swift; sourceTree = "<group>"; };
 		FEBE5A477DD3E2656A3D83B9 /* PixelClockSettingsCardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PixelClockSettingsCardTests.swift; sourceTree = "<group>"; };
+		A91C4E7B2D184F0A9C3E5B17 /* PendingDeviceApprovalModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingDeviceApprovalModelTests.swift; sourceTree = "<group>"; };
 		FEC58B9EBAE68F089ED0FCD8 /* AccessibilityIdentifiers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccessibilityIdentifiers.swift; sourceTree = "<group>"; };
 		FEE144C08BC54A92B6917070 /* AgentLensStringNilIfBlank.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentLensStringNilIfBlank.swift; sourceTree = "<group>"; };
 		FEEA518B2D7401808B4803AB /* SessionLogsView+Filtering.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionLogsView+Filtering.swift"; sourceTree = "<group>"; };
@@ -8895,6 +8897,7 @@
 				3408758FE3CCD5E889D961E0 /* ThemeGlassPaletteTests.swift */,
 				EBB0C9D18B36867A7CB11124 /* TokenAccountingPrecedenceTests.swift */,
 				047CEF0267BCD11F9F8E9420 /* TokenUsageProvenanceTests.swift */,
+				A91C4E7B2D184F0A9C3E5B17 /* PendingDeviceApprovalModelTests.swift */,
 				25A9CE12053DDC9A9DFBB7F5 /* TrustedDeviceDedupeTests.swift */,
 				1ABDAF6C1F41A93B8F4F7963 /* UpdaterLogicTests.swift */,
 				9BB20EB48DFA90D2334CD879 /* UsageAggregationAndMoodBandTests.swift */,
@@ -13229,6 +13232,7 @@
 				9088DCAD5C8BA4C3DB507BD5 /* PiAgentRuntimeAdapterTests.swift in Sources */,
 				A56530ED6FE459ADC38252B6 /* PixelClockInputControllerTests.swift in Sources */,
 				8C0C62CDF6470B976DF6AC4E /* PixelClockSettingsCardTests.swift in Sources */,
+				B82D5F8C3E29501B0D4F6C28 /* PendingDeviceApprovalModelTests.swift in Sources */,
 				BB0FE94527B51CB174BF20AC /* PlasmaAssetFidelityTests.swift in Sources */,
 				4D17C383878DFDB47C381F0E /* PlasmaModelSelectorTests.swift in Sources */,
 				94431A7BE0C06FE1C6C74BAE /* PlasmaPersonaTests.swift in Sources */,
@@ -14674,7 +14678,7 @@
 				BURNBAR_AMPLITUDE_API_KEY = "";
 				CODE_SIGN_ENTITLEMENTS = OpenBurnBarKeyboard/Resources/OpenBurnBarKeyboard.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 84;
+				CURRENT_PROJECT_VERSION = 85;
 				DEVELOPMENT_TEAM = 4Y367DF25B;
 				INFOPLIST_FILE = OpenBurnBarKeyboard/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "OpenBurnBar Keyboard";
@@ -14748,7 +14752,7 @@
 				BURNBAR_AMPLITUDE_API_KEY = "";
 				CODE_SIGN_ENTITLEMENTS = OpenBurnBarKeyboard/Resources/OpenBurnBarKeyboard.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 84;
+				CURRENT_PROJECT_VERSION = 85;
 				DEVELOPMENT_TEAM = 4Y367DF25B;
 				INFOPLIST_FILE = OpenBurnBarKeyboard/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "OpenBurnBar Keyboard";
@@ -14793,7 +14797,7 @@
 				BURNBAR_AMPLITUDE_API_KEY = "";
 				CODE_SIGN_ENTITLEMENTS = OpenBurnBarWidget/Resources/OpenBurnBarWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 84;
+				CURRENT_PROJECT_VERSION = 85;
 				DEVELOPMENT_TEAM = 4Y367DF25B;
 				INFOPLIST_FILE = OpenBurnBarWidget/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "OpenBurnBar Widget";
@@ -14823,7 +14827,7 @@
 				CODE_SIGN_ENTITLEMENTS = OpenBurnBarMobile/Resources/OpenBurnBarMobile.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 84;
+				CURRENT_PROJECT_VERSION = 85;
 				DEVELOPMENT_TEAM = 4Y367DF25B;
 				INFOPLIST_FILE = OpenBurnBarMobile/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = OpenBurnBar;
@@ -14879,7 +14883,7 @@
 				BURNBAR_AMPLITUDE_API_KEY = "";
 				CODE_SIGN_ENTITLEMENTS = OpenBurnBarWidget/Resources/OpenBurnBarWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 84;
+				CURRENT_PROJECT_VERSION = 85;
 				DEVELOPMENT_TEAM = 4Y367DF25B;
 				INFOPLIST_FILE = OpenBurnBarWidget/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "OpenBurnBar Widget";
@@ -15417,7 +15421,7 @@
 				CODE_SIGN_ENTITLEMENTS = OpenBurnBarMobile/Resources/OpenBurnBarMobile.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 84;
+				CURRENT_PROJECT_VERSION = 85;
 				DEVELOPMENT_TEAM = 4Y367DF25B;
 				INFOPLIST_FILE = OpenBurnBarMobile/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = OpenBurnBar;
