@@ -79,6 +79,12 @@ if (source) {
   if (!/contents:\s*read/u.test(top)) {
     fail("ops-plane workflow must keep top-level contents:read");
   }
+  if (!/group:\s*ops-plane-verify-\$\{\{\s*github\.event_name\s*\}\}-\$\{\{\s*github\.ref\s*\}\}/u.test(top)) {
+    fail("ops-plane workflow concurrency group must be scoped by event+ref — the flat ops-plane-verify group cancelled every pull_request run since 2026-08-25 (W0-5 wedge fix)");
+  }
+  if (!/cancel-in-progress:\s*\$\{\{\s*github\.event_name\s*!=\s*'workflow_dispatch'\s*\}\}/u.test(top)) {
+    fail("ops-plane workflow concurrency must cancel in-flight pull_request/schedule peers and never cancel a workflow_dispatch apply run");
+  }
 
   if (!detect) fail("ops-plane workflow must define detect-secrets");
   if (!verify) fail("ops-plane workflow must define verify");
@@ -147,6 +153,46 @@ if (source) {
     }
   }
 
+  // W0-5 invariant SWAP (not deletion): the protected GCP_SA_KEY lane above is
+  // unchanged; the NEW lane is the WIF-only `alert-plane-drift` job, which
+  // runs the same live drift checks with NO protected environment and NO
+  // secrets — viewer-identity only (governance/ops-plane-verifier-sa.json).
+  const driftJob = jobs.get("alert-plane-drift") ?? "";
+  if (!driftJob) {
+    fail("ops-plane workflow must define alert-plane-drift (the W0-5 WIF drift lane)");
+  } else {
+    if (!/if:\s*github\.event_name\s*!=\s*'pull_request'/u.test(driftJob)) {
+      fail("alert-plane-drift must skip pull_request events — its designed-red wif-not-provisioned exit would otherwise fail the PR's own run");
+    }
+    if (hasLine(driftJob, "environment:\\s*\\S+")) {
+      fail("alert-plane-drift must NOT bind any environment — it is viewer-identity drift verification, not the protected apply lane");
+    }
+    if (/credentials_json:/u.test(driftJob)) {
+      fail("alert-plane-drift must authenticate via WIF, never credentials_json");
+    }
+    if (!/workload_identity_provider:\s*\$\{\{\s*vars\.OPS_VERIFY_WIF_PROVIDER\s*\}\}/u.test(driftJob)) {
+      fail("alert-plane-drift must read the WIF provider from repo variables (vars.OPS_VERIFY_WIF_PROVIDER)");
+    }
+    if (!/service_account:\s*\$\{\{\s*vars\.OPS_VERIFY_SERVICE_ACCOUNT\s*\}\}/u.test(driftJob)) {
+      fail("alert-plane-drift must read the verifier identity from repo variables (vars.OPS_VERIFY_SERVICE_ACCOUNT)");
+    }
+    if (!driftJob.includes("wif-not-provisioned")) {
+      fail("alert-plane-drift must fail closed with the wif-not-provisioned marker when the federation variables are absent");
+    }
+    if (/GCP_DEPLOY_SERVICE_ACCOUNT|GCP_HOSTING_DEPLOY_SERVICE_ACCOUNT|GCP_WORKLOAD_IDENTITY_PROVIDER/u.test(driftJob)) {
+      fail("alert-plane-drift must not reference deploy-identity secrets — it is a viewer-only lane");
+    }
+    if (!/id-token:\s*write/u.test(driftJob)) {
+      fail("alert-plane-drift needs job-level id-token:write for the WIF token exchange");
+    }
+    if (
+      !/node scripts\/ops\/check-ops-alert-plane-drift\.mjs/u.test(driftJob) ||
+      !/node scripts\/ops\/check-branch-protection-drift\.mjs/u.test(driftJob)
+    ) {
+      fail("alert-plane-drift must run the two live drift checks (ops alert-plane + branch protection)");
+    }
+  }
+
   if (countMatches(source, String.raw`\$\{\{\s*secrets\.GCP_SA_KEY\s*\}\}`) !== 2) {
     fail("GCP_SA_KEY must appear exactly in the protected detector and verify auth step");
   }
@@ -158,4 +204,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("PASS: Ops-plane verification probes production secrets inside the protected environment.");
+console.log("PASS: Ops-plane verification probes production secrets inside the protected environment, and the WIF-only alert-plane drift lane stays secret-free and fail-closed.");

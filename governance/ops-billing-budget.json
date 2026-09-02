@@ -1,0 +1,12 @@
+{
+  "displayName": "burnbar-ops-alert-budget",
+  "projectId": "burnbar",
+  "amountUsd": 200,
+  "thresholdPercents": [
+    0.5,
+    0.9,
+    1.0
+  ],
+  "pubsubTopic": "projects/burnbar/topics/ops-billing-alerts",
+  "notes": "Source of truth for scripts/ops/create-billing-budget.sh (apply) and scripts/ops/check-billing-budget-drift.mjs (live drift). The budget filters on projectId so unrelated projects on the billing account cannot trigger or mask BurnBar's alert."
+}
