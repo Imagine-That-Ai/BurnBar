@@ -750,12 +750,14 @@ def test_server_write_tools_use_daemon_rpc_method_names(tmp_path: Path, monkeypa
 
     def fake_write_authority(method: str, params: dict) -> dict:
         calls.append((method, params))
-        return {"mode": "daemon", "result": {"status": "ok", "method": method}}
+        # The daemon answers `remember` with its own derived id; the engine records it
+        # so `forget` can address the daemon row instead of sending a local id.
+        return {"mode": "daemon", "result": {"status": "ok", "method": method, "memoryID": "mem_daemon_fixture"}}
 
     monkeypatch.setattr(server.pcm, "write_authority", fake_write_authority)
 
-    json.loads(server.burnbar_remember("Remember method names.", project_path=str(repo)))
-    json.loads(server.burnbar_forget("mem_fixture", project_path=str(repo)))
+    remembered = json.loads(server.burnbar_remember("Remember method names.", project_path=str(repo)))
+    json.loads(server.burnbar_forget(remembered["memoryID"], project_path=str(repo)))
     json.loads(server.burnbar_index_project(project_path=str(repo), storage_budget_bytes=4096))
     json.loads(
         server.burnbar_watch_project(project_path=str(repo), storage_budget_bytes=4096, poll_interval_seconds=0.5)
@@ -769,6 +771,7 @@ def test_server_write_tools_use_daemon_rpc_method_names(tmp_path: Path, monkeypa
         "daemon.code.watch_project",
         "daemon.code.explore",
     ]
+    assert calls[1][1]["memoryID"] == "mem_daemon_fixture"
     assert calls[2][1]["storageBudgetBytes"] == 4096
     assert calls[3][1]["pollIntervalSeconds"] == 0.5
     assert calls[4][1]["maxBytes"] == 6000

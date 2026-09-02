@@ -86,6 +86,8 @@ BurnBar holds.
 | --- | --- |
 | A lock badge on Remote MCP | Memory search needs an active Cloud Pro plan — Settings › Cloud shows the options. |
 | Recall comes back empty | Finish one full AI chat first. Memory is written when a session ends, not mid-conversation. |
+| Memories from before the upgrade seem gone | They are not. The first recall for a project imports them from the older daemon store and reports `legacyMigration` in the reply; `burnbar_memory_doctor` shows the same status. |
+| A memory was refused with `SECRET_DETECTED` | The text held a key or token in a form that cannot be blanked out in place (for example split across two quoted lines). Say where the secret lives instead of pasting it. |
 | A tool can't connect | Run `openburnbar mcp doctor` in Terminal — it checks the link and tells you what to fix. |
 | You changed your mind | Settings › Data & Privacy › delete the memory domain, or use Panic to revoke everything. |
 

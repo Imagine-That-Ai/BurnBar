@@ -204,6 +204,39 @@ Capabilities: `memory_write` (new; on when `local_write`, operator profile,
 - Memory writes are on by default for the `memory` toolset.
 - `burnbar_memory_doctor` never raises; unreachable daemon / encrypted store
   become structured findings.
+- `burnbar_forget` mirrors to the daemon only with the daemon's own id
+  (recorded on the row when the mirror write was accepted); a row that was
+  never mirrored reports `mirror.status: skipped` instead of a bogus forget.
+- Memories in the daemon-owned `agent_memories` store are imported into the
+  engine store once per project on first recall/list (`legacyMigration`), so
+  an upgrade does not make earlier memories disappear from MCP recall.
+
+### 6.1 Review hardening (Codex + Cursor security review of PR #2485)
+
+Every finding is pinned by a test in `tests/test_memory_engine_hardening.py`:
+
+- Plaintext columns never hold bodies or secrets: reinforcement history keeps
+  a hash and labels (the gated incoming text goes to the encrypted column),
+  the ingest replay table keeps event/id metadata only, and tags, entities,
+  metadata, and `source_ref` pass the same gate as the body.
+- Encoded secrets (base64 / hex) are redacted at their surface span; secrets
+  visible only in a joined or continued view are refused under `redact`
+  (and the body is withheld under `retain`).
+- External extractors receive a gated transcript or nothing; the tool's
+  `extractor` argument needs `memory_llm_extract` (plus `spawn_process` for
+  `claude`) unless the operator configured that extractor in the env.
+- Key publication is atomic (temp file + hard link), so concurrent first
+  runs cannot truncate each other's key; WAL / SHM sidecars are mode 0600.
+- Lifecycle: expired duplicates reactivate, rejected duplicates stay hidden,
+  edits that collide with another active body return `DUPLICATE_BODY`,
+  rejected updates are committed to the audit chain, a failed re-embedding
+  drops the stale vector, personal-scope conflicts reconcile across projects,
+  the recall cache stamp includes reinforcement fields, and the first pack
+  item is truncated to the token budget.
+- MCP wiring: snippets are wrapped like bodies, explicit empty lists clear
+  patch fields, malformed JSON arguments return `INVALID_JSON_ARGUMENT`,
+  ingest idempotency is per project, and exports re-import with their
+  `expiresAt` / `sourceRef`.
 
 ## 7. Follow-up closure and remaining non-goals
 
@@ -217,10 +250,10 @@ Capabilities: `memory_write` (new; on when `local_write`, operator profile,
 
 ## 8. Verification
 
-- `pytest tests/` in `tools/openburnbar-mcp` (new `test_memory_engine.py`,
-  updated server tests).
+- `pytest tests/` in `tools/openburnbar-mcp` (new `test_memory_engine.py` and
+  `test_memory_engine_hardening.py`, updated server tests).
 - `swift test --package-path OpenBurnBarDaemon --filter BurnBarCLITests` and
   `--filter BurnBarProjectCodeMemoryStoreTests`.
-- `ruff check` per `ruff.toml` (py311 target).
+- `ruff check` and `ruff format --check` per `ruff.toml` (py311 target).
 - `eval_memory.py` — recall@k / MRR on a 40-fact, 25-query gold set, lexical vs
   hybrid, run against the local Ollama `nomic-embed-text` model.

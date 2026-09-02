@@ -108,12 +108,8 @@ def test_bm25_prefers_specific_matches() -> None:
 
 
 def test_gate_redacts_secret_and_keeps_the_fact() -> None:
-    decision = me.apply_gate(
-        f"Deploy uses {FAKE_GITHUB_TOKEN} stored in 1Password.",
-        secret_policy="redact",
-        pii_policy="keep",
-        retain_allowed=False,
-    )
+    text = f"Deploy uses {FAKE_GITHUB_TOKEN} stored in 1Password."
+    decision = me.apply_gate(text, secret_policy="redact", pii_policy="keep", retain_allowed=False)
     assert decision.action == "redact"
     assert decision.sensitivity == "redacted"
     assert FAKE_GITHUB_TOKEN not in decision.body
@@ -446,7 +442,9 @@ def test_recall_pack_respects_budget(tmp_path: Path) -> None:
     with _engine(tmp_path) as engine:
         _seed(engine, repo)
         pack = engine.recall_pack("daemon CI PR", project_path=repo, token_budget=40)
-        assert pack["included"] >= 1 and pack["tokensUsed"] <= 40 + 40  # first line always included
+        assert (
+            pack["included"] >= 1 and pack["tokensUsed"] <= pack["tokenBudget"] == 64
+        )  # budget floor is 64; never exceeded
         assert pack["pack"].startswith("OPENBURNBAR_MEMORY_PACK_V1") and pack["pack"].endswith(
             "END_OPENBURNBAR_MEMORY_PACK_V1"
         )
@@ -668,18 +666,7 @@ def test_project_isolation_for_project_scope(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture
-def server_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    app_db = tmp_path / "openburnbar.sqlite"
-    sqlite3.connect(app_db).close()
-    monkeypatch.setenv("BURNBAR_DB_PATH", str(app_db))
-    monkeypatch.setenv("OPENBURNBAR_LOCAL_MCP_DISABLE_AUDIT", "true")
-    monkeypatch.setenv("OPENBURNBAR_DAEMON_SOCKET_PATH", str(tmp_path / "missing.sock"))
-    for name in list(os.environ):
-        if name.startswith("OPENBURNBAR_LOCAL_MCP_ENABLE_") or name == "OPENBURNBAR_LOCAL_MCP_PROFILE":
-            monkeypatch.delenv(name, raising=False)
-    monkeypatch.delenv("BURNBAR_MCP_TOOLSET", raising=False)
-    return tmp_path
+# `server_env` (empty app DB, dead daemon socket, no capabilities) lives in conftest.py.
 
 
 def test_memory_write_capability_defaults(server_env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -725,7 +712,9 @@ def test_server_remember_recall_and_mirror_status(server_env: Path, monkeypatch:
     pack = json.loads(server.burnbar_recall_pack("daemon", project_path=repo, token_budget=300))
     assert pack["pack"].startswith("OPENBURNBAR_MEMORY_PACK_V1")
     forgotten = json.loads(server.burnbar_forget(stored["memoryID"], project_path=repo))
-    assert forgotten["status"] == "ok" and forgotten["mirror"]["status"] in ("unreachable", "rejected")
+    # The daemon never accepted the remember, so there is no daemon id to forget:
+    # the wrapper says so instead of sending the engine's random id and calling it mirrored.
+    assert forgotten["status"] == "ok" and forgotten["mirror"]["status"] == "skipped"
     # The engine never touches the app database.
     with sqlite3.connect(server_env / "openburnbar.sqlite") as app_conn:
         assert app_conn.execute("SELECT COUNT(*) FROM sqlite_master").fetchone()[0] == 0

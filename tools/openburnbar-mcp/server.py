@@ -77,6 +77,7 @@ LOCAL_MCP_OPERATOR_CAPABILITIES = {
     "cloud_decrypt",
     "cloud_sync",
     "local_write",
+    "memory_llm_extract",
     "memory_write",
     "sensitive_read",
     "spawn_process",
@@ -85,6 +86,10 @@ LOCAL_MCP_CAPABILITY_ENV = {
     "cloud_decrypt": "OPENBURNBAR_LOCAL_MCP_ENABLE_CLOUD_DECRYPT",
     "cloud_sync": "OPENBURNBAR_LOCAL_MCP_ENABLE_CLOUD_SYNC",
     "local_write": "OPENBURNBAR_LOCAL_MCP_ENABLE_LOCAL_WRITE",
+    # A tool argument may only select an LLM extractor (claude / ollama) for
+    # `burnbar_memorize` when this capability is on; the operator-configured
+    # `OPENBURNBAR_MEMORY_EXTRACTOR` is user intent and needs no capability.
+    "memory_llm_extract": "OPENBURNBAR_LOCAL_MCP_ENABLE_MEMORY_LLM_EXTRACT",
     "memory_write": "OPENBURNBAR_LOCAL_MCP_ENABLE_MEMORY_WRITE",
     "memory_secret_retain": "OPENBURNBAR_LOCAL_MCP_ENABLE_SECRET_RETAIN",
     "sensitive_read": "OPENBURNBAR_LOCAL_MCP_ENABLE_SENSITIVE_READ",
@@ -1609,7 +1614,15 @@ def _memory_mirror_enabled() -> bool:
 
 
 def _memory_mirror_remember(decision: dict[str, Any], project_path: str | None) -> dict[str, Any]:
-    """Best-effort mirror of one committed memory into the daemon ledger."""
+    """Best-effort mirror of one committed memory into the daemon ledger.
+
+    Goes through the signed CLI courier on signed installs and the daemon
+    socket otherwise. The daemon derives its own memory id from
+    `projectID:bodyHash`; the caller records the returned id with
+    `MemoryEngine.record_daemon_mirror` so a later forget can address the
+    daemon copy. Tags and confidence come from the engine decision, which
+    already passed the gate.
+    """
     if decision.get("event") not in ("ADD", "UPDATE"):
         return {"status": "skipped", "reason": f"event {decision.get('event')} is not mirrored"}
     if decision.get("sensitivity") == "secret" or decision.get("reviewStatus") == "quarantined":
@@ -1646,12 +1659,19 @@ def _memory_mirror_remember(decision: dict[str, Any], project_path: str | None) 
     return {"status": "unreachable", "reason": reason}
 
 
-def _memory_mirror_forget(memory_id: str, project_path: str | None) -> dict[str, Any]:
+def _memory_mirror_forget(daemon_memory_id: str | None, project_path: str | None) -> dict[str, Any]:
     if not _memory_mirror_enabled():
         return {"status": "disabled"}
-    authority = _memory_write_authority("daemon.memory.forget", {"memoryID": memory_id, "projectPath": project_path})
+    if not daemon_memory_id:
+        return {
+            "status": "skipped",
+            "reason": "memory was never mirrored to the daemon ledger; nothing to forget there",
+        }
+    authority = _memory_write_authority(
+        "daemon.memory.forget", {"memoryID": daemon_memory_id, "projectPath": project_path}
+    )
     if authority.get("mode") == "daemon":
-        return {"status": "mirrored", "result": authority.get("result")}
+        return {"status": "mirrored", "daemonMemoryID": daemon_memory_id, "result": authority.get("result")}
     return {
         "status": "unreachable" if authority.get("code") == "DAEMON_WRITE_REQUIRED" else "rejected",
         "reason": authority.get("reason"),
@@ -1659,24 +1679,171 @@ def _memory_mirror_forget(memory_id: str, project_path: str | None) -> dict[str,
 
 
 def _memory_list_arg(raw: list[str] | str | None) -> list[str] | None:
+    """None when the argument was omitted; otherwise the list, which may be
+    empty. Patch-style tools treat `[]` as "clear" and `None` as "keep"."""
     if raw is None:
         return None
     if isinstance(raw, str):
-        items = [part.strip() for part in re.split(r"[,;\n]", raw) if part.strip()]
-    else:
-        items = [str(part).strip() for part in raw if str(part).strip()]
-    return items or None
+        return [part.strip() for part in re.split(r"[,;\n]", raw) if part.strip()]
+    return [str(part).strip() for part in raw if str(part).strip()]
 
 
-def _memory_json_arg(raw: Any, default: Any) -> Any:
+class _InvalidJSONArgument(ValueError):
+    def __init__(self, argument: str, detail: str) -> None:
+        super().__init__(f"{argument}: {detail}")
+        self.argument = argument
+        self.detail = detail
+
+
+def _memory_json_arg(raw: Any, default: Any, *, argument: str) -> Any:
+    """Parse a JSON-or-object tool argument. Malformed JSON is an error, never
+    a silent fallback to the default (which would widen a recall filter)."""
     if raw is None or raw == "":
         return default
     if isinstance(raw, (dict, list)):
         return raw
     try:
         return json.loads(str(raw))
-    except ValueError:
+    except ValueError as exc:
+        raise _InvalidJSONArgument(argument, str(exc)) from exc
+
+
+def _invalid_json_payload(exc: _InvalidJSONArgument) -> str:
+    return json.dumps(
+        {
+            "status": "unavailable",
+            "code": "INVALID_JSON_ARGUMENT",
+            "argument": exc.argument,
+            "reason": f"{exc.argument} must be valid JSON: {exc.detail}",
+        },
+        indent=2,
+    )
+
+
+_LEGACY_MIGRATION_STATE: dict[str, dict[str, Any]] = {}
+
+
+def _reset_legacy_migration_cache_for_tests() -> None:
+    _LEGACY_MIGRATION_STATE.clear()
+
+
+def _legacy_row_get(row: Any, key: str, default: Any = None) -> Any:
+    try:
+        value = row[key]
+    except (KeyError, IndexError, TypeError):
         return default
+    return default if value is None else value
+
+
+def _legacy_project_id(conn: Any, root: Path) -> str:
+    """Read-only twin of `pcm.resolve_project_id` (which creates tables)."""
+    resolved = root.resolve()
+    legacy_project_id = pcm.project_id_for(resolved)
+    fingerprint = pcm.project_identity_fingerprint(resolved)
+    tables = pcm.table_names(conn)
+    if "pcm_projects" in tables:
+        existing = conn.execute(
+            "SELECT project_id FROM pcm_projects WHERE identity_fingerprint = ? LIMIT 1", (fingerprint,)
+        ).fetchone()
+        if existing:
+            return str(existing[0])
+    if "pcm_project_aliases" in tables:
+        alias = conn.execute(
+            "SELECT project_id FROM pcm_project_aliases WHERE path_hash = ? LIMIT 1", (pcm.sha256_hex(str(resolved)),)
+        ).fetchone()
+        if alias:
+            return str(alias[0])
+    if "agent_memories" in tables:
+        rows = conn.execute("SELECT COUNT(*) FROM agent_memories WHERE project_id = ?", (legacy_project_id,)).fetchone()
+        if rows and int(rows[0] or 0) > 0:
+            return legacy_project_id
+    return pcm.project_id_for_fingerprint(fingerprint, legacy_project_id)
+
+
+def _legacy_daemon_memories(project_path: str | None) -> list[dict[str, Any]]:
+    """Active rows of the daemon-owned `agent_memories` store for this project
+    plus personal-scope rows from any project, rendered as import items."""
+    path = _default_db_path()
+    with _connect_ro(path) as conn:
+        conn.row_factory = sqlite3.Row
+        if "agent_memories" not in pcm.table_names(conn):
+            return []
+        project_id = _legacy_project_id(conn, pcm.project_root(project_path))
+        rows = conn.execute(
+            "SELECT * FROM agent_memories WHERE (project_id = ? OR scope = 'personal') AND valid_to IS NULL ORDER BY updated_at ASC LIMIT 2000",
+            (project_id,),
+        ).fetchall()
+        items: list[dict[str, Any]] = []
+        for row in rows:
+            review_status = str(_legacy_row_get(row, "review_status", "approved") or "approved").lower()
+            if review_status in ("forgotten", "rejected"):
+                continue
+            memory_id = str(_legacy_row_get(row, "id", ""))
+            row_project = str(_legacy_row_get(row, "project_id", ""))
+            body = pcm.project_memory_section_body(conn, row_project, memory_id)
+            if not memory_id or not body:
+                continue
+            tags = _legacy_row_get(row, "tags_json", "[]")
+            try:
+                tags_list = json.loads(str(tags)) if isinstance(tags, str) else list(tags or [])
+            except ValueError:
+                tags_list = []
+            items.append(
+                {
+                    "legacyMemoryID": memory_id,
+                    "text": body,
+                    "kind": _legacy_row_get(row, "kind", "fact"),
+                    "scope": _legacy_row_get(row, "scope", "project"),
+                    "confidence": _legacy_row_get(row, "confidence", 1.0),
+                    "tags": tags_list if isinstance(tags_list, list) else [],
+                    "source_ref": _legacy_row_get(row, "source_path"),
+                    "review_status": review_status,
+                    "metadata": {"legacyProjectID": row_project, "legacyUpdatedAt": _legacy_row_get(row, "updated_at")},
+                }
+            )
+        return items
+
+
+def _migrate_legacy_memories(engine: me.MemoryEngine, project_path: str | None) -> dict[str, Any]:
+    """Import the daemon-owned `agent_memories` rows for a project into the
+    engine store once. Best effort and cached per process: an unreadable app
+    database (SQLCipher behind a peer-gated daemon) is a structured status,
+    never an error on the recall path.
+    """
+    try:
+        project_id, _root = me.resolve_project(engine.conn, project_path)
+    except ValueError as exc:
+        return {"status": "unavailable", "reason": str(exc)[:300]}
+    cached = _LEGACY_MIGRATION_STATE.get(project_id)
+    if cached is not None:
+        return {
+            **cached,
+            "status": "up_to_date" if cached.get("status") == "migrated" else cached.get("status"),
+            "cached": True,
+        }
+    state: dict[str, Any]
+    if not _capability_enabled("memory_write"):
+        state = {"status": "skipped", "reason": "memory_write is disabled; legacy daemon memories are not imported"}
+    else:
+        try:
+            rows = _legacy_daemon_memories(project_path)
+        except Exception as exc:  # noqa: BLE001 — surfaced as a status, the recall must still answer
+            reason = str(exc)
+            code = "DAEMON_PEER_REJECTED" if "code-signature" in reason else "LEGACY_STORE_UNREADABLE"
+            state = {"status": "unavailable", "code": code, "reason": reason[:300]}
+        else:
+            if not rows:
+                state = {"status": "up_to_date", "imported": 0, "skipped": 0, "legacyRows": 0}
+            else:
+                result = engine.import_legacy(rows, project_path=project_path)
+                state = {
+                    "status": "migrated" if result["imported"] else "up_to_date",
+                    "imported": result["imported"],
+                    "skipped": result["skipped"],
+                    "legacyRows": len(rows),
+                }
+    _LEGACY_MIGRATION_STATE[project_id] = state
+    return state
 
 
 @mcp.tool()
@@ -1710,6 +1877,10 @@ def burnbar_remember(
         return limited
     if denied := _capability_denial("burnbar_remember", "memory_write"):
         return denied
+    try:
+        parsed_metadata = _memory_json_arg(metadata, {}, argument="metadata")
+    except _InvalidJSONArgument as exc:
+        return _invalid_json_payload(exc)
     with _memory_engine() as engine:
         result = engine.remember(
             text,
@@ -1719,7 +1890,7 @@ def burnbar_remember(
             tags=_normalize_tags(tags),
             confidence=confidence,
             entities=_memory_list_arg(entities),
-            metadata=_memory_json_arg(metadata, {}),
+            metadata=parsed_metadata if isinstance(parsed_metadata, dict) else {},
             source_kind="manual",
             source_ref=source_path,
             supersedes=_memory_list_arg(supersedes),
@@ -1727,10 +1898,7 @@ def burnbar_remember(
             immutable=immutable,
         )
         if result.get("status") == "ok":
-            mirror = _memory_mirror_remember(
-                {**result, "tags": _normalize_tags(tags), "confidence": confidence, "sourceRef": source_path},
-                project_path,
-            )
+            mirror = _memory_mirror_remember({**result, "sourceRef": source_path}, project_path)
             result["mirror"] = mirror
             if mirror.get("status") == "mirrored" and mirror.get("daemonMemoryID"):
                 engine.record_daemon_mirror(str(result["memoryID"]), str(mirror["daemonMemoryID"]))
@@ -1771,10 +1939,31 @@ def burnbar_memorize(
         return limited
     if denied := _capability_denial("burnbar_memorize", "memory_write"):
         return denied
-    parsed_messages = _memory_json_arg(messages, None)
-    if isinstance(parsed_messages, str):
-        parsed_messages = [{"role": "user", "content": parsed_messages}]
-    parsed_facts = _memory_json_arg(facts, None)
+    # An LLM extractor named by the *argument* can spawn a process or send the
+    # transcript to an endpoint; that needs a capability. The operator-configured
+    # extractor (env) is the user's own choice and is not re-gated here.
+    requested_extractor = (extractor or "").strip().lower()
+    configured_extractor = os.environ.get(me.EXTRACTOR_ENV, "").strip().lower()
+    if requested_extractor in ("claude", "ollama") and requested_extractor != configured_extractor:
+        if requested_extractor == "claude" and (denied := _capability_denial("burnbar_memorize", "spawn_process")):
+            return denied
+        if denied := _capability_denial("burnbar_memorize", "memory_llm_extract"):
+            return denied
+    try:
+        if isinstance(messages, str):
+            stripped = messages.strip()
+            if stripped.startswith(("[", "{")):
+                parsed_messages = _memory_json_arg(stripped, None, argument="messages")
+            else:
+                parsed_messages = [{"role": "user", "content": messages}] if stripped else None
+        else:
+            parsed_messages = messages
+        parsed_facts = _memory_json_arg(facts, None, argument="facts")
+        parsed_metadata = _memory_json_arg(metadata, None, argument="metadata")
+    except _InvalidJSONArgument as exc:
+        return _invalid_json_payload(exc)
+    if isinstance(parsed_messages, dict):
+        parsed_messages = [parsed_messages]
     if isinstance(parsed_facts, dict):
         parsed_facts = [parsed_facts]
     if not parsed_messages and not text and not parsed_facts:
@@ -1794,7 +1983,7 @@ def burnbar_memorize(
             source_ref=source_ref,
             default_scope=scope,
             default_tags=_normalize_tags(tags),
-            metadata=_memory_json_arg(metadata, None),
+            metadata=parsed_metadata if isinstance(parsed_metadata, dict) else None,
             force=force,
         )
         for decision in result.get("decisions", []):
@@ -1845,7 +2034,12 @@ def burnbar_recall(
         return limited
     if include_secrets and (denied := _capability_denial("burnbar_recall", "sensitive_read")):
         return denied
+    try:
+        parsed_filters = _memory_json_arg(filters, None, argument="filters")
+    except _InvalidJSONArgument as exc:
+        return _invalid_json_payload(exc)
     with _memory_engine() as engine:
+        migration = _migrate_legacy_memories(engine, project_path)
         result = engine.recall(
             query,
             project_path=project_path,
@@ -1854,7 +2048,7 @@ def burnbar_recall(
             kinds=_memory_list_arg(kinds),
             tags=_memory_list_arg(tags),
             entities=_memory_list_arg(entities),
-            filters=_memory_json_arg(filters, None),
+            filters=parsed_filters,
             since=since,
             until=until,
             min_confidence=min_confidence,
@@ -1867,6 +2061,7 @@ def burnbar_recall(
             mode=mode,
             wrap=_memory_wrap,
         )
+        result["legacyMigration"] = migration
     return json.dumps(result, indent=2, default=str)
 
 
@@ -1885,6 +2080,7 @@ def burnbar_recall_pack(
     if limited := _local_mcp_rate_limit("burnbar_recall_pack", "memory"):
         return limited
     with _memory_engine() as engine:
+        migration = _migrate_legacy_memories(engine, project_path)
         result = engine.recall_pack(
             query,
             project_path=project_path,
@@ -1895,6 +2091,7 @@ def burnbar_recall_pack(
             kinds=_memory_list_arg(kinds),
             min_confidence=min_confidence,
         )
+        result["legacyMigration"] = migration
     return json.dumps(result, indent=2, default=str)
 
 
@@ -1931,7 +2128,12 @@ def burnbar_memory_list(
     """Page through memories with filters. `order`: updated_desc | updated_asc | created_desc | salience_desc | access_desc."""
     if limited := _local_mcp_rate_limit("burnbar_memory_list", "memory"):
         return limited
+    try:
+        parsed_filters = _memory_json_arg(filters, None, argument="filters")
+    except _InvalidJSONArgument as exc:
+        return _invalid_json_payload(exc)
     with _memory_engine() as engine:
+        migration = _migrate_legacy_memories(engine, project_path)
         result = engine.list(
             project_path=project_path,
             scope=scope,
@@ -1941,11 +2143,12 @@ def burnbar_memory_list(
             sensitivity=sensitivity,
             include_superseded=include_superseded,
             include_cross_project=include_cross_project,
-            filters=_memory_json_arg(filters, None),
+            filters=parsed_filters,
             order=order,
             page=page,
             page_size=page_size,
         )
+        result["legacyMigration"] = migration
     return json.dumps(result, indent=2, default=str)
 
 
@@ -1968,16 +2171,20 @@ def burnbar_memory_update(
         return limited
     if denied := _capability_denial("burnbar_memory_update", "memory_write"):
         return denied
+    try:
+        parsed_metadata = _memory_json_arg(metadata, None, argument="metadata")
+    except _InvalidJSONArgument as exc:
+        return _invalid_json_payload(exc)
     with _memory_engine() as engine:
         result = engine.update(
             memory_id,
             text=text,
             kind=kind,
             scope=scope,
-            tags=_memory_list_arg(tags) if tags is not None else None,
+            tags=_memory_list_arg(tags),
             add_tags=_memory_list_arg(add_tags),
             confidence=confidence,
-            metadata=_memory_json_arg(metadata, None),
+            metadata=parsed_metadata if isinstance(parsed_metadata, dict) else None,
             entities=_memory_list_arg(entities),
             expires_at=expires_at,
             immutable=immutable,
@@ -2013,9 +2220,11 @@ def burnbar_forget(memory_id: str, project_path: str | None = None) -> str:
     if denied := _capability_denial("burnbar_forget", "memory_write"):
         return denied
     with _memory_engine() as engine:
-        daemon_memory_id = engine.daemon_mirror_id(memory_id) or memory_id
+        daemon_memory_id = engine.daemon_mirror_id(memory_id)
         result = engine.forget(memory_id, project_path=project_path)
-    result["mirror"] = _memory_mirror_forget(daemon_memory_id, project_path)
+    result.pop("mirrorRef", None)
+    if result.get("status") == "ok":
+        result["mirror"] = _memory_mirror_forget(daemon_memory_id, project_path)
     return json.dumps(result, indent=2, default=str)
 
 
@@ -2094,7 +2303,10 @@ def burnbar_memory_import(memories: list[dict[str, Any]] | str, project_path: st
         return limited
     if denied := _capability_denial("burnbar_memory_import", "memory_write"):
         return denied
-    payload = _memory_json_arg(memories, None)
+    try:
+        payload = _memory_json_arg(memories, None, argument="memories")
+    except _InvalidJSONArgument as exc:
+        return _invalid_json_payload(exc)
     if isinstance(payload, dict):
         payload = payload.get("memories") or payload.get("results") or []
     if not isinstance(payload, list):
@@ -2402,6 +2614,7 @@ def burnbar_memory_doctor(project_path: str | None = None) -> str:
     try:
         with _memory_engine() as engine:
             memory = engine.doctor(project_path=project_path)
+            memory["legacyMigration"] = _migrate_legacy_memories(engine, project_path)
     except Exception as exc:  # noqa: BLE001 — surfaced as a finding
         memory = {
             "status": "degraded",
@@ -2410,6 +2623,7 @@ def burnbar_memory_doctor(project_path: str | None = None) -> str:
     memory["writeCapability"] = {
         "memory_write": _capability_enabled("memory_write"),
         "memory_secret_retain": _capability_enabled("memory_secret_retain"),
+        "memory_llm_extract": _capability_enabled("memory_llm_extract"),
         "sensitive_read": _capability_enabled("sensitive_read"),
         "mirrorToDaemon": _memory_mirror_enabled(),
     }

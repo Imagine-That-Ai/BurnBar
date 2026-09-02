@@ -235,11 +235,27 @@ against mem0 / Mixedbread: [`docs/superpowers/2026-09-02-memory-mcp-v2-design.md
   `memory-forget` couriers when installed; unsigned development builds fall
   back to the daemon socket. Every write reports `mirror.status`
   (`mirrored | peer_rejected | unreachable | rejected | disabled | skipped`).
+  A mirrored row records the daemon's own content-derived id, and
+  `burnbar_forget` uses that id for the daemon-side forget (a row that was
+  never mirrored reports `mirror.status: skipped` instead of sending the
+  engine's local id).
+- **Legacy daemon memories migrate themselves.** Memories written by the
+  pre-engine `burnbar_remember` or by the app into the daemon-owned
+  `agent_memories` store are imported into the engine store once, on the
+  first `burnbar_recall` / `burnbar_recall_pack` / `burnbar_memory_list` for
+  a project (gated and reconciled like any other write, `sourceKind:
+  legacy_daemon`, `metadata.legacyMemoryID`). The outcome is reported as
+  `legacyMigration` on those responses and in `burnbar_memory_doctor`; when
+  the app database is unreadable (signed install) it is a status, never an
+  error.
 - **Encrypted at rest.** Bodies and history bodies are AES-256-GCM sealed with
-  a key the engine owns (`openburnbar-memory.key`, mode 0600, or
-  `OPENBURNBAR_MEMORY_KEY_BASE64`). Vectors and metadata are plaintext, the same
-  posture as the app's on-disk `VectorIndexes/`. No FTS table is written;
-  BM25 runs in-process over one project's decrypted bodies.
+  a key the engine owns (`openburnbar-memory.key`, mode 0600, published
+  atomically so two first-run processes cannot truncate each other's key, or
+  `OPENBURNBAR_MEMORY_KEY_BASE64`). The database and its WAL / SHM sidecars are
+  mode 0600. Vectors and metadata are plaintext, the same posture as the app's
+  on-disk `VectorIndexes/`. No FTS table is written; BM25 runs in-process over
+  one project's decrypted bodies. Reinforcement history and the ingest replay
+  table hold hashes and labels, never bodies.
 - **Embeddings.** `OPENBURNBAR_MEMORY_EMBEDDING_PROVIDER=auto|ollama|none`
   (default `auto`), model `OPENBURNBAR_MEMORY_EMBEDDING_MODEL`
   (default `nomic-embed-text`; `mxbai-embed-large` works too), Ollama at
@@ -251,12 +267,22 @@ against mem0 / Mixedbread: [`docs/superpowers/2026-09-02-memory-mcp-v2-design.md
   extracted (free, highest quality). Otherwise `OPENBURNBAR_MEMORY_EXTRACTOR` =
   `heuristic` (default, deterministic, offline) | `claude` (`claude -p`, the
   user's own plan) | `ollama` (`OPENBURNBAR_MEMORY_EXTRACTOR_MODEL`) | `none`
-  (store the raw text as one `note`).
+  (store the raw text as one `note`). Selecting `claude` or `ollama` through
+  the tool's `extractor` argument (rather than the env) needs the
+  `memory_llm_extract` capability (`OPENBURNBAR_LOCAL_MCP_ENABLE_MEMORY_LLM_EXTRACT=true`
+  or the operator profile), and `claude` additionally needs `spawn_process`.
+  External extractors only ever receive a gated transcript: secrets are
+  redacted first, and nothing is sent when the scanner cannot run.
 - **Secrets and PII.** `OPENBURNBAR_MEMORY_SECRET_POLICY` = `redact` (default:
   keep the fact, replace the secret with `[REDACTED:<label>]`) | `reject` |
   `retain`. `OPENBURNBAR_MEMORY_PII_POLICY` = `keep` (default; your own email
   in your own local memory is useful context) | `redact` | `reject`. SSNs and
-  card numbers are always redacted.
+  card numbers are always redacted. The gate covers tags, entities, metadata,
+  and `source_path` as well as the body, and base64 / hex encoded secrets are
+  decoded and redacted at their surface span. A secret that only appears once
+  line continuations or adjacent string literals are joined cannot be redacted
+  in place, so `redact` refuses that write (`SECRET_DETECTED`) rather than
+  storing a reconstructable form.
 - **Experimental: retain secrets.** `retain` stores the verbatim text in an
   encrypted vault table, keeps a redacted, searchable body in the main store,
   and hides the memory from default recall. It needs
@@ -267,6 +293,14 @@ against mem0 / Mixedbread: [`docs/superpowers/2026-09-02-memory-mcp-v2-design.md
   `BURNBAR_MCP_TOOLSET=memory`, and also granted by `local_write` or the
   operator profile. Set `OPENBURNBAR_LOCAL_MCP_ENABLE_MEMORY_WRITE=false` to
   force it off. Writes are rate-limited under the `memory` family.
+- **Structured refusals.** Malformed JSON in `filters`, `metadata`, `facts`,
+  or `memories` returns `INVALID_JSON_ARGUMENT` (never a silently widened
+  query); editing a memory's text to match another active memory returns
+  `DUPLICATE_BODY`; re-remembering text whose memory was rejected in review
+  returns `NONE` with `PREVIOUSLY_REJECTED` (re-approve it with
+  `burnbar_memory_review`), while an expired duplicate is reactivated
+  (`UPDATE`, `reactivated: true`). `tags=[]` / `entities=[]` on
+  `burnbar_memory_update` clear the field; omit the argument to keep it.
 - **Quality.** `eval_memory.py` scores lexical vs hybrid recall on a 40-memory
   / 30-paraphrase gold set against your local Ollama model.
 
