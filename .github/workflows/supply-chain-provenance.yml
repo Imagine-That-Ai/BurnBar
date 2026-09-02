@@ -14,8 +14,6 @@ on:
 
 permissions:
   contents: read
-  id-token: write
-  attestations: write
 
 jobs:
   attest-release:
@@ -102,9 +100,6 @@ jobs:
           path: ${{ runner.temp }}/release-artifacts
         if: github.event_name == 'workflow_run'
 
-      - name: Install cosign
-        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2 (node24-native)
-
       - name: Generate SBOM
         id: sbom
         env:
@@ -130,18 +125,7 @@ jobs:
             --product-version "$VERSION"
           echo "path=$VEX" >> "$GITHUB_OUTPUT"
 
-      - name: Attest SBOM and VEX (cosign / GitHub attestations)
-        env:
-          SBOM_PATH: ${{ steps.sbom.outputs.path }}
-          VEX_PATH: ${{ steps.vex.outputs.path }}
-        run: |
-          cosign attest --yes \
-            --predicate-type https://slsa.dev/provenance/v1 \
-            --type slsaprovenance \
-            "$SBOM_PATH" || cosign attest --yes "$SBOM_PATH"
-          cosign attest --yes "$VEX_PATH"
-
-      - name: Upload provenance bundle
+      - name: Upload generated SBOM and OpenVEX bundle
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
           name: supply-chain-provenance-${{ steps.tag.outputs.version }}
@@ -158,6 +142,6 @@ jobs:
             echo "### Supply chain provenance"
             echo ""
             echo "- Tag: \`${{ steps.tag.outputs.tag }}\`"
-            echo "- SBOM + OpenVEX generated and cosign-attested"
+            echo "- SBOM + OpenVEX generated; release attestations are produced by the release workflows"
             echo "- Bit-reproducible **notarized** builds: de-scoped (see docs/security/SUPPLY_CHAIN_PROVENANCE.md)"
           } >> "$GITHUB_STEP_SUMMARY"
