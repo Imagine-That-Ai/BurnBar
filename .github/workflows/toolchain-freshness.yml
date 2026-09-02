@@ -1,0 +1,55 @@
+name: Toolchain freshness (read-only)
+
+# Wave 0 workstream W0-7. Reports runner/toolchain versions vs the repo's pin
+# files as an artifact — NO PR generation, NO automation bumping pins (Dependabot
+# cannot bump .nvmrc / rust-toolchain.toml / global.json / .xcode-version, and
+# Renovate has no Xcode manager; installing the app is human queue item 25).
+# NOTE FOR THE W0-7 REBASE (lands LAST): W0-2 (#2480) creates
+# .github/workflows/nightly-health.yml on main; fold this job into that file
+# during the rebase and delete this standalone workflow.
+on:
+  schedule:
+    - cron: "0 13 * * 1" # Mondays 13:00 UTC — weekly, seconds of compute, no builds
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  freshness-report:
+    runs-on: macos-26
+    # reason: repo floor — every checkout-bearing job budgets >=15 min so a slow
+    # checkout cannot read as a toolchain failure (verify-pr-harness-aggregate-gates).
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      - name: Collect observed vs pinned toolchain versions
+        run: |
+          set -euo pipefail
+          {
+            echo "# Toolchain freshness $(date -u +%FT%TZ)"
+            echo
+            echo "## Xcode"
+            echo "- pinned (.xcode-version): $(cat .xcode-version)"
+            echo "- runner: $(xcodebuild -version | head -1)"
+            echo
+            echo "## Node"
+            echo "- pinned (.nvmrc): $(cat .nvmrc)"
+            echo "- runner: $(node --version)"
+            echo
+            echo "## Rust (crate pins)"
+            for f in crates/*/rust-toolchain.toml; do
+              echo "- $(basename "$(dirname "$f")"): $(grep -m1 'channel' "$f" | sed 's/.*= *//')"
+            done
+            echo "- runner rustup stable: $(rustup run stable rustc --version 2>/dev/null || echo 'not resolved')"
+            echo
+            echo "## .NET"
+            echo "- pinned (global.json): $(jq -c .sdk global.json)"
+            echo "- runner: $(dotnet --version 2>/dev/null || echo 'not installed')"
+          } | tee toolchain-freshness.md
+
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: toolchain-freshness-${{ github.run_id }}
+          path: toolchain-freshness.md

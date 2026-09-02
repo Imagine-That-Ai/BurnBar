@@ -69,7 +69,7 @@ jobs:
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: npm
           cache-dependency-path: functions/package-lock.json
 
@@ -131,7 +131,7 @@ jobs:
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: npm
           cache-dependency-path: extensions/openburnbar/package-lock.json
 
@@ -164,7 +164,7 @@ jobs:
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: npm
           cache-dependency-path: extensions/safari/package-lock.json
 
@@ -242,7 +242,7 @@ jobs:
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: npm
           cache-dependency-path: |
             functions/package-lock.json
@@ -344,7 +344,7 @@ jobs:
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: npm
           cache-dependency-path: website/package-lock.json
 
@@ -379,7 +379,7 @@ jobs:
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
-          node-version: 22
+          node-version-file: .nvmrc
 
       - name: Validate Cursor marketplace plugin package
         run: node plugins/openburnbar/scripts/validate.mjs
@@ -402,7 +402,7 @@ jobs:
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: npm
           cache-dependency-path: |
             services/hermes-realtime-relay/package-lock.json
@@ -473,7 +473,7 @@ jobs:
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
-          node-version: 22
+          node-version-file: .nvmrc
 
       - name: Verify SQLite schema doc covers migration sources
         run: node scripts/ci/verify-sqlite-schema-doc.mjs
@@ -501,7 +501,7 @@ jobs:
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
-          node-version: 22
+          node-version-file: .nvmrc
 
       # Extracts the ordered migration identifiers + endpoint schema surface
       # (tables/columns/indexes/triggers + FTS5 config incl. the standalone
@@ -540,7 +540,7 @@ jobs:
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
-          node-version: 22
+          node-version-file: .nvmrc
 
       - name: Verify license metadata, libsignal pin, and source offer
         run: |
@@ -557,7 +557,7 @@ jobs:
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: npm
           cache-dependency-path: |
             packages/libsignal-bridge/package-lock.json
@@ -711,7 +711,7 @@ jobs:
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: npm
           cache-dependency-path: tools/schema-sync/package-lock.json
 
@@ -734,7 +734,7 @@ jobs:
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
-          node-version: 22
+          node-version-file: .nvmrc
 
       # Proves scripts/lib/verbatim-chunker.mjs still reproduces every committed
       # droid-wiki chunk byte-identically (zero-write reconcile). The same chunker
@@ -758,7 +758,7 @@ jobs:
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
-          node-version: 22
+          node-version-file: .nvmrc
 
       # Non-interactive shells (SSH, CI, subagents) cannot prompt the macOS
       # Keychain, so the emitted apiKey resolver must check
@@ -780,7 +780,7 @@ jobs:
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
-          node-version: 22
+          node-version-file: .nvmrc
 
       # Registry validation + codegen freshness + firestore.rules drift check:
       # every users/{uid}/ collection must be registered or explicitly excluded.
@@ -907,7 +907,7 @@ jobs:
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: npm
           cache-dependency-path: apps/console/package-lock.json
 
@@ -1070,7 +1070,7 @@ jobs:
           # run under the same rustc the crate is pinned to (and its components
           # resolve). The crate's rust-toolchain.toml otherwise overrides `stable`
           # mid-job and the requested components would be missing.
-          toolchain: "1.96.0"
+          toolchain: "1.96.0" # pin: crates/openburnbar-iroh (libsignal lineage)
           components: rustfmt, clippy
 
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
@@ -1148,7 +1148,7 @@ jobs:
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
-          node-version: "22"
+          node-version-file: .nvmrc
           cache: npm
           cache-dependency-path: functions/package-lock.json
 
@@ -1183,7 +1183,7 @@ jobs:
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
-          node-version: 22
+          node-version-file: .nvmrc
 
       - name: Verify no un-reviewed over-claim copy
         run: bash scripts/ci/verify-signal-honesty-copy.sh
@@ -1205,7 +1205,7 @@ jobs:
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: npm
           cache-dependency-path: |
             services/hermes-realtime-relay/package-lock.json
@@ -1460,7 +1460,7 @@ jobs:
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: npm
           cache-dependency-path: functions/package-lock.json
 
@@ -1510,7 +1510,7 @@ jobs:
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
-          node-version: 22
+          node-version-file: .nvmrc
 
       - name: Diligence data-room index
         run: node scripts/ci/verify-data-room.mjs --check

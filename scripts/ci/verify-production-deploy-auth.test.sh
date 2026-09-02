@@ -240,7 +240,7 @@ expect_fail "hosting config outside artifact root fails" run_gate "$fixture"
 
 fixture="$TMP_ROOT/hosting-node24-firebase-cli"
 copy_base_fixture "$fixture"
-mutate_file "$fixture" ".github/workflows/deploy-hosting.yml" 'text = text.replace("node-version: 22", "node-version: 24", 1)'
+mutate_file "$fixture" ".github/workflows/deploy-hosting.yml" 'text = text.replace("node-version: 22", "node-version: 24", 1); text = text.replace("node-version-file: .nvmrc", "node-version: 24", 1)'
 expect_fail "hosting REST deployer under Node 24 fails" run_gate "$fixture"
 
 fixture="$TMP_ROOT/cloud-run-top-level-oidc"

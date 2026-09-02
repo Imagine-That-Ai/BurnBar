@@ -242,8 +242,8 @@ def validate_hosting(text: str) -> None:
         fail(f"{path} deploy-hosting must authenticate as GCP_HOSTING_DEPLOY_SERVICE_ACCOUNT")
     if "id: hosting_auth" not in deploy_job:
         fail(f"{path} deploy-hosting auth step must expose outputs through id: hosting_auth")
-    if "node-version: 22" not in deploy_job:
-        fail(f"{path} deploy-hosting must run the Hosting REST deployer under Node 22")
+    if "node-version: 22" not in deploy_job and "node-version-file: .nvmrc" not in deploy_job:
+        fail(f"{path} deploy-hosting must run the Hosting REST deployer under Node 22 (node-version: 22 or node-version-file: .nvmrc)")
     if "          token_format: access_token" not in deploy_job:
         fail(f"{path} deploy-hosting must request a WIF access token for the Hosting REST API")
     if "FIREBASE_HOSTING_REST_ACCESS_TOKEN: ${{ steps.hosting_auth.outputs.access_token }}" not in deploy_job:

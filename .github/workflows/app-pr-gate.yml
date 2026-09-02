@@ -104,7 +104,7 @@ jobs:
       - name: Install Rust toolchain for libsignal Swift FFI
         uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
         with:
-          toolchain: stable
+          toolchain: "1.96.0" # pin: crates/openburnbar-iroh (libsignal lineage)
 
       - name: Ensure libsignal native toolchain (protoc + cmake)
         uses: ./.github/actions/ensure-libsignal-toolchain
@@ -248,7 +248,7 @@ jobs:
       - name: Install Rust toolchain for libsignal Swift FFI
         uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
         with:
-          toolchain: stable
+          toolchain: "1.96.0" # pin: crates/openburnbar-iroh (libsignal lineage)
 
       - name: Ensure libsignal native toolchain (protoc + cmake)
         uses: ./.github/actions/ensure-libsignal-toolchain
