@@ -195,6 +195,7 @@ object OsPendingNavigation {
                 routed.missionId?.takeIf { it.isNotBlank() }?.let { "mission/$it" } ?: "mission"
             MobileOsDestination.MERCURY_CALL ->
                 routed.connectionId?.takeIf { it.isNotBlank() }?.let { "mercury/call/$it" } ?: "mercury/call"
+            MobileOsDestination.DEVICES -> "you"
             else -> return
         }
         _pending.value = Request(

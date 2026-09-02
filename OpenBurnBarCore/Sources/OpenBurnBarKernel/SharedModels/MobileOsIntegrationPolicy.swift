@@ -14,6 +14,7 @@ public enum MobileOsDestination: String, Sendable, Equatable {
     case inbox
     case mercuryCall = "mercury-call"
     case mission
+    case devices
     case unknown
 }
 
@@ -43,6 +44,7 @@ public struct MobileOsRouteDecision: Sendable, Equatable {
     public var missionId: String?
     public var runtime: String?
     public var slug: String?
+    public var deviceId: String?
 
     public init(
         destination: MobileOsDestination,
@@ -52,7 +54,8 @@ public struct MobileOsRouteDecision: Sendable, Equatable {
         connectionId: String? = nil,
         missionId: String? = nil,
         runtime: String? = nil,
-        slug: String? = nil
+        slug: String? = nil,
+        deviceId: String? = nil
     ) {
         self.destination = destination
         self.deepLink = deepLink
@@ -62,6 +65,7 @@ public struct MobileOsRouteDecision: Sendable, Equatable {
         self.missionId = missionId
         self.runtime = runtime
         self.slug = slug
+        self.deviceId = deviceId
     }
 }
 
@@ -76,6 +80,7 @@ public struct MobilePushEnvelope: Sendable, Equatable {
     public var missionId: String?
     public var runtime: String?
     public var deepLink: String?
+    public var deviceId: String?
 
     public init(
         type: String,
@@ -87,7 +92,8 @@ public struct MobilePushEnvelope: Sendable, Equatable {
         connectionId: String? = nil,
         missionId: String? = nil,
         runtime: String? = nil,
-        deepLink: String? = nil
+        deepLink: String? = nil,
+        deviceId: String? = nil
     ) {
         self.type = type
         self.eventId = eventId
@@ -99,6 +105,7 @@ public struct MobilePushEnvelope: Sendable, Equatable {
         self.missionId = missionId
         self.runtime = runtime
         self.deepLink = deepLink
+        self.deviceId = deviceId
     }
 }
 
@@ -124,8 +131,10 @@ public enum MobileOsIntegrationPolicy {
     public static let allowlistedHosts: Set<String> = [
         "dashboard", "pulse", "burn", "quota", "streams", "search", "settings",
         "agent-watch", "agent-live", "computer-use", "chat", "hermes", "pi",
-        "assistants", "insights", "inbox", "mercury", "mission"
+        "assistants", "insights", "inbox", "mercury", "mission",
+        "devices", "approve-device", "device-approval"
     ]
+    public static let allowlistedSchemes: Set<String> = ["burnbar", "openburnbar"]
 
     public static let pushTypes: [String: MobileOsDestination] = [
         "agent_reply": .assistants,
@@ -135,7 +144,8 @@ public enum MobileOsIntegrationPolicy {
         "quota_pressure": .burn,
         "media_incoming_call": .mercuryCall,
         "mission": .mission,
-        "mission_update": .mission
+        "mission_update": .mission,
+        "device_approval_request": .devices
     ]
 
     public static func delivery(permissionGranted: Bool) -> MobileNotificationDelivery {
@@ -148,7 +158,7 @@ public enum MobileOsIntegrationPolicy {
 
     public static func acceptedDeepLink(_ raw: String?) -> String? {
         guard let raw = firstNonEmpty(raw), let url = URL(string: raw) else { return nil }
-        guard (url.scheme ?? "").lowercased() == "burnbar" else { return nil }
+        guard allowlistedSchemes.contains((url.scheme ?? "").lowercased()) else { return nil }
         guard let host = url.host?.lowercased(), allowlistedHosts.contains(host) else { return nil }
         return url.absoluteString
     }
@@ -156,9 +166,14 @@ public enum MobileOsIntegrationPolicy {
     public static func envelope(from payload: [String: String]) -> MobilePushEnvelope {
         let expiresRaw = firstNonEmpty(payload["expires_at_millis"], payload["expiresAtMs"])
         let expires = expiresRaw.flatMap { Int64($0) }
+        let type = payload["type"] ?? ""
+        let deviceId = firstNonEmpty(payload["device_id"], payload["deviceId"])
+        let eventId = firstNonEmpty(payload["event_id"], payload["eventId"])
+            ?? (type == "device_approval_request" ? deviceId.map { "device-approval-\($0)" } : nil)
+            ?? ""
         return MobilePushEnvelope(
-            type: payload["type"] ?? "",
-            eventId: firstNonEmpty(payload["event_id"], payload["eventId"]) ?? "",
+            type: type,
+            eventId: eventId,
             uid: firstNonEmpty(payload["uid"], payload["account_uid"], payload["accountUid"]),
             expiresAtMs: expires,
             threadId: firstNonEmpty(payload["thread_id"], payload["threadId"]),
@@ -166,7 +181,8 @@ public enum MobileOsIntegrationPolicy {
             connectionId: firstNonEmpty(payload["connection_id"], payload["connectionId"]),
             missionId: firstNonEmpty(payload["mission_id"], payload["missionId"]),
             runtime: firstNonEmpty(payload["runtime"]),
-            deepLink: firstNonEmpty(payload["deep_link"], payload["deepLink"])
+            deepLink: firstNonEmpty(payload["deep_link"], payload["deepLink"]),
+            deviceId: deviceId
         )
     }
 
@@ -214,13 +230,23 @@ public enum MobileOsIntegrationPolicy {
                 deepLink: link,
                 missionId: envelope.missionId
             )
+        case .devices:
+            let device = envelope.deviceId
+            let link = acceptedDeepLink(envelope.deepLink)
+                ?? device.map { "burnbar://devices?deviceId=\($0)" }
+                ?? "burnbar://devices"
+            return MobileOsRouteDecision(
+                destination: .devices,
+                deepLink: link,
+                deviceId: device
+            )
         default:
             return MobileOsRouteDecision(destination: .unknown)
         }
     }
 
     public static func route(url: URL) -> MobileOsRouteDecision {
-        guard (url.scheme ?? "").lowercased() == "burnbar" else {
+        guard allowlistedSchemes.contains((url.scheme ?? "").lowercased()) else {
             return MobileOsRouteDecision(destination: .unknown)
         }
         let host = (url.host ?? "").lowercased()
@@ -291,6 +317,14 @@ public enum MobileOsIntegrationPolicy {
                 deepLink: url.absoluteString,
                 missionId: first
             )
+        case "devices", "approve-device", "device-approval":
+            let deviceId = query(components, names: ["deviceId", "device_id", "deviceID"])
+                ?? firstNonEmpty(first)
+            return MobileOsRouteDecision(
+                destination: .devices,
+                deepLink: url.absoluteString,
+                deviceId: deviceId
+            )
         default:
             return MobileOsRouteDecision(destination: .unknown)
         }
@@ -304,7 +338,21 @@ public enum MobileOsIntegrationPolicy {
         permissionGranted: Bool
     ) -> MobileNavigationDecision {
         if !permissionGranted { return .ignoreDenied }
-        if route(envelope: envelope).destination == .unknown { return .ignoreUnknown }
+        let routed = route(envelope: envelope)
+        if routed.destination == .unknown { return .ignoreUnknown }
+        if routed.destination == .devices {
+            // Companion approval pushes omit uid/expiry today. Honor them when
+            // present so a leftover tap cannot jump accounts or survive TTL.
+            if let uid = firstNonEmpty(envelope.uid) {
+                let active = firstNonEmpty(activeUid)
+                if active == nil || uid != active { return .ignoreAccountMismatch }
+            }
+            if let expires = envelope.expiresAtMs, nowMs > expires { return .ignoreExpired }
+            if let last = lastConsumedEventId, !envelope.eventId.isEmpty, last == envelope.eventId {
+                return .ignoreDuplicate
+            }
+            return .navigate
+        }
         guard let uid = firstNonEmpty(envelope.uid) else { return .ignoreStale }
         let active = firstNonEmpty(activeUid)
         if active == nil || uid != active { return .ignoreAccountMismatch }

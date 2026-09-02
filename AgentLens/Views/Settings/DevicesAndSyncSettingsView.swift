@@ -25,6 +25,8 @@ enum MacCopy {
     static let credentialTransferUnavailable = "Credential transfer unavailable"
 
     static let bootstrapPrompt = "Approve this Mac before sharing encrypted provider credentials with companion devices."
+    static let pendingApprovalNeedsTrustedApprover = "This Mac is still waiting for approval, so it cannot approve other devices. Open OpenBurnBar on a trusted phone or Mac and approve from there."
+    static let reviewPendingDevices = "Review all pending devices"
     static let transferConfirmCopy = "Encrypted credential transfer uses device trust and provider readback before it is treated as complete."
     static let unsupportedBrowserSession = "Browser sessions stay on this Mac and cannot be transferred."
     static let unsupportedNotPortable = "This provider does not allow portable credentials."
@@ -411,8 +413,8 @@ struct TrustedDevicesDetailView: View {
                     Text(device.displayName)
                         .font(DesignSystem.Typography.body)
                         .foregroundStyle(DesignSystem.Colors.textPrimary)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                     HStack(spacing: 4) {
                         Circle()
                             .fill(deviceStatusColor(device))
@@ -885,6 +887,9 @@ final class MacLiveDeviceTrustGateway: MacDeviceTrustGateway {
     }
 
     func trustedDevices() async throws -> [MacTrustedDevice] {
+        if let user = Auth.auth().currentUser {
+            _ = try? await user.getIDTokenResult(forcingRefresh: true)
+        }
         guard let uid else { throw MacDeviceTrustError.notAuthenticated }
         let userRef = db.collection("users").document(uid)
         let snap = try await userRef.collection("escrow_devices").getDocuments()
@@ -993,13 +998,37 @@ final class DeviceTrustViewModel {
     }
 
     func approve(deviceID: String) async {
+        if let blocked = Self.approvalBlockReason(
+            deviceID: deviceID,
+            devices: trustedDevices
+        ) {
+            lastErrorMessage = blocked
+            return
+        }
         do {
             try await gateway.approve(deviceID: deviceID)
             lastStatusMessage = nil
+            lastErrorMessage = nil
             await load()
         } catch {
-            lastErrorMessage = error.localizedDescription
+            lastErrorMessage = PendingDeviceApprovalModel.userFacingApprovalError(error)
         }
+    }
+
+    /// Once any other native device is trusted, this Mac cannot approve itself
+    /// or anyone else until it is trusted. Bootstrap self-approve stays legal
+    /// only when the account has no trusted device yet. If this Mac's identity
+    /// is unknown, leave the decision to the server instead of guessing.
+    static func approvalBlockReason(deviceID: String, devices: [MacTrustedDevice]) -> String? {
+        guard let current = devices.first(where: \.isCurrentDevice) else { return nil }
+        if current.trustState == .trusted {
+            return current.id == deviceID ? MacCopy.pendingApprovalNeedsTrustedApprover : nil
+        }
+        let hasTrustedOther = devices.contains { $0.trustState == .trusted && !$0.isCurrentDevice }
+        if current.id == deviceID && !hasTrustedOther {
+            return nil
+        }
+        return MacCopy.pendingApprovalNeedsTrustedApprover
     }
 
     func revoke(deviceID: String) async {

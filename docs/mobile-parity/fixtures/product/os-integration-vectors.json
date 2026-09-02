@@ -76,6 +76,57 @@
       }
     },
     {
+      "id": "os.push.device-approval-route",
+      "kind": "pushRoute",
+      "payload": {
+        "type": "device_approval_request",
+        "device_id": "mac_mini_1",
+        "deep_link": "openburnbar://approve-device?deviceId=mac_mini_1"
+      },
+      "expected": {
+        "destination": "devices",
+        "deepLink": "openburnbar://approve-device?deviceId=mac_mini_1"
+      }
+    },
+    {
+      "id": "os.push.device-approval-navigate-without-uid",
+      "kind": "navigation",
+      "payload": {
+        "type": "device_approval_request",
+        "device_id": "mac_mini_1"
+      },
+      "activeUid": "uid-current",
+      "nowMs": 5000,
+      "permissionGranted": true,
+      "expected": { "decision": "navigate", "navigates": true }
+    },
+    {
+      "id": "os.push.device-approval-honor-uid-mismatch",
+      "kind": "navigation",
+      "payload": {
+        "type": "device_approval_request",
+        "device_id": "mac_mini_1",
+        "uid": "uid-other"
+      },
+      "activeUid": "uid-current",
+      "nowMs": 5000,
+      "permissionGranted": true,
+      "expected": { "decision": "ignoreAccountMismatch", "navigates": false }
+    },
+    {
+      "id": "os.push.device-approval-honor-expiry",
+      "kind": "navigation",
+      "payload": {
+        "type": "device_approval_request",
+        "device_id": "mac_mini_1",
+        "expires_at_millis": "1000"
+      },
+      "activeUid": "uid-current",
+      "nowMs": 5000,
+      "permissionGranted": true,
+      "expected": { "decision": "ignoreExpired", "navigates": false }
+    },
+    {
       "id": "os.push.unknown-type-no-route",
       "kind": "pushRoute",
       "payload": { "type": "not_a_real_type", "event_id": "evt_x" },
@@ -196,6 +247,18 @@
       "kind": "urlRoute",
       "url": "burnbar://assistants/hermes?threadId=thr%2Fwarm",
       "expected": { "destination": "assistants", "threadId": "thr/warm", "runtime": "hermes" }
+    },
+    {
+      "id": "os.deeplink.approve-device-openburnbar",
+      "kind": "urlRoute",
+      "url": "openburnbar://approve-device?deviceId=mac_mini_1",
+      "expected": { "destination": "devices", "deviceId": "mac_mini_1" }
+    },
+    {
+      "id": "os.deeplink.devices-burnbar",
+      "kind": "urlRoute",
+      "url": "burnbar://devices?deviceId=mac_mini_1",
+      "expected": { "destination": "devices", "deviceId": "mac_mini_1" }
     },
     {
       "id": "os.widget.no-raw-uid",

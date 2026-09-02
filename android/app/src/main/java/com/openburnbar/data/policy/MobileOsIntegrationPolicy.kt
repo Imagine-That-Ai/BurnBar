@@ -15,6 +15,7 @@ enum class MobileOsDestination(val wire: String) {
     INBOX("inbox"),
     MERCURY_CALL("mercury-call"),
     MISSION("mission"),
+    DEVICES("devices"),
     UNKNOWN("unknown"),
     ;
 
@@ -47,6 +48,7 @@ data class MobileOsRouteDecision(
     val missionId: String? = null,
     val runtime: String? = null,
     val slug: String? = null,
+    val deviceId: String? = null,
 )
 
 data class MobilePushEnvelope(
@@ -60,6 +62,7 @@ data class MobilePushEnvelope(
     val missionId: String? = null,
     val runtime: String? = null,
     val deepLink: String? = null,
+    val deviceId: String? = null,
 )
 
 data class MobileWidgetPrivacyScan(
@@ -80,7 +83,9 @@ object MobileOsIntegrationPolicy {
             "dashboard", "pulse", "burn", "quota", "streams", "search", "settings",
             "agent-watch", "agent-live", "computer-use", "chat", "hermes", "pi",
             "assistants", "insights", "inbox", "mercury", "mission",
+            "devices", "approve-device", "device-approval",
         )
+    val allowlistedSchemes: Set<String> = setOf("burnbar", "openburnbar")
 
     val pushTypes: Map<String, MobileOsDestination> =
         mapOf(
@@ -92,6 +97,7 @@ object MobileOsIntegrationPolicy {
             "media_incoming_call" to MobileOsDestination.MERCURY_CALL,
             "mission" to MobileOsDestination.MISSION,
             "mission_update" to MobileOsDestination.MISSION,
+            "device_approval_request" to MobileOsDestination.DEVICES,
         )
 
     fun delivery(permissionGranted: Boolean): MobileNotificationDelivery =
@@ -102,7 +108,7 @@ object MobileOsIntegrationPolicy {
     fun acceptedDeepLink(raw: String?): String? {
         val value = firstNonEmpty(raw) ?: return null
         val uri = runCatching { URI(value) }.getOrNull() ?: return null
-        if (!uri.scheme.equals("burnbar", ignoreCase = true)) return null
+        if (uri.scheme.orEmpty().lowercase() !in allowlistedSchemes) return null
         val host = uri.host.orEmpty().lowercase()
         if (host !in allowlistedHosts) return null
         return uri.toString()
@@ -111,9 +117,14 @@ object MobileOsIntegrationPolicy {
     fun envelope(payload: Map<String, String>): MobilePushEnvelope {
         val expiresRaw = firstNonEmpty(payload["expires_at_millis"], payload["expiresAtMs"])
         val expires = expiresRaw?.toLongOrNull()
+        val type = payload["type"].orEmpty()
+        val deviceId = firstNonEmpty(payload["device_id"], payload["deviceId"])
+        val fallbackEventId =
+            if (type == "device_approval_request") deviceId?.let { "device-approval-$it" } else null
+        val eventId = firstNonEmpty(payload["event_id"], payload["eventId"], fallbackEventId).orEmpty()
         return MobilePushEnvelope(
-            type = payload["type"].orEmpty(),
-            eventId = firstNonEmpty(payload["event_id"], payload["eventId"]).orEmpty(),
+            type = type,
+            eventId = eventId,
             uid = firstNonEmpty(payload["uid"], payload["account_uid"], payload["accountUid"]),
             expiresAtMs = expires,
             threadId = firstNonEmpty(payload["thread_id"], payload["threadId"]),
@@ -122,6 +133,7 @@ object MobileOsIntegrationPolicy {
             missionId = firstNonEmpty(payload["mission_id"], payload["missionId"]),
             runtime = firstNonEmpty(payload["runtime"]),
             deepLink = firstNonEmpty(payload["deep_link"], payload["deepLink"]),
+            deviceId = deviceId,
         )
     }
 
@@ -170,13 +182,23 @@ object MobileOsIntegrationPolicy {
                         ?: "burnbar://mission/${envelope.missionId.orEmpty()}",
                     missionId = envelope.missionId,
                 )
+            MobileOsDestination.DEVICES -> {
+                val device = envelope.deviceId
+                MobileOsRouteDecision(
+                    destination = MobileOsDestination.DEVICES,
+                    deepLink = acceptedDeepLink(envelope.deepLink)
+                        ?: device?.let { "burnbar://devices?deviceId=$it" }
+                        ?: "burnbar://devices",
+                    deviceId = device,
+                )
+            }
             else -> MobileOsRouteDecision(destination = MobileOsDestination.UNKNOWN)
         }
     }
 
     fun route(url: String?): MobileOsRouteDecision {
         val uri = runCatching { URI(url) }.getOrNull() ?: return MobileOsRouteDecision(MobileOsDestination.UNKNOWN)
-        if (!uri.scheme.equals("burnbar", ignoreCase = true)) {
+        if (uri.scheme.orEmpty().lowercase() !in allowlistedSchemes) {
             return MobileOsRouteDecision(MobileOsDestination.UNKNOWN)
         }
         val host = uri.host.orEmpty().lowercase()
@@ -216,6 +238,14 @@ object MobileOsIntegrationPolicy {
                     MobileOsRouteDecision(MobileOsDestination.UNKNOWN)
                 }
             "mission" -> MobileOsRouteDecision(MobileOsDestination.MISSION, url, missionId = first)
+            "devices", "approve-device", "device-approval" -> {
+                val deviceId = firstNonEmpty(query["deviceId"], query["device_id"], query["deviceID"], first)
+                MobileOsRouteDecision(
+                    destination = MobileOsDestination.DEVICES,
+                    deepLink = url,
+                    deviceId = deviceId,
+                )
+            }
             else -> MobileOsRouteDecision(MobileOsDestination.UNKNOWN)
         }
     }
@@ -228,8 +258,24 @@ object MobileOsIntegrationPolicy {
         permissionGranted: Boolean,
     ): MobileNavigationDecision {
         if (!permissionGranted) return MobileNavigationDecision.IGNORE_DENIED
-        if (route(envelope).destination == MobileOsDestination.UNKNOWN) {
+        val routed = route(envelope)
+        if (routed.destination == MobileOsDestination.UNKNOWN) {
             return MobileNavigationDecision.IGNORE_UNKNOWN
+        }
+        if (routed.destination == MobileOsDestination.DEVICES) {
+            // Companion approval pushes omit uid/expiry today. Honor them when
+            // present so a leftover tap cannot jump accounts or survive TTL.
+            firstNonEmpty(envelope.uid)?.let { uid ->
+                val active = firstNonEmpty(activeUid)
+                if (active == null || uid != active) return MobileNavigationDecision.IGNORE_ACCOUNT_MISMATCH
+            }
+            envelope.expiresAtMs?.let { expires ->
+                if (nowMs > expires) return MobileNavigationDecision.IGNORE_EXPIRED
+            }
+            if (!envelope.eventId.isBlank() && lastConsumedEventId != null && lastConsumedEventId == envelope.eventId) {
+                return MobileNavigationDecision.IGNORE_DUPLICATE
+            }
+            return MobileNavigationDecision.NAVIGATE
         }
         val uid = firstNonEmpty(envelope.uid) ?: return MobileNavigationDecision.IGNORE_STALE
         val active = firstNonEmpty(activeUid)

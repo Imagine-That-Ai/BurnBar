@@ -162,6 +162,11 @@ class MainActivity : FragmentActivity() {
             MobileOsDestination.BURN,
             MobileOsDestination.MERCURY_CALL,
             -> if (warmStart) OsPendingNavigation.request(routed, eventId)
+            MobileOsDestination.DEVICES ->
+                // Devices is not a nav-graph destination, so cold and warm
+                // taps both stash. YouView claims the request and opens
+                // Connected Devices without auto-approving.
+                OsPendingNavigation.request(routed, eventId)
             else -> Unit
         }
     }

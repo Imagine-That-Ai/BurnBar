@@ -184,6 +184,7 @@ internal fun MercuryFcmService.postDeviceApprovalNotification(data: Map<String, 
             action = Intent.ACTION_VIEW
             this.data = Uri.parse(deepLink)
             putExtra(MainActivity.EXTRA_EVENT_ID, eventId)
+            putExtra(MainActivity.EXTRA_PUSH_TYPE, "device_approval_request")
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         }
     openIntent.setPackage(packageName)

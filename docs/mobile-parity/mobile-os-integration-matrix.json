@@ -120,7 +120,12 @@
       "automatable": true,
       "status": "implemented",
       "evidenceFloor": ["unit"],
-      "vectorIds": ["os.deeplink.warm-assistants", "os.deeplink.encoded-thread-id"],
+      "vectorIds": [
+        "os.deeplink.warm-assistants",
+        "os.deeplink.encoded-thread-id",
+        "os.deeplink.approve-device-openburnbar",
+        "os.deeplink.devices-burnbar"
+      ],
       "testRefs": {
         "swift": ["OpenBurnBarCore/Tests/OpenBurnBarCoreTests/MobileOsIntegrationParityTests.swift"],
         "kotlin": ["android/app/src/test/java/com/openburnbar/data/policy/MobileOsIntegrationParityTest.kt"]
@@ -129,7 +134,7 @@
     {
       "id": "os.push.payload-types",
       "family": "payload",
-      "title": "Agent reply, inbox, quota, mercury/call, and mission push types",
+      "title": "Agent reply, inbox, quota, mercury/call, mission, and device-approval push types",
       "platforms": ["ios", "ipados", "android"],
       "states": ["ready"],
       "automatable": true,
@@ -141,6 +146,10 @@
         "os.push.quota-route",
         "os.push.mercury-call-route",
         "os.push.mission-route",
+        "os.push.device-approval-route",
+        "os.push.device-approval-navigate-without-uid",
+        "os.push.device-approval-honor-uid-mismatch",
+        "os.push.device-approval-honor-expiry",
         "os.push.unknown-type-no-route",
         "os.push.evil-https-deep-link-ignored"
       ],

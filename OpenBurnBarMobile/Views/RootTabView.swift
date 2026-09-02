@@ -295,6 +295,10 @@ struct RootTabView: View {
             .onReceive(NotificationCenter.default.publisher(for: AIInboxDeepLink.notificationName)) { notification in
                 openAIInboxRoute(itemID: AIInboxDeepLink.itemID(from: notification))
             }
+            .onReceive(NotificationCenter.default.publisher(for: .init("ShowDevices"))) { _ in
+                guard case .devices = MobilePendingOsRouteStore.shared.consume() else { return }
+                openDevicesRoute()
+            }
     }
 
     private var rootWithVisibilityRoutes: some View {
@@ -571,6 +575,14 @@ struct RootTabView: View {
         youPath.append(YouRoute.settings)
     }
 
+    /// Lands a device-approval banner or `openburnbar://approve-device` tap on
+    /// You → Devices. Review stays explicit; this never auto-approves.
+    private func openDevicesRoute() {
+        selection = .you
+        youPath = NavigationPath()
+        youPath.append(YouRoute.devices)
+    }
+
     /// Lands a `burnbar://inbox[/{itemId}]` deep link — the tap target of an AI
     /// Inbox P1 push.
     ///
@@ -615,6 +627,8 @@ struct RootTabView: View {
             presentMercuryCall(connectionId: connectionId)
         case .mission(let missionId):
             presentMissionConsole(missionId: missionId)
+        case .devices:
+            openDevicesRoute()
         case nil:
             break
         }

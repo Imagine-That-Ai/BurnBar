@@ -275,6 +275,11 @@ private fun OsWarmDeepLinkNavigator(navController: NavHostController, isSignedIn
     val pending by OsPendingNavigation.pending.collectAsState()
     LaunchedEffect(pending, isSignedIn) {
         if (!isSignedIn || pending == null) return@LaunchedEffect
+        if (pending?.destination == MobileOsDestination.DEVICES) {
+            // Leave the request parked so YouView can open Connected Devices.
+            navigateToTab(navController, BurnBarTab.YOU)
+            return@LaunchedEffect
+        }
         val request = OsPendingNavigation.claim() ?: return@LaunchedEffect
         when (request.destination) {
             MobileOsDestination.BURN ->
