@@ -36,6 +36,8 @@ on:
       - "scripts/ci/burnbar-turbo-runner-host.test.mjs"
       - "scripts/ci/verify-merge-queue-workflows.mjs"
       - "scripts/ci/verify-merge-queue-workflows.test.mjs"
+      - "scripts/ci/await-burnbar-ci-gate.mjs"
+      - "scripts/ci/await-burnbar-ci-gate.test.mjs"
       - "scripts/ci/verify-workflow-reachability.mjs"
       - "scripts/ci/verify-workflow-reachability.test.mjs"
       - "scripts/lib/github-workflow.mjs"
@@ -189,6 +191,8 @@ on:
       - "scripts/ci/verify-agent-workflow-boundaries.test.mjs"
       - "scripts/ci/verify-pr-secret-boundaries.mjs"
       - "scripts/ci/verify-pr-secret-boundaries.test.mjs"
+      - "scripts/ci/await-burnbar-ci-gate.mjs"
+      - "scripts/ci/await-burnbar-ci-gate.test.mjs"
       - "scripts/ci/verify-burnbar-turbo-workflow.test.mjs"
       - "scripts/ci/burnbar-turbo-runner-host.sh"
       - "scripts/ci/burnbar-turbo-runner-guest.sh"
@@ -356,6 +360,9 @@ jobs:
         run: |
           node scripts/ci/verify-merge-queue-workflows.mjs
           node scripts/ci/verify-merge-queue-workflows.test.mjs
+
+      - name: Self-test BurnBar CI gate circuit breaker
+        run: node --test scripts/ci/await-burnbar-ci-gate.test.mjs
 
       # Two xcframeworks shipping a bare `Headers/module.modulemap` both claim
       # `include/module.modulemap` and break every iOS archive, which blocked

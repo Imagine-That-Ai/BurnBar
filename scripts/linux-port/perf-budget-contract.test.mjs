@@ -74,6 +74,9 @@ test('single-sample native evidence and failed matched evidence fail closed', ()
     assert.equal(result.status, 1);
     const report = JSON.parse(fs.readFileSync(path.join(directory, 'perf-budget.json'), 'utf8'));
     assert.equal(report.allPass, false);
+    assert.equal(report.status, 'infra-failed');
+    assert.equal(report.failureClass, 'infra');
+    assert.equal(report.reasonCode, 'linux-performance-evidence-unavailable');
     assert.ok(report.errors.some((error) => error.includes('app.start has 1 samples')));
     assert.ok(report.errors.some((error) => error.includes('matched macOS/Linux')));
   } finally {
@@ -90,6 +93,8 @@ test('pre-paint route sources are rejected', () => {
     const result = run(directory);
     assert.equal(result.status, 1);
     const report = JSON.parse(fs.readFileSync(path.join(directory, 'perf-budget.json'), 'utf8'));
+    assert.equal(report.status, 'infra-failed');
+    assert.equal(report.failureClass, 'infra');
     assert.ok(report.errors.some((error) => error.includes('pre-paint')));
   } finally {
     fs.rmSync(directory, { recursive: true, force: true });

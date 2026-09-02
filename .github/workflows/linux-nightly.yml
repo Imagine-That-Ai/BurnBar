@@ -145,15 +145,20 @@ jobs:
       - name: Record blocked environment row
         if: matrix.mode == 'blocked'
         run: |
+          set -euo pipefail
           mkdir -p "$OPENBURNBAR_LINUX_EVIDENCE_OUT/nightly/${{ matrix.label }}"
           cat > "$OPENBURNBAR_LINUX_EVIDENCE_OUT/nightly/${{ matrix.label }}/blocked.json" <<'JSON'
           {
             "label": "${{ matrix.label }}",
-            "status": "blocked",
+            "status": "infra-failed",
+            "failureClass": "infra",
+            "reasonCode": "linux-environment-unavailable",
             "reason": "${{ matrix.reason }}",
             "requiredBeforePromotion": "Rerun shell, daemon, portal, package, Computer Use, and media smokes on a real matching desktop environment."
           }
           JSON
+          echo "::error::reasonCode=linux-environment-unavailable. ${{ matrix.reason }}"
+          exit 3
 
       - name: Install Linux desktop dependencies
         if: matrix.mode == 'runnable'
@@ -211,7 +216,13 @@ jobs:
   open-failure-issue:
     runs-on: ubuntu-latest
     needs: [macos-matched-performance, linux-matched-performance, linux-surface]
-    if: always() && contains(needs.*.result, 'failure')
+    if: >-
+      always() &&
+      (
+        contains(needs.*.result, 'failure') ||
+        contains(needs.*.result, 'cancelled') ||
+        contains(needs.*.result, 'skipped')
+      )
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
       - name: Record Linux nightly failure

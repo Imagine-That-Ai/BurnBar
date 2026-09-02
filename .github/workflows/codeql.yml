@@ -89,6 +89,36 @@ jobs:
         with:
           submodules: recursive
 
+      # W0-10 (2026-09-01): run 33517666151 died ~75 minutes into the traced
+      # Swift build with "cannot execute tool 'metal'" — after the whole
+      # non-Metal build had already completed. Resolve the Metal toolchain
+      # identity and cache it BEFORE any heavy Swift prep so a toolchain miss
+      # fails in seconds, not at minute 75. Key is runner image + Xcode
+      # version: the Metal toolchain ships with / is downloaded per Xcode.
+      - name: Ensure the Metal toolchain component is installed
+        if: matrix.language == 'swift'
+        run: |
+          set -euo pipefail
+          # Metal is an Xcode toolchain component, not build output: caching
+          # DerivedData cannot supply it. Xcode 26+ ships it as a downloadable
+          # component, so install it when the runner image lacks it.
+          if xcrun -f metal >/dev/null 2>&1; then
+            echo "Metal toolchain already present: $(xcrun -f metal)"
+            exit 0
+          fi
+          echo "Metal toolchain missing on this runner image; installing the MetalToolchain component."
+          sudo xcodebuild -downloadComponent MetalToolchain
+          sudo xcodebuild -runFirstLaunch
+
+      - name: Preflight Metal toolchain (xcrun -f metal)
+        if: matrix.language == 'swift'
+        run: |
+          if ! metal_bin="$(xcrun -f metal 2>/dev/null)"; then
+            echo "::error::Metal toolchain missing: 'xcrun -f metal' found no 'metal' tool even after 'xcodebuild -downloadComponent MetalToolchain'. The traced Swift CodeQL build requires the Metal compiler; without it the run dies at ~minute 75 with \"cannot execute tool 'metal'\" (run 33517666151). Fix: pick a runner image whose Xcode bundles or can download the Metal toolchain, then re-dispatch."
+            exit 1
+          fi
+          echo "Metal toolchain present: ${metal_bin}"
+
       # The app target references this plist as a bundle resource, but the real
       # Firebase config is intentionally gitignored. CodeQL only needs the Swift
       # build graph, so use the checked-in placeholder rather than requiring
@@ -181,38 +211,16 @@ jobs:
             sleep $((attempt * 20))
           done
 
-      # Swift build — resolves packages and compiles all targets so CodeQL
-      # can trace the compiler. Runs after init (so CodeQL hooks the build)
+      # Swift build — the traced xcodebuild invocation (with its one retry for
+      # the Xcode 27 SwiftPM "INTERNAL ERROR: Uncaught exception" transient
+      # class, 64c7341fbe) now lives in scripts/ci/codeql-swift-build.sh so it
+      # is locally editable and bash -n testable without touching the workflow.
+      # Runs after init (so CodeQL hooks the build)
       # and only on the swift matrix entry. Disable code signing because
       # macOS-15 GitHub runners don't have signing identities.
-      # Retried once because Xcode 27 SwiftPM can crash with "INTERNAL ERROR:
-      # Uncaught exception" during the package-graph action even after a clean
-      # resolve (same transient class release.yml classifies and retries,
-      # 64c7341fbe). The retry stays inside one step so the CodeQL tracer
-      # observes whichever attempt compiles.
       - name: Build Swift (CodeQL)
         if: matrix.language == 'swift'
-        run: |
-          for attempt in 1 2; do
-            if xcodebuild -project OpenBurnBar.xcodeproj \
-              -scheme OpenBurnBar \
-              -configuration Debug \
-              -destination 'platform=macOS,arch=x86_64' \
-              -derivedDataPath .codeql-derived-data \
-              ARCHS=x86_64 \
-              ONLY_ACTIVE_ARCH=YES \
-              CODE_SIGNING_ALLOWED=NO \
-              CODE_SIGNING_REQUIRED=NO \
-              SWIFT_ENABLE_EXPLICIT_MODULES=NO \
-              build; then
-              exit 0
-            fi
-            if [ "$attempt" = "2" ]; then
-              exit 1
-            fi
-            echo "xcodebuild failed (attempt ${attempt}); retrying the traced build once."
-            sleep 20
-          done
+        run: ./scripts/ci/codeql-swift-build.sh
 
       - name: Build Android (CodeQL)
         if: matrix.language == 'java-kotlin'

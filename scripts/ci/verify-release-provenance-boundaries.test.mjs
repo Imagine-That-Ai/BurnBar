@@ -305,7 +305,7 @@ jobs:
           git checkout --detach "$RELEASE_COMMIT"
           test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"
       - name: Attest SBOM and VEX
-        run: cosign attest --yes "$SBOM_PATH"
+        run: cosign attest-blob --yes "$SBOM_PATH"
 `;
 
 function buildTree(
@@ -1176,7 +1176,7 @@ expect(
   GOOD_RELEASE,
   GOOD_SUPPLY_CHAIN.replace(
     "      - name: Check out release tag\n",
-    '      - name: Attest early\n        run: cosign attest --yes "$SBOM_PATH"\n      - name: Check out release tag\n',
+    '      - name: Attest early\n        run: cosign attest-blob --yes "$SBOM_PATH"\n      - name: Check out release tag\n',
   ),
   1,
 );
@@ -1186,7 +1186,7 @@ expect(
   GOOD_RELEASE,
   GOOD_SUPPLY_CHAIN.replace(
     '          tag_ref="refs/tags/${TAG}"\n',
-    '          tag_ref="refs/tags/${TAG}"\n          cosign attest --yes "$SBOM_PATH"\n',
+    '          tag_ref="refs/tags/${TAG}"\n          cosign attest-blob --yes "$SBOM_PATH"\n',
   ),
   1,
 );

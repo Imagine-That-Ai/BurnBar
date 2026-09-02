@@ -23,10 +23,12 @@ const OPEN_WORKFLOWS = [
   { file: "deploy-cloud-run.yml", lanes: ["deploy-cloud-run"] },
   { file: "deploy-firestore.yml", lanes: ["deploy-firestore"] },
   { file: "deploy-hosting.yml", lanes: ["deploy-hosting"] },
+  { file: "deploy-lane-health.yml", lanes: ["deploy-health"] },
   { file: "deploy-production.yml", lanes: ["deploy-production"] },
   { file: "linux-nightly.yml", lanes: ["linux-nightly"] },
   { file: "nightly-dast-sandbox.yml", lanes: ["nightly-sandbox"] },
   { file: "nightly-e2e.yml", lanes: ["nightly-e2e"] },
+  { file: "nightly-health.yml", lanes: ["nightly-health"] },
   { file: "ops-confidence.yml", lanes: ["ops-confidence", "deploy-freshness"] },
 ];
 
@@ -301,7 +303,7 @@ test("Firestore serializes every trigger through one project-scoped concurrency 
 // Sanity: every open caller is accounted for (no missing/extra wiring).
 // ---------------------------------------------------------------------------
 
-test("exactly the 8 expected workflows call ops-failure-issue with mode: open", () => {
+test("exactly the 10 expected workflows call ops-failure-issue with mode: open", () => {
   const allYml = fs
     .readdirSync(WORKFLOWS_DIR)
     .filter((f) => f.endsWith(".yml"));
@@ -319,7 +321,7 @@ test("exactly the 8 expected workflows call ops-failure-issue with mode: open", 
   assert.deepEqual(
     actual,
     expected,
-    "the set of workflows with a mode: open call to ops-failure-issue must be exactly the 8 P-OPS-4 paging lanes",
+    "the set of workflows with a mode: open call to ops-failure-issue must be exactly the 10 paging lanes (8 P-OPS-4 + the W0-2 deploy-health and nightly-health scoreboards)",
   );
 });
 

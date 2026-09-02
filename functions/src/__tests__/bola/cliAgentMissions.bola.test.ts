@@ -50,7 +50,7 @@ describe("BOLA — cliAgentMissions", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "createCliAgentMission",
       run,
-      expectedCode: "not-found",
+      expectedCode: "invalid-argument",
       expectedOutcome: "throws",
     });
   });
@@ -61,7 +61,7 @@ describe("BOLA — cliAgentMissions", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "cancelCliAgentMission",
       run,
-      expectedCode: "not-found",
+      expectedCode: "invalid-argument",
       expectedOutcome: "throws",
     });
   });
@@ -72,7 +72,7 @@ describe("BOLA — cliAgentMissions", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "claimCliAgentMission",
       run,
-      expectedCode: "not-found",
+      expectedCode: "invalid-argument",
       expectedOutcome: "throws",
     });
   });
@@ -83,7 +83,7 @@ describe("BOLA — cliAgentMissions", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "appendCliAgentMissionEvent",
       run,
-      expectedCode: "not-found",
+      expectedCode: "invalid-argument",
       expectedOutcome: "throws",
     });
   });
@@ -94,7 +94,7 @@ describe("BOLA — cliAgentMissions", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "updateCliAgentMissionStatus",
       run,
-      expectedCode: "not-found",
+      expectedCode: "invalid-argument",
       expectedOutcome: "throws",
     });
   });
