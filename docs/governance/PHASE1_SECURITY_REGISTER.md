@@ -1,8 +1,9 @@
 # Phase 1 Security Register
 
 Live closure ledger for the debt-free plan's Phase 1 items — register debt that
-can hurt users. Historical diligence reports (`DILIGENCE_REPORT_2026-06-11.md`,
-`TECH_DEBT_AUDIT_2026-06-11.md`) stay immutable; this file is the current
+can hurt users. Historical diligence reports
+([`DILIGENCE_REPORT_2026-06-11.md`](../audits/2026-06/DILIGENCE_REPORT_2026-06-11.md),
+[`TECH_DEBT_AUDIT_2026-06-11.md`](../audits/2026-06/TECH_DEBT_AUDIT_2026-06-11.md)) stay immutable; this file is the current
 status, proof commands, and remaining evidence.
 
 Accepted product decisions live in

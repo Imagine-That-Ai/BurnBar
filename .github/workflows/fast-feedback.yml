@@ -1478,11 +1478,17 @@ jobs:
         with:
           node-version: 22
 
+      - name: Diligence data-room index
+        run: node scripts/ci/verify-data-room.mjs --check
+
       - name: No committed compiler/build artifacts
         run: ./scripts/ci/check-no-committed-build-artifacts.sh
 
       - name: No stale failed launch evidence
         run: ./scripts/ci/check-no-stale-launch-evidence.sh
+
+      - name: Root inventory ratchet (shrink-only)
+        run: ./scripts/ci/check-root-inventory.sh
 
       - name: try? debt budget
         run: ./scripts/debt/check-try-optional-budget.sh
