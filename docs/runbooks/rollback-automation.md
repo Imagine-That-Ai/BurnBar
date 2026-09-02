@@ -25,8 +25,11 @@ There are **two** rollback paths. Reach for the fast one first.
 **Full source rollback:**
 
 - Firebase CLI: `npm install -g firebase-tools && firebase login`
-- gcloud CLI: installed and authenticated for the live-source ancestry guard
-  (use `--force` only after human verification)
+- gcloud CLI: installed and authenticated for the live-source guard. The guard
+  reads the deployed `OPENBURNBAR_SOURCE_COMMIT` and refuses a rollback when
+  that commit is on no tag or remote branch (a deploy from an unpublished
+  checkout, #2195) or when the target is not an ancestor of it (not a
+  rollback). Use `--force` only after human verification.
 - Git tags synced: `git fetch --tags`
 - Authenticated with Firebase project (`firebase use --add`)
 

@@ -11,6 +11,7 @@
  * Usage:
  *   node scripts/ci/check-runbook-topology.mjs
  *   node scripts/ci/check-runbook-topology.mjs --fixture bad-project-id
+ *   node scripts/ci/check-runbook-topology.mjs --fixture bad-firebaserc
  *
  * Exit:
  *   0 = clean
@@ -26,6 +27,8 @@ import {
   readdir,
   rm,
   mkdir,
+  stat,
+  writeFile,
 } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -36,6 +39,12 @@ const REPO_ROOT = path.resolve(
   "..",
   "..",
 );
+
+// The root Firebase configuration is the topology source of truth the
+// resolver reads at runtime, so it is scanned as text AND validated as JSON
+// (see validateFirebaseRc) — a retired project id there is the most
+// consequential regression this guard exists to catch.
+const ROOT_CONFIG_FILES = [".firebaserc", "firebase.json"];
 
 const SCAN_ROOTS = [
   { directory: "docs", extensions: null },
@@ -112,11 +121,61 @@ async function walk(directory, extensions, root, files = []) {
 
 async function filesToScan(root) {
   const files = [];
+  for (const name of ROOT_CONFIG_FILES) {
+    const fullPath = path.join(root, name);
+    try {
+      if ((await stat(fullPath)).isFile()) files.push(fullPath);
+    } catch {
+      // Absent in fixtures and partial checkouts; the JSON validation below
+      // reports a missing .firebaserc explicitly.
+    }
+  }
   for (const { directory, extensions } of SCAN_ROOTS) {
     const scanRoot = path.join(root, directory);
     files.push(...(await walk(scanRoot, extensions, scanRoot)));
   }
   return files;
+}
+
+// Every project id named by .firebaserc (aliases and hosting/function targets)
+// must be a live id, not the retired one or an unlisted retired-prefixed one.
+async function validateFirebaseRc(root, violations) {
+  const file = path.join(root, ".firebaserc");
+  let raw;
+  try {
+    raw = await readFile(file, "utf8");
+  } catch {
+    if (root === REPO_ROOT) {
+      addViolation(violations, root, file, 0, "missing firebaserc", "(absent)");
+    }
+    return;
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    addViolation(violations, root, file, 0, "unparseable firebaserc", error.message);
+    return;
+  }
+  const projectIDs = [];
+  for (const [alias, projectID] of Object.entries(parsed.projects ?? {})) {
+    projectIDs.push([`projects.${alias}`, projectID]);
+  }
+  for (const projectID of Object.keys(parsed.targets ?? {})) {
+    projectIDs.push(["targets", projectID]);
+  }
+  for (const [where, projectID] of projectIDs) {
+    if (typeof projectID !== "string" || isRetiredProjectID(projectID)) {
+      addViolation(
+        violations,
+        root,
+        file,
+        0,
+        "retired firebaserc project",
+        `${where}: ${String(projectID)}`,
+      );
+    }
+  }
 }
 
 function addViolation(violations, root, file, line, rule, text) {
@@ -175,6 +234,7 @@ function scanLine(violations, root, file, lineNumber, line) {
 
 export async function scanRoot(root = REPO_ROOT) {
   const violations = [];
+  await validateFirebaseRc(root, violations);
   const files = await filesToScan(root);
   for (const file of files) {
     let text;
@@ -198,8 +258,10 @@ function printViolations(violations) {
   }
 }
 
+const FIXTURES = new Set(["bad-project-id", "bad-firebaserc"]);
+
 async function runFixture(fixtureName) {
-  if (fixtureName !== "bad-project-id") {
+  if (!FIXTURES.has(fixtureName)) {
     console.error(`Unknown fixture: ${fixtureName}`);
     return 2;
   }
@@ -209,16 +271,25 @@ async function runFixture(fixtureName) {
   );
   try {
     await mkdir(path.join(fixtureRoot, "docs"), { recursive: true });
-    const badProjectFlag = ["--project", STALE_PROJECT_ID].join(" ");
-    const fixturePath = path.join(fixtureRoot, "docs", "fixture.md");
-    await copyFile(path.join(REPO_ROOT, "docs", "api", "openapi.yaml"), fixturePath);
-    await appendFile(fixturePath, `\nfixture negative control: ${badProjectFlag}\n`, "utf8");
+    if (fixtureName === "bad-project-id") {
+      const badProjectFlag = ["--project", STALE_PROJECT_ID].join(" ");
+      const fixturePath = path.join(fixtureRoot, "docs", "fixture.md");
+      await copyFile(path.join(REPO_ROOT, "docs", "api", "openapi.yaml"), fixturePath);
+      await appendFile(fixturePath, `\nfixture negative control: ${badProjectFlag}\n`, "utf8");
+    } else {
+      // A .firebaserc pointing the default alias back at the retired project.
+      await writeFile(
+        path.join(fixtureRoot, ".firebaserc"),
+        `${JSON.stringify({ projects: { default: STALE_PROJECT_ID } }, null, 2)}\n`,
+        "utf8",
+      );
+    }
     const violations = await scanRoot(fixtureRoot);
     if (violations.length === 0) {
-      console.error("FAIL: bad-project-id fixture was not detected.");
+      console.error(`FAIL: ${fixtureName} fixture was not detected.`);
       return 2;
     }
-    console.error("PASS: bad-project-id fixture was rejected as expected.");
+    console.error(`PASS: ${fixtureName} fixture was rejected as expected.`);
     printViolations(violations);
     return 1;
   } finally {
@@ -244,7 +315,7 @@ async function main(argv = process.argv.slice(2)) {
 
   if (argv[0] === "--help" || argv[0] === "-h") {
     console.log(
-      "Usage: node scripts/ci/check-runbook-topology.mjs [--fixture bad-project-id]",
+      "Usage: node scripts/ci/check-runbook-topology.mjs [--fixture bad-project-id|bad-firebaserc]",
     );
     return 0;
   }

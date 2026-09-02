@@ -132,20 +132,40 @@ if ! grep -Fq "Target: v1.0.0" "${TMP_DIR}/explicit.out"; then
 fi
 
 live_commit="$(git -C "${canonical_repo}" rev-parse 'refs/tags/v1.0.2^{commit}')"
-if OPENBURNBAR_SOURCE_COMMIT="${live_commit}" run_rollback "${canonical_repo}" v1.0.1 --dry-run >"${TMP_DIR}/live-ahead.out" 2>"${TMP_DIR}/live-ahead.err"; then
-  echo "FAIL: rollback accepted a target behind the live source commit" >&2
-  exit 1
-fi
-if ! grep -Fq "behind live source commit" "${TMP_DIR}/live-ahead.err"; then
-  echo "FAIL: live-source ancestry refusal did not name the hazard" >&2
-  cat "${TMP_DIR}/live-ahead.err" >&2
+OPENBURNBAR_SOURCE_COMMIT="${live_commit}" run_rollback "${canonical_repo}" v1.0.1 --dry-run >"${TMP_DIR}/live-routine.out"
+if ! grep -Fq "Target: v1.0.1" "${TMP_DIR}/live-routine.out"; then
+  echo "FAIL: routine rollback to an ancestor of the published live source commit was refused" >&2
+  cat "${TMP_DIR}/live-routine.out" >&2
   exit 1
 fi
 
-OPENBURNBAR_SOURCE_COMMIT="${live_commit}" run_rollback "${canonical_repo}" v1.0.1 --force --dry-run >"${TMP_DIR}/force-live-ahead.out"
-if ! grep -Fq "Target: v1.0.1" "${TMP_DIR}/force-live-ahead.out"; then
-  echo "FAIL: --force did not override the named live-source ancestry guard" >&2
-  cat "${TMP_DIR}/force-live-ahead.out" >&2
+older_live="$(git -C "${canonical_repo}" rev-parse 'refs/tags/v1.0.1^{commit}')"
+if OPENBURNBAR_SOURCE_COMMIT="${older_live}" run_rollback "${canonical_repo}" v1.0.2 --dry-run >"${TMP_DIR}/live-forward.out" 2>"${TMP_DIR}/live-forward.err"; then
+  echo "FAIL: rollback accepted a target that is not an ancestor of the live source commit" >&2
+  exit 1
+fi
+if ! grep -Fq "is not an ancestor of live source commit" "${TMP_DIR}/live-forward.err"; then
+  echo "FAIL: forward-move refusal did not name the hazard" >&2
+  cat "${TMP_DIR}/live-forward.err" >&2
+  exit 1
+fi
+
+make_commit "${canonical_repo}" "2026-06-23T00:00:00Z" "unpublished"
+unpublished_live="$(git -C "${canonical_repo}" rev-parse HEAD)"
+if OPENBURNBAR_SOURCE_COMMIT="${unpublished_live}" run_rollback "${canonical_repo}" v1.0.1 --dry-run >"${TMP_DIR}/live-unpublished.out" 2>"${TMP_DIR}/live-unpublished.err"; then
+  echo "FAIL: rollback accepted a live source commit that no tag or remote branch contains" >&2
+  exit 1
+fi
+if ! grep -Fq "is not contained in any tag or remote branch" "${TMP_DIR}/live-unpublished.err"; then
+  echo "FAIL: unpublished live-source refusal did not name the hazard" >&2
+  cat "${TMP_DIR}/live-unpublished.err" >&2
+  exit 1
+fi
+
+OPENBURNBAR_SOURCE_COMMIT="${unpublished_live}" run_rollback "${canonical_repo}" v1.0.1 --force --dry-run >"${TMP_DIR}/force-unpublished.out"
+if ! grep -Fq "Target: v1.0.1" "${TMP_DIR}/force-unpublished.out"; then
+  echo "FAIL: --force did not override the unpublished live-source guard" >&2
+  cat "${TMP_DIR}/force-unpublished.out" >&2
   exit 1
 fi
 

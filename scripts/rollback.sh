@@ -111,9 +111,9 @@ if ! git rev-parse "refs/tags/${TARGET_TAG}" &>/dev/null; then
 fi
 TARGET_COMMIT="$(git rev-parse "refs/tags/${TARGET_TAG}^{commit}")"
 
-# #2195: a Functions deploy can come from an uncommitted checkout, so a tag
-# that is an ancestor of the live source commit may silently roll back fixes
-# that are not present on any branch. Prefer an operator-supplied readback when
+# #2195: a Functions deploy can come from an uncommitted or unpushed checkout,
+# so rolling it back to an ancestor tag may silently discard fixes that are not
+# present on any tag or remote branch. Prefer an operator-supplied readback when
 # available; otherwise query the production Functions metadata. The guard is
 # fail-closed when production metadata is unavailable or not represented in the
 # local Git object database. `--force` is the explicit incident-owner override.
@@ -165,9 +165,22 @@ if [[ "$FORCE" != "true" ]]; then
         echo "       Fetch the deployed commit or re-run with --force after human verification." >&2
         exit 1
       fi
-      if git merge-base --is-ancestor "$TARGET_COMMIT" "$live_commit"; then
-        echo "ERROR: target ${TARGET_TAG} (${TARGET_COMMIT}) is behind live source commit ${live_commit}." >&2
-        echo "       The live deploy may contain uncommitted fixes. Re-run with --force only after verification." >&2
+      # The #2195 hazard is a deploy built from an uncommitted or unpushed
+      # checkout: it carries fixes that no tag or remote branch contains, and a
+      # rollback to an ancestor tag would discard them silently. So the guard
+      # is on the live commit's publication state, not on the rollback
+      # relationship itself (a routine rollback target is always an ancestor).
+      if [[ -z "$(git tag --contains "$live_commit" 2>/dev/null)" && \
+            -z "$(git branch -r --contains "$live_commit" 2>/dev/null)" ]]; then
+        echo "ERROR: live source commit ${live_commit} is not contained in any tag or remote branch; refusing rollback." >&2
+        echo "       The live deploy may contain unpublished fixes. Re-run with --force only after verification." >&2
+        exit 1
+      fi
+      # A target that is not behind the live commit is a sideways or forward
+      # move, not a rollback of what is deployed; that needs an explicit override.
+      if ! git merge-base --is-ancestor "$TARGET_COMMIT" "$live_commit"; then
+        echo "ERROR: target ${TARGET_TAG} (${TARGET_COMMIT}) is not an ancestor of live source commit ${live_commit}." >&2
+        echo "       This is not a rollback of the live deploy. Re-run with --force only after verification." >&2
         exit 1
       fi
     done <<< "$LIVE_SOURCE_COMMITS"
