@@ -49,9 +49,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the tap never auto-approves. Android FCM taps land on Connected Devices the
   same way. iOS `CURRENT_PROJECT_VERSION` is 85 so TestFlight can attach a new
   IPA.
-- Bumped Mac `CURRENT_PROJECT_VERSION` to `83` so `1.0.40+repair.37` is
-  strictly newer than live `1.0.40+repair.36` build 82. The in-app updater
-  compares numeric `CFBundleVersion` first and refuses same-build installs.
+- Bumped Mac and iOS `CURRENT_PROJECT_VERSION` to `85` and bound the owner-emergency release packet to `v1.0.40+repair.38` so the release is strictly newer than live `1.0.40+repair.36` build 82 and previous `v1.0.40+repair.37` tag. The in-app updater compares numeric `CFBundleVersion` first and refuses same-build installs.
 - Console Profile no longer treats a present-but-zeroed `all_time` rollup as
   healthy. The cheap scheduled path can write that document before any device
   has published usage, which hid Re-sync and skipped the one-time
