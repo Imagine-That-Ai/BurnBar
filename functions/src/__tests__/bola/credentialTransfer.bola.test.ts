@@ -75,7 +75,7 @@ describe("BOLA — credentialTransfer", () => {
         transferId: TRANSFER_ID,
         payload: `v2.${"s".repeat(22)}.${"i".repeat(16)}.${"c".repeat(32)}`,
       }),
-      "failed-precondition",
+      "already-exists",
     );
     expect(store.get(`credential_transfers/${TRANSFER_ID}`)).toEqual(before);
   });
@@ -128,7 +128,7 @@ describe("BOLA — credentialTransfer", () => {
     await expectCallableDenial(
       run,
       callableRequest(ALICE_UID, { transferId: "ABCDEFGHJKMN" }),
-      "not-found",
+      "invalid-argument",
     );
   });
 });

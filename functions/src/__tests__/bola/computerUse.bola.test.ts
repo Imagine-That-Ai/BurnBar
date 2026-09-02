@@ -69,7 +69,7 @@ describe("BOLA — computerUse", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "registerEscrowDevice",
       run,
-      expectedCode: "not-found",
+      expectedCode: "invalid-argument",
       expectedOutcome: "throws",
     });
   });
@@ -83,7 +83,7 @@ describe("BOLA — computerUse", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "approveEscrowDeviceTrust",
       run,
-      expectedCode: "not-found",
+      expectedCode: "invalid-argument",
       expectedOutcome: "throws",
     });
   });
@@ -111,7 +111,7 @@ describe("BOLA — computerUse", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "publishIrohPairingPublicKey",
       run,
-      expectedCode: "not-found",
+      expectedCode: "permission-denied",
       expectedOutcome: "throws",
     });
   });
@@ -125,7 +125,7 @@ describe("BOLA — computerUse", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "publishIrohPairingRecord",
       run,
-      expectedCode: "not-found",
+      expectedCode: "permission-denied",
       expectedOutcome: "throws",
     });
   });
@@ -139,7 +139,7 @@ describe("BOLA — computerUse", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "revokeIrohPairingRecord",
       run,
-      expectedCode: "not-found",
+      expectedCode: "permission-denied",
       expectedOutcome: "throws",
     });
   });
@@ -153,7 +153,7 @@ describe("BOLA — computerUse", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "publishPhoneControlAuthority",
       run,
-      expectedCode: "not-found",
+      expectedCode: "permission-denied",
       expectedOutcome: "throws",
     });
   });
@@ -167,7 +167,7 @@ describe("BOLA — computerUse", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "publishRelaySenderKey",
       run,
-      expectedCode: "not-found",
+      expectedCode: "permission-denied",
       expectedOutcome: "throws",
     });
   });
@@ -181,7 +181,7 @@ describe("BOLA — computerUse", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "publishAgentGrantAuthority",
       run,
-      expectedCode: "not-found",
+      expectedCode: "permission-denied",
       expectedOutcome: "throws",
     });
   });
@@ -195,7 +195,7 @@ describe("BOLA — computerUse", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "queueAgentCapabilityGrantRequest",
       run,
-      expectedCode: "not-found",
+      expectedCode: "invalid-argument",
       expectedOutcome: "throws",
     });
   });
@@ -209,7 +209,7 @@ describe("BOLA — computerUse", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "respondMissionApproval",
       run,
-      expectedCode: "not-found",
+      expectedCode: "invalid-argument",
       expectedOutcome: "throws",
     });
   });

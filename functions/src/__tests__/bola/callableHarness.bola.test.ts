@@ -19,7 +19,37 @@ describe("callableBolaHarness sanity", () => {
     expect(failed).toBe(true);
   });
 
+  it("expectCallableDenial rejects a mismatched code without fallback matching", async () => {
+    const mismatched = {
+      run: async () => {
+        throw Object.assign(new Error("Resource not found"), { code: "permission-denied" });
+      },
+    };
+
+    await expect(
+      expectCallableDenial(
+        callableRunner(mismatched),
+        callableRequest("u", {}),
+        "not-found",
+      ),
+    ).rejects.toMatchObject({ code: "permission-denied" });
+  });
+
   it("tier2CallableProof fails successful calls when throws is expected", async () => {
+    const store = new Map<string, Record<string, unknown>>();
+    const succeeding = { run: async () => ({ ok: true }) };
+
+    await expect(
+      tier2CallableProof(store, {
+        exportedName: "getEncryptedProjectMemorySnapshot",
+        run: callableRunner(succeeding),
+        expectedOutcome: "throws",
+        expectedCode: "permission-denied",
+      }),
+    ).rejects.toThrow(/expected callable to reject/);
+  });
+
+  it("tier2CallableProof rejects an expectedCode that disagrees with the generated ledger", async () => {
     const store = new Map<string, Record<string, unknown>>();
     const succeeding = { run: async () => ({ ok: true }) };
 
@@ -30,7 +60,20 @@ describe("callableBolaHarness sanity", () => {
         expectedOutcome: "throws",
         expectedCode: "not-found",
       }),
-    ).rejects.toThrow(/expected callable to reject/);
+    ).rejects.toThrow(/disagrees with the generated BOLA ledger/);
+  });
+
+  it("tier2CallableProof refuses a rejection proof for a ledger no-side-effect endpoint", async () => {
+    const store = new Map<string, Record<string, unknown>>();
+    const succeeding = { run: async () => ({ ok: true }) };
+
+    await expect(
+      tier2CallableProof(store, {
+        exportedName: "deleteProviderCredential",
+        run: callableRunner(succeeding),
+        expectedOutcome: "throws",
+      }),
+    ).rejects.toThrow(/records a no-side-effect outcome/);
   });
 
   it("treats Firestore delete sentinels identifiable by constructor name as deletes", async () => {
