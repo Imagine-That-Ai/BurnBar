@@ -683,8 +683,11 @@ def test_server_bulk_forget_mirrors_and_keeps_failed_tombstones(
         assert engine.get(first["memoryID"])["status"] == "not_found"
         assert engine.get(second["memoryID"])["status"] == "not_found"
         assert engine.daemon_mirror_id(failed_local_id) == failed_daemon_id
-    retried = json.loads(server.burnbar_forget(failed_local_id, project_path=repo))
-    assert retried["retriedPendingMirror"] is True and retried["mirror"]["status"] == "mirrored"
+    retried = json.loads(server.burnbar_forget_all(project_path=repo, confirm="DELETE"))
+    assert retried["deleted"] == 0 and retried["mirror"]["status"] == "mirrored"
+    assert retried["mirror"]["attempted"] == 1
+    with server._memory_engine() as engine:
+        assert engine.daemon_mirror_id(failed_local_id) is None
 
 
 def test_server_update_review_and_import_keep_daemon_mirror_coherent(

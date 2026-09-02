@@ -91,22 +91,27 @@ extension BurnBarProjectCodeMemoryStore {
         for row in rows {
             let memoryID = row.string(0)
             let projectID = row.string(1)
-            guard let body = try projectMemorySectionBody(projectID: projectID, memoryID: memoryID),
-                  let vector = embeddingProvider.embed(body),
-                  vector.count == embeddingProvider.dimension else { continue }
-            let norm = vector.reduce(0.0) { $0 + Double($1 * $1) }.squareRoot()
-            try execute(
-                """
-                INSERT OR REPLACE INTO memory_embedding_refs
-                    (memory_id, embedding_version_id, dimension, vector, norm, created_at)
-                VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                [
-                    .text(memoryID), .text(embeddingProvider.versionID), .int(vector.count),
-                    .blob(BurnBarCodeVectorCodec.encode(vector)), .double(norm), .text(Self.isoNow())
-                ]
-            )
+            guard let body = try projectMemorySectionBody(projectID: projectID, memoryID: memoryID) else { continue }
+            try upsertMemoryEmbedding(memoryID: memoryID, body: body, now: Self.isoNow())
         }
+    }
+
+    func upsertMemoryEmbedding(memoryID: String, body: String, now: String) throws {
+        guard embeddingProvider.isAvailable,
+              let vector = embeddingProvider.embed(body),
+              vector.count == embeddingProvider.dimension else { return }
+        let norm = vector.reduce(0.0) { $0 + Double($1 * $1) }.squareRoot()
+        try execute(
+            """
+            INSERT OR REPLACE INTO memory_embedding_refs
+                (memory_id, embedding_version_id, dimension, vector, norm, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            [
+                .text(memoryID), .text(embeddingProvider.versionID), .int(vector.count),
+                .blob(BurnBarCodeVectorCodec.encode(vector)), .double(norm), .text(now)
+            ]
+        )
     }
 
     func setReviewStatus(
@@ -162,6 +167,7 @@ extension BurnBarProjectCodeMemoryStore {
                         sourcePath: row.optionalString(3),
                         now: now
                     )
+                    try upsertMemoryEmbedding(memoryID: memoryID, body: body, now: now)
                     try removeQuarantineMemoryBody(projectID: projectID, memoryID: memoryID)
                     bodyReference = Self.memoryBodyReference(memoryID: memoryID, projectID: projectID)
                 } else {

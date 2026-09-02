@@ -520,6 +520,65 @@ class KeyRing:
             os.chmod(key_path, 0o600)
         return cls(raw, sha256_hex(raw)[:12], "file")
 
+    def matches_store(self, db_path: Path) -> bool:
+        """Validate stored key IDs and authenticate one encrypted row per populated section."""
+        if not db_path.exists() or db_path.stat().st_size == 0:
+            return True
+        try:
+            conn = sqlite3.connect(f"{db_path.resolve().as_uri()}?mode=ro", uri=True)
+            conn.row_factory = sqlite3.Row
+            try:
+                tables = {
+                    str(row[0])
+                    for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'").fetchall()
+                }
+                probes = (
+                    (
+                        "memories",
+                        "SELECT DISTINCT key_id FROM memories",
+                        "SELECT id, project_id, body_cipher AS cipher, body_nonce AS nonce, key_id FROM memories LIMIT 1",
+                        "memory",
+                    ),
+                    (
+                        "memory_history",
+                        "SELECT DISTINCT key_id FROM memory_history",
+                        """
+                        SELECT memory_id AS id, project_id,
+                               COALESCE(before_cipher, after_cipher) AS cipher,
+                               CASE WHEN before_cipher IS NOT NULL THEN before_nonce ELSE after_nonce END AS nonce,
+                               key_id
+                        FROM memory_history
+                        WHERE before_cipher IS NOT NULL OR after_cipher IS NOT NULL
+                        LIMIT 1
+                        """,
+                        "history",
+                    ),
+                    (
+                        "memory_vault",
+                        "SELECT DISTINCT key_id FROM memory_vault",
+                        "SELECT memory_id AS id, project_id, secret_cipher AS cipher, secret_nonce AS nonce, key_id FROM memory_vault LIMIT 1",
+                        "vault",
+                    ),
+                )
+                for table, key_ids_sql, probe_sql, aad_suffix in probes:
+                    if table not in tables:
+                        continue
+                    key_ids = {str(row[0]) for row in conn.execute(key_ids_sql).fetchall()}
+                    if any(key_id != self.key_id for key_id in key_ids):
+                        return False
+                    row = conn.execute(probe_sql).fetchone()
+                    if (
+                        row is not None
+                        and self.open(row["cipher"], row["nonce"], f"{row['id']}|{row['project_id']}|{aad_suffix}")
+                        is None
+                    ):
+                        return False
+                return True
+            finally:
+                conn.close()
+        except (OSError, sqlite3.Error):
+            return False
+
     @staticmethod
     def _read_key(key_path: Path) -> bytes | None:
         try:
@@ -658,9 +717,14 @@ class OllamaEmbeddingProvider(EmbeddingProvider):
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.dimension = 0
-        self.version_id = f"ollama:{model}:0"
+        self.version_id = f"ollama:{model}:unavailable"
         self.error: str | None = None
         self._probe()
+
+    def _get(self, path: str) -> dict[str, Any]:
+        request = urllib.request.Request(self.base_url + path, method="GET")
+        with urllib.request.urlopen(request, timeout=self.timeout) as response:  # noqa: S310 — loopback URL from config
+            return json.loads(response.read().decode("utf-8"))
 
     def _post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
         request = urllib.request.Request(
@@ -674,6 +738,24 @@ class OllamaEmbeddingProvider(EmbeddingProvider):
 
     def _probe(self) -> None:
         try:
+            tags = self._get("/api/tags")
+            models = tags.get("models") or []
+            names = (self.model, f"{self.model}:latest") if ":" not in self.model else (self.model,)
+            candidates = [
+                item
+                for item in models
+                if isinstance(item, dict) and any(str(item.get(key) or "") in names for key in ("name", "model"))
+            ]
+            if not candidates and ":" not in self.model:
+                candidates = [
+                    item
+                    for item in models
+                    if isinstance(item, dict)
+                    and any(str(item.get(key) or "").split(":", 1)[0] == self.model for key in ("name", "model"))
+                ]
+            if len(candidates) != 1 or not str(candidates[0].get("digest") or "").strip():
+                raise ValueError(f"cannot resolve one served digest for Ollama model {self.model}")
+            digest = str(candidates[0]["digest"]).strip().lower()
             result = self._post("/api/embed", {"model": self.model, "input": ["openburnbar memory probe"]})
             vectors = result.get("embeddings") or []
             dimension = len(vectors[0]) if vectors and vectors[0] else 0
@@ -681,7 +763,9 @@ class OllamaEmbeddingProvider(EmbeddingProvider):
             self.error = f"{type(exc).__name__}: {exc}"
             dimension = 0
         self.dimension = dimension
-        self.version_id = f"ollama:{self.model}:{dimension}"
+        if dimension:
+            endpoint_id = sha256_hex(self.base_url)[:12]
+            self.version_id = f"ollama:{self.model}:{dimension}:{endpoint_id}:{digest}"
 
     def embed(self, texts: Sequence[str]) -> list[list[float] | None]:
         if not self.available or not texts:
@@ -1309,7 +1393,8 @@ class Fact:
         text = str(raw.get("text") or raw.get("memory") or raw.get("body") or "").strip()
         if not text:
             return None
-        kind = normalize_kind(str(raw.get("kind") or raw.get("category") or "fact"))
+        raw_kind = raw.get("kind") if raw.get("kind") is not None else raw.get("category")
+        kind = str(raw_kind if raw_kind is not None else "fact").strip().lower()
         try:
             confidence = _clamp(float(raw.get("confidence", 0.7)), 0.0, 1.0)
         except (TypeError, ValueError):
@@ -1323,7 +1408,8 @@ class Fact:
         source_ref = raw.get("source_ref") or raw.get("sourceRef")
         expires_at = raw.get("expires_at") or raw.get("expiresAt")
         review_status = raw.get("review_status") or raw.get("reviewStatus")
-        sensitivity = str(raw.get("sensitivity") or "").strip().lower()
+        raw_sensitivity = raw.get("sensitivity")
+        sensitivity = str(raw_sensitivity).strip().lower() if raw_sensitivity is not None else None
         return cls(
             text=text[:MAX_BODY_CHARS],
             kind=kind,
@@ -1337,7 +1423,7 @@ class Fact:
             expires_at=str(expires_at) if expires_at else None,
             immutable=bool(raw.get("immutable", False)),
             review_status=str(review_status).strip().lower() if review_status else None,
-            sensitivity=sensitivity if sensitivity in SENSITIVITIES else None,
+            sensitivity=sensitivity,
         )
 
 
@@ -2000,6 +2086,10 @@ class MemoryEngine:
         # Resolve the key before opening/migrating the database so a missing or
         # corrupt key for a populated store fails without mutating that store.
         keyring = KeyRing.load(path)
+        if not keyring.matches_store(path):
+            raise RuntimeError(
+                f"memory key {keyring.key_id} ({keyring.source}) cannot decrypt populated store {path}; restore the original key"
+            )
         conn = open_store(path)
         return cls(conn, keyring=keyring, provider=embedding_provider(provider), config=config, db_path=path)
 
@@ -2042,6 +2132,20 @@ class MemoryEngine:
             ),
         )
         self._commit()
+
+    def pending_daemon_mirror_ids(self, project_path: str | None) -> list[str]:
+        """Return durable mirror tombstones owned by one canonical project path."""
+        _project_id, root = resolve_project(self.conn, project_path)
+        pending: list[str] = []
+        rows = self.conn.execute(
+            "SELECT key, value FROM engine_meta WHERE key LIKE 'daemon_mirror:%' ORDER BY key"
+        ).fetchall()
+        for row in rows:
+            parsed = _json_loads(row["value"], None)
+            if not isinstance(parsed, dict) or parsed.get("projectPath") != str(root):
+                continue
+            pending.append(str(row["key"])[len("daemon_mirror:") :])
+        return pending
 
     def daemon_mirror_id(self, memory_id: str) -> str | None:
         row = self.conn.execute(
@@ -2424,7 +2528,7 @@ class MemoryEngine:
             }
         fact = Fact(
             text=body[:MAX_BODY_CHARS],
-            kind=normalize_kind(kind),
+            kind=str(kind or "fact").strip().lower(),
             confidence=_clamp(float(confidence), 0.0, 1.0),
             scope=scope,
             tags=normalize_tags(tags),
@@ -2466,7 +2570,15 @@ class MemoryEngine:
         source_hash: str | None,
         extractor: str,
     ) -> dict[str, Any]:
-        kind = normalize_kind(fact.kind)
+        try:
+            kind = normalize_kind_strict(fact.kind)
+        except ValueError as exc:
+            return {
+                "event": "REJECT",
+                "code": "INVALID_KIND",
+                "reason": str(exc),
+                "allowed": list(KINDS),
+            }
         if fact.review_status is not None and fact.review_status not in REVIEW_STATUSES:
             return {
                 "event": "REJECT",
@@ -2474,6 +2586,14 @@ class MemoryEngine:
                 "reason": f"reviewStatus must be one of: {', '.join(REVIEW_STATUSES)}",
                 "kind": kind,
                 "allowed": list(REVIEW_STATUSES),
+            }
+        if fact.sensitivity is not None and fact.sensitivity not in SENSITIVITIES:
+            return {
+                "event": "REJECT",
+                "code": "INVALID_SENSITIVITY",
+                "reason": f"sensitivity must be one of: {', '.join(SENSITIVITIES)}",
+                "kind": kind,
+                "allowed": list(SENSITIVITIES),
             }
         try:
             scope = normalize_scope(fact.scope, kind)
@@ -3737,7 +3857,16 @@ class MemoryEngine:
             )
             self._commit()
             return {"status": "rejected", "code": "INVALID_EXPIRATION", "memoryID": memory_id, "reason": str(exc)}
-        new_kind = normalize_kind(kind, existing.kind) if kind else existing.kind
+        try:
+            new_kind = normalize_kind_strict(kind) if kind else existing.kind
+        except ValueError as exc:
+            return {
+                "status": "rejected",
+                "code": "INVALID_KIND",
+                "memoryID": memory_id,
+                "reason": str(exc),
+                "allowed": list(KINDS),
+            }
         try:
             new_scope = normalize_scope(scope, new_kind) if scope else existing.scope
         except ValueError as exc:
@@ -4515,13 +4644,35 @@ class MemoryEngine:
             if self.conn.execute("SELECT 1 FROM memory_ingest WHERE source_hash = ?", (key,)).fetchone() is not None:
                 skipped += 1
                 continue
+            owner_path = raw.get("legacyProjectPath")
+            legacy_owner_id = str((raw.get("metadata") or {}).get("legacyProjectID") or "").strip()
+            if owner_path:
+                try:
+                    owner_project_id, owner_root = resolve_project(self.conn, str(owner_path))
+                except ValueError:
+                    owner_project_id, owner_root = "", root
+            elif legacy_owner_id and legacy_owner_id != project_id:
+                owner_project_id, owner_root = "", root
+            else:
+                owner_project_id, owner_root = project_id, root
+            if not owner_project_id:
+                decisions.append(
+                    {
+                        "event": "REJECT",
+                        "code": "LEGACY_PROJECT_UNAVAILABLE",
+                        "reason": "legacy memory owner path is unavailable; refusing to reassign it to the active project",
+                        "legacyMemoryID": legacy_id,
+                    }
+                )
+                retryable += 1
+                continue
             fact = Fact.from_mapping(raw)
             if fact is None:
                 continue
             fact.metadata = {**fact.metadata, "legacyMemoryID": legacy_id}
             decision = self._commit_fact(
-                project_id=project_id,
-                root=root,
+                project_id=owner_project_id,
+                root=owner_root,
                 fact=fact,
                 source_kind="legacy_daemon",
                 source_hash=key,
@@ -4535,14 +4686,14 @@ class MemoryEngine:
             if terminal:
                 self.conn.execute(
                     "INSERT OR REPLACE INTO memory_ingest (source_hash, project_id, ts, decisions_json) VALUES (?, ?, ?, ?)",
-                    (key, project_id, now_iso(), _json_dumps([_ingest_decision(decision)])),
+                    (key, owner_project_id, now_iso(), _json_dumps([_ingest_decision(decision)])),
                 )
                 if decision.get("memoryID"):
                     self.record_daemon_mirror(
                         str(decision["memoryID"]),
                         legacy_id,
                         body_hash=sha256_hex(str(decision.get("text") or raw.get("text") or "")),
-                        project_path=str(raw.get("legacyProjectPath") or root),
+                        project_path=str(owner_root),
                     )
             else:
                 retryable += 1

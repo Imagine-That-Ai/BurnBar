@@ -6,6 +6,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_DIR="${SCRIPT_DIR}/.venv"
 VENV_PYTHON="${VENV_DIR}/bin/python"
+REQUIREMENTS_FILE="${SCRIPT_DIR}/requirements.txt"
+REQUIREMENTS_STAMP="${VENV_DIR}/.openburnbar-requirements.sha256"
 
 python_is_supported() {
   "$1" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' >/dev/null 2>&1
@@ -13,6 +15,21 @@ python_is_supported() {
 
 memory_dependencies_import() {
   "$1" -c 'import cryptography, mcp, tiktoken' >/dev/null 2>&1
+}
+
+requirements_hash() {
+  "$1" - "${REQUIREMENTS_FILE}" <<'PY'
+import hashlib
+import pathlib
+import sys
+
+print(hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest())
+PY
+}
+
+requirements_are_current() {
+  [[ -r "${REQUIREMENTS_STAMP}" ]] || return 1
+  [[ "$(<"${REQUIREMENTS_STAMP}")" == "$(requirements_hash "$1")" ]]
 }
 
 select_python() {
@@ -30,7 +47,8 @@ select_python() {
   return 1
 }
 
-if [[ -x "${VENV_PYTHON}" ]] && python_is_supported "${VENV_PYTHON}" && memory_dependencies_import "${VENV_PYTHON}"; then
+if [[ -x "${VENV_PYTHON}" ]] && python_is_supported "${VENV_PYTHON}" \
+  && memory_dependencies_import "${VENV_PYTHON}" && requirements_are_current "${VENV_PYTHON}"; then
   exit 0
 fi
 
@@ -46,7 +64,9 @@ if [[ ! -x "${VENV_PYTHON}" ]]; then
   "${PYTHON_BIN}" -m venv "${VENV_DIR}"
 fi
 
-"${VENV_PYTHON}" -m pip install --disable-pip-version-check --quiet -r "${SCRIPT_DIR}/requirements.txt"
+"${VENV_PYTHON}" -m pip install --disable-pip-version-check --quiet -r "${REQUIREMENTS_FILE}"
 memory_dependencies_import "${VENV_PYTHON}"
+requirements_hash "${VENV_PYTHON}" >"${REQUIREMENTS_STAMP}"
+chmod 600 "${REQUIREMENTS_STAMP}"
 
 echo "OK: OpenBurnBar memory MCP dependencies are ready in ${VENV_DIR}"

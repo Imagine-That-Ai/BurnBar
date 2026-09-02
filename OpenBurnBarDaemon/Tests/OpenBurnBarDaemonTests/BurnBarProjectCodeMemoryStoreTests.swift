@@ -504,6 +504,27 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         XCTAssertTrue(audit.events.contains { $0.action == "memory.forget" && $0.labels.contains("snapshot section removed") })
     }
 
+    func testMemoryIdentityKeepsIdenticalBodiesDistinctAcrossScopes() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "memory-scope-identity-test"),
+            embeddingProvider: DisabledEmbeddingProvider()
+        )
+        let body = "Alberto prefers compact release notes."
+        let project = try store.remember(
+            BurnBarProjectMemoryRememberRequest(text: body, projectPath: fixture.project.path, scope: "project")
+        )
+        let personal = try store.remember(
+            BurnBarProjectMemoryRememberRequest(text: body, projectPath: fixture.project.path, scope: "personal")
+        )
+        XCTAssertNotEqual(project.memoryID, personal.memoryID)
+        XCTAssertEqual(
+            try sqliteInt(database: fixture.database, sql: "SELECT COUNT(*) FROM agent_memories"),
+            2
+        )
+    }
+
     func testMemoryRecallUsesBM25TermFrequencyInsteadOfSubstringCount() throws {
         let fixture = try makeFixture()
         let store = try BurnBarProjectCodeMemoryStore(
@@ -903,6 +924,40 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
             databasePath: fixture.database.path,
             logger: BurnBarDaemonLogger(category: "memory-vector-migration-reopen-test"),
             embeddingProvider: ControlledMemoryEmbeddingProvider()
+        )
+        XCTAssertEqual(try sqliteInt(database: fixture.database, sql: "SELECT COUNT(*) FROM memory_embedding_refs"), 1)
+        let recall = try upgraded.recall(
+            BurnBarProjectMemoryRecallRequest(query: "repair broken network", projectPath: fixture.project.path)
+        )
+        XCTAssertEqual(recall.hits.first?.memoryID, candidate.memoryID)
+    }
+
+    func testApprovingLegacyQuarantinedMemoryEmbedsImmediately() throws {
+        let fixture = try makeFixture()
+        let original = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "memory-approval-vector-seed-test"),
+            embeddingProvider: DisabledEmbeddingProvider()
+        )
+        let candidate = try original.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: "Reattempt the failed connection with progressive delays.",
+                projectPath: fixture.project.path,
+                reviewStatus: .quarantined
+            )
+        )
+        let upgraded = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "memory-approval-vector-test"),
+            embeddingProvider: ControlledMemoryEmbeddingProvider()
+        )
+        XCTAssertEqual(try sqliteInt(database: fixture.database, sql: "SELECT COUNT(*) FROM memory_embedding_refs"), 0)
+        _ = try upgraded.setReviewStatus(
+            BurnBarProjectMemoryReviewStatusRequest(
+                memoryID: candidate.memoryID,
+                projectPath: fixture.project.path,
+                status: .approved
+            )
         )
         XCTAssertEqual(try sqliteInt(database: fixture.database, sql: "SELECT COUNT(*) FROM memory_embedding_refs"), 1)
         let recall = try upgraded.recall(

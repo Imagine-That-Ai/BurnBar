@@ -2200,7 +2200,8 @@ def _legacy_daemon_memories(project_path: str | None) -> list[dict[str, Any]]:
                 items.append(
                     {
                         "legacyMemoryID": memory_id,
-                        "legacyProjectPath": legacy_project_paths.get(row_project, fallback_project_path),
+                        "legacyProjectPath": legacy_project_paths.get(row_project)
+                        or (fallback_project_path if row_project == project_id else None),
                         "text": body,
                         "kind": _legacy_row_get(row, "kind", "fact"),
                         "scope": _legacy_row_get(row, "scope", "project"),
@@ -2745,6 +2746,7 @@ def burnbar_forget_all(
         )
         memory_ids = list(result.pop("deletedMemoryIDs", []))
         if result.get("status") == "ok":
+            memory_ids = list(dict.fromkeys(memory_ids + engine.pending_daemon_mirror_ids(result["projectRoot"])))
             result["mirror"] = _memory_mirror_forget_many(engine, memory_ids, project_path)
     return json.dumps(result, indent=2, default=str)
 

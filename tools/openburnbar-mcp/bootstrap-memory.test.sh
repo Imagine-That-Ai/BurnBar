@@ -17,8 +17,8 @@ cp \
   "${FIXTURE_DIR}/"
 chmod +x "${FIXTURE_DIR}/bootstrap-memory.sh" "${FIXTURE_DIR}/launch-memory.sh"
 
-grep -Fq 'sys.version_info >= (3, 11)' "${FIXTURE_DIR}/launch-memory.sh" || {
-  echo "FAIL: launcher accepts an existing venv without enforcing Python 3.11+" >&2
+grep -Fq 'sys.version_info >= (3, 11)' "${FIXTURE_DIR}/bootstrap-memory.sh" || {
+  echo "FAIL: bootstrap accepts an existing venv without enforcing Python 3.11+" >&2
   exit 1
 }
 
@@ -60,6 +60,37 @@ VENV_PYTHON="${FIXTURE_DIR}/.venv/bin/python"
 }
 [[ ! -e "${TMP_ROOT}/cargo-was-called" ]] || {
   echo "FAIL: cargo was called by the memory-only bootstrap" >&2
+  exit 1
+}
+
+requirements_stamp="${FIXTURE_DIR}/.venv/.openburnbar-requirements.sha256"
+expected_hash="$("${VENV_PYTHON}" - "${FIXTURE_DIR}/requirements.txt" <<'PY'
+import hashlib
+import pathlib
+import sys
+
+print(hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest())
+PY
+)"
+[[ "$(<"${requirements_stamp}")" == "${expected_hash}" ]] || {
+  echo "FAIL: bootstrap did not record the installed requirements hash" >&2
+  exit 1
+}
+
+# An import-compatible but stale environment must still refresh when the
+# requirements file changes.
+printf '\n# bootstrap hash refresh regression\n' >>"${FIXTURE_DIR}/requirements.txt"
+"${FIXTURE_DIR}/bootstrap-memory.sh" >/dev/null
+refreshed_hash="$("${VENV_PYTHON}" - "${FIXTURE_DIR}/requirements.txt" <<'PY'
+import hashlib
+import pathlib
+import sys
+
+print(hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest())
+PY
+)"
+[[ "$(<"${requirements_stamp}")" == "${refreshed_hash}" && "${refreshed_hash}" != "${expected_hash}" ]] || {
+  echo "FAIL: bootstrap accepted a stale requirements environment" >&2
   exit 1
 }
 

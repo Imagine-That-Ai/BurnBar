@@ -345,7 +345,9 @@ def test_parse_llm_facts_handles_wrappers() -> None:
     wrapped = json.dumps({"result": '```json\n[{"text": "Uses Swift 6", "kind": "fact", "confidence": 0.9}]\n```'})
     facts = me.parse_llm_facts(wrapped)
     assert len(facts) == 1 and facts[0].text == "Uses Swift 6"
-    assert me.parse_llm_facts('{"memories": [{"text": "x is y", "kind": "bogus"}]}')[0].kind == "fact"
+    # Preserve invalid model output so the write boundary can reject it instead
+    # of silently converting a typo into a durable fact.
+    assert me.parse_llm_facts('{"memories": [{"text": "x is y", "kind": "bogus"}]}')[0].kind == "bogus"
     assert me.parse_llm_facts("no json here") == []
 
 
@@ -608,13 +610,12 @@ def test_bodies_are_encrypted_at_rest_and_key_is_private(tmp_path: Path) -> None
     key_path = tmp_path / "engine.key"
     assert key_path.exists() and (key_path.stat().st_mode & 0o777) == 0o600
     assert (db_path.stat().st_mode & 0o777) == 0o600
-    # A different key cannot read the rows; doctor reports it instead of crashing.
+    # A different syntactically valid key cannot open the writable store and
+    # therefore cannot split it across encryption keys.
     os.environ[me.MEMORY_KEY_ENV] = base64.b64encode(b"\x01" * 32).decode()
     try:
-        with me.MemoryEngine.open(db_path, provider=me.FakeEmbeddingProvider()) as wrong:
-            assert wrong.recall("castle", project_path=repo)["results"] == []
-            report = wrong.doctor(project_path=repo)
-            assert report["status"] == "degraded" and report["findings"][0]["code"] == "UNDECRYPTABLE_ROWS"
+        with pytest.raises(RuntimeError, match="cannot decrypt populated store"):
+            me.MemoryEngine.open(db_path, provider=me.FakeEmbeddingProvider())
     finally:
         os.environ.pop(me.MEMORY_KEY_ENV, None)
 

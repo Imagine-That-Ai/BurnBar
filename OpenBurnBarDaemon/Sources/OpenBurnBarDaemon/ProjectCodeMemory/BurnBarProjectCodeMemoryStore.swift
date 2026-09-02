@@ -321,7 +321,7 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
 
         return try databaseSync {
             let bodyRef = Self.sha256Hex(body)
-            let memoryID = "mem_" + String(Self.sha256Hex("\(projectID):\(bodyRef)").prefix(32))
+            let memoryID = "mem_" + String(Self.sha256Hex("\(projectID):\(request.scope):\(bodyRef)").prefix(32))
             let now = Self.isoNow()
             let tagsJSON = try encodeJSONString(request.tags)
             try execute("BEGIN IMMEDIATE", [])
