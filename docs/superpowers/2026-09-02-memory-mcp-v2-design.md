@@ -249,6 +249,20 @@ Every finding is pinned by a test in `tests/test_memory_engine_hardening.py`:
   patch fields, malformed JSON arguments return `INVALID_JSON_ARGUMENT`,
   ingest idempotency is per project, and exports re-import with their
   `expiresAt` / `sourceRef`.
+- The untrusted-content boundary covers tags, entities, metadata keys/values,
+  `sourceRef`, history metadata, entity lists, and extracted relations as well
+  as memory bodies. Injection sentinels in any persisted free-form field
+  quarantine the row; default read surfaces hide it, while explicit review
+  reads return shape-preserving wrappers. A read-time scan also quarantines
+  legacy rows whose stored status predates this gate.
+- Supersession and confirmed bulk deletion retire corresponding daemon mirrors;
+  update, review, and import writes reconcile them too. Failed remote deletes
+  retain metadata-only tombstones with the mirrored body hash, so body-changing
+  updates retire the previous content-derived id before publishing a
+  replacement and can resume safely after interruption. Scoped reindexing
+  purges stale vectors only for that project, transient Ollama startup misses
+  are retried without an MCP restart, and malformed filter shapes fail closed
+  instead of widening a query.
 
 Round 2 (`tests/test_memory_engine_hardening_round2.py`):
 

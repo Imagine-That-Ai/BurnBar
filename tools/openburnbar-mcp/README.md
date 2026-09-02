@@ -157,11 +157,11 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` and add t
 | `burnbar_cloud_get_conversation_body` | Download and decrypt a full hosted session body returned by cloud semantic search |
 | `burnbar_remember` | **Write** one durable memory (kind, scope, tags, entities, metadata, `supersedes`, `expires_at`, `immutable`); secrets redacted, PII kept by default; mirrored to the daemon ledger when reachable |
 | `burnbar_memorize` | **Write** durable memories from a conversation, text, or pre-extracted `facts` (the mem0 `add()` equivalent): extraction → gate → injection screen → ADD / UPDATE / NONE / DELETE reconciliation; idempotent per input |
-| `burnbar_recall` | Hybrid BM25 + vector recall with reciprocal-rank fusion and salience rerank; kind/tag/entity/metadata/date filters; personal-scope memories follow the user across projects; bodies wrapped as untrusted content |
+| `burnbar_recall` | Hybrid BM25 + vector recall with reciprocal-rank fusion and salience rerank; kind/tag/entity/metadata/date filters; personal-scope memories follow the user across projects; bodies and free-form auxiliary fields wrapped as untrusted content |
 | `burnbar_recall_pack` | Token-budgeted, prompt-ready block of the most relevant memories, wrapped as untrusted retrieved data |
-| `burnbar_memory_get` / `burnbar_memory_list` | Read one memory (optionally with history) / page through memories with filters and ordering |
+| `burnbar_memory_get` / `burnbar_memory_list` | Read one memory (optionally with history) / page through memories with filters and ordering; quarantined rows are hidden by default and explicit review reads are wrapped |
 | `burnbar_memory_update` | **Write** patch a memory in place (stable id, history row, re-embed) |
-| `burnbar_memory_history` | Per-memory change history with before/after bodies |
+| `burnbar_memory_history` | Per-memory change history with wrapped before/after bodies and metadata |
 | `burnbar_memory_review` | **Write** approve / quarantine / reject (injection suspects start quarantined) |
 | `burnbar_forget` | **Write** hard-delete one memory (body, vectors, history, relations, vault) with a label-only audit event; mirrored to the daemon when reachable |
 | `burnbar_forget_all` | **Write** two-step bulk delete for a project (optionally scope / kinds); requires `confirm="DELETE"` |
@@ -234,7 +234,9 @@ against mem0 / Mixedbread: [`docs/superpowers/2026-09-02-memory-mcp-v2-design.md
   to the daemon ledger through the signed `openburnbar-cli memory-remember` /
   `memory-forget` couriers when installed; unsigned development builds fall
   back to the daemon socket. Every write reports `mirror.status`
-  (`mirrored | peer_rejected | unreachable | rejected | disabled | skipped`).
+  (`mirrored | partial | peer_rejected | unreachable | rejected | disabled |
+  skipped`). `partial` is used only for a multi-row lifecycle operation whose
+  failed deletes remain retryable.
   A mirrored row records the daemon's own content-derived id, and
   `burnbar_forget` uses that id for the daemon-side forget (a row that was
   never mirrored reports `mirror.status: skipped` instead of sending the
@@ -291,6 +293,12 @@ against mem0 / Mixedbread: [`docs/superpowers/2026-09-02-memory-mcp-v2-design.md
   entry (`secretRotated: true`). Prompt-injection screening covers tags,
   entities, metadata, and `source_path` as well as the body; a hit in any of
   them quarantines the memory.
+- **Untrusted recall boundary.** Prompt-injection sentinels in the body, tags,
+  entities, metadata keys/values, or `source_path` quarantine the row. Default
+  recall/get/list/entity/relation surfaces exclude quarantined rows, including
+  legacy rows detected by the read-time backstop. Explicit review reads keep
+  their JSON shape but wrap free-form values, injection-bearing metadata keys,
+  and history metadata as untrusted data.
 - **Experimental: retain secrets.** `retain` stores the verbatim text in an
   encrypted vault table, keeps a redacted, searchable body in the main store,
   and hides the memory from default recall. It needs
@@ -303,7 +311,8 @@ against mem0 / Mixedbread: [`docs/superpowers/2026-09-02-memory-mcp-v2-design.md
   force it off. Writes are rate-limited under the `memory` family.
 - **Structured refusals.** Malformed JSON in `filters`, `metadata`, `facts`,
   or `memories` returns `INVALID_JSON_ARGUMENT` (never a silently widened
-  query); editing a memory's text to match another active memory returns
+  query); filter `AND` / `OR` clauses must be non-empty arrays of objects.
+  Editing a memory's text to match another active memory returns
   `DUPLICATE_BODY`; re-remembering text whose memory was rejected in review
   returns `NONE` with `PREVIOUSLY_REJECTED` (re-approve it with
   `burnbar_memory_review`), while an expired duplicate is reactivated
@@ -313,6 +322,14 @@ against mem0 / Mixedbread: [`docs/superpowers/2026-09-02-memory-mcp-v2-design.md
   field; omit the argument to keep it. `burnbar_recall_pack` budgets the whole
   serialized pack (floor 192 tokens: the envelope plus one truncated line),
   keeps each memory on one line, and neutralizes pack sentinels inside bodies.
+- **Cross-store lifecycle.** Supersession and confirmed bulk deletion forget
+  the corresponding daemon mirrors. Failed daemon deletes retain only the
+  local-to-daemon id tombstone and can be retried after the local row is gone.
+  Update, review, and import writes also reconcile the mirror; body changes
+  retire the old content-derived daemon id before publishing the replacement,
+  and the recorded body hash makes an interrupted transition safely retryable.
+  A project-scoped reindex leaves other projects' old-version vectors intact,
+  and a transient Ollama startup miss is retried without restarting the MCP.
 - **Quality.** `eval_memory.py` scores lexical vs hybrid recall on a 40-memory
   / 30-paraphrase gold set against your local Ollama model.
 

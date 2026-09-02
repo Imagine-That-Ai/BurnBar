@@ -1610,6 +1610,82 @@ def _memory_pack_wrap(body: str, project_id: str) -> str:
     return pcm.wrap_untrusted_snippet(body, source_tool="burnbar_recall_pack", record_id=project_id) or body
 
 
+def _memory_wrap_read_string(value: str, *, source_tool: str, record_id: str) -> str:
+    if value.startswith("OPENBURNBAR_UNTRUSTED_CODE_V1\n") and value.endswith("\nEND_OPENBURNBAR_UNTRUSTED_CODE_V1"):
+        return value
+    return pcm.wrap_untrusted_snippet(value, source_tool=source_tool, record_id=record_id) or value
+
+
+def _memory_wrap_auxiliary(value: Any, *, source_tool: str, record_id: str, field: str) -> Any:
+    """Preserve JSON shape while wrapping values and injection-bearing keys."""
+    if isinstance(value, str):
+        return _memory_wrap_read_string(value, source_tool=source_tool, record_id=f"{record_id}:{field}")
+    if isinstance(value, list):
+        return [
+            _memory_wrap_auxiliary(item, source_tool=source_tool, record_id=record_id, field=f"{field}[{index}]")
+            for index, item in enumerate(value)
+        ]
+    if isinstance(value, dict):
+        wrapped: dict[str, Any] = {}
+        for key, item in value.items():
+            key_text = str(key)
+            safe_key = (
+                _memory_wrap_read_string(
+                    key_text,
+                    source_tool=source_tool,
+                    record_id=f"{record_id}:{field}.key",
+                )
+                if me.injection_labels(key_text)
+                else key_text
+            )
+            wrapped[safe_key] = _memory_wrap_auxiliary(
+                item,
+                source_tool=source_tool,
+                record_id=record_id,
+                field=f"{field}.{key_text}",
+            )
+        return wrapped
+    return value
+
+
+def _memory_wrap_record(record: dict[str, Any], *, source_tool: str) -> dict[str, Any]:
+    wrapped = dict(record)
+    record_id = str(record.get("memoryID") or "unknown")
+    for field in ("body", "snippet", "secretText"):
+        value = wrapped.get(field)
+        if isinstance(value, str):
+            wrapped[field] = _memory_wrap_read_string(value, source_tool=source_tool, record_id=f"{record_id}:{field}")
+    for field in ("tags", "entities", "metadata", "sourceRef"):
+        if field in wrapped:
+            wrapped[field] = _memory_wrap_auxiliary(
+                wrapped[field], source_tool=source_tool, record_id=record_id, field=field
+            )
+    return wrapped
+
+
+def _memory_wrap_history(events: list[dict[str, Any]], *, source_tool: str, memory_id: str) -> list[dict[str, Any]]:
+    wrapped_events: list[dict[str, Any]] = []
+    for index, event in enumerate(events):
+        wrapped = dict(event)
+        for field in ("before", "after"):
+            value = wrapped.get(field)
+            if isinstance(value, str):
+                wrapped[field] = _memory_wrap_read_string(
+                    value,
+                    source_tool=source_tool,
+                    record_id=f"{memory_id}:history[{index}].{field}",
+                )
+        if "meta" in wrapped:
+            wrapped["meta"] = _memory_wrap_auxiliary(
+                wrapped["meta"],
+                source_tool=source_tool,
+                record_id=memory_id,
+                field=f"history[{index}].meta",
+            )
+        wrapped_events.append(wrapped)
+    return wrapped_events
+
+
 def _memory_mirror_enabled() -> bool:
     raw = os.environ.get(MEMORY_MIRROR_ENV, "").strip().lower()
     if raw in {"0", "false", "no", "n", "off"}:
@@ -1682,6 +1758,89 @@ def _memory_mirror_forget(daemon_memory_id: str | None, project_path: str | None
     }
 
 
+def _memory_mirror_forget_many(
+    engine: me.MemoryEngine, memory_ids: list[str], project_path: str | None
+) -> dict[str, Any]:
+    """Retire mirrored daemon rows without losing retryable local tombstones."""
+    results: list[dict[str, Any]] = []
+    for memory_id in dict.fromkeys(str(item) for item in memory_ids if item):
+        daemon_memory_id = engine.daemon_mirror_id(memory_id)
+        if not daemon_memory_id:
+            continue
+        mirror = _memory_mirror_forget(daemon_memory_id, project_path)
+        results.append({"memoryID": memory_id, "daemonMemoryID": daemon_memory_id, **mirror})
+        if mirror.get("status") == "mirrored":
+            engine.clear_daemon_mirror(memory_id)
+    mirrored = sum(item.get("status") == "mirrored" for item in results)
+    return {
+        "status": "skipped" if not results else ("mirrored" if mirrored == len(results) else "partial"),
+        "attempted": len(results),
+        "mirrored": mirrored,
+        "pending": len(results) - mirrored,
+        "results": results,
+    }
+
+
+def _memory_public_decision(memory: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "event": "UPDATE",
+        "memoryID": memory.get("memoryID"),
+        "kind": memory.get("kind"),
+        "scope": memory.get("scope"),
+        "tags": list(memory.get("tags") or []),
+        "confidence": memory.get("confidence"),
+        "sourceRef": memory.get("sourceRef"),
+        "text": memory.get("body"),
+        "sensitivity": memory.get("sensitivity"),
+        "reviewStatus": memory.get("reviewStatus"),
+    }
+
+
+def _memory_mirror_updated(
+    engine: me.MemoryEngine,
+    result: dict[str, Any],
+    project_path: str | None,
+    *,
+    body_changed: bool,
+) -> dict[str, Any]:
+    """Synchronize one existing row without orphaning a failed old delete."""
+    memory = result.get("memory")
+    if not isinstance(memory, dict) or not memory.get("memoryID"):
+        return {"status": "skipped", "reason": "no committed memory row to mirror"}
+    memory_id = str(memory["memoryID"])
+    previous_daemon_id = engine.daemon_mirror_id(memory_id)
+    current_body_hash = me.sha256_hex(str(memory.get("body") or ""))
+    mirrored_body_hash = engine.daemon_mirror_body_hash(memory_id)
+    hidden = memory.get("sensitivity") == "secret" or memory.get("reviewStatus") != "approved"
+    previous_forget: dict[str, Any] | None = None
+    previous_is_stale = body_changed or (mirrored_body_hash is not None and mirrored_body_hash != current_body_hash)
+    if previous_daemon_id and (previous_is_stale or hidden):
+        previous_forget = _memory_mirror_forget(previous_daemon_id, project_path)
+        if previous_forget.get("status") != "mirrored":
+            return {
+                "status": previous_forget.get("status", "unreachable"),
+                "reason": "previous daemon copy could not be retired; retry is required",
+                "previousForget": previous_forget,
+            }
+        engine.clear_daemon_mirror(memory_id)
+    if hidden:
+        return {
+            "status": previous_forget.get("status", "mirrored") if previous_forget else "skipped",
+            "reason": "secret or non-approved memories never remain in the daemon mirror",
+            **({"previousForget": previous_forget} if previous_forget else {}),
+        }
+    mirror = _memory_mirror_remember(_memory_public_decision(memory), project_path)
+    if mirror.get("status") == "mirrored" and mirror.get("daemonMemoryID"):
+        engine.record_daemon_mirror(
+            memory_id,
+            str(mirror["daemonMemoryID"]),
+            body_hash=current_body_hash,
+        )
+    if previous_forget:
+        mirror["previousForget"] = previous_forget
+    return mirror
+
+
 def _memory_list_arg(raw: list[str] | str | None) -> list[str] | None:
     """None when the argument was omitted; otherwise the list, which may be
     empty. Patch-style tools treat `[]` as "clear" and `None` as "keep"."""
@@ -1722,6 +1881,28 @@ def _invalid_json_payload(exc: _InvalidJSONArgument) -> str:
         },
         indent=2,
     )
+
+
+def _memory_filter_arg(raw: Any) -> dict[str, Any] | None:
+    parsed = _memory_json_arg(raw, None, argument="filters")
+    if parsed is None:
+        return None
+    if not isinstance(parsed, dict):
+        raise _InvalidJSONArgument("filters", "top-level value must be a JSON object")
+
+    def validate(value: dict[str, Any], path: str) -> None:
+        for key, expected in value.items():
+            if key not in ("AND", "OR"):
+                continue
+            if not isinstance(expected, list) or not expected:
+                raise _InvalidJSONArgument("filters", f"{path}.{key} must be a non-empty array of objects")
+            for index, clause in enumerate(expected):
+                if not isinstance(clause, dict) or not clause:
+                    raise _InvalidJSONArgument("filters", f"{path}.{key}[{index}] must be a non-empty object")
+                validate(clause, f"{path}.{key}[{index}]")
+
+    validate(parsed, "filters")
+    return parsed
 
 
 _LEGACY_MIGRATION_STATE: dict[str, dict[str, Any]] = {}
@@ -1907,7 +2088,14 @@ def burnbar_remember(
             mirror = _memory_mirror_remember(result, project_path)
             result["mirror"] = mirror
             if mirror.get("status") == "mirrored" and mirror.get("daemonMemoryID"):
-                engine.record_daemon_mirror(str(result["memoryID"]), str(mirror["daemonMemoryID"]))
+                engine.record_daemon_mirror(
+                    str(result["memoryID"]),
+                    str(mirror["daemonMemoryID"]),
+                    body_hash=me.sha256_hex(str(result.get("text") or "")),
+                )
+            result["supersededMirror"] = _memory_mirror_forget_many(
+                engine, list(result.get("superseded") or []), project_path
+            )
     return json.dumps(result, indent=2, default=str)
 
 
@@ -1997,7 +2185,14 @@ def burnbar_memorize(
                 mirror = _memory_mirror_remember(decision, project_path)
                 mirrors.append({"memoryID": decision.get("memoryID"), **mirror})
                 if mirror.get("status") == "mirrored" and mirror.get("daemonMemoryID") and decision.get("memoryID"):
-                    engine.record_daemon_mirror(str(decision["memoryID"]), str(mirror["daemonMemoryID"]))
+                    engine.record_daemon_mirror(
+                        str(decision["memoryID"]),
+                        str(mirror["daemonMemoryID"]),
+                        body_hash=me.sha256_hex(str(decision.get("text") or "")),
+                    )
+                mirrors[-1]["supersededMirror"] = _memory_mirror_forget_many(
+                    engine, list(decision.get("superseded") or []), project_path
+                )
     result["mirror"] = mirrors
     return json.dumps(result, indent=2, default=str)
 
@@ -2039,7 +2234,7 @@ def burnbar_recall(
     if include_secrets and (denied := _capability_denial("burnbar_recall", "sensitive_read")):
         return denied
     try:
-        parsed_filters = _memory_json_arg(filters, None, argument="filters")
+        parsed_filters = _memory_filter_arg(filters)
     except _InvalidJSONArgument as exc:
         return _invalid_json_payload(exc)
     with _memory_engine() as engine:
@@ -2065,6 +2260,10 @@ def burnbar_recall(
             mode=mode,
             wrap=_memory_wrap,
         )
+        result["results"] = [
+            _memory_wrap_record(item, source_tool="burnbar_recall") for item in result.get("results", [])
+        ]
+        result.setdefault("trustSignal", {})["auxiliaryFieldsWrapped"] = True
         result["legacyMigration"] = migration
     return json.dumps(result, indent=2, default=str)
 
@@ -2101,18 +2300,32 @@ def burnbar_recall_pack(
 
 
 @mcp.tool()
-def burnbar_memory_get(memory_id: str, include_history: bool = False, include_secrets: bool = False) -> str:
-    """Read one memory by id, optionally with its change history. `include_secrets` requires `sensitive_read`."""
+def burnbar_memory_get(
+    memory_id: str,
+    include_history: bool = False,
+    include_secrets: bool = False,
+    include_quarantined: bool = False,
+) -> str:
+    """Read one approved memory by id, optionally with wrapped history. Set
+    `include_quarantined=true` for explicit review; `include_secrets` requires
+    `sensitive_read`."""
     if limited := _local_mcp_rate_limit("burnbar_memory_get", "memory"):
         return limited
     if include_secrets and (denied := _capability_denial("burnbar_memory_get", "sensitive_read")):
         return denied
     with _memory_engine() as engine:
-        return json.dumps(
-            engine.get(memory_id, include_secrets=include_secrets, include_history=include_history),
-            indent=2,
-            default=str,
-        )
+        result = engine.get(memory_id, include_secrets=include_secrets, include_history=include_history)
+    memory = result.get("memory")
+    if isinstance(memory, dict) and memory.get("reviewStatus") != "approved" and not include_quarantined:
+        result = {"status": "not_found", "memoryID": memory_id}
+    elif isinstance(memory, dict):
+        result["memory"] = _memory_wrap_record(memory, source_tool="burnbar_memory_get")
+        if isinstance(result.get("history"), list):
+            result["history"] = _memory_wrap_history(
+                result["history"], source_tool="burnbar_memory_get", memory_id=memory_id
+            )
+        result["trustSignal"] = {"untrustedContentWrapped": True, "auxiliaryFieldsWrapped": True}
+    return json.dumps(result, indent=2, default=str)
 
 
 @mcp.tool()
@@ -2130,21 +2343,24 @@ def burnbar_memory_list(
     include_superseded: bool = False,
     include_cross_project: bool = False,
 ) -> str:
-    """Page through memories with filters. `order`: updated_desc | updated_asc | created_desc | salience_desc | access_desc."""
+    """Page through approved memories with wrapped content. Pass an explicit
+    `review_status` (`quarantined`, `rejected`, or `all`) for review. `order`:
+    updated_desc | updated_asc | created_desc | salience_desc | access_desc."""
     if limited := _local_mcp_rate_limit("burnbar_memory_list", "memory"):
         return limited
     try:
-        parsed_filters = _memory_json_arg(filters, None, argument="filters")
+        parsed_filters = _memory_filter_arg(filters)
     except _InvalidJSONArgument as exc:
         return _invalid_json_payload(exc)
     with _memory_engine() as engine:
         migration = _migrate_legacy_memories(engine, project_path)
+        effective_review_status = None if review_status == "all" else (review_status or "approved")
         result = engine.list(
             project_path=project_path,
             scope=scope,
             kinds=_memory_list_arg(kinds),
             tags=_memory_list_arg(tags),
-            review_status=review_status,
+            review_status=effective_review_status,
             sensitivity=sensitivity,
             include_superseded=include_superseded,
             include_cross_project=include_cross_project,
@@ -2153,6 +2369,10 @@ def burnbar_memory_list(
             page=page,
             page_size=page_size,
         )
+        result["results"] = [
+            _memory_wrap_record(item, source_tool="burnbar_memory_list") for item in result.get("results", [])
+        ]
+        result["trustSignal"] = {"untrustedContentWrapped": True, "auxiliaryFieldsWrapped": True}
         result["legacyMigration"] = migration
     return json.dumps(result, indent=2, default=str)
 
@@ -2194,16 +2414,29 @@ def burnbar_memory_update(
             expires_at=expires_at,
             immutable=immutable,
         )
+        if result.get("status") == "ok":
+            memory_project_path = engine.project_path_for_memory(memory_id)
+            result["mirror"] = _memory_mirror_updated(
+                engine,
+                result,
+                project_path=memory_project_path,
+                body_changed=result.get("changes", {}).get("body") is True,
+            )
     return json.dumps(result, indent=2, default=str)
 
 
 @mcp.tool()
 def burnbar_memory_history(memory_id: str, limit: int = 100) -> str:
-    """Return the per-memory change history (created, reinforced, updated, retired, reviewed) with before/after bodies."""
+    """Return change history with before/after bodies wrapped as untrusted retrieved data."""
     if limited := _local_mcp_rate_limit("burnbar_memory_history", "memory"):
         return limited
     with _memory_engine() as engine:
-        return json.dumps(engine.history(memory_id, limit=limit), indent=2, default=str)
+        result = engine.history(memory_id, limit=limit)
+    result["events"] = _memory_wrap_history(
+        result.get("events", []), source_tool="burnbar_memory_history", memory_id=memory_id
+    )
+    result["trustSignal"] = {"untrustedContentWrapped": True}
+    return json.dumps(result, indent=2, default=str)
 
 
 @mcp.tool()
@@ -2214,7 +2447,19 @@ def burnbar_memory_review(memory_id: str, status: str) -> str:
     if denied := _capability_denial("burnbar_memory_review", "memory_write"):
         return denied
     with _memory_engine() as engine:
-        return json.dumps(engine.review(memory_id, status), indent=2, default=str)
+        result = engine.review(memory_id, status)
+        if result.get("status") == "ok":
+            current = engine.get(memory_id).get("memory")
+            result["memory"] = current
+            memory_project_path = engine.project_path_for_memory(memory_id)
+            result["mirror"] = _memory_mirror_updated(
+                engine,
+                result,
+                project_path=memory_project_path,
+                body_changed=False,
+            )
+            result.pop("memory", None)
+    return json.dumps(result, indent=2, default=str)
 
 
 @mcp.tool()
@@ -2248,11 +2493,16 @@ def burnbar_forget_all(
     if denied := _capability_denial("burnbar_forget_all", "memory_write"):
         return denied
     with _memory_engine() as engine:
-        return json.dumps(
-            engine.forget_all(project_path=project_path, scope=scope, kinds=_memory_list_arg(kinds), confirm=confirm),
-            indent=2,
-            default=str,
+        result = engine.forget_all(
+            project_path=project_path,
+            scope=scope,
+            kinds=_memory_list_arg(kinds),
+            confirm=confirm,
         )
+        memory_ids = list(result.pop("deletedMemoryIDs", []))
+        if result.get("status") == "ok":
+            result["mirror"] = _memory_mirror_forget_many(engine, memory_ids, project_path)
+    return json.dumps(result, indent=2, default=str)
 
 
 @mcp.tool()
@@ -2263,11 +2513,20 @@ def burnbar_memory_entities(
     if limited := _local_mcp_rate_limit("burnbar_memory_entities", "memory"):
         return limited
     with _memory_engine() as engine:
-        return json.dumps(
-            engine.entities(project_path=project_path, limit=limit, include_cross_project=include_cross_project),
-            indent=2,
-            default=str,
-        )
+        result = engine.entities(project_path=project_path, limit=limit, include_cross_project=include_cross_project)
+    result["entities"] = [
+        {
+            **item,
+            "entity": _memory_wrap_read_string(
+                str(item["entity"]),
+                source_tool="burnbar_memory_entities",
+                record_id=f"entity:{index}",
+            ),
+        }
+        for index, item in enumerate(result.get("entities", []))
+    ]
+    result["trustSignal"] = {"untrustedContentWrapped": True}
+    return json.dumps(result, indent=2, default=str)
 
 
 @mcp.tool()
@@ -2276,9 +2535,24 @@ def burnbar_memory_relations(project_path: str | None = None, entity: str | None
     if limited := _local_mcp_rate_limit("burnbar_memory_relations", "memory"):
         return limited
     with _memory_engine() as engine:
-        return json.dumps(
-            engine.relations(project_path=project_path, entity=entity, limit=limit), indent=2, default=str
-        )
+        result = engine.relations(project_path=project_path, entity=entity, limit=limit)
+    result["relations"] = [
+        {
+            **item,
+            **{
+                field: _memory_wrap_read_string(
+                    str(item[field]),
+                    source_tool="burnbar_memory_relations",
+                    record_id=f"{item.get('memoryID', index)}:{field}",
+                )
+                for field in ("subject", "predicate", "object")
+                if item.get(field) is not None
+            },
+        }
+        for index, item in enumerate(result.get("relations", []))
+    ]
+    result["trustSignal"] = {"untrustedContentWrapped": True}
+    return json.dumps(result, indent=2, default=str)
 
 
 @mcp.tool()
@@ -2329,7 +2603,29 @@ def burnbar_memory_import(memories: list[dict[str, Any]] | str, project_path: st
             indent=2,
         )
     with _memory_engine() as engine:
-        return json.dumps(engine.import_memories(payload, project_path=project_path), indent=2, default=str)
+        result = engine.import_memories(payload, project_path=project_path)
+        mirrors: list[dict[str, Any]] = []
+        for decision in result.get("decisions", []):
+            if decision.get("event") not in ("ADD", "UPDATE"):
+                continue
+            mirror = _memory_mirror_remember(decision, project_path)
+            if mirror.get("status") == "mirrored" and mirror.get("daemonMemoryID") and decision.get("memoryID"):
+                engine.record_daemon_mirror(
+                    str(decision["memoryID"]),
+                    str(mirror["daemonMemoryID"]),
+                    body_hash=me.sha256_hex(str(decision.get("text") or "")),
+                )
+            mirrors.append(
+                {
+                    "memoryID": decision.get("memoryID"),
+                    **mirror,
+                    "supersededMirror": _memory_mirror_forget_many(
+                        engine, list(decision.get("superseded") or []), project_path
+                    ),
+                }
+            )
+        result["mirror"] = mirrors
+    return json.dumps(result, indent=2, default=str)
 
 
 @mcp.tool()

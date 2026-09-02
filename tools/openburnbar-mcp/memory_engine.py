@@ -738,7 +738,12 @@ def embedding_provider(force: EmbeddingProvider | None = None) -> EmbeddingProvi
             provider = NullEmbeddingProvider(f"ollama not reachable or model '{model}' not pulled (auto mode)")
     else:
         provider = NullEmbeddingProvider(f"unknown embedding provider '{configured}'")
-    _PROVIDER_CACHE[cache_key] = provider
+    # A process can start before Ollama or its model is ready. Caching that
+    # transient miss turns a recoverable local outage into a restart
+    # requirement, so only cache usable providers and intentional static
+    # disables/configuration errors.
+    if provider.available or configured not in ("auto", "ollama"):
+        _PROVIDER_CACHE[cache_key] = provider
     return provider
 
 
@@ -1048,7 +1053,7 @@ def gate_aux_fields(
     secret_policy: str,
     pii_policy: str,
 ) -> AuxGate:
-    """Apply the secret / PII gate to tags, entities, metadata, and source_ref.
+    """Apply the secret and PII gates to auxiliary fields.
 
     These columns are plaintext and are returned by get / list / recall /
     export, so they get the same policy as the body: secrets are redacted in
@@ -1086,7 +1091,13 @@ def gate_aux_fields(
         replaced = gate(source_ref)
         clean_ref = "[REDACTED]" if replaced is None else replaced
     return AuxGate(
-        clean_tags, clean_entities, clean_metadata, clean_ref, sorted(set(labels)), reject_reason, reject_code
+        clean_tags,
+        clean_entities,
+        clean_metadata,
+        clean_ref,
+        sorted(set(labels)),
+        reject_reason,
+        reject_code,
     )
 
 
@@ -1096,6 +1107,13 @@ def injection_labels(text: str) -> list[str]:
         if pattern.search(text):
             labels.append(f"injection_sentinel_{index}")
     return labels
+
+
+def auxiliary_injection_labels(
+    tags: Sequence[str], entities: Sequence[str], metadata: dict[str, Any], source_ref: str | None
+) -> list[str]:
+    """Find injection sentinels in every caller-controlled auxiliary string."""
+    return injection_labels("\n".join(_aux_strings(tags, entities, metadata, source_ref)))
 
 
 # ---------------------------------------------------------------------------
@@ -1899,16 +1917,23 @@ class MemoryEngine:
         if self.db_path is not None:
             secure_store_files(self.db_path)
 
-    def record_daemon_mirror(self, memory_id: str, daemon_memory_id: str) -> None:
+    def record_daemon_mirror(self, memory_id: str, daemon_memory_id: str, *, body_hash: str | None = None) -> None:
         """Persist the daemon id until cross-store deletion succeeds.
 
         The mapping doubles as a durable forget tombstone after the local row
         is purged, allowing a later ``burnbar_forget`` call to retry a daemon
-        deletion that failed while the daemon was unavailable.
+        deletion that failed while the daemon was unavailable. New mappings
+        also carry the mirrored body hash so an interrupted body-changing
+        update can distinguish the stale daemon copy on retry.
         """
         self.conn.execute(
             "INSERT OR REPLACE INTO engine_meta (key, value) VALUES (?, ?)",
-            (f"daemon_mirror:{memory_id}", daemon_memory_id),
+            (
+                f"daemon_mirror:{memory_id}",
+                _json_dumps({"daemonMemoryID": daemon_memory_id, "bodyHash": body_hash})
+                if body_hash
+                else daemon_memory_id,
+            ),
         )
         self._commit()
 
@@ -1917,7 +1942,33 @@ class MemoryEngine:
             "SELECT value FROM engine_meta WHERE key = ?",
             (f"daemon_mirror:{memory_id}",),
         ).fetchone()
-        return str(row["value"]) if row is not None else None
+        if row is None:
+            return None
+        value = str(row["value"])
+        parsed = _json_loads(value, None)
+        if isinstance(parsed, dict) and parsed.get("daemonMemoryID"):
+            return str(parsed["daemonMemoryID"])
+        return value
+
+    def daemon_mirror_body_hash(self, memory_id: str) -> str | None:
+        row = self.conn.execute(
+            "SELECT value FROM engine_meta WHERE key = ?",
+            (f"daemon_mirror:{memory_id}",),
+        ).fetchone()
+        parsed = _json_loads(row["value"], None) if row is not None else None
+        return str(parsed["bodyHash"]) if isinstance(parsed, dict) and parsed.get("bodyHash") else None
+
+    def project_path_for_memory(self, memory_id: str) -> str | None:
+        row = self.conn.execute(
+            """
+            SELECT p.primary_path
+            FROM memories AS m
+            JOIN projects AS p ON p.project_id = m.project_id
+            WHERE m.id = ?
+            """,
+            (memory_id,),
+        ).fetchone()
+        return str(row["primary_path"]) if row is not None else None
 
     def clear_daemon_mirror(self, memory_id: str) -> None:
         """Clear a mirror mapping only after the daemon confirms deletion."""
@@ -1950,6 +2001,16 @@ class MemoryEngine:
         vector = None
         if with_vector and "vector" in row.keys() and row["vector"] is not None:
             vector = decode_vector(row["vector"], int(row["dimension"] or 0))
+        tags = _json_loads(row["tags_json"], [])
+        entities = _json_loads(row["entities_json"], [])
+        metadata = _json_loads(row["metadata_json"], {})
+        source_ref = row["source_ref"]
+        review_status = str(row["review_status"])
+        if auxiliary_injection_labels(tags, entities, metadata, source_ref):
+            # Read-time backstop for rows written before auxiliary injection
+            # screening existed. Such rows stay hidden until their fields are
+            # cleaned, even if their persisted status says approved.
+            review_status = "quarantined"
         memory = ActiveMemory(
             rowid=int(row["rowid"]),
             id=str(row["id"]),
@@ -1958,7 +2019,7 @@ class MemoryEngine:
             kind=str(row["kind"]),
             body=body,
             sensitivity=str(row["sensitivity"]),
-            review_status=str(row["review_status"]),
+            review_status=review_status,
             confidence=float(row["confidence"]),
             salience=float(row["salience"]),
             access_count=int(row["access_count"] or 0),
@@ -1968,11 +2029,11 @@ class MemoryEngine:
             valid_from=str(row["valid_from"]),
             valid_to=row["valid_to"],
             superseded_by=row["superseded_by"],
-            tags=_json_loads(row["tags_json"], []),
-            entities=_json_loads(row["entities_json"], []),
-            metadata=_json_loads(row["metadata_json"], {}),
+            tags=tags,
+            entities=entities,
+            metadata=metadata,
             source_kind=str(row["source_kind"]),
-            source_ref=row["source_ref"],
+            source_ref=source_ref,
             extractor=str(row["extractor"]),
             embedding_version=row["embedding_version"],
             created_at=str(row["created_at"]),
@@ -2322,6 +2383,10 @@ class MemoryEngine:
         ts = now_iso()
         now = datetime.now(UTC)
         entities = list(dict.fromkeys(list(fact.entities) + extract_entities(body)))[:16]
+        # Reinforcement persists only tags and entities from the incoming
+        # fact. Do not let a discarded metadata/source-ref directive
+        # quarantine an otherwise clean existing row.
+        reinforce_injection = [f"aux:{label}" for label in auxiliary_injection_labels(fact.tags, entities, {}, None)]
         relations = extract_relations(body)
         vector = self.provider.embed([body])[0] if self.provider.available else None
         tokens = tokenize(" ".join([body, " ".join(fact.tags), " ".join(entities)]))
@@ -2357,6 +2422,7 @@ class MemoryEngine:
                 reason="exact duplicate",
                 incoming_body=body,
                 labels=gate.labels,
+                quarantine_labels=reinforce_injection,
                 reactivate=_is_expired(exact["expires_at"], now),
             )
             if gate.action == "retain" and gate.vault_body is not None:
@@ -2384,6 +2450,7 @@ class MemoryEngine:
                     reason=f"near duplicate (sim={near[0]:.2f})",
                     incoming_body=body,
                     labels=gate.labels,
+                    quarantine_labels=reinforce_injection,
                 )
             supersede_targets, retire_targets = self._resolve_conflicts(
                 project_id=project_id,
@@ -2712,6 +2779,7 @@ class MemoryEngine:
         reason: str,
         incoming_body: str,
         labels: Sequence[str] = (),
+        quarantine_labels: Sequence[str] = (),
         reactivate: bool = False,
     ) -> dict[str, Any]:
         """Merge a duplicate into `memory_id`.
@@ -2731,14 +2799,16 @@ class MemoryEngine:
         confidence = max(existing.confidence, fact.confidence)
         access = existing.access_count + 1
         ts = now_iso()
+        review_status = "quarantined" if quarantine_labels else existing.review_status
         self.conn.execute(
-            "UPDATE memories SET tags_json = ?, entities_json = ?, confidence = ?, access_count = ?, salience = ?, updated_at = ? WHERE id = ?",
+            "UPDATE memories SET tags_json = ?, entities_json = ?, confidence = ?, access_count = ?, salience = ?, review_status = ?, updated_at = ? WHERE id = ?",
             (
                 _json_dumps(merged_tags),
                 _json_dumps(merged_entities),
                 confidence,
                 access,
                 self.compute_salience(existing.kind, confidence, access),
+                review_status,
                 ts,
                 memory_id,
             ),
@@ -2759,6 +2829,15 @@ class MemoryEngine:
             labels=[reason.split(" (")[0]],
             actor=self.config.actor,
         )
+        if quarantine_labels:
+            audit_event(
+                self.conn,
+                action="memory.injection_quarantined",
+                project_id=existing.project_id,
+                subject_id=memory_id,
+                labels=sorted(set(quarantine_labels)),
+                actor=self.config.actor,
+            )
         decision: dict[str, Any] = {
             "event": "UPDATE" if reactivate else "NONE",
             "memoryID": memory_id,
@@ -2769,6 +2848,8 @@ class MemoryEngine:
             "tags": merged_tags,
             "confidence": confidence,
             "sourceRef": existing.source_ref,
+            "sensitivity": existing.sensitivity,
+            "reviewStatus": review_status,
         }
         if reactivate:
             decision["reactivated"] = True
@@ -3206,7 +3287,8 @@ class MemoryEngine:
         filtered = [
             memory
             for memory in memories
-            if (not wanted_kinds or memory.kind in wanted_kinds)
+            if (not review_status or memory.review_status == review_status)
+            and (not wanted_kinds or memory.kind in wanted_kinds)
             and (not wanted_tags or wanted_tags.issubset(set(memory.tags)))
             and (not filters or match_filters(memory, filters))
         ]
@@ -3537,8 +3619,11 @@ class MemoryEngine:
                 "confirm": "DELETE",
                 **project_payload(project_id, root),
             }
+        memory_ids = [str(row["id"]) for row in rows]
         for row in rows:
-            self._purge(str(row["id"]), int(row["rowid"]))
+            # Keep each daemon id as a tombstone until the server confirms the
+            # corresponding remote deletion.
+            self._purge(str(row["id"]), int(row["rowid"]), preserve_daemon_mirror=True)
         audit_event(
             self.conn,
             action="memory.forget_all",
@@ -3549,7 +3634,12 @@ class MemoryEngine:
         )
         self._commit()
         self._invalidate_cache()
-        return {"status": "ok", "deleted": len(rows), **project_payload(project_id, root)}
+        return {
+            "status": "ok",
+            "deleted": len(rows),
+            "deletedMemoryIDs": memory_ids,
+            **project_payload(project_id, root),
+        }
 
     def history(self, memory_id: str, limit: int = 100) -> dict[str, Any]:
         rows = self.conn.execute(
@@ -3578,7 +3668,11 @@ class MemoryEngine:
         self, *, project_path: str | None, limit: int = 100, include_cross_project: bool = False
     ) -> dict[str, Any]:
         project_id, root = resolve_project(self.conn, project_path)
-        pool = self._load_active(project_id, include_cross_project=include_cross_project)
+        pool = [
+            memory
+            for memory in self._load_active(project_id, include_cross_project=include_cross_project)
+            if memory.review_status == "approved"
+        ]
         counts: dict[str, dict[str, Any]] = {}
         for memory in pool:
             for entity in memory.entities:
@@ -3594,7 +3688,7 @@ class MemoryEngine:
 
     def relations(self, *, project_path: str | None, entity: str | None = None, limit: int = 200) -> dict[str, Any]:
         project_id, root = resolve_project(self.conn, project_path)
-        active = self._load_active(project_id)
+        active = [memory for memory in self._load_active(project_id) if memory.review_status == "approved"]
         active_ids = {memory.id for memory in active}
         rows = list(
             self.conn.execute(
@@ -3670,6 +3764,9 @@ class MemoryEngine:
                 (self.provider.version_id,),
             ).fetchall()
             payload: dict[str, Any] = {}
+            stale_params: tuple[Any, ...] = (self.provider.version_id,)
+            stale_count_sql = "SELECT COUNT(*) FROM memory_vectors WHERE embedding_version != ?"
+            stale_delete_sql = "DELETE FROM memory_vectors WHERE embedding_version != ?"
         else:
             project_id, root = resolve_project(self.conn, project_path)
             rows = self.conn.execute(
@@ -3677,16 +3774,24 @@ class MemoryEngine:
                 (self.provider.version_id, project_id),
             ).fetchall()
             payload = project_payload(project_id, root)
+            stale_params = (self.provider.version_id, project_id)
+            stale_count_sql = """
+                SELECT COUNT(*)
+                FROM memory_vectors AS v
+                JOIN memories AS m ON m.rowid = v.memory_rowid
+                WHERE v.embedding_version != ? AND m.project_id = ?
+            """
+            stale_delete_sql = """
+                DELETE FROM memory_vectors
+                WHERE embedding_version != ?
+                  AND memory_rowid IN (SELECT rowid FROM memories WHERE project_id = ?)
+            """
         ids = [str(row["id"]) for row in rows]
-        stale = int(
-            self.conn.execute(
-                "SELECT COUNT(*) FROM memory_vectors WHERE embedding_version != ?", (self.provider.version_id,)
-            ).fetchone()[0]
-        )
+        stale = int(self.conn.execute(stale_count_sql, stale_params).fetchone()[0])
         embedded = 0
         for start in range(0, len(ids), max(1, batch_size)):
             embedded += self._embed_rows(ids[start : start + batch_size])
-        self.conn.execute("DELETE FROM memory_vectors WHERE embedding_version != ?", (self.provider.version_id,))
+        self.conn.execute(stale_delete_sql, stale_params)
         audit_event(
             self.conn,
             action="memory.reindex",
@@ -4095,14 +4200,26 @@ def _compare(actual: Any, operator: str, expected: Any) -> bool:
 def match_filters(memory: ActiveMemory, filters: dict[str, Any]) -> bool:
     """mem0-style filters: {"AND": [...]}, {"OR": [...]}, {"field": value}, {"field": {"op": value}}."""
     if not isinstance(filters, dict):
-        return True
+        return False
     for key, expected in filters.items():
         if key == "AND":
-            if not all(match_filters(memory, clause) for clause in (expected or [])):
+            if (
+                not isinstance(expected, list)
+                or not expected
+                or not all(
+                    isinstance(clause, dict) and bool(clause) and match_filters(memory, clause) for clause in expected
+                )
+            ):
                 return False
             continue
         if key == "OR":
-            if expected and not any(match_filters(memory, clause) for clause in expected):
+            if (
+                not isinstance(expected, list)
+                or not expected
+                or not all(isinstance(clause, dict) and bool(clause) for clause in expected)
+            ):
+                return False
+            if not any(match_filters(memory, clause) for clause in expected):
                 return False
             continue
         actual = _resolve_field(memory, key)

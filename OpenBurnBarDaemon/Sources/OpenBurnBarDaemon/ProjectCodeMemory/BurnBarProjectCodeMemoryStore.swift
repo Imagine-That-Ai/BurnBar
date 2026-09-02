@@ -302,7 +302,9 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
         }
         let root = try projectRoot(request.projectPath)
         let projectID = try resolveProjectIdentity(root: root).projectID
-        let labels = Self.secretLabels(in: body)
+        let freeformFields = ([body, request.kind, request.scope] + request.tags + [request.sourcePath].compactMap { $0 })
+            .joined(separator: "\n")
+        let labels = Self.secretLabels(in: freeformFields)
         if labels.isEmpty == false {
             let hash = try databaseSync {
                 try auditEvent(action: "memory.secret_rejected", domain: "memory", projectID: projectID, subjectID: nil, labels: labels)
@@ -310,6 +312,8 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
             logger.warning("project_memory_secret_rejected", metadata: ["project_id": projectID, "audit_hash": hash])
             throw BurnBarProjectCodeMemoryStoreError.secretRejected(labels: labels)
         }
+        let injectionLabels = Self.memoryInjectionLabels(in: freeformFields)
+        let reviewStatus: MemoryReviewStatus = injectionLabels.isEmpty ? request.reviewStatus : .quarantined
         // Keep semantic vectors body-only, matching the Python engine. Tags are
         // lexical evidence and must not distort the mirrored row's embedding.
         let memoryVector = embeddingProvider.isAvailable ? embeddingProvider.embed(body) : nil
@@ -352,7 +356,7 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                         .text(memoryID), .text(projectID), .text(request.kind), .text(request.scope),
                         .double(request.confidence), .text(bodyRef), .text(Self.memoryBodyReference(memoryID: memoryID, projectID: projectID)),
                         .text(tagsJSON), request.sourcePath.map(SQLiteBind.text) ?? .null, .text(now),
-                        .text(request.reviewStatus.rawValue), .text(now), .text(now)
+                        .text(reviewStatus.rawValue), .text(now), .text(now)
                     ]
                 )
                 if let memoryVector, memoryVector.count == embeddingProvider.dimension {
@@ -398,7 +402,7 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                     domain: "memory",
                     projectID: projectID,
                     subjectID: memoryID,
-                    labels: ["review_status:\(request.reviewStatus.rawValue)"]
+                    labels: ["review_status:\(reviewStatus.rawValue)"] + injectionLabels
                 )
                 try execute("COMMIT", [])
                 return BurnBarProjectMemoryRememberResponse(

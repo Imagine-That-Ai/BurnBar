@@ -141,6 +141,29 @@ extension BurnBarProjectCodeMemoryStore {
         MemorySecretPIIGate.labels(in: text)
     }
 
+    /// Mirrors the local Python engine's durable-memory injection sentinels.
+    /// A hit is not deleted: it forces quarantine so a reviewer can inspect it,
+    /// while default recall remains fail-closed.
+    static let memoryInjectionPatterns: [NSRegularExpression] = [
+        #"(?i)\bignore (?:all |any )?(?:previous|prior|above|earlier) (?:instructions|prompts|messages)"#,
+        #"(?im)^\s*(?:system|assistant|developer)\s*:\s"#,
+        #"(?i)\byou are now\b"#,
+        #"(?i)</?\s*(?:system|instructions?|untrusted_content|tool_call|function_call)\b"#,
+        #"OPENBURNBAR_UNTRUSTED_CODE_V1|END_OPENBURNBAR_UNTRUSTED_CODE_V1"#,
+        #"OPENBURNBAR_MEMORY_PACK_V1|END_OPENBURNBAR_MEMORY_PACK_V1"#,
+        #"(?i)\bdo not (?:tell|inform|show) the user\b"#,
+        #"(?i)\b(?:exfiltrate|leak) (?:the )?(?:keys?|secrets?|tokens?|credentials?)\b"#,
+        #"(?i)\b(?:curl|wget)\b[^\n|]*\|\s*(?:sudo\s+)?(?:ba)?sh\b"#,
+        #"(?i)\bapprove all tool calls\b"#
+    ].compactMap { try? NSRegularExpression(pattern: $0) }
+
+    static func memoryInjectionLabels(in text: String) -> [String] {
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        return memoryInjectionPatterns.enumerated().compactMap { index, pattern in
+            pattern.firstMatch(in: text, range: range) == nil ? nil : "injection_sentinel_\(index)"
+        }
+    }
+
     static func enumerateIndexableFiles(root: URL, maxFiles: Int) -> [URL] {
         let patterns = gitignorePatterns(root: root)
         let canonicalRoot = root.resolvingSymlinksInPath().standardizedFileURL
