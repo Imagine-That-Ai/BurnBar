@@ -159,10 +159,18 @@ function sortRuns(runs) {
   ));
 }
 
+// A production deployment is a tag push, or a manual dispatch that the deploy
+// workflow accepted as an existing-tag retry (its run-name carries
+// "existing-tag-retry"). Dry runs and plain dispatches — which the workflows
+// deliberately reject — are not deployments and must not sort ahead of the
+// last real one.
 function isProductionRun(run) {
-  if (!run || !["push", "workflow_dispatch"].includes(run.event)) return false;
+  if (!run) return false;
   const descriptor = `${run.name || ""} ${run.display_title || ""}`.toLowerCase();
-  return !descriptor.includes("dry-run") && !descriptor.includes("dry run");
+  if (descriptor.includes("dry-run") || descriptor.includes("dry run")) return false;
+  if (run.event === "push") return true;
+  if (run.event === "workflow_dispatch") return descriptor.includes("existing-tag-retry");
+  return false;
 }
 
 function normalizeRun(run) {
@@ -279,7 +287,10 @@ function laneReport(definition, runHistory, probes) {
     failureClass: red ? (classification === "infra" ? "infra" : latest.failureClass) : null,
     reasonCode,
     red,
-    consecutive_red: red ? Math.max(1, runHistory.consecutive_red) : 0,
+    // Counts consecutive failed deployment runs only; runHistory holds
+    // deployments, not probe observations, so a probe-only outage stays 0
+    // here and is reported through status/reasonCode instead.
+    consecutive_red: deployRed ? Math.max(1, runHistory.consecutive_red) : 0,
     run_id: latest.run_id,
     run_attempt: latest.run_attempt,
     url: latest.url,
@@ -296,7 +307,7 @@ function markdownSummary(report) {
     "",
     `Status: **${report.status.toUpperCase()}**`,
     "",
-    "| Lane | Latest deploy | Health probes | Consecutive red |",
+    "| Lane | Latest deploy | Health probes | Consecutive red deploys |",
     "| --- | --- | --- | ---: |",
   ];
   for (const lane of report.lanes) {

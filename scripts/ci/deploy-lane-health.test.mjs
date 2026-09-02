@@ -218,8 +218,9 @@ test("live mode queries both deploy workflow events and health endpoints", async
     assert.equal(report.status, "green");
     assert.equal(requests.filter((url) => url.includes("event=push")).length, 2);
     assert.equal(requests.filter((url) => url.includes("event=workflow_dispatch")).length, 2);
-    assert.equal(requests.filter((url) => url.startsWith("https://functions.test")).length, 2);
-    assert.equal(requests.filter((url) => url.startsWith("https://cloud.test")).length, 1);
+    const origin = (url) => new URL(url).origin;
+    assert.equal(requests.filter((url) => origin(url) === "https://functions.test").length, 2);
+    assert.equal(requests.filter((url) => origin(url) === "https://cloud.test").length, 1);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -238,6 +239,73 @@ test("CLI persists a deploy report and returns non-zero for red fixture", async 
     assert.equal(JSON.parse(await readFile(outputPath, "utf8")).lanes.length, 2);
   } finally {
     process.exitCode = 0;
+    await rm(tempDirectory, { recursive: true, force: true });
+  }
+});
+
+test("manual dispatches count as deploy history only when they are existing-tag retries", async () => {
+  const fixture = greenFixture();
+  fixture.lanes[0].runs = [
+    {
+      ...successRun(52, "2026-09-04T00:00:00.000Z"),
+      event: "workflow_dispatch",
+      conclusion: "failure",
+      display_title: "release-control/deploy-production/workflow_dispatch/v1.0.0",
+    },
+    {
+      ...successRun(51, "2026-09-03T00:00:00.000Z"),
+      event: "workflow_dispatch",
+      display_title: "release-control/deploy-production/existing-tag-retry/v1.0.0",
+    },
+    {
+      ...successRun(50, "2026-09-02T00:00:00.000Z"),
+      event: "push",
+    },
+  ];
+  const tempDirectory = await mkdtemp(path.join(os.tmpdir(), "openburnbar-deploy-health-"));
+  try {
+    const fixturePath = path.join(tempDirectory, "fixture.json");
+    await writeFile(fixturePath, JSON.stringify(fixture));
+    const report = await collectDeployLaneHealth({
+      apiBase: "https://api.github.test",
+      fixture: fixturePath,
+      limit: 1,
+      repo: null,
+      token: null,
+      functionsReady: "https://functions.test/ready",
+      functionsLive: "https://functions.test/live",
+      cloudRunReady: "https://cloud.test/ready",
+    });
+    const functions = report.lanes.find((lane) => lane.lane === "deploy-production");
+    assert.equal(functions.red, false, "a rejected plain dispatch is not a deployment");
+    assert.equal(functions.run_id, 51, "the approved existing-tag retry is the latest deployment");
+  } finally {
+    await rm(tempDirectory, { recursive: true, force: true });
+  }
+});
+
+test("probe-only red keeps consecutive_red at zero because it counts failed deployment runs", async () => {
+  const fixture = greenFixture();
+  fixture.probes.cloudRunReady = { ok: false, statusCode: 503, error: "service unavailable" };
+  const tempDirectory = await mkdtemp(path.join(os.tmpdir(), "openburnbar-deploy-health-"));
+  try {
+    const fixturePath = path.join(tempDirectory, "fixture.json");
+    await writeFile(fixturePath, JSON.stringify(fixture));
+    const report = await collectDeployLaneHealth({
+      apiBase: "https://api.github.test",
+      fixture: fixturePath,
+      limit: 1,
+      repo: null,
+      token: null,
+      functionsReady: "https://functions.test/ready",
+      functionsLive: "https://functions.test/live",
+      cloudRunReady: "https://cloud.test/ready",
+    });
+    const cloudRun = report.lanes.find((lane) => lane.lane === "deploy-cloud-run");
+    assert.equal(cloudRun.red, true);
+    assert.equal(cloudRun.status, "infra-failed");
+    assert.equal(cloudRun.consecutive_red, 0);
+  } finally {
     await rm(tempDirectory, { recursive: true, force: true });
   }
 });

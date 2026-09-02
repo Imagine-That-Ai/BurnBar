@@ -520,11 +520,17 @@ if (!evidenceDirectoryPresent) {
   if (mode === 'full') checkPerf();
 }
 
+// Only unavailable evidence (missing, unreadable, or empty artifacts) is an
+// infrastructure failure. Executed evidence that violates its contract — an
+// unexpected packaged-route mode, an oracle that does not prove the real
+// daemon, forbidden fixture strings — is a product failure wherever it is
+// recorded, including in commonErrors.
+const isEvidenceUnavailable = (error) => (
+  /missing artifact|invalid JSON in|artifact .* empty or below/u.test(error)
+);
 const targetStatus = Object.fromEntries(
   [...targetErrors.entries()].map(([target, errors]) => {
-    const evidenceUnavailable = errors.some((error) => (
-      /missing artifact|invalid JSON in|artifact .* empty or below/u.test(error)
-    ));
+    const evidenceUnavailable = errors.some(isEvidenceUnavailable);
     const failureClass = errors.length === 0 ? null : evidenceUnavailable ? 'infra' : 'product';
     return [target, {
       pass: errors.length === 0,
@@ -541,11 +547,12 @@ const allErrors = [
   ...commonErrors,
   ...[...targetErrors.values()].flat()
 ];
+const contractFailure = allErrors.some((error) => !isEvidenceUnavailable(error));
 const failureClass = allErrors.length === 0
   ? null
-  : commonErrors.length > 0 || Object.values(targetStatus).some((target) => target.failureClass === 'infra')
-    ? 'infra'
-    : 'product';
+  : contractFailure
+    ? 'product'
+    : 'infra';
 const report = {
   generatedAt: new Date().toISOString(),
   mode,
