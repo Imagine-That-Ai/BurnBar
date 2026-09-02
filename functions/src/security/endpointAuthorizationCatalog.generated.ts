@@ -125,11 +125,11 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     bolaCoverage: [
       {
         file: "functions/src/__tests__/linuxAppCheckDevices.test.ts",
-        test: "requires explicit trusted-native approval and an action proof",
+        test: "rejects cross-user App Check device operations without victim side effects",
         kind: "runtime-cross-user",
         covers: ["approveLinuxAppCheckDevice"],
         expectedOutcome: "throws",
-        expectedCode: "permission-denied",
+        expectedCode: "not-found",
       },
     ],
     highRiskComputerUse: true,
@@ -3635,11 +3635,11 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     bolaCoverage: [
       {
         file: "functions/src/__tests__/linuxAppCheckDevices.test.ts",
-        test: "lists public review material and revokes without ever returning private material",
+        test: "rejects cross-user App Check device operations without victim side effects",
         kind: "runtime-cross-user",
         covers: ["revokeLinuxAppCheckDevice"],
         expectedOutcome: "throws",
-        expectedCode: "permission-denied",
+        expectedCode: "not-found",
       },
     ],
     highRiskComputerUse: true,
