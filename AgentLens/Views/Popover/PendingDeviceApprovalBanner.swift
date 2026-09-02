@@ -28,12 +28,12 @@ final class PendingDeviceApprovalModel {
             if FirebaseApp.app() != nil, let user = Auth.auth().currentUser {
                 _ = try? await user.getIDTokenResult(forcingRefresh: true)
             }
-            let devices = try await gateway.trustedDevices()
+            let devices = DeviceTrustViewModel.deduplicatedDevices(
+                try await gateway.trustedDevices()
+            )
             let current = devices.first(where: \.isCurrentDevice)
             thisDeviceIsTrusted = current?.trustState == .trusted
-            pendingDevices = DeviceTrustViewModel.deduplicatedDevices(
-                devices.filter { $0.trustState == .pending }
-            )
+            pendingDevices = devices.filter { $0.trustState == .pending }
             if pendingDevices.isEmpty {
                 isDismissed = false
             }
@@ -62,10 +62,8 @@ final class PendingDeviceApprovalModel {
     static func userFacingApprovalError(_ error: Error) -> String {
         let raw = error.localizedDescription
         let lowered = raw.lowercased()
-        if lowered.contains("distinct trusted native")
-            || lowered.contains("trusted native approver")
-            || lowered.contains("trust-chain approver")
-        {
+        if lowered.contains("distinct trusted native") ||
+            lowered.contains("must be a trusted native device") {
             return MacCopy.pendingApprovalNeedsTrustedApprover
         }
         return raw

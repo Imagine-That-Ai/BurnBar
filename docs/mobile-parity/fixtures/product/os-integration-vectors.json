@@ -127,6 +127,33 @@
       "expected": { "decision": "ignoreExpired", "navigates": false }
     },
     {
+      "id": "os.push.device-approval-unique-event-id",
+      "kind": "pushRoute",
+      "payload": {
+        "type": "device_approval_request",
+        "device_id": "mac_mini_1",
+        "created_at_millis": "1700000000000"
+      },
+      "expected": {
+        "destination": "devices",
+        "eventId": "device-approval-mac_mini_1-1700000000000"
+      }
+    },
+    {
+      "id": "os.push.device-approval-repeat-not-duplicate",
+      "kind": "navigation",
+      "payload": {
+        "type": "device_approval_request",
+        "device_id": "mac_mini_1",
+        "created_at_millis": "1700000001000"
+      },
+      "activeUid": "uid-current",
+      "nowMs": 5000,
+      "lastConsumedEventId": "device-approval-mac_mini_1-1700000000000",
+      "permissionGranted": true,
+      "expected": { "decision": "navigate", "navigates": true }
+    },
+    {
       "id": "os.push.unknown-type-no-route",
       "kind": "pushRoute",
       "payload": { "type": "not_a_real_type", "event_id": "evt_x" },

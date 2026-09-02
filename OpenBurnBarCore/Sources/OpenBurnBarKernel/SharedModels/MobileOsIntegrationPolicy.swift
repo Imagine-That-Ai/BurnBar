@@ -168,8 +168,9 @@ public enum MobileOsIntegrationPolicy {
         let expires = expiresRaw.flatMap { Int64($0) }
         let type = payload["type"] ?? ""
         let deviceId = firstNonEmpty(payload["device_id"], payload["deviceId"])
+        let createdAt = firstNonEmpty(payload["created_at_millis"], payload["createdAtMs"])
         let eventId = firstNonEmpty(payload["event_id"], payload["eventId"])
-            ?? (type == "device_approval_request" ? deviceId.map { "device-approval-\($0)" } : nil)
+            ?? deviceApprovalFallbackEventId(type: type, deviceId: deviceId, createdAt: createdAt)
             ?? ""
         return MobilePushEnvelope(
             type: type,
@@ -340,28 +341,15 @@ public enum MobileOsIntegrationPolicy {
         if !permissionGranted { return .ignoreDenied }
         let routed = route(envelope: envelope)
         if routed.destination == .unknown { return .ignoreUnknown }
-        if routed.destination == .devices {
-            // Companion approval pushes omit uid/expiry today. Honor them when
-            // present so a leftover tap cannot jump accounts or survive TTL.
-            if let uid = firstNonEmpty(envelope.uid) {
-                let active = firstNonEmpty(activeUid)
-                if active == nil || uid != active { return .ignoreAccountMismatch }
-            }
-            if let expires = envelope.expiresAtMs, nowMs > expires { return .ignoreExpired }
-            if let last = lastConsumedEventId, !envelope.eventId.isEmpty, last == envelope.eventId {
-                return .ignoreDuplicate
-            }
-            return .navigate
-        }
-        guard let uid = firstNonEmpty(envelope.uid) else { return .ignoreStale }
-        let active = firstNonEmpty(activeUid)
-        if active == nil || uid != active { return .ignoreAccountMismatch }
-        guard let expires = envelope.expiresAtMs else { return .ignoreStale }
-        if nowMs > expires { return .ignoreExpired }
-        if let last = lastConsumedEventId, !envelope.eventId.isEmpty, last == envelope.eventId {
-            return .ignoreDuplicate
-        }
-        return .navigate
+        // Companion approval pushes omit uid/expiry today. Honor them when
+        // present so a leftover tap cannot jump accounts or survive TTL.
+        return decideNavigation(
+            envelope: envelope,
+            activeUid: activeUid,
+            nowMs: nowMs,
+            lastConsumedEventId: lastConsumedEventId,
+            requireUidAndExpiry: routed.destination != .devices
+        )
     }
 
     public static func shouldConsumeTap(eventId: String, lastConsumedEventId: String?) -> Bool {
@@ -477,5 +465,41 @@ public enum MobileOsIntegrationPolicy {
             if !trimmed.isEmpty { return trimmed }
         }
         return nil
+    }
+
+    private static func deviceApprovalFallbackEventId(
+        type: String,
+        deviceId: String?,
+        createdAt: String?
+    ) -> String? {
+        guard type == "device_approval_request", let createdAt else { return nil }
+        if let deviceId {
+            return "device-approval-\(deviceId)-\(createdAt)"
+        }
+        return "device-approval-\(createdAt)"
+    }
+
+    private static func decideNavigation(
+        envelope: MobilePushEnvelope,
+        activeUid: String?,
+        nowMs: Int64,
+        lastConsumedEventId: String?,
+        requireUidAndExpiry: Bool
+    ) -> MobileNavigationDecision {
+        if let uid = firstNonEmpty(envelope.uid) {
+            let active = firstNonEmpty(activeUid)
+            if active == nil || uid != active { return .ignoreAccountMismatch }
+        } else if requireUidAndExpiry {
+            return .ignoreStale
+        }
+        if let expires = envelope.expiresAtMs {
+            if nowMs > expires { return .ignoreExpired }
+        } else if requireUidAndExpiry {
+            return .ignoreStale
+        }
+        if let last = lastConsumedEventId, !envelope.eventId.isEmpty, last == envelope.eventId {
+            return .ignoreDuplicate
+        }
+        return .navigate
     }
 }

@@ -8,6 +8,7 @@ final class MobileOsIntegrationParityTests: XCTestCase {
     // os.push.mercury-call-route, os.push.mission-route, os.push.device-approval-route,
     // os.push.device-approval-navigate-without-uid,
     // os.push.device-approval-honor-uid-mismatch, os.push.device-approval-honor-expiry,
+    // os.push.device-approval-unique-event-id, os.push.device-approval-repeat-not-duplicate,
     // os.push.unknown-type-no-route,
     // os.push.omit-uid-expiry-no-navigate, os.push.evil-https-deep-link-ignored,
     // os.push.navigate-happy-path, os.push.stale-expired-no-navigate,

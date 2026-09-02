@@ -119,8 +119,8 @@ object MobileOsIntegrationPolicy {
         val expires = expiresRaw?.toLongOrNull()
         val type = payload["type"].orEmpty()
         val deviceId = firstNonEmpty(payload["device_id"], payload["deviceId"])
-        val fallbackEventId =
-            if (type == "device_approval_request") deviceId?.let { "device-approval-$it" } else null
+        val createdAt = firstNonEmpty(payload["created_at_millis"], payload["createdAtMs"])
+        val fallbackEventId = deviceApprovalFallbackEventId(type, deviceId, createdAt)
         val eventId = firstNonEmpty(payload["event_id"], payload["eventId"], fallbackEventId).orEmpty()
         return MobilePushEnvelope(
             type = type,
@@ -262,30 +262,15 @@ object MobileOsIntegrationPolicy {
         if (routed.destination == MobileOsDestination.UNKNOWN) {
             return MobileNavigationDecision.IGNORE_UNKNOWN
         }
-        if (routed.destination == MobileOsDestination.DEVICES) {
-            // Companion approval pushes omit uid/expiry today. Honor them when
-            // present so a leftover tap cannot jump accounts or survive TTL.
-            firstNonEmpty(envelope.uid)?.let { uid ->
-                val active = firstNonEmpty(activeUid)
-                if (active == null || uid != active) return MobileNavigationDecision.IGNORE_ACCOUNT_MISMATCH
-            }
-            envelope.expiresAtMs?.let { expires ->
-                if (nowMs > expires) return MobileNavigationDecision.IGNORE_EXPIRED
-            }
-            if (!envelope.eventId.isBlank() && lastConsumedEventId != null && lastConsumedEventId == envelope.eventId) {
-                return MobileNavigationDecision.IGNORE_DUPLICATE
-            }
-            return MobileNavigationDecision.NAVIGATE
-        }
-        val uid = firstNonEmpty(envelope.uid) ?: return MobileNavigationDecision.IGNORE_STALE
-        val active = firstNonEmpty(activeUid)
-        if (active == null || uid != active) return MobileNavigationDecision.IGNORE_ACCOUNT_MISMATCH
-        val expires = envelope.expiresAtMs ?: return MobileNavigationDecision.IGNORE_STALE
-        if (nowMs > expires) return MobileNavigationDecision.IGNORE_EXPIRED
-        if (!envelope.eventId.isBlank() && lastConsumedEventId != null && lastConsumedEventId == envelope.eventId) {
-            return MobileNavigationDecision.IGNORE_DUPLICATE
-        }
-        return MobileNavigationDecision.NAVIGATE
+        // Companion approval pushes omit uid/expiry today. Honor them when
+        // present so a leftover tap cannot jump accounts or survive TTL.
+        return decideNavigation(
+            envelope = envelope,
+            activeUid = activeUid,
+            nowMs = nowMs,
+            lastConsumedEventId = lastConsumedEventId,
+            requireUidAndExpiry = routed.destination != MobileOsDestination.DEVICES,
+        )
     }
 
     fun shouldConsumeTap(eventId: String, lastConsumedEventId: String?): Boolean {
@@ -347,46 +332,81 @@ object MobileOsIntegrationPolicy {
             true
         }
     }
+}
 
-    private val UID_KEYS = setOf("uid", "userid", "user_id", "accountuid", "account_uid", "firebaseuid")
-    private val SECRET_KEYS = setOf("secret", "apikey", "api_key", "token", "fcm_token", "password", "privatekey")
-    private val CONVERSATION_KEYS = setOf("conversation", "conversationtext", "messagebody", "replytext", "preview")
+private val UID_KEYS = setOf("uid", "userid", "user_id", "accountuid", "account_uid", "firebaseuid")
+private val SECRET_KEYS = setOf("secret", "apikey", "api_key", "token", "fcm_token", "password", "privatekey")
+private val CONVERSATION_KEYS = setOf("conversation", "conversationtext", "messagebody", "replytext", "preview")
 
-    private const val FIREBASE_UID_LENGTH = 28
-    private const val SECRET_HEX_MIN_LENGTH = 40
-    private const val CONVERSATION_MIN_LENGTH = 40
+private const val FIREBASE_UID_LENGTH = 28
+private const val SECRET_HEX_MIN_LENGTH = 40
+private const val CONVERSATION_MIN_LENGTH = 40
 
-    private fun looksLikeFirebaseUid(value: String): Boolean = value.matches(Regex("^[A-Za-z0-9]{$FIREBASE_UID_LENGTH}$"))
+private fun looksLikeFirebaseUid(value: String): Boolean = value.matches(Regex("^[A-Za-z0-9]{$FIREBASE_UID_LENGTH}$"))
 
-    private fun looksLikeSecret(value: String): Boolean = value.startsWith("sk-") ||
-        value.startsWith("AIza") ||
-        (
-            value.length >= SECRET_HEX_MIN_LENGTH &&
-                value.all { it.isDigit() || it in 'a'..'f' || it in 'A'..'F' }
-            )
+private fun looksLikeSecret(value: String): Boolean = value.startsWith("sk-") ||
+    value.startsWith("AIza") ||
+    (
+        value.length >= SECRET_HEX_MIN_LENGTH &&
+            value.all { it.isDigit() || it in 'a'..'f' || it in 'A'..'F' }
+        )
 
-    private fun looksLikeConversation(value: String): Boolean = value.contains(' ') && value.length > CONVERSATION_MIN_LENGTH
+private fun looksLikeConversation(value: String): Boolean = value.contains(' ') && value.length > CONVERSATION_MIN_LENGTH
 
-    private fun decodeQueryComponent(raw: String): String = runCatching { java.net.URLDecoder.decode(raw.replace("+", "%20"), Charsets.UTF_8.name()) }
-        .getOrDefault(raw)
+private fun decodeQueryComponent(raw: String): String = runCatching { java.net.URLDecoder.decode(raw.replace("+", "%20"), Charsets.UTF_8.name()) }
+    .getOrDefault(raw)
 
-    private fun parseQuery(raw: String?): Map<String, String> {
-        if (raw.isNullOrBlank()) return emptyMap()
-        return raw.split('&').mapNotNull { pair ->
-            val parts = pair.split('=', limit = 2)
-            if (parts.isEmpty()) {
-                null
-            } else {
-                decodeQueryComponent(parts[0]) to decodeQueryComponent(parts.getOrElse(1) { "" })
-            }
-        }.toMap()
-    }
-
-    private fun firstNonEmpty(vararg values: String?): String? {
-        for (value in values) {
-            val trimmed = value?.trim().orEmpty()
-            if (trimmed.isNotEmpty()) return trimmed
+private fun parseQuery(raw: String?): Map<String, String> {
+    if (raw.isNullOrBlank()) return emptyMap()
+    return raw.split('&').mapNotNull { pair ->
+        val parts = pair.split('=', limit = 2)
+        if (parts.isEmpty()) {
+            null
+        } else {
+            decodeQueryComponent(parts[0]) to decodeQueryComponent(parts.getOrElse(1) { "" })
         }
-        return null
+    }.toMap()
+}
+
+private fun firstNonEmpty(vararg values: String?): String? {
+    for (value in values) {
+        val trimmed = value?.trim().orEmpty()
+        if (trimmed.isNotEmpty()) return trimmed
     }
+    return null
+}
+
+private fun deviceApprovalFallbackEventId(
+    type: String,
+    deviceId: String?,
+    createdAt: String?,
+): String? {
+    if (type != "device_approval_request" || createdAt == null) return null
+    return if (deviceId != null) "device-approval-$deviceId-$createdAt" else "device-approval-$createdAt"
+}
+
+private fun decideNavigation(
+    envelope: MobilePushEnvelope,
+    activeUid: String?,
+    nowMs: Long,
+    lastConsumedEventId: String?,
+    requireUidAndExpiry: Boolean,
+): MobileNavigationDecision {
+    val uid = firstNonEmpty(envelope.uid)
+    if (uid != null) {
+        val active = firstNonEmpty(activeUid)
+        if (active == null || uid != active) return MobileNavigationDecision.IGNORE_ACCOUNT_MISMATCH
+    } else if (requireUidAndExpiry) {
+        return MobileNavigationDecision.IGNORE_STALE
+    }
+    val expires = envelope.expiresAtMs
+    if (expires != null) {
+        if (nowMs > expires) return MobileNavigationDecision.IGNORE_EXPIRED
+    } else if (requireUidAndExpiry) {
+        return MobileNavigationDecision.IGNORE_STALE
+    }
+    if (!envelope.eventId.isBlank() && lastConsumedEventId != null && lastConsumedEventId == envelope.eventId) {
+        return MobileNavigationDecision.IGNORE_DUPLICATE
+    }
+    return MobileNavigationDecision.NAVIGATE
 }

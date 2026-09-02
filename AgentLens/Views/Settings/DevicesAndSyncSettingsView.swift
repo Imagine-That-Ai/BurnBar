@@ -869,6 +869,12 @@ struct MacTrustedDevice: Identifiable, Equatable {
     var hasVerifiedSafetyCode: Bool {
         EscrowDeviceSafetyCode.isFingerprint(publicKeyFingerprint, boundTo: publicKeyData)
     }
+
+    /// Matches `ESCROW_PLATFORMS` / `isNativeEscrowPlatform` on the server.
+    /// Web escrow registrations cannot bootstrap or approve a companion Mac.
+    var isNativeEscrowPlatform: Bool {
+        ["macos", "ios", "ipados", "android", "linux"].contains(platform.lowercased())
+    }
 }
 
 @MainActor
@@ -998,6 +1004,7 @@ final class DeviceTrustViewModel {
     }
 
     func approve(deviceID: String) async {
+        await load()
         if let blocked = Self.approvalBlockReason(
             deviceID: deviceID,
             devices: trustedDevices
@@ -1024,7 +1031,9 @@ final class DeviceTrustViewModel {
         if current.trustState == .trusted {
             return current.id == deviceID ? MacCopy.pendingApprovalNeedsTrustedApprover : nil
         }
-        let hasTrustedOther = devices.contains { $0.trustState == .trusted && !$0.isCurrentDevice }
+        let hasTrustedOther = devices.contains {
+            $0.trustState == .trusted && !$0.isCurrentDevice && $0.isNativeEscrowPlatform
+        }
         if current.id == deviceID && !hasTrustedOther {
             return nil
         }
