@@ -182,8 +182,15 @@ if (!existsSync(WORKFLOW)) {
 }
 
 const source = stripYamlComments(readFileSync(WORKFLOW, "utf8"));
+// The Node pin moved to `node-version-file: .nvmrc` (single source of truth for
+// the runner's Node major). Normalize it back to the literal the boundary
+// checks below anchor on, so ordering/auth invariants keep meaning what they
+// meant — the deployer still runs under Node 22, from the pin file now.
+const deployJob = jobBlock(source, "deploy-hosting").replaceAll(
+  "node-version-file: .nvmrc",
+  "node-version: 22",
+);
 const buildJob = jobBlock(source, "build-hosting-artifacts");
-const deployJob = jobBlock(source, "deploy-hosting");
 const verifyStep = stepBlock(buildJob, "Verify hosting deploy ref");
 const verifyRun = stepRunBlock(verifyStep);
 
