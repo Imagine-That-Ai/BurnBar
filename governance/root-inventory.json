@@ -132,7 +132,7 @@
     },
     {
       "path": ".xcode-version",
-      "purpose": "The pinned Xcode major/range the openburnbar-test-matrix drift tripwire reads (W0-7 toolchain pins; ADR docs/ARCHITECTURE/011)."
+      "purpose": "The pinned Xcode major/range the openburnbar-test-matrix drift tripwire reads (W0-7 toolchain pins; ADR docs/architecture/011)."
     },
     {
       "path": "AGENTS.md",
@@ -276,7 +276,7 @@
     {
       "path": ".xcode-version",
       "addedBy": "Wave-0 W0-7",
-      "reason": "The Xcode major/range pin file the openburnbar-test-matrix drift tripwire reads (dotfile convention alongside .nvmrc). ADR docs/ARCHITECTURE/011-toolchain-pins.md."
+      "reason": "The Xcode major/range pin file the openburnbar-test-matrix drift tripwire reads (dotfile convention alongside .nvmrc). ADR docs/architecture/011-toolchain-pins.md."
     }
   ]
 }

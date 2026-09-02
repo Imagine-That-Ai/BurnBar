@@ -983,7 +983,7 @@ test("rust-and-csharp preserves the Rust toolchain step after the PR-head checko
   const rust = workflowJob(core, "rust-and-csharp");
   assert.match(
     rust,
-    /^      - name: Install Rust toolchain\n        uses: dtolnay\/rust-toolchain@[0-9a-f]+\s*# v1\n        with:\n          toolchain: "1\.96\.0"\n          components: rustfmt,clippy\n/mu,
+    /^      - name: Install Rust toolchain\n        uses: dtolnay\/rust-toolchain@[0-9a-f]+\s*# v1\n        with:\n          toolchain: "1\.96\.0"[^\n]*\n          components: rustfmt,clippy\n/mu,
     "rust-and-csharp must keep the Install Rust toolchain step (dtolnay/rust-toolchain) — the pre-fix edit accidentally dropped it",
   );
 });

@@ -183,7 +183,7 @@
     "scripts/ci/verify-domain-core-release-gate.mjs": ["ebd3b8c2cdc089b5","859f17190500fa6d","b912fa8b94e42370","53630929090da9ed"],
     "scripts/ci/verify-domain-core-release-gate.test.mjs": ["3e734df76c169177","56ad3d9c2b6a4994","4a2646b4842ab35a","442b9af9b29a32c7"],
     "scripts/ci/verify-domain-core-rollback.mjs": ["8e9fb5d8cad66355","b20f83ebdc2fe8e2","af48085259ad0a72","da2fc8ddf988a499"],
-    "scripts/ci/verify-domain-core-workflows.test.mjs": ["51503d16c47fa0e8","4b22846e6ff09364","abad8e79d2e9447e","d5292b54720ae003"],
+    "scripts/ci/verify-domain-core-workflows.test.mjs": ["7a8da033371f2b24","50848f1c5568d739","911d8a4f6ac9d5ab","fc33bafdd15e8fa7"],
     "scripts/ci/verify-existing-domain-core-deployment.mjs": ["0a66d2189fe4d32a","1245abf3af4eb9aa","8d3fdaff7b155a85","1b3d58909907a0ac"],
     "scripts/ci/verify-existing-domain-core-deployment.test.mjs": ["c5b57e42092e4172","c72f649bd4cde9d0","88945440d10eaddd","157b939f37986938"],
     "scripts/ci/verify-existing-tag-dry-run-recovery.mjs": ["83103b16976b2a21","e0b5eb7a3007acfc","bcc8e28b618bff54","254313546d491454"],
