@@ -1,0 +1,109 @@
+name: Nightly health scoreboard
+
+on:
+  schedule:
+    # The monitored Linux lane starts at 10:17 UTC and has a 75-minute cap;
+    # the repair sweep starts at 12:45 UTC and has a 60-minute cap. Leave
+    # enough room for both to finish before scoring the day.
+    - cron: "15 14 * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  checks: read
+  contents: read
+  issues: write
+
+concurrency:
+  group: nightly-health-scoreboard
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    name: Collect six-lane health scoreboard
+    runs-on: ubuntu-latest
+    # reason: cap on a new observation job (GitHub API reads only), not a raise.
+    timeout-minutes: 15
+    outputs:
+      status: ${{ steps.collect.outputs.status }}
+      red: ${{ steps.collect.outputs.red }}
+      red_lanes: ${{ steps.collect.outputs.red_lanes }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 22
+
+      - name: Collect workflow-run and Checks API health
+        id: collect
+        # reason: the collector must not abort the job before the scoreboard is
+        # uploaded; "Fail closed on red or unavailable" below re-fails the job
+        # from steps.collect.outputs.status, and open-failure-issue pages on it.
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_API_URL: ${{ github.api_url }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/openburnbar-health"
+          node scripts/ci/nightly-health.mjs \
+            --repo "$GITHUB_REPOSITORY" \
+            --out "$RUNNER_TEMP/openburnbar-health/nightly-health.json"
+
+      - name: Upload six-lane health scoreboard
+        if: always()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: nightly-health-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/openburnbar-health/nightly-health.json
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Fail closed on red or unavailable health data
+        if: always()
+        run: |
+          set -euo pipefail
+          status="${{ steps.collect.outputs.status }}"
+          if [[ "${status:-red}" != "green" ]]; then
+            echo "::error::Nightly health scoreboard is ${status:-unavailable}; red and unavailable health data are blocking."
+            exit 1
+          fi
+
+  open-failure-issue:
+    name: Record nightly health failure
+    runs-on: ubuntu-latest
+    needs: collect
+    if: always() && needs.collect.result != 'success'
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - name: Record six-lane health failure
+        uses: ./.github/actions/ops-failure-issue
+        with:
+          mode: open
+          lane: nightly-health
+          title-prefix: Nightly health scoreboard is red
+          summary: The six-lane scheduled health scoreboard is red or unavailable.
+          details: |
+            Collector result: `${{ needs.collect.result }}`
+            Red lanes: `${{ needs.collect.outputs.red_lanes || 'unavailable' }}`
+            Download the `nightly-health-${{ github.run_id }}-${{ github.run_attempt }}` artifact for the machine-readable report.
+          paging-slack-webhook: ${{ secrets.OPS_PAGING_SLACK_WEBHOOK }}
+
+  close-resolved-issue:
+    name: Close resolved nightly health issue
+    runs-on: ubuntu-latest
+    needs: collect
+    if: always() && needs.collect.result == 'success'
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - name: Close resolved six-lane health failure
+        uses: ./.github/actions/ops-failure-issue
+        with:
+          mode: close
+          lane: nightly-health
+          title-prefix: Nightly health scoreboard is red

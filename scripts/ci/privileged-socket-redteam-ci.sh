@@ -16,20 +16,48 @@ cd "$repo_root"
 
 SOCKET_PATH="/var/run/openburnbar-virtual-hid.sock"
 BRIDGE_LOG="$(mktemp -t openburnbar-bridge-log)"
+ARTIFACT_DIR="${OPENBURNBAR_DAST_ARTIFACT_DIR:-${RUNNER_TEMP:-/tmp}/openburnbar-dast-redteam}"
+RESULT_PATH="${ARTIFACT_DIR}/privileged-socket-redteam-result.json"
+mkdir -p "$ARTIFACT_DIR"
+
+write_result() {
+  local status="$1"
+  local failure_class="$2"
+  local reason_code="$3"
+  local failure_class_json="null"
+  local reason_code_json="null"
+  if [[ -n "$failure_class" ]]; then failure_class_json="\"${failure_class}\""; fi
+  if [[ -n "$reason_code" ]]; then reason_code_json="\"${reason_code}\""; fi
+  cat > "$RESULT_PATH" <<JSON
+{
+  "schemaVersion": 1,
+  "status": "${status}",
+  "failureClass": ${failure_class_json},
+  "reasonCode": ${reason_code_json}
+}
+JSON
+}
 
 echo "==> Building bridge + red-team probe (debug, ad-hoc signed)"
-swift build --package-path OpenBurnBarDaemon \
+if ! swift build --package-path OpenBurnBarDaemon \
   --product OpenBurnBarVirtualHIDBridge \
   --product OpenBurnBarPrivilegedSocketRedTeamProbe \
-  -c debug
+  -c debug; then
+  write_result "infra-failed" "infra" "privileged-build-failed"
+  exit 2
+fi
 
-BIN_PATH="$(swift build --package-path OpenBurnBarDaemon -c debug --show-bin-path)"
+if ! BIN_PATH="$(swift build --package-path OpenBurnBarDaemon -c debug --show-bin-path)"; then
+  write_result "infra-failed" "infra" "privileged-build-path-unavailable"
+  exit 2
+fi
 BRIDGE="${BIN_PATH}/OpenBurnBarVirtualHIDBridge"
 PROBE="${BIN_PATH}/OpenBurnBarPrivilegedSocketRedTeamProbe"
 if [[ ! -x "$BRIDGE" || ! -x "$PROBE" ]]; then
   echo "FAIL: binaries missing"
   echo "bridge_path=${BRIDGE}"
   echo "probe_path=${PROBE}"
+  write_result "infra-failed" "infra" "privileged-binaries-missing"
   exit 2
 fi
 
@@ -51,6 +79,7 @@ for _ in $(seq 1 40); do
 done
 if [[ ! -S "$SOCKET_PATH" ]]; then
   echo "FAIL: bridge socket never appeared"
+  write_result "infra-failed" "infra" "privileged-socket-not-ready"
   exit 2
 fi
 
@@ -62,12 +91,17 @@ set -e
 echo "probe_exit_code=$PROBE_EXIT"
 if [[ "$PROBE_EXIT" -eq 0 ]]; then
   echo "FAIL: unsigned probe was ACCEPTED by the privileged socket (peer auth broken)"
+  write_result "failed" "product" "privileged-peer-auth-accepted"
   exit 1
 fi
 
 echo "==> Running PrivilegedSocketRedTeamIntegrationTests against the live socket"
 RUN_PRIVILEGED_SOCKET_REDTEAM=1 OPENBURNBAR_REDTEAM_PROBE_PATH="$PROBE" swift test \
   --package-path OpenBurnBarDaemon \
-  --filter PrivilegedSocketRedTeamIntegrationTests
+  --filter PrivilegedSocketRedTeamIntegrationTests || {
+    write_result "failed" "product" "privileged-redteam-test-failed"
+    exit 1
+  }
 
+write_result "passed" "" ""
 echo "PASS: privileged socket red-team gate (unsigned peer rejected on live socket)"

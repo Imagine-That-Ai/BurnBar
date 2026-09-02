@@ -4,9 +4,14 @@ const {
   BLOCKER_LABEL,
   ESCALATED_LABEL,
   ESCALATION_AFTER_MS,
+  REPAGE_LABEL,
+  SEVEN_DAY_REPAGE_AFTER_MS,
   P0_LABEL,
   PAGED_LABEL,
+  classifyFailure,
   evaluateP0Escalation,
+  evaluateSevenDayRepage,
+  shouldRepageP0,
   shouldPageP0,
 } = require("./escalation.cjs");
 
@@ -66,6 +71,93 @@ test("invalid issue timestamps fail closed", () => {
   assert.throws(
     () => evaluateP0Escalation(issue({ createdAt: "invalid" }), now),
     /valid timestamps/
+  );
+});
+
+test("re-pages an unblocked P0 at the seven-day tier exactly once", () => {
+  const sevenDayIssue = issue({
+    ageMs: SEVEN_DAY_REPAGE_AFTER_MS,
+    labels: [P0_LABEL, PAGED_LABEL],
+  });
+  assert.deepEqual(evaluateSevenDayRepage(sevenDayIssue, now), {
+    shouldRepage: true,
+    reason: "repage-p0",
+    ageHours: 168,
+  });
+  assert.deepEqual(
+    evaluateSevenDayRepage(
+      { ...sevenDayIssue, labels: [P0_LABEL, PAGED_LABEL, REPAGE_LABEL] },
+      now,
+    ),
+    { shouldRepage: false, reason: "already-repaged" },
+  );
+});
+
+test("does not re-page before seven days or for a named blocker", () => {
+  assert.equal(
+    evaluateSevenDayRepage(
+      issue({ ageMs: SEVEN_DAY_REPAGE_AFTER_MS - 1, labels: [P0_LABEL, PAGED_LABEL] }),
+      now,
+    ).reason,
+    "within-seven-day-slo",
+  );
+  assert.deepEqual(
+    evaluateSevenDayRepage(
+      issue({ ageMs: SEVEN_DAY_REPAGE_AFTER_MS, labels: [P0_LABEL, PAGED_LABEL, BLOCKER_LABEL] }),
+      now,
+    ),
+    { shouldRepage: false, reason: "named-blocker" },
+  );
+});
+
+test("shouldRepageP0 has explicit mode, timestamp, and label gates", () => {
+  const createdAt = new Date(now - SEVEN_DAY_REPAGE_AFTER_MS).toISOString();
+  assert.deepEqual(
+    shouldRepageP0({ mode: "open", labels: [P0_LABEL, PAGED_LABEL], createdAt, nowMs: now }),
+    { shouldRepage: true, reason: "repage-p0", ageHours: 168 },
+  );
+  assert.deepEqual(
+    shouldRepageP0({ mode: "close", labels: [P0_LABEL, PAGED_LABEL], createdAt, nowMs: now }),
+    { shouldRepage: false, reason: "not-open-mode" },
+  );
+  assert.deepEqual(
+    shouldRepageP0({ mode: "open", labels: [P0_LABEL], createdAt, nowMs: now }),
+    { shouldRepage: false, reason: "not-initially-paged" },
+  );
+});
+
+test("classifies infra-failed and skipped states separately from budget failures", () => {
+  assert.deepEqual(
+    classifyFailure({ conclusion: "failure", reasonCode: "helper-timeout" }),
+    { classification: "infra", failureClass: "infra", reasonCode: "helper-timeout" },
+  );
+  assert.deepEqual(
+    classifyFailure({ conclusion: "infra-failed" }),
+    { classification: "infra", failureClass: "infra", reasonCode: "infra-failed" },
+  );
+  assert.deepEqual(
+    classifyFailure({ conclusion: "skipped" }),
+    { classification: "infra", failureClass: "infra", reasonCode: "skipped" },
+  );
+  assert.deepEqual(
+    classifyFailure({ conclusion: "failure" }),
+    { classification: "budget", failureClass: "budget", reasonCode: "budget-failed" },
+  );
+  assert.deepEqual(
+    classifyFailure({ conclusion: "success", reasonCode: "linux-performance-budget-failed" }),
+    { classification: "budget", failureClass: "budget", reasonCode: "linux-performance-budget-failed" },
+  );
+  assert.deepEqual(
+    classifyFailure({ conclusion: "stale" }),
+    { classification: "infra", failureClass: "infra", reasonCode: "unknown-conclusion" },
+  );
+  assert.deepEqual(
+    classifyFailure({ status: "queued", conclusion: "success" }),
+    { classification: "infra", failureClass: "infra", reasonCode: "infra-failed" },
+  );
+  assert.deepEqual(
+    classifyFailure({ status: "skipped", conclusion: "success" }),
+    { classification: "infra", failureClass: "infra", reasonCode: "infra-failed" },
   );
 });
 

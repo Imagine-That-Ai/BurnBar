@@ -14,7 +14,10 @@ fs.mkdirSync(outDir, { recursive: true });
 // packaged desktop. Keep enough headroom for that native build plus the full
 // AT-SPI route/tray/accessibility matrix; the workflow job itself remains
 // bounded by its 75-minute timeout.
-const desktopSessionTimeoutMs = Number.parseInt(process.env.OB_SHELL_DESKTOP_TIMEOUT_MS || '3600000', 10);
+const requestedTimeoutMs = Number.parseInt(process.env.OB_SHELL_DESKTOP_TIMEOUT_MS || '3600000', 10);
+const desktopSessionTimeoutMs = Number.isSafeInteger(requestedTimeoutMs) && requestedTimeoutMs > 0
+  ? requestedTimeoutMs
+  : 3_600_000;
 
 function normalizeTranscript(text) {
   return text
@@ -76,12 +79,28 @@ const result = spawnSync('docker', dockerArgs, {
   timeout: desktopSessionTimeoutMs
 });
 const timedOut = result.error?.code === 'ETIMEDOUT';
+const exitCode = timedOut ? 124 : result.status ?? 1;
+const dockerInvocationFailed = [125, 126, 127].includes(result.status);
+const processInvocationFailed = result.status === null && Boolean(result.error || result.signal);
+const failure = exitCode === 0
+  ? { failureClass: null, reasonCode: null }
+  : timedOut
+    ? { failureClass: 'infra', reasonCode: 'desktop-session-timeout' }
+    : result.error?.code === 'ENOENT' || dockerInvocationFailed
+      ? { failureClass: 'infra', reasonCode: 'docker-unavailable' }
+      : processInvocationFailed
+        ? { failureClass: 'infra', reasonCode: 'desktop-session-failed' }
+        : { failureClass: 'product', reasonCode: 'desktop-session-failed' };
+const { failureClass, reasonCode } = failure;
 
 const transcript = [
   `docker ${dockerArgs.join(' ')}`,
-  `exit_code=${timedOut ? 124 : result.status ?? 1}`,
+  `exit_code=${exitCode}`,
   `timed_out=${timedOut ? 'true' : 'false'}`,
   `timeout_ms=${desktopSessionTimeoutMs}`,
+  `status=${exitCode === 0 ? 'passed' : failureClass === 'infra' ? 'infra-failed' : 'failed'}`,
+  `failure_class=${failureClass ?? 'none'}`,
+  `reason_code=${reasonCode ?? 'none'}`,
   result.stdout ?? '',
   `${result.stderr ?? ''}${timedOut ? `\ncommand timed out after ${desktopSessionTimeoutMs}ms\n` : ''}`
 ].join('\n');
@@ -90,6 +109,18 @@ fs.writeFileSync(
   path.join(outDir, 'linux-desktop-session-wrapper-transcript.txt'),
   normalizeTranscript(transcript) + '\n'
 );
+fs.writeFileSync(
+  path.join(outDir, 'linux-desktop-session-wrapper-result.json'),
+  JSON.stringify({
+    schemaVersion: 1,
+    status: exitCode === 0 ? 'passed' : failureClass === 'infra' ? 'infra-failed' : 'failed',
+    failureClass,
+    reasonCode,
+    exitCode,
+    timedOut,
+    timeoutMs: desktopSessionTimeoutMs
+  }, null, 2) + '\n'
+);
 normalizeTranscriptFile(path.join(outDir, 'linux-deb-install-run-transcript.txt'));
 normalizeTranscriptFile(path.join(outDir, 'linux-tauri-build-transcript.txt'));
 process.stdout.write(result.stdout ?? '');
@@ -97,4 +128,4 @@ process.stderr.write(result.stderr ?? '');
 if (timedOut) {
   process.stderr.write(`command timed out after ${desktopSessionTimeoutMs}ms\n`);
 }
-process.exit(timedOut ? 124 : result.status ?? 1);
+process.exit(exitCode);
