@@ -119,7 +119,7 @@ describe("BOLA — pairing", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "completeCliLink",
       run,
-      expectedCode: "not-found",
+      expectedCode: "permission-denied",
       expectedOutcome: "throws",
     });
   });
@@ -131,7 +131,7 @@ describe("BOLA — pairing", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "createHermesPairing",
       run,
-      expectedCode: "not-found",
+      expectedCode: "permission-denied",
       expectedOutcome: "throws",
     });
   });
@@ -143,7 +143,7 @@ describe("BOLA — pairing", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "completeHermesPairing",
       run,
-      expectedCode: "not-found",
+      expectedCode: "permission-denied",
       expectedOutcome: "throws",
     });
   });
@@ -155,7 +155,7 @@ describe("BOLA — pairing", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "createPiAgentPairing",
       run,
-      expectedCode: "not-found",
+      expectedCode: "permission-denied",
       expectedOutcome: "throws",
     });
   });
@@ -167,7 +167,7 @@ describe("BOLA — pairing", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "completePiAgentPairing",
       run,
-      expectedCode: "not-found",
+      expectedCode: "permission-denied",
       expectedOutcome: "throws",
     });
   });

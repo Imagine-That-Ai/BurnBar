@@ -48,14 +48,27 @@ test('failed shell smoke steps leave a redacted machine-readable summary', () =>
     const summary = JSON.parse(fs.readFileSync(summaryPath, 'utf8'));
     assert.equal(summary.schemaVersion, 1);
     assert.equal(summary.type, 'openburnbar.shell-smoke-failure');
+    assert.equal(summary.status, 'infra-failed');
+    assert.equal(summary.failureClass, 'infra');
+    assert.equal(summary.reasonCode, 'linux-dependency-install-failed');
     assert.equal(summary.failedSteps.length, 3);
     assert.deepEqual(summary.failedSteps.map((step) => step.index), [1, 2, 3]);
     assert.ok(summary.failedSteps.every((step) => (
       step.status === 'failed' &&
       step.exitCode === 7 &&
       step.timed_out === false &&
+      typeof step.failureClass === 'string' &&
+      typeof step.reasonCode === 'string' &&
       typeof step.command === 'string'
     )));
+    assert.deepEqual(
+      summary.failedSteps.map((step) => step.reasonCode),
+      [
+        'linux-dependency-install-failed',
+        'linux-shell-tests-failed',
+        'linux-shell-build-failed'
+      ]
+    );
     assert.equal(summary.steps.length, 8);
     const transcript = summary.artifacts.find((artifact) => artifact.name === 'smoke-transcript.txt');
     assert.ok(transcript && transcript.sizeBytes > 0, 'summary should inventory the transcript');

@@ -249,15 +249,6 @@ while [ "$test_attempt" -le "$max_test_attempts" ]; do
         break
     fi
 
-    if is_xcode_false_negative_pass "$xcodebuild_log"; then
-        emit_attempt_event "$test_attempt" "$last_test_exit_code" "xcode_false_negative_passed" "$attempt_duration" "$attempt_xcresult"
-        echo ">>> xcodebuild exited $last_test_exit_code after XCTest reported Selected tests passed with 0 failures; accepting attempt as passed."
-        final_exit_code=0
-        final_outcome="passed"
-        final_xcresult="$attempt_xcresult"
-        break
-    fi
-
     if is_known_hang "$xcodebuild_log"; then
         emit_attempt_event "$test_attempt" "$last_test_exit_code" "hang_retry" "$attempt_duration" "$attempt_xcresult"
         echo ">>> Detected known XCTest startup hang on retrieval-eval attempt $test_attempt (exit $last_test_exit_code)."

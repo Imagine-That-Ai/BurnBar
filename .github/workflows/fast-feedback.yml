@@ -29,6 +29,25 @@ jobs:
   classify:
     uses: ./.github/workflows/ci-impact.yml
 
+  # ── Vendor binary integrity ───────────────────────────────────────────────
+  # This is deliberately a small always-on job: the manifest covers only the
+  # tracked Vendor AARs, so it completes in seconds and exercises the same
+  # verification path used by the local tamper test.
+  vendor-checksums:
+    name: Vendor binary checksums
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      - name: Verify Vendor binary checksums
+        run: bash scripts/supply-chain/verify-vendor-checksums.sh
+
+      - name: Vendor checksum manifest controls
+        run: bash scripts/supply-chain/verify-vendor-checksums.test.sh
+
+      - name: Verify supply-chain provenance documentation matrix
+        run: node --test scripts/ci/verify-supply-chain-doc-matrix.test.mjs
+
   # ── Functions: lint + typecheck + unit tests ──────────────────────────────
   functions-fast:
     name: Functions (lint + types + unit tests)
@@ -575,6 +594,18 @@ jobs:
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
+      - name: Runbook topology guard
+        run: |
+          set -euo pipefail
+          node scripts/ci/check-runbook-topology.mjs
+          # Negative controls: the guard must reject its own fixtures (exit 1).
+          for fixture in bad-project-id bad-firebaserc; do
+            if node scripts/ci/check-runbook-topology.mjs --fixture "$fixture"; then
+              echo "::error::runbook topology guard accepted the $fixture fixture"
+              exit 1
+            fi
+          done
+
       - name: Validate all shell scripts
         run: |
           set -euo pipefail
@@ -634,6 +665,9 @@ jobs:
 
       - name: Source rollback target safety tests
         run: bash scripts/rollback.test.sh
+
+      - name: Revision rollback safety tests
+        run: bash scripts/ops/rollback-revision.test.sh
 
       - name: macOS appcast rollback safety tests
         run: bash scripts/ops/rollback-macos-appcast.test.sh
@@ -1478,11 +1512,17 @@ jobs:
         with:
           node-version: 22
 
+      - name: Diligence data-room index
+        run: node scripts/ci/verify-data-room.mjs --check
+
       - name: No committed compiler/build artifacts
         run: ./scripts/ci/check-no-committed-build-artifacts.sh
 
       - name: No stale failed launch evidence
         run: ./scripts/ci/check-no-stale-launch-evidence.sh
+
+      - name: Root inventory ratchet (shrink-only)
+        run: ./scripts/ci/check-root-inventory.sh
 
       - name: try? debt budget
         run: ./scripts/debt/check-try-optional-budget.sh
@@ -1564,6 +1604,7 @@ jobs:
     name: Fast Feedback Gate
     needs:
       - classify
+      - vendor-checksums
       - fast-feedback-path-filter
       - functions-fast
       - extension-fast

@@ -1,0 +1,262 @@
+{
+  "schemaVersion": 1,
+  "inventoryKind": "tracked-root-blobs",
+  "measuredFrom": "git ls-tree HEAD | awk '$2==\"blob\"'",
+  "initialRootBlobCount": 57,
+  "measuredRootBlobCount": 48,
+  "maxRootBlobCount": 48,
+  "measurementNote": "The base checkout measured 57 root blobs, matching the plan. W0-11 moves eight reports and deletes one root image, so the committed inventory contains 48; the Linux DEB deletion is not a root-blob change.",
+  "historicalRootPaths": [
+    ".audit.out",
+    ".firebaserc",
+    ".gitattributes",
+    ".gitignore",
+    ".gitleaks.toml",
+    ".gitleaksignore",
+    ".gitmodules",
+    ".jscpd.json",
+    ".mcp.json",
+    ".node-version",
+    ".nvmrc",
+    ".pre-commit-config.yaml",
+    ".secrets.baseline",
+    ".swiftformat",
+    ".swiftlint.yml",
+    ".syncpackrc.json",
+    "AGENTS.md",
+    "CHANGELOG.md",
+    "CLAUDE.md",
+    "CODE_OF_CONDUCT.md",
+    "CONTRIBUTING.md",
+    "DESIGN.md",
+    "DILIGENCE_REPORT_2026-06-10.md",
+    "DILIGENCE_REPORT_2026-06-11.md",
+    "DILIGENCE_REPORT_2026-07-12.md",
+    "DILIGENCE_REPORT_2026-07-14.md",
+    "GOVERNANCE.md",
+    "HANDOFF_MERGE_TO_MAIN_2026-06-12.md",
+    "LICENSE",
+    "Makefile",
+    "NAMES.md",
+    "NOTICE",
+    "QUICKSTART.md",
+    "README.md",
+    "REUSE.toml",
+    "SECURITY.md",
+    "SECURITY_REVIEW_2026-06-17.md",
+    "SUPPORT.md",
+    "TECH_DEBT_AUDIT_2026-06-11.md",
+    "TECH_DEBT_AUDIT_2026-06-30.md",
+    "THIRD_PARTY.md",
+    "THIRD_PARTY_NOTICES.md",
+    "TODOS.md",
+    "docker-compose.yml",
+    "firebase.arena.json",
+    "firebase.json",
+    "firestore.indexes.json",
+    "firestore.rules",
+    "index.html",
+    "knip.json",
+    "osv-scanner.toml",
+    "package-lock.json",
+    "package.json",
+    "project.yml",
+    "ruff.toml",
+    "storage.rules",
+    "tmp-utm-desktop.png"
+  ],
+  "paths": [
+    {
+      "path": ".audit.out",
+      "purpose": "Committed audit output used by repository review tooling."
+    },
+    {
+      "path": ".firebaserc",
+      "purpose": "Firebase project aliases and deployment targets."
+    },
+    {
+      "path": ".gitattributes",
+      "purpose": "Git path attributes and merge behavior."
+    },
+    {
+      "path": ".gitignore",
+      "purpose": "Repository exclusions for secrets, caches, and generated artifacts."
+    },
+    {
+      "path": ".gitleaks.toml",
+      "purpose": "Secret-scanning rules and approved detector configuration."
+    },
+    {
+      "path": ".gitleaksignore",
+      "purpose": "Reviewed secret-scanner false-positive exclusions."
+    },
+    {
+      "path": ".gitmodules",
+      "purpose": "Pinned external Git submodule declarations."
+    },
+    {
+      "path": ".jscpd.json",
+      "purpose": "Copy-paste detection configuration."
+    },
+    {
+      "path": ".mcp.json",
+      "purpose": "Local MCP server connection declarations."
+    },
+    {
+      "path": ".node-version",
+      "purpose": "Canonical Node.js runtime version for local and CI tooling."
+    },
+    {
+      "path": ".nvmrc",
+      "purpose": "Node version-manager compatibility pin."
+    },
+    {
+      "path": ".pre-commit-config.yaml",
+      "purpose": "Pre-commit validation hook configuration."
+    },
+    {
+      "path": ".secrets.baseline",
+      "purpose": "Reviewed baseline for secret-detection tooling."
+    },
+    {
+      "path": ".swiftformat",
+      "purpose": "SwiftFormat style configuration."
+    },
+    {
+      "path": ".swiftlint.yml",
+      "purpose": "SwiftLint rule configuration."
+    },
+    {
+      "path": ".syncpackrc.json",
+      "purpose": "Dependency-version consistency configuration."
+    },
+    {
+      "path": "AGENTS.md",
+      "purpose": "Canonical repository instructions for engineering agents."
+    },
+    {
+      "path": "CHANGELOG.md",
+      "purpose": "Human-readable release history."
+    },
+    {
+      "path": "CLAUDE.md",
+      "purpose": "Short agent-instruction mirror for Claude-compatible tooling."
+    },
+    {
+      "path": "CODE_OF_CONDUCT.md",
+      "purpose": "Community participation and conduct policy."
+    },
+    {
+      "path": "CONTRIBUTING.md",
+      "purpose": "Contribution, review, and development workflow."
+    },
+    {
+      "path": "DESIGN.md",
+      "purpose": "Product design system and visual language."
+    },
+    {
+      "path": "GOVERNANCE.md",
+      "purpose": "Repository governance and decision-making policy."
+    },
+    {
+      "path": "LICENSE",
+      "purpose": "AGPL-3.0-only product license notice."
+    },
+    {
+      "path": "Makefile",
+      "purpose": "Canonical local development and validation entry points."
+    },
+    {
+      "path": "NAMES.md",
+      "purpose": "Product and component naming conventions."
+    },
+    {
+      "path": "NOTICE",
+      "purpose": "Copyright and attribution notices."
+    },
+    {
+      "path": "QUICKSTART.md",
+      "purpose": "New-contributor setup and first-run guide."
+    },
+    {
+      "path": "README.md",
+      "purpose": "Public product overview, release posture, and architecture summary."
+    },
+    {
+      "path": "REUSE.toml",
+      "purpose": "REUSE licensing and copyright metadata configuration."
+    },
+    {
+      "path": "SECURITY.md",
+      "purpose": "Public vulnerability reporting policy."
+    },
+    {
+      "path": "SUPPORT.md",
+      "purpose": "Public support and issue-routing guidance."
+    },
+    {
+      "path": "THIRD_PARTY.md",
+      "purpose": "Third-party dependency policy and provenance notes."
+    },
+    {
+      "path": "THIRD_PARTY_NOTICES.md",
+      "purpose": "Third-party license and attribution inventory."
+    },
+    {
+      "path": "TODOS.md",
+      "purpose": "Committed product and engineering follow-up list."
+    },
+    {
+      "path": "docker-compose.yml",
+      "purpose": "Local service composition for development and validation."
+    },
+    {
+      "path": "firebase.arena.json",
+      "purpose": "Arena Firebase project configuration."
+    },
+    {
+      "path": "firebase.json",
+      "purpose": "Firebase emulator and deployment configuration."
+    },
+    {
+      "path": "firestore.indexes.json",
+      "purpose": "Firestore composite-index declarations."
+    },
+    {
+      "path": "firestore.rules",
+      "purpose": "Firestore authorization rules."
+    },
+    {
+      "path": "index.html",
+      "purpose": "Static web entry point."
+    },
+    {
+      "path": "knip.json",
+      "purpose": "Unused dependency and export analysis configuration."
+    },
+    {
+      "path": "osv-scanner.toml",
+      "purpose": "Open-source vulnerability scanner configuration."
+    },
+    {
+      "path": "package-lock.json",
+      "purpose": "Deterministic Node dependency lockfile."
+    },
+    {
+      "path": "package.json",
+      "purpose": "Node workspace metadata and package scripts."
+    },
+    {
+      "path": "project.yml",
+      "purpose": "XcodeGen project definition and product version source."
+    },
+    {
+      "path": "ruff.toml",
+      "purpose": "Python lint and format configuration."
+    },
+    {
+      "path": "storage.rules",
+      "purpose": "Firebase Storage authorization rules."
+    }
+  ]
+}

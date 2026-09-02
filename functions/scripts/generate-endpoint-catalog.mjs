@@ -12,6 +12,7 @@ import { parseGeneratedLiteral } from "./generated-literal-parser.mjs";
 const repoRoot = resolve(import.meta.dirname, "../..");
 const indexPath = resolve(repoRoot, "functions/src/index.ts");
 const outPath = resolve(repoRoot, "functions/src/security/endpointAuthorizationCatalog.generated.ts");
+const expectedCodesPath = resolve(repoRoot, "functions/src/__tests__/bola/bolaExpectedCodes.generated.ts");
 
 function exportedNames() {
   const source = readFileSync(indexPath, "utf8");
@@ -230,8 +231,10 @@ const CATALOG_OVERRIDES = {
         test: "resolution cannot read a cross-user route",
         kind: "runtime-cross-user",
         covers: ["resolveActiveIrohControllerRoutes"],
-        expectedOutcome: "throws",
-        expectedCode: "failed-precondition",
+        // The cross-user proof asserts an empty resolution with the victim's
+        // rows untouched; the handler does not reject, so no denial code is
+        // claimed for it.
+        expectedOutcome: "no-side-effect",
       },
     ],
     highRiskComputerUse: false,
@@ -447,11 +450,11 @@ const CATALOG_OVERRIDES = {
     handlerModule: "callables/linuxAppCheckDevices.ts",
     bolaCoverage: [{
       file: "functions/src/__tests__/linuxAppCheckDevices.test.ts",
-      test: "requires explicit trusted-native approval and an action proof",
+      test: "rejects cross-user App Check device operations without victim side effects",
       kind: "runtime-cross-user",
       covers: ["approveLinuxAppCheckDevice"],
       expectedOutcome: "throws",
-      expectedCode: "permission-denied",
+      expectedCode: "not-found",
     }],
     highRiskComputerUse: true,
   },
@@ -466,11 +469,11 @@ const CATALOG_OVERRIDES = {
     handlerModule: "callables/linuxAppCheckDevices.ts",
     bolaCoverage: [{
       file: "functions/src/__tests__/linuxAppCheckDevices.test.ts",
-      test: "lists public review material and revokes without ever returning private material",
+      test: "rejects cross-user App Check device operations without victim side effects",
       kind: "runtime-cross-user",
       covers: ["revokeLinuxAppCheckDevice"],
       expectedOutcome: "throws",
-      expectedCode: "permission-denied",
+      expectedCode: "not-found",
     }],
     highRiskComputerUse: true,
   },
@@ -971,6 +974,74 @@ const CATALOG_OVERRIDES = {
   },
 };
 
+/**
+ * Measured by the W0-12 forced-strict BOLA run. These are intentionally kept
+ * separate from the contract defaults above: W1-1a drains this ledger by
+ * aligning each handler's malformed, foreign, and missing-id paths.
+ */
+const BOLA_MEASURED_EXPECTED_CODES = {
+  appendCliAgentMissionEvent: "invalid-argument",
+  approveEscrowDeviceTrust: "invalid-argument",
+  beginBurnbarAttachment: "invalid-argument",
+  beginEncryptedSessionBlobUpload: "permission-denied",
+  cancelCliAgentMission: "invalid-argument",
+  claimCliAgentMission: "invalid-argument",
+  claimSignalPrekeyBundle: "failed-precondition",
+  commitEncryptedProjectMemorySnapshot: "permission-denied",
+  commitEncryptedSearchIndexBatch: "permission-denied",
+  commitKnowledgeBatch: "permission-denied",
+  completeCliLink: "permission-denied",
+  completeHermesPairing: "permission-denied",
+  completePiAgentPairing: "permission-denied",
+  composeBurnbarAttachment: "invalid-argument",
+  configureKnowledgeSource: "permission-denied",
+  confirmRecovery: "invalid-argument",
+  connectHostedQuotaAccount: "invalid-argument",
+  connectKnowledgeRepo: "permission-denied",
+  connectProviderAccount: "invalid-argument",
+  connectSelfHostedQuotaAccount: "invalid-argument",
+  createCliAgentMission: "invalid-argument",
+  createCredentialTransfer: "already-exists",
+  createHermesPairing: "permission-denied",
+  createPiAgentPairing: "permission-denied",
+  deleteBurnbarAttachment: "invalid-argument",
+  deleteHostedQuotaCredentials: "invalid-argument",
+  deleteKnowledgeSource: "permission-denied",
+  disconnectKnowledgeRepo: "permission-denied",
+  enqueueHermesGatewayEvent: "failed-precondition",
+  finalizeBurnbarAttachment: "invalid-argument",
+  getEncryptedProjectMemorySnapshot: "permission-denied",
+  getEncryptedSessionBlobDownloadUrl: "permission-denied",
+  mintBurnbarAttachmentPartURL: "invalid-argument",
+  publishAgentGrantAuthority: "permission-denied",
+  publishIrohPairingPublicKey: "permission-denied",
+  publishIrohPairingRecord: "permission-denied",
+  publishMissionApprovalCeiling: "invalid-argument",
+  publishPhoneControlAuthority: "permission-denied",
+  publishRelaySenderKey: "permission-denied",
+  publishSignalPrekeyBundle: "failed-precondition",
+  queryConversations: "permission-denied",
+  queueAgentCapabilityGrantRequest: "invalid-argument",
+  recordSignalRotation: "failed-precondition",
+  recordSignalSession: "failed-precondition",
+  redeemMissionApprovalAnswer: "invalid-argument",
+  registerEscrowDevice: "invalid-argument",
+  respondMissionApproval: "invalid-argument",
+  revokeHermesConnection: "permission-denied",
+  revokeIrohPairingRecord: "permission-denied",
+  revokePiAgentConnection: "permission-denied",
+  rotateCloudVaultKey: "permission-denied",
+  searchEncryptedConversationIndex: "permission-denied",
+  setHermesGatewayOversightMode: "failed-precondition",
+  signalPrekeyWatermark: "failed-precondition",
+  submitAgentNotificationReply: "invalid-argument",
+  ticketBurnbarAttachmentDownload: "invalid-argument",
+  updateCliAgentMissionStatus: "invalid-argument",
+  updateHermesConnectionStatus: "permission-denied",
+  updatePiAgentConnectionStatus: "permission-denied",
+  consumeCredentialTransfer: "permission-denied",
+};
+
 const SIGNAL_MIGRATION_TRIGGER_NAMES = [
   "onSignalMigrationAgentIdentityWritten",
   "onSignalMigrationApprovalPolicyWritten",
@@ -1316,11 +1387,57 @@ if (!existingJson) {
 const prior = parseGeneratedLiteral(existingJson[1]);
 const priorByName = Object.fromEntries(prior.map((row) => [row.exportedName, row]));
 
-const merged = names.map((exportedName) => {
-  const base = priorByName[exportedName] ?? defaultEntry(exportedName);
-  const override = CATALOG_OVERRIDES[exportedName];
-  return override ? { ...base, ...override, exportedName } : base;
-});
+const merged = names
+  .map((exportedName) => {
+    const base = priorByName[exportedName] ?? defaultEntry(exportedName);
+    const override = CATALOG_OVERRIDES[exportedName];
+    return override ? { ...base, ...override, exportedName } : base;
+  })
+  .map((entry) => {
+    const measuredCode = BOLA_MEASURED_EXPECTED_CODES[entry.exportedName];
+    if (!measuredCode) return entry;
+
+    let updatedRuntimeRef = false;
+    const bolaCoverage = entry.bolaCoverage.map((ref) => {
+      if (ref.kind !== "runtime-cross-user" || !ref.covers.includes(entry.exportedName)) {
+        return ref;
+      }
+      updatedRuntimeRef = true;
+      return { ...ref, expectedCode: measuredCode };
+    });
+    if (!updatedRuntimeRef) {
+      throw new Error(`Measured BOLA code has no runtime coverage ref for ${entry.exportedName}`);
+    }
+    return { ...entry, bolaCoverage };
+  });
+
+// The ledger never invents a code: an object-id endpoint either has a measured
+// denial code on its runtime-cross-user ref, or an explicit no-side-effect
+// outcome. A throwing ref without a measured code fails generation.
+const objectExpectedCodes = Object.fromEntries(
+  merged
+    .filter((entry) => entry.objectIdsFromClient?.length > 0)
+    .map((entry) => {
+      const runtimeRefs = entry.bolaCoverage.filter(
+        (ref) => ref.kind === "runtime-cross-user" && ref.covers.includes(entry.exportedName),
+      );
+      const codedRef = runtimeRefs.find((ref) => typeof ref.expectedCode === "string");
+      if (codedRef) return [entry.exportedName, codedRef.expectedCode];
+      if (runtimeRefs.some((ref) => ref.expectedOutcome === "no-side-effect")) {
+        return [entry.exportedName, "no-side-effect"];
+      }
+      throw new Error(
+        `${entry.exportedName}: runtime-cross-user coverage claims a rejection but has no measured expectedCode; ` +
+          "add it to BOLA_MEASURED_EXPECTED_CODES or mark the ref expectedOutcome: \"no-side-effect\"",
+      );
+    }),
+);
+
+if (Object.keys(objectExpectedCodes).length !== 95) {
+  throw new Error(
+    `Expected exactly 95 object-id endpoint codes, found ${Object.keys(objectExpectedCodes).length}`,
+  );
+}
 
 const header = `/** AUTO-GENERATED by scripts/generate-endpoint-catalog.mjs — do not hand-edit rows. */
 import type { EndpointAuthorizationEntry } from "./bolaCoverageTypes.js";
@@ -1333,4 +1450,13 @@ writeFileSync(
 `,
 );
 
+const expectedCodesHeader = `/** AUTO-GENERATED by scripts/generate-endpoint-catalog.mjs — do not hand-edit rows. */
+import type { BolaLedgerCode } from "../../security/bolaCoverageTypes.js";
+
+export const BOLA_EXPECTED_CODES: Record<string, BolaLedgerCode> = `;
+
+writeFileSync(expectedCodesPath, `${expectedCodesHeader}${formatTsLiteral(objectExpectedCodes)};
+`);
+
 console.log(`Wrote ${merged.length} catalog entries to ${outPath}`);
+console.log(`Wrote ${Object.keys(objectExpectedCodes).length} BOLA expected codes to ${expectedCodesPath}`);

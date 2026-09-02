@@ -64,7 +64,7 @@ Three pillars, all already true in the codebase and to be **preserved**:
 ## 2. Prerequisites (must land before any parity code)
 
 ### 2.1 Fix the data-lifecycle debt (BLOCKER)
-The plan writes code chunks — far bulkier than conversation text — into exactly the substrate that already has a critical lifecycle bug. Per `TECH_DEBT_AUDIT_2026-06-11.md` (T7, item 148):
+The plan writes code chunks — far bulkier than conversation text — into exactly the substrate that already has a critical lifecycle bug. Per `audits/2026-06/TECH_DEBT_AUDIT_2026-06-11.md` (T7, item 148):
 - `INSERT OR REPLACE` bypasses FTS delete triggers → **1.94M orphaned rows, ~11.5 GB of a 14.3 GB DB** holding ~41 MB of logical text.
 - `projection_jobs` is **99.9% dead rows, never reaped** (`ProjectionStore.swift`).
 - Retention purge is a **no-op stub**.
