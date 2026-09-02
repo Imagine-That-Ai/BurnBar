@@ -79,12 +79,14 @@ PY
 
 write_asset_with_sidecars() {
   local release_dir="$1" tag="$2" name="$3" sidecar_runner_environment="$4" signed_runner_environment="$5"
+  local sidecar_predicate_type="${6:-https://openburnbar.dev/attestations/release-artifact/v1}"
+  local signed_predicate_type="${7:-${sidecar_predicate_type}}"
   local version="${tag#v}"
   local asset="$release_dir/$name"
   local safe
   safe="$(safe_name "$name")"
   printf 'fixture asset: %s\n' "$name" >"$asset"
-  python3 - "$asset" "$release_dir/${safe}.predicate.json" "$release_dir/${safe}.sigstore.json" "$tag" "$version" "$name" "$sidecar_runner_environment" "$signed_runner_environment" <<'PY'
+  python3 - "$asset" "$release_dir/${safe}.predicate.json" "$release_dir/${safe}.sigstore.json" "$tag" "$version" "$name" "$sidecar_runner_environment" "$signed_runner_environment" "$sidecar_predicate_type" "$signed_predicate_type" "${FIXTURE_PREDICATE_LAYOUT:-auto}" <<'PY'
 import base64
 import hashlib
 import json
@@ -98,29 +100,54 @@ version = sys.argv[5]
 name = sys.argv[6]
 sidecar_runner_environment = sys.argv[7]
 signed_runner_environment = sys.argv[8]
-predicate = {
-    "predicateType": "https://openburnbar.dev/attestations/release-artifact/v1",
-    "artifact": {
-        "fileName": name,
-        "sha256": hashlib.sha256(asset.read_bytes()).hexdigest(),
-        "sizeBytes": asset.stat().st_size,
-    },
-    "release": {
-        "version": version,
-        "tag": tag,
-        "repository": "Imagine-That-Ai/BurnBar",
-        "ref": f"refs/tags/{tag}",
-    },
-    "runner": {
-        "environment": sidecar_runner_environment,
-    },
+sidecar_predicate_type = sys.argv[9]
+signed_predicate_type = sys.argv[10]
+layout = sys.argv[11] if len(sys.argv) > 11 else "auto"
+SLSA_TYPE = "https://slsa.dev/provenance/v1"
+SLSA_BUILD_TYPE = "https://openburnbar.dev/slsa/build-types/macos-release/v1"
+artifact = {
+    "fileName": name,
+    "sha256": hashlib.sha256(asset.read_bytes()).hexdigest(),
+    "sizeBytes": asset.stat().st_size,
 }
+release = {
+    "version": version,
+    "tag": tag,
+    "repository": "Imagine-That-Ai/BurnBar",
+    "ref": f"refs/tags/{tag}",
+}
+
+
+def build_predicate(runner_environment):
+    # Mirrors release.yml: SLSA-typed statements carry a SLSA v1 predicate,
+    # legacy-typed statements carry the flat legacy layout.
+    if sidecar_predicate_type == SLSA_TYPE and layout != "legacy":
+        return {
+            "buildDefinition": {
+                "buildType": SLSA_BUILD_TYPE,
+                "externalParameters": {"artifact": artifact, "release": release},
+                "internalParameters": {"runner": {"environment": runner_environment}},
+            },
+            "runDetails": {
+                "builder": {
+                    "id": f"https://github.com/Imagine-That-Ai/BurnBar/.github/workflows/release.yml@refs/tags/{tag}",
+                },
+            },
+        }
+    return {
+        "predicateType": sidecar_predicate_type,
+        "artifact": artifact,
+        "release": release,
+        "runner": {"environment": runner_environment},
+    }
+
+
+predicate = build_predicate(sidecar_runner_environment)
 predicate_path.write_text(json.dumps(predicate, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-signed_predicate = dict(predicate)
-signed_predicate["runner"] = {"environment": signed_runner_environment}
+signed_predicate = build_predicate(signed_runner_environment)
 statement = {
     "_type": "https://in-toto.io/Statement/v1",
-    "predicateType": "https://openburnbar.dev/attestations/release-artifact/v1",
+    "predicateType": signed_predicate_type,
     "predicate": signed_predicate,
 }
 bundle = {
@@ -139,11 +166,13 @@ new_release_fixture() {
   local tag="$1"
   local sidecar_runner_environment="${2:-github-hosted}"
   local signed_runner_environment="${3:-${sidecar_runner_environment}}"
+  local sidecar_predicate_type="${4:-https://openburnbar.dev/attestations/release-artifact/v1}"
+  local signed_predicate_type="${5:-${sidecar_predicate_type}}"
   local release_dir="$tmp_root/releases/$tag"
   mkdir -p "$release_dir"
-  write_asset_with_sidecars "$release_dir" "$tag" "OpenBurnBar-${tag#v}-macOS.dmg" "$sidecar_runner_environment" "$signed_runner_environment"
-  write_asset_with_sidecars "$release_dir" "$tag" "OpenBurnBar-${tag#v}-macOS.zip" "$sidecar_runner_environment" "$signed_runner_environment"
-  write_asset_with_sidecars "$release_dir" "$tag" "checksums-${tag}.txt" "$sidecar_runner_environment" "$signed_runner_environment"
+  write_asset_with_sidecars "$release_dir" "$tag" "OpenBurnBar-${tag#v}-macOS.dmg" "$sidecar_runner_environment" "$signed_runner_environment" "$sidecar_predicate_type" "$signed_predicate_type"
+  write_asset_with_sidecars "$release_dir" "$tag" "OpenBurnBar-${tag#v}-macOS.zip" "$sidecar_runner_environment" "$signed_runner_environment" "$sidecar_predicate_type" "$signed_predicate_type"
+  write_asset_with_sidecars "$release_dir" "$tag" "checksums-${tag}.txt" "$sidecar_runner_environment" "$signed_runner_environment" "$sidecar_predicate_type" "$signed_predicate_type"
   printf '%s' "$release_dir"
 }
 
@@ -170,17 +199,20 @@ echo "verify-release-attestations self-test"
 
 bin_dir="$tmp_root/bin"
 write_stubs "$bin_dir"
-tag="v9.9.9"
-new_release_fixture "$tag" >/dev/null
+legacy_predicate_type="https://openburnbar.dev/attestations/release-artifact/v1"
+slsa_predicate_type="https://slsa.dev/provenance/v1"
+legacy_until_tag="$(sed -n 's/^LEGACY_PREDICATE_ACCEPTED_UNTIL_TAG="\([^"]*\)"/\1/p' "$verifier")"
+[[ -n "$legacy_until_tag" ]] || { echo "missing legacy predicate sunset constant" >&2; exit 1; }
+new_release_fixture "$legacy_until_tag" >/dev/null
 
 run_case 0 all-required-patterns-present \
-  env PATH="$bin_dir:/usr/bin:/bin" FIXTURE_RELEASE_DIR="$tmp_root/releases" "$verifier" "$tag" "*macOS.dmg" "*macOS.zip" "checksums-${tag}.txt"
+  env PATH="$bin_dir:/usr/bin:/bin" FIXTURE_RELEASE_DIR="$tmp_root/releases" "$verifier" "$legacy_until_tag" "*macOS.dmg" "*macOS.zip" "checksums-${legacy_until_tag}.txt"
 
 run_case 0 overlapping-required-patterns-pass \
-  env PATH="$bin_dir:/usr/bin:/bin" FIXTURE_RELEASE_DIR="$tmp_root/releases" "$verifier" "$tag" "*macOS.*" "*macOS.zip"
+  env PATH="$bin_dir:/usr/bin:/bin" FIXTURE_RELEASE_DIR="$tmp_root/releases" "$verifier" "$legacy_until_tag" "*macOS.*" "*macOS.zip"
 
 run_case 1 missing-required-pattern-fails \
-  env PATH="$bin_dir:/usr/bin:/bin" FIXTURE_RELEASE_DIR="$tmp_root/releases" "$verifier" "$tag" "*macOS.dmg" "*missing.zip"
+  env PATH="$bin_dir:/usr/bin:/bin" FIXTURE_RELEASE_DIR="$tmp_root/releases" "$verifier" "$legacy_until_tag" "*macOS.dmg" "*missing.zip"
 
 missing_sidecar_tag="v9.9.12"
 missing_sidecar_dir="$(new_release_fixture "$missing_sidecar_tag")"
@@ -197,6 +229,31 @@ tampered_tag="v9.9.11"
 new_release_fixture "$tampered_tag" "github-hosted" "self-hosted" >/dev/null
 run_case 1 unsigned-sidecar-runner-tamper-fails \
   env PATH="$bin_dir:/usr/bin:/bin" FIXTURE_RELEASE_DIR="$tmp_root/releases" "$verifier" "$tampered_tag" "*macOS.dmg"
+
+legacy_after_tag="v1.0.40+repair.38"
+new_release_fixture "$legacy_after_tag" "github-hosted" "github-hosted" "$legacy_predicate_type" "$legacy_predicate_type" >/dev/null
+run_case 1 legacy-predicate-after-sunset-fails \
+  env PATH="$bin_dir:/usr/bin:/bin" FIXTURE_RELEASE_DIR="$tmp_root/releases" "$verifier" "$legacy_after_tag" "*macOS.dmg"
+
+slsa_tag="v1.0.40+repair.38"
+new_release_fixture "$slsa_tag" "github-hosted" "github-hosted" "$slsa_predicate_type" >/dev/null
+run_case 0 slsa-predicate-after-sunset-passes \
+  env PATH="$bin_dir:/usr/bin:/bin" FIXTURE_RELEASE_DIR="$tmp_root/releases" "$verifier" "$slsa_tag" "*macOS.dmg"
+
+slsa_legacy_layout_tag="v1.0.40+repair.39"
+FIXTURE_PREDICATE_LAYOUT=legacy new_release_fixture "$slsa_legacy_layout_tag" "github-hosted" "github-hosted" "$slsa_predicate_type" >/dev/null
+run_case 1 slsa-type-with-legacy-layout-fails \
+  env PATH="$bin_dir:/usr/bin:/bin" FIXTURE_RELEASE_DIR="$tmp_root/releases" "$verifier" "$slsa_legacy_layout_tag" "*macOS.dmg"
+
+unknown_predicate_tag="v1.0.40+repair.39"
+new_release_fixture "$unknown_predicate_tag" "github-hosted" "github-hosted" "https://example.invalid/unknown/v1" >/dev/null
+run_case 1 unknown-predicate-type-fails \
+  env PATH="$bin_dir:/usr/bin:/bin" FIXTURE_RELEASE_DIR="$tmp_root/releases" "$verifier" "$unknown_predicate_tag" "*macOS.dmg"
+
+swapped_predicate_tag="v1.0.40+repair.40"
+new_release_fixture "$swapped_predicate_tag" "github-hosted" "github-hosted" "$legacy_predicate_type" "$slsa_predicate_type" >/dev/null
+run_case 1 swapped-predicate-type-fails \
+  env PATH="$bin_dir:/usr/bin:/bin" FIXTURE_RELEASE_DIR="$tmp_root/releases" "$verifier" "$swapped_predicate_tag" "*macOS.dmg"
 
 if [[ "$fail" -ne 0 ]]; then
   echo "FAIL: ${fail} release attestation verifier self-test(s) failed" >&2

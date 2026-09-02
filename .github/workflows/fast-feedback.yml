@@ -29,6 +29,25 @@ jobs:
   classify:
     uses: ./.github/workflows/ci-impact.yml
 
+  # ── Vendor binary integrity ───────────────────────────────────────────────
+  # This is deliberately a small always-on job: the manifest covers only the
+  # tracked Vendor AARs, so it completes in seconds and exercises the same
+  # verification path used by the local tamper test.
+  vendor-checksums:
+    name: Vendor binary checksums
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      - name: Verify Vendor binary checksums
+        run: bash scripts/supply-chain/verify-vendor-checksums.sh
+
+      - name: Vendor checksum manifest controls
+        run: bash scripts/supply-chain/verify-vendor-checksums.test.sh
+
+      - name: Verify supply-chain provenance documentation matrix
+        run: node --test scripts/ci/verify-supply-chain-doc-matrix.test.mjs
+
   # ── Functions: lint + typecheck + unit tests ──────────────────────────────
   functions-fast:
     name: Functions (lint + types + unit tests)
@@ -1585,6 +1604,7 @@ jobs:
     name: Fast Feedback Gate
     needs:
       - classify
+      - vendor-checksums
       - fast-feedback-path-filter
       - functions-fast
       - extension-fast
