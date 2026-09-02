@@ -16,7 +16,7 @@
   "dependencies": {
     "@openburnbar/entitlements": "file:../../packages/entitlements",
     "@openburnbar/signal-envelope-contracts": "file:../../packages/signal-envelope-contracts",
-    "firebase-admin": "14.2.0"
+    "firebase-admin": "14.3.0"
   },
   "devDependencies": {
     "@eslint/js": "9.39.4",
