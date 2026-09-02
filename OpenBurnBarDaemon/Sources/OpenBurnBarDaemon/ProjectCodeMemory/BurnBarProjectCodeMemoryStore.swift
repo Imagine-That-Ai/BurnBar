@@ -471,8 +471,6 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                     if body == nil, row.reviewStatus != .forgotten || request.includeForgotten == false {
                         return nil
                     }
-                    // The source path is part of the lexical document, as it was before
-                    // BM25 ranking: a runbook is findable by its file name.
                     let searchable = ([body ?? ""] + row.tags + [row.sourcePath ?? ""]).joined(separator: " ")
                     return MemoryRecallCandidate(row: row, body: body ?? "", searchableTokens: BurnBarMemoryRanking.tokenize(searchable))
                 }
@@ -508,31 +506,8 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
             )
             var semantic: [(id: String, score: Double)] = []
             if let queryVector, queryVector.count == embeddingProvider.dimension {
-                // Only the candidates' vectors are read: on a multi-project store the
-                // table holds every project's vectors and most of them cannot rank here.
-                let candidateIDs = candidatesByID.keys.sorted()
-                var rankedSemantic: [(id: String, score: Double)] = []
-                for chunkStart in stride(from: 0, to: candidateIDs.count, by: 500) {
-                    let chunk = Array(candidateIDs[chunkStart..<min(chunkStart + 500, candidateIDs.count)])
-                    let placeholders = Array(repeating: "?", count: chunk.count).joined(separator: ", ")
-                    let rows = try queryRows(
-                        """
-                        SELECT memory_id, vector
-                        FROM memory_embedding_refs
-                        WHERE embedding_version_id = ? AND dimension = ? AND memory_id IN (\(placeholders))
-                        """,
-                        [.text(embeddingProvider.versionID), .int(embeddingProvider.dimension)] + chunk.map { SQLiteBind.text($0) }
-                    )
-                    rankedSemantic += rows.compactMap { row -> (id: String, score: Double)? in
-                        let id = row.string(0)
-                        guard let data = row.data(1) else { return nil }
-                        guard let vector = BurnBarCodeVectorCodec.decode(data, dimension: embeddingProvider.dimension) else { return nil }
-                        let score = BurnBarCodeVectorCodec.cosine(queryVector, vector)
-                        return score > 0 ? (id, score) : nil
-                    }
-                }
-                rankedSemantic.sort { lhs, rhs in lhs.score == rhs.score ? lhs.id < rhs.id : lhs.score > rhs.score }
-                semantic = Array(rankedSemantic.prefix(max(limit * 4, 50)))
+                let ranked = try semanticCandidateScores(candidateIDs: candidatesByID.keys.sorted(), queryVector: queryVector)
+                semantic = Array(ranked.prefix(max(limit * 4, 50)))
             }
             let fusedScores = BurnBarMemoryRanking.reciprocalRankScores(
                 lexical: lexical.map(\.id),

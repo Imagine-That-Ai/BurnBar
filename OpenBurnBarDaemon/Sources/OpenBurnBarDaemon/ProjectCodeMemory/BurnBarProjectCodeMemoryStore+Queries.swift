@@ -494,6 +494,36 @@ extension BurnBarProjectCodeMemoryStore {
         return BurnBarProjectCodeExploreResponse(traceID: traceID, projectID: projectID, files: files, repoMap: repoMap)
     }
 
+    /// Cosine scores for the recall candidates' stored vectors, best first.
+    ///
+    /// Only the candidates' rows are read: on a multi-project store
+    /// `memory_embedding_refs` holds every project's vectors and most of them
+    /// cannot rank for this query, so the candidate ids are bound into the
+    /// query in chunks instead of filtering after a full-table read.
+    func semanticCandidateScores(candidateIDs: [String], queryVector: [Float]) throws -> [(id: String, score: Double)] {
+        var ranked: [(id: String, score: Double)] = []
+        for chunkStart in stride(from: 0, to: candidateIDs.count, by: 500) {
+            let chunk = Array(candidateIDs[chunkStart..<min(chunkStart + 500, candidateIDs.count)])
+            let placeholders = Array(repeating: "?", count: chunk.count).joined(separator: ", ")
+            let rows = try queryRows(
+                """
+                SELECT memory_id, vector
+                FROM memory_embedding_refs
+                WHERE embedding_version_id = ? AND dimension = ? AND memory_id IN (\(placeholders))
+                """,
+                [.text(embeddingProvider.versionID), .int(embeddingProvider.dimension)] + chunk.map { SQLiteBind.text($0) }
+            )
+            ranked += rows.compactMap { row -> (id: String, score: Double)? in
+                guard let data = row.data(1) else { return nil }
+                guard let vector = BurnBarCodeVectorCodec.decode(data, dimension: embeddingProvider.dimension) else { return nil }
+                let score = BurnBarCodeVectorCodec.cosine(queryVector, vector)
+                return score > 0 ? (row.string(0), score) : nil
+            }
+        }
+        ranked.sort { lhs, rhs in lhs.score == rhs.score ? lhs.id < rhs.id : lhs.score > rhs.score }
+        return ranked
+    }
+
     private func missingIndexDegradation(projectID: String) -> BurnBarProjectCodeDegradation {
         BurnBarProjectCodeDegradation(
             code: "INDEX_MISSING",
