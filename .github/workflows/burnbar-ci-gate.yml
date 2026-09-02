@@ -8,7 +8,9 @@ on:
   # observed on the same head SHA).
   pull_request_target:
     branches: [main]
-    types: [opened, synchronize, reopened, ready_for_review, labeled]
+    # `labeled`/`unlabeled`: the ci-freeze-override label is read from the PR
+    # timeline, so both applying and revoking it must produce a fresh verdict.
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
   merge_group:
     branches: [main]
     types: [checks_requested]
@@ -51,6 +53,7 @@ jobs:
           BURNBAR_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.sha }}
           BURNBAR_CI_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
           BURNBAR_BASE_REF: ${{ github.event.pull_request.base.ref || github.event.merge_group.base_ref || github.ref }}
+          BURNBAR_PR_NUMBER: ${{ github.event.pull_request.number }}
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail

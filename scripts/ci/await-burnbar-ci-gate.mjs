@@ -361,10 +361,40 @@ function readMergeGroupHeadRef(environment = process.env) {
 }
 
 export function parseQueuePullRequestNumber(headRef) {
-  const match = /^gh-readonly-queue\/main\/pr-(\d+)-[^/]+$/u.exec(
-    headRef ?? "",
-  );
+  // merge_group.head_ref arrives both bare and as a fully qualified
+  // refs/heads/... ref (the deletion guard resolver accepts both too).
+  const match =
+    /^(?:refs\/heads\/)?gh-readonly-queue\/main\/pr-(\d+)-[^/]+$/u.exec(
+      headRef ?? "",
+    );
   return match ? Number(match[1]) : null;
+}
+
+function positiveInteger(value) {
+  const number = Number(value);
+  return Number.isInteger(number) && number > 0 ? number : null;
+}
+
+// The override label is read from the PR timeline, so the gate needs the PR
+// number on every trigger that can carry an override: the merge queue (from
+// the queue head ref) and pull_request / pull_request_target (from the event
+// payload, or BURNBAR_PR_NUMBER when the payload is unavailable).
+export function resolvePullRequestNumber(environment = process.env) {
+  const fromQueue = parseQueuePullRequestNumber(
+    readMergeGroupHeadRef(environment),
+  );
+  if (fromQueue !== null) return fromQueue;
+  const eventPath = environment.GITHUB_EVENT_PATH;
+  if (eventPath) {
+    try {
+      const event = JSON.parse(readFileSync(eventPath, "utf8"));
+      const fromEvent = positiveInteger(event?.pull_request?.number);
+      if (fromEvent !== null) return fromEvent;
+    } catch {
+      // Fall through to the environment-only path.
+    }
+  }
+  return positiveInteger(environment.BURNBAR_PR_NUMBER);
 }
 
 function timelineActor(event) {
@@ -933,6 +963,71 @@ export async function reconcileStalledChecks(pending, options = {}) {
   return reconciled;
 }
 
+function knownRunEvent(value) {
+  switch (value) {
+    case "push":
+      return "push";
+    case "pull_request":
+      return "pull_request";
+    case "pull_request_target":
+      return "pull_request_target";
+    case "merge_group":
+      return "merge_group";
+    case "workflow_dispatch":
+      return "workflow_dispatch";
+    case "schedule":
+      return "schedule";
+    case "workflow_run":
+      return "workflow_run";
+    default:
+      return "other";
+  }
+}
+
+function reasonCode(sample) {
+  if (sample?.present === true) return "present";
+  const reason = String(sample?.reason ?? "");
+  if (reason.startsWith("workflow run status is")) return "run-not-completed";
+  if (reason.startsWith("jobs unreadable")) return "jobs-unreadable";
+  if (reason.length === 0) return "none";
+  return "verdict-absent";
+}
+
+function isoTimestamp(value) {
+  const ms = Date.parse(String(value ?? ""));
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
+}
+
+// The availability report is derived from GitHub API responses. What reaches
+// the file system is a typed projection (numbers, booleans, timestamps, and
+// enumerated codes); the full strings stay in the job log.
+export function diskSafeAvailabilityReport(report) {
+  const rate =
+    report?.verdictPresentRate == null ? null : Number(report.verdictPresentRate);
+  return {
+    window: typeof report?.window === "string" ? report.window : null,
+    generatedAt: isoTimestamp(report?.generatedAt),
+    samples: positiveInteger(report?.samples) ?? 0,
+    presentCount: positiveInteger(report?.presentCount) ?? 0,
+    verdictPresentRate: Number.isFinite(rate) ? rate : null,
+    unverified: report?.unverified === true,
+    runs: (Array.isArray(report?.runs) ? report.runs : []).map((sample) => ({
+      runId: positiveInteger(sample?.runId),
+      createdAt: isoTimestamp(sample?.createdAt),
+      event: knownRunEvent(sample?.event),
+      present: sample?.present === true,
+      reasonCode: reasonCode(sample),
+    })),
+  };
+}
+
+function writeAvailabilityReport(reportPath, report) {
+  writeFileSync(
+    reportPath,
+    `${JSON.stringify(diskSafeAvailabilityReport(report), null, 2)}\n`,
+  );
+}
+
 async function runVerdictAvailabilityReport({
   repository,
   token,
@@ -961,7 +1056,7 @@ async function runVerdictAvailabilityReport({
       `::warning::Verdict availability is UNVERIFIED: ${annotationValue(report.error)}`,
     );
   }
-  writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`);
+  writeAvailabilityReport(reportPath, report);
   console.log(
     `Verdict availability: ${report.presentCount}/${report.samples} samples present (${report.verdictPresentRate ?? "n/a"}).${report.unverified ? " UNVERIFIED." : ""} Report: ${reportPath}`,
   );
@@ -992,7 +1087,7 @@ async function main() {
       console.error(
         `::warning::Verdict availability is UNVERIFIED: ${annotationValue(report.error)}`,
       );
-      writeFileSync(args.reportPath, `${JSON.stringify(report, null, 2)}\n`);
+      writeAvailabilityReport(args.reportPath, report);
       console.log(
         `Verdict availability: 0/0 samples present (n/a). UNVERIFIED. Report: ${args.reportPath}`,
       );
@@ -1051,8 +1146,7 @@ async function main() {
     console.error(`::warning::${annotationValue(mainVerdict.reason)}`);
   }
   let override = null;
-  const headRef = readMergeGroupHeadRef();
-  const pullRequestNumber = parseQueuePullRequestNumber(headRef);
+  const pullRequestNumber = resolvePullRequestNumber();
   if (
     mode === "enforce" &&
     mainVerdict.present &&

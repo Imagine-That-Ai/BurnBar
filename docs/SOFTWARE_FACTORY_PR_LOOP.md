@@ -18,7 +18,7 @@ in `observe` mode tonight: missing verdicts pass and are recorded, while a
 completed red is annotated without blocking. Wave 1 flips the governance mode
 to `enforce`; only a current `ci-freeze-override` label applied by Alberto
 (`Ajnunezg`) can then override a completed main-red verdict, with the label
-event recorded for audit.
+event recorded for audit. The gate reads that label on merge-queue and `pull_request_target` runs alike, and removing the label re-runs the gate so a revoked override cannot keep an earlier green verdict current.
 
 The Mac app build stays off the merge door under `CHEAP_FAST`: it remains a
 post-merge/nightly proof, and the breaker reuses that already-paid main result

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
@@ -15,6 +15,8 @@ import {
   isTransientGithubStatus,
   parseActionsJobRef,
   parseQueuePullRequestNumber,
+  resolvePullRequestNumber,
+  diskSafeAvailabilityReport,
   pendingComponentAllowanceMs,
   reconcileStalledChecks,
   resolveMainAppGateVerdict,
@@ -1002,4 +1004,124 @@ test("override label applied by another actor is ignored", () => {
   });
   assert.equal(decision.pass, false);
   assert.equal(decision.blocker, "main-red-circuit-breaker");
+});
+
+test("queue head refs parse with and without the refs/heads/ prefix", () => {
+  assert.equal(
+    parseQueuePullRequestNumber("refs/heads/gh-readonly-queue/main/pr-2405-abc123"),
+    2405,
+  );
+  assert.equal(
+    parseQueuePullRequestNumber("gh-readonly-queue/main/pr-2405-abc123"),
+    2405,
+  );
+  assert.equal(parseQueuePullRequestNumber("refs/heads/main"), null);
+});
+
+test("PR number resolves from the queue ref, the PR event payload, or BURNBAR_PR_NUMBER", () => {
+  const dir = mkdtempSync(join(tmpdir(), "burnbar-gate-pr-number-"));
+  try {
+    const mergeGroupEvent = join(dir, "merge_group.json");
+    writeFileSync(
+      mergeGroupEvent,
+      JSON.stringify({
+        merge_group: {
+          head_ref: "refs/heads/gh-readonly-queue/main/pr-2475-deadbeef",
+        },
+      }),
+    );
+    assert.equal(
+      resolvePullRequestNumber({
+        GITHUB_EVENT_NAME: "merge_group",
+        GITHUB_EVENT_PATH: mergeGroupEvent,
+      }),
+      2475,
+    );
+
+    const pullRequestEvent = join(dir, "pull_request_target.json");
+    writeFileSync(
+      pullRequestEvent,
+      JSON.stringify({ pull_request: { number: 2405 } }),
+    );
+    assert.equal(
+      resolvePullRequestNumber({
+        GITHUB_EVENT_NAME: "pull_request_target",
+        GITHUB_EVENT_PATH: pullRequestEvent,
+      }),
+      2405,
+      "pull_request_target gate runs must resolve the PR for override reads",
+    );
+
+    assert.equal(
+      resolvePullRequestNumber({
+        GITHUB_EVENT_NAME: "pull_request_target",
+        BURNBAR_PR_NUMBER: "2406",
+      }),
+      2406,
+    );
+    assert.equal(
+      resolvePullRequestNumber({
+        GITHUB_EVENT_NAME: "pull_request_target",
+        BURNBAR_PR_NUMBER: "-1",
+      }),
+      null,
+    );
+    assert.equal(resolvePullRequestNumber({ GITHUB_EVENT_NAME: "push" }), null);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("the on-disk availability report is a typed projection of API data", () => {
+  const report = diskSafeAvailabilityReport({
+    window: "48h",
+    generatedAt: "2026-09-02T04:00:00.000Z",
+    samples: "3",
+    presentCount: 2,
+    verdictPresentRate: 2 / 3,
+    unverified: false,
+    error: "<script>alert(1)</script>",
+    runs: [
+      {
+        runId: "1234",
+        headSha: "deadbeef",
+        event: "merge_group",
+        createdAt: "2026-09-02T03:00:00Z",
+        present: true,
+      },
+      {
+        runId: 99,
+        event: "totally-made-up",
+        createdAt: "not a date",
+        present: false,
+        reason: "jobs unreadable: HTTP 500 <html>",
+      },
+    ],
+  });
+  assert.deepEqual(report, {
+    window: "48h",
+    generatedAt: "2026-09-02T04:00:00.000Z",
+    samples: 3,
+    presentCount: 2,
+    verdictPresentRate: 2 / 3,
+    unverified: false,
+    runs: [
+      {
+        runId: 1234,
+        createdAt: "2026-09-02T03:00:00.000Z",
+        event: "merge_group",
+        present: true,
+        reasonCode: "present",
+      },
+      {
+        runId: 99,
+        createdAt: null,
+        event: "other",
+        present: false,
+        reasonCode: "jobs-unreadable",
+      },
+    ],
+  });
+  assert.equal("headSha" in report.runs[0], false);
+  assert.equal("error" in report, false);
 });

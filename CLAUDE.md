@@ -62,7 +62,7 @@ Standing rule: `~/.agent/runs/mailbox/CHEAP_FAST.md`. Mac app build is nightly, 
 completed-red `app-pr-gate` verdicts from main without blocking the merge queue.
 Wave 1 flips it to `enforce`; only a current `ci-freeze-override` label applied
 by Alberto (`Ajnunezg`) can override a completed main-red verdict, and the
-label event is recorded for audit. The Mac app build stays off the merge door
+label event is recorded for audit. The gate reads that label on merge-queue and `pull_request_target` runs alike, and removing the label re-runs the gate so a revoked override cannot keep an earlier green verdict current. The Mac app build stays off the merge door
 under `CHEAP_FAST`; it remains a post-merge/nightly proof reused by the breaker
 instead of running for every merge candidate.
 
