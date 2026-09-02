@@ -193,7 +193,7 @@
     "scripts/ci/verify-libsignal-pin.sh": ["d76c28b7ac846112","8de9b8338c2a4331","d0dcc1122a94d5d2","976bfafbe9a75121"],
     "scripts/ci/verify-libsignal-runtime-readiness.sh": ["d933d12034238e45","c6a9d1516f6d9031","8751643d68c88f77","886572460dd98f16"],
     "scripts/ci/verify-libsignal-submodule-delta.sh": ["627c3348dd111bfc","67e2d7b1e9e3e1d3","4e3dee9489b76b6c","1d41e128ee76f5ca"],
-    "scripts/ci/verify-production-deploy-auth.sh": ["db5f9d28aef77f0b","7bf20d47378f11a6","dd2a282e9b463e1c","852cdeb4c3ecb371"],
+    "scripts/ci/verify-production-deploy-auth.sh": ["7275d2b1f0574328","2b2783c20f93155c","b76f2c35bf747614","ee0bc1f678d8d64f"],
     "scripts/ci/verify-production-function-catalog.mjs": ["f38288788917027f","b8f64bf1bb6cd9cf","e5484adb79166f5c","75d63389a84f59eb"],
     "scripts/ci/verify-public-macos-download-trust.sh": ["daabba61a68d61e2","8eac3181bf57e467","7c51c31c5790b628","5472582d48a4e975"],
     "scripts/ci/verify-release-attestations.sh": ["b35c13cca0e8a317","5559281e3b324f7c","f5444ca2492f2bf2","29c97f33b345e39d"],
