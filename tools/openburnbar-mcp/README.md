@@ -166,7 +166,7 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` and add t
 | `burnbar_forget` | **Write** hard-delete one memory (body, vectors, history, relations, vault) with a label-only audit event; mirrored to the daemon when reachable |
 | `burnbar_forget_all` | **Write** two-step bulk delete for a project (optionally scope / kinds); requires `confirm="DELETE"` |
 | `burnbar_memory_entities` / `burnbar_memory_relations` | Entities mentioned by memories, and heuristic (subject, predicate, object) relations |
-| `burnbar_memory_export` / `burnbar_memory_import` | JSON export (requires `sensitive_read`; retained secrets excluded unless asked) and machine-round-trippable import; export trust wrappers are provenance-checked, decoded, then every value passes the normal import gate again |
+| `burnbar_memory_export` / `burnbar_memory_import` | JSON export (requires `sensitive_read`; retained secrets excluded unless asked) and machine-round-trippable project export/import; `all_projects` exports are diagnostic archives and cannot be flattened into one project; trust wrappers are provenance-checked, decoded, then every value passes the normal import gate again |
 | `burnbar_memory_reindex` | **Write** embed memories missing a vector for the active model version; purge stale-version vectors |
 | `burnbar_audit_trail` | Read the label-only memory audit hash chain, with chain verification |
 | `burnbar_memory_analytics` | Counts by kind / scope / sensitivity / review status, embedding coverage, vault entries, policy |
@@ -244,8 +244,10 @@ against mem0 / Mixedbread: [`docs/superpowers/2026-09-02-memory-mcp-v2-design.md
   retains its id and original project path for a later `burnbar_forget` retry,
   and clears only after the daemon reports `localDeleted: true`. Mirror
   provenance uses only the engine-gated `sourceRef`, never the caller's raw
-  source string. Only approved rows are mirrored; quarantined, rejected, and
-  secret rows stay local.
+  source string. Only permanent approved rows are mirrored; expiring,
+  quarantined, rejected, and secret rows stay local. Personal-memory updates
+  reconcile the previous daemon copy before remirroring in the row's owning
+  project.
 - **Legacy daemon memories migrate themselves.** Memories written by the
   pre-engine `burnbar_remember` or by the app into the daemon-owned
   `agent_memories` store are imported into the engine store once, on the

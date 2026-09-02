@@ -323,7 +323,9 @@ def test_export_wraps_quarantined_content_and_rejected_import_never_mirrors(
         )
     )
     assert imported["decisions"][0]["reviewStatus"] == "rejected"
-    assert imported["mirror"][0]["status"] == "skipped"
+    # "mirrored" here confirms the prior approved daemon row was deleted;
+    # the rejected replacement itself is never sent to daemon.memory.remember.
+    assert imported["mirror"][0]["status"] == "mirrored"
     assert len(daemon_remembers) == before
     assert daemon_forgets == [approved["mirror"]["daemonMemoryID"]]
 

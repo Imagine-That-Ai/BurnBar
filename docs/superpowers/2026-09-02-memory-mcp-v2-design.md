@@ -208,6 +208,12 @@ subprocess or loopback request; `reject` withholds the transcript entirely.
 Quarantined write decisions are returned through the same untrusted-data
 wrapper as read results.
 
+Write scopes are strict (`auto | project | personal`). Non-approved facts may
+be retained for review but have no authority to supersede or retire approved
+rows. Idempotent ingest receipts are written only for terminal batches; replay
+hydrates committed decisions from the encrypted row so a previously failed
+daemon mirror can be retried safely.
+
 ## 6. Deliberate contract changes
 
 - `burnbar_remember` no longer fails closed when the daemon is unreachable. It
@@ -222,6 +228,12 @@ wrapper as read results.
   never mirrored reports `mirror.status: skipped` instead of a bogus forget.
   Failed daemon deletes keep a metadata-only tombstone and are retried by a
   later `burnbar_forget`; the tombstone clears only after daemon confirmation.
+- The daemon mirror intentionally excludes expiring rows until its RPC schema
+  can enforce expiry. Personal-memory reinforcement uses the memory owner's
+  project path and retires a prior daemon copy before replacement.
+- `all_projects=true` exports are diagnostic archives, not a flattening import
+  format. Project-scoped exports remain portable; multi-project imports fail
+  closed to preserve ownership boundaries.
 - Memories in the daemon-owned `agent_memories` store are imported into the
   engine store once per project on first recall/list (`legacyMigration`), so
   an upgrade does not make earlier memories disappear from MCP recall.
