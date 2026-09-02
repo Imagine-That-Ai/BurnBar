@@ -40,6 +40,45 @@ honest signal, not a bug. When it trips:
 
 Self-test (offline, no GCP): `bash scripts/ci/check-deploy-ancestor-guard.sh --self-test`.
 
+### Receipt schema and binding
+
+`config/deploy-regression-receipts/<date>.json`:
+
+```json
+{
+  "date": "2026-09-02",
+  "kind": "allow-regression-bootstrap",
+  "reason": "why production is knowingly ahead of the stamped lineage",
+  "acknowledgedBy": "who",
+  "liveSha": null,
+  "releaseSha": "optional 40-hex release commit this receipt is limited to",
+  "expiresOn": "2026-10-02"
+}
+```
+
+A receipt authorizes exactly one transition. `liveSha: null` is the bootstrap
+receipt: it authorizes a deploy **only while production reports no source
+commit** (the #2195 condition), and it is checked before the unstamped refusal
+so the first stamped deploy can ship. The moment production reports a source
+commit, a bootstrap receipt authorizes nothing — including the copy embedded in
+an older tag. A receipt with `liveSha: <sha>` authorizes deploys only while
+production's live commit is exactly that sha (optionally only for `releaseSha`).
+The deploy lane stages the guard script **and the receipts directory** from the
+trusted current-main checkout before it resolves the release tag, so an
+existing-tag retry of an older tag still runs the guard, and deleting a receipt
+on main revokes it.
+
+### Scoped deploys are prohibited
+
+The guard proves ancestry for the fleet identity production reports through
+`healthLive` (`source.commit`). A scoped deploy (`firebase deploy --only
+functions:<name>`, `scripts/ops/deploy-health-functions.sh`,
+`scripts/deploy-opentimestamps-verifier.sh`) replaces one function's identity
+without moving that report, so a later retry could roll that function back while
+the guard passes. Those scripts refuse the production project unless
+`OPENBURNBAR_ACKNOWLEDGE_SCOPED_PROD_DEPLOY=1` is set, and any acknowledged scoped
+deploy must be followed by a full stamped deploy to re-anchor the fleet.
+
 ## Decision ladder (try in order)
 
 1. **Rollback first.** If the incident was introduced by a recent deploy,

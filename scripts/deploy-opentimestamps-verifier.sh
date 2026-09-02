@@ -86,5 +86,16 @@ OPENBURNBAR_OTS_VERIFY_AUDIENCE=${SERVICE_URL}
 $(if [[ "${WRITE_FUNCTIONS_ENV}" == "true" ]]; then printf 'Updated %s with those values.\n\n' "${FUNCTIONS_ENV_FILE}"; else printf 'WRITE_FUNCTIONS_ENV=false, so no functions .env file was changed.\n\n'; fi)
 Then deploy the callable:
 
+# Scoped production deploys are PROHIBITED outside the deploy-production lane:
+# they replace one function's source identity while healthLive keeps reporting
+# the fleet's, so the deploy ancestor guard (scripts/ci/check-deploy-ancestor-guard.sh)
+# could later prove ancestry for a lineage one function no longer has and roll
+# that function back silently. Acknowledge explicitly, then re-anchor with a
+# full stamped deploy (docs/runbooks/functions-break-glass.md).
+if [[ "${PROJECT_ID}" == "burnbar" && "${OPENBURNBAR_ACKNOWLEDGE_SCOPED_PROD_DEPLOY:-0}" != "1" ]]; then
+  echo "ERROR: scoped deploy to the production project is prohibited (it desynchronizes the fleet lineage the deploy ancestor guard proves)." >&2
+  echo "       Use the deploy-production lane, or set OPENBURNBAR_ACKNOWLEDGE_SCOPED_PROD_DEPLOY=1 and re-anchor with a full stamped deploy afterwards." >&2
+  exit 1
+fi
 firebase deploy --only functions:validateOpenTimestampsProof --project ${PROJECT_ID}
 EOF
