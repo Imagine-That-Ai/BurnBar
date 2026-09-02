@@ -351,7 +351,8 @@ CREATE TABLE memory_usage_candidates (
 CREATE INDEX memory_usage_candidates_status_idx ON memory_usage_candidates(status, salience_hint, created_at);
 CREATE INDEX memory_usage_candidates_simhash_idx ON memory_usage_candidates(source_kind, simhash);
 
--- Salience sidecar (consolidation worker is the sole writer). A sidecar, not
+-- Salience sidecar (consolidation owns corroboration/source trust; daemon
+-- recall owns hit reinforcement). A sidecar, not
 -- an ALTER on agent_memories, so the mirrored agent_memories DDL stays
 -- byte-identical across app/daemon/python/doc copies.
 CREATE TABLE memory_salience (

@@ -762,14 +762,6 @@ extension BurnBarProjectCodeMemoryStore {
         return Array(Set(tokens)).sorted()
     }
 
-    static func memoryRank(tokens: [String], query: String, searchable: String) -> Double? {
-        let haystack = searchable.lowercased()
-        let needles = tokens.isEmpty ? [query.lowercased()] : tokens
-        let matchCount = needles.filter { haystack.contains($0) }.count
-        guard matchCount > 0 else { return nil }
-        return Double(needles.count - matchCount)
-    }
-
     static func memorySnippet(body: String, tokens: [String], fallbackQuery: String) -> String {
         let lower = body.lowercased()
         let needles = tokens.isEmpty ? [fallbackQuery.lowercased()] : tokens

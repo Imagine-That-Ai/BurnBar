@@ -16,6 +16,22 @@ export OPENBURNBAR_LOCAL_MCP_ENABLE_SPAWN=true           # detached native/cross
 
 ## Setup
 
+The repo-scoped `openburnbar` entry in [`.mcp.json`](../../.mcp.json) uses the
+memory-only launcher and needs no Rust toolchain:
+
+```bash
+./tools/openburnbar-mcp/bootstrap-memory.sh
+```
+
+On its first run, `launch-memory.sh` calls `bootstrap-memory.sh`, creates
+`.venv`, and installs only `requirements.txt`. It prefers Python 3.12, then
+3.11, then 3.13, before accepting any `python3` that is 3.11 or newer. It does
+not invoke Cargo, build the domain-core binding, or build the static parser.
+MCP clients bootstrap it automatically; the command above is only needed when
+you want to prepare a fresh checkout before the first MCP connection.
+
+For the full Project Code Memory static tier, use the existing setup path:
+
 ```bash
 cd tools/openburnbar-mcp
 ./setup.sh
@@ -139,11 +155,21 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` and add t
 | `burnbar_semantic_search_conversations` | Local deterministic semantic search over indexed conversation chunks; returns structured `unavailable` when semantic tables or compatible embeddings are absent |
 | `burnbar_cloud_semantic_search_conversations` | Hosted encrypted semantic search over the user's cloud session-log index; derives opaque query hashes locally and decrypts snippets locally |
 | `burnbar_cloud_get_conversation_body` | Download and decrypt a full hosted session body returned by cloud semantic search |
-| `burnbar_remember` | **Write** a durable project-scoped local agent memory after secret/PII scanning |
-| `burnbar_recall` | Recall project-scoped local agent memories; cross-project recall is explicit opt-in |
-| `burnbar_forget` | **Write** a hard delete for one local memory and append a label-only audit event |
-| `burnbar_audit_trail` | Read the local label-only memory/code audit hash chain |
-| `burnbar_memory_analytics` | Aggregate local memory counts by kind and scope |
+| `burnbar_remember` | **Write** one durable memory (kind, scope, tags, entities, metadata, `supersedes`, `expires_at`, `immutable`); secrets redacted, PII kept by default; mirrored to the daemon ledger when reachable |
+| `burnbar_memorize` | **Write** durable memories from a conversation, text, or pre-extracted `facts` (the mem0 `add()` equivalent): extraction → gate → injection screen → ADD / UPDATE / NONE / DELETE reconciliation; idempotent per input |
+| `burnbar_recall` | Hybrid BM25 + vector recall with reciprocal-rank fusion and salience rerank; kind/tag/entity/metadata/date filters; personal-scope memories follow the user across projects; bodies wrapped as untrusted content |
+| `burnbar_recall_pack` | Token-budgeted, prompt-ready block of the most relevant memories |
+| `burnbar_memory_get` / `burnbar_memory_list` | Read one memory (optionally with history) / page through memories with filters and ordering |
+| `burnbar_memory_update` | **Write** patch a memory in place (stable id, history row, re-embed) |
+| `burnbar_memory_history` | Per-memory change history with before/after bodies |
+| `burnbar_memory_review` | **Write** approve / quarantine / reject (injection suspects start quarantined) |
+| `burnbar_forget` | **Write** hard-delete one memory (body, vectors, history, relations, vault) with a label-only audit event; mirrored to the daemon when reachable |
+| `burnbar_forget_all` | **Write** two-step bulk delete for a project (optionally scope / kinds); requires `confirm="DELETE"` |
+| `burnbar_memory_entities` / `burnbar_memory_relations` | Entities mentioned by memories, and heuristic (subject, predicate, object) relations |
+| `burnbar_memory_export` / `burnbar_memory_import` | JSON export (requires `sensitive_read`; retained secrets excluded unless asked) and import through the same gate |
+| `burnbar_memory_reindex` | **Write** embed memories missing a vector for the active model version; purge stale-version vectors |
+| `burnbar_audit_trail` | Read the label-only memory audit hash chain, with chain verification |
+| `burnbar_memory_analytics` | Counts by kind / scope / sensitivity / review status, embedding coverage, vault entries, policy |
 | `burnbar_index_project` | **Write** a local-only, project-partitioned code index into the existing search substrate; accepts `storage_budget_bytes` |
 | `burnbar_watch_project` | **Write** start daemon-owned automatic reindexing for source/git-ref changes |
 | `burnbar_search_code` | Lexical/path search over local-only indexed project code; returns `semanticAvailable=false` until a real local embedding provider is configured |
@@ -195,6 +221,55 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` and add t
 | `castle_status_snapshot` | Read Castle status records for dashboard/debug surfaces |
 | `castle_seed_worktree_isolation` | Seed `.git/info/exclude` with known agent scratch paths before launching a worker |
 
+## Local memory engine
+
+The memory tools above are served by `memory_engine.py`, an MCP-owned store at
+`~/Library/Application Support/OpenBurnBar/openburnbar-memory.sqlite`
+(override with `OPENBURNBAR_MEMORY_DB_PATH`). Design and the gap analysis
+against mem0 / Mixedbread: [`docs/superpowers/2026-09-02-memory-mcp-v2-design.md`](../../docs/superpowers/2026-09-02-memory-mcp-v2-design.md).
+
+- **Works without the daemon.** Production daemons reject this process as an
+  unsigned peer and the app database is SQLCipher-encrypted, so the engine is
+  the authority for the local MCP. Committed non-secret memories are mirrored
+  to the daemon ledger through the signed `openburnbar-cli memory-remember` /
+  `memory-forget` couriers when installed; unsigned development builds fall
+  back to the daemon socket. Every write reports `mirror.status`
+  (`mirrored | peer_rejected | unreachable | rejected | disabled | skipped`).
+- **Encrypted at rest.** Bodies and history bodies are AES-256-GCM sealed with
+  a key the engine owns (`openburnbar-memory.key`, mode 0600, or
+  `OPENBURNBAR_MEMORY_KEY_BASE64`). Vectors and metadata are plaintext, the same
+  posture as the app's on-disk `VectorIndexes/`. No FTS table is written;
+  BM25 runs in-process over one project's decrypted bodies.
+- **Embeddings.** `OPENBURNBAR_MEMORY_EMBEDDING_PROVIDER=auto|ollama|none`
+  (default `auto`), model `OPENBURNBAR_MEMORY_EMBEDDING_MODEL`
+  (default `nomic-embed-text`; `mxbai-embed-large` works too), Ollama at
+  `OPENBURNBAR_OLLAMA_BASE_URL` (default `http://127.0.0.1:11434`). Run
+  `ollama pull nomic-embed-text` once. Without a provider recall is lexical
+  only and `burnbar_memory_doctor` says so. Vectors carry the model version and
+  are never compared across versions; `burnbar_memory_reindex` re-embeds.
+- **Extraction.** `burnbar_memorize` prefers `facts` the calling agent already
+  extracted (free, highest quality). Otherwise `OPENBURNBAR_MEMORY_EXTRACTOR` =
+  `heuristic` (default, deterministic, offline) | `claude` (`claude -p`, the
+  user's own plan) | `ollama` (`OPENBURNBAR_MEMORY_EXTRACTOR_MODEL`) | `none`
+  (store the raw text as one `note`).
+- **Secrets and PII.** `OPENBURNBAR_MEMORY_SECRET_POLICY` = `redact` (default:
+  keep the fact, replace the secret with `[REDACTED:<label>]`) | `reject` |
+  `retain`. `OPENBURNBAR_MEMORY_PII_POLICY` = `keep` (default; your own email
+  in your own local memory is useful context) | `redact` | `reject`. SSNs and
+  card numbers are always redacted.
+- **Experimental: retain secrets.** `retain` stores the verbatim text in an
+  encrypted vault table, keeps a redacted, searchable body in the main store,
+  and hides the memory from default recall. It needs
+  `OPENBURNBAR_LOCAL_MCP_ENABLE_SECRET_RETAIN=true` (never granted by the
+  operator profile) to write, and `sensitive_read` plus `include_secrets=true`
+  to read back. Retained memories are never mirrored or exported by default.
+- **Write capability.** `memory_write` is on by default when
+  `BURNBAR_MCP_TOOLSET=memory`, and also granted by `local_write` or the
+  operator profile. Set `OPENBURNBAR_LOCAL_MCP_ENABLE_MEMORY_WRITE=false` to
+  force it off. Writes are rate-limited under the `memory` family.
+- **Quality.** `eval_memory.py` scores lexical vs hybrid recall on a 40-memory
+  / 30-paraphrase gold set against your local Ollama model.
+
 Project Code Memory is local-only by default. Indexing uses a shared
 Swift/Python secret-scanner corpus, Git exclude-standard ignore semantics when
 the project is a Git worktree, manifest-backed delta indexing for
@@ -208,12 +283,15 @@ like `{"python":["pyright-langserver","--stdio"],"swift":["sourcekit-lsp"]}` to
 enable opt-in `exact_lsp` symbol/reference tiers; the helper falls back when the
 language server is unavailable, slow, or stale.
 
-Write-capable tools are explicit, daemon-scoped, and disabled until
+Code-index write tools are explicit, daemon-scoped, and disabled until
 `OPENBURNBAR_LOCAL_MCP_ENABLE_LOCAL_WRITE=true` or
-`OPENBURNBAR_LOCAL_MCP_PROFILE=operator` is set. Memory/code writes are
-fail-closed: `burnbar_remember`, `burnbar_forget`, `burnbar_index_project`,
-`burnbar_watch_project`, and `burnbar_explore` require the daemon socket and do
-not fall back to direct SQLite writes. `burnbar_record_hermes_usage` never touches the SQLite DB. The writer is daemon-first: when a local OpenBurnBar daemon is
+`OPENBURNBAR_LOCAL_MCP_PROFILE=operator` is set. Code writes are
+fail-closed: `burnbar_index_project`, `burnbar_watch_project`, and
+`burnbar_explore` require the daemon socket and do not fall back to direct
+SQLite writes. Memory writes (`burnbar_remember`, `burnbar_memorize`,
+`burnbar_forget`, …) go to the MCP-owned memory engine store described above
+and never touch the app database; the daemon mirror is best-effort.
+`burnbar_record_hermes_usage` never touches the SQLite DB. The writer is daemon-first: when a local OpenBurnBar daemon is
 reachable on its UNIX socket
 (`~/Library/Application Support/OpenBurnBar/openburnbar-daemon.sock`) it sends
 the row through the `daemon.usage.record` RPC so the daemon's in-memory

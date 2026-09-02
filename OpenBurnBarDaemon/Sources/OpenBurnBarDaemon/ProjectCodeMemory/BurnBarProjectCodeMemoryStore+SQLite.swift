@@ -164,16 +164,25 @@ extension BurnBarProjectCodeMemoryStore {
             guard rc == SQLITE_ROW else { throw sqliteError() }
             let count = sqlite3_column_count(statement)
             var values: [String?] = []
+            var blobs: [Data?] = []
             for index in 0..<count {
                 if sqlite3_column_type(statement, index) == SQLITE_NULL {
                     values.append(nil)
+                    blobs.append(nil)
+                } else if sqlite3_column_type(statement, index) == SQLITE_BLOB {
+                    let byteCount = Int(sqlite3_column_bytes(statement, index))
+                    let data = sqlite3_column_blob(statement, index).map { Data(bytes: $0, count: byteCount) } ?? Data()
+                    values.append(nil)
+                    blobs.append(data)
                 } else if let text = sqlite3_column_text(statement, index) {
                     values.append(String(cString: text))
+                    blobs.append(nil)
                 } else {
                     values.append(nil)
+                    blobs.append(nil)
                 }
             }
-            rows.append(SQLiteRow(values: values))
+            rows.append(SQLiteRow(values: values, blobs: blobs))
         }
         return rows
     }
@@ -195,6 +204,10 @@ extension BurnBarProjectCodeMemoryStore {
                 rc = sqlite3_bind_int64(statement, position, sqlite3_int64(int))
             case .double(let double):
                 rc = sqlite3_bind_double(statement, position, double)
+            case .blob(let data):
+                rc = data.withUnsafeBytes { bytes in
+                    sqlite3_bind_blob(statement, position, bytes.baseAddress, Int32(bytes.count), projectCodeMemorySQLiteTransient)
+                }
             case .null:
                 rc = sqlite3_bind_null(statement, position)
             }

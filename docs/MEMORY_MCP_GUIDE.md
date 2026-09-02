@@ -5,6 +5,16 @@ decisions, fixes, preferences, project facts — and hands them back to any AI
 tool you use. Everything is sealed with a key only your devices hold; our
 servers store only scrambled data they cannot read.
 
+> **Two memory surfaces.** This guide covers the hosted, end-to-end-encrypted
+> Pensieve memory (`mcp.burnbar.ai`, Cloud Pro). The **local** memory MCP in
+> [`tools/openburnbar-mcp`](../tools/openburnbar-mcp/README.md#local-memory-engine)
+> is a separate, on-this-Mac engine (`burnbar_memorize`, `burnbar_recall`, …)
+> with hybrid BM25 + local-embedding recall, ADD / UPDATE / NONE / DELETE
+> reconciliation, per-memory history, an encrypted store, and an opt-in
+> experimental mode that retains secrets in an encrypted vault. Its design and
+> the gap analysis against mem0 and Mixedbread live in
+> [`docs/superpowers/2026-09-02-memory-mcp-v2-design.md`](superpowers/2026-09-02-memory-mcp-v2-design.md).
+
 The same tour ships inside the app as a guided walkthrough with spotlights:
 **Settings › Cloud › Remote MCP › “How Memory works”** opens a five-page modal
 (`AgentLens/Views/Settings/MemoryMCPWalkthroughView.swift`) whose copy is

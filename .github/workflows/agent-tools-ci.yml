@@ -43,6 +43,11 @@ jobs:
         with:
           python-version: "3.11"
 
+      # This intentionally runs before Rust is installed or the native domain
+      # core is built: the repo-scoped memory MCP must stand up with Python alone.
+      - name: Verify cargo-free memory bootstrap
+        run: tools/openburnbar-mcp/bootstrap-memory.test.sh
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # v1
         with:

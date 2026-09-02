@@ -16,6 +16,8 @@ public protocol BurnBarCLIClient: Sendable {
     func approveMission(id: BurnBarMissionID, note: String?) throws -> BurnBarMissionSnapshot
     func simulatorRuns(projectSlug: String?) throws -> [BurnBarSimulatorRunSnapshot]
     func simulatorReplay(runID: BurnBarSimulatorRunID) throws -> BurnBarSimulatorRunSnapshot
+    func memoryRemember(_ request: BurnBarProjectMemoryRememberRequest) throws -> BurnBarProjectMemoryRememberResponse
+    func memoryForget(_ request: BurnBarProjectMemoryForgetRequest) throws -> BurnBarProjectMemoryForgetResponse
     func memoryRecall(query: String, projectPath: String?, limit: Int) throws -> BurnBarProjectMemoryRecallResponse
     /// Read-only SQL over the daemon's keyed store, for the signed-CLI courier
     /// the local MCP server routes through on production installs.
@@ -207,6 +209,26 @@ public struct BurnBarCLISocketClient: BurnBarCLIClient, Sendable {
                 method: .memoryRecall,
                 authToken: authToken,
                 params: BurnBarProjectMemoryRecallRequest(query: query, projectPath: projectPath, limit: limit)
+            )
+        )
+    }
+
+    public func memoryRemember(_ request: BurnBarProjectMemoryRememberRequest) throws -> BurnBarProjectMemoryRememberResponse {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .memoryRemember,
+                authToken: authToken,
+                params: request
+            )
+        )
+    }
+
+    public func memoryForget(_ request: BurnBarProjectMemoryForgetRequest) throws -> BurnBarProjectMemoryForgetResponse {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .memoryForget,
+                authToken: authToken,
+                params: request
             )
         )
     }

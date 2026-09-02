@@ -78,6 +78,14 @@ final class BurnBarCLITests: XCTestCase {
             invokedExecutablePath: "/tmp/OpenBurnBarCLI"
         ))
         XCTAssertNil(BurnBarCLIRunner.startupPreflightResult(
+            arguments: ["memory-remember"],
+            invokedExecutablePath: "/tmp/OpenBurnBarCLI"
+        ))
+        XCTAssertNil(BurnBarCLIRunner.startupPreflightResult(
+            arguments: ["memory-forget"],
+            invokedExecutablePath: "/tmp/OpenBurnBarCLI"
+        ))
+        XCTAssertNil(BurnBarCLIRunner.startupPreflightResult(
             arguments: ["--model", "gpt-5"],
             invokedExecutablePath: "/tmp/codex"
         ))
@@ -316,6 +324,27 @@ final class BurnBarCLITests: XCTestCase {
         XCTAssertThrowsError(try runner.runPrivacyRPC(input: Data(#"{"method":"daemon.health","params":{}}"#.utf8)))
     }
 
+    func testMemoryRememberReadsJSONAndReturnsTypedResult() throws {
+        let runner = BurnBarCLIRunner(client: FakeCLIClient())
+        let output = try runner.runMemoryRemember(input: Data(#"{"text":"Remember the signed bridge.","projectPath":"/tmp/fixture","kind":"architecture","scope":"project","tags":["bridge"],"confidence":0.9}"#.utf8))
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(output.utf8)) as? [String: Any])
+
+        XCTAssertEqual(object["memoryID"] as? String, "mem_architecture")
+        XCTAssertEqual(object["projectID"] as? String, "proj_/tmp/fixture")
+        XCTAssertEqual(object["auditHash"] as? String, "audit-remember")
+    }
+
+    func testMemoryForgetReadsJSONAndReturnsTypedResult() throws {
+        let runner = BurnBarCLIRunner(client: FakeCLIClient())
+        let output = try runner.runMemoryForget(input: Data(#"{"memoryID":"mem_signed_bridge","projectPath":"/tmp/fixture","requireCloudDelete":true}"#.utf8))
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(output.utf8)) as? [String: Any])
+
+        XCTAssertEqual(object["memoryID"] as? String, "mem_signed_bridge")
+        XCTAssertEqual(object["localDeleted"] as? Bool, true)
+        XCTAssertEqual(object["cloudDeletePending"] as? Bool, true)
+        XCTAssertEqual(object["auditHash"] as? String, "audit-forget")
+    }
+
     func testChatQueryCommandsEmitStableJSON() throws {
         let runner = BurnBarCLIRunner(client: FakeCLIClient())
         let threads = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(try runner.run(arguments: ["chat", "threads", "--query", "release", "--limit", "7"]).utf8)) as? [String: Any])
@@ -492,6 +521,26 @@ struct FakeCLIClient: BurnBarCLIClient {
             columns: ["id", "title"],
             rows: [[.text("conv-1"), .text(request.sql)]],
             truncated: false
+        )
+    }
+
+    func memoryRemember(_ request: BurnBarProjectMemoryRememberRequest) throws -> BurnBarProjectMemoryRememberResponse {
+        BurnBarProjectMemoryRememberResponse(
+            traceID: "trace-remember",
+            projectID: "proj_\(request.projectPath ?? "default")",
+            memoryID: "mem_\(request.kind)",
+            auditHash: "audit-remember"
+        )
+    }
+
+    func memoryForget(_ request: BurnBarProjectMemoryForgetRequest) throws -> BurnBarProjectMemoryForgetResponse {
+        BurnBarProjectMemoryForgetResponse(
+            traceID: "trace-forget",
+            projectID: "proj_\(request.projectPath ?? "default")",
+            memoryID: request.memoryID,
+            localDeleted: true,
+            cloudDeletePending: request.requireCloudDelete,
+            auditHash: "audit-forget"
         )
     }
 

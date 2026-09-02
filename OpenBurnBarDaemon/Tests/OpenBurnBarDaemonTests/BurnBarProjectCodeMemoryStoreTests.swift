@@ -504,6 +504,127 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         XCTAssertTrue(audit.events.contains { $0.action == "memory.forget" && $0.labels.contains("snapshot section removed") })
     }
 
+    func testMemoryRecallUsesBM25TermFrequencyInsteadOfSubstringCount() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "memory-bm25-test"),
+            embeddingProvider: DisabledEmbeddingProvider()
+        )
+        let strong = try store.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: "signed bridge signed bridge signed bridge daemon",
+                projectPath: fixture.project.path,
+                kind: "note"
+            )
+        )
+        let weak = try store.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: "signed bridge daemon plus unrelated filler words that dilute the document",
+                projectPath: fixture.project.path,
+                kind: "note"
+            )
+        )
+        try sqliteExecute(
+            database: fixture.database,
+            sql: "UPDATE agent_memories SET updated_at = CASE id WHEN '\(strong.memoryID)' THEN '2026-09-01T00:00:00Z' WHEN '\(weak.memoryID)' THEN '2026-09-01T00:00:01Z' END"
+        )
+
+        let recall = try store.recall(
+            BurnBarProjectMemoryRecallRequest(query: "signed bridge", projectPath: fixture.project.path)
+        )
+
+        XCTAssertEqual(recall.hits.first?.memoryID, strong.memoryID)
+    }
+
+    func testMemoryTokenizerMatchesPythonCodeAwareRules() {
+        XCTAssertEqual(
+            BurnBarMemoryRanking.tokenize("PRs camelCase snake_case APIClient tables uses"),
+            ["pr", "camelcase", "camel", "cas", "snake_case", "snak", "cas", "apiclient", "api", "client", "tabl", "us"]
+        )
+        XCTAssertEqual(BurnBarMemoryRanking.tokenize("café foo_bar"), ["caf", "foo_bar", "foo", "bar"])
+    }
+
+    func testMemoryRecallFindsSemanticOnlyMatchFromStoredVectors() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "memory-semantic-test"),
+            embeddingProvider: ControlledMemoryEmbeddingProvider()
+        )
+        let target = try store.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: "Reattempt the failed connection with progressive delays.",
+                projectPath: fixture.project.path,
+                kind: "procedure"
+            )
+        )
+        _ = try store.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: "Use purple accents for the dashboard.",
+                projectPath: fixture.project.path,
+                kind: "preference"
+            )
+        )
+
+        let recall = try store.recall(
+            BurnBarProjectMemoryRecallRequest(query: "repair broken network", projectPath: fixture.project.path)
+        )
+
+        XCTAssertEqual(recall.hits.first?.memoryID, target.memoryID)
+        XCTAssertEqual(
+            try sqliteInt(database: fixture.database, sql: "SELECT COUNT(*) FROM memory_embedding_refs"),
+            2
+        )
+    }
+
+    func testMemoryRecallSalienceReranksAndReinforcesWinner() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "memory-salience-test"),
+            embeddingProvider: DisabledEmbeddingProvider()
+        )
+        let first = try store.remember(
+            BurnBarProjectMemoryRememberRequest(text: "rollout alpha", projectPath: fixture.project.path)
+        )
+        let second = try store.remember(
+            BurnBarProjectMemoryRememberRequest(text: "rollout bravo", projectPath: fixture.project.path)
+        )
+        let highSalienceID = max(first.memoryID, second.memoryID)
+        let lowSalienceID = min(first.memoryID, second.memoryID)
+        try sqliteExecute(
+            database: fixture.database,
+            sql: """
+            UPDATE agent_memories
+            SET kind = CASE id WHEN \(sqlLiteral(highSalienceID)) THEN 'architecture' ELSE 'note' END,
+                confidence = CASE id WHEN \(sqlLiteral(highSalienceID)) THEN 1.0 ELSE 0.2 END,
+                updated_at = '2026-09-01T00:00:00Z'
+            WHERE id IN (\(sqlLiteral(highSalienceID)), \(sqlLiteral(lowSalienceID)))
+            """
+        )
+
+        let recall = try store.recall(
+            BurnBarProjectMemoryRecallRequest(query: "rollout", projectPath: fixture.project.path, limit: 1)
+        )
+
+        XCTAssertEqual(recall.hits.first?.memoryID, highSalienceID)
+        XCTAssertEqual(
+            try sqliteInt(
+                database: fixture.database,
+                sql: "SELECT hit_count FROM memory_salience WHERE memory_id = \(sqlLiteral(highSalienceID))"
+            ),
+            1
+        )
+        XCTAssertEqual(
+            try sqliteInt(
+                database: fixture.database,
+                sql: "SELECT hit_count FROM memory_salience WHERE memory_id = \(sqlLiteral(lowSalienceID))"
+            ),
+            0
+        )
+    }
+
     func testQuarantineLifecycleIsDaemonOwnedAndFailClosedForRecall() throws {
         let fixture = try makeFixture()
         let store = try BurnBarProjectCodeMemoryStore(
@@ -668,7 +789,7 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         try write("func betaOnly() { print(\"betauniqueterm\") }\n", to: repoB.appendingPathComponent("B.swift"))
 
         let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
-        _ = try store.indexProject(BurnBarProjectCodeIndexProjectRequest(projectPath: repoA.path, maxFiles: 20))
+        let repoAIndex = try store.indexProject(BurnBarProjectCodeIndexProjectRequest(projectPath: repoA.path, maxFiles: 20))
         _ = try store.indexProject(BurnBarProjectCodeIndexProjectRequest(projectPath: repoB.path, maxFiles: 20))
         _ = try store.remember(BurnBarProjectMemoryRememberRequest(text: "alpha memory alphaonlymemoryterm.", projectPath: repoA.path))
         _ = try store.remember(BurnBarProjectMemoryRememberRequest(text: "beta memory betaonlymemoryterm.", projectPath: repoB.path))
@@ -682,7 +803,8 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         XCTAssertFalse(codeBleed.hits.contains { $0.snippet.contains("betauniqueterm") })
 
         let memoryBleed = try store.recall(BurnBarProjectMemoryRecallRequest(query: "betaonlymemoryterm", projectPath: repoA.path))
-        XCTAssertTrue(memoryBleed.hits.isEmpty)
+        XCTAssertTrue(memoryBleed.hits.allSatisfy { $0.projectID == repoAIndex.projectID })
+        XCTAssertFalse(memoryBleed.hits.contains { $0.bodyRedacted.contains("betaonlymemoryterm") })
 
         let explicitCrossProject = try store.recall(
             BurnBarProjectMemoryRecallRequest(query: "betaonlymemoryterm", projectPath: repoA.path, includeCrossProject: true)
@@ -1582,6 +1704,23 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
             }
             if lowercased.contains("weak semantic fixture") {
                 return [0.19, 0.981784, 0, 0]
+            }
+            return nil
+        }
+    }
+
+    private struct ControlledMemoryEmbeddingProvider: BurnBarCodeEmbeddingProvider {
+        let versionID = "test-memory-semantic-1"
+        let dimension = 4
+
+        func embed(_ text: String) -> [Float]? {
+            let lowercased = text.lowercased()
+            if lowercased.contains("repair broken network")
+                || lowercased.contains("reattempt the failed connection") {
+                return [1, 0, 0, 0]
+            }
+            if lowercased.contains("purple accents") {
+                return [0, 1, 0, 0]
             }
             return nil
         }

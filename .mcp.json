@@ -2,10 +2,8 @@
   "mcpServers": {
     "openburnbar": {
       "type": "stdio",
-      "command": "tools/openburnbar-mcp/.venv/bin/python",
-      "args": [
-        "tools/openburnbar-mcp/server.py"
-      ],
+      "command": "tools/openburnbar-mcp/launch-memory.sh",
+      "args": [],
       "env": {
         "BURNBAR_MCP_TOOLSET": "memory"
       }
