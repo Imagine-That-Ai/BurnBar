@@ -17,7 +17,12 @@ pinned by default to:
   - signer identity: https://github.com/Imagine-That-Ai/BurnBar/.github/workflows/release.yml@refs/tags/<tag>
   - OIDC issuer: https://token.actions.githubusercontent.com
 
-Override identity/issuer/type with:
+Accepted predicate identities:
+  - https://slsa.dev/provenance/v1
+  - https://openburnbar.dev/attestations/release-artifact/v1, only through
+    LEGACY_PREDICATE_ACCEPTED_UNTIL_TAG below
+
+Override identity/issuer/type (for a permitted one-off verification) with:
   OPENBURNBAR_RELEASE_CERTIFICATE_IDENTITY
   OPENBURNBAR_RELEASE_CERTIFICATE_OIDC_ISSUER
   OPENBURNBAR_RELEASE_PREDICATE_TYPE
@@ -38,10 +43,96 @@ shift || true
 
 repo="${OPENBURNBAR_GITHUB_REPO:-Imagine-That-Ai/BurnBar}"
 version="${tag#v}"
-predicate_type="${OPENBURNBAR_RELEASE_PREDICATE_TYPE:-https://openburnbar.dev/attestations/release-artifact/v1}"
+SLSA_PREDICATE_TYPE="https://slsa.dev/provenance/v1"
+LEGACY_PREDICATE_TYPE="https://openburnbar.dev/attestations/release-artifact/v1"
+# Sunset: legacy release-artifact predicates are accepted only through this
+# last known release. From the next tagged release, SLSA is the sole accepted
+# identity and this compatibility branch is deleted.
+LEGACY_PREDICATE_ACCEPTED_UNTIL_TAG="v1.0.40+repair.37"
+predicate_type="${OPENBURNBAR_RELEASE_PREDICATE_TYPE:-}"
+requested_predicate_type="$predicate_type"
 certificate_identity="${OPENBURNBAR_RELEASE_CERTIFICATE_IDENTITY:-https://github.com/${repo}/.github/workflows/release.yml@refs/tags/${tag}}"
 certificate_issuer="${OPENBURNBAR_RELEASE_CERTIFICATE_OIDC_ISSUER:-https://token.actions.githubusercontent.com}"
 expected_runner_environment="${OPENBURNBAR_RELEASE_RUNNER_ENVIRONMENT:-github-hosted}"
+
+tag_at_or_before() {
+  python3 - "$1" "$2" <<'PY'
+import re
+import sys
+
+semver = re.compile(
+    r"^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"
+    r"(?:-([0-9A-Za-z.-]+))?(?:\+([0-9A-Za-z.-]+))?$"
+)
+
+
+def identifiers(value):
+    return [] if value is None else value.split(".")
+
+
+def compare_identifiers(left, right):
+    for left_id, right_id in zip(identifiers(left), identifiers(right)):
+        if left_id == right_id:
+            continue
+        left_numeric = left_id.isdigit()
+        right_numeric = right_id.isdigit()
+        if left_numeric and right_numeric:
+            return (int(left_id) > int(right_id)) - (int(left_id) < int(right_id))
+        if left_numeric != right_numeric:
+            return -1 if left_numeric else 1
+        return (left_id > right_id) - (left_id < right_id)
+    return (len(identifiers(left)) > len(identifiers(right))) - (
+        len(identifiers(left)) < len(identifiers(right))
+    )
+
+
+def compare(left_tag, right_tag):
+    left = semver.fullmatch(left_tag)
+    right = semver.fullmatch(right_tag)
+    if left is None or right is None:
+        raise SystemExit(2)
+    left_core = tuple(int(part) for part in left.groups()[:3])
+    right_core = tuple(int(part) for part in right.groups()[:3])
+    if left_core != right_core:
+        return (left_core > right_core) - (left_core < right_core)
+
+    left_prerelease, right_prerelease = left.group(4), right.group(4)
+    if left_prerelease != right_prerelease:
+        if left_prerelease is None:
+            return 1
+        if right_prerelease is None:
+            return -1
+        return compare_identifiers(left_prerelease, right_prerelease)
+
+    # SemVer build metadata normally does not affect precedence. BurnBar's
+    # repair tags use it as the release train sequence, so compare it for the
+    # explicit compatibility sunset.
+    return compare_identifiers(left.group(5), right.group(5))
+
+
+sys.exit(0 if compare(sys.argv[1], sys.argv[2]) <= 0 else 1)
+PY
+}
+
+predicate_types=("$SLSA_PREDICATE_TYPE")
+if tag_at_or_before "$tag" "$LEGACY_PREDICATE_ACCEPTED_UNTIL_TAG"; then
+  predicate_types=("$LEGACY_PREDICATE_TYPE" "$SLSA_PREDICATE_TYPE")
+fi
+
+if [[ -n "$requested_predicate_type" ]]; then
+  if [[ "$requested_predicate_type" != "$SLSA_PREDICATE_TYPE" \
+    && "$requested_predicate_type" != "$LEGACY_PREDICATE_TYPE" ]]; then
+    echo "FAIL: unsupported release predicate identity: $requested_predicate_type" >&2
+    exit 1
+  fi
+  if [[ "$requested_predicate_type" == "$LEGACY_PREDICATE_TYPE" ]]; then
+    if ! tag_at_or_before "$tag" "$LEGACY_PREDICATE_ACCEPTED_UNTIL_TAG"; then
+      echo "FAIL: legacy release predicate is not accepted for tag $tag (sunset: $LEGACY_PREDICATE_ACCEPTED_UNTIL_TAG)." >&2
+      exit 1
+    fi
+  fi
+  predicate_types=("$requested_predicate_type")
+fi
 
 if ! command -v gh >/dev/null 2>&1; then
   echo "FAIL: gh CLI is required." >&2
@@ -133,15 +224,16 @@ PY
     exit 1
   fi
 
-  echo "==> verifying Sigstore blob attestation: $asset_name"
-  cosign verify-blob-attestation \
-    --bundle "$bundle_path" \
-    --type "$predicate_type" \
-    --certificate-identity "$certificate_identity" \
-    --certificate-oidc-issuer "$certificate_issuer" \
-    "$asset" >/dev/null
+  verify_candidate() {
+    local candidate_type="$1"
+    cosign verify-blob-attestation \
+      --bundle "$bundle_path" \
+      --type "$candidate_type" \
+      --certificate-identity "$certificate_identity" \
+      --certificate-oidc-issuer "$certificate_issuer" \
+      "$asset" >/dev/null || return 1
 
-  python3 - "$asset" "$bundle_path" "$predicate_path" "$tag" "$version" "$repo" "$predicate_type" "$expected_runner_environment" <<'PY'
+    python3 - "$asset" "$bundle_path" "$predicate_path" "$tag" "$version" "$repo" "$candidate_type" "$expected_runner_environment" <<'PY'
 import base64
 import hashlib
 import json
@@ -245,6 +337,20 @@ for key, want in expected.items():
     if got != want:
         raise SystemExit(f"{asset.name}: predicate {key} mismatch: got {got!r}, want {want!r}")
 PY
+  }
+
+  verified_predicate_type=""
+  for candidate_type in "${predicate_types[@]}"; do
+    echo "==> verifying Sigstore blob attestation: $asset_name ($candidate_type)"
+    if verify_candidate "$candidate_type"; then
+      verified_predicate_type="$candidate_type"
+      break
+    fi
+  done
+  if [[ -z "$verified_predicate_type" ]]; then
+    echo "FAIL: no permitted predicate identity verified for $asset_name on tag $tag." >&2
+    exit 1
+  fi
 done < <(find "$tmp_dir" -type f -print0)
 
 if [[ "$downloaded" -eq 0 ]]; then
