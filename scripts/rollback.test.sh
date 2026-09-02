@@ -131,6 +131,24 @@ if ! grep -Fq "Target: v1.0.0" "${TMP_DIR}/explicit.out"; then
   exit 1
 fi
 
+live_commit="$(git -C "${canonical_repo}" rev-parse 'refs/tags/v1.0.2^{commit}')"
+if OPENBURNBAR_SOURCE_COMMIT="${live_commit}" run_rollback "${canonical_repo}" v1.0.1 --dry-run >"${TMP_DIR}/live-ahead.out" 2>"${TMP_DIR}/live-ahead.err"; then
+  echo "FAIL: rollback accepted a target behind the live source commit" >&2
+  exit 1
+fi
+if ! grep -Fq "behind live source commit" "${TMP_DIR}/live-ahead.err"; then
+  echo "FAIL: live-source ancestry refusal did not name the hazard" >&2
+  cat "${TMP_DIR}/live-ahead.err" >&2
+  exit 1
+fi
+
+OPENBURNBAR_SOURCE_COMMIT="${live_commit}" run_rollback "${canonical_repo}" v1.0.1 --force --dry-run >"${TMP_DIR}/force-live-ahead.out"
+if ! grep -Fq "Target: v1.0.1" "${TMP_DIR}/force-live-ahead.out"; then
+  echo "FAIL: --force did not override the named live-source ancestry guard" >&2
+  cat "${TMP_DIR}/force-live-ahead.out" >&2
+  exit 1
+fi
+
 missing_sentry_repo="$(build_fixture_repo missing-sentry)"
 missing_sentry_head="$(git -C "${missing_sentry_repo}" rev-parse HEAD)"
 if run_rollback "${missing_sentry_repo}" v1.0.1 --yes >"${TMP_DIR}/missing-sentry.out" 2>"${TMP_DIR}/missing-sentry.err"; then

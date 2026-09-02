@@ -25,6 +25,7 @@ ops checks must never be presented as current readiness.
 | Build artifact hygiene | `.gitignore` plus `scripts/ci/check-no-committed-build-artifacts.sh` blocks tracked module caches, DerivedData, and `.pcm` files | Clean release checkout generated from tracked source only |
 | Ops readiness | `scripts/ci/verify-ops-readiness.sh` checks logging, resilience, legal packet, and Hermes provenance | `verify-production-ops-plane.sh` with production credentials and a matching `HERMES_AGENT_SRC` checkout |
 | Android E2E | PR harness and nightly E2E now execute `scripts/e2e/android-iroh-chat.sh` on emulator when the relevant lane runs | Green instrumented result from GitHub Actions or a local emulator with valid Firebase config |
+| Rollback | Fixture dry-run plus `scripts/ci/check-runbook-topology.mjs` topology lint | Staging/production revision-pin receipt — **PENDING** (human queue item 15 runs the live drill) |
 
 ## Diligence Interpretation
 
