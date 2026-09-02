@@ -1606,6 +1606,10 @@ def _memory_wrap(body: str, memory_id: str) -> str:
     return pcm.wrap_untrusted_snippet(body, source_tool="burnbar_recall", record_id=memory_id) or body
 
 
+def _memory_pack_wrap(body: str, project_id: str) -> str:
+    return pcm.wrap_untrusted_snippet(body, source_tool="burnbar_recall_pack", record_id=project_id) or body
+
+
 def _memory_mirror_enabled() -> bool:
     raw = os.environ.get(MEMORY_MIRROR_ENV, "").strip().lower()
     if raw in {"0", "false", "no", "n", "off"}:
@@ -1806,9 +1810,10 @@ def _legacy_daemon_memories(project_path: str | None) -> list[dict[str, Any]]:
 
 def _migrate_legacy_memories(engine: me.MemoryEngine, project_path: str | None) -> dict[str, Any]:
     """Import the daemon-owned `agent_memories` rows for a project into the
-    engine store once. Best effort and cached per process: an unreadable app
-    database (SQLCipher behind a peer-gated daemon) is a structured status,
-    never an error on the recall path.
+    engine store once. Successful terminal outcomes are cached per process;
+    transient capability or daemon failures are retried on the next read.
+    An unreadable app database is a structured status, never an error on the
+    recall path.
     """
     try:
         project_id, _root = me.resolve_project(engine.conn, project_path)
@@ -1842,7 +1847,8 @@ def _migrate_legacy_memories(engine: me.MemoryEngine, project_path: str | None) 
                     "skipped": result["skipped"],
                     "legacyRows": len(rows),
                 }
-    _LEGACY_MIGRATION_STATE[project_id] = state
+    if state.get("status") in {"migrated", "up_to_date"}:
+        _LEGACY_MIGRATION_STATE[project_id] = state
     return state
 
 
@@ -1898,7 +1904,7 @@ def burnbar_remember(
             immutable=immutable,
         )
         if result.get("status") == "ok":
-            mirror = _memory_mirror_remember({**result, "sourceRef": source_path}, project_path)
+            mirror = _memory_mirror_remember(result, project_path)
             result["mirror"] = mirror
             if mirror.get("status") == "mirrored" and mirror.get("daemonMemoryID"):
                 engine.record_daemon_mirror(str(result["memoryID"]), str(mirror["daemonMemoryID"]))
@@ -1988,9 +1994,7 @@ def burnbar_memorize(
         )
         for decision in result.get("decisions", []):
             if decision.get("event") in ("ADD", "UPDATE"):
-                mirror = _memory_mirror_remember(
-                    {**decision, "sourceRef": decision.get("sourceRef") or source_ref}, project_path
-                )
+                mirror = _memory_mirror_remember(decision, project_path)
                 mirrors.append({"memoryID": decision.get("memoryID"), **mirror})
                 if mirror.get("status") == "mirrored" and mirror.get("daemonMemoryID") and decision.get("memoryID"):
                     engine.record_daemon_mirror(str(decision["memoryID"]), str(mirror["daemonMemoryID"]))
@@ -2090,6 +2094,7 @@ def burnbar_recall_pack(
             include_cross_project=include_cross_project,
             kinds=_memory_list_arg(kinds),
             min_confidence=min_confidence,
+            wrap=_memory_pack_wrap,
         )
         result["legacyMigration"] = migration
     return json.dumps(result, indent=2, default=str)
@@ -2222,9 +2227,14 @@ def burnbar_forget(memory_id: str, project_path: str | None = None) -> str:
     with _memory_engine() as engine:
         daemon_memory_id = engine.daemon_mirror_id(memory_id)
         result = engine.forget(memory_id, project_path=project_path)
-    result.pop("mirrorRef", None)
-    if result.get("status") == "ok":
-        result["mirror"] = _memory_mirror_forget(daemon_memory_id, project_path)
+        result.pop("mirrorRef", None)
+        if result.get("status") == "ok" or daemon_memory_id:
+            mirror = _memory_mirror_forget(daemon_memory_id, project_path)
+            result["mirror"] = mirror
+            if result.get("status") == "not_found" and daemon_memory_id:
+                result.update(status="ok", localStatus="already_deleted", retriedPendingMirror=True)
+            if mirror.get("status") == "mirrored" and daemon_memory_id:
+                engine.clear_daemon_mirror(memory_id)
     return json.dumps(result, indent=2, default=str)
 
 

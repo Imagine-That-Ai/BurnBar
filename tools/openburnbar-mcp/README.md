@@ -158,7 +158,7 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` and add t
 | `burnbar_remember` | **Write** one durable memory (kind, scope, tags, entities, metadata, `supersedes`, `expires_at`, `immutable`); secrets redacted, PII kept by default; mirrored to the daemon ledger when reachable |
 | `burnbar_memorize` | **Write** durable memories from a conversation, text, or pre-extracted `facts` (the mem0 `add()` equivalent): extraction → gate → injection screen → ADD / UPDATE / NONE / DELETE reconciliation; idempotent per input |
 | `burnbar_recall` | Hybrid BM25 + vector recall with reciprocal-rank fusion and salience rerank; kind/tag/entity/metadata/date filters; personal-scope memories follow the user across projects; bodies wrapped as untrusted content |
-| `burnbar_recall_pack` | Token-budgeted, prompt-ready block of the most relevant memories |
+| `burnbar_recall_pack` | Token-budgeted, prompt-ready block of the most relevant memories, wrapped as untrusted retrieved data |
 | `burnbar_memory_get` / `burnbar_memory_list` | Read one memory (optionally with history) / page through memories with filters and ordering |
 | `burnbar_memory_update` | **Write** patch a memory in place (stable id, history row, re-embed) |
 | `burnbar_memory_history` | Per-memory change history with before/after bodies |
@@ -238,7 +238,10 @@ against mem0 / Mixedbread: [`docs/superpowers/2026-09-02-memory-mcp-v2-design.md
   A mirrored row records the daemon's own content-derived id, and
   `burnbar_forget` uses that id for the daemon-side forget (a row that was
   never mirrored reports `mirror.status: skipped` instead of sending the
-  engine's local id).
+  engine's local id). If the daemon is unavailable, a metadata-only tombstone
+  retains its id for a later `burnbar_forget` retry and clears only after the
+  daemon confirms deletion. Mirror provenance uses only the engine-gated
+  `sourceRef`, never the caller's raw source string.
 - **Legacy daemon memories migrate themselves.** Memories written by the
   pre-engine `burnbar_remember` or by the app into the daemon-owned
   `agent_memories` store are imported into the engine store once, on the
@@ -247,7 +250,8 @@ against mem0 / Mixedbread: [`docs/superpowers/2026-09-02-memory-mcp-v2-design.md
   legacy_daemon`, `metadata.legacyMemoryID`). The outcome is reported as
   `legacyMigration` on those responses and in `burnbar_memory_doctor`; when
   the app database is unreadable (signed install) it is a status, never an
-  error.
+  error. Transient unavailable or capability-disabled outcomes are not cached
+  and retry on the next read.
 - **Encrypted at rest.** Bodies and history bodies are AES-256-GCM sealed with
   a key the engine owns (`openburnbar-memory.key`, mode 0600, published
   atomically so two first-run processes cannot truncate each other's key, or

@@ -710,7 +710,9 @@ def test_server_remember_recall_and_mirror_status(server_env: Path, monkeypatch:
     listed = json.loads(server.burnbar_memory_list(project_path=repo, kinds="preference"))
     assert listed["total"] >= 1
     pack = json.loads(server.burnbar_recall_pack("daemon", project_path=repo, token_budget=300))
-    assert pack["pack"].startswith("OPENBURNBAR_MEMORY_PACK_V1")
+    assert pack["pack"].startswith("OPENBURNBAR_UNTRUSTED_CODE_V1")
+    assert "OPENBURNBAR_MEMORY_PACK_V1" in pack["pack"]
+    assert pack["trustSignal"]["untrustedContentWrapped"] is True
     forgotten = json.loads(server.burnbar_forget(stored["memoryID"], project_path=repo))
     # The daemon never accepted the remember, so there is no daemon id to forget:
     # the wrapper says so instead of sending the engine's random id and calling it mirrored.

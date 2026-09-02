@@ -77,7 +77,9 @@ So:
   `openburnbar-cli memory-remember` courier when installed; unsigned dev
   builds fall back to the daemon socket. Mirror status is reported per write
   and never blocks success. The daemon's content-derived ID is retained so
-  `memory-forget` deletes the matching mirror rather than the Python ID.
+  `memory-forget` deletes the matching mirror rather than the Python ID. That
+  ID remains as a metadata-only tombstone after local deletion until the
+  daemon confirms its delete, so a transient outage is retryable.
 - The daemon's own `agent_memories` body authority remains intact. Its recall
   path reuses the existing `memory_embedding_refs` and `memory_salience`
   sidecars for BM25 + NLEmbedding reciprocal-rank fusion and deterministic
@@ -142,8 +144,8 @@ engine_meta(key PK, value)
    never granted by the operator profile) and stores the verbatim body only
    in the encrypted vault. Every decision is audited label-only.
 4. **Injection screen** — sentinel patterns (`ignore previous instructions`,
-   `SYSTEM:`, untrusted-wrapper markers, shell-pipe-to-sh…) quarantine the
-   memory instead of rejecting it.
+   `SYSTEM:`, untrusted-wrapper and memory-pack markers, shell-pipe-to-sh…)
+   quarantine the memory instead of rejecting it.
 5. **Resolve** — against active memories in the same project (and personal
    scope): cosine ≥ 0.92 or Jaccard ≥ 0.85 → `NONE` (reinforce: bump
    access, merge tags/entities, max confidence); explicit `supersedes` or a
@@ -175,7 +177,9 @@ engine_meta(key PK, value)
    `matchedBy`, `why`.
 
 `recall_pack` builds a token-budgeted prompt block from the same ranking
-(mirrors the app's `MemoryRecallBudget`).
+(mirrors the app's `MemoryRecallBudget`) and wraps the complete block as
+untrusted retrieved data. Pack boundary markers are also write-time injection
+sentinels, preventing stored text from forging an early footer.
 
 ## 5. Tool surface (memory toolset)
 
@@ -207,9 +211,13 @@ Capabilities: `memory_write` (new; on when `local_write`, operator profile,
 - `burnbar_forget` mirrors to the daemon only with the daemon's own id
   (recorded on the row when the mirror write was accepted); a row that was
   never mirrored reports `mirror.status: skipped` instead of a bogus forget.
+  Failed daemon deletes keep a metadata-only tombstone and are retried by a
+  later `burnbar_forget`; the tombstone clears only after daemon confirmation.
 - Memories in the daemon-owned `agent_memories` store are imported into the
   engine store once per project on first recall/list (`legacyMigration`), so
   an upgrade does not make earlier memories disappear from MCP recall.
+  Unavailable or capability-disabled attempts are not cached and retry on the
+  next read.
 
 ### 6.1 Review hardening (Codex + Cursor security review of PR #2485)
 
@@ -219,6 +227,10 @@ Every finding is pinned by a test in `tests/test_memory_engine_hardening.py`:
   a hash and labels (the gated incoming text goes to the encrypted column),
   the ingest replay table keeps event/id metadata only, and tags, entities,
   metadata, and `source_ref` pass the same gate as the body.
+- Daemon mirror calls use the gated `sourceRef`, never the caller's raw source
+  string, and pending daemon forgets remain retryable after local deletion.
+- Recall packs are wrapped as untrusted content and their boundary markers are
+  screened on write; transient legacy-migration failures are retried.
 - Encoded secrets (base64 / hex) are redacted at their surface span; secrets
   visible only in a joined or continued view are refused under `redact`
   (and the body is withheld under `retain`).
