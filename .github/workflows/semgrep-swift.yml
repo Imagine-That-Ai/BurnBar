@@ -52,10 +52,12 @@ jobs:
 
       # Observing only: scan the public OSS Swift ruleset (no token, no
       # proprietary rules), emit SARIF, upload as a plain artifact.
-      - name: semgrep scan (p/swift)
+      - name: semgrep scan (pinned p/swift snapshot)
         run: |
+          # Rules are a vendored registry snapshot (scripts/ci/semgrep/p-swift.pinned.yaml)
+          # so the pinned engine sees the same rules on every run.
           semgrep scan \
-            --config p/swift \
+            --config scripts/ci/semgrep/p-swift.pinned.yaml \
             --sarif \
             --output semgrep-swift.sarif \
             --metrics=off

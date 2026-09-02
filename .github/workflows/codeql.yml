@@ -95,25 +95,26 @@ jobs:
       # identity and cache it BEFORE any heavy Swift prep so a toolchain miss
       # fails in seconds, not at minute 75. Key is runner image + Xcode
       # version: the Metal toolchain ships with / is downloaded per Xcode.
-      - name: Resolve Xcode version (Metal cache key)
+      - name: Ensure the Metal toolchain component is installed
         if: matrix.language == 'swift'
-        id: metal-cache-key
-        run: echo "xcode=$(xcodebuild -version | awk 'NR==1{print $2}')" >> "$GITHUB_OUTPUT"
+        run: |
+          set -euo pipefail
+          # Metal is an Xcode toolchain component, not build output: caching
+          # DerivedData cannot supply it. Xcode 26+ ships it as a downloadable
+          # component, so install it when the runner image lacks it.
+          if xcrun -f metal >/dev/null 2>&1; then
+            echo "Metal toolchain already present: $(xcrun -f metal)"
+            exit 0
+          fi
+          echo "Metal toolchain missing on this runner image; installing the MetalToolchain component."
+          sudo xcodebuild -downloadComponent MetalToolchain
+          sudo xcodebuild -runFirstLaunch
 
-      - name: Restore Metal toolchain artifacts
-        if: matrix.language == 'swift'
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
-        with:
-          path: ~/Library/Developer/Xcode/DerivedData
-          key: ${{ runner.os }}-metal-toolchain-${{ runner.arch }}-xcode-${{ steps.metal-cache-key.outputs.xcode }}
-
-      # Fail in SECONDS when the Metal toolchain is missing, with the fix in
-      # the message. Never reach the 75-minute failure mode again.
       - name: Preflight Metal toolchain (xcrun -f metal)
         if: matrix.language == 'swift'
         run: |
           if ! metal_bin="$(xcrun -f metal 2>/dev/null)"; then
-            echo "::error::Metal toolchain missing: 'xcrun -f metal' found no 'metal' tool. The traced Swift CodeQL build requires the Metal compiler; without it the run dies at ~minute 75 with \"cannot execute tool 'metal'\" (run 33517666151). Fix: run 'xcodebuild -runFirstLaunch && xcodebuild -downloadAllPlatforms' on the runner (or pick a runner image whose Xcode bundles the Metal toolchain), then re-dispatch."
+            echo "::error::Metal toolchain missing: 'xcrun -f metal' found no 'metal' tool even after 'xcodebuild -downloadComponent MetalToolchain'. The traced Swift CodeQL build requires the Metal compiler; without it the run dies at ~minute 75 with \"cannot execute tool 'metal'\" (run 33517666151). Fix: pick a runner image whose Xcode bundles or can download the Metal toolchain, then re-dispatch."
             exit 1
           fi
           echo "Metal toolchain present: ${metal_bin}"
