@@ -24,3 +24,4 @@ OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/BurnBarIndexedSearchReadOnlySQLTe
 tools/openburnbar-mcp-remote/src/appInstall.ts:generic-api-key:20
 tools/openburnbar-mcp-remote/src/appInstall.test.ts:generic-api-key:228
 apps/console/test/interop/swift-fixture.json:generic-api-key:35
+fc5d52ca5a676b64512be32eeff39fc04370529d:tools/openburnbar-mcp/tests/test_memory_engine.py:generic-api-key:101
