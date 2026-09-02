@@ -150,7 +150,7 @@ engine_meta(key PK, value)
    `SYSTEM:`, untrusted-wrapper and memory-pack markers, shell-pipe-to-sh…)
    quarantine the memory instead of rejecting it.
 5. **Resolve** — against active memories in the same project (and personal
-   scope): cosine ≥ 0.92 or Jaccard ≥ 0.85 → `NONE` (reinforce: bump
+   scope): cosine ≥ 0.92 or Jaccard ≥ 0.75 → `NONE` (reinforce: bump
    access, merge tags/entities, max confidence); explicit `supersedes` or a
    matching `(subject, predicate)` slot with a different object → `UPDATE`
    (old row gets `valid_to`/`superseded_by`); negation phrasing against a
@@ -323,6 +323,29 @@ Round 3 (`tests/test_memory_engine_hardening_round3.py`):
   path. Exported content is wrapped at the MCP boundary.
 - Legacy migration paginates past 2,000 rows, the launcher rejects pre-3.11
   venvs, and daemon salience reads bind only the current recall candidates.
+
+### 6.2 Post-merge launch-readiness audit
+
+Pinned by `tests/test_memory_engine_post_merge_audit.py`,
+`tests/test_mcp_stdio_smoke.py`, and two new cases in
+`bootstrap-memory.test.sh`:
+
+- A brand-new store opened by several MCP clients at once is initialized
+  under the same advisory lock the key file uses, with a bounded retry
+  underneath; before this, 9 of 40 simultaneous first opens failed with
+  `database is locked`.
+- `bootstrap-memory.sh` serializes venv creation with an atomic `mkdir` lock
+  (reclaimed when its owner died) and can install into a venv that has no
+  `pip` (`uv venv`, `python -m venv --without-pip`) via `ensurepip`, then `uv`.
+  The repo's own `.mcp.json` entry failed on a `uv`-made venv before this.
+- Review decisions read the row under `BEGIN IMMEDIATE`, and
+  `expected_updated_at` refuses a decision on a body the reviewer never saw.
+- Bulk delete is bound to the previewed rows through `selectionToken`.
+- Every filter operator validates its operand shape (`INVALID_FILTER` instead
+  of a SQLite type error), on `list` and `recall` alike.
+- Mirror updates re-read the row and let the newer write own the mirror.
+- A real stdio JSON-RPC session (initialize, tools/list, tools/call) is part
+  of the suite, not only an import check.
 
 ## 7. Follow-up closure and remaining non-goals
 

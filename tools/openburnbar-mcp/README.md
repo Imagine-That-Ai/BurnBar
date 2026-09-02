@@ -46,6 +46,14 @@ continue without the static parser helper.
 
 Optional: `export BURNBAR_DB_PATH="/path/to/openburnbar.sqlite"` if the DB is not under `~/Library/Application Support/OpenBurnBar/`.
 
+The client examples below point at `.venv/bin/python` + `server.py`, which
+exposes every toolset; that venv must exist first (either bootstrap above or
+`setup.sh`). For a memory-only client that bootstraps itself, point the
+command at `tools/openburnbar-mcp/launch-memory.sh` with
+`BURNBAR_MCP_TOOLSET=memory` in its env, exactly as `.mcp.json` does. The
+bootstrap copes with a venv that was created without `pip` (for example by
+`uv venv`) and with two clients starting at the same moment.
+
 ## Cursor
 
 1. Open **Cursor Settings → MCP** (or edit your MCP config JSON).
@@ -162,9 +170,9 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` and add t
 | `burnbar_memory_get` / `burnbar_memory_list` | Read one memory (optionally with history) / page through memories with filters and ordering; quarantined rows are hidden by default and explicit review reads are wrapped |
 | `burnbar_memory_update` | **Write** patch a memory in place (stable id, history row, re-embed) |
 | `burnbar_memory_history` | Per-memory change history with wrapped before/after bodies and metadata |
-| `burnbar_memory_review` | **Write** approve / quarantine / reject (injection suspects start quarantined) |
+| `burnbar_memory_review` | **Write** approve / quarantine / reject (injection suspects start quarantined); the row is locked for the decision, and `expected_updated_at` refuses it if the memory changed since it was read |
 | `burnbar_forget` | **Write** hard-delete one memory (body, vectors, history, relations, vault) with a label-only audit event; mirrored to the daemon when reachable |
-| `burnbar_forget_all` | **Write** two-step bulk delete for a project (optionally scope / kinds); requires `confirm="DELETE"` |
+| `burnbar_forget_all` | **Write** two-step bulk delete for a project (optionally scope / kinds); the preview returns `selectionToken`, the confirmation needs `confirm="DELETE"` plus that `selection_token`, and is refused if the matching rows changed |
 | `burnbar_memory_entities` / `burnbar_memory_relations` | Entities mentioned by memories, and heuristic (subject, predicate, object) relations |
 | `burnbar_memory_export` / `burnbar_memory_import` | JSON export (requires `sensitive_read`; retained secrets excluded unless asked) and machine-round-trippable project export/import; `all_projects` exports are diagnostic archives and cannot be flattened into one project; trust wrappers are provenance-checked, decoded, then every value passes the normal import gate again |
 | `burnbar_memory_reindex` | **Write** embed memories missing a vector for the active model version; purge stale-version vectors |

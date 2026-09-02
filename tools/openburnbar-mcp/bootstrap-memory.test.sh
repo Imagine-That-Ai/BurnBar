@@ -135,4 +135,60 @@ assert tool_names == server.MEMORY_TOOLSET
 print(f"OK: server.py import exposed {len(tool_names)} memory tools on Python {sys.version.split()[0]}")
 PY
 
+# A venv created without pip (uv venv, python -m venv --without-pip) must not
+# break the launcher: bootstrap restores pip with ensurepip, or uses uv.
+NOPIP_ROOT="${TMP_ROOT}/nopip/tools/openburnbar-mcp"
+mkdir -p "${NOPIP_ROOT}"
+cp "${FIXTURE_DIR}/bootstrap-memory.sh" "${FIXTURE_DIR}/launch-memory.sh" "${SOURCE_DIR}/requirements.txt" "${FIXTURE_DIR}/server.py" "${NOPIP_ROOT}/"
+"${VENV_PYTHON}" -m venv --without-pip "${NOPIP_ROOT}/.venv"
+"${NOPIP_ROOT}/.venv/bin/python" -m pip --version >/dev/null 2>&1 && {
+  echo "FAIL: test fixture venv unexpectedly has pip" >&2
+  exit 1
+}
+# Shadow uv with a failing stub so the ensurepip path is the one under test.
+cat >"${TMP_ROOT}/bin/uv" <<SH
+#!/usr/bin/env bash
+touch "${TMP_ROOT}/uv-was-called"
+exit 96
+SH
+chmod +x "${TMP_ROOT}/bin/uv"
+nopip_output="$(
+  PATH="${TMP_ROOT}/bin:${PATH}" \
+    BURNBAR_MCP_TOOLSET=memory \
+    "${NOPIP_ROOT}/launch-memory.sh" 2>"${TMP_ROOT}/nopip.stderr"
+)"
+[[ "${nopip_output}" == "OK: fixture server import through launcher" ]] || {
+  echo "FAIL: launcher could not bootstrap a venv that has no pip: ${nopip_output}" >&2
+  cat "${TMP_ROOT}/nopip.stderr" >&2
+  exit 1
+}
+grep -q "restored pip in the memory MCP venv with ensurepip" "${TMP_ROOT}/nopip.stderr" || {
+  echo "FAIL: bootstrap did not take the ensurepip path for a pip-less venv" >&2
+  exit 1
+}
+[[ ! -e "${TMP_ROOT}/uv-was-called" ]] || {
+  echo "FAIL: bootstrap reached for uv while ensurepip was available" >&2
+  exit 1
+}
+
+# Two clients starting from a fresh checkout at the same moment must both
+# come up, through one serialized bootstrap.
+RACE_ROOT="${TMP_ROOT}/race/tools/openburnbar-mcp"
+mkdir -p "${RACE_ROOT}"
+cp "${FIXTURE_DIR}/bootstrap-memory.sh" "${FIXTURE_DIR}/launch-memory.sh" "${SOURCE_DIR}/requirements.txt" "${FIXTURE_DIR}/server.py" "${RACE_ROOT}/"
+PATH="${TMP_ROOT}/bin:${PATH}" BURNBAR_MCP_TOOLSET=memory "${RACE_ROOT}/launch-memory.sh" >"${TMP_ROOT}/race-a.out" 2>"${TMP_ROOT}/race-a.err" &
+race_a=$!
+PATH="${TMP_ROOT}/bin:${PATH}" BURNBAR_MCP_TOOLSET=memory "${RACE_ROOT}/launch-memory.sh" >"${TMP_ROOT}/race-b.out" 2>"${TMP_ROOT}/race-b.err" &
+race_b=$!
+wait "${race_a}" || { echo "FAIL: concurrent launcher A failed" >&2; cat "${TMP_ROOT}/race-a.err" >&2; exit 1; }
+wait "${race_b}" || { echo "FAIL: concurrent launcher B failed" >&2; cat "${TMP_ROOT}/race-b.err" >&2; exit 1; }
+[[ "$(<"${TMP_ROOT}/race-a.out")" == "OK: fixture server import through launcher" && "$(<"${TMP_ROOT}/race-b.out")" == "OK: fixture server import through launcher" ]] || {
+  echo "FAIL: concurrent launchers did not both import through one bootstrap" >&2
+  exit 1
+}
+[[ ! -e "${RACE_ROOT}/.venv.bootstrap.lock" ]] || {
+  echo "FAIL: bootstrap left its lock directory behind" >&2
+  exit 1
+}
+
 echo "PASS: cargo-free OpenBurnBar memory MCP bootstrap"

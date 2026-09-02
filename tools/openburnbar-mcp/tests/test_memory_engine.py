@@ -533,7 +533,17 @@ def test_forget_all_requires_confirmation(tmp_path: Path) -> None:
         preview = engine.forget_all(project_path=repo)
         assert preview["status"] == "confirm_required" and preview["wouldDelete"] == 4
         assert engine.stats(project_path=repo)["total"] == 4
-        done = engine.forget_all(project_path=repo, kinds=["todo"], confirm="DELETE")
+        # The confirmation is bound to the exact rows the preview showed.
+        stale = engine.forget_all(project_path=repo, kinds=["todo"], confirm="DELETE")
+        assert stale["status"] == "confirm_required" and stale["code"] == "SELECTION_TOKEN_REQUIRED"
+        wrong = engine.forget_all(
+            project_path=repo, kinds=["todo"], confirm="DELETE", selection_token=preview["selectionToken"]
+        )
+        assert wrong["status"] == "confirm_required" and wrong["code"] == "SELECTION_CHANGED"
+        todo_preview = engine.forget_all(project_path=repo, kinds=["todo"])
+        done = engine.forget_all(
+            project_path=repo, kinds=["todo"], confirm="DELETE", selection_token=todo_preview["selectionToken"]
+        )
         assert done["deleted"] == 1 and engine.stats(project_path=repo)["total"] == 3
 
 
