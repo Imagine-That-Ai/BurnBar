@@ -78,8 +78,10 @@ runs:
           const {
             BLOCKER_LABEL,
             ESCALATED_LABEL,
+            REPAGE_LABEL,
             PAGED_LABEL,
             evaluateP0Escalation,
+            evaluateSevenDayRepage,
             shouldPageP0,
           } = require(`${process.env.GITHUB_WORKSPACE || require('node:process').cwd()}/.github/actions/ops-failure-issue/escalation.cjs`);
           const mode = process.env.OPS_MODE;
@@ -179,6 +181,7 @@ runs:
             ['area: infra', 'CI/CD, build, deployment infrastructure.'],
             [BLOCKER_LABEL, 'Named owner or external blocker exempts a known red from automatic age escalation.'],
             [ESCALATED_LABEL, 'P0 remained open beyond the 72-hour recovery SLO and was escalated.'],
+            [REPAGE_LABEL, 'P0 remained open for seven days and was re-paged once.'],
             [PAGED_LABEL, 'P0 ops failure was paged out-of-band via Slack. Suppresses repeat paging on recurring/flapping failures.'],
           ]);
           const labelColor = (name) => {
@@ -273,21 +276,32 @@ runs:
           // issue is P0, open, unblocked, and not already paged. Only add
           // `paged:ops` after a successful POST — a missing or failed
           // webhook leaves the issue unpaged so a later run can retry.
-          const pageP0IfEligible = async (issueNumber, issueLabels) => {
+          const pageP0IfEligible = async (issueNumber, issueLabels, createdAt) => {
             const paging = shouldPageP0({ mode, labels: issueLabels });
-            if (!paging.shouldPage) {
+            const repaging = evaluateSevenDayRepage({
+              created_at: createdAt,
+              labels: issueLabels,
+            });
+            // If the initial webhook was unavailable for the first seven days,
+            // send the still-missing initial page before the seven-day tier.
+            // A re-page is only the second alert after `paged:ops` exists;
+            // otherwise one unpaged issue would alert once as both tiers.
+            const shouldRepage = !paging.shouldPage && repaging.shouldRepage;
+            if (!paging.shouldPage && !shouldRepage) {
               if (paging.reason === 'p0-unpaged') return; // unreachable guard
-              core.info(`Lane '${lane}': issue #${issueNumber} not paged (${paging.reason}).`);
+              core.info(`Lane '${lane}': issue #${issueNumber} not paged (${paging.reason}; ${repaging.reason}).`);
               return;
             }
             const webhook = process.env.OPS_PAGING_SLACK_WEBHOOK;
             if (!webhook) {
-              core.warning(`Lane '${lane}': P0 issue #${issueNumber} eligible for paging but OPS_PAGING_SLACK_WEBHOOK is not configured (A6 blocker). Issue behavior unaffected; will retry on next failure.`);
+              core.warning(`Lane '${lane}': P0 issue #${issueNumber} eligible for ${shouldRepage ? 'seven-day re-page' : 'initial paging'} but OPS_PAGING_SLACK_WEBHOOK is not configured (A6 blocker). Issue behavior unaffected; will retry on next failure.`);
               return;
             }
             const repoSlug = `${context.repo.owner}/${context.repo.repo}`;
             const issueUrl = `${context.serverUrl}/${repoSlug}/issues/${issueNumber}`;
-            const slackText = `🚨 *P0 ops failure* — ${oneLine(repoSlug, 'repo')} lane \`${lane}\`: ${summary}\nIssue: ${issueUrl}\nRun: ${runUrl}`;
+            const slackText = shouldRepage
+              ? `🚨 *P0 ops failure re-page* — ${oneLine(repoSlug, 'repo')} lane \`${lane}\` has been red for seven days: ${summary}\nIssue: ${issueUrl}\nRun: ${runUrl}`
+              : `🚨 *P0 ops failure* — ${oneLine(repoSlug, 'repo')} lane \`${lane}\`: ${summary}\nIssue: ${issueUrl}\nRun: ${runUrl}`;
             try {
               const pageResponse = await fetch(webhook, {
                 method: 'POST',
@@ -299,14 +313,14 @@ runs:
                 core.warning(`Lane '${lane}': Slack webhook returned HTTP ${pageResponse.status} for issue #${issueNumber}. Not paged — will retry on next failure.`);
                 return;
               }
-              await ensureIssueLabels([PAGED_LABEL]);
+              await ensureIssueLabels([shouldRepage ? REPAGE_LABEL : PAGED_LABEL]);
               await github.rest.issues.addLabels({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: issueNumber,
-                labels: [PAGED_LABEL],
+                labels: [shouldRepage ? REPAGE_LABEL : PAGED_LABEL],
               });
-              core.notice(`Lane '${lane}': paged P0 issue #${issueNumber} to Slack out-of-band.`);
+              core.notice(`Lane '${lane}': ${shouldRepage ? 're-paged' : 'paged'} P0 issue #${issueNumber} to Slack out-of-band.`);
             } catch (pageError) {
               core.warning(`Lane '${lane}': Slack webhook POST failed for issue #${issueNumber}: ${oneLine(pageError.message, 'error')}. Not paged — will retry on next failure.`);
             }
@@ -356,7 +370,7 @@ runs:
                 core.warning(`Lane '${lane}': escalated overdue P0 issue #${issue.number} at ${escalation.ageHours} hours.`);
               }
               core.notice(`Lane '${lane}': commented on standing issue #${issue.number} (${next}).`);
-              await pageP0IfEligible(issue.number, issue.labels);
+              await pageP0IfEligible(issue.number, issue.labels, issue.created_at);
               return;
             }
             const title = `${titlePrefix} (${context.runId})`;
@@ -379,7 +393,7 @@ runs:
             });
             const issueNumber = created.data.number;
             core.notice(`Lane '${lane}': opened issue #${issueNumber}.`);
-            await pageP0IfEligible(issueNumber, [...allLabels, `${COUNT_PREFIX}1`]);
+            await pageP0IfEligible(issueNumber, [...allLabels, `${COUNT_PREFIX}1`], created.data.created_at);
             return;
           }
 

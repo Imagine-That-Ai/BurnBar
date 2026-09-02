@@ -62,6 +62,30 @@ upsert signer secrets unless `OPENBURNBAR_HOSTED_MCP_ALLOW_SECRET_UPSERT=true`
 is set, so normal production deploys cannot rotate token-signing material as an
 accidental side effect.
 
+### Scheduled deploy lane-health exit paths
+
+The scheduled/manual `.github/workflows/deploy-lane-health.yml` observes the latest
+non-dry-run Cloud Run release and probes `https://mcp.burnbar.ai/readyz`. It is
+strictly read-only: it does not dispatch a release, mutate Cloud Run traffic,
+or retry a failed tag workflow. The uploaded `deploy-lane-health.json` is the
+scoreboard and includes the deploy conclusion, probe result, run URL, and
+consecutive-red count.
+
+- A failed/cancelled/skipped deploy, a missing deploy run, a GitHub API error,
+  or a non-200/not-ready probe is red. A deploy conclusion of `failure` is
+  retained as a deploy/product failure; API, missing-run, and probe failures
+  carry infrastructure reason codes.
+- Red or unavailable data exits non-zero and opens/updates the `deploy-health`
+  issue. The shared ops action deduplicates the first page and re-pages an
+  unblocked P0 once at the seven-day tier; a configured named blocker suppresses
+  automated escalation without turning the lane green.
+- **Human queue exit:** the release owner records the blocker, accountable
+  owner, and expiry in the issue, then uses the main-only approved
+  `existing_tag_retry` control or pins traffic to the previous ready revision.
+  Do not rerun a tag-bound workflow from the old tag, manually change traffic
+  without recording the revision, or close the issue before `/readyz` and
+  deployment readback are green.
+
 ## Domain Mapping
 
 The launch target is `mcp.burnbar.ai`. The older `mcp.openburnbar.com` target is

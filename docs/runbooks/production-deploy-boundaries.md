@@ -45,6 +45,46 @@ credentialed step writes runtime env and deploys with the direct Firebase binary
 against the generated config. The health gate runs afterward in a separate job
 without WIF credentials.
 
+### Nightly health scoreboard
+
+`nightly-health.yml` publishes exactly six stable scheduled lanes:
+`openburnbar-pr-harness`, `app-pr-gate`, `nightly-e2e`, `codeql`,
+`linux-nightly`, and `codex-nightly-ci-repair`. It reads workflow runs,
+run-scoped jobs, and Checks API metadata for `main`; missing runs, missing
+identity, runs older than 36 hours, skipped/incomplete/unknown jobs, and API
+errors are red infrastructure rather than implicit green. The DAST sandbox and deploy
+observer remain separate scoreboards.
+
+- The JSON/Markdown report is uploaded as a run artifact and appended to the
+  workflow summary.
+- A red or unavailable report exits non-zero, opens/updates the
+  `nightly-health` issue, and closes that issue only after a fully green run.
+- `failureClass: infra` identifies evidence/API/prerequisite failures;
+  `failureClass: budget` identifies a completed lane's product or budget
+  failure. The shared ops action pages eligible P0 issues once, then re-pages
+  only after `paged:ops` at seven days.
+
+### Scheduled lane-health exit paths
+
+`deploy-lane-health.yml` is a scheduled/manual, observation-only workflow. It
+checks the latest non-dry-run `deploy-production.yml` run and probes
+`healthReady` plus `healthLive`; it never dispatches a deploy, changes traffic,
+or retries a tag. The generated `deploy-lane-health.json` artifact is the
+machine-readable scoreboard.
+
+- **Green:** both the latest deploy and both public probes are successful.
+- **Red or unavailable:** the workflow exits non-zero, records a
+  `deploy-health` issue, and pages through the shared ops action when the
+  configured webhook is available. A missing deploy run, skipped/cancelled run,
+  API error, or failed probe is an explicit infrastructure blocker, not a
+  green/no-op result. A failed deploy conclusion remains a product/deploy
+  failure and is not relabeled as a healthy probe.
+- **Human queue exit:** the release owner assigns the issue, records the
+  blocker, owner, and expiry in the issue, and chooses either an approved
+  main-only `existing_tag_retry` or the documented rollback path. Do not rerun
+  an old tag workflow or mark the issue resolved until deploy and readback
+  evidence are green.
+
 `deploy-firestore.yml` installs dependencies, runs emulator tests, writes
 `firebase-firestore.ci.json`, and prepares the Firebase CLI before auth. The
 credentialed step deploys indexes with the direct binary and generated config;
