@@ -58,7 +58,7 @@
   "commandEvidence": [
     {
       "command": "python3 scripts/ci/check_burnbar_release_preflight.py --allow-owner-emergency-approval --allow-owner-emergency-runtime-hold --expected-release-tag v1.0.40+repair.40",
-      "purpose": "Validate the bounded owner-emergency v1.0.40+repair.39 release lane (re-cut after the repair.38 tag was frozen by tag protection with a failing release gate) without claiming signed external-counsel approval"
+      "purpose": "Validate the bounded owner-emergency v1.0.40+repair.40 release lane (re-cut after the repair.38 tag was frozen by tag protection with a failing release gate) without claiming signed external-counsel approval"
     }
   ],
   "notes": "Emergency approval is owner-attested soft approval, not a detached counsel signature. Keep the signed-counsel gate intact and replace this emergency packet with signed evidence when available. v1.0.40 is a new immutable successor; existing v1.0.36, v1.0.37, and v1.0.38 tags remain untouched."
