@@ -18,10 +18,10 @@ final class OpenBurnBarDataFTSRowidMigrationTests: XCTestCase {
 
     // MARK: - Migrator wiring
 
-    func test_migrator_latestIdentifier_isV64CommandBoardIndex() {
+    func test_migrator_latestIdentifier_isV65MemoryQuarantineBodies() {
         XCTAssertEqual(
             OpenBurnBarDatabase.latestMigrationIdentifier,
-            "v64_token_usage_start_time_index"
+            "v65_memory_quarantine_bodies"
         )
         XCTAssertTrue(
             OpenBurnBarDatabase.migrator.migrations.contains("v61_usage_memory"),
@@ -51,6 +51,26 @@ final class OpenBurnBarDataFTSRowidMigrationTests: XCTestCase {
             OpenBurnBarDatabase.migrator.migrations.contains("v61_usage_memory"),
             "registerUsageMemoryMigration must be wired into the migrator"
         )
+    }
+
+    func test_v65MemoryQuarantineBodiesAddsReviewHoldingTable() throws {
+        let queue = try DatabaseQueue()
+        try OpenBurnBarDatabase.migrator.migrate(queue, upTo: "v64_token_usage_start_time_index")
+        try OpenBurnBarDatabase.migrator.migrate(queue)
+
+        let columns = try queue.read { db in
+            try String.fetchAll(db, sql: "SELECT name FROM pragma_table_info('memory_quarantine_bodies')")
+        }
+        for column in ["memory_id", "project_id", "body", "created_at", "updated_at"] {
+            XCTAssertTrue(columns.contains(column), "memory_quarantine_bodies missing \(column)")
+        }
+        let indexes = try queue.read { db in
+            try String.fetchAll(
+                db,
+                sql: "SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'memory_quarantine_bodies_project_idx'"
+            )
+        }
+        XCTAssertEqual(indexes, ["memory_quarantine_bodies_project_idx"])
     }
 
     func test_v61AdditiveMigration_usesTransactionalFastLane() throws {

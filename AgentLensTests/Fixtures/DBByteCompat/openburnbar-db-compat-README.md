@@ -9,7 +9,7 @@ pinned SQLCipher parameters and rationale, and
 
 | File | What it is |
 | ---- | ---------- |
-| `openburnbar-db-compat-v64.sqlcipher` | A **real Mac-produced** SQLCipher database, migrated through the **live** `OpenBurnBarDatabase` migrator to `v64_token_usage_start_time_index` and seeded with the canonical FTS corpus. Genuinely encrypted (no plaintext SQLite header). |
+| `openburnbar-db-compat-v64.sqlcipher` | A **real Mac-produced** SQLCipher database, migrated through the **live** `OpenBurnBarDatabase` migrator to `v65_memory_quarantine_bodies` and seeded with the canonical FTS corpus. The legacy filename stays stable for downstream fixture consumers; the vector records the actual endpoint. Genuinely encrypted (no plaintext SQLite header). |
 | `openburnbar-db-compat-vector.json` | The **DB-compat vector**: expected schema hash (SHA-256 over normalized `sqlite_master` DDL) + the expected FTS5 `bm25()`/`snippet()` row set for a fixed set of `MATCH` probes. |
 | `openburnbar-db-compat-params-observed.json` | The SQLCipher parameters **read back from the live 4.16.0 binary** (evidence for the pinned values). |
 

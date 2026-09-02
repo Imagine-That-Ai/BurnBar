@@ -296,6 +296,27 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         XCTAssertTrue(indexes.contains("memory_fact_tombstones_pending_idx"))
     }
 
+    func test_v65MemoryQuarantineBodiesAddsEncryptedReviewHoldingTable() async throws {
+        let queue = try DatabaseQueue()
+        try OpenBurnBarDatabase.migrator.migrate(queue, upTo: "v64_token_usage_start_time_index")
+
+        try OpenBurnBarDatabase.migrator.migrate(queue)
+
+        let columns = try await queue.read { db in
+            try Self.columnNames(db, table: "memory_quarantine_bodies")
+        }
+        for column in ["memory_id", "project_id", "body", "created_at", "updated_at"] {
+            XCTAssertTrue(columns.contains(column), "memory_quarantine_bodies missing \(column)")
+        }
+        let indexes = try await queue.read { db in
+            try String.fetchAll(
+                db,
+                sql: "SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'memory_quarantine_bodies_project_idx'"
+            )
+        }
+        XCTAssertEqual(indexes, ["memory_quarantine_bodies_project_idx"])
+    }
+
     func test_v52MemoryExtractionJobsBackfillsIntentAndAddsLease() async throws {
         let queue = try DatabaseQueue()
         try OpenBurnBarDatabase.migrator.migrate(queue, upTo: "v51_chat_memory_authority")

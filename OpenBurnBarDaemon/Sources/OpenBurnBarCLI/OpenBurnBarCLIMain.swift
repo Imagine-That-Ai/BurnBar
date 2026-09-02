@@ -66,6 +66,34 @@ struct BurnBarCLIExecutable {
             }
         }
 
+        if arguments == ["memory-remember"] {
+            do {
+                let input = FileHandle.standardInput.readDataToEndOfFile()
+                guard input.count <= 256 * 1024 else {
+                    throw BurnBarCLIError.missingArgument("memory-remember request exceeds 256 KiB")
+                }
+                writeLine(try BurnBarCLIRunner(client: client).runMemoryRemember(input: input))
+                exit(EXIT_SUCCESS)
+            } catch {
+                writeLine(Self.message(for: error), toStandardError: true)
+                exit(EXIT_FAILURE)
+            }
+        }
+
+        if arguments == ["memory-forget"] {
+            do {
+                let input = FileHandle.standardInput.readDataToEndOfFile()
+                guard input.count <= 256 * 1024 else {
+                    throw BurnBarCLIError.missingArgument("memory-forget request exceeds 256 KiB")
+                }
+                writeLine(try BurnBarCLIRunner(client: client).runMemoryForget(input: input))
+                exit(EXIT_SUCCESS)
+            } catch {
+                writeLine(Self.message(for: error), toStandardError: true)
+                exit(EXIT_FAILURE)
+            }
+        }
+
         if arguments == ["privacy-rpc"] {
             do {
                 let input = FileHandle.standardInput.readDataToEndOfFile()

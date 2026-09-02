@@ -714,7 +714,11 @@ def fresh_helper():
         assert pcm.get_symbol(conn, "fresh_helper", str(repo), limit=10)["symbols"]
 
 
-def test_remember_fails_closed_without_direct_write_override(tmp_path: Path, monkeypatch) -> None:
+def test_remember_succeeds_locally_and_reports_daemon_mirror_unreachable(tmp_path: Path, monkeypatch) -> None:
+    # Contract change (memory MCP v2): `burnbar_remember` commits to the MCP-owned,
+    # gated, audited memory store and *mirrors* to the daemon ledger. A missing
+    # daemon degrades the mirror, never the local write — and the app database
+    # is never touched by the engine.
     db_path = tmp_path / "openburnbar.sqlite"
     sqlite3.connect(db_path).close()
     repo = _make_repo(tmp_path / "repo-memory", "def durable_fact(): return 1\n")
@@ -725,7 +729,9 @@ def test_remember_fails_closed_without_direct_write_override(tmp_path: Path, mon
     server = _load_server()
     payload = json.loads(server.burnbar_remember("Remember the durable test fact.", project_path=str(repo)))
 
-    assert payload["code"] == "DAEMON_WRITE_REQUIRED"
+    assert payload["status"] == "ok"
+    assert payload["event"] == "ADD"
+    assert payload["mirror"]["status"] == "unreachable"
     with sqlite3.connect(db_path) as conn:
         tables = pcm.table_names(conn)
     assert "agent_memories" not in tables
@@ -739,16 +745,19 @@ def test_server_write_tools_use_daemon_rpc_method_names(tmp_path: Path, monkeypa
     monkeypatch.setenv("OPENBURNBAR_LOCAL_MCP_ENABLE_LOCAL_WRITE", "true")
 
     server = _load_server()
+    monkeypatch.setattr(server, "_signed_cli_path", lambda: None)
     calls: list[tuple[str, dict]] = []
 
     def fake_write_authority(method: str, params: dict) -> dict:
         calls.append((method, params))
-        return {"mode": "daemon", "result": {"status": "ok", "method": method}}
+        # The daemon answers `remember` with its own derived id; the engine records it
+        # so `forget` can address the daemon row instead of sending a local id.
+        return {"mode": "daemon", "result": {"status": "ok", "method": method, "memoryID": "mem_daemon_fixture"}}
 
     monkeypatch.setattr(server.pcm, "write_authority", fake_write_authority)
 
-    json.loads(server.burnbar_remember("Remember method names.", project_path=str(repo)))
-    json.loads(server.burnbar_forget("mem_fixture", project_path=str(repo)))
+    remembered = json.loads(server.burnbar_remember("Remember method names.", project_path=str(repo)))
+    json.loads(server.burnbar_forget(remembered["memoryID"], project_path=str(repo)))
     json.loads(server.burnbar_index_project(project_path=str(repo), storage_budget_bytes=4096))
     json.loads(
         server.burnbar_watch_project(project_path=str(repo), storage_budget_bytes=4096, poll_interval_seconds=0.5)
@@ -762,6 +771,7 @@ def test_server_write_tools_use_daemon_rpc_method_names(tmp_path: Path, monkeypa
         "daemon.code.watch_project",
         "daemon.code.explore",
     ]
+    assert calls[1][1]["memoryID"] == "mem_daemon_fixture"
     assert calls[2][1]["storageBudgetBytes"] == 4096
     assert calls[3][1]["pollIntervalSeconds"] == 0.5
     assert calls[4][1]["maxBytes"] == 6000
@@ -847,12 +857,16 @@ def test_write_tools_do_not_fall_back_to_direct_sqlite_even_with_legacy_override
     indexed = json.loads(server.burnbar_index_project(project_path=str(repo)))
     explored = json.loads(server.burnbar_explore("durable_fact", project_path=str(repo)))
 
-    assert remembered["code"] == "DAEMON_WRITE_REQUIRED"
+    # Memory writes land in the MCP-owned engine store (never the app database);
+    # the legacy direct-write override must not resurrect direct SQLite writes.
+    assert remembered["status"] == "ok"
+    assert remembered["mirror"]["status"] == "unreachable"
     assert indexed["code"] == "DAEMON_WRITE_REQUIRED"
     assert explored["code"] == "DAEMON_WRITE_REQUIRED"
 
     with sqlite3.connect(db_path) as conn:
         assert "agent_memories" not in pcm.table_names(conn)
+        assert "memories" not in pcm.table_names(conn)
 
 
 def test_direct_memory_helpers_keep_plaintext_out_of_agent_index(tmp_path: Path) -> None:

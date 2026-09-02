@@ -100,7 +100,29 @@ public sealed partial class WindowsSqlCipherProvisioner
                 WindowsSchemaUpgradeStatement.Always(
                     "CREATE INDEX IF NOT EXISTS token_usage_start_time_idx ON token_usage(startTime)"),
             }),
+
+        // v65_memory_quarantine_bodies — peer of
+        // OpenBurnBarDatabase+CommandBoardIndexMigration.swift.
+        new WindowsSchemaUpgradeStep(
+            "v65_memory_quarantine_bodies",
+            new[]
+            {
+                WindowsSchemaUpgradeStatement.Always(MemoryQuarantineBodiesTableSql),
+                WindowsSchemaUpgradeStatement.Always(
+                    "CREATE INDEX IF NOT EXISTS memory_quarantine_bodies_project_idx ON memory_quarantine_bodies(project_id)"),
+            }),
     };
+
+    internal const string MemoryQuarantineBodiesTableSql =
+        """
+        CREATE TABLE IF NOT EXISTS memory_quarantine_bodies (
+            memory_id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            body TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """;
 
     /// <summary>
     /// The standing-orders table, kept identical to the fresh-install statement in

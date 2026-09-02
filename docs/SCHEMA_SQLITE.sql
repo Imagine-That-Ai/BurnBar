@@ -14,7 +14,7 @@
 
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
--- Schema hash: ba38a165da9b661f6ebc457f7c5dc6995a70053f2038d1e384f7ab4adca72c01
+-- Schema hash: 77fde9c930cbb88c37d6865490f893cc6ec113bfd1dd032879fd413b23c4b18f
 
 -- ── GRDB migrations tracking ──────────────────────────────────────────────────
 
@@ -351,7 +351,8 @@ CREATE TABLE memory_usage_candidates (
 CREATE INDEX memory_usage_candidates_status_idx ON memory_usage_candidates(status, salience_hint, created_at);
 CREATE INDEX memory_usage_candidates_simhash_idx ON memory_usage_candidates(source_kind, simhash);
 
--- Salience sidecar (consolidation worker is the sole writer). A sidecar, not
+-- Salience sidecar (consolidation owns corroboration/source trust; daemon
+-- recall owns hit reinforcement). A sidecar, not
 -- an ALTER on agent_memories, so the mirrored agent_memories DDL stays
 -- byte-identical across app/daemon/python/doc copies.
 CREATE TABLE memory_salience (
@@ -391,6 +392,19 @@ CREATE TABLE memory_embedding_refs (
 );
 
 CREATE INDEX memory_embedding_refs_version_idx ON memory_embedding_refs(embedding_version_id, dimension);
+
+-- Daemon review holding area inside the SQLCipher database. Quarantined and
+-- rejected bodies stay out of project_memory_snapshots until explicitly
+-- approved, so the default project-memory surface cannot expose them.
+CREATE TABLE memory_quarantine_bodies (
+  memory_id  TEXT NOT NULL PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  body       TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX memory_quarantine_bodies_project_idx ON memory_quarantine_bodies(project_id);
 
 CREATE TABLE memory_body_snapshots (
   id            TEXT NOT NULL PRIMARY KEY,
