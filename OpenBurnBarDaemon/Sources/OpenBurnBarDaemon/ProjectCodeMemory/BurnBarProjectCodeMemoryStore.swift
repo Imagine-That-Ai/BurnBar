@@ -506,7 +506,7 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
             )
             var semantic: [(id: String, score: Double)] = []
             if let queryVector, queryVector.count == embeddingProvider.dimension {
-                semantic = try queryRows(
+                let rankedSemantic = try queryRows(
                     """
                     SELECT memory_id, vector
                     FROM memory_embedding_refs
@@ -522,8 +522,7 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                     return score > 0 ? (id, score) : nil
                 }
                 .sorted { lhs, rhs in lhs.score == rhs.score ? lhs.id < rhs.id : lhs.score > rhs.score }
-                .prefix(max(limit * 4, 50))
-                .map { $0 }
+                semantic = Array(rankedSemantic.prefix(max(limit * 4, 50)))
             }
             let fusedScores = BurnBarMemoryRanking.reciprocalRankScores(
                 lexical: lexical.map(\.id),

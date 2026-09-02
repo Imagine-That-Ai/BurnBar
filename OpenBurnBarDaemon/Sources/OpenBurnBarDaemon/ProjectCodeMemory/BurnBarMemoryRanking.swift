@@ -17,7 +17,7 @@ enum BurnBarMemoryRanking {
         "todo": 0.7,
         "event": 0.6,
         "note": 0.6,
-        "other": 0.5,
+        "other": 0.5
     ]
     private static let shortHalfLifeKinds: Set<String> = ["event", "todo"]
     private static let stopwords = Set(
@@ -78,7 +78,7 @@ enum BurnBarMemoryRanking {
             for token in counts.keys { documentFrequency[token, default: 0] += 1 }
         }
         let uniqueQueryTokens = Set(queryTokens)
-        return documents.keys.compactMap { id -> (id: String, score: Double)? in
+        let ranked = documents.keys.compactMap { id -> (id: String, score: Double)? in
             guard let counts = termFrequency[id] else { return nil }
             let documentLength = Double(documentLengths[id] ?? 0)
             let normalization = k1 * (1.0 - b + b * (averageLength > 0 ? documentLength / averageLength : 0))
@@ -92,8 +92,7 @@ enum BurnBarMemoryRanking {
             return score > 0 ? (id, score) : nil
         }
         .sorted { lhs, rhs in lhs.score == rhs.score ? lhs.id < rhs.id : lhs.score > rhs.score }
-        .prefix(max(1, limit))
-        .map { $0 }
+        return Array(ranked.prefix(max(1, limit)))
     }
 
     static func reciprocalRankScores(lexical: [String], semantic: [String], k: Double = 60) -> [String: Double] {
