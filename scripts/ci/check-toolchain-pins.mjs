@@ -4,10 +4,13 @@
  *
  * Sources of truth:
  *   .nvmrc                          — the Node version every workflow must use
- *   crates/<crate>/rust-toolchain.toml — the Rust channel per crate (deliberately
- *                                     two-channel: burnbar-remote 1.94.0, the
- *                                     rest 1.96.0; rust-sast.yml's matrix maps
- *                                     crates to their own channel)
+ *   .xcode-version                  — the Xcode MAJOR/range the tripwire enforces
+ *   global.json                     — the .NET floor (rollForward: latestFeature)
+ *
+ * Crate binding: every Rust toolchain literal must name the crate it builds.
+ * `scripts/ci/check-toolchain-pins.mjs` binds them by lane (see CRATE_FOR_LANE
+ * below); libsignal-FFI lanes build the vendored libsignal that ships inside
+ * the openburnbar-iroh lineage (1.96.0) and are bound by that named contract.
  *   .xcode-version                  — the Xcode MAJOR/range the tripwire enforces
  *   global.json                     — the .NET floor (rollForward: latestFeature)
  *
@@ -27,7 +30,7 @@
  *      scripts/windows-port certification regexes) pins a channel that
  *      exists, and matches the crate named on the same line.
  *   4. The Xcode drift tripwire reads .xcode-version (no hardcoded expected
- *      major, no DEVELOPER_DIR path pin — ADR docs/ARCHITECTURE/011).
+ *      major, no DEVELOPER_DIR path pin — ADR docs/architecture/011).
  *   5. global.json pins the 10.0 floor with rollForward: latestFeature.
  *
  * The exceptions FILE (not this checker) carries the only two Node-24 sites —
@@ -67,10 +70,26 @@ function rustChannels(root) {
     const toml = join(cratesDir, crate, "rust-toolchain.toml");
     if (!existsSync(toml)) continue;
     const match = /^\s*channel\s*=\s*"([^"]+)"/mu.exec(readFileSync(toml, "utf8"));
-    if (match) channels.set(crate, match[1]);
+    if (match) {
+      // A pin file's channel must be a canonical semver — a floating channel
+      // (stable/nightly) in a crate's own toml is exactly the drift this gate
+      // exists to kill.
+      if (!/^\d+\.\d+\.\d+$/u.test(match[1])) {
+        fail(`crates/${crate}/rust-toolchain.toml — channel "${match[1]}" is not a canonical x.y.z pin`);
+        continue;
+      }
+      channels.set(crate, match[1]);
+    }
   }
   return channels;
 }
+
+// Lane → crate binding lives IN THE WORKFLOW FILES as a trailing
+// `# pin: crates/<crate>` token on every toolchain literal (Codex finding:
+// a literal that merely exists in some crate must not pass). The
+// vendored-libsignal lanes pin `crates/openburnbar-iroh (libsignal lineage)`
+// because libsignal itself is vendored outside crates/ and ships inside the
+// openburnbar-iroh lineage (1.96.0).
 
 function readdirSafe(dir) {
   try {
@@ -171,7 +190,7 @@ function check(root, out) {
 
   // ---- workflows ----
   const nodeFileRe = /^(\s*)node-version:\s*([^#\s][^#]*?)\s*(#.*)?$/u;
-  const toolchainRe = /^\s*toolchain:\s*(\S+)\s*$/u;
+  const toolchainRe = /^\s*toolchain:\s*("[^"]+"|'[^']+'|\S+)(?:\s+#.*)?$/u;
   const rustupRe = /rustup run (\S+) cargo ([^#\n]*)/gu;
 
   for (const rel of listWorkflows(root)) {
@@ -185,12 +204,12 @@ function check(root, out) {
       const node = nodeFileRe.exec(line);
       if (node) {
         const value = node[2].replace(/^["']|["']$/g, "");
-        // .nvmrc may pin a full version (22.2.1); a workflow's bare literal
-        // pins the major — compatible when the major matches the pin's major.
-        if (nvmrc && (value === nvmrc || value === nvmrc.split(".")[0])) return;
+        // A bare literal is allowed ONLY through the exceptions file — the pin
+        // mechanism is `node-version-file: .nvmrc` (Codex finding: an equal
+        // literal must not silently pass without the exception trail).
         const exemption = exceptionFor(rel, lineNo);
         if (exemption) return;
-        fail(`${rel}:${lineNo} — node-version ${value} does not match .nvmrc (${nvmrc}) and has no active exception entry`);
+        fail(`${rel}:${lineNo} — bare node-version ${value} is forbidden: use node-version-file: .nvmrc (or a governance/toolchain-pin-exceptions.json entry)`);
       }
 
       if (/^\s*node-version-file:/u.test(line) && !/\.nvmrc/u.test(line)) {
@@ -201,8 +220,23 @@ function check(root, out) {
       if (toolchain) {
         const value = toolchain[1].replace(/^["']|["']$/g, "");
         if (/^\$\{\{/.test(value)) return; // matrix indirection — checked via the matrix below
-        if (!channelValues.has(value)) {
-          fail(`${rel}:${lineNo} — toolchain "${value}" is not a crate channel (${[...channelValues].join(", ")}) and not a matrix indirection`);
+        // rust-sast matrix entries are bound by the dedicated matrix rule below.
+        const inSastMatrix = rel.endsWith("rust-sast.yml") && /^ {8,}toolchain:/u.test(line);
+        if (inSastMatrix) return;
+        // Every literal must declare its contract (Codex finding): a trailing
+        // `# pin: crates/<name>` token (or the named vendored-libsignal lineage).
+        const token = /\s*#\s*pin:\s*(\S+)(?:\s+\(([^)]*)\))?\s*$/u.exec(line);
+        if (!token) {
+          fail(`${rel}:${lineNo} — toolchain literal has no "# pin: crates/<crate>" contract token`);
+          return;
+        }
+        const crate = token[1].replace(/^crates\//u, "");
+        if (!channels.has(crate)) {
+          fail(`${rel}:${lineNo} — pin token names an unknown crate "${token[1]}"`);
+          return;
+        }
+        if (value !== channels.get(crate)) {
+          fail(`${rel}:${lineNo} — toolchain "${value}" does not match its pinned crate ${crate} (${channels.get(crate)})${token[2] ? ` [${token[2]}]` : ""}`);
         }
       }
     });
@@ -248,7 +282,7 @@ function check(root, out) {
       fail(`${tripwireRel} — the tripwire still hardcodes the expected Xcode major (must come from .xcode-version)`);
     }
     if (/DEVELOPER_DIR\s*[=:]/u.test(text)) {
-      fail(`${tripwireRel} — DEVELOPER_DIR path pins are forbidden (diligence P2-8; ADR docs/ARCHITECTURE/011-toolchain-pins.md supersedes)`);
+      fail(`${tripwireRel} — DEVELOPER_DIR path pins are forbidden (diligence P2-8; ADR docs/architecture/011-toolchain-pins.md supersedes)`);
     }
   }
 

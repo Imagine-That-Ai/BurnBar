@@ -117,7 +117,7 @@ jobs:
         if: matrix.language == 'swift'
         uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
         with:
-          toolchain: "1.96.0"
+          toolchain: "1.96.0" # pin: crates/openburnbar-iroh (libsignal lineage)
 
       - name: Ensure libsignal native toolchain (protoc + cmake)
         if: matrix.language == 'swift'

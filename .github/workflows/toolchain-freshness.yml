@@ -40,7 +40,7 @@ jobs:
             echo
             echo "## Rust (crate pins)"
             for f in crates/*/rust-toolchain.toml; do
-              echo "- ${f%%/*}: $(grep -m1 'channel' "$f" | sed 's/.*= *//')"
+              echo "- $(basename "$(dirname "$f")"): $(grep -m1 'channel' "$f" | sed 's/.*= *//')"
             done
             echo "- runner rustup stable: $(rustup run stable rustc --version 2>/dev/null || echo 'not resolved')"
             echo

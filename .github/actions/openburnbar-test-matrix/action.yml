@@ -31,7 +31,7 @@ runs:
       # DEVELOPER_DIR pin anywhere — diligence P2-8). A hard path pin breaks
       # on every image refresh, so this is a drift tripwire instead: the
       # MAJOR Xcode version must match the repo's .xcode-version pin file
-      # (a major/range; ADR docs/ARCHITECTURE/011-toolchain-pins.md
+      # (a major/range; ADR docs/architecture/011-toolchain-pins.md
       # supersedes the P2-8 float note by anchoring the RANGE in-repo), and
       # the exact version is printed in every run log so a silent image
       # migration is attributable.
@@ -42,7 +42,7 @@ runs:
           xcodebuild -version
           version_file="$GITHUB_WORKSPACE/.xcode-version"
           if [[ ! -f "$version_file" ]]; then
-            echo "::error::missing .xcode-version pin file at the repo root (ADR docs/ARCHITECTURE/011-toolchain-pins.md)."
+            echo "::error::missing .xcode-version pin file at the repo root (ADR docs/architecture/011-toolchain-pins.md)."
             exit 1
           fi
           expected="$(head -1 "$version_file")"

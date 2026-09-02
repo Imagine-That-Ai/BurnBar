@@ -55,7 +55,7 @@ jobs:
         # rustc against the `iroh =1.0.0-rc.0` pin.
         uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # v1, pinned via toolchain below
         with:
-          toolchain: "1.96.0"
+          toolchain: "1.96.0" # pin: crates/openburnbar-iroh (libsignal lineage)
           targets: x86_64-pc-windows-msvc,aarch64-pc-windows-msvc
 
       - name: Cache cargo registry + target
