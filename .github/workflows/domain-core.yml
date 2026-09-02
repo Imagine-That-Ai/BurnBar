@@ -32,7 +32,14 @@ jobs:
   promotion-contracts:
     name: promotion-contracts
     needs: classify
-    if: needs.classify.outputs.rust == 'true'
+    # rustTooling covers the evidence machinery itself (verify scripts, the
+    # control-plane digest manifest, domain-core configs, evidence workflows):
+    # the contract tests here are exactly what validates those edits -- most
+    # importantly the digest drift guard, which must fire on the PR that edits
+    # a pinned file, not on the next author's unrelated PR (runbook incidents
+    # #2343/#2344/#2347). The native fleet below stays keyed to `rust` alone:
+    # machinery edits cannot change what any consumer builds or loads.
+    if: ${{ needs.classify.outputs.rust == 'true' || needs.classify.outputs.rustTooling == 'true' }}
     runs-on: ubuntu-latest
     # The deletion-candidate checkout needs complete history and blobs for
     # ancestry and historical-content proofs, so a degraded GitHub fetch can
@@ -1544,10 +1551,20 @@ jobs:
         if: needs.classify.outputs.rust == 'false'
         env:
           NEEDS_JSON: ${{ toJSON(needs) }}
+          RUST_TOOLING: ${{ needs.classify.outputs.rustTooling }}
         run: |
           set -euo pipefail
-          printf '%s\n' "$NEEDS_JSON" | jq -e \
-            '(.classify.result == "success") and (del(.classify) | all(.result == "skipped"))' >/dev/null
+          if [[ "$RUST_TOOLING" == 'true' ]]; then
+            # Evidence-machinery change: the promotion contracts must have run
+            # and passed; every native job must have been intentionally skipped.
+            printf '%s\n' "$NEEDS_JSON" | jq -e \
+              '(.classify.result == "success")
+               and (.["promotion-contracts"].result == "success")
+               and (del(.classify, .["promotion-contracts"]) | all(.result == "skipped"))' >/dev/null
+          else
+            printf '%s\n' "$NEEDS_JSON" | jq -e \
+              '(.classify.result == "success") and (del(.classify) | all(.result == "skipped"))' >/dev/null
+          fi
 
       - name: Check out deletion candidate
         if: needs.classify.outputs.rust == 'true'
