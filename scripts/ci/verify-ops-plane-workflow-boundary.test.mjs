@@ -118,8 +118,68 @@ expect(
   (root) =>
     mutate(root, (text) =>
       text.replace(
-        "            exit 1\n          fi\n",
-        "            echo \"soft skip\"\n          fi\n",
+        "verification could not run. Failing closed so the gap is visible instead of reporting a false green.\" >&2\n            exit 1\n          fi\n",
+        "verification could not run.\" >&2\n            echo \"soft skip\"\n          fi\n",
+      ),
+    ),
+  1,
+);
+
+// --- W0-5: the WIF-only alert-plane drift lane ---
+
+expect(
+  "WIF drift lane demoted to secret auth fails",
+  (root) =>
+    mutate(root, (text) =>
+      text.replace(
+        "          workload_identity_provider: ${{ vars.OPS_VERIFY_WIF_PROVIDER }}\n          service_account: ${{ vars.OPS_VERIFY_SERVICE_ACCOUNT }}\n\n      - name: Branch-protection drift — live (ruleset + classic) vs committed source of truth\n        env:\n          GH_TOKEN: ${{ github.token }}\n          OPENBURNBAR_GOVERNANCE_REPO: ${{ github.repository }}\n          OPENBURNBAR_GOVERNANCE_ORG: ${{ github.repository_owner }}\n        run: node scripts/ops/check-branch-protection-drift.mjs\n\n      - name: Ops alert-plane drift — live GCP policies vs committed manifest\n        env:\n          GCLOUD_PROJECT: burnbar\n        run: node scripts/ops/check-ops-alert-plane-drift.mjs\n\n  detect-secrets:",
+        "          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}\n          service_account: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}\n\n      - name: Branch-protection drift — live (ruleset + classic) vs committed source of truth\n        env:\n          GH_TOKEN: ${{ github.token }}\n          OPENBURNBAR_GOVERNANCE_REPO: ${{ github.repository }}\n          OPENBURNBAR_GOVERNANCE_ORG: ${{ github.repository_owner }}\n        run: node scripts/ops/check-branch-protection-drift.mjs\n\n      - name: Ops alert-plane drift — live GCP policies vs committed manifest\n        env:\n          GCLOUD_PROJECT: burnbar\n        run: node scripts/ops/check-ops-alert-plane-drift.mjs\n\n  detect-secrets:",
+      ),
+    ),
+  1,
+);
+
+expect(
+  "WIF drift lane bound to a production environment fails",
+  (root) =>
+    mutate(root, (text) =>
+      text.replace(
+        "  alert-plane-drift:\n    if: github.event_name != 'pull_request'\n    runs-on: ubuntu-latest\n",
+        "  alert-plane-drift:\n    if: github.event_name != 'pull_request'\n    runs-on: ubuntu-latest\n    environment: production\n",
+      ),
+    ),
+  1,
+);
+
+expect(
+  "WIF drift lane pull_request guard removed fails",
+  (root) =>
+    mutate(root, (text) => text.replace("  alert-plane-drift:\n    if: github.event_name != 'pull_request'\n", "  alert-plane-drift:\n")),
+  1,
+);
+
+expect(
+  "WIF drift lane without the fail-closed marker fails",
+  (root) => mutate(root, (text) => text.replaceAll("wif-not-provisioned", "wif-missing-fine")),
+  1,
+);
+
+expect(
+  "WIF drift lane deleted entirely fails",
+  (root) =>
+    mutate(root, (text) =>
+      text.replace(/  alert-plane-drift:\n(?: .*\n|\n)*/, ""),
+    ),
+  1,
+);
+
+expect(
+  "flat concurrency group restored fails (W0-5 wedge)",
+  (root) =>
+    mutate(root, (text) =>
+      text.replace(
+        "  group: ops-plane-verify-${{ github.event_name }}-${{ github.ref }}\n  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}",
+        "  group: ops-plane-verify\n  cancel-in-progress: false",
       ),
     ),
   1,

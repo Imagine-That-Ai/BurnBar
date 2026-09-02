@@ -1,0 +1,45 @@
+{
+  "workstream": "W0-5 (alert plane runs without a human)",
+  "purpose": "Viewer-only service account for the alert-plane drift verification lanes: `ops-plane-verify.yml` job `alert-plane-drift` and `ops-confidence.yml` job `deploy-freshness`. It reads live GCP alert policies, billing budgets, log sinks, and IAM posture and compares them against the committed source of truth. It can never mutate production: every role below is a viewer role.",
+  "serviceAccountEmail": "ops-verifier@burnbar.iam.gserviceaccount.com",
+  "roles": [
+    "roles/monitoring.viewer",
+    "roles/billing.viewer",
+    "roles/logging.viewer",
+    "roles/iam.securityReviewer"
+  ],
+  "roleConstraints": {
+    "noWriterRoles": true,
+    "rationale": "The lanes this identity serves are drift DETECTORS. A writer role here would let a CI compromise mutate the alert plane it is supposed to guard (and would contradict the fail-closed drift contract: the file wins, live is the bug)."
+  },
+  "workloadIdentityFederation": {
+    "binding": "principalSet://iam.googleapis.com/projects/<gcp-project-number>/locations/global/workloadIdentityPools/github-oidc/attribute.repository/Imagine-That-Ai/BurnBar",
+    "assertion": "The Google Cloud identity is only minted for OIDC tokens from the `Imagine-That-Ai/BurnBar` repository. Tokens from forks or other repos cannot authenticate as this identity.",
+    "authAction": "google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 (v3.0.0)"
+  },
+  "provisioning": {
+    "owner": "Alberto",
+    "humanQueueItems": ["7", "8", "9"],
+    "gcloud": [
+      "gcloud iam service-accounts create ops-verifier --project=<gcp-project-number> --display-name='Ops plane verifier (viewer-only)'",
+      "gcloud projects add-iam-policy-binding burnbar --member='serviceAccount:ops-verifier@burnbar.iam.gserviceaccount.com' --role='roles/monitoring.viewer'",
+      "gcloud projects add-iam-policy-binding burnbar --member='serviceAccount:ops-verifier@burnbar.iam.gserviceaccount.com' --role='roles/billing.viewer'",
+      "gcloud projects add-iam-policy-binding burnbar --member='serviceAccount:ops-verifier@burnbar.iam.gserviceaccount.com' --role='roles/logging.viewer'",
+      "gcloud projects add-iam-policy-binding burnbar --member='serviceAccount:ops-verifier@burnbar.iam.gserviceaccount.com' --role='roles/iam.securityReviewer'",
+      "gcloud iam workload-identity-pools providers create-oidc github-oidc --location=global --workload-identity-pool=github-oidc --issuer-uri='https://token.actions.githubusercontent.com' --attribute-mapping='google.subject=assertion.sub,attribute.repository=assertion.repository' --attribute-condition='assertion.repository==\"Imagine-That-Ai/BurnBar\"'"
+    ],
+    "githubRepoVariables": [
+      "gh variable set OPS_VERIFY_WIF_PROVIDER --body 'projects/<gcp-project-number>/locations/global/workloadIdentityPools/github-oidc/providers/github-oidc'",
+      "gh variable set OPS_VERIFY_SERVICE_ACCOUNT --body 'ops-verifier@burnbar.iam.gserviceaccount.com'"
+    ]
+  },
+  "behaviorUntilProvisioned": {
+    "state": "RED BY DESIGN",
+    "detail": "Both jobs exit 1 with `::error::wif-not-provisioned` on schedule/dispatch while the two repo variables are absent. This is the honest signal the wave-0 verdict requires: the alert plane flips from silent `waiting` to a loud, named red. The check scripts themselves are still gated on every PR via the `drift-check-selftest` job, so drift-detection capability never regresses while the identity is provisioned."
+  },
+  "notGoals": [
+    "The GCP_SA_KEY protected lane (`verify` job) is unchanged — it keeps `environment: production` + `credentials_json` and is asserted by scripts/ci/verify-ops-plane-workflow-boundary.mjs (invariant SWAP, not deletion).",
+    "No deploy/age_days custom metric: that would need roles/monitoring.metricWriter, a write role this identity must never hold (human queue item 8).",
+    "No budget-notification Cloud Function: applying the budget stays a human-run script (scripts/ops/create-billing-budget.sh --dry-run first)."
+  ]
+}

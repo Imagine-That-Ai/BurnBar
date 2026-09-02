@@ -51,6 +51,10 @@ Configure in Sentry UI (production project):
 2. **Issue alert:** new regression after release, linked to deploy tag from `deploy-production` workflow.
 3. **Performance:** p95 callable duration regression (optional).
 
+## Alert plane verification (Wave 0 — W0-5)
+
+The alert plane's live drift checks run **without an approval gate**: `ops-plane-verify.yml` job `alert-plane-drift` and `ops-confidence.yml` job `deploy-freshness` authenticate with the **viewer-only** ops-verifier WIF (identity spec: [`../../governance/ops-plane-verifier-sa.json`](../../governance/ops-plane-verifier-sa.json); roles: monitoring.viewer, billing.viewer, logging.viewer, iam.securityReviewer — nothing more). Both jobs **fail closed** with `::error::wif-not-provisioned` while the two repo variables (`OPS_VERIFY_WIF_PROVIDER`, `OPS_VERIFY_SERVICE_ACCOUNT`) are not provisioned — that red is **by design** and the fix is human queue items 7–9 (provision the SA + federation, then `gh variable set`), not a skip or a suppression. The billing budget those alerts read is provisioned by the human-run [`scripts/ops/create-billing-budget.sh`](../../scripts/ops/create-billing-budget.sh) (`--dry-run` prints the exact gcloud commands). The protected `GCP_SA_KEY` lane (`verify` job) is unchanged and remains pinned by `scripts/ci/verify-ops-plane-workflow-boundary.mjs`.
+
 ## Related runbooks
 
 - [slos.md](slos.md) — SLI targets and error budgets
