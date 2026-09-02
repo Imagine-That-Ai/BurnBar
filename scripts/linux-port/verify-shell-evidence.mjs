@@ -16,6 +16,8 @@ const evidenceDir = arg && !['json', 'desktop', 'full'].includes(arg)
 const mode = arg && ['json', 'desktop', 'full'].includes(arg)
   ? arg
   : process.argv[3] ?? 'full';
+const evidenceDirectoryPresent = fs.existsSync(evidenceDir);
+fs.mkdirSync(evidenceDir, { recursive: true });
 
 const requiredFailureIds = [
   'account-login',
@@ -502,7 +504,7 @@ function checkPerf() {
   if (trend.pass !== true) add('VAL-PERF-001', 'trend/threshold enforcement did not pass');
 }
 
-if (!fs.existsSync(evidenceDir)) {
+if (!evidenceDirectoryPresent) {
   common(`evidence directory missing: ${evidenceDir}`);
 } else {
   checkPackagedRoutes();
@@ -519,18 +521,41 @@ if (!fs.existsSync(evidenceDir)) {
 }
 
 const targetStatus = Object.fromEntries(
-  [...targetErrors.entries()].map(([target, errors]) => [target, { pass: errors.length === 0, errors }])
+  [...targetErrors.entries()].map(([target, errors]) => {
+    const evidenceUnavailable = errors.some((error) => (
+      /missing artifact|invalid JSON in|artifact .* empty or below/u.test(error)
+    ));
+    const failureClass = errors.length === 0 ? null : evidenceUnavailable ? 'infra' : 'product';
+    return [target, {
+      pass: errors.length === 0,
+      status: errors.length === 0 ? 'passed' : failureClass === 'infra' ? 'infra-failed' : 'failed',
+      failureClass,
+      reasonCode: errors.length === 0
+        ? null
+        : evidenceUnavailable ? 'linux-evidence-environment-failed' : 'linux-evidence-contract-failed',
+      errors
+    }];
+  })
 );
 const allErrors = [
   ...commonErrors,
   ...[...targetErrors.values()].flat()
 ];
+const failureClass = allErrors.length === 0
+  ? null
+  : commonErrors.length > 0 || Object.values(targetStatus).some((target) => target.failureClass === 'infra')
+    ? 'infra'
+    : 'product';
 const report = {
   generatedAt: new Date().toISOString(),
   mode,
   evidenceDir,
   targetStatus,
-  status: allErrors.length === 0 ? 'ok' : 'failed',
+  status: allErrors.length === 0 ? 'ok' : failureClass === 'infra' ? 'infra-failed' : 'failed',
+  failureClass,
+  reasonCode: allErrors.length === 0
+    ? null
+    : failureClass === 'infra' ? 'linux-evidence-environment-failed' : 'linux-evidence-contract-failed',
   errors: allErrors
 };
 
