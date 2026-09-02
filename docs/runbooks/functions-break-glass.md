@@ -10,6 +10,75 @@ deliberate controls; this lane exists so an outage never forces an *ad-hoc,
 undocumented* bypass. Every break-glass use is logged, bounded, and reviewed
 after the fact.
 
+## The deploy ancestor guard (Wave 0 — W0-4)
+
+`prepare-functions-deploy` runs `scripts/ci/check-deploy-ancestor-guard.sh` before
+anything is deployed: the **live deployed commit** (served by the healthLive
+endpoint from the existing `functions/src/sourceMetadata.ts` GIT_SHA metadata)
+must be an **ancestor** of the release commit, or a committed bootstrap receipt
+must exist. This is the mechanical protection behind the #2195 postmortem
+finding — production was once deployed from an uncommitted working tree with no
+sha stamp, and deploying main afterwards silently **regressed live production
+fixes**.
+
+**The first tag deploy after the guard lands WILL trip it** — that is the
+honest signal, not a bug. When it trips:
+
+1. Land **human queue item 11**: a fresh, stamped deploy that re-anchors
+   production (the guard then passes for every later release). This is the
+   permanent fix.
+2. Until that lands, deploy under the committed bootstrap receipt
+   `config/deploy-regression-receipts/<date>.json` — a dated, signed,
+   **expiring** acknowledgment that production is knowingly ahead of the
+   stamped lineage (`2026-09-02.json` is the Wave-0 bootstrap; expires
+   30 days out). Receipts are re-acknowledged by hand; an expired or malformed
+   receipt fails closed, never waves through.
+3. Break-glass exception: if production must move NOW and the guard blocks a
+   legitimate hotfix, this lane's decision ladder above applies — and the
+   receipt you then commit must say exactly which fix production carries that
+   the release lineage lacks.
+
+Self-test (offline, no GCP): `bash scripts/ci/check-deploy-ancestor-guard.sh --self-test`.
+
+### Receipt schema and binding
+
+`config/deploy-regression-receipts/<date>.json`:
+
+```json
+{
+  "date": "2026-09-02",
+  "kind": "allow-regression-bootstrap",
+  "reason": "why production is knowingly ahead of the stamped lineage",
+  "acknowledgedBy": "who",
+  "liveSha": null,
+  "releaseSha": "optional 40-hex release commit this receipt is limited to",
+  "expiresOn": "2026-10-02"
+}
+```
+
+A receipt authorizes exactly one transition. `liveSha: null` is the bootstrap
+receipt: it authorizes a deploy **only while production reports no source
+commit** (the #2195 condition), and it is checked before the unstamped refusal
+so the first stamped deploy can ship. The moment production reports a source
+commit, a bootstrap receipt authorizes nothing — including the copy embedded in
+an older tag. A receipt with `liveSha: <sha>` authorizes deploys only while
+production's live commit is exactly that sha (optionally only for `releaseSha`).
+The deploy lane stages the guard script **and the receipts directory** from the
+trusted current-main checkout before it resolves the release tag, so an
+existing-tag retry of an older tag still runs the guard, and deleting a receipt
+on main revokes it.
+
+### Scoped deploys are prohibited
+
+The guard proves ancestry for the fleet identity production reports through
+`healthLive` (`source.commit`). A scoped deploy (`firebase deploy --only
+functions:<name>`, `scripts/ops/deploy-health-functions.sh`,
+`scripts/deploy-opentimestamps-verifier.sh`) replaces one function's identity
+without moving that report, so a later retry could roll that function back while
+the guard passes. Those scripts refuse the production project unless
+`OPENBURNBAR_ACKNOWLEDGE_SCOPED_PROD_DEPLOY=1` is set, and any acknowledged scoped
+deploy must be followed by a full stamped deploy to re-anchor the fleet.
+
 ## Decision ladder (try in order)
 
 1. **Rollback first.** If the incident was introduced by a recent deploy,

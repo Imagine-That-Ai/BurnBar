@@ -1,0 +1,8 @@
+{
+  "date": "2026-09-02",
+  "kind": "allow-regression-bootstrap",
+  "reason": "Production was deployed from an uncommitted working tree with no source-commit stamp (#2195 postmortem condition). The live deployed commit is therefore unrecorded and cannot be proven an ancestor of any release commit, so the W0-4 ancestor guard would trip on the first tag deploy after it lands. This bootstrap receipt acknowledges that single regression window so the guard can ship while human queue item 11 (fresh stamped deploy) re-anchors production.",
+  "acknowledgedBy": "Alberto (Wave-0 nightshift Droid, provisioned per REMEDIATION_PLAN_2026-09-01.md §W0-4 — re-affirm at next deploy)",
+  "liveSha": null,
+  "expiresOn": "2026-10-02"
+}

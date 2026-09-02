@@ -91,6 +91,20 @@ jobs:
       - name: Stage trusted release attestation helper
         run: install -m 0700 scripts/ci/release-dry-run-attestation.mjs "$RUNNER_TEMP/release-dry-run-attestation.mjs"
 
+      # The ancestor guard and its receipts come from THIS (trusted, current-main)
+      # checkout, staged before the tag is resolved: an existing-tag retry of a
+      # tag that predates the guard still runs it, and a receipt deleted from
+      # main is revoked even if an old tag still embeds a copy.
+      - name: Stage trusted deploy ancestor guard and receipts
+        run: |
+          set -euo pipefail
+          install -m 0700 scripts/ci/check-deploy-ancestor-guard.sh "$RUNNER_TEMP/check-deploy-ancestor-guard.sh"
+          rm -rf "$RUNNER_TEMP/deploy-regression-receipts"
+          mkdir -p "$RUNNER_TEMP/deploy-regression-receipts"
+          if [[ -d config/deploy-regression-receipts ]]; then
+            cp config/deploy-regression-receipts/*.json "$RUNNER_TEMP/deploy-regression-receipts/" 2>/dev/null || true
+          fi
+
       - name: Resolve release tag
         id: tag
         env:
@@ -272,6 +286,22 @@ jobs:
             echo "stable_release=$([[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(\+[0-9A-Za-z.-]+)?$ ]] && echo true || echo false)"
             echo "domain_core_profile=$DOMAIN_CORE_PROFILE"
           } >> "$GITHUB_OUTPUT"
+
+      # W0-4 ancestor guard: deploy main must never regress live production
+      # fixes (#2195). Fails CLOSED when the live deployed source.commit
+      # (healthLive -> functions/src/sourceMetadata.ts GIT_SHA) is not an
+      # ancestor of the release commit, unless a committed bootstrap receipt
+      # exists (config/deploy-regression-receipts/<date>.json). The FIRST tag
+      # deploy after this lands trips the guard by design — production was
+      # deployed from an uncommitted working tree with no sha stamp; the
+      # committed receipt is the acknowledged bootstrap window until human
+      # queue item 11 re-anchors production (docs/runbooks/functions-break-glass.md).
+      - name: Ancestor guard — live deployed commit must be an ancestor of the release commit
+        env:
+          RELEASE_SHA: ${{ steps.tag.outputs.commit }}
+          GUARD_REPO_DIR: ${{ github.workspace }}
+          GUARD_RECEIPTS_DIR: ${{ runner.temp }}/deploy-regression-receipts
+        run: bash "$RUNNER_TEMP/check-deploy-ancestor-guard.sh"
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:

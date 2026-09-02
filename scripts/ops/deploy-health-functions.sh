@@ -44,6 +44,17 @@ export OPENBURNBAR_SOURCE_REPOSITORY="$SOURCE_REPOSITORY"
 export OPENBURNBAR_CORRESPONDING_SOURCE_URL="$CORRESPONDING_SOURCE_URL"
 
 npm run build --prefix functions
+# Scoped production deploys are PROHIBITED outside the deploy-production lane:
+# they replace one function's source identity while healthLive keeps reporting
+# the fleet's, so the deploy ancestor guard (scripts/ci/check-deploy-ancestor-guard.sh)
+# could later prove ancestry for a lineage one function no longer has and roll
+# that function back silently. Acknowledge explicitly, then re-anchor with a
+# full stamped deploy (docs/runbooks/functions-break-glass.md).
+if [[ "${PROJECT}" == "burnbar" && "${OPENBURNBAR_ACKNOWLEDGE_SCOPED_PROD_DEPLOY:-0}" != "1" ]]; then
+  echo "ERROR: scoped deploy to the production project is prohibited (it desynchronizes the fleet lineage the deploy ancestor guard proves)." >&2
+  echo "       Use the deploy-production lane, or set OPENBURNBAR_ACKNOWLEDGE_SCOPED_PROD_DEPLOY=1 and re-anchor with a full stamped deploy afterwards." >&2
+  exit 1
+fi
 firebase deploy \
   --only functions:healthLive,functions:healthReady,functions:healthCheck \
   --project "$PROJECT" \
