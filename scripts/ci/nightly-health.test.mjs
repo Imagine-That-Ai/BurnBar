@@ -244,6 +244,7 @@ test("live mode queries workflow runs and the Checks API for reason metadata", a
       limit: 2,
       repo: "Imagine-That-Ai/BurnBar",
       token: "test-token",
+      observedAt: Date.parse(now),
       deployLaneHealth: null,
     });
     assert.equal(report.source.mode, "github");
@@ -283,6 +284,7 @@ test("empty jobs and missing completed-job conclusions fail closed", async () =>
         limit: 1,
         repo: "Imagine-That-Ai/BurnBar",
         token: "test-token",
+        observedAt: Date.parse(now),
         deployLaneHealth: null,
       });
       assert.equal(report.status, "red");

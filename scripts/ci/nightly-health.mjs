@@ -620,7 +620,7 @@ export async function collectNightlyHealth(options) {
       generatedAt: fixture?.generatedAt || new Date().toISOString(),
     });
   }
-  const observedAt = Date.now();
+  const observedAt = Number.isFinite(options.observedAt) ? options.observedAt : Date.now();
   const lanes = await Promise.all(NIGHTLY_LANES.map(async (lane) => {
     try {
       return await fetchLaneRuns({ ...options, observedAt }, lane);
