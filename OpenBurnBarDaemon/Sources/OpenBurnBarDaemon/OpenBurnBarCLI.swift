@@ -1055,6 +1055,7 @@ public struct BurnBarCLIRunner {
         "exec",
         "claude-handoff",
         "provider-bootstrap-claude",
+        "search-sql",
         "memory-remember",
         "memory-forget",
         "privacy-rpc",

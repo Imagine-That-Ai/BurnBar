@@ -267,22 +267,101 @@ def _sql_value_from_wire(value: Any) -> Any:
     return value
 
 
+_IS_MACOS = sys.platform == "darwin"
+_IS_LINUX = sys.platform.startswith("linux")
+
+# Pinned from OpenBurnBarPrivilegedTrust in
+# OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/PrivilegedSocketTrust.swift:
+# `teamID` (the Organizational Unit on the signing leaf) and the CLI entry of
+# `daemonRPCPeerBundleIdentifiers`, which together form
+# `daemonRPCPeerDesignatedRequirement` — the requirement the daemon itself
+# evaluates against this courier. Keep both in sync with that file.
+_COURIER_TEAM_ID = "4Y367DF25B"
+_COURIER_BUNDLE_IDENTIFIER = "com.openburnbar.cli"
+
+# `scripts/build-macos-website-release.sh` installs and signs the courier at
+# `Contents/Helpers/OpenBurnBarCLI`. The `Contents/MacOS/openburnbar-cli` entries
+# are legacy layouts kept for locally-assembled bundles that predate that.
+_COURIER_BUNDLE_CANDIDATES = (
+    "/Applications/OpenBurnBar.app/Contents/Helpers/OpenBurnBarCLI",
+    os.path.expanduser("~/Applications/OpenBurnBar.app/Contents/Helpers/OpenBurnBarCLI"),
+    "/Applications/OpenBurnBar.app/Contents/MacOS/openburnbar-cli",
+    os.path.expanduser("~/Applications/OpenBurnBar.app/Contents/MacOS/openburnbar-cli"),
+)
+
+# Packaged Linux installs put the courier here, root-owned.
+_COURIER_LINUX_PREFIX = "/opt/openburnbar/bin/"
+
+
+def _verify_courier(path: str) -> bool:
+    """
+    Confirm a candidate really is the first-party courier before handing it the
+    daemon's trust. Fails closed: any error, timeout, or unexpected output is a
+    rejection, because the alternative is piping memory reads and writes through
+    whatever binary happens to sit at a guessable path.
+    """
+    if _IS_MACOS:
+        try:
+            verified = subprocess.run(
+                ["/usr/bin/codesign", "--verify", "--strict", path],
+                capture_output=True,
+                timeout=10,
+                check=False,
+            )
+            if verified.returncode != 0:
+                return False
+            described = subprocess.run(
+                ["/usr/bin/codesign", "-d", "--requirements", "-", path],
+                capture_output=True,
+                timeout=10,
+                check=False,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return False
+        if described.returncode != 0:
+            return False
+        # codesign writes the designated requirement to stderr on most releases
+        # and to stdout on others; require the team OU and identifier in either.
+        requirement = (described.stdout or b"").decode("utf-8", "replace") + (described.stderr or b"").decode(
+            "utf-8", "replace"
+        )
+        if f'certificate leaf[subject.OU] = "{_COURIER_TEAM_ID}"' not in requirement:
+            return False
+        return f'identifier "{_COURIER_BUNDLE_IDENTIFIER}"' in requirement
+
+    if _IS_LINUX:
+        if not os.path.realpath(path).startswith(_COURIER_LINUX_PREFIX):
+            return False
+        try:
+            return os.stat(path).st_uid == 0
+        except OSError:
+            return False
+
+    return False
+
+
 def _signed_cli_path() -> str | None:
     """
     Locate the first-party signed CLI. Production daemons validate the peer's
     code signature and admit only OpenBurnBar identities; this Python process
     can never satisfy that, so encrypted-store reads have to travel through a
     binary the daemon already trusts.
+
+    Every candidate — the environment override included — is signature-verified
+    before it is accepted. Under pytest the override skips verification so tests
+    can point the courier at a stub.
     """
     override = os.environ.get("OPENBURNBAR_CLI_PATH", "").strip()
-    candidates = [override] if override else []
-    candidates += [
-        "/Applications/OpenBurnBar.app/Contents/MacOS/openburnbar-cli",
-        os.path.expanduser("~/Applications/OpenBurnBar.app/Contents/MacOS/openburnbar-cli"),
-        shutil.which("openburnbar-cli") or "",
-    ]
-    for candidate in candidates:
-        if candidate and os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+    trusted_override = bool(override) and "PYTEST_CURRENT_TEST" in os.environ
+    candidates: list[tuple[str, bool]] = []
+    if override:
+        candidates.append((override, trusted_override))
+    candidates += [(candidate, False) for candidate in _COURIER_BUNDLE_CANDIDATES]
+    candidates.append((shutil.which("openburnbar-cli") or "", False))
+    for candidate, skip_verification in candidates:
+        if not candidate or not os.path.isfile(candidate) or not os.access(candidate, os.X_OK):
+            continue
+        if skip_verification or _verify_courier(candidate):
             return candidate
     return None
 

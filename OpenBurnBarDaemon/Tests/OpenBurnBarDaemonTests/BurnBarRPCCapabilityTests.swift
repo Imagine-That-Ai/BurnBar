@@ -135,6 +135,9 @@ final class BurnBarRPCCapabilityTests: XCTestCase {
         // entire capability group.
         let expected: Set<BurnBarRPCMethod> = [
             .health,
+            .searchSQL,
+            .memoryRemember,
+            .memoryForget,
             .controllerSummary,
             .questionsList,
             .followupsList,
@@ -183,8 +186,22 @@ final class BurnBarRPCCapabilityTests: XCTestCase {
         XCTAssertFalse(profile.permits(.workspaceExecuteTool))
         XCTAssertFalse(profile.permits(.missionCreate))
         XCTAssertFalse(profile.permits(.missionCancel))
-        XCTAssertFalse(profile.permits(.memoryRemember))
         XCTAssertFalse(profile.permits(.codeOpsDiagnostics))
+    }
+
+    /// The Python MCP reaches the daemon through the signed CLI courier
+    /// (`openburnbar-cli search-sql|memory-remember|memory-forget`). The CLI
+    /// client implements those three RPCs, so the CLI peer profile must permit
+    /// them or every courier call dies at the capability gate with
+    /// `unauthorized` on a signed install.
+    func test_cliSupportProfilePermitsTheSignedCourierMethods() {
+        let profile = BurnBarPeerCapabilityProfile.cliSupport
+        XCTAssertTrue(profile.permits(.searchSQL))
+        XCTAssertTrue(profile.permits(.memoryRemember))
+        XCTAssertTrue(profile.permits(.memoryForget))
+        // Read-only and run-client peers still may not write memory.
+        XCTAssertFalse(BurnBarPeerCapabilityProfile.readOnly.permits(.memoryRemember))
+        XCTAssertFalse(BurnBarPeerCapabilityProfile.runClient.permits(.memoryRemember))
     }
 
     func test_attenuationOnlyNarrows() {
