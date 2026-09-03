@@ -36,13 +36,17 @@ import OpenBurnBarParserSupport
 //     payload_type == "tool_batch.effect.started" → record.tool_name, parallel_profile.subject
 //
 // Model identifiers:
-//   provider_id:"meta" , model_id:"muse-spark-1.2" / "muse-spark-1.2-contributor"
-//   Pricing (from model-catalog on this host):
-//     muse-spark-1.2:              input $1.25 /M, output $4.25 /M, cached $0.15 /M
-//     muse-spark-1.2-contributor:  input $0.10 /M, output $0.20 /M, cached $0.002 /M
+//   provider_id:"meta" , model_id:"muse-spark-1.3" / "muse-spark-1.3-contributor"
+//     (also 1.2 / 1.2-contributor / 1.1)
+//   Pricing (Meta Model API):
+//     muse-spark-1.3:              input $1.25 /M, output $4.25 /M, cached $0.15 /M
+//     muse-spark-1.3-contributor:  input $0.10 /M, output $0.20 /M, cached $0.002 /M
 //   The parser uses ModelPricing.lookup(model:providerID:) — catalog entries are under
-//   the "meta" provider (see Resources/catalog.json, muse-spark-1-2-family). Fallback
-//   pricing applies when the catalog is absent (e.g., offline tests).
+//   the "meta" provider (see Resources/catalog.json). Fallback pricing applies when
+//   the catalog is absent (e.g., offline tests).
+//
+// Muse Code 1.0.2+ also writes retained_frame wrapper lines whose usage lives in
+// children[].record_json, and run.model.configured for the selected model.
 //
 // Auth state:
 //   Muse authenticates via a browser-linked device flow; credentials are stored outside
@@ -79,7 +83,7 @@ public final class MuseParser: LogParser, Sendable {
         self.cacheStore = ParserDiskCacheStore(
             cacheURL: cacheURL,
             fileManager: fileManager,
-            schemaVersion: 1,
+            schemaVersion: 2,
             logLabel: "MuseParser"
         )
     }
@@ -203,7 +207,6 @@ public final class MuseParser: LogParser, Sendable {
         var sessionId: String?
         var workspaceRoot: String?
         var modelId: String?
-        var providerId: String?
 
         var totalInput = 0
         var totalOutput = 0
@@ -225,14 +228,7 @@ public final class MuseParser: LogParser, Sendable {
         var goalAttributionOnlyInput = 0
         var goalAttributionOnlyOutput = 0
 
-        for line in handle.readAllUTF8Lines() {
-            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmed.isEmpty { continue }
-            guard let data = trimmed.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                continue // truncated/partial line — skip
-            }
-
+        func consumeEnvelope(_ json: [String: Any]) {
             // session id from stream (authoritative)
             if sessionId == nil, let stream = json["stream"] as? [String: Any], let sid = stream["id"] as? String, !sid.isEmpty {
                 sessionId = sid
@@ -250,18 +246,27 @@ public final class MuseParser: LogParser, Sendable {
                 lastTime = d
             }
 
-            guard let payloadType = json["payload_type"] as? String else { continue }
-            guard let payload = json["payload"] as? [String: Any] else { continue }
+            guard let payloadType = json["payload_type"] as? String else { return }
+            guard let payload = json["payload"] as? [String: Any] else { return }
 
             // Metadata: workspace_root / model
             if payloadType == "runtime.session.metadata" {
                 if let record = payload["record"] as? [String: Any] {
                     workspaceRoot = (record["workspace_root"] as? String) ?? workspaceRoot
                     modelId = (record["model_id"] as? String) ?? modelId
-                    providerId = (record["provider_id"] as? String) ?? providerId
-                    if let m = record["model_id"] as? String { lastModel = m }
+                    if let m = record["model_id"] as? String, !m.isEmpty { lastModel = m }
                 }
-                continue
+                return
+            }
+
+            if payloadType == "run.model.configured" {
+                if let record = payload["record"] as? [String: Any] {
+                    if let m = record["model_id"] as? String, !m.isEmpty {
+                        lastModel = m
+                        modelId = m
+                    }
+                }
+                return
             }
 
             // Tool calls
@@ -270,7 +275,7 @@ public final class MuseParser: LogParser, Sendable {
                    let record = payload["record"] as? [String: Any], let name = record["tool_name"] as? String, !name.isEmpty {
                     toolNames.insert(name)
                 }
-                continue
+                return
             }
 
             // Run events
@@ -278,9 +283,9 @@ public final class MuseParser: LogParser, Sendable {
                 guard let kind = payload["kind"] as? String, kind == "run" else {
                     // Also handle started prompts at run level? The prompt event is inside run event.kind == "started"
                     // But our guard already filters to kind==run, so extract started inside.
-                    continue
+                    return
                 }
-                guard let event = payload["event"] as? [String: Any], let eventKind = event["kind"] as? String else { continue }
+                guard let event = payload["event"] as? [String: Any], let eventKind = event["kind"] as? String else { return }
 
                 switch eventKind {
                 case "started":
@@ -346,6 +351,19 @@ public final class MuseParser: LogParser, Sendable {
             }
         }
 
+        for line in handle.readAllUTF8Lines() {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty { continue }
+            guard let data = trimmed.data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                continue // truncated/partial line — skip
+            }
+
+            for envelopeJSON in expandedEnvelopes(from: json) {
+                consumeEnvelope(envelopeJSON)
+            }
+        }
+
         // If no model_completed but we have attribution fallback, use it
         if modelCompletedCount == 0 && (goalAttributionOnlyInput > 0 || goalAttributionOnlyOutput > 0) {
             totalInput = max(totalInput, goalAttributionOnlyInput)
@@ -377,8 +395,7 @@ public final class MuseParser: LogParser, Sendable {
         }
 
         // No usage row but we have conversation content and caller wants it → still need to produce conversation
-        let resolvedModel = lastModel ?? modelId ?? "muse-spark-1.2-contributor"
-        let resolvedWorkspace = workspaceRoot ?? file.deletingLastPathComponent().path
+        let resolvedModel = lastModel ?? modelId ?? "muse-spark-1.3-contributor"
         let projectName: String = {
             if let ws = workspaceRoot, !ws.isEmpty {
                 let last = URL(fileURLWithPath: ws).lastPathComponent
@@ -492,6 +509,29 @@ public final class MuseParser: LogParser, Sendable {
     }
 
     // MARK: - Helpers
+
+    /// Muse Code 1.0.2+ prefixes some durable records with a retained_frame
+    /// wrapper. Usage still lives in the inner envelope JSON.
+    private func expandedEnvelopes(from json: [String: Any]) -> [[String: Any]] {
+        if json["payload_type"] != nil {
+            return [json]
+        }
+        guard json["retained_frame"] != nil,
+              let children = json["children"] as? [[String: Any]] else {
+            return []
+        }
+        var out: [[String: Any]] = []
+        out.reserveCapacity(children.count)
+        for child in children {
+            guard let recordJSON = child["record_json"] as? String,
+                  let data = recordJSON.data(using: .utf8),
+                  let inner = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                continue
+            }
+            out.append(contentsOf: expandedEnvelopes(from: inner))
+        }
+        return out
+    }
 
     private func dateFromMicroseconds(_ us: Int64) -> Date {
         // Muse writes microseconds since epoch (see sample: 1785970740961126 ~ 2026-08-05)

@@ -342,13 +342,15 @@ public enum BurnBarProviderAuthRegistry {
     /// Returns whether a stored auth method may be used for proxy routing.
     ///
     /// Older accounts may not have method metadata, and unknown providers can
-    /// still be user-defined routing providers. For registered providers,
-    /// unknown method IDs fail closed so non-routing setup flows cannot be
-    /// promoted into routeable credential slots by stale clients.
+    /// still be user-defined routing providers. Meta is the exception: unlabeled
+    /// slots fail closed so Together keys cannot Bearer-auth against api.meta.ai.
+    /// For other registered providers, unknown method IDs fail closed so
+    /// non-routing setup flows cannot be promoted into routeable credential slots
+    /// by stale clients.
     public static func authMethodAllowsProxyRouting(providerID: String, authMethodID: String?) -> Bool {
         guard let authMethodID = authMethodID?.trimmingCharacters(in: .whitespacesAndNewlines),
               !authMethodID.isEmpty else {
-            return true
+            return providerID.caseInsensitiveCompare("meta") != .orderedSame
         }
         guard let descriptor = descriptor(forCatalogProviderID: providerID) else {
             return true
@@ -869,25 +871,39 @@ public enum BurnBarProviderAuthRegistry {
 
     private static let metaDescriptor = BurnBarProviderAuthDescriptor(
         providerID: "meta",
-        displayName: "Meta Llama",
-        aliasProviderIDs: ["llama", "together"],
+        displayName: "Meta",
+        aliasProviderIDs: ["llama", "together", "muse-spark"],
         methods: [
+            BurnBarProviderAuthMethod(
+                id: "meta-model-api-key",
+                kind: .apiKey,
+                displayName: "Meta Model API Key",
+                summary: "Routes Muse Spark through Meta Model API.",
+                helperText: "Create a MODEL_API_KEY at dev.meta.ai. Muse Code and OpenAI-compatible clients use the same key against https://api.meta.ai/v1.",
+                placeholder: "…",
+                dashboardURL: "https://dev.meta.ai/",
+                dashboardLabel: "Meta Model API",
+                storage: .daemonSlot,
+                unlocksProxyRouting: true,
+                unlocksQuotaRefresh: false
+            ),
             BurnBarProviderAuthMethod(
                 id: "meta-together-key",
                 kind: .apiKey,
                 displayName: "Together / Llama API Key",
-                summary: "Routes Llama traffic via Together (OpenAI-compatible).",
-                helperText: "Use a Together.ai key to route Llama models. Direct Meta API access isn't generally available.",
+                summary: "Legacy Together key — no longer routes Meta traffic.",
+                helperText: "Together keys are not Meta Model API keys. Paste a MODEL_API_KEY from dev.meta.ai on the Meta Model API method. This slot is kept so old credentials are not silently sent to api.meta.ai.",
                 placeholder: "…",
-                dashboardURL: "https://api.together.xyz/settings/api-keys",
-                dashboardLabel: "Together API keys",
+                dashboardURL: "https://dev.meta.ai/",
+                dashboardLabel: "Meta Model API",
                 storage: .daemonSlot,
-                unlocksProxyRouting: true,
+                unlocksProxyRouting: false,
                 unlocksQuotaRefresh: false
             )
         ],
-        summary: "Meta Llama via Together — OpenAI-compatible routing.",
-        proxyHint: "Routed via api.together.xyz (OpenAI-compatible).",
+        primaryMethodID: "meta-model-api-key",
+        summary: "Meta Model API — Muse Spark 1.3, 1.2, and 1.1.",
+        proxyHint: "Routed via api.meta.ai (OpenAI-compatible).",
         quotaHint: nil
     )
 }

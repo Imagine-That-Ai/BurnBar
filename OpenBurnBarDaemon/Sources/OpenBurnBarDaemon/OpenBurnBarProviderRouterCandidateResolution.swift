@@ -172,6 +172,15 @@ extension BurnBarProviderRouter {
                 if effectiveAPIKey(for: configuration) == nil {
                     return .missingCredential(configuration.provider.id)
                 }
+                if !BurnBarProviderAuthRegistry.authMethodAllowsProxyRouting(
+                    providerID: configuration.provider.id,
+                    authMethodID: nil
+                ) {
+                    return .credentialsUnavailable(
+                        providerID: configuration.provider.id,
+                        reason: "no configured credential slot is allowed for proxy routing."
+                    )
+                }
                 continue
             }
 
@@ -343,6 +352,10 @@ extension BurnBarProviderRouter {
                 continue
             }
 
+            if configuration.credentialSlots.isEmpty == false {
+                continue
+            }
+
             if configuration.provider.local, configuration.ollamaEndpoints.isEmpty == false {
                 let endpointRoutes = configuration.ollamaEndpoints
                     .filter { endpoint in
@@ -383,7 +396,11 @@ extension BurnBarProviderRouter {
                 continue
             }
 
-            if let apiKey = effectiveAPIKey(for: configuration) {
+            if let apiKey = effectiveAPIKey(for: configuration),
+               BurnBarProviderAuthRegistry.authMethodAllowsProxyRouting(
+                providerID: configuration.provider.id,
+                authMethodID: nil
+               ) {
                 let resolvedEndpoint = ProviderRouteEndpointResolver.resolve(
                     providerID: configuration.provider.id,
                     apiKey: apiKey,

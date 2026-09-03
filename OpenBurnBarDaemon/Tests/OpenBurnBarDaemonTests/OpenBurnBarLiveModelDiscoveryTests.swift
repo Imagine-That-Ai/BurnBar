@@ -235,4 +235,220 @@ final class OpenBurnBarLiveModelDiscoveryTests: XCTestCase {
         let options = CLIRuntimeModelCatalog.parseDroidExecHelp("")
         XCTAssertTrue(options.isEmpty, "Empty output should produce no models")
     }
+
+    // MARK: - Meta Spark wire IDs
+
+    func testAdvertisedModelID_metaSparkUsesWireIDsNotDashSlugs() throws {
+        let catalog = BurnBarCatalogLoader.bundledCatalog
+        let meta = try XCTUnwrap(catalog.provider(id: "meta"))
+        let spark13 = try XCTUnwrap(meta.models.first { $0.id == "muse-spark-1.3" })
+        let spark13Contributor = try XCTUnwrap(meta.models.first { $0.id == "muse-spark-1.3-contributor" })
+
+        XCTAssertEqual(
+            BurnBarLiveModelCatalog.advertisedModelID(for: spark13, providerID: "meta"),
+            "muse-spark-1.3"
+        )
+        XCTAssertEqual(
+            BurnBarLiveModelCatalog.advertisedModelID(for: spark13Contributor, providerID: "meta"),
+            "muse-spark-1.3-contributor"
+        )
+        XCTAssertEqual(spark13.aliases, ["muse-spark-1-3-standard"])
+        XCTAssertEqual(spark13Contributor.aliases, ["muse-spark-1-3-contributor"])
+
+        for model in meta.models where model.id.hasPrefix("muse-spark") {
+            let advertised = BurnBarLiveModelCatalog.advertisedModelID(for: model, providerID: "meta")
+            XCTAssertEqual(advertised, model.id, "Spark rows must advertise the Meta Model API wire id")
+            XCTAssertFalse(advertised.contains("-standard"), advertised)
+        }
+    }
+
+    func testLiveCatalogAdvertisesMetaSparkWireIDs() async throws {
+        let rootURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-live-meta-spark-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: rootURL) }
+
+        let configStore = BurnBarConfigStore(
+            fileURL: rootURL.appendingPathComponent("provider-config.json"),
+            catalog: BurnBarCatalogLoader.bundledCatalog,
+            secretStore: BurnBarInMemorySecretStore(),
+            logger: BurnBarDaemonLogger(category: "live-meta-spark-tests")
+        )
+        _ = try await configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "meta",
+                isEnabled: true,
+                baseURL: "https://api.meta.ai/v1",
+                preferredModelIDs: ["muse-spark-1.3", "muse-spark-1.3-contributor"]
+            )
+        )
+
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [BlockingLiveDiscoveryURLProtocol.self]
+        configuration.timeoutIntervalForRequest = 0.05
+        configuration.timeoutIntervalForResource = 0.05
+        let liveCatalog = BurnBarLiveModelCatalog(
+            configStore: configStore,
+            session: URLSession(configuration: configuration),
+            refreshTimeoutSeconds: 0.05
+        )
+        let snapshot = try await liveCatalog.snapshot()
+        let metaIDs = Set(snapshot.models.filter { $0.providerID == "meta" }.map(\.id))
+        XCTAssertTrue(metaIDs.contains("muse-spark-1.3"))
+        XCTAssertTrue(metaIDs.contains("muse-spark-1.3-contributor"))
+        XCTAssertFalse(metaIDs.contains("muse-spark-1-3-standard"))
+        XCTAssertFalse(metaIDs.contains("muse-spark-1-3-contributor"))
+    }
+
+    func testLegacyTogetherSecretWithZeroSlotsNeverProbesMetaModelAPI() async throws {
+        RecordingLiveDiscoveryURLProtocol.reset()
+        let rootURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-live-meta-legacy-secret-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: rootURL) }
+
+        let fileURL = rootURL.appendingPathComponent("provider-config.json")
+        let persisted = BurnBarProviderConfigurationSnapshot(
+            providers: [
+                BurnBarProviderSettings(
+                    providerID: "meta",
+                    isEnabled: true,
+                    baseURL: "https://api.together.xyz/v1",
+                    preferredModelIDs: ["muse-spark-1.3"]
+                )
+            ]
+        )
+        try JSONEncoder().encode(persisted).write(to: fileURL)
+
+        let configStore = BurnBarConfigStore(
+            fileURL: fileURL,
+            catalog: BurnBarCatalogLoader.bundledCatalog,
+            secretStore: BurnBarInMemorySecretStore(),
+            logger: BurnBarDaemonLogger(category: "live-meta-spark-tests")
+        )
+        try await configStore.setSecret("together-legacy-key", for: "meta")
+
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [RecordingLiveDiscoveryURLProtocol.self]
+        configuration.timeoutIntervalForRequest = 0.05
+        configuration.timeoutIntervalForResource = 0.05
+        let liveCatalog = BurnBarLiveModelCatalog(
+            configStore: configStore,
+            session: URLSession(configuration: configuration),
+            refreshTimeoutSeconds: 0.05
+        )
+        _ = try await liveCatalog.snapshot()
+
+        let after = try await configStore.snapshot()
+        XCTAssertEqual(after.providerSettings(id: "meta")?.credentialSlots.first?.authMethodID, "meta-together-key")
+
+        let metaProbes = RecordingLiveDiscoveryURLProtocol.recorded().filter { request in
+            (request.url.contains("api.meta.ai") || request.url.contains("together.xyz"))
+                && request.authorization != nil
+        }
+        XCTAssertTrue(metaProbes.isEmpty, "Legacy Together secret must not be sent to /models: \(metaProbes)")
+    }
+
+    func testTogetherMetaSlotNeverProbesMetaModelAPI() async throws {
+        RecordingLiveDiscoveryURLProtocol.reset()
+        let rootURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-live-meta-together-probe-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: rootURL) }
+
+        let configStore = BurnBarConfigStore(
+            fileURL: rootURL.appendingPathComponent("provider-config.json"),
+            catalog: BurnBarCatalogLoader.bundledCatalog,
+            secretStore: BurnBarInMemorySecretStore(),
+            logger: BurnBarDaemonLogger(category: "live-meta-spark-tests")
+        )
+        _ = try await configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "meta",
+                isEnabled: true,
+                baseURL: "https://api.together.xyz/v1",
+                preferredModelIDs: ["muse-spark-1.3"],
+                preferredCredentialSlotID: "together",
+                credentialSlots: [
+                    BurnBarProviderCredentialSlot(
+                        slotID: "together",
+                        label: "Together",
+                        isEnabled: true,
+                        status: .ready,
+                        authMethodID: "meta-together-key"
+                    )
+                ]
+            )
+        )
+        _ = try await configStore.upsertCredentialSlot(
+            providerID: "meta",
+            slotID: "together",
+            label: "Together",
+            apiKey: "together-legacy-key",
+            authMethodID: "meta-together-key"
+        )
+
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [RecordingLiveDiscoveryURLProtocol.self]
+        configuration.timeoutIntervalForRequest = 0.05
+        configuration.timeoutIntervalForResource = 0.05
+        let liveCatalog = BurnBarLiveModelCatalog(
+            configStore: configStore,
+            session: URLSession(configuration: configuration),
+            refreshTimeoutSeconds: 0.05
+        )
+        _ = try await liveCatalog.snapshot()
+
+        let metaProbes = RecordingLiveDiscoveryURLProtocol.recorded().filter { request in
+            (request.url.contains("api.meta.ai") || request.url.contains("together.xyz"))
+                && request.authorization != nil
+        }
+        XCTAssertTrue(metaProbes.isEmpty, "Together keys must not be sent to Meta or Together /models: \(metaProbes)")
+    }
+}
+
+private final class BlockingLiveDiscoveryURLProtocol: URLProtocol {
+    override static func canInit(with request: URLRequest) -> Bool { true }
+    override static func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        client?.urlProtocol(self, didFailWithError: URLError(.notConnectedToInternet))
+    }
+    override func stopLoading() {}
+}
+
+private final class RecordingLiveDiscoveryURLProtocol: URLProtocol {
+    struct RecordedRequest: Equatable {
+        let url: String
+        let authorization: String?
+    }
+
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var requests: [RecordedRequest] = []
+
+    static func reset() {
+        lock.lock()
+        defer { lock.unlock() }
+        requests = []
+    }
+
+    static func recorded() -> [RecordedRequest] {
+        lock.lock()
+        defer { lock.unlock() }
+        return requests
+    }
+
+    override static func canInit(with request: URLRequest) -> Bool { true }
+    override static func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        Self.lock.lock()
+        Self.requests.append(
+            RecordedRequest(
+                url: request.url?.absoluteString ?? "",
+                authorization: request.value(forHTTPHeaderField: "Authorization")
+            )
+        )
+        Self.lock.unlock()
+        client?.urlProtocol(self, didFailWithError: URLError(.notConnectedToInternet))
+    }
+    override func stopLoading() {}
 }
