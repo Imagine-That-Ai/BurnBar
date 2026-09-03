@@ -1,16 +1,24 @@
 #!/usr/bin/env python3
 """
-Retrieval quality eval for the local memory engine.
+Quality eval for the local memory engine: retrieval, extraction, and the gate.
 
-Seeds a gold set of durable memories (the kind of thing a coding agent should
-remember about a project and its owner), then asks paraphrased questions that
-deliberately avoid the memory's own keywords, and scores lexical / semantic /
-hybrid recall with Recall@1, Recall@5 and MRR.
+Retrieval (default) seeds a gold set of durable memories (the kind of thing a
+coding agent should remember about a project and its owner), then asks
+paraphrased questions that deliberately avoid the memory's own keywords, and
+scores lexical / semantic / hybrid recall with Recall@1, Recall@5 and MRR.
+
+`--extraction` replays the checked-in gold set of developer conversations
+through the heuristic extractor and scores recall, a precision proxy, facts
+invented over conversations with nothing durable in them, and forbidden-string
+leaks. `--gate` prints the secret detection matrix (raw / base64 / hex /
+URL-encoded) so encoded-secret coverage is visible rather than assumed.
 
 Usage:
-    .venv/bin/python eval_memory.py                # auto: Ollama nomic-embed-text if reachable
+    .venv/bin/python eval_memory.py                  # auto: Ollama nomic-embed-text if reachable
     .venv/bin/python eval_memory.py --provider none  # lexical only
     .venv/bin/python eval_memory.py --model mxbai-embed-large
+    .venv/bin/python eval_memory.py --extraction     # heuristic extraction quality
+    .venv/bin/python eval_memory.py --gate           # secret detection matrix
 
 The eval never touches the real memory store: it runs in a temp directory.
 """
@@ -18,16 +26,23 @@ The eval never touches the real memory store: it runs in a temp directory.
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import os
+import random
+import re
+import string
 import sys
 import tempfile
 import time
+import urllib.parse
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import memory_engine as me  # noqa: E402
+
+EXTRACTION_GOLD = Path(__file__).resolve().parent / "eval" / "extraction_gold.json"
 
 GOLD: list[dict[str, object]] = [
     {
@@ -266,6 +281,195 @@ QUERIES: list[tuple[str, str]] = [
 ]
 
 
+SECRET_SHAPE_SEED = 20260902
+_ALNUM = string.ascii_letters + string.digits
+_B64 = _ALNUM + "+/"
+_UPPER = string.ascii_uppercase + string.digits
+_URLSAFE = _ALNUM + "-_"
+_HEX = string.hexdigits[:16]
+
+
+_PEM_DASHES = "-" * 5
+
+
+def _pem_block(kind: str, body: str) -> str:
+    """A PEM block assembled from fragments.
+
+    The `BEGIN … PRIVATE KEY` header is never written out as one literal: a
+    committed line carrying it matches the repo's own gitleaks `private-key`
+    rule even though nothing here is a key.
+    """
+    return f"{_PEM_DASHES}BEGIN {kind}{_PEM_DASHES}\n{body}\n{_PEM_DASHES}END {kind}{_PEM_DASHES}"
+
+
+def _b64url_json(payload: dict[str, str]) -> str:
+    """One base64url JWT segment, built rather than pasted for the same reason."""
+    raw = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+
+
+def _openssh_armor() -> str:
+    """The fixed head of an OpenSSH key blob, encoded from the bytes it stands for.
+
+    Pasting the base64 would put a high-entropy literal on a source line, which
+    gitleaks reads as a committed credential; encoding it here keeps the shape
+    the corpus pattern looks for without a literal.
+    """
+    magic = b"openssh-key-v1\x00\x00\x00\x00\x04none\x00\x00\x00\x04none"
+    return base64.b64encode(magic).decode("ascii").rstrip("=")
+
+
+def _secret_shapes() -> dict[str, str]:
+    """One synthetic token per secret shape the shared corpus flags standalone.
+
+    Generated rather than committed: a credential-shaped literal checked into
+    the repo would trip the repo's own secret scanners, so both this eval and
+    `tests/test_gate_adversarial.py` build their tokens from this seeded RNG.
+    That applies to the fixed halves too -- the JWT header/payload and the PEM
+    armor are assembled from fragments by the helpers above. Shapes the corpus
+    does not detect standalone stay out of the list -- a gap belongs in the
+    README, not in a matrix that claims coverage.
+    """
+    rng = random.Random(SECRET_SHAPE_SEED)
+
+    def tok(length: int, alphabet: str = _ALNUM) -> str:
+        return "".join(rng.choice(alphabet) for _ in range(length))
+
+    return {
+        "github_pat": "ghp_" + tok(36),
+        "github_fine_grained_pat": "github_pat_" + tok(22) + "_" + tok(59),
+        "aws_access_key_id": "AKIA" + tok(16, _UPPER),
+        "aws_secret_access_key": "aws_secret_access_key=" + tok(40, _B64),
+        "slack_bot_token": "xoxb-" + tok(12, string.digits) + "-" + tok(12, string.digits) + "-" + tok(24),
+        "openai_api_key": "sk-" + tok(48),
+        "anthropic_api_key": "sk-ant-api03-" + tok(95) + "AA",
+        "stripe_secret_key": "sk_live_" + tok(24),
+        "google_api_key": "AIza" + tok(35),
+        "jwt": _b64url_json({"alg": "HS256", "typ": "JWT"})
+        + "."
+        + _b64url_json({"sub": "12345"})
+        + "."
+        + tok(43, _URLSAFE),
+        "pem_private_key": _pem_block("RSA PRIVATE KEY", tok(64, _B64) + "\n" + tok(64, _B64)),
+        "ssh_private_key": _pem_block("OPENSSH PRIVATE KEY", _openssh_armor() + tok(20, _B64)),
+        "postgres_uri": "postgres://svc_deploy:" + tok(24) + "@db.internal.example:5432/burnbar",
+        "bearer_header": "Authorization: Bearer " + tok(64),
+        "npmrc_auth_token": "//registry.npmjs.org/:_authToken=" + tok(36),
+        "sendgrid_api_key": "SG." + tok(22, _URLSAFE) + "." + tok(43, _URLSAFE),
+        "password_assignment": "password=" + tok(28),
+        "gitlab_token": "glpat-" + tok(20),
+        "dotenv_secret": "API_SECRET=" + tok(40),
+        "vault_token": "hvs." + tok(48),
+        "slack_webhook": "https://hooks.slack.com/services/T" + tok(8, _UPPER) + "/B" + tok(10, _UPPER) + "/" + tok(24),
+        "xai_api_key": "xai-" + tok(80),
+        "kubernetes_secret": "apiVersion: v1\nkind: Secret\nmetadata:\n  name: burnbar\ndata:\n  token: "
+        + tok(40, _B64)
+        + "=",
+        "generic_hex_key": "signing_key=" + tok(64, _HEX),
+        # Appended, not inserted: the seeded stream is positional, and a shape in
+        # the middle would silently re-roll every token after it.
+        "twilio_api_key": "SK" + tok(32, _HEX),
+    }
+
+
+SECRET_SHAPES: dict[str, str] = _secret_shapes()
+
+_SECRET_PLACEHOLDER_RE = re.compile(r"\{\{secret:([a-z0-9_]+)\}\}")
+
+
+def run_gate_matrix() -> list[dict[str, object]]:
+    """Per shape: does the gate still see it raw, base64-encoded, hex-encoded,
+    URL-encoded? A False is a real coverage gap, not a test failure."""
+    matrix: list[dict[str, object]] = []
+    for shape, text in SECRET_SHAPES.items():
+        raw = text.encode("utf-8")
+        matrix.append(
+            {
+                "shape": shape,
+                "raw": bool(me.scan_text(text).secret_labels),
+                "base64": bool(me.scan_text(base64.b64encode(raw).decode("ascii")).secret_labels),
+                "hex": bool(me.scan_text(raw.hex()).secret_labels),
+                "urlencoded": bool(me.scan_text(urllib.parse.quote(text)).secret_labels),
+            }
+        )
+    return matrix
+
+
+def _expand_secrets(text: str) -> str:
+    """Swap `{{secret:<shape>}}` for its synthetic token, so the gold set can
+    carry credential-shaped pastes without committing one."""
+
+    def swap(match: re.Match[str]) -> str:
+        shape = match.group(1)
+        if shape not in SECRET_SHAPES:
+            raise KeyError(f"gold set references unknown secret shape {shape!r}")
+        return SECRET_SHAPES[shape]
+
+    return _SECRET_PLACEHOLDER_RE.sub(swap, text)
+
+
+def _covers(body: str, keywords: list[str]) -> bool:
+    lowered = body.lower()
+    return all(keyword.lower() in lowered for keyword in keywords)
+
+
+def run_extraction(gold_path: Path | str = EXTRACTION_GOLD, *, verbose: bool = False) -> dict[str, object]:
+    """Score `memory_engine.heuristic_extract` against the checked-in gold set.
+
+    recall     = expected facts an extracted fact covers, over expected facts.
+    precision  = extracted facts that cover an expected fact, over facts
+                 extracted from the conversations that expect something.
+    emptyCaseFacts = facts invented over the "nothing durable here" cases.
+    leaks      = forbidden strings that reached an extracted fact.
+    """
+    gold = json.loads(Path(gold_path).read_text(encoding="utf-8"))
+    cases = gold["cases"]
+    expected_total = hits = covering = scored_facts = empty_case_facts = 0
+    empty_cases = 0
+    leaks: list[dict[str, str]] = []
+    misses: list[dict[str, object]] = []
+    for case in cases:
+        messages = [
+            {"role": message["role"], "content": _expand_secrets(str(message["content"]))}
+            for message in case["messages"]
+        ]
+        facts = [fact.text for fact in me.heuristic_extract(messages)]
+        for forbidden in case.get("forbidden") or []:
+            leaks.extend(
+                {"case": str(case["id"]), "forbidden": forbidden, "fact": body} for body in facts if forbidden in body
+            )
+        expected = case.get("expected") or []
+        if not expected:
+            empty_cases += 1
+            empty_case_facts += len(facts)
+            continue
+        scored_facts += len(facts)
+        covering += sum(1 for body in facts if any(_covers(body, want["keywords"]) for want in expected))
+        for want in expected:
+            expected_total += 1
+            if any(_covers(body, want["keywords"]) for body in facts):
+                hits += 1
+            else:
+                miss: dict[str, object] = {"case": str(case["id"]), "keywords": list(want["keywords"])}
+                if verbose:
+                    miss["facts"] = facts
+                misses.append(miss)
+    return {
+        "gold": str(gold_path),
+        "cases": len(cases),
+        "emptyCases": empty_cases,
+        "expected": expected_total,
+        "hits": hits,
+        "recall": round(hits / expected_total, 3) if expected_total else 0.0,
+        "precision": round(covering / scored_facts, 3) if scored_facts else 0.0,
+        "facts": scored_facts,
+        "emptyCaseFacts": empty_case_facts,
+        "leaks": len(leaks),
+        "leakDetails": leaks,
+        "misses": misses,
+    }
+
+
 def _provider(name: str, model: str) -> me.EmbeddingProvider:
     if name == "none":
         return me.NullEmbeddingProvider("eval: lexical only")
@@ -333,13 +537,69 @@ def run(provider_name: str, model: str, verbose: bool) -> dict[str, object]:
     return report
 
 
+def _print_extraction(report: dict[str, object], verbose: bool) -> None:
+    print(f"gold: {report['gold']}")
+    print(
+        f"cases: {report['cases']}  ({report['emptyCases']} with nothing durable)  expected facts: {report['expected']}"
+    )
+    print(f"{'recall':<18}{report['recall']}   ({report['hits']}/{report['expected']})")
+    print(f"{'precision':<18}{report['precision']}   ({report['facts']} facts over the scoring cases)")
+    print(f"{'empty-case facts':<18}{report['emptyCaseFacts']}")
+    print(f"{'leaks':<18}{report['leaks']}")
+    for leak in report["leakDetails"]:  # type: ignore[union-attr]
+        print(f"    leak: {leak['case']} {leak['forbidden']!r} in {leak['fact']!r}")
+    for miss in report["misses"]:  # type: ignore[union-attr]
+        print(f"    miss: {miss['case']} {miss['keywords']}")
+        if verbose:
+            for fact in miss.get("facts", []):
+                print(f"        got: {fact}")
+
+
+def _print_gate_matrix(matrix: list[dict[str, object]]) -> None:
+    print(f"{'shape':<26}{'raw':>7}{'base64':>9}{'hex':>7}{'urlenc':>9}")
+    for row in matrix:
+        cells = "".join(
+            f"{'yes' if row[key] else 'NO':>{width}}"
+            for key, width in (("raw", 7), ("base64", 9), ("hex", 7), ("urlencoded", 9))
+        )
+        print(f"{row['shape']:<26}{cells}")
+    gaps = {
+        str(row["shape"]): missing
+        for row in matrix
+        if (missing := [key for key in ("raw", "base64", "hex", "urlencoded") if not row[key]])
+    }
+    print(f"\nshapes: {len(matrix)}  with an encoding gap: {len(gaps)}")
+    for shape, missing in gaps.items():
+        print(f"    gap: {shape} undetected as {', '.join(missing)}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--provider", choices=["auto", "none", "fake"], default="auto")
     parser.add_argument("--model", default=me.DEFAULT_EMBEDDING_MODEL)
     parser.add_argument("--verbose", action="store_true", help="list misses per mode")
     parser.add_argument("--json", action="store_true", help="print the raw report as JSON")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--extraction", action="store_true", help="score the heuristic extractor against the gold set")
+    mode.add_argument("--gate", action="store_true", help="print the secret detection matrix")
+    parser.add_argument("--gold", type=Path, default=EXTRACTION_GOLD, help="extraction gold set (with --extraction)")
     args = parser.parse_args()
+
+    if args.extraction:
+        extraction = run_extraction(args.gold, verbose=args.verbose)
+        if args.json:
+            print(json.dumps(extraction, indent=2))
+        else:
+            _print_extraction(extraction, args.verbose)
+        return
+    if args.gate:
+        matrix = run_gate_matrix()
+        if args.json:
+            print(json.dumps(matrix, indent=2))
+        else:
+            _print_gate_matrix(matrix)
+        return
+
     report = run(args.provider, args.model, args.verbose)
     if args.json:
         print(json.dumps(report, indent=2))
