@@ -56,6 +56,7 @@ final class MemorySettings {
             persistence.set(consentGranted, forKey: "memoryConsentGranted")
             if consentGranted { consentShown = true }
             propagateExtractionGate()
+            propagateCloudModelsGate()
         }
     }
 
@@ -63,6 +64,83 @@ final class MemorySettings {
     /// shown again). Set when consent is granted, or when the user declines.
     var consentShown: Bool = false {
         didSet { persistence.set(consentShown, forKey: "memoryConsentShown") }
+    }
+
+    // MARK: Memory Pro cloud models (opt-in, blind)
+
+    /// User toggle: let Memory Pro use cloud / big models through the daemon
+    /// (default OFF). ANDed with base memory consent and the fleet switch in
+    /// `MemoryCloudModelsGate`; the daemon enforces the resulting policy on
+    /// every request, BurnBar never receives memory data. Turning it on implies
+    /// the cloud-models consent sheet has been shown.
+    var cloudModelsEnabled: Bool = false {
+        didSet {
+            persistence.set(cloudModelsEnabled, forKey: "memoryCloudModelsEnabled")
+            if cloudModelsEnabled { cloudModelsConsentShown = true }
+            propagateCloudModelsGate()
+        }
+    }
+
+    /// Whether the cloud-models consent sheet has been presented.
+    var cloudModelsConsentShown: Bool = false {
+        didSet { persistence.set(cloudModelsConsentShown, forKey: "memoryCloudModelsConsentShown") }
+    }
+
+    /// Providers the member consented to, in the order they were chosen.
+    /// Persisted as a JSON array of raw ids (`MemoryCloudProviderID`).
+    var cloudModelsConsentedProviderIDs: [MemoryCloudProviderID] = [] {
+        didSet {
+            persistence.set(
+                MemoryCloudProviderID.encodeList(cloudModelsConsentedProviderIDs),
+                forKey: "memoryCloudModelsConsentedProvidersJSON"
+            )
+            propagateCloudModelsGate()
+        }
+    }
+
+    /// Only route to providers that promise no retention (default ON). The
+    /// daemon refuses provider-policy routes while this is on.
+    var cloudModelsRequireNoRetention: Bool = true {
+        didSet {
+            persistence.set(cloudModelsRequireNoRetention, forKey: "memoryCloudModelsRequireNoRetention")
+            propagateCloudModelsGate()
+        }
+    }
+
+    /// Daily USD cap the daemon enforces for memory purposes (default 2.00),
+    /// clamped to `0...BurnBarMemoryEgressPolicy.maxDailyCapUSD`. Stored with
+    /// a sentinel so an explicit 0 survives a relaunch.
+    var cloudModelsDailyCapUSD: Double = 2.0 {
+        didSet {
+            let clamped = Self.clampCloudModelsDailyCap(cloudModelsDailyCapUSD)
+            if clamped != cloudModelsDailyCapUSD {
+                cloudModelsDailyCapUSD = clamped
+            }
+            persistence.set(clamped, forKey: "memoryCloudModelsDailyCapUSD")
+            persistence.set(true, forKey: "hasMemoryCloudModelsDailyCapUSD")
+            propagateCloudModelsGate()
+        }
+    }
+
+    /// Firebase Remote Config `memory_cloud_models_enabled` (default true). Not
+    /// user-settable and not persisted; a fleet flip to false closes the gate
+    /// instantly and the daemon is handed the policy disabled.
+    var remoteConfigCloudModelsEnabled: Bool = true {
+        didSet { propagateCloudModelsGate() }
+    }
+
+    static func clampCloudModelsDailyCap(_ value: Double) -> Double {
+        guard value.isFinite else { return 2.0 }
+        return min(max(value, 0), BurnBarMemoryEgressPolicy.maxDailyCapUSD)
+    }
+
+    /// The effective cloud-models gate (consent AND toggle AND fleet switch).
+    var cloudModelsGateEnabled: Bool {
+        MemoryCloudModelsGate.isEnabled(
+            consentGranted: consentGranted,
+            cloudModelsEnabled: cloudModelsEnabled,
+            remoteConfigEnabled: remoteConfigCloudModelsEnabled
+        )
     }
 
     // MARK: Usage memory (passive memory from Safari asks + agent session logs)
@@ -203,6 +281,26 @@ final class MemorySettings {
         if persistence.objectExists(forKey: "memoryConsentGranted") {
             self.consentGranted = persistence.bool(forKey: "memoryConsentGranted")
         }
+        // Memory Pro cloud models. Shown before enabled, same ordering rule.
+        if persistence.objectExists(forKey: "memoryCloudModelsConsentShown") {
+            self.cloudModelsConsentShown = persistence.bool(forKey: "memoryCloudModelsConsentShown")
+        }
+        if persistence.objectExists(forKey: "memoryCloudModelsEnabled") {
+            self.cloudModelsEnabled = persistence.bool(forKey: "memoryCloudModelsEnabled")
+        }
+        if persistence.objectExists(forKey: "memoryCloudModelsConsentedProvidersJSON") {
+            self.cloudModelsConsentedProviderIDs = MemoryCloudProviderID.decodeList(
+                persistence.string(forKey: "memoryCloudModelsConsentedProvidersJSON", defaultValue: "[]")
+            )
+        }
+        if persistence.objectExists(forKey: "memoryCloudModelsRequireNoRetention") {
+            self.cloudModelsRequireNoRetention = persistence.bool(forKey: "memoryCloudModelsRequireNoRetention")
+        }
+        if persistence.bool(forKey: "hasMemoryCloudModelsDailyCapUSD") {
+            self.cloudModelsDailyCapUSD = Self.clampCloudModelsDailyCap(
+                persistence.double(forKey: "memoryCloudModelsDailyCapUSD", defaultValue: 2.0)
+            )
+        }
         // Usage memory. Load `usageMemoryConsentShown` before
         // `usageMemoryConsentGranted` for the same shown/granted ordering reason
         // as chat consent above.
@@ -242,6 +340,7 @@ final class MemorySettings {
         }
         propagateExtractionGate()
         propagateUsageGates()
+        propagateCloudModelsGate()
     }
 
     /// Restore the "granting consent implies the prompt was shown" invariant that
@@ -270,6 +369,17 @@ final class MemorySettings {
     private func normalizeConsentShownInvariants() {
         if consentGranted, !consentShown { consentShown = true }
         if usageMemoryConsentGranted, !usageMemoryConsentShown { usageMemoryConsentShown = true }
+        if cloudModelsEnabled, !cloudModelsConsentShown { cloudModelsConsentShown = true }
+    }
+
+    /// Tell the daemon hand-off that the cloud-models policy (or its gate) moved.
+    /// Posting is cheap and idempotent; the observer debounces and diffs.
+    private func propagateCloudModelsGate() {
+        NotificationCenter.default.post(
+            name: .memoryCloudModelsPolicyDidChange,
+            object: self,
+            userInfo: ["enabled": cloudModelsGateEnabled]
+        )
     }
 
     private func propagateExtractionGate() {
@@ -313,6 +423,23 @@ enum MemoryExtractionGate {
         remoteConfigEnabled: Bool
     ) -> Bool {
         consentGranted && automaticExtraction && remoteConfigEnabled
+    }
+}
+
+// MARK: - Memory Pro cloud-models gate
+
+/// Pure gate: cloud models for memory are allowed only when the user has
+/// CONSENTED to memory **and** turned cloud models on **and** the fleet
+/// `memory_cloud_models_enabled` switch has not disabled them. Any lever off
+/// -> the daemon policy is handed off disabled (fail-closed). Both user levers
+/// default OFF, so nothing leaves the device out of the box.
+enum MemoryCloudModelsGate {
+    static func isEnabled(
+        consentGranted: Bool,
+        cloudModelsEnabled: Bool,
+        remoteConfigEnabled: Bool
+    ) -> Bool {
+        consentGranted && cloudModelsEnabled && remoteConfigEnabled
     }
 }
 

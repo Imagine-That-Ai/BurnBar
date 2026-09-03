@@ -9,6 +9,11 @@ import SwiftUI
 struct MemoryConsentSheet: View {
     var onDecision: (Bool) -> Void
 
+    /// The privacy promise. Cloud models for memory are a separate, off-by-default
+    /// opt-in (`MemoryCloudModelsConsentSheet`), so this bullet must not claim
+    /// an unconditional "nothing leaves your device".
+    static let privacyBullet = "Nothing leaves your device unless you turn on cloud models in Settings → Privacy."
+
     init(onDecision: @escaping (Bool) -> Void) {
         self.onDecision = onDecision
     }
@@ -57,7 +62,7 @@ struct MemoryConsentSheet: View {
                 bullet(
                     icon: "lock",
                     tint: DesignSystem.Colors.textMuted,
-                    text: "Nothing leaves your device. Change this anytime in Settings → Privacy."
+                    text: Self.privacyBullet
                 )
             }
 

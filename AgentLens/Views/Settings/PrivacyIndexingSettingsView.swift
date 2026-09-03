@@ -139,6 +139,8 @@ struct PrivacyIndexingSettingsView: View {
                         isOn: $settingsManager.memoryApprovedCloudBackupOptIn
                     )
 
+                    MemoryCloudModelsSection(settingsManager: settingsManager)
+
                     NavigationLink {
                         memoryReviewDestination
                     } label: {

@@ -64,6 +64,10 @@ and no memory row is written, even before the go-live flag matters.
   - `MemorySettings.consentGranted` (G0 above) — **default OFF**.
   - `MemorySettings.automaticExtraction` — the user extraction toggle, persisted,
     **default ON** (only meaningful once consent is granted).
+  - `MemorySettings.remoteConfigCloudModelsEnabled` — the Remote Config
+    `memory_cloud_models_enabled` fleet switch for Memory Pro cloud models,
+    **default true, not user-settable, not persisted**; ANDed with
+    `cloudModelsEnabled` and base consent in `MemoryCloudModelsGate`.
   - `MemorySettings.remoteConfigExtractionEnabled` — the Remote Config
     `memory_extraction_enabled` fleet switch, **default true, not user-settable,
     fail-open on transport error**: a fetch error does NOT flip it false — the
@@ -664,6 +668,7 @@ Session-scoped, **never persisted** (a relaunch always re-derives them):
 |---|---|---|
 | `remoteConfigUsageExtractionEnabled` | true | Mirror of the `memory_usage_extraction_enabled` fleet switch. |
 | `remoteConfigUsageAuthorityWritesEnabled` | true | Mirror of the `memory_usage_authority_writes_enabled` fleet switch. |
+| `remoteConfigCloudModelsEnabled` | true | Mirror of the `memory_cloud_models_enabled` fleet switch (Memory Pro cloud models; not persisted). |
 | `hasResolvedUsageRemoteConfig` | **false** | Whether either mirror has actually been filled from Remote Config (§8.3). |
 
 The two mirrors default to the optimistic `true`, so **they are not themselves a
@@ -682,6 +687,7 @@ default of `true` (allowed), and both are refreshed by
 |---|---|---|
 | `memory_usage_extraction_enabled` | `remoteConfigUsageExtractionEnabled` | All usage extraction, fleet-wide, on the next propagation. |
 | `memory_usage_authority_writes_enabled` | `remoteConfigUsageAuthorityWritesEnabled` | Durable usage authority writes only; extraction and the chat lane are untouched. |
+| `memory_cloud_models_enabled` | `remoteConfigCloudModelsEnabled` | Memory Pro cloud-model egress, fleet-wide: the gate closes and the daemon is handed the policy disabled on the next propagation. Local memory is untouched. |
 
 **Resolution is the load-bearing rule: both usage lanes are held CLOSED until a
 Remote Config value has been applied.** The optimistic `true` defaults can never
