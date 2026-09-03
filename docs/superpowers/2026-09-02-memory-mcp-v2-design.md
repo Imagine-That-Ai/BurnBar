@@ -6,8 +6,8 @@
   collecting important non-confidential information; as good as mem0.ai or
   Mixedbread. Also add an experimental mode that retains confidential info like
   keys."
-- **Status:** implemented in this branch as `tools/openburnbar-mcp/memory_engine.py`
-  plus server wiring, tests, and docs.
+- **Status:** implemented in this branch as the `tools/openburnbar-mcp/memory_engine/`
+  package plus server wiring, tests, and docs.
 
 ---
 
@@ -90,7 +90,58 @@ So:
   fourth *body* store in the master-plan sense: the master plan's concern was
   divergence and cloud-sync surface, and the engine store never syncs.
 
-## 3. Data model (`memory_engine.py`, schema v1)
+## 3. Module map and data model (`memory_engine/`, schema v1)
+
+The engine is the package `tools/openburnbar-mcp/memory_engine/` with a facade
+`__init__.py`. `import memory_engine as me` reaches every name the engine
+exports (public and underscore-prefixed alike), so `server.py`, `eval_memory.py`,
+and the tests are unaware of the split.
+
+| Module | Owns |
+|---|---|
+| `constants.py` | header constants (env names, policies, budgets, RRF weights, `ENGINE_SCHEMA_VERSION`) — one place to tune |
+| `_util.py` | `now_iso`, `sha256_hex`, `_json_dumps`, the kind/scope/tag normalizers, `_aux_strings`, expiry helpers |
+| `text.py` | `tokenize`, `_stem`, `BM25`, snippet and token-budget helpers |
+| `crypto.py` | `KeyRing`, the private-mode store-file helpers, `store_lock_path` |
+| `embeddings.py` | providers, vector codec, provider cache |
+| `gate.py` | `scan_text`, `apply_gate`, `injection_labels`, `GATE_CORPUS_AVAILABLE` |
+| `extract.py` | `Fact`, `heuristic_extract`, `parse_llm_facts`, LLM extractors, entities and relations |
+| `store.py` | `SCHEMA_SQL`, `open_store`, `ensure_schema`, `SCHEMA_MIGRATIONS`, `SchemaTooNew`, `audit_event`, `verify_audit_chain`, `resolve_project` |
+| `filters.py` | filter validation, SQL compilation, `match_filters` |
+| `engine.py` | `EngineConfig`, `ActiveMemory`, and `MemoryEngine` composed from three mixins |
+| `_write.py` | `MemoryEngine`'s write path: `memorize`, `remember`, reconciliation |
+| `_read.py` | read path and CRUD: `recall`, `pack`, `get`, `list`, `history`, `review`, `forget*` |
+| `_admin.py` | maintenance: `doctor`, `export`, `import`, `reindex`, audit trail |
+
+No module exceeds 1,500 lines (`tests/test_memory_engine_layout.py` enforces
+it, and also that the facade exposes every name consumers reference). Mutable
+module flags are read through their module at call time — inside the package
+`gate.GATE_CORPUS_AVAILABLE`, never `from .gate import GATE_CORPUS_AVAILABLE` —
+so monkeypatching keeps working; tests patch `me.gate.` / `me.embeddings.`.
+
+**Versioned migrations.** `ensure_schema` gates on the version *before* it runs
+any schema: it creates `engine_meta` alone (a no-op on any store that already
+has it), reads the stamp, and only then applies `SCHEMA_SQL` and the pending
+migrations. A store stamped newer than `ENGINE_SCHEMA_VERSION`, or stamped with
+something that is not an integer, raises `SchemaTooNew` naming the stored value
+and this engine's version, and its schema is left untouched (the file header may
+switch to WAL mode: `PRAGMA journal_mode=WAL` runs before `ensure_schema`,
+because the locked-retry logic depends on that order, so a refused store can
+gain `-wal` / `-shm` sidecars) — this engine never "repairs" a schema it cannot
+read, so two engine versions on one machine cannot corrupt each other's store.
+
+`store.SCHEMA_MIGRATIONS` is an ordered tuple of `(target_version, statements)`
+steps, empty today, applied in order above the stored version. Each step is one
+explicit `BEGIN` / `commit` — `with conn:` does not wrap DDL under the driver's
+default isolation level — so a step's statements and its version stamp land
+together or not at all, and a failure leaves the store stamped at the last step
+that completed. `SCHEMA_MIGRATIONS` is read and patched through
+`memory_engine.store`; it is deliberately absent from the facade, because an
+alias would be bound once at import and a patch on it would be silently lost.
+`tests/test_store_migrations.py` pins every one of these behaviors, and
+`tests/test_memory_engine_layout.py` enforces the no-alias rule.
+
+### Schema
 
 ```
 projects(project_id PK, fingerprint, display_name, primary_path, created_at, updated_at)
@@ -347,7 +398,67 @@ Pinned by `tests/test_memory_engine_post_merge_audit.py`,
 - A real stdio JSON-RPC session (initialize, tools/list, tools/call) is part
   of the suite, not only an import check.
 
-## 7. Follow-up closure and remaining non-goals
+## 7. Automatic collection
+
+The engine's job is to collect durable, non-confidential information. Until now
+nothing collected unless an agent chose to call `burnbar_memorize`. A Claude
+Code `SessionEnd` hook closes that gap by routing every session transcript
+through the same tool wrapper — same gate, same encryption, same audit chain,
+same daemon-mirror behavior. Nothing about the write path is special-cased for
+the hook.
+
+- `tools/openburnbar-mcp/memorize_transcript.py` — the CLI. `--hook-stdin`
+  reads Claude Code's payload (`session_id`, `transcript_path`, `cwd`,
+  `reason`); the flag form (`--transcript`, `--project`, `--session-id`,
+  `--reason`, `--budget-seconds`) runs it by hand. It keeps `user` /
+  `assistant` prose only — string content or `text` blocks; tool use, tool
+  results, thinking, summaries, `isMeta` lines, malformed lines, and Claude
+  Code wrapper tags (`<system-reminder>`, `<command-*>`, `<local-command-*>`)
+  are dropped — then keeps the tail within 400 messages / 200,000 characters
+  and calls `burnbar_memorize(messages=…, source_kind="session",
+  source_ref="claude-code:<session_id>", metadata={hook, reason, sessionId})`.
+  The transcript format is documented as internal, so parsing is lenient by
+  contract: it never raises on a shape it does not recognize.
+
+- `tools/openburnbar-mcp/hooks/claude-code-session-end.sh` — the hook command.
+  Honors the `OPENBURNBAR_MEMORY_SESSION_HOOK` kill switch before doing
+  anything, picks `OPENBURNBAR_MEMORY_PYTHON` or the venv interpreter
+  (bootstrapping quietly when it is missing), pipes the payload through, and
+  always exits 0.
+
+**Provenance.** A stored row keeps both halves of where it came from. The
+heuristic extractor stamps each fact with the position of the message it was
+taken from (`m3`), which names nothing outside its own batch, so the write path
+prefixes the caller's reference: a hook write lands as
+`sourceRef = "claude-code:<session_id>#m3"`. A fact carrying a real reference of
+its own — an LLM extractor, or caller-supplied `facts` — keeps it untouched, and
+a `memorize` call with no `source_ref` still stores the bare marker. The ingest
+receipt keys on the caller's inputs and not on the stored refs, so idempotency
+is unaffected. Provenance is not content: `source_ref` is kept out of the token
+set that decides near-duplicate similarity, so naming a batch never merges the
+facts inside it. It stays in the lexical index (`ActiveMemory.recall_tokens`), so
+a memory captured from `docs/release/runbook.md` is still findable by that path.
+
+**Never blocks session end.** A hook cannot block, so failure is not an option
+the CLI takes: it enforces its own 20-second deadline with `signal.setitimer`
+(macOS has no `timeout(1)`), reports one JSON status line on stdout, and exits 0
+in every case except a usage error. Statuses are `memorized`,
+`already_ingested`, `skipped_disabled`, `skipped_missing_transcript`,
+`skipped_empty`, `timeout`, and `error`. `server` (and therefore FastMCP) is
+imported lazily, so the kill switch and a missing transcript cost nothing.
+
+**Idempotent.** `memorize` keys an ingest receipt on the content hash of the
+transcript and project, so replaying a session (`--resume`, a re-fired hook, a
+manual re-run) returns `code: ALREADY_INGESTED`, surfaced by the CLI as
+`already_ingested`, and adds no memories.
+
+**Opt-in, not shared.** The repo's `.claude/settings.json` is not modified; the
+README carries the `SessionEnd` snippet (`timeout: 30`) for a user- or
+project-local settings file, along with the privacy statement and the two
+environment variables (`OPENBURNBAR_MEMORY_SESSION_HOOK=off`,
+`OPENBURNBAR_MEMORY_SESSION_HOOK_LOG=<file>`).
+
+## 8. Follow-up closure and remaining non-goals
 
 - The signed write bridge and daemon-side ranking parity are included: the
   CLI exposes typed stdin-JSON `memory-remember` / `memory-forget` couriers,
@@ -357,7 +468,7 @@ Pinned by `tests/test_memory_engine_post_merge_audit.py`,
   testable; a cross-encoder can slot behind `rerank()` later.
 - Cloud sync of engine memories. The engine store is local-only.
 
-## 8. Verification
+## 9. Verification
 
 - `pytest tests/` in `tools/openburnbar-mcp` (new `test_memory_engine.py` and
   `test_memory_engine_hardening.py`, updated server tests).
@@ -366,3 +477,65 @@ Pinned by `tests/test_memory_engine_post_merge_audit.py`,
 - `ruff check` and `ruff format --check` per `ruff.toml` (py311 target).
 - `eval_memory.py` — recall@k / MRR on a 40-fact, 25-query gold set, lexical vs
   hybrid, run against the local Ollama `nomic-embed-text` model.
+- `tests/test_memorize_transcript.py` — transcript parsing, tail trimming, the
+  gated end-to-end hook payload (secret redacted, replay adds nothing), the kill
+  switch, a missing transcript, the deadline, and the hook script itself.
+
+### 9.1 Evaluation — the measured numbers
+
+`eval_memory.py` has three modes. Retrieval is the default; the other two make
+extraction quality and gate coverage measurable rather than assumed.
+
+| Mode | Command | Measured 2026-09-02 |
+|---|---|---|
+| Retrieval | `eval_memory.py --provider auto` | hybrid R@5 0.90, MRR 0.678 (`nomic-embed-text`) |
+| Extraction | `eval_memory.py --extraction --provider none` | recall **0.667** (20/30), precision 1.0, 1 fact over 7 empty conversations, 0 leaks |
+| Gate | `eval_memory.py --gate` | 25 shapes, all detected raw; 4 encoding gaps |
+
+The extraction gold set is `tools/openburnbar-mcp/eval/extraction_gold.json`:
+36 realistic developer conversations of two to six messages covering decisions,
+preferences, architecture facts, procedures, constraints, ownership and bug
+root causes, plus seven that carry nothing durable (greetings, a traceback,
+tool output, an ephemeral test run). Three conversations paste a credential;
+their `forbidden` prefixes must never reach an extracted fact. Credential-shaped
+literals are never committed — the gold set writes `{{secret:<shape>}}` and the
+eval expands it from `eval_memory.SECRET_SHAPES`, a `random.Random(20260902)`
+generator shared with `tests/test_gate_adversarial.py`.
+
+`tests/test_eval_extraction.py` pins `RECALL_FLOOR = 0.65` — the measurement
+rounded down to a multiple of 0.05 — together with `leaks == 0` and
+`emptyCaseFacts <= 2`. The floor only moves up. Precision saturates at 1.0
+because the heuristic extractor is conservative (it fires on about one sentence
+per conversation, or none), so recall and the empty-case count carry the signal;
+the ten misses are architecture and constraint statements phrased without one of
+the extractor's cue words.
+
+`tests/test_gate_adversarial.py` holds each of those 25 shapes to the policy
+contract across eight caller-controlled placements — prose (middle and end), a
+key/value line, a fenced code block, a tag, an entity, a metadata value and a
+source ref. Under `redact` the verbatim token appears in no write result, `get`,
+`list`, `recall` body or snippet, `pack`, `export`, `history` or audit trail, and
+not in the store's raw bytes including an un-checkpointed `-wal`; under `reject`
+the write is refused with `SECRET_DETECTED` and no row lands; under `retain` a
+body secret is returned only by the encrypted vault while the indexable body and
+the file bytes do not carry it, and an auxiliary field — which has no vault — is
+redacted instead of retained, so it reaches no surface at all. Auxiliary fields
+are gated on their raw, pre-normalization form — the write paths carry the
+caller's tags uncased as far as `gate_aux_fields` and normalize what it returns —
+so an AWS access key id written as a tag is refused or dropped exactly like one
+written in the body.
+
+The Twilio `SK<32 hex>` shape that this suite reported missing is now in the
+shared corpus (`twilio-api-key`), detected raw and under all three encodings.
+
+**The corpus has three consumers, and a bump touches all of them.** Two copies
+are committed and kept byte-identical:
+`tools/project-code-memory/secret-pattern-corpus.json` (loaded by the Python MCP
+via `project_code_memory._load_secret_corpus`) and
+`OpenBurnBarCore/Sources/OpenBurnBarKernel/Resources/secret-pattern-corpus.json`
+(loaded by the Swift kernel and daemon through `MemorySecretPIIGate`, and
+embedded as a resource by the C# `OpenBurnBar.App.MemorySearch` Windows app,
+whose `MemorySecretPIIGateTests` pins the `version` string literally and runs
+under the PR gate's `dotnet test`). When the `version` field changes, update
+both JSON copies **and** that C# assertion —
+`grep -rn "corpus-v<n>"` across *all* file types, not just Python and Swift.

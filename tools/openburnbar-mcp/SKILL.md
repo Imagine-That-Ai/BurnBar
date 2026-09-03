@@ -43,6 +43,8 @@ SQLite tools, hosted encrypted cloud-search tools, and 2 ledger tools:
 | `burnbar_inbox_plans_list` | List Founder Plans (accepted commitments) with status and rolling grade |
 | `burnbar_inbox_plans_get` | Read one Founder Plan in full: steps, grades, mission/follow-up links |
 
+Memories are also collected automatically: the Claude Code `SessionEnd` hook `tools/openburnbar-mcp/hooks/claude-code-session-end.sh` memorizes each session transcript through `burnbar_memorize` (same gate, encryption, and audit; `OPENBURNBAR_MEMORY_SESSION_HOOK=off` disables it). See the README section "Automatic collection from Claude Code sessions".
+
 ## Setup
 
 ```bash

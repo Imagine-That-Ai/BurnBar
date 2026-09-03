@@ -1,0 +1,466 @@
+{
+  "schema": "openburnbar.memory.extraction_gold.v1",
+  "notes": [
+    "Realistic developer conversations, written before the extractor was run against them.",
+    "An expected fact is a hit when one extracted fact body contains every keyword, case-insensitively.",
+    "A {{secret:<shape>}} placeholder expands to the seeded synthetic token of that shape from",
+    "eval_memory.SECRET_SHAPES, so no credential-shaped literal is ever committed to the repo.",
+    "'forbidden' lists the prefixes that must never reach an extracted fact."
+  ],
+  "cases": [
+    {
+      "id": "sqlcipher-daemon-mirror",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Should the daemon mirror use SQLCipher or plain SQLite? I don't want to maintain two encryption stories."
+        },
+        {
+          "role": "assistant",
+          "content": "We decided to use SQLCipher for the daemon mirror because the daemon already links it, so there is exactly one encryption story to reason about."
+        }
+      ],
+      "expected": [{ "keywords": ["SQLCipher", "daemon mirror"] }],
+      "forbidden": []
+    },
+    {
+      "id": "fatter-prs",
+      "messages": [
+        { "role": "user", "content": "Ten thin slice PRs landed overnight and reviewing them ate my whole morning." },
+        { "role": "assistant", "content": "Want me to batch the remaining work differently?" },
+        {
+          "role": "user",
+          "content": "Yes. I prefer fewer, fatter pull requests with one theme each over ten narrow slices."
+        }
+      ],
+      "expected": [{ "keywords": ["fewer", "fatter", "theme"] }],
+      "forbidden": []
+    },
+    {
+      "id": "hybrid-fusion",
+      "messages": [
+        { "role": "user", "content": "How does recall combine the lexical score with the vector score?" },
+        {
+          "role": "assistant",
+          "content": "Hybrid mode fuses BM25 and cosine similarity with reciprocal rank fusion, and the fusion weights live in the constants header of the engine."
+        }
+      ],
+      "expected": [{ "keywords": ["reciprocal rank fusion", "BM25"] }],
+      "forbidden": []
+    },
+    {
+      "id": "bootstrap-procedure",
+      "messages": [
+        { "role": "user", "content": "Fresh clone. How do I get the memory MCP tests running?" },
+        {
+          "role": "assistant",
+          "content": "First run bootstrap-memory.sh from tools/openburnbar-mcp, then install requirements-dev.txt into the same .venv."
+        },
+        { "role": "user", "content": "And the tests themselves?" },
+        { "role": "assistant", "content": "`.venv/bin/python -m pytest tests/ -q` from that directory." }
+      ],
+      "expected": [{ "keywords": ["bootstrap-memory.sh", "requirements-dev.txt"] }],
+      "forbidden": []
+    },
+    {
+      "id": "foreign-keys-root-cause",
+      "messages": [
+        { "role": "user", "content": "Forgetting a memory left orphan rows behind. Why didn't the cascade fire?" },
+        {
+          "role": "assistant",
+          "content": "The root cause was that SQLite disables foreign keys per connection, so ensure_schema now issues a PRAGMA on every open."
+        }
+      ],
+      "expected": [{ "keywords": ["ensure_schema", "PRAGMA"] }],
+      "forbidden": []
+    },
+    {
+      "id": "audit-chain-ownership",
+      "messages": [
+        { "role": "user", "content": "Who owns hash chain verification, the engine or the daemon?" },
+        {
+          "role": "assistant",
+          "content": "The engine owns it: verify_audit_chain walks memory_audit on every read of the trail, and the daemon never re-verifies."
+        }
+      ],
+      "expected": [{ "keywords": ["verify_audit_chain", "memory_audit"] }],
+      "forbidden": []
+    },
+    {
+      "id": "never-bare-stash",
+      "messages": [
+        { "role": "user", "content": "Can I stash my worktree changes before pulling?" },
+        {
+          "role": "assistant",
+          "content": "Never run a bare git stash in a worktree here: the stash stack is shared across every worktree and another session can pop yours."
+        }
+      ],
+      "expected": [{ "keywords": ["git stash", "shared"] }],
+      "forbidden": []
+    },
+    {
+      "id": "approval-gate",
+      "messages": [
+        { "role": "user", "content": "Bugbot left an approving comment. Can I merge?" },
+        {
+          "role": "assistant",
+          "content": "No. Codex is the independent reviewer and the approval gate; Cursor Bugbot output is never approval evidence."
+        }
+      ],
+      "expected": [{ "keywords": ["Codex", "approval gate"] }],
+      "forbidden": []
+    },
+    {
+      "id": "ollama-rosetta",
+      "messages": [
+        { "role": "user", "content": "ollama serve dies the moment I start it on this Mac." },
+        {
+          "role": "assistant",
+          "content": "Known gotcha on this machine: Ollama has to run under Rosetta via arch -x86_64, otherwise the runner aborts during model load."
+        },
+        { "role": "user", "content": "That fixed it, thanks." }
+      ],
+      "expected": [{ "keywords": ["Rosetta", "x86_64"] }],
+      "forbidden": []
+    },
+    {
+      "id": "nightly-mac-build",
+      "messages": [
+        { "role": "user", "content": "The macOS app build is red on my PR. Do I have to fix it before merging?" },
+        {
+          "role": "assistant",
+          "content": "The Mac app build runs nightly and is not a merge ticket; only the fast checks gate the merge door."
+        }
+      ],
+      "expected": [{ "keywords": ["nightly", "merge"] }],
+      "forbidden": []
+    },
+    {
+      "id": "retain-capability",
+      "messages": [
+        { "role": "user", "content": "Can I keep an API key verbatim in a memory?" },
+        {
+          "role": "assistant",
+          "content": "Only under secret_policy=retain, which requires the memory_secret_retain capability; without it the write is refused outright."
+        },
+        { "role": "user", "content": "And where does the verbatim text end up?" },
+        {
+          "role": "assistant",
+          "content": "In the encrypted vault table, never in the indexable body, and only get with include_secrets can open it."
+        }
+      ],
+      "expected": [
+        { "keywords": ["secret_policy=retain", "memory_secret_retain"] },
+        { "keywords": ["vault", "indexable body"] }
+      ],
+      "forbidden": []
+    },
+    {
+      "id": "wal-mode",
+      "messages": [
+        { "role": "user", "content": "Why is there a -wal file sitting next to the memory store?" },
+        {
+          "role": "assistant",
+          "content": "The store runs in WAL mode, so writes land in the sidecar journal until a checkpoint folds them back into the main file."
+        }
+      ],
+      "expected": [{ "keywords": ["WAL mode", "checkpoint"] }],
+      "forbidden": []
+    },
+    {
+      "id": "release-ritual",
+      "messages": [
+        { "role": "user", "content": "What's the release ritual for the Mac app?" },
+        {
+          "role": "assistant",
+          "content": "First bump CURRENT_PROJECT_VERSION and tag the commit, then bind the owner-emergency packet to that tagged build."
+        }
+      ],
+      "expected": [{ "keywords": ["CURRENT_PROJECT_VERSION", "owner-emergency"] }],
+      "forbidden": []
+    },
+    {
+      "id": "gate-corpus-source",
+      "messages": [
+        { "role": "user", "content": "Where do the credential regexes come from? I want to add one for a new provider." },
+        {
+          "role": "assistant",
+          "content": "They are owned by tools/project-code-memory/secret-pattern-corpus.json; the memory engine compiles that corpus at import and never defines patterns of its own."
+        },
+        { "role": "user", "content": "So adding one there covers both the scanner and the memory gate?" },
+        { "role": "assistant", "content": "Yes, one corpus, both consumers." }
+      ],
+      "expected": [{ "keywords": ["secret-pattern-corpus.json", "compiles"] }],
+      "forbidden": []
+    },
+    {
+      "id": "flaky-timezone-test",
+      "messages": [
+        { "role": "user", "content": "test_memory_engine only fails on my machine, and only after 5pm." },
+        { "role": "assistant", "content": "Which assertion?" },
+        { "role": "user", "content": "The one comparing createdAt to today's date." },
+        {
+          "role": "assistant",
+          "content": "That is the classic one: the assertion compares a naive local timestamp against a UTC one, so it breaks when your offset pushes the date past midnight."
+        }
+      ],
+      "expected": [{ "keywords": ["naive local", "UTC"] }],
+      "forbidden": []
+    },
+    {
+      "id": "brevity-preference",
+      "messages": [
+        { "role": "user", "content": "Your last three answers were essays." },
+        { "role": "assistant", "content": "Noted. How short do you want them?" },
+        {
+          "role": "user",
+          "content": "I would rather have one accurate sentence than three paragraphs of hedging, so keep answers brief."
+        }
+      ],
+      "expected": [{ "keywords": ["one accurate sentence", "brief"] }],
+      "forbidden": []
+    },
+    {
+      "id": "ruff-line-length",
+      "messages": [
+        { "role": "user", "content": "ruff keeps rewrapping my lines at 88 and the diff is noise." },
+        {
+          "role": "assistant",
+          "content": "The repo convention is line length 120 targeting py311; ruff.toml sets both and CI runs ruff format --check."
+        }
+      ],
+      "expected": [{ "keywords": ["120", "ruff.toml"] }],
+      "forbidden": []
+    },
+    {
+      "id": "daemon-socket",
+      "messages": [
+        { "role": "user", "content": "How does the MCP actually talk to the daemon?" },
+        {
+          "role": "assistant",
+          "content": "Every mirrored write routes through a unix socket, and the daemon rejects any peer that fails first-party code-signature verification."
+        }
+      ],
+      "expected": [{ "keywords": ["unix socket", "code-signature"] }],
+      "forbidden": []
+    },
+    {
+      "id": "default-secret-policy",
+      "messages": [
+        { "role": "user", "content": "What happens by default when a credential shows up in something I memorize?" },
+        {
+          "role": "assistant",
+          "content": "The secret policy defaults to redact, so the body is stored with the credential replaced by a labelled placeholder and nothing verbatim is kept."
+        }
+      ],
+      "expected": [{ "keywords": ["defaults to redact", "placeholder"] }],
+      "forbidden": []
+    },
+    {
+      "id": "deploy-token-401",
+      "messages": [
+        {
+          "role": "user",
+          "content": "The release job keeps 401ing when it pushes the package.\n\n$ export DEPLOY_TOKEN={{secret:github_pat}}\n\nThe token itself is definitely valid, I just minted it."
+        },
+        {
+          "role": "assistant",
+          "content": "The root cause was that the release workflow reads GITHUB_TOKEN, not DEPLOY_TOKEN, so your shell export never reached the publish step."
+        }
+      ],
+      "expected": [{ "keywords": ["root cause", "GITHUB_TOKEN"] }],
+      "forbidden": ["ghp_"]
+    },
+    {
+      "id": "dotenv-not-loaded",
+      "messages": [
+        { "role": "user", "content": "Local runs 401 against Anthropic but CI is green with the same key." },
+        { "role": "assistant", "content": "Where is the key set locally?" },
+        {
+          "role": "user",
+          "content": "In my .env:\n\nANTHROPIC_API_KEY={{secret:anthropic_api_key}}\n\nSame value CI uses."
+        },
+        {
+          "role": "assistant",
+          "content": "launch-memory.sh does not source .env, so the server process never sees ANTHROPIC_API_KEY; export it in the shell that starts the launcher."
+        }
+      ],
+      "expected": [{ "keywords": ["launch-memory.sh", "ANTHROPIC_API_KEY"] }],
+      "forbidden": ["sk-ant-"]
+    },
+    {
+      "id": "assume-role-hang",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Runner log tail:\n\n[2026-09-01T04:12:11Z] assuming role with {{secret:aws_access_key_id}}\n\nThen it just sits there for ten minutes."
+        },
+        {
+          "role": "assistant",
+          "content": "It hangs because the instance profile has no STS permission, so the SDK retries the assume-role call until the socket timeout fires."
+        }
+      ],
+      "expected": [{ "keywords": ["STS", "assume-role"] }],
+      "forbidden": ["AKIA"]
+    },
+    {
+      "id": "quarantine-default",
+      "messages": [
+        { "role": "user", "content": "Are memories captured from a session usable straight away?" },
+        {
+          "role": "assistant",
+          "content": "Chat-sourced memories default to review status quarantined and cannot be injected into a pack until someone approves them."
+        }
+      ],
+      "expected": [{ "keywords": ["quarantined", "approve"] }],
+      "forbidden": []
+    },
+    {
+      "id": "toolset-narrowing",
+      "messages": [
+        { "role": "user", "content": "The tool list is huge and my context budget is tight." },
+        {
+          "role": "assistant",
+          "content": "Set BURNBAR_MCP_TOOLSET=memory and the server exposes only the corpus and memory tools; the ops profile keeps FinOps instead."
+        }
+      ],
+      "expected": [{ "keywords": ["BURNBAR_MCP_TOOLSET", "memory tools"] }],
+      "forbidden": []
+    },
+    {
+      "id": "session-hook-budget",
+      "messages": [
+        { "role": "user", "content": "How long is the SessionEnd hook allowed to run?" },
+        {
+          "role": "assistant",
+          "content": "It must finish inside the 30 second hook timeout, and the memorizer enforces its own 20 second deadline so it never gets killed mid-write."
+        }
+      ],
+      "expected": [{ "keywords": ["30 second", "timeout"] }],
+      "forbidden": []
+    },
+    {
+      "id": "embedding-version-guard",
+      "messages": [
+        { "role": "user", "content": "If I swap the embedding model, do the old vectors still count?" },
+        {
+          "role": "assistant",
+          "content": "No. Vectors carry an embedding version and are never compared across versions, so swapping the model forces a full re-embed."
+        }
+      ],
+      "expected": [{ "keywords": ["embedding version", "never compared"] }],
+      "forbidden": []
+    },
+    {
+      "id": "memory-mcp-ownership",
+      "messages": [
+        { "role": "user", "content": "Who should I ping about the memory MCP before I refactor it?" },
+        {
+          "role": "assistant",
+          "content": "Alberto owns the memory MCP end to end, and the daemon mirror is maintained by the same person, so there is no second reviewer to loop in."
+        }
+      ],
+      "expected": [{ "keywords": ["Alberto", "owns"] }],
+      "forbidden": []
+    },
+    {
+      "id": "pack-budget-invariant",
+      "messages": [
+        { "role": "user", "content": "Can a recall pack ever blow past the token budget I hand it?" },
+        {
+          "role": "assistant",
+          "content": "It cannot: tokensUsed measures the whole serialized pack including the envelope, and the budget floor always leaves room for one truncated line."
+        }
+      ],
+      "expected": [{ "keywords": ["tokensUsed", "envelope"] }],
+      "forbidden": []
+    },
+    {
+      "id": "no-python-sqlite-reads",
+      "messages": [
+        { "role": "user", "content": "Can I just open openburnbar.sqlite from a Python script to check a row?" },
+        {
+          "role": "assistant",
+          "content": "No, that file is SQLCipher-encrypted and the stdlib sqlite3 module cannot open it; reads have to go through the daemon."
+        }
+      ],
+      "expected": [{ "keywords": ["SQLCipher", "sqlite3"] }],
+      "forbidden": []
+    },
+    {
+      "id": "chit-chat",
+      "messages": [
+        { "role": "user", "content": "thanks, that's all for today" },
+        { "role": "assistant", "content": "You're welcome. Have a good evening." }
+      ],
+      "expected": [],
+      "forbidden": []
+    },
+    {
+      "id": "transient-traceback",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Traceback (most recent call last):\n  File \"server.py\", line 12, in <module>\n    import memory_engine\nModuleNotFoundError: No module named 'memory_engine'"
+        },
+        { "role": "assistant", "content": "Let me check your interpreter." },
+        { "role": "user", "content": "never mind, wrong venv" }
+      ],
+      "expected": [],
+      "forbidden": []
+    },
+    {
+      "id": "tool-output-echo",
+      "messages": [
+        { "role": "user", "content": "what does the doctor tool print?" },
+        {
+          "role": "assistant",
+          "content": "{\"status\": \"ok\", \"memories\": 41, \"orphans\": 0, \"chain\": \"valid\"}"
+        }
+      ],
+      "expected": [],
+      "forbidden": []
+    },
+    {
+      "id": "ephemeral-test-run",
+      "messages": [
+        { "role": "user", "content": "run the tests again" },
+        { "role": "assistant", "content": "Running them now." },
+        { "role": "user", "content": "ok" },
+        { "role": "assistant", "content": "312 passed, 1 skipped." }
+      ],
+      "expected": [],
+      "forbidden": []
+    },
+    {
+      "id": "scheduling-noise",
+      "messages": [
+        { "role": "user", "content": "are you around tomorrow morning?" },
+        { "role": "assistant", "content": "Whenever you start." },
+        { "role": "user", "content": "cool" }
+      ],
+      "expected": [],
+      "forbidden": []
+    },
+    {
+      "id": "clarifying-round-trip",
+      "messages": [
+        { "role": "user", "content": "can you look at the thing I mentioned earlier?" },
+        { "role": "assistant", "content": "Which one, the recall ranking or the hook script?" },
+        { "role": "user", "content": "the second one" }
+      ],
+      "expected": [],
+      "forbidden": []
+    },
+    {
+      "id": "interrupted-debugging",
+      "messages": [
+        { "role": "user", "content": "hold on, my venv is broken" },
+        { "role": "assistant", "content": "No rush." },
+        { "role": "user", "content": "ok it's back, ignore that" }
+      ],
+      "expected": [],
+      "forbidden": []
+    }
+  ]
+}

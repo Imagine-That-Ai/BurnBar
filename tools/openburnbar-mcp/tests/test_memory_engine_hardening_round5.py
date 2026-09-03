@@ -201,7 +201,7 @@ def test_memorize_retries_rejection_after_gate_recovers(tmp_path: Path, monkeypa
     repo = _repo(tmp_path)
     facts = [{"text": "The rollback owner is Ops."}]
     with _engine(tmp_path) as engine:
-        monkeypatch.setattr(me, "GATE_CORPUS_AVAILABLE", False)
+        monkeypatch.setattr(me.gate, "GATE_CORPUS_AVAILABLE", False)
         rejected = engine.memorize(project_path=repo, facts=facts)
         assert rejected["summary"]["REJECT"] == 1 and rejected["receiptStored"] is False
         # Simulate the nonterminal receipt written by a pre-fix process.
@@ -215,7 +215,7 @@ def test_memorize_retries_rejection_after_gate_recovers(tmp_path: Path, monkeypa
             ),
         )
         engine.conn.commit()
-        monkeypatch.setattr(me, "GATE_CORPUS_AVAILABLE", True)
+        monkeypatch.setattr(me.gate, "GATE_CORPUS_AVAILABLE", True)
         retried = engine.memorize(project_path=repo, facts=facts)
         assert retried.get("code") != "ALREADY_INGESTED"
         assert retried["summary"]["ADD"] == 1 and retried["receiptStored"] is True

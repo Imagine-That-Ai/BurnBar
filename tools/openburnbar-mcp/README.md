@@ -153,6 +153,122 @@ Restart Hermes. The skill activates on questions about spend, sessions, or workf
 
 Edit `~/Library/Application Support/Claude/claude_desktop_config.json` and add the same `mcpServers.openburnbar-local` block under `mcpServers`, then restart Claude Desktop.
 
+## Automatic collection from Claude Code sessions
+
+Memories are normally written only when an agent decides to call
+`burnbar_memorize`. The `SessionEnd` hook closes that gap: when a Claude Code
+session ends, [`hooks/claude-code-session-end.sh`](hooks/claude-code-session-end.sh)
+feeds the session transcript to [`memorize_transcript.py`](memorize_transcript.py),
+which calls the same `burnbar_memorize` wrapper the MCP tool uses. Durable facts
+from every session are collected without anyone remembering to ask.
+
+Opt in by adding this to your own **user-level** `~/.claude/settings.json`.
+`$CLAUDE_PROJECT_DIR` does not work here: it expands to whatever project the
+session ran in, not to this checkout, so the hook would look for the script
+inside every unrelated repository. Give the absolute path to the checkout
+instead — substitute yours for `$HOME/Projects/BurnBar`:
+
+```json
+{
+  "hooks": {
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$HOME/Projects/BurnBar/tools/openburnbar-mcp/hooks/claude-code-session-end.sh\"",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Inside this repository — in `.claude/settings.local.json`, since the shared
+`.claude/settings.json` is deliberately not modified — `$CLAUDE_PROJECT_DIR` is
+the checkout, so the repo-relative form is correct there:
+
+```json
+{
+  "hooks": {
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/tools/openburnbar-mcp/hooks/claude-code-session-end.sh\"",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+The hook reads Claude Code's JSON payload (`session_id`, `transcript_path`,
+`cwd`, `reason`) on stdin, keeps only `user` and `assistant` prose (tool calls,
+tool results, thinking blocks, summaries, `isMeta` lines, and wrapper tags such
+as `<system-reminder>` are dropped), keeps the tail within 400 messages and
+200,000 characters, and memorizes it against the session's `cwd` with
+`source_kind="session"` and `source_ref="claude-code:<session_id>"`. Each stored
+row keeps both halves of its provenance — the extractor's message marker behind
+the caller's reference, `sourceRef = "claude-code:<session_id>#m3"` — so a
+memory can be traced back to the session and the turn it came from. The
+transcript format is documented as internal, so parsing is lenient by design:
+malformed lines are skipped, never raised on.
+
+**It never blocks session end.** The CLI enforces its own 20-second deadline
+(`--budget-seconds`), prints one JSON status line, and exits 0 in every case
+except a usage error. Statuses: `memorized` (at least one memory was written or
+reinforced), `already_ingested`, `skipped_no_facts` (nothing worth keeping was
+extracted), `rejected` (facts were considered and every one of them was
+refused), `skipped_disabled`, `skipped_missing_transcript`, `skipped_empty`,
+`timeout`, `error`. The deadline covers reading the transcript as well as
+memorizing it. The hook script itself always exits 0, and bootstraps the venv
+quietly if it is missing.
+
+**The first session end on a machine without the venv usually memorizes
+nothing.** Bootstrapping the interpreter and dependencies takes most of the
+30-second hook budget on its own, so that run typically reports `timeout` (or is
+cut off by Claude Code) and writes no memories. The venv it built persists, so
+the next session end — and every one after it — completes normally. Run
+`./tools/openburnbar-mcp/bootstrap-memory.sh` once by hand to skip that first
+lost run.
+
+**Idempotent.** `burnbar_memorize` keys an ingest receipt on the content hash of
+the transcript, so re-running the same session (a `--resume`, a replayed
+transcript, two hooks firing) reports `already_ingested` and writes no duplicate
+memories.
+
+**Privacy.** Everything stays on this machine: the transcript is read locally
+and written to the local memory store, never uploaded. Facts go through the same
+secret/PII gate as the tool path — secrets are redacted before storage
+(`sensitivity: redacted`, the raw token never reaches the body, tags, entities,
+metadata, or source ref), prompt-injection candidates are quarantined, and every
+row is AES-256-GCM encrypted at rest. Each run appends a label-only audit event
+(`memory.memorize`) to the hash chain. Set
+`OPENBURNBAR_MEMORY_SESSION_HOOK=off` to disable collection entirely (nothing is
+read and no store is created), and
+`OPENBURNBAR_MEMORY_SESSION_HOOK_LOG=<file>` to keep the status lines instead of
+discarding them. The printed line is a receipt — status, counts, decision
+events, memory ids, the source hash — and carries no memory text, no decision
+body and no transcript content; the hook still sets `umask 077` and creates the
+file `0600`, because the ids and counts are themselves telling. An existing file
+keeps whatever mode it already has.
+`OPENBURNBAR_MEMORY_PYTHON` overrides the interpreter.
+
+Run it by hand against any transcript:
+
+```bash
+./tools/openburnbar-mcp/.venv/bin/python tools/openburnbar-mcp/memorize_transcript.py \
+  --transcript ~/.claude/projects/<project>/<session>.jsonl --project "$PWD" --session-id manual
+```
+
 ## Tools
 
 | Tool | Purpose |
@@ -231,7 +347,7 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` and add t
 
 ## Local memory engine
 
-The memory tools above are served by `memory_engine.py`, an MCP-owned store at
+The memory tools above are served by the `memory_engine/` package, an MCP-owned store at
 `~/Library/Application Support/OpenBurnBar/openburnbar-memory.sqlite`
 (override with `OPENBURNBAR_MEMORY_DB_PATH`). Design and the gap analysis
 against mem0 / Mixedbread: [`docs/superpowers/2026-09-02-memory-mcp-v2-design.md`](../../docs/superpowers/2026-09-02-memory-mcp-v2-design.md).
@@ -355,7 +471,38 @@ against mem0 / Mixedbread: [`docs/superpowers/2026-09-02-memory-mcp-v2-design.md
   Concurrent duplicate inserts serialize lookup plus insertion, and embedding
   HTTP calls complete before SQLite write locks are taken.
 - **Quality.** `eval_memory.py` scores lexical vs hybrid recall on a 40-memory
-  / 30-paraphrase gold set against your local Ollama model.
+  / 30-paraphrase gold set against your local Ollama model (hybrid R@5 0.90,
+  MRR 0.678 on `nomic-embed-text`).
+- **Extraction quality.** `eval_memory.py --extraction --provider none` replays
+  `eval/extraction_gold.json` — 36 realistic developer conversations, 7 of them
+  with nothing durable to remember — through the heuristic extractor. Measured
+  2026-09-02: **recall 0.667** (20 of 30 expected facts), precision 1.0, one
+  fact invented across the seven empty conversations, zero forbidden-string
+  leaks. `tests/test_eval_extraction.py` pins `RECALL_FLOOR = 0.65` (the
+  measurement rounded down to a multiple of 0.05), `leaks == 0`, and
+  `emptyCaseFacts <= 2`, so the number can only ratchet up. Precision saturates
+  because the extractor is conservative — it fires on roughly one sentence per
+  conversation or none at all — so recall and the empty-case count are the
+  informative halves. The ten misses are architecture and constraint statements
+  phrased without a cue word ("routes through a unix socket", "must finish
+  inside the 30 second timeout"); they are logged verbatim by `--verbose`.
+- **Gate coverage.** `eval_memory.py --gate` prints the detection matrix for
+  the 25 secret shapes the shared corpus flags standalone, per encoding.
+  Detection is complete for raw tokens; the encoded gaps as of 2026-09-02 are
+  an AWS access key id base64- or hex-encoded, a `postgres://user:pass@host`
+  URI or a `password=…` assignment URL-encoded, and a 64-char hex signing key
+  hex-encoded again. `tests/test_gate_adversarial.py` plants every one of those
+  shapes in eight caller-controlled places (prose (middle and end), a key/value
+  line, a fenced code block, a tag, an entity, a metadata value, a source ref)
+  and proves that
+  under `redact` the verbatim token reaches no result, `get`, `list`, `recall`,
+  `pack`, `export`, `history` or audit-trail surface and is absent from the
+  store's raw bytes (WAL included); under `reject` the write is refused; and
+  under `retain` a body secret is returned only by the encrypted vault while an
+  auxiliary field, which has no vault, carries it on no surface at all.
+  Auxiliary fields are gated on their raw, pre-normalization form, so a
+  credential written as a tag is refused or dropped exactly like one written in
+  the body even though the stored tag is lowercased.
 
 Project Code Memory is local-only by default. Indexing uses a shared
 Swift/Python secret-scanner corpus, Git exclude-standard ignore semantics when
