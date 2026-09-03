@@ -450,7 +450,9 @@ class _Maintenance:
             labels = list(gate.scan_text(text.upper()).secret_labels)
         return labels
 
-    def aux_secret_exposure(self, project_id: str | None, *, limit: int | None = None) -> dict[str, Any]:
+    def aux_secret_exposure(
+        self, project_id: str | None, *, limit: int | None = None, after_rowid: int = 0
+    ) -> dict[str, Any]:
         """Rows whose plaintext auxiliary columns still hold a secret, plus how
         much of the store the sweep actually covered.
 
@@ -462,30 +464,49 @@ class _Maintenance:
         The coverage half matters as much as the result. An empty list from a
         capped, corpus-less, or project-less sweep is byte-identical to an empty
         list from a complete one, so `scan` always records which it was:
-        `{"rowsScanned", "rowsTotal", "truncated", "skipped"}`, where `skipped`
-        is None, "corpus_unavailable" or "no_project".
+        `{"rowsScanned", "rowsTotal", "truncated", "skipped", "nextCursor"}`,
+        where `skipped` is None, "corpus_unavailable" or "no_project".
+
+        `after_rowid` resumes the sweep past a row already covered, and a
+        truncated sweep returns the last rowid it looked at as
+        `scan["nextCursor"]`. Without that, a store over the cap had rows no
+        invocation could ever reach.
         """
         cap = AUX_SCAN_ROW_LIMIT if limit is None else limit
-        scan: dict[str, Any] = {"rowsScanned": 0, "rowsTotal": 0, "truncated": False, "skipped": None}
+        cursor = max(0, int(after_rowid or 0))
+        scan: dict[str, Any] = {
+            "rowsScanned": 0,
+            "rowsTotal": 0,
+            "truncated": False,
+            "skipped": None,
+            "nextCursor": None,
+        }
         if project_id is None:
             scan["skipped"] = "no_project"
             return {"exposures": [], "scan": scan}
+        # `rowsTotal` counts what is still ahead of the cursor, so "N of M rows
+        # scanned" stays true of the page the caller actually asked for.
         scan["rowsTotal"] = int(
-            self.conn.execute("SELECT COUNT(*) FROM memories WHERE project_id = ?", (project_id,)).fetchone()[0]
+            self.conn.execute(
+                "SELECT COUNT(*) FROM memories WHERE project_id = ? AND rowid > ?", (project_id, cursor)
+            ).fetchone()[0]
         )
         if not gate.GATE_CORPUS_AVAILABLE:
             # Fail loud, not quiet: with no corpus every row would read as clean.
             scan["skipped"] = "corpus_unavailable"
             return {"exposures": [], "scan": scan}
         # `rowid` rather than `id`: insertion order is stable, so a truncated
-        # sweep covers a prefix an operator can reason about.
+        # sweep covers a prefix an operator can reason about -- and resume from.
         rows = self.conn.execute(
-            "SELECT id, valid_to, tags_json, entities_json, metadata_json, source_ref, source_kind "
-            "FROM memories WHERE project_id = ? ORDER BY rowid LIMIT ?",
-            (project_id, cap),
+            "SELECT rowid AS scan_rowid, id, valid_to, tags_json, entities_json, metadata_json, "
+            "source_ref, source_kind "
+            "FROM memories WHERE project_id = ? AND rowid > ? ORDER BY rowid LIMIT ?",
+            (project_id, cursor, cap),
         ).fetchall()
         scan["rowsScanned"] = len(rows)
         scan["truncated"] = len(rows) < scan["rowsTotal"]
+        if scan["truncated"] and rows:
+            scan["nextCursor"] = int(rows[-1]["scan_rowid"])
         exposures: list[dict[str, Any]] = []
         for row in rows:
             tags = _json_loads(row["tags_json"], [])
@@ -505,7 +526,7 @@ class _Maintenance:
                     exposures.append({"id": str(row["id"]), "surface": surface, "revision": revision, "labels": labels})
         return {"exposures": exposures, "scan": scan}
 
-    def doctor(self, *, project_path: str | None = None) -> dict[str, Any]:
+    def doctor(self, *, project_path: str | None = None, aux_scan_cursor: int | None = None) -> dict[str, Any]:
         db_path = self.db_path or default_db_path()
         # Resolved first: the auxiliary-exposure scan below is per project, so it
         # has to know which one before the findings are assembled.
@@ -517,7 +538,7 @@ class _Maintenance:
                 project_extra = dict(project_payload(active_project_id, root))
             except ValueError as exc:
                 project_extra = {"projectError": str(exc)}
-        aux = self.aux_secret_exposure(active_project_id)
+        aux = self.aux_secret_exposure(active_project_id, after_rowid=aux_scan_cursor or 0)
         exposures, aux_scan = aux["exposures"], aux["scan"]
         undecryptable = 0
         rows = self.conn.execute("SELECT id, project_id, body_cipher, body_nonce FROM memories LIMIT 500").fetchall()
@@ -587,7 +608,12 @@ class _Maintenance:
                     "code": "AUX_SCAN_INCOMPLETE",
                     "detail": f"{aux_scan['rowsScanned']} of {aux_scan['rowsTotal']} rows scanned for auxiliary "
                     f"secrets: {because}. An empty auxSecretExposure list does not mean the store is clean.",
-                    "fix": "Re-run doctor with the project resolved and the corpus present, or scan in batches.",
+                    "fix": (
+                        "Re-run doctor with the project resolved and the corpus present, or resume the sweep with "
+                        f"aux_scan_cursor={aux_scan['nextCursor']}."
+                        if aux_scan["nextCursor"]
+                        else "Re-run doctor with the project resolved and the corpus present, or scan in batches."
+                    ),
                 }
             )
         chain = verify_audit_chain(self.conn)

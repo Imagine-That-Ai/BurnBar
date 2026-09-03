@@ -14,7 +14,12 @@ from typing import Any
 import project_code_memory as pcm
 
 from ._util import _aux_strings
-from .constants import ALWAYS_REDACT_PII_LABELS, INJECTION_PATTERNS, MAX_BODY_CHARS
+from .constants import (
+    ALWAYS_REDACT_PII_LABELS,
+    INJECTION_PATTERNS,
+    MAX_AUX_METADATA_JSON_CHARS,
+    MAX_BODY_CHARS,
+)
 
 
 @dataclass
@@ -280,18 +285,42 @@ AUX_TOO_LARGE_CODE = "AUX_TOO_LARGE"
 
 
 def _metadata_entry_count(value: Any, depth: int = 0) -> int:
-    """How many strings `gate_aux_fields` would screen inside `metadata`.
+    """How many entries `metadata` holds at every depth.
 
-    Counts keys and string values at every depth, so nesting a thousand values
-    under one key cannot slip past a top-level key count.
+    Counts keys, list elements, and *every* scalar -- not only strings. Counting
+    strings alone left `{"samples": [0, 0, ...]}` at zero, so a list of a million
+    numbers rode a bound meant to cap the plaintext this column carries.
     """
     if depth > 8:
         return MAX_AUX_METADATA_ENTRIES + 1
     if isinstance(value, dict):
         return sum(1 + _metadata_entry_count(item, depth + 1) for item in value.values())
     if isinstance(value, list):
-        return sum(_metadata_entry_count(item, depth + 1) for item in value)
-    return 1 if isinstance(value, str) else 0
+        return sum(max(1, _metadata_entry_count(item, depth + 1)) for item in value)
+    return 1
+
+
+def _metadata_json_overlong(metadata: dict[str, Any]) -> str | None:
+    """The whole of `metadata` as it will be stored, bounded as one blob.
+
+    The entry count and the per-value length are both satisfiable by a payload
+    that still serializes to megabytes: sixteen values just under
+    `MAX_AUX_VALUE_CHARS` are sixteen legal entries and one illegal column.
+    """
+    if not metadata:
+        return None
+    try:
+        encoded = json.dumps(metadata, ensure_ascii=False, default=str)
+    except (TypeError, ValueError):
+        # Unserializable metadata is refused downstream on its own terms; this
+        # bound has nothing to say about it.
+        return None
+    if len(encoded) > MAX_AUX_METADATA_JSON_CHARS:
+        return (
+            f"metadata is too large: {len(encoded)} serialized characters exceeds "
+            f"the limit of {MAX_AUX_METADATA_JSON_CHARS}"
+        )
+    return None
 
 
 def _overlong(label: str, value: str | None) -> str | None:
@@ -352,6 +381,9 @@ def aux_input_overflow(
     ):
         if count > limit:
             return f"too many {label}: {count} exceeds the limit of {limit}"
+    json_overflow = _metadata_json_overlong(metadata or {})
+    if json_overflow:
+        return json_overflow
     for label, values in (("a tag", tags), ("an entity", entities)):
         for value in values:
             reason = _overlong(label, str(value))

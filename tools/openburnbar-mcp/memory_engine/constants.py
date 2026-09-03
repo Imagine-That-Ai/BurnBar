@@ -21,6 +21,11 @@ DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434"
 DEFAULT_EMBEDDING_MODEL = "nomic-embed-text"
 DEFAULT_MAX_FACTS = 8
 MAX_BODY_CHARS = 2_000
+# `metadata` lands verbatim in the plaintext `metadata_json` column. The entry
+# count bounds how many things the gate has to screen; this bounds how much
+# plaintext they add up to, which a handful of individually legal values can
+# still blow past.
+MAX_AUX_METADATA_JSON_CHARS = 16_384
 MAX_MEMORIES_PER_PROJECT_SOFT = 20_000
 
 SECRET_POLICIES = ("redact", "reject", "retain")

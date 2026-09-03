@@ -131,3 +131,55 @@ def test_current_stores_open_without_running_migrations(tmp_path, monkeypatch):
     finally:
         engine.close()
     assert "must_not_exist" not in tables
+
+
+def _columns(db_path, table: str) -> set[str]:
+    with sqlite3.connect(db_path) as conn:
+        return {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+
+
+def test_migrations_run_before_the_schema_is_applied(tmp_path, monkeypatch):
+    """On an existing store the versioned steps go first and `SCHEMA_SQL` is the
+    final validation pass.
+
+    Applying `SCHEMA_SQL` first would create the object a pending migration is
+    about to create, so the step would collide with DDL that never belonged to
+    it -- and `executescript` runs that DDL outside the step's own transaction.
+    """
+    db_path = _new_store(tmp_path, monkeypatch)
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("DROP TABLE memory_vault")
+    _stamp(db_path, "0")
+    monkeypatch.setattr(me.store, "ENGINE_SCHEMA_VERSION", 1)
+    monkeypatch.setattr(
+        me.store,
+        "SCHEMA_MIGRATIONS",
+        (
+            (
+                1,
+                (
+                    # Deliberately not IF NOT EXISTS: a step that ran after
+                    # SCHEMA_SQL would find the table already there and fail.
+                    "CREATE TABLE memory_vault ("
+                    "memory_id TEXT PRIMARY KEY, project_id TEXT NOT NULL, secret_cipher BLOB NOT NULL, "
+                    "secret_nonce BLOB NOT NULL, key_id TEXT NOT NULL, labels_json TEXT NOT NULL DEFAULT '[]', "
+                    "created_at TEXT NOT NULL, migration_probe INTEGER)",
+                ),
+            ),
+        ),
+    )
+    me.MemoryEngine.open(db_path=db_path).close()
+    # The column only the migration writes proves whose DDL created the table.
+    assert "migration_probe" in _columns(db_path, "memory_vault")
+    assert _stored_version(db_path) == "1"
+
+
+def test_the_schema_pass_still_restores_objects_no_migration_covers(tmp_path, monkeypatch):
+    """`SCHEMA_SQL` runs last as a validation pass, so a current store missing an
+    object still gets it back."""
+    db_path = _new_store(tmp_path, monkeypatch)
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("DROP TABLE memory_ingest")
+    assert "memory_ingest" not in _tables(db_path)
+    me.MemoryEngine.open(db_path=db_path).close()
+    assert "memory_ingest" in _tables(db_path)

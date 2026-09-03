@@ -252,8 +252,10 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
             f"memory store schema version {current} is newer than this engine's {ENGINE_SCHEMA_VERSION}; "
             "upgrade OpenBurnBar or point OPENBURNBAR_MEMORY_DB_PATH at a different store"
         )
-    conn.executescript(SCHEMA_SQL)
     if current is None:
+        # A fresh store is bootstrapped straight to the current schema: there is
+        # no older shape for a migration to move.
+        conn.executescript(SCHEMA_SQL)
         conn.execute(
             "INSERT OR IGNORE INTO engine_meta(key, value) VALUES ('schema_version', ?)",
             (str(ENGINE_SCHEMA_VERSION),),
@@ -262,11 +264,18 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
         # opened store does not hold the write lock until its first commit.
         conn.commit()
         return
+    # An existing store migrates first. Applying SCHEMA_SQL ahead of the steps
+    # would create, outside any step's transaction, the very objects a pending
+    # step is written to create -- the step would then collide with DDL that was
+    # never its own, and the leaked DDL would survive its rollback.
     for target, statements in SCHEMA_MIGRATIONS:
         if target <= current:
             continue
         _apply_migration(conn, target, statements)
         current = target
+    # Last, as validation: every statement is IF NOT EXISTS, so this is a no-op
+    # on a migrated store and restores anything a pre-versioning store lacks.
+    conn.executescript(SCHEMA_SQL)
 
 
 def audit_event(

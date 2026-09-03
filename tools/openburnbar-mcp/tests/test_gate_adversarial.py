@@ -25,6 +25,7 @@ directly with the shape that exposed the bug.
 from __future__ import annotations
 
 import base64
+import json
 import sys
 from pathlib import Path
 from typing import Any
@@ -511,6 +512,7 @@ def test_doctor_reports_auxiliary_secrets_left_in_plaintext_by_an_older_write(
         "rowsTotal": 2,
         "truncated": False,
         "skipped": None,
+        "nextCursor": None,
     }, report["auxScan"]
     assert "AUX_SCAN_INCOMPLETE" not in codes, report["findings"]
 
@@ -575,10 +577,13 @@ def test_doctor_reports_when_the_auxiliary_scan_could_not_cover_the_store(
             "rowsTotal": 4,
             "truncated": True,
             "skipped": None,
+            "nextCursor": 3,
         }, capped["auxScan"]
         incomplete = next(item for item in capped["findings"] if item["code"] == "AUX_SCAN_INCOMPLETE")
         assert incomplete["severity"] == "warn", incomplete
         assert "3 of 4 rows scanned" in incomplete["detail"], incomplete
+        # The unreachable rows are reachable: the finding names the resume point.
+        assert "aux_scan_cursor=3" in incomplete["fix"], incomplete
         monkeypatch.undo()
 
         monkeypatch.setattr(me.gate, "GATE_CORPUS_AVAILABLE", False)
@@ -588,6 +593,7 @@ def test_doctor_reports_when_the_auxiliary_scan_could_not_cover_the_store(
             "rowsTotal": 4,
             "truncated": False,
             "skipped": "corpus_unavailable",
+            "nextCursor": None,
         }, blind["auxScan"]
         assert blind["auxSecretExposure"] == []
         blind_finding = next(item for item in blind["findings"] if item["code"] == "AUX_SCAN_INCOMPLETE")
@@ -667,6 +673,134 @@ def test_retain_policy_keeps_the_verbatim_token_only_in_the_vault(context: str, 
             if any(token in value for value in values)
         ]
     assert not leaks, leaks
+
+
+def test_non_string_metadata_scalars_count_toward_the_entry_bound(gate_store: tuple[Path, str]) -> None:
+    """`{"samples": [0, 0, ...]}` used to count zero: only strings were counted, so a
+    list of a million numbers slipped past a bound meant to cap plaintext metadata."""
+    db_path, project_path = gate_store
+    engine = _open(db_path, secret_policy="redact")
+    try:
+        for label, metadata in (
+            ("numbers", {"samples": [0] * 200}),
+            ("bools", {"flags": [True] * 200}),
+            ("nulls", {"holes": [None] * 200}),
+            ("nested", {"outer": {"inner": [1.5] * 200}}),
+        ):
+            refused = engine.remember(_prose(label), project_path=project_path, kind="fact", metadata=metadata)
+            assert (refused.get("status"), refused.get("code")) == ("rejected", "AUX_TOO_LARGE"), (label, refused)
+            assert "64" in str(refused.get("reason")), (label, refused)
+
+        # An empty list still costs only its key, so ordinary metadata is unaffected.
+        ok = engine.remember(
+            _prose("small-metadata"),
+            project_path=project_path,
+            kind="fact",
+            metadata={"hook": "SessionEnd", "attempt": 2, "samples": [1, 2, 3]},
+        )
+        assert ok["status"] == "ok", ok
+    finally:
+        engine.close()
+
+
+def test_metadata_is_bounded_by_its_serialized_size(gate_store: tuple[Path, str]) -> None:
+    """Few entries, each within the per-value bound, can still serialize to megabytes
+    of plaintext `metadata_json`. The serialized size is bounded on its own."""
+    db_path, project_path = gate_store
+    assert me.gate.MAX_AUX_METADATA_JSON_CHARS == 16_384
+    # Sixteen values, each comfortably under MAX_AUX_VALUE_CHARS, together over the bound.
+    metadata = {f"k{index}": "v" * (me.MAX_BODY_CHARS - 1) for index in range(16)}
+    assert len(json.dumps(metadata, ensure_ascii=False)) > me.gate.MAX_AUX_METADATA_JSON_CHARS
+    assert me.gate._metadata_entry_count(metadata) <= me.gate.MAX_AUX_METADATA_ENTRIES
+
+    engine = _open(db_path, secret_policy="redact")
+    try:
+        refused = engine.remember(_prose("bulky"), project_path=project_path, kind="fact", metadata=metadata)
+        assert (refused.get("status"), refused.get("code")) == ("rejected", "AUX_TOO_LARGE"), refused
+        assert str(me.gate.MAX_AUX_METADATA_JSON_CHARS) in str(refused.get("reason")), refused
+
+        ok = engine.remember(
+            _prose("compact"),
+            project_path=project_path,
+            kind="fact",
+            metadata={"note": "x" * 1_000},
+        )
+        assert ok["status"] == "ok", ok
+    finally:
+        engine.close()
+
+
+def test_the_auxiliary_scan_pages_through_a_store_larger_than_its_cap(gate_store: tuple[Path, str]) -> None:
+    """A fixed LIMIT with no cursor makes the rows past the cap unreachable forever.
+
+    The sweep hands back the last rowid it looked at, so an operator can resume
+    and the union of the pages covers the whole store.
+    """
+    db_path, project_path = gate_store
+    token = SHAPES[CASE_SENSITIVE_SHAPE]
+    bodies = (
+        "The release runner rotates its credential every ninety days.",
+        "Recall packs are budgeted in tokens, not in rows.",
+        "Gotcha: the WAL file must be checkpointed before a backup.",
+        "We decided to keep the memory store local-only.",
+        "The daemon mirror is off by default in this deployment.",
+    )
+    engine = _open(db_path, secret_policy="reject")
+    try:
+        original = me._write.gate_aux_fields
+        me._write.gate_aux_fields = _passthrough_aux
+        try:
+            leaked = [
+                str(engine.remember(body, project_path=project_path, kind="fact", tags=[token])["memoryID"])
+                for body in bodies
+            ]
+        finally:
+            me._write.gate_aux_fields = original
+        assert len(leaked) == len(bodies)
+
+        project_id = engine.doctor(project_path=project_path)["projectID"]
+
+        seen: list[str] = []
+        cursor: int | None = 0
+        pages = 0
+        while cursor is not None:
+            page = engine.aux_secret_exposure(project_id, limit=2, after_rowid=cursor)
+            pages += 1
+            seen.extend(str(item["id"]) for item in page["exposures"])
+            cursor = page["scan"]["nextCursor"]
+            assert pages < 10, "the cursor must make progress"
+        assert pages >= 3, pages
+        assert sorted(set(seen)) == sorted(leaked), (seen, leaked)
+
+        # A completed sweep says so: no cursor, nothing truncated.
+        whole = engine.aux_secret_exposure(project_id, limit=50)
+        assert whole["scan"]["nextCursor"] is None
+        assert whole["scan"]["truncated"] is False
+        assert whole["scan"]["rowsScanned"] == len(bodies)
+    finally:
+        engine.close()
+
+
+def test_doctor_threads_the_auxiliary_scan_cursor_through(gate_store: tuple[Path, str]) -> None:
+    """`doctor` is the only caller most operators have, so the cursor has to reach it."""
+    db_path, project_path = gate_store
+    engine = _open(db_path, secret_policy="redact")
+    try:
+        for body in (
+            "The release runner rotates its credential every ninety days.",
+            "Recall packs are budgeted in tokens, not in rows.",
+            "Gotcha: the WAL file must be checkpointed before a backup.",
+        ):
+            assert engine.remember(body, project_path=project_path, kind="fact").get("event") == "ADD"
+
+        first = engine.doctor(project_path=project_path, aux_scan_cursor=None)
+        assert first["auxScan"]["rowsScanned"] == 3
+        assert first["auxScan"]["nextCursor"] is None
+
+        resumed = engine.doctor(project_path=project_path, aux_scan_cursor=1)
+        assert resumed["auxScan"]["rowsScanned"] == 2, resumed["auxScan"]
+    finally:
+        engine.close()
 
 
 def test_pro_extraction_never_sends_a_raw_secret(tmp_path, monkeypatch):
