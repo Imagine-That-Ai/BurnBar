@@ -3190,13 +3190,19 @@ def _code_index_doctor(project_path: str | None) -> dict[str, Any]:
 
 
 @mcp.tool()
-def burnbar_memory_doctor(project_path: str | None = None) -> str:
-    """Health of the local memory engine (store, encryption, embeddings, policy, audit chain, daemon mirror) and the Project Code Memory index."""
+def burnbar_memory_doctor(project_path: str | None = None, aux_scan_cursor: int | None = None) -> str:
+    """Health of the local memory engine (store, encryption, embeddings, policy, audit chain, daemon mirror) and the Project Code Memory index.
+
+    `aux_scan_cursor` resumes the auxiliary secret sweep past the rows a previous
+    call already covered: when that sweep is truncated it reports
+    `memoryEngine.auxScan.nextCursor`, and passing it back scans the next page.
+    A store larger than the scan cap is covered by walking the cursor to None.
+    """
     if limited := _local_mcp_rate_limit("burnbar_memory_doctor", "code"):
         return limited
     try:
         with _memory_engine() as engine:
-            memory = engine.doctor(project_path=project_path)
+            memory = engine.doctor(project_path=project_path, aux_scan_cursor=aux_scan_cursor)
             memory["legacyMigration"] = _migrate_legacy_memories(engine, project_path)
     except Exception as exc:  # noqa: BLE001 — surfaced as a finding
         memory = {
