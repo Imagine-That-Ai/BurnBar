@@ -27,6 +27,10 @@ from ._util import (
     sha256_hex,
 )
 from .constants import (
+    RERANK_TOP_K_MAX,
+    RERANK_TOP_K_DEFAULT,
+    RERANK_PROMPT_SYSTEM,
+    RERANK_PASSAGE_CHARS,
     KINDS,
     MAX_BODY_CHARS,
     MEMORY_SCOPES,
@@ -71,6 +75,8 @@ class _ReadPath:
         reinforce: bool = True,
         mode: str = "hybrid",
         wrap: Callable[[str, str], str] | None = None,
+        rerank: bool | None = None,
+        rerank_top_k: int = RERANK_TOP_K_DEFAULT,
     ) -> dict[str, Any]:
         project_id, root = resolve_project(self.conn, project_path)
         if filters:
@@ -166,6 +172,7 @@ class _ReadPath:
                 "candidates": 0,
                 "mode": mode,
                 "embedding": self.provider.describe(),
+                "trustSignal": {"untrustedContentWrapped": wrap is not None, "wrappedCount": 0, "rerank": "off"},
                 **project_payload(project_id, root),
             }
 
@@ -216,9 +223,15 @@ class _ReadPath:
                 "cosine": round(semantic_score.get(memory.id, 0.0), 4) if sr else None,
                 "salience": round(memory.salience, 4),
                 "recency": round(recency, 4),
+                "rerankScore": None,
+                "reranker": None,
             }
             results.append((score, memory, {"matchedBy": matched_by, "why": why}))
         results.sort(key=lambda item: (-item[0], item[1].updated_at, item[1].id))
+        rerank_status = "off"
+        wants_rerank = self._rerank_available() if rerank is None else bool(rerank)
+        if wants_rerank and query_text and results and self._rerank_available():
+            results, rerank_status = self._rerank(query_text, results, rerank_top_k)
         top = results[:lim]
 
         if reinforce and top:
@@ -247,9 +260,59 @@ class _ReadPath:
             "lexicalHits": len(lexical_rank),
             "semanticHits": len(semantic_rank),
             "embedding": self.provider.describe(),
-            "trustSignal": {"untrustedContentWrapped": wrap is not None, "wrappedCount": len(output) if wrap else 0},
+            "trustSignal": {
+                "untrustedContentWrapped": wrap is not None,
+                "wrappedCount": len(output) if wrap else 0,
+                "rerank": rerank_status,
+            },
             **project_payload(project_id, root),
         }
+
+    def _rerank_available(self) -> bool:
+        models = getattr(self, "models", None)
+        return models is not None and models.serves("memory-rerank")
+
+    def _rerank(
+        self, query_text: str, results: list[tuple[float, ActiveMemory, dict[str, Any]]], top_k: int
+    ) -> tuple[list[tuple[float, ActiveMemory, dict[str, Any]]], str]:
+        """Re-order the head of the fusion ranking by model relevance.
+
+        Injection-labelled rows are never shown to the model and keep their
+        position; any refusal or out-of-contract answer leaves the fusion order
+        and names the reason in `trustSignal.rerank`."""
+        from .providers import ModelUnavailable
+
+        slice_size = min(max(1, int(top_k)), RERANK_TOP_K_MAX)
+        head, tail = results[:slice_size], results[slice_size:]
+        listed = [item for item in head if not item[1].metadata.get("injectionLabels")]
+        for item in head:
+            if item[1].metadata.get("injectionLabels"):
+                item[2]["why"]["reranker"] = "excluded:injection"
+        if not listed:
+            return results, "skipped:NO_CANDIDATES"
+        candidates = [{"id": memory.id, "passage": memory.body[:RERANK_PASSAGE_CHARS]} for _, memory, _ in listed]
+        try:
+            call = self.models.call("memory-rerank")
+            parsed, _usage = call.json(
+                RERANK_PROMPT_SYSTEM, json.dumps({"query": query_text, "candidates": candidates}, ensure_ascii=False)
+            )
+        except ModelUnavailable as exc:
+            return results, f"skipped:{exc.code}"
+        scores = _parse_rerank_answer(parsed, {memory.id for _, memory, _ in listed})
+        if scores is None:
+            return results, "skipped:RERANK_OUT_OF_CONTRACT"
+        order = sorted(range(len(listed)), key=lambda index: (-scores.get(listed[index][1].id, 0.0), index))
+        queue = [listed[index] for index in order]
+        reranked: list[tuple[float, ActiveMemory, dict[str, Any]]] = []
+        for item in head:
+            if item[1].metadata.get("injectionLabels"):
+                reranked.append(item)
+                continue
+            score, memory, extra = queue.pop(0)
+            extra["why"]["rerankScore"] = round(scores.get(memory.id, 0.0), 4)
+            extra["why"]["reranker"] = call.label
+            reranked.append((score, memory, extra))
+        return reranked + tail, "applied"
 
     def recall_pack(
         self,
@@ -333,7 +396,11 @@ class _ReadPath:
             "considered": len(recalled["results"]),
             "pack": pack,
             "memoryIDs": included_ids,
-            "trustSignal": {"untrustedContentWrapped": wrap is not None, "wrappedCount": included if wrap else 0},
+            "trustSignal": {
+                "rerank": recalled.get("trustSignal", {}).get("rerank", "off"),
+                "untrustedContentWrapped": wrap is not None,
+                "wrappedCount": included if wrap else 0,
+            },
             **{key: recalled[key] for key in ("projectID", "projectRoot", "projectName")},
         }
 
@@ -1047,3 +1114,22 @@ class _ReadPath:
             if len(out) >= max(1, min(int(limit), 1000)):
                 break
         return {"status": "ok", "relations": out, **project_payload(project_id, root)}
+
+
+def _parse_rerank_answer(parsed: Any, listed_ids: set[str]) -> dict[str, float] | None:
+    """`{"results": [{"id", "relevance"}]}` over listed ids only; anything else is out of contract."""
+    rows = parsed.get("results") if isinstance(parsed, dict) else None
+    if not isinstance(rows, list):
+        return None
+    scores: dict[str, float] = {}
+    for row in rows:
+        if not isinstance(row, dict) or str(row.get("id")) not in listed_ids:
+            return None
+        try:
+            relevance = float(row.get("relevance"))
+        except (TypeError, ValueError):
+            return None
+        if relevance != relevance:  # NaN
+            return None
+        scores[str(row["id"])] = min(1.0, max(0.0, relevance))
+    return scores

@@ -435,7 +435,12 @@ def _extraction_fn(extractor: str):
 
     def run(messages):
         safe, _gate = me.gate_transcript(me.render_transcript(messages))
-        return fn(safe, me.DEFAULT_MAX_FACTS) if safe is not None else []
+        if safe is None:
+            return []
+        try:
+            return fn(safe, me.DEFAULT_MAX_FACTS)
+        except me.ModelUnavailable as exc:
+            raise SystemExit(f"extractor {name} unavailable: {exc.code}: {exc.reason}") from exc
 
     run.name = name if name.startswith("pro:") else resolved_name
     return run
@@ -553,22 +558,24 @@ def _provider(name: str, model: str) -> me.EmbeddingProvider:
         return me.NullEmbeddingProvider("eval: lexical only")
     if name == "fake":
         return me.FakeEmbeddingProvider()
-    os.environ[me.EMBEDDING_PROVIDER_ENV] = "ollama"
+    os.environ[me.EMBEDDING_PROVIDER_ENV] = "pro" if name == "pro" else "ollama"
     os.environ[me.EMBEDDING_MODEL_ENV] = model
     me.reset_provider_cache_for_tests()
     provider = me.embedding_provider()
     if not provider.available:
         print(f"embedding provider unavailable: {provider.describe()}", file=sys.stderr)
-        return me.NullEmbeddingProvider("eval: ollama unavailable")
+        return me.NullEmbeddingProvider(f"eval: {name} unavailable")
     return provider
 
 
-def run(provider_name: str, model: str, verbose: bool) -> dict[str, object]:
+def run(provider_name: str, model: str, verbose: bool, *, rerank: bool = False) -> dict[str, object]:
     provider = _provider(provider_name, model)
+    models = me.ModelRouter(me.load_policy()) if (rerank or provider_name == "pro") else None
+    rerank_modes = [False] + ([True] if rerank and models is not None and models.serves("memory-rerank") else [])
     with tempfile.TemporaryDirectory() as tmp:
         repo = Path(tmp) / "repo"
         repo.mkdir()
-        engine = me.MemoryEngine.open(Path(tmp) / "eval.sqlite", provider=provider)
+        engine = me.MemoryEngine.open(Path(tmp) / "eval.sqlite", provider=provider, models=models)
         id_map: dict[str, str] = {}
         started = time.perf_counter()
         for item in GOLD:
@@ -583,15 +590,22 @@ def run(provider_name: str, model: str, verbose: bool) -> dict[str, object]:
             "queries": len(QUERIES),
             "seedMs": round(seed_ms, 1),
             "modes": {},
+            "rerank": "requested" if rerank else "off",
         }
-        for mode in modes:
+        for mode, use_rerank in [(mode, flag) for mode in modes for flag in rerank_modes]:
+            label = f"{mode}+rerank" if use_rerank else mode
+            rerank_status: str | None = None
             hits1 = hits5 = 0
             rr_total = 0.0
             latencies: list[float] = []
             misses: list[tuple[str, str, list[str]]] = []
             for query, expected in QUERIES:
                 t0 = time.perf_counter()
-                results = engine.recall(query, project_path=str(repo), limit=5, mode=mode, reinforce=False)["results"]
+                recalled = engine.recall(
+                    query, project_path=str(repo), limit=5, mode=mode, reinforce=False, rerank=use_rerank
+                )
+                results = recalled["results"]
+                rerank_status = recalled["trustSignal"]["rerank"]
                 latencies.append((time.perf_counter() - t0) * 1000)
                 ranked = [id_map.get(item["memoryID"], "?") for item in results]
                 if ranked and ranked[0] == expected:
@@ -603,7 +617,8 @@ def run(provider_name: str, model: str, verbose: bool) -> dict[str, object]:
                     misses.append((query, expected, ranked))
             n = len(QUERIES)
             latencies.sort()
-            report["modes"][mode] = {  # type: ignore[index]
+            report["modes"][label] = {  # type: ignore[index]
+                "rerank": rerank_status,
                 "recall@1": round(hits1 / n, 3),
                 "recall@5": round(hits5 / n, 3),
                 "mrr": round(rr_total / n, 3),
@@ -653,7 +668,8 @@ def _print_gate_matrix(matrix: list[dict[str, object]]) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--provider", choices=["auto", "none", "fake"], default="auto")
+    parser.add_argument("--provider", choices=["auto", "none", "fake", "pro"], default="auto")
+    parser.add_argument("--rerank", action="store_true", help="also score every mode with the Memory Pro rerank stage")
     parser.add_argument("--model", default=me.DEFAULT_EMBEDDING_MODEL)
     parser.add_argument("--verbose", action="store_true", help="list misses per mode")
     parser.add_argument("--json", action="store_true", help="print the raw report as JSON")
@@ -707,7 +723,7 @@ def main() -> None:
             _print_gate_matrix(matrix)
         return
 
-    report = run(args.provider, args.model, args.verbose)
+    report = run(args.provider, args.model, args.verbose, rerank=args.rerank)
     if args.json:
         print(json.dumps(report, indent=2))
         return

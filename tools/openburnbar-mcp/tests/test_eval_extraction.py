@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import sys
+
+import pytest
 from pathlib import Path
 
 MCP_DIR = Path(__file__).resolve().parents[1]
@@ -59,3 +61,13 @@ def test_extractor_model_hint_composes_the_pro_extractor_name():
     assert ev.compose_extractor("pro", None) == "pro"
     assert ev.compose_extractor("pro", "openrouter/anthropic/claude-opus-5") == "pro:openrouter/anthropic/claude-opus-5"
     assert ev.compose_extractor("claude", "ignored-for-non-pro") == "claude"
+
+
+def test_pro_extractor_without_a_policy_exits_with_the_denial_code(monkeypatch):
+    """Without the daemon the eval must stop with the gateway code, not a traceback."""
+    monkeypatch.delenv(eval_memory.me.MODEL_POLICY_JSON_ENV, raising=False)
+    eval_memory.me.reset_provider_cache_for_tests()
+    run = eval_memory._extraction_fn("pro")
+    with pytest.raises(SystemExit) as stop:
+        run([{"role": "user", "content": "We deploy on Fridays."}])
+    assert "CLOUD_CONSENT_REQUIRED" in str(stop.value)

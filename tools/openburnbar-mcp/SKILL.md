@@ -20,7 +20,7 @@ SQLite tools, hosted encrypted cloud-search tools, and 2 ledger tools:
 | `burnbar_cloud_semantic_search_conversations` | Hosted encrypted semantic search; query hashes are derived locally and snippets decrypt locally |
 | `burnbar_cloud_get_conversation_body` | Decrypt the full hosted session body for a cloud search hit |
 | `burnbar_remember` / `burnbar_memorize` | **Write** durable memories: one fact, or extract from a conversation / text / pre-extracted `facts` with ADD / UPDATE / NONE / DELETE reconciliation |
-| `burnbar_recall` / `burnbar_recall_pack` | Hybrid BM25 + vector recall with salience rerank and mem0-style filters; a token-budgeted prompt pack |
+| `burnbar_recall` / `burnbar_recall_pack` | Hybrid BM25 + vector recall with salience rerank and mem0-style filters; a token-budgeted prompt pack Memory Pro: `rerank=true` re-orders the top hits by model relevance; `trustSignal.rerank` is `applied`, `off`, or `skipped:<code>`. |
 | `burnbar_memory_get` / `_list` / `_update` / `_history` / `_review` | Memory CRUD, paging, per-memory history, review status |
 | `burnbar_forget` / `burnbar_forget_all` | **Write** hard deletes with label-only audit; bulk delete needs `confirm="DELETE"` plus the `selection_token` from the preview |
 | `burnbar_audit_trail` / `burnbar_memory_analytics` | Label-only audit hash chain with verification; store statistics (counts by kind/scope/sensitivity, embedding coverage, vault entries, policy) |

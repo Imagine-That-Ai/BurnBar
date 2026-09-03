@@ -2466,6 +2466,8 @@ def burnbar_recall(
     include_expired: bool = False,
     include_secrets: bool = False,
     reinforce: bool = True,
+    rerank: bool | None = None,
+    rerank_top_k: int = 20,
 ) -> str:
     """
     Recall memories for the active project. Hybrid BM25 + vector retrieval
@@ -2477,6 +2479,9 @@ def burnbar_recall(
     with operators eq, ne, in, nin, gt, gte, lt, lte, contains, not_contains.
     Bodies are wrapped as untrusted content. `include_secrets` requires the
     `sensitive_read` capability and the experimental secret-retain mode.
+    `rerank` (Memory Pro) re-orders the top `rerank_top_k` fusion hits by a
+    model's relevance; `None` follows the policy, `False` never calls a model,
+    and `trustSignal.rerank` reports `applied`, `off`, or `skipped:<code>`.
     """
     if limited := _local_mcp_rate_limit("burnbar_recall", "memory"):
         return limited
@@ -2508,6 +2513,8 @@ def burnbar_recall(
             reinforce=reinforce,
             mode=mode,
             wrap=_memory_wrap,
+            rerank=rerank,
+            rerank_top_k=rerank_top_k,
         )
         result["results"] = [
             _memory_wrap_record(item, source_tool="burnbar_recall") for item in result.get("results", [])
@@ -2527,6 +2534,7 @@ def burnbar_recall_pack(
     include_cross_project: bool = False,
     kinds: list[str] | str | None = None,
     min_confidence: float = 0.0,
+    rerank: bool | None = None,
 ) -> str:
     """Build a token-budgeted, prompt-ready block of the most relevant memories (wrapped as retrieved data)."""
     if limited := _local_mcp_rate_limit("burnbar_recall_pack", "memory"):
@@ -2543,6 +2551,7 @@ def burnbar_recall_pack(
             kinds=_memory_list_arg(kinds),
             min_confidence=min_confidence,
             wrap=_memory_pack_wrap,
+            rerank=rerank,
         )
         result["legacyMigration"] = migration
     return json.dumps(result, indent=2, default=str)
@@ -2573,7 +2582,7 @@ def burnbar_memory_get(
             result["history"] = _memory_wrap_history(
                 result["history"], source_tool="burnbar_memory_get", memory_id=memory_id
             )
-        result["trustSignal"] = {"untrustedContentWrapped": True, "auxiliaryFieldsWrapped": True}
+        result.setdefault("trustSignal", {}).update({"untrustedContentWrapped": True, "auxiliaryFieldsWrapped": True})
     return json.dumps(result, indent=2, default=str)
 
 
@@ -2621,7 +2630,7 @@ def burnbar_memory_list(
         result["results"] = [
             _memory_wrap_record(item, source_tool="burnbar_memory_list") for item in result.get("results", [])
         ]
-        result["trustSignal"] = {"untrustedContentWrapped": True, "auxiliaryFieldsWrapped": True}
+        result.setdefault("trustSignal", {}).update({"untrustedContentWrapped": True, "auxiliaryFieldsWrapped": True})
         result["legacyMigration"] = migration
     return json.dumps(result, indent=2, default=str)
 

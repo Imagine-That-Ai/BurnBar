@@ -251,7 +251,7 @@ Run it by hand against any transcript:
 | `burnbar_cloud_get_conversation_body` | Download and decrypt a full hosted session body returned by cloud semantic search |
 | `burnbar_remember` | **Write** one durable memory (kind, scope, tags, entities, metadata, `supersedes`, `expires_at`, `immutable`); secrets redacted, PII kept by default; mirrored to the daemon ledger when reachable |
 | `burnbar_memorize` | **Write** durable memories from a conversation, text, or pre-extracted `facts` (the mem0 `add()` equivalent): extraction → gate → injection screen → ADD / UPDATE / NONE / DELETE reconciliation; idempotent per input |
-| `burnbar_recall` | Hybrid BM25 + vector recall with reciprocal-rank fusion and salience rerank; kind/tag/entity/metadata/date filters; personal-scope memories follow the user across projects; bodies and free-form auxiliary fields wrapped as untrusted content |
+| `burnbar_recall` | Hybrid BM25 + vector recall with reciprocal-rank fusion and salience rerank, plus an optional Memory Pro model rerank of the top hits (`rerank`, reported in `trustSignal.rerank`); kind/tag/entity/metadata/date filters; personal-scope memories follow the user across projects; bodies and free-form auxiliary fields wrapped as untrusted content |
 | `burnbar_recall_pack` | Token-budgeted, prompt-ready block of the most relevant memories, wrapped as untrusted retrieved data |
 | `burnbar_memory_get` / `burnbar_memory_list` | Read one memory (optionally with history) / page through memories with filters and ordering; quarantined rows are hidden by default and explicit review reads are wrapped |
 | `burnbar_memory_update` | **Write** patch a memory in place (stable id, history row, re-embed) |
@@ -560,6 +560,29 @@ provider/model]` scores a cloud extractor on the extraction gold set.
 |---|---|
 | Rules only (lexical similarity, 2026-09-03) | 0.42 — the rules are deliberately conservative: without a strong cue they `ADD` (15/16 DELETE and 12/16 UPDATE cases land as ADD) |
 | Judge (`--with-model`) | run per provider on a Pro machine and record here; target ≥ 0.90 |
+
+**Cloud embeddings and rerank.** `OPENBURNBAR_MEMORY_EMBEDDING_PROVIDER=pro`
+selects `GatewayEmbeddingProvider`: vectors come through the gateway under the
+`memory-embed` purpose with the policy's embedding model, and the version id
+(`gateway:<provider>/<model>:<dimension>`) is part of the vector key, so
+switching providers never mixes spaces. `burnbar_memory_doctor` reports
+`embeddingPending` (active rows without a vector for the current version) and
+`burnbar_memory_reindex` clears it. When the daemon or consent is missing the
+provider degrades to lexical-only with the gateway's code in `embedding.reason`,
+and the miss is not cached, so recovery needs no restart.
+
+`burnbar_recall(rerank=…)` re-orders the top `rerank_top_k` (default 20, max 40)
+fusion hits by a chat model's relevance under the `memory-rerank` purpose.
+Passages are clipped to 1024 characters and framed as untrusted data; rows with
+injection labels are never sent and keep their fusion position
+(`why.reranker = "excluded:injection"`). `rerank=None` follows the policy,
+`rerank=False` never calls a model, and `trustSignal.rerank` reports `applied`,
+`off`, or `skipped:<code>` (a refusal or an out-of-contract answer leaves the
+fusion order). `why.rerankScore` and `why.reranker` name the model's verdict.
+Measure it with `eval_memory.py --provider pro --rerank` (or `--provider fake
+--rerank` for the plumbing): every mode is reported twice, `<mode>` and
+`<mode>+rerank`; a rerank stage that lowers `recall@5` is a regression, not a
+tuning choice.
 
 ## Castle multi-runtime fan-out
 

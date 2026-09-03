@@ -349,3 +349,24 @@ __all__ += [
     "llm_judge",
     "parse_judge_answer",
 ]
+
+# Memory Pro retrieval: gateway embeddings + rerank
+from .constants import (  # noqa: E402
+    RERANK_PASSAGE_CHARS,
+    RERANK_PROMPT_SYSTEM,
+    RERANK_PROMPT_VERSION,
+    RERANK_TOP_K_DEFAULT,
+    RERANK_TOP_K_MAX,
+)
+from .embeddings import EMBEDDING_PROVIDER_FACTORIES, EmbeddingContext, GatewayEmbeddingProvider  # noqa: E402
+
+__all__ += [
+    "EMBEDDING_PROVIDER_FACTORIES",
+    "EmbeddingContext",
+    "GatewayEmbeddingProvider",
+    "RERANK_PASSAGE_CHARS",
+    "RERANK_PROMPT_SYSTEM",
+    "RERANK_PROMPT_VERSION",
+    "RERANK_TOP_K_DEFAULT",
+    "RERANK_TOP_K_MAX",
+]

@@ -71,6 +71,18 @@ class _Maintenance:
             count += 1
         return count
 
+    def embedding_pending(self, *, project_id: str | None = None) -> int:
+        """Active rows without a vector for the current embedding version (what `reindex` would embed)."""
+        sql = (
+            "SELECT COUNT(*) FROM memories m LEFT JOIN memory_vectors v "
+            "ON v.memory_rowid = m.rowid AND v.embedding_version = ? WHERE m.valid_to IS NULL AND v.memory_rowid IS NULL"
+        )
+        params: list[Any] = [self.provider.version_id]
+        if project_id is not None:
+            sql += " AND m.project_id = ?"
+            params.append(project_id)
+        return int(self.conn.execute(sql, params).fetchone()[0])
+
     def reindex(
         self, *, project_path: str | None = None, all_projects: bool = False, batch_size: int = 32
     ) -> dict[str, Any]:
@@ -602,6 +614,7 @@ class _Maintenance:
                 "undecryptableSampled": undecryptable,
             },
             "embedding": self.provider.describe(),
+            "embeddingPending": self.embedding_pending(project_id=active_project_id),
             "policy": {
                 "secret": self.config.secret_policy,
                 "pii": self.config.pii_policy,
