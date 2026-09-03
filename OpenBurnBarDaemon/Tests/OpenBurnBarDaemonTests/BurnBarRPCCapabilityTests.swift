@@ -201,7 +201,11 @@ final class BurnBarRPCCapabilityTests: XCTestCase {
         XCTAssertTrue(profile.permits(.memoryRemember))
         XCTAssertTrue(profile.permits(.memoryForget))
         XCTAssertTrue(profile.permits(.memoryModelPolicy))
-        XCTAssertEqual(BurnBarRPCCapability.capability(for: .memoryModelPolicy), .memoryRead)
+        // Minting a spend-capable gateway bearer is write-class: attenuated read
+        // peers must never reach it.
+        XCTAssertEqual(BurnBarRPCCapability.capability(for: .memoryModelPolicy), .memoryWrite)
+        XCTAssertFalse(BurnBarPeerCapabilityProfile.readOnly.permits(.memoryModelPolicy))
+        XCTAssertFalse(BurnBarPeerCapabilityProfile.runClient.permits(.memoryModelPolicy))
         // Read-only and run-client peers still may not write memory.
         XCTAssertFalse(BurnBarPeerCapabilityProfile.readOnly.permits(.memoryRemember))
         XCTAssertFalse(BurnBarPeerCapabilityProfile.runClient.permits(.memoryRemember))

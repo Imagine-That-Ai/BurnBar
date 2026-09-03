@@ -117,15 +117,21 @@ final class MemoryCloudModelsSettingsTests: XCTestCase {
         manager.memory.cloudModelsConsentedProviderIDs = [.openrouter, .claudeCLI, .codexCLI, .anthropic]
         manager.memory.cloudModelsRequireNoRetention = true
         manager.memory.cloudModelsDailyCapUSD = 3.0
-        manager.cliAssistantAllowed = false
+        manager.cliAssistantAllowed = true
         var policy = manager.memoryEgressPolicy()
         XCTAssertTrue(policy.enabled)
-        XCTAssertEqual(policy.consentedProviderIDs, ["openrouter", "anthropic"])
-        XCTAssertEqual(policy.consentedCLIProviderIDs, [], "CLI providers need the Mac CLI agents consent too")
+        XCTAssertEqual(policy.consentedProviderIDs, ["openrouter"], "no-retention only keeps zero-retention routes")
+        XCTAssertEqual(policy.consentedCLIProviderIDs, [], "subscription CLIs are not no-retention routes")
         XCTAssertTrue(policy.requireNoRetention)
         XCTAssertEqual(policy.dailyCapUSD, 3.0)
         XCTAssertEqual(policy.allowedModelIDsByPurpose, [:])
         XCTAssertNotNil(policy.updatedAt)
+
+        manager.memory.cloudModelsRequireNoRetention = false
+        manager.cliAssistantAllowed = false
+        policy = manager.memoryEgressPolicy()
+        XCTAssertEqual(policy.consentedProviderIDs, ["openrouter", "anthropic"])
+        XCTAssertEqual(policy.consentedCLIProviderIDs, [], "CLI providers need the Mac CLI agents consent too")
 
         manager.cliAssistantAllowed = true
         policy = manager.memoryEgressPolicy()
@@ -135,6 +141,12 @@ final class MemoryCloudModelsSettingsTests: XCTestCase {
         policy = manager.memoryEgressPolicy()
         XCTAssertFalse(policy.enabled)
         XCTAssertEqual(policy.consentedProviderIDs, ["openrouter", "anthropic"], "disabling keeps the provider list")
+    }
+
+    func testUnavailableProvidersStayRevocable() {
+        XCTAssertTrue(MemoryCloudModelsSection.providerToggleDisabled(reason: "no key", isSelected: false))
+        XCTAssertFalse(MemoryCloudModelsSection.providerToggleDisabled(reason: "no key", isSelected: true), "a retained consent can always be revoked")
+        XCTAssertFalse(MemoryCloudModelsSection.providerToggleDisabled(reason: nil, isSelected: false))
     }
 
     func testProviderAvailabilityReasons() {

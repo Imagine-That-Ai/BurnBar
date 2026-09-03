@@ -1121,11 +1121,9 @@ public struct BurnBarProviderSettings: Codable, Hashable, Identifiable, Sendable
     }
 }
 
-/// Memory Pro egress policy: what the memory engine may send to which
-/// providers. Written by the app from the consent UI, read by the loopback
-/// gateway before any memory-purpose request leaves the Mac, and reported to
-/// the Python engine through `daemon.memory.model_policy`. Every field decodes
-/// with a default so an older `provider-config.json` keeps loading.
+/// Memory Pro egress policy: what the memory engine may send to which providers.
+/// Written by the app's consent UI, enforced by the loopback gateway, reported by
+/// `daemon.memory.model_policy`. Every field decodes with a default.
 public struct BurnBarMemoryEgressPolicy: Codable, Hashable, Sendable {
     public static let purposes = ["memory-extract", "memory-judge", "memory-embed", "memory-rerank", "memory-answer"]
     public static let cliProviderIDs = ["claude_cli", "codex_cli"]
@@ -1155,16 +1153,6 @@ public struct BurnBarMemoryEgressPolicy: Codable, Hashable, Sendable {
         self.requireNoRetention = requireNoRetention
         self.dailyCapUSD = dailyCapUSD
         self.updatedAt = updatedAt
-    }
-
-    private enum CodingKeys: String, CodingKey {
-        case enabled
-        case consentedProviderIDs
-        case consentedCLIProviderIDs
-        case allowedModelIDsByPurpose
-        case requireNoRetention
-        case dailyCapUSD
-        case updatedAt
     }
 
     public init(from decoder: Decoder) throws {

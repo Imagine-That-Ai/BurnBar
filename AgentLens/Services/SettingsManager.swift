@@ -114,6 +114,9 @@ final class SettingsManager {
             persistence: coordinator,
             usageRemoteConfigSeed: usageMemoryRemoteConfigSeed
         )
+        if let cachedCloudModels = Self.cachedMemoryCloudModelsRemoteConfigEnabled(), !cachedCloudModels {
+            memory.remoteConfigCloudModelsEnabled = false
+        }
         self.summary = SummarySettings(persistence: coordinator)
         self.quotas = QuotaSettings(persistence: coordinator)
         self.providerPath = ProviderPathSettings(persistence: coordinator)
@@ -333,6 +336,16 @@ final class SettingsManager {
         )
     }
 
+    /// The ACTIVE CACHED `memory_cloud_models_enabled` value, read synchronously
+    /// at init so a returning opted-in install never opens the cloud-models gate
+    /// ahead of a fleet kill that is already on disk. Nil without Firebase.
+    private static func cachedMemoryCloudModelsRemoteConfigEnabled() -> Bool? {
+        guard FirebaseApp.app() != nil else { return nil }
+        let remoteConfig = RemoteConfig.remoteConfig()
+        remoteConfig.setDefaults(commercialRemoteConfigDefaults)
+        return remoteConfig.configValue(forKey: "memory_cloud_models_enabled").boolValue
+    }
+
     private func refreshComputerUseRemoteConfigOnce() async {
         guard FirebaseApp.app() != nil else { return }
         let remoteConfig = RemoteConfig.remoteConfig()
@@ -349,6 +362,15 @@ final class SettingsManager {
                 forKey: "memory_usage_authority_writes_enabled"
             ).boolValue
         )
+
+        // Same for the Memory Pro cloud-models switch: a cached fleet kill must
+        // close the gate (and re-send the daemon a disabled policy) before the
+        // round trip, not after it.
+        if !remoteConfig.configValue(forKey: "memory_cloud_models_enabled").boolValue,
+           memoryCloudModelsRemoteConfigEnabled {
+            memoryCloudModelsRemoteConfigEnabled = false
+            NotificationCenter.default.post(name: .memoryCloudModelsRemoteConfigKillSwitchDidFire, object: self)
+        }
 
         let fetchResult = await withCheckedContinuation { continuation in
             remoteConfig.fetchAndActivate { status, error in
@@ -938,7 +960,13 @@ final class SettingsManager {
     /// providers map to daemon provider ids. Disabling keeps the provider list
     /// so re-enabling restores the member's choice.
     func memoryEgressPolicy(now: Date = Date()) -> BurnBarMemoryEgressPolicy {
+        // "No retention only" is a promise about every route, and the daemon can
+        // only enforce it for API providers; subscription CLIs (`localQuota`) and
+        // provider-policy APIs are therefore left out of the policy entirely
+        // while it is on, instead of being sent and trusted.
+        let noRetentionOnly = memory.cloudModelsRequireNoRetention
         let consented = memory.cloudModelsConsentedProviderIDs
+            .filter { !noRetentionOnly || $0.retention == .deny }
         var policy = BurnBarMemoryEgressPolicy()
         policy.enabled = memoryCloudModelsEnabled
         policy.consentedProviderIDs = consented.compactMap(\.daemonProviderID)

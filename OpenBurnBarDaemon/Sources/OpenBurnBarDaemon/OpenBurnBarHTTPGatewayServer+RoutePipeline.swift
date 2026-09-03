@@ -200,7 +200,22 @@ extension BurnBarHTTPGatewayServer {
                 }
             }
 
-            let response = try await descriptor.proxyBuffered(attemptContext)
+            let response: BurnBarProviderProxyResponse
+            do {
+                response = try await descriptor.proxyBuffered(attemptContext)
+            } catch {
+                // The request left the Mac; the content-free chain records the
+                // attempt even when upstream failed.
+                if let purpose = pipeline.purpose, let memoryEgress {
+                    await memoryEgress.record(
+                        purpose: purpose, providerID: route.providerID, modelID: route.resolvedModelID,
+                        requestBytes: pipeline.bodyData.count, responseBytes: 0, outcome: "failed",
+                        code: Self.memoryEgressFailureCode(error),
+                        latencyMs: Int(Date().timeIntervalSince(attemptStartedAt) * 1_000)
+                    )
+                }
+                throw error
+            }
             if let purpose = pipeline.purpose, let memoryEgress {
                 await memoryEgress.record(
                     purpose: purpose, providerID: route.providerID, modelID: route.resolvedModelID,
@@ -737,5 +752,17 @@ extension BurnBarHTTPGatewayServer {
         let body = (try? JSONSerialization.data(withJSONObject: payload)).flatMap { String(data: $0, encoding: .utf8) }
             ?? #"{"error":{"code":"\#(denial.code)","message":"denied"}}"#
         return jsonResponse(status: 403, body: body)
+    }
+}
+
+extension BurnBarHTTPGatewayServer {
+    /// A short, content-free code for the egress chain when upstream fails.
+    static func memoryEgressFailureCode(_ error: Error) -> String {
+        switch error as? BurnBarProviderExecutorError {
+        case .upstreamError(let status, _), .upstreamErrorWithHeaders(let status, _, _):
+            return "UPSTREAM_\(status)"
+        default:
+            return "UPSTREAM_ERROR"
+        }
     }
 }

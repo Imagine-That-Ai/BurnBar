@@ -78,7 +78,7 @@ final class MemoryCloudModelsPolicyHandoffTests: XCTestCase {
         settings.cliAssistantAllowed = true
         settings.memory.cloudModelsEnabled = true
         settings.memory.cloudModelsConsentedProviderIDs = [.openrouter, .claudeCLI]
-        settings.memory.cloudModelsRequireNoRetention = true
+        settings.memory.cloudModelsRequireNoRetention = false  // CLIs ride only when no-retention-only is off
         settings.memory.cloudModelsDailyCapUSD = 3.0
 
         await manager.updateMemoryEgressPolicy()
@@ -89,7 +89,7 @@ final class MemoryCloudModelsPolicyHandoffTests: XCTestCase {
         XCTAssertEqual(written.consentedProviderIDs, ["openrouter"])
         XCTAssertEqual(written.consentedCLIProviderIDs, ["claude_cli"])
         XCTAssertEqual(written.allowedModelIDsByPurpose, [:])
-        XCTAssertTrue(written.requireNoRetention)
+        XCTAssertFalse(written.requireNoRetention)
         XCTAssertEqual(written.dailyCapUSD, 3.0)
         XCTAssertNotNil(written.updatedAt)
         XCTAssertNil(manager.lastError)

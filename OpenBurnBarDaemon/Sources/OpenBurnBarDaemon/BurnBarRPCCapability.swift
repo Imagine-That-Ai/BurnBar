@@ -167,9 +167,12 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
             return .run
         case .searchQuery, .searchSQL:
             return .search
-        case .memoryRemember, .memoryReviewStatus, .memoryForget:
+        // `memoryModelPolicy` mints a 15-minute gateway bearer that can spend
+        // under the member's consented providers: agency, not a store read, so
+        // read-only and run-client peers never get it (cliSupport is method-scoped).
+        case .memoryRemember, .memoryReviewStatus, .memoryForget, .memoryModelPolicy:
             return .memoryWrite
-        case .memoryRecall, .memoryAuditTrail, .memoryAnalytics, .memoryModelPolicy:
+        case .memoryRecall, .memoryAuditTrail, .memoryAnalytics:
             return .memoryRead
         case .codeIndexProject, .codeWatchProject:
             return .codeWrite

@@ -20,7 +20,12 @@ extension BurnBarHTTPGatewayServer {
         // active `fusion` plugin is present AND the recursion marker is absent.
         // Inner panel/judge/synthesis sub-calls carry the marker so they fall
         // through to the normal single-route pipeline (no re-trigger).
-        if let body, let bodyData = body.data(using: .utf8),
+        // Memory-purpose calls (scoped bearers) always take the single-route
+        // pipeline so `BurnBarMemoryEgressEnforcer` sees them; fusion would
+        // spend provider credentials outside the consent, retention and cap gates.
+        let purpose = GatewayPurpose(header: headers[GatewayPurpose.headerName])
+        if purpose == nil,
+           let body, let bodyData = body.data(using: .utf8),
            !Self.bodyCarriesFusionRecursionMarker(bodyData),
            let request = try? JSONDecoder().decode(ChatCompletionsRequest.self, from: bodyData),
            let plugin = request.activeFusionPlugin {
@@ -42,7 +47,7 @@ extension BurnBarHTTPGatewayServer {
             corsHeaders: corsHeaders,
             executionSource: executionSource(from: headers),
             descriptor: chatCompletionsEndpointDescriptor,
-            purpose: GatewayPurpose(header: headers[GatewayPurpose.headerName])
+            purpose: purpose
         )
     }
 

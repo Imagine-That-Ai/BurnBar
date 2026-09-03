@@ -94,7 +94,7 @@ struct MemoryCloudModelsSection: View {
 
                 SettingsToggle(
                     title: "Only providers that promise no retention",
-                    subtitle: "When on, the daemon refuses routes whose provider may keep your text.",
+                    subtitle: "When on, only providers that promise no retention are used; subscription CLIs and provider-policy APIs are left out of the policy.",
                     isOn: $settingsManager.memoryCloudModelsRequireNoRetention
                 )
 
@@ -120,8 +120,16 @@ struct MemoryCloudModelsSection: View {
         }
     }
 
+    /// A row that cannot be turned ON (no key, no CLI, no consent) must still be
+    /// turn-off-able, or a retained consent silently revives when the
+    /// credential returns.
+    static func providerToggleDisabled(reason: String?, isSelected: Bool) -> Bool {
+        reason != nil && !isSelected
+    }
+
     private func providerRow(_ provider: MemoryCloudProviderID) -> some View {
         let reason = availability.reason(for: provider)
+        let isSelected = settingsManager.memoryCloudModelsConsentedProviders.contains(provider)
         return VStack(alignment: .leading, spacing: 2) {
             Toggle(isOn: providerBinding(provider)) {
                 HStack(spacing: DesignSystem.Spacing.xs) {
@@ -132,7 +140,7 @@ struct MemoryCloudModelsSection: View {
                 }
             }
             .toggleStyle(.checkbox)
-            .disabled(reason != nil)
+            .disabled(Self.providerToggleDisabled(reason: reason, isSelected: isSelected))
 
             Text(reason ?? provider.requirementDescription)
                 .font(DesignSystem.Typography.tiny)

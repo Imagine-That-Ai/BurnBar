@@ -190,6 +190,48 @@ final class BurnBarHTTPGatewayServerMemoryEgressTests: XCTestCase {
         XCTAssertGreaterThan(memoryProSpend, 0)
     }
 
+    func test_memoryPurposeRequestsNeverShortCircuitToFusion() async throws {
+        let fixture = try await makeFixture()
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: #"{"id":"chatcmpl-2","object":"chat.completion","model":"anthropic/claude-opus-5","choices":[{"index":0,"message":{"role":"assistant","content":"ok"}}],"usage":{"prompt_tokens":1,"completion_tokens":1}}"#
+        )
+        let token = await mintedToken(fixture)
+        let (status, _) = try await send(
+            port: fixture.harness.port,
+            path: "/v1/chat/completions",
+            token: token,
+            purpose: "memory-extract",
+            body: #"{"model":"openrouter/anthropic/claude-opus-5","plugins":[{"id":"fusion"}],"messages":[{"role":"user","content":"hi"}]}"#
+        )
+        XCTAssertEqual(status, 200)
+        let entries = try await BurnBarMemoryEgressLogStore(fileURL: fixture.logURL).entries()
+        XCTAssertEqual(entries.last?.outcome, "allowed", "the enforcer saw the request; fusion never ran it")
+        XCTAssertEqual(entries.last?.purpose, "memory-extract")
+    }
+
+    func test_upstreamFailuresAreRecordedInTheEgressChain() async throws {
+        let fixture = try await makeFixture()
+        GatewayUpstreamURLProtocol.enqueue(status: 500, body: #"{"error":{"message":"boom"}}"#)
+        let token = await mintedToken(fixture)
+        let (status, _) = try await send(
+            port: fixture.harness.port,
+            path: "/v1/chat/completions",
+            token: token,
+            purpose: "memory-extract",
+            body: #"{"model":"openrouter/anthropic/claude-opus-5","messages":[{"role":"user","content":"hi"}]}"#
+        )
+        XCTAssertNotEqual(status, 200)
+        let entries = try await BurnBarMemoryEgressLogStore(fileURL: fixture.logURL).entries()
+        let failed = try XCTUnwrap(entries.first { $0.outcome == "failed" }, "a request that left the Mac and failed is still chained")
+        XCTAssertEqual(failed.purpose, "memory-extract")
+        XCTAssertEqual(failed.providerID, "openrouter")
+        XCTAssertTrue((failed.code ?? "").hasPrefix("UPSTREAM"), failed.code ?? "nil")
+        let store = BurnBarMemoryEgressLogStore(fileURL: fixture.logURL)
+        let verification = try await store.verify()
+        XCTAssertTrue(verification.ok, "chain broken at \(String(describing: verification.brokenAtSeq))")
+    }
+
     func test_policyDenialsReturn403WithTheCodeAndAreLogged() async throws {
         let stale = try await makeFixture(proActive: false)
         let token = await mintedToken(stale)

@@ -31,6 +31,11 @@ DAEMON_MEMORY_GROUP = "__daemon_memory__"  # resolved at run time: the `Memory` 
 
 DAEMON_ENTRIES: list[tuple[str, str, str]] = [
     (
+        "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/Memory/BurnBarMemoryModelPolicyContracts.swift",
+        DAEMON_SOURCES_PHASE,
+        DAEMON_MEMORY_GROUP,
+    ),
+    (
         "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/Memory/BurnBarMembershipFreshness.swift",
         DAEMON_SOURCES_PHASE,
         DAEMON_MEMORY_GROUP,
