@@ -609,7 +609,7 @@ public struct BurnBarLiveModelCatalog: Sendable {
         formatFamily: BurnBarProviderFormatFamily
     ) -> [String] {
         if providerID.lowercased() == "ollama" {
-            return [advertisedModelID(for: model, providerID: providerID)]
+            return [Self.advertisedModelID(for: model, providerID: providerID)]
         }
 
         if providerID.lowercased() == "codex",
@@ -632,7 +632,7 @@ public struct BurnBarLiveModelCatalog: Sendable {
             }
         }
 
-        return [advertisedModelID(for: model, providerID: providerID)]
+        return [Self.advertisedModelID(for: model, providerID: providerID)]
     }
 
     private func compatibleLiveModelIDs(for wireModelID: String, model: BurnBarCatalogModel) -> [String] {
@@ -645,13 +645,14 @@ public struct BurnBarLiveModelCatalog: Sendable {
         }
     }
 
-    private func advertisedModelID(for model: BurnBarCatalogModel, providerID: String) -> String {
+    /// Wire ID advertised on `/v1/models`.
+    static func advertisedModelID(for model: BurnBarCatalogModel, providerID: String) -> String {
         guard model.id.lowercased().hasSuffix("-family"),
               let alias = model.aliases.first?.trimmingCharacters(in: .whitespacesAndNewlines),
               !alias.isEmpty else {
-            return providerID.lowercased() == "ollama" ? Self.ollamaCloudRouteModelID(model.id) : model.id
+            return providerID.lowercased() == "ollama" ? ollamaCloudRouteModelID(model.id) : model.id
         }
-        return providerID.lowercased() == "ollama" ? Self.ollamaCloudRouteModelID(alias) : alias
+        return providerID.lowercased() == "ollama" ? ollamaCloudRouteModelID(alias) : alias
     }
 
     private func configuredModelSourceKind(for providerID: String) -> String {
@@ -727,6 +728,18 @@ public struct BurnBarLiveModelCatalog: Sendable {
         apiKey: String?,
         providerCanRoute: Bool
     ) async -> LiveRefreshResult? {
+        let slotAuthMethodID: String? = {
+            if account.accountID == "legacy" { return nil }
+            return configuration.credentialSlots.first { $0.slot.slotID == account.accountID }?.slot.authMethodID
+        }()
+        if !configuration.provider.local,
+           !BurnBarProviderAuthRegistry.authMethodAllowsProxyRouting(
+            providerID: configuration.provider.id,
+            authMethodID: slotAuthMethodID
+           ) {
+            return nil
+        }
+
         // Local, credential-less providers (e.g. a local Ollama daemon) discover
         // models from the machine with no Authorization header. Bypass the
         // credential/quota guard the cloud providers require.

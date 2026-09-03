@@ -123,6 +123,17 @@ enum InteractiveTerminalLauncher {
             return Invocation(executableName: "pi", arguments: arguments, extraEnvironment: [:])
         case "fx":
             return Invocation(executableName: "fx", arguments: [], extraEnvironment: [:])
+        case "muse":
+            // Interactive form verified against Muse Code 1.0.2:
+            // `muse [--workspace PATH] [--model ID] [PROMPT]` opens a TUI
+            // session (the bare `muse-spark` alias is exec/TUI-inconsistent,
+            // so normalize it to the flagship like the headless builder).
+            var museArguments: [String] = []
+            if let workingDirectory { museArguments += ["--workspace", workingDirectory.path] }
+            if let model {
+                museArguments += ["--model", CLIArgumentBuilder.resolvedMuseModelID(model)]
+            }
+            return Invocation(executableName: "muse", arguments: museArguments, extraEnvironment: [:])
         case "ollama":
             if let model {
                 return Invocation(executableName: "ollama", arguments: ["run", model], extraEnvironment: [:])

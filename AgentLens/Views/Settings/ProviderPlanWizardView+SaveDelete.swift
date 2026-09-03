@@ -26,7 +26,7 @@ extension ProviderPlanWizardView {
             candidates = [["login"], ["auth", "login"]]
         case .claude:
             candidates = [["auth", "login"], ["login"]]
-        case .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie, .primeAgent, .fx, .hermes, .goose, .windsurf, .openClaude, .openClaw:
+        case .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie, .primeAgent, .fx, .muse, .hermes, .goose, .windsurf, .openClaude, .openClaw:
             candidates = []
         }
 
@@ -301,7 +301,7 @@ extension ProviderPlanWizardView {
                 region: nil,
                 tokenPlanTier: nil,
                 tokenPlanBillingCycle: nil,
-                authMethodID: nil
+                authMethodID: method.id
             )
         }
 

@@ -310,6 +310,52 @@ enum CLIArgumentBuilder {
         return arguments
     }
 
+    /// Muse exec rejects `muse-spark` and dash catalog slugs; send the wire ID.
+    static func resolvedMuseModelID(_ model: String) -> String {
+        let trimmed = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return trimmed }
+        if trimmed.lowercased() == "muse-spark" {
+            return "muse-spark-1.3"
+        }
+        return BurnBarCatalogLoader.bundledCatalog.canonicalModelID(forModelName: trimmed, providerID: "meta")
+            ?? trimmed
+    }
+
+    static func museArguments(
+        prompt: String,
+        model: String = "",
+        workspaceDirectory: URL? = nil,
+        capabilityGrant: AgentCapabilityGrant? = nil
+    ) -> [String] {
+        // Headless one-shot form is `muse exec` (verified against
+        // Muse Code 1.0.2): `--model` + `--workspace` are exec-level flags.
+        // T-TOOL-02(a): never pass vendor full-autonomy bypass arguments —
+        // `--yolo`, `--disable-approval`, `--disable-sandbox`, and
+        // `--trust-workspace` are banned outright. Capability gating uses the
+        // enforceable `--disable-write` / `--disable-shell` flags instead, so
+        // Muse runs fail-closed without a full desktop grant.
+        var arguments = ["exec"]
+        let resolvedModel = resolvedMuseModelID(model)
+        if !resolvedModel.isEmpty {
+            arguments.append(contentsOf: ["--model", resolvedModel])
+        }
+        if let workspaceDirectory {
+            arguments.append(contentsOf: ["--workspace", workspaceDirectory.path])
+        }
+        if let capabilityGrant, capabilityGrant.isActive() {
+            if !capabilityGrant.capabilities.contains(.workspaceWrite) {
+                arguments.append("--disable-write")
+            }
+            if !capabilityGrant.capabilities.contains(.shell) {
+                arguments.append("--disable-shell")
+            }
+        } else {
+            arguments.append(contentsOf: ["--disable-write", "--disable-shell"])
+        }
+        arguments.append(musePrompt(prompt, capabilityGrant: capabilityGrant))
+        return arguments
+    }
+
     static func ompArguments(
         prompt: String,
         model: String = "",
@@ -406,7 +452,17 @@ enum CLIArgumentBuilder {
         """)
     }
 
-    private static func juniePrompt(
+    private static func musePrompt(
+        _ prompt: String,
+        capabilityGrant: AgentCapabilityGrant?
+    ) -> String {
+        readOnlySafetyPrompt(prompt, capabilityGrant: capabilityGrant)
+    }
+
+    /// Shared read-only safety preamble for CLIs whose launches are gated by
+    /// enforceable permission flags rather than a full-grant launch gate
+    /// (Junie, Muse). One copy so the wording cannot drift between harnesses.
+    private static func readOnlySafetyPrompt(
         _ prompt: String,
         capabilityGrant: AgentCapabilityGrant?
     ) -> String {
@@ -434,6 +490,15 @@ enum CLIArgumentBuilder {
 
         OpenBurnBar remote safety: \(constraints.joined(separator: " "))
         """)
+    }
+
+    private static func juniePrompt(
+        _ prompt: String,
+        capabilityGrant: AgentCapabilityGrant?
+    ) -> String {
+        // Byte-identical to the shared helper; kept as a named wrapper so
+        // call sites read per-harness.
+        readOnlySafetyPrompt(prompt, capabilityGrant: capabilityGrant)
     }
 
     static func combinedPrompt(systemPrompt: String, userMessage: String) -> String {
@@ -581,6 +646,20 @@ extension CLIBridge {
             workspaceDirectory: workspaceDirectory,
             capabilityGrant: capabilityGrant,
             resumeSessionID: resumeSessionID
+        )
+    }
+
+    nonisolated static func museArguments(
+        prompt: String,
+        model: String = "",
+        workspaceDirectory: URL? = nil,
+        capabilityGrant: AgentCapabilityGrant? = nil
+    ) -> [String] {
+        CLIArgumentBuilder.museArguments(
+            prompt: prompt,
+            model: model,
+            workspaceDirectory: workspaceDirectory,
+            capabilityGrant: capabilityGrant
         )
     }
 }

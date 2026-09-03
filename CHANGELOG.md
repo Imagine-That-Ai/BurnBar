@@ -36,6 +36,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Symbol owed VoiceOver. Pinned by `FluidAuroraKernelTests` (12 tests).
 
 ### Fixed
+- **Muse Spark 1.3 and Muse Code usage now count.** Meta's catalog still pointed
+  at Together (`api.together.xyz`) and only knew `muse-spark-1.2`, so Spark 1.3
+  traffic through Meta Model API (`https://api.meta.ai/v1`) was an unknown model
+  and Muse Code sessions priced as fallback. Catalog now lists Spark 1.3 / 1.2 /
+  1.1 under their **wire IDs** (`muse-spark-1.3`, not `muse-spark-1-3-standard`),
+  Meta is a public routing provider on `api.meta.ai`, persisted Together URLs
+  rewrite on load, Together keys no longer unlock proxy routing, and
+  `MuseParser` unwraps Muse Code 1.0.2 `retained_frame` wrappers plus
+  `run.model.configured` so local JSONL tokens still land.
 - Console Profile compact counts now use B and T, so a trillion-token lifetime
   total reads as `1.09T` instead of `1085491M`. Model, harness, and combo labels
   wrap instead of clipping, and harness/combo breakdowns stay visible on
