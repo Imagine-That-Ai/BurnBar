@@ -281,8 +281,9 @@ Run it by hand against any transcript:
 | `burnbar_cloud_get_conversation_body` | Download and decrypt a full hosted session body returned by cloud semantic search |
 | `burnbar_remember` | **Write** one durable memory (kind, scope, tags, entities, metadata, `supersedes`, `expires_at`, `immutable`); secrets redacted, PII kept by default; mirrored to the daemon ledger when reachable |
 | `burnbar_memorize` | **Write** durable memories from a conversation, text, or pre-extracted `facts` (the mem0 `add()` equivalent): extraction → gate → injection screen → ADD / UPDATE / NONE / DELETE reconciliation; idempotent per input |
-| `burnbar_recall` | Hybrid BM25 + vector recall with reciprocal-rank fusion and salience rerank; kind/tag/entity/metadata/date filters; personal-scope memories follow the user across projects; bodies and free-form auxiliary fields wrapped as untrusted content |
+| `burnbar_recall` | Hybrid BM25 + vector recall with reciprocal-rank fusion and salience rerank, plus an optional Memory Pro model rerank of the top hits (`rerank`, reported in `trustSignal.rerank`); kind/tag/entity/metadata/date filters; personal-scope memories follow the user across projects; bodies and free-form auxiliary fields wrapped as untrusted content |
 | `burnbar_recall_pack` | Token-budgeted, prompt-ready block of the most relevant memories, wrapped as untrusted retrieved data |
+| `burnbar_memory_ask` | Memory Pro: an answer built only from cited memories, or an explicit refusal; needs `memory_llm_read` |
 | `burnbar_memory_get` / `burnbar_memory_list` | Read one memory (optionally with history) / page through memories with filters and ordering; quarantined rows are hidden by default and explicit review reads are wrapped |
 | `burnbar_memory_update` | **Write** patch a memory in place (stable id, history row, re-embed) |
 | `burnbar_memory_history` | Per-memory change history with wrapped before/after bodies and metadata |
@@ -556,6 +557,77 @@ tombstone receipt; local Project Memory stays authoritative and unchanged.
 native command hint, a rendered cross-harness briefing, or a structured error.
 `burnbar_spawn_resume` is intentionally separate so agents must make an explicit
 second tool call before launching a process.
+
+### Pro models (opt-in)
+
+With BurnBar Pro and "Cloud models for memory" turned on in the app, the engine can use a frontier model for extraction, reconciliation, embeddings, reranking, and answers. The engine never holds a key: it asks the signed courier (`openburnbar-cli memory-model-policy`) what it may use and receives a 15-minute bearer scoped to `memory-*` purposes on the daemon's loopback gateway, which enforces Pro, per-provider consent, no-retention, and the daily cap before routing with keys from its own Keychain store. Subscription quota is used only through the official CLIs (`claude -p`, `codex exec`) behind the existing CLI consent. Every cloud path degrades to the local behavior and says why in the tool's `trustSignal`. `OPENBURNBAR_MEMORY_MODEL_POLICY_JSON` is a test-only seam, honored under pytest.
+
+**Extraction v2.** `burnbar_memorize(extractor="pro")` (or `"pro:<provider/model>"`)
+sends the *gated* transcript — secrets already redacted, injection lines already
+labelled — to the first model the policy lists for `memory-extract`, with the
+transcript framed as untrusted data. Rows carry `extractor = "llm:<provider>/<model>"`
+plus `metadata.extractPromptVersion` (`openburnbar-memory-extract-v2`),
+`metadata.transcriptGateHash` and `metadata.modelLatencyMs`; the result's
+`extraction` block says whether the model was applied and, if not, the gateway's
+denial code. A refusal (`PRO_REQUIRED`, `PROVIDER_NOT_CONSENTED`,
+`BUDGET_EXCEEDED`, …) falls back to the heuristic extractor in the same call.
+
+**Reconciliation judge.** When the policy lists a `memory-judge` model, the
+ambiguous band of `_commit_fact` — a conflict cue, or a best candidate above
+`CONFLICT_MIN_SIM` that is not a duplicate — asks the model for one of
+`ADD | UPDATE | NONE | DELETE` over at most six listed candidates. The judge can
+only name candidates it was shown, never immutable or injection-labelled rows,
+and any out-of-contract answer hands the decision back to the rules. Every
+decision records `decidedBy` (`rules` or `judge:<provider>/<model>`), a short
+`rationale`, and the `judge` outcome; the same fields land in the row's history.
+
+Measure it: `eval_memory.py --judge` replays `eval/judge_gold.json` (64 labelled
+cases, 16 scenarios × UPDATE/DELETE/NONE/ADD) through the rules and prints the
+agreement and confusion table; `--judge --with-model` consults the judge (needs
+the daemon and consent). `--extraction --extractor pro [--extractor-model
+provider/model]` scores a cloud extractor on the extraction gold set.
+
+| Reconciliation on `judge_gold.json` (64 cases) | Agreement |
+|---|---|
+| Rules only (lexical similarity, 2026-09-03) | 0.42 — the rules are deliberately conservative: without a strong cue they `ADD` (15/16 DELETE and 12/16 UPDATE cases land as ADD) |
+| Judge (`--with-model`) | run per provider on a Pro machine and record here; target ≥ 0.90 |
+
+**Cloud embeddings and rerank.** `OPENBURNBAR_MEMORY_EMBEDDING_PROVIDER=pro`
+selects `GatewayEmbeddingProvider`: vectors come through the gateway under the
+`memory-embed` purpose with the policy's embedding model, and the version id
+(`gateway:<provider>/<model>:<dimension>`) is part of the vector key, so
+switching providers never mixes spaces. `burnbar_memory_doctor` reports
+`embeddingPending` (active rows without a vector for the current version) and
+`burnbar_memory_reindex` clears it. When the daemon or consent is missing the
+provider degrades to lexical-only with the gateway's code in `embedding.reason`,
+and the miss is not cached, so recovery needs no restart.
+
+`burnbar_recall(rerank=…)` re-orders the top `rerank_top_k` (default 20, max 40)
+fusion hits by a chat model's relevance under the `memory-rerank` purpose.
+Passages are clipped to 1024 characters and framed as untrusted data; rows with
+injection labels are never sent and keep their fusion position
+(`why.reranker = "excluded:injection"`). `rerank=None` follows the policy,
+`rerank=False` never calls a model, and `trustSignal.rerank` reports `applied`,
+`off`, or `skipped:<code>` (a refusal or an out-of-contract answer leaves the
+fusion order). `why.rerankScore` and `why.reranker` name the model's verdict.
+Measure it with `eval_memory.py --provider pro --rerank` (or `--provider fake
+--rerank` for the plumbing): every mode is reported twice, `<mode>` and
+`<mode>+rerank`; a rerank stage that lowers `recall@5` is a regression, not a
+tuning choice.
+
+**Ask my memory.** `burnbar_memory_ask(question)` recalls up to 12 approved
+memories (never injection-labelled ones), lists them to the policy's
+`memory-answer` model as numbered untrusted data, and returns `answer`,
+`citations` (`memoryID`, `kind`, `snippet`) and `groundedness`: `grounded`
+(every citation is a listed memory), `partial` (unknown citations were
+dropped), or `refused` (no valid citation, or the fixed refusal). An answer
+carrying wrapper sentinels or a tool call is rejected (`code:
+ANSWER_REJECTED`) and replaced by the refusal; an empty pack refuses without a
+call. The tool needs `OPENBURNBAR_LOCAL_MCP_ENABLE_MEMORY_LLM_READ=true` (or the
+operator profile) and wraps the answer and snippets as untrusted content.
+Measure it with `eval_memory.py --ask` over `eval/ask_gold.json` (38 questions,
+6 without evidence): it reports how often answers cite only listed memories,
+cite an expected memory, and refuse when nothing applies.
 
 ## Castle multi-runtime fan-out
 

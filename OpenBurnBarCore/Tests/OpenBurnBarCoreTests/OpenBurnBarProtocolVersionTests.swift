@@ -56,4 +56,27 @@ final class BurnBarProtocolVersionTests: XCTestCase {
         XCTAssertEqual(decoded.method, .configUpdate)
         XCTAssertEqual(decoded.params.snapshot.providers.first?.providerID, "zai")
     }
+
+    func test_configUpdateEnvelopeCarriesTheMemoryEgressPolicy() throws {
+        var snapshot = BurnBarProviderConfigurationSnapshot(providers: [])
+        snapshot.memoryEgress = BurnBarMemoryEgressPolicy(
+            enabled: true,
+            consentedProviderIDs: ["openrouter"],
+            consentedCLIProviderIDs: ["claude_cli"],
+            allowedModelIDsByPurpose: ["memory-embed": ["openai/text-embedding-3-small"]],
+            requireNoRetention: true,
+            dailyCapUSD: 3.5,
+            updatedAt: Date(timeIntervalSince1970: 1_800_000_000)
+        )
+        let request = BurnBarRPCRequestEnvelopeWithParams(
+            id: "config-2",
+            method: .configUpdate,
+            params: BurnBarConfigUpdateRequest(snapshot: snapshot)
+        )
+        let decoded = try JSONDecoder().decode(
+            BurnBarRPCRequestEnvelopeWithParams<BurnBarConfigUpdateRequest>.self,
+            from: JSONEncoder().encode(request)
+        )
+        XCTAssertEqual(decoded.params.snapshot.memoryEgress, snapshot.memoryEgress)
+    }
 }

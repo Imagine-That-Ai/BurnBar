@@ -20,7 +20,12 @@ extension BurnBarHTTPGatewayServer {
         // active `fusion` plugin is present AND the recursion marker is absent.
         // Inner panel/judge/synthesis sub-calls carry the marker so they fall
         // through to the normal single-route pipeline (no re-trigger).
-        if let body, let bodyData = body.data(using: .utf8),
+        // Memory-purpose calls (scoped bearers) always take the single-route
+        // pipeline so `BurnBarMemoryEgressEnforcer` sees them; fusion would
+        // spend provider credentials outside the consent, retention and cap gates.
+        let purpose = GatewayPurpose(header: headers[GatewayPurpose.headerName])
+        if purpose == nil,
+           let body, let bodyData = body.data(using: .utf8),
            !Self.bodyCarriesFusionRecursionMarker(bodyData),
            let request = try? JSONDecoder().decode(ChatCompletionsRequest.self, from: bodyData),
            let plugin = request.activeFusionPlugin {
@@ -41,7 +46,45 @@ extension BurnBarHTTPGatewayServer {
             connection: connection,
             corsHeaders: corsHeaders,
             executionSource: executionSource(from: headers),
-            descriptor: chatCompletionsEndpointDescriptor
+            descriptor: chatCompletionsEndpointDescriptor,
+            purpose: purpose
+        )
+    }
+
+    func handleEmbeddings(body: String?, headers: [String: String]) async -> GatewayRouteOutcome {
+        await routeModelRequest(
+            body: body,
+            connection: nil,
+            corsHeaders: [:],
+            executionSource: executionSource(from: headers),
+            descriptor: embeddingsEndpointDescriptor,
+            purpose: GatewayPurpose(header: headers[GatewayPurpose.headerName])
+        )
+    }
+
+    /// `POST /v1/embeddings`: OpenAI-shaped, buffered only, OpenAI-compatible
+    /// providers only. Memory Pro's embedding purpose rides on it.
+    var embeddingsEndpointDescriptor: GatewayEndpointDescriptor {
+        GatewayEndpointDescriptor(
+            requestPath: "/v1/embeddings",
+            endpoint: "Embeddings",
+            routeErrorLogEvent: "gateway_embeddings_route_error",
+            routerLoggerCategory: "gateway-router-embeddings",
+            allowDynamicOpenAICompatibleModels: true,
+            treatsRouterErrorAsNoEligibleRoute: true,
+            finalRejectUsesRankingCanonicalModelID: false,
+            decodeRequest: { data in
+                let request = try JSONDecoder().decode(EmbeddingsRequest.self, from: data)
+                return GatewayDecodedModelRequest(model: request.model, wantsStream: false)
+            },
+            selectFormatFamilies: { _, _, _ in .families([.openaiCompat]) },
+            filterRankedRoutes: { routes, _ in routes },
+            emptyRankedRoutesRejection: nil,
+            streamAttempt: { _ in nil },
+            proxyBuffered: { context in
+                try await self.providerExecutor.proxyEmbeddings(body: context.bodyData, route: context.route)
+            },
+            attemptDegrade: nil
         )
     }
 

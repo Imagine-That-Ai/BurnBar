@@ -194,7 +194,8 @@ enum BurnBarDaemonSocketRPCCoverage {
         .memoryReviewStatus,
         .memoryForget,
         .memoryAuditTrail,
-        .memoryAnalytics
+        .memoryAnalytics,
+        .memoryModelPolicy
     ]
 
     static let code: Set<BurnBarRPCMethod> = [

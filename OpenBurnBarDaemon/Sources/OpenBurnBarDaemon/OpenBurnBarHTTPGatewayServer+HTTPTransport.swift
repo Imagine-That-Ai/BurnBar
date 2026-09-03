@@ -17,6 +17,7 @@ extension BurnBarHTTPGatewayServer {
         case 200: statusText = "OK"
         case 400: statusText = "Bad Request"
         case 401: statusText = "Unauthorized"
+        case 403: statusText = "Forbidden"
         case 404: statusText = "Not Found"
         case 413: statusText = "Payload Too Large"
         case 429: statusText = "Too Many Requests"
@@ -285,7 +286,7 @@ extension BurnBarHTTPGatewayServer {
         return [
             "Access-Control-Allow-Origin": origin,
             "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-            "Access-Control-Allow-Headers": "Authorization, Content-Type, x-api-key",
+            "Access-Control-Allow-Headers": "Authorization, Content-Type, x-api-key, X-OpenBurnBar-Purpose",
             "Vary": "Origin"
         ]
     }

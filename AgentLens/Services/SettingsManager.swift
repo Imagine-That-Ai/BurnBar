@@ -114,6 +114,9 @@ final class SettingsManager {
             persistence: coordinator,
             usageRemoteConfigSeed: usageMemoryRemoteConfigSeed
         )
+        if let cachedCloudModels = Self.cachedMemoryCloudModelsRemoteConfigEnabled(), !cachedCloudModels {
+            memory.remoteConfigCloudModelsEnabled = false
+        }
         self.summary = SummarySettings(persistence: coordinator)
         self.quotas = QuotaSettings(persistence: coordinator)
         self.providerPath = ProviderPathSettings(persistence: coordinator)
@@ -280,6 +283,10 @@ final class SettingsManager {
         // errors keep any active cached false authoritative while avoiding
         // stranding opted-in local extraction when no kill is cached.
         "memory_extraction_enabled": NSNumber(value: true),
+        // Memory Pro cloud-models fleet kill switch. Default true (allowed);
+        // Remote Config sets false to close the gate and hand the daemon a
+        // disabled policy. Same transport posture as memory_extraction_enabled.
+        "memory_cloud_models_enabled": NSNumber(value: true),
         // Usage-memory fleet kill switches. Same posture as memory_extraction_enabled:
         // default true (allowed); Remote Config sets false to halt usage-memory
         // extraction / durable authority writes instantly. Fetch transport errors
@@ -329,6 +336,16 @@ final class SettingsManager {
         )
     }
 
+    /// The ACTIVE CACHED `memory_cloud_models_enabled` value, read synchronously
+    /// at init so a returning opted-in install never opens the cloud-models gate
+    /// ahead of a fleet kill that is already on disk. Nil without Firebase.
+    private static func cachedMemoryCloudModelsRemoteConfigEnabled() -> Bool? {
+        guard FirebaseApp.app() != nil else { return nil }
+        let remoteConfig = RemoteConfig.remoteConfig()
+        remoteConfig.setDefaults(commercialRemoteConfigDefaults)
+        return remoteConfig.configValue(forKey: "memory_cloud_models_enabled").boolValue
+    }
+
     private func refreshComputerUseRemoteConfigOnce() async {
         guard FirebaseApp.app() != nil else { return }
         let remoteConfig = RemoteConfig.remoteConfig()
@@ -346,12 +363,22 @@ final class SettingsManager {
             ).boolValue
         )
 
+        // Same for the Memory Pro cloud-models switch: a cached fleet kill must
+        // close the gate (and re-send the daemon a disabled policy) before the
+        // round trip, not after it.
+        if !remoteConfig.configValue(forKey: "memory_cloud_models_enabled").boolValue,
+           memoryCloudModelsRemoteConfigEnabled {
+            memoryCloudModelsRemoteConfigEnabled = false
+            NotificationCenter.default.post(name: .memoryCloudModelsRemoteConfigKillSwitchDidFire, object: self)
+        }
+
         let fetchResult = await withCheckedContinuation { continuation in
             remoteConfig.fetchAndActivate { status, error in
                 continuation.resume(returning: (status, error))
             }
         }
         let activeMemoryExtractionEnabled = remoteConfig.configValue(forKey: "memory_extraction_enabled").boolValue
+        let activeMemoryCloudModelsEnabled = remoteConfig.configValue(forKey: "memory_cloud_models_enabled").boolValue
         let activeUsageExtractionEnabled = remoteConfig.configValue(forKey: "memory_usage_extraction_enabled").boolValue
         let activeUsageAuthorityWritesEnabled = remoteConfig.configValue(
             forKey: "memory_usage_authority_writes_enabled"
@@ -367,6 +394,10 @@ final class SettingsManager {
             if !activeMemoryExtractionEnabled {
                 memoryExtractionRemoteConfigEnabled = false
                 NotificationCenter.default.post(name: .memoryRemoteConfigKillSwitchDidFire, object: self)
+            }
+            if !activeMemoryCloudModelsEnabled {
+                memoryCloudModelsRemoteConfigEnabled = false
+                NotificationCenter.default.post(name: .memoryCloudModelsRemoteConfigKillSwitchDidFire, object: self)
             }
             // The usage switches need no transport-error branch of their own: the
             // pre-fetch apply above already made this same active config (a cached
@@ -405,6 +436,10 @@ final class SettingsManager {
         memoryExtractionRemoteConfigEnabled = memoryRCEnabled
         if !memoryRCEnabled {
             NotificationCenter.default.post(name: .memoryRemoteConfigKillSwitchDidFire, object: self)
+        }
+        memoryCloudModelsRemoteConfigEnabled = activeMemoryCloudModelsEnabled
+        if !activeMemoryCloudModelsEnabled {
+            NotificationCenter.default.post(name: .memoryCloudModelsRemoteConfigKillSwitchDidFire, object: self)
         }
 
         applyUsageMemoryRemoteConfig(
@@ -872,6 +907,77 @@ final class SettingsManager {
     /// false), so `MemoryCloudSyncDomain` performs zero egress out of the box.
     var memoryApprovedCloudBackupEnabled: Bool {
         memory.approvedCloudBackupEnabled && memory.remoteConfigExtractionEnabled
+    }
+
+    // MARK: Memory Pro cloud models (opt-in, blind)
+
+    /// Raw user opt-in to cloud / big models for memory (default OFF). The
+    /// value the daemon actually receives is `memoryCloudModelsEnabled`.
+    var memoryCloudModelsOptIn: Bool {
+        get { memory.cloudModelsEnabled }
+        set { memory.cloudModelsEnabled = newValue }
+    }
+
+    var memoryCloudModelsConsentShown: Bool {
+        get { memory.cloudModelsConsentShown }
+        set { memory.cloudModelsConsentShown = newValue }
+    }
+
+    var memoryCloudModelsRequireNoRetention: Bool {
+        get { memory.cloudModelsRequireNoRetention }
+        set { memory.cloudModelsRequireNoRetention = newValue }
+    }
+
+    var memoryCloudModelsDailyCapUSD: Double {
+        get { memory.cloudModelsDailyCapUSD }
+        set { memory.cloudModelsDailyCapUSD = newValue }
+    }
+
+    var memoryCloudModelsConsentedProviders: [MemoryCloudProviderID] {
+        get { memory.cloudModelsConsentedProviderIDs }
+        set { memory.cloudModelsConsentedProviderIDs = newValue }
+    }
+
+    /// Remote Config `memory_cloud_models_enabled`. Not user-settable; written
+    /// by RC refreshes with the same posture as `memoryExtractionRemoteConfigEnabled`.
+    var memoryCloudModelsRemoteConfigEnabled: Bool {
+        get { memory.remoteConfigCloudModelsEnabled }
+        set { memory.remoteConfigCloudModelsEnabled = newValue }
+    }
+
+    /// Combined cloud-models gate: memory consent **and** the cloud-models
+    /// toggle **and** the fleet switch. This is what the daemon policy carries.
+    var memoryCloudModelsEnabled: Bool {
+        MemoryCloudModelsGate.isEnabled(
+            consentGranted: memory.consentGranted,
+            cloudModelsEnabled: memory.cloudModelsEnabled,
+            remoteConfigEnabled: memory.remoteConfigCloudModelsEnabled
+        )
+    }
+
+    /// The daemon's memory egress policy as implied by these settings. CLI
+    /// providers are included only while Mac CLI agents are allowed too; API
+    /// providers map to daemon provider ids. Disabling keeps the provider list
+    /// so re-enabling restores the member's choice.
+    func memoryEgressPolicy(now: Date = Date()) -> BurnBarMemoryEgressPolicy {
+        // "No retention only" is a promise about every route, and the daemon can
+        // only enforce it for API providers; subscription CLIs (`localQuota`) and
+        // provider-policy APIs are therefore left out of the policy entirely
+        // while it is on, instead of being sent and trusted.
+        let noRetentionOnly = memory.cloudModelsRequireNoRetention
+        let consented = memory.cloudModelsConsentedProviderIDs
+            .filter { !noRetentionOnly || $0.retention == .deny }
+        var policy = BurnBarMemoryEgressPolicy()
+        policy.enabled = memoryCloudModelsEnabled
+        policy.consentedProviderIDs = consented.compactMap(\.daemonProviderID)
+        policy.consentedCLIProviderIDs = cliAssistantAllowed
+            ? consented.filter(\.requiresCLIConsent).map(\.rawValue)
+            : []
+        policy.allowedModelIDsByPurpose = [:]
+        policy.requireNoRetention = memory.cloudModelsRequireNoRetention
+        policy.dailyCapUSD = memory.cloudModelsDailyCapUSD
+        policy.updatedAt = now
+        return policy
     }
 
     // MARK: Activation Checklist

@@ -27,6 +27,7 @@ from .constants import (
     SHORT_HALF_LIFE_KINDS,
 )
 from .crypto import KeyRing, secure_store_files
+from .providers import ModelRouter
 from .embeddings import EmbeddingProvider, decode_vector, embedding_provider
 from .gate import auxiliary_injection_labels
 from .store import default_db_path, open_store, resolve_project
@@ -137,8 +138,12 @@ class MemoryEngine(_WritePath, _ReadPath, _Maintenance):
         provider: EmbeddingProvider,
         config: EngineConfig | None = None,
         db_path: Path | None = None,
+        models: ModelRouter | None = None,
     ) -> None:
         self.conn = conn
+        # Memory Pro: the router for big-model purposes; None keeps every path local.
+        self.models = models
+        self._judge_outcome: dict[str, Any] | None = None
         self.keyring = keyring
         self.provider = provider
         self.config = config or EngineConfig()
@@ -168,6 +173,7 @@ class MemoryEngine(_WritePath, _ReadPath, _Maintenance):
         *,
         provider: EmbeddingProvider | None = None,
         config: EngineConfig | None = None,
+        models: ModelRouter | None = None,
     ) -> MemoryEngine:
         path = Path(db_path) if db_path is not None else default_db_path()
         # Resolve the key before opening/migrating the database so a missing or
@@ -178,7 +184,9 @@ class MemoryEngine(_WritePath, _ReadPath, _Maintenance):
                 f"memory key {keyring.key_id} ({keyring.source}) cannot decrypt populated store {path}; restore the original key"
             )
         conn = open_store(path)
-        return cls(conn, keyring=keyring, provider=embedding_provider(provider), config=config, db_path=path)
+        return cls(
+            conn, keyring=keyring, provider=embedding_provider(provider), config=config, db_path=path, models=models
+        )
 
     def _commit(self) -> None:
         self.conn.commit()

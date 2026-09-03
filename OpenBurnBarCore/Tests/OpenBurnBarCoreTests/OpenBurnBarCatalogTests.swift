@@ -11,6 +11,21 @@ final class BurnBarCatalogTests: XCTestCase {
         XCTAssertEqual(catalog.suggestedModels(forProviderID: "zai").map(\.id), ["glm-5-turbo", "glm-5"])
     }
 
+    func test_bundledCatalog_includesTheMemoryProProviders() throws {
+        let catalog = BurnBarCatalogLoader.bundledCatalog
+        XCTAssertNoThrow(try catalog.validate())
+        XCTAssertEqual(catalog.provider(id: "openrouter")?.baseURL, "https://openrouter.ai/api/v1")
+        XCTAssertEqual(catalog.provider(id: "vercel-ai-gateway")?.baseURL, "https://ai-gateway.vercel.sh/v1")
+        for providerID in ["openrouter", "vercel-ai-gateway"] {
+            XCTAssertEqual(
+                catalog.suggestedModels(forProviderID: providerID).map { $0.aliases.first ?? $0.id },
+                ["anthropic/claude-opus-5", "anthropic/claude-haiku-4-5", "openai/gpt-5.5", "openai/text-embedding-3-small"],
+                providerID
+            )
+            XCTAssertTrue(catalog.provider(id: providerID)?.capabilities.contains(.routing) ?? false, providerID)
+        }
+    }
+
     func test_catalogModelMissingPricingUsesFallbackPricing() throws {
         let data = """
         {

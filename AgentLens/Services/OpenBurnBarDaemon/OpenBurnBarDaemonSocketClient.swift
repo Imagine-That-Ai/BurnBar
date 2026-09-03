@@ -147,6 +147,20 @@ enum OpenBurnBarDaemonSocketClient {
         AppLogger.daemon.error("daemon_rpc_failed", metadata: error.logMetadata)
     }
 
+    static func membershipRestore(at socketURL: URL) throws -> BurnBarMembershipRestoreResponse {
+        let envelope: BurnBarRPCResponseEnvelope<BurnBarMembershipRestoreResponse> = try send(
+            BurnBarRPCRequestEnvelope(method: .membershipRestore),
+            socketURL: socketURL
+        )
+        if let error = envelope.error {
+            throw OpenBurnBarDaemonManagerError.rpcError(error.message)
+        }
+        guard let result = envelope.result else {
+            throw OpenBurnBarDaemonManagerError.emptyResponse
+        }
+        return result
+    }
+
     static func config(at socketURL: URL) throws -> BurnBarProviderConfigurationSnapshot {
         let envelope: BurnBarRPCResponseEnvelope<BurnBarConfigResponse> = try send(
             BurnBarRPCRequestEnvelope(method: .configGet),

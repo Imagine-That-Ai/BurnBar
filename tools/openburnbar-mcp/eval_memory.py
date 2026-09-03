@@ -413,7 +413,155 @@ def _covers(body: str, keywords: list[str]) -> bool:
     return all(keyword.lower() in lowered for keyword in keywords)
 
 
-def run_extraction(gold_path: Path | str = EXTRACTION_GOLD, *, verbose: bool = False) -> dict[str, object]:
+JUDGE_GOLD = Path(__file__).resolve().parent / "eval" / "judge_gold.json"
+
+
+def compose_extractor(extractor: str, model_hint: str | None) -> str:
+    """`pro` plus a `provider/model` hint becomes the `pro:<hint>` extractor; hints are meaningless elsewhere."""
+    name = (extractor or "heuristic").strip().lower()
+    hint = (model_hint or "").strip()
+    return f"pro:{hint}" if name == "pro" and hint else name
+
+
+def _extraction_fn(extractor: str):
+    """`heuristic` runs in-process; `claude`/`ollama`/`pro` run the gated transcript through the named path."""
+    name = (extractor or "heuristic").strip().lower()
+    if name == "heuristic":
+        return lambda messages: me.heuristic_extract(messages)
+    models = me.ModelRouter(me.load_policy()) if name.startswith("pro") else None
+    resolved_name, fn = me.resolve_extractor(name, models=models)
+    if fn is None:
+        return lambda messages: me.heuristic_extract(messages)
+
+    def run(messages):
+        safe, _gate = me.gate_transcript(me.render_transcript(messages))
+        if safe is None:
+            return []
+        try:
+            return fn(safe, me.DEFAULT_MAX_FACTS)
+        except me.ModelUnavailable as exc:
+            raise SystemExit(f"extractor {name} unavailable: {exc.code}: {exc.reason}") from exc
+
+    run.name = name if name.startswith("pro:") else resolved_name
+    return run
+
+
+def run_judge(gold_path: Path | str = JUDGE_GOLD, *, use_model: bool = False) -> dict[str, object]:
+    """Rules-versus-label agreement on the reconciliation cases; with `use_model`, the judge participates."""
+    import tempfile
+
+    gold = json.loads(Path(gold_path).read_text(encoding="utf-8"))
+    cases = gold["cases"]
+    events = ("ADD", "UPDATE", "NONE", "DELETE")
+    confusion = {expected: {actual: 0 for actual in events} for expected in events}
+    matches = 0
+    misses: list[dict[str, object]] = []
+    models = me.ModelRouter(me.load_policy()) if use_model else None
+    with tempfile.TemporaryDirectory() as tmp:
+        os.environ.setdefault(me.MEMORY_KEY_ENV, base64.b64encode(b"\x00" * 32).decode())
+        project = Path(tmp) / "project"
+        project.mkdir()
+        for index, case in enumerate(cases):
+            engine = me.MemoryEngine.open(
+                db_path=Path(tmp) / f"judge-{index}.sqlite", provider=me.NullEmbeddingProvider("eval"), models=models
+            )
+            try:
+                for candidate in case["candidates"]:
+                    engine.remember(candidate["text"], project_path=str(project), kind=candidate.get("kind", "fact"))
+                decision = engine.remember(case["incoming"], project_path=str(project), kind="fact")
+            finally:
+                engine.close()
+            actual = str(decision.get("event") or "REJECT")
+            expected = case["expected"]["event"]
+            if actual in events:
+                confusion[expected][actual] += 1
+            if actual == expected:
+                matches += 1
+            else:
+                misses.append(
+                    {"case": case["id"], "expected": expected, "actual": actual, "decidedBy": decision.get("decidedBy")}
+                )
+    agreement_key = "judgeAgreement" if use_model else "rulesAgreement"
+    return {
+        "gold": str(gold_path),
+        "cases": len(cases),
+        "mode": "judge" if use_model else "rules",
+        agreement_key: round(matches / len(cases), 3) if cases else 0.0,
+        "confusion": confusion,
+        "misses": misses,
+    }
+
+
+ASK_GOLD = Path(__file__).resolve().parent / "eval" / "ask_gold.json"
+
+
+def run_ask(gold_path: Path | str = ASK_GOLD) -> dict[str, object]:
+    """Groundedness of `ask` over the retrieval gold memories: cites only listed ids, refuses without evidence."""
+    import tempfile
+
+    gold = json.loads(Path(gold_path).read_text(encoding="utf-8"))
+    questions = gold["questions"]
+    models = me.ModelRouter(me.load_policy())
+    if not models.serves("memory-answer"):
+        return {
+            "gold": str(gold_path),
+            "questions": len(questions),
+            "mode": "unavailable",
+            "code": "CLOUD_CONSENT_REQUIRED",
+        }
+    counts = {"grounded": 0, "partial": 0, "refused": 0, "unavailable": 0}
+    only_existing = cited_expected = refused_no_evidence = 0
+    with_evidence = without_evidence = answered = 0
+    misses: list[dict[str, object]] = []
+    with tempfile.TemporaryDirectory() as tmp:
+        os.environ.setdefault(me.MEMORY_KEY_ENV, base64.b64encode(b"\x00" * 32).decode())
+        repo = Path(tmp) / "repo"
+        repo.mkdir()
+        engine = me.MemoryEngine.open(Path(tmp) / "ask.sqlite", provider=me.FakeEmbeddingProvider(), models=models)
+        try:
+            id_map: dict[str, str] = {}
+            for item in GOLD:
+                result = engine.remember(str(item["text"]), project_path=str(repo), kind=str(item["kind"]))
+                id_map[result["memoryID"]] = str(item["id"])
+            for case in questions:
+                result = engine.ask(str(case["question"]), project_path=str(repo))
+                if result.get("status") != "ok":
+                    counts["unavailable"] += 1
+                    misses.append({"question": case["id"], "code": result.get("code")})
+                    continue
+                grounded = str(result["groundedness"])
+                counts[grounded] += 1
+                cited = {id_map.get(c["memoryID"], "?") for c in result["citations"]}
+                expected = set(case["expected"])
+                if grounded != "refused":
+                    answered += 1
+                    only_existing += int(result["trustSignal"]["droppedCitations"] == 0)
+                if expected:
+                    with_evidence += 1
+                    if cited & expected:
+                        cited_expected += 1
+                    else:
+                        misses.append({"question": case["id"], "expected": sorted(expected), "cited": sorted(cited)})
+                else:
+                    without_evidence += 1
+                    refused_no_evidence += int(grounded == "refused")
+        finally:
+            engine.close()
+    return {
+        "gold": str(gold_path),
+        "questions": len(questions),
+        "mode": "model",
+        "counts": counts,
+        "citesOnlyExisting": round(only_existing / answered, 3) if answered else 1.0,
+        "citedExpected": round(cited_expected / with_evidence, 3) if with_evidence else 0.0,
+        "refusedWhenNoEvidence": round(refused_no_evidence / without_evidence, 3) if without_evidence else 0.0,
+        "misses": misses,
+    }
+
+
+def run_extraction(
+    gold_path: Path | str = EXTRACTION_GOLD, *, extractor: str = "heuristic", verbose: bool = False
+) -> dict[str, object]:
     """Score `memory_engine.heuristic_extract` against the checked-in gold set.
 
     recall     = expected facts an extracted fact covers, over expected facts.
@@ -422,6 +570,7 @@ def run_extraction(gold_path: Path | str = EXTRACTION_GOLD, *, verbose: bool = F
     emptyCaseFacts = facts invented over the "nothing durable here" cases.
     leaks      = forbidden strings that reached an extracted fact.
     """
+    extract = _extraction_fn(extractor)
     gold = json.loads(Path(gold_path).read_text(encoding="utf-8"))
     cases = gold["cases"]
     expected_total = hits = covering = scored_facts = empty_case_facts = 0
@@ -433,7 +582,7 @@ def run_extraction(gold_path: Path | str = EXTRACTION_GOLD, *, verbose: bool = F
             {"role": message["role"], "content": _expand_secrets(str(message["content"]))}
             for message in case["messages"]
         ]
-        facts = [fact.text for fact in me.heuristic_extract(messages)]
+        facts = [fact.text for fact in extract(messages)]
         for forbidden in case.get("forbidden") or []:
             leaks.extend(
                 {"case": str(case["id"]), "forbidden": forbidden, "fact": body} for body in facts if forbidden in body
@@ -456,6 +605,7 @@ def run_extraction(gold_path: Path | str = EXTRACTION_GOLD, *, verbose: bool = F
                 misses.append(miss)
     return {
         "gold": str(gold_path),
+        "extractor": getattr(extract, "name", extractor),
         "cases": len(cases),
         "emptyCases": empty_cases,
         "expected": expected_total,
@@ -475,22 +625,24 @@ def _provider(name: str, model: str) -> me.EmbeddingProvider:
         return me.NullEmbeddingProvider("eval: lexical only")
     if name == "fake":
         return me.FakeEmbeddingProvider()
-    os.environ[me.EMBEDDING_PROVIDER_ENV] = "ollama"
+    os.environ[me.EMBEDDING_PROVIDER_ENV] = "pro" if name == "pro" else "ollama"
     os.environ[me.EMBEDDING_MODEL_ENV] = model
     me.reset_provider_cache_for_tests()
     provider = me.embedding_provider()
     if not provider.available:
         print(f"embedding provider unavailable: {provider.describe()}", file=sys.stderr)
-        return me.NullEmbeddingProvider("eval: ollama unavailable")
+        return me.NullEmbeddingProvider(f"eval: {name} unavailable")
     return provider
 
 
-def run(provider_name: str, model: str, verbose: bool) -> dict[str, object]:
+def run(provider_name: str, model: str, verbose: bool, *, rerank: bool = False) -> dict[str, object]:
     provider = _provider(provider_name, model)
+    models = me.ModelRouter(me.load_policy()) if (rerank or provider_name == "pro") else None
+    rerank_modes = [False] + ([True] if rerank and models is not None and models.serves("memory-rerank") else [])
     with tempfile.TemporaryDirectory() as tmp:
         repo = Path(tmp) / "repo"
         repo.mkdir()
-        engine = me.MemoryEngine.open(Path(tmp) / "eval.sqlite", provider=provider)
+        engine = me.MemoryEngine.open(Path(tmp) / "eval.sqlite", provider=provider, models=models)
         id_map: dict[str, str] = {}
         started = time.perf_counter()
         for item in GOLD:
@@ -505,15 +657,22 @@ def run(provider_name: str, model: str, verbose: bool) -> dict[str, object]:
             "queries": len(QUERIES),
             "seedMs": round(seed_ms, 1),
             "modes": {},
+            "rerank": "requested" if rerank else "off",
         }
-        for mode in modes:
+        for mode, use_rerank in [(mode, flag) for mode in modes for flag in rerank_modes]:
+            label = f"{mode}+rerank" if use_rerank else mode
+            rerank_status: str | None = None
             hits1 = hits5 = 0
             rr_total = 0.0
             latencies: list[float] = []
             misses: list[tuple[str, str, list[str]]] = []
             for query, expected in QUERIES:
                 t0 = time.perf_counter()
-                results = engine.recall(query, project_path=str(repo), limit=5, mode=mode, reinforce=False)["results"]
+                recalled = engine.recall(
+                    query, project_path=str(repo), limit=5, mode=mode, reinforce=False, rerank=use_rerank
+                )
+                results = recalled["results"]
+                rerank_status = recalled["trustSignal"]["rerank"]
                 latencies.append((time.perf_counter() - t0) * 1000)
                 ranked = [id_map.get(item["memoryID"], "?") for item in results]
                 if ranked and ranked[0] == expected:
@@ -525,7 +684,8 @@ def run(provider_name: str, model: str, verbose: bool) -> dict[str, object]:
                     misses.append((query, expected, ranked))
             n = len(QUERIES)
             latencies.sort()
-            report["modes"][mode] = {  # type: ignore[index]
+            report["modes"][label] = {  # type: ignore[index]
+                "rerank": rerank_status,
                 "recall@1": round(hits1 / n, 3),
                 "recall@5": round(hits5 / n, 3),
                 "mrr": round(rr_total / n, 3),
@@ -575,22 +735,71 @@ def _print_gate_matrix(matrix: list[dict[str, object]]) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--provider", choices=["auto", "none", "fake"], default="auto")
+    parser.add_argument("--provider", choices=["auto", "none", "fake", "pro"], default="auto")
+    parser.add_argument("--rerank", action="store_true", help="also score every mode with the Memory Pro rerank stage")
     parser.add_argument("--model", default=me.DEFAULT_EMBEDDING_MODEL)
     parser.add_argument("--verbose", action="store_true", help="list misses per mode")
     parser.add_argument("--json", action="store_true", help="print the raw report as JSON")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--extraction", action="store_true", help="score the heuristic extractor against the gold set")
     mode.add_argument("--gate", action="store_true", help="print the secret detection matrix")
+    mode.add_argument("--judge", action="store_true", help="rules-vs-label agreement on eval/judge_gold.json")
+    mode.add_argument(
+        "--ask", action="store_true", help="groundedness of `ask` on eval/ask_gold.json (needs the daemon)"
+    )
+    parser.add_argument(
+        "--extractor",
+        choices=["heuristic", "claude", "ollama", "pro"],
+        default="heuristic",
+        help="extractor for --extraction",
+    )
+    parser.add_argument(
+        "--extractor-model", default=None, help="with --extractor pro: a `provider/model` from the policy"
+    )
+    parser.add_argument(
+        "--with-model", action="store_true", help="with --judge: consult the Memory Pro judge (needs the daemon)"
+    )
     parser.add_argument("--gold", type=Path, default=EXTRACTION_GOLD, help="extraction gold set (with --extraction)")
     args = parser.parse_args()
 
     if args.extraction:
-        extraction = run_extraction(args.gold, verbose=args.verbose)
+        extraction = run_extraction(
+            args.gold, extractor=compose_extractor(args.extractor, args.extractor_model), verbose=args.verbose
+        )
         if args.json:
             print(json.dumps(extraction, indent=2))
         else:
             _print_extraction(extraction, args.verbose)
+        return
+    if args.ask:
+        asked = run_ask()
+        if args.json:
+            print(json.dumps(asked, indent=2))
+        elif asked["mode"] != "model":
+            print(f"ask eval unavailable: {asked['code']}")
+        else:
+            print(
+                f"questions: {asked['questions']}  cites only existing: {asked['citesOnlyExisting']}  "
+                f"cited expected: {asked['citedExpected']}  refused when no evidence: {asked['refusedWhenNoEvidence']}"
+            )
+            print(f"counts: {asked['counts']}")
+            if args.verbose:
+                for miss in asked["misses"]:  # type: ignore[union-attr]
+                    print(f"    miss: {miss}")
+        return
+    if args.judge:
+        judged = run_judge(use_model=args.with_model)
+        if args.json:
+            print(json.dumps(judged, indent=2))
+        else:
+            key = "judgeAgreement" if args.with_model else "rulesAgreement"
+            print(f"mode: {judged['mode']}  cases: {judged['cases']}  agreement: {judged[key]}")
+            print(f"{'expected':<10}" + "".join(f"{event:>8}" for event in ("ADD", "UPDATE", "NONE", "DELETE")))
+            for expected, row in judged["confusion"].items():  # type: ignore[union-attr]
+                print(f"{expected:<10}" + "".join(f"{row[event]:>8}" for event in ("ADD", "UPDATE", "NONE", "DELETE")))
+            if args.verbose:
+                for miss in judged["misses"]:  # type: ignore[union-attr]
+                    print(f"    miss: {miss}")
         return
     if args.gate:
         matrix = run_gate_matrix()
@@ -600,7 +809,7 @@ def main() -> None:
             _print_gate_matrix(matrix)
         return
 
-    report = run(args.provider, args.model, args.verbose)
+    report = run(args.provider, args.model, args.verbose, rerank=args.rerank)
     if args.json:
         print(json.dumps(report, indent=2))
         return

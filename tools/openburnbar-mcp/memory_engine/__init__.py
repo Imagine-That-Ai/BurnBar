@@ -276,3 +276,114 @@ __all__ = [
     "tokenize",
     "verify_audit_chain",
 ]
+
+# Memory Pro provider layer
+from . import providers  # noqa: E402
+from .constants import (  # noqa: E402
+    CLI_PATH_ENV,
+    CLI_PROVIDER_IDS,
+    MODEL_POLICY_JSON_ENV,
+    POLICY_ERROR_CODES,
+    POLICY_TTL_SECONDS,
+    PURPOSE_TIMEOUTS,
+    PURPOSES,
+)
+from .providers import (  # noqa: E402
+    CLIClient,
+    GatewayClient,
+    MemoryModelPolicy,
+    ModelCall,
+    ModelRouter,
+    ModelUnavailable,
+    ProviderPolicy,
+    default_courier,
+    load_policy,
+    reset_policy_cache_for_tests,
+    signed_cli_path,
+)
+
+__all__ += [
+    "CLI_PATH_ENV",
+    "CLI_PROVIDER_IDS",
+    "CLIClient",
+    "GatewayClient",
+    "MODEL_POLICY_JSON_ENV",
+    "MemoryModelPolicy",
+    "ModelCall",
+    "ModelRouter",
+    "ModelUnavailable",
+    "POLICY_ERROR_CODES",
+    "POLICY_TTL_SECONDS",
+    "PURPOSES",
+    "PURPOSE_TIMEOUTS",
+    "ProviderPolicy",
+    "default_courier",
+    "load_policy",
+    "providers",
+    "reset_policy_cache_for_tests",
+    "signed_cli_path",
+]
+
+# Memory Pro extraction v2 + judge
+from . import judge  # noqa: E402
+from .constants import (  # noqa: E402
+    EXTRACT_PROMPT_V2_SYSTEM,
+    EXTRACT_PROMPT_V2_USER,
+    JUDGE_MAX_CANDIDATES,
+    JUDGE_PROMPT_SYSTEM,
+    JUDGE_PROMPT_VERSION,
+)
+from .extract import BoundExtractor, llm_extract  # noqa: E402
+from .judge import JudgeDecision, llm_judge, parse_judge_answer  # noqa: E402
+
+__all__ += [
+    "BoundExtractor",
+    "EXTRACT_PROMPT_V2_SYSTEM",
+    "EXTRACT_PROMPT_V2_USER",
+    "JUDGE_MAX_CANDIDATES",
+    "JUDGE_PROMPT_SYSTEM",
+    "JUDGE_PROMPT_VERSION",
+    "JudgeDecision",
+    "judge",
+    "llm_extract",
+    "llm_judge",
+    "parse_judge_answer",
+]
+
+# Memory Pro retrieval: gateway embeddings + rerank
+from .constants import (  # noqa: E402
+    RERANK_PASSAGE_CHARS,
+    RERANK_PROMPT_SYSTEM,
+    RERANK_PROMPT_VERSION,
+    RERANK_TOP_K_DEFAULT,
+    RERANK_TOP_K_MAX,
+)
+from .embeddings import EMBEDDING_PROVIDER_FACTORIES, EmbeddingContext, GatewayEmbeddingProvider  # noqa: E402
+
+__all__ += [
+    "EMBEDDING_PROVIDER_FACTORIES",
+    "EmbeddingContext",
+    "GatewayEmbeddingProvider",
+    "RERANK_PASSAGE_CHARS",
+    "RERANK_PROMPT_SYSTEM",
+    "RERANK_PROMPT_VERSION",
+    "RERANK_TOP_K_DEFAULT",
+    "RERANK_TOP_K_MAX",
+]
+
+# Memory Pro "ask my memory"
+from .constants import (  # noqa: E402
+    ANSWER_MAX_MEMORIES,
+    ANSWER_PROMPT_SYSTEM,
+    ANSWER_PROMPT_VERSION,
+    ANSWER_REFUSAL,
+    ANSWER_TOKEN_BUDGET_DEFAULT,
+)
+
+__all__ += [
+    "ANSWER_MAX_MEMORIES",
+    "ANSWER_PROMPT_SYSTEM",
+    "ANSWER_PROMPT_VERSION",
+    "ANSWER_REFUSAL",
+    "ANSWER_TOKEN_BUDGET_DEFAULT",
+]

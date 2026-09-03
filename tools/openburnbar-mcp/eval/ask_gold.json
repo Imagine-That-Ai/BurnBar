@@ -1,0 +1,259 @@
+{
+  "schema": "openburnbar.memory_ask_gold.v1",
+  "questions": [
+    {
+      "id": "q01",
+      "question": "How does Alberto like PRs sized?",
+      "expected": [
+        "pr"
+      ]
+    },
+    {
+      "id": "q02",
+      "question": "Is swearing okay in answers?",
+      "expected": [
+        "swear"
+      ]
+    },
+    {
+      "id": "q03",
+      "question": "How long should answers be?",
+      "expected": [
+        "brevity"
+      ]
+    },
+    {
+      "id": "q04",
+      "question": "Why does the daemon reject some RPC peers?",
+      "expected": [
+        "peer"
+      ]
+    },
+    {
+      "id": "q05",
+      "question": "Can stdlib sqlite3 open openburnbar.sqlite?",
+      "expected": [
+        "sqlcipher"
+      ]
+    },
+    {
+      "id": "q06",
+      "question": "Which openburnbar-cli commands read and write memory?",
+      "expected": [
+        "cli"
+      ]
+    },
+    {
+      "id": "q07",
+      "question": "Where is the shared secret scanner corpus?",
+      "expected": [
+        "corpus"
+      ]
+    },
+    {
+      "id": "q08",
+      "question": "How were silently-off foreign keys fixed?",
+      "expected": [
+        "fk"
+      ]
+    },
+    {
+      "id": "q09",
+      "question": "Which Python version does CI use for the MCP tests?",
+      "expected": [
+        "ci"
+      ]
+    },
+    {
+      "id": "q10",
+      "question": "What line length does ruff enforce?",
+      "expected": [
+        "ruff"
+      ]
+    },
+    {
+      "id": "q11",
+      "question": "Who is the independent reviewer and approval gate?",
+      "expected": [
+        "factory"
+      ]
+    },
+    {
+      "id": "q12",
+      "question": "Is the Mac app build a merge ticket?",
+      "expected": [
+        "mac"
+      ]
+    },
+    {
+      "id": "q13",
+      "question": "Where do long low-value jobs like bulk tests go?",
+      "expected": [
+        "cheap"
+      ]
+    },
+    {
+      "id": "q14",
+      "question": "Is mem0 a source of truth?",
+      "expected": [
+        "mem0"
+      ]
+    },
+    {
+      "id": "q15",
+      "question": "What is Pensieve?",
+      "expected": [
+        "pensieve"
+      ]
+    },
+    {
+      "id": "q16",
+      "question": "How does the daemon embed code chunks?",
+      "expected": [
+        "nlembed"
+      ]
+    },
+    {
+      "id": "q17",
+      "question": "What vector backend does the app use?",
+      "expected": [
+        "hnsw"
+      ]
+    },
+    {
+      "id": "q18",
+      "question": "Where do Castle runtime wrappers write status files?",
+      "expected": [
+        "castle"
+      ]
+    },
+    {
+      "id": "q19",
+      "question": "When does a Castle worker count as landed?",
+      "expected": [
+        "landed"
+      ]
+    },
+    {
+      "id": "q20",
+      "question": "What does hermes_proxy.py do?",
+      "expected": [
+        "hermes"
+      ]
+    },
+    {
+      "id": "q21",
+      "question": "What happens to usage rows when the daemon is offline?",
+      "expected": [
+        "ledger"
+      ]
+    },
+    {
+      "id": "q22",
+      "question": "Can re-sending an idempotency key double-count spend?",
+      "expected": [
+        "idem"
+      ]
+    },
+    {
+      "id": "q23",
+      "question": "What does BURNBAR_MCP_TOOLSET=memory do?",
+      "expected": [
+        "toolset"
+      ]
+    },
+    {
+      "id": "q24",
+      "question": "Why is bare git stash forbidden in worktrees?",
+      "expected": [
+        "stash"
+      ]
+    },
+    {
+      "id": "q25",
+      "question": "Where does each Claude session work?",
+      "expected": [
+        "worktree"
+      ]
+    },
+    {
+      "id": "q26",
+      "question": "When should Context7 be used?",
+      "expected": [
+        "context7"
+      ]
+    },
+    {
+      "id": "q27",
+      "question": "Which tools are used for repo exploration?",
+      "expected": [
+        "semble"
+      ]
+    },
+    {
+      "id": "q28",
+      "question": "What goes in a Cross-agent receipt?",
+      "expected": [
+        "receipt"
+      ]
+    },
+    {
+      "id": "q29",
+      "question": "How many dimensions does nomic-embed-text produce?",
+      "expected": [
+        "nomic"
+      ]
+    },
+    {
+      "id": "q30",
+      "question": "What is the default review status of new chat memories?",
+      "expected": [
+        "quarantine"
+      ]
+    },
+    {
+      "id": "q31",
+      "question": "What timezone should report timestamps use?",
+      "expected": [
+        "timezone"
+      ]
+    },
+    {
+      "id": "q32",
+      "question": "How are retrieved snippets protected against prompt injection?",
+      "expected": [
+        "untrusted"
+      ]
+    },
+    {
+      "id": "q33",
+      "question": "What is the office wifi password?",
+      "expected": []
+    },
+    {
+      "id": "q34",
+      "question": "Which restaurant did the team pick for the offsite?",
+      "expected": []
+    },
+    {
+      "id": "q35",
+      "question": "What is the Kubernetes cluster name in production?",
+      "expected": []
+    },
+    {
+      "id": "q36",
+      "question": "Who is on call this weekend?",
+      "expected": []
+    },
+    {
+      "id": "q37",
+      "question": "What is the Android app's minimum SDK version?",
+      "expected": []
+    },
+    {
+      "id": "q38",
+      "question": "How much does the Pro plan cost per month?",
+      "expected": []
+    }
+  ]
+}

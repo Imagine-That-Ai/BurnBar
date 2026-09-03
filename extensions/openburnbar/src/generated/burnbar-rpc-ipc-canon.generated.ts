@@ -1062,6 +1062,16 @@ export const burnBarRpcIpcCanon = [
     "error": "BurnBarRPCError"
   },
   {
+    "id": "daemon.memory.model_policy",
+    "caseName": "memoryModelPolicy",
+    "domain": "memory",
+    "capability": "memory_write",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarMemoryModelPolicyRequest",
+    "result": "BurnBarMemoryModelPolicyResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
     "id": "daemon.memory.recall",
     "caseName": "memoryRecall",
     "domain": "memory",

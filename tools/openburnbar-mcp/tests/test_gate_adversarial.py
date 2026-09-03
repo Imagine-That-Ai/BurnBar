@@ -801,3 +801,32 @@ def test_doctor_threads_the_auxiliary_scan_cursor_through(gate_store: tuple[Path
         assert resumed["auxScan"]["rowsScanned"] == 2, resumed["auxScan"]
     finally:
         engine.close()
+
+
+def test_pro_extraction_never_sends_a_raw_secret(tmp_path, monkeypatch):
+    """Every detected shape, memorized through the frontier extractor, reaches the gateway only redacted."""
+    import json as _json
+
+    from fakes.fake_gateway import FakeGateway, chat_reply
+    from test_memory_providers import POLICY
+
+    with FakeGateway(lambda p, b: chat_reply({"facts": []})) as gw:
+        monkeypatch.setenv(me.MODEL_POLICY_JSON_ENV, _json.dumps(dict(POLICY, gatewayURL=gw.url)))
+        router = me.ModelRouter(me.load_policy(courier=lambda: None, ttl_seconds=0))
+        engine = me.MemoryEngine.open(db_path=tmp_path / "pro.sqlite", models=router)
+        try:
+            project = tmp_path / "project"
+            project.mkdir(exist_ok=True)
+            for shape, token in DETECTED.items():
+                result = engine.memorize(
+                    project_path=str(project),
+                    messages=[{"role": "user", "content": f"The {shape} we use is {token}; keep it in 1Password."}],
+                    extractor="pro",
+                    force=True,
+                )
+                assert result["status"] == "ok", shape
+            bodies = gw.bodies().lower()
+            for shape, token in DETECTED.items():
+                assert token.lower() not in bodies, f"{shape} reached the gateway"
+        finally:
+            engine.close()

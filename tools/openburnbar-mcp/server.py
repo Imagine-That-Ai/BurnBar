@@ -78,6 +78,7 @@ LOCAL_MCP_OPERATOR_CAPABILITIES = {
     "cloud_sync",
     "local_write",
     "memory_llm_extract",
+    "memory_llm_read",
     "memory_write",
     "sensitive_read",
     "spawn_process",
@@ -90,6 +91,9 @@ LOCAL_MCP_CAPABILITY_ENV = {
     # `burnbar_memorize` when this capability is on; the operator-configured
     # `OPENBURNBAR_MEMORY_EXTRACTOR` is user intent and needs no capability.
     "memory_llm_extract": "OPENBURNBAR_LOCAL_MCP_ENABLE_MEMORY_LLM_EXTRACT",
+    # `burnbar_memory_ask` sends recalled memories to a Memory Pro answer model;
+    # reading through a model is a separate grant from reading the store.
+    "memory_llm_read": "OPENBURNBAR_LOCAL_MCP_ENABLE_MEMORY_LLM_READ",
     "memory_write": "OPENBURNBAR_LOCAL_MCP_ENABLE_MEMORY_WRITE",
     "memory_secret_retain": "OPENBURNBAR_LOCAL_MCP_ENABLE_SECRET_RETAIN",
     "sensitive_read": "OPENBURNBAR_LOCAL_MCP_ENABLE_SENSITIVE_READ",
@@ -1676,9 +1680,25 @@ def _memory_db_path() -> Path:
     return _default_db_path().parent / "openburnbar-memory.sqlite"
 
 
+def _pro_extractor_may_spawn(requested_extractor: str) -> bool:
+    """True when the current policy could hand `memory-extract` to claude/codex."""
+    policy = me.load_policy()
+    if policy is None:
+        return False
+    hint = requested_extractor.partition(":")[2].strip().lower()
+    candidates = policy.models_for("memory-extract")
+    if hint:
+        candidates = [item for item in candidates if item.split("/", 1)[0] == hint]
+    return any(item.split("/", 1)[0] in me.CLI_PROVIDER_IDS for item in candidates)
+
+
 def _memory_engine() -> me.MemoryEngine:
     config = me.EngineConfig.from_env(retain_allowed=_capability_enabled("memory_secret_retain"))
-    return me.MemoryEngine.open(_memory_db_path(), provider=_memory_provider_override, config=config)
+    # Memory Pro: what the daemon lets this engine use; None keeps every path local.
+    # Every model purpose goes through this router; subscription CLIs are only
+    # candidates when the session may spawn processes.
+    models = me.ModelRouter(me.load_policy(), allow_cli=_capability_enabled("spawn_process"))
+    return me.MemoryEngine.open(_memory_db_path(), provider=_memory_provider_override, config=config, models=models)
 
 
 def _memory_wrap(body: str, memory_id: str) -> str:
@@ -2458,11 +2478,18 @@ def burnbar_memorize(
     # extractor (env) is the user's own choice and is not re-gated here.
     requested_extractor = (extractor or "").strip().lower()
     configured_extractor = os.environ.get(me.EXTRACTOR_ENV, "").strip().lower()
-    if requested_extractor in ("claude", "ollama") and requested_extractor != configured_extractor:
+    if (
+        requested_extractor in ("claude", "ollama") or requested_extractor.startswith("pro")
+    ) and requested_extractor != configured_extractor:
         if requested_extractor == "claude" and (denied := _capability_denial("burnbar_memorize", "spawn_process")):
             return denied
         if denied := _capability_denial("burnbar_memorize", "memory_llm_extract"):
             return denied
+        # A `pro` policy may route extraction to a subscription CLI; launching one
+        # is `spawn_process`, whatever the extractor is called.
+        if requested_extractor.startswith("pro") and _pro_extractor_may_spawn(requested_extractor):
+            if denied := _capability_denial("burnbar_memorize", "spawn_process"):
+                return denied
     try:
         if isinstance(messages, str):
             stripped = messages.strip()
@@ -2541,6 +2568,8 @@ def burnbar_recall(
     include_expired: bool = False,
     include_secrets: bool = False,
     reinforce: bool = True,
+    rerank: bool | None = None,
+    rerank_top_k: int = 20,
 ) -> str:
     """
     Recall memories for the active project. Hybrid BM25 + vector retrieval
@@ -2552,6 +2581,9 @@ def burnbar_recall(
     with operators eq, ne, in, nin, gt, gte, lt, lte, contains, not_contains.
     Bodies are wrapped as untrusted content. `include_secrets` requires the
     `sensitive_read` capability and the experimental secret-retain mode.
+    `rerank` (Memory Pro) re-orders the top `rerank_top_k` fusion hits by a
+    model's relevance; `None` follows the policy, `False` never calls a model,
+    and `trustSignal.rerank` reports `applied`, `off`, or `skipped:<code>`.
     """
     if limited := _local_mcp_rate_limit("burnbar_recall", "memory"):
         return limited
@@ -2561,6 +2593,8 @@ def burnbar_recall(
         parsed_filters = _memory_filter_arg(filters)
     except _InvalidJSONArgument as exc:
         return _invalid_json_payload(exc)
+    if not _capability_enabled("memory_llm_read"):
+        rerank = False  # reranking sends memory bodies to a model; that is a model read
     with _memory_engine() as engine:
         migration = _migrate_legacy_memories(engine, project_path)
         result = engine.recall(
@@ -2583,6 +2617,8 @@ def burnbar_recall(
             reinforce=reinforce,
             mode=mode,
             wrap=_memory_wrap,
+            rerank=rerank,
+            rerank_top_k=rerank_top_k,
         )
         result["results"] = [
             _memory_wrap_record(item, source_tool="burnbar_recall") for item in result.get("results", [])
@@ -2602,10 +2638,13 @@ def burnbar_recall_pack(
     include_cross_project: bool = False,
     kinds: list[str] | str | None = None,
     min_confidence: float = 0.0,
+    rerank: bool | None = None,
 ) -> str:
     """Build a token-budgeted, prompt-ready block of the most relevant memories (wrapped as retrieved data)."""
     if limited := _local_mcp_rate_limit("burnbar_recall_pack", "memory"):
         return limited
+    if not _capability_enabled("memory_llm_read"):
+        rerank = False
     with _memory_engine() as engine:
         migration = _migrate_legacy_memories(engine, project_path)
         result = engine.recall_pack(
@@ -2618,7 +2657,54 @@ def burnbar_recall_pack(
             kinds=_memory_list_arg(kinds),
             min_confidence=min_confidence,
             wrap=_memory_pack_wrap,
+            rerank=rerank,
         )
+        result["legacyMigration"] = migration
+    return json.dumps(result, indent=2, default=str)
+
+
+@mcp.tool()
+def burnbar_memory_ask(
+    question: str,
+    project_path: str | None = None,
+    scope: str = "all",
+    limit: int = 12,
+    min_confidence: float = 0.0,
+    provider: str | None = None,
+    token_budget: int = 2400,
+) -> str:
+    """
+    Answer a question from this project's memories only (Memory Pro). The
+    answer model sees approved memories as numbered untrusted data; every
+    claim cites a memory id, unknown citations are dropped (`groundedness`
+    becomes `partial`), and an answer with no valid citation is replaced by an
+    explicit refusal. Needs the `memory_llm_read` capability and a policy
+    that serves `memory-answer`; `provider` picks a consented provider.
+    """
+    if limited := _local_mcp_rate_limit("burnbar_memory_ask", "memory"):
+        return limited
+    if denied := _capability_denial("burnbar_memory_ask", "memory_llm_read"):
+        return denied
+    with _memory_engine() as engine:
+        migration = _migrate_legacy_memories(engine, project_path)
+        result = engine.ask(
+            question,
+            project_path=project_path,
+            scope=scope,
+            limit=limit,
+            min_confidence=min_confidence,
+            provider=provider,
+            token_budget=token_budget,
+        )
+        if result.get("status") == "ok":
+            result["answer"] = _memory_wrap_read_string(
+                str(result.get("answer") or ""), source_tool="burnbar_memory_ask", record_id="answer"
+            )
+            for citation in result.get("citations", []):
+                citation["snippet"] = _memory_wrap_read_string(
+                    str(citation.get("snippet") or ""), source_tool="burnbar_memory_ask", record_id=citation["memoryID"]
+                )
+            result.setdefault("trustSignal", {})["untrustedContentWrapped"] = True
         result["legacyMigration"] = migration
     return json.dumps(result, indent=2, default=str)
 
@@ -2648,7 +2734,7 @@ def burnbar_memory_get(
             result["history"] = _memory_wrap_history(
                 result["history"], source_tool="burnbar_memory_get", memory_id=memory_id
             )
-        result["trustSignal"] = {"untrustedContentWrapped": True, "auxiliaryFieldsWrapped": True}
+        result.setdefault("trustSignal", {}).update({"untrustedContentWrapped": True, "auxiliaryFieldsWrapped": True})
     return json.dumps(result, indent=2, default=str)
 
 
@@ -2696,7 +2782,7 @@ def burnbar_memory_list(
         result["results"] = [
             _memory_wrap_record(item, source_tool="burnbar_memory_list") for item in result.get("results", [])
         ]
-        result["trustSignal"] = {"untrustedContentWrapped": True, "auxiliaryFieldsWrapped": True}
+        result.setdefault("trustSignal", {}).update({"untrustedContentWrapped": True, "auxiliaryFieldsWrapped": True})
         result["legacyMigration"] = migration
     return json.dumps(result, indent=2, default=str)
 
@@ -5216,6 +5302,7 @@ MEMORY_TOOLSET: frozenset[str] = frozenset(
         "burnbar_memorize",
         "burnbar_recall",
         "burnbar_recall_pack",
+        "burnbar_memory_ask",
         "burnbar_forget",
         "burnbar_forget_all",
         "burnbar_memory_get",

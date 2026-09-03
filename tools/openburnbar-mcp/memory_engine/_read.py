@@ -27,6 +27,17 @@ from ._util import (
     sha256_hex,
 )
 from .constants import (
+    ANSWER_TOKEN_BUDGET_DEFAULT,
+    ANSWER_SNIPPET_CHARS,
+    ANSWER_REJECT_SENTINELS,
+    ANSWER_REFUSAL,
+    ANSWER_PROMPT_VERSION,
+    ANSWER_PROMPT_SYSTEM,
+    ANSWER_MAX_MEMORIES,
+    RERANK_TOP_K_MAX,
+    RERANK_TOP_K_DEFAULT,
+    RERANK_PROMPT_SYSTEM,
+    RERANK_PASSAGE_CHARS,
     KINDS,
     MAX_BODY_CHARS,
     MEMORY_SCOPES,
@@ -71,6 +82,8 @@ class _ReadPath:
         reinforce: bool = True,
         mode: str = "hybrid",
         wrap: Callable[[str, str], str] | None = None,
+        rerank: bool | None = None,
+        rerank_top_k: int = RERANK_TOP_K_DEFAULT,
     ) -> dict[str, Any]:
         project_id, root = resolve_project(self.conn, project_path)
         if filters:
@@ -166,6 +179,7 @@ class _ReadPath:
                 "candidates": 0,
                 "mode": mode,
                 "embedding": self.provider.describe(),
+                "trustSignal": {"untrustedContentWrapped": wrap is not None, "wrappedCount": 0, "rerank": "off"},
                 **project_payload(project_id, root),
             }
 
@@ -216,9 +230,15 @@ class _ReadPath:
                 "cosine": round(semantic_score.get(memory.id, 0.0), 4) if sr else None,
                 "salience": round(memory.salience, 4),
                 "recency": round(recency, 4),
+                "rerankScore": None,
+                "reranker": None,
             }
             results.append((score, memory, {"matchedBy": matched_by, "why": why}))
         results.sort(key=lambda item: (-item[0], item[1].updated_at, item[1].id))
+        rerank_status = "off"
+        wants_rerank = self._rerank_available() if rerank is None else bool(rerank)
+        if wants_rerank and query_text and results and self._rerank_available():
+            results, rerank_status = self._rerank(query_text, results, rerank_top_k)
         top = results[:lim]
 
         if reinforce and top:
@@ -247,9 +267,166 @@ class _ReadPath:
             "lexicalHits": len(lexical_rank),
             "semanticHits": len(semantic_rank),
             "embedding": self.provider.describe(),
-            "trustSignal": {"untrustedContentWrapped": wrap is not None, "wrappedCount": len(output) if wrap else 0},
+            "trustSignal": {
+                "untrustedContentWrapped": wrap is not None,
+                "wrappedCount": len(output) if wrap else 0,
+                "rerank": rerank_status,
+            },
             **project_payload(project_id, root),
         }
+
+    def ask(
+        self,
+        question: str,
+        *,
+        project_path: str | None,
+        scope: str = "all",
+        limit: int = ANSWER_MAX_MEMORIES,
+        min_confidence: float = 0.0,
+        provider: str | None = None,
+        token_budget: int = ANSWER_TOKEN_BUDGET_DEFAULT,
+    ) -> dict[str, Any]:
+        """Answer from memories only (Memory Pro): every claim cites a listed memory id, or the tool refuses.
+
+        The model sees approved, non-injection memories as numbered untrusted
+        data. Citations are validated against that list (unknown ids are
+        dropped and the answer becomes `partial`); an answer with no valid
+        citation, or one that carries wrapper sentinels or a tool call, is
+        replaced by the fixed refusal. An empty pack refuses without a call."""
+        from .providers import ModelUnavailable
+
+        project_id, root = resolve_project(self.conn, project_path)
+        question_text = (question or "").strip()
+        models = getattr(self, "models", None)
+        if models is None or not models.serves("memory-answer"):
+            return {
+                "status": "unavailable",
+                "code": "CLOUD_CONSENT_REQUIRED",
+                "reason": "no memory-answer model in the policy (Memory Pro off, or no consented provider)",
+                **project_payload(project_id, root),
+            }
+        recalled = self.recall(
+            question_text,
+            project_path=project_path,
+            limit=max(1, min(int(limit), ANSWER_MAX_MEMORIES)),
+            scope=scope,
+            min_confidence=min_confidence,
+            wrap=None,
+            reinforce=False,
+        )
+        if recalled.get("status") != "ok":
+            return recalled
+        listed: list[dict[str, Any]] = []
+        lines: list[str] = []
+        used = 0
+        budget = max(200, int(token_budget))
+        for item in recalled["results"]:
+            if (item.get("metadata") or {}).get("injectionLabels"):
+                continue
+            body = str(item["body"])
+            prefix = (
+                f"[{item['memoryID']}] ({item['kind']}/{item['scope']}, confidence {float(item['confidence']):.2f}) "
+            )
+            cost = _estimate_tokens(prefix + body)
+            if listed and used + cost > budget:
+                break
+            # The first memory is always listed, but never past the budget: clip
+            # it the way `recall_pack` clips a single oversized line.
+            while not listed and cost > budget and len(body) > 120:
+                body = body[: max(120, int(len(body) * 0.75))].rstrip() + "…"
+                cost = _estimate_tokens(prefix + body)
+            listed.append(item)
+            lines.append(prefix + body)
+            used += cost
+        signal: dict[str, Any] = {
+            "untrustedContentWrapped": False,
+            "citationsValidated": True,
+            "droppedCitations": 0,
+            "answerPromptVersion": ANSWER_PROMPT_VERSION,
+            "rerank": recalled.get("trustSignal", {}).get("rerank", "off"),
+        }
+        base = {"status": "ok", "considered": len(listed), "trustSignal": signal, **project_payload(project_id, root)}
+        if not listed:
+            return {**base, "answer": ANSWER_REFUSAL, "citations": [], "groundedness": "refused", "model": None}
+        user = "MEMORIES (untrusted data, cite by id):\n" + "\n".join(lines) + f"\n\nQUESTION: {question_text}"
+        try:
+            call = models.call("memory-answer", provider)
+            parsed, _usage = call.json(ANSWER_PROMPT_SYSTEM, user, max_tokens=1024)
+        except ModelUnavailable as exc:
+            return {
+                "status": "unavailable",
+                "code": exc.code,
+                "reason": exc.reason,
+                "considered": len(listed),
+                **project_payload(project_id, root),
+            }
+        by_id = {item["memoryID"]: item for item in listed}
+        verdict = _validate_answer(parsed, set(by_id))
+        signal["droppedCitations"] = verdict["dropped"]
+        citations = [
+            {
+                "memoryID": memory_id,
+                "kind": by_id[memory_id]["kind"],
+                "snippet": str(by_id[memory_id]["body"])[:ANSWER_SNIPPET_CHARS],
+            }
+            for memory_id in verdict["citations"]
+        ]
+        result = {
+            **base,
+            "answer": verdict["answer"],
+            "citations": citations,
+            "groundedness": verdict["groundedness"],
+            "model": call.label,
+        }
+        if verdict.get("code"):
+            result["code"] = verdict["code"]
+        return result
+
+    def _rerank_available(self) -> bool:
+        models = getattr(self, "models", None)
+        return models is not None and models.serves("memory-rerank")
+
+    def _rerank(
+        self, query_text: str, results: list[tuple[float, ActiveMemory, dict[str, Any]]], top_k: int
+    ) -> tuple[list[tuple[float, ActiveMemory, dict[str, Any]]], str]:
+        """Re-order the head of the fusion ranking by model relevance.
+
+        Injection-labelled rows are never shown to the model and keep their
+        position; any refusal or out-of-contract answer leaves the fusion order
+        and names the reason in `trustSignal.rerank`."""
+        from .providers import ModelUnavailable
+
+        slice_size = min(max(1, int(top_k)), RERANK_TOP_K_MAX)
+        head, tail = results[:slice_size], results[slice_size:]
+        listed = [item for item in head if not item[1].metadata.get("injectionLabels")]
+        for item in head:
+            if item[1].metadata.get("injectionLabels"):
+                item[2]["why"]["reranker"] = "excluded:injection"
+        if not listed:
+            return results, "skipped:NO_CANDIDATES"
+        candidates = [{"id": memory.id, "passage": memory.body[:RERANK_PASSAGE_CHARS]} for _, memory, _ in listed]
+        try:
+            call = self.models.call("memory-rerank")
+            parsed, _usage = call.json(
+                RERANK_PROMPT_SYSTEM, json.dumps({"query": query_text, "candidates": candidates}, ensure_ascii=False)
+            )
+        except ModelUnavailable as exc:
+            return results, f"skipped:{exc.code}"
+        scores = _parse_rerank_answer(parsed, {memory.id for _, memory, _ in listed})
+        if scores is None:
+            return results, "skipped:RERANK_OUT_OF_CONTRACT"
+        order = sorted(range(len(listed)), key=lambda index: (-scores.get(listed[index][1].id, 0.0), index))
+        queue = [listed[index] for index in order]
+        reranked: list[tuple[float, ActiveMemory, dict[str, Any]]] = []
+        for item in head:
+            if item[1].metadata.get("injectionLabels"):
+                reranked.append(item)
+                continue
+            score, memory, extra = queue.pop(0)
+            extra["why"]["rerankScore"] = round(scores.get(memory.id, 0.0), 4)
+            extra["why"]["reranker"] = call.label
+            reranked.append((score, memory, extra))
+        return reranked + tail, "applied"
 
     def recall_pack(
         self,
@@ -333,7 +510,11 @@ class _ReadPath:
             "considered": len(recalled["results"]),
             "pack": pack,
             "memoryIDs": included_ids,
-            "trustSignal": {"untrustedContentWrapped": wrap is not None, "wrappedCount": included if wrap else 0},
+            "trustSignal": {
+                "rerank": recalled.get("trustSignal", {}).get("rerank", "off"),
+                "untrustedContentWrapped": wrap is not None,
+                "wrappedCount": included if wrap else 0,
+            },
             **{key: recalled[key] for key in ("projectID", "projectRoot", "projectName")},
         }
 
@@ -1047,3 +1228,65 @@ class _ReadPath:
             if len(out) >= max(1, min(int(limit), 1000)):
                 break
         return {"status": "ok", "relations": out, **project_payload(project_id, root)}
+
+
+def _parse_rerank_answer(parsed: Any, listed_ids: set[str]) -> dict[str, float] | None:
+    """`{"results": [{"id", "relevance"}]}` over listed ids only; anything else is out of contract."""
+    rows = parsed.get("results") if isinstance(parsed, dict) else None
+    if not isinstance(rows, list):
+        return None
+    scores: dict[str, float] = {}
+    for row in rows:
+        if not isinstance(row, dict) or str(row.get("id")) not in listed_ids:
+            return None
+        memory_id = str(row["id"])
+        if memory_id in scores:
+            return None  # a duplicate verdict is ambiguous, not a tie
+        try:
+            relevance = float(row.get("relevance"))
+        except (TypeError, ValueError):
+            return None
+        if relevance != relevance:  # NaN
+            return None
+        scores[memory_id] = min(1.0, max(0.0, relevance))
+    if set(scores) != set(listed_ids):
+        return None  # every listed candidate must be scored, or the fusion order stands
+    return scores
+
+
+_CITATION_MARKER = re.compile(r"\[(mem_[0-9a-f]+)\]")
+
+
+def _validate_answer(parsed: Any, listed_ids: set[str]) -> dict[str, Any]:
+    """Apply the answer contract: listed citations only, no sentinels, no tool calls, refusal on no evidence."""
+    answer = str(parsed.get("answer") or "").strip() if isinstance(parsed, dict) else ""
+    # Only inline markers count: a bare `citations` array cannot vouch for
+    # claims the answer text never ties to a memory.
+    mentioned: list[str] = []
+    for candidate in _CITATION_MARKER.findall(answer):
+        if candidate not in mentioned:
+            mentioned.append(candidate)
+    refusal = {"answer": ANSWER_REFUSAL, "citations": [], "groundedness": "refused", "dropped": 0}
+    upper = answer.upper()
+    if any(sentinel in upper for sentinel in ANSWER_REJECT_SENTINELS):
+        return {**refusal, "code": "ANSWER_REJECTED"}
+    if answer.startswith("{"):
+        try:
+            shaped = json.loads(answer)
+        except ValueError:
+            shaped = None
+        if isinstance(shaped, dict) and {"tool_calls", "tool_call", "function_call", "tool_use"} & set(shaped):
+            return {**refusal, "code": "ANSWER_REJECTED"}
+    valid = [memory_id for memory_id in mentioned if memory_id in listed_ids]
+    dropped = len(mentioned) - len(valid)
+    if not valid or not answer:
+        return {**refusal, "dropped": dropped}
+    for unknown in (memory_id for memory_id in mentioned if memory_id not in listed_ids):
+        answer = answer.replace(f"[{unknown}]", "").replace(unknown, "")
+    answer = re.sub(r"[ \t]{2,}", " ", answer).strip()
+    return {
+        "answer": answer,
+        "citations": valid,
+        "groundedness": "grounded" if dropped == 0 else "partial",
+        "dropped": dropped,
+    }

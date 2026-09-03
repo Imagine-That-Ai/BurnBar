@@ -1529,6 +1529,47 @@ final class BurnBarConfigStoreTests: XCTestCase {
         XCTAssertEqual(keys, ["anthropic", "anthropic.slot.max"])
     }
 
+    func test_memoryEgressPolicyRoundTripsAndNormalizes() async throws {
+        let harness = try makeHarness(name: "memory-egress")
+        var snapshot = try await harness.configStore.snapshot()
+        XCTAssertEqual(snapshot.memoryEgress, BurnBarMemoryEgressPolicy(), "a store without the section decodes to the default policy")
+        snapshot.memoryEgress = BurnBarMemoryEgressPolicy(
+            enabled: true,
+            consentedProviderIDs: ["openrouter", "openrouter", "not-a-provider", "anthropic"],
+            consentedCLIProviderIDs: ["codex_cli", "bogus_cli"],
+            allowedModelIDsByPurpose: ["memory-extract": ["a", "a"], "not-a-purpose": ["b"]],
+            requireNoRetention: false,
+            dailyCapUSD: 5_000,
+            updatedAt: Date(timeIntervalSince1970: 1_800_000_000)
+        )
+        _ = try await harness.configStore.replaceSnapshot(snapshot)
+        let reloaded = try await harness.configStore.snapshot().memoryEgress
+        XCTAssertTrue(reloaded.enabled)
+        XCTAssertEqual(reloaded.consentedProviderIDs, ["anthropic", "openrouter"])
+        XCTAssertEqual(reloaded.consentedCLIProviderIDs, ["codex_cli"])
+        XCTAssertEqual(reloaded.allowedModelIDsByPurpose, ["memory-extract": ["a"]])
+        XCTAssertFalse(reloaded.requireNoRetention)
+        XCTAssertEqual(reloaded.dailyCapUSD, 1_000)
+        XCTAssertEqual(reloaded.updatedAt, Date(timeIntervalSince1970: 1_800_000_000))
+    }
+
+    func test_legacyConfigFileWithoutMemoryEgressStillDecodes() async throws {
+        let harness = try makeHarness(name: "memory-egress-legacy")
+        let legacy = try await harness.configStore.snapshot()
+        var json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(legacy)) as? [String: Any] ?? [:]
+        json.removeValue(forKey: "memoryEgress")
+        try JSONSerialization.data(withJSONObject: json).write(to: harness.rootURL.appendingPathComponent("provider-config.json"))
+        let fresh = BurnBarConfigStore(
+            fileURL: harness.rootURL.appendingPathComponent("provider-config.json", isDirectory: false),
+            catalog: BurnBarCatalogLoader.bundledCatalog,
+            secretStore: BurnBarInMemorySecretStore(),
+            logger: BurnBarDaemonLogger(category: "config-store-tests")
+        )
+        let decoded = try await fresh.snapshot()
+        XCTAssertFalse(decoded.memoryEgress.enabled)
+        XCTAssertEqual(decoded.memoryEgress.dailyCapUSD, 2.0)
+    }
+
     private func makeHarness(name: String) throws -> BurnBarConfigStoreHarness {
         let rootURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("openburnbar-config-store-\(name)-\(UUID().uuidString)", isDirectory: true)

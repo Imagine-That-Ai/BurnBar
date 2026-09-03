@@ -7,6 +7,7 @@ import json
 import os
 import re
 import subprocess
+import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Sequence
@@ -20,6 +21,9 @@ from .constants import (
     DEFAULT_OLLAMA_BASE_URL,
     DISCOURSE_MARKER_RE,
     EXTRACT_PROMPT,
+    EXTRACT_PROMPT_V2_SYSTEM,
+    EXTRACT_PROMPT_V2_USER,
+    EXTRACT_PROMPT_VERSION,
     EXTRACTOR_ENV,
     HANDLE_RE,
     IDENTIFIER_RE,
@@ -184,6 +188,9 @@ class Fact:
             review_status=str(review_status).strip().lower() if review_status else None,
             sensitivity=sensitivity,
         )
+
+
+_EVIDENCE_MARKER = re.compile(r"^\[m\d+\] ", re.M)
 
 
 def render_transcript(messages: Sequence[dict[str, Any]], max_chars: int = 24_000) -> str:
@@ -373,10 +380,77 @@ def gate_transcript(transcript: str, *, pii_policy: str = "keep") -> tuple[str |
     }
 
 
-def resolve_extractor(name: str | None, override: ExtractorFn | None = None) -> tuple[str, ExtractorFn | None]:
+class BoundExtractor:
+    """A frontier-model extractor bound lazily to the router.
+
+    Resolution happens on the first call so a refusal (no policy, no Pro, no
+    consent, no budget) surfaces as a typed `ModelUnavailable` inside
+    `memorize`'s try/except and degrades to the heuristic path with a reason.
+    """
+
+    name = "pro"
+
+    def __init__(self, models: Any, provider_hint: str | None = None) -> None:
+        self.models = models
+        self.provider_hint = provider_hint
+        self.provenance: dict[str, Any] | None = None
+
+    def __call__(self, transcript: str, max_facts: int) -> list[Fact]:
+        from .providers import ModelUnavailable
+
+        if self.models is None:
+            raise ModelUnavailable(
+                "CLOUD_CONSENT_REQUIRED", "no memory model policy (cloud models are off or the daemon is unavailable)"
+            )
+        call = self.models.call("memory-extract", self.provider_hint)
+        facts, self.provenance = llm_extract(call, transcript, max_facts)
+        return facts
+
+
+def llm_extract(call: Any, transcript: str, max_facts: int) -> tuple[list[Fact], dict[str, Any]]:
+    """Extract with a frontier model through a `ModelCall`; returns facts and provenance."""
+    started = time.monotonic()
+    parsed, usage = call.json(
+        EXTRACT_PROMPT_V2_SYSTEM.replace("{max_facts}", str(max(1, min(int(max_facts), 64)))),
+        EXTRACT_PROMPT_V2_USER.format(transcript=transcript),
+        max_tokens=2_048,
+    )
+    raw_facts = parsed.get("facts") if isinstance(parsed, dict) else None
+    evidence_lines = len(_EVIDENCE_MARKER.findall(transcript))
+    facts: list[Fact] = []
+    dropped_ungrounded = 0
+    if isinstance(raw_facts, list):
+        for item in raw_facts:
+            # The v2 contract requires every fact to cite the [m<n>] line it came
+            # from; a hallucinated or unplaceable fact never reaches the store.
+            index = item.get("evidence_message_index") if isinstance(item, dict) else None
+            if isinstance(index, bool) or not isinstance(index, int) or not 1 <= index <= evidence_lines:
+                dropped_ungrounded += 1
+                continue
+            fact = Fact.from_mapping(item)
+            if fact is not None:
+                facts.append(fact)
+    provenance = {
+        "provider": call.provider,
+        "model": call.model,
+        "label": call.label,
+        "promptVersion": EXTRACT_PROMPT_VERSION,
+        "latencyMs": int((time.monotonic() - started) * 1_000),
+        "usage": dict(usage or {}),
+        "droppedUngrounded": dropped_ungrounded,
+    }
+    return facts[: max(1, min(int(max_facts), 64))], provenance
+
+
+def resolve_extractor(
+    name: str | None, override: ExtractorFn | None = None, *, models: Any = None
+) -> tuple[str, ExtractorFn | None]:
     if override is not None:
         return (name or "custom"), override
     configured = (name or os.environ.get(EXTRACTOR_ENV, "heuristic")).strip().lower() or "heuristic"
+    if configured == "pro" or configured.startswith("pro:"):
+        hint = configured.split(":", 1)[1].strip() or None if ":" in configured else None
+        return "pro", BoundExtractor(models, hint)
     if configured in ("none", "raw"):
         return "none", None
     if configured == "claude":

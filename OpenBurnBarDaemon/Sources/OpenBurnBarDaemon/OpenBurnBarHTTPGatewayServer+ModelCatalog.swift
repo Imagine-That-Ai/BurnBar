@@ -523,6 +523,12 @@ extension BurnBarHTTPGatewayServer {
         }
 
         if parts.count >= 3 {
+            // Vendor-namespaced ids (`openrouter/anthropic/claude-opus-5`): the
+            // remainder is the provider's own model alias, not account/model.
+            let remainder = parts.dropFirst().joined(separator: "/")
+            if let catalogModel = configStore.catalogSupport.exactCatalogModel(id: remainder, providerID: parts[0]) {
+                return GatewayRequestedModel(originalID: trimmed, modelID: catalogModel.id, providerID: parts[0], accountID: nil)
+            }
             let modelID = parts.dropFirst(2).joined(separator: "/")
             if !modelID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 return GatewayRequestedModel(

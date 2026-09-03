@@ -437,6 +437,8 @@ public actor BurnBarHTTPGatewayServer {
             response = .buffered(await linuxModelsListResponse(catalog: true))
         case ("POST", "/v1/chat/completions"):
             response = await handleModelEndpoint(.chatCompletions, request: request, fileDescriptor: fileDescriptor, corsHeaders: cors)
+        case ("POST", "/v1/embeddings"):
+            response = .buffered(jsonResponse(status: 501, message: "embeddings are not available on the Linux gateway yet"))
         case ("POST", "/v1/responses"):
             response = await handleModelEndpoint(.responses, request: request, fileDescriptor: fileDescriptor, corsHeaders: cors)
         case ("POST", "/v1/messages"):

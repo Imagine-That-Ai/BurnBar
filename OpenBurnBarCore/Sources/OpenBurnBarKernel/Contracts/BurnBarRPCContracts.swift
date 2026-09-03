@@ -174,6 +174,9 @@ public enum BurnBarRPCMethod: String, Codable, CaseIterable, Hashable, Sendable 
     case memoryForget = "daemon.memory.forget"
     case memoryAuditTrail = "daemon.memory.audit_trail"
     case memoryAnalytics = "daemon.memory.analytics"
+    /// Memory Pro: what the memory engine may use (Pro state, consented providers,
+    /// models per purpose, CLI consent) plus a scoped loopback-gateway token.
+    case memoryModelPolicy = "daemon.memory.model_policy"
     case codeIndexProject = "daemon.code.index_project"
     case codeSearch = "daemon.code.search"
     case codeContextPack = "daemon.code.context_pack"

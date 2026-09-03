@@ -53,6 +53,8 @@ public actor BurnBarHTTPGatewayServer {
     let catalogSource: GatewayModelCatalogSource
 
     let logger: any BurnBarDaemonLogging
+    /// Memory Pro egress gate; nil means memory-purpose requests are refused.
+    let memoryEgress: BurnBarMemoryEgressEnforcer?
 
     let rateLimiter: BurnBarRateLimiter?
 
@@ -89,6 +91,7 @@ public actor BurnBarHTTPGatewayServer {
         modelCatalogDroidProcessRunner: any FactoryDroidProcessRunning = FactoryDroidSystemProcessRunner(),
         modelCatalogCacheTTL: TimeInterval = 0,
         logger: any BurnBarDaemonLogging = BurnBarDaemonLogger(category: "http-gateway"),
+        memoryEgress: BurnBarMemoryEgressEnforcer? = nil,
         rateLimiter: BurnBarRateLimiter? = nil,
         listenerQueue: DispatchQueue? = nil
     ) {
@@ -111,6 +114,7 @@ public actor BurnBarHTTPGatewayServer {
             logger: logger
         )
         self.logger = logger
+        self.memoryEgress = memoryEgress
         self.listenerQueue = listenerQueue ?? DispatchQueue(
             label: Self.listenerQueueLabel,
             qos: .userInitiated

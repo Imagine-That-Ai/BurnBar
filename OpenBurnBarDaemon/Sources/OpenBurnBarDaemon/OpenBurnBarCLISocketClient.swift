@@ -19,6 +19,8 @@ public protocol BurnBarCLIClient: Sendable {
     func memoryRemember(_ request: BurnBarProjectMemoryRememberRequest) throws -> BurnBarProjectMemoryRememberResponse
     func memoryForget(_ request: BurnBarProjectMemoryForgetRequest) throws -> BurnBarProjectMemoryForgetResponse
     func memoryRecall(query: String, projectPath: String?, limit: Int) throws -> BurnBarProjectMemoryRecallResponse
+    /// Memory Pro policy for the Python memory engine (no parameters).
+    func memoryModelPolicy() throws -> BurnBarMemoryModelPolicyResponse
     /// Read-only SQL over the daemon's keyed store, for the signed-CLI courier
     /// the local MCP server routes through on production installs.
     func searchSQL(_ request: BurnBarSearchSQLRequest) throws -> BurnBarSearchSQLResult
@@ -250,6 +252,13 @@ public struct BurnBarCLISocketClient: BurnBarCLIClient, Sendable {
                 params: request
             )
         )
+    }
+
+    public func memoryModelPolicy() throws -> BurnBarMemoryModelPolicyResponse {
+        let envelope: BurnBarRPCResponseEnvelope<BurnBarMemoryModelPolicyResponse> = try send(
+            BurnBarRPCRequestEnvelope(method: .memoryModelPolicy, authToken: authToken)
+        )
+        return try unwrap(envelope)
     }
 
     public func memoryForget(_ request: BurnBarProjectMemoryForgetRequest) throws -> BurnBarProjectMemoryForgetResponse {

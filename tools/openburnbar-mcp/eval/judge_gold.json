@@ -1,0 +1,901 @@
+{
+  "schema": "openburnbar.memory_judge_gold.v1",
+  "cases": [
+    {
+      "id": "deploy-update",
+      "candidates": [
+        {
+          "text": "We deploy the API from the main branch every Friday.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "We deploy the API from the release branch every Friday now.",
+      "expected": {
+        "event": "UPDATE",
+        "target": 0
+      }
+    },
+    {
+      "id": "deploy-delete",
+      "candidates": [
+        {
+          "text": "We deploy the API from the main branch every Friday.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "We no longer deploy the API on Fridays.",
+      "expected": {
+        "event": "DELETE",
+        "target": 0
+      }
+    },
+    {
+      "id": "deploy-none",
+      "candidates": [
+        {
+          "text": "We deploy the API from the main branch every Friday.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "The API ships from main each Friday.",
+      "expected": {
+        "event": "NONE",
+        "target": 0
+      }
+    },
+    {
+      "id": "deploy-add",
+      "candidates": [
+        {
+          "text": "We deploy the API from the main branch every Friday.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "The mobile app uses fastlane for TestFlight uploads.",
+      "expected": {
+        "event": "ADD",
+        "target": null
+      }
+    },
+    {
+      "id": "formatter-update",
+      "candidates": [
+        {
+          "text": "This repo formats Python with black.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "This repo formats Python with ruff instead of black.",
+      "expected": {
+        "event": "UPDATE",
+        "target": 0
+      }
+    },
+    {
+      "id": "formatter-delete",
+      "candidates": [
+        {
+          "text": "This repo formats Python with black.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "This repo no longer formats Python automatically.",
+      "expected": {
+        "event": "DELETE",
+        "target": 0
+      }
+    },
+    {
+      "id": "formatter-none",
+      "candidates": [
+        {
+          "text": "This repo formats Python with black.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "Python files in this repo are formatted by black.",
+      "expected": {
+        "event": "NONE",
+        "target": 0
+      }
+    },
+    {
+      "id": "formatter-add",
+      "candidates": [
+        {
+          "text": "This repo formats Python with black.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "The Swift code is formatted by swiftformat on save.",
+      "expected": {
+        "event": "ADD",
+        "target": null
+      }
+    },
+    {
+      "id": "database-update",
+      "candidates": [
+        {
+          "text": "The local store is plain SQLite.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "The local store switched from plain SQLite to SQLCipher.",
+      "expected": {
+        "event": "UPDATE",
+        "target": 0
+      }
+    },
+    {
+      "id": "database-delete",
+      "candidates": [
+        {
+          "text": "The local store is plain SQLite.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "The local store is no longer SQLite based.",
+      "expected": {
+        "event": "DELETE",
+        "target": 0
+      }
+    },
+    {
+      "id": "database-none",
+      "candidates": [
+        {
+          "text": "The local store is plain SQLite.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "Plain SQLite backs the local store.",
+      "expected": {
+        "event": "NONE",
+        "target": 0
+      }
+    },
+    {
+      "id": "database-add",
+      "candidates": [
+        {
+          "text": "The local store is plain SQLite.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "The cache layer uses Redis with a 5 minute TTL.",
+      "expected": {
+        "event": "ADD",
+        "target": null
+      }
+    },
+    {
+      "id": "owner-update",
+      "candidates": [
+        {
+          "text": "Priya owns the billing service.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "Marcus owns the billing service now, not Priya.",
+      "expected": {
+        "event": "UPDATE",
+        "target": 0
+      }
+    },
+    {
+      "id": "owner-delete",
+      "candidates": [
+        {
+          "text": "Priya owns the billing service.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "Nobody owns the billing service anymore.",
+      "expected": {
+        "event": "DELETE",
+        "target": 0
+      }
+    },
+    {
+      "id": "owner-none",
+      "candidates": [
+        {
+          "text": "Priya owns the billing service.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "Billing is Priya's service.",
+      "expected": {
+        "event": "NONE",
+        "target": 0
+      }
+    },
+    {
+      "id": "owner-add",
+      "candidates": [
+        {
+          "text": "Priya owns the billing service.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "Dana reviews all infrastructure pull requests.",
+      "expected": {
+        "event": "ADD",
+        "target": null
+      }
+    },
+    {
+      "id": "node-update",
+      "candidates": [
+        {
+          "text": "The project pins Node 20.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "The project moved from Node 20 to Node 22.",
+      "expected": {
+        "event": "UPDATE",
+        "target": 0
+      }
+    },
+    {
+      "id": "node-delete",
+      "candidates": [
+        {
+          "text": "The project pins Node 20.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "The project no longer pins a Node version.",
+      "expected": {
+        "event": "DELETE",
+        "target": 0
+      }
+    },
+    {
+      "id": "node-none",
+      "candidates": [
+        {
+          "text": "The project pins Node 20.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "Node 20 is the pinned runtime for the project.",
+      "expected": {
+        "event": "NONE",
+        "target": 0
+      }
+    },
+    {
+      "id": "node-add",
+      "candidates": [
+        {
+          "text": "The project pins Node 20.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "The docs site builds with Astro.",
+      "expected": {
+        "event": "ADD",
+        "target": null
+      }
+    },
+    {
+      "id": "branch-naming-update",
+      "candidates": [
+        {
+          "text": "Feature branches are named feat/<ticket>.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "Feature branches are named feature/<ticket> instead of feat/<ticket>.",
+      "expected": {
+        "event": "UPDATE",
+        "target": 0
+      }
+    },
+    {
+      "id": "branch-naming-delete",
+      "candidates": [
+        {
+          "text": "Feature branches are named feat/<ticket>.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "We stopped requiring a branch naming convention.",
+      "expected": {
+        "event": "DELETE",
+        "target": 0
+      }
+    },
+    {
+      "id": "branch-naming-none",
+      "candidates": [
+        {
+          "text": "Feature branches are named feat/<ticket>.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "Branch names for features follow feat/<ticket>.",
+      "expected": {
+        "event": "NONE",
+        "target": 0
+      }
+    },
+    {
+      "id": "branch-naming-add",
+      "candidates": [
+        {
+          "text": "Feature branches are named feat/<ticket>.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "Release tags follow semantic versioning.",
+      "expected": {
+        "event": "ADD",
+        "target": null
+      }
+    },
+    {
+      "id": "ci-update",
+      "candidates": [
+        {
+          "text": "CI runs on GitHub Actions.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "CI moved from GitHub Actions to Buildkite.",
+      "expected": {
+        "event": "UPDATE",
+        "target": 0
+      }
+    },
+    {
+      "id": "ci-delete",
+      "candidates": [
+        {
+          "text": "CI runs on GitHub Actions.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "We no longer run CI on pull requests.",
+      "expected": {
+        "event": "DELETE",
+        "target": 0
+      }
+    },
+    {
+      "id": "ci-none",
+      "candidates": [
+        {
+          "text": "CI runs on GitHub Actions.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "GitHub Actions runs our CI.",
+      "expected": {
+        "event": "NONE",
+        "target": 0
+      }
+    },
+    {
+      "id": "ci-add",
+      "candidates": [
+        {
+          "text": "CI runs on GitHub Actions.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "Nightly builds publish to TestFlight.",
+      "expected": {
+        "event": "ADD",
+        "target": null
+      }
+    },
+    {
+      "id": "timeout-update",
+      "candidates": [
+        {
+          "text": "The API client timeout is 30 seconds.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "The API client timeout was raised from 30 to 60 seconds.",
+      "expected": {
+        "event": "UPDATE",
+        "target": 0
+      }
+    },
+    {
+      "id": "timeout-delete",
+      "candidates": [
+        {
+          "text": "The API client timeout is 30 seconds.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "The API client no longer has a timeout.",
+      "expected": {
+        "event": "DELETE",
+        "target": 0
+      }
+    },
+    {
+      "id": "timeout-none",
+      "candidates": [
+        {
+          "text": "The API client timeout is 30 seconds.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "API calls time out after 30 seconds.",
+      "expected": {
+        "event": "NONE",
+        "target": 0
+      }
+    },
+    {
+      "id": "timeout-add",
+      "candidates": [
+        {
+          "text": "The API client timeout is 30 seconds.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "Retries use exponential backoff with jitter.",
+      "expected": {
+        "event": "ADD",
+        "target": null
+      }
+    },
+    {
+      "id": "editor-update",
+      "candidates": [
+        {
+          "text": "Alberto prefers Cursor for editing.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "Alberto prefers Zed instead of Cursor for editing.",
+      "expected": {
+        "event": "UPDATE",
+        "target": 0
+      }
+    },
+    {
+      "id": "editor-delete",
+      "candidates": [
+        {
+          "text": "Alberto prefers Cursor for editing.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "Alberto no longer uses Cursor.",
+      "expected": {
+        "event": "DELETE",
+        "target": 0
+      }
+    },
+    {
+      "id": "editor-none",
+      "candidates": [
+        {
+          "text": "Alberto prefers Cursor for editing.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "Cursor is Alberto's editor of choice.",
+      "expected": {
+        "event": "NONE",
+        "target": 0
+      }
+    },
+    {
+      "id": "editor-add",
+      "candidates": [
+        {
+          "text": "Alberto prefers Cursor for editing.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "Alberto prefers dark mode in every editor.",
+      "expected": {
+        "event": "ADD",
+        "target": null
+      }
+    },
+    {
+      "id": "region-update",
+      "candidates": [
+        {
+          "text": "Production runs in us-east-1.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "Production moved from us-east-1 to eu-west-1.",
+      "expected": {
+        "event": "UPDATE",
+        "target": 0
+      }
+    },
+    {
+      "id": "region-delete",
+      "candidates": [
+        {
+          "text": "Production runs in us-east-1.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "Production is no longer in us-east-1.",
+      "expected": {
+        "event": "DELETE",
+        "target": 0
+      }
+    },
+    {
+      "id": "region-none",
+      "candidates": [
+        {
+          "text": "Production runs in us-east-1.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "The production region is us-east-1.",
+      "expected": {
+        "event": "NONE",
+        "target": 0
+      }
+    },
+    {
+      "id": "region-add",
+      "candidates": [
+        {
+          "text": "Production runs in us-east-1.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "Staging runs on a single small instance.",
+      "expected": {
+        "event": "ADD",
+        "target": null
+      }
+    },
+    {
+      "id": "secrets-update",
+      "candidates": [
+        {
+          "text": "Secrets live in 1Password.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "Secrets moved from 1Password to Vault.",
+      "expected": {
+        "event": "UPDATE",
+        "target": 0
+      }
+    },
+    {
+      "id": "secrets-delete",
+      "candidates": [
+        {
+          "text": "Secrets live in 1Password.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "Secrets are no longer stored in 1Password.",
+      "expected": {
+        "event": "DELETE",
+        "target": 0
+      }
+    },
+    {
+      "id": "secrets-none",
+      "candidates": [
+        {
+          "text": "Secrets live in 1Password.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "1Password holds the secrets.",
+      "expected": {
+        "event": "NONE",
+        "target": 0
+      }
+    },
+    {
+      "id": "secrets-add",
+      "candidates": [
+        {
+          "text": "Secrets live in 1Password.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "The deploy key rotates every 90 days.",
+      "expected": {
+        "event": "ADD",
+        "target": null
+      }
+    },
+    {
+      "id": "logging-update",
+      "candidates": [
+        {
+          "text": "Services log JSON to stdout.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "Services now log to OpenTelemetry instead of JSON on stdout.",
+      "expected": {
+        "event": "UPDATE",
+        "target": 0
+      }
+    },
+    {
+      "id": "logging-delete",
+      "candidates": [
+        {
+          "text": "Services log JSON to stdout.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "Services no longer log JSON to stdout.",
+      "expected": {
+        "event": "DELETE",
+        "target": 0
+      }
+    },
+    {
+      "id": "logging-none",
+      "candidates": [
+        {
+          "text": "Services log JSON to stdout.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "Structured JSON logs go to stdout.",
+      "expected": {
+        "event": "NONE",
+        "target": 0
+      }
+    },
+    {
+      "id": "logging-add",
+      "candidates": [
+        {
+          "text": "Services log JSON to stdout.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "Error budgets are reviewed every sprint.",
+      "expected": {
+        "event": "ADD",
+        "target": null
+      }
+    },
+    {
+      "id": "tests-update",
+      "candidates": [
+        {
+          "text": "Tests run with pytest.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "Tests run with pytest instead of unittest.",
+      "expected": {
+        "event": "UPDATE",
+        "target": 0
+      }
+    },
+    {
+      "id": "tests-delete",
+      "candidates": [
+        {
+          "text": "Tests run with pytest.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "We no longer run tests on every commit.",
+      "expected": {
+        "event": "DELETE",
+        "target": 0
+      }
+    },
+    {
+      "id": "tests-none",
+      "candidates": [
+        {
+          "text": "Tests run with pytest.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "pytest is the test runner.",
+      "expected": {
+        "event": "NONE",
+        "target": 0
+      }
+    },
+    {
+      "id": "tests-add",
+      "candidates": [
+        {
+          "text": "Tests run with pytest.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "Coverage must stay above 80 percent.",
+      "expected": {
+        "event": "ADD",
+        "target": null
+      }
+    },
+    {
+      "id": "package-update",
+      "candidates": [
+        {
+          "text": "Dependencies are managed with pip.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "Dependencies moved from pip to uv.",
+      "expected": {
+        "event": "UPDATE",
+        "target": 0
+      }
+    },
+    {
+      "id": "package-delete",
+      "candidates": [
+        {
+          "text": "Dependencies are managed with pip.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "We no longer pin dependencies.",
+      "expected": {
+        "event": "DELETE",
+        "target": 0
+      }
+    },
+    {
+      "id": "package-none",
+      "candidates": [
+        {
+          "text": "Dependencies are managed with pip.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "pip manages the dependencies.",
+      "expected": {
+        "event": "NONE",
+        "target": 0
+      }
+    },
+    {
+      "id": "package-add",
+      "candidates": [
+        {
+          "text": "Dependencies are managed with pip.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "The lockfile is committed.",
+      "expected": {
+        "event": "ADD",
+        "target": null
+      }
+    },
+    {
+      "id": "mcp-update",
+      "candidates": [
+        {
+          "text": "The memory MCP listens on stdio.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "The memory MCP switched from stdio to a socket.",
+      "expected": {
+        "event": "UPDATE",
+        "target": 0
+      }
+    },
+    {
+      "id": "mcp-delete",
+      "candidates": [
+        {
+          "text": "The memory MCP listens on stdio.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "The memory MCP no longer listens on stdio.",
+      "expected": {
+        "event": "DELETE",
+        "target": 0
+      }
+    },
+    {
+      "id": "mcp-none",
+      "candidates": [
+        {
+          "text": "The memory MCP listens on stdio.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "stdio is how the memory MCP listens.",
+      "expected": {
+        "event": "NONE",
+        "target": 0
+      }
+    },
+    {
+      "id": "mcp-add",
+      "candidates": [
+        {
+          "text": "The memory MCP listens on stdio.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "The daemon gateway listens on port 8317.",
+      "expected": {
+        "event": "ADD",
+        "target": null
+      }
+    },
+    {
+      "id": "reviewer-update",
+      "candidates": [
+        {
+          "text": "Codex is the independent reviewer.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "Codex was replaced by Gemini as the independent reviewer.",
+      "expected": {
+        "event": "UPDATE",
+        "target": 0
+      }
+    },
+    {
+      "id": "reviewer-delete",
+      "candidates": [
+        {
+          "text": "Codex is the independent reviewer.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "There is no longer an independent reviewer.",
+      "expected": {
+        "event": "DELETE",
+        "target": 0
+      }
+    },
+    {
+      "id": "reviewer-none",
+      "candidates": [
+        {
+          "text": "Codex is the independent reviewer.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "The independent reviewer is Codex.",
+      "expected": {
+        "event": "NONE",
+        "target": 0
+      }
+    },
+    {
+      "id": "reviewer-add",
+      "candidates": [
+        {
+          "text": "Codex is the independent reviewer.",
+          "kind": "fact"
+        }
+      ],
+      "incoming": "Cursor implements scoped fixes.",
+      "expected": {
+        "event": "ADD",
+        "target": null
+      }
+    }
+  ]
+}

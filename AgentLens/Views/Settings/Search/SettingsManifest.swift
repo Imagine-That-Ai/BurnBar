@@ -333,6 +333,16 @@ enum SettingsManifest {
             keywords: ["memory", "pensieve", "remember", "recall", "learn", "preferences", "consent", "reset memory", "review memories", "approved memories", "high-recall", "memory controls"],
             helpText: "Opens the on-device Memory controls. Free on this Mac — no Cloud plan required; sealed cloud backup of approved memories is a separate opt-in."
         ),
+        SettingsItem(
+            id: "general.indexing.memoryCloudModels",
+            tab: .general,
+            pageRoute: .indexing,
+            anchorID: SettingsAnchor.indexingMemoryCloudModels,
+            title: "Cloud Models for Memory (Pro)",
+            subtitle: "Opt-in: frontier models for memory extraction, reconciliation, embeddings, rerank and answers on your own keys or subscription",
+            keywords: ["memory", "pro", "cloud models", "openrouter", "vercel", "anthropic", "openai", "claude code", "codex", "retention", "daily cap", "blind"],
+            helpText: "Pro. Off by default. Providers you consent to receive redacted memory text directly from this Mac; BurnBar never receives your memory data."
+        ),
 
         // MARK: General → Session summaries
 
@@ -998,6 +1008,7 @@ enum SettingsManifest {
         SettingsAnchor.refreshInterval,
         SettingsAnchor.indexingToggle,
         SettingsAnchor.indexingMemory,
+        SettingsAnchor.indexingMemoryCloudModels,
         SettingsAnchor.summariesAuto,
         SettingsAnchor.aiInboxOverview,
         SettingsAnchor.aiInboxEnable,

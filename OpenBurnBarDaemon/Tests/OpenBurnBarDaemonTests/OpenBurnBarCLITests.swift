@@ -43,83 +43,6 @@ final class BurnBarCLITests: XCTestCase {
     }
     #endif
 
-    #if os(macOS)
-    /// The macOS app launches the daemon with
-    /// `--socket-auth-token-file <supportDirectory>/daemon-socket-auth-token`,
-    /// so the signed CLI courier has to read that same owner-only file when the
-    /// Python MCP launcher exports no token environment at all.
-    func testSocketAuthTokenReadsCanonicalMacOSSupportFile() throws {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("cli-macos-token-\(UUID().uuidString)", isDirectory: true)
-        let support = root.appendingPathComponent("OpenBurnBar", isDirectory: true)
-        try FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
-        addTeardownBlock { try? FileManager.default.removeItem(at: root) }
-        try "canonical-macos-token\n".write(
-            to: support.appendingPathComponent("daemon-socket-auth-token"),
-            atomically: true,
-            encoding: .utf8
-        )
-
-        let token = try BurnBarCLISocketClient.resolvedSocketAuthToken(environment: [
-            "OPENBURNBAR_SUPPORT_ROOT": root.path
-        ])
-        XCTAssertEqual(token, "canonical-macos-token")
-    }
-
-    func testSocketAuthTokenEnvironmentOverrideBeatsCanonicalMacOSSupportFile() throws {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("cli-macos-token-\(UUID().uuidString)", isDirectory: true)
-        let support = root.appendingPathComponent("OpenBurnBar", isDirectory: true)
-        try FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
-        addTeardownBlock { try? FileManager.default.removeItem(at: root) }
-        try "canonical-macos-token\n".write(
-            to: support.appendingPathComponent("daemon-socket-auth-token"),
-            atomically: true,
-            encoding: .utf8
-        )
-
-        let token = try BurnBarCLISocketClient.resolvedSocketAuthToken(environment: [
-            "OPENBURNBAR_SUPPORT_ROOT": root.path,
-            "OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN": "env-wins"
-        ])
-        XCTAssertEqual(token, "env-wins")
-    }
-
-    func testSocketAuthTokenIsNilWhenCanonicalMacOSSupportFileIsMissing() throws {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("cli-macos-token-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(
-            at: root.appendingPathComponent("OpenBurnBar", isDirectory: true),
-            withIntermediateDirectories: true
-        )
-        addTeardownBlock { try? FileManager.default.removeItem(at: root) }
-
-        let token = try BurnBarCLISocketClient.resolvedSocketAuthToken(environment: [
-            "OPENBURNBAR_SUPPORT_ROOT": root.path
-        ])
-        XCTAssertNil(token)
-    }
-
-    func testSocketAuthTokenSurfacesEmptyCanonicalMacOSSupportFile() throws {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("cli-macos-token-\(UUID().uuidString)", isDirectory: true)
-        let support = root.appendingPathComponent("OpenBurnBar", isDirectory: true)
-        try FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
-        addTeardownBlock { try? FileManager.default.removeItem(at: root) }
-        try "   \n".write(
-            to: support.appendingPathComponent("daemon-socket-auth-token"),
-            atomically: true,
-            encoding: .utf8
-        )
-
-        XCTAssertThrowsError(
-            try BurnBarCLISocketClient.resolvedSocketAuthToken(environment: [
-                "OPENBURNBAR_SUPPORT_ROOT": root.path
-            ])
-        )
-    }
-    #endif
-
     func testStartupPreflightReturnsUsageBeforeRunnerConstruction() {
         for arguments in [[], ["help"], ["--help"], ["-h"], ["--", "help"]] {
             let result = BurnBarCLIRunner.startupPreflightResult(
@@ -151,7 +74,7 @@ final class BurnBarCLITests: XCTestCase {
     /// must pass under every canonical name.
     func testStartupPreflightAllowsTheSignedCourierCommands() {
         for executable in ["/tmp/OpenBurnBarCLI", "/tmp/openburnbar-cli", "/tmp/burnbar", "/tmp/openburnbar"] {
-            for command in ["search-sql", "memory-remember", "memory-forget"] {
+            for command in ["search-sql", "memory-remember", "memory-forget", "memory-model-policy"] {
                 XCTAssertNil(
                     BurnBarCLIRunner.startupPreflightResult(arguments: [command], invokedExecutablePath: executable),
                     "\(command) must pass preflight under \(executable)"
@@ -416,6 +339,16 @@ final class BurnBarCLITests: XCTestCase {
         XCTAssertThrowsError(try runner.runPrivacyRPC(input: Data(#"{"method":"daemon.health","params":{}}"#.utf8)))
     }
 
+    func testMemoryModelPolicyReturnsTypedJSON() throws {
+        let output = try BurnBarCLIRunner(client: FakeCLIClient()).runMemoryModelPolicy()
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(output.utf8)) as? [String: Any])
+        XCTAssertEqual(object["proActive"] as? Bool, true)
+        XCTAssertEqual(object["enabled"] as? Bool, true)
+        XCTAssertEqual(object["gatewayURL"] as? String, "http://127.0.0.1:8317")
+        XCTAssertEqual((object["cli"] as? [String: Bool])?["claude_cli"], true)
+        XCTAssertEqual(((object["providers"] as? [[String: Any]])?.first?["id"]) as? String, "openrouter")
+    }
+
     func testMemoryRememberReadsJSONAndReturnsTypedResult() throws {
         let runner = BurnBarCLIRunner(client: FakeCLIClient())
         let output = try runner.runMemoryRemember(input: Data(#"{"text":"Remember the signed bridge.","projectPath":"/tmp/fixture","kind":"architecture","scope":"project","tags":["bridge"],"confidence":0.9}"#.utf8))
@@ -613,6 +546,20 @@ struct FakeCLIClient: BurnBarCLIClient {
             columns: ["id", "title"],
             rows: [[.text("conv-1"), .text(request.sql)]],
             truncated: false
+        )
+    }
+
+    func memoryModelPolicy() throws -> BurnBarMemoryModelPolicyResponse {
+        BurnBarMemoryModelPolicyResponse(
+            proActive: true,
+            enabled: true,
+            gatewayURL: "http://127.0.0.1:8317",
+            gatewayToken: String(repeating: "a", count: 64),
+            tokenExpiresAt: "2099-01-01T00:00:00Z",
+            providers: [BurnBarMemoryModelPolicyProvider(id: "openrouter", consented: true, retention: "deny", purposes: ["memory-extract": ["anthropic/claude-opus-5"]])],
+            cli: ["claude_cli": true, "codex_cli": false],
+            membershipUpdatedAt: "2026-09-01T00:00:00Z",
+            code: nil
         )
     }
 

@@ -869,6 +869,7 @@ final class MacCloudEntitlementStore: ObservableObject {
         isUltraActive = effective.ultra.isActive
         ultraExpirationDate = effective.ultra.expiresAt
         ultraPurchaseDate = effective.ultra.purchase
+        NotificationCenter.default.post(name: .macCloudEntitlementDidChange, object: self)
     }
 
     func refreshStoreKitEntitlementsForTesting() async {
