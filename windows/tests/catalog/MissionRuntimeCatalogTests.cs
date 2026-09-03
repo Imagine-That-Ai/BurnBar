@@ -15,7 +15,9 @@ public sealed class MissionRuntimeCatalogTests
         Assert.True(catalog.Contains("junie"));
         Assert.True(catalog.Contains("prime-agent"));
         Assert.True(catalog.Contains("fx"));
-        Assert.True(catalog.Covers(new[] { "junie", "prime-agent", "fx" }));
+        Assert.True(catalog.Contains("muse"));
+        Assert.True(catalog.Contains("muse-code"));
+        Assert.True(catalog.Covers(new[] { "junie", "prime-agent", "fx", "muse" }));
         Assert.True(catalog.Covers(Enum.GetValues<SwitcherCLIProfileType>().Select(t => t.RawValue())));
     }
 

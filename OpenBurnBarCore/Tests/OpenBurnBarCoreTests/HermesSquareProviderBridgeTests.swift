@@ -18,7 +18,8 @@ final class HermesSquareProviderBridgeTests: XCTestCase {
             (.droid, .factory),
             (.forge, .forgeDev),
             (.grok, .xAI),
-            (.cursorAgent, .cursorAgent)
+            (.cursorAgent, .cursorAgent),
+            (.muse, .muse)
         ]
         for (runtime, expectedProvider) in cases {
             let identity = AgentIdentity.builtIn(runtime)

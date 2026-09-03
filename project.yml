@@ -826,6 +826,8 @@ targets:
         buildPhase: resources
       - path: AgentLensTests/Active/Parsers/Fixtures/Grok/sample-session/chat_history.jsonl
         buildPhase: resources
+      - path: AgentLensTests/Fixtures/muse-code-real-session-usage.jsonl
+        buildPhase: resources
     postBuildScripts:
       - name: Bundle App Store Compliance Source Fixtures
         script: |

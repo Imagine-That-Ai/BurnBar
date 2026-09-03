@@ -148,6 +148,7 @@ public final class BurnBarSwitcherSQLiteProfileStore: BurnBarSwitcherProfileStor
             (.omp, ["omp"]),
             (.kimi, ["kimi"]),
             (.junie, ["junie"]),
+            (.muse, ["muse", "muse-code"]),
             (.antigravity, ["antigravity"])
         ]
         let pathDirs = (ProcessInfo.processInfo.environment["PATH"] ?? "/usr/local/bin:/usr/bin:/bin")
@@ -203,6 +204,7 @@ public final class BurnBarSwitcherSQLiteProfileStore: BurnBarSwitcherProfileStor
         case .kimi: return ["kimi"]
         case .junie: return ["junie"]
         case .fx: return ["fx"]
+        case .muse: return ["muse", "muse-code"]
         case .primeAgent: return ["prime-agent"]
         case .antigravity: return ["agy", "antigravity"]
         case .hermes: return ["hermes"]

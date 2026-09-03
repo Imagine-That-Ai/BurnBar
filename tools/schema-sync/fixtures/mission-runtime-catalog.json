@@ -115,6 +115,14 @@
       "platforms": ["macos", "ios", "android", "windows", "linux"]
     },
     {
+      "id": "muse",
+      "wireAliases": ["muse", "muse-code", "musecode", "muse_code", "meta-muse", "metamuse"],
+      "displayName": "Muse Code",
+      "surfaces": ["switcher", "assistant", "chat_backend", "cli_runtime", "resume_target", "mission_create", "mission_event", "mission_mirror", "mission_receipt", "grant_runtime"],
+      "launch": "none",
+      "platforms": ["macos", "ios", "android", "windows", "linux"]
+    },
+    {
       "id": "gemini",
       "wireAliases": ["gemini", "gemini-cli", "geminicli"],
       "displayName": "Gemini CLI",

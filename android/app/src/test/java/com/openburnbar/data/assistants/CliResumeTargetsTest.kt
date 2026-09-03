@@ -97,6 +97,17 @@ class CliResumeTargetsTest {
     }
 
     @Test
+    fun `muse is handoff only with the daemon canonical wire id`() {
+        assertEquals("muse", CliResumeTarget.MUSE.wireId)
+        assertEquals("Muse Code", CliResumeTarget.MUSE.displayName)
+        assertFalse(CliResumeTarget.MUSE.supportsNativeResume)
+        assertEquals(CliResumeCapability.HANDOFF, CliResumeTarget.MUSE.capability)
+        assertEquals(CliResumeTarget.MUSE, CliResumeTarget.forSessionAgent("muse"))
+        assertEquals(CliResumeTarget.MUSE, CliResumeTarget.forSessionAgent("Muse Code"))
+        assertEquals(CliResumeTarget.MUSE, CliResumeTarget.forSessionAgent("meta-muse"))
+    }
+
+    @Test
     fun `forSessionAgent returns null for unknown or absent tokens`() {
         assertNull(CliResumeTarget.forSessionAgent(null))
         assertNull(CliResumeTarget.forSessionAgent(""))

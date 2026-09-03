@@ -537,6 +537,13 @@ final class AgentSecurityPolicyTests: XCTestCase {
         XCTAssertNotEqual(status, .ready, "advertising ready would promise a grant the pet never holds")
     }
 
+    @MainActor
+    func test_petMuseProvider_doesNotSubstituteLocalFallbackOnFailure() {
+        XCTAssertFalse(CLIBridgeChatProvider.substitutesLocalFallbackOnFailure(for: .muse))
+        XCTAssertTrue(CLIBridgeChatProvider.substitutesLocalFallbackOnFailure(for: .codex))
+        XCTAssertTrue(CLIBridgeChatProvider.substitutesLocalFallbackOnFailure(for: .junie))
+    }
+
     /// The chip copy is user-facing: `.unavailable` must read as a distinct,
     /// honest state rather than borrowing another status' wording.
     func test_petAuthStatus_unavailableHasItsOwnLabel() {

@@ -757,6 +757,45 @@ final class CLIBridge: ObservableObject {
         }
     }
 
+    /// Streams using the Meta Muse Code CLI (`muse exec` headless one-shot).
+    ///
+    /// Muse exposes enforceable permission flags (`--disable-write` /
+    /// `--disable-shell`, verified against Muse Code 1.0.2), so unlike Junie
+    /// it does not need a full-grant launch gate; the argument builder gates
+    /// capabilities per-grant and runs fully read-only without one. The
+    /// vendor full-autonomy bypasses (`--yolo`, `--disable-approval`,
+    /// `--disable-sandbox`, `--trust-workspace`) are never passed.
+    func chatMuseStream(
+        systemPrompt: String,
+        userMessage: String,
+        workspaceDirectory: URL? = nil,
+        model: String = "",
+        capabilityGrant: AgentCapabilityGrant? = nil
+    ) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
+        AsyncThrowingStream { continuation in
+            Task { [weak self] in
+                guard let self else {
+                    continuation.finish()
+                    return
+                }
+                guard let executable = await self.resolveExecutable(named: "muse") else {
+                    continuation.finish(throwing: CLIBridgeError.noCLI)
+                    return
+                }
+                let fullPrompt = CLIArgumentBuilder.combinedPrompt(systemPrompt: systemPrompt, userMessage: userMessage)
+                await CLIProcessStreamRunner(runtime: self.streamRuntime).runMuse(
+                    executable: executable,
+                    prompt: fullPrompt,
+                    model: model,
+                    workspaceDirectory: workspaceDirectory,
+                    capabilityGrant: capabilityGrant,
+                    grantStillActive: Self.spawnedCLIGrantPoll(for: capabilityGrant),
+                    continuation: continuation
+                )
+            }
+        }
+    }
+
     /// Streams using Forge CLI only.
     func chatForgeStream(
         systemPrompt: String,

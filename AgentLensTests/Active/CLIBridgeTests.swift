@@ -44,6 +44,7 @@ final class CLIBridgeTests: XCTestCase {
         XCTAssertEqual(exe("hermes"), "hermes")
         XCTAssertEqual(exe("pi"), "pi")
         XCTAssertEqual(exe("fx"), "fx")
+        XCTAssertEqual(exe("muse"), "muse")
         XCTAssertEqual(exe("ollama"), "zsh")
     }
 
@@ -86,6 +87,20 @@ final class CLIBridgeTests: XCTestCase {
         XCTAssertEqual(ollama?.executableName, "ollama")
         XCTAssertEqual(ollama?.arguments, ["run", "qwen3.6:27b-coding-nvfp4"])
         XCTAssertFalse(ollama?.arguments.contains("-p") ?? true)
+
+        let muse = InteractiveTerminalLauncher.interactiveInvocation(
+            runtimeId: "muse",
+            modelID: "muse-spark",
+            workingDirectory: URL(fileURLWithPath: "/tmp/ws")
+        )
+        XCTAssertEqual(muse?.executableName, "muse")
+        XCTAssertEqual(
+            muse?.arguments,
+            ["--workspace", "/tmp/ws", "--model", "muse-spark-1.3"]
+        )
+        XCTAssertFalse(muse?.arguments.contains("exec") ?? true)
+        XCTAssertFalse(muse?.arguments.contains("--json") ?? true)
+        XCTAssertFalse(muse?.arguments.contains("--yolo") ?? true)
     }
 
     func test_interactiveInvocation_ollamaFallsBackToFirstLocalModelWhenNoModelSelected() {
@@ -1874,6 +1889,135 @@ final class CLIBridgeTests: XCTestCase {
         let final = parser.finish()
         XCTAssertNil(final.error)
         XCTAssertEqual(final.events, [.text(#"{"output":"unfinished"#)])
+    }
+
+    // MARK: - muse exec --json parser
+
+    // Envelope shapes below are verbatim from `muse exec --json`
+    // (Muse Code 1.0.2): incremental `run.output.delta` segments plus a
+    // final `run.terminal.completed` carrying the full text.
+
+    func test_museExecJSONLParser_streamsIncrementalDeltas() {
+        var parser = MuseExecJSONLParser()
+        let first = parser.events(fromLine: #"{"payload_type":"run.output.delta","payload":{"kind":"run_output_delta","text":"The lighthouse hadn't warned a ship in forty"}}"#)
+        let second = parser.events(fromLine: #"{"payload_type":"run.output.delta","payload":{"kind":"run_output_delta","text":" years, but Eleanor lit it anyway."}}"#)
+        XCTAssertNil(first.error)
+        XCTAssertNil(second.error)
+        XCTAssertEqual(first.events, [.text("The lighthouse hadn't warned a ship in forty")])
+        XCTAssertEqual(second.events, [.text(" years, but Eleanor lit it anyway.")])
+    }
+
+    func test_museExecJSONLParser_terminalDoesNotDoubleEmitStreamedText() {
+        var parser = MuseExecJSONLParser()
+        _ = parser.events(fromLine: #"{"payload_type":"run.output.delta","payload":{"kind":"run_output_delta","text":"HELLO-MUSE-PROBE"}}"#)
+        let terminal = parser.events(fromLine: #"{"payload_type":"run.terminal.completed","payload":{"kind":"run_terminal","terminal":"completed","text":"HELLO-MUSE-PROBE","reason":null}}"#)
+        XCTAssertNil(terminal.error)
+        XCTAssertTrue(terminal.events.isEmpty, "deltas already streamed the full text")
+    }
+
+    func test_museExecJSONLParser_terminalBackstopsUnstreamedSuffix() {
+        var parser = MuseExecJSONLParser()
+        _ = parser.events(fromLine: #"{"payload_type":"run.output.delta","payload":{"kind":"run_output_delta","text":"Hello"}}"#)
+        // Simulate a dropped middle delta: terminal text extends past it.
+        let terminal = parser.events(fromLine: #"{"payload_type":"run.terminal.completed","payload":{"kind":"run_terminal","terminal":"completed","text":"Hello brave world","reason":null}}"#)
+        XCTAssertNil(terminal.error)
+        XCTAssertEqual(terminal.events, [.text(" brave world")])
+    }
+
+    func test_museExecJSONLParser_terminalWithoutDeltasEmitsFullText() {
+        var parser = MuseExecJSONLParser()
+        let terminal = parser.events(fromLine: #"{"payload_type":"run.terminal.completed","payload":{"kind":"run_terminal","terminal":"completed","text":"Done.","reason":null}}"#)
+        XCTAssertNil(terminal.error)
+        XCTAssertEqual(terminal.events, [.text("Done.")])
+    }
+
+    func test_museExecJSONLParser_ignoresLifecycleStatusNoise() {
+        var parser = MuseExecJSONLParser()
+        let lines = [
+            #"{"payload_type":"runtime.command.accepted","payload":{"kind":"command_accepted"}}"#,
+            #"{"payload_type":"task.lifecycle.status","payload":{"kind":"task_lifecycle","event":{"kind":"status","message":"opening meta model stream attempt 1/10"}}}"#,
+            #"{"payload_type":"task.lifecycle.completed","payload":{"kind":"task_lifecycle","event":{"kind":"completed"}}}"#,
+        ]
+        for line in lines {
+            let result = parser.events(fromLine: line)
+            XCTAssertNil(result.error)
+            XCTAssertTrue(result.events.isEmpty, "lifecycle noise must not reach the bubble")
+        }
+    }
+
+    func test_museExecJSONLParser_nonCompletedTerminalSurfacesError() {
+        var parser = MuseExecJSONLParser()
+        let result = parser.events(fromLine: #"{"payload_type":"run.terminal.failed","payload":{"kind":"run_terminal","terminal":"failed","text":"","reason":"provider unavailable"}}"#)
+        guard case .museEvent(let message)? = result.error else {
+            XCTFail("Expected museEvent")
+            return
+        }
+        XCTAssertTrue(message.contains("provider unavailable"))
+        XCTAssertTrue(result.events.isEmpty)
+    }
+
+    func test_museExecJSONLParser_quotaTerminalMapsToQuotaExhausted() {
+        let error = CLIBridge.museEventError(from: "run failed: quota exhausted for the weekly limit.")
+        guard case .quotaExhausted(let detail) = error else {
+            XCTFail("Expected quotaExhausted")
+            return
+        }
+        XCTAssertTrue(detail.localizedCaseInsensitiveContains("quota exhausted"))
+    }
+
+    func test_museExecJSONLParser_nonEnvelopeLineFallsBackToRawText() {
+        var parser = MuseExecJSONLParser()
+        let result = parser.events(fromLine: "muse: note: workspace skills changed mid-run")
+        XCTAssertNil(result.error)
+        XCTAssertEqual(result.events, [.text("muse: note: workspace skills changed mid-run\n")])
+    }
+
+    func test_museExecJSONLParser_skipsEmptyLinesAndEmptyDeltas() {
+        var parser = MuseExecJSONLParser()
+        XCTAssertTrue(parser.events(fromLine: "   ").events.isEmpty)
+        let empty = parser.events(fromLine: #"{"payload_type":"run.output.delta","payload":{"kind":"run_output_delta","text":""}}"#)
+        XCTAssertTrue(empty.events.isEmpty)
+        XCTAssertNil(empty.error)
+    }
+
+    func test_museExecJSONLParser_matchesLiveEchoProviderEnvelopes() {
+        // Captured from `muse exec --json --provider echo --disable-write --disable-shell`
+        // on Muse Code 1.0.2. Lifecycle noise must stay out of the bubble; the
+        // delta is the user-visible text; the completed terminal must not
+        // double-emit it.
+        var parser = MuseExecJSONLParser()
+        let lines = [
+            #"{"payload_type":"runtime.command.accepted","payload":{"kind":"command_accepted"}}"#,
+            #"{"payload_type":"task.lifecycle.status","payload":{"kind":"task_lifecycle","event":{"kind":"status","message":"opening meta model stream attempt 1/10"}}}"#,
+            #"{"payload_type":"run.output.delta","payload":{"kind":"run_output_delta","text":"echo: HELLO-MUSE-AUDIT-PROBE"}}"#,
+            #"{"payload_type":"task.lifecycle.completed","payload":{"kind":"task_lifecycle","event":{"kind":"completed"}}}"#,
+            #"{"payload_type":"run.terminal.completed","payload":{"kind":"run_terminal","terminal":"completed","text":"echo: HELLO-MUSE-AUDIT-PROBE","reason":null}}"#,
+        ]
+        var seen: [CLIChatStreamEvent] = []
+        for line in lines {
+            let result = parser.events(fromLine: line)
+            XCTAssertNil(result.error)
+            seen.append(contentsOf: result.events)
+        }
+        XCTAssertEqual(seen, [.text("echo: HELLO-MUSE-AUDIT-PROBE")])
+    }
+
+    func test_museExecJSONLParser_doesNotEmitSessionIDEvents() {
+        // Muse resume is handoff-only: envelope ids must never become
+        // `.sessionID` continuation events the way fx's do.
+        var parser = MuseExecJSONLParser()
+        let lines = [
+            #"{"payload_type":"session.run.linked","payload":{"kind":"session_run_linked"}}"#,
+            #"{"payload_type":"run.output.delta","payload":{"kind":"run_output_delta","text":"hi"}}"#,
+            #"{"payload_type":"run.terminal.completed","payload":{"kind":"run_terminal","terminal":"completed","text":"hi","reason":null}}"#,
+        ]
+        var seen: [CLIChatStreamEvent] = []
+        for line in lines { seen.append(contentsOf: parser.events(fromLine: line).events) }
+        XCTAssertFalse(seen.contains(where: {
+            if case .sessionID = $0 { return true }
+            return false
+        }))
+        XCTAssertEqual(seen, [.text("hi")])
     }
 
     func test_openAICompatibleSSEParser_extractsUsageToolAndText() {

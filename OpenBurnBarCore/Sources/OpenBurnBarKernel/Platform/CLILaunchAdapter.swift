@@ -728,6 +728,10 @@ public enum CLILaunchAdapter {
             return ["PRIME_HOME", "PRIME_AGENT_HOME"]
         case .fx:
             return ["FX_HOME"]
+        case .muse:
+            // No documented MUSE_* home override (Muse honors XDG-style
+            // paths; auth is browser-linked). Isolation is display-only.
+            return []
         case .hermes:
             return ["HERMES_HOME", "HERMES_CONFIG_PATH"]
         case .goose:

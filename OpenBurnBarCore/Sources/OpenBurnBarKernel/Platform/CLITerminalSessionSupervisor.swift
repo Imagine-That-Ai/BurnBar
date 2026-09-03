@@ -212,6 +212,13 @@ public enum CLIQuotaExhaustionClassifier {
                 "vercel quota",
                 "vercel fx quota"
             ]
+        case .muse:
+            cliSpecificPatterns = [
+                "muse quota",
+                "muse limit",
+                "meta quota",
+                "muse-spark quota"
+            ]
         case .hermes:
             cliSpecificPatterns = [
                 "hermes quota",

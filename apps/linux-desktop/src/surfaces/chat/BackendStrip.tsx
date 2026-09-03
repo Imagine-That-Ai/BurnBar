@@ -25,6 +25,7 @@ const BACKEND_LOGOS: Record<ChatBackendId, string | null> = {
   'cursor-agent': '/provider-logos/cursor.png',
   junie: null,
   fx: '/provider-logos/fx.png',
+  muse: '/provider-logos/meta.png',
   cli: null
 };
 

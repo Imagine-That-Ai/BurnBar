@@ -566,6 +566,7 @@ extension AccountSwitcherSettingsView {
                 case .pi: "PiAgentLogo"
                 case .junie: "JunieLogo"
                 case .fx: "FxLogo"
+                case .muse: "MetaLogo"
                 case .omp: "OMPLogo"
                 case .primeAgent: "PrimeAgentLogo"
                 case .hermes: "HermesLogo"

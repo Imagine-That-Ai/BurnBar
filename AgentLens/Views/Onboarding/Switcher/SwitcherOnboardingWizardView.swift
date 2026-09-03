@@ -37,6 +37,7 @@ struct OnboardingProvider: Identifiable, Equatable {
         case piCLI
         case junieCLI
         case fxCLI
+        case museCLI
         case ompCLI
         case primeAgentCLI
         case hermesCLI
@@ -64,6 +65,7 @@ struct OnboardingProvider: Identifiable, Equatable {
         OnboardingProvider(id: "picli", label: "Pi CLI", icon: "terminal.fill", bundledLogoName: "PiAgentLogo", color: Color(hex: "7C3AED"), kind: .piCLI),
         OnboardingProvider(id: "juniecli", label: "Junie CLI", icon: "terminal.fill", bundledLogoName: "JunieLogo", color: Color(hex: "48E054"), kind: .junieCLI),
         OnboardingProvider(id: "fxcli", label: "fx CLI", icon: "terminal.fill", bundledLogoName: "FxLogo", color: Color.adaptive(light: "171717", dark: "FFFFFF"), kind: .fxCLI),
+        OnboardingProvider(id: "musecli", label: "Muse Code CLI", icon: "terminal.fill", bundledLogoName: "MetaLogo", color: Color(hex: "0668E1"), kind: .museCLI),
         OnboardingProvider(id: "ompcli", label: "OMP CLI", icon: "command", bundledLogoName: "OMPLogo", color: Color(hex: "EC4899"), kind: .ompCLI),
         OnboardingProvider(id: "primeagentcli", label: "Prime Agent", icon: "terminal.fill", bundledLogoName: "PrimeAgentLogo", color: Color(hex: "582CFF"), kind: .primeAgentCLI),
         OnboardingProvider(id: "hermescli", label: "Hermes CLI", icon: "wind", bundledLogoName: "HermesLogo", color: Color(hex: "38BDF8"), kind: .hermesCLI),

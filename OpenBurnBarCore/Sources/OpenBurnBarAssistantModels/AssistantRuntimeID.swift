@@ -27,6 +27,7 @@ public enum AssistantRuntimeID: String, Codable, CaseIterable, Hashable, Sendabl
     case cursorAgent = "cursorAgent"
     case junie
     case fx
+    case muse
 
     public var displayName: String {
         switch self {
@@ -44,6 +45,7 @@ public enum AssistantRuntimeID: String, Codable, CaseIterable, Hashable, Sendabl
         case .cursorAgent: return "Cursor Agent"
         case .junie:    return "Junie"
         case .fx:       return "fx"
+        case .muse:     return "Muse Code"
         }
     }
 
@@ -54,7 +56,7 @@ public enum AssistantRuntimeID: String, Codable, CaseIterable, Hashable, Sendabl
         // `default:`, so a new runtime has to name its port rather than silently
         // inheriting the Hermes gateway.
         switch self {
-        case .hermes, .codex, .claude, .openClaude, .omp, .droid, .forge, .antigravity, .grok, .cursorAgent, .junie, .fx:
+        case .hermes, .codex, .claude, .openClaude, .omp, .droid, .forge, .antigravity, .grok, .cursorAgent, .junie, .fx, .muse:
             return URL(string: "http://127.0.0.1:8642")!
         case .pi:
             return URL(string: "http://127.0.0.1:8765")!
@@ -80,6 +82,7 @@ public enum AssistantRuntimeID: String, Codable, CaseIterable, Hashable, Sendabl
         case .cursorAgent: return "\u{27A4}" // ➤
         case .junie:    return "\u{273D}" // ✽ (Junie bloom)
         case .fx:       return "\u{0192}" // ƒ (fx)
+        case .muse:     return "\u{25C8}" // ◈ (Muse spark)
         }
     }
 
@@ -88,7 +91,7 @@ public enum AssistantRuntimeID: String, Codable, CaseIterable, Hashable, Sendabl
     /// model while execution stays on the trusted Mac.
     public var hasMobileChatSurface: Bool {
         switch self {
-        case .hermes, .pi, .codex, .claude, .openClaw, .openClaude, .omp, .droid, .forge, .antigravity, .grok, .cursorAgent, .junie, .fx: return true
+        case .hermes, .pi, .codex, .claude, .openClaw, .openClaude, .omp, .droid, .forge, .antigravity, .grok, .cursorAgent, .junie, .fx, .muse: return true
         }
     }
 

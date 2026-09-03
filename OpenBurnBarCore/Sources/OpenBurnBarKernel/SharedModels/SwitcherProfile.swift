@@ -59,6 +59,7 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
     case junie
     case primeAgent = "prime-agent"
     case fx
+    case muse
     case hermes
     case goose
     case windsurf
@@ -82,6 +83,7 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
         case .junie: return "Junie"
         case .primeAgent: return "Prime Agent"
         case .fx: return "fx"
+        case .muse: return "Muse Code"
         case .hermes: return "Hermes"
         case .goose: return "Goose"
         case .windsurf: return "Windsurf"
@@ -108,6 +110,7 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
         case .junie: return "JunieLogo"
         case .primeAgent: return "PrimeAgentLogo"
         case .fx: return "FxLogo"
+        case .muse: return "MetaLogo"
         case .hermes: return "HermesLogo"
         case .goose: return "GooseLogo"
         case .windsurf: return "WindsurfLogo"
@@ -134,6 +137,7 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
         case .junie: return "junie"
         case .primeAgent: return "prime-agent"
         case .fx: return "fx"
+        case .muse: return "muse"
         case .hermes: return "hermes"
         case .goose: return "goose"
         case .windsurf: return "windsurf"
@@ -255,6 +259,14 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
                 "/usr/local/bin/fx",
                 "/opt/homebrew/bin/fx"
             ]
+        case .muse:
+            // $HOME first: the official installer targets ~/.local/bin.
+            return [
+                "$HOME/.local/bin/muse",
+                "$HOME/.muse/bin/muse",
+                "/usr/local/bin/muse",
+                "/opt/homebrew/bin/muse"
+            ]
         case .hermes:
             return [
                 "/usr/local/bin/hermes",
@@ -318,6 +330,7 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
         case .junie: return .junie
         case .primeAgent: return .primeAgent
         case .fx: return .fx
+        case .muse: return .muse
         case .hermes: return .hermes
         case .goose: return .goose
         case .windsurf: return .windsurf

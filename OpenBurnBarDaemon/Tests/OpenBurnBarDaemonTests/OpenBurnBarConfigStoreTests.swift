@@ -1529,6 +1529,201 @@ final class BurnBarConfigStoreTests: XCTestCase {
         XCTAssertEqual(keys, ["anthropic", "anthropic.slot.max"])
     }
 
+    func testNormalizedBaseURLRewritesTogetherHostsForMeta() {
+        XCTAssertEqual(
+            BurnBarConfigStore.normalizedBaseURL(
+                providerID: "meta",
+                rawBaseURL: "https://api.together.xyz/v1"
+            ),
+            "https://api.meta.ai/v1"
+        )
+        XCTAssertEqual(
+            BurnBarConfigStore.normalizedBaseURL(
+                providerID: "meta",
+                rawBaseURL: "http://api.together.xyz/v1"
+            ),
+            "https://api.meta.ai/v1"
+        )
+        XCTAssertEqual(
+            BurnBarConfigStore.normalizedBaseURL(
+                providerID: "Meta",
+                rawBaseURL: " https://api.together.xyz/v1/ "
+            ),
+            "https://api.meta.ai/v1"
+        )
+        XCTAssertEqual(
+            BurnBarConfigStore.normalizedBaseURL(
+                providerID: "meta",
+                rawBaseURL: "https://inference.together.xyz/v1"
+            ),
+            "https://api.meta.ai/v1"
+        )
+        XCTAssertEqual(
+            BurnBarConfigStore.normalizedBaseURL(
+                providerID: "openai",
+                rawBaseURL: "https://api.together.xyz/v1"
+            ),
+            "https://api.together.xyz/v1"
+        )
+        XCTAssertEqual(
+            BurnBarConfigStore.normalizedBaseURL(
+                providerID: "meta",
+                rawBaseURL: "https://api.meta.ai/v1"
+            ),
+            "https://api.meta.ai/v1"
+        )
+    }
+
+    func testPersistedTogetherMetaURLRewritesToMetaModelAPIOnLoad() async throws {
+        let rootURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-config-store-meta-together-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: rootURL) }
+
+        let fileURL = rootURL.appendingPathComponent("provider-config.json")
+        let persisted = BurnBarProviderConfigurationSnapshot(
+            providers: [
+                BurnBarProviderSettings(
+                    providerID: "meta",
+                    isEnabled: true,
+                    baseURL: "https://api.together.xyz/v1",
+                    preferredModelIDs: ["muse-spark-1.3", "muse-spark-1.3-contributor"]
+                )
+            ]
+        )
+        try JSONEncoder().encode(persisted).write(to: fileURL)
+
+        let configStore = BurnBarConfigStore(
+            fileURL: fileURL,
+            catalog: BurnBarCatalogLoader.bundledCatalog,
+            secretStore: BurnBarInMemorySecretStore(),
+            logger: BurnBarDaemonLogger(category: "config-store-tests")
+        )
+        let snapshot = try await configStore.snapshot()
+        XCTAssertEqual(snapshot.providerSettings(id: "meta")?.baseURL, "https://api.meta.ai/v1")
+    }
+
+    func testUpsertTogetherMetaURLRewritesToMetaModelAPI() async throws {
+        let harness = try makeHarness(name: "meta-together-upsert")
+        let updated = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "meta",
+                isEnabled: true,
+                baseURL: "https://api.together.xyz/v1",
+                preferredModelIDs: ["muse-spark-1.3"]
+            )
+        )
+        XCTAssertEqual(updated.baseURL, "https://api.meta.ai/v1")
+        let snapshot = try await harness.configStore.snapshot()
+        XCTAssertEqual(snapshot.providerSettings(id: "meta")?.baseURL, "https://api.meta.ai/v1")
+    }
+
+    func testPersistedTogetherMetaURLStampsUnlabeledSlotsAsTogetherKey() async throws {
+        let rootURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-config-store-meta-together-slot-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: rootURL) }
+
+        let fileURL = rootURL.appendingPathComponent("provider-config.json")
+        let persisted = BurnBarProviderConfigurationSnapshot(
+            providers: [
+                BurnBarProviderSettings(
+                    providerID: "meta",
+                    isEnabled: true,
+                    baseURL: "https://api.together.xyz/v1",
+                    preferredModelIDs: ["muse-spark-1.3"],
+                    credentialSlots: [
+                        BurnBarProviderCredentialSlot(
+                            slotID: "legacy",
+                            label: "Together",
+                            isEnabled: true,
+                            status: .ready
+                        )
+                    ]
+                )
+            ]
+        )
+        try JSONEncoder().encode(persisted).write(to: fileURL)
+
+        let configStore = BurnBarConfigStore(
+            fileURL: fileURL,
+            catalog: BurnBarCatalogLoader.bundledCatalog,
+            secretStore: BurnBarInMemorySecretStore(),
+            logger: BurnBarDaemonLogger(category: "config-store-tests")
+        )
+        let snapshot = try await configStore.snapshot()
+        let meta = try XCTUnwrap(snapshot.providerSettings(id: "meta"))
+        XCTAssertEqual(meta.baseURL, "https://api.meta.ai/v1")
+        XCTAssertEqual(meta.credentialSlots.first?.authMethodID, "meta-together-key")
+    }
+
+    func testTogetherMetaURLRewritesToCatalogBaseURLNotHardcodedFallback() async throws {
+        let catalog = BurnBarCatalog(
+            schemaVersion: 1,
+            providers: [
+                BurnBarCatalogProvider(
+                    id: "meta",
+                    displayName: "Meta",
+                    baseURL: "https://api.meta.ai/v2-fixture",
+                    visibility: .public,
+                    capabilities: [.routing],
+                    models: [
+                        BurnBarCatalogModel(
+                            id: "muse-spark-1.3",
+                            displayName: "Muse Spark 1.3",
+                            visibility: .public,
+                            pricing: BurnBarModelPricing(inputPerMToken: 1.25, outputPerMToken: 4.25, cacheReadPerMToken: 0.15)
+                        )
+                    ]
+                )
+            ]
+        )
+        let rootURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-config-store-meta-catalog-base-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: rootURL) }
+
+        let fileURL = rootURL.appendingPathComponent("provider-config.json")
+        let persisted = BurnBarProviderConfigurationSnapshot(
+            providers: [
+                BurnBarProviderSettings(
+                    providerID: "meta",
+                    isEnabled: true,
+                    baseURL: "https://api.together.xyz/v1",
+                    preferredModelIDs: ["muse-spark-1.3"]
+                )
+            ]
+        )
+        try JSONEncoder().encode(persisted).write(to: fileURL)
+
+        let configStore = BurnBarConfigStore(
+            fileURL: fileURL,
+            catalog: catalog,
+            secretStore: BurnBarInMemorySecretStore(),
+            logger: BurnBarDaemonLogger(category: "config-store-tests")
+        )
+        let snapshot = try await configStore.snapshot()
+        XCTAssertEqual(snapshot.providerSettings(id: "meta")?.baseURL, "https://api.meta.ai/v2-fixture")
+    }
+
+    func testMigratedMetaAuthMethodIDUsesTogetherKeyOnlyForTogetherHosts() {
+        XCTAssertEqual(
+            BurnBarConfigStore.migratedMetaAuthMethodID(existing: nil, rawBaseURL: "https://api.together.xyz/v1"),
+            "meta-together-key"
+        )
+        XCTAssertEqual(
+            BurnBarConfigStore.migratedMetaAuthMethodID(existing: nil, rawBaseURL: "https://api.meta.ai/v1"),
+            "meta-model-api-key"
+        )
+        XCTAssertEqual(
+            BurnBarConfigStore.migratedMetaAuthMethodID(
+                existing: "meta-model-api-key",
+                rawBaseURL: "https://api.together.xyz/v1"
+            ),
+            "meta-model-api-key"
+        )
+    }
+
     private func makeHarness(name: String) throws -> BurnBarConfigStoreHarness {
         let rootURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("openburnbar-config-store-\(name)-\(UUID().uuidString)", isDirectory: true)

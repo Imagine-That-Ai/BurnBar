@@ -113,6 +113,13 @@ private val builtInQuads: Map<AssistantRuntimeID, AgentBuiltInQuad> =
                 capabilities = macCliCapabilities,
                 transport = AgentDispatchTransport.MacRelay("fx"),
             ),
+        AssistantRuntimeID.MUSE to
+            AgentBuiltInQuad(
+                paletteHex = "0668E1",
+                tagline = "Meta Muse Code via your Mac.",
+                capabilities = macCliCapabilities,
+                transport = AgentDispatchTransport.MacRelay("muse"),
+            ),
     )
 
 internal fun agentBuiltInQuad(runtime: AssistantRuntimeID): AgentBuiltInQuad = builtInQuads.getValue(runtime)

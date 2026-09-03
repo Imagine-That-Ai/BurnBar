@@ -90,6 +90,37 @@ final class BurnBarResumeServiceTests: XCTestCase {
         XCTAssertEqual(response.briefingMD?.contains("## Trust Boundary"), true)
     }
 
+    func testMuseResumeIsInteractiveHandoffWithoutExec() throws {
+        let fixture = try Self.makeFixtureDatabase()
+        defer { try? FileManager.default.removeItem(at: fixture.directory) }
+        try Self.withDatabase(at: fixture.databaseURL) { db in
+            try Self.createConversationsTable(db: db)
+            try Self.insertConversation(
+                id: "Muse Code:muse-session-1",
+                provider: "Muse Code",
+                sessionID: "muse-session-1",
+                workingDirectory: fixture.workspace.path,
+                db: db
+            )
+        }
+
+        let service = try BurnBarResumeService(
+            databasePath: fixture.databaseURL.path,
+            logger: BurnBarDaemonLogger(category: "resume-service-test")
+        )
+        let response = try service.runResume(
+            BurnBarRunResumeRequest(sessionID: "Muse Code:muse-session-1", mode: .print)
+        )
+
+        XCTAssertEqual(response.kind, "ported")
+        XCTAssertEqual(response.targetHarness, "muse")
+        XCTAssertEqual(response.targetArgv?.first, "muse")
+        XCTAssertFalse(response.targetArgv?.contains("exec") ?? true)
+        XCTAssertFalse(response.targetArgv?.contains("--json") ?? true)
+        XCTAssertEqual(response.targetArgv?.contains("--workspace"), true)
+        XCTAssertEqual(response.targetArgv?.contains(fixture.workspace.path), true)
+    }
+
     func testBriefingIncludesFullTranscriptInsteadOfLastThirtyParagraphs() throws {
         let fixture = try Self.makeFixtureDatabase()
         defer { try? FileManager.default.removeItem(at: fixture.directory) }

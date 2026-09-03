@@ -56,6 +56,7 @@ enum class CliResumeTarget(
     CURSOR_AGENT("cursor_agent", "Cursor Agent", false, R.drawable.logo_cursor, 0xFF00B8D4),
     JUNIE("junie", "Junie", false, R.drawable.logo_junie, 0xFF48E054),
     FX("fx", "fx", false, R.drawable.logo_fx, 0xFFA1A1AA),
+    MUSE("muse", "Muse Code", false, R.drawable.logo_meta, 0xFF0668E1),
     OPENCODE("opencode", "OpenCode", false, R.drawable.open_code_logo, 0xFF0EA5E9),
     GEMINI("gemini", "Gemini CLI", false, R.drawable.logo_gemini_cli, 0xFF4285F4),
     ;
@@ -79,6 +80,7 @@ enum class CliResumeTarget(
                 "cursoragent", "cursor" -> CURSOR_AGENT
                 "junie", "jetbrainsjunie" -> JUNIE
                 "fx", "vercelfx", "vercel-fx" -> FX
+                "muse", "musecode", "metamuse" -> MUSE
                 "opencode" -> OPENCODE
                 "gemini", "geminicli" -> GEMINI
                 else -> null

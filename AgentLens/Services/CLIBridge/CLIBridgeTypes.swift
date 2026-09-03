@@ -137,6 +137,8 @@ enum CLIBridgeError: LocalizedError {
     case junieRequiresFullGrant
     /// fx surfaced an error in its structured `ask --json` response.
     case fxError(String)
+    /// Muse surfaced a non-`completed` terminal in its `exec --json` event log.
+    case museEvent(String)
     /// Grok and Kimi reach the Mac over the ACP mission relay, so `CLIBridge` has
     /// no chat stream for them. Fail closed instead of opening an empty stream the
     /// user would read as a hung assistant.
@@ -172,6 +174,8 @@ enum CLIBridgeError: LocalizedError {
         case .junieRequiresFullGrant:
             return "Junie cannot run in read-only mode. Grant file edits and shell access for this thread, or pick a different assistant."
         case .fxError(let message):
+            return message
+        case .museEvent(let message):
             return message
         case .acpChatUnavailable(let backend):
             return "\(backend) is not available in dashboard chat yet. Pick a different assistant for this thread."

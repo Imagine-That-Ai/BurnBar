@@ -168,6 +168,14 @@ public struct MissionRuntimeCatalog: Sendable, Equatable {
             platforms: [.macos, .ios, .android, .windows, .linux]
         ),
         Row(
+            id: "muse",
+            wireAliases: ["muse", "muse-code", "musecode", "muse_code", "meta-muse", "metamuse"],
+            displayName: "Muse Code",
+            surfaces: [.switcher, .assistant, .chatBackend, .cliRuntime, .resumeTarget, .missionCreate, .missionEvent, .missionMirror, .missionReceipt, .grantRuntime],
+            launch: .none,
+            platforms: [.macos, .ios, .android, .windows, .linux]
+        ),
+        Row(
             id: "gemini",
             wireAliases: ["gemini", "gemini-cli", "geminicli"],
             displayName: "Gemini CLI",

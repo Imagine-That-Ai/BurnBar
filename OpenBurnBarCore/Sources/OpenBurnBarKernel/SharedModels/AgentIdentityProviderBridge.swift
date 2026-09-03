@@ -51,6 +51,7 @@ extension AgentIdentity {
         case .cursorAgent: return .cursorAgent
         case .junie:    return .junie
         case .fx:       return .fx
+        case .muse:     return .muse
         }
     }
 }

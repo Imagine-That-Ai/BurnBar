@@ -95,6 +95,7 @@ object ProviderLogo {
         AssistantRuntimeID.CURSOR_AGENT -> R.drawable.logo_cursor
         AssistantRuntimeID.JUNIE -> R.drawable.logo_junie
         AssistantRuntimeID.FX -> R.drawable.logo_fx
+        AssistantRuntimeID.MUSE -> R.drawable.logo_meta
     }
 
     // / Asset for a `HermesSubProvider`. Maps the sub-providers to their
