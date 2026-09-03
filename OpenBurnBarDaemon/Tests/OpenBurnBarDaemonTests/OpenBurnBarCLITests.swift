@@ -68,6 +68,21 @@ final class BurnBarCLITests: XCTestCase {
         XCTAssertEqual(result?.output.contains("openburnbar-cli <command>"), true)
     }
 
+    /// `startupPreflightResult` rejects any command missing from
+    /// `directCommandNames` under a canonical executable name, before the
+    /// socket is touched. The three courier commands the Python MCP invokes
+    /// must pass under every canonical name.
+    func testStartupPreflightAllowsTheSignedCourierCommands() {
+        for executable in ["/tmp/OpenBurnBarCLI", "/tmp/openburnbar-cli", "/tmp/burnbar", "/tmp/openburnbar"] {
+            for command in ["search-sql", "memory-remember", "memory-forget"] {
+                XCTAssertNil(
+                    BurnBarCLIRunner.startupPreflightResult(arguments: [command], invokedExecutablePath: executable),
+                    "\(command) must pass preflight under \(executable)"
+                )
+            }
+        }
+    }
+
     func testStartupPreflightAllowsKnownCommandsAndShellShimInvocations() {
         XCTAssertNil(BurnBarCLIRunner.startupPreflightResult(
             arguments: ["health"],
