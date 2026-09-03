@@ -555,10 +555,14 @@ class ModelRouter:
         self,
         policy: MemoryModelPolicy | None,
         *,
+        allow_cli: bool = True,
         gateway: GatewayClient | None = None,
         cli: CLIClient | None = None,
     ) -> None:
         self.policy = policy
+        # Launching a subscription CLI is a process spawn; callers that lack that
+        # right (`spawn_process`) never get a CLI candidate, whatever the policy says.
+        self.allow_cli = allow_cli
         self._gateway = gateway
         self._cli = cli or CLIClient()
 
@@ -567,7 +571,13 @@ class ModelRouter:
         return self.policy is not None and self.policy.pro_active and self.policy.enabled
 
     def serves(self, purpose: str) -> bool:
-        return self.policy is not None and self.policy.usable(purpose)
+        if self.policy is None or not self.policy.usable(purpose):
+            return False
+        return self.allow_cli or any(not self._is_cli(item) for item in self.policy.models_for(purpose))
+
+    @staticmethod
+    def _is_cli(candidate: str) -> bool:
+        return candidate.split("/", 1)[0] in CLI_PROVIDER_IDS
 
     def _gateway_client(self) -> GatewayClient:
         if self._gateway is not None:
@@ -597,6 +607,14 @@ class ModelRouter:
             if not matching:
                 raise ModelUnavailable("PROVIDER_NOT_CONSENTED", f"provider {hint} is not enabled for {purpose}")
             candidates = matching
+        if not self.allow_cli:
+            spawn_only = candidates and all(self._is_cli(item) for item in candidates)
+            candidates = [item for item in candidates if not self._is_cli(item)]
+            if spawn_only:
+                raise ModelUnavailable(
+                    "SPAWN_PROCESS_REQUIRED",
+                    f"{purpose} is served only by a subscription CLI, which this session may not launch",
+                )
         if not candidates:
             raise ModelUnavailable("MODEL_UNAVAILABLE", f"no consented model for {purpose}")
         provider, model = candidates[0].split("/", 1)

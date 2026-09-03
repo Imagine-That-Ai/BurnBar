@@ -1695,7 +1695,9 @@ def _pro_extractor_may_spawn(requested_extractor: str) -> bool:
 def _memory_engine() -> me.MemoryEngine:
     config = me.EngineConfig.from_env(retain_allowed=_capability_enabled("memory_secret_retain"))
     # Memory Pro: what the daemon lets this engine use; None keeps every path local.
-    models = me.ModelRouter(me.load_policy())
+    # Every model purpose goes through this router; subscription CLIs are only
+    # candidates when the session may spawn processes.
+    models = me.ModelRouter(me.load_policy(), allow_cli=_capability_enabled("spawn_process"))
     return me.MemoryEngine.open(_memory_db_path(), provider=_memory_provider_override, config=config, models=models)
 
 

@@ -285,3 +285,36 @@ def test_first_memory_is_truncated_to_the_token_budget(tmp_path, monkeypatch):
             engine.close()
     assert result["groundedness"] == "grounded", result
     assert len(seen["user"]) < 1_500, "the lone oversized memory is clipped to the budget instead of blowing past it"
+
+
+def test_server_never_spawns_a_cli_without_spawn_process(server_env, monkeypatch):
+    """Judge, rerank and answer purposes routed to a subscription CLI by the policy must not
+    launch it unless the session holds `spawn_process` — a provider hint cannot force it."""
+    monkeypatch.setenv("BURNBAR_MCP_TOOLSET", "memory")
+    server = _load_server()
+    monkeypatch.setattr(server, "_signed_cli_path", lambda: None)
+    server._memory_provider_override = me.FakeEmbeddingProvider()
+    repo = _repo(server_env)
+
+    real_run = me.providers.subprocess.run
+
+    def boom(argv, *args, **kwargs):
+        if argv and argv[0] in ("claude", "codex"):
+            raise AssertionError(f"a CLI was spawned: {argv[:2]}")
+        return real_run(argv, *args, **kwargs)
+
+    monkeypatch.setattr(me.providers.subprocess, "run", boom)
+    cli_policy = json.loads(json.dumps(POLICY))
+    for purpose in ("memory-judge", "memory-rerank", "memory-answer"):
+        cli_policy["providers"][0]["purposes"][purpose] = ["claude_cli/default"]
+    cli_policy["cli"] = {"claude_cli": True, "codex_cli": False}
+    monkeypatch.setenv(me.MODEL_POLICY_JSON_ENV, json.dumps(cli_policy))
+    me.reset_provider_cache_for_tests()
+    monkeypatch.setenv("OPENBURNBAR_LOCAL_MCP_ENABLE_MEMORY_LLM_READ", "true")
+    monkeypatch.delenv("OPENBURNBAR_LOCAL_MCP_ENABLE_SPAWN", raising=False)
+    for fact in FACTS + ["We ship from the release branch on Fridays."]:  # the near duplicate reaches the judge band
+        assert json.loads(server.burnbar_remember(fact, project_path=repo, kind="fact"))["status"] == "ok"
+    recalled = json.loads(server.burnbar_recall("deploy", project_path=repo, rerank=True))
+    assert recalled["trustSignal"]["rerank"].startswith("skipped:") or recalled["trustSignal"]["rerank"] == "off"
+    asked = json.loads(server.burnbar_memory_ask("When do we deploy?", project_path=repo, provider="claude_cli"))
+    assert asked["status"] == "unavailable" and asked["code"] == "SPAWN_PROCESS_REQUIRED", asked

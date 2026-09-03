@@ -295,3 +295,31 @@ def test_signed_cli_path_prefers_the_release_helper_and_only_verified_candidates
     assert me.signed_cli_path() == str(helper)
     monkeypatch.setattr(me.providers, "verify_courier", lambda path, **_: False)
     assert me.signed_cli_path() is None, "an unverified binary is never the courier"
+
+
+def test_router_skips_cli_providers_unless_spawning_is_allowed():
+    policy = _policy(
+        {
+            "providers": [
+                {
+                    "id": "openrouter",
+                    "consented": True,
+                    "retention": "deny",
+                    "purposes": {"memory-judge": ["anthropic/claude-opus-5"], "memory-answer": []},
+                }
+            ],
+            "cli": {"claude_cli": True, "codex_cli": False},
+        }
+    )
+    guarded = me.ModelRouter(policy, allow_cli=False)
+    assert guarded.call("memory-judge").provider == "openrouter", "a gateway candidate is used instead of the CLI"
+    with pytest.raises(me.ModelUnavailable) as refused:
+        guarded.call("memory-answer")
+    assert refused.value.code == "SPAWN_PROCESS_REQUIRED"
+    with pytest.raises(me.ModelUnavailable) as hinted:
+        guarded.call("memory-judge", "claude_cli")
+    assert hinted.value.code == "SPAWN_PROCESS_REQUIRED", "a caller hint cannot force a spawn"
+    assert not guarded.serves("memory-answer"), "a purpose only a CLI could serve is not served"
+    assert me.ModelRouter(policy).call("memory-answer").provider == "claude_cli", (
+        "allowed by default for callers that own the process"
+    )
