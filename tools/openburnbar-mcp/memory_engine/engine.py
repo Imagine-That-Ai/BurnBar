@@ -85,7 +85,12 @@ class ActiveMemory:
     embedding_version: str | None
     created_at: str
     updated_at: str
+    # Content tokens (body + tags + entities). These decide near-duplicate
+    # similarity, so provenance must stay out of them.
     tokens: list[str] = field(default_factory=list)
+    # The lexical index: content plus `source_ref`, so a memory stays findable by
+    # the path or ticket it came from. Ranking only -- never similarity.
+    recall_tokens: list[str] = field(default_factory=list)
     vector: list[float] | None = None
 
     def public(self, include_body: bool = True) -> dict[str, Any]:
@@ -340,9 +345,13 @@ class MemoryEngine(_WritePath, _ReadPath, _Maintenance):
             updated_at=str(row["updated_at"]),
             vector=vector,
         )
-        memory.tokens = tokenize(
-            " ".join([memory.body, " ".join(memory.tags), " ".join(memory.entities), memory.source_ref or ""])
-        )
+        # Content only, and built exactly like the incoming side in
+        # `_commit_fact`, because these tokens decide near-duplicate similarity.
+        content = " ".join([memory.body, " ".join(memory.tags), " ".join(memory.entities)])
+        memory.tokens = tokenize(content)
+        # The lexical index keeps `source_ref` so `recall("docs release runbook")`
+        # still finds the memory captured from `docs/release/runbook.md`.
+        memory.recall_tokens = tokenize(" ".join([content, memory.source_ref or ""]))
         return memory
 
     _SELECT = """

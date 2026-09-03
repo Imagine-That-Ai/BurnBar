@@ -13,7 +13,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from ._util import _clamp, normalize_tags
+from ._util import _clamp, raw_tags
 from .constants import (
     CUE_PATTERNS,
     DEFAULT_MAX_FACTS,
@@ -118,6 +118,13 @@ def _pack_safe(body: str) -> str:
     return _PACK_SENTINEL_RE.sub("[pack-sentinel]", collapsed)
 
 
+# `heuristic_extract` stamps each fact with the index of the message it came
+# from (`m3`). It names a position inside one batch and nothing about the batch
+# itself, so the write path recognizes it and lets a caller's `source_ref`
+# prefix it instead of being discarded.
+EXTRACTOR_MARKER_RE = re.compile(r"^m\d+$")
+
+
 @dataclass
 class Fact:
     text: str
@@ -149,7 +156,9 @@ class Fact:
             confidence = _clamp(float(raw.get("confidence", 0.7)), 0.0, 1.0)
         except (TypeError, ValueError):
             confidence = 0.7
-        tags = normalize_tags(raw.get("tags"))
+        # Raw, not normalized: `_commit_fact` gates these strings and lowercases
+        # what the gate returns, so the gate never sees a case-folded secret.
+        tags = raw_tags(raw.get("tags"))
         entities = [str(item).strip() for item in (raw.get("entities") or []) if str(item).strip()][:16]
         metadata = raw.get("metadata") if isinstance(raw.get("metadata"), dict) else {}
         supersedes = [str(item) for item in (raw.get("supersedes") or []) if str(item).strip()]

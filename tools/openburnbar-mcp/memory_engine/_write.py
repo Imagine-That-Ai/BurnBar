@@ -24,6 +24,7 @@ from ._util import (
     normalize_scope,
     normalize_tags,
     now_iso,
+    raw_tags,
     sha256_hex,
 )
 from .constants import (
@@ -44,6 +45,7 @@ from .constants import (
 )
 from .embeddings import _cosine, encode_vector
 from .extract import (
+    EXTRACTOR_MARKER_RE,
     ExtractorFn,
     Fact,
     _slot_key,
@@ -54,12 +56,40 @@ from .extract import (
     render_transcript,
     resolve_extractor,
 )
-from .gate import GateDecision, apply_gate, auxiliary_injection_labels, gate_aux_fields, injection_labels
+from .gate import (
+    AUX_TOO_LARGE_CODE,
+    GateDecision,
+    apply_gate,
+    aux_input_overflow,
+    auxiliary_injection_labels,
+    gate_aux_fields,
+    injection_labels,
+)
 from .store import audit_event, project_payload, resolve_project
 from .text import _jaccard, tokenize
 
 if TYPE_CHECKING:
     from .engine import ActiveMemory
+
+
+def _merged_source_ref(caller_ref: str | None, fact_ref: str | None) -> str | None:
+    """The provenance stored on a fact the caller did not reference by hand.
+
+    `heuristic_extract` marks each fact with the position of the message it came
+    from (`m3`), which says nothing about which batch that was. When the caller
+    named the batch -- the `SessionEnd` hook passes
+    `source_ref="claude-code:<session_id>"` -- the row keeps both:
+    `claude-code:<session_id>#m3`. A fact carrying a reference of its own (an LLM
+    extractor, caller-supplied `facts`) keeps it, and a call with no `source_ref`
+    keeps the bare marker.
+    """
+    if not caller_ref:
+        return fact_ref
+    if not fact_ref:
+        return caller_ref
+    if EXTRACTOR_MARKER_RE.match(fact_ref):
+        return f"{caller_ref}#{fact_ref}"
+    return fact_ref
 
 
 class _WritePath:
@@ -83,6 +113,18 @@ class _WritePath:
         force: bool = False,
     ) -> dict[str, Any]:
         project_id, root = resolve_project(self.conn, project_path)
+        # The batch-wide auxiliary input the caller controls. Per-fact aux from
+        # `facts` is bounded in `_commit_fact`, which every fact goes through.
+        overflow = aux_input_overflow(tags=raw_tags(default_tags), metadata=metadata)
+        if overflow:
+            return {
+                "status": "rejected",
+                "code": AUX_TOO_LARGE_CODE,
+                "reason": overflow,
+                "summary": {event: 0 for event in ("ADD", "UPDATE", "NONE", "DELETE", "REJECT")},
+                "decisions": [],
+                **project_payload(project_id, root),
+            }
         normalized_messages: list[dict[str, Any]] = []
         if messages:
             normalized_messages = [dict(message) for message in messages if isinstance(message, dict)]
@@ -176,15 +218,15 @@ class _WritePath:
         decisions: list[dict[str, Any]] = []
         for fact in extracted:
             if default_tags:
-                fact.tags = normalize_tags(list(fact.tags) + list(default_tags))
+                # Raw until `_commit_fact` gates them; see `raw_tags`.
+                fact.tags = raw_tags(list(fact.tags) + list(default_tags))
             if metadata:
                 merged = dict(metadata)
                 merged.update(fact.metadata)
                 fact.metadata = merged
             if default_scope and not fact.scope:
                 fact.scope = default_scope
-            if source_ref and not fact.source_ref:
-                fact.source_ref = source_ref
+            fact.source_ref = _merged_source_ref(source_ref, fact.source_ref)
             decision = self._commit_fact(
                 project_id=project_id,
                 root=root,
@@ -257,12 +299,26 @@ class _WritePath:
                 "reason": "memory text is empty",
                 **project_payload(project_id, root),
             }
+        # Checked here, against the caller's own lists, because the entity clip
+        # below would otherwise hide an oversized batch from the bound.
+        overflow = aux_input_overflow(
+            tags=raw_tags(tags), entities=[str(item) for item in (entities or [])], metadata=metadata
+        )
+        if overflow:
+            return {
+                "status": "rejected",
+                "event": "REJECT",
+                "code": AUX_TOO_LARGE_CODE,
+                "reason": overflow,
+                **project_payload(project_id, root),
+            }
         fact = Fact(
             text=body[:MAX_BODY_CHARS],
             kind=str(kind or "fact").strip().lower(),
             confidence=_clamp(float(confidence), 0.0, 1.0),
             scope=scope,
-            tags=normalize_tags(tags),
+            # Raw until `_commit_fact` gates them; see `raw_tags`.
+            tags=raw_tags(tags),
             entities=[str(item) for item in (entities or [])][:16],
             metadata=dict(metadata or {}),
             source_ref=source_ref,
@@ -354,6 +410,17 @@ class _WritePath:
                 "kind": kind,
                 "scope": scope,
             }
+        # Bound the auxiliary input before the gate walks it. This is the
+        # backstop that covers every write path, `import_memories` included.
+        overflow = aux_input_overflow(tags=fact.tags, entities=fact.entities, metadata=fact.metadata)
+        if overflow:
+            return {
+                "event": "REJECT",
+                "code": AUX_TOO_LARGE_CODE,
+                "reason": overflow,
+                "kind": kind,
+                "scope": scope,
+            }
         gate = apply_gate(
             fact.text,
             secret_policy=self.config.secret_policy,
@@ -365,6 +432,7 @@ class _WritePath:
             entities=fact.entities,
             metadata=fact.metadata,
             source_ref=fact.source_ref,
+            source_kind=source_kind,
             secret_policy=self.config.secret_policy,
             pii_policy=self.config.pii_policy,
         )
@@ -404,6 +472,7 @@ class _WritePath:
         fact.entities = list(aux.entities)
         fact.metadata = dict(aux.metadata)
         fact.source_ref = aux.source_ref
+        source_kind = aux.source_kind or source_kind
         body = gate.body.strip()
         if not body:
             return {
@@ -440,7 +509,12 @@ class _WritePath:
         if self.conn.in_transaction:
             self._commit()
         vector = self.provider.embed([body])[0] if self.provider.available else None
-        tokens = tokenize(" ".join([body, " ".join(fact.tags), " ".join(entities), fact.source_ref or ""]))
+        # Content only. `source_ref` is provenance, not something the memory says:
+        # a hook ref (`claude-code:<uuid>`) tokenizes into a dozen tokens shared by
+        # every fact in one batch, which inflates pairwise Jaccard and collapses
+        # distinct memories into near duplicates. Keep it out of similarity and
+        # out of BM25 (`engine._row_to_memory` builds the stored side the same way).
+        tokens = tokenize(" ".join([body, " ".join(fact.tags), " ".join(entities)]))
 
         # Serialize the exact-duplicate lookup with insertion. Embeddings and
         # all other external work are complete before taking the write lock.

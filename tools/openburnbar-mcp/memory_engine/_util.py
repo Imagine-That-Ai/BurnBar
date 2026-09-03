@@ -85,14 +85,30 @@ def normalize_scope(scope: str | None, kind: str) -> str:
     return raw
 
 
-def normalize_tags(tags: Sequence[str] | str | None) -> list[str]:
+def _split_tags(tags: Sequence[str] | str | None) -> list[str]:
     if tags is None:
         return []
     if isinstance(tags, str):
         parts = re.split(r"[,;\n]", tags)
     else:
         parts = [str(part) for part in tags]
-    cleaned = sorted({part.strip().lower() for part in parts if part and part.strip()})
+    return [part.strip() for part in parts if part and part.strip()]
+
+
+def raw_tags(tags: Sequence[str] | str | None) -> list[str]:
+    """The caller's tags split and trimmed but *not* lowercased or capped.
+
+    The secret gate has to read a tag the way the caller wrote it: an
+    `AKIA…` access key id no longer matches its corpus pattern once
+    `normalize_tags` folds it to lowercase. Write paths therefore carry the raw
+    form as far as the gate and call `normalize_tags` on what the gate returns,
+    which yields the same stored tags as normalizing first.
+    """
+    return sorted(set(_split_tags(tags)))
+
+
+def normalize_tags(tags: Sequence[str] | str | None) -> list[str]:
+    cleaned = sorted({part.lower() for part in _split_tags(tags)})
     return cleaned[:32]
 
 

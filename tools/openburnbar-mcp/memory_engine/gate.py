@@ -269,6 +269,48 @@ def apply_gate(text: str, *, secret_policy: str, pii_policy: str, retain_allowed
     return GateDecision("keep", "none", text, None, [])
 
 
+MAX_AUX_TAGS = 64
+MAX_AUX_ENTITIES = 64
+MAX_AUX_METADATA_ENTRIES = 64
+AUX_TOO_LARGE_CODE = "AUX_TOO_LARGE"
+
+
+def _metadata_entry_count(value: Any, depth: int = 0) -> int:
+    """How many strings `gate_aux_fields` would screen inside `metadata`.
+
+    Counts keys and string values at every depth, so nesting a thousand values
+    under one key cannot slip past a top-level key count.
+    """
+    if depth > 8:
+        return MAX_AUX_METADATA_ENTRIES + 1
+    if isinstance(value, dict):
+        return sum(1 + _metadata_entry_count(item, depth + 1) for item in value.values())
+    if isinstance(value, list):
+        return sum(_metadata_entry_count(item, depth + 1) for item in value)
+    return 1 if isinstance(value, str) else 0
+
+
+def aux_input_overflow(
+    *, tags: Sequence[str] = (), entities: Sequence[str] = (), metadata: dict[str, Any] | None = None
+) -> str | None:
+    """The reason to refuse oversized auxiliary input, or None.
+
+    `raw_tags` deliberately does not cap the caller's tags: capping before the
+    gate would drop a credential-bearing tag silently instead of screening it.
+    The bound therefore lives here, ahead of the gate, and refuses rather than
+    clips -- a caller who sent too much is told so instead of having most of it
+    quietly discarded.
+    """
+    for label, count, limit in (
+        ("tags", len(tags), MAX_AUX_TAGS),
+        ("entities", len(entities), MAX_AUX_ENTITIES),
+        ("metadata entries", _metadata_entry_count(metadata or {}), MAX_AUX_METADATA_ENTRIES),
+    ):
+        if count > limit:
+            return f"too many {label}: {count} exceeds the limit of {limit}"
+    return None
+
+
 @dataclass
 class AuxGate:
     """Gate outcome for the caller-controlled fields stored beside the body."""
@@ -280,6 +322,7 @@ class AuxGate:
     labels: list[str]
     reject_reason: str | None = None
     reject_code: str | None = None
+    source_kind: str | None = None
 
 
 def _gate_string(
@@ -310,6 +353,7 @@ def gate_aux_fields(
     entities: Sequence[str],
     metadata: dict[str, Any] | None,
     source_ref: str | None,
+    source_kind: str | None = None,
     secret_policy: str,
     pii_policy: str,
 ) -> AuxGate:
@@ -320,6 +364,10 @@ def gate_aux_fields(
     place (a tag or entity that *is* a secret is dropped), `reject` refuses the
     write, and `retain` never applies here because there is no vault for
     auxiliary fields.
+
+    Every value is screened in the raw form the caller sent. Write paths carry
+    tags uncased this far precisely so a case-sensitive corpus pattern still
+    matches; see `_util.raw_tags`.
     """
     labels: list[str] = []
     reject_reason: str | None = None
@@ -350,6 +398,12 @@ def gate_aux_fields(
     if source_ref:
         replaced = gate(source_ref)
         clean_ref = "[REDACTED]" if replaced is None else replaced
+    # `source_kind` is caller-supplied plaintext persisted beside the body and
+    # returned by get / list / export, so it gets the same treatment as the ref.
+    clean_kind: str | None = source_kind
+    if source_kind:
+        replaced = gate(source_kind)
+        clean_kind = "[REDACTED]" if replaced is None else replaced
     return AuxGate(
         clean_tags,
         clean_entities,
@@ -358,6 +412,7 @@ def gate_aux_fields(
         sorted(set(labels)),
         reject_reason,
         reject_code,
+        clean_kind,
     )
 
 

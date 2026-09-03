@@ -23,6 +23,7 @@ from ._util import (
     normalize_scope,
     normalize_tags,
     now_iso,
+    raw_tags,
     sha256_hex,
 )
 from .constants import (
@@ -37,7 +38,7 @@ from .constants import (
 from .embeddings import _cosine, encode_vector
 from .extract import PACK_TOKEN_BUDGET_FLOOR, _pack_safe, _slot_key, extract_entities, extract_relations
 from .filters import _compile_filter_sql, _invalid_filter_reason, match_filters
-from .gate import GateDecision, apply_gate, gate_aux_fields, injection_labels
+from .gate import AUX_TOO_LARGE_CODE, GateDecision, apply_gate, aux_input_overflow, gate_aux_fields, injection_labels
 from .store import audit_event, project_payload, resolve_project
 from .text import BM25, _estimate_tokens, _snippet, tokenize
 
@@ -174,7 +175,7 @@ class _ReadPath:
         semantic_rank: dict[str, int] = {}
         semantic_score: dict[str, float] = {}
         if query_tokens and mode in ("hybrid", "lexical"):
-            bm25 = BM25({memory.id: memory.tokens for memory in eligible})
+            bm25 = BM25({memory.id: memory.recall_tokens for memory in eligible})
             for index, (memory_id, score) in enumerate(bm25.rank(query_tokens, limit=max(lim * 4, 50))):
                 lexical_rank[memory_id] = index + 1
                 lexical_score[memory_id] = score
@@ -544,13 +545,35 @@ class _ReadPath:
                 "reason": str(exc),
                 "allowed": ["auto", *MEMORY_SCOPES],
             }
-        new_tags = normalize_tags(tags) if tags is not None else existing.tags
+        # Raw until the gate below has read them: `normalize_tags` lowercases, and a
+        # case-folded credential matches no corpus pattern. Stored tags are
+        # normalized from what the gate returns.
+        new_tags = raw_tags(tags) if tags is not None else list(existing.tags)
         if add_tags:
-            new_tags = normalize_tags(list(new_tags) + normalize_tags(add_tags))
+            new_tags = raw_tags(list(new_tags) + raw_tags(add_tags))
         new_conf = _clamp(float(confidence), 0.0, 1.0) if confidence is not None else existing.confidence
         new_meta = dict(existing.metadata)
         if metadata:
             new_meta.update(metadata)
+        # The bound is on the caller's delta only, never on what the row already
+        # holds: stored aux was gated when it was written, and counting it here
+        # would make a row that predates this bound (or arrived through a
+        # historical import) permanently unpatchable, even for a text-only edit.
+        # Checked ahead of the entity clip below and of the gate; see
+        # `gate.aux_input_overflow`.
+        overflow = aux_input_overflow(
+            tags=raw_tags(tags) + raw_tags(add_tags),
+            entities=[str(item) for item in entities] if entities is not None else (),
+            metadata=metadata,
+        )
+        if overflow:
+            self._commit()
+            return {
+                "status": "rejected",
+                "code": AUX_TOO_LARGE_CODE,
+                "memoryID": memory_id,
+                "reason": overflow,
+            }
         new_entities = [str(item) for item in entities][:16] if entities is not None else existing.entities
         # Patched auxiliary fields get the same gate as the body.
         aux = gate_aux_fields(

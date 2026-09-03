@@ -41,6 +41,7 @@ from ._util import (
     normalize_scope,
     normalize_tags,
     now_iso,
+    raw_tags,
     sha256_hex,
 )
 from .constants import (
@@ -260,6 +261,7 @@ __all__ = [
     "open_store",
     "parse_llm_facts",
     "project_payload",
+    "raw_tags",
     "render_transcript",
     "reset_provider_cache_for_tests",
     "resolve_extractor",

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests for the local memory engine (memory_engine.py) and its MCP wiring."""
+"""Tests for the local memory engine (the `memory_engine` package) and its MCP wiring."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import base64
 import importlib.util
 import json
 import os
+import re
 import sqlite3
 import sys
 import types
@@ -296,7 +297,9 @@ def test_memorize_is_idempotent_and_reports_decisions(tmp_path: Path) -> None:
         assert forced["summary"]["ADD"] == 0
         preference = engine.recall("PR size preference", project_path=repo, limit=3)["results"][0]
         assert preference["scope"] == "personal"
-        assert preference["sourceRef"] == "conv-1" or preference["sourceRef"].startswith("m")
+        # The caller named the batch and the extractor named the message inside
+        # it; the row keeps both. See `memory_engine._write._merged_source_ref`.
+        assert re.fullmatch(r"conv-1#m\d+", preference["sourceRef"]), preference["sourceRef"]
 
 
 def test_memorize_accepts_pre_extracted_facts_and_raw_mode(tmp_path: Path) -> None:
