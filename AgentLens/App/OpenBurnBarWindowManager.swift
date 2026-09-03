@@ -202,6 +202,7 @@ final class WindowManager: ObservableObject {
             defer: false
         )
         window.title = "Settings"
+        SettingsWindowChrome.applyStandardTitlebar(to: window)
         window.contentMinSize = NSSize(width: 780, height: 560)
         window.contentView = NSHostingView(rootView: contentView)
         window.center()

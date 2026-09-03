@@ -807,6 +807,9 @@ private struct DashboardSidebarMaterial: View {
 /// manually hosted dashboard window mounts. Keep the window chrome clean by
 /// removing only the system toggle item; the in-sidebar button remains the
 /// single visible control for this action.
+///
+/// macOS 26/27 also injects `sidebarTrackingSeparator`, which draws the glass
+/// "Show Sidebar" control in the titlebar on top of Jump-or-search / Home.
 struct DashboardSidebarToolbarItemRemover: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView {
         DashboardSidebarToolbarScrubberView(frame: .zero)
@@ -814,6 +817,31 @@ struct DashboardSidebarToolbarItemRemover: NSViewRepresentable {
 
     func updateNSView(_ nsView: NSView, context: Context) {
         (nsView as? DashboardSidebarToolbarScrubberView)?.removeSystemSidebarToggle()
+    }
+}
+
+enum DashboardSystemSidebarChrome {
+    static func isSystemToggleItem(_ item: NSToolbarItem) -> Bool {
+        if isSystemToggleIdentifier(item.itemIdentifier) {
+            return true
+        }
+        let bits = [item.label, item.paletteLabel, item.toolTip].compactMap { $0 }
+        return bits.contains { isSystemToggleLabel($0) }
+    }
+
+    static func isSystemToggleIdentifier(_ identifier: NSToolbarItem.Identifier) -> Bool {
+        if identifier == .toggleSidebar { return true }
+        if identifier == .sidebarTrackingSeparator { return true }
+        let raw = identifier.rawValue.lowercased()
+        return raw.contains("sidebar")
+    }
+
+    static func isSystemToggleLabel(_ value: String) -> Bool {
+        let lowered = value.lowercased()
+        guard lowered.contains("sidebar") else { return false }
+        return lowered.contains("show")
+            || lowered.contains("hide")
+            || lowered.contains("toggle")
     }
 }
 
@@ -876,13 +904,58 @@ private final class DashboardSidebarToolbarScrubberView: NSView {
     // `viewWillMove(toWindow: nil)` clears them on the way out.
 
     func removeSystemSidebarToggle() {
-        guard let toolbar = window?.toolbar else { return }
+        guard let window else { return }
+        suppressToolbarToggles(in: window)
+        hideTitlebarToggleButtons(in: window)
+    }
+
+    private func suppressToolbarToggles(in window: NSWindow) {
+        guard let toolbar = window.toolbar else { return }
         for index in toolbar.items.indices.reversed() {
             let item = toolbar.items[index]
-            if item.itemIdentifier == .toggleSidebar ||
-                item.itemIdentifier.rawValue == "NSToolbarToggleSidebarItemIdentifier" {
-                toolbar.removeItem(at: index)
+            guard DashboardSystemSidebarChrome.isSystemToggleItem(item) else { continue }
+            item.view?.isHidden = true
+            item.view?.alphaValue = 0
+            toolbar.removeItem(at: index)
+        }
+    }
+
+    private func hideTitlebarToggleButtons(in window: NSWindow) {
+        for chrome in Self.titlebarChromeViews(in: window) {
+            hideToggleButtons(in: chrome)
+        }
+    }
+
+    private static func titlebarChromeViews(in window: NSWindow) -> [NSView] {
+        var views: [NSView] = []
+        if let titlebar = window.standardWindowButton(.closeButton)?.superview {
+            views.append(titlebar)
+        }
+        if let theme = window.contentView?.superview {
+            for subview in theme.subviews where subview !== window.contentView {
+                let name = String(describing: type(of: subview))
+                if name.localizedCaseInsensitiveContains("titlebar")
+                    || name.localizedCaseInsensitiveContains("toolbar") {
+                    views.append(subview)
+                }
             }
+        }
+        return views
+    }
+
+    private func hideToggleButtons(in view: NSView) {
+        let label = [
+            view.accessibilityLabel(),
+            view.toolTip,
+            (view as? NSButton)?.title
+        ].compactMap { $0 }.joined(separator: " ")
+        if DashboardSystemSidebarChrome.isSystemToggleLabel(label) {
+            view.isHidden = true
+            view.alphaValue = 0
+            (view as? NSControl)?.isEnabled = false
+        }
+        for subview in view.subviews {
+            hideToggleButtons(in: subview)
         }
     }
 }
