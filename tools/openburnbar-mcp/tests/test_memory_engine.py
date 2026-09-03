@@ -744,7 +744,7 @@ def test_memory_mirror_uses_signed_cli_when_available(server_env: Path, monkeypa
     calls: list[tuple[list[str], dict[str, object]]] = []
 
     monkeypatch.setattr(
-        server, "_signed_cli_path", lambda: "/Applications/OpenBurnBar.app/Contents/MacOS/openburnbar-cli"
+        server, "_signed_cli_path", lambda: "/Applications/OpenBurnBar.app/Contents/Helpers/OpenBurnBarCLI"
     )
 
     def fake_run(args, *, input, capture_output, timeout, check):
@@ -774,7 +774,7 @@ def test_memory_mirror_uses_signed_cli_when_available(server_env: Path, monkeypa
     assert mirror == {"status": "mirrored", "daemonMemoryID": "mem_daemon", "auditHash": "audit-daemon"}
     assert calls == [
         (
-            ["/Applications/OpenBurnBar.app/Contents/MacOS/openburnbar-cli", "memory-remember"],
+            ["/Applications/OpenBurnBar.app/Contents/Helpers/OpenBurnBarCLI", "memory-remember"],
             {
                 "projectPath": "/tmp/fixture",
                 "kind": "architecture",
@@ -794,7 +794,7 @@ def test_failed_signed_cli_write_never_falls_back_to_unsigned_socket(
     monkeypatch.setenv("OPENBURNBAR_LOCAL_MCP_ENABLE_LOCAL_WRITE", "true")
     server = _load_server()
     monkeypatch.setattr(
-        server, "_signed_cli_path", lambda: "/Applications/OpenBurnBar.app/Contents/MacOS/openburnbar-cli"
+        server, "_signed_cli_path", lambda: "/Applications/OpenBurnBar.app/Contents/Helpers/OpenBurnBarCLI"
     )
     monkeypatch.setattr(
         server.subprocess,
@@ -829,7 +829,7 @@ def test_signed_cli_forget_uses_persisted_daemon_memory_id(server_env: Path, mon
     calls: list[tuple[str, dict[str, object]]] = []
 
     monkeypatch.setattr(
-        server, "_signed_cli_path", lambda: "/Applications/OpenBurnBar.app/Contents/MacOS/openburnbar-cli"
+        server, "_signed_cli_path", lambda: "/Applications/OpenBurnBar.app/Contents/Helpers/OpenBurnBarCLI"
     )
     original_run = server.subprocess.run
 
