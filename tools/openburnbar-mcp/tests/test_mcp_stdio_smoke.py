@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sqlite3
 import subprocess
 import sys
@@ -35,7 +36,7 @@ pytestmark = pytest.mark.skipif(not _MCP_IMPORTS, reason="the mcp package is not
 
 
 class _Client:
-    def __init__(self, workdir: Path) -> None:
+    def __init__(self, workdir: Path, extra_env: dict[str, str] | None = None) -> None:
         env = dict(os.environ)
         env.update(
             {
@@ -50,6 +51,7 @@ class _Client:
         for name in list(env):
             if name.startswith("OPENBURNBAR_LOCAL_MCP_ENABLE_") or name == "OPENBURNBAR_LOCAL_MCP_PROFILE":
                 env.pop(name)
+        env.update(extra_env or {})
         sqlite3.connect(workdir / "app.sqlite").close()
         self.proc = subprocess.Popen(
             [sys.executable, str(_SERVER)],
@@ -119,6 +121,7 @@ def test_memory_toolset_over_stdio(tmp_path: Path) -> None:
             "burnbar_recall_pack",
             "burnbar_forget",
             "burnbar_memory_doctor",
+            "burnbar_memory_ask",
         } <= names
         # The toolset filter applied at startup is exactly the server's declared memory toolset.
         assert names == set(_load_server().MEMORY_TOOLSET)
@@ -158,3 +161,61 @@ def test_memory_toolset_over_stdio(tmp_path: Path) -> None:
     finally:
         client.close()
     assert client.proc.returncode == 0
+
+
+def test_memory_ask_over_stdio_is_gated_and_grounded(tmp_path: Path) -> None:
+    """The Memory Pro answer tool through the real stdio path: denied without the
+    capability, grounded (and wrapped) with it, against a loopback fake gateway."""
+    import json as _json
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from fakes.fake_gateway import FakeGateway, chat_reply
+    from test_memory_providers import POLICY
+
+    def answerer(path: str, body: dict) -> tuple[int, dict]:
+        user = body["messages"][1]["content"]
+        ids = re.findall(r"^\[([^\]\s]+)\]", user, re.M)
+        return chat_reply(
+            {"answer": "Fridays, from the release branch " + " ".join(f"[{i}]" for i in ids), "citations": ids}
+        )
+
+    fact = {"text": "We deploy from the release branch every Friday.", "project_path": str(tmp_path), "kind": "fact"}
+    with FakeGateway(answerer) as gw:
+        policy_env = {"OPENBURNBAR_MEMORY_MODEL_POLICY_JSON": _json.dumps(dict(POLICY, gatewayURL=gw.url))}
+        denied_client = _Client(tmp_path, extra_env=policy_env)
+        try:
+            denied_client.rpc(
+                "initialize",
+                {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "audit", "version": "0"}},
+            )
+            denied_client.rpc("notifications/initialized", notify=True)
+            assert denied_client.call("burnbar_remember", fact)["status"] == "ok"
+            denied = denied_client.call(
+                "burnbar_memory_ask", {"question": "When do we deploy?", "project_path": str(tmp_path)}
+            )
+            assert denied["code"] == "MCP_CAPABILITY_DISABLED" and denied["capability"] == "memory_llm_read"
+        finally:
+            denied_client.close()
+        assert gw.requests == [], "a denied call never reaches the gateway"
+
+        client = _Client(tmp_path, extra_env={**policy_env, "OPENBURNBAR_LOCAL_MCP_ENABLE_MEMORY_LLM_READ": "true"})
+        try:
+            client.rpc(
+                "initialize",
+                {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "audit", "version": "0"}},
+            )
+            client.rpc("notifications/initialized", notify=True)
+            answered = client.call(
+                "burnbar_memory_ask", {"question": "When do we deploy?", "project_path": str(tmp_path)}
+            )
+        finally:
+            client.close()
+    assert answered["status"] == "ok" and answered["groundedness"] == "grounded", answered
+    assert answered["answer"].startswith("OPENBURNBAR_UNTRUSTED_CODE_V1")
+    assert answered["citations"] and all(
+        c["snippet"].startswith("OPENBURNBAR_UNTRUSTED_CODE_V1") for c in answered["citations"]
+    )
+    assert answered["trustSignal"]["untrustedContentWrapped"] is True
+    purposes = [h.get("x-openburnbar-purpose") for _, h, _ in gw.requests]
+    # recall runs the policy-default rerank first; the answer purpose closes the call
+    assert set(purposes) <= {"memory-rerank", "memory-answer"} and purposes[-1] == "memory-answer"
