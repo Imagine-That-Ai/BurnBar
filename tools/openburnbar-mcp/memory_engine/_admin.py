@@ -1,0 +1,504 @@
+"""`MemoryEngine`'s maintenance surface, mixed into the engine class.
+
+Only methods live here; construction and shared state stay in `engine.py`."""
+
+from __future__ import annotations
+
+import os
+from collections.abc import Sequence
+from typing import Any
+
+from . import gate
+from ._util import _ingest_decision, _json_dumps, _json_loads, now_iso, sha256_hex
+from .constants import (
+    DEFAULT_EMBEDDING_MODEL,
+    EMBEDDING_PROVIDER_ENV,
+    ENGINE_SCHEMA_VERSION,
+    MAX_MEMORIES_PER_PROJECT_SOFT,
+)
+from .embeddings import encode_vector
+from .extract import Fact
+from .store import audit_event, default_db_path, project_payload, resolve_project, verify_audit_chain
+
+
+class _Maintenance:
+    """`MemoryEngine`'s maintenance surface: doctor, export/import, reindex, stats."""
+
+    def _embed_rows(self, memory_ids: Sequence[str]) -> int:
+        if not self.provider.available or not memory_ids:
+            return 0
+        if self.conn.in_transaction:
+            self._commit()
+        rows = self.conn.execute(
+            f"SELECT rowid, id, project_id, body_hash, body_cipher, body_nonce FROM memories WHERE id IN ({','.join('?' * len(memory_ids))})",  # noqa: S608 — placeholders only
+            list(memory_ids),
+        ).fetchall()
+        bodies: list[tuple[int, str, str, str]] = []
+        for row in rows:
+            body = self._open_body(str(row["id"]), str(row["project_id"]), row["body_cipher"], row["body_nonce"])
+            if body is not None:
+                bodies.append((int(row["rowid"]), str(row["id"]), str(row["body_hash"]), body))
+        vectors = self.provider.embed([body for _, _, _, body in bodies])
+        count = 0
+        for (rowid, memory_id, embedded_hash, _), vector in zip(bodies, vectors, strict=False):
+            if vector is None:
+                continue
+            if not self.conn.in_transaction:
+                self.conn.execute("BEGIN IMMEDIATE")
+            current = self.conn.execute(
+                "SELECT body_hash, valid_to FROM memories WHERE rowid = ? AND id = ?", (rowid, memory_id)
+            ).fetchone()
+            if current is None or current["valid_to"] is not None or str(current["body_hash"]) != embedded_hash:
+                # Another process changed or retired the body while the
+                # provider was working. Preserve its current vector and let a
+                # later reindex embed the new body.
+                continue
+            self.conn.execute("DELETE FROM memory_vectors WHERE memory_rowid = ?", (rowid,))
+            self.conn.execute(
+                "INSERT INTO memory_vectors (memory_rowid, embedding_version, dimension, vector) VALUES (?, ?, ?, ?)",
+                (rowid, self.provider.version_id, len(vector), encode_vector(vector)),
+            )
+            self.conn.execute(
+                "UPDATE memories SET embedding_version = ? WHERE id = ?", (self.provider.version_id, memory_id)
+            )
+            count += 1
+        return count
+
+    def reindex(
+        self, *, project_path: str | None = None, all_projects: bool = False, batch_size: int = 32
+    ) -> dict[str, Any]:
+        if not self.provider.available:
+            return {"status": "unavailable", "code": "EMBEDDINGS_UNAVAILABLE", "embedding": self.provider.describe()}
+        if all_projects:
+            rows = self.conn.execute(
+                "SELECT m.id FROM memories m LEFT JOIN memory_vectors v ON v.memory_rowid = m.rowid AND v.embedding_version = ? WHERE m.valid_to IS NULL AND v.memory_rowid IS NULL",
+                (self.provider.version_id,),
+            ).fetchall()
+            payload: dict[str, Any] = {}
+            stale_params: tuple[Any, ...] = (self.provider.version_id,)
+            stale_count_sql = "SELECT COUNT(*) FROM memory_vectors WHERE embedding_version != ?"
+            stale_delete_sql = "DELETE FROM memory_vectors WHERE embedding_version != ?"
+        else:
+            project_id, root = resolve_project(self.conn, project_path)
+            rows = self.conn.execute(
+                "SELECT m.id FROM memories m LEFT JOIN memory_vectors v ON v.memory_rowid = m.rowid AND v.embedding_version = ? WHERE m.valid_to IS NULL AND v.memory_rowid IS NULL AND m.project_id = ?",
+                (self.provider.version_id, project_id),
+            ).fetchall()
+            payload = project_payload(project_id, root)
+            stale_params = (self.provider.version_id, project_id)
+            stale_count_sql = """
+                SELECT COUNT(*)
+                FROM memory_vectors AS v
+                JOIN memories AS m ON m.rowid = v.memory_rowid
+                WHERE v.embedding_version != ? AND m.project_id = ?
+            """
+            stale_delete_sql = """
+                DELETE FROM memory_vectors
+                WHERE embedding_version != ?
+                  AND memory_rowid IN (SELECT rowid FROM memories WHERE project_id = ?)
+            """
+        ids = [str(row["id"]) for row in rows]
+        stale = int(self.conn.execute(stale_count_sql, stale_params).fetchone()[0])
+        embedded = 0
+        for start in range(0, len(ids), max(1, batch_size)):
+            embedded += self._embed_rows(ids[start : start + batch_size])
+        self.conn.execute(stale_delete_sql, stale_params)
+        audit_event(
+            self.conn,
+            action="memory.reindex",
+            project_id=payload.get("projectID"),
+            subject_id=None,
+            labels=[f"embedded:{embedded}", f"version:{self.provider.version_id}"],
+            actor=self.config.actor,
+        )
+        self._commit()
+        self._invalidate_cache()
+        return {
+            "status": "ok",
+            "pending": len(ids),
+            "embedded": embedded,
+            "staleVectorsPurged": stale,
+            "embedding": self.provider.describe(),
+            **payload,
+        }
+
+    def stats(self, *, project_path: str | None = None) -> dict[str, Any]:
+        project_id, root = resolve_project(self.conn, project_path)
+
+        def grouped_sql(column: str) -> str:
+            return (
+                f"SELECT {column}, COUNT(*) FROM memories WHERE project_id = ? AND valid_to IS NULL GROUP BY {column}"  # noqa: S608 — column from fixed allowlist
+            )
+
+        def grouped(column: str) -> dict[str, int]:
+            return {str(row[0]): int(row[1]) for row in self.conn.execute(grouped_sql(column), (project_id,))}
+
+        total = int(
+            self.conn.execute(
+                "SELECT COUNT(*) FROM memories WHERE project_id = ? AND valid_to IS NULL", (project_id,)
+            ).fetchone()[0]
+        )
+        superseded = int(
+            self.conn.execute(
+                "SELECT COUNT(*) FROM memories WHERE project_id = ? AND valid_to IS NOT NULL", (project_id,)
+            ).fetchone()[0]
+        )
+        embedded = int(
+            self.conn.execute(
+                "SELECT COUNT(*) FROM memories m JOIN memory_vectors v ON v.memory_rowid = m.rowid WHERE m.project_id = ? AND m.valid_to IS NULL AND v.embedding_version = ?",
+                (project_id, self.provider.version_id),
+            ).fetchone()[0]
+        )
+        vault = int(
+            self.conn.execute("SELECT COUNT(*) FROM memory_vault WHERE project_id = ?", (project_id,)).fetchone()[0]
+        )
+        all_projects = int(self.conn.execute("SELECT COUNT(DISTINCT project_id) FROM memories").fetchone()[0])
+        return {
+            "status": "ok",
+            "total": total,
+            "superseded": superseded,
+            "byKind": grouped("kind"),
+            "byScope": grouped("scope"),
+            "bySensitivity": grouped("sensitivity"),
+            "byReviewStatus": grouped("review_status"),
+            "embeddedActive": embedded,
+            "embeddingCoverage": round(embedded / total, 3) if total else None,
+            "vaultEntries": vault,
+            "projectsInStore": all_projects,
+            "embedding": self.provider.describe(),
+            "policy": {
+                "secret": self.config.secret_policy,
+                "pii": self.config.pii_policy,
+                "retainAllowed": self.config.retain_allowed,
+            },
+            **project_payload(project_id, root),
+        }
+
+    def audit_trail(self, *, project_path: str | None = None, limit: int = 50) -> dict[str, Any]:
+        project_id, root = resolve_project(self.conn, project_path)
+        rows = self.conn.execute(
+            "SELECT * FROM memory_audit WHERE project_id = ? OR project_id IS NULL ORDER BY seq DESC LIMIT ?",
+            (project_id, max(1, min(int(limit), 500))),
+        ).fetchall()
+        events = [
+            {
+                "seq": int(row["seq"]),
+                "ts": row["ts"],
+                "actor": row["actor"],
+                "action": row["action"],
+                "domain": row["domain"],
+                "projectID": row["project_id"],
+                "subjectID": row["subject_id"],
+                "labels": _json_loads(row["labels_json"], []),
+                "prevHash": row["prev_hash"],
+                "hash": row["hash"],
+            }
+            for row in rows
+        ]
+        return {
+            "status": "ok",
+            "events": events,
+            "chain": verify_audit_chain(self.conn),
+            **project_payload(project_id, root),
+        }
+
+    def export(
+        self,
+        *,
+        project_path: str | None = None,
+        include_secrets: bool = False,
+        include_superseded: bool = False,
+        all_projects: bool = False,
+    ) -> dict[str, Any]:
+        params: list[Any] = [self.provider.version_id]
+        where = "WHERE 1=1"
+        payload: dict[str, Any] = {}
+        if not all_projects:
+            project_id, root = resolve_project(self.conn, project_path)
+            where += " AND m.project_id = ?"
+            params.append(project_id)
+            payload = project_payload(project_id, root)
+        if not include_superseded:
+            where += " AND m.valid_to IS NULL"
+        rows = self.conn.execute(self._SELECT + where + " ORDER BY m.created_at ASC", params).fetchall()
+        items = []
+        for row in rows:
+            memory = self._row_to_memory(row)
+            if memory is None:
+                continue
+            item = memory.public()
+            if memory.sensitivity == "secret":
+                item["secretText"] = self._open_vault(memory.id, memory.project_id) if include_secrets else None
+            items.append(item)
+        audit_event(
+            self.conn,
+            action="memory.export",
+            project_id=payload.get("projectID"),
+            subject_id=None,
+            labels=[f"count:{len(items)}", f"secrets:{'yes' if include_secrets else 'no'}"],
+            actor=self.config.actor,
+        )
+        self._commit()
+        return {
+            "status": "ok",
+            "schema": "openburnbar.memory_export.v1",
+            "allProjects": all_projects,
+            "exportedAt": now_iso(),
+            "count": len(items),
+            "memories": items,
+            **payload,
+        }
+
+    def import_memories(
+        self, items: Sequence[dict[str, Any]], *, project_path: str | None, source_kind: str = "import"
+    ) -> dict[str, Any]:
+        decisions = []
+        historical_skipped = 0
+        project_id, root = resolve_project(self.conn, project_path)
+        source_projects = sorted(
+            {str(raw.get("projectID")) for raw in items if isinstance(raw, dict) and raw.get("projectID")}
+        )
+        if len(source_projects) > 1:
+            return {
+                "status": "unavailable",
+                "code": "PROJECT_OWNERSHIP_MISMATCH",
+                "reason": "multi-project exports cannot be flattened into one destination project",
+                "projectIDs": source_projects,
+                "summary": {event: 0 for event in ("ADD", "UPDATE", "NONE", "DELETE", "REJECT")},
+                "decisions": [],
+                "historicalSkipped": 0,
+                **project_payload(project_id, root),
+            }
+        for raw in items:
+            if not isinstance(raw, dict):
+                continue
+            if raw.get("validTo") or raw.get("valid_to"):
+                # Historical export rows are archival evidence, not active
+                # import candidates. Skipping them prevents retired facts from
+                # becoming recallable again when an archive is restored.
+                historical_skipped += 1
+                continue
+            fact = Fact.from_mapping({**raw, "text": raw.get("body") or raw.get("text")})
+            if fact is None:
+                continue
+            if raw.get("secretText"):
+                fact.text = str(raw["secretText"])
+            # Engine-owned metadata is recomputed on write and must not leak across stores.
+            for key in ("daemonMemoryID", "gateLabels", "injectionLabels"):
+                fact.metadata.pop(key, None)
+            decisions.append(
+                self._commit_fact(
+                    project_id=project_id,
+                    root=root,
+                    fact=fact,
+                    source_kind=source_kind,
+                    source_hash=None,
+                    extractor="import",
+                )
+            )
+        audit_event(
+            self.conn,
+            action="memory.import",
+            project_id=project_id,
+            subject_id=None,
+            labels=[f"count:{len(decisions)}"],
+            actor=self.config.actor,
+        )
+        self._commit()
+        self._invalidate_cache()
+        summary = {
+            event: sum(1 for item in decisions if item["event"] == event)
+            for event in ("ADD", "UPDATE", "NONE", "DELETE", "REJECT")
+        }
+        return {
+            "status": "ok",
+            "summary": summary,
+            "decisions": decisions,
+            "historicalSkipped": historical_skipped,
+            **project_payload(project_id, root),
+        }
+
+    def import_legacy(self, items: Sequence[dict[str, Any]], *, project_path: str | None) -> dict[str, Any]:
+        """Import rows from the daemon-owned `agent_memories` store exactly once.
+
+        Each item carries `legacyMemoryID`; the engine records
+        `memory_ingest.source_hash = "legacy:<id>"` after the write, so a row
+        is never imported twice even across processes. Rows go through the
+        same gate and reconciliation as any other write.
+        """
+        project_id, root = resolve_project(self.conn, project_path)
+        imported = 0
+        skipped = 0
+        retryable = 0
+        decisions: list[dict[str, Any]] = []
+        for raw in items:
+            if not isinstance(raw, dict):
+                continue
+            legacy_id = str(
+                raw.get("legacyMemoryID") or (raw.get("metadata") or {}).get("legacyMemoryID") or ""
+            ).strip()
+            if not legacy_id:
+                continue
+            key = f"legacy:{legacy_id}"
+            if self.conn.execute("SELECT 1 FROM memory_ingest WHERE source_hash = ?", (key,)).fetchone() is not None:
+                skipped += 1
+                continue
+            owner_path = raw.get("legacyProjectPath")
+            legacy_owner_id = str((raw.get("metadata") or {}).get("legacyProjectID") or "").strip()
+            if owner_path:
+                try:
+                    owner_project_id, owner_root = resolve_project(self.conn, str(owner_path))
+                except ValueError:
+                    owner_project_id, owner_root = "", root
+            elif legacy_owner_id and legacy_owner_id != project_id:
+                owner_project_id, owner_root = "", root
+            else:
+                owner_project_id, owner_root = project_id, root
+            if not owner_project_id:
+                decisions.append(
+                    {
+                        "event": "REJECT",
+                        "code": "LEGACY_PROJECT_UNAVAILABLE",
+                        "reason": "legacy memory owner path is unavailable; refusing to reassign it to the active project",
+                        "legacyMemoryID": legacy_id,
+                    }
+                )
+                retryable += 1
+                continue
+            fact = Fact.from_mapping(raw)
+            if fact is None:
+                continue
+            fact.metadata = {**fact.metadata, "legacyMemoryID": legacy_id}
+            decision = self._commit_fact(
+                project_id=owner_project_id,
+                root=owner_root,
+                fact=fact,
+                source_kind="legacy_daemon",
+                source_hash=key,
+                extractor="legacy-import",
+            )
+            decision["legacyMemoryID"] = legacy_id
+            decisions.append(decision)
+            terminal = decision["event"] in ("ADD", "UPDATE", "DELETE") or (
+                decision["event"] == "NONE" and decision.get("code") != "PREVIOUSLY_REJECTED"
+            )
+            if terminal:
+                self.conn.execute(
+                    "INSERT OR REPLACE INTO memory_ingest (source_hash, project_id, ts, decisions_json) VALUES (?, ?, ?, ?)",
+                    (key, owner_project_id, now_iso(), _json_dumps([_ingest_decision(decision)])),
+                )
+                if decision.get("memoryID"):
+                    self.record_daemon_mirror(
+                        str(decision["memoryID"]),
+                        legacy_id,
+                        body_hash=sha256_hex(str(decision.get("text") or raw.get("text") or "")),
+                        project_path=str(owner_root),
+                    )
+            else:
+                retryable += 1
+            if terminal and decision["event"] in ("ADD", "UPDATE", "NONE"):
+                imported += 1
+        audit_event(
+            self.conn,
+            action="memory.legacy_import",
+            project_id=project_id,
+            subject_id=None,
+            labels=[f"imported:{imported}", f"skipped:{skipped}"]
+            + sorted({f"event:{item['event']}" for item in decisions}),
+            actor=self.config.actor,
+        )
+        self._commit()
+        self._invalidate_cache()
+        return {
+            "status": "ok",
+            "imported": imported,
+            "skipped": skipped,
+            "retryable": retryable,
+            "decisions": decisions,
+            **project_payload(project_id, root),
+        }
+
+    def doctor(self, *, project_path: str | None = None) -> dict[str, Any]:
+        db_path = self.db_path or default_db_path()
+        undecryptable = 0
+        rows = self.conn.execute("SELECT id, project_id, body_cipher, body_nonce FROM memories LIMIT 500").fetchall()
+        for row in rows:
+            if self._open_body(str(row["id"]), str(row["project_id"]), row["body_cipher"], row["body_nonce"]) is None:
+                undecryptable += 1
+        total = int(self.conn.execute("SELECT COUNT(*) FROM memories").fetchone()[0])
+        findings: list[dict[str, Any]] = []
+        if undecryptable:
+            findings.append(
+                {
+                    "severity": "error",
+                    "code": "UNDECRYPTABLE_ROWS",
+                    "detail": f"{undecryptable} of {len(rows)} sampled rows cannot be decrypted with key {self.keyring.key_id} ({self.keyring.source}).",
+                }
+            )
+        if not gate.GATE_CORPUS_AVAILABLE:
+            findings.append(
+                {
+                    "severity": "error",
+                    "code": "SECRET_CORPUS_UNAVAILABLE",
+                    "detail": "secret-pattern-corpus.json not found; writes fail closed.",
+                }
+            )
+        if not self.provider.available:
+            findings.append(
+                {
+                    "severity": "warn",
+                    "code": "EMBEDDINGS_UNAVAILABLE",
+                    "detail": self.provider.describe().get("reason")
+                    or self.provider.describe().get("error")
+                    or "lexical-only recall",
+                    "fix": f"Run `ollama pull {DEFAULT_EMBEDDING_MODEL}` and keep Ollama running, or set {EMBEDDING_PROVIDER_ENV}=none to silence.",
+                }
+            )
+        if total > MAX_MEMORIES_PER_PROJECT_SOFT:
+            findings.append(
+                {
+                    "severity": "warn",
+                    "code": "LARGE_STORE",
+                    "detail": f"{total} memories; in-process BM25 stays fast into the tens of thousands but consider pruning.",
+                }
+            )
+        chain = verify_audit_chain(self.conn)
+        if not chain["ok"]:
+            findings.append(
+                {
+                    "severity": "error",
+                    "code": "AUDIT_CHAIN_BROKEN",
+                    "detail": f"hash chain breaks at seq {chain['brokenAtSeq']}",
+                }
+            )
+        payload: dict[str, Any] = {
+            "status": "ok" if not any(item["severity"] == "error" for item in findings) else "degraded",
+            "engine": {
+                "schemaVersion": ENGINE_SCHEMA_VERSION,
+                "dbPath": str(db_path),
+                "dbExists": db_path.exists(),
+                "memories": total,
+            },
+            "encryption": {
+                "algorithm": "AES-256-GCM",
+                "keyID": self.keyring.key_id,
+                "keySource": self.keyring.source,
+                "undecryptableSampled": undecryptable,
+            },
+            "embedding": self.provider.describe(),
+            "policy": {
+                "secret": self.config.secret_policy,
+                "pii": self.config.pii_policy,
+                "retainAllowed": self.config.retain_allowed,
+                "corpusAvailable": gate.GATE_CORPUS_AVAILABLE,
+            },
+            "auditChain": chain,
+            "findings": findings,
+        }
+        if project_path or os.environ.get("OPENBURNBAR_ACTIVE_PROJECT_PATH"):
+            try:
+                project_id, root = resolve_project(self.conn, project_path)
+                payload.update(project_payload(project_id, root))
+            except ValueError as exc:
+                payload["projectError"] = str(exc)
+        return payload

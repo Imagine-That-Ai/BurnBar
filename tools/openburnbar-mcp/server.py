@@ -1577,7 +1577,7 @@ def _local_memory_write_authority(tool: str, method: str, params: dict[str, Any]
 
 
 # ---------------------------------------------------------------------------
-# Local memory engine (memory_engine.py).
+# Local memory engine (the `memory_engine` package).
 #
 # The engine owns `openburnbar-memory.sqlite` next to the app database. It is
 # the authority for the local memory MCP: gated, audited, encrypted-at-rest,

@@ -242,7 +242,7 @@ def test_external_extractor_receives_redacted_transcript(tmp_path: Path, monkeyp
         assert seen and FAKE_GITHUB_TOKEN not in seen[0] and REDACTED_GITHUB in seen[0]
         assert result["transcriptGate"]["redacted"] is True
 
-        monkeypatch.setattr(me, "GATE_CORPUS_AVAILABLE", False)
+        monkeypatch.setattr(me.gate, "GATE_CORPUS_AVAILABLE", False)
         seen.clear()
         closed = engine.memorize(project_path=repo, messages=messages, extractor="custom", extractor_fn=spy, force=True)
         assert seen == []  # fail closed: nothing leaves the process without a working scanner
@@ -775,7 +775,7 @@ def test_embedding_provider_retries_transient_ollama_miss(monkeypatch: pytest.Mo
             super().__init__(dimension=0 if self.attempts == 1 else 8, version_tag="recovered")
             self.error = "startup race" if self.attempts == 1 else None
 
-    monkeypatch.setattr(me, "OllamaEmbeddingProvider", RecoveringOllama)
+    monkeypatch.setattr(me.embeddings, "OllamaEmbeddingProvider", RecoveringOllama)
     monkeypatch.setenv(me.EMBEDDING_PROVIDER_ENV, "ollama")
     me.reset_provider_cache_for_tests()
     first = me.embedding_provider()

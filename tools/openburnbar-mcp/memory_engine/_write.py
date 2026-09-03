@@ -1,0 +1,1120 @@
+"""`MemoryEngine`'s write path, mixed into the engine class.
+
+Only methods live here; construction and shared state stay in `engine.py`."""
+
+from __future__ import annotations
+
+import os
+import secrets
+import sqlite3
+from collections.abc import Iterable, Sequence
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+from ._util import (
+    _aux_strings,
+    _clamp,
+    _ingest_decision,
+    _is_expired,
+    _json_dumps,
+    _json_loads,
+    _normalize_expiration,
+    normalize_kind_strict,
+    normalize_scope,
+    normalize_tags,
+    now_iso,
+    sha256_hex,
+)
+from .constants import (
+    CONFLICT_MIN_SIM,
+    CONFLICT_OBJECT_MAX_SIM,
+    DEDUP_COSINE,
+    DEDUP_JACCARD,
+    DEFAULT_MAX_FACTS,
+    EXTRACTOR_ENV,
+    KINDS,
+    MAX_BODY_CHARS,
+    MEMORY_SCOPES,
+    NEGATION_RE,
+    REVIEW_STATUSES,
+    SAME_CLAIM_MIN_OVERLAP,
+    SENSITIVITIES,
+    SWITCH_RE,
+)
+from .embeddings import _cosine, encode_vector
+from .extract import (
+    ExtractorFn,
+    Fact,
+    _slot_key,
+    extract_entities,
+    extract_relations,
+    gate_transcript,
+    heuristic_extract,
+    render_transcript,
+    resolve_extractor,
+)
+from .gate import GateDecision, apply_gate, auxiliary_injection_labels, gate_aux_fields, injection_labels
+from .store import audit_event, project_payload, resolve_project
+from .text import _jaccard, tokenize
+
+if TYPE_CHECKING:
+    from .engine import ActiveMemory
+
+
+class _WritePath:
+    """`MemoryEngine`'s write path: memorize, remember, and reconciliation."""
+
+    def memorize(
+        self,
+        *,
+        project_path: str | None,
+        messages: Sequence[dict[str, Any]] | None = None,
+        text: str | None = None,
+        facts: Sequence[Any] | None = None,
+        extractor: str | None = None,
+        extractor_fn: ExtractorFn | None = None,
+        max_facts: int = DEFAULT_MAX_FACTS,
+        source_kind: str = "conversation",
+        source_ref: str | None = None,
+        default_scope: str | None = None,
+        default_tags: Sequence[str] | None = None,
+        metadata: dict[str, Any] | None = None,
+        force: bool = False,
+    ) -> dict[str, Any]:
+        project_id, root = resolve_project(self.conn, project_path)
+        normalized_messages: list[dict[str, Any]] = []
+        if messages:
+            normalized_messages = [dict(message) for message in messages if isinstance(message, dict)]
+        elif text:
+            normalized_messages = [{"role": "user", "content": str(text)}]
+        # The idempotency key is per project: the same transcript memorized for
+        # two repositories must produce two sets of project-scoped memories.
+        extractor_identity = (extractor or os.environ.get(EXTRACTOR_ENV, "heuristic")).strip().lower() or "heuristic"
+        source_material = _json_dumps(
+            {
+                "project": project_id,
+                "messages": normalized_messages,
+                "facts": list(facts or []),
+                "extractor": extractor_identity,
+                "maxFacts": max(1, min(int(max_facts), 64)),
+                "sourceKind": source_kind,
+                "sourceRef": source_ref,
+                "defaultScope": default_scope,
+                "defaultTags": normalize_tags(default_tags),
+                "metadata": metadata or {},
+                "secretPolicy": self.config.secret_policy,
+                "piiPolicy": self.config.pii_policy,
+                "retainAllowed": self.config.retain_allowed,
+            }
+        )
+        source_hash = sha256_hex(source_material)
+        if not force:
+            prior = self.conn.execute(
+                "SELECT decisions_json, ts FROM memory_ingest WHERE source_hash = ?", (source_hash,)
+            ).fetchone()
+            if prior is not None:
+                prior_decisions = _json_loads(prior["decisions_json"], [])
+                retry_rejected = any(
+                    isinstance(item, dict) and item.get("event") == "REJECT" for item in prior_decisions
+                )
+                if retry_rejected:
+                    # Pre-fix stores may contain a receipt for a transient gate
+                    # failure. Remove it so scanner/capability recovery gets a
+                    # real retry instead of a false ALREADY_INGESTED response.
+                    self.conn.execute("DELETE FROM memory_ingest WHERE source_hash = ?", (source_hash,))
+                    prior_decisions = []
+                referenced = [
+                    str(item["memoryID"]) for item in prior_decisions if isinstance(item, dict) and item.get("memoryID")
+                ]
+                if not retry_rejected and not self._missing_ids(referenced):
+                    return {
+                        "status": "ok",
+                        "code": "ALREADY_INGESTED",
+                        "sourceHash": source_hash,
+                        "ingestedAt": prior["ts"],
+                        "decisions": [self._hydrate_ingest_decision(item) for item in prior_decisions],
+                        **project_payload(project_id, root),
+                    }
+                # The receipt points at memories that were forgotten since: replay is real work again.
+
+        extractor_name = "facts"
+        extracted: list[Fact] = []
+        extraction_error: str | None = None
+        transcript_gate: dict[str, Any] | None = None
+        if facts:
+            extracted = [fact for fact in (Fact.from_mapping(item) for item in facts) if fact is not None]
+        else:
+            extractor_name, extractor_fn_resolved = resolve_extractor(extractor, extractor_fn)
+            if extractor_name == "none":
+                raw = "\n".join(str(message.get("content") or "") for message in normalized_messages).strip()
+                if raw:
+                    extracted = [Fact(text=raw[:MAX_BODY_CHARS], kind="note", confidence=0.6)]
+            elif extractor_fn_resolved is not None:
+                # Anything that is not the in-process heuristic may leave this
+                # process (claude -p, an Ollama endpoint, a caller-supplied
+                # function). It only ever sees a gated transcript, and nothing
+                # leaves when the gate itself cannot run.
+                safe_transcript, transcript_gate = gate_transcript(
+                    render_transcript(normalized_messages), pii_policy=self.config.pii_policy
+                )
+                if safe_transcript is None:
+                    extraction_error = f"{extractor_name}: {transcript_gate.get('reason')}"
+                    extractor_name = "heuristic"
+                    extracted = heuristic_extract(normalized_messages, max_facts=max_facts)
+                else:
+                    try:
+                        extracted = extractor_fn_resolved(safe_transcript, max_facts)
+                    except Exception as exc:  # noqa: BLE001 — degrade to the heuristic path, report the reason
+                        extraction_error = f"{extractor_name}: {exc}"
+                        extractor_name = "heuristic"
+                        extracted = heuristic_extract(normalized_messages, max_facts=max_facts)
+            else:
+                extracted = heuristic_extract(normalized_messages, max_facts=max_facts)
+        extracted = extracted[: max(1, min(int(max_facts), 64))]
+
+        decisions: list[dict[str, Any]] = []
+        for fact in extracted:
+            if default_tags:
+                fact.tags = normalize_tags(list(fact.tags) + list(default_tags))
+            if metadata:
+                merged = dict(metadata)
+                merged.update(fact.metadata)
+                fact.metadata = merged
+            if default_scope and not fact.scope:
+                fact.scope = default_scope
+            if source_ref and not fact.source_ref:
+                fact.source_ref = source_ref
+            decision = self._commit_fact(
+                project_id=project_id,
+                root=root,
+                fact=fact,
+                source_kind=source_kind,
+                source_hash=source_hash,
+                extractor=extractor_name,
+            )
+            decisions.append(decision)
+        receipt_stored = not any(item.get("event") == "REJECT" for item in decisions)
+        if receipt_stored:
+            self.conn.execute(
+                "INSERT OR REPLACE INTO memory_ingest (source_hash, project_id, ts, decisions_json) VALUES (?, ?, ?, ?)",
+                (source_hash, project_id, now_iso(), _json_dumps([_ingest_decision(item) for item in decisions])),
+            )
+        else:
+            self.conn.execute("DELETE FROM memory_ingest WHERE source_hash = ?", (source_hash,))
+        audit_event(
+            self.conn,
+            action="memory.memorize",
+            project_id=project_id,
+            subject_id=source_hash[:16],
+            labels=[f"extractor:{extractor_name}", f"facts:{len(extracted)}"]
+            + sorted({f"event:{item['event']}" for item in decisions}),
+            actor=self.config.actor,
+        )
+        self._commit()
+        self._invalidate_cache()
+        summary = {
+            event: sum(1 for item in decisions if item["event"] == event)
+            for event in ("ADD", "UPDATE", "NONE", "DELETE", "REJECT")
+        }
+        return {
+            "status": "ok",
+            "extractor": extractor_name,
+            "extractionError": extraction_error,
+            "transcriptGate": transcript_gate,
+            "sourceHash": source_hash,
+            "receiptStored": receipt_stored,
+            "factsConsidered": len(extracted),
+            "summary": summary,
+            "decisions": decisions,
+            "embedding": self.provider.describe(),
+            **project_payload(project_id, root),
+        }
+
+    def remember(
+        self,
+        text: str,
+        *,
+        project_path: str | None,
+        kind: str = "fact",
+        scope: str | None = None,
+        tags: Sequence[str] | str | None = None,
+        confidence: float = 1.0,
+        entities: Sequence[str] | None = None,
+        metadata: dict[str, Any] | None = None,
+        source_kind: str = "manual",
+        source_ref: str | None = None,
+        supersedes: Sequence[str] | None = None,
+        expires_at: str | None = None,
+        immutable: bool = False,
+    ) -> dict[str, Any]:
+        project_id, root = resolve_project(self.conn, project_path)
+        body = (text or "").strip()
+        if not body:
+            return {
+                "status": "unavailable",
+                "code": "EMPTY_MEMORY",
+                "reason": "memory text is empty",
+                **project_payload(project_id, root),
+            }
+        fact = Fact(
+            text=body[:MAX_BODY_CHARS],
+            kind=str(kind or "fact").strip().lower(),
+            confidence=_clamp(float(confidence), 0.0, 1.0),
+            scope=scope,
+            tags=normalize_tags(tags),
+            entities=[str(item) for item in (entities or [])][:16],
+            metadata=dict(metadata or {}),
+            source_ref=source_ref,
+            supersedes=[str(item) for item in (supersedes or [])],
+            expires_at=expires_at,
+            immutable=bool(immutable),
+        )
+        decision = self._commit_fact(
+            project_id=project_id,
+            root=root,
+            fact=fact,
+            source_kind=source_kind,
+            source_hash=None,
+            extractor="manual",
+        )
+        self._commit()
+        self._invalidate_cache()
+        status = "ok" if decision["event"] != "REJECT" else "rejected"
+        payload = {
+            "status": status,
+            **decision,
+            "embedding": self.provider.describe(),
+            **project_payload(project_id, root),
+        }
+        if decision["event"] == "REJECT":
+            payload["code"] = decision.get("code") or "SECRET_DETECTED"
+        return payload
+
+    def _commit_fact(
+        self,
+        *,
+        project_id: str,
+        root: Path,
+        fact: Fact,
+        source_kind: str,
+        source_hash: str | None,
+        extractor: str,
+    ) -> dict[str, Any]:
+        try:
+            kind = normalize_kind_strict(fact.kind)
+        except ValueError as exc:
+            return {
+                "event": "REJECT",
+                "code": "INVALID_KIND",
+                "reason": str(exc),
+                "allowed": list(KINDS),
+            }
+        if fact.review_status is not None and fact.review_status not in REVIEW_STATUSES:
+            return {
+                "event": "REJECT",
+                "code": "INVALID_REVIEW_STATUS",
+                "reason": f"reviewStatus must be one of: {', '.join(REVIEW_STATUSES)}",
+                "kind": kind,
+                "allowed": list(REVIEW_STATUSES),
+            }
+        if fact.sensitivity is not None and fact.sensitivity not in SENSITIVITIES:
+            return {
+                "event": "REJECT",
+                "code": "INVALID_SENSITIVITY",
+                "reason": f"sensitivity must be one of: {', '.join(SENSITIVITIES)}",
+                "kind": kind,
+                "allowed": list(SENSITIVITIES),
+            }
+        try:
+            scope = normalize_scope(fact.scope, kind)
+        except ValueError as exc:
+            return {
+                "event": "REJECT",
+                "code": "INVALID_SCOPE",
+                "reason": str(exc),
+                "kind": kind,
+                "allowed": ["auto", *MEMORY_SCOPES],
+            }
+        try:
+            fact.expires_at = _normalize_expiration(fact.expires_at)
+        except ValueError as exc:
+            audit_event(
+                self.conn,
+                action="memory.expiration_rejected",
+                project_id=project_id,
+                subject_id=None,
+                labels=["invalid_expiration"],
+                actor=self.config.actor,
+            )
+            return {
+                "event": "REJECT",
+                "code": "INVALID_EXPIRATION",
+                "reason": str(exc),
+                "kind": kind,
+                "scope": scope,
+            }
+        gate = apply_gate(
+            fact.text,
+            secret_policy=self.config.secret_policy,
+            pii_policy=self.config.pii_policy,
+            retain_allowed=self.config.retain_allowed,
+        )
+        aux = gate_aux_fields(
+            tags=fact.tags,
+            entities=fact.entities,
+            metadata=fact.metadata,
+            source_ref=fact.source_ref,
+            secret_policy=self.config.secret_policy,
+            pii_policy=self.config.pii_policy,
+        )
+        if gate.action != "reject" and aux.reject_reason:
+            gate = GateDecision(
+                "reject",
+                "secret" if aux.reject_code == "SECRET_DETECTED" else "pii",
+                "",
+                None,
+                gate.labels + aux.labels,
+                aux.reject_reason,
+            )
+        gate.labels = sorted(set(gate.labels + aux.labels))
+        if gate.action == "reject":
+            audit_event(
+                self.conn,
+                action="memory.secret_rejected" if gate.sensitivity == "secret" else "memory.gate_rejected",
+                project_id=project_id,
+                subject_id=None,
+                labels=gate.labels,
+                actor=self.config.actor,
+            )
+            return {
+                "event": "REJECT",
+                "code": "SECRET_DETECTED" if gate.sensitivity == "secret" else "GATE_REJECTED",
+                "reason": gate.reason,
+                "labels": gate.labels,
+                "kind": kind,
+                "scope": scope,
+            }
+        if fact.sensitivity == "secret":
+            # A redacted export intentionally omits the vault plaintext while
+            # retaining its classification. Restoring it must stay local-only
+            # even though the already-redacted body no longer trips the gate.
+            gate.sensitivity = "secret"
+        fact.tags = normalize_tags(aux.tags)
+        fact.entities = list(aux.entities)
+        fact.metadata = dict(aux.metadata)
+        fact.source_ref = aux.source_ref
+        body = gate.body.strip()
+        if not body:
+            return {
+                "event": "REJECT",
+                "code": "EMPTY_MEMORY",
+                "reason": "nothing left after redaction",
+                "labels": gate.labels,
+            }
+        injection = injection_labels(body)
+        aux_injection = injection_labels(
+            "\n".join(_aux_strings(fact.tags, fact.entities, fact.metadata, fact.source_ref))
+        )
+        if aux_injection:
+            injection = sorted(set(injection + [f"aux:{label}" for label in aux_injection]))
+        if injection or fact.review_status == "quarantined":
+            review_status = "quarantined"
+        elif fact.review_status == "rejected":
+            review_status = "rejected"  # an imported review decision is preserved
+        else:
+            review_status = "approved"
+        body_hash = sha256_hex(body.lower())
+        ts = now_iso()
+        now = datetime.now(UTC)
+        entities = list(dict.fromkeys(list(fact.entities) + extract_entities(body)))[:16]
+        # Reinforcement persists only tags and entities from the incoming
+        # fact. Do not let a discarded metadata/source-ref directive
+        # quarantine an otherwise clean existing row.
+        reinforce_injection = [f"aux:{label}" for label in auxiliary_injection_labels(fact.tags, entities, {}, None)]
+        relations = extract_relations(body)
+        # Project resolution or a prior item in a batch may have left a write
+        # transaction open. External embedding must never run while that lock
+        # is held; each fact remains independently durable and the batch
+        # receipt is written after all facts complete.
+        if self.conn.in_transaction:
+            self._commit()
+        vector = self.provider.embed([body])[0] if self.provider.available else None
+        tokens = tokenize(" ".join([body, " ".join(fact.tags), " ".join(entities), fact.source_ref or ""]))
+
+        # Serialize the exact-duplicate lookup with insertion. Embeddings and
+        # all other external work are complete before taking the write lock.
+        if not self.conn.in_transaction:
+            self.conn.execute("BEGIN IMMEDIATE")
+
+        # Exact duplicate in the same project/scope → reinforce, unless the row
+        # was rejected in review (stays hidden) or has expired (reactivated).
+        exact = self.conn.execute(
+            "SELECT id, review_status, expires_at FROM memories WHERE project_id = ? AND scope = ? AND body_hash = ? AND valid_to IS NULL",
+            (project_id, scope, body_hash),
+        ).fetchone()
+        if exact is not None:
+            if str(exact["review_status"]) == "rejected":
+                audit_event(
+                    self.conn,
+                    action="memory.reinforce_blocked",
+                    project_id=project_id,
+                    subject_id=str(exact["id"]),
+                    labels=["review:rejected"],
+                    actor=self.config.actor,
+                )
+                return {
+                    "event": "NONE",
+                    "code": "PREVIOUSLY_REJECTED",
+                    "memoryID": str(exact["id"]),
+                    "reason": "an identical memory was rejected in review; re-approve it with burnbar_memory_review",
+                    "kind": kind,
+                    "scope": scope,
+                }
+            if review_status != "approved" and str(exact["review_status"]) == "approved":
+                audit_event(
+                    self.conn,
+                    action="memory.reinforce_blocked",
+                    project_id=project_id,
+                    subject_id=str(exact["id"]),
+                    labels=[f"incoming_review:{review_status}"],
+                    actor=self.config.actor,
+                )
+                return {
+                    "event": "NONE",
+                    "code": "NON_APPROVED_DUPLICATE",
+                    "memoryID": str(exact["id"]),
+                    "reason": "non-approved duplicate cannot change an approved memory",
+                    "kind": kind,
+                    "scope": scope,
+                }
+            decision = self._reinforce(
+                str(exact["id"]),
+                fact,
+                entities,
+                reason="exact duplicate",
+                incoming_body=body,
+                labels=gate.labels,
+                quarantine_labels=reinforce_injection,
+                reactivate=_is_expired(exact["expires_at"], now),
+            )
+            if gate.action == "retain" and gate.vault_body is not None:
+                # Different secrets redact to the same body: keep the vault current.
+                changed = self._rotate_vault(str(exact["id"]), project_id, gate)
+                decision["secretRotated"] = changed
+                decision["sensitivity"] = "secret"
+                if changed:
+                    decision["event"] = "UPDATE"
+            return decision
+
+        active = self._load_active(project_id, include_personal_cross_project=(scope == "personal"))
+        candidates = [
+            item
+            for item in active
+            if item.scope == scope and item.review_status != "rejected" and not _is_expired(item.expires_at, now)
+        ]
+
+        # Only approved facts may change the lifecycle of an approved row.
+        # Quarantined/rejected content is stored for review, but its explicit
+        # supersedes and inferred conflicts have no retirement authority.
+        supersede_targets: list[str] = []
+        retire_targets: list[str] = []
+        if review_status == "approved":
+            supersede_targets = [item for item in fact.supersedes if any(mem.id == item for mem in active)]
+            if not supersede_targets:
+                conflict_first = NEGATION_RE.search(body) is not None or SWITCH_RE.search(body) is not None
+                if conflict_first:
+                    supersede_targets, retire_targets = self._resolve_conflicts(
+                        project_id=project_id,
+                        body=body,
+                        relations=relations,
+                        vector=vector,
+                        tokens=tokens,
+                        candidates=candidates,
+                    )
+                else:
+                    near = self._nearest(vector, tokens, candidates)
+                    if near is not None:
+                        decision = self._reinforce(
+                            near[1].id,
+                            fact,
+                            entities,
+                            reason=f"near duplicate (sim={near[0]:.2f})",
+                            incoming_body=body,
+                            labels=gate.labels,
+                            quarantine_labels=reinforce_injection,
+                        )
+                        if gate.action == "retain" and gate.vault_body is not None:
+                            # A personal match may be owned by another project;
+                            # vault AAD always follows the memory owner.
+                            changed = self._rotate_vault(near[1].id, near[1].project_id, gate)
+                            decision["secretRotated"] = changed
+                            decision["sensitivity"] = "secret"
+                            if changed:
+                                decision["event"] = "UPDATE"
+                        return decision
+                    supersede_targets, retire_targets = self._resolve_conflicts(
+                        project_id=project_id,
+                        body=body,
+                        relations=relations,
+                        vector=vector,
+                        tokens=tokens,
+                        candidates=candidates,
+                    )
+
+        if retire_targets and not supersede_targets:
+            retired_targets = [
+                target
+                for target in retire_targets
+                if self._retire(target, reason="negated by new statement", replacement=None)
+            ]
+            if not retired_targets:
+                return {
+                    "event": "NONE",
+                    "code": "IMMUTABLE_CONFLICT",
+                    "reason": "matching memories are immutable and were not retired",
+                    "kind": kind,
+                    "scope": scope,
+                }
+            audit_event(
+                self.conn,
+                action="memory.retire",
+                project_id=project_id,
+                subject_id=None,
+                labels=[f"retired:{len(retired_targets)}"],
+                actor=self.config.actor,
+            )
+            return {"event": "DELETE", "retired": retired_targets, "kind": kind, "scope": scope, "text": body}
+
+        # UNIQUE(project_id, scope, body_hash) spans retired rows too. A fact that
+        # reverts to an earlier statement (A -> B -> A) brings the retired row back
+        # under its original id instead of colliding on insert.
+        retired = self.conn.execute(
+            "SELECT id, rowid, superseded_by FROM memories WHERE project_id = ? AND scope = ? AND body_hash = ? AND valid_to IS NOT NULL",
+            (project_id, scope, body_hash),
+        ).fetchone()
+        reactivated_id = str(retired["id"]) if retired is not None else None
+        memory_id = reactivated_id or ("mem_" + secrets.token_hex(16))
+        salience = self.compute_salience(kind, fact.confidence, 0)
+        cipher, nonce = self._seal_body(memory_id, project_id, body)
+        metadata = dict(fact.metadata)
+        if gate.labels:
+            metadata["gateLabels"] = gate.labels
+        if injection:
+            metadata["injectionLabels"] = injection
+        if retired is not None:
+            rowid = int(retired["rowid"])
+            self.conn.execute(
+                """
+                UPDATE memories SET
+                    scope = ?, kind = ?, body_cipher = ?, body_nonce = ?, key_id = ?, sensitivity = ?, review_status = ?,
+                    confidence = ?, salience = ?, access_count = 0, last_accessed_at = NULL, immutable = ?, expires_at = ?,
+                    valid_from = ?, valid_to = NULL, superseded_by = NULL, supersedes_json = ?, tags_json = ?, entities_json = ?,
+                    metadata_json = ?, source_kind = ?, source_ref = ?, source_hash = ?, extractor = ?, embedding_version = ?,
+                    updated_at = ?
+                WHERE id = ?
+                """,
+                (
+                    scope,
+                    kind,
+                    cipher,
+                    nonce,
+                    self.keyring.key_id,
+                    gate.sensitivity,
+                    review_status,
+                    fact.confidence,
+                    salience,
+                    1 if fact.immutable else 0,
+                    fact.expires_at,
+                    ts,
+                    _json_dumps(supersede_targets),
+                    _json_dumps(fact.tags),
+                    _json_dumps(entities),
+                    _json_dumps(metadata),
+                    source_kind,
+                    fact.source_ref,
+                    source_hash,
+                    extractor,
+                    self.provider.version_id if vector is not None else None,
+                    ts,
+                    memory_id,
+                ),
+            )
+            self.conn.execute("DELETE FROM memory_vectors WHERE memory_rowid = ?", (rowid,))
+            self.conn.execute("DELETE FROM memory_relations WHERE memory_id = ?", (memory_id,))
+            self.conn.execute("DELETE FROM memory_vault WHERE memory_id = ?", (memory_id,))
+        else:
+            self.conn.execute(
+                """
+                INSERT INTO memories (
+                    id, project_id, scope, kind, body_cipher, body_nonce, key_id, body_hash, sensitivity, review_status,
+                    confidence, salience, access_count, last_accessed_at, immutable, expires_at, valid_from, valid_to,
+                    superseded_by, supersedes_json, tags_json, entities_json, metadata_json, source_kind, source_ref,
+                    source_hash, extractor, embedding_version, created_at, updated_at
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,0,NULL,?,?,?,NULL,NULL,?,?,?,?,?,?,?,?,?,?,?)
+                """,
+                (
+                    memory_id,
+                    project_id,
+                    scope,
+                    kind,
+                    cipher,
+                    nonce,
+                    self.keyring.key_id,
+                    body_hash,
+                    gate.sensitivity,
+                    review_status,
+                    fact.confidence,
+                    salience,
+                    1 if fact.immutable else 0,
+                    fact.expires_at,
+                    ts,
+                    _json_dumps(supersede_targets),
+                    _json_dumps(fact.tags),
+                    _json_dumps(entities),
+                    _json_dumps(metadata),
+                    source_kind,
+                    fact.source_ref,
+                    source_hash,
+                    extractor,
+                    self.provider.version_id if vector is not None else None,
+                    ts,
+                    ts,
+                ),
+            )
+            rowid = int(self.conn.execute("SELECT rowid FROM memories WHERE id = ?", (memory_id,)).fetchone()["rowid"])
+        if vector is not None:
+            self.conn.execute(
+                "INSERT INTO memory_vectors (memory_rowid, embedding_version, dimension, vector) VALUES (?, ?, ?, ?)",
+                (rowid, self.provider.version_id, len(vector), encode_vector(vector)),
+            )
+        for subject, predicate, obj in relations:
+            self.conn.execute(
+                "INSERT INTO memory_relations (project_id, memory_id, subject, predicate, object, slot_key, confidence) VALUES (?,?,?,?,?,?,?)",
+                (project_id, memory_id, subject, predicate, obj, _slot_key(subject, predicate), fact.confidence),
+            )
+        if gate.action == "retain" and gate.vault_body is not None:
+            vault_cipher, vault_nonce = self.keyring.seal(gate.vault_body, f"{memory_id}|{project_id}|vault")
+            self.conn.execute(
+                "INSERT INTO memory_vault (memory_id, project_id, secret_cipher, secret_nonce, key_id, labels_json, created_at) VALUES (?,?,?,?,?,?,?)",
+                (memory_id, project_id, vault_cipher, vault_nonce, self.keyring.key_id, _json_dumps(gate.labels), ts),
+            )
+        retired_supersede_targets = [
+            target for target in supersede_targets if self._retire(target, reason="superseded", replacement=memory_id)
+        ]
+        if retired_supersede_targets != supersede_targets:
+            self.conn.execute(
+                "UPDATE memories SET supersedes_json = ? WHERE id = ?",
+                (_json_dumps(retired_supersede_targets), memory_id),
+            )
+        self._history(
+            memory_id,
+            project_id,
+            "reactivated"
+            if reactivated_id
+            else ("created" if not retired_supersede_targets else "created_superseding"),
+            None,
+            body,
+            {
+                "supersedes": retired_supersede_targets,
+                "previouslySupersededBy": (retired["superseded_by"] if retired is not None else None),
+            },
+        )
+        if gate.action == "redact":
+            audit_event(
+                self.conn,
+                action="memory.secret_redacted" if gate.sensitivity == "redacted" else "memory.pii_redacted",
+                project_id=project_id,
+                subject_id=memory_id,
+                labels=gate.labels,
+                actor=self.config.actor,
+            )
+        elif gate.action == "retain":
+            audit_event(
+                self.conn,
+                action="memory.secret_retained",
+                project_id=project_id,
+                subject_id=memory_id,
+                labels=gate.labels,
+                actor=self.config.actor,
+            )
+        if injection:
+            audit_event(
+                self.conn,
+                action="memory.injection_quarantined",
+                project_id=project_id,
+                subject_id=memory_id,
+                labels=injection,
+                actor=self.config.actor,
+            )
+        audit_event(
+            self.conn,
+            action="memory.reactivate"
+            if reactivated_id
+            else ("memory.update" if retired_supersede_targets else "memory.add"),
+            project_id=project_id,
+            subject_id=memory_id,
+            labels=[f"kind:{kind}", f"scope:{scope}", f"sensitivity:{gate.sensitivity}", f"review:{review_status}"],
+            actor=self.config.actor,
+        )
+        decision: dict[str, Any] = {
+            "event": "UPDATE" if (retired_supersede_targets or reactivated_id) else "ADD",
+            "memoryID": memory_id,
+            "kind": kind,
+            "scope": scope,
+            "text": body,
+            "tags": list(fact.tags),
+            "confidence": fact.confidence,
+            "sourceRef": fact.source_ref,
+            "expiresAt": fact.expires_at,
+            "sensitivity": gate.sensitivity,
+            "reviewStatus": review_status,
+            "labels": gate.labels,
+            "injectionLabels": injection,
+            "superseded": retired_supersede_targets,
+            "entities": entities,
+            "relations": [{"subject": s, "predicate": p, "object": o} for s, p, o in relations],
+            "embedded": vector is not None,
+        }
+        if reactivated_id:
+            decision["reactivated"] = True
+        return decision
+
+    def _similarity(self, vector: list[float] | None, tokens: Sequence[str], existing: ActiveMemory) -> float:
+        lexical = _jaccard(tokens, existing.tokens)
+        if vector is not None and existing.vector is not None:
+            return max(_cosine(vector, existing.vector), lexical)
+        return lexical
+
+    def _is_near_duplicate(
+        self, vector: list[float] | None, tokens: Sequence[str], existing: ActiveMemory
+    ) -> tuple[bool, float]:
+        lexical = _jaccard(tokens, existing.tokens)
+        cosine = _cosine(vector, existing.vector) if vector is not None and existing.vector is not None else 0.0
+        return (cosine >= DEDUP_COSINE or lexical >= DEDUP_JACCARD), max(cosine, lexical)
+
+    def _nearest(
+        self, vector: list[float] | None, tokens: Sequence[str], candidates: Sequence[ActiveMemory]
+    ) -> tuple[float, ActiveMemory] | None:
+        best: tuple[float, ActiveMemory] | None = None
+        for existing in candidates:
+            duplicate, sim = self._is_near_duplicate(vector, tokens, existing)
+            if duplicate and (best is None or sim > best[0]):
+                best = (sim, existing)
+        return best
+
+    def _slot_rows(self, project_id: str, slot_keys: Iterable[str]) -> list[sqlite3.Row]:
+        """Relation rows for the given slots across every project.
+
+        Callers filter the rows down to their candidate memories, which already
+        carry the right scope (this project, plus personal-scope memories from
+        any project). Restricting here by `project_id` would hide a personal
+        memory recorded in another repository from conflict resolution.
+        """
+        del project_id  # kept for call-site symmetry; candidates carry the scope
+        keys = sorted(set(slot_keys))
+        if not keys:
+            return []
+        placeholders = ",".join("?" * len(keys))
+        slot_sql = (
+            f"SELECT DISTINCT memory_id, slot_key, object FROM memory_relations WHERE slot_key IN ({placeholders})"  # noqa: S608 — placeholders only; values are bound
+        )
+        return self.conn.execute(slot_sql, keys).fetchall()
+
+    def _resolve_conflicts(
+        self,
+        *,
+        project_id: str,
+        body: str,
+        relations: Sequence[tuple[str, str, str]],
+        vector: list[float] | None,
+        tokens: Sequence[str],
+        candidates: Sequence[ActiveMemory],
+    ) -> tuple[list[str], list[str]]:
+        """Return (supersede_targets, retire_targets).
+
+        - Same (subject, predicate) slot with a *dissimilar* object → contradiction → supersede.
+        - Negated statement ("X no longer uses Y") whose slot/object matches an existing
+          memory → retire that memory and store nothing.
+        - "switched from X to Y" → supersede memories whose object ≈ X.
+        """
+        by_id = {item.id: item for item in candidates}
+        supersede: list[str] = []
+        retire: list[str] = []
+
+        def refers_to(a: str, b: str) -> float:
+            # Overlap coefficient: "Cursor" refers to "Cursor for quick edits"; "Xcode 16" is
+            # contained in "Xcode 16 with the iOS 26 SDK" (a refinement, not a contradiction),
+            # while "Xcode 16" vs "Xcode 17" or "SQLCipher for X" vs "plain SQLite for X" score 0.5.
+            sa, sb = set(tokenize(a)), set(tokenize(b))
+            if not sa or not sb:
+                return 0.0
+            return len(sa & sb) / min(len(sa), len(sb))
+
+        def same_claim(a: str, b: str) -> float:
+            return refers_to(a, b)
+
+        negated = NEGATION_RE.search(body) is not None
+        switch = SWITCH_RE.search(body)
+        if negated and not switch:
+            stripped = NEGATION_RE.sub(" ", body)
+            for subject, predicate, obj in extract_relations(stripped):
+                for row in self._slot_rows(project_id, [_slot_key(subject, predicate)]):
+                    existing = by_id.get(str(row["memory_id"]))
+                    if existing is None:
+                        continue
+                    if refers_to(str(row["object"]), obj) >= CONFLICT_OBJECT_MAX_SIM and existing.id not in retire:
+                        retire.append(existing.id)
+            return [], retire
+
+        if switch:
+            old_object = switch.group("old").strip()
+            for existing in candidates:
+                for row in self.conn.execute(
+                    "SELECT object FROM memory_relations WHERE memory_id = ?", (existing.id,)
+                ).fetchall():
+                    if (
+                        refers_to(str(row["object"]), old_object) >= CONFLICT_OBJECT_MAX_SIM
+                        and existing.id not in supersede
+                    ):
+                        supersede.append(existing.id)
+            if supersede:
+                return supersede, []
+
+        new_objects = {_slot_key(s, p): o for s, p, o in relations}
+        for row in self._slot_rows(project_id, new_objects.keys()):
+            existing = by_id.get(str(row["memory_id"]))
+            if existing is None:
+                continue
+            incoming_object = new_objects.get(str(row["slot_key"]), "")
+            if same_claim(str(row["object"]), incoming_object) >= SAME_CLAIM_MIN_OVERLAP:
+                continue  # same claim, differently worded or refined: not a contradiction
+            if self._similarity(vector, tokens, existing) >= CONFLICT_MIN_SIM and existing.id not in supersede:
+                supersede.append(existing.id)
+        return supersede, []
+
+    def _reinforce(
+        self,
+        memory_id: str,
+        fact: Fact,
+        entities: Sequence[str],
+        *,
+        reason: str,
+        incoming_body: str,
+        labels: Sequence[str] = (),
+        quarantine_labels: Sequence[str] = (),
+        reactivate: bool = False,
+    ) -> dict[str, Any]:
+        """Merge a duplicate into `memory_id`.
+
+        `incoming_body` is the *gated* body of the duplicate; it is recorded in
+        the encrypted history column, never in plaintext meta. `reactivate`
+        clears an expired row's expiry (to the incoming fact's, if any).
+        """
+        row = self._get_row(memory_id)
+        if row is None:
+            return {"event": "NONE", "memoryID": memory_id, "reason": reason}
+        existing = self._row_to_memory(row)
+        if existing is None:
+            return {"event": "NONE", "memoryID": memory_id, "reason": reason}
+        merged_tags = normalize_tags(list(existing.tags) + list(fact.tags))
+        merged_entities = list(dict.fromkeys(list(existing.entities) + list(entities)))[:16]
+        confidence = max(existing.confidence, fact.confidence)
+        access = existing.access_count + 1
+        ts = now_iso()
+        if fact.review_status == "rejected":
+            review_status = "rejected"
+        elif quarantine_labels or fact.review_status == "quarantined":
+            review_status = "quarantined"
+        else:
+            review_status = existing.review_status
+        sensitivity = "secret" if fact.sensitivity == "secret" else existing.sensitivity
+        self.conn.execute(
+            "UPDATE memories SET tags_json = ?, entities_json = ?, confidence = ?, access_count = ?, salience = ?, review_status = ?, sensitivity = ?, updated_at = ? WHERE id = ?",
+            (
+                _json_dumps(merged_tags),
+                _json_dumps(merged_entities),
+                confidence,
+                access,
+                self.compute_salience(existing.kind, confidence, access),
+                review_status,
+                sensitivity,
+                ts,
+                memory_id,
+            ),
+        )
+        if reactivate:
+            self.conn.execute("UPDATE memories SET expires_at = ? WHERE id = ?", (fact.expires_at, memory_id))
+        meta = {"reason": reason, "incomingHash": sha256_hex(incoming_body.lower())[:16], "labels": sorted(set(labels))}
+        if reactivate:
+            meta["expiresAt"] = {"before": existing.expires_at, "after": fact.expires_at}
+        self._history(
+            memory_id, existing.project_id, "reactivated" if reactivate else "reinforced", None, incoming_body, meta
+        )
+        audit_event(
+            self.conn,
+            action="memory.reactivate" if reactivate else "memory.reinforce",
+            project_id=existing.project_id,
+            subject_id=memory_id,
+            labels=[reason.split(" (")[0]],
+            actor=self.config.actor,
+        )
+        if quarantine_labels:
+            audit_event(
+                self.conn,
+                action="memory.injection_quarantined",
+                project_id=existing.project_id,
+                subject_id=memory_id,
+                labels=sorted(set(quarantine_labels)),
+                actor=self.config.actor,
+            )
+        daemon_visible_changed = (
+            merged_tags != existing.tags or confidence != existing.confidence or sensitivity != existing.sensitivity
+        )
+        decision: dict[str, Any] = {
+            "event": "UPDATE"
+            if (reactivate or review_status != existing.review_status or daemon_visible_changed)
+            else "NONE",
+            "memoryID": memory_id,
+            "reason": reason,
+            "kind": existing.kind,
+            "scope": existing.scope,
+            "text": existing.body,
+            "tags": merged_tags,
+            "confidence": confidence,
+            "sourceRef": existing.source_ref,
+            "expiresAt": fact.expires_at if reactivate else existing.expires_at,
+            "sensitivity": sensitivity,
+            "reviewStatus": review_status,
+        }
+        if reactivate:
+            decision["reactivated"] = True
+        return decision
+
+    def _rotate_vault(self, memory_id: str, project_id: str, gate: GateDecision) -> bool:
+        """Replace a retained secret when a duplicate redacted body arrives with a
+        different verbatim text. Returns True when the vault changed."""
+        if gate.vault_body is None:
+            return False
+        current = self._open_vault(memory_id, project_id)
+        sensitivity = self.conn.execute(
+            "SELECT sensitivity FROM memories WHERE id = ? AND project_id = ?", (memory_id, project_id)
+        ).fetchone()
+        promoted = sensitivity is not None and str(sensitivity["sensitivity"]) != "secret"
+        if current == gate.vault_body:
+            if promoted:
+                self.conn.execute(
+                    "UPDATE memories SET sensitivity = 'secret', updated_at = ? WHERE id = ? AND project_id = ?",
+                    (now_iso(), memory_id, project_id),
+                )
+            return promoted
+        vault_cipher, vault_nonce = self.keyring.seal(gate.vault_body, f"{memory_id}|{project_id}|vault")
+        self.conn.execute(
+            "INSERT OR REPLACE INTO memory_vault (memory_id, project_id, secret_cipher, secret_nonce, key_id, labels_json, created_at) VALUES (?,?,?,?,?,?,?)",
+            (
+                memory_id,
+                project_id,
+                vault_cipher,
+                vault_nonce,
+                self.keyring.key_id,
+                _json_dumps(gate.labels),
+                now_iso(),
+            ),
+        )
+        self.conn.execute(
+            "UPDATE memories SET sensitivity = 'secret', updated_at = ? WHERE id = ? AND project_id = ?",
+            (now_iso(), memory_id, project_id),
+        )
+        self._history(memory_id, project_id, "vault_rotated", None, None, {"labels": sorted(set(gate.labels))})
+        audit_event(
+            self.conn,
+            action="memory.secret_rotated",
+            project_id=project_id,
+            subject_id=memory_id,
+            labels=gate.labels,
+            actor=self.config.actor,
+        )
+        return True
+
+    def _hydrate_ingest_decision(self, decision: dict[str, Any]) -> dict[str, Any]:
+        memory_id = str(decision.get("memoryID") or "")
+        if not memory_id or decision.get("event") not in ("ADD", "UPDATE"):
+            return decision
+        result = self.get(memory_id)
+        memory = result.get("memory")
+        if not isinstance(memory, dict):
+            return decision
+        return {
+            **decision,
+            "kind": memory.get("kind"),
+            "scope": memory.get("scope"),
+            "text": memory.get("body"),
+            "tags": list(memory.get("tags") or []),
+            "confidence": memory.get("confidence"),
+            "sourceRef": memory.get("sourceRef"),
+            "expiresAt": memory.get("expiresAt"),
+            "sensitivity": memory.get("sensitivity"),
+            "reviewStatus": memory.get("reviewStatus"),
+        }
+
+    def _missing_ids(self, memory_ids: Sequence[str]) -> list[str]:
+        wanted = [str(item) for item in memory_ids if item]
+        if not wanted:
+            return []
+        found: set[str] = set()
+        for start in range(0, len(wanted), 500):
+            chunk = wanted[start : start + 500]
+            placeholders = ",".join("?" * len(chunk))
+            missing_sql = f"SELECT id FROM memories WHERE id IN ({placeholders})"  # noqa: S608 — placeholders only; values are bound
+            found.update(str(row["id"]) for row in self.conn.execute(missing_sql, chunk).fetchall())
+        return [item for item in wanted if item not in found]
+
+    def _retire(self, memory_id: str, *, reason: str, replacement: str | None) -> bool:
+        row = self._get_row(memory_id)
+        if row is None or row["valid_to"] is not None:
+            return False
+        if bool(row["immutable"]):
+            self._history(
+                memory_id,
+                str(row["project_id"]),
+                "retire_blocked_immutable",
+                None,
+                None,
+                {"reason": reason, "replacement": replacement},
+            )
+            return False
+        ts = now_iso()
+        self.conn.execute(
+            "UPDATE memories SET valid_to = ?, superseded_by = ?, updated_at = ? WHERE id = ?",
+            (ts, replacement, ts, memory_id),
+        )
+        self._history(
+            memory_id, str(row["project_id"]), "retired", None, None, {"reason": reason, "replacement": replacement}
+        )
+        return True
+
+    def _history(
+        self, memory_id: str, project_id: str, event: str, before: str | None, after: str | None, meta: dict[str, Any]
+    ) -> None:
+        aad = f"{memory_id}|{project_id}|history"
+        before_cipher = before_nonce = after_cipher = after_nonce = None
+        if before is not None:
+            before_cipher, before_nonce = self.keyring.seal(before, aad)
+        if after is not None:
+            after_cipher, after_nonce = self.keyring.seal(after, aad)
+        self.conn.execute(
+            "INSERT INTO memory_history (memory_id, project_id, event, actor, ts, before_cipher, before_nonce, after_cipher, after_nonce, key_id, meta_json) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                memory_id,
+                project_id,
+                event,
+                self.config.actor,
+                now_iso(),
+                before_cipher,
+                before_nonce,
+                after_cipher,
+                after_nonce,
+                self.keyring.key_id,
+                _json_dumps(meta),
+            ),
+        )
