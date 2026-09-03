@@ -10,6 +10,7 @@ one JSON line on stdout and exit code 0 (2 only for a usage error).
 from __future__ import annotations
 
 import argparse
+import collections
 import json
 import os
 import re
@@ -53,14 +54,20 @@ def _text_of(content: Any) -> str:
     return ""
 
 
-def load_transcript(path: Path | str) -> list[dict[str, str]]:
+def load_transcript(path: Path | str, *, max_messages: int = MAX_MESSAGES) -> list[dict[str, str]]:
     """Read a Claude Code JSONL transcript, keeping only user/assistant prose.
 
     The transcript format is documented as internal and changes between versions,
     so every line is parsed defensively: anything that is not a user/assistant
     turn with text content is skipped rather than raising.
+
+    Only the last `max_messages` turns are retained while reading. `trim_messages`
+    takes the same tail afterwards, but it can only take it from a list that is
+    already in memory -- a session with a hundred thousand turns would be
+    materialized in full first, inside the deadline, for nothing. The character
+    budget stays where it was: this bounds the count, `trim_messages` the size.
     """
-    messages: list[dict[str, str]] = []
+    messages: collections.deque[dict[str, str]] = collections.deque(maxlen=max(1, int(max_messages)))
     with Path(path).open(encoding="utf-8", errors="replace") as handle:
         for line in handle:
             try:
@@ -75,7 +82,7 @@ def load_transcript(path: Path | str) -> list[dict[str, str]]:
             text = _WRAPPER_RE.sub("", _text_of(message.get("content"))).strip()
             if text:
                 messages.append({"role": str(message["role"]), "content": text})
-    return messages
+    return list(messages)
 
 
 def trim_messages(
@@ -135,19 +142,50 @@ def _memorize_messages(
     return json.loads(raw)
 
 
+def _decision_wrote(decision: Any) -> bool:
+    """Whether one ingest decision actually changed a memory.
+
+    ADD / UPDATE / DELETE are writes by name. NONE is the ambiguous one: a
+    reinforcement of an identical memory reports NONE and still bumps the row,
+    while a NONE carrying a `code` (`PREVIOUSLY_REJECTED`, `NON_APPROVED_DUPLICATE`,
+    `IMMUTABLE_CONFLICT`) is a refusal that touched nothing.
+    """
+    if not isinstance(decision, dict):
+        return False
+    event = decision.get("event")
+    if event in {"ADD", "UPDATE", "DELETE"}:
+        return True
+    return event == "NONE" and not decision.get("code") and bool(decision.get("memoryID"))
+
+
 def _cli_status(result: dict[str, Any]) -> str:
     """Map the server's response onto the CLI's status vocabulary.
 
-    `burnbar_memorize` answers `{"status": "ok", ...}` for a write and adds
-    `"code": "ALREADY_INGESTED"` when the transcript's content hash already has a
-    receipt, so a replayed session reports `already_ingested` and writes nothing.
+    `burnbar_memorize` answers `{"status": "ok", ...}` for a *call* that
+    succeeded, which is not the same as a session that produced a memory. The
+    status has to say which:
+
+    * `already_ingested` -- the transcript's content hash already has a receipt;
+    * `skipped_no_facts` -- the extractor found nothing worth keeping;
+    * `rejected` -- facts were considered and none of them wrote or reinforced
+      anything (the gate refused them, or review blocked every duplicate);
+    * `memorized` -- at least one decision wrote or reinforced a memory.
+
     Any other status (rate limit, capability denial, empty input) passes through.
     """
     if result.get("code") == _ALREADY_INGESTED_CODE:
         return "already_ingested"
-    if result.get("status") in {"ok", "memorized"}:
+    if result.get("status") not in {"ok", "memorized"}:
+        return str(result.get("status", "memorized"))
+    decisions = result.get("decisions")
+    decisions = list(decisions) if isinstance(decisions, list) else []
+    considered = result.get("factsConsidered")
+    considered = int(considered) if isinstance(considered, int) else len(decisions)
+    if not considered and not decisions:
+        return "skipped_no_facts"
+    if any(_decision_wrote(decision) for decision in decisions):
         return "memorized"
-    return str(result.get("status", "memorized"))
+    return "rejected"
 
 
 def memorize(
@@ -174,19 +212,27 @@ def memorize(
     if not path.is_file():
         # Report what the caller gave us; `Path("")` renders as "." and would lie.
         return {"status": "skipped_missing_transcript", "transcriptPath": str(transcript_path)}
-    try:
-        messages = trim_messages(load_transcript(path))
-    except OSError as exc:
-        return {"status": "error", "error": f"{type(exc).__name__}: {exc}"}
-    if not messages:
-        return {"status": "skipped_empty"}
 
     def _alarm(_signum: int, _frame: Any) -> None:
         raise _Deadline
 
+    messages: list[dict[str, str]] = []
+    # The deadline is armed before the read, not after it: a transcript large or
+    # pathological enough to be slow to parse would otherwise hold session end
+    # open for as long as the read took, entirely outside the budget.
     previous = signal.signal(signal.SIGALRM, _alarm)
     signal.setitimer(signal.ITIMER_REAL, budget_seconds)
     try:
+        try:
+            messages = trim_messages(load_transcript(path))
+        except _Deadline:
+            # `TimeoutError` is an `OSError`; the deadline must not be reported
+            # as a failure to read the file.
+            raise
+        except OSError as exc:
+            return {"status": "error", "error": f"{type(exc).__name__}: {exc}"}
+        if not messages:
+            return {"status": "skipped_empty"}
         result = _memorize_messages(
             messages=messages,
             project_path=project_path,
@@ -202,6 +248,52 @@ def memorize(
         signal.setitimer(signal.ITIMER_REAL, 0)
         signal.signal(signal.SIGALRM, previous)
     return {"status": _cli_status(result), "messages": len(messages), "result": result}
+
+
+# What may be printed. stdout is appended to a log file by the hook, so the line
+# is a receipt -- counts, ids and hashes -- and never the memory text, the
+# transcript, or a decision's body. (CodeQL: clear-text logging of sensitive
+# information.)
+_PRINTABLE_TOP = ("status", "messages", "budgetSeconds", "transcriptPath", "error")
+_PRINTABLE_RESULT = (
+    "status",
+    "code",
+    "extractor",
+    "extractionError",
+    "sourceHash",
+    "ingestedAt",
+    "receiptStored",
+    "factsConsidered",
+    "summary",
+    "projectID",
+    "projectName",
+)
+
+
+def _redacted_output(result: dict[str, Any]) -> dict[str, Any]:
+    """The status line, with every field that could carry memory text removed.
+
+    Decisions are reduced to their shape -- what happened, to which id -- because
+    `decisions[].text` is the memory body verbatim, and `reason` can quote it.
+    """
+    printed = {key: result[key] for key in _PRINTABLE_TOP if key in result}
+    inner = result.get("result")
+    if not isinstance(inner, dict):
+        return printed
+    summary = {key: inner[key] for key in _PRINTABLE_RESULT if key in inner}
+    decisions = inner.get("decisions")
+    if isinstance(decisions, list):
+        summary["decisions"] = [
+            {
+                key: decision[key]
+                for key in ("event", "code", "memoryID", "kind", "scope", "sensitivity", "reviewStatus")
+                if key in decision
+            }
+            for decision in decisions
+            if isinstance(decision, dict)
+        ]
+    printed["result"] = summary
+    return printed
 
 
 def _parse_args(argv: list[str]) -> argparse.Namespace:
@@ -259,7 +351,7 @@ def main(argv: list[str] | None = None) -> int:
         reason=reason,
         budget_seconds=args.budget_seconds,
     )
-    print(json.dumps(result, default=str))
+    print(json.dumps(_redacted_output(result), default=str))
     return 0
 
 

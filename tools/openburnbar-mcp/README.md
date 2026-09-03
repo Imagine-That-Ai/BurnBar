@@ -162,9 +162,34 @@ feeds the session transcript to [`memorize_transcript.py`](memorize_transcript.p
 which calls the same `burnbar_memorize` wrapper the MCP tool uses. Durable facts
 from every session are collected without anyone remembering to ask.
 
-Opt in by adding this to your own `.claude/settings.json` (user-level
-`~/.claude/settings.json`, or `.claude/settings.local.json` in a project — the
-repo's shared `.claude/settings.json` is deliberately not modified):
+Opt in by adding this to your own **user-level** `~/.claude/settings.json`.
+`$CLAUDE_PROJECT_DIR` does not work here: it expands to whatever project the
+session ran in, not to this checkout, so the hook would look for the script
+inside every unrelated repository. Give the absolute path to the checkout
+instead — substitute yours for `$HOME/Projects/BurnBar`:
+
+```json
+{
+  "hooks": {
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$HOME/Projects/BurnBar/tools/openburnbar-mcp/hooks/claude-code-session-end.sh\"",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Inside this repository — in `.claude/settings.local.json`, since the shared
+`.claude/settings.json` is deliberately not modified — `$CLAUDE_PROJECT_DIR` is
+the checkout, so the repo-relative form is correct there:
 
 ```json
 {
@@ -199,10 +224,13 @@ malformed lines are skipped, never raised on.
 
 **It never blocks session end.** The CLI enforces its own 20-second deadline
 (`--budget-seconds`), prints one JSON status line, and exits 0 in every case
-except a usage error. Statuses: `memorized`, `already_ingested`,
-`skipped_disabled`, `skipped_missing_transcript`, `skipped_empty`, `timeout`,
-`error`. The hook script itself always exits 0, and bootstraps the venv quietly
-if it is missing.
+except a usage error. Statuses: `memorized` (at least one memory was written or
+reinforced), `already_ingested`, `skipped_no_facts` (nothing worth keeping was
+extracted), `rejected` (facts were considered and every one of them was
+refused), `skipped_disabled`, `skipped_missing_transcript`, `skipped_empty`,
+`timeout`, `error`. The deadline covers reading the transcript as well as
+memorizing it. The hook script itself always exits 0, and bootstraps the venv
+quietly if it is missing.
 
 **The first session end on a machine without the venv usually memorizes
 nothing.** Bootstrapping the interpreter and dependencies takes most of the
@@ -227,9 +255,11 @@ row is AES-256-GCM encrypted at rest. Each run appends a label-only audit event
 `OPENBURNBAR_MEMORY_SESSION_HOOK=off` to disable collection entirely (nothing is
 read and no store is created), and
 `OPENBURNBAR_MEMORY_SESSION_HOOK_LOG=<file>` to keep the status lines instead of
-discarding them — that log records the memorize result, which includes the
-gated-but-plaintext memory bodies, so the hook sets `umask 077` and the file is
-created `0600`; an existing file keeps whatever mode it already has.
+discarding them. The printed line is a receipt — status, counts, decision
+events, memory ids, the source hash — and carries no memory text, no decision
+body and no transcript content; the hook still sets `umask 077` and creates the
+file `0600`, because the ids and counts are themselves telling. An existing file
+keeps whatever mode it already has.
 `OPENBURNBAR_MEMORY_PYTHON` overrides the interpreter.
 
 Run it by hand against any transcript:

@@ -214,3 +214,149 @@ def test_hook_script_runs_the_memorizer_and_exits_zero(tmp_path):
     bodies = _memory_bodies(env)
     assert any("SQLCipher" in body for body in bodies)
     assert not any(token in body for body in bodies)
+
+
+def _synthetic_transcript(path: Path, turns: int) -> Path:
+    """A transcript far larger than the tail the memorizer keeps."""
+    with path.open("w", encoding="utf-8") as handle:
+        for index in range(turns):
+            entry = {
+                "type": "user" if index % 2 == 0 else "assistant",
+                "message": {
+                    "role": "user" if index % 2 == 0 else "assistant",
+                    "content": f"turn-{index} " + ("filler " * 40),
+                },
+            }
+            handle.write(json.dumps(entry) + "\n")
+    return path
+
+
+def test_load_transcript_keeps_only_a_bounded_tail(tmp_path):
+    """A multi-gigabyte transcript must not be materialized in full before the
+    tail is taken: the reader keeps only what `trim_messages` could ever use."""
+    transcript = _synthetic_transcript(tmp_path / "big.jsonl", turns=mt.MAX_MESSAGES * 3)
+    messages = mt.load_transcript(transcript)
+    assert len(messages) == mt.MAX_MESSAGES
+    assert messages[-1]["content"].startswith(f"turn-{mt.MAX_MESSAGES * 3 - 1} ")
+    assert messages[0]["content"].startswith(f"turn-{mt.MAX_MESSAGES * 2} ")
+    # The char budget is still `trim_messages`'s to enforce, unchanged.
+    trimmed = mt.trim_messages(messages, max_messages=mt.MAX_MESSAGES, max_chars=1_000)
+    assert 0 < sum(len(m["content"]) for m in trimmed) <= 1_000
+
+
+def test_the_deadline_covers_reading_the_transcript(tmp_path, monkeypatch):
+    """The budget was armed after `load_transcript`, so a pathological transcript
+    could hold session end open for as long as it took to read."""
+    import time
+
+    def _slow_load(_path, **_kwargs):
+        time.sleep(5)
+        return [{"role": "user", "content": "never reached"}]
+
+    monkeypatch.setattr(mt, "load_transcript", _slow_load)
+    started = time.monotonic()
+    result = mt.memorize(
+        transcript_path=FIXTURE,
+        project_path=str(tmp_path),
+        session_id="s",
+        reason="clear",
+        budget_seconds=1,
+        env=_isolated_env(tmp_path),
+    )
+    assert result["status"] == "timeout", result
+    assert time.monotonic() - started < 4, "the deadline must fire during the read, not after it"
+
+
+@pytest.mark.parametrize(
+    ("result", "expected"),
+    [
+        ({"status": "ok", "code": "ALREADY_INGESTED", "decisions": []}, "already_ingested"),
+        ({"status": "ok", "factsConsidered": 0, "summary": {}, "decisions": []}, "skipped_no_facts"),
+        (
+            {
+                "status": "ok",
+                "factsConsidered": 2,
+                "summary": {"ADD": 0, "UPDATE": 0, "NONE": 0, "DELETE": 0, "REJECT": 2},
+                "decisions": [{"event": "REJECT", "code": "SECRET_DETECTED"}, {"event": "REJECT"}],
+                "receiptStored": False,
+            },
+            "rejected",
+        ),
+        (
+            {
+                "status": "ok",
+                "factsConsidered": 1,
+                "summary": {"ADD": 1, "UPDATE": 0, "NONE": 0, "DELETE": 0, "REJECT": 0},
+                "decisions": [{"event": "ADD", "memoryID": "m1"}],
+                "receiptStored": True,
+            },
+            "memorized",
+        ),
+        (
+            # A reinforcement reports NONE and still touched the row.
+            {
+                "status": "ok",
+                "factsConsidered": 1,
+                "summary": {"ADD": 0, "UPDATE": 0, "NONE": 1, "DELETE": 0, "REJECT": 0},
+                "decisions": [{"event": "NONE", "memoryID": "m1", "reason": "duplicate"}],
+                "receiptStored": True,
+            },
+            "memorized",
+        ),
+        (
+            # A NONE that wrote nothing: the duplicate was blocked in review.
+            {
+                "status": "ok",
+                "factsConsidered": 1,
+                "summary": {"ADD": 0, "UPDATE": 0, "NONE": 1, "DELETE": 0, "REJECT": 0},
+                "decisions": [{"event": "NONE", "code": "PREVIOUSLY_REJECTED", "memoryID": "m1"}],
+                "receiptStored": True,
+            },
+            "rejected",
+        ),
+        ({"status": "rejected", "code": "AUX_TOO_LARGE", "decisions": []}, "rejected"),
+        ({"status": "skipped_empty"}, "skipped_empty"),
+    ],
+)
+def test_cli_status_reports_what_actually_landed(result, expected):
+    """`memorized` used to be reported for a run that extracted nothing and for one
+    whose every fact the gate refused."""
+    assert mt._cli_status(result) == expected
+
+
+def _keys(value, found=None):
+    out = [] if found is None else found
+    if isinstance(value, dict):
+        for key, item in value.items():
+            out.append(key)
+            _keys(item, out)
+    elif isinstance(value, list):
+        for item in value:
+            _keys(item, out)
+    return out
+
+
+def test_the_printed_line_carries_no_memory_text(tmp_path):
+    """The hook appends stdout to a log file, so the line must be a receipt, not
+    a copy of what was memorized (CodeQL: clear-text logging of sensitive info)."""
+    env = _isolated_env(tmp_path)
+    transcript, token = _expanded_fixture(tmp_path)
+    project = tmp_path / "project"
+    project.mkdir()
+    payload = {
+        "session_id": "sess-redact",
+        "transcript_path": str(transcript),
+        "cwd": str(project),
+        "reason": "other",
+    }
+    printed = _run_cli(tmp_path, payload, env)
+    assert printed["status"] == "memorized", printed
+    blob = json.dumps(printed)
+    assert token not in blob
+    assert "SQLCipher" not in blob, printed
+    assert "REDACTED" not in blob, printed
+    assert not {"text", "body", "messagesContent"} & set(_keys(printed)), _keys(printed)
+    # The receipt still says enough to be useful.
+    assert printed["result"]["factsConsidered"] >= 1, printed
+    assert printed["result"]["summary"]["ADD"] >= 1, printed
+    assert printed["result"]["sourceHash"], printed
