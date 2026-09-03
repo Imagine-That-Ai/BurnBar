@@ -18,7 +18,7 @@ public sealed class MemorySecretPIIGateTests
     public void EmbeddedCorpus_LoadsAndReportsVersion()
     {
         Assert.True(Gate.IsAvailable);
-        Assert.Equal("openburnbar-project-code-secret-corpus-v4", Gate.CorpusVersion);
+        Assert.Equal("openburnbar-project-code-secret-corpus-v5", Gate.CorpusVersion);
     }
 
     [Fact]

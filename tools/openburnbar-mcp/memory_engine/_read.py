@@ -562,7 +562,9 @@ class _ReadPath:
         # Checked ahead of the entity clip below and of the gate; see
         # `gate.aux_input_overflow`.
         overflow = aux_input_overflow(
-            tags=raw_tags(tags) + raw_tags(add_tags),
+            # Deduplicated: `tags` and `add_tags` overlapping is the caller
+            # restating one tag, not two tags' worth of input.
+            tags=sorted(set(raw_tags(tags)) | set(raw_tags(add_tags))),
             entities=[str(item) for item in entities] if entities is not None else (),
             metadata=metadata,
         )

@@ -14,7 +14,7 @@ from typing import Any
 import project_code_memory as pcm
 
 from ._util import _aux_strings
-from .constants import ALWAYS_REDACT_PII_LABELS, INJECTION_PATTERNS
+from .constants import ALWAYS_REDACT_PII_LABELS, INJECTION_PATTERNS, MAX_BODY_CHARS
 
 
 @dataclass
@@ -272,6 +272,10 @@ def apply_gate(text: str, *, secret_policy: str, pii_policy: str, retain_allowed
 MAX_AUX_TAGS = 64
 MAX_AUX_ENTITIES = 64
 MAX_AUX_METADATA_ENTRIES = 64
+# One auxiliary string may not outweigh the body it annotates. The body is
+# truncated to `MAX_BODY_CHARS`, so without this a two-megabyte tag would be
+# stored verbatim in the plaintext `tags_json` column.
+MAX_AUX_VALUE_CHARS = MAX_BODY_CHARS
 AUX_TOO_LARGE_CODE = "AUX_TOO_LARGE"
 
 
@@ -290,16 +294,51 @@ def _metadata_entry_count(value: Any, depth: int = 0) -> int:
     return 1 if isinstance(value, str) else 0
 
 
+def _overlong(label: str, value: str | None) -> str | None:
+    if value is not None and len(value) > MAX_AUX_VALUE_CHARS:
+        return f"{label} is too long: {len(value)} characters exceeds the limit of {MAX_AUX_VALUE_CHARS}"
+    return None
+
+
+def _metadata_overlong(value: Any, depth: int = 0) -> str | None:
+    """The first over-length key or string value anywhere in `metadata`."""
+    if depth > 8:
+        # Deeper than the count bound tolerates; that check reports it.
+        return None
+    if isinstance(value, dict):
+        for key, item in value.items():
+            reason = _overlong("a metadata key", str(key)) or _metadata_overlong(item, depth + 1)
+            if reason:
+                return reason
+        return None
+    if isinstance(value, list):
+        for item in value:
+            reason = _metadata_overlong(item, depth + 1)
+            if reason:
+                return reason
+        return None
+    return _overlong("a metadata value", value) if isinstance(value, str) else None
+
+
 def aux_input_overflow(
-    *, tags: Sequence[str] = (), entities: Sequence[str] = (), metadata: dict[str, Any] | None = None
+    *,
+    tags: Sequence[str] = (),
+    entities: Sequence[str] = (),
+    metadata: dict[str, Any] | None = None,
+    source_ref: str | None = None,
+    source_kind: str | None = None,
 ) -> str | None:
     """The reason to refuse oversized auxiliary input, or None.
 
-    `raw_tags` deliberately does not cap the caller's tags: capping before the
-    gate would drop a credential-bearing tag silently instead of screening it.
-    The bound therefore lives here, ahead of the gate, and refuses rather than
-    clips -- a caller who sent too much is told so instead of having most of it
-    quietly discarded.
+    Two bounds, both refusing rather than clipping. A *count* bound, because
+    `raw_tags` deliberately does not cap the caller's tags -- capping before the
+    gate would drop a credential-bearing tag silently instead of screening it,
+    so the bound belongs here, ahead of the gate. And a *length* bound per
+    value, because the count alone lets one two-megabyte tag into a plaintext
+    column that sits beside a body truncated at `MAX_BODY_CHARS`.
+
+    A caller who sent too much is told so, rather than having most of it quietly
+    discarded.
     """
     for label, count, limit in (
         ("tags", len(tags), MAX_AUX_TAGS),
@@ -308,7 +347,16 @@ def aux_input_overflow(
     ):
         if count > limit:
             return f"too many {label}: {count} exceeds the limit of {limit}"
-    return None
+    for label, values in (("a tag", tags), ("an entity", entities)):
+        for value in values:
+            reason = _overlong(label, str(value))
+            if reason:
+                return reason
+    return (
+        _metadata_overlong(metadata or {})
+        or _overlong("the source ref", source_ref)
+        or _overlong("the source kind", source_kind)
+    )
 
 
 @dataclass
@@ -381,12 +429,31 @@ def gate_aux_fields(
             reject_reason, reject_code = reason, code
         return replacement
 
+    def distinct_key(candidate: str, taken: set[str]) -> str:
+        """Keep two keys that redact to the same placeholder from collapsing.
+
+        Redaction is many-to-one: two dropped keys both become `[REDACTED]`, and
+        two different GitHub tokens both become `[REDACTED:GitHub token
+        detected]`. Without a suffix the second silently overwrites the first,
+        losing a value the caller sent and hiding the redaction itself.
+        """
+        if candidate not in taken:
+            return candidate
+        index = 2
+        while f"{candidate}#{index}" in taken:
+            index += 1
+        return f"{candidate}#{index}"
+
     def walk(value: Any) -> Any:
         if isinstance(value, str):
             replaced = gate(value)
             return "[REDACTED]" if replaced is None else replaced
         if isinstance(value, dict):
-            return {(gate(str(key)) or "[REDACTED]"): walk(item) for key, item in value.items()}
+            out: dict[str, Any] = {}
+            for key, item in value.items():
+                clean = distinct_key(gate(str(key)) or "[REDACTED]", set(out))
+                out[clean] = walk(item)
+            return out
         if isinstance(value, list):
             return [walk(item) for item in value]
         return value

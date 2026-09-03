@@ -115,7 +115,9 @@ class _WritePath:
         project_id, root = resolve_project(self.conn, project_path)
         # The batch-wide auxiliary input the caller controls. Per-fact aux from
         # `facts` is bounded in `_commit_fact`, which every fact goes through.
-        overflow = aux_input_overflow(tags=raw_tags(default_tags), metadata=metadata)
+        overflow = aux_input_overflow(
+            tags=raw_tags(default_tags), metadata=metadata, source_ref=source_ref, source_kind=source_kind
+        )
         if overflow:
             return {
                 "status": "rejected",
@@ -302,7 +304,11 @@ class _WritePath:
         # Checked here, against the caller's own lists, because the entity clip
         # below would otherwise hide an oversized batch from the bound.
         overflow = aux_input_overflow(
-            tags=raw_tags(tags), entities=[str(item) for item in (entities or [])], metadata=metadata
+            tags=raw_tags(tags),
+            entities=[str(item) for item in (entities or [])],
+            metadata=metadata,
+            source_ref=source_ref,
+            source_kind=source_kind,
         )
         if overflow:
             return {
@@ -412,7 +418,13 @@ class _WritePath:
             }
         # Bound the auxiliary input before the gate walks it. This is the
         # backstop that covers every write path, `import_memories` included.
-        overflow = aux_input_overflow(tags=fact.tags, entities=fact.entities, metadata=fact.metadata)
+        overflow = aux_input_overflow(
+            tags=fact.tags,
+            entities=fact.entities,
+            metadata=fact.metadata,
+            source_ref=fact.source_ref,
+            source_kind=source_kind,
+        )
         if overflow:
             return {
                 "event": "REJECT",

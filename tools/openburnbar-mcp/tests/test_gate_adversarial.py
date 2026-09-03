@@ -372,6 +372,131 @@ def test_the_update_bound_counts_the_caller_delta_not_the_stored_row(
         engine.close()
 
 
+def test_one_auxiliary_value_may_not_outweigh_the_body_it_annotates(gate_store: tuple[Path, str]) -> None:
+    """The count bound alone let a single two-megabyte tag into a plaintext column
+    sitting beside a body truncated at `MAX_BODY_CHARS`."""
+    db_path, project_path = gate_store
+    over = "a" * (me.MAX_BODY_CHARS + 1)
+    at_limit = "b" * me.MAX_BODY_CHARS
+    engine = _open(db_path, secret_policy="redact")
+    try:
+        refused = engine.remember(_prose("long"), project_path=project_path, kind="fact", tags=[over])
+        assert (refused.get("status"), refused.get("code")) == ("rejected", "AUX_TOO_LARGE"), refused
+        assert str(me.MAX_BODY_CHARS) in str(refused.get("reason")), refused
+
+        batch = engine.memorize(
+            project_path=project_path,
+            messages=[{"role": "user", "content": "We decided to keep the store local-only."}],
+            default_tags=[over],
+        )
+        assert (batch.get("status"), batch.get("code")) == ("rejected", "AUX_TOO_LARGE"), batch
+
+        # A per-fact tag reaches the bound through `_commit_fact`, not the
+        # batch-wide check, so it needs its own case.
+        per_fact = engine.memorize(
+            project_path=project_path,
+            facts=[{"text": "The runner reads its token from the keychain.", "tags": [over]}],
+        )
+        assert [item.get("code") for item in per_fact["decisions"]] == ["AUX_TOO_LARGE"], per_fact
+
+        kept = engine.remember(_prose("bounded-length"), project_path=project_path, kind="fact", tags=[at_limit])
+        assert kept["status"] == "ok", kept
+        assert engine.get(str(kept["memoryID"]))["memory"]["tags"] == [at_limit]
+
+        patched = engine.update(str(kept["memoryID"]), tags=[over])
+        assert (patched.get("status"), patched.get("code")) == ("rejected", "AUX_TOO_LARGE"), patched
+        assert engine.get(str(kept["memoryID"]))["memory"]["tags"] == [at_limit]
+    finally:
+        engine.close()
+
+
+def test_two_redacted_metadata_keys_do_not_collapse_into_one(gate_store: tuple[Path, str]) -> None:
+    """Redaction is many-to-one: two different GitHub tokens both become
+    `[REDACTED:GitHub token detected]`. Without a suffix the second key would
+    overwrite the first and one of the caller's values would vanish."""
+    db_path, project_path = gate_store
+    first = SHAPES["github_pat"]
+    # A second, distinct token of the same shape, so both keys redact to the
+    # same placeholder. Derived rather than written out: no literal token.
+    second = "ghp_" + first[4:][::-1]
+    engine = _open(db_path, secret_policy="redact")
+    try:
+        written = engine.remember(
+            _prose("keys"),
+            project_path=project_path,
+            kind="fact",
+            metadata={first: "alpha", second: "beta"},
+        )
+        assert written["status"] == "ok", written
+        metadata = engine.get(str(written["memoryID"]))["memory"]["metadata"]
+    finally:
+        engine.close()
+
+    # The engine adds its own metadata (gate labels, mirror ids); only the two
+    # keys the caller sent redact, and both must survive as distinct entries.
+    placeholders = {key: value for key, value in metadata.items() if str(key).startswith("[REDACTED")}
+    assert sorted(placeholders) == [
+        "[REDACTED:GitHub token detected]",
+        "[REDACTED:GitHub token detected]#2",
+    ], metadata
+    assert sorted(placeholders.values()) == ["alpha", "beta"], metadata
+    assert first not in str(metadata) and second not in str(metadata), metadata
+
+
+def _passthrough_aux(**kwargs: Any) -> Any:
+    """`gate_aux_fields` with the gate removed: what the write path did before
+    auxiliary fields were screened on their raw form."""
+    return me.AuxGate(
+        list(kwargs["tags"]),
+        list(kwargs["entities"]),
+        dict(kwargs["metadata"] or {}),
+        kwargs.get("source_ref"),
+        [],
+        None,
+        None,
+        kwargs.get("source_kind"),
+    )
+
+
+def test_doctor_reports_auxiliary_secrets_left_in_plaintext_by_an_older_write(
+    gate_store: tuple[Path, str],
+) -> None:
+    """Nothing re-examines a row once written, so rows that leaked before the fix
+    would sit there unnoticed. `doctor` is where an operator finds them."""
+    db_path, project_path = gate_store
+    token = SHAPES[CASE_SENSITIVE_SHAPE]
+
+    engine = _open(db_path, secret_policy="reject")
+    try:
+        clean = engine.remember(_prose("clean"), project_path=project_path, kind="fact", tags=["release"])
+        assert clean["status"] == "ok", clean
+        assert engine.doctor(project_path=project_path)["auxSecretExposure"] == []
+
+        # Write one row the way the engine used to: gate bypassed, tag lowercased
+        # on the way into the plaintext column.
+        original = me._write.gate_aux_fields
+        me._write.gate_aux_fields = _passthrough_aux
+        try:
+            leaked = engine.remember(_prose("leaked"), project_path=project_path, kind="fact", tags=[token])
+        finally:
+            me._write.gate_aux_fields = original
+        assert leaked["status"] == "ok", leaked
+        leaked_id = str(leaked["memoryID"])
+        assert engine.get(leaked_id)["memory"]["tags"] == [token.lower()]
+
+        report = engine.doctor(project_path=project_path)
+    finally:
+        engine.close()
+
+    assert report["auxSecretExposure"] == [
+        {"id": leaked_id, "surface": "tags", "labels": ["AWS access key detected"]}
+    ], report["auxSecretExposure"]
+    assert report["policy"]["auxSecretExposures"] == 1, report["policy"]
+    codes = [item["code"] for item in report["findings"]]
+    assert "AUX_SECRET_EXPOSURE" in codes, report["findings"]
+    assert report["status"] == "degraded", report["status"]
+
+
 def test_update_refuses_an_aws_key_tag_on_its_raw_form(gate_store: tuple[Path, str]) -> None:
     """`update` patches tags through the same gate, on the same raw form."""
     db_path, project_path = gate_store

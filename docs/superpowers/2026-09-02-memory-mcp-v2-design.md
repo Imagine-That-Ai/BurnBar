@@ -124,9 +124,11 @@ any schema: it creates `engine_meta` alone (a no-op on any store that already
 has it), reads the stamp, and only then applies `SCHEMA_SQL` and the pending
 migrations. A store stamped newer than `ENGINE_SCHEMA_VERSION`, or stamped with
 something that is not an integer, raises `SchemaTooNew` naming the stored value
-and this engine's version, and the store is left byte-for-byte as found — this
-engine never "repairs" a schema it cannot read, so two engine versions on one
-machine cannot corrupt each other's store.
+and this engine's version, and its schema is left untouched (the file header may
+switch to WAL mode: `PRAGMA journal_mode=WAL` runs before `ensure_schema`,
+because the locked-retry logic depends on that order, so a refused store can
+gain `-wal` / `-shm` sidecars) — this engine never "repairs" a schema it cannot
+read, so two engine versions on one machine cannot corrupt each other's store.
 
 `store.SCHEMA_MIGRATIONS` is an ordered tuple of `(target_version, statements)`
 steps, empty today, applied in order above the stored version. Each step is one
@@ -524,7 +526,16 @@ so an AWS access key id written as a tag is refused or dropped exactly like one
 written in the body.
 
 The Twilio `SK<32 hex>` shape that this suite reported missing is now in the
-shared corpus (`twilio-api-key`), detected raw and under all three encodings;
-the corpus copy the Swift daemon loads
-(`OpenBurnBarCore/Sources/OpenBurnBarKernel/Resources/secret-pattern-corpus.json`)
-is kept byte-identical to `tools/project-code-memory/secret-pattern-corpus.json`.
+shared corpus (`twilio-api-key`), detected raw and under all three encodings.
+
+**The corpus has three consumers, and a bump touches all of them.** Two copies
+are committed and kept byte-identical:
+`tools/project-code-memory/secret-pattern-corpus.json` (loaded by the Python MCP
+via `project_code_memory._load_secret_corpus`) and
+`OpenBurnBarCore/Sources/OpenBurnBarKernel/Resources/secret-pattern-corpus.json`
+(loaded by the Swift kernel and daemon through `MemorySecretPIIGate`, and
+embedded as a resource by the C# `OpenBurnBar.App.MemorySearch` Windows app,
+whose `MemorySecretPIIGateTests` pins the `version` string literally and runs
+under the PR gate's `dotnet test`). When the `version` field changes, update
+both JSON copies **and** that C# assertion —
+`grep -rn "corpus-v<n>"` across *all* file types, not just Python and Swift.

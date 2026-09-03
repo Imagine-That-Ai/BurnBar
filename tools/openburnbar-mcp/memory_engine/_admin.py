@@ -9,7 +9,7 @@ from collections.abc import Sequence
 from typing import Any
 
 from . import gate
-from ._util import _ingest_decision, _json_dumps, _json_loads, now_iso, sha256_hex
+from ._util import _aux_strings, _ingest_decision, _json_dumps, _json_loads, now_iso, sha256_hex
 from .constants import (
     DEFAULT_EMBEDDING_MODEL,
     EMBEDDING_PROVIDER_ENV,
@@ -418,8 +418,65 @@ class _Maintenance:
             **project_payload(project_id, root),
         }
 
+    def _scan_aux_value(self, text: str) -> list[str]:
+        """Secret labels in one stored auxiliary string.
+
+        Also scans the uppercased form. The rows this hunts for leaked precisely
+        because a tag was lowercased before the gate saw it, so `AKIA…` no longer
+        matched its case-sensitive corpus pattern; scanning only the stored form
+        would miss exactly the rows worth reporting.
+        """
+        labels = list(gate.scan_text(text).secret_labels)
+        if not labels and text != text.upper():
+            labels = list(gate.scan_text(text.upper()).secret_labels)
+        return labels
+
+    def aux_secret_exposure(self, project_id: str, *, limit: int = 500) -> list[dict[str, Any]]:
+        """Active rows whose plaintext auxiliary columns still hold a secret.
+
+        Auxiliary fields are gated on their raw form now, but rows written before
+        that fix could carry a credential in the plaintext `tags_json` column, and
+        nothing re-examines a row once it is written. `doctor` does, so an
+        operator learns which memories to forget or repair.
+        """
+        if not gate.GATE_CORPUS_AVAILABLE:
+            return []
+        rows = self.conn.execute(
+            "SELECT id, tags_json, entities_json, metadata_json, source_ref, source_kind "
+            "FROM memories WHERE project_id = ? AND valid_to IS NULL ORDER BY id LIMIT ?",
+            (project_id, limit),
+        ).fetchall()
+        exposures: list[dict[str, Any]] = []
+        for row in rows:
+            tags = _json_loads(row["tags_json"], [])
+            entities = _json_loads(row["entities_json"], [])
+            metadata = _json_loads(row["metadata_json"], {})
+            surfaces: tuple[tuple[str, list[str]], ...] = (
+                ("tags", _aux_strings(tags, [], None, None)),
+                ("entities", _aux_strings([], entities, None, None)),
+                ("metadata", _aux_strings([], [], metadata, None)),
+                ("sourceRef", _aux_strings([], [], None, row["source_ref"])),
+                ("sourceKind", [str(row["source_kind"])] if row["source_kind"] else []),
+            )
+            for surface, values in surfaces:
+                labels = sorted({label for value in values for label in self._scan_aux_value(str(value))})
+                if labels:
+                    exposures.append({"id": str(row["id"]), "surface": surface, "labels": labels})
+        return exposures
+
     def doctor(self, *, project_path: str | None = None) -> dict[str, Any]:
         db_path = self.db_path or default_db_path()
+        # Resolved first: the auxiliary-exposure scan below is per project, so it
+        # has to know which one before the findings are assembled.
+        project_extra: dict[str, Any] = {}
+        active_project_id: str | None = None
+        if project_path or os.environ.get("OPENBURNBAR_ACTIVE_PROJECT_PATH"):
+            try:
+                active_project_id, root = resolve_project(self.conn, project_path)
+                project_extra = dict(project_payload(active_project_id, root))
+            except ValueError as exc:
+                project_extra = {"projectError": str(exc)}
+        exposures = self.aux_secret_exposure(active_project_id) if active_project_id else []
         undecryptable = 0
         rows = self.conn.execute("SELECT id, project_id, body_cipher, body_nonce FROM memories LIMIT 500").fetchall()
         for row in rows:
@@ -462,6 +519,19 @@ class _Maintenance:
                     "detail": f"{total} memories; in-process BM25 stays fast into the tens of thousands but consider pruning.",
                 }
             )
+        if exposures:
+            affected = sorted({str(item["id"]) for item in exposures})
+            surfaces = ", ".join(sorted({str(item["surface"]) for item in exposures}))
+            findings.append(
+                {
+                    "severity": "error",
+                    "code": "AUX_SECRET_EXPOSURE",
+                    "detail": f"{len(affected)} memories carry a secret in a plaintext auxiliary column "
+                    f"({surfaces}). Rows written before auxiliary fields were gated on their raw form "
+                    "can hold one.",
+                    "fix": "Forget the affected memories, or `update` them with clean tags / entities / metadata.",
+                }
+            )
         chain = verify_audit_chain(self.conn)
         if not chain["ok"]:
             findings.append(
@@ -491,14 +561,11 @@ class _Maintenance:
                 "pii": self.config.pii_policy,
                 "retainAllowed": self.config.retain_allowed,
                 "corpusAvailable": gate.GATE_CORPUS_AVAILABLE,
+                "auxSecretExposures": len(exposures),
             },
             "auditChain": chain,
+            "auxSecretExposure": exposures,
             "findings": findings,
         }
-        if project_path or os.environ.get("OPENBURNBAR_ACTIVE_PROJECT_PATH"):
-            try:
-                project_id, root = resolve_project(self.conn, project_path)
-                payload.update(project_payload(project_id, root))
-            except ValueError as exc:
-                payload["projectError"] = str(exc)
+        payload.update(project_extra)
         return payload

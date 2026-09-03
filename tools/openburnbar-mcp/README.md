@@ -204,6 +204,14 @@ except a usage error. Statuses: `memorized`, `already_ingested`,
 `error`. The hook script itself always exits 0, and bootstraps the venv quietly
 if it is missing.
 
+**The first session end on a machine without the venv usually memorizes
+nothing.** Bootstrapping the interpreter and dependencies takes most of the
+30-second hook budget on its own, so that run typically reports `timeout` (or is
+cut off by Claude Code) and writes no memories. The venv it built persists, so
+the next session end — and every one after it — completes normally. Run
+`./tools/openburnbar-mcp/bootstrap-memory.sh` once by hand to skip that first
+lost run.
+
 **Idempotent.** `burnbar_memorize` keys an ingest receipt on the content hash of
 the transcript, so re-running the same session (a `--resume`, a replayed
 transcript, two hooks firing) reports `already_ingested` and writes no duplicate
@@ -219,7 +227,10 @@ row is AES-256-GCM encrypted at rest. Each run appends a label-only audit event
 `OPENBURNBAR_MEMORY_SESSION_HOOK=off` to disable collection entirely (nothing is
 read and no store is created), and
 `OPENBURNBAR_MEMORY_SESSION_HOOK_LOG=<file>` to keep the status lines instead of
-discarding them. `OPENBURNBAR_MEMORY_PYTHON` overrides the interpreter.
+discarding them — that log records the memorize result, which includes the
+gated-but-plaintext memory bodies, so the hook sets `umask 077` and the file is
+created `0600`; an existing file keeps whatever mode it already has.
+`OPENBURNBAR_MEMORY_PYTHON` overrides the interpreter.
 
 Run it by hand against any transcript:
 
@@ -451,8 +462,9 @@ against mem0 / Mixedbread: [`docs/superpowers/2026-09-02-memory-mcp-v2-design.md
   an AWS access key id base64- or hex-encoded, a `postgres://user:pass@host`
   URI or a `password=…` assignment URL-encoded, and a 64-char hex signing key
   hex-encoded again. `tests/test_gate_adversarial.py` plants every one of those
-  shapes in eight caller-controlled places (prose, a key/value line, a fenced
-  code block, a tag, an entity, a metadata value, a source ref) and proves that
+  shapes in eight caller-controlled places (prose (middle and end), a key/value
+  line, a fenced code block, a tag, an entity, a metadata value, a source ref)
+  and proves that
   under `redact` the verbatim token reaches no result, `get`, `list`, `recall`,
   `pack`, `export`, `history` or audit-trail surface and is absent from the
   store's raw bytes (WAL included); under `reject` the write is refused; and

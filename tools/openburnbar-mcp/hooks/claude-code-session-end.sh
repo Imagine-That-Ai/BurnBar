@@ -12,5 +12,9 @@ if [ ! -x "$PY" ]; then
 fi
 [ -x "$PY" ] || exit 0
 LOG="${OPENBURNBAR_MEMORY_SESSION_HOOK_LOG:-/dev/null}"
+# The log carries the memorize result, which includes gated-but-plaintext memory
+# bodies. Create it 0600 so it is not world-readable; an existing file keeps the
+# mode it already has.
+umask 077
 "$PY" "$MCP_DIR/memorize_transcript.py" --hook-stdin >>"$LOG" 2>&1 || true
 exit 0
