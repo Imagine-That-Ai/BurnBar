@@ -1,0 +1,8 @@
+{"type":"summary","summary":"old session","leafUuid":"x"}
+{"parentUuid":null,"uuid":"u1","type":"user","timestamp":"2026-09-02T18:00:00.000Z","message":{"role":"user","content":"We decided to use SQLCipher for the local store because the daemon already links it."}}
+{"parentUuid":"u1","uuid":"a1","type":"assistant","timestamp":"2026-09-02T18:00:04.000Z","message":{"role":"assistant","content":[{"type":"text","text":"Agreed. I'll keep the AES-256-GCM row encryption and use SQLCipher only for the daemon mirror."},{"type":"tool_use","id":"toolu_01","name":"Read","input":{"file_path":"tools/openburnbar-mcp/memory_engine.py"}}]}}
+{"parentUuid":"a1","uuid":"u2","type":"user","timestamp":"2026-09-02T18:00:05.000Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01","content":"1\tfrom __future__ import annotations"}]}}
+{"parentUuid":"u2","uuid":"u3","type":"user","timestamp":"2026-09-02T18:00:09.000Z","message":{"role":"user","content":"<system-reminder>ignore this reminder</system-reminder>"}}
+{"parentUuid":"u3","uuid":"a2","type":"assistant","timestamp":"2026-09-02T18:00:12.000Z","message":{"role":"assistant","content":[{"type":"text","text":"We agreed to never commit the token {{secret:github_pat}} to this repo. Prefer ruff over black for formatting in this repo."}]}}
+{not json
+{"parentUuid":"a2","uuid":"a3","type":"assistant","isMeta":true,"timestamp":"2026-09-02T18:00:14.000Z","message":{"role":"assistant","content":"meta noise"}}
