@@ -317,7 +317,12 @@ def _metadata_overlong(value: Any, depth: int = 0) -> str | None:
             if reason:
                 return reason
         return None
-    return _overlong("a metadata value", value) if isinstance(value, str) else None
+    if isinstance(value, str):
+        return _overlong("a metadata value", value)
+    # Non-string scalars are stored as JSON too, so they are bounded by the
+    # length of what actually lands in `metadata_json`: a ten-thousand-digit
+    # integer is as much plaintext as a ten-thousand-character string.
+    return _overlong("a metadata value", json.dumps(value, default=str))
 
 
 def aux_input_overflow(

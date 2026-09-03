@@ -21,6 +21,13 @@ from .extract import Fact
 from .store import audit_event, default_db_path, project_payload, resolve_project, verify_audit_chain
 
 
+# The auxiliary-exposure sweep is a regex pass over short strings, so the cap is
+# generous: 5,000 rows costs a small fraction of a `doctor` call. It exists so a
+# pathological store cannot make `doctor` hang, and whenever it bites, the scan
+# says so rather than returning a quietly partial answer.
+AUX_SCAN_ROW_LIMIT = 5_000
+
+
 class _Maintenance:
     """`MemoryEngine`'s maintenance surface: doctor, export/import, reindex, stats."""
 
@@ -431,26 +438,48 @@ class _Maintenance:
             labels = list(gate.scan_text(text.upper()).secret_labels)
         return labels
 
-    def aux_secret_exposure(self, project_id: str, *, limit: int = 500) -> list[dict[str, Any]]:
-        """Active rows whose plaintext auxiliary columns still hold a secret.
+    def aux_secret_exposure(self, project_id: str | None, *, limit: int | None = None) -> dict[str, Any]:
+        """Rows whose plaintext auxiliary columns still hold a secret, plus how
+        much of the store the sweep actually covered.
 
         Auxiliary fields are gated on their raw form now, but rows written before
-        that fix could carry a credential in the plaintext `tags_json` column, and
-        nothing re-examines a row once it is written. `doctor` does, so an
-        operator learns which memories to forget or repair.
+        that fix can carry a credential in the plaintext `tags_json` column, and
+        nothing re-examines a row once it is written. Superseded revisions are
+        scanned too: retiring a row does not remove its plaintext from the file.
+
+        The coverage half matters as much as the result. An empty list from a
+        capped, corpus-less, or project-less sweep is byte-identical to an empty
+        list from a complete one, so `scan` always records which it was:
+        `{"rowsScanned", "rowsTotal", "truncated", "skipped"}`, where `skipped`
+        is None, "corpus_unavailable" or "no_project".
         """
+        cap = AUX_SCAN_ROW_LIMIT if limit is None else limit
+        scan: dict[str, Any] = {"rowsScanned": 0, "rowsTotal": 0, "truncated": False, "skipped": None}
+        if project_id is None:
+            scan["skipped"] = "no_project"
+            return {"exposures": [], "scan": scan}
+        scan["rowsTotal"] = int(
+            self.conn.execute("SELECT COUNT(*) FROM memories WHERE project_id = ?", (project_id,)).fetchone()[0]
+        )
         if not gate.GATE_CORPUS_AVAILABLE:
-            return []
+            # Fail loud, not quiet: with no corpus every row would read as clean.
+            scan["skipped"] = "corpus_unavailable"
+            return {"exposures": [], "scan": scan}
+        # `rowid` rather than `id`: insertion order is stable, so a truncated
+        # sweep covers a prefix an operator can reason about.
         rows = self.conn.execute(
-            "SELECT id, tags_json, entities_json, metadata_json, source_ref, source_kind "
-            "FROM memories WHERE project_id = ? AND valid_to IS NULL ORDER BY id LIMIT ?",
-            (project_id, limit),
+            "SELECT id, valid_to, tags_json, entities_json, metadata_json, source_ref, source_kind "
+            "FROM memories WHERE project_id = ? ORDER BY rowid LIMIT ?",
+            (project_id, cap),
         ).fetchall()
+        scan["rowsScanned"] = len(rows)
+        scan["truncated"] = len(rows) < scan["rowsTotal"]
         exposures: list[dict[str, Any]] = []
         for row in rows:
             tags = _json_loads(row["tags_json"], [])
             entities = _json_loads(row["entities_json"], [])
             metadata = _json_loads(row["metadata_json"], {})
+            revision = "active" if row["valid_to"] is None else "superseded"
             surfaces: tuple[tuple[str, list[str]], ...] = (
                 ("tags", _aux_strings(tags, [], None, None)),
                 ("entities", _aux_strings([], entities, None, None)),
@@ -461,8 +490,8 @@ class _Maintenance:
             for surface, values in surfaces:
                 labels = sorted({label for value in values for label in self._scan_aux_value(str(value))})
                 if labels:
-                    exposures.append({"id": str(row["id"]), "surface": surface, "labels": labels})
-        return exposures
+                    exposures.append({"id": str(row["id"]), "surface": surface, "revision": revision, "labels": labels})
+        return {"exposures": exposures, "scan": scan}
 
     def doctor(self, *, project_path: str | None = None) -> dict[str, Any]:
         db_path = self.db_path or default_db_path()
@@ -476,7 +505,8 @@ class _Maintenance:
                 project_extra = dict(project_payload(active_project_id, root))
             except ValueError as exc:
                 project_extra = {"projectError": str(exc)}
-        exposures = self.aux_secret_exposure(active_project_id) if active_project_id else []
+        aux = self.aux_secret_exposure(active_project_id)
+        exposures, aux_scan = aux["exposures"], aux["scan"]
         undecryptable = 0
         rows = self.conn.execute("SELECT id, project_id, body_cipher, body_nonce FROM memories LIMIT 500").fetchall()
         for row in rows:
@@ -522,14 +552,30 @@ class _Maintenance:
         if exposures:
             affected = sorted({str(item["id"]) for item in exposures})
             surfaces = ", ".join(sorted({str(item["surface"]) for item in exposures}))
+            superseded = sum(1 for item in exposures if item["revision"] == "superseded")
             findings.append(
                 {
                     "severity": "error",
                     "code": "AUX_SECRET_EXPOSURE",
-                    "detail": f"{len(affected)} memories carry a secret in a plaintext auxiliary column "
-                    f"({surfaces}). Rows written before auxiliary fields were gated on their raw form "
-                    "can hold one.",
+                    "detail": f"{len(affected)} of {aux_scan['rowsScanned']} scanned rows carry a secret in a "
+                    f"plaintext auxiliary column ({surfaces}); {superseded} on superseded revisions. "
+                    "Rows written before auxiliary fields were gated on their raw form can hold one.",
                     "fix": "Forget the affected memories, or `update` them with clean tags / entities / metadata.",
+                }
+            )
+        if aux_scan["truncated"] or aux_scan["skipped"]:
+            reasons = {
+                "corpus_unavailable": "the secret-pattern corpus is unavailable, so no row could be classified",
+                "no_project": "no project resolved, so there was nothing to scan",
+            }
+            because = reasons.get(str(aux_scan["skipped"]), f"the {AUX_SCAN_ROW_LIMIT}-row scan cap was reached")
+            findings.append(
+                {
+                    "severity": "warn",
+                    "code": "AUX_SCAN_INCOMPLETE",
+                    "detail": f"{aux_scan['rowsScanned']} of {aux_scan['rowsTotal']} rows scanned for auxiliary "
+                    f"secrets: {because}. An empty auxSecretExposure list does not mean the store is clean.",
+                    "fix": "Re-run doctor with the project resolved and the corpus present, or scan in batches.",
                 }
             )
         chain = verify_audit_chain(self.conn)
@@ -564,6 +610,7 @@ class _Maintenance:
                 "auxSecretExposures": len(exposures),
             },
             "auditChain": chain,
+            "auxScan": aux_scan,
             "auxSecretExposure": exposures,
             "findings": findings,
         }

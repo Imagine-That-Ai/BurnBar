@@ -399,6 +399,16 @@ def test_one_auxiliary_value_may_not_outweigh_the_body_it_annotates(gate_store: 
         )
         assert [item.get("code") for item in per_fact["decisions"]] == ["AUX_TOO_LARGE"], per_fact
 
+        # A number is stored as JSON like everything else, so it is bounded by
+        # what actually lands in `metadata_json`, not by `isinstance(value, str)`.
+        huge_number = engine.remember(
+            _prose("numeric"),
+            project_path=project_path,
+            kind="fact",
+            metadata={"ticket": int("9" * (me.MAX_BODY_CHARS + 1))},
+        )
+        assert (huge_number.get("status"), huge_number.get("code")) == ("rejected", "AUX_TOO_LARGE"), huge_number
+
         kept = engine.remember(_prose("bounded-length"), project_path=project_path, kind="fact", tags=[at_limit])
         assert kept["status"] == "ok", kept
         assert engine.get(str(kept["memoryID"]))["memory"]["tags"] == [at_limit]
@@ -489,12 +499,108 @@ def test_doctor_reports_auxiliary_secrets_left_in_plaintext_by_an_older_write(
         engine.close()
 
     assert report["auxSecretExposure"] == [
-        {"id": leaked_id, "surface": "tags", "labels": ["AWS access key detected"]}
+        {"id": leaked_id, "surface": "tags", "revision": "active", "labels": ["AWS access key detected"]}
     ], report["auxSecretExposure"]
     assert report["policy"]["auxSecretExposures"] == 1, report["policy"]
     codes = [item["code"] for item in report["findings"]]
     assert "AUX_SECRET_EXPOSURE" in codes, report["findings"]
     assert report["status"] == "degraded", report["status"]
+    # A complete sweep says so, and raises no incompleteness warning.
+    assert report["auxScan"] == {
+        "rowsScanned": 2,
+        "rowsTotal": 2,
+        "truncated": False,
+        "skipped": None,
+    }, report["auxScan"]
+    assert "AUX_SCAN_INCOMPLETE" not in codes, report["findings"]
+
+
+def test_doctor_still_reports_a_leak_on_a_superseded_revision(gate_store: tuple[Path, str]) -> None:
+    """Retiring a row does not remove its plaintext from the file, so a sweep that
+    only looked at active rows would call a still-exposed store clean."""
+    db_path, project_path = gate_store
+    token = SHAPES[CASE_SENSITIVE_SHAPE]
+
+    engine = _open(db_path, secret_policy="reject")
+    try:
+        original = me._write.gate_aux_fields
+        me._write.gate_aux_fields = _passthrough_aux
+        try:
+            leaked = engine.remember(_prose("leaked"), project_path=project_path, kind="fact", tags=[token])
+        finally:
+            me._write.gate_aux_fields = original
+        leaked_id = str(leaked["memoryID"])
+
+        replacement = engine.remember(
+            _prose("replacement"), project_path=project_path, kind="fact", supersedes=[leaked_id]
+        )
+        assert replacement["status"] == "ok", replacement
+        assert engine.get(leaked_id)["memory"]["validTo"] is not None, "the leaked row should be retired"
+
+        report = engine.doctor(project_path=project_path)
+    finally:
+        engine.close()
+
+    assert report["auxSecretExposure"] == [
+        {"id": leaked_id, "surface": "tags", "revision": "superseded", "labels": ["AWS access key detected"]}
+    ], report["auxSecretExposure"]
+    detail = next(item["detail"] for item in report["findings"] if item["code"] == "AUX_SECRET_EXPOSURE")
+    assert "1 on superseded revisions" in detail, detail
+
+
+def test_doctor_reports_when_the_auxiliary_scan_could_not_cover_the_store(
+    gate_store: tuple[Path, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An empty exposure list from a capped or skipped sweep looks exactly like one
+    from a clean store, so the coverage is reported and the gap is a finding."""
+    db_path, project_path = gate_store
+    engine = _open(db_path, secret_policy="redact")
+    try:
+        # Four genuinely distinct bodies: near-duplicate detection would fold
+        # four variations on one sentence into a single row.
+        bodies = (
+            "The release runner rotates its credential every ninety days.",
+            "Recall packs are budgeted in tokens, not in rows.",
+            "Gotcha: the WAL file must be checkpointed before a backup.",
+            "We decided to keep the memory store local-only.",
+        )
+        for body in bodies:
+            written = engine.remember(body, project_path=project_path, kind="fact")
+            assert written.get("event") == "ADD", written
+
+        monkeypatch.setattr(me._admin, "AUX_SCAN_ROW_LIMIT", 3)
+        capped = engine.doctor(project_path=project_path)
+        assert capped["auxScan"] == {
+            "rowsScanned": 3,
+            "rowsTotal": 4,
+            "truncated": True,
+            "skipped": None,
+        }, capped["auxScan"]
+        incomplete = next(item for item in capped["findings"] if item["code"] == "AUX_SCAN_INCOMPLETE")
+        assert incomplete["severity"] == "warn", incomplete
+        assert "3 of 4 rows scanned" in incomplete["detail"], incomplete
+        monkeypatch.undo()
+
+        monkeypatch.setattr(me.gate, "GATE_CORPUS_AVAILABLE", False)
+        blind = engine.doctor(project_path=project_path)
+        assert blind["auxScan"] == {
+            "rowsScanned": 0,
+            "rowsTotal": 4,
+            "truncated": False,
+            "skipped": "corpus_unavailable",
+        }, blind["auxScan"]
+        assert blind["auxSecretExposure"] == []
+        blind_finding = next(item for item in blind["findings"] if item["code"] == "AUX_SCAN_INCOMPLETE")
+        assert "0 of 4 rows scanned" in blind_finding["detail"], blind_finding
+        assert "corpus is unavailable" in blind_finding["detail"], blind_finding
+        monkeypatch.undo()
+
+        monkeypatch.delenv("OPENBURNBAR_ACTIVE_PROJECT_PATH", raising=False)
+        unscoped = engine.doctor()
+        assert unscoped["auxScan"]["skipped"] == "no_project", unscoped["auxScan"]
+        assert any(item["code"] == "AUX_SCAN_INCOMPLETE" for item in unscoped["findings"]), unscoped["findings"]
+    finally:
+        engine.close()
 
 
 def test_update_refuses_an_aws_key_tag_on_its_raw_form(gate_store: tuple[Path, str]) -> None:
