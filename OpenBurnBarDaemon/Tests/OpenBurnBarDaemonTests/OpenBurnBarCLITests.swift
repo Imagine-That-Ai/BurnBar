@@ -43,6 +43,83 @@ final class BurnBarCLITests: XCTestCase {
     }
     #endif
 
+    #if os(macOS)
+    /// The macOS app launches the daemon with
+    /// `--socket-auth-token-file <supportDirectory>/daemon-socket-auth-token`,
+    /// so the signed CLI courier has to read that same owner-only file when the
+    /// Python MCP launcher exports no token environment at all.
+    func testSocketAuthTokenReadsCanonicalMacOSSupportFile() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cli-macos-token-\(UUID().uuidString)", isDirectory: true)
+        let support = root.appendingPathComponent("OpenBurnBar", isDirectory: true)
+        try FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: root) }
+        try "canonical-macos-token\n".write(
+            to: support.appendingPathComponent("daemon-socket-auth-token"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let token = try BurnBarCLISocketClient.resolvedSocketAuthToken(environment: [
+            "OPENBURNBAR_SUPPORT_ROOT": root.path
+        ])
+        XCTAssertEqual(token, "canonical-macos-token")
+    }
+
+    func testSocketAuthTokenEnvironmentOverrideBeatsCanonicalMacOSSupportFile() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cli-macos-token-\(UUID().uuidString)", isDirectory: true)
+        let support = root.appendingPathComponent("OpenBurnBar", isDirectory: true)
+        try FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: root) }
+        try "canonical-macos-token\n".write(
+            to: support.appendingPathComponent("daemon-socket-auth-token"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let token = try BurnBarCLISocketClient.resolvedSocketAuthToken(environment: [
+            "OPENBURNBAR_SUPPORT_ROOT": root.path,
+            "OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN": "env-wins"
+        ])
+        XCTAssertEqual(token, "env-wins")
+    }
+
+    func testSocketAuthTokenIsNilWhenCanonicalMacOSSupportFileIsMissing() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cli-macos-token-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: root.appendingPathComponent("OpenBurnBar", isDirectory: true),
+            withIntermediateDirectories: true
+        )
+        addTeardownBlock { try? FileManager.default.removeItem(at: root) }
+
+        let token = try BurnBarCLISocketClient.resolvedSocketAuthToken(environment: [
+            "OPENBURNBAR_SUPPORT_ROOT": root.path
+        ])
+        XCTAssertNil(token)
+    }
+
+    func testSocketAuthTokenSurfacesEmptyCanonicalMacOSSupportFile() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cli-macos-token-\(UUID().uuidString)", isDirectory: true)
+        let support = root.appendingPathComponent("OpenBurnBar", isDirectory: true)
+        try FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: root) }
+        try "   \n".write(
+            to: support.appendingPathComponent("daemon-socket-auth-token"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        XCTAssertThrowsError(
+            try BurnBarCLISocketClient.resolvedSocketAuthToken(environment: [
+                "OPENBURNBAR_SUPPORT_ROOT": root.path
+            ])
+        )
+    }
+    #endif
+
     func testStartupPreflightReturnsUsageBeforeRunnerConstruction() {
         for arguments in [[], ["help"], ["--help"], ["-h"], ["--", "help"]] {
             let result = BurnBarCLIRunner.startupPreflightResult(
