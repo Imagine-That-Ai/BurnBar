@@ -1065,7 +1065,7 @@ export const burnBarRpcIpcCanon = [
     "id": "daemon.memory.model_policy",
     "caseName": "memoryModelPolicy",
     "domain": "memory",
-    "capability": "memory_read",
+    "capability": "memory_write",
     "owner": "OpenBurnBarDaemon",
     "params": "BurnBarMemoryModelPolicyRequest",
     "result": "BurnBarMemoryModelPolicyResponse",
