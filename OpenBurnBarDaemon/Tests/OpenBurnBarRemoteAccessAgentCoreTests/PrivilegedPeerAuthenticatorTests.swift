@@ -119,6 +119,10 @@ final class PrivilegedPeerAuthenticatorTests: XCTestCase {
         XCTAssertTrue(OpenBurnBarSigningIdentity.privilegedPeerBundleIdentifiers.contains("com.openburnbar.app"))
         XCTAssertTrue(OpenBurnBarSigningIdentity.privilegedPeerBundleIdentifiers.contains("com.openburnbar.privileged-input-execution"))
         XCTAssertTrue(OpenBurnBarSigningIdentity.privilegedPeerBundleIdentifiers.contains("com.openburnbar.virtual-hid-bridge"))
+        // M-10: the root remote-access agent must be a trusted privileged peer
+        // so app clients can authenticate the agent server before writing
+        // the login password to its socket.
+        XCTAssertTrue(OpenBurnBarSigningIdentity.privilegedPeerBundleIdentifiers.contains("com.openburnbar.remote-access-agent"))
         XCTAssertFalse(
             OpenBurnBarSigningIdentity.privilegedPeerBundleIdentifiers.contains("com.openburnbar.cli"),
             "the signed CLI must not be accepted as a privileged-input peer"

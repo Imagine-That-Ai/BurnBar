@@ -16,6 +16,27 @@ if [[ ! -x "$BIN_PATH" ]]; then
   exit 1
 fi
 
+# The agent runs as root and receives the macOS login password over this
+# socket, so an unsigned / ad-hoc deployed binary is a trust failure for every
+# client (the app authenticates the server against the first-party designated
+# requirement before writing). Fail closed unless an ad-hoc install was made
+# explicitly on this host.
+if [[ "${OPENBURNBAR_AGENT_ADHOC:-0}" != "1" ]]; then
+  SIGNATURE="$(codesign -d --verbose=4 "$BIN_PATH" 2>&1 || true)"
+  if ! grep -q "Identifier=com.openburnbar.remote-access-agent" <<<"$SIGNATURE"; then
+    echo "error: deployed agent has the wrong signing identifier" >&2
+    printf '%s\n' "$SIGNATURE" >&2
+    exit 1
+  fi
+  if ! grep -q "Authority=Developer ID Application" <<<"$SIGNATURE" \
+    || ! grep -q "flags=.*runtime" <<<"$SIGNATURE" \
+    || ! grep -q "flags=.*library-validation" <<<"$SIGNATURE"; then
+    echo "error: deployed agent must be Developer ID signed with hardened runtime and library validation." >&2
+    printf '%s\n' "$SIGNATURE" >&2
+    exit 1
+  fi
+fi
+
 if ! launchctl print "system/$LABEL" >/dev/null 2>&1; then
   echo "error: LaunchDaemon is not loaded: $LABEL" >&2
   exit 1

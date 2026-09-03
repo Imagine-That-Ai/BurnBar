@@ -9,6 +9,20 @@
 > designated-requirement string below is the **M-9-fixed** form (the earlier
 > requirement was too permissive; see "Designated requirement").
 
+> **M-10 — remote-access agent signing + client-side server auth (2026-09-03):**
+> the root `OpenBurnBarRemoteAccessAgent` is now installed **Developer-ID signed
+> with hardened runtime and library validation** (`scripts/install-remote-access-agent.sh`
+> fails closed without an identity; dev installs must opt in via
+> `OPENBURNBAR_AGENT_ADHOC=1`), and its identifier
+> (`com.openburnbar.remote-access-agent`) is an enumerated privileged peer.
+> App clients (`RemoteAccessAgentClient`) authenticate the agent **server**
+> (peer UID must be 0 + the first-party designated requirement) before writing
+> any request — including `typeCredential`, which carries the macOS login
+> password. A squatted or unsigned listener at
+> `/var/run/openburnbar-remote-access-agent.sock` now receives zero bytes.
+> Pinned by `RemoteAccessAgentClientTrustTests` (impostor listener) and the
+> allowlist tests in `PrivilegedPeerAuthenticatorTests`.
+
 ## WS1 minimal TCB (2026-05-30)
 
 | Component | Role | Entitlements |
@@ -40,15 +54,17 @@ Canonical Team ID and requirement string live in `OpenBurnBarSigningIdentity` (`
 
 - `anchor apple generic`
 - `certificate leaf[subject.OU] = "<TEAM_ID>"`
-- `identifier "com.openburnbar.*"`
-- Hardened Runtime + Library Validation
+- One of the **exact** first-party identifiers (there is no prefix operator — see the M-9 note below), including `com.openburnbar.remote-access-agent`
+- Hardened Runtime + Library Validation (CodeDirectory flags, enforced programmatically)
 
 > **M-9 fix:** an earlier requirement string was too permissive (it accepted
-> any first-party identifier without binding the Team-ID OU and the
-> `com.openburnbar.*` identifier together), so a different team's Apple-signed
-> binary could satisfy it. The current form above binds **all** of anchor +
-> leaf OU (Team ID) + identifier prefix + Hardened-Runtime/Library-Validation,
-> closing that gap. Re-run the red-team probe (below) after any change to
+> any first-party identifier without binding the Team-ID OU and the identifier
+> together), so a different team's Apple-signed binary could satisfy it, and the
+> very first form used the literal `identifier "com.openburnbar.*"` which the
+> requirement language exact-matches (no binary has that identifier). The
+> current form binds **all** of anchor + leaf OU (Team ID) + an enumerated
+> exact-identifier allowlist + Hardened-Runtime/Library-Validation, closing
+> that gap. Re-run the red-team probe (below) after any change to
 > `OpenBurnBarSigningIdentity`.
 
 ## Virtual HID `"input"` fail-closed policy

@@ -5,6 +5,8 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
 LABEL="com.openburnbar.remote-access-agent"
+IDENTIFIER="com.openburnbar.remote-access-agent"
+ENTITLEMENTS="$ROOT_DIR/OpenBurnBarDaemon/Resources/RemoteAccessAgent/OpenBurnBarRemoteAccessAgent.entitlements"
 INSTALL_DIR="/Library/Application Support/OpenBurnBar/RemoteAccess"
 INSTALL_BIN="$INSTALL_DIR/openburnbar-remote-access-agent"
 PLIST_PATH="/Library/LaunchDaemons/$LABEL.plist"
@@ -26,6 +28,28 @@ BUILT_BIN="$ROOT_DIR/OpenBurnBarDaemon/.build/release/OpenBurnBarRemoteAccessAge
 if [[ ! -x "$BUILT_BIN" ]]; then
   echo "error: built remote-access agent is missing: $BUILT_BIN" >&2
   exit 1
+fi
+
+# The agent runs as a root LaunchDaemon on a socket whose `typeCredential`
+# requests carry the macOS login password. Clients authenticate the server
+# against the first-party designated requirement before writing, so an
+# unsigned / ad-hoc binary is both a trust failure for callers and a
+# squattable root path. Fail closed: refuse to install unsigned builds.
+# Local development may opt into an ad-hoc install explicitly via
+# OPENBURNBAR_AGENT_ADHOC=1, which installs the same entitlement-bearing
+# ad-hoc profile the virtual-HID bridge script uses for dev loops.
+IDENTITY="${OPENBURNBAR_SIGNING_IDENTITY:-}"
+if [[ "${OPENBURNBAR_AGENT_ADHOC:-0}" != "1" ]]; then
+  if [[ -z "$IDENTITY" ]]; then
+    IDENTITY="$(security find-identity -v -p codesigning \
+      | sed -n 's/.*"\(Developer ID Application:[^"]*\)".*/\1/p' | head -n 1)"
+  fi
+  if [[ -z "$IDENTITY" ]]; then
+    echo "error: no Developer ID Application identity found; the remote-access agent must be signed." >&2
+    echo "       Install the Developer ID certificate, set OPENBURNBAR_SIGNING_IDENTITY, or set" >&2
+    echo "       OPENBURNBAR_AGENT_ADHOC=1 for an explicitly dev-only install." >&2
+    exit 1
+  fi
 fi
 
 cat >"$STAGING_PLIST" <<PLIST
@@ -64,6 +88,48 @@ cp "$BUILT_BIN" "$PRIVILEGED_STAGING_BIN"
 cp "$STAGING_PLIST" "$PRIVILEGED_STAGING_PLIST"
 chmod 755 "$PRIVILEGED_STAGING_BIN"
 chmod 644 "$PRIVILEGED_STAGING_PLIST"
+
+# Sign the staged binary with hardened runtime + library validation — the same
+# CodeDirectory flags the peer designated requirement enforces on clients — so
+# the installed root daemon satisfies the first-party trust gate its own
+# clients run against it. `--timestamp=none` mirrors the local app-signing
+# profile: the secure timestamp is added by the notarized release pipeline.
+if [[ "${OPENBURNBAR_AGENT_ADHOC:-0}" == "1" ]]; then
+  codesign --force --sign - --entitlements "$ENTITLEMENTS" "$PRIVILEGED_STAGING_BIN"
+else
+  codesign \
+    --force \
+    --sign "$IDENTITY" \
+    --timestamp=none \
+    --options runtime,library \
+    --entitlements "$ENTITLEMENTS" \
+    --identifier "$IDENTIFIER" \
+    "$PRIVILEGED_STAGING_BIN"
+fi
+
+# Fail closed on any signing mistake before touching the privileged install
+# path: the identifier must be exactly ours, and (for Developer ID installs)
+# the signature must carry hardened runtime + library validation.
+SIGNATURE="$(codesign -d --verbose=4 "$PRIVILEGED_STAGING_BIN" 2>&1 || true)"
+if ! grep -q "Identifier=$IDENTIFIER" <<<"$SIGNATURE"; then
+  echo "error: staged agent is signed with the wrong identifier; expected $IDENTIFIER." >&2
+  printf '%s\n' "$SIGNATURE" >&2
+  exit 1
+fi
+if [[ "${OPENBURNBAR_AGENT_ADHOC:-0}" != "1" ]]; then
+  if ! grep -q "flags=.*runtime" <<<"$SIGNATURE" \
+    || ! grep -q "flags=.*library-validation" <<<"$SIGNATURE"; then
+    echo "error: staged agent must be signed with hardened runtime and library validation." >&2
+    printf '%s\n' "$SIGNATURE" >&2
+    exit 1
+  fi
+  if ! grep -q "Authority=Developer ID Application" <<<"$SIGNATURE"; then
+    echo "error: staged agent must carry a Developer ID Application signature." >&2
+    printf '%s\n' "$SIGNATURE" >&2
+    exit 1
+  fi
+fi
+codesign --verify --strict --verbose=2 "$PRIVILEGED_STAGING_BIN"
 
 ADMIN_SCRIPT="$(cat <<SCRIPT
 set -e
