@@ -671,7 +671,9 @@ def test_server_bulk_forget_mirrors_and_keeps_failed_tombstones(
     second = json.loads(server.burnbar_remember("Releases are cut on Fridays.", project_path=repo))
     preview = json.loads(server.burnbar_forget_all(project_path=repo))
     assert preview["status"] == "confirm_required" and "mirror" not in preview
-    deleted = json.loads(server.burnbar_forget_all(project_path=repo, confirm="DELETE"))
+    deleted = json.loads(
+        server.burnbar_forget_all(project_path=repo, confirm="DELETE", selection_token=preview["selectionToken"])
+    )
     assert deleted["deleted"] == 2 and deleted["mirror"]["status"] == "partial"
     assert deleted["mirror"]["mirrored"] == 1 and deleted["mirror"]["pending"] == 1
     local_by_daemon = {
@@ -683,7 +685,12 @@ def test_server_bulk_forget_mirrors_and_keeps_failed_tombstones(
         assert engine.get(first["memoryID"])["status"] == "not_found"
         assert engine.get(second["memoryID"])["status"] == "not_found"
         assert engine.daemon_mirror_id(failed_local_id) == failed_daemon_id
-    retried = json.loads(server.burnbar_forget_all(project_path=repo, confirm="DELETE"))
+    retried_preview = json.loads(server.burnbar_forget_all(project_path=repo))
+    retried = json.loads(
+        server.burnbar_forget_all(
+            project_path=repo, confirm="DELETE", selection_token=retried_preview["selectionToken"]
+        )
+    )
     assert retried["deleted"] == 0 and retried["mirror"]["status"] == "mirrored"
     assert retried["mirror"]["attempted"] == 1
     with server._memory_engine() as engine:

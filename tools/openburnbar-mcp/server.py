@@ -1945,6 +1945,18 @@ def _memory_mirror_updated(
     if not isinstance(memory, dict) or not memory.get("memoryID"):
         return {"status": "skipped", "reason": "no committed memory row to mirror"}
     memory_id = str(memory["memoryID"])
+    # Two updates of the same row can mirror out of order. Re-read the row now
+    # and let the newer write own the mirror; a stale caller does nothing.
+    current = engine.get(memory_id).get("memory")
+    if not isinstance(current, dict):
+        return {"status": "skipped", "reason": "memory no longer exists; nothing to mirror"}
+    if current.get("updatedAt") != memory.get("updatedAt"):
+        return {
+            "status": "stale",
+            "reason": "the memory changed after this write was committed; the newer write owns the mirror",
+            "memoryID": memory_id,
+        }
+    memory = current
     previous_daemon_id = engine.daemon_mirror_id(memory_id)
     current_body_hash = me.sha256_hex(str(memory.get("body") or ""))
     mirrored_body_hash = engine.daemon_mirror_body_hash(memory_id)
@@ -2676,14 +2688,14 @@ def burnbar_memory_history(memory_id: str, limit: int = 100) -> str:
 
 
 @mcp.tool()
-def burnbar_memory_review(memory_id: str, status: str) -> str:
-    """Set review status: approved | quarantined | rejected. Quarantined memories (e.g. injection suspects) never surface in default recall."""
+def burnbar_memory_review(memory_id: str, status: str, expected_updated_at: str | None = None) -> str:
+    """Set review status: approved | quarantined | rejected. Quarantined memories (e.g. injection suspects) never surface in default recall. Pass `expected_updated_at` (the `updatedAt` you read) to refuse the decision if the memory changed since; the row is locked for the decision either way."""
     if limited := _local_mcp_rate_limit("burnbar_memory_review", "memory"):
         return limited
     if denied := _capability_denial("burnbar_memory_review", "memory_write"):
         return denied
     with _memory_engine() as engine:
-        result = engine.review(memory_id, status)
+        result = engine.review(memory_id, status, expected_updated_at=expected_updated_at)
         if result.get("status") == "ok":
             current = engine.get(memory_id).get("memory")
             result["memory"] = current
@@ -2730,9 +2742,13 @@ def burnbar_forget(memory_id: str, project_path: str | None = None) -> str:
 
 @mcp.tool()
 def burnbar_forget_all(
-    project_path: str | None = None, scope: str | None = None, kinds: list[str] | str | None = None, confirm: str = ""
+    project_path: str | None = None,
+    scope: str | None = None,
+    kinds: list[str] | str | None = None,
+    confirm: str = "",
+    selection_token: str | None = None,
 ) -> str:
-    """Delete every memory for the active project (optionally one scope / some kinds). Two-step: call once to see the count, then again with confirm="DELETE"."""
+    """Delete every memory for the active project (optionally one scope / some kinds). Two-step: call once to get `wouldDelete` and `selectionToken`, then again with confirm="DELETE" and that `selection_token`; the delete is refused (`SELECTION_CHANGED`) if the matching rows changed in between."""
     if limited := _local_mcp_rate_limit("burnbar_forget_all", "memory"):
         return limited
     if denied := _capability_denial("burnbar_forget_all", "memory_write"):
@@ -2743,6 +2759,7 @@ def burnbar_forget_all(
             scope=scope,
             kinds=_memory_list_arg(kinds),
             confirm=confirm,
+            selection_token=selection_token,
         )
         memory_ids = list(result.pop("deletedMemoryIDs", []))
         if result.get("status") == "ok":

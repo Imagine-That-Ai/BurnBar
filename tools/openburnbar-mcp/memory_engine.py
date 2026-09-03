@@ -31,6 +31,7 @@ import secrets
 import sqlite3
 import struct
 import subprocess
+import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Iterable, Sequence
@@ -639,7 +640,7 @@ class KeyRing:
         published = KeyRing._read_key(key_path)
         if published is not None:
             return published
-        lock_path = key_path.with_name(key_path.stem + ".lock")
+        lock_path = store_lock_path(key_path)
         lock_fd = os.open(str(lock_path), os.O_RDWR | os.O_CREAT, 0o600)
         try:
             if fcntl is not None:
@@ -1657,21 +1658,52 @@ def secure_store_files(db_path: Path) -> None:
                 os.chmod(candidate, 0o600)
 
 
-def open_store(path: Path | None = None) -> sqlite3.Connection:
-    db_path = path or default_db_path()
+STORE_OPEN_ATTEMPTS = 25
+
+
+def store_lock_path(db_path: Path) -> Path:
+    """Advisory lock shared by store initialization and key publication."""
+    return db_path.with_name(db_path.stem + ".lock")
+
+
+def open_store(path: Path | str | None = None) -> sqlite3.Connection:
+    db_path = Path(path) if path is not None else default_db_path()
     db_path.parent.mkdir(parents=True, exist_ok=True)
     # SQLite creates the WAL and SHM sidecars with the process umask. Narrow it
     # while the store is opened so they are born private, then pin the modes.
     previous_umask = os.umask(0o077)
+    # Several MCP clients can open a brand-new store at the same moment. The
+    # journal-mode switch and the schema script need exclusive access, and
+    # neither honors the busy timeout, so initialization is serialized with the
+    # same advisory lock the key file uses, with a bounded retry underneath it.
+    lock_fd = os.open(str(store_lock_path(db_path)), os.O_RDWR | os.O_CREAT, 0o600)
     try:
+        if fcntl is not None:
+            fcntl.flock(lock_fd, fcntl.LOCK_EX)
         if not db_path.exists():
             os.close(os.open(str(db_path), os.O_RDWR | os.O_CREAT, 0o600))
-        conn = sqlite3.connect(str(db_path), check_same_thread=False)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA foreign_keys=ON")
-        ensure_schema(conn)
+        conn: sqlite3.Connection | None = None
+        for attempt in range(STORE_OPEN_ATTEMPTS):
+            candidate = sqlite3.connect(str(db_path), check_same_thread=False, timeout=10.0)
+            try:
+                candidate.row_factory = sqlite3.Row
+                candidate.execute("PRAGMA journal_mode=WAL")
+                candidate.execute("PRAGMA foreign_keys=ON")
+                ensure_schema(candidate)
+            except sqlite3.OperationalError as exc:
+                candidate.close()
+                if "locked" not in str(exc).lower() or attempt == STORE_OPEN_ATTEMPTS - 1:
+                    raise
+                time.sleep(0.02 * (attempt + 1))
+                continue
+            conn = candidate
+            break
+        assert conn is not None
     finally:
+        if fcntl is not None:
+            with contextlib.suppress(OSError):
+                fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        os.close(lock_fd)
         os.umask(previous_umask)
     secure_store_files(db_path)
     return conn
@@ -2077,12 +2109,12 @@ class MemoryEngine:
     @classmethod
     def open(
         cls,
-        db_path: Path | None = None,
+        db_path: Path | str | None = None,
         *,
         provider: EmbeddingProvider | None = None,
         config: EngineConfig | None = None,
     ) -> MemoryEngine:
-        path = db_path or default_db_path()
+        path = Path(db_path) if db_path is not None else default_db_path()
         # Resolve the key before opening/migrating the database so a missing or
         # corrupt key for a populated store fails without mutating that store.
         keyring = KeyRing.load(path)
@@ -3414,6 +3446,15 @@ class MemoryEngine:
         wrap: Callable[[str, str], str] | None = None,
     ) -> dict[str, Any]:
         project_id, root = resolve_project(self.conn, project_path)
+        if filters:
+            invalid_filter = _invalid_filter_reason(filters)
+            if invalid_filter:
+                return {
+                    "status": "rejected",
+                    "code": "INVALID_FILTER",
+                    "reason": invalid_filter,
+                    **project_payload(project_id, root),
+                }
         query_text = (query or "").strip()
         lim = max(1, min(int(limit), 100))
         now = datetime.now(UTC)
@@ -4115,13 +4156,32 @@ class MemoryEngine:
         self._invalidate_cache()
         return {"status": "ok", "memoryID": memory_id, "changes": changes, "memory": self.get(memory_id)["memory"]}
 
-    def review(self, memory_id: str, status: str) -> dict[str, Any]:
+    def review(self, memory_id: str, status: str, *, expected_updated_at: str | None = None) -> dict[str, Any]:
+        """Set the review status.
+
+        The row is read under the write lock (`BEGIN IMMEDIATE`) so a concurrent
+        update cannot slip an unseen body under an approval, and a caller that
+        reviewed a specific version can pin it with `expected_updated_at`.
+        """
         normalized = (status or "").strip().lower()
         if normalized not in REVIEW_STATUSES:
             return {"status": "unavailable", "code": "INVALID_REVIEW_STATUS", "allowed": list(REVIEW_STATUSES)}
+        if not self.conn.in_transaction:
+            self.conn.execute("BEGIN IMMEDIATE")
         row = self._get_row(memory_id)
         if row is None:
+            self.conn.rollback()
             return {"status": "not_found", "memoryID": memory_id}
+        if expected_updated_at and str(row["updated_at"]) != str(expected_updated_at):
+            self.conn.rollback()
+            return {
+                "status": "conflict",
+                "code": "STALE_VERSION",
+                "memoryID": memory_id,
+                "expectedUpdatedAt": expected_updated_at,
+                "currentUpdatedAt": row["updated_at"],
+                "reason": "the memory changed after it was read; re-read it and review the current body",
+            }
         ts = now_iso()
         self.conn.execute(
             "UPDATE memories SET review_status = ?, updated_at = ? WHERE id = ?", (normalized, ts, memory_id)
@@ -4185,10 +4245,16 @@ class MemoryEngine:
         scope: str | None = None,
         kinds: Sequence[str] | None = None,
         confirm: str = "",
+        selection_token: str | None = None,
     ) -> dict[str, Any]:
+        """Two-step bulk delete. The preview returns `selectionToken`, a digest
+        of the exact rows it would delete; the confirmation must carry that
+        token, so rows created or filters changed between the two calls are
+        refused instead of silently deleted."""
         project_id, root = resolve_project(self.conn, project_path)
         where = ["project_id = ?"]
         params: list[Any] = [project_id]
+        normalized: list[str] = []
         if scope and scope != "all":
             where.append("scope = ?")
             params.append(scope)
@@ -4206,14 +4272,22 @@ class MemoryEngine:
             where.append(f"kind IN ({','.join('?' * len(normalized))})")
             params.extend(normalized)
         rows = self.conn.execute(f"SELECT rowid, id FROM memories WHERE {' AND '.join(where)}", params).fetchall()  # noqa: S608 — fixed column names, bound values
-        if confirm != "DELETE":
+        memory_ids = sorted(str(row["id"]) for row in rows)
+        current_token = sha256_hex(
+            _json_dumps({"project": project_id, "scope": scope or "all", "kinds": normalized, "ids": memory_ids})
+        )[:24]
+        if confirm != "DELETE" or (selection_token or "") != current_token:
+            code = None
+            if confirm == "DELETE":
+                code = "SELECTION_TOKEN_REQUIRED" if not selection_token else "SELECTION_CHANGED"
             return {
                 "status": "confirm_required",
+                **({"code": code} if code else {}),
                 "wouldDelete": len(rows),
                 "confirm": "DELETE",
+                "selectionToken": current_token,
                 **project_payload(project_id, root),
             }
-        memory_ids = [str(row["id"]) for row in rows]
         for row in rows:
             # Keep each daemon id as a tombstone until the server confirms the
             # corresponding remote deletion.
@@ -4905,9 +4979,13 @@ def _compile_filter_comparison(key: str, operator: str, expected: Any) -> tuple[
         elif field_type == "json":
             contains_sql, params = "0", []
         else:
+            # SQLite does not short-circuit AND, so json_each must never see a
+            # scalar: a text value would raise "malformed JSON". The CASE hands
+            # it an empty array unless the field really is one.
             contains_sql = (
                 f"COALESCE((({field_type} = 'array' AND EXISTS "  # noqa: S608 -- reason: expressions come from a fixed field map or escaped JSON path
-                f"(SELECT 1 FROM json_each({expression}) AS item WHERE item.value = ?)) "
+                f"(SELECT 1 FROM json_each(CASE WHEN {field_type} = 'array' THEN {expression} ELSE '[]' END) "
+                f"AS item WHERE item.value = ?)) "
                 f"OR ({field_type} = 'text' AND "
                 f"instr(lower(CAST({expression} AS TEXT)), lower(CAST(? AS TEXT))) > 0)), 0)"
             )
@@ -4971,6 +5049,13 @@ def _invalid_filter_reason(filters: Any) -> str | None:
         for operator, value in comparisons.items():
             if operator in {"eq", "ne"} and field_type in {"text", "number"} and isinstance(value, (list, dict)):
                 return f"{key}.{operator} requires a scalar operand"
+            if operator in {"contains", "not_contains", "gt", "gte", "lt", "lte"} and isinstance(value, (list, dict)):
+                return f"{key}.{operator} requires a scalar operand"
+            if operator in {"in", "nin"}:
+                if not isinstance(value, list):
+                    return f"{key}.{operator} requires a list operand"
+                if any(isinstance(item, (list, dict)) for item in value):
+                    return f"{key}.{operator} list items must be scalars"
     return None
 
 
