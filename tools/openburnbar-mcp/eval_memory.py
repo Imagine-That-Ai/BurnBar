@@ -413,7 +413,83 @@ def _covers(body: str, keywords: list[str]) -> bool:
     return all(keyword.lower() in lowered for keyword in keywords)
 
 
-def run_extraction(gold_path: Path | str = EXTRACTION_GOLD, *, verbose: bool = False) -> dict[str, object]:
+JUDGE_GOLD = Path(__file__).resolve().parent / "eval" / "judge_gold.json"
+
+
+def compose_extractor(extractor: str, model_hint: str | None) -> str:
+    """`pro` plus a `provider/model` hint becomes the `pro:<hint>` extractor; hints are meaningless elsewhere."""
+    name = (extractor or "heuristic").strip().lower()
+    hint = (model_hint or "").strip()
+    return f"pro:{hint}" if name == "pro" and hint else name
+
+
+def _extraction_fn(extractor: str):
+    """`heuristic` runs in-process; `claude`/`ollama`/`pro` run the gated transcript through the named path."""
+    name = (extractor or "heuristic").strip().lower()
+    if name == "heuristic":
+        return lambda messages: me.heuristic_extract(messages)
+    models = me.ModelRouter(me.load_policy()) if name.startswith("pro") else None
+    resolved_name, fn = me.resolve_extractor(name, models=models)
+    if fn is None:
+        return lambda messages: me.heuristic_extract(messages)
+
+    def run(messages):
+        safe, _gate = me.gate_transcript(me.render_transcript(messages))
+        return fn(safe, me.DEFAULT_MAX_FACTS) if safe is not None else []
+
+    run.name = name if name.startswith("pro:") else resolved_name
+    return run
+
+
+def run_judge(gold_path: Path | str = JUDGE_GOLD, *, use_model: bool = False) -> dict[str, object]:
+    """Rules-versus-label agreement on the reconciliation cases; with `use_model`, the judge participates."""
+    import tempfile
+
+    gold = json.loads(Path(gold_path).read_text(encoding="utf-8"))
+    cases = gold["cases"]
+    events = ("ADD", "UPDATE", "NONE", "DELETE")
+    confusion = {expected: {actual: 0 for actual in events} for expected in events}
+    matches = 0
+    misses: list[dict[str, object]] = []
+    models = me.ModelRouter(me.load_policy()) if use_model else None
+    with tempfile.TemporaryDirectory() as tmp:
+        os.environ.setdefault(me.MEMORY_KEY_ENV, base64.b64encode(b"\x00" * 32).decode())
+        project = Path(tmp) / "project"
+        project.mkdir()
+        for index, case in enumerate(cases):
+            engine = me.MemoryEngine.open(
+                db_path=Path(tmp) / f"judge-{index}.sqlite", provider=me.NullEmbeddingProvider("eval"), models=models
+            )
+            try:
+                for candidate in case["candidates"]:
+                    engine.remember(candidate["text"], project_path=str(project), kind=candidate.get("kind", "fact"))
+                decision = engine.remember(case["incoming"], project_path=str(project), kind="fact")
+            finally:
+                engine.close()
+            actual = str(decision.get("event") or "REJECT")
+            expected = case["expected"]["event"]
+            if actual in events:
+                confusion[expected][actual] += 1
+            if actual == expected:
+                matches += 1
+            else:
+                misses.append(
+                    {"case": case["id"], "expected": expected, "actual": actual, "decidedBy": decision.get("decidedBy")}
+                )
+    agreement_key = "judgeAgreement" if use_model else "rulesAgreement"
+    return {
+        "gold": str(gold_path),
+        "cases": len(cases),
+        "mode": "judge" if use_model else "rules",
+        agreement_key: round(matches / len(cases), 3) if cases else 0.0,
+        "confusion": confusion,
+        "misses": misses,
+    }
+
+
+def run_extraction(
+    gold_path: Path | str = EXTRACTION_GOLD, *, extractor: str = "heuristic", verbose: bool = False
+) -> dict[str, object]:
     """Score `memory_engine.heuristic_extract` against the checked-in gold set.
 
     recall     = expected facts an extracted fact covers, over expected facts.
@@ -422,6 +498,7 @@ def run_extraction(gold_path: Path | str = EXTRACTION_GOLD, *, verbose: bool = F
     emptyCaseFacts = facts invented over the "nothing durable here" cases.
     leaks      = forbidden strings that reached an extracted fact.
     """
+    extract = _extraction_fn(extractor)
     gold = json.loads(Path(gold_path).read_text(encoding="utf-8"))
     cases = gold["cases"]
     expected_total = hits = covering = scored_facts = empty_case_facts = 0
@@ -433,7 +510,7 @@ def run_extraction(gold_path: Path | str = EXTRACTION_GOLD, *, verbose: bool = F
             {"role": message["role"], "content": _expand_secrets(str(message["content"]))}
             for message in case["messages"]
         ]
-        facts = [fact.text for fact in me.heuristic_extract(messages)]
+        facts = [fact.text for fact in extract(messages)]
         for forbidden in case.get("forbidden") or []:
             leaks.extend(
                 {"case": str(case["id"]), "forbidden": forbidden, "fact": body} for body in facts if forbidden in body
@@ -456,6 +533,7 @@ def run_extraction(gold_path: Path | str = EXTRACTION_GOLD, *, verbose: bool = F
                 misses.append(miss)
     return {
         "gold": str(gold_path),
+        "extractor": getattr(extract, "name", extractor),
         "cases": len(cases),
         "emptyCases": empty_cases,
         "expected": expected_total,
@@ -582,15 +660,44 @@ def main() -> None:
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--extraction", action="store_true", help="score the heuristic extractor against the gold set")
     mode.add_argument("--gate", action="store_true", help="print the secret detection matrix")
+    mode.add_argument("--judge", action="store_true", help="rules-vs-label agreement on eval/judge_gold.json")
+    parser.add_argument(
+        "--extractor",
+        choices=["heuristic", "claude", "ollama", "pro"],
+        default="heuristic",
+        help="extractor for --extraction",
+    )
+    parser.add_argument(
+        "--extractor-model", default=None, help="with --extractor pro: a `provider/model` from the policy"
+    )
+    parser.add_argument(
+        "--with-model", action="store_true", help="with --judge: consult the Memory Pro judge (needs the daemon)"
+    )
     parser.add_argument("--gold", type=Path, default=EXTRACTION_GOLD, help="extraction gold set (with --extraction)")
     args = parser.parse_args()
 
     if args.extraction:
-        extraction = run_extraction(args.gold, verbose=args.verbose)
+        extraction = run_extraction(
+            args.gold, extractor=compose_extractor(args.extractor, args.extractor_model), verbose=args.verbose
+        )
         if args.json:
             print(json.dumps(extraction, indent=2))
         else:
             _print_extraction(extraction, args.verbose)
+        return
+    if args.judge:
+        judged = run_judge(use_model=args.with_model)
+        if args.json:
+            print(json.dumps(judged, indent=2))
+        else:
+            key = "judgeAgreement" if args.with_model else "rulesAgreement"
+            print(f"mode: {judged['mode']}  cases: {judged['cases']}  agreement: {judged[key]}")
+            print(f"{'expected':<10}" + "".join(f"{event:>8}" for event in ("ADD", "UPDATE", "NONE", "DELETE")))
+            for expected, row in judged["confusion"].items():  # type: ignore[union-attr]
+                print(f"{expected:<10}" + "".join(f"{row[event]:>8}" for event in ("ADD", "UPDATE", "NONE", "DELETE")))
+            if args.verbose:
+                for miss in judged["misses"]:  # type: ignore[union-attr]
+                    print(f"    miss: {miss}")
         return
     if args.gate:
         matrix = run_gate_matrix()

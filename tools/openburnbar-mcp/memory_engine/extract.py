@@ -7,6 +7,7 @@ import json
 import os
 import re
 import subprocess
+import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Sequence
@@ -20,6 +21,9 @@ from .constants import (
     DEFAULT_OLLAMA_BASE_URL,
     DISCOURSE_MARKER_RE,
     EXTRACT_PROMPT,
+    EXTRACT_PROMPT_V2_SYSTEM,
+    EXTRACT_PROMPT_V2_USER,
+    EXTRACT_PROMPT_VERSION,
     EXTRACTOR_ENV,
     HANDLE_RE,
     IDENTIFIER_RE,
@@ -373,10 +377,68 @@ def gate_transcript(transcript: str, *, pii_policy: str = "keep") -> tuple[str |
     }
 
 
-def resolve_extractor(name: str | None, override: ExtractorFn | None = None) -> tuple[str, ExtractorFn | None]:
+class BoundExtractor:
+    """A frontier-model extractor bound lazily to the router.
+
+    Resolution happens on the first call so a refusal (no policy, no Pro, no
+    consent, no budget) surfaces as a typed `ModelUnavailable` inside
+    `memorize`'s try/except and degrades to the heuristic path with a reason.
+    """
+
+    name = "pro"
+
+    def __init__(self, models: Any, provider_hint: str | None = None) -> None:
+        self.models = models
+        self.provider_hint = provider_hint
+        self.provenance: dict[str, Any] | None = None
+
+    def __call__(self, transcript: str, max_facts: int) -> list[Fact]:
+        from .providers import ModelUnavailable
+
+        if self.models is None:
+            raise ModelUnavailable(
+                "CLOUD_CONSENT_REQUIRED", "no memory model policy (cloud models are off or the daemon is unavailable)"
+            )
+        call = self.models.call("memory-extract", self.provider_hint)
+        facts, self.provenance = llm_extract(call, transcript, max_facts)
+        return facts
+
+
+def llm_extract(call: Any, transcript: str, max_facts: int) -> tuple[list[Fact], dict[str, Any]]:
+    """Extract with a frontier model through a `ModelCall`; returns facts and provenance."""
+    started = time.monotonic()
+    parsed, usage = call.json(
+        EXTRACT_PROMPT_V2_SYSTEM.replace("{max_facts}", str(max(1, min(int(max_facts), 64)))),
+        EXTRACT_PROMPT_V2_USER.format(transcript=transcript),
+        max_tokens=2_048,
+    )
+    raw_facts = parsed.get("facts") if isinstance(parsed, dict) else None
+    facts: list[Fact] = []
+    if isinstance(raw_facts, list):
+        for item in raw_facts:
+            fact = Fact.from_mapping(item)
+            if fact is not None:
+                facts.append(fact)
+    provenance = {
+        "provider": call.provider,
+        "model": call.model,
+        "label": call.label,
+        "promptVersion": EXTRACT_PROMPT_VERSION,
+        "latencyMs": int((time.monotonic() - started) * 1_000),
+        "usage": dict(usage or {}),
+    }
+    return facts[: max(1, min(int(max_facts), 64))], provenance
+
+
+def resolve_extractor(
+    name: str | None, override: ExtractorFn | None = None, *, models: Any = None
+) -> tuple[str, ExtractorFn | None]:
     if override is not None:
         return (name or "custom"), override
     configured = (name or os.environ.get(EXTRACTOR_ENV, "heuristic")).strip().lower() or "heuristic"
+    if configured == "pro" or configured.startswith("pro:"):
+        hint = configured.split(":", 1)[1].strip() or None if ":" in configured else None
+        return "pro", BoundExtractor(models, hint)
     if configured in ("none", "raw"):
         return "none", None
     if configured == "claude":

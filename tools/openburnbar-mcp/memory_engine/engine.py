@@ -143,6 +143,7 @@ class MemoryEngine(_WritePath, _ReadPath, _Maintenance):
         self.conn = conn
         # Memory Pro: the router for big-model purposes; None keeps every path local.
         self.models = models
+        self._judge_outcome: dict[str, Any] | None = None
         self.keyring = keyring
         self.provider = provider
         self.config = config or EngineConfig()

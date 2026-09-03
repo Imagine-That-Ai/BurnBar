@@ -323,3 +323,29 @@ __all__ += [
     "reset_policy_cache_for_tests",
     "signed_cli_path",
 ]
+
+# Memory Pro extraction v2 + judge
+from . import judge  # noqa: E402
+from .constants import (  # noqa: E402
+    EXTRACT_PROMPT_V2_SYSTEM,
+    EXTRACT_PROMPT_V2_USER,
+    JUDGE_MAX_CANDIDATES,
+    JUDGE_PROMPT_SYSTEM,
+    JUDGE_PROMPT_VERSION,
+)
+from .extract import BoundExtractor, llm_extract  # noqa: E402
+from .judge import JudgeDecision, llm_judge, parse_judge_answer  # noqa: E402
+
+__all__ += [
+    "BoundExtractor",
+    "EXTRACT_PROMPT_V2_SYSTEM",
+    "EXTRACT_PROMPT_V2_USER",
+    "JUDGE_MAX_CANDIDATES",
+    "JUDGE_PROMPT_SYSTEM",
+    "JUDGE_PROMPT_VERSION",
+    "JudgeDecision",
+    "judge",
+    "llm_extract",
+    "llm_judge",
+    "parse_judge_answer",
+]

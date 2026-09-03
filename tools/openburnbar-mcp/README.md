@@ -531,6 +531,36 @@ second tool call before launching a process.
 
 With BurnBar Pro and "Cloud models for memory" turned on in the app, the engine can use a frontier model for extraction, reconciliation, embeddings, reranking, and answers. The engine never holds a key: it asks the signed courier (`openburnbar-cli memory-model-policy`) what it may use and receives a 15-minute bearer scoped to `memory-*` purposes on the daemon's loopback gateway, which enforces Pro, per-provider consent, no-retention, and the daily cap before routing with keys from its own Keychain store. Subscription quota is used only through the official CLIs (`claude -p`, `codex exec`) behind the existing CLI consent. Every cloud path degrades to the local behavior and says why in the tool's `trustSignal`. `OPENBURNBAR_MEMORY_MODEL_POLICY_JSON` is a test-only seam, honored under pytest.
 
+**Extraction v2.** `burnbar_memorize(extractor="pro")` (or `"pro:<provider/model>"`)
+sends the *gated* transcript — secrets already redacted, injection lines already
+labelled — to the first model the policy lists for `memory-extract`, with the
+transcript framed as untrusted data. Rows carry `extractor = "llm:<provider>/<model>"`
+plus `metadata.extractPromptVersion` (`openburnbar-memory-extract-v2`),
+`metadata.transcriptGateHash` and `metadata.modelLatencyMs`; the result's
+`extraction` block says whether the model was applied and, if not, the gateway's
+denial code. A refusal (`PRO_REQUIRED`, `PROVIDER_NOT_CONSENTED`,
+`BUDGET_EXCEEDED`, …) falls back to the heuristic extractor in the same call.
+
+**Reconciliation judge.** When the policy lists a `memory-judge` model, the
+ambiguous band of `_commit_fact` — a conflict cue, or a best candidate above
+`CONFLICT_MIN_SIM` that is not a duplicate — asks the model for one of
+`ADD | UPDATE | NONE | DELETE` over at most six listed candidates. The judge can
+only name candidates it was shown, never immutable or injection-labelled rows,
+and any out-of-contract answer hands the decision back to the rules. Every
+decision records `decidedBy` (`rules` or `judge:<provider>/<model>`), a short
+`rationale`, and the `judge` outcome; the same fields land in the row's history.
+
+Measure it: `eval_memory.py --judge` replays `eval/judge_gold.json` (64 labelled
+cases, 16 scenarios × UPDATE/DELETE/NONE/ADD) through the rules and prints the
+agreement and confusion table; `--judge --with-model` consults the judge (needs
+the daemon and consent). `--extraction --extractor pro [--extractor-model
+provider/model]` scores a cloud extractor on the extraction gold set.
+
+| Reconciliation on `judge_gold.json` (64 cases) | Agreement |
+|---|---|
+| Rules only (lexical similarity, 2026-09-03) | 0.42 — the rules are deliberately conservative: without a strong cue they `ADD` (15/16 DELETE and 12/16 UPDATE cases land as ADD) |
+| Judge (`--with-model`) | run per provider on a Pro machine and record here; target ≥ 0.90 |
+
 ## Castle multi-runtime fan-out
 
 Castle extends the Ministry selector from `model` to `(runtime, model)` without

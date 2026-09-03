@@ -27,7 +27,10 @@ from ._util import (
     raw_tags,
     sha256_hex,
 )
+from .judge import JudgeDecision, llm_judge
+from .providers import ModelRouter, ModelUnavailable
 from .constants import (
+    JUDGE_MAX_CANDIDATES,
     CONFLICT_MIN_SIM,
     CONFLICT_OBJECT_MAX_SIM,
     DEDUP_COSINE,
@@ -186,10 +189,11 @@ class _WritePath:
         extracted: list[Fact] = []
         extraction_error: str | None = None
         transcript_gate: dict[str, Any] | None = None
+        extraction_outcome: dict[str, Any] | None = None
         if facts:
             extracted = [fact for fact in (Fact.from_mapping(item) for item in facts) if fact is not None]
         else:
-            extractor_name, extractor_fn_resolved = resolve_extractor(extractor, extractor_fn)
+            extractor_name, extractor_fn_resolved = resolve_extractor(extractor, extractor_fn, models=self.models)
             if extractor_name == "none":
                 raw = "\n".join(str(message.get("content") or "") for message in normalized_messages).strip()
                 if raw:
@@ -209,10 +213,40 @@ class _WritePath:
                 else:
                     try:
                         extracted = extractor_fn_resolved(safe_transcript, max_facts)
+                    except ModelUnavailable as exc:
+                        extraction_error = f"{extractor_name}: {exc.code}: {exc.reason}"
+                        extraction_outcome = {
+                            "purpose": "memory-extract",
+                            "applied": False,
+                            "code": exc.code,
+                            "model": None,
+                            "provider": None,
+                        }
+                        extractor_name = "heuristic"
+                        extracted = heuristic_extract(normalized_messages, max_facts=max_facts)
                     except Exception as exc:  # noqa: BLE001 — degrade to the heuristic path, report the reason
                         extraction_error = f"{extractor_name}: {exc}"
                         extractor_name = "heuristic"
                         extracted = heuristic_extract(normalized_messages, max_facts=max_facts)
+                    else:
+                        provenance = getattr(extractor_fn_resolved, "provenance", None)
+                        if isinstance(provenance, dict):
+                            extraction_outcome = {
+                                "purpose": "memory-extract",
+                                "applied": True,
+                                "code": None,
+                                "model": provenance.get("label"),
+                                "provider": provenance.get("provider"),
+                            }
+                            extractor_name = f"llm:{provenance.get('label')}"
+                            gate_hash = sha256_hex(safe_transcript)[:16]
+                            for fact in extracted:
+                                fact.metadata = {
+                                    **fact.metadata,
+                                    "extractPromptVersion": provenance.get("promptVersion"),
+                                    "transcriptGateHash": gate_hash,
+                                    "modelLatencyMs": int(provenance.get("latencyMs") or 0),
+                                }
             else:
                 extracted = heuristic_extract(normalized_messages, max_facts=max_facts)
         extracted = extracted[: max(1, min(int(max_facts), 64))]
@@ -266,6 +300,7 @@ class _WritePath:
             "extractor": extractor_name,
             "extractionError": extraction_error,
             "transcriptGate": transcript_gate,
+            "extraction": extraction_outcome,
             "sourceHash": source_hash,
             "receiptStored": receipt_stored,
             "factsConsidered": len(extracted),
@@ -605,40 +640,63 @@ class _WritePath:
         # supersedes and inferred conflicts have no retirement authority.
         supersede_targets: list[str] = []
         retire_targets: list[str] = []
+        decided_by = "rules"
+        rationale: str | None = None
+        self._judge_outcome = None
         if review_status == "approved":
             supersede_targets = [item for item in fact.supersedes if any(mem.id == item for mem in active)]
             if not supersede_targets:
                 conflict_first = NEGATION_RE.search(body) is not None or SWITCH_RE.search(body) is not None
-                if conflict_first:
-                    supersede_targets, retire_targets = self._resolve_conflicts(
-                        project_id=project_id,
-                        body=body,
-                        relations=relations,
-                        vector=vector,
-                        tokens=tokens,
-                        candidates=candidates,
+                near = None if conflict_first else self._nearest(vector, tokens, candidates)
+                if near is not None:
+                    decision = self._reinforce(
+                        near[1].id,
+                        fact,
+                        entities,
+                        reason=f"near duplicate (sim={near[0]:.2f})",
+                        incoming_body=body,
+                        labels=gate.labels,
+                        quarantine_labels=reinforce_injection,
                     )
-                else:
-                    near = self._nearest(vector, tokens, candidates)
-                    if near is not None:
+                    if gate.action == "retain" and gate.vault_body is not None:
+                        # A personal match may be owned by another project;
+                        # vault AAD always follows the memory owner.
+                        changed = self._rotate_vault(near[1].id, near[1].project_id, gate)
+                        decision["secretRotated"] = changed
+                        decision["sensitivity"] = "secret"
+                        if changed:
+                            decision["event"] = "UPDATE"
+                    decision["decidedBy"] = decided_by
+                    decision["rationale"] = rationale
+                    return decision
+                # Memory Pro judge: only the ambiguous band (a conflict cue, or a
+                # best candidate above CONFLICT_MIN_SIM that is not a duplicate).
+                ranked = self._judge_candidates(vector, tokens, candidates)
+                verdict = None
+                if ranked and (conflict_first or ranked[0][0] >= CONFLICT_MIN_SIM):
+                    verdict = self._consult_judge(body=body, kind=kind, scope=scope, ranked=ranked)
+                if verdict is not None:
+                    decided_by = f"judge:{verdict.model}"
+                    rationale = verdict.rationale or None
+                    if verdict.event == "UPDATE":
+                        supersede_targets = list(verdict.targets)
+                    elif verdict.event == "DELETE":
+                        retire_targets = list(verdict.targets)
+                    elif verdict.event == "NONE":
                         decision = self._reinforce(
-                            near[1].id,
+                            verdict.targets[0],
                             fact,
                             entities,
-                            reason=f"near duplicate (sim={near[0]:.2f})",
+                            reason=f"judge: {verdict.rationale}",
                             incoming_body=body,
                             labels=gate.labels,
                             quarantine_labels=reinforce_injection,
                         )
-                        if gate.action == "retain" and gate.vault_body is not None:
-                            # A personal match may be owned by another project;
-                            # vault AAD always follows the memory owner.
-                            changed = self._rotate_vault(near[1].id, near[1].project_id, gate)
-                            decision["secretRotated"] = changed
-                            decision["sensitivity"] = "secret"
-                            if changed:
-                                decision["event"] = "UPDATE"
+                        decision["decidedBy"] = decided_by
+                        decision["rationale"] = rationale
+                        decision["judge"] = self._judge_outcome
                         return decision
+                else:
                     supersede_targets, retire_targets = self._resolve_conflicts(
                         project_id=project_id,
                         body=body,
@@ -670,7 +728,18 @@ class _WritePath:
                 labels=[f"retired:{len(retired_targets)}"],
                 actor=self.config.actor,
             )
-            return {"event": "DELETE", "retired": retired_targets, "kind": kind, "scope": scope, "text": body}
+            deletion: dict[str, Any] = {
+                "event": "DELETE",
+                "retired": retired_targets,
+                "kind": kind,
+                "scope": scope,
+                "text": body,
+                "decidedBy": decided_by,
+                "rationale": rationale,
+            }
+            if self._judge_outcome is not None:
+                deletion["judge"] = self._judge_outcome
+            return deletion
 
         # UNIQUE(project_id, scope, body_hash) spans retired rows too. A fact that
         # reverts to an earlier statement (A -> B -> A) brings the retired row back
@@ -804,6 +873,8 @@ class _WritePath:
             {
                 "supersedes": retired_supersede_targets,
                 "previouslySupersededBy": (retired["superseded_by"] if retired is not None else None),
+                "decidedBy": decided_by,
+                "rationale": rationale,
             },
         )
         if gate.action == "redact":
@@ -861,7 +932,11 @@ class _WritePath:
             "entities": entities,
             "relations": [{"subject": s, "predicate": p, "object": o} for s, p, o in relations],
             "embedded": vector is not None,
+            "decidedBy": decided_by,
+            "rationale": rationale,
         }
+        if self._judge_outcome is not None:
+            decision["judge"] = self._judge_outcome
         if reactivated_id:
             decision["reactivated"] = True
         return decision
@@ -878,6 +953,42 @@ class _WritePath:
         lexical = _jaccard(tokens, existing.tokens)
         cosine = _cosine(vector, existing.vector) if vector is not None and existing.vector is not None else 0.0
         return (cosine >= DEDUP_COSINE or lexical >= DEDUP_JACCARD), max(cosine, lexical)
+
+    def _judge_candidates(
+        self, vector: list[float] | None, tokens: Sequence[str], candidates: Sequence[ActiveMemory]
+    ) -> list[tuple[float, ActiveMemory]]:
+        """The closest eligible candidates for the judge: never immutable, never injection-labelled."""
+        ranked = [
+            (self._similarity(vector, tokens, item), item)
+            for item in candidates
+            if not item.immutable and not item.metadata.get("injectionLabels")
+        ]
+        ranked.sort(key=lambda pair: (-pair[0], pair[1].updated_at, pair[1].id))
+        return ranked[:JUDGE_MAX_CANDIDATES]
+
+    def _consult_judge(
+        self, *, body: str, kind: str, scope: str, ranked: Sequence[tuple[float, ActiveMemory]]
+    ) -> JudgeDecision | None:
+        """One judge call inside the guardrails; None means the rules decide."""
+        models = self.models
+        if models is None or not models.serves("memory-judge"):
+            self._judge_outcome = None
+            return None
+        try:
+            call = models.call("memory-judge")
+            verdict = llm_judge(
+                call, incoming={"text": body, "kind": kind, "scope": scope}, candidates=[item for _, item in ranked]
+            )
+        except ModelUnavailable as exc:
+            self._judge_outcome = ModelRouter.outcome("memory-judge", applied=False, code=exc.code)
+            return None
+        if verdict is None:
+            self._judge_outcome = ModelRouter.outcome(
+                "memory-judge", applied=False, code="JUDGE_OUT_OF_CONTRACT", model=call.label
+            )
+            return None
+        self._judge_outcome = ModelRouter.outcome("memory-judge", applied=True, model=call.label)
+        return verdict
 
     def _nearest(
         self, vector: list[float] | None, tokens: Sequence[str], candidates: Sequence[ActiveMemory]

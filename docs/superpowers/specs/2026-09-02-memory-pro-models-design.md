@@ -112,7 +112,7 @@ Three principles, each enforced in one place:
 | Metric | Today | Target with Pro |
 |---|---|---|
 | Extraction recall on the gold set (36 conversations) | 0.667 heuristic | ≥ 0.85 with a frontier model (measured per provider by `eval_memory.py --extraction --extractor pro:<provider/model>`) |
-| Judge agreement with a new gold decision set (≥ 60 labelled ADD/UPDATE/NONE/DELETE cases) | rules: measured baseline | ≥ 0.90, rules fallback never worse than today |
+| Judge agreement with a new gold decision set (64 labelled ADD/UPDATE/NONE/DELETE cases, `eval/judge_gold.json`) | rules: 0.42 (measured 2026-09-03 with lexical similarity; the rules ADD unless a strong cue fires) | ≥ 0.90 with the judge, rules fallback never worse than today |
 | Retrieval R@5 / MRR (40 memories, 30 paraphrase queries) | 0.90 / 0.678 local | reported per embedding model and with rerank; rerank must not lower R@5 |
 | Answer groundedness on a 30-question set | n/a | ≥ 0.95 of answers cite only existing memories; refusals when no evidence |
 | Secret leakage to the fake gateway | n/a | 0 across the adversarial suite |

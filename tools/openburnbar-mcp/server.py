@@ -2381,7 +2381,9 @@ def burnbar_memorize(
     # extractor (env) is the user's own choice and is not re-gated here.
     requested_extractor = (extractor or "").strip().lower()
     configured_extractor = os.environ.get(me.EXTRACTOR_ENV, "").strip().lower()
-    if requested_extractor in ("claude", "ollama") and requested_extractor != configured_extractor:
+    if (
+        requested_extractor in ("claude", "ollama") or requested_extractor.startswith("pro")
+    ) and requested_extractor != configured_extractor:
         if requested_extractor == "claude" and (denied := _capability_denial("burnbar_memorize", "spawn_process")):
             return denied
         if denied := _capability_denial("burnbar_memorize", "memory_llm_extract"):
