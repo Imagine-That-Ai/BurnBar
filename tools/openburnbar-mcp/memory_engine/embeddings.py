@@ -225,6 +225,9 @@ def embedding_provider(force: EmbeddingProvider | None = None) -> EmbeddingProvi
 
 def reset_provider_cache_for_tests() -> None:
     _PROVIDER_CACHE.clear()
+    from . import providers
+
+    providers.reset_policy_cache_for_tests()
     # Deferred: `engine` imports this module, and its project cache is engine
     # state. Reaching for it at call time keeps this module a leaf.
     from . import engine

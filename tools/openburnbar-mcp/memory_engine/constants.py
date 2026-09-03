@@ -261,3 +261,31 @@ INGEST_DECISION_KEYS = frozenset(
         "embedded",
     }
 )
+
+# ---------------------------------------------------------------------------
+# Memory Pro provider layer (see docs/superpowers/specs/2026-09-02-memory-pro-models-design.md)
+
+MODEL_POLICY_JSON_ENV = "OPENBURNBAR_MEMORY_MODEL_POLICY_JSON"  # test seam only; honored under pytest
+CLI_PATH_ENV = "OPENBURNBAR_CLI_PATH"
+PURPOSES = ("memory-extract", "memory-judge", "memory-embed", "memory-rerank", "memory-answer")
+PURPOSE_TIMEOUTS = {
+    "memory-extract": 60.0,
+    "memory-judge": 20.0,
+    "memory-embed": 30.0,
+    "memory-rerank": 20.0,
+    "memory-answer": 60.0,
+}
+POLICY_TTL_SECONDS = 300.0
+POLICY_ERROR_CODES = frozenset(
+    {
+        "PRO_REQUIRED",
+        "CLOUD_CONSENT_REQUIRED",
+        "PROVIDER_NOT_CONSENTED",
+        "EGRESS_BLOCKED_RETENTION",
+        "BUDGET_EXCEEDED",
+        "MODEL_UNAVAILABLE",
+    }
+)
+GATEWAY_RETRY_STATUSES = frozenset({429, 500, 502, 503, 504})
+GATEWAY_MAX_ATTEMPTS = 3
+CLI_PROVIDER_IDS = ("claude_cli", "codex_cli")

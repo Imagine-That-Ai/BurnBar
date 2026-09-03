@@ -527,6 +527,10 @@ native command hint, a rendered cross-harness briefing, or a structured error.
 `burnbar_spawn_resume` is intentionally separate so agents must make an explicit
 second tool call before launching a process.
 
+### Pro models (opt-in)
+
+With BurnBar Pro and "Cloud models for memory" turned on in the app, the engine can use a frontier model for extraction, reconciliation, embeddings, reranking, and answers. The engine never holds a key: it asks the signed courier (`openburnbar-cli memory-model-policy`) what it may use and receives a 15-minute bearer scoped to `memory-*` purposes on the daemon's loopback gateway, which enforces Pro, per-provider consent, no-retention, and the daily cap before routing with keys from its own Keychain store. Subscription quota is used only through the official CLIs (`claude -p`, `codex exec`) behind the existing CLI consent. Every cloud path degrades to the local behavior and says why in the tool's `trustSignal`. `OPENBURNBAR_MEMORY_MODEL_POLICY_JSON` is a test-only seam, honored under pytest.
+
 ## Castle multi-runtime fan-out
 
 Castle extends the Ministry selector from `model` to `(runtime, model)` without

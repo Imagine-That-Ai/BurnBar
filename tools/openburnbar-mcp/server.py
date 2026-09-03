@@ -1599,7 +1599,9 @@ def _memory_db_path() -> Path:
 
 def _memory_engine() -> me.MemoryEngine:
     config = me.EngineConfig.from_env(retain_allowed=_capability_enabled("memory_secret_retain"))
-    return me.MemoryEngine.open(_memory_db_path(), provider=_memory_provider_override, config=config)
+    # Memory Pro: what the daemon lets this engine use; None keeps every path local.
+    models = me.ModelRouter(me.load_policy())
+    return me.MemoryEngine.open(_memory_db_path(), provider=_memory_provider_override, config=config, models=models)
 
 
 def _memory_wrap(body: str, memory_id: str) -> str:

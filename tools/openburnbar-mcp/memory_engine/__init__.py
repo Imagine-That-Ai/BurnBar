@@ -276,3 +276,50 @@ __all__ = [
     "tokenize",
     "verify_audit_chain",
 ]
+
+# Memory Pro provider layer
+from . import providers  # noqa: E402
+from .constants import (  # noqa: E402
+    CLI_PATH_ENV,
+    CLI_PROVIDER_IDS,
+    MODEL_POLICY_JSON_ENV,
+    POLICY_ERROR_CODES,
+    POLICY_TTL_SECONDS,
+    PURPOSE_TIMEOUTS,
+    PURPOSES,
+)
+from .providers import (  # noqa: E402
+    CLIClient,
+    GatewayClient,
+    MemoryModelPolicy,
+    ModelCall,
+    ModelRouter,
+    ModelUnavailable,
+    ProviderPolicy,
+    default_courier,
+    load_policy,
+    reset_policy_cache_for_tests,
+    signed_cli_path,
+)
+
+__all__ += [
+    "CLI_PATH_ENV",
+    "CLI_PROVIDER_IDS",
+    "CLIClient",
+    "GatewayClient",
+    "MODEL_POLICY_JSON_ENV",
+    "MemoryModelPolicy",
+    "ModelCall",
+    "ModelRouter",
+    "ModelUnavailable",
+    "POLICY_ERROR_CODES",
+    "POLICY_TTL_SECONDS",
+    "PURPOSES",
+    "PURPOSE_TIMEOUTS",
+    "ProviderPolicy",
+    "default_courier",
+    "load_policy",
+    "providers",
+    "reset_policy_cache_for_tests",
+    "signed_cli_path",
+]
