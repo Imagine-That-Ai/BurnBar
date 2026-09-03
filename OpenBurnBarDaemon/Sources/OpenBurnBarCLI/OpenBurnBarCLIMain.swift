@@ -66,6 +66,16 @@ struct BurnBarCLIExecutable {
             }
         }
 
+        if arguments == ["memory-model-policy"] {
+            do {
+                writeLine(try BurnBarCLIRunner(client: client).runMemoryModelPolicy())
+                exit(EXIT_SUCCESS)
+            } catch {
+                writeLine(Self.message(for: error), toStandardError: true)
+                exit(EXIT_FAILURE)
+            }
+        }
+
         if arguments == ["memory-remember"] {
             do {
                 let input = FileHandle.standardInput.readDataToEndOfFile()

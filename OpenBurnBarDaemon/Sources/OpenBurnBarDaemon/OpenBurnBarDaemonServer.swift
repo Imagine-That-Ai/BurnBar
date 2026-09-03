@@ -107,6 +107,8 @@ public actor BurnBarDaemonServer {
     #endif
     let missionControlService: any BurnBarMissionControlServing
     let membershipService: any BurnBarMembershipServing
+    /// Scoped loopback-gateway tokens minted for the memory engine (Memory Pro).
+    let memoryGatewayTokenStore: BurnBarGatewayScopedTokenStore
     var chatThreadService: (any BurnBarChatThreadServing)?
     var indexedSearch: BurnBarIndexedSearchService?
     /// The code-memory store is opened lazily when a configured database file
@@ -177,6 +179,7 @@ public actor BurnBarDaemonServer {
         computerUseAuthorizationRegistry: ComputerUseAuthorizationRegistry? = nil,
         missionControlService: (any BurnBarMissionControlServing)? = nil,
         membershipService: (any BurnBarMembershipServing)? = nil,
+        memoryGatewayTokenStore: BurnBarGatewayScopedTokenStore? = nil,
         rateLimiter: BurnBarRateLimiter? = nil,
         peerAuthenticator: BurnBarDaemonPeerAuthenticator = .disabled,
         capabilityProfile: BurnBarPeerCapabilityProfile = .full,
@@ -555,6 +558,7 @@ public actor BurnBarDaemonServer {
             executionReadinessGate: executionReadinessGate
         )
         self.membershipService = membershipService ?? BurnBarMembershipService()
+        self.memoryGatewayTokenStore = memoryGatewayTokenStore ?? BurnBarGatewayScopedTokenStore()
 
         if let path = configuration.indexDatabasePath?.trimmingCharacters(in: .whitespacesAndNewlines),
            path.isEmpty == false {
@@ -1648,7 +1652,7 @@ public actor BurnBarDaemonServer {
                     decoder: decoder,
                     requestData: requestData
                 )
-            case .memoryRemember, .memoryRecall, .memoryReviewStatus, .memoryForget, .memoryAuditTrail, .memoryAnalytics:
+            case .memoryRemember, .memoryRecall, .memoryReviewStatus, .memoryForget, .memoryAuditTrail, .memoryAnalytics, .memoryModelPolicy:
                 return try await handleMemoryRPC(
                     method: method,
                     decoder: decoder,

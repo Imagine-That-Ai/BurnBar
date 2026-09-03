@@ -5545,6 +5545,234 @@
           "capabilityClassRank": 50
         }
       ]
+    },
+    {
+      "id": "openrouter",
+      "displayName": "OpenRouter",
+      "baseURL": "https://openrouter.ai/api/v1",
+      "visibility": "public",
+      "capabilities": [
+        "routing",
+        "accounting"
+      ],
+      "models": [
+        {
+          "id": "openrouter-anthropic-claude-opus-5",
+          "displayName": "Claude Opus 5",
+          "visibility": "public",
+          "aliases": [
+            "anthropic/claude-opus-5"
+          ],
+          "matchers": [
+            {
+              "all": [
+                "claude",
+                "opus",
+                "5"
+              ],
+              "any": [],
+              "none": []
+            }
+          ],
+          "pricing": {
+            "inputPerMToken": 5,
+            "outputPerMToken": 25,
+            "cacheCreationPerMToken": 6.25,
+            "cacheReadPerMToken": 0.5
+          }
+        },
+        {
+          "id": "openrouter-anthropic-claude-haiku-4-5",
+          "displayName": "Claude Haiku 4.5",
+          "visibility": "public",
+          "aliases": [
+            "anthropic/claude-haiku-4-5"
+          ],
+          "matchers": [
+            {
+              "all": [
+                "claude",
+                "haiku",
+                "4"
+              ],
+              "any": [],
+              "none": []
+            }
+          ],
+          "pricing": {
+            "inputPerMToken": 1,
+            "outputPerMToken": 5,
+            "cacheCreationPerMToken": 1.25,
+            "cacheReadPerMToken": 0.1
+          }
+        },
+        {
+          "id": "openrouter-openai-gpt-5-5",
+          "displayName": "GPT-5.5",
+          "visibility": "public",
+          "aliases": [
+            "openai/gpt-5.5"
+          ],
+          "matchers": [
+            {
+              "all": [
+                "gpt",
+                "5.5"
+              ],
+              "any": [],
+              "none": []
+            }
+          ],
+          "pricing": {
+            "inputPerMToken": 5,
+            "outputPerMToken": 30,
+            "cacheReadPerMToken": 0.5
+          }
+        },
+        {
+          "id": "openrouter-openai-text-embedding-3-small",
+          "displayName": "Text Embedding 3 Small",
+          "visibility": "public",
+          "aliases": [
+            "openai/text-embedding-3-small"
+          ],
+          "matchers": [
+            {
+              "all": [
+                "text",
+                "embedding",
+                "3",
+                "small"
+              ],
+              "any": [],
+              "none": []
+            }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.02,
+            "outputPerMToken": 0,
+            "cacheReadPerMToken": 0
+          }
+        }
+      ],
+      "visualSurfaces": [
+        "cli",
+        "desktop"
+      ]
+    },
+    {
+      "id": "vercel-ai-gateway",
+      "displayName": "Vercel AI Gateway",
+      "baseURL": "https://ai-gateway.vercel.sh/v1",
+      "visibility": "public",
+      "capabilities": [
+        "routing",
+        "accounting"
+      ],
+      "models": [
+        {
+          "id": "vercel-anthropic-claude-opus-5",
+          "displayName": "Claude Opus 5",
+          "visibility": "public",
+          "aliases": [
+            "anthropic/claude-opus-5"
+          ],
+          "matchers": [
+            {
+              "all": [
+                "claude",
+                "opus",
+                "5"
+              ],
+              "any": [],
+              "none": []
+            }
+          ],
+          "pricing": {
+            "inputPerMToken": 5,
+            "outputPerMToken": 25,
+            "cacheCreationPerMToken": 6.25,
+            "cacheReadPerMToken": 0.5
+          }
+        },
+        {
+          "id": "vercel-anthropic-claude-haiku-4-5",
+          "displayName": "Claude Haiku 4.5",
+          "visibility": "public",
+          "aliases": [
+            "anthropic/claude-haiku-4-5"
+          ],
+          "matchers": [
+            {
+              "all": [
+                "claude",
+                "haiku",
+                "4"
+              ],
+              "any": [],
+              "none": []
+            }
+          ],
+          "pricing": {
+            "inputPerMToken": 1,
+            "outputPerMToken": 5,
+            "cacheCreationPerMToken": 1.25,
+            "cacheReadPerMToken": 0.1
+          }
+        },
+        {
+          "id": "vercel-openai-gpt-5-5",
+          "displayName": "GPT-5.5",
+          "visibility": "public",
+          "aliases": [
+            "openai/gpt-5.5"
+          ],
+          "matchers": [
+            {
+              "all": [
+                "gpt",
+                "5.5"
+              ],
+              "any": [],
+              "none": []
+            }
+          ],
+          "pricing": {
+            "inputPerMToken": 5,
+            "outputPerMToken": 30,
+            "cacheReadPerMToken": 0.5
+          }
+        },
+        {
+          "id": "vercel-openai-text-embedding-3-small",
+          "displayName": "Text Embedding 3 Small",
+          "visibility": "public",
+          "aliases": [
+            "openai/text-embedding-3-small"
+          ],
+          "matchers": [
+            {
+              "all": [
+                "text",
+                "embedding",
+                "3",
+                "small"
+              ],
+              "any": [],
+              "none": []
+            }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.02,
+            "outputPerMToken": 0,
+            "cacheReadPerMToken": 0
+          }
+        }
+      ],
+      "visualSurfaces": [
+        "cli",
+        "desktop"
+      ]
     }
   ]
 }

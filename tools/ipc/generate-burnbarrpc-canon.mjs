@@ -121,6 +121,7 @@ const explicitTypes = {
   "daemon.health": ["BurnBarRPCRequestEnvelope", "BurnBarHealthResponse"],
   "daemon.catalog": ["BurnBarRPCRequestEnvelope", "BurnBarCatalogResponse"],
   "daemon.config.get": ["BurnBarConfigGetRequest", "BurnBarConfigResponse"],
+  "daemon.memory.model_policy": ["BurnBarMemoryModelPolicyRequest", "BurnBarMemoryModelPolicyResponse"],
   "daemon.config.update": ["BurnBarConfigUpdateRequest", "BurnBarConfigResponse"],
   "daemon.text_expansion.get": ["BurnBarRPCRequestEnvelope", "BurnBarTextExpansionSnapshot"],
   "daemon.text_expansion.upsert": ["BurnBarTextExpansionUpsertRequest", "BurnBarTextExpansionWireSnippet"],

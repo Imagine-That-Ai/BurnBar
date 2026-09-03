@@ -138,6 +138,7 @@ final class BurnBarRPCCapabilityTests: XCTestCase {
             .searchSQL,
             .memoryRemember,
             .memoryForget,
+            .memoryModelPolicy,
             .controllerSummary,
             .questionsList,
             .followupsList,
@@ -199,6 +200,8 @@ final class BurnBarRPCCapabilityTests: XCTestCase {
         XCTAssertTrue(profile.permits(.searchSQL))
         XCTAssertTrue(profile.permits(.memoryRemember))
         XCTAssertTrue(profile.permits(.memoryForget))
+        XCTAssertTrue(profile.permits(.memoryModelPolicy))
+        XCTAssertEqual(BurnBarRPCCapability.capability(for: .memoryModelPolicy), .memoryRead)
         // Read-only and run-client peers still may not write memory.
         XCTAssertFalse(BurnBarPeerCapabilityProfile.readOnly.permits(.memoryRemember))
         XCTAssertFalse(BurnBarPeerCapabilityProfile.runClient.permits(.memoryRemember))

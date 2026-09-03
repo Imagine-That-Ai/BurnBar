@@ -335,6 +335,16 @@ public struct BurnBarCLIRunner {
         }
     }
 
+    /// `memory-model-policy`: no input -> stdout JSON `BurnBarMemoryModelPolicyResponse`
+    /// (Memory Pro: what the memory engine may use, plus a scoped gateway token).
+    public func runMemoryModelPolicy() throws -> String {
+        do {
+            return try Self.jsonString(client.memoryModelPolicy())
+        } catch let error as NSError where error.domain == "OpenBurnBarCLI" {
+            throw BurnBarCLIError.privacyRPCError(code: error.code, message: error.localizedDescription)
+        }
+    }
+
     /// `memory-forget`: stdin JSON `BurnBarProjectMemoryForgetRequest` -> stdout JSON result.
     public func runMemoryForget(input: Data) throws -> String {
         let request: BurnBarProjectMemoryForgetRequest
@@ -1058,6 +1068,7 @@ public struct BurnBarCLIRunner {
         "search-sql",
         "memory-remember",
         "memory-forget",
+        "memory-model-policy",
         "privacy-rpc",
         "install-shell-shims"
     ]

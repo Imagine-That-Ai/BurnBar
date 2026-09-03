@@ -169,7 +169,7 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
             return .search
         case .memoryRemember, .memoryReviewStatus, .memoryForget:
             return .memoryWrite
-        case .memoryRecall, .memoryAuditTrail, .memoryAnalytics:
+        case .memoryRecall, .memoryAuditTrail, .memoryAnalytics, .memoryModelPolicy:
             return .memoryRead
         case .codeIndexProject, .codeWatchProject:
             return .codeWrite
@@ -247,6 +247,7 @@ public struct BurnBarPeerCapabilityProfile: Hashable, Sendable, Codable {
         .searchSQL,
         .memoryRemember,
         .memoryForget,
+        .memoryModelPolicy,
         .controllerSummary,
         .questionsList,
         .followupsList,
