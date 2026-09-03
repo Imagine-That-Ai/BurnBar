@@ -10,6 +10,8 @@ from pathlib import Path
 
 import pytest
 
+from memorize_transcript import _KNOWN_CODES, _KNOWN_EXTRACTORS, _KNOWN_STATUSES  # noqa: E402
+
 MCP_DIR = Path(__file__).resolve().parents[1]
 FIXTURE = MCP_DIR / "tests" / "fixtures" / "claude_code_transcript.jsonl"
 HOOK = MCP_DIR / "hooks" / "claude-code-session-end.sh"
@@ -336,6 +338,17 @@ def _keys(value, found=None):
     return out
 
 
+def _leaves(value):
+    if isinstance(value, dict):
+        for item in value.values():
+            yield from _leaves(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _leaves(item)
+    else:
+        yield value
+
+
 def test_the_printed_line_carries_no_memory_text(tmp_path):
     """The hook appends stdout to a log file, so the line must be a receipt, not
     a copy of what was memorized (CodeQL: clear-text logging of sensitive info)."""
@@ -359,4 +372,12 @@ def test_the_printed_line_carries_no_memory_text(tmp_path):
     # The receipt still says enough to be useful.
     assert printed["result"]["factsConsidered"] >= 1, printed
     assert printed["result"]["summary"]["ADD"] >= 1, printed
-    assert printed["result"]["sourceHash"], printed
+    assert printed["result"]["sourceHashPresent"] is True, printed
+    assert printed["result"]["decisions"]["ADD"] >= 1, printed
+    # Every printed leaf is a count, a flag, or a vocabulary constant — never a copied string.
+    for value in _leaves(printed):
+        assert (
+            isinstance(value, bool | int | float)
+            or value is None
+            or value in (*_KNOWN_STATUSES, *_KNOWN_CODES, *_KNOWN_EXTRACTORS, "other", "none")
+        ), value
