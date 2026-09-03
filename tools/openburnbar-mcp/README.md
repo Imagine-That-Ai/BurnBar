@@ -253,6 +253,7 @@ Run it by hand against any transcript:
 | `burnbar_memorize` | **Write** durable memories from a conversation, text, or pre-extracted `facts` (the mem0 `add()` equivalent): extraction → gate → injection screen → ADD / UPDATE / NONE / DELETE reconciliation; idempotent per input |
 | `burnbar_recall` | Hybrid BM25 + vector recall with reciprocal-rank fusion and salience rerank, plus an optional Memory Pro model rerank of the top hits (`rerank`, reported in `trustSignal.rerank`); kind/tag/entity/metadata/date filters; personal-scope memories follow the user across projects; bodies and free-form auxiliary fields wrapped as untrusted content |
 | `burnbar_recall_pack` | Token-budgeted, prompt-ready block of the most relevant memories, wrapped as untrusted retrieved data |
+| `burnbar_memory_ask` | Memory Pro: an answer built only from cited memories, or an explicit refusal; needs `memory_llm_read` |
 | `burnbar_memory_get` / `burnbar_memory_list` | Read one memory (optionally with history) / page through memories with filters and ordering; quarantined rows are hidden by default and explicit review reads are wrapped |
 | `burnbar_memory_update` | **Write** patch a memory in place (stable id, history row, re-embed) |
 | `burnbar_memory_history` | Per-memory change history with wrapped before/after bodies and metadata |
@@ -583,6 +584,20 @@ Measure it with `eval_memory.py --provider pro --rerank` (or `--provider fake
 --rerank` for the plumbing): every mode is reported twice, `<mode>` and
 `<mode>+rerank`; a rerank stage that lowers `recall@5` is a regression, not a
 tuning choice.
+
+**Ask my memory.** `burnbar_memory_ask(question)` recalls up to 12 approved
+memories (never injection-labelled ones), lists them to the policy's
+`memory-answer` model as numbered untrusted data, and returns `answer`,
+`citations` (`memoryID`, `kind`, `snippet`) and `groundedness`: `grounded`
+(every citation is a listed memory), `partial` (unknown citations were
+dropped), or `refused` (no valid citation, or the fixed refusal). An answer
+carrying wrapper sentinels or a tool call is rejected (`code:
+ANSWER_REJECTED`) and replaced by the refusal; an empty pack refuses without a
+call. The tool needs `OPENBURNBAR_LOCAL_MCP_ENABLE_MEMORY_LLM_READ=true` (or the
+operator profile) and wraps the answer and snippets as untrusted content.
+Measure it with `eval_memory.py --ask` over `eval/ask_gold.json` (38 questions,
+6 without evidence): it reports how often answers cite only listed memories,
+cite an expected memory, and refuse when nothing applies.
 
 ## Castle multi-runtime fan-out
 

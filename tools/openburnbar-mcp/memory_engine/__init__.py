@@ -370,3 +370,20 @@ __all__ += [
     "RERANK_TOP_K_DEFAULT",
     "RERANK_TOP_K_MAX",
 ]
+
+# Memory Pro "ask my memory"
+from .constants import (  # noqa: E402
+    ANSWER_MAX_MEMORIES,
+    ANSWER_PROMPT_SYSTEM,
+    ANSWER_PROMPT_VERSION,
+    ANSWER_REFUSAL,
+    ANSWER_TOKEN_BUDGET_DEFAULT,
+)
+
+__all__ += [
+    "ANSWER_MAX_MEMORIES",
+    "ANSWER_PROMPT_SYSTEM",
+    "ANSWER_PROMPT_VERSION",
+    "ANSWER_REFUSAL",
+    "ANSWER_TOKEN_BUDGET_DEFAULT",
+]

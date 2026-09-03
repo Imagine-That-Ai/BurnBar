@@ -78,6 +78,7 @@ LOCAL_MCP_OPERATOR_CAPABILITIES = {
     "cloud_sync",
     "local_write",
     "memory_llm_extract",
+    "memory_llm_read",
     "memory_write",
     "sensitive_read",
     "spawn_process",
@@ -90,6 +91,9 @@ LOCAL_MCP_CAPABILITY_ENV = {
     # `burnbar_memorize` when this capability is on; the operator-configured
     # `OPENBURNBAR_MEMORY_EXTRACTOR` is user intent and needs no capability.
     "memory_llm_extract": "OPENBURNBAR_LOCAL_MCP_ENABLE_MEMORY_LLM_EXTRACT",
+    # `burnbar_memory_ask` sends recalled memories to a Memory Pro answer model;
+    # reading through a model is a separate grant from reading the store.
+    "memory_llm_read": "OPENBURNBAR_LOCAL_MCP_ENABLE_MEMORY_LLM_READ",
     "memory_write": "OPENBURNBAR_LOCAL_MCP_ENABLE_MEMORY_WRITE",
     "memory_secret_retain": "OPENBURNBAR_LOCAL_MCP_ENABLE_SECRET_RETAIN",
     "sensitive_read": "OPENBURNBAR_LOCAL_MCP_ENABLE_SENSITIVE_READ",
@@ -2553,6 +2557,52 @@ def burnbar_recall_pack(
             wrap=_memory_pack_wrap,
             rerank=rerank,
         )
+        result["legacyMigration"] = migration
+    return json.dumps(result, indent=2, default=str)
+
+
+@mcp.tool()
+def burnbar_memory_ask(
+    question: str,
+    project_path: str | None = None,
+    scope: str = "all",
+    limit: int = 12,
+    min_confidence: float = 0.0,
+    provider: str | None = None,
+    token_budget: int = 2400,
+) -> str:
+    """
+    Answer a question from this project's memories only (Memory Pro). The
+    answer model sees approved memories as numbered untrusted data; every
+    claim cites a memory id, unknown citations are dropped (`groundedness`
+    becomes `partial`), and an answer with no valid citation is replaced by an
+    explicit refusal. Needs the `memory_llm_read` capability and a policy
+    that serves `memory-answer`; `provider` picks a consented provider.
+    """
+    if limited := _local_mcp_rate_limit("burnbar_memory_ask", "memory"):
+        return limited
+    if denied := _capability_denial("burnbar_memory_ask", "memory_llm_read"):
+        return denied
+    with _memory_engine() as engine:
+        migration = _migrate_legacy_memories(engine, project_path)
+        result = engine.ask(
+            question,
+            project_path=project_path,
+            scope=scope,
+            limit=limit,
+            min_confidence=min_confidence,
+            provider=provider,
+            token_budget=token_budget,
+        )
+        if result.get("status") == "ok":
+            result["answer"] = _memory_wrap_read_string(
+                str(result.get("answer") or ""), source_tool="burnbar_memory_ask", record_id="answer"
+            )
+            for citation in result.get("citations", []):
+                citation["snippet"] = _memory_wrap_read_string(
+                    str(citation.get("snippet") or ""), source_tool="burnbar_memory_ask", record_id=citation["memoryID"]
+                )
+            result.setdefault("trustSignal", {})["untrustedContentWrapped"] = True
         result["legacyMigration"] = migration
     return json.dumps(result, indent=2, default=str)
 
@@ -5144,6 +5194,7 @@ MEMORY_TOOLSET: frozenset[str] = frozenset(
         "burnbar_memorize",
         "burnbar_recall",
         "burnbar_recall_pack",
+        "burnbar_memory_ask",
         "burnbar_forget",
         "burnbar_forget_all",
         "burnbar_memory_get",
