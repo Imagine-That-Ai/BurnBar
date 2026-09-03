@@ -106,7 +106,7 @@ def test_grounded_answer_cites_only_memories_it_was_shown(tmp_path, monkeypatch)
 
 
 def test_unknown_citations_are_dropped_and_the_answer_is_partial(tmp_path, monkeypatch):
-    with FakeGateway(_answerer(extra_ids=("mem_not_in_pack",))) as gw:
+    with FakeGateway(_answerer(extra_ids=("mem_00000000000000000000000000000bad",))) as gw:
         engine = _engine(tmp_path, monkeypatch, _router(monkeypatch, gw))
         try:
             project = _project(tmp_path)
@@ -116,8 +116,8 @@ def test_unknown_citations_are_dropped_and_the_answer_is_partial(tmp_path, monke
             engine.close()
     assert result["groundedness"] == "partial"
     cited = {c["memoryID"] for c in result["citations"]}
-    assert "mem_not_in_pack" not in cited and cited <= set(ids) and cited
-    assert "mem_not_in_pack" not in result["answer"]
+    assert "mem_00000000000000000000000000000bad" not in cited and cited <= set(ids) and cited
+    assert "mem_00000000000000000000000000000bad" not in result["answer"]
     assert result["trustSignal"]["droppedCitations"] == 1
 
 
@@ -247,3 +247,41 @@ def test_ask_eval_scores_citations_and_refusals_with_a_fake_answerer(monkeypatch
     assert report["citesOnlyExisting"] == 1.0
     assert 0.0 <= report["refusedWhenNoEvidence"] <= 1.0 and 0.0 <= report["citedExpected"] <= 1.0
     assert set(report["counts"]) == {"grounded", "partial", "refused", "unavailable"}
+
+
+def test_citations_must_appear_inline_in_the_answer(tmp_path, monkeypatch):
+    def responder(path, body):
+        user = body["messages"][1]["content"]
+        ids = _listed_ids(user)
+        return chat_reply({"answer": "The project uses COBOL.", "citations": ids})
+
+    with FakeGateway(responder) as gw:
+        engine = _engine(tmp_path, monkeypatch, _router(monkeypatch, gw))
+        try:
+            project = _project(tmp_path)
+            _seed(engine, project)
+            result = engine.ask("When do we deploy?", project_path=project)
+        finally:
+            engine.close()
+    assert result["groundedness"] == "refused" and result["answer"] == me.ANSWER_REFUSAL and result["citations"] == []
+
+
+def test_first_memory_is_truncated_to_the_token_budget(tmp_path, monkeypatch):
+    seen: dict = {}
+
+    def responder(path, body):
+        seen["user"] = body["messages"][1]["content"]
+        ids = _listed_ids(seen["user"])
+        return chat_reply({"answer": "Deploys are on Fridays " + " ".join(f"[{i}]" for i in ids), "citations": ids})
+
+    with FakeGateway(responder) as gw:
+        engine = _engine(tmp_path, monkeypatch, _router(monkeypatch, gw))
+        try:
+            project = _project(tmp_path)
+            huge = "We deploy on Fridays. " + ("The release checklist repeats this line. " * 400)
+            engine.remember(huge, project_path=project, kind="fact")
+            result = engine.ask("When do we deploy?", project_path=project, token_budget=200)
+        finally:
+            engine.close()
+    assert result["groundedness"] == "grounded", result
+    assert len(seen["user"]) < 1_500, "the lone oversized memory is clipped to the budget instead of blowing past it"

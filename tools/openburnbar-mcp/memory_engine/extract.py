@@ -190,6 +190,9 @@ class Fact:
         )
 
 
+_EVIDENCE_MARKER = re.compile(r"^\[m\d+\] ", re.M)
+
+
 def render_transcript(messages: Sequence[dict[str, Any]], max_chars: int = 24_000) -> str:
     lines: list[str] = []
     for index, message in enumerate(messages):
@@ -413,9 +416,17 @@ def llm_extract(call: Any, transcript: str, max_facts: int) -> tuple[list[Fact],
         max_tokens=2_048,
     )
     raw_facts = parsed.get("facts") if isinstance(parsed, dict) else None
+    evidence_lines = len(_EVIDENCE_MARKER.findall(transcript))
     facts: list[Fact] = []
+    dropped_ungrounded = 0
     if isinstance(raw_facts, list):
         for item in raw_facts:
+            # The v2 contract requires every fact to cite the [m<n>] line it came
+            # from; a hallucinated or unplaceable fact never reaches the store.
+            index = item.get("evidence_message_index") if isinstance(item, dict) else None
+            if isinstance(index, bool) or not isinstance(index, int) or not 1 <= index <= evidence_lines:
+                dropped_ungrounded += 1
+                continue
             fact = Fact.from_mapping(item)
             if fact is not None:
                 facts.append(fact)
@@ -426,6 +437,7 @@ def llm_extract(call: Any, transcript: str, max_facts: int) -> tuple[list[Fact],
         "promptVersion": EXTRACT_PROMPT_VERSION,
         "latencyMs": int((time.monotonic() - started) * 1_000),
         "usage": dict(usage or {}),
+        "droppedUngrounded": dropped_ungrounded,
     }
     return facts[: max(1, min(int(max_facts), 64))], provenance
 

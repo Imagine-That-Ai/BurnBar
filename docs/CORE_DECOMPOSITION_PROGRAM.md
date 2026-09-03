@@ -64,15 +64,6 @@ ceiling is therefore explicitly adjusted from 46,250 to 46,300 lines for this
 single wire-contract addition; the deny-gate remains in force for any further
 Kernel growth.
 
-**Memory Pro contracts (2026-09-02).** `BurnBarMemoryEgressPolicy` (a section of
-`BurnBarProviderConfigurationSnapshot`) and the `daemon.memory.model_policy`
-request/response types (`BurnBarMemoryModelPolicyContracts.swift`) are wire
-contracts shared by the daemon, the signed CLI, the app, and the Python memory
-engine; they belong in the Kernel with the other RPC contracts. The Kernel
-ceiling is adjusted from 191 files / 54,000 LOC to 192 files / 54,100 LOC for
-this single contract addition; the deny-gate remains in force for any further
-Kernel growth.
-
 **Invariants baked into the S0 manifest:**
 - Off-Apple pruning of UI/Insights/TextExpansion/LaunchServices uses the existing
   host-evaluated `#if os(Linux) || os(Windows)` seam (`buildApplePrunedDecompositionTargets`),

@@ -341,6 +341,17 @@ def test_server_recall_reports_the_rerank_trust_signal(server_env, monkeypatch):
         me.reset_provider_cache_for_tests()
         for body in BODIES:
             assert json.loads(server.burnbar_remember(body, project_path=repo, kind="procedure"))["status"] == "ok"
+        monkeypatch.delenv("OPENBURNBAR_LOCAL_MCP_ENABLE_MEMORY_LLM_READ", raising=False)
+        ungranted = json.loads(server.burnbar_recall("deploy", project_path=repo, rerank=True))
+        assert ungranted["trustSignal"]["rerank"] == "off" and _rerank_requests(gw) == [], (
+            "no model read without memory_llm_read"
+        )
+        assert (
+            json.loads(server.burnbar_recall_pack("deploy", project_path=repo, rerank=True))["trustSignal"]["rerank"]
+            == "off"
+        )
+        assert _rerank_requests(gw) == []
+        monkeypatch.setenv("OPENBURNBAR_LOCAL_MCP_ENABLE_MEMORY_LLM_READ", "true")
         ranked = json.loads(server.burnbar_recall("deploy", project_path=repo, rerank=True))
         off = json.loads(server.burnbar_recall("deploy", project_path=repo, rerank=False))
         pack = json.loads(server.burnbar_recall_pack("deploy", project_path=repo, rerank=True))
@@ -349,3 +360,52 @@ def test_server_recall_reports_the_rerank_trust_signal(server_env, monkeypatch):
     assert ranked["results"][0]["why"]["reranker"] == RERANK_MODEL
     assert off["trustSignal"]["rerank"] == "off"
     assert pack["trustSignal"]["rerank"] == "applied" and pack["trustSignal"]["untrustedContentWrapped"] is True
+
+
+def test_rerank_partial_or_duplicate_answers_are_out_of_contract(tmp_path, monkeypatch):
+    def partial(candidates):
+        return {"results": [{"id": candidates[0]["id"], "relevance": 1.0}]}
+
+    def duplicated(candidates):
+        return {
+            "results": [{"id": c["id"], "relevance": 0.5} for c in candidates]
+            + [{"id": candidates[0]["id"], "relevance": 1.0}]
+        }
+
+    for name, answer in (("partial", partial), ("duplicate", duplicated)):
+
+        def responder(path, body, answer=answer):
+            sent = json.loads(body["messages"][1]["content"])
+            if "candidates" in sent and "query" in sent:
+                return chat_reply(answer(sent["candidates"]))
+            return chat_reply({"event": "ADD", "target": None, "rationale": "test judge"})
+
+        with FakeGateway(responder) as gw:
+            engine = _engine(
+                tmp_path, monkeypatch, provider=me.FakeEmbeddingProvider(), models=_router(monkeypatch, gw), name=name
+            )
+            try:
+                project = _project(tmp_path)
+                _seed(engine, project)
+                plain = engine.recall("deploy", project_path=project, rerank=False)
+                ranked = engine.recall("deploy", project_path=project, rerank=True)
+            finally:
+                engine.close()
+        assert _ids(ranked) == _ids(plain), name
+        assert ranked["trustSignal"]["rerank"] == "skipped:RERANK_OUT_OF_CONTRACT", name
+
+
+def test_cached_pro_embedding_provider_is_rebuilt_when_its_token_expires(monkeypatch):
+    with FakeGateway(_responder()) as gw:
+        _router(monkeypatch, gw)
+        monkeypatch.setenv(me.EMBEDDING_PROVIDER_ENV, "pro")
+        me.reset_provider_cache_for_tests()
+        first = me.embedding_provider()
+        assert first.describe()["provider"] == "gateway" and first.stale is False
+        assert me.embedding_provider() is first, "a fresh token-bound provider is cached"
+        monkeypatch.setattr(type(first), "stale", property(lambda self: True))
+        second = me.embedding_provider()
+        assert second is not first and second.describe()["provider"] == "gateway", (
+            "an expired bearer never serves from cache"
+        )
+    me.reset_provider_cache_for_tests()

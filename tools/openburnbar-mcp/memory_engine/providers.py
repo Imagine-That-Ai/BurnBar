@@ -15,6 +15,8 @@ import os
 import random
 import shutil
 import subprocess
+import tempfile
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -135,17 +137,65 @@ class MemoryModelPolicy:
 _POLICY_CACHE: dict[int, tuple[MemoryModelPolicy, float]] = {}
 
 
+# The app bundles the CLI under Contents/Helpers (scripts/build-macos-website-release.sh);
+# the MacOS/ path is the pre-release layout.
+CLI_CANDIDATE_ROOTS = ["/Applications/OpenBurnBar.app", os.path.expanduser("~/Applications/OpenBurnBar.app")]
+CLI_BUNDLE_RELATIVE_PATHS = ("Contents/Helpers/OpenBurnBarCLI", "Contents/MacOS/openburnbar-cli")
+# Pinned from OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/PrivilegedSocketTrust.swift
+# (`teamID`, `daemonRPCPeerDesignatedRequirement`): the daemon admits the CLI peer only
+# under this designated requirement, so the engine holds the courier to the same bar.
+COURIER_TEAM_ID = "4Y367DF25B"
+COURIER_IDENTIFIER = "com.openburnbar.cli"
+COURIER_LINUX_ROOT = "/opt/openburnbar/bin/"
+
+
+def verify_courier(path: str, *, platform: str = sys.platform, run: Callable[..., Any] = subprocess.run) -> bool:
+    """Only a first-party signed CLI may be executed as the policy courier.
+
+    A replacement binary named like the CLI could print a policy whose gateway
+    points anywhere, so the engine checks the code signature (macOS: strict
+    `codesign --verify` plus the designated requirement's identifier and team)
+    or the root-owned package path (Linux) before running it. Fails closed."""
+    try:
+        if platform == "darwin":
+            verified = run(
+                ["codesign", "--verify", "--strict", path], capture_output=True, text=True, timeout=10, check=False
+            )
+            if verified.returncode != 0:
+                return False
+            shown = run(
+                ["codesign", "-d", "--requirements", "-", path], capture_output=True, text=True, timeout=10, check=False
+            )
+            text = f"{shown.stdout}\n{shown.stderr}"
+            return (
+                f'identifier "{COURIER_IDENTIFIER}"' in text
+                and f'certificate leaf[subject.OU] = "{COURIER_TEAM_ID}"' in text
+            )
+        if platform.startswith("linux"):
+            if not path.startswith(COURIER_LINUX_ROOT):
+                return False
+            info = os.stat(path)
+            return info.st_uid == 0 and not info.st_mode & 0o022
+        return False
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return False
+
+
 def signed_cli_path() -> str | None:
     """The first-party signed CLI, the only courier the daemon trusts on signed installs."""
     override = os.environ.get(CLI_PATH_ENV, "").strip()
-    candidates = [override] if override else []
-    candidates += [
-        "/Applications/OpenBurnBar.app/Contents/MacOS/openburnbar-cli",
-        os.path.expanduser("~/Applications/OpenBurnBar.app/Contents/MacOS/openburnbar-cli"),
-        shutil.which("openburnbar-cli") or "",
+    if override:
+        if os.path.isfile(override) and os.access(override, os.X_OK):
+            # Under pytest the override is a test seam; in production it is verified like any candidate.
+            if os.environ.get("PYTEST_CURRENT_TEST") or verify_courier(override):
+                return override
+        return None
+    candidates = [
+        os.path.join(root, relative) for relative in CLI_BUNDLE_RELATIVE_PATHS for root in CLI_CANDIDATE_ROOTS
     ]
+    candidates.append(shutil.which("openburnbar-cli") or "")
     for candidate in candidates:
-        if candidate and os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+        if candidate and os.path.isfile(candidate) and os.access(candidate, os.X_OK) and verify_courier(candidate):
             return candidate
     return None
 
@@ -350,6 +400,22 @@ def _gateway_error(detail: str) -> tuple[str, str]:
     return "MODEL_UNAVAILABLE", detail[:200]
 
 
+CLAUDE_DISALLOWED_TOOLS = (
+    "Bash,Write,Edit,MultiEdit,NotebookEdit,Read,Grep,Glob,LS,WebFetch,WebSearch,Agent,Task,TodoWrite,TodoRead"
+)
+_CLI_ENV_KEEP = ("PATH", "HOME", "USER", "LOGNAME", "SHELL", "TERM", "LANG", "TMPDIR", "TZ")
+_CLI_ENV_KEEP_PREFIXES = ("LC_", "XDG_", "ANTHROPIC_", "OPENAI_", "CLAUDE_", "CODEX_")
+
+
+def sanitized_cli_environment(source: dict[str, str] | None = None) -> dict[str, str]:
+    """Only what a subscription CLI needs: locale, paths, and its own auth/config.
+
+    Daemon tokens, cloud credentials, SSH/git material and every OpenBurnBar
+    variable stay out of a process whose prompt is untrusted memory text."""
+    env = dict(os.environ if source is None else source)
+    return {key: value for key, value in env.items() if key in _CLI_ENV_KEEP or key.startswith(_CLI_ENV_KEEP_PREFIXES)}
+
+
 class CLIClient:
     """The official CLIs on the user's own subscription quota, read-only and sandboxed."""
 
@@ -363,8 +429,10 @@ class CLIClient:
             "json",
             "--permission-mode",
             "plan",
+            # Every tool off: the prompt is untrusted memory text, so the CLI must
+            # neither read this Mac nor reach the network on its behalf.
             "--disallowedTools",
-            "Bash,Write,Edit,MultiEdit,NotebookEdit",
+            CLAUDE_DISALLOWED_TOOLS,
         ]
         if model:
             argv += ["--model", model]
@@ -372,7 +440,19 @@ class CLIClient:
 
     @staticmethod
     def codex_argv(prompt: str, model: str | None) -> list[str]:
-        argv = ["codex", "exec", "--json", "--ephemeral", "--skip-git-repo-check", "--sandbox", "read-only"]
+        # Same posture as BurnBarCodexProviderExecutor: read-only sandbox, no user
+        # automation or rules, throwaway cwd (see chat_json).
+        argv = [
+            "codex",
+            "exec",
+            "--json",
+            "--ephemeral",
+            "--skip-git-repo-check",
+            "--sandbox",
+            "read-only",
+            "--ignore-user-config",
+            "--ignore-rules",
+        ]
         if model:
             argv += ["-m", model]
         return argv + [prompt]
@@ -385,7 +465,17 @@ class CLIClient:
         else:
             raise ModelUnavailable("MODEL_UNAVAILABLE", f"unknown CLI provider {provider}")
         try:
-            completed = subprocess.run(argv, capture_output=True, text=True, timeout=timeout, check=False)
+            with tempfile.TemporaryDirectory(prefix="openburnbar-memory-cli-") as scratch:
+                os.chmod(scratch, 0o700)
+                completed = subprocess.run(
+                    argv,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout,
+                    check=False,
+                    cwd=scratch,
+                    env=sanitized_cli_environment(),
+                )
         except subprocess.TimeoutExpired as exc:
             raise ModelUnavailable("MODEL_UNAVAILABLE", f"{provider} timed out after {timeout:.0f}s") from exc
         except (OSError, subprocess.SubprocessError) as exc:

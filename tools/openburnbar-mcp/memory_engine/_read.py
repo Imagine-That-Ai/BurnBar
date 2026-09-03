@@ -323,12 +323,20 @@ class _ReadPath:
         for item in recalled["results"]:
             if (item.get("metadata") or {}).get("injectionLabels"):
                 continue
-            line = f"[{item['memoryID']}] ({item['kind']}/{item['scope']}, confidence {float(item['confidence']):.2f}) {item['body']}"
-            cost = _estimate_tokens(line)
+            body = str(item["body"])
+            prefix = (
+                f"[{item['memoryID']}] ({item['kind']}/{item['scope']}, confidence {float(item['confidence']):.2f}) "
+            )
+            cost = _estimate_tokens(prefix + body)
             if listed and used + cost > budget:
                 break
+            # The first memory is always listed, but never past the budget: clip
+            # it the way `recall_pack` clips a single oversized line.
+            while not listed and cost > budget and len(body) > 120:
+                body = body[: max(120, int(len(body) * 0.75))].rstrip() + "…"
+                cost = _estimate_tokens(prefix + body)
             listed.append(item)
-            lines.append(line)
+            lines.append(prefix + body)
             used += cost
         signal: dict[str, Any] = {
             "untrustedContentWrapped": False,
@@ -1231,13 +1239,18 @@ def _parse_rerank_answer(parsed: Any, listed_ids: set[str]) -> dict[str, float] 
     for row in rows:
         if not isinstance(row, dict) or str(row.get("id")) not in listed_ids:
             return None
+        memory_id = str(row["id"])
+        if memory_id in scores:
+            return None  # a duplicate verdict is ambiguous, not a tie
         try:
             relevance = float(row.get("relevance"))
         except (TypeError, ValueError):
             return None
         if relevance != relevance:  # NaN
             return None
-        scores[str(row["id"])] = min(1.0, max(0.0, relevance))
+        scores[memory_id] = min(1.0, max(0.0, relevance))
+    if set(scores) != set(listed_ids):
+        return None  # every listed candidate must be scored, or the fusion order stands
     return scores
 
 
@@ -1247,12 +1260,12 @@ _CITATION_MARKER = re.compile(r"\[(mem_[0-9a-f]+)\]")
 def _validate_answer(parsed: Any, listed_ids: set[str]) -> dict[str, Any]:
     """Apply the answer contract: listed citations only, no sentinels, no tool calls, refusal on no evidence."""
     answer = str(parsed.get("answer") or "").strip() if isinstance(parsed, dict) else ""
-    raw_citations = parsed.get("citations") if isinstance(parsed, dict) else None
+    # Only inline markers count: a bare `citations` array cannot vouch for
+    # claims the answer text never ties to a memory.
     mentioned: list[str] = []
-    for candidate in (raw_citations if isinstance(raw_citations, list) else []) + _CITATION_MARKER.findall(answer):
-        text = str(candidate).strip()
-        if text and text not in mentioned:
-            mentioned.append(text)
+    for candidate in _CITATION_MARKER.findall(answer):
+        if candidate not in mentioned:
+            mentioned.append(candidate)
     refusal = {"answer": ANSWER_REFUSAL, "citations": [], "groundedness": "refused", "dropped": 0}
     upper = answer.upper()
     if any(sentinel in upper for sentinel in ANSWER_REJECT_SENTINELS):

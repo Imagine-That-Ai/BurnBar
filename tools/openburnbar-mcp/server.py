@@ -1601,6 +1601,18 @@ def _memory_db_path() -> Path:
     return _default_db_path().parent / "openburnbar-memory.sqlite"
 
 
+def _pro_extractor_may_spawn(requested_extractor: str) -> bool:
+    """True when the current policy could hand `memory-extract` to claude/codex."""
+    policy = me.load_policy()
+    if policy is None:
+        return False
+    hint = requested_extractor.partition(":")[2].strip().lower()
+    candidates = policy.models_for("memory-extract")
+    if hint:
+        candidates = [item for item in candidates if item.split("/", 1)[0] == hint]
+    return any(item.split("/", 1)[0] in me.CLI_PROVIDER_IDS for item in candidates)
+
+
 def _memory_engine() -> me.MemoryEngine:
     config = me.EngineConfig.from_env(retain_allowed=_capability_enabled("memory_secret_retain"))
     # Memory Pro: what the daemon lets this engine use; None keeps every path local.
@@ -2392,6 +2404,11 @@ def burnbar_memorize(
             return denied
         if denied := _capability_denial("burnbar_memorize", "memory_llm_extract"):
             return denied
+        # A `pro` policy may route extraction to a subscription CLI; launching one
+        # is `spawn_process`, whatever the extractor is called.
+        if requested_extractor.startswith("pro") and _pro_extractor_may_spawn(requested_extractor):
+            if denied := _capability_denial("burnbar_memorize", "spawn_process"):
+                return denied
     try:
         if isinstance(messages, str):
             stripped = messages.strip()
@@ -2495,6 +2512,8 @@ def burnbar_recall(
         parsed_filters = _memory_filter_arg(filters)
     except _InvalidJSONArgument as exc:
         return _invalid_json_payload(exc)
+    if not _capability_enabled("memory_llm_read"):
+        rerank = False  # reranking sends memory bodies to a model; that is a model read
     with _memory_engine() as engine:
         migration = _migrate_legacy_memories(engine, project_path)
         result = engine.recall(
@@ -2543,6 +2562,8 @@ def burnbar_recall_pack(
     """Build a token-budgeted, prompt-ready block of the most relevant memories (wrapped as retrieved data)."""
     if limited := _local_mcp_rate_limit("burnbar_recall_pack", "memory"):
         return limited
+    if not _capability_enabled("memory_llm_read"):
+        rerank = False
     with _memory_engine() as engine:
         migration = _migrate_legacy_memories(engine, project_path)
         result = engine.recall_pack(

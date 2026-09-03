@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import stat
 import sys
 import time
@@ -213,3 +214,84 @@ def test_no_key_material_reaches_the_engine_process():
     text = json.dumps(policy.__dict__, default=str)
     assert "sk-" not in text and "api_key" not in text.lower()
     assert all(not k.endswith("_API_KEY") for k in os.environ if "OPENBURNBAR_MEMORY" in k)
+
+
+def test_cli_argv_disables_every_tool_and_ignores_user_config():
+    claude = me.CLIClient.claude_argv("prompt", None)
+    disallowed = claude[claude.index("--disallowedTools") + 1].split(",")
+    for tool in ("Bash", "Write", "Edit", "Read", "Grep", "Glob", "WebFetch", "WebSearch", "Agent", "Task"):
+        assert tool in disallowed, tool
+    codex = me.CLIClient.codex_argv("prompt", None)
+    assert (
+        "--ignore-user-config" in codex
+        and "--ignore-rules" in codex
+        and codex[codex.index("--sandbox") + 1] == "read-only"
+    )
+
+
+def test_cli_calls_run_in_an_empty_isolated_directory_with_a_sanitized_environment(monkeypatch, tmp_path):
+    seen: dict = {}
+
+    def fake_run(argv, **kwargs):
+        seen["cwd"] = kwargs.get("cwd")
+        seen["env"] = kwargs.get("env")
+        seen["contents"] = sorted(os.listdir(kwargs["cwd"]))
+        return subprocess.CompletedProcess(argv, 0, stdout='{"result": "{\\"ok\\": true}"}', stderr="")
+
+    monkeypatch.setattr(me.providers.subprocess, "run", fake_run)
+    monkeypatch.setenv("OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN", "daemon-secret")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "aws-secret")
+    monkeypatch.setenv("GITHUB_TOKEN", "gh-secret")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "keep-for-cli")
+    me.CLIClient().chat_json(provider="claude_cli", model=None, prompt="p", timeout=5)
+    assert seen["cwd"] != os.getcwd() and not seen["contents"], "runs in an empty throwaway directory"
+    assert not os.path.isdir(seen["cwd"]), "the throwaway directory is removed afterwards"
+    env = seen["env"]
+    assert "OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN" not in env and "AWS_SECRET_ACCESS_KEY" not in env
+    assert "GITHUB_TOKEN" not in env and env.get("ANTHROPIC_API_KEY") == "keep-for-cli"
+    assert env.get("PATH") and env.get("HOME")
+
+
+def test_courier_verification_requires_the_first_party_signature(monkeypatch, tmp_path):
+    cli = tmp_path / "OpenBurnBarCLI"
+    cli.write_text("#!/bin/sh\n")
+    cli.chmod(0o755)
+    good = 'designated => identifier "com.openburnbar.cli" and anchor apple generic and certificate leaf[subject.OU] = "4Y367DF25B"'
+
+    def runner(output: str, verify_rc: int = 0):
+        def fake_run(argv, **kwargs):
+            if "--verify" in argv:
+                return subprocess.CompletedProcess(argv, verify_rc, stdout="", stderr="")
+            return subprocess.CompletedProcess(argv, 0, stdout=output, stderr="")
+
+        return fake_run
+
+    assert me.providers.verify_courier(str(cli), platform="darwin", run=runner(good)) is True
+    assert (
+        me.providers.verify_courier(str(cli), platform="darwin", run=runner(good.replace("4Y367DF25B", "EVIL")))
+        is False
+    )
+    assert (
+        me.providers.verify_courier(str(cli), platform="darwin", run=runner(good.replace("com.openburnbar.cli", "x")))
+        is False
+    )
+    assert me.providers.verify_courier(str(cli), platform="darwin", run=runner(good, verify_rc=1)) is False
+    assert (
+        me.providers.verify_courier("/opt/openburnbar/bin/openburnbar-cli", platform="linux", run=runner(good)) is False
+    ), "not root-owned here"
+    assert me.providers.verify_courier(str(cli), platform="linux", run=runner(good)) is False
+
+
+def test_signed_cli_path_prefers_the_release_helper_and_only_verified_candidates(monkeypatch, tmp_path):
+    helper = tmp_path / "Applications/OpenBurnBar.app/Contents/Helpers/OpenBurnBarCLI"
+    legacy = tmp_path / "Applications/OpenBurnBar.app/Contents/MacOS/openburnbar-cli"
+    for path in (helper, legacy):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("#!/bin/sh\n")
+        path.chmod(0o755)
+    monkeypatch.setattr(me.providers, "CLI_CANDIDATE_ROOTS", [str(tmp_path / "Applications/OpenBurnBar.app")])
+    monkeypatch.delenv(me.CLI_PATH_ENV, raising=False)
+    monkeypatch.setattr(me.providers, "verify_courier", lambda path, **_: path.endswith("Helpers/OpenBurnBarCLI"))
+    assert me.signed_cli_path() == str(helper)
+    monkeypatch.setattr(me.providers, "verify_courier", lambda path, **_: False)
+    assert me.signed_cli_path() is None, "an unverified binary is never the courier"

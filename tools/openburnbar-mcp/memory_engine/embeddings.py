@@ -173,10 +173,12 @@ class GatewayEmbeddingProvider(EmbeddingProvider):
     bearer from the courier policy. One probe at construction fixes the
     dimension; a refusal leaves the provider unavailable with the gateway's code."""
 
-    def __init__(self, call: Any) -> None:
+    def __init__(self, call: Any, *, models: Any = None) -> None:
         from .providers import ModelUnavailable
 
         self.call = call
+        self.models = models
+        self._auth_failed = False
         self.model = str(call.label)
         self.dimension = 0
         self.error: str | None = None
@@ -200,6 +202,8 @@ class GatewayEmbeddingProvider(EmbeddingProvider):
             vectors = self.call.embed(list(texts))
         except ModelUnavailable as exc:
             self.error = exc.code
+            if exc.code in ("UNAUTHORIZED", "TOKEN_EXPIRED", "INVALID_TOKEN"):
+                self._auth_failed = True
             return [None for _ in texts]
         out: list[list[float] | None] = []
         for vector in vectors:
@@ -207,6 +211,14 @@ class GatewayEmbeddingProvider(EmbeddingProvider):
         while len(out) < len(texts):
             out.append(None)
         return out
+
+    @property
+    def stale(self) -> bool:
+        """True once the scoped bearer behind `call` has expired (or was refused), so a cache must rebuild it."""
+        if self._auth_failed:
+            return True
+        policy = getattr(self.models, "policy", None)
+        return bool(policy is not None and policy.token_expired())
 
     def describe(self) -> dict[str, Any]:
         payload: dict[str, Any] = {
@@ -274,7 +286,8 @@ def _pro(_context: EmbeddingContext) -> EmbeddingProvider:
     from .providers import ModelRouter, ModelUnavailable, load_policy
 
     try:
-        candidate = GatewayEmbeddingProvider(ModelRouter(load_policy()).call("memory-embed"))
+        models = ModelRouter(load_policy())
+        candidate = GatewayEmbeddingProvider(models.call("memory-embed"), models=models)
     except ModelUnavailable as exc:
         return NullEmbeddingProvider(f"gateway embeddings unavailable: {exc.code}: {exc.reason}")
     if candidate.available:
@@ -305,7 +318,9 @@ def embedding_provider(force: EmbeddingProvider | None = None) -> EmbeddingProvi
     cache_key = f"{configured}|{model}|{base_url}"
     cached = _PROVIDER_CACHE.get(cache_key)
     if cached is not None:
-        return cached
+        if not getattr(cached, "stale", False):
+            return cached
+        _PROVIDER_CACHE.pop(cache_key, None)  # an expired bearer never serves from cache
     factory = EMBEDDING_PROVIDER_FACTORIES.get(configured)
     provider: EmbeddingProvider
     if factory is None:

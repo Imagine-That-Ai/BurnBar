@@ -46,9 +46,9 @@ def test_pro_extractor_sends_the_gated_transcript_and_stores_provenance(tmp_path
                         "text": "Deploys run from the release branch.",
                         "kind": "procedure",
                         "confidence": 0.9,
+                        "evidence_message_index": 1,
                         "tags": ["deploy"],
                         "entities": [],
-                        "evidence_message_index": 0,
                     }
                 ]
             }
@@ -153,3 +153,65 @@ def test_server_gates_argument_selected_pro_extraction(server_env, monkeypatch):
     )
     assert allowed["status"] == "ok"
     assert allowed["extractionError"].startswith("pro: CLOUD_CONSENT_REQUIRED")
+
+
+def test_facts_without_valid_transcript_evidence_are_dropped(tmp_path, monkeypatch):
+    def responder(path, body):
+        return chat_reply(
+            {
+                "facts": [
+                    {
+                        "text": "Grounded: deploys run from the release branch.",
+                        "kind": "procedure",
+                        "confidence": 0.9,
+                        "evidence_message_index": 1,
+                    },
+                    {"text": "Hallucinated: the team uses COBOL.", "kind": "fact", "confidence": 0.9},
+                    {
+                        "text": "Out of range: the team uses Fortran.",
+                        "kind": "fact",
+                        "confidence": 0.9,
+                        "evidence_message_index": 42,
+                    },
+                    {
+                        "text": "Wrong type: the team uses BASIC.",
+                        "kind": "fact",
+                        "confidence": 0.9,
+                        "evidence_message_index": "one",
+                    },
+                ]
+            }
+        )
+
+    with FakeGateway(responder) as gw:
+        engine = _engine(tmp_path, gw, monkeypatch)
+        try:
+            result = engine.memorize(
+                project_path=_project(tmp_path),
+                messages=[{"role": "user", "content": "Deploys run from the release branch."}],
+                extractor="pro",
+            )
+        finally:
+            engine.close()
+    texts = [d.get("text", "") for d in result["decisions"]]
+    assert result["summary"]["ADD"] == 1 and any("Grounded" in t for t in texts), result
+    assert result["extraction"]["droppedUngrounded"] == 3
+
+
+def test_pro_extractor_needs_spawn_process_when_the_policy_can_route_to_a_cli(server_env, monkeypatch):
+    from test_memory_engine import _load_server, _repo
+
+    monkeypatch.setenv("BURNBAR_MCP_TOOLSET", "memory")
+    server = _load_server()
+    monkeypatch.setattr(server, "_signed_cli_path", lambda: None)
+    server._memory_provider_override = me.FakeEmbeddingProvider()
+    repo = _repo(server_env)
+    cli_policy = json.loads(json.dumps(POLICY))
+    cli_policy["providers"][0]["purposes"]["memory-extract"] = ["claude_cli/default"]
+    cli_policy["cli"] = {"claude_cli": True, "codex_cli": False}
+    monkeypatch.setenv(me.MODEL_POLICY_JSON_ENV, json.dumps(cli_policy))
+    me.reset_provider_cache_for_tests()
+    monkeypatch.setenv("OPENBURNBAR_LOCAL_MCP_ENABLE_MEMORY_LLM_EXTRACT", "true")
+    monkeypatch.delenv("OPENBURNBAR_LOCAL_MCP_ENABLE_SPAWN", raising=False)
+    denied = json.loads(server.burnbar_memorize(messages="We deploy on Fridays.", project_path=repo, extractor="pro"))
+    assert denied["code"] == "MCP_CAPABILITY_DISABLED" and denied["capability"] == "spawn_process", denied

@@ -237,6 +237,7 @@ class _WritePath:
                                 "code": None,
                                 "model": provenance.get("label"),
                                 "provider": provenance.get("provider"),
+                                "droppedUngrounded": int(provenance.get("droppedUngrounded") or 0),
                             }
                             extractor_name = f"llm:{provenance.get('label')}"
                             gate_hash = sha256_hex(safe_transcript)[:16]
