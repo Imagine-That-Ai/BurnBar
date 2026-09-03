@@ -16,6 +16,8 @@ public protocol BurnBarCLIClient: Sendable {
     func approveMission(id: BurnBarMissionID, note: String?) throws -> BurnBarMissionSnapshot
     func simulatorRuns(projectSlug: String?) throws -> [BurnBarSimulatorRunSnapshot]
     func simulatorReplay(runID: BurnBarSimulatorRunID) throws -> BurnBarSimulatorRunSnapshot
+    func memoryRemember(_ request: BurnBarProjectMemoryRememberRequest) throws -> BurnBarProjectMemoryRememberResponse
+    func memoryForget(_ request: BurnBarProjectMemoryForgetRequest) throws -> BurnBarProjectMemoryForgetResponse
     func memoryRecall(query: String, projectPath: String?, limit: Int) throws -> BurnBarProjectMemoryRecallResponse
     /// Read-only SQL over the daemon's keyed store, for the signed-CLI courier
     /// the local MCP server routes through on production installs.
@@ -79,10 +81,39 @@ public struct BurnBarCLISocketClient: BurnBarCLIClient, Sendable {
             // Development launches may intentionally run without a token.
             return nil
         }
+        #elseif os(macOS)
+        do {
+            return try readTokenFile(canonicalMacOSAuthTokenURL(environment: environment).path)
+        } catch BurnBarTokenFileError.fileNotFound {
+            // Development launches may intentionally run without a token.
+            return nil
+        }
         #else
         return nil
         #endif
     }
+
+    #if os(macOS)
+    /// File name the macOS app writes the daemon socket token into, owner-only,
+    /// and then hands the daemon as `--socket-auth-token-file`
+    /// (`OpenBurnBarDaemonRuntimePaths.socketAuthTokenFileURL`, written in
+    /// `OpenBurnBarDaemonManager+Lifecycle.writeDaemonSocketAuthTokenFile`).
+    static let macOSAuthTokenFileName = "daemon-socket-auth-token"
+
+    /// The canonical macOS token file. Mirrors
+    /// `OpenBurnBarAppPaths.live(fileManager:).supportDirectory`, but resolves
+    /// the support-root override out of the supplied environment so the
+    /// resolver stays injectable in tests.
+    static func canonicalMacOSAuthTokenURL(environment: [String: String]) -> URL {
+        let paths: OpenBurnBarAppPaths
+        if let override = environment["OPENBURNBAR_SUPPORT_ROOT"], !override.isEmpty {
+            paths = OpenBurnBarAppPaths(applicationSupportRoot: URL(fileURLWithPath: override, isDirectory: true))
+        } else {
+            paths = OpenBurnBarAppPaths.live()
+        }
+        return paths.supportDirectory.appendingPathComponent(macOSAuthTokenFileName, isDirectory: false)
+    }
+    #endif
 
     public static func resolvedSocketURL(environment: [String: String]) -> URL {
         if let socketPath = environment["OPENBURNBAR_DAEMON_SOCKET_PATH"]
@@ -207,6 +238,26 @@ public struct BurnBarCLISocketClient: BurnBarCLIClient, Sendable {
                 method: .memoryRecall,
                 authToken: authToken,
                 params: BurnBarProjectMemoryRecallRequest(query: query, projectPath: projectPath, limit: limit)
+            )
+        )
+    }
+
+    public func memoryRemember(_ request: BurnBarProjectMemoryRememberRequest) throws -> BurnBarProjectMemoryRememberResponse {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .memoryRemember,
+                authToken: authToken,
+                params: request
+            )
+        )
+    }
+
+    public func memoryForget(_ request: BurnBarProjectMemoryForgetRequest) throws -> BurnBarProjectMemoryForgetResponse {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .memoryForget,
+                authToken: authToken,
+                params: request
             )
         )
     }

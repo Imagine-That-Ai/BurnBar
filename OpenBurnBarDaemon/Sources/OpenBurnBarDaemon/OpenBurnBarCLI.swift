@@ -318,6 +318,40 @@ public struct BurnBarCLIRunner {
         }
     }
 
+    /// `memory-remember`: stdin JSON `BurnBarProjectMemoryRememberRequest` -> stdout JSON result.
+    public func runMemoryRemember(input: Data) throws -> String {
+        let request: BurnBarProjectMemoryRememberRequest
+        do {
+            request = try JSONDecoder().decode(BurnBarProjectMemoryRememberRequest.self, from: input)
+        } catch {
+            throw BurnBarCLIError.missingArgument(
+                "memory-remember input must be a JSON object with a `text` string"
+            )
+        }
+        do {
+            return try Self.jsonString(client.memoryRemember(request))
+        } catch let error as NSError where error.domain == "OpenBurnBarCLI" {
+            throw BurnBarCLIError.privacyRPCError(code: error.code, message: error.localizedDescription)
+        }
+    }
+
+    /// `memory-forget`: stdin JSON `BurnBarProjectMemoryForgetRequest` -> stdout JSON result.
+    public func runMemoryForget(input: Data) throws -> String {
+        let request: BurnBarProjectMemoryForgetRequest
+        do {
+            request = try JSONDecoder().decode(BurnBarProjectMemoryForgetRequest.self, from: input)
+        } catch {
+            throw BurnBarCLIError.missingArgument(
+                "memory-forget input must be a JSON object with a `memoryID` string"
+            )
+        }
+        do {
+            return try Self.jsonString(client.memoryForget(request))
+        } catch let error as NSError where error.domain == "OpenBurnBarCLI" {
+            throw BurnBarCLIError.privacyRPCError(code: error.code, message: error.localizedDescription)
+        }
+    }
+
     private func runComputerUseCommand(_ arguments: [String]) throws -> BurnBarCLIInvocationResult {
         guard arguments.first == "panic-halt" else {
             return try BurnBarCLIComputerUseLiveSurface.run(arguments: arguments)
@@ -1021,6 +1055,9 @@ public struct BurnBarCLIRunner {
         "exec",
         "claude-handoff",
         "provider-bootstrap-claude",
+        "search-sql",
+        "memory-remember",
+        "memory-forget",
         "privacy-rpc",
         "install-shell-shims"
     ]

@@ -34,8 +34,8 @@ public sealed class WindowsSchemaUpgradeTests
 {
     private const string PreviousEndpoint = "v59_founder_lens";
     private const long PreviousMigrationCount = 60;
-    private const string CurrentEndpoint = "v64_token_usage_start_time_index";
-    private const long CurrentMigrationCount = 65;
+    private const string CurrentEndpoint = "v65_memory_quarantine_bodies";
+    private const long CurrentMigrationCount = 66;
 
     private const string Passphrase = "OBB-WinPort-SchemaUpgrade-Test-Key-0000000=";
     private const string KeyProvenance = "test-static:schema-upgrade";
@@ -65,6 +65,8 @@ public sealed class WindowsSchemaUpgradeTests
         Assert.Equal(CurrentMigrationCount, SqlCipherConnection.ReadMigrationCount(connection));
         Assert.True(ColumnExists(connection, "token_usage", "billingKind"));
         Assert.True(IndexExists(connection, "token_usage_billing_kind_time_idx"));
+        Assert.True(ColumnExists(connection, "memory_quarantine_bodies", "body"));
+        Assert.True(IndexExists(connection, "memory_quarantine_bodies_project_idx"));
 
         // The user's rows are still their rows — an upgrade, not a reset.
         Assert.Equal(SeedRows.Count, ScalarLong(connection, "SELECT count(*) FROM token_usage"));
@@ -126,6 +128,12 @@ public sealed class WindowsSchemaUpgradeTests
             Assert.Equal(
                 ReadIndexNames(freshConnection, "token_usage"),
                 ReadIndexNames(upgradedConnection, "token_usage"));
+            Assert.Equal(
+                ReadTableInfo(freshConnection, "memory_quarantine_bodies"),
+                ReadTableInfo(upgradedConnection, "memory_quarantine_bodies"));
+            Assert.Equal(
+                ReadIndexNames(freshConnection, "memory_quarantine_bodies"),
+                ReadIndexNames(upgradedConnection, "memory_quarantine_bodies"));
         }
 
         // Re-running over an already-current database must be a no-op, not a
@@ -158,7 +166,7 @@ public sealed class WindowsSchemaUpgradeTests
         // history must stay a strict PREFIX for the upgrade path to engage.
         Execute(
             profile.DatabasePath,
-            "DELETE FROM grdb_migrations WHERE identifier IN ('v60_billing_kind', 'v61_usage_memory', 'v62_war_room_originator', 'v63_standing_orders', 'v64_token_usage_start_time_index')");
+            "DELETE FROM grdb_migrations WHERE identifier IN ('v60_billing_kind', 'v61_usage_memory', 'v62_war_room_originator', 'v63_standing_orders', 'v64_token_usage_start_time_index', 'v65_memory_quarantine_bodies')");
 
         WindowsStorageProvisioningReport report =
             provisioner.EnsureReady(profile.DatabasePath, Passphrase, KeyProvenance);
@@ -341,7 +349,9 @@ public sealed class WindowsSchemaUpgradeTests
             ALTER TABLE token_usage DROP COLUMN originatorRef;
             DROP INDEX IF EXISTS standing_orders_enabled_fired_idx;
             DROP TABLE IF EXISTS standing_orders;
-            DELETE FROM grdb_migrations WHERE identifier IN ('v60_billing_kind', 'v61_usage_memory', 'v62_war_room_originator', 'v63_standing_orders', 'v64_token_usage_start_time_index');
+            DROP INDEX IF EXISTS memory_quarantine_bodies_project_idx;
+            DROP TABLE IF EXISTS memory_quarantine_bodies;
+            DELETE FROM grdb_migrations WHERE identifier IN ('v60_billing_kind', 'v61_usage_memory', 'v62_war_room_originator', 'v63_standing_orders', 'v64_token_usage_start_time_index', 'v65_memory_quarantine_bodies');
             """);
     }
 

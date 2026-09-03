@@ -23,6 +23,7 @@
   "license": "AGPL-3.0-only",
   "overrides": {
     "brace-expansion": "^5.0.9",
-    "minimatch": "^10.0.3"
+    "minimatch": "^10.0.3",
+    "qs": "6.16.0"
   }
 }

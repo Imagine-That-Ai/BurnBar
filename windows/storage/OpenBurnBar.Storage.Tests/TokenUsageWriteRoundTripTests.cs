@@ -26,9 +26,9 @@ public sealed class TokenUsageWriteRoundTripTests
     // regeneration output these literals mirror.
     private const string FixtureName = "openburnbar-db-compat-v64.sqlcipher";
     private const string ExpectedSchemaHash =
-        "daa8815b309cf4035183a47211eacdb0afa613b38928187f1b797654fc5c95cd";
-    private const string ExpectedMigrationEndpoint = "v64_token_usage_start_time_index";
-    private const long ExpectedMigrationCount = 65;
+        "81ebde43292fa3e38674f0f28da94f41a6a9488488c87fdb60250e88b328695e";
+    private const string ExpectedMigrationEndpoint = "v65_memory_quarantine_bodies";
+    private const long ExpectedMigrationCount = 66;
     private const long ExpectedUserVersion = 0;
 
     private static string FixtureSource =>

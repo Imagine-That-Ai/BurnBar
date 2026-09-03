@@ -21,4 +21,11 @@ extension BurnBarProjectCodeMemoryStore.SQLiteRow {
     func optionalDouble(_ index: Int) -> Double? {
         optionalString(index).flatMap(Double.init)
     }
+
+    func data(_ index: Int) -> Data? {
+        guard blobs.indices.contains(index) else { return nil }
+        if let blob = blobs[index] { return blob }
+        guard let string = optionalString(index) else { return nil }
+        return Data(base64Encoded: string)
+    }
 }

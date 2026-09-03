@@ -43,6 +43,83 @@ final class BurnBarCLITests: XCTestCase {
     }
     #endif
 
+    #if os(macOS)
+    /// The macOS app launches the daemon with
+    /// `--socket-auth-token-file <supportDirectory>/daemon-socket-auth-token`,
+    /// so the signed CLI courier has to read that same owner-only file when the
+    /// Python MCP launcher exports no token environment at all.
+    func testSocketAuthTokenReadsCanonicalMacOSSupportFile() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cli-macos-token-\(UUID().uuidString)", isDirectory: true)
+        let support = root.appendingPathComponent("OpenBurnBar", isDirectory: true)
+        try FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: root) }
+        try "canonical-macos-token\n".write(
+            to: support.appendingPathComponent("daemon-socket-auth-token"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let token = try BurnBarCLISocketClient.resolvedSocketAuthToken(environment: [
+            "OPENBURNBAR_SUPPORT_ROOT": root.path
+        ])
+        XCTAssertEqual(token, "canonical-macos-token")
+    }
+
+    func testSocketAuthTokenEnvironmentOverrideBeatsCanonicalMacOSSupportFile() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cli-macos-token-\(UUID().uuidString)", isDirectory: true)
+        let support = root.appendingPathComponent("OpenBurnBar", isDirectory: true)
+        try FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: root) }
+        try "canonical-macos-token\n".write(
+            to: support.appendingPathComponent("daemon-socket-auth-token"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let token = try BurnBarCLISocketClient.resolvedSocketAuthToken(environment: [
+            "OPENBURNBAR_SUPPORT_ROOT": root.path,
+            "OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN": "env-wins"
+        ])
+        XCTAssertEqual(token, "env-wins")
+    }
+
+    func testSocketAuthTokenIsNilWhenCanonicalMacOSSupportFileIsMissing() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cli-macos-token-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: root.appendingPathComponent("OpenBurnBar", isDirectory: true),
+            withIntermediateDirectories: true
+        )
+        addTeardownBlock { try? FileManager.default.removeItem(at: root) }
+
+        let token = try BurnBarCLISocketClient.resolvedSocketAuthToken(environment: [
+            "OPENBURNBAR_SUPPORT_ROOT": root.path
+        ])
+        XCTAssertNil(token)
+    }
+
+    func testSocketAuthTokenSurfacesEmptyCanonicalMacOSSupportFile() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cli-macos-token-\(UUID().uuidString)", isDirectory: true)
+        let support = root.appendingPathComponent("OpenBurnBar", isDirectory: true)
+        try FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: root) }
+        try "   \n".write(
+            to: support.appendingPathComponent("daemon-socket-auth-token"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        XCTAssertThrowsError(
+            try BurnBarCLISocketClient.resolvedSocketAuthToken(environment: [
+                "OPENBURNBAR_SUPPORT_ROOT": root.path
+            ])
+        )
+    }
+    #endif
+
     func testStartupPreflightReturnsUsageBeforeRunnerConstruction() {
         for arguments in [[], ["help"], ["--help"], ["-h"], ["--", "help"]] {
             let result = BurnBarCLIRunner.startupPreflightResult(
@@ -68,6 +145,21 @@ final class BurnBarCLITests: XCTestCase {
         XCTAssertEqual(result?.output.contains("openburnbar-cli <command>"), true)
     }
 
+    /// `startupPreflightResult` rejects any command missing from
+    /// `directCommandNames` under a canonical executable name, before the
+    /// socket is touched. The three courier commands the Python MCP invokes
+    /// must pass under every canonical name.
+    func testStartupPreflightAllowsTheSignedCourierCommands() {
+        for executable in ["/tmp/OpenBurnBarCLI", "/tmp/openburnbar-cli", "/tmp/burnbar", "/tmp/openburnbar"] {
+            for command in ["search-sql", "memory-remember", "memory-forget"] {
+                XCTAssertNil(
+                    BurnBarCLIRunner.startupPreflightResult(arguments: [command], invokedExecutablePath: executable),
+                    "\(command) must pass preflight under \(executable)"
+                )
+            }
+        }
+    }
+
     func testStartupPreflightAllowsKnownCommandsAndShellShimInvocations() {
         XCTAssertNil(BurnBarCLIRunner.startupPreflightResult(
             arguments: ["health"],
@@ -75,6 +167,14 @@ final class BurnBarCLITests: XCTestCase {
         ))
         XCTAssertNil(BurnBarCLIRunner.startupPreflightResult(
             arguments: ["remote-unlock-certification", "status"],
+            invokedExecutablePath: "/tmp/OpenBurnBarCLI"
+        ))
+        XCTAssertNil(BurnBarCLIRunner.startupPreflightResult(
+            arguments: ["memory-remember"],
+            invokedExecutablePath: "/tmp/OpenBurnBarCLI"
+        ))
+        XCTAssertNil(BurnBarCLIRunner.startupPreflightResult(
+            arguments: ["memory-forget"],
             invokedExecutablePath: "/tmp/OpenBurnBarCLI"
         ))
         XCTAssertNil(BurnBarCLIRunner.startupPreflightResult(
@@ -316,6 +416,27 @@ final class BurnBarCLITests: XCTestCase {
         XCTAssertThrowsError(try runner.runPrivacyRPC(input: Data(#"{"method":"daemon.health","params":{}}"#.utf8)))
     }
 
+    func testMemoryRememberReadsJSONAndReturnsTypedResult() throws {
+        let runner = BurnBarCLIRunner(client: FakeCLIClient())
+        let output = try runner.runMemoryRemember(input: Data(#"{"text":"Remember the signed bridge.","projectPath":"/tmp/fixture","kind":"architecture","scope":"project","tags":["bridge"],"confidence":0.9}"#.utf8))
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(output.utf8)) as? [String: Any])
+
+        XCTAssertEqual(object["memoryID"] as? String, "mem_architecture")
+        XCTAssertEqual(object["projectID"] as? String, "proj_/tmp/fixture")
+        XCTAssertEqual(object["auditHash"] as? String, "audit-remember")
+    }
+
+    func testMemoryForgetReadsJSONAndReturnsTypedResult() throws {
+        let runner = BurnBarCLIRunner(client: FakeCLIClient())
+        let output = try runner.runMemoryForget(input: Data(#"{"memoryID":"mem_signed_bridge","projectPath":"/tmp/fixture","requireCloudDelete":true}"#.utf8))
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(output.utf8)) as? [String: Any])
+
+        XCTAssertEqual(object["memoryID"] as? String, "mem_signed_bridge")
+        XCTAssertEqual(object["localDeleted"] as? Bool, true)
+        XCTAssertEqual(object["cloudDeletePending"] as? Bool, true)
+        XCTAssertEqual(object["auditHash"] as? String, "audit-forget")
+    }
+
     func testChatQueryCommandsEmitStableJSON() throws {
         let runner = BurnBarCLIRunner(client: FakeCLIClient())
         let threads = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(try runner.run(arguments: ["chat", "threads", "--query", "release", "--limit", "7"]).utf8)) as? [String: Any])
@@ -492,6 +613,26 @@ struct FakeCLIClient: BurnBarCLIClient {
             columns: ["id", "title"],
             rows: [[.text("conv-1"), .text(request.sql)]],
             truncated: false
+        )
+    }
+
+    func memoryRemember(_ request: BurnBarProjectMemoryRememberRequest) throws -> BurnBarProjectMemoryRememberResponse {
+        BurnBarProjectMemoryRememberResponse(
+            traceID: "trace-remember",
+            projectID: "proj_\(request.projectPath ?? "default")",
+            memoryID: "mem_\(request.kind)",
+            auditHash: "audit-remember"
+        )
+    }
+
+    func memoryForget(_ request: BurnBarProjectMemoryForgetRequest) throws -> BurnBarProjectMemoryForgetResponse {
+        BurnBarProjectMemoryForgetResponse(
+            traceID: "trace-forget",
+            projectID: "proj_\(request.projectPath ?? "default")",
+            memoryID: request.memoryID,
+            localDeleted: true,
+            cloudDeletePending: request.requireCloudDelete,
+            auditHash: "audit-forget"
         )
     }
 

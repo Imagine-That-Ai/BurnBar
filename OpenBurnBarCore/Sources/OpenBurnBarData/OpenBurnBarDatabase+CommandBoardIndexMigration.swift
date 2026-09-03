@@ -19,5 +19,27 @@ extension OpenBurnBarDatabase {
                 ifNotExists: true
             )
         }
+        // The daemon owns quarantined memory bodies, but the shared encrypted
+        // database schema must be complete no matter which first-party process
+        // opens a fresh profile first.
+        migrator.registerMigration("v65_memory_quarantine_bodies") { db in
+            try db.execute(
+                sql: """
+                CREATE TABLE IF NOT EXISTS memory_quarantine_bodies (
+                    memory_id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL,
+                    body TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+            try db.execute(
+                sql: """
+                CREATE INDEX IF NOT EXISTS memory_quarantine_bodies_project_idx
+                ON memory_quarantine_bodies(project_id)
+                """
+            )
+        }
     }
 }

@@ -5,9 +5,11 @@ extension BurnBarProjectCodeMemoryStore {
     func migrateLegacyPlaintextAgentMemories() throws {
         let rows = try queryRows(
             """
-            SELECT id, project_id, kind, scope, body_redacted, tags_json, source_path, updated_at
+            SELECT id, project_id, kind, scope, body_redacted, tags_json, source_path, updated_at, review_status
             FROM agent_memories
             WHERE body_redacted NOT LIKE 'Project Memory snapshot ref:%'
+              AND body_redacted NOT LIKE 'Quarantine body ref:%'
+              AND body_redacted != ''
             """,
             []
         )
@@ -17,21 +19,193 @@ extension BurnBarProjectCodeMemoryStore {
             let body = row.string(4)
             let tags = decodeStringArray(row.string(5))
             let now = row.optionalString(7) ?? Self.isoNow()
-            try upsertProjectMemorySection(
+            let reviewStatus = MemoryReviewStatus(rawValue: row.string(8)) ?? .approved
+            if reviewStatus == .approved {
+                try upsertProjectMemorySection(
+                    projectID: projectID,
+                    projectDisplayName: projectID,
+                    memoryID: memoryID,
+                    body: body,
+                    kind: row.string(2),
+                    scope: row.string(3),
+                    tags: tags,
+                    sourcePath: row.optionalString(6),
+                    now: now
+                )
+            } else if reviewStatus != .forgotten {
+                try upsertQuarantineMemoryBody(projectID: projectID, memoryID: memoryID, body: body, now: now)
+            }
+            try execute(
+                "UPDATE agent_memories SET body_redacted = ?, updated_at = ? WHERE id = ?",
+                [
+                    .text(
+                        reviewStatus == .approved
+                            ? Self.memoryBodyReference(memoryID: memoryID, projectID: projectID)
+                            : Self.quarantineBodyReference(memoryID: memoryID, projectID: projectID)
+                    ),
+                    .text(now),
+                    .text(memoryID)
+                ]
+            )
+        }
+        let legacyReviewRows = try queryRows(
+            """
+            SELECT id, project_id, updated_at
+            FROM agent_memories
+            WHERE body_redacted LIKE 'Project Memory snapshot ref:%'
+              AND review_status IN ('quarantined', 'rejected')
+            """,
+            []
+        )
+        for row in legacyReviewRows {
+            let memoryID = row.string(0)
+            let projectID = row.string(1)
+            let now = row.optionalString(2) ?? Self.isoNow()
+            guard let body = try projectMemorySectionBody(projectID: projectID, memoryID: memoryID) else { continue }
+            try upsertQuarantineMemoryBody(projectID: projectID, memoryID: memoryID, body: body, now: now)
+            try removeProjectMemorySection(
                 projectID: projectID,
                 projectDisplayName: projectID,
                 memoryID: memoryID,
-                body: body,
-                kind: row.string(2),
-                scope: row.string(3),
-                tags: tags,
-                sourcePath: row.optionalString(6),
                 now: now
             )
             try execute(
-                "UPDATE agent_memories SET body_redacted = ?, updated_at = ? WHERE id = ?",
-                [.text(Self.memoryBodyReference(memoryID: memoryID, projectID: projectID)), .text(now), .text(memoryID)]
+                "UPDATE agent_memories SET body_redacted = ? WHERE id = ? AND project_id = ?",
+                [.text(Self.quarantineBodyReference(memoryID: memoryID, projectID: projectID)), .text(memoryID), .text(projectID)]
             )
+        }
+    }
+
+    func backfillMemoryEmbeddings() throws {
+        guard embeddingProvider.isAvailable else { return }
+        let rows = try queryRows(
+            """
+            SELECT m.id, m.project_id
+            FROM agent_memories AS m
+            LEFT JOIN memory_embedding_refs AS e
+              ON e.memory_id = m.id AND e.embedding_version_id = ?
+            WHERE m.review_status = 'approved' AND m.valid_to IS NULL AND e.memory_id IS NULL
+            """,
+            [.text(embeddingProvider.versionID)]
+        )
+        for row in rows {
+            let memoryID = row.string(0)
+            let projectID = row.string(1)
+            guard let body = try projectMemorySectionBody(projectID: projectID, memoryID: memoryID) else { continue }
+            try upsertMemoryEmbedding(memoryID: memoryID, body: body, now: Self.isoNow())
+        }
+    }
+
+    func upsertMemoryEmbedding(memoryID: String, body: String, now: String) throws {
+        guard embeddingProvider.isAvailable,
+              let vector = embeddingProvider.embed(body),
+              vector.count == embeddingProvider.dimension else { return }
+        let norm = vector.reduce(0.0) { $0 + Double($1 * $1) }.squareRoot()
+        try execute(
+            """
+            INSERT OR REPLACE INTO memory_embedding_refs
+                (memory_id, embedding_version_id, dimension, vector, norm, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            [
+                .text(memoryID), .text(embeddingProvider.versionID), .int(vector.count),
+                .blob(BurnBarCodeVectorCodec.encode(vector)), .double(norm), .text(now)
+            ]
+        )
+    }
+
+    func setReviewStatus(
+        _ request: BurnBarProjectMemoryReviewStatusRequest
+    ) throws -> BurnBarProjectMemoryReviewStatusResponse {
+        let traceID = TraceContextBridge.currentContext().traceID
+        let root = try projectRoot(request.projectPath)
+        let projectID = try resolveProjectIdentity(root: root).projectID
+        let memoryID = request.memoryID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard memoryID.isEmpty == false else {
+            throw BurnBarProjectCodeMemoryStoreError.memoryNotFound(memoryID)
+        }
+        guard request.status == .quarantined || request.status == .approved || request.status == .rejected else {
+            throw BurnBarProjectCodeMemoryStoreError.invalidMemoryReviewStatus(request.status.rawValue)
+        }
+
+        return try databaseSync {
+            try execute("BEGIN IMMEDIATE", [])
+            do {
+                let rows = try queryRows(
+                    """
+                    SELECT kind, scope, tags_json, source_path, review_status
+                    FROM agent_memories
+                    WHERE id = ? AND project_id = ?
+                    LIMIT 1
+                    """,
+                    [.text(memoryID), .text(projectID)]
+                )
+                guard let row = rows.first else {
+                    throw BurnBarProjectCodeMemoryStoreError.memoryNotFound(memoryID)
+                }
+                let currentStatus = MemoryReviewStatus(rawValue: row.string(4)) ?? .approved
+                let body: String?
+                if currentStatus == .approved {
+                    body = try projectMemorySectionBody(projectID: projectID, memoryID: memoryID)
+                } else {
+                    body = try quarantineMemoryBody(projectID: projectID, memoryID: memoryID)
+                }
+                guard let body else {
+                    throw BurnBarProjectCodeMemoryStoreError.memoryNotFound(memoryID)
+                }
+                let now = Self.isoNow()
+                let bodyReference: String
+                if request.status == .approved {
+                    try upsertProjectMemorySection(
+                        projectID: projectID,
+                        projectDisplayName: root.lastPathComponent,
+                        memoryID: memoryID,
+                        body: body,
+                        kind: row.string(0),
+                        scope: row.string(1),
+                        tags: decodeStringArray(row.string(2)),
+                        sourcePath: row.optionalString(3),
+                        now: now
+                    )
+                    try upsertMemoryEmbedding(memoryID: memoryID, body: body, now: now)
+                    try removeQuarantineMemoryBody(projectID: projectID, memoryID: memoryID)
+                    bodyReference = Self.memoryBodyReference(memoryID: memoryID, projectID: projectID)
+                } else {
+                    try upsertQuarantineMemoryBody(projectID: projectID, memoryID: memoryID, body: body, now: now)
+                    try removeProjectMemorySection(
+                        projectID: projectID,
+                        projectDisplayName: root.lastPathComponent,
+                        memoryID: memoryID,
+                        now: now
+                    )
+                    bodyReference = Self.quarantineBodyReference(memoryID: memoryID, projectID: projectID)
+                }
+                try execute(
+                    "UPDATE agent_memories SET body_redacted = ?, review_status = ?, updated_at = ? WHERE id = ? AND project_id = ?",
+                    [
+                        .text(bodyReference), .text(request.status.rawValue), .text(now),
+                        .text(memoryID), .text(projectID)
+                    ]
+                )
+                let auditHash = try auditEvent(
+                    action: "memory.review_status",
+                    domain: "memory",
+                    projectID: projectID,
+                    subjectID: memoryID,
+                    labels: ["review_status:\(request.status.rawValue)"]
+                )
+                try execute("COMMIT", [])
+                return BurnBarProjectMemoryReviewStatusResponse(
+                    traceID: traceID,
+                    projectID: projectID,
+                    memoryID: memoryID,
+                    status: request.status,
+                    auditHash: auditHash
+                )
+            } catch {
+                try? execute("ROLLBACK", [])
+                throw error
+            }
         }
     }
 
@@ -107,6 +281,34 @@ extension BurnBarProjectCodeMemoryStore {
             }
         }
         return nil
+    }
+
+    func upsertQuarantineMemoryBody(projectID: String, memoryID: String, body: String, now: String) throws {
+        try execute(
+            """
+            INSERT INTO memory_quarantine_bodies (memory_id, project_id, body, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(memory_id) DO UPDATE SET
+                project_id = excluded.project_id,
+                body = excluded.body,
+                updated_at = excluded.updated_at
+            """,
+            [.text(memoryID), .text(projectID), .text(body), .text(now), .text(now)]
+        )
+    }
+
+    func quarantineMemoryBody(projectID: String, memoryID: String) throws -> String? {
+        try queryRows(
+            "SELECT body FROM memory_quarantine_bodies WHERE memory_id = ? AND project_id = ? LIMIT 1",
+            [.text(memoryID), .text(projectID)]
+        ).first?.optionalString(0)
+    }
+
+    func removeQuarantineMemoryBody(projectID: String, memoryID: String) throws {
+        try execute(
+            "DELETE FROM memory_quarantine_bodies WHERE memory_id = ? AND project_id = ?",
+            [.text(memoryID), .text(projectID)]
+        )
     }
 
     func loadProjectMemorySnapshot(projectID: String, projectDisplayName: String, now: String) throws -> [String: Any] {
@@ -231,6 +433,10 @@ extension BurnBarProjectCodeMemoryStore {
 
     static func memoryBodyReference(memoryID: String, projectID: String) -> String {
         "Project Memory snapshot ref:\(projectMemorySlug(for: projectID))#\(memoryID)"
+    }
+
+    static func quarantineBodyReference(memoryID: String, projectID: String) -> String {
+        "Quarantine body ref:\(projectMemorySlug(for: projectID))#\(memoryID)"
     }
 
     static func jsonData(_ object: Any) throws -> Data {

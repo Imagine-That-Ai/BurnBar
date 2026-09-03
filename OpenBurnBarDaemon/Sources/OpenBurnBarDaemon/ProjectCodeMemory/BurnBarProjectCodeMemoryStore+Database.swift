@@ -12,6 +12,7 @@ extension BurnBarProjectCodeMemoryStore {
         case int(Int)
         case int64(Int64)
         case double(Double)
+        case blob(Data)
         case null
     }
 
@@ -241,6 +242,55 @@ extension BurnBarProjectCodeMemoryStore {
             []
         )
         try execute("CREATE INDEX IF NOT EXISTS agent_memories_project_idx ON agent_memories(project_id, scope, updated_at)", [])
+        try execute(
+            """
+            CREATE TABLE IF NOT EXISTS memory_embedding_refs (
+                memory_id TEXT NOT NULL,
+                embedding_version_id TEXT NOT NULL,
+                dimension INTEGER NOT NULL,
+                vector BLOB NOT NULL,
+                norm REAL NOT NULL,
+                created_at TEXT NOT NULL,
+                PRIMARY KEY (memory_id, embedding_version_id)
+            )
+            """,
+            []
+        )
+        try execute(
+            "CREATE INDEX IF NOT EXISTS memory_embedding_refs_version_idx ON memory_embedding_refs(embedding_version_id, dimension)",
+            []
+        )
+        try execute(
+            """
+            CREATE TABLE IF NOT EXISTS memory_quarantine_bodies (
+                memory_id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                body TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """,
+            []
+        )
+        try execute(
+            "CREATE INDEX IF NOT EXISTS memory_quarantine_bodies_project_idx ON memory_quarantine_bodies(project_id)",
+            []
+        )
+        try execute(
+            """
+            CREATE TABLE IF NOT EXISTS memory_salience (
+                memory_id TEXT PRIMARY KEY,
+                salience REAL NOT NULL,
+                hit_count INTEGER NOT NULL DEFAULT 0,
+                last_reinforced_at TEXT,
+                corroboration INTEGER NOT NULL DEFAULT 1,
+                source_trust REAL NOT NULL,
+                computed_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """,
+            []
+        )
         // agent_memories_fts was a vestigial body-search index that can never be
         // populated: the redacted-index invariant keeps memory bodies out of the agent
         // index entirely (they live only in project_memory_snapshots). Drop it rather
