@@ -254,45 +254,97 @@ def memorize(
 # is a receipt -- counts, ids and hashes -- and never the memory text, the
 # transcript, or a decision's body. (CodeQL: clear-text logging of sensitive
 # information.)
-_PRINTABLE_TOP = ("status", "messages", "budgetSeconds", "transcriptPath", "error")
-_PRINTABLE_RESULT = (
-    "status",
-    "code",
-    "extractor",
-    "extractionError",
-    "sourceHash",
-    "ingestedAt",
-    "receiptStored",
-    "factsConsidered",
-    "summary",
-    "projectID",
-    "projectName",
+# The receipt on stdout is built only from values a reader can prove are not
+# memory text: vocabulary constants chosen by comparison, integer counts, and
+# booleans. Nothing is copied out of the result dict verbatim (CodeQL
+# py/clear-text-logging-sensitive-data).
+_KNOWN_STATUSES = (
+    "memorized",
+    "already_ingested",
+    "skipped_no_facts",
+    "rejected",
+    "skipped_disabled",
+    "skipped_missing_transcript",
+    "skipped_empty",
+    "timeout",
+    "error",
+    "ok",
+    "denied",
+    "rejected",
+    "unavailable",
 )
+_KNOWN_CODES = (
+    "ALREADY_INGESTED",
+    "MCP_CAPABILITY_DISABLED",
+    "MCP_RATE_LIMITED",
+    "INVALID_JSON_ARGUMENT",
+    "EMPTY_INPUT",
+    "PREVIOUSLY_REJECTED",
+    "AUX_TOO_LARGE",
+    "SECRET_DETECTED",
+)
+_KNOWN_EVENTS = ("ADD", "UPDATE", "DELETE", "NONE", "REJECT")
+_KNOWN_EXTRACTORS = ("heuristic", "claude", "ollama", "pro", "llm", "none", "custom")
+
+
+def _vocab(value: Any, vocabulary: tuple[str, ...], fallback: str = "other") -> str:
+    """The vocabulary constant equal to `value`, never `value` itself."""
+    for known in vocabulary:
+        if value == known:
+            return known
+    for known in vocabulary:
+        if isinstance(value, str) and value.startswith(known + ":"):
+            return known
+    return fallback
+
+
+def _count(value: Any) -> int:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, list | dict | str):
+        return len(value)
+    return 0
 
 
 def _redacted_output(result: dict[str, Any]) -> dict[str, Any]:
-    """The status line, with every field that could carry memory text removed.
+    """The status line as a receipt: vocabulary constants, counts and booleans only.
 
-    Decisions are reduced to their shape -- what happened, to which id -- because
-    `decisions[].text` is the memory body verbatim, and `reason` can quote it.
+    `decisions[].text` is the memory body verbatim and `reason` / `error` can quote
+    it, so no string from the result is ever echoed; the status and codes are
+    replaced by the matching constant, everything else by a count or a flag.
     """
-    printed = {key: result[key] for key in _PRINTABLE_TOP if key in result}
+    printed: dict[str, Any] = {
+        "status": _vocab(result.get("status"), _KNOWN_STATUSES),
+        "messages": _count(result.get("messages")),
+        "budgetSeconds": float(result["budgetSeconds"])
+        if isinstance(result.get("budgetSeconds"), int | float)
+        else None,
+        "transcriptPresent": bool(result.get("transcriptPath")),
+        "errored": bool(result.get("error")),
+    }
     inner = result.get("result")
     if not isinstance(inner, dict):
         return printed
-    summary = {key: inner[key] for key in _PRINTABLE_RESULT if key in inner}
-    decisions = inner.get("decisions")
-    if isinstance(decisions, list):
-        summary["decisions"] = [
-            {
-                key: decision[key]
-                for key in ("event", "code", "memoryID", "kind", "scope", "sensitivity", "reviewStatus")
-                if key in decision
-            }
-            for decision in decisions
-            if isinstance(decision, dict)
-        ]
-    printed["result"] = summary
+    summary_in = inner.get("summary") if isinstance(inner.get("summary"), dict) else {}
+    decisions_in = inner.get("decisions") if isinstance(inner.get("decisions"), list) else []
+    tally = {
+        event: sum(1 for d in decisions_in if isinstance(d, dict) and d.get("event") == event)
+        for event in _KNOWN_EVENTS
+    }
+    printed["result"] = {
+        "status": _vocab(inner.get("status"), _KNOWN_STATUSES),
+        "code": _vocab(inner.get("code"), _KNOWN_CODES, fallback="none") if inner.get("code") else None,
+        "extractor": _vocab(inner.get("extractor"), _KNOWN_EXTRACTORS),
+        "extractionErrored": bool(inner.get("extractionError")),
+        "sourceHashPresent": bool(inner.get("sourceHash")),
+        "receiptStored": bool(inner.get("receiptStored")),
+        "factsConsidered": _count(inner.get("factsConsidered")),
+        "summary": {event: _count(summary_in.get(event)) for event in _KNOWN_EVENTS},
+        "decisions": tally,
+        "decisionCount": len(decisions_in),
+    }
     return printed
 
 
