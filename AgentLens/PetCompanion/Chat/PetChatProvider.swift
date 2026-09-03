@@ -45,9 +45,11 @@ enum PetAuthStatus: String, Sendable, Equatable {
 /// provider and (b) offer a provider-agnostic throwing token stream for any
 /// surface that wants tokens without the heavyweight controller. Each concrete
 /// provider *wraps* the matching ``CLIBridge`` stream method and maps
-/// `CLIChatStreamEvent.text` into bare token strings; upstream errors either
-/// use the local floor before any token is emitted or propagate after partial
-/// output so callers never mistake a truncated stream for a complete answer.
+/// `CLIChatStreamEvent.text` into bare token strings; upstream errors
+/// propagate. Muse never substitutes the local floor — advertising Ready
+/// and then answering from a fake companion is a lie. Other backends may
+/// still use the local floor before any token is emitted so the pet
+/// surface does not go silent on a missing CLI.
 @MainActor
 protocol AgentChatProvider: AnyObject {
     /// The backend this provider answers as.
@@ -164,6 +166,11 @@ final class CLIBridgeChatProvider: AgentChatProvider {
             // running unresolved sensitive calls), so it can answer from the
             // pet surface without a desktop grant.
             return await bridge.isExecutableAvailable(named: "fx") ? .ready : .needsLogin
+        case .muse:
+            // Muse has enforceable permission flags (`--disable-write` /
+            // `--disable-shell` gate every spawn), so it can answer from the
+            // pet surface without a desktop grant.
+            return await bridge.isExecutableAvailable(named: "muse") ? .ready : .needsLogin
         case .grok, .kimi:
             return .unavailable
         case .omp:
@@ -187,7 +194,7 @@ final class CLIBridgeChatProvider: AgentChatProvider {
                         }
                     }
                 } catch {
-                    if !sentTokens {
+                    if !sentTokens, Self.substitutesLocalFallbackOnFailure(for: self.id) {
                         for await token in Self.fallbackStream(history: history) {
                             continuation.yield(token)
                         }
@@ -199,6 +206,15 @@ final class CLIBridgeChatProvider: AgentChatProvider {
                 continuation.finish()
             }
             continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
+    /// Muse is advertised Ready from a real CLI. A pre-token failure must
+    /// surface, not be laundered into the local companion floor.
+    static func substitutesLocalFallbackOnFailure(for id: ChatBackendID) -> Bool {
+        switch id {
+        case .muse: return false
+        default: return true
         }
     }
 
@@ -242,6 +258,8 @@ final class CLIBridgeChatProvider: AgentChatProvider {
             return bridge.chatJunieStream(systemPrompt: persona, userMessage: userMessage, workspaceDirectory: workspace)
         case .fx:
             return bridge.chatFxStream(systemPrompt: persona, userMessage: userMessage, workspaceDirectory: workspace)
+        case .muse:
+            return bridge.chatMuseStream(systemPrompt: persona, userMessage: userMessage, workspaceDirectory: workspace)
         case .grok, .kimi:
             // These backends were introduced without a CLI execution path — there is no
             // `chatGrokStream` / `chatKimiStream` on the bridge to call. The return type

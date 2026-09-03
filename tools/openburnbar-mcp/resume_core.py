@@ -548,7 +548,7 @@ def write_workspace_resume_hint(working_directory: str | None, target_norm: str,
 def _model_args(target_norm: str | None, target_model: str | None) -> list[str]:
     if not target_model:
         return []
-    if target_norm in {"claude_code", "codex"}:
+    if target_norm in {"claude_code", "codex", "muse"}:
         return ["--model", target_model]
     return []
 
@@ -592,6 +592,17 @@ def prepare_target_invocation(
         argv = ["goose"]
         if working_directory:
             argv.extend(["--path", working_directory])
+        argv.append(briefing_md)
+        return (argv, None)
+    if target_norm == "muse":
+        # Handoff (unvalidated-handle rule): the briefing prompt opens an
+        # interactive `muse` TUI session via the verified flag set
+        # (`muse --workspace/--model …`; Muse Code 1.0.2). Mirrors the Swift
+        # daemon's BurnBarResumeService.targetInvocation.
+        argv = ["muse"]
+        if working_directory:
+            argv.extend(["--workspace", working_directory])
+        argv.extend(model)
         argv.append(briefing_md)
         return (argv, None)
     if not write_resume_hint:

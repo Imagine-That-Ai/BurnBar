@@ -497,6 +497,7 @@ class ThreadInboxStore internal constructor(
         "cursoragent", "cursor_agent", "cursor-agent" -> AssistantRuntimeID.CURSOR_AGENT
         "junie", "jetbrainsjunie", "jetbrains_junie", "jetbrains-junie" -> AssistantRuntimeID.JUNIE
         "fx", "vercelfx", "vercel_fx", "vercel-fx" -> AssistantRuntimeID.FX
+        "muse", "musecode", "muse_code", "muse-code", "metamuse", "meta-muse" -> AssistantRuntimeID.MUSE
         else -> null
     }
 

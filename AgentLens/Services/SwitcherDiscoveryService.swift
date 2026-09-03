@@ -22,6 +22,7 @@ enum DiscoverySource: Equatable {
     case pi(executablePath: String?, configDirectory: String?)
     case junie(executablePath: String?, configDirectory: String?)
     case fx(executablePath: String?, configDirectory: String?)
+    case muse(executablePath: String?, configDirectory: String?)
     case omp(executablePath: String?, configDirectory: String?)
     case primeAgent(executablePath: String?, configDirectory: String?)
     case hermes(executablePath: String?, configDirectory: String?)
@@ -224,6 +225,8 @@ final class SwitcherDiscoveryService: ObservableObject {
                 source = .junie(executablePath: cliInfo.executablePath, configDirectory: cliInfo.configDirectory)
             case .fx:
                 source = .fx(executablePath: cliInfo.executablePath, configDirectory: cliInfo.configDirectory)
+            case .muse:
+                source = .muse(executablePath: cliInfo.executablePath, configDirectory: cliInfo.configDirectory)
             case .omp:
                 source = .omp(executablePath: cliInfo.executablePath, configDirectory: cliInfo.configDirectory)
             case .primeAgent:
@@ -474,6 +477,18 @@ final class SwitcherDiscoveryService: ObservableObject {
                     displayLabel: "fx",
                     configDirectory: configDirectory,
                     accountDescription: "fx local profile"
+                ),
+                sortKey: 0
+            )
+        case .muse(_, let configDirectory):
+            record = SwitcherProfileRecord(
+                targetKind: .cli,
+                cliType: .muse,
+                cliMetadata: SwitcherCLIProfileMetadata(
+                    workingDirectory: nil,
+                    displayLabel: "Muse Code",
+                    configDirectory: configDirectory,
+                    accountDescription: "Muse Code local profile"
                 ),
                 sortKey: 0
             )
@@ -996,6 +1011,9 @@ final class SwitcherDiscoveryService: ObservableObject {
                 case .fx(_, let configDirectory):
                     return cliType == .fx
                         && configDirectory == saved.cliMetadata?.configDirectory
+                case .muse(_, let configDirectory):
+                    return cliType == .muse
+                        && configDirectory == saved.cliMetadata?.configDirectory
                 case .omp(_, let configDirectory):
                     return cliType == .omp
                         && configDirectory == saved.cliMetadata?.configDirectory
@@ -1110,6 +1128,8 @@ final class SwitcherDiscoveryService: ObservableObject {
             return .junie(executablePath: CLILaunchAdapter.executablePath(for: .junie), configDirectory: nil)
         case .fx:
             return .fx(executablePath: CLILaunchAdapter.executablePath(for: .fx), configDirectory: nil)
+        case .muse:
+            return .muse(executablePath: CLILaunchAdapter.executablePath(for: .muse), configDirectory: nil)
         case .omp:
             return .omp(executablePath: CLILaunchAdapter.executablePath(for: .omp), configDirectory: nil)
         case .primeAgent:
@@ -1157,7 +1177,7 @@ final class SwitcherDiscoveryService: ObservableObject {
             success = true
             #endif
 
-        case .codex, .claudeCode, .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie, .primeAgent, .fx, .hermes, .goose, .windsurf, .openClaude, .openClaw:
+        case .codex, .claudeCode, .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie, .primeAgent, .fx, .muse, .hermes, .goose, .windsurf, .openClaude, .openClaw:
             // Quick CLI version check
             let cliType: SwitcherCLIProfileType
             switch identity.source {
@@ -1174,6 +1194,7 @@ final class SwitcherDiscoveryService: ObservableObject {
             case .pi: cliType = .pi
             case .junie: cliType = .junie
             case .fx: cliType = .fx
+            case .muse: cliType = .muse
             case .omp: cliType = .omp
             case .primeAgent: cliType = .primeAgent
             case .hermes: cliType = .hermes
@@ -1265,6 +1286,9 @@ final class SwitcherDiscoveryService: ObservableObject {
             return .junie
         case .fx:
             // fx has no quota signal; usage is tracked from local sessions.
+            return nil
+        case .muse:
+            // Muse has no quota signal; usage is tracked from local sessions.
             return nil
         case .omp:
             return .omp
@@ -1435,6 +1459,7 @@ final class SwitcherDiscoveryService: ObservableObject {
         case (.pi, .piCLI): return true
         case (.junie, .junieCLI): return true
         case (.fx, .fxCLI): return true
+        case (.muse, .museCLI): return true
         case (.omp, .ompCLI): return true
         default: return false
         }
@@ -1459,6 +1484,7 @@ extension DiscoverySource {
         case .pi: return .pi
         case .junie: return .junie
         case .fx: return .fx
+        case .muse: return .muse
         case .omp: return .omp
         case .primeAgent: return .primeAgent
         case .hermes: return .hermes

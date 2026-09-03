@@ -122,6 +122,7 @@ const SHOWCASE_PROVIDER_IDS: string[] = [
   "warp",
   "cursoragent",
   "fx",
+  "muse",
 ];
 
 const PROVIDER_LOGO_ASSETS: Record<string, string> = {

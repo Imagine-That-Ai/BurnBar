@@ -1982,6 +1982,7 @@
 		B1DFC65D3263101A6E0C4A9D /* OpenBurnBarRecap in Frameworks */ = {isa = PBXBuildFile; productRef = E9A78763B3527956147AD99D /* OpenBurnBarRecap */; };
 		B2211ED1FC3D3A5136F15021 /* DownloadSyncServiceMattersTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0C9DB0ADD90D8E69BD2AF82 /* DownloadSyncServiceMattersTests.swift */; };
 		B23BEAC1D039988B90AEDF7E /* chat_history.jsonl in Resources */ = {isa = PBXBuildFile; fileRef = 6D5BE3DF40ACA889F763E0E7 /* chat_history.jsonl */; };
+		A8F2D6C1B4E7093A5C8D2E17 /* muse-code-real-session-usage.jsonl in Resources */ = {isa = PBXBuildFile; fileRef = 9E4C1B7A2F8D3A6C5B0E4D91 /* muse-code-real-session-usage.jsonl */; };
 		B24448C8BD0693DF176FFEDE /* eligible_providers.json in Resources */ = {isa = PBXBuildFile; fileRef = 6DC552EFE1DAB54ED5800522 /* eligible_providers.json */; };
 		B249FD2CEBFBD1D25EF8A889 /* WidgetSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 182EA49E1B859C57DF40140F /* WidgetSnapshotTests.swift */; };
 		B258399510879328561BE5C2 /* BugReportSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FC18249569DF1A17C7D9D4D /* BugReportSheetView.swift */; };
@@ -4183,6 +4184,7 @@
 		6D32523D43A132C68FFD832F /* MercuryFoilCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MercuryFoilCard.swift; sourceTree = "<group>"; };
 		6D3B27B5F58F779AFDD9C6A8 /* ChartStudioPromptEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartStudioPromptEngine.swift; sourceTree = "<group>"; };
 		6D5BE3DF40ACA889F763E0E7 /* chat_history.jsonl */ = {isa = PBXFileReference; path = chat_history.jsonl; sourceTree = "<group>"; };
+		9E4C1B7A2F8D3A6C5B0E4D91 /* muse-code-real-session-usage.jsonl */ = {isa = PBXFileReference; path = "muse-code-real-session-usage.jsonl"; sourceTree = "<group>"; };
 		6D6B46FFF45C8F6490AC4218 /* SwitcherRuntimeLogCaptureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwitcherRuntimeLogCaptureTests.swift; sourceTree = "<group>"; };
 		6D7A75CADA99FFDC5E01EDAE /* MobileBugReportingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileBugReportingTests.swift; sourceTree = "<group>"; };
 		6D8DBC78E46F7284B8B0185C /* OpenBurnBarDaemonServerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBurnBarDaemonServerTests.swift; sourceTree = "<group>"; };
@@ -10333,6 +10335,7 @@
 			children = (
 				BBAEC6C96642DF58842DEE61 /* ClaudeCodePaths */,
 				E47B05D3EB17BF868F388F7E /* DBByteCompat */,
+				9E4C1B7A2F8D3A6C5B0E4D91 /* muse-code-real-session-usage.jsonl */,
 				8AD1B32398F525AC2986CABD /* ParserContract */,
 				E0EBCFC143025FBA1CE27306 /* ReplayGoldens */,
 				90D815BE0C621B67B340085A /* StreamGolden */,
@@ -11260,6 +11263,7 @@
 				787835F8FEB2CAB19D3DD5AB /* claude-stream-mac-golden-events.json in Resources */,
 				88715BC892E1BD50B657C973 /* claude-stream-mac-golden.jsonl in Resources */,
 				B24448C8BD0693DF176FFEDE /* eligible_providers.json in Resources */,
+				A8F2D6C1B4E7093A5C8D2E17 /* muse-code-real-session-usage.jsonl in Resources */,
 				14713D790F6B38E5B679D5FE /* llm-safe-wrap-vectors.json in Resources */,
 				57BC326D06F7374C7B75F293 /* openburnbar-db-compat-README.md in Resources */,
 				D943676FEDF65B46270974C4 /* openburnbar-db-compat-params-observed.json in Resources */,

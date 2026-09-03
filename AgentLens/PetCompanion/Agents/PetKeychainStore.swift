@@ -39,6 +39,7 @@ struct PetKeychainStore: Sendable {
         case cursorAgent = "CursorAgent"
         case junie = "Junie"
         case fx = "fx"
+        case muse = "Muse"
         case grok = "Grok"
         case kimi = "Kimi"
 
@@ -61,6 +62,7 @@ struct PetKeychainStore: Sendable {
             case .cursorAgent: self = .cursorAgent
             case .junie: self = .junie
             case .fx: self = .fx
+            case .muse: self = .muse
             // Distinct slots on purpose. `Slot` has no `.xAI`, and folding two
             // providers onto one slot would make them share a stored credential —
             // signing into Kimi would silently overwrite the Grok token.

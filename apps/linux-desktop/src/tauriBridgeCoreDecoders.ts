@@ -695,7 +695,10 @@ export function stableProviderPrefix(provider: string): string | undefined {
     junie: 'Junie',
     fx: 'fx',
     vercel_fx: 'fx',
-    vercel_fx_agent: 'fx'
+    vercel_fx_agent: 'fx',
+    muse: 'Muse Code',
+    muse_code: 'Muse Code',
+    meta_muse: 'Muse Code'
   };
   return known[normalized];
 }

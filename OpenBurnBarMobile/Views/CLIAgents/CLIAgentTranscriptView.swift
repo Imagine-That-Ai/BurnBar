@@ -213,6 +213,7 @@ struct CLIAgentTranscriptView: View {
         case .cursorAgent: return Color(hex: "00E5FF")
         case .junie:    return Color(hex: "48E054")
         case .fx:       return Color(hex: "A1A1AA")
+        case .muse:     return Color(hex: "0668E1")
         }
     }
 }

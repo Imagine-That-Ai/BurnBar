@@ -3642,8 +3642,8 @@
     {
       "id": "meta",
       "displayName": "Meta",
-      "baseURL": "https://api.together.xyz/v1",
-      "visibility": "hidden",
+      "baseURL": "https://api.meta.ai/v1",
+      "visibility": "public",
       "logoKey": "MetaProviderLogo",
       "capabilities": [
         "routing",
@@ -3651,9 +3651,82 @@
       ],
       "models": [
         {
+          "id": "muse-spark-1.3",
+          "displayName": "Muse Spark 1.3",
+          "visibility": "public",
+          "aliases": [
+            "muse-spark-1-3-standard"
+          ],
+          "matchers": [
+            {
+              "all": [
+                "muse-spark-1.3"
+              ],
+              "any": [],
+              "none": [
+                "contributor"
+              ]
+            }
+          ],
+          "pricing": {
+            "inputPerMToken": 1.25,
+            "outputPerMToken": 4.25,
+            "cacheReadPerMToken": 0.15
+          },
+          "canonicalModelID": "muse-spark-1.3"
+        },
+        {
+          "id": "muse-spark-1.3-contributor",
+          "displayName": "Muse Spark 1.3 (Contributor)",
+          "visibility": "public",
+          "aliases": [
+            "muse-spark-1-3-contributor"
+          ],
+          "matchers": [
+            {
+              "all": [
+                "muse-spark-1.3-contributor"
+              ],
+              "any": [],
+              "none": []
+            }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.1,
+            "outputPerMToken": 0.2,
+            "cacheReadPerMToken": 0.002
+          },
+          "canonicalModelID": "muse-spark-1.3-contributor"
+        },
+        {
+          "id": "muse-spark-1.1",
+          "displayName": "Muse Spark 1.1",
+          "visibility": "hidden",
+          "aliases": [
+            "muse-spark-1-1-standard"
+          ],
+          "matchers": [
+            {
+              "all": [
+                "muse-spark-1.1"
+              ],
+              "any": [],
+              "none": [
+                "contributor"
+              ]
+            }
+          ],
+          "pricing": {
+            "inputPerMToken": 1.25,
+            "outputPerMToken": 4.25,
+            "cacheReadPerMToken": 0.15
+          },
+          "canonicalModelID": "muse-spark-1.1"
+        },
+        {
           "id": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
           "displayName": "Llama 4 Maverick",
-          "visibility": "public",
+          "visibility": "hidden",
           "aliases": [
             "llama-4-maverick"
           ],
@@ -3835,11 +3908,11 @@
           }
         },
         {
-          "id": "muse-spark-1-2-standard",
+          "id": "muse-spark-1.2",
           "displayName": "Muse Spark 1.2",
           "visibility": "public",
           "aliases": [
-            "muse-spark-1.2"
+            "muse-spark-1-2-standard"
           ],
           "matchers": [
             {
@@ -3860,11 +3933,11 @@
           "canonicalModelID": "muse-spark-1.2"
         },
         {
-          "id": "muse-spark-1-2-contributor",
+          "id": "muse-spark-1.2-contributor",
           "displayName": "Muse Spark 1.2 (Contributor)",
-          "visibility": "hidden",
+          "visibility": "public",
           "aliases": [
-            "muse-spark-1.2-contributor"
+            "muse-spark-1-2-contributor"
           ],
           "matchers": [
             {

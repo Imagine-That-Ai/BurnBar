@@ -114,6 +114,7 @@ struct ChatTilesSettingsView: View {
         case .junie: return "Junie chat bridged from your Mac."
         case .omp: return "OMP chat bridged from your Mac."
         case .fx: return "fx chat bridged from your Mac."
+        case .muse: return "Muse Code chat bridged from your Mac."
         }
     }
 }

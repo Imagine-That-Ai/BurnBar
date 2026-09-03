@@ -450,6 +450,93 @@ struct FxAskJSONParser {
     }
 }
 
+// MARK: - MuseExecJSONLParser
+//
+// Parses `muse exec --json` stdout (verified against Muse Code 1.0.2):
+// one envelope per line shaped like
+// `{"payload_type": "run.output.delta",
+//   "payload": {"kind": "run_output_delta", "text": "<incremental segment>"}}`
+// with a final
+// `{"payload_type": "run.terminal.completed",
+//   "payload": {"kind": "run_terminal", "terminal": "completed",
+//               "text": "<full response>", "reason": null}}`.
+//
+// Deltas are INCREMENTAL segments (concatenating the observed `run_output_delta`
+// texts reproduces the terminal `text` verbatim), so each non-empty segment is
+// emitted as its own `.text` event. The terminal `text` is only a backstop:
+// the part not already streamed is emitted, so a dropped delta can never
+// silently truncate the answer, and a normal run never double-emits.
+//
+// Lifecycle/status envelopes (`task.lifecycle.*`, `run.lifecycle.*`,
+// `session.run.linked`, …) carry progress noise ("opening meta model stream
+// attempt 1/10"), not user-visible content, and are intentionally ignored —
+// same as the Codex parser ignoring non-message items. Muse runs handoff-only
+// resume (see `BurnBarResumeService`), so the session/run ids in the envelopes
+// are deliberately NOT surfaced as `.sessionID` events the way fx's are.
+//
+// Anything that is not a JSON envelope (a stdout warning from a future CLI, a
+// truncated tail line) falls back to raw `.text` so the bubble never goes
+// silently empty; truly empty lines are skipped.
+struct MuseExecJSONLParser {
+    private var streamedText = ""
+
+    mutating func events(fromLine line: String) -> (events: [CLIChatStreamEvent], error: CLIBridgeError?) {
+        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return ([], nil) }
+        guard let data = trimmed.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? UntypedJSONObject, // try?-ok(non-envelope line falls back to raw text)
+              let payload = obj["payload"] as? UntypedJSONObject,
+              let kind = payload["kind"] as? String
+        else {
+            return ([.text(line + "\n")], nil)
+        }
+
+        switch kind {
+        case "run_output_delta":
+            let segment = (payload["text"] as? String) ?? ""
+            guard !segment.isEmpty else { return ([], nil) }
+            streamedText += segment
+            return ([.text(segment)], nil)
+        case "run_terminal":
+            return terminalEvents(from: payload)
+        default:
+            return ([], nil)
+        }
+    }
+
+    private mutating func terminalEvents(from payload: UntypedJSONObject) -> (events: [CLIChatStreamEvent], error: CLIBridgeError?) {
+        let terminal = (payload["terminal"] as? String)?.lowercased()
+        let text = ((payload["text"] as? String) ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if terminal == "completed" || (terminal == nil && (payload["reason"] as? String) == nil) {
+            guard !text.isEmpty, text != streamedText else { return ([], nil) }
+            if text.hasPrefix(streamedText) {
+                let start = text.index(text.startIndex, offsetBy: streamedText.count)
+                let remainder = String(text[start...])
+                streamedText = text
+                return remainder.isEmpty ? ([], nil) : ([.text(remainder)], nil)
+            }
+            streamedText = text
+            return ([.text(text)], nil)
+        }
+        let reason = (payload["reason"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let message: String = {
+            if let reason, !reason.isEmpty, reason.lowercased() != (terminal ?? "") { return "\(terminal ?? "failed"): \(reason)" }
+            if !text.isEmpty { return text }
+            if let reason, !reason.isEmpty { return reason }
+            return "Muse reported an error"
+        }()
+        return ([], Self.eventError(from: message))
+    }
+
+    static func eventError(from message: String) -> CLIBridgeError {
+        if let detail = CLIQuotaExhaustionClassifier.classify(for: .muse, in: message) {
+            return .quotaExhausted(detail)
+        }
+        return .museEvent(message)
+    }
+}
+
 enum OpenAICompatibleUsageParser {
     static func usage(from obj: UntypedJSONObject) -> CLIUsageSnapshot? {
         let usage = (obj["usage"] as? UntypedJSONObject) ?? obj
@@ -713,5 +800,9 @@ extension CLIBridge {
 
     nonisolated static func codexEventError(from message: String) -> CLIBridgeError {
         CodexExecJSONLParser.eventError(from: message)
+    }
+
+    nonisolated static func museEventError(from message: String) -> CLIBridgeError {
+        MuseExecJSONLParser.eventError(from: message)
     }
 }

@@ -8,6 +8,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Muse Code is a first-class harness.** Meta's `muse` CLI (verified against
+  Muse Code 1.0.2) now stands alongside Codex, Claude Code, and Hermes
+  everywhere: switcher launch profile (`muse` executable, `~/.config/muse`
+  config dir, `~/.local/share/muse/sessions` session evidence), macOS chat
+  backend with headless `muse exec --json --model/--workspace` structured
+  streaming (incremental `run.output.delta` segments plus a terminal
+  completion backstop via `MuseExecJSONLParser`, so a dropped delta can never
+  silently truncate an answer) gated by
+  the enforceable `--disable-write`/`--disable-shell` flags (vendor
+  full-autonomy bypasses `--yolo`/`--disable-approval`/`--disable-sandbox`/
+  `--trust-workspace` are never passed), mobile Assistants tile + mirrored
+  CLI sessions + archived-log rows, handoff-only "Resume in…" target on all
+  three Apple surfaces plus Android and the MCP resume mirror, onboarding
+  scan/add (`Muse Code CLI`), daemon + Linux switcher shells, and Meta-blue
+  (`0668E1`) branding in every color table. Local usage parsing
+  (`MuseParser`, envelope JSONL, exact tokens + cost) already shipped; this
+  change wires the harness around it. Vendor autonomy bypasses are also
+  in the shared forbidden-flag detector. Pet Muse never substitutes the
+  local companion floor on a failed spawn. Pinned by
+  `PrimeAgentMuseProviderSurfaceTests`, `CLIArgumentBuilderForbiddenFlagTests`,
+  `CLIBridgeTests` live echo envelopes, and Android
+  `CliResumeTargetsTest`/`ThreadInboxRefreshPartsTest`.
 - **app.burnbar.ai is now reachable from every surface.** The member Data &
   Privacy Control Center existed only as a bare URL — nothing linked to it.
   The website's header More menu, mobile nav, footer trust column, and the
@@ -36,6 +58,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Symbol owed VoiceOver. Pinned by `FluidAuroraKernelTests` (12 tests).
 
 ### Fixed
+- **Muse Spark 1.3 and Muse Code usage now count.** Meta's catalog still pointed
+  at Together (`api.together.xyz`) and only knew `muse-spark-1.2`, so Spark 1.3
+  traffic through Meta Model API (`https://api.meta.ai/v1`) was an unknown model
+  and Muse Code sessions priced as fallback. Catalog now lists Spark 1.3 / 1.2 /
+  1.1 under their **wire IDs** (`muse-spark-1.3`, not `muse-spark-1-3-standard`),
+  Meta is a public routing provider on `api.meta.ai`, persisted Together URLs
+  rewrite on load, Together keys no longer unlock proxy routing, and
+  `MuseParser` unwraps Muse Code 1.0.2 `retained_frame` wrappers plus
+  `run.model.configured` so local JSONL tokens still land.
 - Console Profile compact counts now use B and T, so a trillion-token lifetime
   total reads as `1.09T` instead of `1085491M`. Model, harness, and combo labels
   wrap instead of clipping, and harness/combo breakdowns stay visible on

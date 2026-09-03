@@ -1078,6 +1078,7 @@ final class SwitcherProfileStoreTests: XCTestCase {
         XCTAssertEqual(SwitcherCLIProfileType.droid.canonicalAgentProvider, .factory)
         XCTAssertEqual(SwitcherCLIProfileType.forge.canonicalAgentProvider, .forgeDev)
         XCTAssertEqual(SwitcherCLIProfileType.antigravity.canonicalAgentProvider, .antigravity)
+        XCTAssertEqual(SwitcherCLIProfileType.muse.canonicalAgentProvider, .muse)
         // Each type must round-trip through providerID for SQL keying.
         for cliType in SwitcherCLIProfileType.allCases {
             XCTAssertFalse(cliType.providerID.rawValue.isEmpty, "\(cliType) providerID raw value must be non-empty")

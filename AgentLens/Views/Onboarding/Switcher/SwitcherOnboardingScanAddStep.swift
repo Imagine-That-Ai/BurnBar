@@ -137,6 +137,7 @@ struct SwitcherOnboardingScanAddStep: View {
                     case .pi: cliKind = .piCLI
                     case .junie: cliKind = .junieCLI
                     case .fx: cliKind = .fxCLI
+                    case .muse: cliKind = .museCLI
                     case .omp: cliKind = .ompCLI
                     case .primeAgent: cliKind = .primeAgentCLI
                     case .hermes: cliKind = .hermesCLI
@@ -427,6 +428,17 @@ struct SwitcherOnboardingScanAddStep: View {
                     await connectDifferentCLI(.fx)
                 }
 
+            case .museCLI:
+                differentAccountButton(
+                    title: "Connect Muse Code",
+                    subtitle: "Verify the local Muse Code profile on this Mac",
+                    icon: "terminal.fill",
+                    color: Color(hex: "0668E1"),
+                    isLoading: connectingCLIType == .muse
+                ) {
+                    await connectDifferentCLI(.muse)
+                }
+
             case .primeAgentCLI:
                 differentAccountButton(
                     title: "Connect Prime Agent",
@@ -566,6 +578,7 @@ struct SwitcherOnboardingScanAddStep: View {
         case (.pi, .piCLI): return true
         case (.junie, .junieCLI): return true
         case (.fx, .fxCLI): return true
+        case (.muse, .museCLI): return true
         case (.omp, .ompCLI): return true
         default: return false
         }
@@ -669,7 +682,7 @@ struct SwitcherOnboardingScanAddStep: View {
 
     private func signInIdentity(_ identity: DiscoveredIdentity) {
         switch identity.source {
-        case .codex, .claudeCode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie, .primeAgent, .fx, .hermes, .goose, .windsurf, .openClaude, .openClaw:
+        case .codex, .claudeCode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie, .primeAgent, .fx, .muse, .hermes, .goose, .windsurf, .openClaude, .openClaw:
             if let cliType = identity.source.cliType {
                 Task { await connectDifferentCLI(cliType) }
             }
@@ -688,7 +701,7 @@ struct SwitcherOnboardingScanAddStep: View {
             Task { await signInDifferentGoogle() }
         case .safari:
             Task { await signInDifferentApple() }
-        case .codex, .claudeCode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie, .primeAgent, .fx, .hermes, .goose, .windsurf, .openClaude, .openClaw:
+        case .codex, .claudeCode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie, .primeAgent, .fx, .muse, .hermes, .goose, .windsurf, .openClaude, .openClaw:
             if let cliType = identity.source.cliType {
                 Task { await connectDifferentCLI(cliType) }
             }
@@ -717,6 +730,7 @@ struct SwitcherOnboardingScanAddStep: View {
         case .pi: return .piCLI
         case .junie: return .junieCLI
         case .fx: return .fxCLI
+        case .muse: return .museCLI
         case .omp: return .ompCLI
         case .primeAgent: return .primeAgentCLI
         case .hermes: return .hermesCLI
@@ -770,6 +784,8 @@ struct SwitcherOnboardingScanAddStep: View {
             kind = .junieCLI
         case .fx:
             kind = .fxCLI
+        case .muse:
+            kind = .museCLI
         case .omp:
             kind = .ompCLI
         case .primeAgent:
@@ -1030,7 +1046,7 @@ private struct IdentityCard: View {
             return "Signed in with a different Google account?"
         case .safari:
             return "Use a different Apple ID?"
-        case .codex, .claudeCode, .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie, .primeAgent, .fx, .hermes, .goose, .windsurf, .openClaude, .openClaw:
+        case .codex, .claudeCode, .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie, .primeAgent, .fx, .muse, .hermes, .goose, .windsurf, .openClaude, .openClaw:
             return "Connect another account for this provider?"
         }
     }
@@ -1104,6 +1120,10 @@ private struct IdentityCard: View {
             Image(systemName: "terminal.fill")
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(Color(hex: "A1A1AA"))
+        case .muse:
+            Image(systemName: "terminal.fill")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(Color(hex: "0668E1"))
         case .omp:
             Image(systemName: "command")
                 .font(.system(size: 14, weight: .medium))
@@ -1419,7 +1439,7 @@ private extension DiscoveredIdentity {
                 return "Not installed"
             }
 
-        case .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie, .primeAgent, .fx, .hermes, .goose, .windsurf, .openClaude, .openClaw:
+        case .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie, .primeAgent, .fx, .muse, .hermes, .goose, .windsurf, .openClaude, .openClaw:
             switch authState {
             case .authenticated:
                 return "Logged in"
@@ -1456,6 +1476,7 @@ private extension DiscoveredIdentity {
              .pi(let executablePath, let configDirectory),
              .junie(let executablePath, let configDirectory),
              .fx(let executablePath, let configDirectory),
+             .muse(let executablePath, let configDirectory),
              .primeAgent(let executablePath, let configDirectory),
              .hermes(let executablePath, let configDirectory),
              .goose(let executablePath, let configDirectory),

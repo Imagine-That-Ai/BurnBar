@@ -24,7 +24,11 @@ enum CLIAgentMissionRuntimePlanner {
             // Kotlin, C#, TypeScript and firestore.rules, so a runtime token the GUI
             // accepts is one every other surface accepts too. Hand-maintaining the
             // aliases here is what let "vercel-fx" drift into being GUI-only.
-            switch MissionRuntimeCatalog.generated.canonicalID(for: wireToken) ?? wireToken {
+            // The default arm resolves through the CANONICAL id, so alias
+            // tokens ("muse-code", "jetbrains-junie") land on the first-class
+            // backend instead of degrading to a freeform custom backend.
+            let canonical = MissionRuntimeCatalog.generated.canonicalID(for: wireToken) ?? wireToken
+            switch canonical {
             case "pi":
                 return CLIAgentMissionBackend(chatBackend: .piAgent)
             case "claude":
@@ -46,6 +50,8 @@ enum CLIAgentMissionRuntimePlanner {
                 return CLIAgentMissionBackend(chatBackend: .cursorAgent)
             case "fx":
                 return CLIAgentMissionBackend(chatBackend: .fx)
+            case "muse":
+                return CLIAgentMissionBackend(chatBackend: .muse)
             case "grok":
                 return CLIAgentMissionBackend(chatBackend: .grok)
             case "kimi":
@@ -55,7 +61,7 @@ enum CLIAgentMissionRuntimePlanner {
             case "ollama":
                 return CLIAgentMissionBackend(rawValue: "ollama", displayName: "Ollama")
             default:
-                if let direct = ChatBackendID(rawValue: normalizedRuntime) {
+                if let direct = ChatBackendID(rawValue: canonical) {
                     return CLIAgentMissionBackend(chatBackend: direct)
                 }
                 return CLIAgentMissionBackend(rawValue: normalizedRuntime, displayName: requestedRuntime)
@@ -68,11 +74,11 @@ enum CLIAgentMissionRuntimePlanner {
 
         switch missionKind {
         case "diligence", "security":
-            return CLIAgentMissionBackend(chatBackend: firstEnabled([.claude, .codex, .hermes, .piAgent, .openclaw, .droid, .forge, .antigravity, .cursorAgent, .junie, .fx]) ?? .codex)
+            return CLIAgentMissionBackend(chatBackend: firstEnabled([.claude, .codex, .hermes, .piAgent, .openclaw, .droid, .forge, .antigravity, .cursorAgent, .junie, .fx, .muse]) ?? .codex)
         case "creative", "accretive", "ui_improvement", "custom":
-            return CLIAgentMissionBackend(chatBackend: firstEnabled([.openclaw, .antigravity, .cursorAgent, .codex, .hermes, .piAgent, .claude, .forge, .droid, .junie, .fx]) ?? .hermes)
+            return CLIAgentMissionBackend(chatBackend: firstEnabled([.openclaw, .antigravity, .cursorAgent, .codex, .hermes, .piAgent, .claude, .forge, .droid, .junie, .fx, .muse]) ?? .hermes)
         case "debt", "modernization", "provider_routing", "cost_efficiency", "project_focus":
-            return CLIAgentMissionBackend(chatBackend: firstEnabled([.codex, .claude, .hermes, .piAgent, .openclaw, .droid, .forge, .antigravity, .cursorAgent, .junie, .fx]) ?? .codex)
+            return CLIAgentMissionBackend(chatBackend: firstEnabled([.codex, .claude, .hermes, .piAgent, .openclaw, .droid, .forge, .antigravity, .cursorAgent, .junie, .fx, .muse]) ?? .codex)
         default:
             return CLIAgentMissionBackend(chatBackend: enabledBackends.first ?? .codex)
         }
@@ -138,7 +144,9 @@ enum CLIAgentMissionRuntimePlanner {
             switch chatBackend {
             case .hermes:
                 return false
-            case .codex, .claude, .openclaw, .piAgent, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp, .junie, .fx, .grok, .kimi:
+            case .codex, .claude, .openclaw, .piAgent, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp, .junie, .fx, .grok, .kimi, .muse:
+                return true
+            @unknown default:
                 return true
             }
         }
@@ -445,6 +453,17 @@ enum CLIAgentMissionRuntimePlanner {
                 ),
                 extraEnvironment: [:]
             )
+        case ChatBackendID.muse.rawValue:
+            return CLIAgentMissionDirectLaunchPlan(
+                executableName: "muse",
+                arguments: CLIArgumentBuilder.museArguments(
+                    prompt: hostPrompt,
+                    model: requestedModelID ?? "",
+                    workspaceDirectory: workingDirectory,
+                    capabilityGrant: grant
+                ),
+                extraEnvironment: [:]
+            )
         case ChatBackendID.fx.rawValue:
             return CLIAgentMissionDirectLaunchPlan(
                 executableName: "fx",
@@ -537,6 +556,7 @@ enum CLIAgentMissionRuntimePlanner {
             case .piAgent: return .pi
             case .junie: return .junie
             case .fx: return .fx
+            case .muse: return .muse
             case .grok: return .grok
             // Kimi has no AssistantRuntimeID of its own yet, so its missions are
             // reported under Grok's runtime identity. Giving Kimi a first-class

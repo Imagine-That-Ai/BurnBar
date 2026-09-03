@@ -1104,7 +1104,7 @@ final class SmartHubBridgeController {
         case .junie:      return "48E054"
         case .fx:         return "A1A1AA"
         case .primeAgent: return "582CFF"
-        case .muse:       return "582CFF"
+        case .muse:       return "0668E1"
         }
     }
 

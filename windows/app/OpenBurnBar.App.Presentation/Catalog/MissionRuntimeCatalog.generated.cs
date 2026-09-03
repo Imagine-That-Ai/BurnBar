@@ -165,6 +165,13 @@ public sealed class MissionRuntimeCatalog
             MissionRuntimeLaunch.None,
             new[] { MissionRuntimePlatform.Macos, MissionRuntimePlatform.Ios, MissionRuntimePlatform.Android, MissionRuntimePlatform.Windows, MissionRuntimePlatform.Linux }),
         new MissionRuntimeRow(
+            "muse",
+            new[] { "muse", "muse-code", "musecode", "muse_code", "meta-muse", "metamuse" },
+            "Muse Code",
+            new[] { MissionRuntimeSurface.Switcher, MissionRuntimeSurface.Assistant, MissionRuntimeSurface.ChatBackend, MissionRuntimeSurface.CliRuntime, MissionRuntimeSurface.ResumeTarget, MissionRuntimeSurface.MissionCreate, MissionRuntimeSurface.MissionEvent, MissionRuntimeSurface.MissionMirror, MissionRuntimeSurface.MissionReceipt, MissionRuntimeSurface.GrantRuntime },
+            MissionRuntimeLaunch.None,
+            new[] { MissionRuntimePlatform.Macos, MissionRuntimePlatform.Ios, MissionRuntimePlatform.Android, MissionRuntimePlatform.Windows, MissionRuntimePlatform.Linux }),
+        new MissionRuntimeRow(
             "gemini",
             new[] { "gemini", "gemini-cli", "geminicli" },
             "Gemini CLI",

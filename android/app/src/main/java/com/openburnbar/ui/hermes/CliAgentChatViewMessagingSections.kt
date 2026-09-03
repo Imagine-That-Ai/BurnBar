@@ -526,6 +526,7 @@ internal fun providerFor(runtime: AssistantRuntimeID): AgentProvider = when (run
     AssistantRuntimeID.CURSOR_AGENT -> AgentProvider.CURSOR
     AssistantRuntimeID.JUNIE -> AgentProvider.JUNIE
     AssistantRuntimeID.FX -> AgentProvider.FX
+    AssistantRuntimeID.MUSE -> AgentProvider.MUSE
     AssistantRuntimeID.HERMES -> AgentProvider.HERMES
     AssistantRuntimeID.PI -> AgentProvider.HERMES
 }
@@ -543,6 +544,7 @@ internal fun readyTagline(runtime: AssistantRuntimeID): String = when (runtime) 
     AssistantRuntimeID.CURSOR_AGENT -> "Cursor Agent is wired to your Mac. Ask it to work in the current workspace."
     AssistantRuntimeID.JUNIE -> "Junie is wired to your Mac. Ask it to inspect, plan, or work in your repo."
     AssistantRuntimeID.FX -> "fx is wired to your Mac. Ask it to inspect, plan, or work in your repo."
+    AssistantRuntimeID.MUSE -> "Muse Code is wired to your Mac. Ask it to inspect, plan, or work in your repo."
     AssistantRuntimeID.HERMES, AssistantRuntimeID.PI -> "Ready when you are."
 }
 
@@ -625,6 +627,13 @@ internal fun quickPromptsFor(runtime: AssistantRuntimeID): List<String> = when (
             "Explain this error",
         )
     AssistantRuntimeID.FX ->
+        listOf(
+            "Inspect the current repo",
+            "Plan an implementation",
+            "Review this change",
+            "Explain this error",
+        )
+    AssistantRuntimeID.MUSE ->
         listOf(
             "Inspect the current repo",
             "Plan an implementation",

@@ -97,6 +97,37 @@ final class BurnBarProviderAuthRegistryTests: XCTestCase {
         XCTAssertFalse(oauth?.storage.usesDaemonSlot ?? true)
     }
 
+    func test_meta_modelAPIKeyIsPrimaryAndTogetherNoLongerRoutes() {
+        let descriptor = BurnBarProviderAuthRegistry.descriptor(forCatalogProviderID: "meta")
+        XCTAssertEqual(descriptor?.displayName, "Meta")
+        XCTAssertEqual(descriptor?.primaryMethod.id, "meta-model-api-key")
+        XCTAssertTrue(descriptor?.primaryMethod.unlocksProxyRouting ?? false)
+        XCTAssertEqual(descriptor?.primaryMethod.dashboardURL, "https://dev.meta.ai/")
+
+        let together = descriptor?.method(id: "meta-together-key")
+        XCTAssertFalse(together?.unlocksProxyRouting ?? true)
+        XCTAssertTrue(BurnBarProviderAuthRegistry.authMethodAllowsProxyRouting(
+            providerID: "meta",
+            authMethodID: "meta-model-api-key"
+        ))
+        XCTAssertFalse(BurnBarProviderAuthRegistry.authMethodAllowsProxyRouting(
+            providerID: "meta",
+            authMethodID: "meta-together-key"
+        ))
+        XCTAssertFalse(BurnBarProviderAuthRegistry.authMethodAllowsProxyRouting(
+            providerID: "meta",
+            authMethodID: nil
+        ))
+        XCTAssertFalse(BurnBarProviderAuthRegistry.authMethodAllowsProxyRouting(
+            providerID: "meta",
+            authMethodID: ""
+        ))
+        XCTAssertEqual(
+            BurnBarProviderAuthRegistry.descriptor(forCatalogProviderID: "muse-spark")?.providerID,
+            "meta"
+        )
+    }
+
     func test_authMethodAllowsProxyRoutingRejectsKnownNonRoutingMethods() {
         XCTAssertTrue(BurnBarProviderAuthRegistry.authMethodAllowsProxyRouting(
             providerID: "openai",

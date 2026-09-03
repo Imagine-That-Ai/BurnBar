@@ -98,6 +98,9 @@ extension ChatSessionController {
             case .fx:
                 let m = chatModelFx.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "fx"
                 return (.fx, "OpenBurnBar fx Chat", m)
+            case .muse:
+                let m = chatModelMuse.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "muse-spark-1.3"
+                return (.muse, "OpenBurnBar Muse Chat", m)
             // The provider spelling for Grok is `.xAI`; `AgentProvider` has no `.grok`
             // member, and Kimi has its own `.kimi` rather than being filed under Grok.
             // Honour an explicitly requested model like every other backend above,

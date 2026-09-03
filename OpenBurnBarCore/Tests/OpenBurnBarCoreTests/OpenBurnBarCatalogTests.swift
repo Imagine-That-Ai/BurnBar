@@ -301,4 +301,45 @@ final class BurnBarCatalogTests: XCTestCase {
         let catalog = BurnBarCatalogLoader.bundledCatalog
         XCTAssertEqual(catalog.canonicalModelID(forModelName: "grok-code-fast-1"), "grok-code-fast-1")
     }
+
+    func test_bundledCatalog_recognizesMuseSpark13OnMetaModelAPI() throws {
+        let catalog = BurnBarCatalogLoader.bundledCatalog
+        let meta = try XCTUnwrap(catalog.provider(id: "meta"))
+        XCTAssertEqual(meta.baseURL, "https://api.meta.ai/v1")
+        XCTAssertEqual(meta.visibility, .public)
+        XCTAssertEqual(
+            catalog.suggestedModels(forProviderID: "meta").map(\.id),
+            ["muse-spark-1.3", "muse-spark-1.3-contributor", "muse-spark-1.2", "muse-spark-1.2-contributor"]
+        )
+
+        XCTAssertTrue(catalog.supportsModel(named: "muse-spark-1.3", providerID: "meta"))
+        XCTAssertTrue(catalog.supportsModel(named: "muse-spark-1.3-contributor", providerID: "meta"))
+        XCTAssertTrue(catalog.supportsModel(named: "muse-spark-1-3-standard", providerID: "meta"))
+        XCTAssertTrue(catalog.supportsModel(named: "muse-spark-1.2", providerID: "meta"))
+        XCTAssertTrue(catalog.supportsModel(named: "muse-spark-1.2-contributor", providerID: "meta"))
+        XCTAssertTrue(catalog.supportsModel(named: "muse-spark-1.1", providerID: "meta"))
+
+        let spark13 = try XCTUnwrap(catalog.pricing(forModelName: "muse-spark-1.3", providerID: "meta"))
+        let spark13Contributor = try XCTUnwrap(catalog.pricing(forModelName: "muse-spark-1.3-contributor", providerID: "meta"))
+        XCTAssertEqual(spark13.inputPerMToken, 1.25, accuracy: 0.001)
+        XCTAssertEqual(spark13.outputPerMToken, 4.25, accuracy: 0.001)
+        XCTAssertEqual(spark13.cacheReadPerMToken, 0.15, accuracy: 0.001)
+        XCTAssertEqual(spark13Contributor.inputPerMToken, 0.1, accuracy: 0.001)
+        XCTAssertEqual(spark13Contributor.outputPerMToken, 0.2, accuracy: 0.001)
+        XCTAssertEqual(spark13Contributor.cacheReadPerMToken, 0.002, accuracy: 0.001)
+
+        XCTAssertEqual(catalog.canonicalModelID(forModelName: "muse-spark-1.3", providerID: "meta"), "muse-spark-1.3")
+        XCTAssertEqual(
+            catalog.canonicalModelID(forModelName: "muse-spark-1.3-contributor", providerID: "meta"),
+            "muse-spark-1.3-contributor"
+        )
+        XCTAssertEqual(
+            catalog.canonicalModelID(forModelName: "muse-spark-1-3-standard", providerID: "meta"),
+            "muse-spark-1.3"
+        )
+        XCTAssertEqual(
+            catalog.canonicalModelID(forModelName: "muse-spark-1-3-contributor", providerID: "meta"),
+            "muse-spark-1.3-contributor"
+        )
+    }
 }

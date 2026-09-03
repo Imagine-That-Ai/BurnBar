@@ -729,6 +729,8 @@ private func defaultSwitcherConfigDirectory(
         return homeDirectoryURL.appendingPathComponent(".junie", isDirectory: true).path
     case .fx:
         return homeDirectoryURL.appendingPathComponent(".fx", isDirectory: true).path
+    case .muse:
+        return homeDirectoryURL.appendingPathComponent(".config/muse", isDirectory: true).path
     case .omp:
         return homeDirectoryURL.appendingPathComponent(".omp", isDirectory: true).path
     case .primeAgent:
@@ -797,6 +799,8 @@ private func quotaProvider(for cliType: SwitcherCLIProfileType) -> AgentProvider
         return .junie
     case .fx:
         return .fx
+    case .muse:
+        return .muse
     case .omp:
         return .omp
     case .primeAgent:

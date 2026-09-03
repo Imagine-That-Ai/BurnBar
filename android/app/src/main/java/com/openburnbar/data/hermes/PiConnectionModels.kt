@@ -210,6 +210,7 @@ enum class AssistantRuntimeID(val token: String, val displayName: String, val gl
     CURSOR_AGENT("cursorAgent", "Cursor Agent", "\u25A3"),
     JUNIE("junie", "Junie", "\u273D"),
     FX("fx", "fx", "\u0192"),
+    MUSE("muse", "Muse Code", "\u25C8"),
     ;
 
     /** True for runtimes that have a first-class Android surface today. */

@@ -679,6 +679,14 @@ extension ChatSessionController {
                             capabilityGrant: activeDesktopGrant,
                             resumeSessionID: self.fxResumeSessionID
                         )
+                    case .muse:
+                        return self.cliBridge.chatMuseStream(
+                            systemPrompt: augmentedSystem,
+                            userMessage: trimmed,
+                            workspaceDirectory: self.chatWorkspaceURL,
+                            model: requestModel,
+                            capabilityGrant: activeDesktopGrant
+                        )
                     case .grok, .kimi:
                         let backendName = self.chatBackend.displayName
                         return AsyncThrowingStream<CLIChatStreamEvent, Error> { continuation in
