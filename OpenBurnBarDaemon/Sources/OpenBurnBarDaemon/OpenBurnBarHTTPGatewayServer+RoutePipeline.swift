@@ -107,6 +107,28 @@ extension BurnBarHTTPGatewayServer {
         }
         let idempotencyKey = usageIdempotencyKey(accountingRequestID: pipeline.accountingRequestID, route: route)
         let attemptStartedAt = Date()
+        if let purpose = pipeline.purpose {
+            guard let memoryEgress else {
+                return .completed(.buffered(memoryEgressDenialResponse(BurnBarMemoryEgressDenial(
+                    code: "CLOUD_CONSENT_REQUIRED",
+                    message: "Memory egress policy is not configured on this daemon."
+                ))))
+            }
+            do {
+                try await memoryEgress.evaluate(purpose: purpose, providerID: route.providerID)
+            } catch let denial as BurnBarMemoryEgressDenial {
+                await memoryEgress.record(
+                    purpose: purpose, providerID: route.providerID, modelID: route.resolvedModelID,
+                    requestBytes: pipeline.bodyData.count, responseBytes: 0, outcome: "denied", code: denial.code, latencyMs: 0
+                )
+                return .completed(.buffered(memoryEgressDenialResponse(denial)))
+            } catch {
+                return .completed(.buffered(memoryEgressDenialResponse(BurnBarMemoryEgressDenial(
+                    code: "CLOUD_CONSENT_REQUIRED",
+                    message: "Memory egress policy unavailable: \(error.localizedDescription)"
+                ))))
+            }
+        }
         let attemptContext = GatewayRouteAttemptContext(
             bodyData: pipeline.bodyData,
             route: route,
@@ -119,7 +141,7 @@ extension BurnBarHTTPGatewayServer {
             // Verbatim SSE passthrough when the endpoint's stream
             // plan allows it for this attempt. Falls back to the
             // buffered path when the upstream cannot stream.
-            if let connection, let streamPlan = descriptor.streamAttempt(attemptContext) {
+            if pipeline.purpose == nil, let connection, let streamPlan = descriptor.streamAttempt(attemptContext) {
                 do {
                     let relay = try await relayProxyStream(
                         on: connection,
@@ -179,6 +201,13 @@ extension BurnBarHTTPGatewayServer {
             }
 
             let response = try await descriptor.proxyBuffered(attemptContext)
+            if let purpose = pipeline.purpose, let memoryEgress {
+                await memoryEgress.record(
+                    purpose: purpose, providerID: route.providerID, modelID: route.resolvedModelID,
+                    requestBytes: pipeline.bodyData.count, responseBytes: response.body.count, outcome: "allowed", code: nil,
+                    latencyMs: Int(Date().timeIntervalSince(attemptStartedAt) * 1_000)
+                )
+            }
             await router.markRouteSuccess(route)
             await modelHealthStore.recordSuccess(
                 modelID: requestedModel.originalID,
@@ -274,7 +303,8 @@ extension BurnBarHTTPGatewayServer {
         connection: NWConnection?,
         corsHeaders: [String: String],
         executionSource: UsageExecutionSource,
-        descriptor: GatewayEndpointDescriptor
+        descriptor: GatewayEndpointDescriptor,
+        purpose: GatewayPurpose? = nil
     ) async -> GatewayRouteOutcome {
         // remediation(gateway split): body validation + model-override resolution
         // moved to `parseModelRequest`; it returns the exact early-return
@@ -336,7 +366,7 @@ extension BurnBarHTTPGatewayServer {
             }
             let advertisedRouteKeysByFamily = routeResolution.routeKeysByFamily
             guard advertisedRouteKeysByFamily.values.contains(where: { !$0.isEmpty }) else {
-                if let attemptDegrade = descriptor.attemptDegrade,
+                if purpose == nil, let attemptDegrade = descriptor.attemptDegrade,
                    let degraded = await attemptDegrade(degradeRequest(requestedCanonicalModelID: nil)) {
                     routeLogAttempts.append(contentsOf: degraded.attempts)
                     if let outcome = degraded.outcome {
@@ -486,9 +516,10 @@ extension BurnBarHTTPGatewayServer {
                             wantsStream: wantsStream,
                             resolvedVariant: resolvedVariant,
                             accountingRequestID: accountingRequestID,
-                            executionSource: executionSource,
+                            executionSource: purpose == nil ? executionSource : BurnBarMemoryEgressEnforcer.executionSource,
                             requestedModel: requestedModel,
-                            logContext: logContext
+                            logContext: logContext,
+                            purpose: purpose
                         ),
                         routeLogAttempts: &routeLogAttempts,
                         lastError: &lastError,
@@ -510,7 +541,7 @@ extension BurnBarHTTPGatewayServer {
                         lastError,
                         requestedModel: requestedModel
                     )
-                    if let attemptDegrade = descriptor.attemptDegrade,
+                    if purpose == nil, let attemptDegrade = descriptor.attemptDegrade,
                        let degraded = await attemptDegrade(
                            degradeRequest(requestedCanonicalModelID: requiredCanonicalModelID)
                        ) {
@@ -562,7 +593,7 @@ extension BurnBarHTTPGatewayServer {
                 )
                 return .buffered(providerFailureResponse(lastError, modelID: modelID, route: lastFailedRoute))
             }
-            if let attemptDegrade = descriptor.attemptDegrade,
+            if purpose == nil, let attemptDegrade = descriptor.attemptDegrade,
                let degraded = await attemptDegrade(
                    degradeRequest(requestedCanonicalModelID: requestedCanonicalModelID)
                ) {
@@ -695,5 +726,16 @@ extension BurnBarHTTPGatewayServer {
 
     func routeKey(providerID: String, slotID: String?) -> String {
         "\(providerID)#\(slotID ?? "legacy")"
+    }
+}
+
+extension BurnBarHTTPGatewayServer {
+    /// Memory Pro denials use the OpenAI-style object error shape so the
+    /// Python engine can read a stable `code`.
+    func memoryEgressDenialResponse(_ denial: BurnBarMemoryEgressDenial) -> GatewayHTTPResponse {
+        let payload: [String: Any] = ["error": ["code": denial.code, "message": denial.message, "type": "memory_egress_denied"]]
+        let body = (try? JSONSerialization.data(withJSONObject: payload)).flatMap { String(data: $0, encoding: .utf8) }
+            ?? #"{"error":{"code":"\#(denial.code)","message":"denied"}}"#
+        return jsonResponse(status: 403, body: body)
     }
 }

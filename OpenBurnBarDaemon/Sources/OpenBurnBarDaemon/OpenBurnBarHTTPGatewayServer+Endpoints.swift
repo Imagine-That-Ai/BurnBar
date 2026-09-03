@@ -41,7 +41,45 @@ extension BurnBarHTTPGatewayServer {
             connection: connection,
             corsHeaders: corsHeaders,
             executionSource: executionSource(from: headers),
-            descriptor: chatCompletionsEndpointDescriptor
+            descriptor: chatCompletionsEndpointDescriptor,
+            purpose: GatewayPurpose(header: headers[GatewayPurpose.headerName])
+        )
+    }
+
+    func handleEmbeddings(body: String?, headers: [String: String]) async -> GatewayRouteOutcome {
+        await routeModelRequest(
+            body: body,
+            connection: nil,
+            corsHeaders: [:],
+            executionSource: executionSource(from: headers),
+            descriptor: embeddingsEndpointDescriptor,
+            purpose: GatewayPurpose(header: headers[GatewayPurpose.headerName])
+        )
+    }
+
+    /// `POST /v1/embeddings`: OpenAI-shaped, buffered only, OpenAI-compatible
+    /// providers only. Memory Pro's embedding purpose rides on it.
+    var embeddingsEndpointDescriptor: GatewayEndpointDescriptor {
+        GatewayEndpointDescriptor(
+            requestPath: "/v1/embeddings",
+            endpoint: "Embeddings",
+            routeErrorLogEvent: "gateway_embeddings_route_error",
+            routerLoggerCategory: "gateway-router-embeddings",
+            allowDynamicOpenAICompatibleModels: true,
+            treatsRouterErrorAsNoEligibleRoute: true,
+            finalRejectUsesRankingCanonicalModelID: false,
+            decodeRequest: { data in
+                let request = try JSONDecoder().decode(EmbeddingsRequest.self, from: data)
+                return GatewayDecodedModelRequest(model: request.model, wantsStream: false)
+            },
+            selectFormatFamilies: { _, _, _ in .families([.openaiCompat]) },
+            filterRankedRoutes: { routes, _ in routes },
+            emptyRankedRoutesRejection: nil,
+            streamAttempt: { _ in nil },
+            proxyBuffered: { context in
+                try await self.providerExecutor.proxyEmbeddings(body: context.bodyData, route: context.route)
+            },
+            attemptDegrade: nil
         )
     }
 

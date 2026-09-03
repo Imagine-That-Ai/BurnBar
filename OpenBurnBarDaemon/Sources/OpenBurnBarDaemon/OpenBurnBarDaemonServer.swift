@@ -557,8 +557,10 @@ public actor BurnBarDaemonServer {
             },
             executionReadinessGate: executionReadinessGate
         )
-        self.membershipService = membershipService ?? BurnBarMembershipService()
-        self.memoryGatewayTokenStore = memoryGatewayTokenStore ?? BurnBarGatewayScopedTokenStore()
+        let resolvedMembershipService = membershipService ?? BurnBarMembershipService()
+        let resolvedMemoryGatewayTokenStore = memoryGatewayTokenStore ?? BurnBarGatewayScopedTokenStore()
+        self.membershipService = resolvedMembershipService
+        self.memoryGatewayTokenStore = resolvedMemoryGatewayTokenStore
 
         if let path = configuration.indexDatabasePath?.trimmingCharacters(in: .whitespacesAndNewlines),
            path.isEmpty == false {
@@ -689,7 +691,14 @@ public actor BurnBarDaemonServer {
                 // stop fanning out live provider HTTP (and spawning Factory's
                 // `droid exec --help`) on every request.
                 modelCatalogCacheTTL: BurnBarHTTPGatewayServer.defaultModelCatalogCacheTTL,
-                logger: BurnBarDaemonLogger(category: "http-gateway")
+                logger: BurnBarDaemonLogger(category: "http-gateway"),
+                memoryEgress: BurnBarMemoryEgressEnforcer(
+                    configStore: resolvedConfigStore,
+                    membership: resolvedMembershipService,
+                    tokenStore: resolvedMemoryGatewayTokenStore,
+                    log: BurnBarMemoryEgressLogStore(),
+                    spentTodayUSD: BurnBarMemoryEgressEnforcer.spentTodayReader(usageRecorder: resolvedUsageRecorder)
+                )
             )
         } else {
             self.gatewayServer = nil

@@ -151,7 +151,24 @@ extension BurnBarHTTPGatewayServer {
             return
         }
 
-        if let requiredToken = configuration.authToken?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty {
+        let staticToken = configuration.authToken?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
+        if let purpose = GatewayPurpose(header: request.headers[GatewayPurpose.headerName]) {
+            // Memory Pro: a memory-purpose request may present the static token
+            // or a scoped token for that purpose, and may only hit the two proxy
+            // paths. Everything else is refused before routing.
+            let presented = clientAuthToken(from: request)
+            var authorized = false
+            if let presented, let staticToken, constantTimeTokensEqual(presented, staticToken) {
+                authorized = true
+            } else if let presented, let memoryEgress {
+                authorized = await memoryEgress.validateToken(presented, purpose: purpose)
+            }
+            guard authorized, BurnBarMemoryEgressEnforcer.allowedPaths.contains(request.path) else {
+                await writeResponse(on: connection, status: 401, headers: ["Content-Type": "application/json"], body: errorBody("unauthorized"))
+                connection.cancel()
+                return
+            }
+        } else if let requiredToken = staticToken {
             let presented = clientAuthToken(from: request)
             guard let presented, constantTimeTokensEqual(presented, requiredToken) else {
                 await writeResponse(on: connection, status: 401, headers: ["Content-Type": "application/json"], body: errorBody("unauthorized"))
@@ -248,6 +265,8 @@ extension BurnBarHTTPGatewayServer {
                 corsHeaders: corsHeaders
             )
 
+        case ("POST", "/v1/embeddings"):
+            return await handleEmbeddings(body: request.body, headers: request.headers)
         case ("POST", "/v1/responses"):
             return await handleResponses(body: request.body, headers: request.headers)
 
