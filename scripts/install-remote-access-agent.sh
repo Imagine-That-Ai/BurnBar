@@ -96,8 +96,18 @@ chmod 644 "$PRIVILEGED_STAGING_PLIST"
 # code on modern macOS: without it AMFI kills the daemon at spawn
 # (`OS_REASON_CODESIGNING`, verified 2026-09-04), so do NOT copy the
 # `--timestamp=none` profile from scripts/sign-openburnbar-local.sh here.
+#
+# The ad-hoc dev lane keeps the exact identifier (the identifier assertion
+# below applies to both lanes) but omits the Developer-ID-only options: a
+# secure timestamp and hardened runtime require a real certificate chain, and
+# the production client's designated requirement (Apple anchor + OpenBurnBar
+# team) rejects ad-hoc code by design. A dev machine that opted into
+# OPENBURNBAR_AGENT_ADHOC=1 therefore runs the daemon for LOCAL testing with
+# a dev-signed client (or a temporarily injected validator); it is not a
+# production trust lane. `scripts/verify-remote-access-agent.sh` fails closed
+# on ad-hoc installs unless the same opt-in is set on the verifying host.
 if [[ "${OPENBURNBAR_AGENT_ADHOC:-0}" == "1" ]]; then
-  codesign --force --sign - --entitlements "$ENTITLEMENTS" "$PRIVILEGED_STAGING_BIN"
+  codesign --force --sign - --entitlements "$ENTITLEMENTS" --identifier "$IDENTIFIER" "$PRIVILEGED_STAGING_BIN"
 else
   codesign \
     --force \
@@ -128,6 +138,15 @@ if [[ "${OPENBURNBAR_AGENT_ADHOC:-0}" != "1" ]]; then
   fi
   if ! grep -q "Authority=Developer ID Application" <<<"$SIGNATURE"; then
     echo "error: staged agent must carry a Developer ID Application signature." >&2
+    printf '%s\n' "$SIGNATURE" >&2
+    exit 1
+  fi
+  # The app's client trust gate pins the leaf OU to the OpenBurnBar team, so a
+  # Developer ID certificate from ANY other team would install "successfully"
+  # and then be rejected by every client on its first request. Fail at install
+  # time with the same constraint the runtime enforces.
+  if ! grep -q "^TeamIdentifier=4Y367DF25B" <<<"$SIGNATURE"; then
+    echo "error: staged agent is signed by the wrong team (expected TeamIdentifier=4Y367DF25B)." >&2
     printf '%s\n' "$SIGNATURE" >&2
     exit 1
   fi

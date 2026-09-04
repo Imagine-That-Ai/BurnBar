@@ -883,7 +883,14 @@ struct RemoteAccessAgentClient: Sendable {
     }
 
     private static let defaultServerCodeSignatureValidator: ServerCodeSignatureValidator = { token in
-        try OpenBurnBarPrivilegedTrust.validateCodeSignature(ofAuditToken: token)
+        // Pin the server to the remote-access agent's EXACT identifier, not the
+        // shared privileged-input allowlist: `typeCredential` writes the macOS
+        // login password, so another first-party root helper squatting this
+        // socket path must not be able to receive it.
+        try OpenBurnBarPrivilegedTrust.validateCodeSignature(
+            ofAuditToken: token,
+            requirementString: OpenBurnBarPrivilegedTrust.remoteAccessAgentDesignatedRequirement
+        )
     }
 
     private func send(_ request: RemoteAccessAgentRequest) throws {

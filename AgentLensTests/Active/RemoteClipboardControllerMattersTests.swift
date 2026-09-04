@@ -471,6 +471,26 @@ final class RemoteAccessAgentClientTrustTests: XCTestCase {
         }
         XCTAssertEqual(impostor.receivedByteCount(), 0, "no bytes may reach an unsigned listener")
     }
+
+    func testDefaultValidator_pinsExactAgentIdentifier_notSharedAllowlist() throws {
+        // M-10 review fix: the production validator must authenticate the
+        // server against the remote-access agent's EXACT identifier, not the
+        // shared privileged-input allowlist — otherwise any first-party root
+        // helper squatting the socket path could receive the login password.
+        let pinned = OpenBurnBarPrivilegedTrust.remoteAccessAgentDesignatedRequirement
+        XCTAssertTrue(
+            pinned.contains("identifier \"com.openburnbar.remote-access-agent\""),
+            "the client's server gate must pin the agent identifier exactly"
+        )
+        for other in OpenBurnBarPrivilegedTrust.privilegedInputPeerBundleIdentifiers
+        where other != OpenBurnBarPrivilegedTrust.remoteAccessAgentIdentifier {
+            XCTAssertFalse(
+                pinned.contains("identifier \"\(other)\""),
+                "the pinned server requirement must not accept \(other)"
+            )
+        }
+        XCTAssertTrue(pinned.contains(OpenBurnBarPrivilegedTrust.teamID))
+    }
 }
 
 /// Minimal single-connection UNIX-socket listener that records exactly how

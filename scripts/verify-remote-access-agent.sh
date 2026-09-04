@@ -23,6 +23,16 @@ fi
 # explicitly on this host. A secure timestamp is required too: AMFI kills
 # timestamped-less Developer ID daemons at spawn (OS_REASON_CODESIGNING).
 if [[ "${OPENBURNBAR_AGENT_ADHOC:-0}" != "1" ]]; then
+  # `codesign -d` only DISPLAYS the embedded metadata; it does not check that
+  # the signature still matches the file bytes. A tampered-after-signing
+  # binary would pass the display checks below while SecCodeCheckValidity (the
+  # client's live gate) rejects it. Verify cryptographic validity first, then
+  # assert the identity metadata.
+  if ! codesign --verify --strict --verbose=2 "$BIN_PATH" >/dev/null 2>&1; then
+    echo "error: deployed agent signature fails strict verification (binary modified after signing?)" >&2
+    codesign --verify --strict --verbose=2 "$BIN_PATH" >&2 || true
+    exit 1
+  fi
   SIGNATURE="$(codesign -d --verbose=4 "$BIN_PATH" 2>&1 || true)"
   if ! grep -q "Identifier=com.openburnbar.remote-access-agent" <<<"$SIGNATURE"; then
     echo "error: deployed agent has the wrong signing identifier" >&2
@@ -30,10 +40,11 @@ if [[ "${OPENBURNBAR_AGENT_ADHOC:-0}" != "1" ]]; then
     exit 1
   fi
   if ! grep -q "Authority=Developer ID Application" <<<"$SIGNATURE" \
+    || ! grep -q "^TeamIdentifier=4Y367DF25B" <<<"$SIGNATURE" \
     || ! grep -q "flags=.*runtime" <<<"$SIGNATURE" \
     || ! grep -q "flags=.*library-validation" <<<"$SIGNATURE" \
     || ! grep -q "^Timestamp=" <<<"$SIGNATURE"; then
-    echo "error: deployed agent must be Developer ID signed with hardened runtime, library validation, and a secure timestamp." >&2
+    echo "error: deployed agent must be Developer ID signed by the OpenBurnBar team (4Y367DF25B) with hardened runtime, library validation, and a secure timestamp." >&2
     printf '%s\n' "$SIGNATURE" >&2
     exit 1
   fi

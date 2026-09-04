@@ -12,14 +12,21 @@
 > **M-10 — remote-access agent signing + client-side server auth (2026-09-03):**
 > the root `OpenBurnBarRemoteAccessAgent` is now installed **Developer-ID signed
 > with hardened runtime and library validation** (`scripts/install-remote-access-agent.sh`
-> fails closed without an identity; dev installs must opt in via
-> `OPENBURNBAR_AGENT_ADHOC=1`), and its identifier
+> fails closed without an identity — including a `TeamIdentifier=4Y367DF25B`
+> assertion so another team's Developer ID cert cannot install "successfully" —
+> and dev installs must opt in via `OPENBURNBAR_AGENT_ADHOC=1`), and its identifier
 > (`com.openburnbar.remote-access-agent`) is an enumerated privileged peer.
 > App clients (`RemoteAccessAgentClient`) authenticate the agent **server**
-> (peer UID must be 0 + the first-party designated requirement) before writing
-> any request — including `typeCredential`, which carries the macOS login
-> password. A squatted or unsigned listener at
-> `/var/run/openburnbar-remote-access-agent.sock` now receives zero bytes.
+> before writing any request — including `typeCredential`, which carries the
+> macOS login password: the peer UID must be 0 and the peer must satisfy
+> `remoteAccessAgentDesignatedRequirement`, which pins the **exact agent
+> identifier** rather than the shared privileged-input allowlist (another
+> first-party root helper squatting the socket path must not receive the
+> password). A squatted or unsigned listener at
+> `/var/run/openburnbar-remote-access-agent.sock` receives zero bytes, and
+> `scripts/verify-remote-access-agent.sh` now runs strict `codesign --verify`
+> on the deployed binary before trusting displayed metadata (detecting
+> tamper-after-signing the way the client's live `SecCodeCheckValidity` does).
 > Pinned by `RemoteAccessAgentClientTrustTests` (impostor listener) and the
 > allowlist tests in `PrivilegedPeerAuthenticatorTests`.
 

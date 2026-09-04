@@ -50,6 +50,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `scripts/verify-remote-access-agent.sh` fails closed on unsigned deployed
   binaries. Pinned by `RemoteAccessAgentClientTrustTests` (impostor listener
   receives zero bytes) and the allowlist tests in `PrivilegedPeerAuthenticatorTests`.
+  **Review round 1 hardening (Codex P2 findings):** the client's server gate now
+  pins the **exact agent identifier** (`remoteAccessAgentDesignatedRequirement`)
+  instead of the shared privileged-input allowlist — a first-party daemon or HID
+  bridge squatting the socket path can no longer receive the login password;
+  the installer asserts `TeamIdentifier=4Y367DF25B` so another team's Developer
+  ID certificate cannot install "successfully"; the ad-hoc dev lane keeps the
+  exact identifier; and `verify-remote-access-agent.sh` runs strict
+  `codesign --verify` before trusting displayed metadata (catching
+  tamper-after-signing the way the client's live `SecCodeCheckValidity` does).
 - Console Profile compact counts now use B and T, so a trillion-token lifetime
   total reads as `1.09T` instead of `1085491M`. Model, harness, and combo labels
   wrap instead of clipping, and harness/combo breakdowns stay visible on
