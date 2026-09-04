@@ -406,6 +406,23 @@ CREATE TABLE memory_quarantine_bodies (
 
 CREATE INDEX memory_quarantine_bodies_project_idx ON memory_quarantine_bodies(project_id);
 
+-- Approved bodies for memories the Memory MCP engine mirrors. The engine store is
+-- canonical; this is the shared-database copy blind sync seals and uploads, so it
+-- carries the engine's own 128-bit id (the daemon's id is derived from
+-- projectID:bodyHash and differs between a member's devices). A forget empties the
+-- body but keeps the id, so the sealed cloud copy stays addressable for deletion.
+CREATE TABLE agent_memory_bodies (
+  memory_id        TEXT NOT NULL PRIMARY KEY,
+  project_id       TEXT NOT NULL,
+  engine_memory_id TEXT NOT NULL,
+  body             TEXT NOT NULL,
+  body_hash        TEXT NOT NULL,
+  created_at       TEXT NOT NULL,
+  updated_at       TEXT NOT NULL
+);
+
+CREATE UNIQUE INDEX agent_memory_bodies_engine_idx ON agent_memory_bodies(engine_memory_id);
+
 CREATE TABLE memory_body_snapshots (
   id            TEXT NOT NULL PRIMARY KEY,
   memory_id     TEXT NOT NULL UNIQUE,
