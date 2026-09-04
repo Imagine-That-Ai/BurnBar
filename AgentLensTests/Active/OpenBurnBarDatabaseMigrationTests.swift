@@ -1960,8 +1960,9 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         let docs = gateway.documents(under: "users/agent-sync-user/memory_facts")
         XCTAssertEqual(docs.count, 1)
         let expectedDocID = try CloudVaultCrypto.pensieveSlugHmac("memory-fact:\(engineID)", keyData: vaultKey)
-        XCTAssertEqual(Array(docs.keys), [expectedDocID], "the document is keyed on the engine id, not the local one")
-        let data = try XCTUnwrap(docs[expectedDocID])
+        let expectedPath = "users/agent-sync-user/memory_facts/\(expectedDocID)"
+        XCTAssertEqual(Array(docs.keys), [expectedPath], "the document is keyed on the engine id, not the local one")
+        let data = try XCTUnwrap(docs[expectedPath])
         XCTAssertEqual(data["sourceKind"] as? String, MemorySourceKind.agent.rawValue)
         // The rules allowlist is the contract: a new plaintext field must fail here.
         XCTAssertEqual(
