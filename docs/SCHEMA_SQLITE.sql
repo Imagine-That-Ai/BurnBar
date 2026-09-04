@@ -14,7 +14,7 @@
 
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
--- Schema hash: d79ec74ff49f28842ecd60c81f8a73217df8fa5a1cf6c3e83e97ec83f672b6e4
+-- Schema hash: 0e0610aa91306bdd2210a326b20592ff800029cb79c16fb66e0f644d18b4bdfd
 
 -- ── GRDB migrations tracking ──────────────────────────────────────────────────
 
@@ -422,6 +422,25 @@ CREATE TABLE agent_memory_bodies (
 );
 
 CREATE UNIQUE INDEX agent_memory_bodies_engine_idx ON agent_memory_bodies(engine_memory_id);
+
+-- Landing zone for memory facts pulled back down from the member's own cloud
+-- vault (Memory Blind Sync). Deliberately separate from agent_memories: that
+-- table is this device's upload source, so a remote row landing there would be
+-- re-sealed and re-uploaded in a loop. payload_json is the opened plaintext
+-- payload and rests in SQLCipher exactly as memory_body_snapshots does. The
+-- Memory MCP engine drains unapplied rows through the daemon and stamps
+-- applied_at; a re-pulled document with the same remote_updated_at is a no-op.
+CREATE TABLE agent_memory_inbox (
+  doc_id            TEXT NOT NULL PRIMARY KEY,  -- pensieveSlugHmac("memory-fact:<engine id>")
+  user_id           TEXT NOT NULL,
+  engine_memory_id  TEXT NOT NULL,
+  payload_json      TEXT NOT NULL,
+  remote_updated_at TEXT NOT NULL,
+  received_at       TEXT NOT NULL,
+  applied_at        TEXT                        -- NULL until the engine merges it
+);
+
+CREATE INDEX agent_memory_inbox_user_applied_idx ON agent_memory_inbox(user_id, applied_at);
 
 CREATE TABLE memory_body_snapshots (
   id            TEXT NOT NULL PRIMARY KEY,

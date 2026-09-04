@@ -67,5 +67,33 @@ extension OpenBurnBarDatabase {
                 """
             )
         }
+        // Landing zone for memory facts pulled back down from the member's own
+        // cloud vault (Memory Blind Sync PR-2). Pulled rows are deliberately NOT
+        // written into `agent_memories`: that table is this device's own upload
+        // source, so a remote row landing there would be re-sealed and re-uploaded
+        // in a loop. `payload_json` is the opened plaintext payload and rests in
+        // SQLCipher exactly as `memory_body_snapshots` does. The engine drains
+        // unapplied rows through the daemon and stamps `applied_at`.
+        migrator.registerMigration("v67_agent_memory_inbox") { db in
+            try db.execute(
+                sql: """
+                CREATE TABLE IF NOT EXISTS agent_memory_inbox (
+                    doc_id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    engine_memory_id TEXT NOT NULL,
+                    payload_json TEXT NOT NULL,
+                    remote_updated_at TEXT NOT NULL,
+                    received_at TEXT NOT NULL,
+                    applied_at TEXT
+                )
+                """
+            )
+            try db.execute(
+                sql: """
+                CREATE INDEX IF NOT EXISTS agent_memory_inbox_user_applied_idx
+                ON agent_memory_inbox(user_id, applied_at)
+                """
+            )
+        }
     }
 }
