@@ -142,9 +142,16 @@ codesign --verify --strict --verbose=2 "$PRIVILEGED_STAGING_BIN"
 ADMIN_SCRIPT="$(cat <<SCRIPT
 set -e
 mkdir -p '$INSTALL_DIR'
-cp '$PRIVILEGED_STAGING_BIN' '$INSTALL_BIN'
+# Write the binary fresh (cat >) instead of cp: macOS provenance attestation
+# binds to the ORIGINAL build artifact, and re-signing invalidates it. A
+# byte-copy of the re-signed file inherits a stale attestation, which
+# xpcproxy rejects at spawn with OS_REASON_CODESIGNING ("embedded signature
+# doesn't match attached signature", verified 2026-09-04). A fresh write
+# records a new attestation for the signed bytes and launches cleanly.
+cat '$PRIVILEGED_STAGING_BIN' > '$INSTALL_BIN'
 chown root:wheel '$INSTALL_BIN'
 chmod 755 '$INSTALL_BIN'
+xattr -c '$INSTALL_BIN' 2>/dev/null || true
 cp '$PRIVILEGED_STAGING_PLIST' '$PLIST_PATH'
 chown root:wheel '$PLIST_PATH'
 chmod 644 '$PLIST_PATH'
