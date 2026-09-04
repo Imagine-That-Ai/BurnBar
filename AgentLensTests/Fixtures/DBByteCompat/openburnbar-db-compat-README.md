@@ -85,8 +85,12 @@ follow the endpoint. Grep for the previous count before you assume it is done.
    endpoint schema itself (`.Schema.cs`).
 6. The Windows test pins, **endpoint _and_ count together**:
    `windows/storage/OpenBurnBar.Storage.Tests/TokenUsageWriteRoundTripTests.cs`,
-   `.../SwitcherProfileWriteSeamRoundTripTests.cs` (schema hash + count), and
-   `windows/tests/storage/WindowsStorageDevHostRuntimeTests.cs`.
+   `.../SwitcherProfileWriteSeamRoundTripTests.cs` (schema hash + count),
+   `windows/tests/storage/WindowsStorageDevHostRuntimeTests.cs`, and the
+   presentation-layer pin that is easy to miss because it lives outside
+   `windows/storage/`: `windows/tests/presentation/Switcher/SqlCipherSwitcherProfileStoreTests.cs`
+   (schema hash). `grep -rl <old hash>` across the whole repo before you
+   push; the storage-layer files are not the only readers of this fixture.
 7. Every `openburnbar-db-compat-vN.sqlcipher` filename reference under
    `windows/` — csproj `<Content>` links, `RepoFixtures`, and the per-suite
    `FixtureName` constants.

@@ -455,7 +455,8 @@ struct MemoryReviewRow: View {
         switch item.memory.sourceKind {
         case .safariAsk: ("Safari ask", "safari")
         case .agentSession: ("Agent session", "terminal")
-        case .chat, .code: nil
+        // Engine memories arrive approved, so they never reach this inbox.
+        case .chat, .code, .agent: nil
         }
     }
 

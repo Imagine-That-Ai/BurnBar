@@ -532,13 +532,26 @@ final class MemoryCloudSyncService: Sendable {
 
         var uploaded = 0
         for memory in eligible {
-            guard let body = try await store.openChatMemoryBody(id: memory.id) else { continue }
+            // Chat memories keep their body in the app's snapshot table; memories the
+            // Memory MCP engine mirrored keep theirs in `agent_memory_bodies`, and key
+            // their document on the engine's own id so every device converges on one
+            // document (the daemon id is derived from a path-dependent project id).
+            let isAgent = memory.sourceKind == .agent
+            let resolvedBody = isAgent
+                ? try await store.openAgentMemoryBody(id: memory.id)
+                : try await store.openChatMemoryBody(id: memory.id)
+            // A forgotten mirrored row keeps its id mapping with an emptied body;
+            // it must not be re-uploaded as an empty memory.
+            guard let body = resolvedBody, body.isEmpty == false else { continue }
+            let identity = isAgent ? try await store.engineMemoryID(for: memory.id) : nil
+            if isAgent, identity == nil { continue }
             let encoded = try Self.encodeMemoryFact(
                 memory: memory,
                 body: body,
                 uid: uid,
                 vaultKey: vaultKey,
-                now: now
+                now: now,
+                documentIdentity: identity
             )
             try await factCollection.document(encoded.docID).setData(encoded.data, merge: true)
             uploaded += 1
@@ -546,6 +559,9 @@ final class MemoryCloudSyncService: Sendable {
 
         var forgetReceipts = 0
         var deletedFacts = 0
+        // The daemon cannot write a member-keyed tombstone, so a forgotten mirrored
+        // memory would otherwise leave its sealed cloud copy behind for ever.
+        try await store.enqueueTombstonesForUnsyncableAgentMemories(userID: uid, now: now)
         for tombstone in try await store.fetchPendingMemoryFactTombstones(userID: uid) {
             let encoded = try Self.encodeFactForgetReceipt(
                 tombstone: tombstone,
@@ -557,6 +573,9 @@ final class MemoryCloudSyncService: Sendable {
             forgetReceipts += 1
             deletedFacts += try await Self.deleteCloudFact(
                 memoryID: tombstone.memoryID,
+                // A mirrored memory's document was keyed on the engine's id; the
+                // mapping outlives the forget precisely so this can find it.
+                cloudIdentity: try await store.cloudFactIdentity(for: tombstone.memoryID),
                 vaultKey: vaultKey,
                 from: factCollection
             )
@@ -602,17 +621,25 @@ final class MemoryCloudSyncService: Sendable {
         )
     }
 
+    /// - Parameter documentIdentity: the id the blinded document and the sealed
+    ///   payload key on. Nil keeps the local memory id, which is right for chat
+    ///   memories; engine-mirrored memories pass the engine's own id so the same
+    ///   memory resolves to one document on every device.
     static func encodeMemoryFact(
         memory: Memory,
         body: String,
         uid: String,
         vaultKey: Data,
-        now: Date
+        now: Date,
+        documentIdentity: String? = nil
     ) throws -> (docID: String, data: [String: Any]) {
-        let docID = try CloudVaultCrypto.pensieveSlugHmac("memory-fact:\(memory.id)", keyData: vaultKey)
+        let identity = documentIdentity ?? memory.id
+        let docID = try CloudVaultCrypto.pensieveSlugHmac("memory-fact:\(identity)", keyData: vaultKey)
         let payload = MemoryCloudFactPayload(
             schemaVersion: 1,
-            memoryID: memory.id,
+            // The sealed id matches the id the document is keyed on, so a device
+            // that opens this envelope can address the same memory it named.
+            memoryID: identity,
             text: body,
             kind: memory.kind,
             scope: memory.scope,
@@ -757,12 +784,16 @@ final class MemoryCloudSyncService: Sendable {
         return deleted
     }
 
+    /// - Parameter cloudIdentity: the id the document was keyed on at upload —
+    ///   the engine's own id for a mirrored memory. Passing the local id for one
+    ///   of those would delete nothing and silently strand the sealed copy.
     private static func deleteCloudFact(
         memoryID: MemoryID,
+        cloudIdentity: String? = nil,
         vaultKey: Data,
         from collection: CloudSyncCollectionGateway
     ) async throws -> Int {
-        let docID = try CloudVaultCrypto.pensieveSlugHmac("memory-fact:\(memoryID)", keyData: vaultKey)
+        let docID = try CloudVaultCrypto.pensieveSlugHmac("memory-fact:\(cloudIdentity ?? memoryID)", keyData: vaultKey)
         let document = collection.document(docID)
         let existed = try await document.getData() != nil
         try await document.deleteDocument()

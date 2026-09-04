@@ -12,6 +12,7 @@ import XCTest
 final class MemorySourceKindContractTests: XCTestCase {
     func testUsageKindsAreExactlyTheTwoPassiveSources() {
         XCTAssertEqual(MemorySourceKind.usageKinds, [.safariAsk, .agentSession])
+        XCTAssertFalse(MemorySourceKind.usageKinds.contains(.agent), "agent is member content, chat-partitioned")
         XCTAssertFalse(MemorySourceKind.usageKinds.contains(.chat))
         XCTAssertFalse(MemorySourceKind.usageKinds.contains(.code))
     }
@@ -23,6 +24,8 @@ final class MemorySourceKindContractTests: XCTestCase {
         XCTAssertEqual(MemorySourceKind.code.rawValue, "code")
         XCTAssertEqual(MemorySourceKind.safariAsk.rawValue, "safari_ask")
         XCTAssertEqual(MemorySourceKind.agentSession.rawValue, "agent_session")
+        // Blind sync: the Firestore rules admit this literal on the wire.
+        XCTAssertEqual(MemorySourceKind.agent.rawValue, "agent")
     }
 
     func testProvenanceSourceKindRawValuesAreFrozen() {

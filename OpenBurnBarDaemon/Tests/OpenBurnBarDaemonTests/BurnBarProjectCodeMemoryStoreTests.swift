@@ -2248,6 +2248,242 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         return SHA256.hash(data: payload).map { String(format: "%02x", $0) }.joined()
     }
 
+    // MARK: - Blind sync
+
+    func testEngineMirroredMemoriesKeepAnApprovedBodyForBlindSync() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
+        let engineID = "mem_00112233445566778899aabbccddeeff"
+
+        let mirrored = try store.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: "We deploy from the release branch on Fridays.",
+                projectPath: fixture.project.path,
+                tags: ["release"],
+                engineMemoryID: engineID
+            )
+        )
+
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT source_kind FROM agent_memories WHERE id = \(sqlLiteral(mirrored.memoryID))"
+            ),
+            ["agent"],
+            "only rows the engine mirrors may reach the cloud lane, so only they are marked"
+        )
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: """
+                SELECT engine_memory_id || '|' || body FROM agent_memory_bodies \
+                WHERE memory_id = \(sqlLiteral(mirrored.memoryID))
+                """
+            ),
+            ["\(engineID)|We deploy from the release branch on Fridays."],
+            "the approved body and the engine id the blinded document keys on both travel"
+        )
+    }
+
+    /// The engine's taxonomy is richer than the app's `MemoryKind`, and the app
+    /// drops any row whose kind it cannot decode — so a mirrored `decision` would
+    /// silently never sync. It is stored under the nearest app kind, with the
+    /// precise one kept as a tag.
+    func testUnknownEngineKindsAreNormalisedSoTheAppCanDecodeThem() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
+
+        let mirrored = try store.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: "We deploy from the release branch on Fridays.",
+                projectPath: fixture.project.path,
+                kind: "decision",
+                engineMemoryID: "mem_00112233445566778899aabbccddeeff"
+            )
+        )
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT kind FROM agent_memories WHERE id = \(sqlLiteral(mirrored.memoryID))"
+            ),
+            ["other"]
+        )
+        let tags = try XCTUnwrap(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT tags_json FROM agent_memories WHERE id = \(sqlLiteral(mirrored.memoryID))"
+            ).first
+        )
+        XCTAssertTrue(tags.contains("engine-kind:decision"), tags)
+
+        // A kind the app already knows is stored unchanged and gains no tag.
+        let known = try store.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: "Alberto prefers fewer, fatter pull requests.",
+                projectPath: fixture.project.path,
+                kind: "preference",
+                engineMemoryID: "mem_ffeeddccbbaa99887766554433221100"
+            )
+        )
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT kind FROM agent_memories WHERE id = \(sqlLiteral(known.memoryID))"
+            ),
+            ["preference"]
+        )
+        XCTAssertFalse(
+            try XCTUnwrap(
+                try sqliteStrings(
+                    database: fixture.database,
+                    sql: "SELECT tags_json FROM agent_memories WHERE id = \(sqlLiteral(known.memoryID))"
+                ).first
+            ).contains("engine-kind")
+        )
+    }
+
+    /// Forgetting a mirrored memory must remove the content the member deleted,
+    /// while keeping the engine id: the sealed cloud copy is addressed by it, so
+    /// losing the mapping would strand the member's deleted memory in the cloud.
+    func testForgettingAMirroredMemoryPurgesTheBodyButKeepsItsCloudIdentity() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
+        let engineID = "mem_00112233445566778899aabbccddeeff"
+        let body = "We deploy from the release branch on Fridays."
+
+        let mirrored = try store.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: body,
+                projectPath: fixture.project.path,
+                engineMemoryID: engineID
+            )
+        )
+        _ = try store.forget(
+            BurnBarProjectMemoryForgetRequest(memoryID: mirrored.memoryID, projectPath: fixture.project.path)
+        )
+
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT body FROM agent_memory_bodies WHERE memory_id = \(sqlLiteral(mirrored.memoryID))"
+            ),
+            [""],
+            "the deleted body is gone"
+        )
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT engine_memory_id FROM agent_memory_bodies WHERE memory_id = \(sqlLiteral(mirrored.memoryID))"
+            ),
+            [engineID],
+            "the label the cloud copy is keyed on survives so the forget can reach it"
+        )
+    }
+
+    /// A memory that was approved and uploaded can be remirrored as quarantined.
+    /// Deleting its mapping row would strand the sealed cloud copy: the engine id is
+    /// the only handle the sync lane has on it. The body is blanked (nothing may
+    /// re-upload quarantined text), the id survives, and the quarantine holding
+    /// table takes the content for review.
+    func testRemirroringAnApprovedMemoryAsQuarantinedKeepsItsCloudIdentity() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
+        let engineID = "mem_00112233445566778899aabbccddeeff"
+        let body = "We deploy from the release branch on Fridays."
+
+        let approved = try store.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: body,
+                projectPath: fixture.project.path,
+                engineMemoryID: engineID
+            )
+        )
+        let remirrored = try store.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: body,
+                projectPath: fixture.project.path,
+                reviewStatus: .quarantined,
+                engineMemoryID: engineID
+            )
+        )
+        XCTAssertEqual(remirrored.memoryID, approved.memoryID, "same text, same local id")
+
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT review_status FROM agent_memories WHERE id = \(sqlLiteral(approved.memoryID))"
+            ),
+            [MemoryReviewStatus.quarantined.rawValue]
+        )
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT engine_memory_id || '|' || body FROM agent_memory_bodies WHERE memory_id = \(sqlLiteral(approved.memoryID))"
+            ),
+            ["\(engineID)|"],
+            "the mapping survives with an empty syncable body"
+        )
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT COUNT(*) FROM memory_quarantine_bodies WHERE memory_id = \(sqlLiteral(approved.memoryID))"
+            ),
+            ["1"],
+            "the content moved to the review holding table"
+        )
+    }
+
+    func testRepositoryKnowledgeNeverGainsASyncableBody() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
+
+        // A caller that predates blind sync sends neither field.
+        let legacy = try store.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: "The daemon owns the project code memory store.",
+                projectPath: fixture.project.path
+            )
+        )
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT source_kind FROM agent_memories WHERE id = \(sqlLiteral(legacy.memoryID))"
+            ),
+            ["code"]
+        )
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT body FROM agent_memory_bodies WHERE memory_id = \(sqlLiteral(legacy.memoryID))"
+            ),
+            [],
+            "repository knowledge never gets a syncable body"
+        )
+
+        // An empty engine id is not an identity, so it does not make a row syncable.
+        let unidentified = try store.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: "A row whose engine id is blank.",
+                projectPath: fixture.project.path,
+                engineMemoryID: "   "
+            )
+        )
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT source_kind FROM agent_memories WHERE id = \(sqlLiteral(unidentified.memoryID))"
+            ),
+            ["code"]
+        )
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT body FROM agent_memory_bodies WHERE memory_id = \(sqlLiteral(unidentified.memoryID))"
+            ),
+            []
+        )
+    }
+
     private func sqliteStrings(database: URL, sql: String) throws -> [String] {
         var db: OpaquePointer?
         XCTAssertEqual(sqlite3_open_v2(database.path, &db, SQLITE_OPEN_READONLY, nil), SQLITE_OK)

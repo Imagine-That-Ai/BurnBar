@@ -35,6 +35,7 @@ public enum MemorySourceKind: String, Codable, Sendable {
     /// rollout (user turns and repeated workflows). Same consent + review
     /// posture as `safariAsk`.
     case agentSession = "agent_session"
+    case agent  // Memory MCP engine memory: member content blind sync replicates.
 
     /// The passive usage-memory kinds. They share one storage partition
     /// (`usage:` project-id prefix) so exact dedup and corroboration work

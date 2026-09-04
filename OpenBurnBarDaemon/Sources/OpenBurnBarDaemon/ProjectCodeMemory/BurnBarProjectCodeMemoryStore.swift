@@ -323,7 +323,26 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
             let bodyRef = Self.sha256Hex(body)
             let memoryID = "mem_" + String(Self.sha256Hex("\(projectID):\(request.scope):\(bodyRef)").prefix(32))
             let now = Self.isoNow()
-            let tagsJSON = try encodeJSONString(request.tags)
+            // Only the Memory MCP engine sends an id of its own, and it sends one
+            // only for rows it wants mirrored as syncable. Its presence is therefore
+            // the partition: callers that predate blind sync keep writing repository
+            // knowledge, which never leaves the device.
+            let engineMemoryID = request.engineMemoryID?.trimmingCharacters(in: .whitespacesAndNewlines)
+                .nilIfEmpty
+            let resolvedSourceKind = engineMemoryID == nil
+                ? MemorySourceKind.code.rawValue
+                : MemorySourceKind.agent.rawValue
+            // The engine's taxonomy is richer than the app's `MemoryKind`, and the
+            // app drops any row whose kind it cannot decode. A mirrored row is
+            // therefore stored under the nearest app kind; the engine store keeps
+            // the precise one, and it stays a tag here.
+            let storedKind = engineMemoryID == nil
+                ? request.kind
+                : (MemoryKind(rawValue: request.kind)?.rawValue ?? MemoryKind.other.rawValue)
+            // A normalised kind loses the engine's precise one, so keep it as a tag:
+            // the mirrored row still says what it is, and nothing is lost locally.
+            let storedTags = storedKind == request.kind ? request.tags : request.tags + ["engine-kind:\(request.kind)"]
+            let tagsJSON = try encodeJSONString(storedTags)
             try execute("BEGIN IMMEDIATE", [])
             do {
                 if reviewStatus == .approved {
@@ -339,6 +358,22 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                         now: now
                     )
                     try removeQuarantineMemoryBody(projectID: projectID, memoryID: memoryID)
+                    // Blind sync: an approved memory the Memory MCP engine mirrored keeps
+                    // its body in the shared encrypted database so the app's sync lane can
+                    // seal and upload it. Nothing else writes here, so repository knowledge
+                    // and quarantined input can never reach the cloud lane.
+                    if let engineMemoryID {
+                        try upsertAgentMemoryBody(
+                            projectID: projectID,
+                            memoryID: memoryID,
+                            engineMemoryID: engineMemoryID,
+                            body: body,
+                            bodyHash: bodyRef,
+                            now: now
+                        )
+                    } else {
+                        try removeAgentMemoryBody(projectID: projectID, memoryID: memoryID)
+                    }
                 } else {
                     // Quarantined input remains reviewable in a dedicated
                     // encrypted-at-rest holding table, never in the default
@@ -350,6 +385,9 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                         now: now
                     )
                     try upsertQuarantineMemoryBody(projectID: projectID, memoryID: memoryID, body: body, now: now)
+                    // Remirrored as unapproved after an upload: blank, never delete, so
+                    // the sync lane can still address the sealed copy (see the helper).
+                    try blankAgentMemoryBody(projectID: projectID, memoryID: memoryID, now: now)
                 }
                 let bodyReference = reviewStatus == .approved
                     ? Self.memoryBodyReference(memoryID: memoryID, projectID: projectID)
@@ -357,9 +395,10 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                 try execute(
                     """
                     INSERT INTO agent_memories
-                        (id, project_id, kind, scope, confidence, body_ref, body_redacted, tags_json, source_path, valid_from, review_status, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        (id, project_id, kind, scope, confidence, body_ref, body_redacted, tags_json, source_path, valid_from, review_status, source_kind, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(id) DO UPDATE SET
+                        source_kind = excluded.source_kind,
                         kind = excluded.kind,
                         scope = excluded.scope,
                         confidence = excluded.confidence,
@@ -371,10 +410,10 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                         updated_at = excluded.updated_at
                     """,
                     [
-                        .text(memoryID), .text(projectID), .text(request.kind), .text(request.scope),
+                        .text(memoryID), .text(projectID), .text(storedKind), .text(request.scope),
                         .double(request.confidence), .text(bodyRef), .text(bodyReference),
                         .text(tagsJSON), request.sourcePath.map(SQLiteBind.text) ?? .null, .text(now),
-                        .text(reviewStatus.rawValue), .text(now), .text(now)
+                        .text(reviewStatus.rawValue), .text(resolvedSourceKind), .text(now), .text(now)
                     ]
                 )
                 if let memoryVector, memoryVector.count == embeddingProvider.dimension {
@@ -630,6 +669,10 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                     now: Self.isoNow()
                 )
                 try removeQuarantineMemoryBody(projectID: projectID, memoryID: memoryID)
+                // A mirrored memory's body is content the member deleted, so it goes
+                // now; its engine id stays so the sealed cloud copy is still
+                // addressable when the forget reaches the sync lane.
+                try blankAgentMemoryBody(projectID: projectID, memoryID: memoryID, now: Self.isoNow())
                 // Keep a metadata tombstone so every forget remains visible to the
                 // daemon-owned review/audit feed across reloads and devices. The sealed
                 // body is removed above and the row is excluded from normal recall.

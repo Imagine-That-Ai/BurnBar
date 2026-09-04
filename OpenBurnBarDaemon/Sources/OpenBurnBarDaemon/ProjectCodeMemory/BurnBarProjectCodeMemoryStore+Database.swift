@@ -237,6 +237,10 @@ extension BurnBarProjectCodeMemoryStore {
         // already durable memories, so they are approved when upgraded; newly
         // extracted candidates explicitly opt into quarantined status.
         try ensureColumn(table: "agent_memories", column: "review_status", definition: "TEXT NOT NULL DEFAULT 'approved'")
+        // Mirrors the canonical migrator's v51 column. `code` is the shipped
+        // default: only rows the Memory MCP engine mirrors are marked `agent`,
+        // and only those may reach the blind sync lane.
+        try ensureColumn(table: "agent_memories", column: "source_kind", definition: "TEXT NOT NULL DEFAULT 'code'")
         try execute(
             "CREATE INDEX IF NOT EXISTS agent_memories_review_status_idx ON agent_memories(project_id, review_status, updated_at)",
             []
@@ -269,6 +273,27 @@ extension BurnBarProjectCodeMemoryStore {
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             )
+            """,
+            []
+        )
+        try execute(
+            """
+            CREATE TABLE IF NOT EXISTS agent_memory_bodies (
+                memory_id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                engine_memory_id TEXT NOT NULL,
+                body TEXT NOT NULL,
+                body_hash TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """,
+            []
+        )
+        try execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS agent_memory_bodies_engine_idx
+            ON agent_memory_bodies(engine_memory_id)
             """,
             []
         )

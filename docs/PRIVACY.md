@@ -84,6 +84,14 @@ The hosted request's `context.digest.providers[].topInferredTaskTitles` and `con
 
 BurnBar Pro members can let the on-device memory engine use cloud models for extraction, reconciliation, embeddings, reranking, and "ask my memory" answers. This is off by default and requires two opt-ins: the base memory consent and a separate "Cloud models for memory" consent in **Settings → Privacy**. When it is on, the OpenBurnBar daemon on your Mac sends **redacted memory facts and your questions** — never raw transcripts, never anything the secret filter caught, never your sealed vault — **directly from your Mac to the provider you picked**, on your own API key or your own CLI subscription (Claude Code or Codex). **OpenBurnBar receives nothing:** no BurnBar server is in that path, and the only record is a content-free, hash-chained audit event stored on your Mac (purpose, provider, byte counts, outcome). By default only providers that promise no retention are used; OpenRouter requests are sent with `data_collection: deny`. A daily spend cap you set is enforced locally, and a fleet kill switch (`memory_cloud_models_enabled`) can disable the feature remotely without touching your memories.
 
+### Optional Memory Backup and Device Sync (opt-in, paid entitlement)
+
+If you turn on "Back up approved memories" in **Settings → Privacy**, the memories you have approved — including the ones the Memory MCP learns while you work — are replicated to your own Firestore namespace **end-to-end encrypted**. The body, kind, scope, confidence and citations of every memory are sealed on your Mac with a key held only in your Keychain and wrapped for each of your own devices; OpenBurnBar has no copy of that key and cannot decrypt any of it.
+
+What a stored memory document actually contains: the sealed blob, an opaque identifier that is a keyed hash rather than anything readable, keyed hashes of the sources the memory came from, its kind, its review status, and three timestamps. What it never contains, enforced by the server's own security rules rather than by client good behaviour: the memory text, the body, the citations, any embedding or vector, your tags, your entities, your metadata, or your project names and paths. Secrets you asked BurnBar to retain never leave the device at all, and neither do memories awaiting your review, memories BurnBar flagged as prompt injection, or repository knowledge.
+
+Turning the feature off stops all replication; deleting a memory writes a forget receipt that carries only opaque hashes and a coarse reason. This lane requires an active paid entitlement and is off by default.
+
 ### Optional Diagnostics (opt-in only)
 
 If you enable crash reporting or diagnostics, anonymized crash reports may be sent to Sentry. This is disabled by default.
@@ -116,7 +124,7 @@ OpenBurnBar never asks macOS for any of these permissions until you have asked f
 ## Data We Never Collect
 
 - Your API keys or credentials for local-only usage tracking
-- The plaintext content of your source code or agent conversations unless you explicitly send it through an optional hosted LLM/provider path. We also never receive it when you enable cloud models for memory and pick a provider: that traffic goes from your Mac to the provider you chose. Chat/session cloud backup stores ciphertext; the legacy raw iCloud mirror is disabled for new writes.
+- The plaintext content of your source code or agent conversations unless you explicitly send it through an optional hosted LLM/provider path. Memories replicated for backup or device sync are sealed on your device with a key we never hold, so their content is not readable by us either. We also never receive it when you enable cloud models for memory and pick a provider: that traffic goes from your Mac to the provider you chose. Chat/session cloud backup stores ciphertext; the legacy raw iCloud mirror is disabled for new writes.
 - Personal identifying information beyond what your Apple or Google account provides for sign-in
 - Any data from other applications
 - Payment card numbers; subscriptions are handled by Apple, Google Play, or Stripe

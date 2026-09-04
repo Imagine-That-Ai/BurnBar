@@ -1907,6 +1907,12 @@ def _memory_mirror_remember(decision: dict[str, Any], project_path: str | None) 
             "confidence": float(1.0 if confidence is None else confidence),
             "sourcePath": decision.get("sourceRef"),
             "text": decision.get("text"),
+            # Blind sync (docs/superpowers/specs/2026-09-03-memory-blind-sync-design.md):
+            # only rows that reach here may ever be replicated, so sending the engine's
+            # own id is what marks one syncable. The daemon's id is derived from
+            # `projectID:bodyHash` and is path-dependent; this one is 128 random bits
+            # and is what the sealed payload and the blinded document id key on.
+            "engineMemoryID": decision.get("memoryID"),
         },
     )
     if authority.get("mode") == "daemon":

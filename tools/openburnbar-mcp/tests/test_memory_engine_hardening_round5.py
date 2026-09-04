@@ -193,8 +193,12 @@ def test_memorize_replay_hydrates_decision_and_repairs_mirror(
             "confidence": 0.8,
             "sourcePath": "docs/release.md",
             "text": "The release owner is Ops.",
+            "engineMemoryID": mirrored[0]["engineMemoryID"],
         }
     ]
+    # The engine id is random per row; it must be present and well-formed so the
+    # blinded sync document keys on something stable across devices.
+    assert str(mirrored[0]["engineMemoryID"]).startswith("mem_")
 
 
 def test_memorize_retries_rejection_after_gate_recovers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

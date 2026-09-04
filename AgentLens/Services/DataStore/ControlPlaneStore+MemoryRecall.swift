@@ -149,6 +149,36 @@ extension ControlPlaneStore {
         }
     }
 
+    /// Memories the Memory MCP engine mirrored keep their approved body in
+    /// `agent_memory_bodies` (written by the daemon) rather than in the app's
+    /// snapshot table, so the sync lane resolves a body from either home.
+    func openAgentMemoryBody(id: MemoryID) async throws -> String? {
+        try await dbQueue.read { db in
+            try String.fetchOne(db, sql: "SELECT body FROM agent_memory_bodies WHERE memory_id = ?", arguments: [id])
+        }
+    }
+
+    /// The id a memory's blinded cloud document is keyed on: the engine's own
+    /// 128-bit id for a mirrored row, the local id otherwise. Upload and delete
+    /// must agree on this or a forget cannot reach the sealed copy. The mapping
+    /// survives a forget — the body is purged, the label is not.
+    func cloudFactIdentity(for id: MemoryID) async throws -> String {
+        try await engineMemoryID(for: id) ?? id
+    }
+
+    /// The engine's own 128-bit memory id for a mirrored row. The daemon id is
+    /// derived from `projectID:bodyHash` and differs between a member's devices;
+    /// the engine id is what a blinded sync document keys on.
+    func engineMemoryID(for id: MemoryID) async throws -> String? {
+        try await dbQueue.read { db in
+            try String.fetchOne(
+                db,
+                sql: "SELECT engine_memory_id FROM agent_memory_bodies WHERE memory_id = ?",
+                arguments: [id]
+            )
+        }
+    }
+
     func openChatMemoryBody(id: MemoryID) async throws -> String? {
         let snapshotSlug = Self.memorySnapshotSlug(id)
         return try await dbQueue.read { db in

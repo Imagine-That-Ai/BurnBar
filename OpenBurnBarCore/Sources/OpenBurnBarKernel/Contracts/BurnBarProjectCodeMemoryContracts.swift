@@ -9,6 +9,8 @@ public struct BurnBarProjectMemoryRememberRequest: Codable, Hashable, Sendable {
     public let confidence: Double
     public let sourcePath: String?
     public let reviewStatus: MemoryReviewStatus
+    /// Present means the `agent` partition and keys its blind-sync document; `nil` keeps `"code"`.
+    public let engineMemoryID: String?
 
     public init(
         text: String,
@@ -18,7 +20,8 @@ public struct BurnBarProjectMemoryRememberRequest: Codable, Hashable, Sendable {
         tags: [String] = [],
         confidence: Double = 1.0,
         sourcePath: String? = nil,
-        reviewStatus: MemoryReviewStatus = .approved
+        reviewStatus: MemoryReviewStatus = .approved,
+        engineMemoryID: String? = nil
     ) {
         self.text = text
         self.projectPath = projectPath
@@ -28,10 +31,11 @@ public struct BurnBarProjectMemoryRememberRequest: Codable, Hashable, Sendable {
         self.confidence = confidence
         self.sourcePath = sourcePath
         self.reviewStatus = reviewStatus
+        self.engineMemoryID = engineMemoryID
     }
 
     private enum CodingKeys: String, CodingKey {
-        case text, projectPath, kind, scope, tags, confidence, sourcePath, reviewStatus
+        case text, projectPath, kind, scope, tags, confidence, sourcePath, reviewStatus, engineMemoryID
     }
 
     public init(from decoder: Decoder) throws {
@@ -44,6 +48,7 @@ public struct BurnBarProjectMemoryRememberRequest: Codable, Hashable, Sendable {
         self.confidence = try values.decodeIfPresent(Double.self, forKey: .confidence) ?? 1.0
         self.sourcePath = try values.decodeIfPresent(String.self, forKey: .sourcePath)
         self.reviewStatus = try values.decodeIfPresent(MemoryReviewStatus.self, forKey: .reviewStatus) ?? .approved
+        self.engineMemoryID = try values.decodeIfPresent(String.self, forKey: .engineMemoryID)
     }
 }
 

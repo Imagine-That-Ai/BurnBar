@@ -3217,7 +3217,9 @@ service cloud.firestore {
           "citationCount",
           "validFrom",
           "updatedAt",
-          "replicatedAt"
+          "replicatedAt",
+          "vaultGeneration",
+          "rewrapJobId"
         ]);
       }
 
@@ -3235,8 +3237,8 @@ service cloud.firestore {
         && !("embedding" in request.resource.data)
         && request.resource.data.schemaVersion is int
         && request.resource.data.schemaVersion >= 1
-        && request.resource.data.sourceKind == "chat"
-        && request.resource.data.kind in ["fact", "preference", "event", "profile", "relationship", "other"]
+        && request.resource.data.sourceKind in ["chat", "agent"]
+        && request.resource.data.kind in ["fact", "preference", "event", "profile", "relationship", "other", "decision", "architecture", "procedure", "gotcha", "todo"]
         && request.resource.data.reviewStatus == "approved"
         && validCloudSealedBlob(
           request.resource.data.sealedMemory,
@@ -3249,7 +3251,11 @@ service cloud.firestore {
         && request.resource.data.citationCount <= 50
         && request.resource.data.validFrom is timestamp
         && request.resource.data.updatedAt is timestamp
-        && request.resource.data.replicatedAt is timestamp;
+        && request.resource.data.replicatedAt is timestamp
+        && (!("vaultGeneration" in request.resource.data)
+          || (request.resource.data.vaultGeneration is int && request.resource.data.vaultGeneration >= 1))
+        && (!("rewrapJobId" in request.resource.data)
+          || (request.resource.data.rewrapJobId is string && request.resource.data.rewrapJobId.size() <= 160));
     }
 
     // Fact-level forget receipts. Receipts carry only opaque source HMACs and

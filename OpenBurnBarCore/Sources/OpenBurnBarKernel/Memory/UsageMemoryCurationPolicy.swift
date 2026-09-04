@@ -105,7 +105,7 @@ public struct UsageMemoryCurationPolicy: Codable, Equatable, Sendable {
 
         public func trust(for sourceKind: MemorySourceKind) -> Double {
             switch sourceKind {
-            case .chat, .code: chat
+            case .chat, .code, .agent: chat
             case .safariAsk: safariAsk
             case .agentSession: agentSession
             }

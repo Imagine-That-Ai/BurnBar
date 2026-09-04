@@ -409,6 +409,25 @@ test("cloudVaultRewrapStrategy: every vault-backed domain has an explicit rotati
   );
 });
 
+// Memory blind sync mirrors approved memories (chat and agent-sourced alike)
+// into `memory_facts` as CloudVault-sealed blobs. If that collection ever falls
+// out of a document-rewrap domain, CloudVaultRotationRewrapWorker stops visiting
+// it and a vault-key rotation strands every synced memory on the retired
+// generation — silently, because nothing else reads the collection back.
+test("cloudVaultRewrapStrategy: the sealed memory collections stay inside a document-rewrap domain", () => {
+  const rewrapped = new Set(
+    registry.domains
+      .filter((d) => (d.cloudVaultRewrapStrategy ?? "").startsWith("document"))
+      .flatMap((d) => d.firestorePaths ?? []),
+  );
+  for (const collection of ["memory_facts", "memory_forget_receipts"]) {
+    assert.ok(
+      rewrapped.has(collection),
+      `${collection} holds CloudVault-sealed memory but no document-rewrap domain claims it — a key rotation would strand it`,
+    );
+  }
+});
+
 test("cloudVaultRewrapStrategy: storage-bearing strategies declare storage paths", () => {
   for (const d of registry.domains) {
     if (d.cloudVaultRewrapStrategy === "document_and_storage_envelopes") {

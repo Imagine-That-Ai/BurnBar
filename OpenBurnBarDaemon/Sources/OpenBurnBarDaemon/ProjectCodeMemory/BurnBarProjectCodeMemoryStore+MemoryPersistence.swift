@@ -297,6 +297,68 @@ extension BurnBarProjectCodeMemoryStore {
         )
     }
 
+    /// The approved body of a memory the Memory MCP engine mirrored, kept in the
+    /// shared encrypted database so blind sync can seal and upload it. Only rows the
+    /// engine already cleared (approved, non-secret, non-expiring) ever reach here.
+    func upsertAgentMemoryBody(
+        projectID: String,
+        memoryID: String,
+        engineMemoryID: String,
+        body: String,
+        bodyHash: String,
+        now: String
+    ) throws {
+        try execute(
+            """
+            INSERT INTO agent_memory_bodies
+                (memory_id, project_id, engine_memory_id, body, body_hash, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(memory_id) DO UPDATE SET
+                project_id = excluded.project_id,
+                engine_memory_id = excluded.engine_memory_id,
+                body = excluded.body,
+                body_hash = excluded.body_hash,
+                updated_at = excluded.updated_at
+            """,
+            [
+                .text(memoryID), .text(projectID), .text(engineMemoryID),
+                .text(body), .text(bodyHash), .text(now), .text(now)
+            ]
+        )
+    }
+
+    func removeAgentMemoryBody(projectID: String, memoryID: String) throws {
+        try execute(
+            "DELETE FROM agent_memory_bodies WHERE memory_id = ? AND project_id = ?",
+            [.text(memoryID), .text(projectID)]
+        )
+    }
+
+    /// Purge a memory's syncable body while keeping its engine id. The body is
+    /// content that must not be (re)uploaded and goes immediately; the id is a
+    /// random 128-bit label that travels only as a keyed hash, and the cloud copy
+    /// stays addressable through it, so the sync lane can still delete the sealed
+    /// document. Used both by forget and when an approved, uploaded memory is
+    /// remirrored as quarantined or rejected: deleting the mapping in either case
+    /// would strand the member's memory in the cloud. A row that never had a
+    /// mapping (quarantined from birth) is untouched.
+    func blankAgentMemoryBody(projectID: String, memoryID: String, now: String) throws {
+        try execute(
+            """
+            UPDATE agent_memory_bodies SET body = '', body_hash = '', updated_at = ?
+            WHERE memory_id = ? AND project_id = ?
+            """,
+            [.text(now), .text(memoryID), .text(projectID)]
+        )
+    }
+
+    func engineMemoryID(projectID: String, memoryID: String) throws -> String? {
+        try queryRows(
+            "SELECT engine_memory_id FROM agent_memory_bodies WHERE memory_id = ? AND project_id = ?",
+            [.text(memoryID), .text(projectID)]
+        ).first?.optionalString(0)
+    }
+
     func quarantineMemoryBody(projectID: String, memoryID: String) throws -> String? {
         try queryRows(
             "SELECT body FROM memory_quarantine_bodies WHERE memory_id = ? AND project_id = ? LIMIT 1",
