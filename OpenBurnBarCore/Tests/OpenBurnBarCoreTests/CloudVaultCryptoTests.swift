@@ -485,6 +485,65 @@ final class CloudVaultCryptoTests: XCTestCase {
         XCTAssertThrowsError(try CloudVaultCrypto.openBlob(envelope, keyData: oldKey))
     }
 
+    /// A vault-key rotation must carry `users/{uid}/memory_facts` with it, or
+    /// every synced memory (chat and agent-sourced alike) is stranded on the
+    /// retired generation. `memory_facts` reaches the rewrap through the
+    /// `pensieve` data domain's `document_envelopes` strategy; this pins the
+    /// crypto half — the sealed body reseals under the path-bound AAD the
+    /// Firestore rules validate, `(uid, "memory_facts", docID, "sealedMemory")`.
+    func test_rewrapCloudVaultDocument_resealsMemoryFactSealedMemory() throws {
+        let oldKey = Data(repeating: 0x51, count: 32)
+        let newKey = Data(repeating: 0x52, count: 32)
+        let newVaultKeyID = try CloudVaultCrypto.vaultKeyID(for: newKey)
+        let uid = "userA"
+        let docID = String(repeating: "a", count: 64)
+        let context = try CloudVaultAADContext(
+            uid: uid,
+            collection: "memory_facts",
+            docID: docID,
+            field: "sealedMemory"
+        )
+        let body = Data(#"{"memoryID":"mem_1","text":"prefers ripgrep"}"#.utf8)
+
+        let document: [String: Any] = [
+            "uid": uid,
+            "docID": docID,
+            "schemaVersion": 1,
+            "sourceKind": "agent",
+            "kind": "decision",
+            "reviewStatus": "approved",
+            "citationCount": 0,
+            "sealedMemory": try CloudVaultCrypto.firestoreDictionary(
+                CloudVaultCrypto.sealBlob(body, keyData: oldKey, aadContext: context)
+            )
+        ]
+
+        let result = try CloudVaultCrypto.rewrapCloudVaultDocument(
+            document,
+            uid: uid,
+            collection: "memory_facts",
+            docID: docID,
+            oldKeyData: oldKey,
+            newKeyData: newKey,
+            newVaultKeyID: newVaultKeyID,
+            vaultGeneration: 4,
+            rotationJobId: "rotation-job-1"
+        )
+
+        XCTAssertEqual(result.changedFields, ["sealedMemory"])
+        XCTAssertEqual(result.data["vaultGeneration"] as? Int, 4)
+        XCTAssertEqual(result.data["rewrapJobId"] as? String, "rotation-job-1")
+        // Plaintext metadata rides through untouched — the rules validate it.
+        XCTAssertEqual(result.data["sourceKind"] as? String, "agent")
+        XCTAssertEqual(result.data["kind"] as? String, "decision")
+
+        let envelope = try XCTUnwrap(CloudVaultCrypto.decodeBlobEnvelope(from: result.data["sealedMemory"]))
+        XCTAssertGreaterThanOrEqual(envelope.schemaVersion, 2)
+        XCTAssertEqual(envelope.aad, context.stringValue)
+        XCTAssertEqual(try CloudVaultCrypto.openBlob(envelope, keyData: newKey, aadContext: context), body)
+        XCTAssertThrowsError(try CloudVaultCrypto.openBlob(envelope, keyData: oldKey, aadContext: context))
+    }
+
     func test_tokenHashes_areKeyedStableDeduplicatedAndNotPlaintext() throws {
         let key = Data(repeating: 0x11, count: 32)
         let otherKey = Data(repeating: 0x22, count: 32)

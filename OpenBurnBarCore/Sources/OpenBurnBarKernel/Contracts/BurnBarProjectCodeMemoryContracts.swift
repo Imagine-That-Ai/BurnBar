@@ -9,6 +9,17 @@ public struct BurnBarProjectMemoryRememberRequest: Codable, Hashable, Sendable {
     public let confidence: Double
     public let sourcePath: String?
     public let reviewStatus: MemoryReviewStatus
+    /// Which partition of the authority table this memory belongs to. `nil`
+    /// keeps today's behaviour — the daemon's `source_kind` column default,
+    /// `"code"`, which the cloud lane never replicates. The Memory MCP engine
+    /// sends `"agent"` for approved, non-secret rows it wants mirrored.
+    public let sourceKind: String?
+    /// The engine's own `mem_<32 hex>` identifier. The daemon derives its
+    /// memory id from `projectID:bodyHash`, which is path-dependent and so is
+    /// not stable across a member's devices; blind sync keys the sealed payload
+    /// and the blinded Firestore doc id on this 128-bit random id instead, so
+    /// it has to survive the IPC hop. `nil` for every non-engine caller.
+    public let engineMemoryID: String?
 
     public init(
         text: String,
@@ -18,7 +29,9 @@ public struct BurnBarProjectMemoryRememberRequest: Codable, Hashable, Sendable {
         tags: [String] = [],
         confidence: Double = 1.0,
         sourcePath: String? = nil,
-        reviewStatus: MemoryReviewStatus = .approved
+        reviewStatus: MemoryReviewStatus = .approved,
+        sourceKind: String? = nil,
+        engineMemoryID: String? = nil
     ) {
         self.text = text
         self.projectPath = projectPath
@@ -28,10 +41,13 @@ public struct BurnBarProjectMemoryRememberRequest: Codable, Hashable, Sendable {
         self.confidence = confidence
         self.sourcePath = sourcePath
         self.reviewStatus = reviewStatus
+        self.sourceKind = sourceKind
+        self.engineMemoryID = engineMemoryID
     }
 
     private enum CodingKeys: String, CodingKey {
         case text, projectPath, kind, scope, tags, confidence, sourcePath, reviewStatus
+        case sourceKind, engineMemoryID
     }
 
     public init(from decoder: Decoder) throws {
@@ -44,6 +60,8 @@ public struct BurnBarProjectMemoryRememberRequest: Codable, Hashable, Sendable {
         self.confidence = try values.decodeIfPresent(Double.self, forKey: .confidence) ?? 1.0
         self.sourcePath = try values.decodeIfPresent(String.self, forKey: .sourcePath)
         self.reviewStatus = try values.decodeIfPresent(MemoryReviewStatus.self, forKey: .reviewStatus) ?? .approved
+        self.sourceKind = try values.decodeIfPresent(String.self, forKey: .sourceKind)
+        self.engineMemoryID = try values.decodeIfPresent(String.self, forKey: .engineMemoryID)
     }
 }
 
