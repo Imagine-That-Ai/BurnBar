@@ -928,6 +928,14 @@ class _ReadPath:
                 memory_id,
             ),
         )
+        # The member's edit is a writer like any other, so it keys its new body
+        # to this row in the convergence ledger. This is the entry that lets a
+        # device which authored and then edited a fact entirely locally still
+        # recognise another device's copy of the body it moved on from, instead
+        # of storing it as a second active row. Recorded unconditionally: a
+        # scope change re-keys the same body, and re-recording an unchanged one
+        # is idempotent. See `_sync.py::_record_convergence_identity`.
+        self._record_convergence_identity(existing.project_id, new_scope, body_hash, memory_id)
         if changes.get("body"):
             self.conn.execute("DELETE FROM memory_relations WHERE memory_id = ?", (memory_id,))
             for subject, predicate, obj in extract_relations(body_after):

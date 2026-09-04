@@ -462,6 +462,69 @@ def test_saying_a_forgotten_fact_again_locally_lifts_the_receipt(tmp_path: Path)
     engine.close()
 
 
+def test_forgetting_a_memory_clears_its_sync_mark_and_convergence_ledger(tmp_path: Path) -> None:
+    """`_purge` owns the sync bookkeeping, and the forget receipt depends on it.
+
+    Both key classes have to go when the row does — `sync_mark:<id>`, the last
+    remote revision the row absorbed, and every `sync_identity:` entry keying a
+    body to it — for a row this device authored as well as one it merged. A
+    ledger entry outliving its memory is exactly what would let a remote copy
+    walk back in under a foreign engine id after a hard forget.
+    """
+    repo = _repo(tmp_path)
+    engine = _replica(tmp_path, "purge-marks")
+    project_id = _project_id(engine, repo)
+
+    merged_id = "mem_c0c0111122223333444455556666777f"
+    engine.merge_remote([_doc("doc-merged", merged_id, "Envoy fronts the API.", project_id=project_id, updated_at=T1)])
+    engine.merge_remote(
+        [_doc("doc-merged-2", merged_id, "Envoy 1.31 fronts the API.", project_id=project_id, updated_at=T2)]
+    )
+    authored = engine.remember("Feature flags live in LaunchDarkly.", project_path=repo, kind="fact")
+    assert authored["event"] == "ADD"
+    authored_id = str(authored["memoryID"])
+    assert engine.update(authored_id, text="Feature flags live in Statsig.")["status"] == "ok"
+
+    def marks(memory_id: str) -> tuple[int, int]:
+        """`(sync marks, ledger entries)` still pointing at this memory."""
+        return (
+            engine.conn.execute(
+                "SELECT count(*) AS n FROM engine_meta WHERE key = ?", (f"sync_mark:{memory_id}",)
+            ).fetchone()["n"],
+            engine.conn.execute(
+                "SELECT count(*) AS n FROM engine_meta WHERE key LIKE 'sync_identity:%' AND value = ?", (memory_id,)
+            ).fetchone()["n"],
+        )
+
+    # Two bodies keyed to the merged row (the arrival and its revision) and two
+    # to the authored one (what it was remembered with and what it was edited
+    # to): the local write paths keep the ledger, not only the merge.
+    assert marks(merged_id) == (1, 2)
+    assert marks(authored_id) == (0, 2)
+
+    assert engine.forget(merged_id, project_path=repo)["status"] == "ok"
+    assert engine.forget(authored_id, project_path=repo)["status"] == "ok"
+    assert marks(merged_id) == (0, 0)
+    assert marks(authored_id) == (0, 0)
+    left = engine.conn.execute("SELECT count(*) AS n FROM engine_meta WHERE key LIKE 'sync_identity:%'").fetchone()
+    assert left["n"] == 0
+
+    # And the receipt still holds: neither forgotten fact walks back in, under
+    # its own engine id or a foreign one.
+    revived = _doc(
+        "doc-revive",
+        "mem_d0d0111122223333444455556666777f",
+        "Feature flags live in Statsig.",
+        project_id=project_id,
+        updated_at=T6,
+    )
+    result = engine.merge_remote([revived])
+    assert result["refused"] == 1 and result["applied"] == 0
+    assert result["decisions"][0]["code"] == "LOCALLY_FORGOTTEN"
+    assert _rows(engine) == {}
+    engine.close()
+
+
 def test_a_remote_row_carrying_a_secret_is_refused_and_acknowledged(tmp_path: Path) -> None:
     """Every remote row passes the gate a local `remember` passes. A rejected
     row is never active — and it is terminal, so it is acknowledged rather than
@@ -732,6 +795,82 @@ def test_a_converging_duplicate_and_a_later_edit_agree_in_either_delivery_order(
         a_doc, c_doc, edit_doc = docs(name)
         engine.merge_remote([edit_doc, a_doc, c_doc])
         assert _active(engine) == expected, name
+        engine.close()
+
+
+def test_a_locally_authored_and_locally_edited_fact_converges_like_a_merged_one(tmp_path: Path) -> None:
+    """The convergence identity has to be recorded by the LOCAL write paths too.
+
+    Replica `author` remembers a fact and then edits it here, through the real
+    `remember` and `update` paths — no merge involved on either write. Two other
+    devices receive both of those revisions plus a third device's independently
+    learned copy of the body the edit replaced. All three must end up believing
+    the same thing, and the member's own later edit must be what survives.
+
+    Without a ledger entry from the local write, `author` is the odd one out: the
+    arriving duplicate matches no live row (its own edit moved the body on) and
+    nothing on this device remembers which memory that body belonged to, so it
+    lands as a *second* active row — while every replica that received the same
+    two revisions by merge folded it into one.
+    """
+    repo = _repo(tmp_path)
+    author = _replica(tmp_path, "author-local")
+    project_id = _project_id(author, repo)
+    body = "The staging database is restored nightly."
+    edited = "The staging database is restored hourly."
+    theirs_id = "mem_7b7b111122223333444455556666777f"
+
+    authored = author.remember(body, project_path=repo, kind="fact")
+    assert authored["event"] == "ADD"
+    mine = str(authored["memoryID"])
+    assert author.update(mine, text=edited)["status"] == "ok"
+
+    # What `author` published for its own two revisions, on past instants so the
+    # ordering below is explicit. Its local row still carries this device's wall
+    # clock, which is what keeps the member's edit ahead of anything arriving.
+    revision_1 = _doc("doc-mine-1", mine, body, project_id=project_id, updated_at=T1)
+    revision_2 = _doc("doc-mine-2", mine, edited, project_id=project_id, updated_at=T3)
+    # A third device learned the superseded body independently, under its own id.
+    theirs = _doc("doc-theirs", theirs_id, body, project_id=project_id, updated_at=T2)
+
+    merger = _replica(tmp_path, "merger")
+    latecomer = _replica(tmp_path, "latecomer")
+    # `author` never receives its own uploads; the others receive all three, in
+    # order and with the edit first respectively.
+    author.merge_remote([theirs])
+    merger.merge_remote([revision_1, theirs, revision_2])
+    latecomer.merge_remote([revision_2])
+    latecomer.merge_remote([theirs, revision_1])
+
+    replicas = {"author": author, "merger": merger, "latecomer": latecomer}
+    expected = {(mine, edited, "fact")}
+    for name, engine in replicas.items():
+        assert _active(engine) == expected, name
+        # The third device's id resolves to the same row everywhere, so a later
+        # supersede naming it lands instead of parking for ever.
+        assert engine._local_memory_id(theirs_id) == mine, name
+
+    # A later pull re-offering everything moves nothing on any of them — the
+    # author included, whose own row must not lose to an echo of itself.
+    for name, engine in replicas.items():
+        engine.merge_remote([revision_2, theirs, revision_1])
+        assert _active(engine) == expected, name
+
+    # And the round-1 local-writer rule still holds on the far side of the
+    # fold-in: the member edits again HERE, and a remote revision authored
+    # before that edit loses — including one arriving under the foreign id that
+    # just converged into this row, on the replica that never merged into it
+    # (`author`, which has no applied-remote mark) and on one that did.
+    final = "The staging database is restored continuously."
+    for name, engine in replicas.items():
+        assert engine.update(mine, text=final)["status"] == "ok", name
+        stale = _doc(
+            "doc-stale", theirs_id, "The staging database is restored weekly.", project_id=project_id, updated_at=T4
+        )
+        result = engine.merge_remote([stale])
+        assert result["applied"] == 0 and result["unchanged"] == 1, name
+        assert result["decisions"][0]["code"] == "LOCAL_IS_NEWER", name
+        assert _active(engine) == {(mine, final, "fact")}, name
         engine.close()
 
 

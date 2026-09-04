@@ -620,6 +620,11 @@ class _WritePath:
                 quarantine_labels=reinforce_injection,
                 reactivate=_is_expired(exact["expires_at"], now),
             )
+            # This row holds this body: say so in the convergence ledger, so a
+            # later local edit that moves the body on cannot leave another
+            # device's copy of it keyed to nothing here. See
+            # `_sync.py::_record_convergence_identity`.
+            self._record_convergence_identity(project_id, scope, body_hash, str(exact["id"]))
             if gate.action == "retain" and gate.vault_body is not None:
                 # Different secrets redact to the same body: keep the vault current.
                 changed = self._rotate_vault(str(exact["id"]), project_id, gate)
@@ -839,6 +844,14 @@ class _WritePath:
                 ),
             )
             rowid = int(self.conn.execute("SELECT rowid FROM memories WHERE id = ?", (memory_id,)).fetchone()["rowid"])
+        # §5's convergence identity, recorded by the LOCAL writer as well as by
+        # the merge. The live `UNIQUE(project_id, scope, body_hash)` lookup only
+        # answers while this row still holds this body, and a later local edit
+        # moves it on; without this entry another device's independently-learned
+        # copy of the superseded body would key to nothing here and land as a
+        # second active row, while every device that received the same two
+        # revisions by merge folded it into one.
+        self._record_convergence_identity(project_id, scope, body_hash, memory_id)
         if vector is not None:
             self.conn.execute(
                 "INSERT INTO memory_vectors (memory_rowid, embedding_version, dimension, vector) VALUES (?, ?, ?, ?)",

@@ -248,8 +248,8 @@ class _BlindSync:
             return None
         return (_parse_iso(str(row["updated_at"])) or _EPOCH, str(row["body_hash"]))
 
-    def _record_convergence_identity(self, fact: _RemoteFact, memory_id: str) -> None:
-        """Remember which local row a remote body belongs to, for good.
+    def _record_convergence_identity(self, project_id: str, scope: str, body_hash: str, memory_id: str) -> None:
+        """Remember which local row a body belongs to, for good.
 
         The live `UNIQUE(project_id, scope, body_hash)` lookup only answers while
         the row still holds that body. A device that receives an edit before it
@@ -258,10 +258,19 @@ class _BlindSync:
         received them the other way round folded them into one — the same
         documents, two different beliefs. This ledger is what makes the answer
         the same on every replica whatever order the documents arrive in.
+
+        **Every writer keeps it, not only the merge.** A member who authors a
+        fact here and then edits it here has moved the body on exactly as a pair
+        of merged revisions would, and a device that only ever wrote locally is
+        still a replica: if the local paths left no entry, another device's
+        independently-learned copy of the superseded body would land as a second
+        active row on the authoring device and fold into one everywhere else.
+        `_write.py::_commit_fact` and `_read.py::update` call this for the same
+        reason `_merge_remote_fact` does.
         """
         self.conn.execute(
             "INSERT OR REPLACE INTO engine_meta (key, value) VALUES (?, ?)",
-            (f"sync_identity:{_convergence_key(fact.project_id, fact.scope, fact.body_hash)}", memory_id),
+            (f"sync_identity:{_convergence_key(project_id, scope, body_hash)}", memory_id),
         )
 
     def _converged_local_id(self, fact: _RemoteFact) -> str | None:
@@ -549,7 +558,9 @@ class _BlindSync:
         """
         decision = self._decide_remote_fact(fact)
         if decision["event"] != "REFUSE":
-            self._record_convergence_identity(fact, str(decision.get("memoryID") or fact.memory_id))
+            self._record_convergence_identity(
+                fact.project_id, fact.scope, fact.body_hash, str(decision.get("memoryID") or fact.memory_id)
+            )
         return decision
 
     def _decide_remote_fact(self, fact: _RemoteFact) -> dict[str, Any]:
