@@ -31,7 +31,11 @@ Two coherent PRs, per the CHEAP_FAST standing rule.
 
 **Files:** `firestore.rules`; `AgentLens/Services/CloudSync/CloudVaultRotationRewrapWorker.swift`; the memory remember request contract in `OpenBurnBarCore/Sources/OpenBurnBarKernel/Contracts/`; `functions/` rules tests if present.
 
-**Produces:** `sourceKind in ["chat", "agent"]` and the widened `kind` allowlist at `firestore.rules:3238-3240`; `memory_facts` in the rewrap collection set; `BurnBarMemoryRememberRequest` gaining `sourceKind: String?` (default `"code"`, so every existing caller is unchanged) and `bodySnapshot: String?`.
+**Produces:** `sourceKind in ["chat", "agent"]` and the widened `kind` allowlist at `firestore.rules:3238-3240`; the rotation-rewrap keys added to the rules' field allowlist; `BurnBarProjectMemoryRememberRequest` gaining one optional field, `engineMemoryID: String?`, whose presence marks a row syncable and whose absence keeps the never-replicated `"code"` default.
+
+**Ruling (2026-09-03):** the rewrap gap was not in `CloudVaultRotationRewrapWorker` — `memory_facts` is already in its data-driven collection set through the `pensieve` data domain. The real stranding bug was in the rules: `validMemoryFactKeys()` did not admit `vaultGeneration` or `rewrapJobId`, so every rotation update on a memory fact was denied. Fixed there instead, with a red-then-green rules case.
+
+**Ruling (2026-09-03):** the contract carries one field, not two. Only the engine sends an id of its own, and only for rows it wants replicated, so its presence *is* the partition; a `sourceKind` companion would allow a contradictory pair and pushed `OpenBurnBarKernel` past its LOC ceiling, which cannot be raised (`check-baseline-monotonic` rejects baseline raises categorically).
 
 - [ ] **Step 1:** rules tests first — a document with `sourceKind: "agent"` and `kind: "decision"` is accepted; one with `sourceKind: "code"`, one with a `text` field, and one without the Data Vault entitlement are all rejected. Run the repo's Firestore rules test job.
 - [ ] **Step 2:** widen the two fields; confirm the previously-failing cases pass and the rejection cases still reject.
