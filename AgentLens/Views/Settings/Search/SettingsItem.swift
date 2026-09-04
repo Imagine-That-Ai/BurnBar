@@ -201,6 +201,7 @@ enum SettingsAnchor {
     // General → Indexing
     static let indexingToggle = "general.indexing.enabled"
     static let indexingMemory = "general.indexing.memory"
+    static let indexingMemoryDeviceSync = "general.indexing.memoryDeviceSync"
     static let indexingMemoryCloudModels = "general.indexing.memoryCloudModels"
 
     // General → Summaries

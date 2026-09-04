@@ -926,6 +926,39 @@ final class SettingsManager {
         memoryApprovedCloudBackupEnabled && memory.deviceSyncEnabled
     }
 
+    /// Live Data Vault entitlement check for the device-sync ROW (default
+    /// OFF — fail closed, not persisted). Set by the Privacy & Indexing view
+    /// from `MacCloudEntitlementStore` as the member's resolved tier changes.
+    /// See `MemorySettings.deviceSyncEntitlementSatisfied`.
+    var memoryDeviceSyncEntitlementSatisfied: Bool {
+        get { memory.deviceSyncEntitlementSatisfied }
+        set { memory.deviceSyncEntitlementSatisfied = newValue }
+    }
+
+    /// Whether the device-sync row can be interacted with at all: the backup
+    /// gate (opt-in AND fleet ceiling) AND the Data Vault entitlement.
+    /// Deliberately excludes the sub-toggle itself — a member who has satisfied
+    /// every other lever must still be free to flip the sub-toggle on or off.
+    var memoryDeviceSyncRowUnlocked: Bool {
+        memoryApprovedCloudBackupEnabled && memory.deviceSyncEntitlementSatisfied
+    }
+
+    /// Presentation gate for the "Sync memories to my other devices" row: the
+    /// sub-toggle, the backup opt-in, the Data Vault entitlement, and the
+    /// Remote Config fleet ceiling, all ANDed (`MemoryDeviceSyncGate`). Distinct
+    /// from `memoryDeviceSyncEnabled` (which `MemoryCloudSyncDomain` actually
+    /// consults to run the pull) because the entitlement is independently
+    /// enforced server-side; this gate exists purely so the row never invites a
+    /// member who cannot use the feature to flip a switch that looks live.
+    var memoryDeviceSyncRowEnabled: Bool {
+        MemoryDeviceSyncGate.isEnabled(
+            deviceSyncOptIn: memory.deviceSyncEnabled,
+            backupOptIn: memory.approvedCloudBackupEnabled,
+            entitlementSatisfied: memory.deviceSyncEntitlementSatisfied,
+            remoteConfigEnabled: memory.remoteConfigExtractionEnabled
+        )
+    }
+
     // MARK: Memory Pro cloud models (opt-in, blind)
 
     /// Raw user opt-in to cloud / big models for memory (default OFF). The

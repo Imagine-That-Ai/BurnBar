@@ -34,6 +34,12 @@ struct PrivacyIndexingSettingsView: View {
     @State private var openAIKeySaved = false
     @State private var reembedStatusMessage: String?
     @State private var reembedErrorMessage: String?
+    /// Live Data Vault entitlement (Pro Max or Ultra), the same gate the
+    /// cloud-models section unlocks against. Feeds `memoryDeviceSyncEntitlementSatisfied`
+    /// so the device-sync row's presentation gate never needs its own Firebase
+    /// dependency.
+    @ObservedObject private var deviceSyncEntitlement = MacCloudEntitlementStore.shared
+    private static let deviceSyncGatedFeature = GatedFeature.gatedFeature(.dataVault)
 
     /// Opt-in analytics consent toggle. Reads/writes the shared tri-state consent
     /// store and notifies the recorder so the Amplitude SDK starts on grant and
@@ -138,6 +144,14 @@ struct PrivacyIndexingSettingsView: View {
                         subtitle: "Off by default. When on, only memories you approve are replicated to your cloud vault, end-to-end sealed. Declining keeps every memory on this Mac.",
                         isOn: $settingsManager.memoryApprovedCloudBackupOptIn
                     )
+
+                    SettingsToggle(
+                        title: "Sync memories to my other devices",
+                        subtitle: deviceSyncSubtitle,
+                        isOn: deviceSyncBinding
+                    )
+                    .disabled(!settingsManager.memoryDeviceSyncRowUnlocked)
+                    .settingsAnchor(SettingsAnchor.indexingMemoryDeviceSync)
 
                     MemoryCloudModelsSection(settingsManager: settingsManager)
 
@@ -466,6 +480,10 @@ struct PrivacyIndexingSettingsView: View {
                 refreshHealth()
                 refreshEmbeddingLineage()
             }
+            refreshDeviceSyncEntitlement()
+        }
+        .onChange(of: deviceSyncEntitlement.cloudTier) { _, _ in
+            refreshDeviceSyncEntitlement()
         }
         .onChange(of: settingsManager.conversationIndexingEnabled) { _, newValue in
             Analytics.shared.track(.settingsChanged, [
@@ -771,6 +789,37 @@ struct PrivacyIndexingSettingsView: View {
                 settingsManager.chatThreadContentCloudBackupEnabled = enabled
                 settingsManager.chatThreadContentCloudBackupConsentShown = true
             }
+        )
+    }
+
+    /// Pushes the live Data Vault tier into the settings coordinator's
+    /// non-persisted entitlement snapshot. Idempotent — safe from `.onAppear`
+    /// and every `.onChange(of: deviceSyncEntitlement.cloudTier)` firing.
+    private func refreshDeviceSyncEntitlement() {
+        deviceSyncEntitlement.start()
+        settingsManager.memoryDeviceSyncEntitlementSatisfied =
+            deviceSyncEntitlement.cloudTier.satisfies(Self.deviceSyncGatedFeature.requiredTier)
+    }
+
+    /// "Sync memories to my other devices" — off by default, and reads off
+    /// whenever the row is not fully unlocked (backup opt-in off, the fleet
+    /// ceiling closed, or no Data Vault entitlement) regardless of what the
+    /// raw sub-toggle is persisted as, so a greyed-out switch never appears to
+    /// silently be on.
+    private var deviceSyncSubtitle: String {
+        if !settingsManager.memoryApprovedCloudBackupEnabled {
+            return "Turn on \"Back up approved memories\" first. Off by default — pulls your approved memories back down from your other signed-in devices too."
+        }
+        if !settingsManager.memoryDeviceSyncEntitlementSatisfied {
+            return "Requires the Data Vault plan (Pro Max or Ultra). Off by default — pulls your approved memories back down from your other signed-in devices too."
+        }
+        return "Off by default. When on, approved memories your other signed-in devices backed up are pulled down and merged into this Mac's memory too."
+    }
+
+    private var deviceSyncBinding: Binding<Bool> {
+        Binding(
+            get: { settingsManager.memoryDeviceSyncRowEnabled },
+            set: { settingsManager.memoryDeviceSyncOptIn = $0 }
         )
     }
 

@@ -47,6 +47,20 @@ final class MemorySettings {
         didSet { persistence.set(deviceSyncEnabled, forKey: "memoryDeviceSyncEnabled") }
     }
 
+    /// Live Data Vault entitlement check (Pro Max or Ultra — the same tier
+    /// `GatedFeature.dataVault` requires) for the device-sync ROW's presentation
+    /// (default OFF — fail closed). Not user-settable and not persisted: the
+    /// Privacy & Indexing view refreshes it from `MacCloudEntitlementStore` as
+    /// the member's resolved tier changes, exactly like `remoteConfigCloudModelsEnabled`
+    /// is refreshed from Remote Config. This gates only what the row shows —
+    /// `SettingsManager.memoryDeviceSyncEnabled` (backup gate AND sub-toggle,
+    /// entitlement-free) is what `MemoryCloudSyncDomain` actually consults to run
+    /// the pull, because `firestore.rules` independently enforces the same
+    /// entitlement server-side on every `memory_facts` read — a stale or
+    /// unresolved snapshot here can only ever hide the row early, never let an
+    /// unentitled read through.
+    var deviceSyncEntitlementSatisfied: Bool = false
+
     /// Firebase Remote Config `memory_extraction_enabled` (default true). Not
     /// user-settable; the fleet kill switch sets this false to halt extraction
     /// instantly. Fetch transport errors preserve extraction only when the
@@ -454,6 +468,34 @@ enum MemoryCloudModelsGate {
         remoteConfigEnabled: Bool
     ) -> Bool {
         consentGranted && cloudModelsEnabled && remoteConfigEnabled
+    }
+}
+
+// MARK: - Memory device-sync row gate (Memory Blind Sync PR-2, presentation layer)
+
+/// Pure gate for the "Sync memories to my other devices" ROW: it is presented
+/// as ON only when the sub-toggle **and** the backup opt-in **and** the Data
+/// Vault entitlement **and** the fleet Remote Config ceiling all allow. Any
+/// lever off -> the row reads off (fail-closed). Kept pure so the gate logic is
+/// testable without Firebase, `MacCloudEntitlementStore`, or a
+/// `SettingsManager`.
+///
+/// This governs presentation only. The pull itself is still gated by
+/// `SettingsManager.memoryDeviceSyncEnabled` (backup gate AND sub-toggle,
+/// entitlement-free — see that property's doc comment), with the Data Vault
+/// entitlement independently enforced server-side by `firestore.rules` on every
+/// `memory_facts` read. Splitting the two means a stale or not-yet-resolved
+/// local entitlement snapshot can only ever hide the row early; it can never
+/// let an unentitled read through, and it can never block a read the server
+/// would actually allow.
+enum MemoryDeviceSyncGate {
+    static func isEnabled(
+        deviceSyncOptIn: Bool,
+        backupOptIn: Bool,
+        entitlementSatisfied: Bool,
+        remoteConfigEnabled: Bool
+    ) -> Bool {
+        deviceSyncOptIn && backupOptIn && entitlementSatisfied && remoteConfigEnabled
     }
 }
 

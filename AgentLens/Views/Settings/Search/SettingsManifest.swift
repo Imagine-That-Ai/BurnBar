@@ -334,6 +334,16 @@ enum SettingsManifest {
             helpText: "Opens the on-device Memory controls. Free on this Mac — no Cloud plan required; sealed cloud backup of approved memories is a separate opt-in."
         ),
         SettingsItem(
+            id: "general.indexing.memoryDeviceSync",
+            tab: .general,
+            pageRoute: .indexing,
+            anchorID: SettingsAnchor.indexingMemoryDeviceSync,
+            title: "Sync Memories to My Other Devices",
+            subtitle: "Opt-in sub-toggle of cloud backup: read your own approved memories back down onto this Mac from your other signed-in devices",
+            keywords: ["memory", "sync", "device sync", "cross-device", "pull", "download", "data vault", "pensieve", "backup", "other devices"],
+            helpText: "Requires \"Back up approved memories\" and the Data Vault plan (Pro Max or Ultra). Off by default even when backup is already on."
+        ),
+        SettingsItem(
             id: "general.indexing.memoryCloudModels",
             tab: .general,
             pageRoute: .indexing,
