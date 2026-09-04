@@ -2248,6 +2248,89 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         return SHA256.hash(data: payload).map { String(format: "%02x", $0) }.joined()
     }
 
+    // MARK: - Blind sync
+
+    func testAgentSourcedMemoriesKeepAnApprovedBodyForBlindSync() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
+        let engineID = "mem_00112233445566778899aabbccddeeff"
+
+        let mirrored = try store.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: "We deploy from the release branch on Fridays.",
+                projectPath: fixture.project.path,
+                tags: ["release"],
+                sourceKind: "agent",
+                engineMemoryID: engineID
+            )
+        )
+
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT source_kind FROM agent_memories WHERE id = \(sqlLiteral(mirrored.memoryID))"
+            ),
+            ["agent"],
+            "only rows the engine mirrors may reach the cloud lane, so only they are marked"
+        )
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: """
+                SELECT engine_memory_id || '|' || body FROM agent_memory_bodies \
+                WHERE memory_id = \(sqlLiteral(mirrored.memoryID))
+                """
+            ),
+            ["\(engineID)|We deploy from the release branch on Fridays."],
+            "the approved body and the engine id the blinded document keys on both travel"
+        )
+    }
+
+    func testRepositoryKnowledgeNeverGainsASyncableBody() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
+
+        // A caller that predates blind sync sends neither field.
+        let legacy = try store.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: "The daemon owns the project code memory store.",
+                projectPath: fixture.project.path
+            )
+        )
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT source_kind FROM agent_memories WHERE id = \(sqlLiteral(legacy.memoryID))"
+            ),
+            ["code"]
+        )
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT body FROM agent_memory_bodies WHERE memory_id = \(sqlLiteral(legacy.memoryID))"
+            ),
+            [],
+            "repository knowledge never gets a syncable body"
+        )
+
+        // An agent row without its engine id cannot be addressed across devices,
+        // so it is not made syncable either.
+        let unidentified = try store.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: "An agent row with no engine id.",
+                projectPath: fixture.project.path,
+                sourceKind: "agent"
+            )
+        )
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT body FROM agent_memory_bodies WHERE memory_id = \(sqlLiteral(unidentified.memoryID))"
+            ),
+            []
+        )
+    }
+
     private func sqliteStrings(database: URL, sql: String) throws -> [String] {
         var db: OpaquePointer?
         XCTAssertEqual(sqlite3_open_v2(database.path, &db, SQLITE_OPEN_READONLY, nil), SQLITE_OK)

@@ -324,6 +324,11 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
             let memoryID = "mem_" + String(Self.sha256Hex("\(projectID):\(request.scope):\(bodyRef)").prefix(32))
             let now = Self.isoNow()
             let tagsJSON = try encodeJSONString(request.tags)
+            // An absent `sourceKind` keeps the shipped default: callers that predate
+            // blind sync write repository knowledge, which never leaves the device.
+            let requestedSourceKind = request.sourceKind?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let resolvedSourceKind = MemorySourceKind(rawValue: requestedSourceKind ?? "")?.rawValue
+                ?? MemorySourceKind.code.rawValue
             try execute("BEGIN IMMEDIATE", [])
             do {
                 if reviewStatus == .approved {
@@ -339,6 +344,24 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                         now: now
                     )
                     try removeQuarantineMemoryBody(projectID: projectID, memoryID: memoryID)
+                    // Blind sync: an approved memory the Memory MCP engine mirrored keeps
+                    // its body in the shared encrypted database so the app's sync lane can
+                    // seal and upload it. Nothing else writes here, so repository knowledge
+                    // and quarantined input can never reach the cloud lane.
+                    if resolvedSourceKind == MemorySourceKind.agent.rawValue,
+                       let engineMemoryID = request.engineMemoryID?.trimmingCharacters(in: .whitespacesAndNewlines),
+                       engineMemoryID.isEmpty == false {
+                        try upsertAgentMemoryBody(
+                            projectID: projectID,
+                            memoryID: memoryID,
+                            engineMemoryID: engineMemoryID,
+                            body: body,
+                            bodyHash: bodyRef,
+                            now: now
+                        )
+                    } else {
+                        try removeAgentMemoryBody(projectID: projectID, memoryID: memoryID)
+                    }
                 } else {
                     // Quarantined input remains reviewable in a dedicated
                     // encrypted-at-rest holding table, never in the default
@@ -350,6 +373,7 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                         now: now
                     )
                     try upsertQuarantineMemoryBody(projectID: projectID, memoryID: memoryID, body: body, now: now)
+                    try removeAgentMemoryBody(projectID: projectID, memoryID: memoryID)
                 }
                 let bodyReference = reviewStatus == .approved
                     ? Self.memoryBodyReference(memoryID: memoryID, projectID: projectID)
@@ -357,9 +381,10 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                 try execute(
                     """
                     INSERT INTO agent_memories
-                        (id, project_id, kind, scope, confidence, body_ref, body_redacted, tags_json, source_path, valid_from, review_status, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        (id, project_id, kind, scope, confidence, body_ref, body_redacted, tags_json, source_path, valid_from, review_status, source_kind, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(id) DO UPDATE SET
+                        source_kind = excluded.source_kind,
                         kind = excluded.kind,
                         scope = excluded.scope,
                         confidence = excluded.confidence,
@@ -374,7 +399,7 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                         .text(memoryID), .text(projectID), .text(request.kind), .text(request.scope),
                         .double(request.confidence), .text(bodyRef), .text(bodyReference),
                         .text(tagsJSON), request.sourcePath.map(SQLiteBind.text) ?? .null, .text(now),
-                        .text(reviewStatus.rawValue), .text(now), .text(now)
+                        .text(reviewStatus.rawValue), .text(resolvedSourceKind), .text(now), .text(now)
                     ]
                 )
                 if let memoryVector, memoryVector.count == embeddingProvider.dimension {
