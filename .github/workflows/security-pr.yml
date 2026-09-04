@@ -59,6 +59,16 @@ concurrency:
   group: security-pr-${{ github.event_name == 'pull_request' && format('pr-{0}', github.ref) || format('run-{0}', github.run_id) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+env:
+  # `npm ci` audits every install by default, which makes each install block on
+  # the npm advisory endpoint. That endpoint has outages (2026-09-04: every Node
+  # job in this workflow timed out inside `npm ci`), and it is not what these
+  # jobs exist to check: the dedicated npm-audit job in security-pr.yml owns
+  # that verdict and still runs `npm audit` explicitly. Installs stay offline
+  # from the advisory service; the audit gate keeps its own timeout budget.
+  NPM_CONFIG_AUDIT: "false"
+  NPM_CONFIG_FUND: "false"
+
 jobs:
   secret-detection:
     name: Secret Detection (gitleaks)
@@ -174,6 +184,9 @@ jobs:
 
   npm-audit:
     name: npm Audit (Node package locks)
+    env:
+      # This job IS the audit; do not inherit the workflow-level install opt-out.
+      NPM_CONFIG_AUDIT: "true"
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
