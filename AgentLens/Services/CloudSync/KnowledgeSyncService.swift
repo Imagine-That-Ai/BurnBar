@@ -498,7 +498,19 @@ struct MemoryCloudSyncResult: Equatable, Sendable {
     let cloudFactsDeleted: Int
 }
 
-private struct MemoryCloudFactPayload: Codable {
+/// The plaintext a `memory_facts` document seals. Everything the pull half needs
+/// to merge a fact travels here, INSIDE `sealedMemory`, so widening it never
+/// touches `firestore.rules` (whose `hasOnly` key allowlist bounds the envelope,
+/// not its contents) and never widens what the backend can observe.
+///
+/// **Schema version 2** (Memory Blind Sync PR-2) adds the supersede/retire and
+/// convergence fields §5 of the design needs. Every one of them is optional, so a
+/// v1 payload sealed by a device that has not updated yet still decodes — the
+/// pull service must never reject a member's own older document.
+struct MemoryCloudFactPayload: Codable {
+    /// Bumped only when a new field lands; readers accept every version <= this.
+    static let currentSchemaVersion = 2
+
     let schemaVersion: Int
     let memoryID: MemoryID
     let text: String
@@ -508,6 +520,21 @@ private struct MemoryCloudFactPayload: Codable {
     let citations: [MemoryCitation]
     let validFrom: Date
     let updatedAt: Date
+
+    // MARK: v2
+
+    /// Retirement instant. A retired fact converges like any other update (§5),
+    /// so this is a plain field rather than a separate message.
+    let validTo: Date?
+    /// The engine id that replaced this fact. Engine ids are globally unique, so
+    /// a supersede chain resolves on any device. `supersedes_json` deliberately
+    /// does NOT travel: it is the inverse of this edge and would duplicate it.
+    let supersededBy: MemoryID?
+    /// The mirrored row's tags, so a merged fact keeps its local classification.
+    let tags: [String]?
+    /// The engine's body hash, which `UNIQUE(project_id, scope, body_hash)` uses
+    /// to fold a fact learned independently on two devices into one row (§5).
+    let bodyHash: String?
 }
 
 final class MemoryCloudSyncService: Sendable {
@@ -545,13 +572,18 @@ final class MemoryCloudSyncService: Sendable {
             guard let body = resolvedBody, body.isEmpty == false else { continue }
             let identity = isAgent ? try await store.engineMemoryID(for: memory.id) : nil
             if isAgent, identity == nil { continue }
+            // Convergence metadata (§5) rides inside the sealed payload. Only a
+            // mirrored row has it; a chat memory has neither tags nor a body hash.
+            let attributes = isAgent ? try await store.memoryCloudFactAttributes(id: memory.id) : nil
             let encoded = try Self.encodeMemoryFact(
                 memory: memory,
                 body: body,
                 uid: uid,
                 vaultKey: vaultKey,
                 now: now,
-                documentIdentity: identity
+                documentIdentity: identity,
+                tags: attributes?.tags,
+                bodyHash: attributes?.bodyHash
             )
             try await factCollection.document(encoded.docID).setData(encoded.data, merge: true)
             uploaded += 1
@@ -625,18 +657,22 @@ final class MemoryCloudSyncService: Sendable {
     ///   payload key on. Nil keeps the local memory id, which is right for chat
     ///   memories; engine-mirrored memories pass the engine's own id so the same
     ///   memory resolves to one document on every device.
+    /// - Parameters tags/bodyHash: the mirrored row's convergence metadata (§5).
+    ///   Absent for a chat memory, which has neither.
     static func encodeMemoryFact(
         memory: Memory,
         body: String,
         uid: String,
         vaultKey: Data,
         now: Date,
-        documentIdentity: String? = nil
+        documentIdentity: String? = nil,
+        tags: [String]? = nil,
+        bodyHash: String? = nil
     ) throws -> (docID: String, data: [String: Any]) {
         let identity = documentIdentity ?? memory.id
         let docID = try CloudVaultCrypto.pensieveSlugHmac("memory-fact:\(identity)", keyData: vaultKey)
         let payload = MemoryCloudFactPayload(
-            schemaVersion: 1,
+            schemaVersion: MemoryCloudFactPayload.currentSchemaVersion,
             // The sealed id matches the id the document is keyed on, so a device
             // that opens this envelope can address the same memory it named.
             memoryID: identity,
@@ -646,7 +682,11 @@ final class MemoryCloudSyncService: Sendable {
             confidence: memory.confidence,
             citations: memory.citations,
             validFrom: memory.validFrom,
-            updatedAt: memory.updatedAt
+            updatedAt: memory.updatedAt,
+            validTo: memory.validTo,
+            supersededBy: memory.supersededBy,
+            tags: tags?.isEmpty == true ? nil : tags,
+            bodyHash: bodyHash?.isEmpty == true ? nil : bodyHash
         )
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601

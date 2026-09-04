@@ -47,10 +47,11 @@ final class MemoryCloudSyncDomainTests: XCTestCase {
         return (store, queue)
     }
 
-    private func makeSettings(optIn: Bool, fleetEnabled: Bool) -> SettingsManager {
+    private func makeSettings(optIn: Bool, fleetEnabled: Bool, deviceSync: Bool = false) -> SettingsManager {
         let settings = SettingsManager(defaults: UserDefaults(suiteName: "test-\(UUID().uuidString)")!)
         settings.memoryApprovedCloudBackupOptIn = optIn
         settings.memoryExtractionRemoteConfigEnabled = fleetEnabled
+        settings.memoryDeviceSyncOptIn = deviceSync
         return settings
     }
 
@@ -161,5 +162,78 @@ final class MemoryCloudSyncDomainTests: XCTestCase {
         XCTAssertFalse(String(describing: docs).contains("Approved memory body"))
         XCTAssertNotNil(domain.lastSyncDate)
         XCTAssertNil(domain.lastSyncError)
+    }
+
+    // MARK: - The PULL sub-toggle (Memory Blind Sync PR-2)
+
+    /// Backing memory up is not the same consent as syncing it across devices. A
+    /// member who opted into backup and nothing else must see the upload run and
+    /// the download not happen — no `memory_facts` read, no inbox row.
+    func test_sync_doesNotPull_whenTheDeviceSyncSubToggleIsOff() async throws {
+        let uid = "e2-user-pull-off"
+        let (store, queue) = try await makeStoreWithApprovedMemory(uid: uid)
+        let gateway = CloudSyncFirestoreFakeGateway()
+        let settings = makeSettings(optIn: true, fleetEnabled: true, deviceSync: false)
+        let domain = makeDomain(
+            store: store,
+            accountManager: .makeSignedIn(uid: uid),
+            settings: settings,
+            gateway: gateway
+        )
+
+        XCTAssertTrue(settings.memoryApprovedCloudBackupEnabled)
+        XCTAssertFalse(settings.memoryDeviceSyncEnabled, "the pull sub-toggle defaults OFF")
+        await domain.sync()
+
+        // The push still ran: the sub-toggle gates only the read-back.
+        XCTAssertEqual(gateway.documents(under: "users/\(uid)/memory_facts").count, 1)
+        let inboxRows = try await queue.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM agent_memory_inbox") ?? -1
+        }
+        XCTAssertEqual(inboxRows, 0, "no pull runs while the sub-toggle is off")
+        XCTAssertNil(domain.lastSyncError)
+    }
+
+    /// Turning cloud backup off must stop the download too: a member who revokes
+    /// memory egress does not keep an active memory sync channel open inbound.
+    func test_theDeviceSyncGateIsClampedByTheCloudBackupGate() {
+        let settings = makeSettings(optIn: false, fleetEnabled: true, deviceSync: true)
+        XCTAssertTrue(settings.memoryDeviceSyncOptIn)
+        XCTAssertFalse(settings.memoryDeviceSyncEnabled, "the sub-toggle alone can never start a download")
+
+        settings.memoryApprovedCloudBackupOptIn = true
+        XCTAssertTrue(settings.memoryDeviceSyncEnabled)
+
+        // And the fleet ceiling clamps both halves with one flip.
+        settings.memoryExtractionRemoteConfigEnabled = false
+        XCTAssertFalse(settings.memoryDeviceSyncEnabled)
+    }
+
+    /// With both levers on, the same cycle uploads and then reads back. The order
+    /// matters: the pull runs AFTER the push, so a device that just learned a fact
+    /// publishes it before it looks for other devices' facts.
+    func test_sync_pullsRemoteFacts_whenBothTheBackupGateAndTheSubToggleAllow() async throws {
+        let uid = "e2-user-pull-on"
+        let (store, queue) = try await makeStoreWithApprovedMemory(uid: uid)
+        let gateway = CloudSyncFirestoreFakeGateway()
+        let settings = makeSettings(optIn: true, fleetEnabled: true, deviceSync: true)
+        let domain = makeDomain(
+            store: store,
+            accountManager: .makeSignedIn(uid: uid),
+            settings: settings,
+            gateway: gateway
+        )
+
+        XCTAssertTrue(settings.memoryDeviceSyncEnabled)
+        await domain.sync()
+
+        // This device's own upload is read straight back — the same-member,
+        // same-vault-key round trip a second device would see.
+        let inboxRows = try await queue.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM agent_memory_inbox") ?? -1
+        }
+        XCTAssertEqual(inboxRows, 1)
+        XCTAssertNil(domain.lastSyncError)
+        XCTAssertNotNil(domain.lastSyncDate)
     }
 }

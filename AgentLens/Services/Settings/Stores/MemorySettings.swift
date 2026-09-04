@@ -36,6 +36,17 @@ final class MemorySettings {
         didSet { persistence.set(approvedCloudBackupEnabled, forKey: "memoryApprovedCloudBackupEnabled") }
     }
 
+    /// Opt-in SUB-toggle of `approvedCloudBackupEnabled` (default OFF — Memory
+    /// Blind Sync PR-2): also read the member's own sealed facts back DOWN onto
+    /// this device. Backing memory up is not the same consent as syncing it
+    /// across devices, so the pull half needs its own switch and defaults off
+    /// even for a member who already opted into backup. `MemoryCloudSyncDomain`
+    /// ANDs it under the backup gate, so turning backup off stops both halves and
+    /// this switch alone can never start a download.
+    var deviceSyncEnabled: Bool = false {
+        didSet { persistence.set(deviceSyncEnabled, forKey: "memoryDeviceSyncEnabled") }
+    }
+
     /// Firebase Remote Config `memory_extraction_enabled` (default true). Not
     /// user-settable; the fleet kill switch sets this false to halt extraction
     /// instantly. Fetch transport errors preserve extraction only when the
@@ -272,6 +283,9 @@ final class MemorySettings {
         }
         if persistence.objectExists(forKey: "memoryApprovedCloudBackupEnabled") {
             self.approvedCloudBackupEnabled = persistence.bool(forKey: "memoryApprovedCloudBackupEnabled")
+        }
+        if persistence.objectExists(forKey: "memoryDeviceSyncEnabled") {
+            self.deviceSyncEnabled = persistence.bool(forKey: "memoryDeviceSyncEnabled")
         }
         // Load `consentShown` before `consentGranted` so the granted-didSet's
         // implicit `consentShown = true` never races a stale persisted value.

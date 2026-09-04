@@ -112,6 +112,14 @@ protocol SettingsManagerProtocol: AnyObject, Sendable {
     /// this; false ⇒ zero memory egress.
     var memoryApprovedCloudBackupEnabled: Bool { get }
 
+    /// User opt-in (default OFF) to the PULL half of memory sync. Persisted
+    /// toggle only — the scheduler consults the clamped `memoryDeviceSyncEnabled`.
+    var memoryDeviceSyncOptIn: Bool { get set }
+
+    /// Combined gate for pulling the member's own sealed facts back down: the
+    /// cloud-backup gate AND the device-sync sub-toggle. Default OFF.
+    var memoryDeviceSyncEnabled: Bool { get }
+
     // MARK: - CLI Assistant
 
     /// Whether CLI assistant is allowed.

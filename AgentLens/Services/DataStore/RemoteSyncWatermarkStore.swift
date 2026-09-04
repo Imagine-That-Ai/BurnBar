@@ -47,10 +47,13 @@ enum RemoteSyncCollectionKind: String, CaseIterable {
     case usage = "usage"
     case conversations = "conversations"
     case chatThreads = "chat_threads"
+    /// Memory Blind Sync: the member's own sealed memory facts, pulled back down
+    /// above this watermark by `MemoryCloudPullService`.
+    case memoryFacts = "memory_facts"
 
     /// All collection kinds for iteration.
     static var allCases: [RemoteSyncCollectionKind] {
-        [.usage, .conversations, .chatThreads]
+        [.usage, .conversations, .chatThreads, .memoryFacts]
     }
 }
 

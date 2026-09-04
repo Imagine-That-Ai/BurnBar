@@ -179,6 +179,38 @@ extension ControlPlaneStore {
         }
     }
 
+    /// Convergence metadata a mirrored memory's sealed payload carries (§5 of the
+    /// blind-sync design): the row's tags and the engine's body hash, which
+    /// `UNIQUE(project_id, scope, body_hash)` uses to fold a fact learned
+    /// independently on two devices into one row on arrival.
+    struct MemoryCloudFactAttributes: Equatable, Sendable {
+        let tags: [String]
+        let bodyHash: String?
+    }
+
+    func memoryCloudFactAttributes(id: MemoryID) async throws -> MemoryCloudFactAttributes {
+        try await dbQueue.read { db in
+            let tagsJSON = try String.fetchOne(
+                db,
+                sql: "SELECT tags_json FROM agent_memories WHERE id = ?",
+                arguments: [id]
+            )
+            let bodyHash = try String.fetchOne(
+                db,
+                sql: "SELECT body_hash FROM agent_memory_bodies WHERE memory_id = ?",
+                arguments: [id]
+            )
+            var tags: [String] = []
+            if let tagsJSON, let data = tagsJSON.data(using: .utf8) {
+                tags = (try? JSONDecoder().decode([String].self, from: data)) ?? []
+            }
+            return MemoryCloudFactAttributes(
+                tags: tags,
+                bodyHash: (bodyHash?.isEmpty == false) ? bodyHash : nil
+            )
+        }
+    }
+
     func openChatMemoryBody(id: MemoryID) async throws -> String? {
         let snapshotSlug = Self.memorySnapshotSlug(id)
         return try await dbQueue.read { db in

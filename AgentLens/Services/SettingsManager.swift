@@ -909,6 +909,23 @@ final class SettingsManager {
         memory.approvedCloudBackupEnabled && memory.remoteConfigExtractionEnabled
     }
 
+    /// Raw user opt-in to the PULL half of memory sync — reading the member's own
+    /// sealed facts back down onto this device (default OFF — Memory Blind Sync
+    /// PR-2). Persisted toggle only; the scheduler consults
+    /// `memoryDeviceSyncEnabled`, which folds this under the backup gate.
+    var memoryDeviceSyncOptIn: Bool {
+        get { memory.deviceSyncEnabled }
+        set { memory.deviceSyncEnabled = newValue }
+    }
+
+    /// Combined gate for the pull half: the backup gate (user opt-in AND fleet
+    /// ceiling) AND the device-sync sub-toggle. Default OFF, and turning cloud
+    /// backup off stops downloads too — a member who revokes memory egress does
+    /// not keep an active memory sync channel.
+    var memoryDeviceSyncEnabled: Bool {
+        memoryApprovedCloudBackupEnabled && memory.deviceSyncEnabled
+    }
+
     // MARK: Memory Pro cloud models (opt-in, blind)
 
     /// Raw user opt-in to cloud / big models for memory (default OFF). The

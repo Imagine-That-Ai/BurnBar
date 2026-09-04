@@ -15,6 +15,11 @@ import OpenBurnBarCore
 //     A single fleet flip clamps memory egress shut even if a user opted in.
 //   * `accountManager.isCloudSyncEnabled` / signed-in / Firebase-available —
 //     the same account gates every other sync domain honours.
+//   * `memoryDeviceSyncEnabled` — the PULL sub-toggle (default OFF, Memory Blind
+//     Sync PR-2), itself ANDed under the backup gate above. Backing memory up is
+//     not the same consent as syncing it across devices, so reading facts back
+//     down needs its own switch; with it off the upload half runs exactly as
+//     before and no `memory_facts` read is issued at all.
 //
 // When any lever is off, `sync()` returns BEFORE reading a single candidate or
 // touching a Firestore handle / vault key — so a dormant install performs zero
@@ -33,6 +38,7 @@ import OpenBurnBarCore
 // one refresh tick is not double-run by the next.
 final class MemoryCloudSyncDomain: CloudSyncDomain, Sendable {
     private let syncService: MemoryCloudSyncService
+    private let pullService: MemoryCloudPullService
     private let accountManager: any AccountManaging
     private let settingsManager: any SettingsManagerProtocol
     private let vaultKeyProvider: any ConversationCloudVaultKeyProviding
@@ -53,6 +59,7 @@ final class MemoryCloudSyncDomain: CloudSyncDomain, Sendable {
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.syncService = MemoryCloudSyncService(store: store, firestoreGateway: firestoreGateway)
+        self.pullService = MemoryCloudPullService(store: store, firestoreGateway: firestoreGateway)
         self.accountManager = accountManager
         self.settingsManager = settingsManager
         self.vaultKeyProvider = vaultKeyProvider
@@ -68,6 +75,7 @@ final class MemoryCloudSyncDomain: CloudSyncDomain, Sendable {
         let isSignedIn: Bool
         let isCloudSyncEnabled: Bool
         let approvedCloudBackupEnabled: Bool
+        let deviceSyncEnabled: Bool
         let deviceId: String
         let uid: String?
     }
@@ -79,6 +87,7 @@ final class MemoryCloudSyncDomain: CloudSyncDomain, Sendable {
             isSignedIn: accountManager.isSignedIn,
             isCloudSyncEnabled: accountManager.isCloudSyncEnabled,
             approvedCloudBackupEnabled: settingsManager.memoryApprovedCloudBackupEnabled,
+            deviceSyncEnabled: settingsManager.memoryDeviceSyncEnabled,
             deviceId: accountManager.deviceId,
             uid: accountManager.currentUID
         )
@@ -112,6 +121,21 @@ final class MemoryCloudSyncDomain: CloudSyncDomain, Sendable {
             state.withLock {
                 $0.lastSyncDate = self.now()
                 $0.lastSyncError = nil
+            }
+            // The PULL half runs only after a successful push, behind its own
+            // sub-toggle. It is deliberately in a nested do/catch: a pull failure
+            // records the error like any other and must never undo, block, or
+            // reorder the upload that already succeeded above.
+            if gate.deviceSyncEnabled {
+                do {
+                    _ = try await pullService.pullRemoteFacts(
+                        uid: uid,
+                        vaultKey: resolvedKey.keyData,
+                        now: syncStartedAt
+                    )
+                } catch {
+                    recordSyncError(error)
+                }
             }
             let durationBucket = AnalyticsBuckets.durationMs(Int(now().timeIntervalSince(syncStartedAt) * 1000))
             let itemCountBucket = AnalyticsBuckets.count(result.uploaded)
