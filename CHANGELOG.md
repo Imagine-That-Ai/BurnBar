@@ -36,6 +36,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Symbol owed VoiceOver. Pinned by `FluidAuroraKernelTests` (12 tests).
 
 ### Fixed
+- **Remote-access agent: Developer-ID signing + client-side server authentication (M-10).**
+  `scripts/install-remote-access-agent.sh` now signs the root
+  `OpenBurnBarRemoteAccessAgent` with the Developer ID identity (hardened runtime +
+  library validation, exact `com.openburnbar.remote-access-agent` identifier) and
+  fails closed when no identity is available; dev installs must opt in explicitly
+  via `OPENBURNBAR_AGENT_ADHOC=1`. `RemoteAccessAgentClient` authenticates
+  the agent server (peer UID must be 0 + first-party designated requirement)
+  before writing any request — `typeCredential` carries the macOS login password,
+  so a squatted or unsigned listener at
+  `/var/run/openburnbar-remote-access-agent.sock` now receives zero bytes.
+  `scripts/verify-remote-access-agent.sh` fails closed on unsigned deployed
+  binaries. Pinned by `RemoteAccessAgentClientTrustTests` (impostor listener
+  receives zero bytes) and the allowlist tests in `PrivilegedPeerAuthenticatorTests`.
+  **Review round 1 hardening (Codex P2 findings):** the client's server gate now
+  pins the **exact agent identifier** (`remoteAccessAgentDesignatedRequirement`)
+  instead of the shared privileged-input allowlist — a first-party daemon or HID
+  bridge squatting the socket path can no longer receive the login password;
+  the installer asserts `TeamIdentifier=4Y367DF25B` so another team's Developer
+  ID certificate cannot install "successfully"; the ad-hoc dev lane keeps the
+  exact identifier; and `verify-remote-access-agent.sh` runs strict
+  `codesign --verify` before trusting displayed metadata (catching
+  tamper-after-signing the way the client's live `SecCodeCheckValidity` does).
+  **Review round 2 (Cursor security):** the agent identifier is deliberately
+  **removed from the shared `privilegedInputPeerBundleIdentifiers` allowlist** —
+  a uid-0 process signed as the agent must not pass default peer checks on
+  sibling privileged-input / HID / kill-switch lanes; the agent lane uses only
+  the exact-identifier requirement.
 - Console Profile compact counts now use B and T, so a trillion-token lifetime
   total reads as `1.09T` instead of `1085491M`. Model, harness, and combo labels
   wrap instead of clipping, and harness/combo breakdowns stay visible on
