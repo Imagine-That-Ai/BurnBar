@@ -8,6 +8,7 @@ import frauncesLatinItalicUrl from "@fontsource-variable/fraunces/files/fraunces
 import Header from "@components/Header.astro";
 import Footer from "@components/Footer.astro";
 import ConsentBanner from "@components/ConsentBanner.astro";
+import PublicBetaBanner from "@components/PublicBetaBanner.astro";
 import { SITE } from "@data/site";
 
 interface Props {
@@ -169,6 +170,7 @@ const fullTitle =
     }
 
     <Header />
+    {!transactional && <PublicBetaBanner />}
     <main id="main">
       <slot />
     </main>

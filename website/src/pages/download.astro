@@ -32,8 +32,9 @@ const linuxPubKeyHref = `${linuxDownloadBaseUrl}/${SITE.linuxPubKeyFile}`;
         <span class="pagehead__product">OpenBurnBar</span>
       </h1>
       <p class="lead pagehead__lead">
-        <strong>macOS</strong>, <strong>iOS</strong>, and <strong>Linux</strong> ship today — Android
-        and the editor extension are buildable from source.
+        <strong>macOS</strong> and <strong>iOS</strong> are the public-beta Core. Linux is an early ARM64
+        prerelease. Android and the editor extension are buildable from source. Windows stays private
+        until certification clears.
       </p>
 
       <!-- At-a-glance platform grid so Linux isn't buried mid-page -->
@@ -42,15 +43,8 @@ const linuxPubKeyHref = `${linuxDownloadBaseUrl}/${SITE.linuxPubKeyFile}`;
           <DownloadPlatformIcon platform="macos" />
           <span class="sr-only">macOS</span>
           <span class="platcard__ver mono">v{SITE.macReleaseLatest}</span>
-          <span class="platcard__status">Available now</span>
+          <span class="platcard__status">Public beta</span>
           <span class="platcard__cta">Download DMG →</span>
-        </a>
-        <a class="platcard platcard--live" href="#linux">
-          <DownloadPlatformIcon platform="linux" />
-          <span class="sr-only">Linux</span>
-          <span class="platcard__ver mono">v{SITE.linuxReleaseLatest} · ARM64</span>
-          <span class="platcard__status">Available now</span>
-          <span class="platcard__cta">AppImage · deb · rpm →</span>
         </a>
         <a class="platcard platcard--live" href="#ios">
           <DownloadPlatformIcon platform="ios" />
@@ -58,6 +52,13 @@ const linuxPubKeyHref = `${linuxDownloadBaseUrl}/${SITE.linuxPubKeyFile}`;
           <span class="platcard__ver mono">App Store</span>
           <span class="platcard__status">Available now</span>
           <span class="platcard__cta">Get the app →</span>
+        </a>
+        <a class="platcard platcard--pending" href="#linux">
+          <DownloadPlatformIcon platform="linux" />
+          <span class="sr-only">Linux</span>
+          <span class="platcard__ver mono">v{SITE.linuxReleaseLatest} · ARM64</span>
+          <span class="platcard__status">Early beta</span>
+          <span class="platcard__cta">AppImage · deb · rpm →</span>
         </a>
         <a class="platcard platcard--pending" href="#editor">
           <DownloadPlatformIcon platform="editor" />
@@ -86,9 +87,6 @@ const linuxPubKeyHref = `${linuxDownloadBaseUrl}/${SITE.linuxPubKeyFile}`;
         <a class="jump--live" href="#macos" aria-label="Jump to macOS" title="macOS">
           <DownloadPlatformIcon platform="macos" compact />
         </a>
-        <a class="jump--live" href="#linux" aria-label="Jump to Linux" title="Linux">
-          <DownloadPlatformIcon platform="linux" compact />
-        </a>
         <a
           class="jump--live"
           href="#ios"
@@ -96,6 +94,9 @@ const linuxPubKeyHref = `${linuxDownloadBaseUrl}/${SITE.linuxPubKeyFile}`;
           title="iPhone and iPad"
         >
           <DownloadPlatformIcon platform="ios" compact />
+        </a>
+        <a href="#linux" aria-label="Jump to Linux" title="Linux early beta">
+          <DownloadPlatformIcon platform="linux" compact />
         </a>
         <a href="#editor" aria-label="Jump to Cursor and VS Code" title="Cursor and VS Code">
           <DownloadPlatformIcon platform="editor" compact />
@@ -213,10 +214,11 @@ make install</code></pre>
           <span class="tag tag--exact tag--plain mono">{SITE.linuxStatus}</span>
           <h2>Linux desktop app</h2>
           <p class="lead">
-            Available now. Tauri + WebView shell over the native OpenBurnBar daemon. First public
-            release ships <strong>{SITE.linuxArch}</strong> artifacts only — the AppImage is portable
+            Early public beta. Tauri + WebView shell over the native OpenBurnBar daemon. First
+            public release ships <strong>{SITE.linuxArch}</strong> artifacts only — the AppImage is portable
             across ARM64 distros, with deb and rpm for Debian/Ubuntu and Fedora/RHEL on the same architecture.
-            Every artifact is Ed25519-signed with a keyless Sigstore/cosign attestation.
+            Every artifact is Ed25519-signed with a keyless Sigstore/cosign attestation. x86_64 and full
+            certification are still in progress — expect rough edges.
           </p>
         </div>
       </div>

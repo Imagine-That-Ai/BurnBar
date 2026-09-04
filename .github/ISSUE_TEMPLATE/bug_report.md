@@ -22,9 +22,11 @@ A clear and concise description of what you expected to happen.
 If applicable, add screenshots to help explain your problem.
 
 **Environment:**
- - macOS version: [e.g. 14.0]
- - OpenBurnBar version: [e.g. 0.1.0-beta]
- - Installation method: [e.g. Homebrew, VS Code extension, source]
+ - Platform/device: [e.g. Mac, iPhone, iPad, Linux (ARM64 early beta), Android, Windows (private beta)]
+ - OS version: [e.g. macOS 14.0, iOS 17.5, Ubuntu 24.04]
+ - OpenBurnBar version/build: [e.g. 1.0.29 (Mac), App Store build (iOS), 0.1.0 AppImage (Linux)]
+ - Installation method: [e.g. DMG from burnbar.ai/download, App Store, GitHub Releases AppImage/deb/rpm, Homebrew, VS Code extension, source]
+ - Sync context: [e.g. local-only Mac Core, iOS companion signed in and synced to a Mac]
 
 **Additional context**
 Add any other context about the problem here.

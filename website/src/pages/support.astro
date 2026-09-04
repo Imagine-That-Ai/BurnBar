@@ -13,11 +13,44 @@ import { SUPPORT_MACROS } from "@data/supportMacros";
       <span class="eyebrow eyebrow--ember">Support</span>
       <h1>OpenBurnBar support</h1>
       <p class="lead">
-        Get help with the Windows, macOS, Linux, Android, iPhone, and iPad apps, BurnBar Cloud,
-        Cloud Pro and Ultra plans, provider connections, account deletion, or privacy requests.
+        Get help with the macOS, iPhone, iPad, Linux early-beta, Android, and (private) Windows
+        apps, BurnBar Cloud, Cloud Pro and Ultra plans, provider connections, account deletion, or
+        privacy requests.
       </p>
 
       <div class="supportgrid">
+        <article class="supportcard">
+          <h2>Public beta feedback</h2>
+          <p>
+            The public beta is the free local Core on macOS, plus the iOS companion app (needs
+            sign-in and a synced Mac). Tell us what broke, what confused you, and whether the
+            first-run spend number matched reality.
+          </p>
+          <div class="linkrow">
+            <a
+              class="textlink"
+              href={SITE.publicBeta.discussionsUrl}
+              target="_blank"
+              rel="noopener noreferrer">GitHub Discussions</a
+            >
+            <a
+              class="textlink"
+              href={SITE.publicBeta.issuesUrl}
+              target="_blank"
+              rel="noopener noreferrer">File an issue</a
+            >
+            <a
+              class="textlink"
+              href={`mailto:${SITE.supportContact}?subject=${encodeURIComponent(SITE.publicBeta.mailtoSubject)}`}
+              >Email {SITE.supportContact}</a
+            >
+          </div>
+          <p class="small muted">
+            Best report shape: platform + app version + provider + what you expected vs what you
+            saw. No API keys, session cookies, or provider secrets.
+          </p>
+        </article>
+
         <article class="supportcard">
           <h2>Email support</h2>
           <p>

@@ -35,17 +35,17 @@ export const SURFACES: Surface[] = [
     id: "linux",
     name: "Linux desktop app",
     platform: "Linux aarch64 (ARM64)",
-    status: "shipping",
-    statusLabel: "Available · 0.1.0",
+    status: "beta",
+    statusLabel: "Early beta · 0.1.0",
     description:
-      "Tauri desktop shell over the native OpenBurnBar daemon. First public Linux release — signed AppImage, deb, and rpm for ARM64.",
+      "Tauri desktop shell over the native OpenBurnBar daemon. Early ARM64 prerelease — signed AppImage, deb, and rpm. Not a certified macOS peer yet.",
     bullets: [
       "AppImage, .deb (Debian/Ubuntu), and .rpm (Fedora/RHEL)",
       "Ed25519 detached signatures + keyless Sigstore/cosign attestations",
       "Talks to the OpenBurnBar daemon over a local AF_UNIX socket",
       "aarch64/ARM64 first — x86_64 lane is next"
     ],
-    cta: { href: "/download#linux", label: "Download for Linux" }
+    cta: { href: "/download#linux", label: "Download Linux early beta" }
   },
   {
     id: "ios",

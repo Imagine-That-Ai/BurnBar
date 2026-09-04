@@ -188,6 +188,8 @@ Implementation detail and rollout notes live in [`docs/OPENBURNBAR_SEARCH_ARCHIT
 
 The external launch settings that cannot be inferred from the working tree alone are tracked in [`docs/OSS_LAUNCH_CHECKLIST.md`](docs/OSS_LAUNCH_CHECKLIST.md). Re-check them immediately before making the repository public.
 
+For a Mac + iOS Core public-beta weekend (download CTA, banner, feedback paths, exact post drafts), use [`docs/WEEKEND_PUBLIC_BETA_LAUNCH.md`](docs/WEEKEND_PUBLIC_BETA_LAUNCH.md) and the copy in [`website/src/data/launch.ts`](website/src/data/launch.ts).
+
 ---
 
 ## Provider support

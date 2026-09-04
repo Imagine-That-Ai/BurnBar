@@ -135,15 +135,24 @@ export const SITE = {
   // to re-enable latest-linux.json verification in CI.
   linuxUpdateBaseUrl: "",
   linuxArch: "aarch64 (ARM64)",
-  // Shown on download cards and jump pills — lead with Available so it doesn't
-  // read like a blocked/pending platform next to macOS.
-  linuxStatus: "Available · 0.1.0 · ARM64",
-  linuxStatusDetail: "Signed prerelease — AppImage, deb, and rpm on GitHub Releases",
+  // Early public beta only — not a certified x86_64 peer of the macOS app.
+  linuxStatus: "Early beta · 0.1.0 · ARM64",
+  linuxStatusDetail: "Signed ARM64 prerelease — AppImage, deb, and rpm on GitHub Releases",
   iosMin: "iOS 17",
   iosStatus: "on the App Store",
   iosAppStoreUrl: "https://apps.apple.com/us/app/openburnbar/id6766366964",
   androidStatus: "feature-complete, Play Store pending",
-  cursorExtStatus: "source-only beta"
+  cursorExtStatus: "source-only beta",
+  // Public beta feedback surfaces (local Core stays free; we watch bugs with you).
+  publicBeta: {
+    label: "Public beta",
+    shortBlurb:
+      "Free local Core on Mac, plus an iOS companion (sign-in + Mac sync). We are bug-watching with early users; Windows and Linux stay early/private until certified.",
+    feedbackFormUrl: "",
+    discussionsUrl: "https://github.com/Imagine-That-Ai/BurnBar/discussions",
+    issuesUrl: "https://github.com/Imagine-That-Ai/BurnBar/issues/new/choose",
+    mailtoSubject: "OpenBurnBar public beta feedback"
+  }
 };
 
 export const NAV_PRIMARY = [

@@ -93,8 +93,62 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
-      - name: Install SITE parser dependency
-        run: npm ci --prefix website --ignore-scripts
+      - name: Check out candidate download metadata
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          path: candidate
+          persist-credentials: false
+
+      - name: Check out trusted-base verifier and parser policy
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          ref: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || (github.event.before != '0000000000000000000000000000000000000000' && github.event.before) || github.sha }}
+          path: trusted
+          persist-credentials: false
+
+      - name: Install trusted-base SITE parser dependency
+        run: npm ci --prefix trusted/website --ignore-scripts
+
+      # The full trust chain hits the network (GitHub Release assets plus the
+      # signed downloads.burnbar.ai update feed). Only pay that cost, and only
+      # take a hard dependency on the public feed being live, when the Linux
+      # download metadata actually changed relative to the trusted base. Any
+      # extraction failure or metadata difference falls through to the full
+      # fail-closed verification; workflow_dispatch and history-less pushes
+      # always verify.
+      - id: compare
+        name: Compare Linux download metadata against trusted base
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          extract() {
+            OPENBURNBAR_PRINT_PUBLIC_LINUX_DOWNLOAD_METADATA=1 \
+              bash trusted/scripts/ci/verify-public-linux-download-trust.sh "$1"
+          }
+          verify=true
+          force=false
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            force=true
+          elif [[ "$EVENT_NAME" == "push" && ( -z "${BEFORE_SHA:-}" || "$BEFORE_SHA" =~ ^0+$ ) ]]; then
+            force=true
+          fi
+          if [[ "$force" == "false" ]]; then
+            candidate_metadata="$(extract "$GITHUB_WORKSPACE/candidate/website/src/data/site.ts")"
+            if trusted_metadata="$(extract "$GITHUB_WORKSPACE/trusted/website/src/data/site.ts")"; then
+              if [[ "$candidate_metadata" == "$trusted_metadata" ]]; then
+                verify=false
+                echo "Public Linux download metadata is unchanged from the trusted base; skipping network trust verification."
+              fi
+            else
+              echo "Trusted-base Linux metadata extraction failed; running full verification (fail closed)."
+            fi
+          fi
+          echo "verify=$verify" >> "$GITHUB_OUTPUT"
+
       - name: Verify exact public Linux artifact and feed trust chain
-        run: bash scripts/ci/verify-public-linux-download-trust.sh
+        if: ${{ steps.compare.outputs.verify == 'true' }}
+        run: >-
+          bash trusted/scripts/ci/verify-public-linux-download-trust.sh
+          "$GITHUB_WORKSPACE/candidate/website/src/data/site.ts"
