@@ -188,7 +188,13 @@ jobs:
       # This job IS the audit; do not inherit the workflow-level install opt-out.
       NPM_CONFIG_AUDIT: "true"
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # ~20 audited lockfiles × npm-audit round trips took 11-15m on healthy
+    # registry days and 15m+ (job-timeout kills) during the 2026-09-03/04 npm
+    # registry degradation (runs 33861433251/33861433251-attempt2: killed at
+    # the cap with "No high/critical" results streaming cleanly). 30m gives
+    # the built-in 3-attempt retry budget room to ride out a slow registry
+    # without reporting a transport failure as a policy violation.
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
@@ -447,7 +453,12 @@ jobs:
   hosted-mcp-isolation-proofs:
     name: Hosted MCP Isolation Proofs (local, deterministic)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # ~11m of work (emulator install + functions npm ci + proof suite) on
+    # healthy days; killed twice at the 15m cap during the 2026-09-03/04 npm
+    # registry degradation (runs 33861433251 attempts 1-2) with the same
+    # "exceeded the maximum execution time" annotation. 30m rides out a slow
+    # registry without weakening the proof.
+    timeout-minutes: 30
     # RR-11: the live cross-tenant / revocation / entitlement / cap / at-rest
     # proofs in scripts/test-hosted-mcp-security.sh and
     # functions/scripts/prove-hosted-mcp-live.mjs SKIP in token-less CI, so the
@@ -582,7 +593,12 @@ jobs:
   firestore-rules-tests:
     name: Firestore Security Rules Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # 10-11m of emulator suites + two npm ci installs on healthy days; killed
+    # twice at the 15m cap during the 2026-09-03/04 npm registry degradation
+    # (runs 33861433251 attempts 1-2, first hang inside `npm ci`), while main's
+    # run 33819371093 passed the same suites in ~10m hours earlier. 30m rides
+    # out a slow registry; the RR-12 gate itself is unchanged.
+    timeout-minutes: 30
     # RR-12: the firestore-rules-tests suite (computer-use, media-budget,
     # session-log-backup) ran in ZERO workflows — the rules surface it guards
     # (entitlement gating, cross-tenant denials, owner-delete on
