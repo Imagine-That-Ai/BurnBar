@@ -35,6 +35,11 @@ public enum MemorySourceKind: String, Codable, Sendable {
     /// rollout (user turns and repeated workflows). Same consent + review
     /// posture as `safariAsk`.
     case agentSession = "agent_session"
+    /// A memory the Memory MCP engine learned and mirrored into the shared
+    /// database. The engine store is canonical; this partition holds the copy
+    /// blind sync seals and replicates, so unlike `code` it is member content
+    /// rather than repository knowledge. Chat-partitioned, never a usage kind.
+    case agent
 
     /// The passive usage-memory kinds. They share one storage partition
     /// (`usage:` project-id prefix) so exact dedup and corroboration work

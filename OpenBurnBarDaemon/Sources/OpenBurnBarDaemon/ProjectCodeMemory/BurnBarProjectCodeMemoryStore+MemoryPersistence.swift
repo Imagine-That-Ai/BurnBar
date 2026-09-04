@@ -297,6 +297,43 @@ extension BurnBarProjectCodeMemoryStore {
         )
     }
 
+    /// The approved body of a memory the Memory MCP engine mirrored, kept in the
+    /// shared encrypted database so blind sync can seal and upload it. Only rows the
+    /// engine already cleared (approved, non-secret, non-expiring) ever reach here.
+    func upsertAgentMemoryBody(
+        projectID: String,
+        memoryID: String,
+        engineMemoryID: String,
+        body: String,
+        bodyHash: String,
+        now: String
+    ) throws {
+        try execute(
+            """
+            INSERT INTO agent_memory_bodies
+                (memory_id, project_id, engine_memory_id, body, body_hash, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(memory_id) DO UPDATE SET
+                project_id = excluded.project_id,
+                engine_memory_id = excluded.engine_memory_id,
+                body = excluded.body,
+                body_hash = excluded.body_hash,
+                updated_at = excluded.updated_at
+            """,
+            [
+                .text(memoryID), .text(projectID), .text(engineMemoryID),
+                .text(body), .text(bodyHash), .text(now), .text(now)
+            ]
+        )
+    }
+
+    func removeAgentMemoryBody(projectID: String, memoryID: String) throws {
+        try execute(
+            "DELETE FROM agent_memory_bodies WHERE memory_id = ? AND project_id = ?",
+            [.text(memoryID), .text(projectID)]
+        )
+    }
+
     func quarantineMemoryBody(projectID: String, memoryID: String) throws -> String? {
         try queryRows(
             "SELECT body FROM memory_quarantine_bodies WHERE memory_id = ? AND project_id = ? LIMIT 1",
