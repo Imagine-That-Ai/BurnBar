@@ -535,6 +535,17 @@ struct MemoryCloudFactPayload: Codable {
     /// The engine's body hash, which `UNIQUE(project_id, scope, body_hash)` uses
     /// to fold a fact learned independently on two devices into one row (§5).
     let bodyHash: String?
+    /// The ENGINE's project id (`agent_memories.project_id`). `scope` above is
+    /// the app's `MemoryScope`, which carries no engine project, yet §5 converges
+    /// on `(project_id, scope, body_hash)` — so the identity has to travel or the
+    /// receiving engine cannot key the row it is merging. Derived from the git
+    /// origin and root commit, so it is the same id on every device that has the
+    /// repository. Nil for a chat memory, which belongs to no engine project; the
+    /// engine parks such a row rather than guessing an owner.
+    let projectID: String?
+    /// The ENGINE's scope (`project` | `personal`, from `agent_memories.scope`),
+    /// the other half of the convergence key. Nil for a chat memory.
+    let engineScope: String?
 }
 
 final class MemoryCloudSyncService: Sendable {
@@ -583,7 +594,9 @@ final class MemoryCloudSyncService: Sendable {
                 now: now,
                 documentIdentity: identity,
                 tags: attributes?.tags,
-                bodyHash: attributes?.bodyHash
+                bodyHash: attributes?.bodyHash,
+                projectID: attributes?.projectID,
+                engineScope: attributes?.engineScope
             )
             try await factCollection.document(encoded.docID).setData(encoded.data, merge: true)
             uploaded += 1
@@ -657,8 +670,8 @@ final class MemoryCloudSyncService: Sendable {
     ///   payload key on. Nil keeps the local memory id, which is right for chat
     ///   memories; engine-mirrored memories pass the engine's own id so the same
     ///   memory resolves to one document on every device.
-    /// - Parameters tags/bodyHash: the mirrored row's convergence metadata (§5).
-    ///   Absent for a chat memory, which has neither.
+    /// - Parameters tags/bodyHash/projectID/engineScope: the mirrored row's
+    ///   convergence metadata (§5). Absent for a chat memory, which has none of it.
     static func encodeMemoryFact(
         memory: Memory,
         body: String,
@@ -667,7 +680,9 @@ final class MemoryCloudSyncService: Sendable {
         now: Date,
         documentIdentity: String? = nil,
         tags: [String]? = nil,
-        bodyHash: String? = nil
+        bodyHash: String? = nil,
+        projectID: String? = nil,
+        engineScope: String? = nil
     ) throws -> (docID: String, data: [String: Any]) {
         let identity = documentIdentity ?? memory.id
         let docID = try CloudVaultCrypto.pensieveSlugHmac("memory-fact:\(identity)", keyData: vaultKey)
@@ -686,7 +701,9 @@ final class MemoryCloudSyncService: Sendable {
             validTo: memory.validTo,
             supersededBy: memory.supersededBy,
             tags: tags?.isEmpty == true ? nil : tags,
-            bodyHash: bodyHash?.isEmpty == true ? nil : bodyHash
+            bodyHash: bodyHash?.isEmpty == true ? nil : bodyHash,
+            projectID: projectID?.isEmpty == true ? nil : projectID,
+            engineScope: engineScope?.isEmpty == true ? nil : engineScope
         )
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601

@@ -61,6 +61,8 @@ final class MemoryCloudPullServiceTests: XCTestCase {
         body: String,
         tagsJSON: String = "[]",
         bodyHash: String = "body-hash",
+        projectID: String? = nil,
+        engineScope: String? = nil,
         now: Date
     ) async throws -> Memory {
         let scope = MemoryScope(userID: fixture.uid, appID: "pull-app")
@@ -84,6 +86,21 @@ final class MemoryCloudPullServiceTests: XCTestCase {
                 sql: "UPDATE agent_memories SET tags_json = ? WHERE id = ?",
                 arguments: [tagsJSON, id]
             )
+            // The engine's own `(project_id, scope)`, as the daemon mirror writes
+            // them for a memory the Memory MCP engine owns. `addMemoryAuthorityRecord`
+            // above is the app-authored shape and stamps its chat partition instead.
+            if let projectID {
+                try db.execute(
+                    sql: "UPDATE agent_memories SET project_id = ? WHERE id = ?",
+                    arguments: [projectID, id]
+                )
+            }
+            if let engineScope {
+                try db.execute(
+                    sql: "UPDATE agent_memories SET scope = ? WHERE id = ?",
+                    arguments: [engineScope, id]
+                )
+            }
         }
         return memory
     }
@@ -175,6 +192,8 @@ final class MemoryCloudPullServiceTests: XCTestCase {
             body: body,
             tagsJSON: #"["release","ops"]"#,
             bodyHash: "hash-abc",
+            projectID: "proj_1f2e3d4c5b6a79880123456789abcdef",
+            engineScope: "project",
             now: now
         )
         let upload = try await MemoryCloudSyncService(store: deviceA.store, firestoreGateway: deviceA.gateway)
@@ -199,6 +218,11 @@ final class MemoryCloudPullServiceTests: XCTestCase {
         XCTAssertEqual(payload.schemaVersion, MemoryCloudFactPayload.currentSchemaVersion)
         XCTAssertEqual(payload.tags, ["release", "ops"], "v2 carries the mirrored row's tags")
         XCTAssertEqual(payload.bodyHash, "hash-abc", "v2 carries the body hash convergence keys on")
+        // §5 converges on `(project_id, scope, body_hash)`. `payload.scope` is the
+        // app's `MemoryScope` and names no engine project, so the engine's own
+        // identity has to travel too or the receiver cannot key the row it merges.
+        XCTAssertEqual(payload.projectID, "proj_1f2e3d4c5b6a79880123456789abcdef")
+        XCTAssertEqual(payload.engineScope, "project")
 
         // Nothing landed in the upload source: a pulled row that reached
         // `agent_memories` would be re-sealed and re-uploaded by this device.
@@ -387,7 +411,9 @@ final class MemoryCloudPullServiceTests: XCTestCase {
             validTo: nil,
             supersededBy: nil,
             tags: nil,
-            bodyHash: nil
+            bodyHash: nil,
+            projectID: nil,
+            engineScope: nil
         )
         let aad = try CloudVaultAADContext(
             uid: fixture.uid,

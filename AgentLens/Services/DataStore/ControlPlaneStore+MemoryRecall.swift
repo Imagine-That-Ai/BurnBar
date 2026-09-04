@@ -180,21 +180,28 @@ extension ControlPlaneStore {
     }
 
     /// Convergence metadata a mirrored memory's sealed payload carries (§5 of the
-    /// blind-sync design): the row's tags and the engine's body hash, which
-    /// `UNIQUE(project_id, scope, body_hash)` uses to fold a fact learned
-    /// independently on two devices into one row on arrival.
+    /// blind-sync design): the row's tags, the engine's body hash, and the engine's
+    /// own `(project_id, scope)` — the three parts of `UNIQUE(project_id, scope,
+    /// body_hash)`, which folds a fact learned independently on two devices into
+    /// one row on arrival. The payload's `scope` field is the app's `MemoryScope`
+    /// and names no engine project, so the identity has to travel separately.
     struct MemoryCloudFactAttributes: Equatable, Sendable {
         let tags: [String]
         let bodyHash: String?
+        let projectID: String?
+        let engineScope: String?
     }
 
     func memoryCloudFactAttributes(id: MemoryID) async throws -> MemoryCloudFactAttributes {
         try await dbQueue.read { db in
-            let tagsJSON = try String.fetchOne(
+            let row = try Row.fetchOne(
                 db,
-                sql: "SELECT tags_json FROM agent_memories WHERE id = ?",
+                sql: "SELECT tags_json, project_id, scope FROM agent_memories WHERE id = ?",
                 arguments: [id]
             )
+            let tagsJSON: String? = row?["tags_json"]
+            let projectID: String? = row?["project_id"]
+            let engineScope: String? = row?["scope"]
             let bodyHash = try String.fetchOne(
                 db,
                 sql: "SELECT body_hash FROM agent_memory_bodies WHERE memory_id = ?",
@@ -206,7 +213,9 @@ extension ControlPlaneStore {
             }
             return MemoryCloudFactAttributes(
                 tags: tags,
-                bodyHash: (bodyHash?.isEmpty == false) ? bodyHash : nil
+                bodyHash: (bodyHash?.isEmpty == false) ? bodyHash : nil,
+                projectID: (projectID?.isEmpty == false) ? projectID : nil,
+                engineScope: (engineScope?.isEmpty == false) ? engineScope : nil
             )
         }
     }
