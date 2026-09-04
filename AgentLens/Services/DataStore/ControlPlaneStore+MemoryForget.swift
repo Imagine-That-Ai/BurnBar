@@ -136,20 +136,54 @@ extension ControlPlaneStore {
     /// signed-in member, whom the daemon does not know. Without one, nothing ever
     /// deletes the sealed cloud copy of a memory the member removed. The sync lane
     /// therefore enqueues the missing tombstones itself, once, before it drains them.
+    ///
+    /// Two properties of mirrored rows shape the query and the tombstone id:
+    ///
+    /// * The cloud document is keyed on the engine's memory id, not the local one.
+    ///   The local id (`projectID:scope:bodyHash`) is stable when the engine
+    ///   re-learns the same text, but the engine id is fresh each time, so a
+    ///   re-learned memory is a *new* document. A tombstone keyed only on the local
+    ///   id would collide with the drained one from the first forget and the second
+    ///   document would never be deleted. The tombstone id therefore includes the
+    ///   engine id the mapping holds at enqueue time.
+    /// * A memory can leave the uploadable set without being forgotten: the daemon
+    ///   may remirror an approved, already uploaded memory as quarantined or
+    ///   rejected. The daemon keeps the engine-id mapping in that case, so any
+    ///   mapped row that is no longer approved gets a tombstone, mirroring what
+    ///   `setMemoryReviewStatus` does for chat memories.
+    ///
+    /// The drain resolves the cloud identity from the *current* mapping. If the
+    /// engine re-learns and the member forgets again before a single sync runs,
+    /// the earlier document is left behind; closing that needs the tombstone to
+    /// carry its own cloud identity, which is a schema change reserved for the
+    /// pull half (see docs/superpowers/plans/2026-09-03-memory-blind-sync.md).
     @discardableResult
-    func enqueueTombstonesForForgottenAgentMemories(userID: String, now: Date = Date()) async throws -> Int {
+    func enqueueTombstonesForUnsyncableAgentMemories(userID: String, now: Date = Date()) async throws -> Int {
         let timestamp = ISO8601DateFormatter().string(from: now)
         return try await dbQueue.write { db in
-            let forgotten = try Row.fetchAll(
+            let rows = try Row.fetchAll(
                 db,
                 sql: """
-                SELECT id FROM agent_memories
-                WHERE source_kind = ? AND review_status = ? AND user_id = ?
+                SELECT m.id AS id, b.engine_memory_id AS engine_memory_id
+                FROM agent_memories m
+                LEFT JOIN agent_memory_bodies b ON b.memory_id = m.id
+                WHERE m.source_kind = ? AND m.user_id = ?
+                  AND (
+                    m.review_status = ?
+                    OR (b.memory_id IS NOT NULL AND m.review_status != ?)
+                  )
                 """,
-                arguments: [MemorySourceKind.agent.rawValue, MemoryReviewStatus.forgotten.rawValue, userID]
-            ).compactMap { $0["id"] as? String }
+                arguments: [
+                    MemorySourceKind.agent.rawValue,
+                    userID,
+                    MemoryReviewStatus.forgotten.rawValue,
+                    MemoryReviewStatus.approved.rawValue
+                ]
+            )
             var enqueued = 0
-            for memoryID in forgotten {
+            for row in rows {
+                guard let memoryID: String = row["id"] else { continue }
+                let engineMemoryID: String? = row["engine_memory_id"]
                 // A mirrored memory has no chat citations, so the receipt carries no
                 // source hashes — only the opaque memory label and a coarse reason.
                 try db.execute(
@@ -159,12 +193,27 @@ extension ControlPlaneStore {
                     ) VALUES (?, ?, ?, '[]', 'user_delete', ?, NULL)
                     ON CONFLICT(id) DO NOTHING
                     """,
-                    arguments: [Self.memoryFactTombstoneID(memoryID: memoryID), userID, memoryID, timestamp]
+                    arguments: [
+                        Self.agentMemoryFactTombstoneID(memoryID: memoryID, engineMemoryID: engineMemoryID),
+                        userID,
+                        memoryID,
+                        timestamp
+                    ]
                 )
                 enqueued += db.changesCount
             }
             return enqueued
         }
+    }
+
+    /// One tombstone per (memory, engine generation). A row that was never mapped
+    /// (forgotten before it was ever approved, or a pre-mapping legacy row) falls
+    /// back to the plain memory id, which is also the id the chat path uses.
+    static func agentMemoryFactTombstoneID(memoryID: MemoryID, engineMemoryID: String?) -> String {
+        guard let engineMemoryID, engineMemoryID.isEmpty == false else {
+            return memoryFactTombstoneID(memoryID: memoryID)
+        }
+        return memoryFactTombstoneID(memoryID: "\(memoryID)#engine:\(engineMemoryID)")
     }
 
     /// Rows the cloud lane may replicate: member-authored chat memories and the

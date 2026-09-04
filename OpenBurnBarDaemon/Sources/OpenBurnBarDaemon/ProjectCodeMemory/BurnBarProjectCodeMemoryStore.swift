@@ -385,7 +385,14 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                         now: now
                     )
                     try upsertQuarantineMemoryBody(projectID: projectID, memoryID: memoryID, body: body, now: now)
-                    try removeAgentMemoryBody(projectID: projectID, memoryID: memoryID)
+                    // A memory that was approved and uploaded, then remirrored as
+                    // quarantined or rejected, must not lose its engine id: that id is
+                    // the only handle the sync lane has on the sealed cloud document.
+                    // Blank the syncable body (so nothing re-uploads it) but keep the
+                    // mapping, exactly as forget does; the app's sync lane then
+                    // tombstones every mapped row that is no longer approved. A memory
+                    // quarantined from birth has no mapping row, so this is a no-op.
+                    try blankAgentMemoryBody(projectID: projectID, memoryID: memoryID, now: now)
                 }
                 let bodyReference = reviewStatus == .approved
                     ? Self.memoryBodyReference(memoryID: memoryID, projectID: projectID)

@@ -2380,6 +2380,59 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         )
     }
 
+    /// A memory that was approved and uploaded can be remirrored as quarantined.
+    /// Deleting its mapping row would strand the sealed cloud copy: the engine id is
+    /// the only handle the sync lane has on it. The body is blanked (nothing may
+    /// re-upload quarantined text), the id survives, and the quarantine holding
+    /// table takes the content for review.
+    func testRemirroringAnApprovedMemoryAsQuarantinedKeepsItsCloudIdentity() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
+        let engineID = "mem_00112233445566778899aabbccddeeff"
+        let body = "We deploy from the release branch on Fridays."
+
+        let approved = try store.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: body,
+                projectPath: fixture.project.path,
+                engineMemoryID: engineID
+            )
+        )
+        let remirrored = try store.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: body,
+                projectPath: fixture.project.path,
+                reviewStatus: .quarantined,
+                engineMemoryID: engineID
+            )
+        )
+        XCTAssertEqual(remirrored.memoryID, approved.memoryID, "same text, same local id")
+
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT review_status FROM agent_memories WHERE id = \(sqlLiteral(approved.memoryID))"
+            ),
+            [MemoryReviewStatus.quarantined.rawValue]
+        )
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT engine_memory_id || '|' || body FROM agent_memory_bodies WHERE memory_id = \(sqlLiteral(approved.memoryID))"
+            ),
+            ["\(engineID)|"],
+            "the mapping survives with an empty syncable body"
+        )
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT COUNT(*) FROM memory_quarantine_bodies WHERE memory_id = \(sqlLiteral(approved.memoryID))"
+            ),
+            ["1"],
+            "the content moved to the review holding table"
+        )
+    }
+
     func testRepositoryKnowledgeNeverGainsASyncableBody() throws {
         let fixture = try makeFixture()
         let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))

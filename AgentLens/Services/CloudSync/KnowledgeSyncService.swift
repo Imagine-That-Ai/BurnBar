@@ -561,7 +561,7 @@ final class MemoryCloudSyncService: Sendable {
         var deletedFacts = 0
         // The daemon cannot write a member-keyed tombstone, so a forgotten mirrored
         // memory would otherwise leave its sealed cloud copy behind for ever.
-        try await store.enqueueTombstonesForForgottenAgentMemories(userID: uid, now: now)
+        try await store.enqueueTombstonesForUnsyncableAgentMemories(userID: uid, now: now)
         for tombstone in try await store.fetchPendingMemoryFactTombstones(userID: uid) {
             let encoded = try Self.encodeFactForgetReceipt(
                 tombstone: tombstone,
