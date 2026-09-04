@@ -918,18 +918,34 @@ final class SettingsManager {
         set { memory.deviceSyncEnabled = newValue }
     }
 
-    /// Combined gate for the pull half: the backup gate (user opt-in AND fleet
-    /// ceiling) AND the device-sync sub-toggle. Default OFF, and turning cloud
-    /// backup off stops downloads too — a member who revokes memory egress does
-    /// not keep an active memory sync channel.
+    /// The EFFECTIVE gate for the pull half (`MemoryDeviceSyncGate`): the
+    /// device-sync sub-toggle AND the backup opt-in AND the live Data Vault
+    /// entitlement AND the Remote Config fleet ceiling. Default OFF. Turning
+    /// cloud backup off stops downloads too — a member who revokes memory
+    /// egress does not keep an active memory sync channel — and a lapsed or
+    /// not-yet-resolved entitlement closes it as well.
+    ///
+    /// The entitlement lever is here, and not merely on the row, because
+    /// `firestore.rules` gates `memory_facts` **writes** on
+    /// `hasActiveDataVaultEntitlement(userId)` while **reads** are granted by
+    /// the per-user namespace rule with no entitlement check. This client gate
+    /// is what keeps an unentitled install from issuing a live `memory_facts`
+    /// read at all.
     var memoryDeviceSyncEnabled: Bool {
-        memoryApprovedCloudBackupEnabled && memory.deviceSyncEnabled
+        MemoryDeviceSyncGate.isEnabled(
+            deviceSyncOptIn: memory.deviceSyncEnabled,
+            backupOptIn: memory.approvedCloudBackupEnabled,
+            entitlementSatisfied: memory.deviceSyncEntitlementSatisfied,
+            remoteConfigEnabled: memory.remoteConfigExtractionEnabled
+        )
     }
 
-    /// Live Data Vault entitlement check for the device-sync ROW (default
-    /// OFF — fail closed, not persisted). Set by the Privacy & Indexing view
-    /// from `MacCloudEntitlementStore` as the member's resolved tier changes.
-    /// See `MemorySettings.deviceSyncEntitlementSatisfied`.
+    /// Live Data Vault entitlement check for the device-sync gate (default
+    /// OFF — fail closed, not persisted). Refreshed from
+    /// `MacCloudEntitlementStore` by the Privacy & Indexing view as the
+    /// member's resolved tier changes, and by `MemoryCloudSyncDomain` on every
+    /// sync cycle so the pull's gate never depends on Settings having been
+    /// opened. See `MemorySettings.deviceSyncEntitlementSatisfied`.
     var memoryDeviceSyncEntitlementSatisfied: Bool {
         get { memory.deviceSyncEntitlementSatisfied }
         set { memory.deviceSyncEntitlementSatisfied = newValue }
@@ -943,21 +959,11 @@ final class SettingsManager {
         memoryApprovedCloudBackupEnabled && memory.deviceSyncEntitlementSatisfied
     }
 
-    /// Presentation gate for the "Sync memories to my other devices" row: the
-    /// sub-toggle, the backup opt-in, the Data Vault entitlement, and the
-    /// Remote Config fleet ceiling, all ANDed (`MemoryDeviceSyncGate`). Distinct
-    /// from `memoryDeviceSyncEnabled` (which `MemoryCloudSyncDomain` actually
-    /// consults to run the pull) because the entitlement is independently
-    /// enforced server-side; this gate exists purely so the row never invites a
-    /// member who cannot use the feature to flip a switch that looks live.
-    var memoryDeviceSyncRowEnabled: Bool {
-        MemoryDeviceSyncGate.isEnabled(
-            deviceSyncOptIn: memory.deviceSyncEnabled,
-            backupOptIn: memory.approvedCloudBackupEnabled,
-            entitlementSatisfied: memory.deviceSyncEntitlementSatisfied,
-            remoteConfigEnabled: memory.remoteConfigExtractionEnabled
-        )
-    }
+    /// What the "Sync memories to my other devices" row displays. Identical to
+    /// `memoryDeviceSyncEnabled` by construction: the row shows exactly the
+    /// gate the pull obeys, so a greyed-out switch never reads "on" and an
+    /// on-looking switch never corresponds to a dormant channel.
+    var memoryDeviceSyncRowEnabled: Bool { memoryDeviceSyncEnabled }
 
     // MARK: Memory Pro cloud models (opt-in, blind)
 

@@ -2,18 +2,23 @@ import XCTest
 import OpenBurnBarCore
 @testable import OpenBurnBar
 
-/// Memory Blind Sync PR-2 — the device-sync ROW's presentation gate: the
-/// sub-toggle, the backup opt-in, the Data Vault entitlement, and the Remote
-/// Config fleet ceiling, all fail-closed and persisted through the same
-/// settings coordinator `MemoryCloudModelsSettingsTests` uses.
+/// Memory Blind Sync PR-2 — the device-sync gate: the sub-toggle, the backup
+/// opt-in, the Data Vault entitlement, and the Remote Config fleet ceiling, all
+/// fail-closed and persisted through the same settings coordinator
+/// `MemoryCloudModelsSettingsTests` uses.
 ///
-/// `SettingsManager.memoryDeviceSyncEnabled` (backup gate AND sub-toggle,
-/// entitlement-free — what `MemoryCloudSyncDomain` actually consults to run
-/// the pull) is covered by `MemoryCloudSyncDomainTests` and is intentionally
-/// untouched here: the entitlement is independently enforced server-side by
-/// `firestore.rules` on every `memory_facts` read, so this suite covers only
-/// the row's own presentation gate, `memoryDeviceSyncRowEnabled` /
-/// `MemoryDeviceSyncGate`.
+/// Every case here targets the EFFECTIVE gate — `SettingsManager.memoryDeviceSyncEnabled`,
+/// what `MemoryCloudSyncDomain` consults before issuing a single `memory_facts`
+/// read — and asserts the row's displayed value (`memoryDeviceSyncRowEnabled`)
+/// alongside it, because the two are one computation (`MemoryDeviceSyncGate`)
+/// and must never drift.
+///
+/// The entitlement lever is load-bearing on the client, not decoration:
+/// `firestore.rules` gates `memory_facts` **writes** on
+/// `hasActiveDataVaultEntitlement(userId)`, while **reads** are granted by the
+/// per-user namespace rule with no entitlement check at all. That the gate
+/// actually suppresses the network read is proved by
+/// `MemoryCloudSyncDomainTests.test_sync_doesNotPull_whenTheDataVaultEntitlementIsAbsent`.
 ///
 /// Run via: `./scripts/test-openburnbar-app.sh -only-testing:OpenBurnBarTests/MemoryDeviceSyncSettingsTests`.
 @MainActor
@@ -25,7 +30,7 @@ final class MemoryDeviceSyncSettingsTests: XCTestCase {
 
     // MARK: - Pure gate matrix
 
-    func testRowGateIsFailClosedAcrossTheMatrix() {
+    func testTheEffectiveGateIsFailClosedAcrossTheMatrix() {
         for deviceSyncOptIn in [false, true] {
             for backupOptIn in [false, true] {
                 for entitlementSatisfied in [false, true] {
@@ -86,8 +91,9 @@ final class MemoryDeviceSyncSettingsTests: XCTestCase {
         let second = makeSettingsManager(defaults: defaults)
         XCTAssertTrue(second.memoryDeviceSyncOptIn, "the sub-toggle persists through the settings coordinator")
         // Still closed: entitlement is never persisted, so a fresh process must
-        // re-resolve it before the row can read on, even with the sub-toggle
-        // already true on disk.
+        // re-resolve it before the pull can run or the row can read on, even
+        // with the sub-toggle already true on disk.
+        XCTAssertFalse(second.memoryDeviceSyncEnabled)
         XCTAssertFalse(second.memoryDeviceSyncRowEnabled)
     }
 
@@ -97,6 +103,7 @@ final class MemoryDeviceSyncSettingsTests: XCTestCase {
         first.memoryApprovedCloudBackupOptIn = true
         first.memoryDeviceSyncOptIn = true
         first.memoryDeviceSyncEntitlementSatisfied = true
+        XCTAssertTrue(first.memoryDeviceSyncEnabled)
         XCTAssertTrue(first.memoryDeviceSyncRowEnabled)
         first.persistence.flush()
 
@@ -112,6 +119,7 @@ final class MemoryDeviceSyncSettingsTests: XCTestCase {
         XCTAssertTrue(second.memoryDeviceSyncOptIn, "the sub-toggle survived the relaunch")
         XCTAssertTrue(second.memoryApprovedCloudBackupOptIn, "the backup opt-in survived the relaunch")
         XCTAssertFalse(second.memoryDeviceSyncEntitlementSatisfied, "entitlement is re-resolved fresh, never restored from disk")
+        XCTAssertFalse(second.memoryDeviceSyncEnabled, "an unresolved entitlement must leave the pull gate closed on relaunch")
         XCTAssertFalse(second.memoryDeviceSyncRowEnabled, "a stale, unresolved entitlement snapshot must never read as satisfied")
     }
 
@@ -120,36 +128,45 @@ final class MemoryDeviceSyncSettingsTests: XCTestCase {
         manager.memoryApprovedCloudBackupOptIn = true
         manager.memoryDeviceSyncOptIn = true
         manager.memoryDeviceSyncEntitlementSatisfied = true
+        XCTAssertTrue(manager.memoryDeviceSyncEnabled)
         XCTAssertTrue(manager.memoryDeviceSyncRowEnabled)
         XCTAssertTrue(manager.memoryDeviceSyncRowUnlocked)
 
         manager.memoryApprovedCloudBackupOptIn = false
         XCTAssertTrue(manager.memoryDeviceSyncOptIn, "the sub-toggle itself is untouched")
-        XCTAssertFalse(manager.memoryDeviceSyncRowEnabled, "the backup opt-in going off must close the effective gate")
+        XCTAssertFalse(manager.memoryDeviceSyncEnabled, "the backup opt-in going off must close the effective gate")
+        XCTAssertFalse(manager.memoryDeviceSyncRowEnabled)
         XCTAssertFalse(manager.memoryDeviceSyncRowUnlocked)
     }
 
-    func testMissingEntitlementClosesTheRowEvenWithBackupAndSubToggleOn() throws {
+    func testMissingEntitlementClosesTheEffectiveGateEvenWithBackupAndSubToggleOn() throws {
         let manager = makeSettingsManager(defaults: try makeDefaults())
         manager.memoryApprovedCloudBackupOptIn = true
         manager.memoryDeviceSyncOptIn = true
         XCTAssertFalse(manager.memoryDeviceSyncEntitlementSatisfied, "still unresolved / not entitled")
+        XCTAssertFalse(
+            manager.memoryDeviceSyncEnabled,
+            "no entitlement ⇒ the pull gate the domain reads is closed, so no memory_facts read is issued"
+        )
         XCTAssertFalse(manager.memoryDeviceSyncRowEnabled)
         XCTAssertFalse(manager.memoryDeviceSyncRowUnlocked)
 
         manager.memoryDeviceSyncEntitlementSatisfied = true
+        XCTAssertTrue(manager.memoryDeviceSyncEnabled)
         XCTAssertTrue(manager.memoryDeviceSyncRowEnabled)
         XCTAssertTrue(manager.memoryDeviceSyncRowUnlocked)
     }
 
-    func testRemoteConfigFleetCeilingClosesTheRow() throws {
+    func testRemoteConfigFleetCeilingClosesTheEffectiveGate() throws {
         let manager = makeSettingsManager(defaults: try makeDefaults())
         manager.memoryApprovedCloudBackupOptIn = true
         manager.memoryDeviceSyncOptIn = true
         manager.memoryDeviceSyncEntitlementSatisfied = true
+        XCTAssertTrue(manager.memoryDeviceSyncEnabled)
         XCTAssertTrue(manager.memoryDeviceSyncRowEnabled)
 
         manager.memoryExtractionRemoteConfigEnabled = false
+        XCTAssertFalse(manager.memoryDeviceSyncEnabled, "the fleet ceiling clamps the pull gate")
         XCTAssertFalse(manager.memoryDeviceSyncRowEnabled, "the fleet ceiling clamps the row too")
         // The backup gate itself already folds the same ceiling, so it also closes.
         XCTAssertFalse(manager.memoryApprovedCloudBackupEnabled)
@@ -165,6 +182,7 @@ final class MemoryDeviceSyncSettingsTests: XCTestCase {
         manager.memoryDeviceSyncEntitlementSatisfied = true
         XCTAssertFalse(manager.memoryDeviceSyncOptIn, "sub-toggle still off")
         XCTAssertTrue(manager.memoryDeviceSyncRowUnlocked, "unlocked is independent of the sub-toggle")
-        XCTAssertFalse(manager.memoryDeviceSyncRowEnabled, "but the full gate still reads off until the sub-toggle is on")
+        XCTAssertFalse(manager.memoryDeviceSyncEnabled, "but the effective gate stays closed until the sub-toggle is on")
+        XCTAssertFalse(manager.memoryDeviceSyncRowEnabled, "and the row reads off to match")
     }
 }

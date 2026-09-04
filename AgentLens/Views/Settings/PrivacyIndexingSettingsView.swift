@@ -39,6 +39,7 @@ struct PrivacyIndexingSettingsView: View {
     /// so the device-sync row's presentation gate never needs its own Firebase
     /// dependency.
     @ObservedObject private var deviceSyncEntitlement = MacCloudEntitlementStore.shared
+    @State private var showDeviceSyncUnlockSheet = false
     private static let deviceSyncGatedFeature = GatedFeature.gatedFeature(.dataVault)
 
     /// Opt-in analytics consent toggle. Reads/writes the shared tri-state consent
@@ -145,13 +146,7 @@ struct PrivacyIndexingSettingsView: View {
                         isOn: $settingsManager.memoryApprovedCloudBackupOptIn
                     )
 
-                    SettingsToggle(
-                        title: "Sync memories to my other devices",
-                        subtitle: deviceSyncSubtitle,
-                        isOn: deviceSyncBinding
-                    )
-                    .disabled(!settingsManager.memoryDeviceSyncRowUnlocked)
-                    .settingsAnchor(SettingsAnchor.indexingMemoryDeviceSync)
+                    deviceSyncRow
 
                     MemoryCloudModelsSection(settingsManager: settingsManager)
 
@@ -795,17 +790,62 @@ struct PrivacyIndexingSettingsView: View {
     /// Pushes the live Data Vault tier into the settings coordinator's
     /// non-persisted entitlement snapshot. Idempotent — safe from `.onAppear`
     /// and every `.onChange(of: deviceSyncEntitlement.cloudTier)` firing.
+    /// `MemoryCloudSyncDomain` refreshes the same lever on every sync cycle, so
+    /// the pull's gate does not depend on this view having appeared.
     private func refreshDeviceSyncEntitlement() {
         deviceSyncEntitlement.start()
-        settingsManager.memoryDeviceSyncEntitlementSatisfied =
-            deviceSyncEntitlement.cloudTier.satisfies(Self.deviceSyncGatedFeature.requiredTier)
+        settingsManager.memoryDeviceSyncEntitlementSatisfied = deviceSyncIsUnlocked
     }
 
-    /// "Sync memories to my other devices" — off by default, and reads off
-    /// whenever the row is not fully unlocked (backup opt-in off, the fleet
-    /// ceiling closed, or no Data Vault entitlement) regardless of what the
-    /// raw sub-toggle is persisted as, so a greyed-out switch never appears to
+    /// The live Data Vault entitlement, resolved exactly the way
+    /// `MemoryCloudModelsSection` resolves it for its own veil.
+    private var deviceSyncIsUnlocked: Bool {
+        deviceSyncEntitlement.cloudTier.satisfies(Self.deviceSyncGatedFeature.requiredTier)
+    }
+
+    /// "Sync memories to my other devices". Below the Data Vault tier the row
+    /// sits behind `LockedFeatureVeil` with a real unlock path, mirroring
+    /// `MemoryCloudModelsSection` — a member who cannot use the feature is shown
+    /// what it is and how to get it, not a dead grey switch. The other two
+    /// levers (the backup opt-in and the fleet ceiling) keep the plain disabled
+    /// + explanatory-subtitle treatment, because those the member can resolve
+    /// on this same screen or not at all.
+    @ViewBuilder
+    private var deviceSyncRow: some View {
+        Group {
+            if deviceSyncIsUnlocked {
+                deviceSyncToggle
+            } else {
+                LockedFeatureVeil(
+                    headline: "Sync memories to my other devices",
+                    detail: "Pro. Approved memories your other signed-in devices backed up are pulled down onto this Mac, end-to-end sealed. BurnBar never sees them.",
+                    ctaLabel: "See Pro",
+                    icon: "arrow.triangle.2.circlepath",
+                    action: { showDeviceSyncUnlockSheet = true },
+                    background: { deviceSyncToggle.disabled(true) }
+                )
+            }
+        }
+        .settingsAnchor(SettingsAnchor.indexingMemoryDeviceSync)
+        .sheet(isPresented: $showDeviceSyncUnlockSheet) {
+            FeatureUnlockSheet(feature: Self.deviceSyncGatedFeature)
+        }
+    }
+
+    /// The switch itself — off by default, and reading off whenever the
+    /// effective gate is closed (sub-toggle off, backup opt-in off, the fleet
+    /// ceiling closed, or no Data Vault entitlement) regardless of what the raw
+    /// sub-toggle is persisted as, so a greyed-out switch never appears to
     /// silently be on.
+    private var deviceSyncToggle: some View {
+        SettingsToggle(
+            title: "Sync memories to my other devices",
+            subtitle: deviceSyncSubtitle,
+            isOn: deviceSyncBinding
+        )
+        .disabled(!settingsManager.memoryDeviceSyncRowUnlocked)
+    }
+
     private var deviceSyncSubtitle: String {
         if !settingsManager.memoryApprovedCloudBackupEnabled {
             return "Turn on \"Back up approved memories\" first. Off by default — pulls your approved memories back down from your other signed-in devices too."

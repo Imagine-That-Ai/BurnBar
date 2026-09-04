@@ -116,8 +116,17 @@ protocol SettingsManagerProtocol: AnyObject, Sendable {
     /// toggle only — the scheduler consults the clamped `memoryDeviceSyncEnabled`.
     var memoryDeviceSyncOptIn: Bool { get set }
 
-    /// Combined gate for pulling the member's own sealed facts back down: the
-    /// cloud-backup gate AND the device-sync sub-toggle. Default OFF.
+    /// Live Data Vault entitlement snapshot for the device-sync gate (default
+    /// OFF — fail closed, never persisted). Refreshed from
+    /// `MacCloudEntitlementStore` by the Settings view and by
+    /// `MemoryCloudSyncDomain` on every sync cycle.
+    var memoryDeviceSyncEntitlementSatisfied: Bool { get set }
+
+    /// Effective gate for pulling the member's own sealed facts back down: the
+    /// cloud-backup gate AND the device-sync sub-toggle AND the Data Vault
+    /// entitlement. Default OFF. The entitlement belongs here because
+    /// `firestore.rules` enforces it on `memory_facts` writes only — reads are
+    /// granted by the per-user namespace rule.
     var memoryDeviceSyncEnabled: Bool { get }
 
     // MARK: - CLI Assistant

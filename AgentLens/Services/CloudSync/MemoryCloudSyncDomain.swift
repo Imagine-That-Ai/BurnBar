@@ -15,11 +15,16 @@ import OpenBurnBarCore
 //     A single fleet flip clamps memory egress shut even if a user opted in.
 //   * `accountManager.isCloudSyncEnabled` / signed-in / Firebase-available —
 //     the same account gates every other sync domain honours.
-//   * `memoryDeviceSyncEnabled` — the PULL sub-toggle (default OFF, Memory Blind
-//     Sync PR-2), itself ANDed under the backup gate above. Backing memory up is
-//     not the same consent as syncing it across devices, so reading facts back
-//     down needs its own switch; with it off the upload half runs exactly as
-//     before and no `memory_facts` read is issued at all.
+//   * `memoryDeviceSyncEnabled` — the PULL gate (default OFF, Memory Blind
+//     Sync PR-2): the sub-toggle ANDed under the backup gate above AND the live
+//     Data Vault entitlement. Backing memory up is not the same consent as
+//     syncing it across devices, so reading facts back down needs its own
+//     switch; with any lever off the upload half runs exactly as before and no
+//     `memory_facts` read is issued at all. The entitlement is a client-side
+//     lever by necessity: `firestore.rules` gates `memory_facts` *writes* on
+//     `hasActiveDataVaultEntitlement(userId)`, but *reads* are granted by the
+//     per-user namespace rule with no entitlement check, so a lapsed
+//     entitlement is only stopped here.
 //
 // When any lever is off, `sync()` returns BEFORE reading a single candidate or
 // touching a Firestore handle / vault key — so a dormant install performs zero
@@ -36,12 +41,34 @@ import OpenBurnBarCore
 // does its key resolution + uploads off the main actor. Reentrancy is guarded by
 // the shared `Locked<CloudSyncDomainState>` box so a long upload cycle started by
 // one refresh tick is not double-run by the next.
+/// Resolves the live Data Vault entitlement (the fourth lever of the device-sync
+/// gate) for `MemoryCloudSyncDomain`. A seam, not an abstraction for its own
+/// sake: the production resolver reads the shared `MacCloudEntitlementStore`
+/// singleton, which a unit test cannot drive.
+protocol MemoryDataVaultEntitlementResolving: Sendable {
+    /// True only when the member's resolved tier satisfies `GatedFeature.dataVault`.
+    /// Unresolved / lapsed ⇒ false (fail closed).
+    @MainActor var isDataVaultEntitled: Bool { get }
+}
+
+/// Production resolver: the same `MacCloudEntitlementStore` tier check
+/// `MemoryCloudModelsSection` unlocks against, so the pull's entitlement lever
+/// and the Settings unlock veil can never disagree about who is entitled.
+struct MacCloudDataVaultEntitlementResolver: MemoryDataVaultEntitlementResolving {
+    @MainActor var isDataVaultEntitled: Bool {
+        let store = MacCloudEntitlementStore.shared
+        store.start()
+        return store.cloudTier.satisfies(GatedFeature.gatedFeature(.dataVault).requiredTier)
+    }
+}
+
 final class MemoryCloudSyncDomain: CloudSyncDomain, Sendable {
     private let syncService: MemoryCloudSyncService
     private let pullService: MemoryCloudPullService
     private let accountManager: any AccountManaging
     private let settingsManager: any SettingsManagerProtocol
     private let vaultKeyProvider: any ConversationCloudVaultKeyProviding
+    private let entitlementResolver: any MemoryDataVaultEntitlementResolving
     private let now: @Sendable () -> Date
 
     private let state = Locked(CloudSyncDomainState())
@@ -56,6 +83,7 @@ final class MemoryCloudSyncDomain: CloudSyncDomain, Sendable {
         settingsManager: any SettingsManagerProtocol,
         firestoreGateway: CloudSyncFirestoreGateway = CloudSyncFirestoreLiveGateway(),
         vaultKeyProvider: any ConversationCloudVaultKeyProviding = MacConversationCloudVaultKeyProvider(),
+        entitlementResolver: any MemoryDataVaultEntitlementResolving = MacCloudDataVaultEntitlementResolver(),
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.syncService = MemoryCloudSyncService(store: store, firestoreGateway: firestoreGateway)
@@ -63,6 +91,7 @@ final class MemoryCloudSyncDomain: CloudSyncDomain, Sendable {
         self.accountManager = accountManager
         self.settingsManager = settingsManager
         self.vaultKeyProvider = vaultKeyProvider
+        self.entitlementResolver = entitlementResolver
         self.now = now
     }
 
@@ -75,6 +104,11 @@ final class MemoryCloudSyncDomain: CloudSyncDomain, Sendable {
         let isSignedIn: Bool
         let isCloudSyncEnabled: Bool
         let approvedCloudBackupEnabled: Bool
+        /// The EFFECTIVE pull gate (`MemoryDeviceSyncGate`): the sub-toggle AND
+        /// the backup opt-in AND the fleet ceiling AND the live Data Vault
+        /// entitlement, resolved on this same main-actor hop. Read from
+        /// `SettingsManager.memoryDeviceSyncEnabled` so the Settings row and
+        /// this network gate are one computation, never two that can drift.
         let deviceSyncEnabled: Bool
         let deviceId: String
         let uid: String?
@@ -82,7 +116,12 @@ final class MemoryCloudSyncDomain: CloudSyncDomain, Sendable {
 
     @MainActor
     private func gateSnapshot() -> GateSnapshot {
-        GateSnapshot(
+        // Refresh the entitlement lever from the live tier BEFORE reading the
+        // gate: the pull must never depend on the member having opened Settings
+        // for the entitlement to have been resolved, and an unresolved or lapsed
+        // tier resolves to false, closing the gate (fail closed).
+        settingsManager.memoryDeviceSyncEntitlementSatisfied = entitlementResolver.isDataVaultEntitled
+        return GateSnapshot(
             isFirebaseAvailable: accountManager.isFirebaseAvailable,
             isSignedIn: accountManager.isSignedIn,
             isCloudSyncEnabled: accountManager.isCloudSyncEnabled,

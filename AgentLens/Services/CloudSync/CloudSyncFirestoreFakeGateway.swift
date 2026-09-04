@@ -76,9 +76,17 @@ final class CloudSyncFirestoreFakeGateway: CloudSyncFirestoreGateway, Sendable {
         store.documentData(at: path)
     }
 
-    /// Direct access to all documents under a collection path.
+    /// Direct access to all documents under a collection path. Inspection only —
+    /// it does not count as a gateway read (see `queryCount(under:)`).
     func documents(under collectionPath: String) -> [String: [String: Any]] {
         store.documents(under: collectionPath)
+    }
+
+    /// How many queries actually resolved against `collectionPath` through the
+    /// gateway. Lets a test assert a closed gate performed ZERO reads rather
+    /// than only that it produced no visible effect.
+    func queryCount(under collectionPath: String) -> Int {
+        store.queriedCollectionPaths.filter { $0 == collectionPath }.count
     }
 
     /// Write a document directly (bypassing gateway) to simulate remote changes.
@@ -169,6 +177,20 @@ private final class CloudSyncFirestoreFakeGatewayState: Sendable {
 private final class FakeDocumentStore: Sendable {
     private let box = OSAllocatedUnfairLock<[String: [String: Any]]>(uncheckedState: [:])
     private let aggregateSumErrorBox = OSAllocatedUnfairLock<Error?>(uncheckedState: nil)
+    private let queriedCollectionPathsBox = OSAllocatedUnfairLock<[String]>(uncheckedState: [])
+
+    /// Every collection path a query actually resolved through the gateway, in
+    /// order. Recorded at snapshot construction — the single funnel every
+    /// `getDocuments()` / `aggregateSum` goes through — so a test can assert a
+    /// gate produced ZERO reads, not merely zero visible effects. Direct
+    /// test-side inspection (`documents(under:)` on the gateway) does not record.
+    var queriedCollectionPaths: [String] {
+        queriedCollectionPathsBox.withLockUnchecked { $0 }
+    }
+
+    func recordQuery(at collectionPath: String) {
+        queriedCollectionPathsBox.withLockUnchecked { $0.append(collectionPath) }
+    }
 
     /// Aggregate-only failure injection (see `CloudSyncFirestoreFakeGateway.aggregateSumError`).
     var aggregateSumError: Error? {
@@ -536,6 +558,7 @@ private final class CloudSyncQuerySnapshotFakeGateway: CloudSyncQuerySnapshotGat
         sort: SortDescriptor?,
         limit: Int?
     ) {
+        store.recordQuery(at: collectionPath)
         var docs = store.documents(under: collectionPath)
             .map { path, data in (path, data) }
 
