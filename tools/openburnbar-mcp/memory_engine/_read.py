@@ -1073,9 +1073,16 @@ class _ReadPath:
         # A replay receipt that points at this memory must not claim it still exists.
         self.conn.execute("DELETE FROM memory_ingest WHERE decisions_json LIKE ?", (f'%"memoryID":"{memory_id}"%',))
         self.conn.execute("UPDATE memories SET superseded_by = NULL WHERE superseded_by = ?", (memory_id,))
-        # A foreign engine id that folded into this row now points at nothing.
+        # A foreign engine id that folded into this row now points at nothing, and
+        # neither the row's applied-remote mark nor the convergence ledger entries
+        # that key a body to it can outlive the row they describe.
         self.conn.execute(
             "DELETE FROM engine_meta WHERE key LIKE 'memory_alias:%' AND value = ?",
+            (memory_id,),
+        )
+        self.conn.execute("DELETE FROM engine_meta WHERE key = ?", (f"sync_mark:{memory_id}",))
+        self.conn.execute(
+            "DELETE FROM engine_meta WHERE key LIKE 'sync_identity:%' AND value = ?",
             (memory_id,),
         )
         self.conn.execute("DELETE FROM memories WHERE id = ?", (memory_id,))

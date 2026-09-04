@@ -3166,6 +3166,14 @@ def burnbar_memory_sync_pull(project_path: str | None = None, limit: int = 200) 
     is never revived, and a supersede whose target has not arrived is parked for
     the next pull rather than dropped. Only the documents the merge finished
     with are acknowledged.
+
+    The counts: `applied` rows landed, `reinforced` folded into a row that
+    already held the same fact, `unchanged` were already applied or lost
+    last-writer-wins, `refused` will never be merged (a failed gate, a forgotten
+    memory, a document that can never be keyed) and are acknowledged so they
+    stop being offered, and `parked` are the ones this pull could not finish
+    with — an unarrived supersede target, a payload sealed by a newer engine —
+    which the next pull is offered again.
     """
     if limited := _local_mcp_rate_limit("burnbar_memory_sync_pull", "memory"):
         return limited

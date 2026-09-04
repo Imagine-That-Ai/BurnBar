@@ -43,8 +43,12 @@ T3 = "2026-08-01T11:00:00Z"
 T4 = "2026-08-01T12:00:00Z"
 T5 = "2026-08-01T13:00:00Z"
 T6 = "2026-08-01T14:00:00Z"
-# Later than any locally-authored row this suite writes, so a remote revision of
-# a memory this device already holds genuinely is the last writer.
+# Later than this device's own clock. A row a member authored HERE carries a
+# local wall-clock `updated_at`, and last-writer-wins means a remote revision
+# only beats it by genuinely being later — see
+# `test_a_local_edit_after_a_merge_outranks_an_older_remote_revision`. Rows that
+# arrived by merge carry the sender's instant instead, so the ordering tests
+# below run entirely on the past timestamps above.
 T_LATER = "2027-03-01T00:00:00Z"
 
 
@@ -166,13 +170,17 @@ def _active(engine: me.MemoryEngine) -> set[tuple[str, str, str]]:
 
 
 def test_three_replicas_converge_on_an_identical_active_set(tmp_path: Path) -> None:
-    """Add, update, supersede, retire, and two conflicting edits, delivered to
-    three devices in three different orders, converge to one answer.
+    """Add, update, supersede, retire, two conflicting edits, and a fact learned
+    independently on two devices then edited later, delivered to three devices in
+    three different orders, converge to one answer.
 
-    The orders below are deliberately hostile: replica B sees every document
-    backwards, so a supersede reaches it before its target on one replica and
-    after it on another, and the later of two conflicting edits to the same
-    memory arrives first on one and last on another.
+    The orders below are deliberately hostile, and — this is the point — they are
+    split across *pulls*, not merely shuffled inside one batch: a single
+    `merge_remote` sorts what it is given into §5's total order, so an ordering
+    property that only ever holds inside one call has not been tested at all.
+    Replica beta receives the later edit of `mem_5555…` on its FIRST pull, before
+    either copy of the fact that edit replaced, and must still end up believing
+    exactly what the replicas that saw them in order believe.
     """
     repo = _repo(tmp_path)
     author = _replica(tmp_path, "author")
@@ -230,24 +238,54 @@ def test_three_replicas_converge_on_an_identical_active_set(tmp_path: Path) -> N
         updated_at=T5,
     )
     d7 = _doc_from_local(author, "doc-7", local_id, project_id=project_id)
+    # The same fact, learned independently on two devices, under two engine ids.
+    d8 = _doc(
+        "doc-8",
+        "mem_5555555555555555555555555555eeee",
+        "Coverage gates at 80 percent.",
+        project_id=project_id,
+        updated_at=T1,
+    )
+    d9 = _doc(
+        "doc-9",
+        "mem_6666666666666666666666666666ffff",
+        "Coverage gates at 80 percent.",
+        project_id=project_id,
+        updated_at=T2,
+    )
+    # ...and the device that authored `mem_5555…` edits it afterwards.
+    d10 = _doc(
+        "doc-10",
+        "mem_5555555555555555555555555555eeee",
+        "Coverage gates at 85 percent.",
+        project_id=project_id,
+        updated_at=T3,
+    )
 
-    cloud = [d1, d2, d3, d4, d5, d6, d7]
+    cloud = [d1, d2, d3, d4, d5, d6, d7, d8, d9, d10]
+    earlier = [d1, d2, d3, d4, d5, d6, d7, d8, d9]
+    # Each replica's pulls, in order. The split is what makes the ordering real:
+    # beta's first pull carries only the later edit.
     orders = {
-        "author": [d1, d2, d3, d4, d5, d6, d7],
-        "beta": list(reversed(cloud)),
-        "gamma": [d3, d7, d1, d6, d2, d4, d5],
+        "author": [earlier, [d10]],
+        "beta": [[d10], list(reversed(earlier))],
+        "gamma": [[d3, d7, d1, d6, d10, d2, d9, d4, d8, d5]],
     }
 
     replicas = {"author": author, "beta": _replica(tmp_path, "beta"), "gamma": _replica(tmp_path, "gamma")}
     for name, engine in replicas.items():
-        # Two passes: the second is what a real second pull is, and is what a
-        # parked reference gets to resolve on.
-        engine.merge_remote(orders[name])
-        engine.merge_remote(orders[name])
+        for batch in orders[name]:
+            engine.merge_remote(batch)
+        # A later pull re-offers everything: it must change nothing, and it is
+        # what a parked reference gets to resolve on.
+        engine.merge_remote(list(cloud))
 
     expected_active = {
         ("mem_2222222222222222222222222222bbbb", "The API gateway runs Envoy 1.31.", "fact"),
         ("mem_3333333333333333333333333333cccc", "Release trains leave on Thursday.", "fact"),
+        # One row, under one id, carrying the edit — on every replica, however
+        # the duplicate and the edit were interleaved.
+        ("mem_5555555555555555555555555555eeee", "Coverage gates at 85 percent.", "fact"),
         (local_id, "The staging cluster runs in us-east-1.", "fact"),
     }
     for name, engine in replicas.items():
@@ -263,6 +301,11 @@ def test_three_replicas_converge_on_an_identical_active_set(tmp_path: Path) -> N
             name
         )
         assert rows["mem_4444444444444444444444444444dddd"]["validTo"] is not None, name
+        # The id that lost the convergence race still resolves, so a later
+        # reference to it lands instead of parking for ever.
+        assert engine._local_memory_id("mem_6666666666666666666666666666ffff") == (
+            "mem_5555555555555555555555555555eeee"
+        ), name
 
     for engine in replicas.values():
         engine.close()
@@ -312,23 +355,23 @@ def test_a_parked_supersede_resolves_on_the_next_merge(tmp_path: Path) -> None:
     project_id = _project_id(engine, repo)
     orphan = _doc(
         "doc-orphan",
-        "mem_00000000000000000000000000000old",
+        "mem_00000000000000000000000000000a1d",
         "The build runs on Intel runners.",
         project_id=project_id,
         updated_at=T1,
         valid_to=T2,
-        superseded_by="mem_99999999999999999999999999999new",
+        superseded_by="mem_99999999999999999999999999999e2f",
     )
 
     first = engine.merge_remote([orphan])
     assert first["applied"] == 1
     assert first["parked"] == 1
     assert first["ackDocIDs"] == [], "a document whose reference did not resolve must be re-offered"
-    assert _rows(engine)["mem_00000000000000000000000000000old"]["supersededBy"] is None
+    assert _rows(engine)["mem_00000000000000000000000000000a1d"]["supersededBy"] is None
 
     target = _doc(
         "doc-target",
-        "mem_99999999999999999999999999999new",
+        "mem_99999999999999999999999999999e2f",
         "The build runs on Apple silicon runners.",
         project_id=project_id,
         updated_at=T3,
@@ -337,8 +380,8 @@ def test_a_parked_supersede_resolves_on_the_next_merge(tmp_path: Path) -> None:
     assert second["parked"] == 0
     assert sorted(second["ackDocIDs"]) == ["doc-orphan", "doc-target"]
     rows = _rows(engine)
-    assert rows["mem_00000000000000000000000000000old"]["supersededBy"] == "mem_99999999999999999999999999999new"
-    assert rows["mem_99999999999999999999999999999new"]["supersedes"] == ["mem_00000000000000000000000000000old"]
+    assert rows["mem_00000000000000000000000000000a1d"]["supersededBy"] == "mem_99999999999999999999999999999e2f"
+    assert rows["mem_99999999999999999999999999999e2f"]["supersedes"] == ["mem_00000000000000000000000000000a1d"]
     engine.close()
 
 
@@ -465,11 +508,12 @@ def test_an_injection_labelled_remote_row_lands_quarantined(tmp_path: Path) -> N
     engine.close()
 
 
-def test_a_row_without_the_engine_project_identity_is_parked(tmp_path: Path) -> None:
+def test_a_row_without_the_engine_project_identity_is_refused_not_parked(tmp_path: Path) -> None:
     """§5 converges on `(project_id, scope, body_hash)`. A v1 payload (or a chat
-    memory, which belongs to no engine project) cannot be keyed, so it is parked
-    — never applied, and never acknowledged, so a later device that does carry
-    the identity can still supply it."""
+    memory, which belongs to no engine project) cannot be keyed — and never will
+    be, because the document is what it is. Parking is for a gap that closes on
+    its own; this one does not, so the row is refused for good and acknowledged
+    rather than re-offered on every pull until the end of time."""
     repo = _repo(tmp_path)
     engine = _replica(tmp_path, "identity")
     project_id = _project_id(engine, repo)
@@ -482,12 +526,213 @@ def test_a_row_without_the_engine_project_identity_is_parked(tmp_path: Path) -> 
         schema_version=1,
         omit=("projectID", "engineScope"),
     )
-    result = engine.merge_remote([legacy])
-    assert result["applied"] == 0 and result["parked"] == 1
-    assert result["decisions"][0]["code"] == "PROJECT_IDENTITY_MISSING"
-    assert result["ackDocIDs"] == []
+    chat = _doc(
+        "doc-chat",
+        "mem_7777111122223333444455556666aaaf",
+        "The CDN is Cloudflare.",
+        project_id=project_id,
+        updated_at=T1,
+        omit=("projectID",),
+    )
+    result = engine.merge_remote([legacy, chat])
+    assert result["applied"] == 0 and result["parked"] == 0
+    assert result["refused"] == 2
+    assert [decision["code"] for decision in result["decisions"]] == [
+        "PROJECT_IDENTITY_MISSING",
+        "PROJECT_IDENTITY_MISSING",
+    ]
+    assert sorted(result["ackDocIDs"]) == ["doc-chat", "doc-v1"]
+    assert result["parkedDocIDs"] == []
     assert _rows(engine) == {}
     engine.close()
+
+
+def test_a_payload_sealed_by_a_newer_engine_is_parked(tmp_path: Path) -> None:
+    """The one screening stop that still parks. This gap does close on its own —
+    the next release of the engine understands the payload — and acknowledging it
+    would destroy a memory this device is simply not yet able to read."""
+    repo = _repo(tmp_path)
+    engine = _replica(tmp_path, "toonew")
+    project_id = _project_id(engine, repo)
+    future = _doc(
+        "doc-future",
+        "mem_7777111122223333444455556666bbbf",
+        "The CDN is Fastly.",
+        project_id=project_id,
+        updated_at=T1,
+        schema_version=99,
+    )
+    result = engine.merge_remote([future])
+    assert result["applied"] == 0 and result["parked"] == 1
+    assert result["decisions"][0]["code"] == "PAYLOAD_TOO_NEW"
+    assert result["ackDocIDs"] == []
+    assert result["parkedDocIDs"] == ["doc-future"]
+    assert _rows(engine) == {}
+    engine.close()
+
+
+def test_a_memory_id_that_is_not_engine_shaped_is_refused_and_never_stored(tmp_path: Path) -> None:
+    """`payload.memoryID` becomes `memories.id` — the primary key — and comes
+    back to the model in the decision. A local `remember` never lets a caller
+    choose that id; a remote document does not either. Anything but the shape the
+    engine mints (`mem_` + 32 lowercase hex) is refused for good."""
+    repo = _repo(tmp_path)
+    engine = _replica(tmp_path, "shape")
+    project_id = _project_id(engine, repo)
+    body = "The queue is SQS."
+    bad_ids = [
+        "../../etc/passwd",
+        "mem_short",
+        "mem_" + "g" * 32,
+        "mem_" + "A" * 32,
+        "mem_" + "0" * 33,
+        "'; DROP TABLE memories; --",
+        "mem_" + "0" * 31,
+    ]
+    docs = [
+        _doc(f"doc-bad-{index}", memory_id, f"{body} {index}", project_id=project_id, updated_at=T1)
+        for index, memory_id in enumerate(bad_ids)
+    ]
+    result = engine.merge_remote(docs)
+    assert result["refused"] == len(bad_ids) and result["applied"] == 0
+    assert {decision["code"] for decision in result["decisions"]} == {"INVALID_MEMORY_ID"}
+    assert sorted(result["ackDocIDs"]) == sorted(doc["docID"] for doc in docs)
+    assert _rows(engine) == {}, "an id the engine would never mint must never reach the store"
+
+    # A supersede naming an unmintable id would park for ever; it is terminal too.
+    edge = _doc(
+        "doc-bad-edge",
+        "mem_7777111122223333444455556666cccf",
+        body,
+        project_id=project_id,
+        updated_at=T1,
+        superseded_by="not-a-memory-id",
+    )
+    edged = engine.merge_remote([edge])
+    assert edged["refused"] == 1 and edged["parked"] == 0
+    assert edged["decisions"][0]["code"] == "INVALID_SUPERSEDE_TARGET"
+    assert edged["ackDocIDs"] == ["doc-bad-edge"]
+    assert _rows(engine) == {}
+    engine.close()
+
+
+def test_a_merge_driven_reinforcement_does_not_outrank_a_later_remote_edit(tmp_path: Path) -> None:
+    """The wall clock is not a writer.
+
+    A device holds a fact, then merges another device's copy of the same fact.
+    Folding a duplicate in is not authoring a revision here, so it must not stamp
+    this device's clock on the row: if it did, that stamp would beat every remote
+    revision authored before the merge ran — including the genuinely newer edit
+    below — and the two devices would never converge again, silently and for
+    good. Every instant here is in the past, so a wall-clock stamp is the only
+    thing that can win, and only if it is wrongly treated as a writer.
+    """
+    repo = _repo(tmp_path)
+    engine = _replica(tmp_path, "reinforce-lww")
+    project_id = _project_id(engine, repo)
+    mine = "mem_c1c1111122223333444455556666777f"
+    theirs = "mem_a1a1111122223333444455556666777f"
+    body = "The release branch is cut on Monday."
+
+    engine.merge_remote([_doc("doc-mine", mine, body, project_id=project_id, updated_at=T2)])
+    folded = engine.merge_remote([_doc("doc-theirs", theirs, body, project_id=project_id, updated_at=T1)])
+    assert folded["reinforced"] == 1
+    assert set(_rows(engine)) == {mine}
+
+    edit = _doc("doc-edit", theirs, "The release branch is cut on Wednesday.", project_id=project_id, updated_at=T3)
+    applied = engine.merge_remote([edit])
+    assert applied["applied"] == 1, "a remote edit newer than every revision this row absorbed must land"
+    assert applied["decisions"][0]["memoryID"] == mine
+    assert _rows(engine)[mine]["body"] == "The release branch is cut on Wednesday."
+
+    # ...and it is still idempotent: the same revision again changes nothing.
+    replay = engine.merge_remote([edit])
+    assert replay["unchanged"] == 1 and replay["applied"] == 0
+    assert replay["decisions"][0]["code"] == "ALREADY_APPLIED"
+
+    # An older revision of the same memory, arriving late, stays lost.
+    stale = engine.merge_remote(
+        [_doc("doc-stale", theirs, "The release branch is cut on Friday.", project_id=project_id, updated_at=T1)]
+    )
+    assert stale["unchanged"] == 1
+    assert stale["decisions"][0]["code"] == "REMOTE_IS_STALE"
+    assert _rows(engine)[mine]["body"] == "The release branch is cut on Wednesday."
+    engine.close()
+
+
+def test_a_local_edit_after_a_merge_outranks_an_older_remote_revision(tmp_path: Path) -> None:
+    """The other half of the same rule. Not stamping the clock on a merge must
+    not cost a member their own edit: a local `update` IS a writer here, and it
+    beats a remote revision authored before it — while a genuinely later remote
+    revision still wins."""
+    repo = _repo(tmp_path)
+    engine = _replica(tmp_path, "local-wins")
+    project_id = _project_id(engine, repo)
+    memory_id = "mem_b0b0111122223333444455556666777f"
+    engine.merge_remote(
+        [_doc("doc-seed", memory_id, "Backups run at 02:00 UTC.", project_id=project_id, updated_at=T2)]
+    )
+
+    edited = engine.update(memory_id, text="Backups run at 03:00 UTC.")
+    assert edited["status"] == "ok"
+
+    older = _doc("doc-older", memory_id, "Backups run at 04:00 UTC.", project_id=project_id, updated_at=T3)
+    result = engine.merge_remote([older])
+    assert result["unchanged"] == 1 and result["applied"] == 0
+    assert result["decisions"][0]["code"] == "LOCAL_IS_NEWER"
+    assert _rows(engine)[memory_id]["body"] == "Backups run at 03:00 UTC."
+
+    later = _doc("doc-later", memory_id, "Backups run at 05:00 UTC.", project_id=project_id, updated_at=T_LATER)
+    assert engine.merge_remote([later])["applied"] == 1
+    assert _rows(engine)[memory_id]["body"] == "Backups run at 05:00 UTC."
+    engine.close()
+
+
+def test_a_converging_duplicate_and_a_later_edit_agree_in_either_delivery_order(tmp_path: Path) -> None:
+    """Two replicas, the same three documents, opposite delivery orders.
+
+    Replica `first` sees both copies of the fact and then the edit. Replica
+    `last` sees the edit before either copy. They must end up believing exactly
+    the same thing — one memory, under one id, carrying the edit — and every
+    engine id involved must resolve to it on both.
+    """
+    repo = _repo(tmp_path)
+    project_a = "mem_5a5a111122223333444455556666777f"
+    project_c = "mem_5c5c111122223333444455556666777f"
+    body = "The staging database is restored nightly."
+    edited = "The staging database is restored hourly."
+
+    replicas = {"first": _replica(tmp_path, "first"), "last": _replica(tmp_path, "last")}
+    project_ids = {name: _project_id(engine, repo) for name, engine in replicas.items()}
+
+    def docs(name: str) -> tuple[dict[str, object], dict[str, object], dict[str, object]]:
+        project_id = project_ids[name]
+        return (
+            _doc("doc-a", project_a, body, project_id=project_id, updated_at=T1),
+            _doc("doc-c", project_c, body, project_id=project_id, updated_at=T2),
+            _doc("doc-edit", project_a, edited, project_id=project_id, updated_at=T3),
+        )
+
+    a_doc, c_doc, edit_doc = docs("first")
+    replicas["first"].merge_remote([a_doc, c_doc])
+    replicas["first"].merge_remote([edit_doc])
+
+    a_doc, c_doc, edit_doc = docs("last")
+    replicas["last"].merge_remote([edit_doc])
+    replicas["last"].merge_remote([c_doc, a_doc])
+
+    expected = {(project_a, edited, "fact")}
+    for name, engine in replicas.items():
+        assert _active(engine) == expected, name
+        assert engine._local_memory_id(project_c) == project_a, name
+        assert engine._local_memory_id(project_a) == project_a, name
+
+    # And a third pull of everything, in yet another order, moves nothing.
+    for name, engine in replicas.items():
+        a_doc, c_doc, edit_doc = docs(name)
+        engine.merge_remote([edit_doc, a_doc, c_doc])
+        assert _active(engine) == expected, name
+        engine.close()
 
 
 def test_a_fact_learned_independently_on_two_devices_folds_into_one_row(tmp_path: Path) -> None:

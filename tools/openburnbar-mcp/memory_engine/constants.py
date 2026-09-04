@@ -79,6 +79,10 @@ REVIEW_STATUSES = ("approved", "quarantined", "rejected")
 REMOTE_PAYLOAD_SCHEMA_MAX = 2
 # `memories.source_kind` for a row that arrived through the blind-sync merge.
 REMOTE_SOURCE_KIND = "cloud_sync"
+# The shape a local `remember` mints (`"mem_" + secrets.token_hex(16)`). A remote
+# `payload.memoryID` becomes the local primary key, so it is held to exactly that
+# shape: anything else is refused for good rather than stored.
+REMOTE_MEMORY_ID_RE = re.compile(r"^mem_[0-9a-f]{32}$")
 SENSITIVITIES = ("none", "pii", "redacted", "secret")
 MEMORY_SCOPES = ("project", "personal")
 
