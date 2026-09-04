@@ -210,6 +210,95 @@ treats Kimi as exact, which matches the running code.
 
 ---
 
+## Memory MCP (`/memory`)
+
+Every figure and every sentence on this page reads from
+`website/src/data/memory.ts`. That file carries the source path for each block
+in a comment, and the page renders a `Source ·` line under each section, so the
+claim and its evidence ship together. Edit the data file; the page and this
+table follow.
+
+### Product mechanics
+
+| Claim                                                                                     | Source                                                                                                             |
+| ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| "32 MCP tools" (hero, verification step 1)                                                | `tools/openburnbar-mcp/server.py` — `MEMORY_TOOLSET`, counted (32 entries), served when `BURNBAR_MCP_TOOLSET=memory` |
+| Works with Claude Code, Cursor, Codex CLI, Claude Desktop, Hermes                         | `tools/openburnbar-mcp/README.md` §§ Cursor / Codex CLI / Hermes Agent / Claude Desktop; repo `.mcp.json`           |
+| Store path `~/Library/Application Support/OpenBurnBar/openburnbar-memory.sqlite`          | `tools/openburnbar-mcp/README.md` § Local memory engine                                                            |
+| Bodies + history bodies AES-256-GCM sealed; key mode 0600; DB and WAL/SHM sidecars 0600   | `tools/openburnbar-mcp/README.md` § Encrypted at rest                                                              |
+| Works without the daemon; a signed install rejecting the process is a status, not an error | `tools/openburnbar-mcp/README.md` § Works without the daemon; `docs/superpowers/2026-09-02-memory-mcp-v2-design.md` §1 |
+| Seven-stage write pipeline (ingest → extract → gate → injection screen → reconcile → store → recall) | `docs/superpowers/2026-09-02-memory-mcp-v2-design.md` §4.1; `tools/openburnbar-mcp/memory_engine/`                  |
+| Ingest is idempotent on the input's content hash                                          | `tools/openburnbar-mcp/README.md` § Automatic collection — **Idempotent**                                            |
+| Secret policies `redact` (default) / `reject` / `retain`; gate covers tags, entities, metadata, `source_path` | `tools/openburnbar-mcp/README.md` § Secrets and PII                                                  |
+| `retain` is capability-gated, hidden from default recall, never mirrored or exported by default | `tools/openburnbar-mcp/README.md` § Experimental: retain secrets                                               |
+| Injection sentinels in any field quarantine the row; quarantined rows are excluded from recall | `tools/openburnbar-mcp/README.md` § Untrusted recall boundary                                                    |
+| Hybrid recall: BM25 + vectors, reciprocal-rank fusion, then salience rerank                | `docs/superpowers/2026-09-02-memory-mcp-v2-design.md` §4.2                                                          |
+| `RRF k=60`, lexical weight 0.6, semantic weight 1.0                                       | `tools/openburnbar-mcp/memory_engine/constants.py` — `RRF_K`, `RRF_LEXICAL_WEIGHT`, `RRF_SEMANTIC_WEIGHT`           |
+| Twelve kinds and their salience weights, verbatim                                         | `tools/openburnbar-mcp/memory_engine/constants.py` — `KINDS`, `KIND_WEIGHTS`                                        |
+| Personal-scope kinds (`preference`, `profile`, `relationship`) follow you across projects | `constants.py` — `PERSONAL_KINDS`; `README.md` § `burnbar_recall`                                                   |
+| 30-day half-life for `event`/`todo`, 365 days otherwise                                   | `constants.py` — `SHORT_HALF_LIFE_KINDS`, `HALF_LIFE_DAYS_SHORT`, `HALF_LIFE_DAYS_LONG`                             |
+| Access boost capped at 1.5×                                                               | `docs/superpowers/2026-09-02-memory-mcp-v2-design.md` §4.2 step 5                                                   |
+| Duplicates collapse above cosine 0.92 or Jaccard 0.75                                     | `constants.py` — `DEDUP_COSINE`, `DEDUP_JACCARD`                                                                   |
+| `SessionEnd` hook: prose only, 400 messages / 200,000 chars, 20-second budget, exit 0, nine statuses | `tools/openburnbar-mcp/README.md` § Automatic collection from Claude Code sessions                        |
+| "The first session end on a new machine usually memorizes nothing" (stated, not hidden)   | `tools/openburnbar-mcp/README.md` § Automatic collection — the bootstrap paragraph, verbatim in substance          |
+| Pro models: five `memory-*` purposes, no key in the engine, 15-minute scoped bearer, degrades locally | `tools/openburnbar-mcp/README.md` § Pro models (opt-in)                                                  |
+
+### Measurements (the `/memory#proof` bench)
+
+The page labels each figure **Pinned** or **Measured, not pinned**. A pinned
+figure has a committed assertion that fails CI if it regresses; an unpinned one
+needs a local model and says so on the page.
+
+| Figure on the page                                       | Command                                        | Pin                                                                          |
+| -------------------------------------------------------- | ---------------------------------------------- | ----------------------------------------------------------------------------- |
+| Extraction recall **0.667** (20 of 30)                   | `eval_memory.py --extraction --provider none`   | `tools/openburnbar-mcp/tests/test_eval_extraction.py` — `RECALL_FLOOR = 0.65` |
+| Extraction precision **1.0**                             | same run                                        | *not pinned* — labelled as such on the page                                   |
+| **1** invented fact across 7 empty conversations         | same run                                        | `test_eval_extraction.py` — `emptyCaseFacts <= 2`                             |
+| **0** credential leaks into an extracted fact            | same run                                        | `test_eval_extraction.py` — `leaks == 0`                                      |
+| **25 of 25** credential shapes detected raw              | `eval_memory.py --gate`                         | `test_eval_extraction.py::test_gate_matrix_detects_every_raw_shape`           |
+| Four encoded gaps, named individually                    | `eval_memory.py --gate`                         | `tools/openburnbar-mcp/README.md` § Gate coverage — the same four, verbatim   |
+| Hybrid recall@5 **0.90**, MRR **0.678**                  | `eval_memory.py --provider auto`                | *not pinned* — needs local Ollama `nomic-embed-text`; the page says so         |
+| Rules-only reconciliation agreement **0.42** on 64 cases | `eval_memory.py --judge`                        | `test_eval_extraction.py::test_rules_baseline_on_judge_gold_is_recorded`      |
+| Gold-set sizes: 36 conversations, 64 judge cases         | `tools/openburnbar-mcp/eval/*.json`             | `test_eval_extraction.py` — `cases >= 25`, `len(cases) >= 60`                 |
+| Adversarial gate: 8 caller-controlled placements         | —                                               | `tools/openburnbar-mcp/tests/test_gate_adversarial.py`                        |
+
+### The device boundary
+
+| Claim                                                                                                    | Source                                                    |
+| --------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| Transcripts read locally, written locally, never uploaded — including by the session hook               | `tools/openburnbar-mcp/README.md` § Automatic collection — **Privacy** |
+| Cloud models for memory: two consents, own key or own CLI subscription, **BurnBar receives nothing**     | `docs/PRIVACY.md:83-85`                                    |
+| Encrypted backup: sealed blob, opaque keyed-hash id, keyed source hashes, kind, review status, three timestamps — and nothing else, enforced by the server's rules | `docs/PRIVACY.md:87-93`                     |
+| Retained secrets, unreviewed memories, injection-flagged memories and repository knowledge never leave   | `docs/PRIVACY.md:91`                                       |
+| **Not shipped:** cross-device pull and merge. Backup is on `main`; the pull half is in review            | `docs/superpowers/plans/2026-09-03-memory-blind-sync.md` § Shipping shape — PR 1 shipped, PR 2 is the pull half |
+
+The page states the unshipped half explicitly rather than omitting it, in its
+own visually distinct "Not shipped" lane. Do not promote that lane to
+"available" until the pull PR is merged and `docs/PRIVACY.md` describes device
+sync as live.
+
+### Stated limits
+
+`/memory#limits` publishes seven limits with sources: lexical-only recall
+without an embedding provider, the conservative extractor, the 0.42 rules
+baseline, the four encoded gate gaps, plaintext vectors and metadata on disk,
+macOS default paths, and the "adjacent tooling · best-effort support" level
+from `tools/openburnbar-mcp/README.md` § Support level. If any of these is
+fixed, remove it from `src/data/memory.ts` in the same PR that fixes it.
+
+---
+
+## MCP integration (`/mcp`)
+
+Existing page; this PR added navigation and accessibility only. New claims:
+
+| Claim                                                                                | Source                                       |
+| -------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| "This page is about transports … the local memory engine is a product in its own right" | Editorial framing; the split matches `/memory` |
+| Cross-links to `/memory` and `/memory#setup`                                          | Internal routes, verified by `check-links.mjs` |
+
+---
+
 ## Download (`/download`)
 
 | Claim                                        | Source                                                                                                                                                                                                                                                                                                                           |

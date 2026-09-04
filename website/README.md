@@ -25,6 +25,8 @@ live in `src/styles/tokens.css`; global styles in `src/styles/globals.css`.
 |---|---|---|
 | `/` | `src/pages/index.astro` | Home — hero, pillars, dashboard mockup, surfaces, Hermes, pricing, trust |
 | `/product` | `src/pages/product.astro` | Feature tour grouped by tracking / assistant / control / surfaces / honesty |
+| `/memory` | `src/pages/memory.astro` | Memory MCP — pipeline, secret gate, recall, measured proof, device boundary, per-client setup |
+| `/mcp` | `src/pages/mcp.astro` | MCP transports — four channels, tool dossier, install snippets, SLOs |
 | `/providers` | `src/pages/providers.astro` | Full provider matrix, confidence legend, caveats |
 | `/pricing` | `src/pages/pricing.astro` | OpenBurnBar Local, BurnBar Cloud, BurnBar Cloud Pro, top-ups, and billing FAQ |
 | `/privacy` | `src/pages/privacy.astro` | Three-zone trust model + architecture diagram |
@@ -69,7 +71,8 @@ Runs:
 3. `npm run build:offline` — production build from committed data
 4. `node scripts/update-csp-hashes.mjs --check` — proves the Firebase marketing CSP has exact hashes for the built inline scripts/styles and no `unsafe-inline`
 5. `node scripts/test-trust-copy.mjs` — scans built trust/privacy output for external network references
-6. `node scripts/check-links.mjs` — verifies every internal `href` resolves to a built page or a static asset
+6. `node scripts/test-memory-copy.mjs` — proves `/memory`'s figures still match `tools/openburnbar-mcp/`: the tool count against `MEMORY_TOOLSET`, the twelve kind weights and seven retrieval constants against `memory_engine/constants.py`, the extraction floor against the committed `RECALL_FLOOR`, that every unpinned measurement is labelled unpinned, and that cross-device sync is still published as not shipped
+7. `node scripts/check-links.mjs` — verifies every internal `href` resolves to a built page or a static asset
 
 `npm run verify` is intentionally source-data non-mutating; it rebuilds
 `website/dist/`, but it must not refresh router-rundown history.
@@ -80,7 +83,7 @@ For a manual visual pass:
 
 ```sh
 npm run preview                  # http://127.0.0.1:4322
-# then visit /, /product, /providers, /pricing, /privacy, /download, /faq
+# then visit /, /product, /memory, /mcp, /providers, /pricing, /privacy, /download, /faq
 ```
 
 For headless screenshots (macOS, requires Chrome):
@@ -141,6 +144,12 @@ Single source of truth for site copy lives in `src/data/`:
 - `surfaces.ts` — what ships where (macOS, iOS, editor, daemon, CLI, …)
 - `features.ts` — feature copy grouped by category
 - `faq.ts` — FAQ Q&A pairs, used to build the FAQ page and JSON-LD
+- `memory.ts` — everything `/memory` renders: the write pipeline, the secret
+  gate policies, retrieval constants, the twelve memory kinds, the measured
+  numbers with the test that pins each one, the device boundary, the per-client
+  setup snippets, the verification checklist, and the stated limits. Each block
+  names the file on `main` it came from, and the page prints that source under
+  the section. Changing a product fact is one edit here.
 
 If a fact changes upstream (new provider, new price, new release tag), edit the
 matching data file. Pages re-render automatically.

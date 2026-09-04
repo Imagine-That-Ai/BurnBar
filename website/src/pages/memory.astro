@@ -1,0 +1,2595 @@
+---
+/* ============================================================
+   /memory — the Memory MCP.
+
+   Relationship to /mcp: /mcp is the transport reference (four channels,
+   which endpoint speaks which protocol). This page is the product — what
+   the memory does, why it is built the way it is, what the numbers are,
+   and how to get it running. Neither absorbs the other; each links to the
+   other exactly once, from the place a reader would look for it.
+
+   Every claim on this page reads from src/data/memory.ts, where each block
+   carries the file on `main` it came from. See website/CLAIMS.md § Memory.
+   ============================================================ */
+import BaseLayout from "@layouts/BaseLayout.astro";
+import { SITE } from "@data/site";
+import {
+  BOOTSTRAP_LINES,
+  BOUNDARY,
+  CHECKOUT,
+  CLIENTS,
+  EMBEDDING_LINES,
+  FUSION,
+  GATE_PLACEMENTS,
+  GATE_POLICIES,
+  GATE_SHAPES,
+  HOOK_STATUSES,
+  LIMITS,
+  MEASUREMENTS,
+  MEMORY_KINDS,
+  MEMORY_STORE_PATH,
+  MEMORY_TOOL_COUNT,
+  PRO_INVARIANTS,
+  PRO_PURPOSES,
+  SESSION_HOOK_LINES,
+  VERIFY_STEPS,
+  WRITE_PIPELINE
+} from "@data/memory";
+
+const REPO_MCP = `${SITE.github}/blob/main/tools/openburnbar-mcp/README.md`;
+const REPO_DESIGN = `${SITE.github}/blob/main/docs/superpowers/2026-09-02-memory-mcp-v2-design.md`;
+
+const maxKindWeight = Math.max(...MEMORY_KINDS.map((k) => k.weight));
+const pinnedCount = MEASUREMENTS.filter((m) => m.pin !== null).length;
+
+/* Section register — the numerals in the left margin, and the in-page nav. */
+const SECTIONS = [
+  { n: "01", id: "pipeline", label: "The pipeline" },
+  { n: "02", id: "gate", label: "The gate" },
+  { n: "03", id: "recall", label: "Recall" },
+  { n: "04", id: "collection", label: "Collection" },
+  { n: "05", id: "proof", label: "Proof" },
+  { n: "06", id: "boundary", label: "The boundary" },
+  { n: "07", id: "setup", label: "Setup" },
+  { n: "08", id: "limits", label: "Limits" }
+];
+---
+
+<BaseLayout
+  title="Memory MCP — one memory your agents share, on a machine you own"
+  description={`Thirty-two MCP tools give Claude Code, Cursor, Codex, Claude Desktop and Hermes one durable memory of your work — extracted from the sessions you already run, encrypted on your own disk, and screened so credentials never become memories.`}
+>
+  {/* Announcements for copy actions and checklist progress. */}
+  <p class="sr-only" role="status" aria-live="polite" data-copy-live></p>
+
+  {/* ══════════════════════ HERO ══════════════════════ */}
+  <section class="mem-hero" aria-labelledby="mem-hero-h">
+    <div class="container container--wide mem-hero__inner">
+      <span class="eyebrow eyebrow--ember">Memory MCP · local-first · no account</span>
+
+      <h1 id="mem-hero-h" class="mem-hero__h">
+        One memory your agents share,<br />
+        <span class="mem-hero__h--ember">on a machine you own.</span>
+      </h1>
+
+      <p class="lead mem-hero__lead">
+        {MEMORY_TOOL_COUNT} MCP tools give Claude&nbsp;Code, Cursor, Codex, Claude&nbsp;Desktop and Hermes
+        the same durable memory of your work — extracted from the sessions you already run, sealed on
+        your own disk, and screened so credentials never become memories in the first place. No account.
+        No server in the path. It works with the network off.
+      </p>
+
+      {/* The store plate — the local counterpart to the endpoint plate on /mcp. */}
+      <div class="plate">
+        <div class="plate__row">
+          <span class="plate__band mono">STORE · SQLITE · AES-256-GCM AT REST</span>
+          <span class="plate__pill mono"
+            ><span class="plate__dot" aria-hidden="true"></span> ON YOUR DISK</span
+          >
+        </div>
+        <p class="plate__addr mono">{MEMORY_STORE_PATH}</p>
+        <div class="plate__row plate__row--foot">
+          <span class="mono plate__meta"
+            >mode 0600 · key held by the engine · no daemon required</span
+          >
+          <span class="mono plate__meta">stdio · MCP</span>
+        </div>
+      </div>
+
+      <div class="mem-hero__ctas">
+        <a class="btn btn--ember" href="#setup"
+          >Set it up <span class="btn-arrow" aria-hidden="true">→</span></a
+        >
+        <a class="btn btn--ghost" href="#proof">See the measurements</a>
+        <a class="btn btn--ghost" href={REPO_MCP} target="_blank" rel="noopener noreferrer"
+          >Read the source</a
+        >
+      </div>
+
+      <nav class="mem-jump" aria-label="On this page">
+        <ol>
+          {
+            SECTIONS.map((s) => (
+              <li>
+                <a href={`#${s.id}`}>
+                  <span class="mem-jump__n mono" aria-hidden="true">
+                    {s.n}
+                  </span>
+                  {s.label}
+                </a>
+              </li>
+            ))
+          }
+        </ol>
+      </nav>
+    </div>
+  </section>
+
+  {/* ══════════════════════ 01 · PIPELINE ══════════════════════ */}
+  <section class="reg" id="pipeline" aria-labelledby="pipeline-h">
+    <div class="container container--wide">
+      <header class="reg__head">
+        <span class="reg__n mono" aria-hidden="true">01</span>
+        <div class="reg__headtext">
+          <span class="eyebrow eyebrow--ember">The pipeline</span>
+          <h2 id="pipeline-h">Seven stages between a conversation and a memory.</h2>
+          <p class="lead">
+            Most memory layers are a vector database with a nice name: text goes in, embeddings come
+            out, and whatever was in the text is now in the index. This one refuses things. Two of
+            the seven stages exist only to say no.
+          </p>
+        </div>
+      </header>
+
+      <ol class="pipe" data-animate-onview>
+        {
+          WRITE_PIPELINE.map((stage) => (
+            <li class="pipe__step" data-role={stage.role}>
+              <span class="pipe__dot" aria-hidden="true" />
+              <div class="pipe__id">
+                <p class="pipe__n mono">{stage.n}</p>
+                <h3 class="pipe__name">{stage.name}</h3>
+                {stage.role === "gate" && <p class="pipe__role mono">can refuse</p>}
+              </div>
+              <p class="pipe__what">{stage.what}</p>
+              <p class="pipe__detail">{stage.detail}</p>
+            </li>
+          ))
+        }
+      </ol>
+
+      <p class="reg__foot mono">
+        Source · <code>docs/superpowers/2026-09-02-memory-mcp-v2-design.md</code> §4 ·
+        <code>tools/openburnbar-mcp/memory_engine/</code>
+      </p>
+    </div>
+  </section>
+
+  {/* ══════════════════════ 02 · GATE ══════════════════════ */}
+  <section class="reg reg--alt" id="gate" aria-labelledby="gate-h">
+    <div class="container container--wide">
+      <header class="reg__head">
+        <span class="reg__n mono" aria-hidden="true">02</span>
+        <div class="reg__headtext">
+          <span class="eyebrow eyebrow--ember">The gate</span>
+          <h2 id="gate-h">Credentials never become memories.</h2>
+          <p class="lead">
+            Not “we filter them on the way out”. The secret is removed before the row exists, on the
+            body and on every auxiliary field a caller controls. The sentence survives. The token
+            does not.
+          </p>
+        </div>
+      </header>
+
+      {/* The specimen. The credential is never rendered — the redaction is the point. */}
+      <figure class="specimen">
+        <figcaption class="specimen__cap mono">
+          One sentence, through the gate, under the default policy
+        </figcaption>
+        <div class="specimen__grid">
+          <div class="specimen__side">
+            <p class="specimen__label mono">In · what the agent saw</p>
+            <p class="specimen__text mono">
+              deploy uses the token <span class="specimen__redacted" aria-hidden="true"></span><span
+                class="sr-only">(a GitHub personal access token)</span
+              > stored in 1Password
+            </p>
+          </div>
+          <div class="specimen__arrow" aria-hidden="true">
+            <svg viewBox="0 0 40 12" width="40" height="12" focusable="false">
+              <path
+                d="M0 6h32M27 1.5 32.5 6 27 10.5"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.2"
+                stroke-linecap="round"
+                stroke-linejoin="round"></path>
+            </svg>
+          </div>
+          <div class="specimen__side specimen__side--out">
+            <p class="specimen__label mono">Out · what was stored</p>
+            <p class="specimen__text mono">
+              deploy uses the token <mark class="specimen__mark">[REDACTED:github-pat]</mark> stored in
+              1Password
+            </p>
+            <p class="specimen__meta mono">kind: procedure · sensitivity: redacted</p>
+          </div>
+        </div>
+        <p class="specimen__note">
+          The fact is worth keeping. The token is not. Under <code>reject</code> the whole write is refused
+          instead; under <code>retain</code> the verbatim text goes to an encrypted vault that never leaves
+          the device.
+        </p>
+      </figure>
+
+      <div class="policies">
+        {
+          GATE_POLICIES.map((p) => (
+            <article class="policy" data-status={p.status}>
+              <header class="policy__head">
+                <code class="policy__name">{p.label}</code>
+                <span
+                  class:list={[
+                    "tag",
+                    p.status === "default" ? "tag--exact" : "",
+                    p.status === "opt-in" ? "tag--mercury" : "",
+                    p.status === "experimental" ? "tag--review" : ""
+                  ]}
+                >
+                  {p.status}
+                </span>
+              </header>
+              <h3 class="policy__h">{p.headline}</h3>
+              <p class="policy__body">{p.body}</p>
+            </article>
+          ))
+        }
+      </div>
+
+      <div class="coverage">
+        <div class="coverage__stat">
+          <p class="coverage__fig mono">
+            {GATE_SHAPES.total}<span class="coverage__of">/{GATE_SHAPES.total}</span>
+          </p>
+          <p class="coverage__lab">
+            credential shapes in the shared corpus, every one detected in raw form
+          </p>
+        </div>
+        <div class="coverage__body">
+          <p class="coverage__intro">
+            The adversarial suite plants each of those shapes in <strong
+              >{GATE_PLACEMENTS.length} caller-controlled places</strong
+            > and proves that under <code>redact</code> the verbatim token reaches no result, no
+            <code>get</code>, no <code>list</code>, no recall, no pack, no export, no history, no
+            audit trail — and is absent from the store's raw bytes, write-ahead log included.
+          </p>
+          <ul class="coverage__places">
+            {GATE_PLACEMENTS.map((place) => <li class="mono">{place}</li>)}
+          </ul>
+          <div class="coverage__gaps">
+            <p class="coverage__gapshead">
+              <span class="tag tag--review">Named, not rounded away</span>
+              Four encoded forms are not yet caught:
+            </p>
+            <ul>
+              {GATE_SHAPES.encodingGaps.map((gap) => <li>{gap}</li>)}
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <p class="reg__foot mono">
+        Source · <code>tools/openburnbar-mcp/tests/test_gate_adversarial.py</code> ·
+        <code>eval_memory.py --gate</code>
+      </p>
+    </div>
+  </section>
+
+  {/* ══════════════════════ 03 · RECALL ══════════════════════ */}
+  <section class="reg" id="recall" aria-labelledby="recall-h">
+    <div class="container container--wide">
+      <header class="reg__head">
+        <span class="reg__n mono" aria-hidden="true">03</span>
+        <div class="reg__headtext">
+          <span class="eyebrow eyebrow--ember">Recall</span>
+          <h2 id="recall-h">Two rankings, fused. Then weighted by what a memory is.</h2>
+          <p class="lead">
+            BM25 over a code-aware tokenizer catches the exact identifier. Vector search catches the
+            paraphrase. Reciprocal-rank fusion combines both lists, so a memory found by one signal
+            alone still surfaces — and then salience decides the order.
+          </p>
+        </div>
+      </header>
+
+      <div class="fuse">
+        <div class="fuse__lane" data-lane="lexical">
+          <p class="fuse__label mono">Lexical · BM25</p>
+          <p class="fuse__weight mono">weight {FUSION.lexicalWeight.toFixed(1)}</p>
+          <p class="fuse__note">
+            camelCase and snake_case split, light stemming. Wins on paths, symbols and ticket ids.
+          </p>
+        </div>
+        <div class="fuse__join" aria-hidden="true">
+          <span class="fuse__joinlab mono">RRF · k={FUSION.rrfK}</span>
+        </div>
+        <div class="fuse__lane" data-lane="semantic">
+          <p class="fuse__label mono">Semantic · vectors</p>
+          <p class="fuse__weight mono">weight {FUSION.semanticWeight.toFixed(1)}</p>
+          <p class="fuse__note">
+            Cosine over the active embedding version only — vectors are never compared across model
+            versions.
+          </p>
+        </div>
+      </div>
+      <p class="fuse__caption">{FUSION.note}</p>
+
+      <div class="salience">
+        <h3 class="salience__h">Salience — what a memory is worth after the fusion.</h3>
+        <p class="salience__intro">
+          Every kind carries a weight into the rerank, multiplied by confidence, by a recency
+          half-life, and by a reinforcement boost that rises each time a memory is actually used
+          (capped at {FUSION.accessBoostCap}×). Decisions and gotchas earn their place at the top; a
+          stray note has to work for it.
+        </p>
+        <ul class="kinds">
+          {
+            MEMORY_KINDS.map((k) => (
+              <li class="kind">
+                <code class="kind__name">{k.kind}</code>
+                <span
+                  class="kind__bar"
+                  role="img"
+                  aria-label={`salience weight ${k.weight.toFixed(2)}`}
+                >
+                  <span
+                    class="kind__fill"
+                    style={`--w:${((k.weight / maxKindWeight) * 100).toFixed(1)}%`}
+                  />
+                </span>
+                <span class="kind__val mono">{k.weight.toFixed(2)}</span>
+                <span class="kind__flags">
+                  {k.personal && <span class="tag tag--mercury tag--plain">personal scope</span>}
+                  {k.decaysFast && (
+                    <span class="tag tag--review tag--plain">
+                      {FUSION.halfLifeShortDays}d half-life
+                    </span>
+                  )}
+                </span>
+                <span class="kind__eg">{k.example}</span>
+              </li>
+            ))
+          }
+        </ul>
+        <p class="salience__foot mono">
+          Half-life {FUSION.halfLifeLongDays} days unless marked · duplicates collapse above cosine
+          {" "}{FUSION.dedupCosine} or Jaccard {FUSION.dedupJaccard} ·
+          <code>memory_engine/constants.py</code>
+        </p>
+      </div>
+
+      {/* Pro models — subordinate to recall, because that is where it lands. */}
+      <aside class="pro" aria-labelledby="pro-h">
+        <div class="pro__head">
+          <span class="tag tag--ember">Opt-in · paid entitlement · off by default</span>
+          <h3 id="pro-h">And if you want a bigger model, it runs on your keys.</h3>
+          <p>
+            Turn on cloud models for memory and the engine can use a frontier model for five
+            purposes. It never holds a key: it asks a signed courier what it may use and gets a
+            15-minute bearer scoped to those purposes.
+          </p>
+        </div>
+        <ul class="pro__purposes">
+          {
+            PRO_PURPOSES.map((p) => (
+              <li>
+                <code>{p.purpose}</code>
+                <span>{p.what}</span>
+              </li>
+            ))
+          }
+        </ul>
+        <ul class="pro__invariants">
+          {PRO_INVARIANTS.map((inv) => <li>{inv}</li>)}
+        </ul>
+      </aside>
+
+      <p class="reg__foot mono">
+        Source · <code>memory_engine/constants.py</code> ·
+        <code>tools/openburnbar-mcp/README.md</code> § Pro models · <code>docs/PRIVACY.md</code>
+      </p>
+    </div>
+  </section>
+
+  {/* ══════════════════════ 04 · COLLECTION ══════════════════════ */}
+  <section class="reg reg--alt" id="collection" aria-labelledby="collection-h">
+    <div class="container container--wide">
+      <header class="reg__head">
+        <span class="reg__n mono" aria-hidden="true">04</span>
+        <div class="reg__headtext">
+          <span class="eyebrow eyebrow--ember">Collection</span>
+          <h2 id="collection-h">It fills itself in.</h2>
+          <p class="lead">
+            A memory tool only helps if something calls it. Normally that means the agent deciding,
+            mid-task, that a fact is worth keeping — which is exactly the moment it is thinking
+            about something else. A <code>SessionEnd</code> hook closes the gap: when a Claude Code session
+            ends, the transcript goes through the same pipeline as everything above.
+          </p>
+        </div>
+      </header>
+
+      <div class="collect">
+        <div class="collect__code">
+          <div class="code" data-code>
+            <div class="code__strip">
+              <span class="code__meta mono">user-level ~/.claude/settings.json</span>
+              <button class="code__copy mono" type="button" data-copy data-copy-label="session hook"
+                >copy</button
+              >
+            </div>
+            <pre
+              class="code__pre mono"
+              tabindex="0"><code>{SESSION_HOOK_LINES.join("\n")}</code></pre>
+          </div>
+          <p class="collect__warn">
+            <strong>Use the absolute path.</strong>
+            <code>$CLAUDE_PROJECT_DIR</code> expands to whatever project the session ran in, not to your
+            BurnBar checkout — so the hook would go looking for the script inside every unrelated repository.
+            Inside the checkout itself, the repo-relative form is the correct one.
+          </p>
+        </div>
+
+        <div class="collect__facts">
+          <h3>What it does, exactly</h3>
+          <ul class="ticks">
+            <li>
+              Keeps only <strong>user and assistant prose</strong>. Tool calls, tool results,
+              thinking blocks, summaries and wrapper tags are dropped before anything is read.
+            </li>
+            <li>
+              Trims to the last <strong>400 messages / 200,000 characters</strong> and memorizes against
+              the session's working directory.
+            </li>
+            <li>
+              Keeps <strong>both halves of the provenance</strong> — the extractor's message marker behind
+              the caller's reference — so a memory traces back to the session and the turn it came from.
+            </li>
+            <li>
+              <strong>Never blocks session end.</strong> A 20-second budget, one JSON status line, exit
+              0 in every case but a usage error.
+            </li>
+            <li>
+              <strong>Idempotent.</strong> The ingest receipt is keyed on the transcript's content hash,
+              so a <code>--resume</code>, a replay, or two hooks firing writes nothing twice.
+            </li>
+          </ul>
+
+          <h3 class="collect__h2">The statuses it prints</h3>
+          <ul class="statuses">
+            {
+              HOOK_STATUSES.map((s) => (
+                <li>
+                  <code>{s.id}</code>
+                  <span>{s.note}</span>
+                </li>
+              ))
+            }
+          </ul>
+          <p class="collect__honest">
+            <span class="tag tag--review">Expect this</span>
+            The first session end on a machine without the virtualenv usually memorizes nothing: building
+            the interpreter eats the hook budget, so that run reports <code>timeout</code>. The venv
+            it built persists and every session after it completes normally. Running the bootstrap
+            once by hand skips that lost run.
+          </p>
+          <p class="collect__off mono">
+            OPENBURNBAR_MEMORY_SESSION_HOOK=off — nothing is read and no store is created.
+          </p>
+        </div>
+      </div>
+
+      <p class="reg__foot mono">
+        Source · <code>tools/openburnbar-mcp/hooks/claude-code-session-end.sh</code> ·
+        <code>memorize_transcript.py</code>
+      </p>
+    </div>
+  </section>
+
+  {/* ══════════════════════ 05 · PROOF ══════════════════════ */}
+  <section class="reg" id="proof" aria-labelledby="proof-h">
+    <div class="container container--wide">
+      <header class="reg__head">
+        <span class="reg__n mono" aria-hidden="true">05</span>
+        <div class="reg__headtext">
+          <span class="eyebrow eyebrow--ember">Proof</span>
+          <h2 id="proof-h">The numbers, the command, and what stops them sliding.</h2>
+          <p class="lead">
+            Every figure below is produced by a script in the repository, over a gold set in the
+            repository. {pinnedCount} of {MEASUREMENTS.length} are held in place by a committed assertion
+            — the floor only moves up. The rest need a model on your own machine, so we say so instead
+            of quoting them as if CI watched them.
+          </p>
+        </div>
+      </header>
+
+      <ul class="bench">
+        {
+          MEASUREMENTS.map((m) => (
+            <li class="bench__row" data-pinned={m.pin ? "true" : "false"}>
+              <p class="bench__fig mono">
+                {m.figure}
+                {m.unit && <span class="bench__unit"> {m.unit}</span>}
+              </p>
+              <div class="bench__body">
+                <h3 class="bench__label">{m.label}</h3>
+                <p class="bench__corpus">{m.corpus}</p>
+                {m.caveat && <p class="bench__caveat">{m.caveat}</p>}
+              </div>
+              <div class="bench__meta">
+                <code class="bench__cmd">{m.command}</code>
+                {m.pin ? (
+                  <p class="bench__pin">
+                    <span class="tag tag--exact">Pinned</span>
+                    <span class="bench__pintext mono">{m.pin}</span>
+                  </p>
+                ) : (
+                  <p class="bench__pin">
+                    <span class="tag tag--unavailable">Measured, not pinned</span>
+                  </p>
+                )}
+              </div>
+            </li>
+          ))
+        }
+      </ul>
+
+      <p class="reg__foot mono">
+        Source · <code>tools/openburnbar-mcp/eval_memory.py</code> ·
+        <code>tools/openburnbar-mcp/tests/</code> · gold sets in
+        <code>tools/openburnbar-mcp/eval/</code>
+      </p>
+    </div>
+  </section>
+
+  {/* ══════════════════════ 06 · BOUNDARY ══════════════════════ */}
+  <section class="reg reg--alt" id="boundary" aria-labelledby="boundary-h">
+    <div class="container container--wide">
+      <header class="reg__head">
+        <span class="reg__n mono" aria-hidden="true">06</span>
+        <div class="reg__headtext">
+          <span class="eyebrow eyebrow--ember">The boundary</span>
+          <h2 id="boundary-h">What stays. What leaves. What isn't built yet.</h2>
+          <p class="lead">
+            The first column is the whole product with nothing turned on. The second needs two
+            separate consents and a paid entitlement, and is fail-closed at every lever. The third
+            exists so the first two can be read as complete.
+          </p>
+        </div>
+      </header>
+
+      <div class="lanes">
+        {
+          BOUNDARY.map((lane) => (
+            <article class="lane" data-status={lane.status} aria-labelledby={`lane-${lane.id}`}>
+              <header class="lane__head">
+                <span class="lane__badge mono">{lane.statusLabel}</span>
+                <h3 id={`lane-${lane.id}`} class="lane__h">
+                  {lane.title}
+                </h3>
+                <p class="lane__sum">{lane.summary}</p>
+              </header>
+              <dl class="lane__rows">
+                {lane.rows.map((row) => (
+                  <div class="lane__row">
+                    <dt>{row.item}</dt>
+                    <dd>{row.note}</dd>
+                  </div>
+                ))}
+              </dl>
+              <p class="lane__src mono">{lane.source}</p>
+            </article>
+          ))
+        }
+      </div>
+
+      <p class="reg__foot mono">
+        Source · <code>docs/PRIVACY.md</code> · <code>tools/openburnbar-mcp/README.md</code> ·
+        <a href="/privacy">the full privacy model</a>
+      </p>
+    </div>
+  </section>
+
+  {/* ══════════════════════ 07 · SETUP ══════════════════════ */}
+  <section class="reg" id="setup" aria-labelledby="setup-h">
+    <div class="container container--wide">
+      <header class="reg__head">
+        <span class="reg__n mono" aria-hidden="true">07</span>
+        <div class="reg__headtext">
+          <span class="eyebrow eyebrow--ember">Setup</span>
+          <h2 id="setup-h">One server. Five clients. Under two minutes.</h2>
+          <p class="lead">
+            The launcher bootstraps itself the first time a client starts it, so the only thing you
+            genuinely have to do is point your client at an absolute path. Run the bootstrap by hand
+            first if you would rather not lose your first session's memories to a cold start.
+          </p>
+        </div>
+      </header>
+
+      <ol class="steps">
+        <li class="step">
+          <p class="step__n mono">Step 1</p>
+          <h3 class="step__h">Clone and bootstrap</h3>
+          <div class="code" data-code>
+            <div class="code__strip">
+              <span class="code__meta mono">no Rust toolchain · Python 3.11+</span>
+              <button
+                class="code__copy mono"
+                type="button"
+                data-copy
+                data-copy-label="bootstrap commands">copy</button
+              >
+            </div>
+            <pre class="code__pre mono" tabindex="0"><code>{BOOTSTRAP_LINES.join("\n")}</code></pre>
+          </div>
+        </li>
+
+        <li class="step">
+          <p class="step__n mono">Step 2</p>
+          <h3 class="step__h">Point your client at it</h3>
+          <p class="step__hint">
+            Replace <code class="step__token">{CHECKOUT}</code> with wherever you cloned it. The path
+            must be absolute — every client resolves it from its own working directory, not yours.
+          </p>
+
+          <div class="tabs" data-tabs>
+            <div class="tabs__list" role="tablist" aria-label="MCP client">
+              {
+                CLIENTS.map((c, i) => (
+                  <button
+                    type="button"
+                    role="tab"
+                    class="tabs__tab"
+                    id={`tab-${c.id}`}
+                    aria-controls={`panel-${c.id}`}
+                    aria-selected={i === 0 ? "true" : "false"}
+                    tabindex={i === 0 ? 0 : -1}
+                    data-target={c.id}
+                  >
+                    {c.label}
+                  </button>
+                ))
+              }
+            </div>
+            {
+              CLIENTS.map((c, i) => (
+                <div
+                  role="tabpanel"
+                  id={`panel-${c.id}`}
+                  aria-labelledby={`tab-${c.id}`}
+                  class="tabs__panel"
+                  data-panel={c.id}
+                  tabindex="0"
+                  hidden={i !== 0}
+                >
+                  <div class="code" data-code>
+                    <div class="code__strip">
+                      <span class="code__meta mono">{c.where}</span>
+                      <button
+                        class="code__copy mono"
+                        type="button"
+                        data-copy
+                        data-copy-label={`${c.label} configuration`}
+                      >
+                        copy
+                      </button>
+                    </div>
+                    <pre class="code__pre mono" tabindex="0">
+                      <code>{c.lines.join("\n")}</code>
+                    </pre>
+                  </div>
+                  {c.note && <p class="tabs__note">{c.note}</p>}
+                </div>
+              ))
+            }
+          </div>
+        </li>
+
+        <li class="step">
+          <p class="step__n mono">Step 3 · optional</p>
+          <h3 class="step__h">Give it a local embedding model</h3>
+          <p class="step__hint">
+            Recall works without one. It works considerably better with one, because paraphrases
+            stop missing.
+          </p>
+          <div class="code" data-code>
+            <div class="code__strip">
+              <span class="code__meta mono">one pull, once</span>
+              <button
+                class="code__copy mono"
+                type="button"
+                data-copy
+                data-copy-label="embedding model pull">copy</button
+              >
+            </div>
+            <pre class="code__pre mono" tabindex="0"><code>{EMBEDDING_LINES.join("\n")}</code></pre>
+          </div>
+        </li>
+      </ol>
+
+      {/* Verification — a real checklist, persisted, works without JS. */}
+      <section class="verify" aria-labelledby="verify-h">
+        <header class="verify__head">
+          <h3 id="verify-h">Prove it works</h3>
+          <p>
+            Four checks, in order. Each one tells you what to expect and what it means when you
+            don't get it. Your progress is kept in this browser only.
+          </p>
+          <p class="verify__progress mono" data-verify-progress aria-live="polite">
+            0 of {VERIFY_STEPS.length} confirmed
+          </p>
+        </header>
+        <ul class="verify__list" data-verify>
+          {
+            VERIFY_STEPS.map((s, i) => (
+              <li class="check">
+                <input
+                  class="check__box"
+                  type="checkbox"
+                  id={`check-${s.id}`}
+                  data-verify-item={s.id}
+                />
+                <label class="check__label" for={`check-${s.id}`}>
+                  <span class="check__n mono" aria-hidden="true">
+                    {String(i + 1).padStart(2, "0")}
+                  </span>
+                  <span class="check__title">{s.title}</span>
+                </label>
+                <div class="check__body">
+                  <p class="check__how">{s.how}</p>
+                  <p class="check__expect">
+                    <span class="check__tag mono">Expect</span>
+                    {s.expect}
+                  </p>
+                  <p class="check__ifnot">
+                    <span class="check__tag check__tag--warn mono">If not</span>
+                    {s.ifNot}
+                  </p>
+                </div>
+              </li>
+            ))
+          }
+        </ul>
+      </section>
+
+      <aside class="crossref">
+        <h3>Looking for a different channel?</h3>
+        <p>
+          This page is the local memory engine — free, no account, your disk. The hosted Remote MCP,
+          the stdio bridge and the Cursor Marketplace plugin are transports for your OpenBurnBar
+          session history and spend, and they live on their own page.
+        </p>
+        <a class="btn btn--ghost" href="/mcp"
+          >All four MCP channels <span class="btn-arrow" aria-hidden="true">→</span></a
+        >
+      </aside>
+    </div>
+  </section>
+
+  {/* ══════════════════════ 08 · LIMITS ══════════════════════ */}
+  <section class="reg reg--alt" id="limits" aria-labelledby="limits-h">
+    <div class="container container--wide">
+      <header class="reg__head">
+        <span class="reg__n mono" aria-hidden="true">08</span>
+        <div class="reg__headtext">
+          <span class="eyebrow eyebrow--ember">Limits</span>
+          <h2 id="limits-h">What it doesn't do.</h2>
+          <p class="lead">
+            Written by the people who built it, before anyone else got to write it. If one of these
+            is a dealbreaker for you, better to find out here than three sessions in.
+          </p>
+        </div>
+      </header>
+
+      <ul class="limits">
+        {
+          LIMITS.map((l) => (
+            <li class="limit">
+              <h3 class="limit__h">{l.title}</h3>
+              <p class="limit__body">{l.body}</p>
+              <p class="limit__src mono">{l.source}</p>
+            </li>
+          ))
+        }
+      </ul>
+    </div>
+  </section>
+
+  {/* ══════════════════════ END ══════════════════════ */}
+  <section class="mem-end" aria-labelledby="mem-end-h">
+    <div class="container container--wide mem-end__inner">
+      <h2 id="mem-end-h" class="mem-end__h">
+        Nothing to sign up for.<br />
+        <span class="mem-hero__h--ember">Just a path and a restart.</span>
+      </h2>
+      <p class="lead mem-end__lead">
+        The memory engine is part of the OpenBurnBar repository under AGPL-3.0. Clone it, run the
+        bootstrap, point one client at it, and the next session your agent opens will already know
+        what the last one learned.
+      </p>
+      <div class="mem-end__ctas">
+        <a class="btn btn--ember" href="#setup"
+          >Back to setup <span class="btn-arrow" aria-hidden="true">→</span></a
+        >
+        <a class="btn btn--ghost" href={REPO_DESIGN} target="_blank" rel="noopener noreferrer"
+          >The design document</a
+        >
+        <a class="btn btn--ghost" href="/pricing">Pro models &amp; backup</a>
+      </div>
+    </div>
+  </section>
+</BaseLayout>
+
+{/* ══════════════════════ INTERACTIONS ══════════════════════ */}
+<script>
+  import "../scripts/animateOnView.ts";
+  import { initMcpSetup } from "../scripts/mcpSetup.ts";
+
+  initMcpSetup();
+</script>
+
+{/* ══════════════════════ STYLES ══════════════════════ */}
+<style>
+  /* ============================================================
+     /memory owns one visual device the rest of the site does not:
+     THE REGISTER. Sections are ruled, numbered plates in a bound
+     technical record rather than floating cards — because the product
+     itself is an audited, hash-chained, reviewable record and the page
+     should feel like the thing it describes.
+
+     Everything else is the site's own language: ember + mercury,
+     Fraunces display over Geist body over JetBrains mono labels, the
+     glass panes from globals.css. No new palette, no new type.
+     ============================================================ */
+
+  /* This page is full of 40-character environment-variable names and dotted
+     module paths. An unbreakable token like
+     OPENBURNBAR_LOCAL_MCP_ENABLE_MEMORY_WRITE sets its paragraph's
+     min-content width, which pushes a grid track — and then the page — past
+     a 320px viewport.
+
+     `anywhere`, not `break-word`: they render identically (break only when a
+     word cannot fit), but only `anywhere` also shrinks the element's
+     min-content contribution, which is the half that actually stops the
+     grid track from inflating. */
+  p,
+  li,
+  dt,
+  dd {
+    overflow-wrap: anywhere;
+  }
+
+  /* ---------- hero ---------- */
+
+  .mem-hero {
+    padding-block: clamp(var(--s-8), 12vh, var(--s-10)) var(--s-8);
+  }
+
+  .mem-hero__inner {
+    display: grid;
+    gap: var(--s-5);
+    justify-items: start;
+  }
+
+  .mem-hero__h {
+    font-size: var(--t-display);
+    line-height: var(--leading-tight);
+    letter-spacing: var(--tracking-display);
+    font-weight: var(--wght-display);
+    --opsz: var(--opsz-display);
+    max-width: 16ch;
+    margin: 0;
+  }
+
+  .mem-hero__h--ember {
+    color: var(--ember-bright);
+    font-style: italic;
+  }
+
+  .mem-hero__lead {
+    max-width: 62ch;
+  }
+
+  /* the store plate — stamped metal, not a card */
+  .plate {
+    width: 100%;
+    max-width: 46rem;
+    display: grid;
+    gap: var(--s-3);
+    padding: var(--s-4) var(--s-5);
+    border: 1px solid var(--ink-line-bright);
+    border-radius: var(--r-md);
+    background: linear-gradient(180deg, var(--ember-wash), transparent 60%), var(--ink-surface);
+    box-shadow: var(--shadow-glass-soft);
+  }
+
+  .plate__row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-3);
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .plate__band,
+  .plate__meta {
+    font-size: var(--t-eyebrow);
+    letter-spacing: var(--tracking-uppercase);
+    color: var(--text-mute);
+    --opsz: var(--opsz-caption);
+  }
+
+  .plate__meta {
+    letter-spacing: 0.04em;
+    text-transform: none;
+  }
+
+  .plate__pill {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s-2);
+    font-size: var(--t-eyebrow);
+    letter-spacing: var(--tracking-uppercase);
+    color: var(--status-exact);
+    border: 1px solid color-mix(in oklab, var(--status-exact) 35%, var(--ink-line));
+    border-radius: var(--r-pill);
+    padding: 0.15rem var(--s-3);
+    --opsz: var(--opsz-caption);
+  }
+
+  .plate__dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+
+  .plate__addr {
+    font-size: clamp(0.85rem, 0.7rem + 0.5vw, 1.05rem);
+    color: var(--text-bright);
+    word-break: break-word;
+    margin: 0;
+  }
+
+  .plate__row--foot {
+    border-top: 1px solid var(--ink-line-soft);
+    padding-top: var(--s-3);
+  }
+
+  .mem-hero__ctas,
+  .mem-end__ctas {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-3);
+  }
+
+  /* in-page register index */
+  .mem-jump {
+    width: 100%;
+    margin-top: var(--s-4);
+    border-top: 1px solid var(--ink-line);
+    padding-top: var(--s-4);
+  }
+
+  .mem-jump ol {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-2) var(--s-5);
+  }
+
+  .mem-jump a {
+    display: inline-flex;
+    align-items: baseline;
+    gap: var(--s-2);
+    font-size: var(--t-caption);
+    color: var(--text-mute);
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+    padding-bottom: 2px;
+  }
+
+  .mem-jump a:hover,
+  .mem-jump a:focus-visible {
+    color: var(--text-bright);
+    border-bottom-color: var(--ember-core);
+  }
+
+  .mem-jump__n {
+    color: var(--ember-core);
+    font-size: var(--t-eyebrow);
+    --opsz: var(--opsz-caption);
+  }
+
+  /* ---------- the register: shared section chrome ---------- */
+
+  .reg {
+    border-top: 1px solid var(--ink-line);
+    scroll-margin-top: 5rem;
+  }
+
+  .reg--alt {
+    background: linear-gradient(180deg, var(--mercury-wash), transparent 40%);
+  }
+
+  .reg__head {
+    display: grid;
+    grid-template-columns: 4.5rem minmax(0, 1fr);
+    gap: var(--s-4);
+    margin-bottom: var(--s-7);
+  }
+
+  .reg__n {
+    font-size: clamp(1.6rem, 1.2rem + 1.4vw, 2.4rem);
+    line-height: 1;
+    color: var(--ember-core);
+    opacity: 0.55;
+    letter-spacing: var(--tracking-tight);
+    --opsz: var(--opsz-h3);
+  }
+
+  .reg__headtext {
+    display: grid;
+    gap: var(--s-3);
+    justify-items: start;
+    min-width: 0;
+  }
+
+  .reg__headtext h2 {
+    max-width: 24ch;
+    margin: 0;
+  }
+
+  .reg__foot {
+    margin-top: var(--s-6);
+    padding-top: var(--s-4);
+    border-top: 1px solid var(--ink-line-soft);
+    font-size: var(--t-caption);
+    color: var(--text-dim);
+    --opsz: var(--opsz-caption);
+  }
+
+  .reg__foot code {
+    color: var(--text-mute);
+  }
+
+  .reg__foot a {
+    color: var(--text-mute);
+    text-decoration: underline;
+  }
+
+  /* ---------- inline code: the site's global <code> rule paints a chip.
+     That is right for prose and wrong everywhere this page uses <code> as a
+     label inside its own frame, so those opt out of the chrome explicitly
+     (background AND border — a leftover border on a <code> inside a <pre>
+     draws a rule under every wrapped line). ---------- */
+  /* The `:global(:root)` prefix is not decoration. globals.css re-states the
+     chip in light theme as `:root[data-theme="light"] code`, which outranks a
+     bare class, so a plain `.kind__name { border: 0 }` un-chips these on dark
+     and leaves the outline behind on paper. Prefixing with the root raises
+     this rule above that one in both themes. */
+  :global(:root) .policy__name,
+  :global(:root) .kind__name,
+  :global(:root) .statuses code,
+  :global(:root) .pro__purposes code,
+  :global(:root) .code__pre code {
+    background: none;
+    border: 0;
+    padding: 0;
+    border-radius: 0;
+  }
+
+  :global(:root) .statuses code {
+    color: var(--text-base);
+  }
+
+  :global(:root) .pro__purposes code {
+    color: var(--ember-bright);
+  }
+
+  :global(:root) .code__pre code {
+    color: inherit;
+    overflow-wrap: normal;
+    word-break: normal;
+  }
+
+  @media (max-width: 720px) {
+    .reg__head {
+      grid-template-columns: minmax(0, 1fr);
+      gap: var(--s-2);
+    }
+  }
+
+  /* ---------- 01 · pipeline ----------
+     A vertical register, not a card grid. Seven stages read top to bottom
+     the way the engine runs them, a continuous rule ties them into one
+     transit, and the two gate stages break that rule in ember so the eye
+     lands on the parts that say no. It also reflows to one column without
+     an orphan row, which a 7-item auto-fit grid never manages. */
+
+  .pipe {
+    list-style: none;
+    margin: 0;
+    padding: 0 0 0 var(--s-6);
+    display: grid;
+    gap: 0;
+    position: relative;
+  }
+
+  /* the transit line */
+  .pipe::before {
+    content: "";
+    position: absolute;
+    left: 4px;
+    top: 0.9rem;
+    bottom: 1.6rem;
+    width: 1px;
+    background: linear-gradient(
+      180deg,
+      var(--ink-line-bright),
+      var(--core-fire) 22%,
+      var(--core-fire) 44%,
+      var(--ink-line-bright) 62%,
+      var(--ink-line-soft)
+    );
+  }
+
+  .pipe__step {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 12rem) minmax(0, 1.1fr) minmax(0, 1.4fr);
+    gap: var(--s-2) var(--s-5);
+    align-items: start;
+    padding: var(--s-5) 0;
+    border-top: 1px solid var(--ink-line-soft);
+  }
+
+  .pipe__step:first-child {
+    border-top: 0;
+    padding-top: var(--s-2);
+  }
+
+  .pipe__dot {
+    position: absolute;
+    left: calc(var(--s-6) * -1);
+    top: calc(var(--s-5) + 0.45rem);
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--ink-void);
+    border: 1px solid var(--ink-line-bright);
+  }
+
+  .pipe__step:first-child .pipe__dot {
+    top: 0.65rem;
+  }
+
+  .pipe__step[data-role="gate"] .pipe__dot {
+    background: var(--ember-core);
+    border-color: var(--ember-bright);
+    box-shadow: 0 0 0 4px var(--ember-wash);
+  }
+
+  .pipe__step[data-role="gate"] .pipe__n,
+  .pipe__step[data-role="gate"] .pipe__name {
+    color: var(--ember-bright);
+  }
+
+  .pipe__id {
+    display: grid;
+    gap: var(--s-1);
+    align-content: start;
+  }
+
+  .pipe__n {
+    font-size: var(--t-eyebrow);
+    letter-spacing: var(--tracking-uppercase);
+    color: var(--text-dim);
+    margin: 0;
+    --opsz: var(--opsz-caption);
+  }
+
+  .pipe__name {
+    font-size: var(--t-h4);
+    font-weight: var(--wght-semibold);
+    color: var(--text-bright);
+    margin: 0;
+    --opsz: var(--opsz-lead);
+  }
+
+  .pipe__role {
+    margin: var(--s-1) 0 0;
+    font-size: var(--t-eyebrow);
+    letter-spacing: var(--tracking-uppercase);
+    color: var(--ember-core);
+    border: 1px solid color-mix(in oklab, var(--core-fire) 45%, var(--ink-line));
+    border-radius: var(--r-pill);
+    padding: 0.1rem var(--s-2);
+    justify-self: start;
+    --opsz: var(--opsz-caption);
+  }
+
+  .pipe__what {
+    margin: 0;
+    color: var(--text-base);
+  }
+
+  .pipe__detail {
+    margin: 0;
+    font-size: var(--t-caption);
+    line-height: var(--leading-base);
+    color: var(--text-mute);
+  }
+
+  @media (max-width: 900px) {
+    .pipe__step {
+      grid-template-columns: minmax(0, 1fr);
+      gap: var(--s-2);
+    }
+  }
+
+  /* Reveal — a pure enhancement, gated twice so content is never hidden by
+     something that might not arrive:
+       · `html.js` — the pre-paint script in BaseLayout sets that class, so a
+         visitor with JS disabled or a bundle that failed to load never gets
+         the hidden state at all. globals.css also carries an !important
+         fallback for the same case; this does not depend on it.
+       · reduced motion — the whole block is inside `no-preference`, so a
+         reduced-motion visitor gets the finished frame with no transition.
+     Everything below is opacity and transform only: no layout, no repaint of
+     surrounding content, and the steps hold their space either way. */
+  @media (prefers-reduced-motion: no-preference) {
+    :global(html.js) .pipe[data-animate-onview] .pipe__step {
+      opacity: 0;
+      transform: translateY(8px);
+      transition:
+        opacity var(--dur-base) var(--ease),
+        transform var(--dur-base) var(--ease);
+    }
+
+    .pipe[data-animate-onview].is-visible .pipe__step {
+      opacity: 1;
+      transform: none;
+    }
+
+    .pipe[data-animate-onview].is-visible .pipe__step:nth-child(2) {
+      transition-delay: 50ms;
+    }
+    .pipe[data-animate-onview].is-visible .pipe__step:nth-child(3) {
+      transition-delay: 100ms;
+    }
+    .pipe[data-animate-onview].is-visible .pipe__step:nth-child(4) {
+      transition-delay: 150ms;
+    }
+    .pipe[data-animate-onview].is-visible .pipe__step:nth-child(5) {
+      transition-delay: 200ms;
+    }
+    .pipe[data-animate-onview].is-visible .pipe__step:nth-child(6) {
+      transition-delay: 250ms;
+    }
+    .pipe[data-animate-onview].is-visible .pipe__step:nth-child(7) {
+      transition-delay: 300ms;
+    }
+  }
+
+  /* ---------- 02 · the gate ---------- */
+
+  .specimen {
+    margin: 0 0 var(--s-7);
+    padding: var(--s-5);
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-lg);
+    background: var(--ink-surface);
+  }
+
+  .specimen__cap {
+    font-size: var(--t-eyebrow);
+    letter-spacing: var(--tracking-uppercase);
+    color: var(--text-dim);
+    margin-bottom: var(--s-4);
+    --opsz: var(--opsz-caption);
+  }
+
+  .specimen__grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    gap: var(--s-4);
+    align-items: center;
+  }
+
+  .specimen__side {
+    display: grid;
+    gap: var(--s-2);
+    padding: var(--s-4);
+    border-radius: var(--r-md);
+    border: 1px solid var(--ink-line-soft);
+    background: var(--ink-void);
+    min-width: 0;
+  }
+
+  .specimen__side--out {
+    border-color: color-mix(in oklab, var(--status-exact) 30%, var(--ink-line));
+  }
+
+  .specimen__label {
+    font-size: var(--t-eyebrow);
+    letter-spacing: var(--tracking-uppercase);
+    color: var(--text-dim);
+    margin: 0;
+    --opsz: var(--opsz-caption);
+  }
+
+  .specimen__text {
+    margin: 0;
+    font-size: var(--t-caption);
+    line-height: 1.7;
+    color: var(--text-base);
+    word-break: break-word;
+  }
+
+  /* The credential is never rendered. This IS the token, as far as the page
+     is concerned: a struck-through rule, the shape without the secret. */
+  .specimen__redacted {
+    display: inline-block;
+    width: 9ch;
+    height: 0.85em;
+    vertical-align: -0.1em;
+    border-radius: 2px;
+    background: repeating-linear-gradient(-45deg, var(--status-burn) 0 3px, transparent 3px 6px);
+    opacity: 0.65;
+  }
+
+  .specimen__mark {
+    background: var(--ember-wash);
+    color: var(--ember-bright);
+    border: 1px solid color-mix(in oklab, var(--ember-core) 40%, var(--ink-line));
+    border-radius: 4px;
+    padding: 0.05em 0.4em;
+  }
+
+  .specimen__meta {
+    margin: 0;
+    font-size: var(--t-eyebrow);
+    color: var(--status-exact);
+    --opsz: var(--opsz-caption);
+  }
+
+  .specimen__arrow {
+    color: var(--ember-core);
+    display: flex;
+    justify-content: center;
+  }
+
+  .specimen__note {
+    margin: var(--s-4) 0 0;
+    font-size: var(--t-caption);
+    color: var(--text-mute);
+    max-width: 74ch;
+  }
+
+  @media (max-width: 780px) {
+    .specimen__grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .specimen__arrow svg {
+      transform: rotate(90deg);
+    }
+  }
+
+  .policies {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(17rem, 100%), 1fr));
+    gap: var(--s-4);
+    margin-bottom: var(--s-7);
+  }
+
+  .policy {
+    display: grid;
+    gap: var(--s-3);
+    align-content: start;
+    padding: var(--s-5);
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-md);
+    background: var(--glass-bg);
+  }
+
+  .policy[data-status="default"] {
+    border-color: color-mix(in oklab, var(--status-exact) 30%, var(--ink-line));
+  }
+
+  .policy__head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--s-2);
+  }
+
+  .policy__name {
+    font-family: var(--font-mono);
+    font-size: var(--t-lead);
+    color: var(--text-bright);
+  }
+
+  .policy__h {
+    font-size: var(--t-h4);
+    font-weight: var(--wght-semibold);
+    color: var(--text-bright);
+    margin: 0;
+    --opsz: var(--opsz-lead);
+  }
+
+  .policy__body {
+    margin: 0;
+    font-size: var(--t-caption);
+    line-height: var(--leading-base);
+    color: var(--text-mute);
+  }
+
+  .coverage {
+    display: grid;
+    grid-template-columns: minmax(0, 20rem) minmax(0, 1fr);
+    gap: var(--s-6);
+    align-items: start;
+    padding: var(--s-5);
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-lg);
+    background: var(--ink-surface);
+  }
+
+  @media (max-width: 860px) {
+    .coverage {
+      grid-template-columns: minmax(0, 1fr);
+      gap: var(--s-5);
+    }
+  }
+
+  .coverage__fig {
+    font-size: clamp(3rem, 2rem + 4vw, 4.5rem);
+    line-height: 1;
+    color: var(--ember-bright);
+    margin: 0 0 var(--s-2);
+    letter-spacing: var(--tracking-tight);
+    --opsz: var(--opsz-h1);
+  }
+
+  .coverage__of {
+    color: var(--text-dim);
+    font-size: 0.42em;
+  }
+
+  .coverage__lab {
+    margin: 0;
+    color: var(--text-mute);
+    font-size: var(--t-caption);
+    max-width: 26ch;
+  }
+
+  .coverage__intro {
+    margin: 0 0 var(--s-4);
+    color: var(--text-base);
+  }
+
+  .coverage__places {
+    list-style: none;
+    margin: 0 0 var(--s-5);
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-2);
+  }
+
+  .coverage__places li {
+    font-size: var(--t-eyebrow);
+    letter-spacing: 0.04em;
+    color: var(--text-mute);
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-pill);
+    padding: 0.2rem var(--s-3);
+    --opsz: var(--opsz-caption);
+  }
+
+  .coverage__gaps {
+    border-top: 1px solid var(--ink-line-soft);
+    padding-top: var(--s-4);
+  }
+
+  .coverage__gapshead {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s-3);
+    margin: 0 0 var(--s-3);
+    color: var(--text-base);
+  }
+
+  .coverage__gaps ul {
+    margin: 0;
+    padding-left: 1.15rem;
+    list-style: disc;
+    display: grid;
+    gap: var(--s-2);
+    color: var(--text-mute);
+    font-size: var(--t-caption);
+  }
+
+  .coverage__gaps li::marker {
+    color: var(--status-estimated);
+  }
+
+  /* ---------- 03 · recall ---------- */
+
+  .fuse {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    gap: var(--s-4);
+    align-items: stretch;
+    margin-bottom: var(--s-3);
+  }
+
+  @media (max-width: 780px) {
+    .fuse {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  .fuse__lane {
+    display: grid;
+    gap: var(--s-2);
+    align-content: start;
+    padding: var(--s-5);
+    border-radius: var(--r-md);
+    border: 1px solid var(--ink-line);
+    background: var(--ink-surface);
+  }
+
+  .fuse__lane[data-lane="lexical"] {
+    border-left: 2px solid color-mix(in oklab, var(--mercury-bright) 45%, var(--ink-line));
+  }
+
+  .fuse__lane[data-lane="semantic"] {
+    border-left: 2px solid var(--ember-core);
+  }
+
+  .fuse__label {
+    margin: 0;
+    font-size: var(--t-eyebrow);
+    letter-spacing: var(--tracking-uppercase);
+    color: var(--text-mute);
+    --opsz: var(--opsz-caption);
+  }
+
+  .fuse__weight {
+    margin: 0;
+    font-size: var(--t-h3);
+    color: var(--text-bright);
+    line-height: 1;
+    --opsz: var(--opsz-h3);
+  }
+
+  .fuse__note {
+    margin: 0;
+    font-size: var(--t-caption);
+    color: var(--text-mute);
+  }
+
+  .fuse__join {
+    display: grid;
+    place-items: center;
+    padding-inline: var(--s-2);
+  }
+
+  .fuse__joinlab {
+    font-size: var(--t-eyebrow);
+    letter-spacing: var(--tracking-uppercase);
+    color: var(--ember-bright);
+    border: 1px dashed color-mix(in oklab, var(--core-fire) 45%, var(--ink-line));
+    border-radius: var(--r-pill);
+    padding: 0.25rem var(--s-3);
+    white-space: nowrap;
+    --opsz: var(--opsz-caption);
+  }
+
+  .fuse__caption {
+    margin: 0 0 var(--s-7);
+    color: var(--text-mute);
+    font-size: var(--t-caption);
+    max-width: 74ch;
+  }
+
+  .salience__h {
+    font-size: var(--t-h3);
+    font-weight: var(--wght-semibold);
+    color: var(--text-bright);
+    margin: 0 0 var(--s-3);
+    --opsz: var(--opsz-h3);
+  }
+
+  .salience__intro {
+    margin: 0 0 var(--s-5);
+    max-width: 74ch;
+    color: var(--text-base);
+  }
+
+  .kinds {
+    list-style: none;
+    margin: 0 0 var(--s-4);
+    padding: 0;
+    display: grid;
+    gap: 1px;
+    background: var(--ink-line-soft);
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-md);
+    overflow: hidden;
+  }
+
+  /* The flags column is a fixed width rather than `auto` so the example
+     column starts at the same x on every row — an `auto` track collapses on
+     the rows that carry no flag and leaves the examples ragged. */
+  .kind {
+    display: grid;
+    grid-template-columns: 8rem 7rem 3.2rem 9rem minmax(0, 1fr);
+    align-items: center;
+    gap: var(--s-3);
+    padding: var(--s-3) var(--s-4);
+    background: var(--ink-void);
+  }
+
+  .kind__name {
+    font-family: var(--font-mono);
+    font-size: var(--t-caption);
+    color: var(--text-bright);
+  }
+
+  .kind__bar {
+    display: block;
+    height: 5px;
+    border-radius: var(--r-pill);
+    background: var(--ink-surface-2);
+    overflow: hidden;
+  }
+
+  .kind__fill {
+    display: block;
+    height: 100%;
+    width: var(--w);
+    border-radius: inherit;
+    background: linear-gradient(90deg, var(--core-red), var(--core-fire) 55%, var(--core-amber));
+  }
+
+  .kind__val {
+    font-size: var(--t-caption);
+    color: var(--text-mute);
+    text-align: right;
+    --opsz: var(--opsz-caption);
+  }
+
+  .kind__flags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-2);
+  }
+
+  .kind__flags .tag {
+    font-size: var(--t-eyebrow);
+    padding: 0.1rem var(--s-2);
+    --opsz: var(--opsz-caption);
+  }
+
+  .kind__eg {
+    font-size: var(--t-caption);
+    color: var(--text-dim);
+    min-width: 0;
+  }
+
+  @media (max-width: 1000px) {
+    .kind {
+      grid-template-columns: 8rem minmax(0, 1fr) 3.2rem;
+      grid-template-areas:
+        "name bar val"
+        "eg eg eg"
+        "flags flags flags";
+      row-gap: var(--s-2);
+    }
+    .kind__name {
+      grid-area: name;
+    }
+    .kind__bar {
+      grid-area: bar;
+    }
+    .kind__val {
+      grid-area: val;
+    }
+    .kind__eg {
+      grid-area: eg;
+    }
+    .kind__flags {
+      grid-area: flags;
+    }
+    .kind__flags:empty {
+      display: none;
+    }
+  }
+
+  @media (max-width: 520px) {
+    .kind {
+      grid-template-columns: minmax(0, 1fr) 3.2rem;
+      grid-template-areas:
+        "name val"
+        "bar bar"
+        "eg eg"
+        "flags flags";
+    }
+  }
+
+  .salience__foot {
+    font-size: var(--t-eyebrow);
+    color: var(--text-dim);
+    margin: 0 0 var(--s-7);
+    --opsz: var(--opsz-caption);
+  }
+
+  .pro {
+    display: grid;
+    gap: var(--s-5);
+    padding: var(--s-6);
+    border-radius: var(--r-lg);
+    border: 1px solid color-mix(in oklab, var(--core-fire) 28%, var(--ink-line));
+    background: linear-gradient(180deg, var(--ember-wash), transparent 55%), var(--ink-surface);
+  }
+
+  .pro__head {
+    display: grid;
+    gap: var(--s-3);
+    justify-items: start;
+  }
+
+  .pro__head h3 {
+    font-size: var(--t-h3);
+    font-weight: var(--wght-semibold);
+    color: var(--text-bright);
+    margin: 0;
+    max-width: 24ch;
+    --opsz: var(--opsz-h3);
+  }
+
+  .pro__head p {
+    margin: 0;
+    max-width: 70ch;
+    color: var(--text-base);
+  }
+
+  .pro__purposes {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: var(--s-3);
+  }
+
+  .pro__purposes li {
+    display: grid;
+    grid-template-columns: 11rem minmax(0, 1fr);
+    gap: var(--s-4);
+    align-items: baseline;
+    padding-bottom: var(--s-3);
+    border-bottom: 1px solid var(--ink-line-soft);
+    font-size: var(--t-caption);
+    color: var(--text-mute);
+  }
+
+  .pro__invariants {
+    margin: 0;
+    padding-left: 1.15rem;
+    list-style: disc;
+    display: grid;
+    gap: var(--s-2);
+    color: var(--text-base);
+    font-size: var(--t-caption);
+    max-width: 82ch;
+  }
+
+  .pro__invariants li::marker {
+    color: var(--ember-core);
+  }
+
+  @media (max-width: 640px) {
+    .pro__purposes li {
+      grid-template-columns: minmax(0, 1fr);
+      gap: var(--s-1);
+    }
+  }
+
+  /* ---------- 04 · collection ---------- */
+
+  .collect {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: var(--s-6);
+    align-items: start;
+  }
+
+  @media (max-width: 900px) {
+    .collect {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  .collect__warn {
+    margin: var(--s-4) 0 0;
+    padding: var(--s-4);
+    border-left: 2px solid var(--core-amber);
+    background: var(--ink-surface);
+    border-radius: 0 var(--r-sm) var(--r-sm) 0;
+    font-size: var(--t-caption);
+    color: var(--text-mute);
+  }
+
+  .collect__warn strong {
+    color: var(--text-bright);
+    display: block;
+    margin-bottom: var(--s-1);
+  }
+
+  .collect__facts h3 {
+    font-size: var(--t-h4);
+    font-weight: var(--wght-semibold);
+    color: var(--text-bright);
+    margin: 0 0 var(--s-3);
+    --opsz: var(--opsz-lead);
+  }
+
+  .collect__h2 {
+    margin-top: var(--s-6) !important;
+  }
+
+  .ticks {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: var(--s-3);
+  }
+
+  .ticks li {
+    position: relative;
+    padding-left: 1.5rem;
+    font-size: var(--t-caption);
+    line-height: var(--leading-base);
+    color: var(--text-mute);
+  }
+
+  .ticks li::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0.55em;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    border: 1px solid var(--ember-core);
+    background: var(--ember-wash);
+  }
+
+  .ticks strong {
+    color: var(--text-bright);
+    font-weight: var(--wght-semibold);
+  }
+
+  .statuses {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: var(--s-2);
+  }
+
+  .statuses li {
+    display: grid;
+    grid-template-columns: 14rem minmax(0, 1fr);
+    gap: var(--s-3);
+    align-items: baseline;
+    font-size: var(--t-caption);
+    color: var(--text-dim);
+    padding-bottom: var(--s-2);
+    border-bottom: 1px solid var(--ink-line-soft);
+  }
+
+  .statuses code {
+    justify-self: start;
+  }
+
+  @media (max-width: 560px) {
+    .statuses li {
+      grid-template-columns: minmax(0, 1fr);
+      gap: var(--s-1);
+    }
+  }
+
+  /* Deliberately a flowing paragraph, not a grid: the inline <code> and the
+     leading tag have to sit in the sentence, and a grid would promote each of
+     them to its own row. */
+  .collect__honest {
+    margin: var(--s-5) 0 var(--s-3);
+    font-size: var(--t-caption);
+    line-height: var(--leading-base);
+    color: var(--text-mute);
+    max-width: 74ch;
+  }
+
+  .collect__honest .tag {
+    margin-right: var(--s-2);
+    vertical-align: baseline;
+  }
+
+  .collect__off {
+    margin: 0;
+    font-size: var(--t-eyebrow);
+    color: var(--text-dim);
+    --opsz: var(--opsz-caption);
+  }
+
+  /* ---------- 05 · proof ---------- */
+
+  .bench {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 1px;
+    background: var(--ink-line-soft);
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-lg);
+    overflow: hidden;
+  }
+
+  .bench__row {
+    display: grid;
+    grid-template-columns: 8rem minmax(0, 1.4fr) minmax(0, 1fr);
+    gap: var(--s-5);
+    align-items: start;
+    padding: var(--s-5);
+    background: var(--ink-void);
+  }
+
+  @media (max-width: 900px) {
+    .bench__row {
+      grid-template-columns: minmax(0, 1fr);
+      gap: var(--s-3);
+    }
+  }
+
+  .bench__fig {
+    font-size: clamp(1.8rem, 1.3rem + 1.8vw, 2.6rem);
+    line-height: 1;
+    color: var(--text-bright);
+    margin: 0;
+    letter-spacing: var(--tracking-tight);
+    --opsz: var(--opsz-h2);
+  }
+
+  .bench__row[data-pinned="true"] .bench__fig {
+    color: var(--ember-bright);
+  }
+
+  .bench__unit {
+    font-size: 0.42em;
+    color: var(--text-dim);
+    letter-spacing: 0.02em;
+  }
+
+  .bench__label {
+    font-size: var(--t-body);
+    font-weight: var(--wght-semibold);
+    color: var(--text-bright);
+    margin: 0 0 var(--s-2);
+    --opsz: var(--opsz-body);
+  }
+
+  .bench__corpus,
+  .bench__caveat {
+    margin: 0;
+    font-size: var(--t-caption);
+    line-height: var(--leading-base);
+    color: var(--text-mute);
+  }
+
+  .bench__caveat {
+    margin-top: var(--s-2);
+    color: var(--text-dim);
+    padding-left: var(--s-3);
+    border-left: 1px solid var(--ink-line);
+  }
+
+  .bench__meta {
+    display: grid;
+    gap: var(--s-3);
+    align-content: start;
+    min-width: 0;
+  }
+
+  .bench__cmd {
+    font-family: var(--font-mono);
+    font-size: var(--t-eyebrow);
+    color: var(--text-base);
+    background: var(--ink-surface);
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-sm);
+    padding: var(--s-2) var(--s-3);
+    word-break: break-word;
+    --opsz: var(--opsz-caption);
+  }
+
+  .bench__pin {
+    display: grid;
+    gap: var(--s-2);
+    justify-items: start;
+    margin: 0;
+  }
+
+  .bench__pintext {
+    font-size: var(--t-eyebrow);
+    color: var(--text-dim);
+    line-height: 1.6;
+    --opsz: var(--opsz-caption);
+  }
+
+  /* ---------- 06 · boundary ---------- */
+
+  .lanes {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(19rem, 100%), 1fr));
+    gap: var(--s-4);
+    align-items: start;
+  }
+
+  .lane {
+    display: grid;
+    gap: var(--s-4);
+    align-content: start;
+    padding: var(--s-5);
+    border-radius: var(--r-lg);
+    border: 1px solid var(--ink-line);
+    border-top: 3px solid var(--tier-zero);
+    background: var(--glass-bg);
+  }
+
+  .lane[data-status="always"] {
+    border-top-color: var(--tier-e2e);
+  }
+
+  .lane[data-status="opt-in"] {
+    border-top-color: var(--tier-server);
+  }
+
+  .lane[data-status="not-shipped"] {
+    border-top-color: var(--tier-zero);
+    border-style: dashed;
+    border-top-style: solid;
+  }
+
+  .lane__head {
+    display: grid;
+    gap: var(--s-2);
+    justify-items: start;
+  }
+
+  .lane__badge {
+    font-size: var(--t-eyebrow);
+    letter-spacing: var(--tracking-uppercase);
+    color: var(--tier-zero);
+    --opsz: var(--opsz-caption);
+  }
+
+  .lane[data-status="always"] .lane__badge {
+    color: var(--tier-e2e);
+  }
+
+  .lane[data-status="opt-in"] .lane__badge {
+    color: var(--tier-server);
+  }
+
+  .lane__h {
+    font-size: var(--t-h3);
+    font-weight: var(--wght-semibold);
+    color: var(--text-bright);
+    margin: 0;
+    --opsz: var(--opsz-h3);
+  }
+
+  .lane__sum {
+    margin: 0;
+    font-size: var(--t-caption);
+    line-height: var(--leading-base);
+    color: var(--text-mute);
+  }
+
+  .lane__rows {
+    display: grid;
+    gap: var(--s-3);
+    margin: 0;
+  }
+
+  .lane__row {
+    padding-top: var(--s-3);
+    border-top: 1px solid var(--ink-line-soft);
+  }
+
+  .lane__row dt {
+    font-weight: var(--wght-semibold);
+    color: var(--text-base);
+    font-size: var(--t-caption);
+    margin-bottom: var(--s-1);
+  }
+
+  .lane__row dd {
+    margin: 0;
+    font-size: var(--t-caption);
+    line-height: var(--leading-base);
+    color: var(--text-dim);
+  }
+
+  .lane__src {
+    margin: 0;
+    font-size: var(--t-eyebrow);
+    color: var(--text-dim);
+    word-break: break-word;
+    --opsz: var(--opsz-caption);
+  }
+
+  /* ---------- 07 · setup ---------- */
+
+  .steps {
+    list-style: none;
+    margin: 0 0 var(--s-8);
+    padding: 0;
+    display: grid;
+    gap: var(--s-7);
+  }
+
+  .step {
+    display: grid;
+    gap: var(--s-3);
+    padding-left: var(--s-5);
+    border-left: 1px solid var(--ink-line);
+  }
+
+  .step__n {
+    margin: 0;
+    font-size: var(--t-eyebrow);
+    letter-spacing: var(--tracking-uppercase);
+    color: var(--ember-bright);
+    --opsz: var(--opsz-caption);
+  }
+
+  .step__h {
+    font-size: var(--t-h3);
+    font-weight: var(--wght-semibold);
+    color: var(--text-bright);
+    margin: 0;
+    --opsz: var(--opsz-h3);
+  }
+
+  .step__hint {
+    margin: 0;
+    max-width: 74ch;
+    color: var(--text-mute);
+    font-size: var(--t-caption);
+  }
+
+  .step__token {
+    color: var(--ember-bright);
+  }
+
+  /* code block — capped at a measure a config actually occupies, so a
+     nine-line JSON snippet does not stretch across an ultrawide viewport
+     with 700px of empty gutter beside it.
+
+     `min-width: 0` is load-bearing, not decoration: a grid or flex item's
+     automatic minimum size is its content, and a 90-character config line
+     inside it will widen its track past the viewport on a 320px phone even
+     though the <pre> itself scrolls. Every ancestor between the container
+     and the <pre> needs the same escape hatch, which is what the list
+     below is. */
+  .code {
+    max-width: 60rem;
+    min-width: 0;
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-md);
+    background: var(--ink-void);
+    overflow: hidden;
+  }
+
+  .steps,
+  .step,
+  .tabs,
+  .tabs__panel,
+  .collect__code,
+  .collect__facts,
+  .verify,
+  .verify__list,
+  .check,
+  .check__body,
+  .bench__body,
+  .bench__meta,
+  .lane,
+  .limit {
+    min-width: 0;
+  }
+
+  .code__strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-2);
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--s-2) var(--s-3);
+    border-bottom: 1px solid var(--ink-line-soft);
+    background: var(--ink-surface);
+  }
+
+  .code__meta {
+    font-size: var(--t-eyebrow);
+    color: var(--text-dim);
+    --opsz: var(--opsz-caption);
+  }
+
+  .code__copy {
+    font-size: var(--t-eyebrow);
+    letter-spacing: var(--tracking-uppercase);
+    color: var(--text-mute);
+    background: transparent;
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-pill);
+    padding: 0.2rem var(--s-3);
+    cursor: pointer;
+    transition:
+      color var(--dur-fast) var(--ease),
+      border-color var(--dur-fast) var(--ease);
+    --opsz: var(--opsz-caption);
+  }
+
+  .code__copy:hover,
+  .code__copy:focus-visible {
+    color: var(--ember-bright);
+    border-color: color-mix(in oklab, var(--core-fire) 45%, var(--ink-line));
+  }
+
+  .code__copy[data-flash] {
+    color: var(--status-exact);
+    border-color: color-mix(in oklab, var(--status-exact) 45%, var(--ink-line));
+  }
+
+  /* A block that scrolls has to be reachable by keyboard, or the content
+     past its right edge is unreadable without a mouse — hence tabindex="0"
+     in the markup and a real focus ring here. */
+  .code__pre {
+    margin: 0;
+    padding: var(--s-4);
+    overflow-x: auto;
+    scrollbar-width: thin;
+    font-size: var(--t-caption);
+    line-height: 1.75;
+    color: var(--text-base);
+    tab-size: 2;
+  }
+
+  .code__pre:focus-visible {
+    outline: 2px solid var(--ember-bright);
+    outline-offset: -2px;
+  }
+
+  /* tabs */
+  .tabs {
+    display: grid;
+    gap: var(--s-3);
+  }
+
+  .tabs__list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-2);
+  }
+
+  .tabs__tab {
+    font-family: var(--font-mono);
+    font-size: var(--t-caption);
+    color: var(--text-mute);
+    background: transparent;
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-pill);
+    padding: 0.35rem var(--s-4);
+    cursor: pointer;
+    transition:
+      color var(--dur-fast) var(--ease),
+      border-color var(--dur-fast) var(--ease),
+      background-color var(--dur-fast) var(--ease);
+  }
+
+  .tabs__tab:hover {
+    color: var(--text-bright);
+    border-color: var(--ink-line-bright);
+  }
+
+  .tabs__tab[aria-selected="true"] {
+    color: var(--ink-void);
+    background: var(--ember-bright);
+    border-color: var(--ember-bright);
+    font-weight: var(--wght-medium);
+  }
+
+  .tabs__panel {
+    display: grid;
+    gap: var(--s-3);
+  }
+
+  .tabs__panel:focus-visible {
+    outline: 2px solid var(--ember-bright);
+    outline-offset: 4px;
+    border-radius: var(--r-md);
+  }
+
+  .tabs__note {
+    margin: 0;
+    font-size: var(--t-caption);
+    color: var(--text-mute);
+    max-width: 74ch;
+  }
+
+  /* verification checklist */
+  .verify {
+    padding: var(--s-6);
+    border-radius: var(--r-lg);
+    border: 1px solid var(--ink-line);
+    background: var(--ink-surface);
+    margin-bottom: var(--s-6);
+  }
+
+  .verify__head {
+    display: grid;
+    gap: var(--s-2);
+    margin-bottom: var(--s-5);
+  }
+
+  .verify__head h3 {
+    font-size: var(--t-h3);
+    font-weight: var(--wght-semibold);
+    color: var(--text-bright);
+    margin: 0;
+    --opsz: var(--opsz-h3);
+  }
+
+  .verify__head p {
+    margin: 0;
+    max-width: 70ch;
+    color: var(--text-mute);
+    font-size: var(--t-caption);
+  }
+
+  .verify__progress {
+    font-size: var(--t-eyebrow);
+    letter-spacing: var(--tracking-uppercase);
+    color: var(--ember-bright);
+    --opsz: var(--opsz-caption);
+  }
+
+  .verify__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: var(--s-4);
+  }
+
+  /* Three tracks on a wide viewport — box, title, detail — so the panel
+     uses its width instead of leaving a 600px gutter, and collapses to the
+     stacked form below 900px. */
+  .check {
+    display: grid;
+    grid-template-columns: auto minmax(0, 16rem) minmax(0, 1fr);
+    gap: var(--s-2) var(--s-4);
+    align-items: start;
+    padding-bottom: var(--s-4);
+    border-bottom: 1px solid var(--ink-line-soft);
+  }
+
+  .check:last-child {
+    border-bottom: 0;
+    padding-bottom: 0;
+  }
+
+  .check__box {
+    width: 1.15rem;
+    height: 1.15rem;
+    margin: 0.15rem 0 0;
+    accent-color: var(--core-fire);
+    cursor: pointer;
+  }
+
+  .check__label {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--s-3);
+    cursor: pointer;
+    color: var(--text-bright);
+    font-weight: var(--wght-semibold);
+  }
+
+  .check__n {
+    color: var(--ember-core);
+    font-size: var(--t-eyebrow);
+    font-weight: var(--wght-regular);
+    --opsz: var(--opsz-caption);
+  }
+
+  .check__body {
+    grid-column: 3;
+    display: grid;
+    gap: var(--s-2);
+  }
+
+  @media (max-width: 900px) {
+    .check {
+      grid-template-columns: auto minmax(0, 1fr);
+    }
+    .check__body {
+      grid-column: 2;
+    }
+  }
+
+  .check__how,
+  .check__expect,
+  .check__ifnot {
+    margin: 0;
+    font-size: var(--t-caption);
+    line-height: var(--leading-base);
+    color: var(--text-mute);
+    max-width: 78ch;
+  }
+
+  .check__tag {
+    display: inline-block;
+    font-size: var(--t-eyebrow);
+    letter-spacing: var(--tracking-uppercase);
+    color: var(--status-exact);
+    margin-right: var(--s-2);
+    --opsz: var(--opsz-caption);
+  }
+
+  .check__tag--warn {
+    color: var(--status-estimated);
+  }
+
+  .check__ifnot {
+    color: var(--text-dim);
+  }
+
+  .check__box:checked ~ .check__label .check__title {
+    text-decoration: line-through;
+    text-decoration-color: var(--ember-core);
+    color: var(--text-mute);
+  }
+
+  .crossref {
+    display: grid;
+    gap: var(--s-3);
+    justify-items: start;
+    padding: var(--s-5);
+    border-radius: var(--r-md);
+    border: 1px dashed var(--ink-line-bright);
+  }
+
+  .crossref h3 {
+    font-size: var(--t-h4);
+    font-weight: var(--wght-semibold);
+    color: var(--text-bright);
+    margin: 0;
+    --opsz: var(--opsz-lead);
+  }
+
+  .crossref p {
+    margin: 0;
+    max-width: 70ch;
+    color: var(--text-mute);
+    font-size: var(--t-caption);
+  }
+
+  /* ---------- 08 · limits ---------- */
+
+  .limits {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(19rem, 100%), 1fr));
+    gap: var(--s-5);
+  }
+
+  .limit {
+    display: grid;
+    gap: var(--s-2);
+    align-content: start;
+    padding-top: var(--s-4);
+    border-top: 1px solid var(--ink-line);
+  }
+
+  .limit__h {
+    font-size: var(--t-h4);
+    font-weight: var(--wght-semibold);
+    color: var(--text-bright);
+    margin: 0;
+    --opsz: var(--opsz-lead);
+  }
+
+  .limit__body {
+    margin: 0;
+    font-size: var(--t-caption);
+    line-height: var(--leading-base);
+    color: var(--text-mute);
+  }
+
+  .limit__src {
+    margin: 0;
+    font-size: var(--t-eyebrow);
+    color: var(--text-dim);
+    word-break: break-word;
+    --opsz: var(--opsz-caption);
+  }
+
+  /* ---------- end ---------- */
+
+  .mem-end {
+    border-top: 1px solid var(--ink-line);
+  }
+
+  .mem-end__inner {
+    display: grid;
+    gap: var(--s-5);
+    justify-items: center;
+    text-align: center;
+  }
+
+  .mem-end__h {
+    font-size: var(--t-h1);
+    line-height: var(--leading-tight);
+    letter-spacing: var(--tracking-display);
+    font-weight: var(--wght-display);
+    margin: 0;
+    --opsz: var(--opsz-h1);
+  }
+
+  .mem-end__lead {
+    max-width: 62ch;
+  }
+
+  /* ---------- light theme corrections ----------
+     The dark theme paints on near-black; on paper the same surfaces need
+     their own values or they read as grey mud. Tokens do most of it; these
+     are the handful of places that reference an explicit dark surface. */
+  :global(:root[data-theme="light"]) .specimen__side,
+  :global(:root[data-theme="light"]) .kind,
+  :global(:root[data-theme="light"]) .bench__row,
+  :global(:root[data-theme="light"]) .code,
+  :global(:root[data-theme="light"]) .code__pre {
+    background: rgba(255, 255, 255, 0.6);
+  }
+
+  :global(:root[data-theme="light"]) .tabs__tab[aria-selected="true"] {
+    color: #ffffff;
+  }
+
+  :global(:root[data-theme="light"]) .pipe__dot {
+    background: var(--ink-void);
+  }
+</style>
