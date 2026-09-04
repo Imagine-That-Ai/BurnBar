@@ -209,6 +209,7 @@ extension ControlPlaneStore {
             )
             var tags: [String] = []
             if let tagsJSON, let data = tagsJSON.data(using: .utf8) {
+                // try?-ok(a malformed tags blob degrades to no tags; it must not fail the memory's upload)
                 tags = (try? JSONDecoder().decode([String].self, from: data)) ?? []
             }
             return MemoryCloudFactAttributes(

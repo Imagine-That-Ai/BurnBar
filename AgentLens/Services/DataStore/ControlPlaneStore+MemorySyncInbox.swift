@@ -1,6 +1,6 @@
 import Foundation
 @preconcurrency import GRDB
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 // MARK: - Remote memory-fact inbox (Memory Blind Sync, pull half)
 

@@ -1,6 +1,6 @@
 import FirebaseFirestore
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 // MARK: - Memory cloud PULL (Memory Blind Sync PR-2)
 //
@@ -321,23 +321,34 @@ final class MemoryCloudPullService: Sendable {
         }
         // The AAD names THIS document. A blob relocated to another slot, or one
         // whose stored AAD names a different doc id, fails to open here.
-        guard let aad = try? CloudVaultAADContext(
-            uid: uid,
-            collection: "memory_facts",
-            docID: documentID,
-            field: "sealedMemory"
-        ) else {
+        let aad: CloudVaultAADContext
+        do {
+            aad = try CloudVaultAADContext(
+                uid: uid,
+                collection: "memory_facts",
+                docID: documentID,
+                field: "sealedMemory"
+            )
+        } catch {
+            // The context refuses ids this document could never legitimately
+            // carry, so a throw here IS the admission decision, not a lost error.
             return .failure(.sealedOpenFailed)
         }
         // `openBlob` verifies the AEAD tag AND the keyed plaintext HMAC the
         // envelope carries, so a tampered ciphertext or a swapped plaintext both
         // land here as a throw.
-        guard let plaintext = try? CloudVaultCrypto.openBlob(envelope, keyData: vaultKey, aadContext: aad) else {
+        let plaintext: Data
+        do {
+            plaintext = try CloudVaultCrypto.openBlob(envelope, keyData: vaultKey, aadContext: aad)
+        } catch {
             return .failure(.sealedOpenFailed)
         }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        guard let payload = try? decoder.decode(MemoryCloudFactPayload.self, from: plaintext) else {
+        let payload: MemoryCloudFactPayload
+        do {
+            payload = try decoder.decode(MemoryCloudFactPayload.self, from: plaintext)
+        } catch {
             return .failure(.malformedPayload)
         }
         guard payload.schemaVersion >= 1,
@@ -347,10 +358,19 @@ final class MemoryCloudPullService: Sendable {
         // The sealed id must derive the id the document is keyed on. Without
         // this, a document could name one memory on the outside and carry another
         // on the inside, and the engine would merge the wrong fact.
-        guard let expectedDocID = try? CloudVaultCrypto.pensieveSlugHmac(
-            "memory-fact:\(payload.memoryID)",
-            keyData: vaultKey
-        ), expectedDocID == documentID else {
+        let expectedDocID: String
+        do {
+            expectedDocID = try CloudVaultCrypto.pensieveSlugHmac(
+                "memory-fact:\(payload.memoryID)",
+                keyData: vaultKey
+            )
+        } catch {
+            // The id could not be derived at all, so it cannot match: the
+            // document and its sealed contents disagree about which memory
+            // this is, which is exactly `identityMismatch`.
+            return .failure(.identityMismatch)
+        }
+        guard expectedDocID == documentID else {
             return .failure(.identityMismatch)
         }
         guard let remoteUpdatedAt = firestoreDate(data["updatedAt"]) else {
