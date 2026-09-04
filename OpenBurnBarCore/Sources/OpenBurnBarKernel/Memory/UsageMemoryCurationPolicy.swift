@@ -105,7 +105,6 @@ public struct UsageMemoryCurationPolicy: Codable, Equatable, Sendable {
 
         public func trust(for sourceKind: MemorySourceKind) -> Double {
             switch sourceKind {
-            // `agent` is member-authored memory like chat, not a passive usage source.
             case .chat, .code, .agent: chat
             case .safariAsk: safariAsk
             case .agentSession: agentSession

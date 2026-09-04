@@ -324,11 +324,15 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
             let memoryID = "mem_" + String(Self.sha256Hex("\(projectID):\(request.scope):\(bodyRef)").prefix(32))
             let now = Self.isoNow()
             let tagsJSON = try encodeJSONString(request.tags)
-            // An absent `sourceKind` keeps the shipped default: callers that predate
-            // blind sync write repository knowledge, which never leaves the device.
-            let requestedSourceKind = request.sourceKind?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let resolvedSourceKind = MemorySourceKind(rawValue: requestedSourceKind ?? "")?.rawValue
-                ?? MemorySourceKind.code.rawValue
+            // Only the Memory MCP engine sends an id of its own, and it sends one
+            // only for rows it wants mirrored as syncable. Its presence is therefore
+            // the partition: callers that predate blind sync keep writing repository
+            // knowledge, which never leaves the device.
+            let engineMemoryID = request.engineMemoryID?.trimmingCharacters(in: .whitespacesAndNewlines)
+                .nilIfEmpty
+            let resolvedSourceKind = engineMemoryID == nil
+                ? MemorySourceKind.code.rawValue
+                : MemorySourceKind.agent.rawValue
             try execute("BEGIN IMMEDIATE", [])
             do {
                 if reviewStatus == .approved {
@@ -348,9 +352,7 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                     // its body in the shared encrypted database so the app's sync lane can
                     // seal and upload it. Nothing else writes here, so repository knowledge
                     // and quarantined input can never reach the cloud lane.
-                    if resolvedSourceKind == MemorySourceKind.agent.rawValue,
-                       let engineMemoryID = request.engineMemoryID?.trimmingCharacters(in: .whitespacesAndNewlines),
-                       engineMemoryID.isEmpty == false {
+                    if let engineMemoryID {
                         try upsertAgentMemoryBody(
                             projectID: projectID,
                             memoryID: memoryID,

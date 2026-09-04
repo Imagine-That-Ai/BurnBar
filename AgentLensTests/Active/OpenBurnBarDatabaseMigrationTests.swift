@@ -1911,6 +1911,72 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         XCTAssertFalse(outerDocument.contains(otherUserBody))
     }
 
+    /// Blind sync: memories the Memory MCP engine mirrors ride the same sealed
+    /// envelope as chat memories, keyed on the engine's own id, while repository
+    /// knowledge stays on the device.
+    func test_memoryCloudSyncReplicatesAgentMemoriesButNeverRepositoryKnowledge() async throws {
+        let queue = try DatabaseQueue()
+        let database = OpenBurnBarDatabase(databaseQueue: queue)
+        try database.runMigrationsSafely()
+        let store = ControlPlaneStore(dbQueue: queue)
+        let gateway = CloudSyncFirestoreFakeGateway()
+        let sync = MemoryCloudSyncService(store: store, firestoreGateway: gateway)
+        let vaultKey = Data(repeating: 11, count: 32)
+        let now = Date(timeIntervalSince1970: 1_800_000_900)
+        let scope = MemoryScope(userID: "agent-sync-user", appID: "agent-sync-app")
+        let agentBody = "We deploy from the release branch on Fridays."
+        let codeBody = "The daemon owns the project code memory store."
+        let engineID = "mem_00112233445566778899aabbccddeeff"
+
+        _ = try await store.addMemoryAuthorityRecord(
+            MemoryAddRequest(text: agentBody, kind: .fact, scope: scope, confidence: 0.94, reviewStatus: .approved),
+            id: "mem-agent-sync",
+            sourceKind: .agent,
+            now: now,
+            enabled: true
+        )
+        _ = try await store.addMemoryAuthorityRecord(
+            MemoryAddRequest(text: codeBody, kind: .fact, scope: scope, confidence: 0.94, reviewStatus: .approved),
+            id: "mem-code-local",
+            sourceKind: .code,
+            now: now.addingTimeInterval(1),
+            enabled: true
+        )
+        // The daemon writes the approved body and the engine id for a mirrored row.
+        try await queue.write { db in
+            try db.execute(
+                sql: """
+                INSERT INTO agent_memory_bodies
+                    (memory_id, project_id, engine_memory_id, body, body_hash, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                arguments: ["mem-agent-sync", "chat:agent-sync-user", engineID, agentBody, "hash-agent", "\(now)", "\(now)"]
+            )
+        }
+
+        let result = try await sync.syncApprovedMemories(uid: "agent-sync-user", vaultKey: vaultKey, now: now.addingTimeInterval(2))
+
+        XCTAssertEqual(result.uploaded, 1, "the agent memory uploads; repository knowledge does not")
+        let docs = gateway.documents(under: "users/agent-sync-user/memory_facts")
+        XCTAssertEqual(docs.count, 1)
+        let expectedDocID = try CloudVaultCrypto.pensieveSlugHmac("memory-fact:\(engineID)", keyData: vaultKey)
+        XCTAssertEqual(Array(docs.keys), [expectedDocID], "the document is keyed on the engine id, not the local one")
+        let data = try XCTUnwrap(docs[expectedDocID])
+        XCTAssertEqual(data["sourceKind"] as? String, MemorySourceKind.agent.rawValue)
+        // The rules allowlist is the contract: a new plaintext field must fail here.
+        XCTAssertEqual(
+            Set(data.keys),
+            [
+                "uid", "docID", "schemaVersion", "sourceKind", "kind", "reviewStatus",
+                "sealedMemory", "sourceRefHmacs", "citationCount", "validFrom", "updatedAt", "replicatedAt"
+            ]
+        )
+        let rendered = String(describing: data)
+        XCTAssertFalse(rendered.contains(agentBody))
+        XCTAssertFalse(rendered.contains(codeBody))
+        XCTAssertFalse(rendered.contains(engineID), "even the engine id travels only as a keyed hash")
+    }
+
     func test_memoryCloudForgetReceiptDeletesMatchingCloudFact() async throws {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)

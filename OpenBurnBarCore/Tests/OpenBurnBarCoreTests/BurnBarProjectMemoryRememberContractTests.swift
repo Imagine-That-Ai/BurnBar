@@ -27,7 +27,6 @@ final class BurnBarProjectMemoryRememberContractTests: XCTestCase {
             confidence: 0.9,
             sourcePath: "docs/search.md",
             reviewStatus: .approved,
-            sourceKind: "agent",
             engineMemoryID: "mem_" + String(repeating: "a", count: 32)
         )
 
@@ -42,28 +41,25 @@ final class BurnBarProjectMemoryRememberContractTests: XCTestCase {
                 "confidence",
                 "sourcePath",
                 "reviewStatus",
-                "sourceKind",
                 "engineMemoryID"
             ]
         )
     }
 
-    /// Both blind-sync fields are optional and omitted when nil, so a caller
-    /// built before they existed produces byte-identical JSON.
-    func testBlindSyncFieldsAreOmittedWhenUnset() throws {
+    /// The blind-sync field is optional and omitted when nil, so a caller built
+    /// before it existed produces byte-identical JSON.
+    func testBlindSyncFieldIsOmittedWhenUnset() throws {
         let request = BurnBarProjectMemoryRememberRequest(text: "note", projectPath: "/tmp/project")
 
         let keys = try encodedKeys(request)
-        XCTAssertFalse(keys.contains("sourceKind"))
         XCTAssertFalse(keys.contains("engineMemoryID"))
-        XCTAssertNil(request.sourceKind)
         XCTAssertNil(request.engineMemoryID)
     }
 
-    /// A payload from an older caller decodes with the new fields nil, which
-    /// the daemon reads as "keep today's behaviour" — the `source_kind` column
-    /// default (`"code"`) and a daemon-derived memory id.
-    func testLegacyPayloadDecodesWithNilBlindSyncFields() throws {
+    /// A payload from an older caller decodes with the new field nil, which the
+    /// daemon reads as "keep today's behaviour": the `source_kind` column default
+    /// (`"code"`), which the cloud lane never replicates.
+    func testLegacyPayloadDecodesWithNilBlindSyncField() throws {
         let json = Data(#"{"text":"legacy note","projectPath":"/tmp/project"}"#.utf8)
 
         let request = try JSONDecoder().decode(BurnBarProjectMemoryRememberRequest.self, from: json)
@@ -73,18 +69,16 @@ final class BurnBarProjectMemoryRememberContractTests: XCTestCase {
         XCTAssertEqual(request.scope, "personal")
         XCTAssertEqual(request.confidence, 1.0)
         XCTAssertEqual(request.reviewStatus, .approved)
-        XCTAssertNil(request.sourceKind)
         XCTAssertNil(request.engineMemoryID)
     }
 
-    func testBlindSyncFieldsRoundTrip() throws {
+    func testBlindSyncFieldRoundTrips() throws {
         let engineMemoryID = "mem_" + String(repeating: "b", count: 32)
         let json = Data(
-            #"{"text":"prefers ripgrep","sourceKind":"agent","engineMemoryID":"\#(engineMemoryID)"}"#.utf8
+            #"{"text":"prefers ripgrep","engineMemoryID":"\#(engineMemoryID)"}"#.utf8
         )
 
         let request = try JSONDecoder().decode(BurnBarProjectMemoryRememberRequest.self, from: json)
-        XCTAssertEqual(request.sourceKind, "agent")
         XCTAssertEqual(request.engineMemoryID, engineMemoryID)
 
         let reencoded = try JSONDecoder().decode(

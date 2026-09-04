@@ -2250,7 +2250,7 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
 
     // MARK: - Blind sync
 
-    func testAgentSourcedMemoriesKeepAnApprovedBodyForBlindSync() throws {
+    func testEngineMirroredMemoriesKeepAnApprovedBodyForBlindSync() throws {
         let fixture = try makeFixture()
         let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
         let engineID = "mem_00112233445566778899aabbccddeeff"
@@ -2260,7 +2260,6 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
                 text: "We deploy from the release branch on Fridays.",
                 projectPath: fixture.project.path,
                 tags: ["release"],
-                sourceKind: "agent",
                 engineMemoryID: engineID
             )
         )
@@ -2313,14 +2312,20 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
             "repository knowledge never gets a syncable body"
         )
 
-        // An agent row without its engine id cannot be addressed across devices,
-        // so it is not made syncable either.
+        // An empty engine id is not an identity, so it does not make a row syncable.
         let unidentified = try store.remember(
             BurnBarProjectMemoryRememberRequest(
-                text: "An agent row with no engine id.",
+                text: "A row whose engine id is blank.",
                 projectPath: fixture.project.path,
-                sourceKind: "agent"
+                engineMemoryID: "   "
             )
+        )
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT source_kind FROM agent_memories WHERE id = \(sqlLiteral(unidentified.memoryID))"
+            ),
+            ["code"]
         )
         XCTAssertEqual(
             try sqliteStrings(

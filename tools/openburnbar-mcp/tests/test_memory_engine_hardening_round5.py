@@ -193,7 +193,6 @@ def test_memorize_replay_hydrates_decision_and_repairs_mirror(
             "confidence": 0.8,
             "sourcePath": "docs/release.md",
             "text": "The release owner is Ops.",
-            "sourceKind": "agent",
             "engineMemoryID": mirrored[0]["engineMemoryID"],
         }
     ]

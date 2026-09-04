@@ -1908,11 +1908,10 @@ def _memory_mirror_remember(decision: dict[str, Any], project_path: str | None) 
             "sourcePath": decision.get("sourceRef"),
             "text": decision.get("text"),
             # Blind sync (docs/superpowers/specs/2026-09-03-memory-blind-sync-design.md):
-            # only these rows may ever reach the cloud lane, so they are the ones marked
-            # `agent`. The daemon's own id is derived from `projectID:bodyHash` and is
-            # path-dependent; the engine id is 128 random bits and is what the sealed
-            # payload and the blinded document id key on, so it travels with the row.
-            "sourceKind": "agent",
+            # only rows that reach here may ever be replicated, so sending the engine's
+            # own id is what marks one syncable. The daemon's id is derived from
+            # `projectID:bodyHash` and is path-dependent; this one is 128 random bits
+            # and is what the sealed payload and the blinded document id key on.
             "engineMemoryID": decision.get("memoryID"),
         },
     )

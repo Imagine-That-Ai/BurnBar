@@ -784,7 +784,6 @@ def test_memory_mirror_uses_signed_cli_when_available(server_env: Path, monkeypa
                 "confidence": 0.0,
                 "sourcePath": "docs/memory.md",
                 "text": "Route local memory writes through the signed CLI.",
-                "sourceKind": "agent",
                 "engineMemoryID": "mem_0123456789abcdef0123456789abcdef",
             },
         )
@@ -952,7 +951,6 @@ def test_mirror_marks_engine_rows_as_syncable_agent_facts(server_env: Path, monk
         return base
 
     assert server._memory_mirror_remember(decision(), "/tmp/fixture")["status"] == "mirrored"
-    assert sent[-1]["sourceKind"] == "agent"
     assert sent[-1]["engineMemoryID"] == "mem_00112233445566778899aabbccddeeff"
     assert sent[-1]["text"] == "We deploy from the release branch on Fridays."
 

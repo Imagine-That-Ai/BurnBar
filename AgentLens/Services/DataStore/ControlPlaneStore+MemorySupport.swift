@@ -70,7 +70,7 @@ extension ControlPlaneStore {
         switch sourceKind {
         case .safariAsk: .safariAsk
         case .agentSession: .agentSessionEvent
-        case .chat, .code: .chatMessage
+        case .chat, .code, .agent: .chatMessage
         }
     }
 
