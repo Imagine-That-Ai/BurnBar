@@ -26,6 +26,7 @@ SQLite tools, hosted encrypted cloud-search tools, and 2 ledger tools:
 | `burnbar_forget` / `burnbar_forget_all` | **Write** hard deletes with label-only audit; bulk delete needs `confirm="DELETE"` plus the `selection_token` from the preview |
 | `burnbar_audit_trail` / `burnbar_memory_analytics` | Label-only audit hash chain with verification; store statistics (counts by kind/scope/sensitivity, embedding coverage, vault entries, policy) |
 | `burnbar_memory_entities` / `_relations` / `_export` / `_import` / `_reindex` | Entities, relations, JSON export/import, re-embed for the active model version |
+| `burnbar_memory_sync_pull` | **Write** Memory Blind Sync: merge this member's memories from their other devices — last-writer-wins on `updatedAt`, convergence on `(project_id, scope, body_hash)`, the same gate a `burnbar_remember` passes, and a forgotten memory is never revived |
 | `burnbar_index_project` | **Write** local Project Code Memory index through the daemon write path |
 | `burnbar_search_code` | Search indexed local project code with untrusted snippet wrappers |
 | `burnbar_code_context_pack` | Build token-budgeted context from indexed code |
