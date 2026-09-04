@@ -516,6 +516,129 @@ final class MemoryCloudPullServiceTests: XCTestCase {
         XCTAssertEqual(retry, MemoryCloudPullResult(applied: 0, unchanged: 1, rejected: 1))
     }
 
+    /// `updatedAt` is not unique, and a REFUSED document can share its instant
+    /// with an ACCEPTED one. Advancing the cursor to that instant — the query
+    /// filter is strictly `>` — would mean the refused document is never read
+    /// again: a member's fact lost for ever to a neighbour that happened to be
+    /// extracted from the same message. The cursor must stop strictly below it.
+    func test_theCursorStopsBelowAnInstantSharedByAnAppliedAndARefusedDocument() async throws {
+        let fixture = try makeFixture(uid: "pull-tie-rejection", vaultKeyByte: 56)
+        let earlier = Self.base
+        let shared = Self.base.addingTimeInterval(60)
+        let refusedEngineID = "mem_cccc111111111111111111111111cccc"
+
+        try publishFact(fixture, engineID: "mem_aaaa111111111111111111111111aaaa", body: "earlier", updatedAt: earlier)
+        try publishFact(
+            fixture,
+            engineID: "mem_bbbb111111111111111111111111bbbb",
+            body: "accepted twin",
+            updatedAt: shared
+        )
+        try publishFact(
+            fixture,
+            engineID: refusedEngineID,
+            body: "refused twin",
+            updatedAt: shared
+        ) { data in
+            var mutated = data
+            mutated["text"] = "smuggled plaintext"
+            return mutated
+        }
+
+        // The page is NOT full, so the tie guard for the page boundary does not
+        // fire; only the refusal may hold the cursor back.
+        let result = try await fixture.pull.pullRemoteFacts(uid: fixture.uid, vaultKey: fixture.vaultKey)
+        XCTAssertEqual(result, MemoryCloudPullResult(applied: 2, unchanged: 0, rejected: 1))
+        let cursorAfterRejection = try await watermark(fixture)
+        XCTAssertEqual(
+            try XCTUnwrap(cursorAfterRejection),
+            earlier,
+            "an accepted document must not lift the cursor onto the instant a refused one shares"
+        )
+
+        // Cure the rejection — the same document, this time without the field the
+        // rules forbid — and the fact that was refused lands on the next cycle.
+        try publishFact(fixture, engineID: refusedEngineID, body: "refused twin", updatedAt: shared)
+
+        let retry = try await fixture.pull.pullRemoteFacts(uid: fixture.uid, vaultKey: fixture.vaultKey)
+        XCTAssertEqual(retry, MemoryCloudPullResult(applied: 1, unchanged: 1, rejected: 0))
+        let parked = try await inboxRows(fixture)
+        XCTAssertEqual(parked.count, 3, "no document is lost to a tie with a refusal")
+        let curedCursor = try await watermark(fixture)
+        XCTAssertEqual(try XCTUnwrap(curedCursor), shared)
+    }
+
+    /// The outer `updatedAt` orders the page, moves the watermark and decides
+    /// idempotence — and it sits OUTSIDE the AAD and the sealed box, so a hostile
+    /// backend may rewrite it at will. Pushing it forward would carry the cursor
+    /// past documents this pull never read. The verified payload carries the same
+    /// instant, so the two must agree.
+    func test_aDocumentWhoseOuterUpdatedAtWasEditedIsRejected() async throws {
+        let fixture = try makeFixture(uid: "pull-updatedat", vaultKeyByte: 57)
+        try publishFact(
+            fixture,
+            engineID: "mem_dddd111111111111111111111111dddd",
+            body: "the sealed instant is the truth",
+            updatedAt: Self.base
+        ) { data in
+            var mutated = data
+            mutated["updatedAt"] = Self.base.addingTimeInterval(86_400)
+            return mutated
+        }
+
+        let result = try await fixture.pull.pullRemoteFacts(uid: fixture.uid, vaultKey: fixture.vaultKey)
+        XCTAssertEqual(result, MemoryCloudPullResult(applied: 0, unchanged: 0, rejected: 1))
+        let parked = try await inboxRows(fixture)
+        XCTAssertTrue(parked.isEmpty, "an unauthenticated ordering key is never parked")
+        let cursor = try await watermark(fixture)
+        XCTAssertNil(cursor, "and it certainly never moves the cursor to the instant it claimed")
+    }
+
+    // MARK: - Account scoping
+
+    /// An account switch. The daemon holds no Firebase identity and the Memory
+    /// MCP engine has no uid, so neither can scope the inbox to a member — the
+    /// app owns it, because it is the only party that knows who is signed in.
+    /// Rows a previous account left unmerged would otherwise survive
+    /// indefinitely and be handed to the engine on its next drain, mixing a
+    /// stranger's facts into this member's memory. Merged rows stay: the engine
+    /// already holds them, and the daemon's retention sweep owns their disposal.
+    func test_pullingAsAnotherMemberPurgesTheFormerAccountsUnmergedInboxRows() async throws {
+        let fixture = try makeFixture(uid: "pull-account-b", vaultKeyByte: 58)
+        try await fixture.queue.write { db in
+            try db.execute(
+                sql: """
+                INSERT INTO agent_memory_inbox
+                    (doc_id, user_id, engine_memory_id, payload_json, remote_updated_at, received_at, applied_at)
+                VALUES
+                    ('doc-a-open', 'pull-account-a', 'mem_a1', '{}',
+                     '2026-09-01T00:00:01.000Z', '2026-09-01T00:00:02.000Z', NULL),
+                    ('doc-a-merged', 'pull-account-a', 'mem_a2', '{}',
+                     '2026-09-01T00:00:03.000Z', '2026-09-01T00:00:04.000Z', '2026-09-01T00:00:05.000Z'),
+                    ('doc-b-open', 'pull-account-b', 'mem_b1', '{}',
+                     '2026-09-01T00:00:06.000Z', '2026-09-01T00:00:07.000Z', NULL)
+                """
+            )
+        }
+
+        let result = try await fixture.pull.pullRemoteFacts(uid: fixture.uid, vaultKey: fixture.vaultKey)
+        XCTAssertEqual(result, MemoryCloudPullResult(applied: 0, unchanged: 0, rejected: 0, purgedOtherAccount: 1))
+
+        let remaining = try await fixture.queue.read { db in
+            try String.fetchAll(db, sql: "SELECT doc_id FROM agent_memory_inbox ORDER BY doc_id")
+        }
+        XCTAssertEqual(
+            remaining,
+            ["doc-a-merged", "doc-b-open"],
+            "the former account's UNMERGED row is gone; its merged row and this member's row are untouched"
+        )
+
+        // The daemon's drain has no user predicate because of exactly this: after
+        // the purge, "unmerged" already means "the signed-in member's".
+        let drainable = try await inboxRows(fixture)
+        XCTAssertEqual(drainable.map(\.docID), ["doc-b-open"])
+    }
+
     /// `updatedAt` is not unique — a batch of memories extracted from one message
     /// shares an instant — so a full page can cut such a group in half. The cursor
     /// must stop BEFORE that instant, or the strictly-greater-than filter would

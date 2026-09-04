@@ -104,6 +104,36 @@ struct BurnBarCLIExecutable {
             }
         }
 
+        // Memory Blind Sync: the drain the Python memory engine calls on signed
+        // installs, wired exactly like `search-sql` / `memory-remember` above.
+        if arguments == ["memory-sync-inbox-list"] {
+            do {
+                let input = FileHandle.standardInput.readDataToEndOfFile()
+                guard input.count <= 256 * 1024 else {
+                    throw BurnBarCLIError.missingArgument("memory-sync-inbox-list request exceeds 256 KiB")
+                }
+                writeLine(try BurnBarCLIRunner(client: client).runMemorySyncInboxList(input: input))
+                exit(EXIT_SUCCESS)
+            } catch {
+                writeLine(Self.message(for: error), toStandardError: true)
+                exit(EXIT_FAILURE)
+            }
+        }
+
+        if arguments == ["memory-sync-inbox-ack"] {
+            do {
+                let input = FileHandle.standardInput.readDataToEndOfFile()
+                guard input.count <= 256 * 1024 else {
+                    throw BurnBarCLIError.missingArgument("memory-sync-inbox-ack request exceeds 256 KiB")
+                }
+                writeLine(try BurnBarCLIRunner(client: client).runMemorySyncInboxAck(input: input))
+                exit(EXIT_SUCCESS)
+            } catch {
+                writeLine(Self.message(for: error), toStandardError: true)
+                exit(EXIT_FAILURE)
+            }
+        }
+
         if arguments == ["privacy-rpc"] {
             do {
                 let input = FileHandle.standardInput.readDataToEndOfFile()

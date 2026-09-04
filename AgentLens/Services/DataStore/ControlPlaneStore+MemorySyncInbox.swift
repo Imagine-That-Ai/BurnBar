@@ -84,6 +84,34 @@ extension ControlPlaneStore {
         }
     }
 
+    /// Drops every UNMERGED inbox row that belongs to some other account.
+    ///
+    /// The inbox is user-scoped, but neither party downstream can enforce that:
+    /// the daemon holds no Firebase identity and the Memory MCP engine has no
+    /// uid at all, so the drain they share (`daemon.memory.sync.inbox.list`) can
+    /// only ever hand over "whatever is unmerged". The app is the one process
+    /// that knows which member is signed in, so it owns the scoping — the pull
+    /// runs this before it writes anything, and the invariant the daemon then
+    /// relies on is exactly its postcondition: only the signed-in member's rows
+    /// are unmerged.
+    ///
+    /// Merged rows are deliberately untouched. The engine already holds those
+    /// facts; deleting them here would erase the audit trail of what it merged,
+    /// and the daemon's retention sweep already owns their disposal.
+    ///
+    /// - Returns: how many rows were dropped, so an account switch is visible in
+    ///   the pull result rather than silent.
+    @discardableResult
+    func purgeUnappliedRemoteMemoryFacts(otherThanUserID userID: String) async throws -> Int {
+        try await dbQueue.write { db in
+            try db.execute(
+                sql: "DELETE FROM agent_memory_inbox WHERE user_id <> ? AND applied_at IS NULL",
+                arguments: [userID]
+            )
+            return db.changesCount
+        }
+    }
+
     /// Remote facts the engine has not merged yet, oldest first so a partial
     /// drain still applies updates in `updatedAt` order.
     func fetchUnappliedRemoteMemoryFacts(userID: String, limit: Int = 200) async throws -> [MemoryCloudInboxRecord] {

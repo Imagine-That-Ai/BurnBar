@@ -18,8 +18,10 @@ import OpenBurnBarCore
 //      between slots by a hostile backend fails), its keyed plaintext HMAC
 //      matches (`CloudVaultCrypto.openBlob` enforces this), its field set stays
 //      inside the `firestore.rules` allowlist (so a plaintext `text` field
-//      injected server-side is refused rather than read), and the id sealed
-//      inside matches the id the document was keyed on.
+//      injected server-side is refused rather than read), the id sealed inside
+//      matches the id the document was keyed on, and the unauthenticated outer
+//      `updatedAt` — the ordering, watermark and idempotence key — matches the
+//      one the verified payload carries.
 //
 //   2. **The watermark never skips a document.** Rejections are counted, but the
 //      watermark stops BEFORE the first one — so a document that fails today
@@ -37,6 +39,16 @@ struct MemoryCloudPullResult: Equatable, Sendable {
     /// Documents refused by verification. Never parked, never merged, and the
     /// watermark does not advance past them.
     let rejected: Int
+    /// Unmerged inbox rows belonging to a DIFFERENT account, dropped before this
+    /// pull wrote anything. See `purgeUnappliedRemoteMemoryFacts(otherThanUserID:)`.
+    let purgedOtherAccount: Int
+
+    init(applied: Int, unchanged: Int, rejected: Int, purgedOtherAccount: Int = 0) {
+        self.applied = applied
+        self.unchanged = unchanged
+        self.rejected = rejected
+        self.purgedOtherAccount = purgedOtherAccount
+    }
 }
 
 /// Why a remote memory-fact document was refused. Surfaced as a log dimension
@@ -58,6 +70,12 @@ enum MemoryCloudPullRejection: String, Sendable {
     case identityMismatch = "identity_mismatch"
     /// No usable `updatedAt`, so the row could not be ordered or watermarked.
     case missingUpdatedAt = "missing_updated_at"
+    /// The unauthenticated outer `updatedAt` disagrees with the verified copy the
+    /// sealed payload carries. The outer field is what orders the page, moves the
+    /// watermark and decides idempotence, and it sits outside the AAD — a backend
+    /// that rewrites it could skip the cursor past a document or make a stale
+    /// revision win. Binding it to the sealed copy closes that.
+    case updatedAtMismatch = "updated_at_mismatch"
     /// The envelope claims a payload schema this build cannot read. Forward
     /// compatibility, not an attack: a newer device sealed it.
     case unsupportedSchema = "unsupported_schema"
@@ -123,6 +141,21 @@ final class MemoryCloudPullService: Sendable {
             )
         }
 
+        // Account switch. The daemon has no Firebase identity and the engine has
+        // no uid, so the app is the only party that knows which member is signed
+        // in — user scoping on the inbox is therefore owned here. Unmerged rows
+        // written under a previous account would otherwise survive indefinitely
+        // and be handed to the engine on its next drain, mixing another member's
+        // facts into this one's memory. Merged rows are left alone: the engine
+        // already has them, and the retention sweep owns their disposal.
+        let purgedOtherAccount = try await store.purgeUnappliedRemoteMemoryFacts(otherThanUserID: uid)
+        if purgedOtherAccount > 0 {
+            AppLogger.sync.error(
+                "memory_cloud_pull_purged_other_account_inbox_rows",
+                metadata: ["count": String(purgedOtherAccount)]
+            )
+        }
+
         let snapshot = try await firestoreGateway
             .collection("users")
             .document(uid)
@@ -146,6 +179,14 @@ final class MemoryCloudPullService: Sendable {
         // upsert is idempotent, so parking them early costs nothing — but the
         // cursor stops before the refused document so the next cycle re-reads it.
         var watermarkFrozen = false
+        // The refused document's own instant, when it has one. `updatedAt` is not
+        // unique, so an ACCEPTED predecessor sharing that instant must not lift
+        // the cursor to it either: the query filter is strictly `>`, so a cursor
+        // sitting exactly on the refused document's instant would never read it
+        // again. Nil while nothing has been refused; nil AFTER a refusal only when
+        // that document had no usable `updatedAt` at all, in which case the cursor
+        // cannot move at all this cycle.
+        var rejectionFloor: Date?
         // Timestamps eligible to move the cursor, decided only after the whole
         // page is known (see `watermarkCeiling`).
         var eligibleStamps: [Date] = []
@@ -159,7 +200,12 @@ final class MemoryCloudPullService: Sendable {
                     verified = value
                 case .failure(let reason):
                     rejected += 1
-                    watermarkFrozen = true
+                    if !watermarkFrozen {
+                        watermarkFrozen = true
+                        // Read only for the cursor bound; nothing from a refused
+                        // document is ever stored or handed on.
+                        rejectionFloor = Self.firestoreDate(data["updatedAt"])
+                    }
                     AppLogger.sync.error(
                         "memory_cloud_pull_document_rejected",
                         metadata: ["reason": reason.rawValue]
@@ -192,14 +238,29 @@ final class MemoryCloudPullService: Sendable {
             throw error
         }
 
-        let pageWasFull = snapshot.documents.count >= pageLimit
-        if let ceiling = Self.watermarkCeiling(eligibleStamps: eligibleStamps, pageWasFull: pageWasFull) {
-            for stamp in eligibleStamps where stamp <= ceiling {
+        // A refusal caps the cursor STRICTLY BELOW the refused document's instant,
+        // which drops an accepted predecessor that tied with it. If the refused
+        // document had no readable instant, nothing this page can move the cursor.
+        var eligible = eligibleStamps
+        if watermarkFrozen {
+            eligible = rejectionFloor.map { floor in eligibleStamps.filter { $0 < floor } } ?? []
+        }
+        // The full-page tie guard only exists for the page's own last instant. A
+        // frozen cursor already stops inside the page, below a refusal, so nothing
+        // beyond the page boundary can be cut in half.
+        let pageWasFull = snapshot.documents.count >= pageLimit && !watermarkFrozen
+        if let ceiling = Self.watermarkCeiling(eligibleStamps: eligible, pageWasFull: pageWasFull) {
+            for stamp in eligible where stamp <= ceiling {
                 transaction.recordProcessedItem(remoteUpdatedAt: stamp)
             }
         }
         try await transaction.commit()
-        return MemoryCloudPullResult(applied: applied, unchanged: unchanged, rejected: rejected)
+        return MemoryCloudPullResult(
+            applied: applied,
+            unchanged: unchanged,
+            rejected: rejected,
+            purgedOtherAccount: purgedOtherAccount
+        )
     }
 
     /// How far the cursor may move given what this page contained.
@@ -295,6 +356,16 @@ final class MemoryCloudPullService: Sendable {
         guard let remoteUpdatedAt = firestoreDate(data["updatedAt"]) else {
             return .failure(.missingUpdatedAt)
         }
+        // The outer `updatedAt` is the ordering, watermark and idempotence key,
+        // and it lives OUTSIDE the AAD and the sealed box — a hostile backend can
+        // rewrite it at will, skipping the cursor past a document it wants unread
+        // or making a stale revision beat a newer one. The verified payload
+        // already carries the same instant, so requiring the two to agree binds
+        // the key to authenticated data. No new cryptography: this is a
+        // comparison of a field we already open against one we already read.
+        guard sameSealedInstant(remoteUpdatedAt, payload.updatedAt) else {
+            return .failure(.updatedAtMismatch)
+        }
         guard let payloadJSON = String(data: plaintext, encoding: .utf8) else {
             return .failure(.malformedPayload)
         }
@@ -303,6 +374,19 @@ final class MemoryCloudPullService: Sendable {
             payloadJSON: payloadJSON,
             remoteUpdatedAt: remoteUpdatedAt
         ))
+    }
+
+    /// Whether the outer `updatedAt` and the sealed one name the same instant.
+    ///
+    /// The sealed copy travelled through ISO-8601, which carries whole seconds;
+    /// the outer copy arrives as a Firestore `Timestamp` with nanosecond
+    /// precision. Sub-second disagreement is therefore the envelope's own lossy
+    /// encoding, not a difference — everything the envelope could ever have
+    /// carried must match exactly, which is what this window means. A backend
+    /// editing the ordering key is bounded to under a second of the value the
+    /// member's own device signed, rather than being free to name any instant.
+    private static func sameSealedInstant(_ outer: Date, _ sealed: Date) -> Bool {
+        abs(outer.timeIntervalSince(sealed)) < 1
     }
 
     /// Firestore hands dates back as `Timestamp`; the in-memory fake keeps the

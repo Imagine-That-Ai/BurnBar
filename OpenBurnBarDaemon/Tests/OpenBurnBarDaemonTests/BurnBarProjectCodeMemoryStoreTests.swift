@@ -2410,6 +2410,11 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         )
         XCTAssertEqual(listed.entries.map(\.engineMemoryID), ["mem_aaaa", "mem_bbbb"])
         XCTAssertEqual(listed.entries.first?.payloadJSON, #"{"text":"first"}"#)
+        XCTAssertEqual(
+            listed.entries.map(\.userID),
+            ["member-1", "member-1"],
+            "the account a parked fact belongs to travels so the engine can audit it"
+        )
 
         let acked = try store.syncInboxAck(
             BurnBarMemorySyncInboxAckRequest(docIDs: listed.entries.map(\.docID))
@@ -2425,13 +2430,55 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         let replay = try store.syncInboxAck(
             BurnBarMemorySyncInboxAckRequest(docIDs: ["doc-a", "doc-never-seen"])
         )
-        XCTAssertEqual(replay.acknowledged, 0)
+        XCTAssertEqual(
+            replay.acknowledged,
+            0,
+            "the count is `changes()` on one guarded statement, so an already-merged id reports nothing"
+        )
         XCTAssertEqual(
             try sqliteStrings(
                 database: fixture.database,
                 sql: "SELECT COUNT(*) FROM agent_memory_inbox WHERE applied_at IS NOT NULL"
             ),
             ["3"]
+        )
+    }
+
+    /// One guarded statement acknowledges the whole batch and `changes()` reports
+    /// what it actually stamped, so a batch mixing unmerged, already-merged and
+    /// never-parked ids reports only the rows it moved — and the retention sweep
+    /// that follows must not be mistaken for acknowledgements.
+    func testAcknowledgingAMixedBatchCountsOnlyTheRowsItStamped() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
+        let stale = BurnBarProjectCodeMemoryStore.isoString(
+            Date().addingTimeInterval(-BurnBarProjectCodeMemoryStore.syncInboxRetentionSeconds - 3_600)
+        )
+
+        try sqliteExecute(
+            database: fixture.database,
+            sql: """
+            INSERT INTO agent_memory_inbox
+                (doc_id, user_id, engine_memory_id, payload_json, remote_updated_at, received_at, applied_at)
+            VALUES
+                ('doc-open-1', 'member-1', 'mem_1', '{}', '2026-09-04T00:00:01.000Z', '2026-09-04T00:00:09.000Z', NULL),
+                ('doc-open-2', 'member-1', 'mem_2', '{}', '2026-09-04T00:00:02.000Z', '2026-09-04T00:00:09.000Z', NULL),
+                ('doc-merged', 'member-1', 'mem_3', '{}', '2026-09-04T00:00:03.000Z', '2026-09-04T00:00:09.000Z', \(sqlLiteral(stale)));
+            """
+        )
+
+        let acked = try store.syncInboxAck(BurnBarMemorySyncInboxAckRequest(
+            docIDs: ["doc-open-1", "doc-open-2", "doc-merged", "doc-never-seen", ""]
+        ))
+
+        XCTAssertEqual(acked.acknowledged, 2)
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT doc_id FROM agent_memory_inbox ORDER BY doc_id"
+            ),
+            ["doc-open-1", "doc-open-2"],
+            "the sweep took the long-merged row; the freshly stamped ones stay"
         )
     }
 

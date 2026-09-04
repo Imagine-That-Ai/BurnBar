@@ -1218,12 +1218,26 @@ public struct BurnBarMemorySyncInboxListRequest: Codable, Hashable, Sendable {
 /// except across the local unix socket the engine already uses.
 public struct BurnBarMemorySyncInboxEntry: Codable, Hashable, Sendable {
     public let docID: String
+    /// The account the fact was pulled under. The daemon holds no Firebase
+    /// identity, so it cannot check this against a signed-in member — it travels
+    /// so the engine can AUDIT which member a row belongs to, and so a row that
+    /// somehow outlived an account switch is visible rather than anonymous. The
+    /// app is what guarantees only the signed-in member's rows are unmerged
+    /// (`ControlPlaneStore.purgeUnappliedRemoteMemoryFacts(otherThanUserID:)`).
+    public let userID: String
     public let engineMemoryID: String
     public let payloadJSON: String
     public let remoteUpdatedAt: String
 
-    public init(docID: String, engineMemoryID: String, payloadJSON: String, remoteUpdatedAt: String) {
+    public init(
+        docID: String,
+        userID: String,
+        engineMemoryID: String,
+        payloadJSON: String,
+        remoteUpdatedAt: String
+    ) {
         self.docID = docID
+        self.userID = userID
         self.engineMemoryID = engineMemoryID
         self.payloadJSON = payloadJSON
         self.remoteUpdatedAt = remoteUpdatedAt
