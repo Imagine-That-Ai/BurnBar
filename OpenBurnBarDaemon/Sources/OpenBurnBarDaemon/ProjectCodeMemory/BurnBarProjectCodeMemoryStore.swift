@@ -323,7 +323,6 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
             let bodyRef = Self.sha256Hex(body)
             let memoryID = "mem_" + String(Self.sha256Hex("\(projectID):\(request.scope):\(bodyRef)").prefix(32))
             let now = Self.isoNow()
-            let tagsJSON = try encodeJSONString(request.tags)
             // Only the Memory MCP engine sends an id of its own, and it sends one
             // only for rows it wants mirrored as syncable. Its presence is therefore
             // the partition: callers that predate blind sync keep writing repository
@@ -333,6 +332,17 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
             let resolvedSourceKind = engineMemoryID == nil
                 ? MemorySourceKind.code.rawValue
                 : MemorySourceKind.agent.rawValue
+            // The engine's taxonomy is richer than the app's `MemoryKind`, and the
+            // app drops any row whose kind it cannot decode. A mirrored row is
+            // therefore stored under the nearest app kind; the engine store keeps
+            // the precise one, and it stays a tag here.
+            let storedKind = engineMemoryID == nil
+                ? request.kind
+                : (MemoryKind(rawValue: request.kind)?.rawValue ?? MemoryKind.other.rawValue)
+            // A normalised kind loses the engine's precise one, so keep it as a tag:
+            // the mirrored row still says what it is, and nothing is lost locally.
+            let storedTags = storedKind == request.kind ? request.tags : request.tags + ["engine-kind:\(request.kind)"]
+            let tagsJSON = try encodeJSONString(storedTags)
             try execute("BEGIN IMMEDIATE", [])
             do {
                 if reviewStatus == .approved {
@@ -398,7 +408,7 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                         updated_at = excluded.updated_at
                     """,
                     [
-                        .text(memoryID), .text(projectID), .text(request.kind), .text(request.scope),
+                        .text(memoryID), .text(projectID), .text(storedKind), .text(request.scope),
                         .double(request.confidence), .text(bodyRef), .text(bodyReference),
                         .text(tagsJSON), request.sourcePath.map(SQLiteBind.text) ?? .null, .text(now),
                         .text(reviewStatus.rawValue), .text(resolvedSourceKind), .text(now), .text(now)
@@ -657,6 +667,10 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                     now: Self.isoNow()
                 )
                 try removeQuarantineMemoryBody(projectID: projectID, memoryID: memoryID)
+                // A mirrored memory's body is content the member deleted, so it goes
+                // now; its engine id stays so the sealed cloud copy is still
+                // addressable when the forget reaches the sync lane.
+                try blankAgentMemoryBody(projectID: projectID, memoryID: memoryID, now: Self.isoNow())
                 // Keep a metadata tombstone so every forget remains visible to the
                 // daemon-owned review/audit feed across reloads and devices. The sealed
                 // body is removed above and the row is excluded from normal recall.

@@ -1935,6 +1935,12 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
             now: now,
             enabled: true
         )
+        // The daemon has no Firebase identity and writes no `user_id`. Clearing it
+        // here reproduces exactly what a real mirrored row looks like; the previous
+        // version of this test constructed an owned row and masked the gap.
+        try await queue.write { db in
+            try db.execute(sql: "UPDATE agent_memories SET user_id = NULL WHERE id = ?", arguments: ["mem-agent-sync"])
+        }
         _ = try await store.addMemoryAuthorityRecord(
             MemoryAddRequest(text: codeBody, kind: .fact, scope: scope, confidence: 0.94, reviewStatus: .approved),
             id: "mem-code-local",
@@ -1956,7 +1962,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
 
         let result = try await sync.syncApprovedMemories(uid: "agent-sync-user", vaultKey: vaultKey, now: now.addingTimeInterval(2))
 
-        XCTAssertEqual(result.uploaded, 1, "the agent memory uploads; repository knowledge does not")
+        XCTAssertEqual(result.uploaded, 1, "an unowned mirrored row is claimed for the signed-in member and uploads")
         let docs = gateway.documents(under: "users/agent-sync-user/memory_facts")
         XCTAssertEqual(docs.count, 1)
         let expectedDocID = try CloudVaultCrypto.pensieveSlugHmac("memory-fact:\(engineID)", keyData: vaultKey)
@@ -1976,6 +1982,73 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         XCTAssertFalse(rendered.contains(agentBody))
         XCTAssertFalse(rendered.contains(codeBody))
         XCTAssertFalse(rendered.contains(engineID), "even the engine id travels only as a keyed hash")
+    }
+
+    /// A forgotten mirrored memory must have its sealed cloud copy deleted. The
+    /// daemon cannot write a member-keyed tombstone, and the document is keyed on
+    /// the engine id, so both halves have to line up or the member's deleted memory
+    /// lives on in the cloud for ever.
+    func test_forgottenAgentMemoryDeletesItsCloudFactByEngineIdentity() async throws {
+        let queue = try DatabaseQueue()
+        let database = OpenBurnBarDatabase(databaseQueue: queue)
+        try database.runMigrationsSafely()
+        let store = ControlPlaneStore(dbQueue: queue)
+        let gateway = CloudSyncFirestoreFakeGateway()
+        let sync = MemoryCloudSyncService(store: store, firestoreGateway: gateway)
+        let vaultKey = Data(repeating: 13, count: 32)
+        let now = Date(timeIntervalSince1970: 1_800_001_200)
+        let scope = MemoryScope(userID: "agent-forget-user", appID: "agent-forget-app")
+        let engineID = "mem_aabbccddeeff00112233445566778899"
+        let body = "The rollback owner is Ops."
+
+        _ = try await store.addMemoryAuthorityRecord(
+            MemoryAddRequest(text: body, kind: .fact, scope: scope, confidence: 0.9, reviewStatus: .approved),
+            id: "mem-agent-forget",
+            sourceKind: .agent,
+            now: now,
+            enabled: true
+        )
+        try await queue.write { db in
+            try db.execute(
+                sql: """
+                INSERT INTO agent_memory_bodies
+                    (memory_id, project_id, engine_memory_id, body, body_hash, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                arguments: ["mem-agent-forget", "chat:agent-forget-user", engineID, body, "h", "\(now)", "\(now)"]
+            )
+        }
+
+        let uploaded = try await sync.syncApprovedMemories(uid: "agent-forget-user", vaultKey: vaultKey, now: now)
+        XCTAssertEqual(uploaded.uploaded, 1)
+        let docID = try CloudVaultCrypto.pensieveSlugHmac("memory-fact:\(engineID)", keyData: vaultKey)
+        let path = "users/agent-forget-user/memory_facts/\(docID)"
+        XCTAssertNotNil(gateway.documents(under: "users/agent-forget-user/memory_facts")[path])
+
+        // The daemon's forget: the row is marked forgotten and its body emptied,
+        // the engine id stays. No tombstone is written — it cannot write one.
+        try await queue.write { db in
+            try db.execute(
+                sql: "UPDATE agent_memories SET review_status = ? WHERE id = ?",
+                arguments: [MemoryReviewStatus.forgotten.rawValue, "mem-agent-forget"]
+            )
+            try db.execute(
+                sql: "UPDATE agent_memory_bodies SET body = '', body_hash = '' WHERE memory_id = ?",
+                arguments: ["mem-agent-forget"]
+            )
+        }
+
+        let afterForget = try await sync.syncApprovedMemories(
+            uid: "agent-forget-user",
+            vaultKey: vaultKey,
+            now: now.addingTimeInterval(60)
+        )
+
+        XCTAssertEqual(afterForget.uploaded, 0, "an emptied body is never re-uploaded")
+        XCTAssertNil(
+            gateway.documents(under: "users/agent-forget-user/memory_facts")[path],
+            "the sealed copy of a forgotten memory is deleted, addressed by its engine id"
+        )
     }
 
     func test_memoryCloudForgetReceiptDeletesMatchingCloudFact() async throws {

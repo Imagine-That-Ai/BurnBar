@@ -334,6 +334,27 @@ extension BurnBarProjectCodeMemoryStore {
         )
     }
 
+    /// Purge a forgotten memory's body while keeping its engine id. The body is
+    /// the content the member deleted and goes immediately; the id is a random
+    /// 128-bit label that travels only as a keyed hash, and the cloud copy stays
+    /// addressable through it, so a forget can still delete the sealed document.
+    func blankAgentMemoryBody(projectID: String, memoryID: String, now: String) throws {
+        try execute(
+            """
+            UPDATE agent_memory_bodies SET body = '', body_hash = '', updated_at = ?
+            WHERE memory_id = ? AND project_id = ?
+            """,
+            [.text(now), .text(memoryID), .text(projectID)]
+        )
+    }
+
+    func engineMemoryID(projectID: String, memoryID: String) throws -> String? {
+        try queryRows(
+            "SELECT engine_memory_id FROM agent_memory_bodies WHERE memory_id = ? AND project_id = ?",
+            [.text(memoryID), .text(projectID)]
+        ).first?.optionalString(0)
+    }
+
     func quarantineMemoryBody(projectID: String, memoryID: String) throws -> String? {
         try queryRows(
             "SELECT body FROM memory_quarantine_bodies WHERE memory_id = ? AND project_id = ? LIMIT 1",

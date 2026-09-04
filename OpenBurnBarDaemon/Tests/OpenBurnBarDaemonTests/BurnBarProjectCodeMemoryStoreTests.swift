@@ -2285,6 +2285,101 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         )
     }
 
+    /// The engine's taxonomy is richer than the app's `MemoryKind`, and the app
+    /// drops any row whose kind it cannot decode — so a mirrored `decision` would
+    /// silently never sync. It is stored under the nearest app kind, with the
+    /// precise one kept as a tag.
+    func testUnknownEngineKindsAreNormalisedSoTheAppCanDecodeThem() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
+
+        let mirrored = try store.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: "We deploy from the release branch on Fridays.",
+                projectPath: fixture.project.path,
+                kind: "decision",
+                engineMemoryID: "mem_00112233445566778899aabbccddeeff"
+            )
+        )
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT kind FROM agent_memories WHERE id = \(sqlLiteral(mirrored.memoryID))"
+            ),
+            ["other"]
+        )
+        let tags = try XCTUnwrap(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT tags_json FROM agent_memories WHERE id = \(sqlLiteral(mirrored.memoryID))"
+            ).first
+        )
+        XCTAssertTrue(tags.contains("engine-kind:decision"), tags)
+
+        // A kind the app already knows is stored unchanged and gains no tag.
+        let known = try store.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: "Alberto prefers fewer, fatter pull requests.",
+                projectPath: fixture.project.path,
+                kind: "preference",
+                engineMemoryID: "mem_ffeeddccbbaa99887766554433221100"
+            )
+        )
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT kind FROM agent_memories WHERE id = \(sqlLiteral(known.memoryID))"
+            ),
+            ["preference"]
+        )
+        XCTAssertFalse(
+            try XCTUnwrap(
+                try sqliteStrings(
+                    database: fixture.database,
+                    sql: "SELECT tags_json FROM agent_memories WHERE id = \(sqlLiteral(known.memoryID))"
+                ).first
+            ).contains("engine-kind")
+        )
+    }
+
+    /// Forgetting a mirrored memory must remove the content the member deleted,
+    /// while keeping the engine id: the sealed cloud copy is addressed by it, so
+    /// losing the mapping would strand the member's deleted memory in the cloud.
+    func testForgettingAMirroredMemoryPurgesTheBodyButKeepsItsCloudIdentity() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
+        let engineID = "mem_00112233445566778899aabbccddeeff"
+        let body = "We deploy from the release branch on Fridays."
+
+        let mirrored = try store.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: body,
+                projectPath: fixture.project.path,
+                engineMemoryID: engineID
+            )
+        )
+        _ = try store.forget(
+            BurnBarProjectMemoryForgetRequest(memoryID: mirrored.memoryID, projectPath: fixture.project.path)
+        )
+
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT body FROM agent_memory_bodies WHERE memory_id = \(sqlLiteral(mirrored.memoryID))"
+            ),
+            [""],
+            "the deleted body is gone"
+        )
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT engine_memory_id FROM agent_memory_bodies WHERE memory_id = \(sqlLiteral(mirrored.memoryID))"
+            ),
+            [engineID],
+            "the label the cloud copy is keyed on survives so the forget can reach it"
+        )
+    }
+
     func testRepositoryKnowledgeNeverGainsASyncableBody() throws {
         let fixture = try makeFixture()
         let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))

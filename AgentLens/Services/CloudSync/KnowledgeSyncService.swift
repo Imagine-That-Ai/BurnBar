@@ -540,7 +540,9 @@ final class MemoryCloudSyncService: Sendable {
             let resolvedBody = isAgent
                 ? try await store.openAgentMemoryBody(id: memory.id)
                 : try await store.openChatMemoryBody(id: memory.id)
-            guard let body = resolvedBody else { continue }
+            // A forgotten mirrored row keeps its id mapping with an emptied body;
+            // it must not be re-uploaded as an empty memory.
+            guard let body = resolvedBody, body.isEmpty == false else { continue }
             let identity = isAgent ? try await store.engineMemoryID(for: memory.id) : nil
             if isAgent, identity == nil { continue }
             let encoded = try Self.encodeMemoryFact(
@@ -557,6 +559,9 @@ final class MemoryCloudSyncService: Sendable {
 
         var forgetReceipts = 0
         var deletedFacts = 0
+        // The daemon cannot write a member-keyed tombstone, so a forgotten mirrored
+        // memory would otherwise leave its sealed cloud copy behind for ever.
+        try await store.enqueueTombstonesForForgottenAgentMemories(userID: uid, now: now)
         for tombstone in try await store.fetchPendingMemoryFactTombstones(userID: uid) {
             let encoded = try Self.encodeFactForgetReceipt(
                 tombstone: tombstone,
@@ -568,6 +573,9 @@ final class MemoryCloudSyncService: Sendable {
             forgetReceipts += 1
             deletedFacts += try await Self.deleteCloudFact(
                 memoryID: tombstone.memoryID,
+                // A mirrored memory's document was keyed on the engine's id; the
+                // mapping outlives the forget precisely so this can find it.
+                cloudIdentity: try await store.cloudFactIdentity(for: tombstone.memoryID),
                 vaultKey: vaultKey,
                 from: factCollection
             )
@@ -776,12 +784,16 @@ final class MemoryCloudSyncService: Sendable {
         return deleted
     }
 
+    /// - Parameter cloudIdentity: the id the document was keyed on at upload —
+    ///   the engine's own id for a mirrored memory. Passing the local id for one
+    ///   of those would delete nothing and silently strand the sealed copy.
     private static func deleteCloudFact(
         memoryID: MemoryID,
+        cloudIdentity: String? = nil,
         vaultKey: Data,
         from collection: CloudSyncCollectionGateway
     ) async throws -> Int {
-        let docID = try CloudVaultCrypto.pensieveSlugHmac("memory-fact:\(memoryID)", keyData: vaultKey)
+        let docID = try CloudVaultCrypto.pensieveSlugHmac("memory-fact:\(cloudIdentity ?? memoryID)", keyData: vaultKey)
         let document = collection.document(docID)
         let existed = try await document.getData() != nil
         try await document.deleteDocument()

@@ -113,11 +113,66 @@ extension ControlPlaneStore {
         }
     }
 
+    /// The daemon writes mirrored rows with no `user_id`: it has no Firebase
+    /// identity and cannot know who is signed in. The engine store is per-macOS-user,
+    /// so the first signed-in member to sync claims those rows; a row already owned
+    /// by a different account is left alone and never replicated under this one.
+    @discardableResult
+    func claimUnownedAgentMemories(userID: String) async throws -> Int {
+        try await dbQueue.write { db in
+            try db.execute(
+                sql: """
+                UPDATE agent_memories SET user_id = ?
+                WHERE source_kind = ? AND (user_id IS NULL OR user_id = '')
+                """,
+                arguments: [userID, MemorySourceKind.agent.rawValue]
+            )
+            return db.changesCount
+        }
+    }
+
+    /// The daemon marks a forgotten mirrored memory `forgotten` in the shared
+    /// database, but it cannot write a fact tombstone: that table is keyed by the
+    /// signed-in member, whom the daemon does not know. Without one, nothing ever
+    /// deletes the sealed cloud copy of a memory the member removed. The sync lane
+    /// therefore enqueues the missing tombstones itself, once, before it drains them.
+    @discardableResult
+    func enqueueTombstonesForForgottenAgentMemories(userID: String, now: Date = Date()) async throws -> Int {
+        let timestamp = ISO8601DateFormatter().string(from: now)
+        return try await dbQueue.write { db in
+            let forgotten = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT id FROM agent_memories
+                WHERE source_kind = ? AND review_status = ? AND user_id = ?
+                """,
+                arguments: [MemorySourceKind.agent.rawValue, MemoryReviewStatus.forgotten.rawValue, userID]
+            ).compactMap { $0["id"] as? String }
+            var enqueued = 0
+            for memoryID in forgotten {
+                // A mirrored memory has no chat citations, so the receipt carries no
+                // source hashes — only the opaque memory label and a coarse reason.
+                try db.execute(
+                    sql: """
+                    INSERT INTO memory_fact_tombstones (
+                        id, user_id, memory_id, source_refs_json, reason, created_at, replicated_at
+                    ) VALUES (?, ?, ?, '[]', 'user_delete', ?, NULL)
+                    ON CONFLICT(id) DO NOTHING
+                    """,
+                    arguments: [Self.memoryFactTombstoneID(memoryID: memoryID), userID, memoryID, timestamp]
+                )
+                enqueued += db.changesCount
+            }
+            return enqueued
+        }
+    }
+
     /// Rows the cloud lane may replicate: member-authored chat memories and the
     /// memories the Memory MCP engine mirrored (`agent`). Repository knowledge
     /// (`code`) and the passive usage kinds never leave the device.
     func cloudSyncCandidateChatMemories(userID: String) async throws -> [Memory] {
-        try await fetchActiveMemoryAuthorityRecords(sourceKinds: [.chat, .agent])
+        try await claimUnownedAgentMemories(userID: userID)
+        return try await fetchActiveMemoryAuthorityRecords(sourceKinds: [.chat, .agent])
             .filter { memory in
                 memory.reviewStatus == .approved &&
                 memory.validTo == nil &&
@@ -399,7 +454,7 @@ extension ControlPlaneStore {
         )
     }
 
-    private static func memoryFactTombstoneID(memoryID: MemoryID) -> String {
+    static func memoryFactTombstoneID(memoryID: MemoryID) -> String {
         "memory-fact-tombstone-\(sha256HexForTombstone(memoryID))"
     }
 
