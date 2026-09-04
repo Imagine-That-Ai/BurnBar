@@ -7,7 +7,7 @@
  * never converts audit execution failures into a passing check.
  */
 
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -237,6 +237,14 @@ export function classifyAuditResult(
 }
 
 export const AUDIT_ATTEMPTS = 3;
+
+/**
+ * Bounded parallelism for the pooled runner. Four concurrent audits keeps a
+ * degraded registry from serialising ~20 lockfile audits into an hour-plus of
+ * wall time (2026-09-03/04 incident) while staying gentle on the audit
+ * endpoint and the runner's own CPU (each npm audit is mostly network wait).
+ */
+export const AUDIT_CONCURRENCY = 4;
 const RETRY_BACKOFF_SECONDS = [5, 15];
 
 function sleepSeconds(seconds) {
@@ -297,6 +305,38 @@ function runAuditOnce(absoluteDir, dir) {
   });
 }
 
+/**
+ * Async variant used by the pooled runner: identical args and classification
+ * as runAuditOnce, just through child_process.spawn so multiple audits can be
+ * in flight at once. Verdicts are byte-for-byte the same classifier.
+ */
+function runAuditOnceAsync(absoluteDir, dir) {
+  return new Promise((resolve) => {
+    const child = spawn(
+      "npm",
+      ["audit", "--prefix", absoluteDir, "--audit-level=high", "--json"],
+      { encoding: "utf8" },
+    );
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+      if (stdout.length > 20 * 1024 * 1024) child.kill();
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.on("error", (error) => {
+      resolve(
+        classifyAuditResult({ dir, status: null, stdout, stderr, error }),
+      );
+    });
+    child.on("close", (status) => {
+      resolve(classifyAuditResult({ dir, status, stdout, stderr }));
+    });
+  });
+}
+
 function auditDirectory(repoRoot, dir) {
   const absoluteDir = join(repoRoot, dir);
   if (!existsSync(join(absoluteDir, "package-lock.json"))) {
@@ -314,20 +354,84 @@ function auditDirectory(repoRoot, dir) {
   });
 }
 
-export function runAuditGate(repoRoot = REPO_ROOT, dirs = AUDIT_DIRS) {
-  let ok = true;
-  for (const dir of dirs) {
-    console.log(`==> npm audit: ${dir}`);
-    const result = auditDirectory(repoRoot, dir);
-    for (const message of result.messages) {
-      const writer = result.ok ? console.log : console.error;
-      writer(message);
-    }
-    ok = ok && result.ok;
+/**
+ * Pooled variant: same preflight check and retry budget as auditDirectory,
+ * but awaits the async audit subprocess. Used by runAuditGate's worker pool.
+ */
+async function auditDirectoryAsync(repoRoot, dir) {
+  const absoluteDir = join(repoRoot, dir);
+  if (!existsSync(join(absoluteDir, "package-lock.json"))) {
+    return {
+      ok: false,
+      retryable: false,
+      messages: [
+        `Configured npm audit directory is missing package-lock.json: ${dir}`,
+      ],
+    };
   }
-  return ok;
+
+  // runWithRetries drives a synchronous attempt; the async variant needs the
+  // same bounded-attempt loop expressed as a promise chain. Same budget, same
+  // backoff, same non-retryable-on-findings semantics.
+  const attempt = () => runAuditOnceAsync(absoluteDir, dir);
+  const sleep = (seconds) =>
+    new Promise((resolve) => {
+      setTimeout(resolve, seconds * 1000);
+    });
+  let result = await attempt();
+  for (let index = 1; index < AUDIT_ATTEMPTS && result.retryable; index += 1) {
+    const backoff = RETRY_BACKOFF_SECONDS[index - 1] ?? 15;
+    console.log(
+      `    npm audit for ${dir} failed transiently; retrying in ${backoff}s ` +
+        `(attempt ${index + 1}/${AUDIT_ATTEMPTS})`,
+    );
+    await sleep(backoff);
+    result = await attempt();
+  }
+  return result;
+}
+
+export function runAuditGate(
+  repoRoot = REPO_ROOT,
+  dirs = AUDIT_DIRS,
+  { concurrency = AUDIT_CONCURRENCY, auditRunner = auditDirectoryAsync } = {},
+) {
+  // The audits are independent subprocesses, so a bounded pool across
+  // directories does not change any verdict: every directory keeps its own
+  // fail-closed classification and attempt/retry budget, and the gate fails
+  // if ANY directory fails. Serial execution spent 3-7 minutes per directory
+  // during the 2026-09-03/04 npm registry degradation (~20 dirs = over an
+  // hour of wall time), turning a transport slowdown into required-check
+  // failures on every PR. Concurrency shortens wall time only; it never
+  // converts a failure into a pass. auditRunner is the test seam.
+  const queue = [...dirs];
+  const results = new Map();
+
+  async function worker() {
+    for (let dir = queue.shift(); dir !== undefined; dir = queue.shift()) {
+      console.log(`==> npm audit: ${dir}`);
+      results.set(dir, await auditRunner(repoRoot, dir));
+    }
+  }
+
+  return (async () => {
+    const lanes = Math.min(concurrency, dirs.length);
+    await Promise.all(Array.from({ length: lanes }, worker));
+    // Report in the configured order so the log stays deterministic
+    // regardless of which lane finished first.
+    let ok = true;
+    for (const dir of dirs) {
+      const result = results.get(dir);
+      for (const message of result.messages) {
+        const writer = result.ok ? console.log : console.error;
+        writer(message);
+      }
+      ok = ok && result.ok;
+    }
+    return ok;
+  })();
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
-  process.exit(runAuditGate() ? 0 : 1);
+  runAuditGate().then((ok) => process.exit(ok ? 0 : 1));
 }
