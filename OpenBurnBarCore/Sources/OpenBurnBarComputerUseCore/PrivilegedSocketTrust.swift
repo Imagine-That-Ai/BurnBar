@@ -78,16 +78,18 @@ public enum OpenBurnBarPrivilegedTrust: Sendable {
     /// privileged peers and OR them together. The Team-ID + hardened-runtime +
     /// library-validation clauses remain the primary first-party gate.
     ///
-    /// `com.openburnbar.remote-access-agent` is the root LaunchDaemon behind
-    /// `/var/run/openburnbar-remote-access-agent.sock`. Its `typeCredential`
-    /// requests carry the macOS login password, so clients MUST authenticate
-    /// the agent server before writing — which requires the agent's identifier
-    /// to be trusted here (see the client-side gate added alongside M-10).
+    /// The remote-access agent (`com.openburnbar.remote-access-agent`) is
+    /// deliberately NOT in this shared allowlist (Cursor security review,
+    /// round 2): listing it here would let a uid-0 process signed as the agent
+    /// satisfy the default peer requirement on sibling privileged-input / HID /
+    /// kill-switch lanes where it has no business, contradicting its
+    /// HID/keychain isolation. Clients authenticate the agent SERVER through
+    /// the exact-identifier ``remoteAccessAgentDesignatedRequirement`` instead,
+    /// and the agent does not act as a client on those other lanes.
     public static let privilegedInputPeerBundleIdentifiers: [String] = [
         "com.openburnbar.app",
         "com.openburnbar.daemon",
         "com.openburnbar.privileged-input-execution",
-        remoteAccessAgentIdentifier,
         "com.openburnbar.virtual-hid-bridge"
     ]
 

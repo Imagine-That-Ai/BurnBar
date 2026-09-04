@@ -119,10 +119,20 @@ final class PrivilegedPeerAuthenticatorTests: XCTestCase {
         XCTAssertTrue(OpenBurnBarSigningIdentity.privilegedPeerBundleIdentifiers.contains("com.openburnbar.app"))
         XCTAssertTrue(OpenBurnBarSigningIdentity.privilegedPeerBundleIdentifiers.contains("com.openburnbar.privileged-input-execution"))
         XCTAssertTrue(OpenBurnBarSigningIdentity.privilegedPeerBundleIdentifiers.contains("com.openburnbar.virtual-hid-bridge"))
-        // M-10: the root remote-access agent must be a trusted privileged peer
-        // so app clients can authenticate the agent server before writing
-        // the login password to its socket.
-        XCTAssertTrue(OpenBurnBarSigningIdentity.privilegedPeerBundleIdentifiers.contains("com.openburnbar.remote-access-agent"))
+        // M-10 review round 2 (Cursor security): the remote-access agent is
+        // deliberately NOT a member of the SHARED privileged-input allowlist.
+        // Listing it there would let a uid-0 process signed as the agent pass
+        // default peer checks on sibling privileged-input / HID / kill-switch
+        // lanes where it has no business. The agent lane authenticates through
+        // the exact-identifier remoteAccessAgentDesignatedRequirement instead.
+        XCTAssertFalse(
+            OpenBurnBarSigningIdentity.privilegedPeerBundleIdentifiers.contains("com.openburnbar.remote-access-agent"),
+            "the agent must not be in the shared privileged-input allowlist; use the exact-identifier requirement"
+        )
+        XCTAssertFalse(
+            req.contains("identifier \"com.openburnbar.remote-access-agent\""),
+            "the shared requirement must not admit the agent"
+        )
         XCTAssertFalse(
             OpenBurnBarSigningIdentity.privilegedPeerBundleIdentifiers.contains("com.openburnbar.cli"),
             "the signed CLI must not be accepted as a privileged-input peer"
@@ -175,12 +185,16 @@ final class PrivilegedPeerAuthenticatorTests: XCTestCase {
     }
 
     func test_remoteAccessAgentRequirement_isSatisfiedByAgentIdentifierOnly() {
-        // The requirement must be a strict subset of the shared privileged-input
-        // allowlist: the agent server gate accepts the agent and nothing else
-        // from the first-party privileged set.
+        // The agent server gate accepts the agent's identifier and nothing
+        // else from the first-party privileged set — and the shared
+        // privileged-input requirement must NOT accept the agent (review
+        // round 2): the two lanes are deliberately disjoint.
         let shared = OpenBurnBarSigningIdentity.privilegedPeerDesignatedRequirement
         let pinned = OpenBurnBarSigningIdentity.remoteAccessAgentDesignatedRequirement
-        XCTAssertTrue(shared.contains("com.openburnbar.remote-access-agent"))
+        XCTAssertFalse(
+            shared.contains("identifier \"com.openburnbar.remote-access-agent\""),
+            "the shared privileged-input requirement must not admit the agent"
+        )
         XCTAssertTrue(pinned.contains("com.openburnbar.remote-access-agent"))
         for other in ["com.openburnbar.daemon", "com.openburnbar.app", "com.openburnbar.privileged-input-execution", "com.openburnbar.virtual-hid-bridge"] {
             XCTAssertFalse(
