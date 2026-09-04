@@ -559,6 +559,57 @@ native command hint, a rendered cross-harness briefing, or a structured error.
 `burnbar_spawn_resume` is intentionally separate so agents must make an explicit
 second tool call before launching a process.
 
+### Sync across devices (opt-in)
+
+Memory Blind Sync's pull half: the engine on one device can also read back the
+member's own approved memories that a *different* signed-in device already
+backed up, so a fact learned on the desktop shows up in `burnbar_recall` on the
+laptop too. The contract:
+
+- **What travels.** Only what the server ever stores for an approved memory —
+  a sealed blob, an opaque id, keyed source HMACs, a `kind`, a review status,
+  and three timestamps (see `docs/PRIVACY.md`'s "Optional Memory Backup and
+  Device Sync" section for the full field-by-field list). What never travels:
+  the memory text or body, its citations, any vector or embedding, secrets,
+  memories still awaiting review, memories flagged as prompt injection, or
+  repository knowledge.
+- **What this MCP process never holds.** This engine never has a vault key and
+  never opens a Firestore session itself. It receives already-opened,
+  already-decrypted `memory_facts` rows over the local daemon socket / signed
+  courier (`burnbar_memory_sync_pull`, gated by `memory_write` like every
+  other memory write tool) — the same daemon-first, courier-preferred
+  transport `burnbar_record_hermes_usage` and the code-index writers use. If
+  the daemon is unreachable or the capability is disabled, the tool returns a
+  structured `MCP_CAPABILITY_DISABLED` refusal and touches nothing.
+- **Convergence.** Rows merge under last-writer-wins on the sealed
+  `updatedAt`, tied broken by id, converging on `(project_id, scope,
+  body_hash)` — the same key `burnbar_remember` already dedupes on locally.
+  A memory this device forgot is never revived by an incoming row, and a
+  supersede whose target has not arrived yet is parked for the next pull
+  instead of dropped.
+- **Forget.** Deleting a memory removes the cloud copy too (a forget receipt
+  carrying only opaque hashes and a coarse reason, per `docs/PRIVACY.md`) —
+  the pull half never re-downloads something this device deliberately
+  deleted.
+- **Consent.** A dedicated sub-toggle, "Sync memories to my other devices" in
+  **Settings → Privacy**, defaults off even when "Back up approved memories"
+  is already on — backing memory up is not the same consent as syncing it
+  across devices. Both sit under the same Data Vault entitlement (Pro Max or
+  Ultra) `firestore.rules` already requires for `memory_facts`, and turning
+  backup off stops the pull too.
+
+**Measured, from the tests that actually run on this branch** — every number
+below is what a real assertion checks today, not a target:
+
+| Spec §8 metric | What actually runs |
+|---|---|
+| Plaintext fields in an uploaded document, asserted field-by-field | The authoritative, exhaustive allowlist is `firestore.rules`' `validMemoryFactKeys()` on `users/{uid}/memory_facts`, verified by the repo's Firestore rules CI job — untouched and not part of this branch's diff. This branch's own client-side coverage is partial, not exhaustive: `MemoryCloudSyncDomainTests.test_sync_replicatesApprovedMemory_whenBothLeversAllow` asserts `sealedMemory` is present and `text` / `body` / `vector` are absent from the uploaded document, and `MemoryCloudPullServiceTests.test_aDocumentCarryingAPlaintextTextFieldIsRejected` asserts a remote row carrying a plaintext `text` field is refused on the way in. |
+| Convergence on a three-replica simulation (add, update, supersede, retire, conflicting edits) | `test_memory_blind_sync.py::test_three_replicas_converge_on_an_identical_active_set` — three independent engine stores, each fed a different arrival order of the same edits, end on an identical active set |
+| Re-applying an inbox batch is byte-identical | `test_memory_blind_sync.py::test_replaying_a_batch_changes_nothing` (engine merge) and `MemoryCloudPullServiceTests.test_applyingTheSameBatchTwiceChangesNothing` (daemon inbox drain) |
+| Sync with the daemon absent, Firebase absent, consent off, or entitlement absent — zero network calls, zero local behaviour change | `MemoryCloudSyncDomainTests.test_sync_isNoOp_whenCloudBackupOptInIsOff_evenWithApprovedMemory`, `test_sync_isNoOp_whenFleetCeilingIsOff_despiteOptIn`, `test_sync_isNoOp_whenNotSignedIn`, and `test_sync_doesNotPull_whenTheDeviceSyncSubToggleIsOff` cover consent, fleet ceiling, account, and sub-toggle off; `test_memory_blind_sync.py::test_the_pull_tool_is_gated_by_memory_write` covers the MCP tool with no capability granted (no daemon reachable in practice). The Data Vault **entitlement** lever specifically is a presentation-only gate on this branch (`MemoryDeviceSyncSettingsTests` in the app target) — it hides the Settings row before the member is entitled, but no test on this branch exercises a live daemon call being refused for lacking the entitlement, because `firestore.rules`' `hasActiveDataVaultEntitlement()` is the actual enforcement point and that is server-side, out of this branch's diff |
+| Secrets, quarantined rows, injection-labelled bodies leaving the device — 0, asserted adversarially | `test_memory_blind_sync.py::test_a_remote_row_carrying_a_secret_is_refused_and_acknowledged` and `test_an_injection_labelled_remote_row_lands_quarantined` |
+| Vault-key rotation with memories present — every memory document rewrapped, none stranded | **No test on this branch exercises `memory_facts` under vault-key rotation.** The existing rotation-worker tests (`CloudVaultRotationRewrapWorkerTests`, `CloudVaultRotationPickupTests`) cover `cloud_search_chunks`, not `memory_facts`; `firestore.rules` accepts an optional `vaultGeneration` / `rewrapJobId` pair on every `memory_facts` write, but nothing on this branch drives a rotation through a populated memory store end to end. Flagged, not hidden. |
+
 ### Pro models (opt-in)
 
 With BurnBar Pro and "Cloud models for memory" turned on in the app, the engine can use a frontier model for extraction, reconciliation, embeddings, reranking, and answers. The engine never holds a key: it asks the signed courier (`openburnbar-cli memory-model-policy`) what it may use and receives a 15-minute bearer scoped to `memory-*` purposes on the daemon's loopback gateway, which enforces Pro, per-provider consent, no-retention, and the daily cap before routing with keys from its own Keychain store. Subscription quota is used only through the official CLIs (`claude -p`, `codex exec`) behind the existing CLI consent. Every cloud path degrades to the local behavior and says why in the tool's `trustSignal`. `OPENBURNBAR_MEMORY_MODEL_POLICY_JSON` is a test-only seam, honored under pytest.
