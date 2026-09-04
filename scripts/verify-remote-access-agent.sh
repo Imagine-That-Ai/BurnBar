@@ -20,7 +20,8 @@ fi
 # socket, so an unsigned / ad-hoc deployed binary is a trust failure for every
 # client (the app authenticates the server against the first-party designated
 # requirement before writing). Fail closed unless an ad-hoc install was made
-# explicitly on this host.
+# explicitly on this host. A secure timestamp is required too: AMFI kills
+# timestamped-less Developer ID daemons at spawn (OS_REASON_CODESIGNING).
 if [[ "${OPENBURNBAR_AGENT_ADHOC:-0}" != "1" ]]; then
   SIGNATURE="$(codesign -d --verbose=4 "$BIN_PATH" 2>&1 || true)"
   if ! grep -q "Identifier=com.openburnbar.remote-access-agent" <<<"$SIGNATURE"; then
@@ -30,8 +31,9 @@ if [[ "${OPENBURNBAR_AGENT_ADHOC:-0}" != "1" ]]; then
   fi
   if ! grep -q "Authority=Developer ID Application" <<<"$SIGNATURE" \
     || ! grep -q "flags=.*runtime" <<<"$SIGNATURE" \
-    || ! grep -q "flags=.*library-validation" <<<"$SIGNATURE"; then
-    echo "error: deployed agent must be Developer ID signed with hardened runtime and library validation." >&2
+    || ! grep -q "flags=.*library-validation" <<<"$SIGNATURE" \
+    || ! grep -q "^Timestamp=" <<<"$SIGNATURE"; then
+    echo "error: deployed agent must be Developer ID signed with hardened runtime, library validation, and a secure timestamp." >&2
     printf '%s\n' "$SIGNATURE" >&2
     exit 1
   fi

@@ -92,15 +92,17 @@ chmod 644 "$PRIVILEGED_STAGING_PLIST"
 # Sign the staged binary with hardened runtime + library validation — the same
 # CodeDirectory flags the peer designated requirement enforces on clients — so
 # the installed root daemon satisfies the first-party trust gate its own
-# clients run against it. `--timestamp=none` mirrors the local app-signing
-# profile: the secure timestamp is added by the notarized release pipeline.
+# clients run against it. A SECURE TIMESTAMP is mandatory for Developer ID
+# code on modern macOS: without it AMFI kills the daemon at spawn
+# (`OS_REASON_CODESIGNING`, verified 2026-09-04), so do NOT copy the
+# `--timestamp=none` profile from scripts/sign-openburnbar-local.sh here.
 if [[ "${OPENBURNBAR_AGENT_ADHOC:-0}" == "1" ]]; then
   codesign --force --sign - --entitlements "$ENTITLEMENTS" "$PRIVILEGED_STAGING_BIN"
 else
   codesign \
     --force \
     --sign "$IDENTITY" \
-    --timestamp=none \
+    --timestamp \
     --options runtime,library \
     --entitlements "$ENTITLEMENTS" \
     --identifier "$IDENTIFIER" \
@@ -109,7 +111,8 @@ fi
 
 # Fail closed on any signing mistake before touching the privileged install
 # path: the identifier must be exactly ours, and (for Developer ID installs)
-# the signature must carry hardened runtime + library validation.
+# the signature must carry hardened runtime + library validation AND a secure
+# timestamp (AMFI rejects timestamped-less Developer ID code at spawn).
 SIGNATURE="$(codesign -d --verbose=4 "$PRIVILEGED_STAGING_BIN" 2>&1 || true)"
 if ! grep -q "Identifier=$IDENTIFIER" <<<"$SIGNATURE"; then
   echo "error: staged agent is signed with the wrong identifier; expected $IDENTIFIER." >&2
@@ -125,6 +128,11 @@ if [[ "${OPENBURNBAR_AGENT_ADHOC:-0}" != "1" ]]; then
   fi
   if ! grep -q "Authority=Developer ID Application" <<<"$SIGNATURE"; then
     echo "error: staged agent must carry a Developer ID Application signature." >&2
+    printf '%s\n' "$SIGNATURE" >&2
+    exit 1
+  fi
+  if ! grep -q "^Timestamp=" <<<"$SIGNATURE"; then
+    echo "error: staged agent must carry a secure signing timestamp; without one AMFI kills the daemon at spawn." >&2
     printf '%s\n' "$SIGNATURE" >&2
     exit 1
   fi
