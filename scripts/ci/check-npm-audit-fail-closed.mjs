@@ -47,14 +47,31 @@ const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
  * suppression rot. Keep entries in sync with the osv-scanner.toml ignore list
  * (same id, same expiry) and the rationale in docs/LINT_RATIONALE.md.
  */
-// No advisories are currently tolerated. Every entry must be time-boxed
-// ({ reason, expires: "YYYY-MM-DD" }, keyed by GHSA id) and kept in sync with
-// the paired osv-scanner.toml ignore (same id, same expiry) plus the rationale
-// in docs/LINT_RATIONALE.md. The last entry (GHSA-mh99-v99m-4gvg,
-// brace-expansion DoS) was retired when the vendored callable shim in
-// functions/vendor/openburnbar/brace-expansion-cjs removed the final
-// vulnerable 1.x copies from the dependency tree.
-export const ADVISORY_ALLOWLIST = {};
+// Every entry must be time-boxed ({ reason, expires: "YYYY-MM-DD" }, keyed by
+// GHSA id) and kept in sync with the paired osv-scanner.toml ignore (same id,
+// same expiry) plus the rationale in docs/LINT_RATIONALE.md. The previous entry
+// (GHSA-mh99-v99m-4gvg, brace-expansion DoS) was retired when the vendored
+// callable shim in functions/vendor/openburnbar/brace-expansion-cjs removed the
+// final vulnerable 1.x copies from the dependency tree.
+export const ADVISORY_ALLOWLIST = {
+  "GHSA-528h-pc64-c93x": {
+    // reason: quadratic path-recompute DoS in stream-json's pick/ignore/filter/
+    // replace filters. Only firebase-tools depends on it, as a devDependency,
+    // and it requires the 1.x CommonJS entry points. The only fixed line
+    // (3.5.0+) is pure ESM with renamed exports and stream-chain 4 factory
+    // links; forcing it through an override was measured and breaks
+    // `firebase database:import`, `firebase auth:import` and the Next.js
+    // framework integration with MODULE_NOT_FOUND. firebase-tools 15.29.0 still
+    // declares `stream-json: ^1.7.3`, and no patched 1.x release exists, so
+    // there is nothing to bump to. Unreachable in this consumer: the filters
+    // only see developer-selected local files from a CLI, never untrusted
+    // request bodies on a served event loop, and the package is never part of a
+    // deployed functions bundle. Re-evaluate when firebase-tools migrates.
+    reason:
+      "stream-json filter DoS: dev-only transitive of firebase-tools, which requires the 1.x CommonJS entry points; the only fix (3.5.0+) is ESM-only with renamed exports and breaks database:import/auth:import/Next.js at load time, and no patched 1.x exists.",
+    expires: "2026-12-03",
+  },
+};
 
 function isObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
