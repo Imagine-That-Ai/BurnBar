@@ -7,7 +7,27 @@
 # scripts/ci/check-npm-audit-fail-closed.mjs in sync (same id, same expiry), and
 # the rationale in docs/LINT_RATIONALE.md current.
 #
-# No vulnerabilities are currently ignored. The last entry
-# (GHSA-mh99-v99m-4gvg, brace-expansion DoS) was retired when the vendored
-# callable shim in functions/vendor/openburnbar/brace-expansion-cjs removed
-# the final vulnerable 1.x copies from the dependency tree.
+# The previous entry (GHSA-mh99-v99m-4gvg, brace-expansion DoS) was retired when
+# the vendored callable shim in functions/vendor/openburnbar/brace-expansion-cjs
+# removed the final vulnerable 1.x copies from the dependency tree.
+
+[[IgnoredVulns]]
+id = "GHSA-528h-pc64-c93x"
+ignoreUntil = 2026-12-03T00:00:00Z
+# reason: quadratic path-recompute DoS in stream-json's pick/ignore/filter/
+# replace path filters. The only fixed line is 3.5.0+, which is pure ESM
+# (`"type": "module"`, Node >= 22), renames every entry point
+# (filters/Filter -> filters/filter.js, streamers/StreamObject ->
+# streamers/stream-object.js) and replaces the Transform subclasses with
+# stream-chain 4 factory links. firebase-tools 15.x -- the only depender, and a
+# devDependency -- still requires the 1.x CommonJS paths, and its latest release
+# (15.29.0) still declares `stream-json: ^1.7.3`, so there is nothing to bump to.
+# Forcing 3.x through an override was tried and measured: `firebase --version`
+# survives, but `firebase database:import`, `firebase auth:import` and the
+# Next.js framework integration all fail to load with MODULE_NOT_FOUND. No
+# patched 1.x release exists. The advisory itself is unreachable here: the
+# filters only ever see a developer-selected local file from a CLI invocation,
+# never untrusted request bodies on a served event loop, and firebase-tools is a
+# devDependency that is not part of any deployed functions bundle. Re-evaluate
+# when firebase-tools migrates to stream-json 3.x.
+reason = "stream-json filter DoS (GHSA-528h-pc64-c93x): dev-only transitive of firebase-tools, which requires the 1.x CommonJS entry points; the only fix (3.5.0+) is ESM-only with renamed exports and breaks database:import/auth:import/Next.js at load time, and no patched 1.x exists. Unreachable in this consumer (local developer files via CLI, never a served event loop). Time-boxed pending an upstream firebase-tools migration."

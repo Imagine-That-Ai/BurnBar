@@ -165,13 +165,40 @@ check anyway. Entries must stay in sync (same GHSA id, same expiry) and each
 carries a `reason:`; any drift fails closed, and past the expiry all gates
 reject the advisory again instead of letting the ignore rot.
 
-Current entries: none. The last entry (GHSA-mh99-v99m-4gvg, brace-expansion
-DoS, previously expiring 2026-08-21) was retired when the vendored callable
-CommonJS shim in
+Current entries:
+
+- **GHSA-528h-pc64-c93x** (stream-json path-filter DoS, expires 2026-12-03):
+  `pick`/`ignore`/`filter`/`replace` recompute the whole path string per token,
+  so deeply nested JSON costs O(depth²). The only depender is `firebase-tools`,
+  a `functions/` **devDependency** that never reaches a deployed bundle, and it
+  loads the library through the 1.x CommonJS entry points
+  (`stream-json/filters/Filter`, `stream-json/streamers/StreamObject`,
+  `stream-json/filters/Pick`, `stream-json/streamers/StreamArray`). Upstream
+  fixed the advisory only in 3.5.0+, which is pure ESM (`"type": "module"`,
+  Node >= 22), renames every one of those entry points and replaces the
+  `Transform` subclasses with stream-chain 4 factory links. Forcing 3.x through
+  a scoped `overrides` entry was tried and measured: the install resolves and
+  `firebase --version` still works, but `firebase database:import`,
+  `firebase auth:import` and the Next.js framework integration all fail to load
+  with `MODULE_NOT_FOUND`. The latest `firebase-tools` (15.29.0) still declares
+  `stream-json: ^1.7.3` and no patched 1.x release exists, so a version bump
+  resolves nothing. The advisory is also unreachable in this consumer: the
+  filters only ever parse a developer-selected local file passed to a CLI
+  command, not untrusted request bodies on a served event loop, which is the
+  attack the advisory describes. Remove the entries when `firebase-tools`
+  migrates to `stream-json` 3.x.
+
+The previous entry (GHSA-mh99-v99m-4gvg, brace-expansion DoS, expiring
+2026-08-21) was retired when the vendored callable CommonJS shim in
 [`functions/vendor/openburnbar/brace-expansion-cjs`](../functions/vendor/openburnbar/brace-expansion-cjs/README.md)
 removed the final vulnerable 1.x copies: the minimatch 3 consumers inside the
 Firebase CLI subtree now resolve a callable facade over the patched
-`@isaacs/brace-expansion` algorithm instead of the unfixable 1.x line.
+`@isaacs/brace-expansion` algorithm instead of the unfixable 1.x line. The same
+shim shape does not transfer to `stream-json`: a facade needs a patched
+implementation to wrap, and 3.5.0's API is not a rename of 1.9.1's but a
+different stream-integration model, so wrapping it would mean reimplementing
+the parser plumbing that `auth:import` and `database:import` feed user data
+through.
 
 ## Mac/iOS Swift twin-basename allowlist
 
