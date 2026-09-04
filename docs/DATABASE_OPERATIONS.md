@@ -113,6 +113,7 @@ No current migration is classified as independently reversible. SQL snippets pri
 | 64 | `v63_standing_orders` | atomic | unapplied-only | backup-restore | Standing orders table backing the War Room rhythm (cadence, target machine, last fired) |
 | 65 | `v64_token_usage_start_time_index` | atomic | unapplied-only | backup-restore | Index on token_usage.startTime so the Command Board window scan stops walking the table |
 | 66 | `v65_memory_quarantine_bodies` | atomic | unapplied-only | backup-restore | Encrypted review holding table for quarantined memory bodies |
+| 67 | `v66_agent_memory_bodies` | atomic | unapplied-only | backup-restore | Approved bodies for engine-mirrored memories, the copy blind sync seals and uploads |
 <!-- END GENERATED MIGRATION CATALOG -->
 
 Regenerate and verify the table with:

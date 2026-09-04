@@ -107,7 +107,7 @@ test("current migration surfaces, catalog, and generated documentation agree", (
   // quietly pass by agreeing with itself, and forces the author past every
   // mirror. Bump it ONLY together with the migrator, the rollback catalog, the
   // Windows endpoint/count, and the byte-compat vector.
-  assert.equal(verifyMigrationRollbackCatalog(repoRoot), 66);
+  assert.equal(verifyMigrationRollbackCatalog(repoRoot), 67);
 });
 
 test("registration reorder fails closed", (t) => {
