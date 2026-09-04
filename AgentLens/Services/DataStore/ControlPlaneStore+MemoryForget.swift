@@ -113,8 +113,11 @@ extension ControlPlaneStore {
         }
     }
 
+    /// Rows the cloud lane may replicate: member-authored chat memories and the
+    /// memories the Memory MCP engine mirrored (`agent`). Repository knowledge
+    /// (`code`) and the passive usage kinds never leave the device.
     func cloudSyncCandidateChatMemories(userID: String) async throws -> [Memory] {
-        try await fetchActiveChatMemoryAuthorityRecords()
+        try await fetchActiveMemoryAuthorityRecords(sourceKinds: [.chat, .agent])
             .filter { memory in
                 memory.reviewStatus == .approved &&
                 memory.validTo == nil &&

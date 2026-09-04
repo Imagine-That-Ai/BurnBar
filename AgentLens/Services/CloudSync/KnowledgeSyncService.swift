@@ -532,13 +532,24 @@ final class MemoryCloudSyncService: Sendable {
 
         var uploaded = 0
         for memory in eligible {
-            guard let body = try await store.openChatMemoryBody(id: memory.id) else { continue }
+            // Chat memories keep their body in the app's snapshot table; memories the
+            // Memory MCP engine mirrored keep theirs in `agent_memory_bodies`, and key
+            // their document on the engine's own id so every device converges on one
+            // document (the daemon id is derived from a path-dependent project id).
+            let isAgent = memory.sourceKind == .agent
+            let resolvedBody = isAgent
+                ? try await store.openAgentMemoryBody(id: memory.id)
+                : try await store.openChatMemoryBody(id: memory.id)
+            guard let body = resolvedBody else { continue }
+            let identity = isAgent ? try await store.engineMemoryID(for: memory.id) : nil
+            if isAgent, identity == nil { continue }
             let encoded = try Self.encodeMemoryFact(
                 memory: memory,
                 body: body,
                 uid: uid,
                 vaultKey: vaultKey,
-                now: now
+                now: now,
+                documentIdentity: identity
             )
             try await factCollection.document(encoded.docID).setData(encoded.data, merge: true)
             uploaded += 1
@@ -602,17 +613,25 @@ final class MemoryCloudSyncService: Sendable {
         )
     }
 
+    /// - Parameter documentIdentity: the id the blinded document and the sealed
+    ///   payload key on. Nil keeps the local memory id, which is right for chat
+    ///   memories; engine-mirrored memories pass the engine's own id so the same
+    ///   memory resolves to one document on every device.
     static func encodeMemoryFact(
         memory: Memory,
         body: String,
         uid: String,
         vaultKey: Data,
-        now: Date
+        now: Date,
+        documentIdentity: String? = nil
     ) throws -> (docID: String, data: [String: Any]) {
-        let docID = try CloudVaultCrypto.pensieveSlugHmac("memory-fact:\(memory.id)", keyData: vaultKey)
+        let identity = documentIdentity ?? memory.id
+        let docID = try CloudVaultCrypto.pensieveSlugHmac("memory-fact:\(identity)", keyData: vaultKey)
         let payload = MemoryCloudFactPayload(
             schemaVersion: 1,
-            memoryID: memory.id,
+            // The sealed id matches the id the document is keyed on, so a device
+            // that opens this envelope can address the same memory it named.
+            memoryID: identity,
             text: body,
             kind: memory.kind,
             scope: memory.scope,
