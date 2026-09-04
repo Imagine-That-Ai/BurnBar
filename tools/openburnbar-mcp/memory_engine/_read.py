@@ -1059,6 +1059,11 @@ class _ReadPath:
         }
 
     def _purge(self, memory_id: str, rowid: int, *, preserve_daemon_mirror: bool = False) -> None:
+        # A hard forget is this device's decision, and blind sync must not undo
+        # it: record the receipt before the row is gone, keyed both by id and by
+        # the `(project_id, scope, body_hash)` identity a remote copy converges
+        # on, so the same fact cannot come back under another engine's id.
+        self._record_forget_receipt(memory_id)
         self.conn.execute("DELETE FROM memory_vectors WHERE memory_rowid = ?", (rowid,))
         self.conn.execute("DELETE FROM memory_history WHERE memory_id = ?", (memory_id,))
         self.conn.execute("DELETE FROM memory_relations WHERE memory_id = ?", (memory_id,))
@@ -1068,6 +1073,11 @@ class _ReadPath:
         # A replay receipt that points at this memory must not claim it still exists.
         self.conn.execute("DELETE FROM memory_ingest WHERE decisions_json LIKE ?", (f'%"memoryID":"{memory_id}"%',))
         self.conn.execute("UPDATE memories SET superseded_by = NULL WHERE superseded_by = ?", (memory_id,))
+        # A foreign engine id that folded into this row now points at nothing.
+        self.conn.execute(
+            "DELETE FROM engine_meta WHERE key LIKE 'memory_alias:%' AND value = ?",
+            (memory_id,),
+        )
         self.conn.execute("DELETE FROM memories WHERE id = ?", (memory_id,))
 
     def forget_all(

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import re
 
-ENGINE_SCHEMA_VERSION = 1
+ENGINE_SCHEMA_VERSION = 2
 ENGINE_ACTOR = "local-mcp"
 MEMORY_DB_PATH_ENV = "OPENBURNBAR_MEMORY_DB_PATH"
 MEMORY_KEY_ENV = "OPENBURNBAR_MEMORY_KEY_BASE64"
@@ -72,6 +72,13 @@ SHORT_HALF_LIFE_KINDS = frozenset({"event", "todo"})
 HALF_LIFE_DAYS_SHORT = 30.0
 HALF_LIFE_DAYS_LONG = 365.0
 REVIEW_STATUSES = ("approved", "quarantined", "rejected")
+
+# --- Memory Blind Sync (docs/superpowers/specs/2026-09-03-memory-blind-sync-design.md)
+# The highest `MemoryCloudFactPayload` schema this engine understands. A document
+# sealed by a newer device is parked, never half-merged.
+REMOTE_PAYLOAD_SCHEMA_MAX = 2
+# `memories.source_kind` for a row that arrived through the blind-sync merge.
+REMOTE_SOURCE_KIND = "cloud_sync"
 SENSITIVITIES = ("none", "pii", "redacted", "secret")
 MEMORY_SCOPES = ("project", "personal")
 

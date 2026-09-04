@@ -174,6 +174,33 @@ def test_migrations_run_before_the_schema_is_applied(tmp_path, monkeypatch):
     assert _stored_version(db_path) == "1"
 
 
+def test_a_v1_store_gains_the_blind_sync_watermark_table(tmp_path, monkeypatch):
+    """The real v2 step: a store written before Memory Blind Sync gets
+    `sync_state` from the migration, not from the `SCHEMA_SQL` validation pass."""
+    db_path = _new_store(tmp_path, monkeypatch)
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("DROP TABLE sync_state")
+    _stamp(db_path, "1")
+    assert "sync_state" not in _tables(db_path)
+
+    engine = me.MemoryEngine.open(db_path=db_path)
+    try:
+        columns = {row[1] for row in engine.conn.execute("PRAGMA table_info(sync_state)")}
+    finally:
+        engine.close()
+    assert columns == {"user_id", "applied_updated_at", "applied_memory_id", "applied_count", "merged_at"}
+    assert _stored_version(db_path) == str(me.ENGINE_SCHEMA_VERSION) == "2"
+
+
+def test_the_v2_step_is_not_idempotent_so_a_missed_store_is_loud(tmp_path, monkeypatch):
+    """The step deliberately omits IF NOT EXISTS. `SCHEMA_SQL` runs after the
+    steps as a validation pass, so a silently no-op step would hide a store this
+    migration never actually moved."""
+    statements = dict(me.store.SCHEMA_MIGRATIONS)[2]
+    assert any(statement.startswith("CREATE TABLE sync_state") for statement in statements)
+    assert not any("IF NOT EXISTS" in statement for statement in statements)
+
+
 def test_the_schema_pass_still_restores_objects_no_migration_covers(tmp_path, monkeypatch):
     """`SCHEMA_SQL` runs last as a validation pass, so a current store missing an
     object still gets it back."""

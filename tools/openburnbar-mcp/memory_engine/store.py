@@ -189,6 +189,13 @@ SCHEMA_SQL = """
             prev_hash TEXT,
             hash TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS sync_state (
+            user_id TEXT PRIMARY KEY,
+            applied_updated_at TEXT NOT NULL,
+            applied_memory_id TEXT NOT NULL,
+            applied_count INTEGER NOT NULL DEFAULT 0,
+            merged_at TEXT NOT NULL
+        );
         """
 
 
@@ -203,10 +210,25 @@ class SchemaTooNew(RuntimeError):
 _ENGINE_META_SQL = "CREATE TABLE IF NOT EXISTS engine_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
 
 # Ordered (target_version, statements). Append a step and bump ENGINE_SCHEMA_VERSION
-# to the last target when the schema changes. Empty today: v1 is the first version.
+# to the last target when the schema changes. v1 is the first version.
 # Read and patched through the module (`memory_engine.store.SCHEMA_MIGRATIONS`);
 # never re-export it, or the copy stops tracking this one.
-SCHEMA_MIGRATIONS: tuple[tuple[int, tuple[str, ...]], ...] = ()
+#
+# v2 — Memory Blind Sync (docs/superpowers/specs/2026-09-03-memory-blind-sync-design.md
+# §5): `sync_state` carries the applied high-water mark of the merge, one row per
+# member, so a re-offered batch is recognised as already applied. Deliberately not
+# IF NOT EXISTS: `SCHEMA_SQL` runs after the steps as a validation pass, and a step
+# that silently no-ops would hide a store this migration failed to move.
+SCHEMA_MIGRATIONS: tuple[tuple[int, tuple[str, ...]], ...] = (
+    (
+        2,
+        (
+            "CREATE TABLE sync_state ("
+            "user_id TEXT PRIMARY KEY, applied_updated_at TEXT NOT NULL, applied_memory_id TEXT NOT NULL, "
+            "applied_count INTEGER NOT NULL DEFAULT 0, merged_at TEXT NOT NULL)",
+        ),
+    ),
+)
 
 
 def _stored_schema_version(conn: sqlite3.Connection) -> int | None:

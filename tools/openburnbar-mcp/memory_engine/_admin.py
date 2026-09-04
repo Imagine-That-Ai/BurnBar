@@ -6,18 +6,33 @@ from __future__ import annotations
 
 import os
 from collections.abc import Sequence
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any
 
 from . import gate
-from ._util import _aux_strings, _ingest_decision, _json_dumps, _json_loads, now_iso, sha256_hex
+from ._util import (
+    _aux_strings,
+    _ingest_decision,
+    _json_dumps,
+    _json_loads,
+    _parse_iso,
+    normalize_kind,
+    normalize_tags,
+    now_iso,
+    sha256_hex,
+)
 from .constants import (
     DEFAULT_EMBEDDING_MODEL,
     EMBEDDING_PROVIDER_ENV,
     ENGINE_SCHEMA_VERSION,
     MAX_MEMORIES_PER_PROJECT_SOFT,
+    MEMORY_SCOPES,
+    REMOTE_PAYLOAD_SCHEMA_MAX,
+    REMOTE_SOURCE_KIND,
 )
 from .embeddings import encode_vector
-from .extract import Fact
+from .extract import Fact, _slot_key, extract_entities, extract_relations
 from .store import audit_event, default_db_path, project_payload, resolve_project, verify_audit_chain
 
 
@@ -26,6 +41,62 @@ from .store import audit_event, default_db_path, project_payload, resolve_projec
 # pathological store cannot make `doctor` hang, and whenever it bites, the scan
 # says so rather than returning a quietly partial answer.
 AUX_SCAN_ROW_LIMIT = 5_000
+
+
+def _forget_identity_key(project_id: str, scope: str, body_hash: str) -> str:
+    """The convergence identity of a forgotten fact, as one point-lookup key."""
+    return sha256_hex(f"{project_id}|{scope}|{body_hash}")[:32]
+
+
+# Older than any real timestamp: what an unparseable stored `updated_at` compares
+# as, so a corrupt local row loses to a remote revision instead of freezing it.
+_EPOCH = datetime.min.replace(tzinfo=UTC)
+
+
+def _canonical_iso(value: str | None) -> str | None:
+    """One instant, one spelling. Devices seal `updatedAt` in whatever ISO-8601
+    form their encoder emits; the stored column has to be comparable across all
+    of them, and every ordering decision here is made on the parsed instant
+    rather than on the text."""
+    parsed = _parse_iso(value)
+    return None if parsed is None else parsed.astimezone(UTC).isoformat().replace("+00:00", "Z")
+
+
+@dataclass
+class _RemoteFact:
+    """One inbox document, parsed and past the gate: what the merge acts on."""
+
+    doc_id: str
+    user_id: str
+    memory_id: str
+    project_id: str
+    scope: str
+    kind: str
+    body: str
+    body_hash: str
+    confidence: float
+    valid_from: str
+    valid_to: str | None
+    superseded_by: str | None
+    updated_at: str
+    sensitivity: str
+    review_status: str
+    # The parsed `updated_at`. Every ordering decision uses this, never the text:
+    # two spellings of one instant, or one with microseconds and one without,
+    # do not sort the way their strings do.
+    updated_ts: datetime
+    tags: list[str] = field(default_factory=list)
+    entities: list[str] = field(default_factory=list)
+    gate_labels: list[str] = field(default_factory=list)
+    injection: list[str] = field(default_factory=list)
+
+    @property
+    def order_key(self) -> tuple[datetime, str, str]:
+        """§5's total order: last-writer-wins on `updated_at`, tie-broken by
+        `memory_id`. `body_hash` closes the remaining tie — two devices editing
+        the same memory in the same second — so the order is total and every
+        replica applies the batch identically."""
+        return (self.updated_ts, self.memory_id, self.body_hash)
 
 
 class _Maintenance:
@@ -436,6 +507,640 @@ class _Maintenance:
             "decisions": decisions,
             **project_payload(project_id, root),
         }
+
+    # ------------------------------------------------------------------
+    # Memory Blind Sync — §5 of
+    # docs/superpowers/specs/2026-09-03-memory-blind-sync-design.md
+    # ------------------------------------------------------------------
+
+    def sync_watermark(self) -> dict[str, dict[str, str]]:
+        """The applied high-water mark of the merge, one entry per member."""
+        rows = self.conn.execute(
+            "SELECT user_id, applied_updated_at, applied_memory_id FROM sync_state ORDER BY user_id"
+        ).fetchall()
+        return {
+            str(row["user_id"]): {
+                "updatedAt": str(row["applied_updated_at"]),
+                "memoryID": str(row["applied_memory_id"]),
+            }
+            for row in rows
+        }
+
+    def _record_forget_receipt(self, memory_id: str) -> None:
+        """Persist what a hard forget destroyed, so blind sync cannot undo it.
+
+        Two receipts, both point lookups: one on the engine id a remote document
+        carries, one on the `(project_id, scope, body_hash)` identity §5 converges
+        on — the same fact re-learned on another device arrives under a different
+        engine id and must still be recognised as the thing this device forgot.
+        `memory_history` cannot serve here: the forget purges it with the row.
+        """
+        row = self.conn.execute(
+            "SELECT project_id, scope, body_hash FROM memories WHERE id = ?", (memory_id,)
+        ).fetchone()
+        if row is None:
+            return
+        project_id, scope, body_hash = str(row["project_id"]), str(row["scope"]), str(row["body_hash"])
+        receipt = {"projectID": project_id, "scope": scope, "bodyHash": body_hash, "ts": now_iso()}
+        self.conn.executemany(
+            "INSERT OR REPLACE INTO engine_meta (key, value) VALUES (?, ?)",
+            (
+                (f"forget_receipt:{memory_id}", _json_dumps(receipt)),
+                (f"forget_identity:{_forget_identity_key(project_id, scope, body_hash)}", memory_id),
+            ),
+        )
+
+    def _forgotten(self, memory_id: str, project_id: str, scope: str, body_hash: str) -> str | None:
+        """The forget receipt that forbids a remote row, if there is one."""
+        identity = _forget_identity_key(project_id, scope, body_hash)
+        row = self.conn.execute(
+            "SELECT key FROM engine_meta WHERE key IN (?, ?) LIMIT 1",
+            (f"forget_receipt:{memory_id}", f"forget_identity:{identity}"),
+        ).fetchone()
+        return str(row["key"]) if row is not None else None
+
+    def _record_memory_alias(self, foreign_id: str, memory_id: str) -> None:
+        """Remember that a foreign engine id folded into a local row.
+
+        Without this, a fact learned independently on two devices reinforces the
+        row that arrived first (§5) and every later reference to the id that lost
+        — a supersede edge, a further update — would resolve to nothing and park
+        for ever. The alias is what lets convergence hold on both sides.
+        """
+        if foreign_id == memory_id:
+            return
+        self.conn.execute(
+            "INSERT OR REPLACE INTO engine_meta (key, value) VALUES (?, ?)",
+            (f"memory_alias:{foreign_id}", memory_id),
+        )
+
+    def _local_memory_id(self, foreign_id: str) -> str | None:
+        """The local row a remote engine id names: itself, or what it folded into."""
+        if not foreign_id:
+            return None
+        if self.conn.execute("SELECT 1 FROM memories WHERE id = ?", (foreign_id,)).fetchone() is not None:
+            return foreign_id
+        row = self.conn.execute(
+            "SELECT value FROM engine_meta WHERE key = ?", (f"memory_alias:{foreign_id}",)
+        ).fetchone()
+        if row is None:
+            return None
+        alias = str(row["value"])
+        exists = self.conn.execute("SELECT 1 FROM memories WHERE id = ?", (alias,)).fetchone()
+        return alias if exists is not None else None
+
+    def _screen_remote_row(self, raw: Any) -> tuple[_RemoteFact | None, dict[str, Any]]:
+        """Parse and gate one inbox entry before anything about it is believed.
+
+        Returns either the screened fact or the decision that ends it. That
+        decision's `ack` says whether the document is finished with: a row this
+        engine will never accept is acknowledged so it stops being offered for
+        ever, while one that is merely unusable *today* (a v1 payload carrying no
+        engine project identity) is left unacknowledged for a later pull.
+        """
+        entry = raw if isinstance(raw, dict) else {}
+        doc_id = str(entry.get("docID") or "")
+        user_id = str(entry.get("userID") or "")
+
+        def stop(code: str, reason: str, *, ack: bool = True) -> tuple[None, dict[str, Any]]:
+            return None, {
+                "event": "REFUSE" if ack else "PARK",
+                "code": code,
+                "reason": reason,
+                "docID": doc_id,
+                "userID": user_id,
+                "ack": ack,
+            }
+
+        payload = entry.get("payload")
+        if not isinstance(payload, dict):
+            payload = _json_loads(entry.get("payloadJSON"), None)
+        if not isinstance(payload, dict):
+            return stop("MALFORMED_PAYLOAD", "the sealed payload is not a JSON object")
+        try:
+            schema_version = int(payload.get("schemaVersion") or 0)
+        except (TypeError, ValueError):
+            schema_version = 0
+        if schema_version > REMOTE_PAYLOAD_SCHEMA_MAX:
+            # A newer device sealed fields this engine cannot reason about. Park
+            # it rather than merge a row only half of which is understood.
+            return stop(
+                "PAYLOAD_TOO_NEW",
+                f"payload schema {schema_version} is newer than this engine's {REMOTE_PAYLOAD_SCHEMA_MAX}",
+                ack=False,
+            )
+        memory_id = str(payload.get("memoryID") or "").strip()
+        if not memory_id:
+            return stop("MISSING_MEMORY_ID", "the payload names no engine memory id")
+        updated_ts = _parse_iso(str(payload.get("updatedAt") or "").strip())
+        if updated_ts is None:
+            return stop("INVALID_UPDATED_AT", "updatedAt is not an ISO-8601 timestamp")
+        updated_at = str(_canonical_iso(str(payload.get("updatedAt"))))
+        project_id = str(payload.get("projectID") or "").strip()
+        if not project_id:
+            # §5 converges on `(project_id, scope, body_hash)`. A v1 payload, or a
+            # chat memory that belongs to no engine project, cannot be keyed at all.
+            return stop(
+                "PROJECT_IDENTITY_MISSING",
+                "the payload carries no engine project id, so it cannot be keyed for convergence",
+                ack=False,
+            )
+        scope = str(payload.get("engineScope") or "").strip().lower()
+        if scope not in MEMORY_SCOPES:
+            return stop(
+                "SCOPE_IDENTITY_MISSING",
+                f"engineScope must be one of: {', '.join(MEMORY_SCOPES)}",
+                ack=False,
+            )
+        fact = Fact.from_mapping(
+            {
+                "text": payload.get("text"),
+                "kind": payload.get("kind"),
+                "confidence": payload.get("confidence", 0.7),
+                "tags": payload.get("tags") or [],
+            }
+        )
+        if fact is None:
+            return stop("EMPTY_MEMORY", "the payload carries no text")
+        overflow = gate.aux_input_overflow(
+            tags=fact.tags, entities=[], metadata=None, source_ref=None, source_kind=REMOTE_SOURCE_KIND
+        )
+        if overflow:
+            return stop(gate.AUX_TOO_LARGE_CODE, overflow)
+
+        # The gate a local `remember` passes, applied to a body this device did
+        # not write. `retain_allowed` is pinned False: a remote row must never
+        # create local vault material, so a retained secret is refused instead.
+        decision = gate.apply_gate(
+            fact.text,
+            secret_policy=self.config.secret_policy,
+            pii_policy=self.config.pii_policy,
+            retain_allowed=False,
+        )
+        aux = gate.gate_aux_fields(
+            tags=fact.tags,
+            entities=[],
+            metadata=None,
+            source_ref=None,
+            source_kind=REMOTE_SOURCE_KIND,
+            secret_policy=self.config.secret_policy,
+            pii_policy=self.config.pii_policy,
+        )
+        if decision.action == "reject" or aux.reject_reason:
+            secret = decision.sensitivity == "secret" or aux.reject_code == "SECRET_DETECTED"
+            audit_event(
+                self.conn,
+                action="memory.sync_gate_rejected",
+                project_id=project_id,
+                subject_id=None,
+                labels=sorted(set(decision.labels + aux.labels)),
+                actor=self.config.actor,
+            )
+            self._commit()
+            return stop(
+                "SECRET_DETECTED" if secret else "GATE_REJECTED",
+                decision.reason or aux.reject_reason or "refused by the memory gate",
+            )
+        body = decision.body.strip()
+        if not body:
+            return stop("EMPTY_MEMORY", "nothing left after redaction")
+        tags = normalize_tags(aux.tags)
+        entities = extract_entities(body)[:16]
+        injection = gate.injection_labels(body)
+        aux_injection = gate.injection_labels("\n".join(_aux_strings(tags, entities, {}, None)))
+        if aux_injection:
+            injection = sorted(set(injection + [f"aux:{label}" for label in aux_injection]))
+        superseded_by = payload.get("supersededBy")
+        valid_to = payload.get("validTo")
+        return (
+            _RemoteFact(
+                doc_id=doc_id,
+                user_id=user_id,
+                memory_id=memory_id,
+                project_id=project_id,
+                scope=scope,
+                kind=normalize_kind(fact.kind, default="other"),
+                body=body,
+                # Recomputed here from the gated body with the engine's own
+                # hashing. The payload's `bodyHash` is the sender's advice about
+                # its own store and is deliberately never trusted as the key.
+                body_hash=sha256_hex(body.lower()),
+                confidence=fact.confidence,
+                valid_from=_canonical_iso(payload.get("validFrom")) or updated_at,
+                valid_to=_canonical_iso(valid_to) if valid_to else None,
+                superseded_by=str(superseded_by) if superseded_by else None,
+                updated_at=updated_at,
+                updated_ts=updated_ts,
+                sensitivity=decision.sensitivity,
+                review_status="quarantined" if injection else "approved",
+                tags=tags,
+                entities=entities,
+                gate_labels=sorted(set(decision.labels + aux.labels)),
+                injection=injection,
+            ),
+            {},
+        )
+
+    def merge_remote(self, rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
+        """Fold the opened remote rows the daemon parked for this device into the
+        local store, applying §5 of the blind-sync design.
+
+        `rows` are `agent_memory_inbox` entries — `{docID, userID, engineMemoryID,
+        payloadJSON, remoteUpdatedAt}` — whose `payloadJSON` is the opened
+        `MemoryCloudFactPayload`. The engine never sees the vault key: the daemon
+        hands it plaintext it has already verified, so everything here is
+        ordering, convergence, and the same gate a local write passes.
+
+        `ackDocIDs` names the documents the engine is finished with: applied,
+        folded in, already applied, or refused for good. A document left parked —
+        a supersede whose target has not arrived, a payload with no engine project
+        identity — is deliberately NOT in it, so the next pull offers it again.
+        """
+        screened: list[_RemoteFact] = []
+        decisions: list[dict[str, Any]] = []
+        ack: list[str] = []
+        parked: list[str] = []
+        applied = reinforced = unchanged = refused = 0
+        for raw in rows:
+            fact, stopped = self._screen_remote_row(raw)
+            if fact is None:
+                terminal = bool(stopped.pop("ack"))
+                (ack if terminal else parked).append(str(stopped.get("docID") or ""))
+                refused += 1 if terminal else 0
+                decisions.append(stopped)
+                continue
+            screened.append(fact)
+        screened.sort(key=lambda item: item.order_key)
+
+        merged: list[tuple[_RemoteFact, dict[str, Any]]] = []
+        for fact in screened:
+            decision = self._merge_remote_fact(fact)
+            merged.append((fact, decision))
+            event = decision["event"]
+            if event in ("ADD", "UPDATE"):
+                applied += 1
+            elif event == "REINFORCE":
+                reinforced += 1
+            elif event == "REFUSE":
+                refused += 1
+            else:
+                unchanged += 1
+            if event != "REFUSE":
+                self._advance_sync_watermark(fact)
+
+        # Second pass. A supersede references an engine id, which is globally
+        # unique, so a chain resolves on any device — but only once its target
+        # has arrived. Every edge the batch itself supplied lands here; one whose
+        # target is still missing leaves its document unacknowledged.
+        for fact, decision in merged:
+            resolved = True
+            if fact.superseded_by and decision["event"] != "REFUSE":
+                resolved = self._resolve_remote_supersede(fact, str(decision.get("memoryID") or fact.memory_id))
+                decision["supersedeResolved"] = resolved
+            (ack if resolved else parked).append(fact.doc_id)
+            decisions.append(decision)
+
+        if applied or reinforced or refused:
+            audit_event(
+                self.conn,
+                action="memory.sync_merge",
+                project_id=None,
+                subject_id=None,
+                labels=[
+                    f"applied:{applied}",
+                    f"reinforced:{reinforced}",
+                    f"refused:{refused}",
+                    f"parked:{len(parked)}",
+                ],
+                actor=self.config.actor,
+            )
+        self._commit()
+        self._invalidate_cache()
+        return {
+            "status": "ok",
+            "applied": applied,
+            "reinforced": reinforced,
+            # A parked document is one the engine is not finished with. Its
+            # content may already have been applied — a supersede edge can be
+            # pending on a row that landed — so this is not disjoint from
+            # `applied`; it counts what the next pull must offer again.
+            "parked": len(parked),
+            "refused": refused,
+            "unchanged": unchanged,
+            "ackDocIDs": [doc_id for doc_id in ack if doc_id],
+            "parkedDocIDs": [doc_id for doc_id in parked if doc_id],
+            "watermark": self.sync_watermark(),
+            "decisions": decisions,
+        }
+
+    def _merge_remote_fact(self, fact: _RemoteFact) -> dict[str, Any]:
+        """Land one screened remote row: never resurrect, converge, then LWW."""
+        local_id = self._local_memory_id(fact.memory_id)
+        # `UNIQUE(project_id, scope, body_hash)` spans retired rows, so there is
+        # at most one local holder of this convergence identity, ever.
+        holder = self.conn.execute(
+            "SELECT id, valid_to FROM memories WHERE project_id = ? AND scope = ? AND body_hash = ?",
+            (fact.project_id, fact.scope, fact.body_hash),
+        ).fetchone()
+        if local_id is None and holder is None:
+            # Nothing local answers to this row. Only now does a forget receipt
+            # mean anything: a member who said this again on this device brought
+            # the memory back themselves, and that decision outranks the receipt.
+            forgotten = self._forgotten(fact.memory_id, fact.project_id, fact.scope, fact.body_hash)
+            if forgotten is not None:
+                audit_event(
+                    self.conn,
+                    action="memory.sync_resurrection_refused",
+                    project_id=fact.project_id,
+                    subject_id=fact.memory_id,
+                    labels=["forgotten:by_identity" if forgotten.startswith("forget_identity:") else "forgotten:by_id"],
+                    actor=self.config.actor,
+                )
+                return {
+                    "event": "REFUSE",
+                    "code": "LOCALLY_FORGOTTEN",
+                    "reason": "this device forgot this memory; a remote copy must not revive it",
+                    "docID": fact.doc_id,
+                    "memoryID": fact.memory_id,
+                }
+            return self._write_remote_row(fact, fact.memory_id, existing=None)
+        if local_id is None and holder is not None:
+            local_id = str(holder["id"])
+            self._record_memory_alias(fact.memory_id, local_id)
+            if holder["valid_to"] is None and fact.valid_to is None and not fact.superseded_by:
+                # The same fact, learned independently on two devices: it folds
+                # into a reinforcement of the row that already holds the identity,
+                # exactly as a local duplicate does today (§5).
+                return self._reinforce_remote(fact, local_id)
+        return self._update_remote_row(fact, str(local_id))
+
+    def _reinforce_remote(self, fact: _RemoteFact, memory_id: str) -> dict[str, Any]:
+        decision = self._reinforce(
+            memory_id,
+            Fact(text=fact.body, kind=fact.kind, confidence=fact.confidence, tags=list(fact.tags)),
+            fact.entities,
+            reason="remote duplicate",
+            incoming_body=fact.body,
+            labels=fact.gate_labels,
+            quarantine_labels=[f"aux:{label}" for label in fact.injection],
+        )
+        return {
+            "event": "REINFORCE",
+            "code": "CONVERGED",
+            "docID": fact.doc_id,
+            "memoryID": memory_id,
+            "remoteMemoryID": fact.memory_id,
+            "kind": decision.get("kind"),
+            "scope": decision.get("scope"),
+            "text": decision.get("text"),
+            "reviewStatus": decision.get("reviewStatus"),
+        }
+
+    def _update_remote_row(self, fact: _RemoteFact, memory_id: str) -> dict[str, Any]:
+        row = self.conn.execute(
+            "SELECT rowid, project_id, body_hash, updated_at, immutable FROM memories WHERE id = ?", (memory_id,)
+        ).fetchone()
+        if row is None:  # pragma: no cover — `_local_memory_id` proved it exists
+            return self._write_remote_row(fact, fact.memory_id, existing=None)
+        if str(row["project_id"]) != fact.project_id:
+            return {
+                "event": "REFUSE",
+                "code": "PROJECT_MISMATCH",
+                "reason": "the local memory with this id belongs to a different project",
+                "docID": fact.doc_id,
+                "memoryID": memory_id,
+            }
+        local_mark = (_parse_iso(str(row["updated_at"])) or _EPOCH, str(row["body_hash"]))
+        remote_mark = (fact.updated_ts, fact.body_hash)
+        if remote_mark <= local_mark:
+            # Last-writer-wins: the local revision is at least as new. This is
+            # also the idempotence gate — replaying a batch lands here.
+            return {
+                "event": "UNCHANGED",
+                "code": "ALREADY_APPLIED" if remote_mark == local_mark else "LOCAL_IS_NEWER",
+                "docID": fact.doc_id,
+                "memoryID": memory_id,
+            }
+        if bool(row["immutable"]):
+            return {
+                "event": "UNCHANGED",
+                "code": "IMMUTABLE_LOCAL",
+                "reason": "the local memory is immutable and a remote revision may not replace it",
+                "docID": fact.doc_id,
+                "memoryID": memory_id,
+            }
+        clash = self.conn.execute(
+            "SELECT id FROM memories WHERE project_id = ? AND scope = ? AND body_hash = ? AND id != ?",
+            (fact.project_id, fact.scope, fact.body_hash, memory_id),
+        ).fetchone()
+        if clash is not None:
+            # The revision's body is one another local row already holds. The
+            # identity is unique, so the two converge: reinforce the holder and
+            # retire the row this revision came from into it.
+            holder = str(clash["id"])
+            self._record_memory_alias(fact.memory_id, holder)
+            self._retire(memory_id, reason="converged into an identical remote fact", replacement=holder)
+            return self._reinforce_remote(fact, holder)
+        return self._write_remote_row(fact, memory_id, existing=row)
+
+    def _write_remote_row(self, fact: _RemoteFact, memory_id: str, *, existing: Any) -> dict[str, Any]:
+        """Insert or overwrite one row from a remote revision.
+
+        `memories.updated_at` takes the payload's `updatedAt` verbatim — that
+        authenticated instant, not this device's clock, is what LWW compares, so
+        stamping it locally would make a genuinely newer remote edit look stale.
+        """
+        metadata: dict[str, Any] = {}
+        if fact.gate_labels:
+            metadata["gateLabels"] = fact.gate_labels
+        if fact.injection:
+            metadata["injectionLabels"] = fact.injection
+        salience = self.compute_salience(fact.kind, fact.confidence, 0)
+        relations = extract_relations(fact.body)
+        # External embedding must never run while the write lock is held; each
+        # row stays independently durable (mirrors `_commit_fact`).
+        if self.conn.in_transaction:
+            self._commit()
+        vector = self.provider.embed([fact.body])[0] if self.provider.available else None
+        if not self.conn.in_transaction:
+            self.conn.execute("BEGIN IMMEDIATE")
+        cipher, nonce = self._seal_body(memory_id, fact.project_id, fact.body)
+        columns = (
+            fact.scope,
+            fact.kind,
+            cipher,
+            nonce,
+            self.keyring.key_id,
+            fact.body_hash,
+            fact.sensitivity,
+            fact.review_status,
+            fact.confidence,
+            salience,
+            fact.valid_from,
+            fact.valid_to,
+            _json_dumps(fact.tags),
+            _json_dumps(fact.entities),
+            _json_dumps(metadata),
+            REMOTE_SOURCE_KIND,
+            # `(memory_id, updated_at)` is the record key §5 names; keeping it on
+            # the row makes the revision this body came from readable after the fact.
+            f"sync:{fact.memory_id}:{fact.updated_at}",
+            "blind-sync",
+            self.provider.version_id if vector is not None else None,
+            fact.updated_at,
+            memory_id,
+        )
+        if existing is None:
+            self.conn.execute(
+                """
+                INSERT INTO memories (
+                    scope, kind, body_cipher, body_nonce, key_id, body_hash, sensitivity, review_status,
+                    confidence, salience, valid_from, valid_to, tags_json, entities_json, metadata_json,
+                    source_kind, source_hash, extractor, embedding_version, updated_at, id,
+                    access_count, immutable, superseded_by, supersedes_json, created_at, project_id
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,0,NULL,'[]',?,?)
+                """,
+                (*columns, fact.valid_from, fact.project_id),
+            )
+            rowid = int(self.conn.execute("SELECT rowid FROM memories WHERE id = ?", (memory_id,)).fetchone()["rowid"])
+            event = "ADD"
+        else:
+            self.conn.execute(
+                """
+                UPDATE memories SET
+                    scope = ?, kind = ?, body_cipher = ?, body_nonce = ?, key_id = ?, body_hash = ?,
+                    sensitivity = ?, review_status = ?, confidence = ?, salience = ?, valid_from = ?,
+                    valid_to = ?, tags_json = ?, entities_json = ?, metadata_json = ?, source_kind = ?,
+                    source_hash = ?, extractor = ?, embedding_version = ?, updated_at = ?,
+                    -- The payload's `supersededBy` is authoritative for this row, and it is
+                    -- landed by the edge pass once its target resolves. Clearing it here is
+                    -- what lets a revision that dropped the edge actually drop it.
+                    superseded_by = NULL
+                WHERE id = ?
+                """,
+                columns,
+            )
+            rowid = int(existing["rowid"])
+            event = "UPDATE"
+        self.conn.execute("DELETE FROM memory_vectors WHERE memory_rowid = ?", (rowid,))
+        if vector is not None:
+            self.conn.execute(
+                "INSERT INTO memory_vectors (memory_rowid, embedding_version, dimension, vector) VALUES (?, ?, ?, ?)",
+                (rowid, self.provider.version_id, len(vector), encode_vector(vector)),
+            )
+        self.conn.execute("DELETE FROM memory_relations WHERE memory_id = ?", (memory_id,))
+        for subject, predicate, obj in relations:
+            self.conn.execute(
+                "INSERT INTO memory_relations (project_id, memory_id, subject, predicate, object, slot_key, confidence) VALUES (?,?,?,?,?,?,?)",
+                (fact.project_id, memory_id, subject, predicate, obj, _slot_key(subject, predicate), fact.confidence),
+            )
+        self._history(
+            memory_id,
+            fact.project_id,
+            "merged_remote",
+            None,
+            fact.body,
+            {"remoteMemoryID": fact.memory_id, "updatedAt": fact.updated_at, "event": event},
+        )
+        if fact.injection:
+            audit_event(
+                self.conn,
+                action="memory.injection_quarantined",
+                project_id=fact.project_id,
+                subject_id=memory_id,
+                labels=fact.injection,
+                actor=self.config.actor,
+            )
+        audit_event(
+            self.conn,
+            action="memory.sync_add" if event == "ADD" else "memory.sync_update",
+            project_id=fact.project_id,
+            subject_id=memory_id,
+            labels=[
+                f"kind:{fact.kind}",
+                f"scope:{fact.scope}",
+                f"sensitivity:{fact.sensitivity}",
+                f"review:{fact.review_status}",
+                "retired" if fact.valid_to else "active",
+            ],
+            actor=self.config.actor,
+        )
+        return {
+            "event": event,
+            "docID": fact.doc_id,
+            "memoryID": memory_id,
+            "remoteMemoryID": fact.memory_id,
+            "kind": fact.kind,
+            "scope": fact.scope,
+            "text": fact.body,
+            "tags": list(fact.tags),
+            "confidence": fact.confidence,
+            "sensitivity": fact.sensitivity,
+            "reviewStatus": fact.review_status,
+            "labels": list(fact.gate_labels),
+            "injectionLabels": list(fact.injection),
+            "retired": fact.valid_to is not None,
+            "embedded": vector is not None,
+        }
+
+    def _resolve_remote_supersede(self, fact: _RemoteFact, memory_id: str) -> bool:
+        """Land one supersede edge, and rebuild its inverse on this side.
+
+        `supersedes_json` deliberately does not travel: it is the inverse of
+        `supersededBy` and is rebuilt here from the edge that did. Returns False
+        when the target has not arrived, which is what parks the document.
+        """
+        target = self._local_memory_id(fact.superseded_by or "")
+        if target is None:
+            return False
+        if target == memory_id:
+            # The edge points at the row it is on: either a corrupt payload, or
+            # the successor converged into this very row. There is nothing left
+            # to resolve, so it is finished rather than parked for ever.
+            return True
+        row = self.conn.execute("SELECT superseded_by FROM memories WHERE id = ?", (memory_id,)).fetchone()
+        if row is None:
+            return False
+        if row["superseded_by"] != target:
+            self.conn.execute("UPDATE memories SET superseded_by = ? WHERE id = ?", (target, memory_id))
+            self._history(
+                memory_id,
+                fact.project_id,
+                "merged_remote_supersede",
+                None,
+                None,
+                {"supersededBy": target, "remoteSupersededBy": fact.superseded_by},
+            )
+        inverse = self.conn.execute("SELECT supersedes_json FROM memories WHERE id = ?", (target,)).fetchone()
+        supersedes = sorted({*_json_loads(inverse["supersedes_json"], []), memory_id}) if inverse is not None else []
+        if inverse is not None and supersedes != _json_loads(inverse["supersedes_json"], []):
+            self.conn.execute("UPDATE memories SET supersedes_json = ? WHERE id = ?", (_json_dumps(supersedes), target))
+        return True
+
+    def _advance_sync_watermark(self, fact: _RemoteFact) -> None:
+        """Move this member's applied high-water mark forward, never back."""
+        row = self.conn.execute(
+            "SELECT applied_updated_at, applied_memory_id, applied_count FROM sync_state WHERE user_id = ?",
+            (fact.user_id,),
+        ).fetchone()
+        count = int(row["applied_count"]) + 1 if row is not None else 1
+        mark = (fact.updated_at, fact.memory_id)
+        if row is not None:
+            held = (str(row["applied_updated_at"]), str(row["applied_memory_id"]))
+            if (_parse_iso(held[0]) or _EPOCH, held[1]) > (fact.updated_ts, fact.memory_id):
+                mark = held
+        self.conn.execute(
+            """
+            INSERT INTO sync_state (user_id, applied_updated_at, applied_memory_id, applied_count, merged_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET
+                applied_updated_at = excluded.applied_updated_at,
+                applied_memory_id = excluded.applied_memory_id,
+                applied_count = excluded.applied_count,
+                merged_at = excluded.merged_at
+            """,
+            (fact.user_id, mark[0], mark[1], count, now_iso()),
+        )
 
     def _scan_aux_value(self, text: str) -> list[str]:
         """Secret labels in one stored auxiliary string.
