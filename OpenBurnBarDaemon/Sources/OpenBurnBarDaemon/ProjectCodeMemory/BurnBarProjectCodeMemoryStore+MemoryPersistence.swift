@@ -334,10 +334,14 @@ extension BurnBarProjectCodeMemoryStore {
         )
     }
 
-    /// Purge a forgotten memory's body while keeping its engine id. The body is
-    /// the content the member deleted and goes immediately; the id is a random
-    /// 128-bit label that travels only as a keyed hash, and the cloud copy stays
-    /// addressable through it, so a forget can still delete the sealed document.
+    /// Purge a memory's syncable body while keeping its engine id. The body is
+    /// content that must not be (re)uploaded and goes immediately; the id is a
+    /// random 128-bit label that travels only as a keyed hash, and the cloud copy
+    /// stays addressable through it, so the sync lane can still delete the sealed
+    /// document. Used both by forget and when an approved, uploaded memory is
+    /// remirrored as quarantined or rejected: deleting the mapping in either case
+    /// would strand the member's memory in the cloud. A row that never had a
+    /// mapping (quarantined from birth) is untouched.
     func blankAgentMemoryBody(projectID: String, memoryID: String, now: String) throws {
         try execute(
             """
