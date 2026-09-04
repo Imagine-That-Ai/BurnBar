@@ -2380,6 +2380,121 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         )
     }
 
+    // MARK: - Memory Blind Sync inbox (PR-2)
+
+    /// The engine has no keys and no network: the only way a memory fact the app
+    /// pulled down reaches it is this drain. Listing returns unapplied rows
+    /// oldest-first, acknowledging stamps them, and a second list is empty — so a
+    /// refresh tick never hands the engine the same fact to merge twice.
+    func testDrainingTheBlindSyncInboxListsAcknowledgesAndStaysDrained() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
+
+        try sqliteExecute(
+            database: fixture.database,
+            sql: """
+            INSERT INTO agent_memory_inbox
+                (doc_id, user_id, engine_memory_id, payload_json, remote_updated_at, received_at, applied_at)
+            VALUES
+                ('doc-b', 'member-1', 'mem_bbbb', '{"text":"second"}', '2026-09-04T00:00:02.000Z', '2026-09-04T00:00:09.000Z', NULL),
+                ('doc-a', 'member-1', 'mem_aaaa', '{"text":"first"}', '2026-09-04T00:00:01.000Z', '2026-09-04T00:00:09.000Z', NULL),
+                ('doc-done', 'member-1', 'mem_cccc', '{"text":"merged"}', '2026-09-04T00:00:03.000Z', '2026-09-04T00:00:09.000Z', '2026-09-04T00:00:10.000Z');
+            """
+        )
+
+        let listed = try store.syncInboxList(BurnBarMemorySyncInboxListRequest())
+        XCTAssertEqual(
+            listed.entries.map(\.docID),
+            ["doc-a", "doc-b"],
+            "already-merged rows stay drained, and the rest arrive in updatedAt order"
+        )
+        XCTAssertEqual(listed.entries.map(\.engineMemoryID), ["mem_aaaa", "mem_bbbb"])
+        XCTAssertEqual(listed.entries.first?.payloadJSON, #"{"text":"first"}"#)
+
+        let acked = try store.syncInboxAck(
+            BurnBarMemorySyncInboxAckRequest(docIDs: listed.entries.map(\.docID))
+        )
+        XCTAssertEqual(acked.acknowledged, 2)
+        XCTAssertTrue(
+            try store.syncInboxList(BurnBarMemorySyncInboxListRequest()).entries.isEmpty,
+            "an acknowledged fact is never handed to the engine again"
+        )
+
+        // Re-acknowledging, and acknowledging a doc id that was never parked,
+        // both change nothing — the engine may retry a partial drain safely.
+        let replay = try store.syncInboxAck(
+            BurnBarMemorySyncInboxAckRequest(docIDs: ["doc-a", "doc-never-seen"])
+        )
+        XCTAssertEqual(replay.acknowledged, 0)
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT COUNT(*) FROM agent_memory_inbox WHERE applied_at IS NOT NULL"
+            ),
+            ["3"]
+        )
+    }
+
+    /// The inbox is a transit buffer, not a store. Once a fact is merged, its
+    /// parked plaintext is a redundant second copy of a member's memory; keeping
+    /// it for ever would quietly accumulate one per synced fact. The sweep runs on
+    /// the drain and touches ONLY merged rows — dropping an unmerged one would
+    /// lose a fact the engine never saw, because the pull watermark has already
+    /// moved past its document.
+    func testDrainingTheInboxSweepsMergedPlaintextPastItsRetentionWindowOnly() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
+        let stale = BurnBarProjectCodeMemoryStore.isoString(
+            Date().addingTimeInterval(-BurnBarProjectCodeMemoryStore.syncInboxRetentionSeconds - 3_600)
+        )
+        let recent = BurnBarProjectCodeMemoryStore.isoString(Date().addingTimeInterval(-3_600))
+
+        try sqliteExecute(
+            database: fixture.database,
+            sql: """
+            INSERT INTO agent_memory_inbox
+                (doc_id, user_id, engine_memory_id, payload_json, remote_updated_at, received_at, applied_at)
+            VALUES
+                ('doc-stale', 'member-1', 'mem_stale', '{"text":"long merged"}', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', \(sqlLiteral(stale))),
+                ('doc-recent', 'member-1', 'mem_recent', '{"text":"just merged"}', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', \(sqlLiteral(recent))),
+                ('doc-open', 'member-1', 'mem_open', '{"text":"never merged"}', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', NULL);
+            """
+        )
+
+        _ = try store.syncInboxAck(BurnBarMemorySyncInboxAckRequest(docIDs: ["doc-open"]))
+
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT doc_id FROM agent_memory_inbox ORDER BY doc_id"
+            ),
+            ["doc-open", "doc-recent"],
+            "only the merged row past its retention window is swept"
+        )
+    }
+
+    /// The drain is bounded. An engine asking for everything must not be able to
+    /// pull an unbounded result set across the socket in one call.
+    func testTheBlindSyncInboxDrainHonoursItsLimit() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
+        let values = (1...5).map { index in
+            "('doc-\(index)', 'member-1', 'mem_\(index)', '{}', '2026-09-04T00:00:0\(index).000Z', '2026-09-04T00:00:09.000Z', NULL)"
+        }.joined(separator: ",\n")
+        try sqliteExecute(
+            database: fixture.database,
+            sql: """
+            INSERT INTO agent_memory_inbox
+                (doc_id, user_id, engine_memory_id, payload_json, remote_updated_at, received_at, applied_at)
+            VALUES
+            \(values);
+            """
+        )
+
+        let listed = try store.syncInboxList(BurnBarMemorySyncInboxListRequest(limit: 2))
+        XCTAssertEqual(listed.entries.map(\.docID), ["doc-1", "doc-2"])
+    }
+
     /// A memory that was approved and uploaded can be remirrored as quarantined.
     /// Deleting its mapping row would strand the sealed cloud copy: the engine id is
     /// the only handle the sync lane has on it. The body is blanked (nothing may

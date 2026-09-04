@@ -1193,3 +1193,69 @@ public struct BurnBarProjectCodeExploreResponse: Codable, Hashable, Sendable {
         self.degradation = degradation
     }
 }
+
+// MARK: - Memory Blind Sync inbox (PR-2)
+
+/// Drain request for memory facts the app's pull lane verified and parked in
+/// `agent_memory_inbox`. The engine calls this, merges what it gets under §5 of
+/// the blind-sync design, then acknowledges the doc ids it applied.
+public struct BurnBarMemorySyncInboxListRequest: Codable, Hashable, Sendable {
+    /// Accepted for symmetry with the other memory RPCs and for the audit trace.
+    /// It deliberately does NOT narrow the result: an engine memory id is globally
+    /// unique and carries no project, so the inbox is user-scoped, not
+    /// project-scoped.
+    public let projectID: String?
+    public let limit: Int
+
+    public init(projectID: String? = nil, limit: Int = 200) {
+        self.projectID = projectID
+        self.limit = limit
+    }
+}
+
+/// One verified remote fact awaiting merge. `payloadJSON` is the plaintext the
+/// app opened from the member's own sealed document — it never left SQLCipher
+/// except across the local unix socket the engine already uses.
+public struct BurnBarMemorySyncInboxEntry: Codable, Hashable, Sendable {
+    public let docID: String
+    public let engineMemoryID: String
+    public let payloadJSON: String
+    public let remoteUpdatedAt: String
+
+    public init(docID: String, engineMemoryID: String, payloadJSON: String, remoteUpdatedAt: String) {
+        self.docID = docID
+        self.engineMemoryID = engineMemoryID
+        self.payloadJSON = payloadJSON
+        self.remoteUpdatedAt = remoteUpdatedAt
+    }
+}
+
+public struct BurnBarMemorySyncInboxListResponse: Codable, Hashable, Sendable {
+    public let traceID: String
+    public let entries: [BurnBarMemorySyncInboxEntry]
+
+    public init(traceID: String, entries: [BurnBarMemorySyncInboxEntry]) {
+        self.traceID = traceID
+        self.entries = entries
+    }
+}
+
+/// Marks the named documents merged. Idempotent: acknowledging a doc id twice,
+/// or one that was never parked, changes nothing.
+public struct BurnBarMemorySyncInboxAckRequest: Codable, Hashable, Sendable {
+    public let docIDs: [String]
+
+    public init(docIDs: [String]) {
+        self.docIDs = docIDs
+    }
+}
+
+public struct BurnBarMemorySyncInboxAckResponse: Codable, Hashable, Sendable {
+    public let traceID: String
+    public let acknowledged: Int
+
+    public init(traceID: String, acknowledged: Int) {
+        self.traceID = traceID
+        self.acknowledged = acknowledged
+    }
+}

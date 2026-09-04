@@ -139,6 +139,8 @@ final class BurnBarRPCCapabilityTests: XCTestCase {
             .memoryRemember,
             .memoryForget,
             .memoryModelPolicy,
+            .memorySyncInboxList,
+            .memorySyncInboxAck,
             .controllerSummary,
             .questionsList,
             .followupsList,
@@ -209,6 +211,24 @@ final class BurnBarRPCCapabilityTests: XCTestCase {
         // Read-only and run-client peers still may not write memory.
         XCTAssertFalse(BurnBarPeerCapabilityProfile.readOnly.permits(.memoryRemember))
         XCTAssertFalse(BurnBarPeerCapabilityProfile.runClient.permits(.memoryRemember))
+    }
+
+    /// Memory Blind Sync PR-2. The engine holds no keys and no network: draining
+    /// the facts the app pulled down is the ONLY way they reach it, so the CLI
+    /// peer must admit both halves of that drain — and the acknowledgement, which
+    /// stamps `applied_at`, must classify as a write so attenuated read-only and
+    /// run-client peers cannot mark a member's memories merged.
+    func test_theBlindSyncInboxDrainIsCourierPermittedAndWriteClassifiedForItsAck() {
+        let profile = BurnBarPeerCapabilityProfile.cliSupport
+        XCTAssertTrue(profile.permits(.memorySyncInboxList))
+        XCTAssertTrue(profile.permits(.memorySyncInboxAck))
+
+        XCTAssertEqual(BurnBarRPCCapability.capability(for: .memorySyncInboxList), .memoryRead)
+        XCTAssertEqual(BurnBarRPCCapability.capability(for: .memorySyncInboxAck), .memoryWrite)
+
+        XCTAssertTrue(BurnBarPeerCapabilityProfile.readOnly.permits(.memorySyncInboxList))
+        XCTAssertFalse(BurnBarPeerCapabilityProfile.readOnly.permits(.memorySyncInboxAck))
+        XCTAssertFalse(BurnBarPeerCapabilityProfile.runClient.permits(.memorySyncInboxAck))
     }
 
     func test_attenuationOnlyNarrows() {
