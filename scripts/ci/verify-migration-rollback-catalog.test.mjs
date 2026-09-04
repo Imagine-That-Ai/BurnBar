@@ -102,7 +102,7 @@ test("extracts only complete migration contracts", () => {
 });
 
 test("current migration surfaces, catalog, and generated documentation agree", () => {
-  // 66 as of v65_memory_quarantine_bodies. This literal is a deliberate
+  // 67 as of v66_agent_memory_bodies. This literal is a deliberate
   // tripwire, not a derived value: pinning it means adding a migration cannot
   // quietly pass by agreeing with itself, and forces the author past every
   // mirror. Bump it ONLY together with the migrator, the rollback catalog, the

@@ -14,7 +14,7 @@
 
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
--- Schema hash: 77fde9c930cbb88c37d6865490f893cc6ec113bfd1dd032879fd413b23c4b18f
+-- Schema hash: d79ec74ff49f28842ecd60c81f8a73217df8fa5a1cf6c3e83e97ec83f672b6e4
 
 -- ── GRDB migrations tracking ──────────────────────────────────────────────────
 

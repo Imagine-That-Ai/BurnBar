@@ -34,8 +34,8 @@ public sealed class WindowsSchemaUpgradeTests
 {
     private const string PreviousEndpoint = "v59_founder_lens";
     private const long PreviousMigrationCount = 60;
-    private const string CurrentEndpoint = "v65_memory_quarantine_bodies";
-    private const long CurrentMigrationCount = 66;
+    private const string CurrentEndpoint = "v66_agent_memory_bodies";
+    private const long CurrentMigrationCount = 67;
 
     private const string Passphrase = "OBB-WinPort-SchemaUpgrade-Test-Key-0000000=";
     private const string KeyProvenance = "test-static:schema-upgrade";
@@ -166,7 +166,7 @@ public sealed class WindowsSchemaUpgradeTests
         // history must stay a strict PREFIX for the upgrade path to engage.
         Execute(
             profile.DatabasePath,
-            "DELETE FROM grdb_migrations WHERE identifier IN ('v60_billing_kind', 'v61_usage_memory', 'v62_war_room_originator', 'v63_standing_orders', 'v64_token_usage_start_time_index', 'v65_memory_quarantine_bodies')");
+            "DELETE FROM grdb_migrations WHERE identifier IN ('v60_billing_kind', 'v61_usage_memory', 'v62_war_room_originator', 'v63_standing_orders', 'v64_token_usage_start_time_index', 'v65_memory_quarantine_bodies', 'v66_agent_memory_bodies')");
 
         WindowsStorageProvisioningReport report =
             provisioner.EnsureReady(profile.DatabasePath, Passphrase, KeyProvenance);
@@ -351,7 +351,9 @@ public sealed class WindowsSchemaUpgradeTests
             DROP TABLE IF EXISTS standing_orders;
             DROP INDEX IF EXISTS memory_quarantine_bodies_project_idx;
             DROP TABLE IF EXISTS memory_quarantine_bodies;
-            DELETE FROM grdb_migrations WHERE identifier IN ('v60_billing_kind', 'v61_usage_memory', 'v62_war_room_originator', 'v63_standing_orders', 'v64_token_usage_start_time_index', 'v65_memory_quarantine_bodies');
+            DROP INDEX IF EXISTS agent_memory_bodies_engine_idx;
+            DROP TABLE IF EXISTS agent_memory_bodies;
+            DELETE FROM grdb_migrations WHERE identifier IN ('v60_billing_kind', 'v61_usage_memory', 'v62_war_room_originator', 'v63_standing_orders', 'v64_token_usage_start_time_index', 'v65_memory_quarantine_bodies', 'v66_agent_memory_bodies');
             """);
     }
 
