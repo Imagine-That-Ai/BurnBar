@@ -767,6 +767,7 @@ def test_memory_mirror_uses_signed_cli_when_available(server_env: Path, monkeypa
             "confidence": 0.0,
             "sourceRef": "docs/memory.md",
             "text": "Route local memory writes through the signed CLI.",
+            "memoryID": "mem_0123456789abcdef0123456789abcdef",
         },
         "/tmp/fixture",
     )
@@ -783,6 +784,8 @@ def test_memory_mirror_uses_signed_cli_when_available(server_env: Path, monkeypa
                 "confidence": 0.0,
                 "sourcePath": "docs/memory.md",
                 "text": "Route local memory writes through the signed CLI.",
+                "sourceKind": "agent",
+                "engineMemoryID": "mem_0123456789abcdef0123456789abcdef",
             },
         )
     ]
@@ -911,3 +914,53 @@ def test_memory_toolset_carries_the_engine_tools() -> None:
         "burnbar_forget_all",
     ):
         assert name in server.MEMORY_TOOLSET and callable(getattr(server, name))
+
+
+def test_mirror_marks_engine_rows_as_syncable_agent_facts(server_env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Blind sync rides the mirror: an approved engine memory is the only kind that may
+    reach the cloud lane, so it alone carries `sourceKind: "agent"` and the engine id the
+    blinded document is keyed on. Secrets, quarantined and expiring rows still never leave."""
+    monkeypatch.setenv("OPENBURNBAR_LOCAL_MCP_ENABLE_LOCAL_WRITE", "true")
+    server = _load_server()
+    sent: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        server, "_signed_cli_path", lambda: "/Applications/OpenBurnBar.app/Contents/Helpers/OpenBurnBarCLI"
+    )
+
+    def fake_run(args, *, input, capture_output, timeout, check):
+        sent.append(json.loads(input))
+        return types.SimpleNamespace(
+            returncode=0, stdout=json.dumps({"memoryID": "mem_daemon", "auditHash": "a"}).encode(), stderr=b""
+        )
+
+    monkeypatch.setattr(server.subprocess, "run", fake_run)
+
+    def decision(**overrides: object) -> dict[str, object]:
+        base: dict[str, object] = {
+            "event": "ADD",
+            "sensitivity": "none",
+            "reviewStatus": "approved",
+            "kind": "decision",
+            "scope": "project",
+            "tags": [],
+            "confidence": 0.9,
+            "sourceRef": None,
+            "text": "We deploy from the release branch on Fridays.",
+            "memoryID": "mem_00112233445566778899aabbccddeeff",
+        }
+        base.update(overrides)
+        return base
+
+    assert server._memory_mirror_remember(decision(), "/tmp/fixture")["status"] == "mirrored"
+    assert sent[-1]["sourceKind"] == "agent"
+    assert sent[-1]["engineMemoryID"] == "mem_00112233445566778899aabbccddeeff"
+    assert sent[-1]["text"] == "We deploy from the release branch on Fridays."
+
+    before = len(sent)
+    for skipped in (
+        decision(sensitivity="secret"),
+        decision(reviewStatus="quarantined"),
+        decision(expiresAt="2030-01-01T00:00:00Z"),
+    ):
+        assert server._memory_mirror_remember(skipped, "/tmp/fixture")["status"] == "skipped"
+    assert len(sent) == before, "secret, quarantined and expiring rows never reach the daemon"
