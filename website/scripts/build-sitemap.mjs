@@ -5,9 +5,10 @@
 
 import { readdirSync, statSync, writeFileSync, existsSync } from "node:fs";
 import { join, relative } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const SITE = "https://burnbar.ai";
-const DIST = new URL("../dist", import.meta.url).pathname;
+const DIST = fileURLToPath(new URL("../dist", import.meta.url));
 // Pages we do not want indexed: the 404 page and the noindex'd auth-utility
 // surfaces (device linking + Hermes account connect).
 const EXCLUDE = ["/404", "/link", "/hermes/connect"];

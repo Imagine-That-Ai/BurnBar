@@ -385,9 +385,22 @@ function isActive(href: string): boolean {
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    flex: none;
+  }
+  /* The row is one non-wrapping flex line, so its floor is the sum of the
+     brand, the CTA cluster and the menu button. Flex shrink cannot take an
+     item below its min-content width, so on a 320px phone the line used to
+     stay 372px wide, paint outside the header and mint a document-level
+     horizontal scrollbar. The CTA cluster and the menu button hold their
+     intrinsic size; the brand is the one item allowed to give, and below the
+     narrow breakpoint it gives by dropping the wordmark, never the logo. */
+  .site-header__inner > :global(.brand) {
+    flex: 0 1 auto;
+    min-width: 0;
   }
   .site-header__menu {
     display: none;
+    flex: none;
     width: 36px;
     height: 36px;
     border-radius: var(--r-3);
@@ -433,6 +446,18 @@ function isActive(href: string): boolean {
   @media (min-width: 1025px) {
     .mobile-nav {
       display: none !important;
+    }
+  }
+  /* Narrow phones: tighten the row gap and retire the wordmark so the logo,
+     the theme toggle, the download CTA and the menu button all fit inside a
+     320px layout width with room to spare. The logo mark still links home and
+     still carries the "OpenBurnBar — home" label. */
+  @media (max-width: 480px) {
+    .site-header__inner {
+      gap: var(--s-3);
+    }
+    .site-header__inner :global(.wordmark) {
+      display: none;
     }
   }
 </style>

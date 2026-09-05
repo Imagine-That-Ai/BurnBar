@@ -10,9 +10,9 @@
 
 import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import { join, relative } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
-const DIST = new URL("../dist", import.meta.url).pathname;
+const DIST = fileURLToPath(new URL("../dist", import.meta.url));
 const RED = "\x1b[31m";
 const GREEN = "\x1b[32m";
 const YELLOW = "\x1b[33m";
