@@ -1981,6 +1981,73 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         XCTAssertNotEqual(written.projectID, victimIdentity.projectID)
     }
 
+    /// A4 follow-up (P31 owns the remedy): alias-first is the security fix, and it
+    /// has a cost — a folder mapped provisionally BEFORE it became a git checkout
+    /// can no longer join the project its repository belongs to. That is silent
+    /// today, so the daemon at least says so once per process, with the two opaque
+    /// project ids and never a path.
+    func test_a_provisional_folder_whose_git_root_names_another_project_is_diagnosed() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "identity-split-test")
+        )
+
+        // The repository, mapped by its git fingerprint.
+        let checkout = try makeGitFolder(in: fixture.root, named: "SplitCheckout", origin: "split-repo")
+        let checkoutIdentity = try store.resolveProjectIdentity(root: checkout)
+        XCTAssertTrue(checkoutIdentity.fingerprint.hasPrefix("git:"))
+
+        // A folder someone remembered something in BEFORE `git init`: provisional.
+        let folder = fixture.root.appendingPathComponent("SplitProvisional", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let provisionalIdentity = try store.resolveProjectIdentity(root: folder)
+        XCTAssertTrue(provisionalIdentity.fingerprint.hasPrefix("path:"))
+        XCTAssertNotEqual(provisionalIdentity.projectID, checkoutIdentity.projectID)
+
+        // They then clone/init the repo in place. Alias-first keeps the folder on
+        // its provisional id (that is the fix) — and the split is now recorded.
+        try runGit(["init"], cwd: folder)
+        try runGit(["remote", "add", "origin", "https://example.com/org/split-repo.git"], cwd: folder)
+        XCTAssertEqual(
+            BurnBarProjectCodeMemoryStore.projectIdentityFingerprint(root: folder),
+            checkoutIdentity.fingerprint,
+            "precondition: the folder's contents now imply the checkout's identity"
+        )
+
+        XCTAssertEqual(try store.resolveProjectIdentity(root: folder).projectID, provisionalIdentity.projectID)
+
+        let split = BurnBarProjectIdentitySplit(
+            provisionalProjectID: provisionalIdentity.projectID,
+            gitProjectID: checkoutIdentity.projectID
+        )
+        XCTAssertEqual(
+            BurnBarProjectIdentityDiagnostics.observedSplits().filter { $0 == split }.count,
+            1,
+            "the split is observed exactly once"
+        )
+        // Once per process: the second resolve of the same folder records nothing
+        // new, and the guard itself refuses a repeat.
+        XCTAssertEqual(try store.resolveProjectIdentity(root: folder).projectID, provisionalIdentity.projectID)
+        XCTAssertEqual(BurnBarProjectIdentityDiagnostics.observedSplits().filter { $0 == split }.count, 1)
+        XCTAssertFalse(BurnBarProjectIdentityDiagnostics.noteSplit(split))
+
+        // Ids only. A project id is `proj_<hex>`; a path would leak the member's
+        // folder layout into a log line.
+        XCTAssertEqual(
+            split.logMetadata,
+            ["project_id": provisionalIdentity.projectID, "git_project_id": checkoutIdentity.projectID]
+        )
+        XCTAssertTrue(split.logMetadata.values.allSatisfy { $0.contains("/") == false })
+
+        // A folder whose recorded mapping is NOT provisional is not a split: the
+        // red-team case (an explicit map colliding with a git fingerprint) is a
+        // refusal working as designed, not a stranded folder.
+        let before = BurnBarProjectIdentityDiagnostics.observedSplits().count
+        _ = try store.resolveProjectIdentity(root: checkout)
+        XCTAssertEqual(BurnBarProjectIdentityDiagnostics.observedSplits().count, before)
+    }
+
     /// A git work tree whose only stable identity part is its origin remote, so two
     /// folders built with the same `origin` share a fingerprint exactly.
     private func makeGitFolder(in root: URL, named name: String, origin: String) throws -> URL {
