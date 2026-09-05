@@ -1,7 +1,10 @@
 import importlib.util
 import json
+import os
+import plistlib
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 import scripts.ci.check_agpl_legal_release_review as agpl_review
@@ -843,6 +846,293 @@ def test_local_app_signing_uses_same_privileged_peer_policy_as_release():
     assert "--preserve-metadata=entitlements,requirements" in script
     assert "--preserve-metadata=entitlements,requirements,flags" not in script
     assert 'codesign --force --sign "$IDENTITY" --timestamp=none "$path"' not in script
+
+
+SIGN_SCRIPT = ROOT / "scripts/sign-openburnbar-local.sh"
+
+
+def _extract_python_heredoc(anchor: str) -> str:
+    """Return the first `python3 - ... <<'PY' ... PY` body at or after `anchor`.
+
+    Every test that uses this runs the signing script's *real* embedded Python,
+    sliced straight out of the shipped file, so editing the script's logic
+    changes what these tests execute.
+    """
+    script = SIGN_SCRIPT.read_text(encoding="utf-8")
+    assert anchor in script, f"anchor not found in the signing script: {anchor!r}"
+    body = script.split(anchor, 1)[1]
+    start = body.index("<<'PY'\n") + len("<<'PY'\n")
+    end = body.index("\nPY\n", start)
+    return body[start:end]
+
+
+LOSS_CHECK_ANCHOR = "assert_no_entitlement_loss() {"
+ENTITLEMENT_GENERATION_ANCHOR = 'python3 - "$ENTITLEMENTS_SOURCE"'
+PRESERVE_DECISION_START = "preserve_entitlements=false"
+PRESERVE_DECISION_END = "# Fail closed *before* mutating the bundle"
+
+
+def _extract_shell_block(start_marker: str, end_marker: str) -> str:
+    """Return the shell source between two markers of the signing script."""
+    script = SIGN_SCRIPT.read_text(encoding="utf-8")
+    start = script.index(start_marker)
+    end = script.index(end_marker, start)
+    return script[start:end]
+
+
+def _write_plist(path: Path, keys) -> Path:
+    path.write_bytes(plistlib.dumps({key: True for key in keys}))
+    return path
+
+
+def _run_loss_check_paths(before: Path, after: Path):
+    return subprocess.run(
+        [sys.executable, "-c", _extract_python_heredoc(LOSS_CHECK_ANCHOR), str(before), str(after)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def _run_loss_check(tmp_path: Path, before_keys, after_keys):
+    before = _write_plist(tmp_path / "before.plist", before_keys)
+    after = _write_plist(tmp_path / "after.plist", after_keys)
+    return _run_loss_check_paths(before, after)
+
+
+def test_local_signing_never_reduces_the_apps_entitlement_set(tmp_path):
+    """The set applied by the signing script must be a superset of the input binary's.
+
+    The generated fallback used to be a three-key dict, so honouring
+    OPENBURNBAR_PRESERVE_SIGNED_ENTITLEMENTS and then falling through to it
+    silently stripped iCloud containers, iCloud services and Sign in with Apple
+    from a locally installed build.
+    """
+    full = plistlib.loads((ROOT / "AgentLens/Resources/OpenBurnBar.entitlements").read_bytes())
+    minimal = [
+        "com.apple.security.app-sandbox",
+        "com.apple.security.files.user-selected.read-only",
+        "keychain-access-groups",
+    ]
+
+    result = _run_loss_check(tmp_path, full.keys(), minimal)
+    assert result.returncode != 0, result.stdout
+    for dropped in (
+        "com.apple.developer.icloud-container-identifiers",
+        "com.apple.developer.icloud-services",
+        "com.apple.developer.applesignin",
+    ):
+        assert dropped in result.stderr
+    assert "Refusing to reduce" in result.stderr
+
+
+def test_local_signing_allows_identical_and_widened_entitlement_sets(tmp_path):
+    full = list(plistlib.loads((ROOT / "AgentLens/Resources/OpenBurnBar.entitlements").read_bytes()))
+
+    identical = _run_loss_check(tmp_path, full, full)
+    assert identical.returncode == 0, identical.stderr
+
+    widened = _run_loss_check(tmp_path, full, full + ["com.apple.developer.team-identifier"])
+    assert widened.returncode == 0, widened.stderr
+
+    # An unsigned input bundle carries no entitlements at all; the generated set
+    # is then the only set there is, and applying it drops nothing.
+    unsigned = _run_loss_check(tmp_path, [], full)
+    assert unsigned.returncode == 0, unsigned.stderr
+
+
+def test_local_signing_gates_are_wired_into_the_script():
+    script = SIGN_SCRIPT.read_text(encoding="utf-8")
+
+    # The entitlements are read off the input bundle before anything is re-signed…
+    assert 'read_embedded_entitlements "$APP_BUNDLE" "$INPUT_ENTITLEMENTS" || true' in script
+    # …checked before the outer bundle is mutated on the generated path…
+    assert 'assert_no_entitlement_loss "$INPUT_ENTITLEMENTS" "$TEMP_ENTITLEMENTS"' in script
+    # …and proven again against the signed result.
+    assert 'assert_no_entitlement_loss "$INPUT_ENTITLEMENTS" "$FINAL_ENTITLEMENTS"' in script
+    assert script.index('assert_no_entitlement_loss "$INPUT_ENTITLEMENTS" "$TEMP_ENTITLEMENTS"') < script.index(
+        'assert_no_entitlement_loss "$INPUT_ENTITLEMENTS" "$FINAL_ENTITLEMENTS"'
+    )
+
+    # The generated fallback defaults to the full source entitlements file.
+    # Which modes are accepted, and what each one produces, is exercised for
+    # real by the entitlement-generation tests below rather than asserted here.
+    assert '"${OPENBURNBAR_FULL_ENTITLEMENTS:-1}"' in script
+
+
+def test_local_signing_refuses_an_unreadable_input_entitlement_plist(tmp_path):
+    """A malformed input plist must stop the build, not disable the gate.
+
+    `keys()` used to swallow every exception into an empty set, so a non-empty
+    but unparseable read off the input binary made the loss check pass by
+    default — fail-open in the one place a signing script may not be.
+    """
+    after = _write_plist(tmp_path / "after.plist", ["com.apple.security.app-sandbox"])
+
+    garbage = tmp_path / "garbage.plist"
+    garbage.write_bytes(b"<<< this is not a property list >>>\n")
+    malformed = _run_loss_check_paths(garbage, after)
+    assert malformed.returncode != 0, malformed.stdout
+    assert "could not parse the entitlements read from the input binary" in malformed.stderr
+    assert str(garbage) in malformed.stderr
+
+    not_a_dict = tmp_path / "array.plist"
+    not_a_dict.write_bytes(plistlib.dumps(["com.apple.security.app-sandbox"]))
+    wrong_shape = _run_loss_check_paths(not_a_dict, after)
+    assert wrong_shape.returncode != 0, wrong_shape.stdout
+    assert "not a plist dictionary" in wrong_shape.stderr
+
+
+def test_local_signing_treats_an_absent_or_empty_input_plist_as_no_signature(tmp_path):
+    """The documented fallback: an unsigned bundle has no entitlements to lose."""
+    after = _write_plist(tmp_path / "after.plist", ["com.apple.security.app-sandbox"])
+
+    empty = tmp_path / "empty.plist"
+    empty.write_bytes(b"")
+    assert _run_loss_check_paths(empty, after).returncode == 0
+
+    whitespace = tmp_path / "whitespace.plist"
+    whitespace.write_bytes(b"\n  \n")
+    assert _run_loss_check_paths(whitespace, after).returncode == 0
+
+    absent = _run_loss_check_paths(tmp_path / "does-not-exist.plist", after)
+    assert absent.returncode == 0, absent.stderr
+
+
+def _run_entitlement_generation(tmp_path: Path, mode: str):
+    """Execute the script's entitlement-generation heredoc for one mode."""
+    code = _extract_python_heredoc(ENTITLEMENT_GENERATION_ANCHOR)
+    destination = tmp_path / f"generated-{mode or 'empty'}.plist"
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            code,
+            str(ROOT / "AgentLens/Resources/OpenBurnBar.entitlements"),
+            str(destination),
+            "ABCDE12345",
+            "com.openburnbar.app",
+            mode,
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return result, destination
+
+
+def test_local_signing_rejects_unrecognised_entitlement_modes(tmp_path):
+    """The allowlist fails closed, and it does so before any codesign runs.
+
+    Exercised through the script's own heredoc: the retired "keychain"/"none"
+    modes and a plain typo must all stop the build rather than quietly pick an
+    entitlement set nobody asked for.
+    """
+    for mode in ("0", "keychain", "none", "kechain", "full", "MINIMAL"):
+        result, destination = _run_entitlement_generation(tmp_path, mode)
+        assert result.returncode != 0, f"mode {mode!r} was accepted: {result.stdout}"
+        assert "unrecognised OPENBURNBAR_FULL_ENTITLEMENTS" in result.stderr
+        assert repr(mode) in result.stderr
+        assert not destination.exists(), f"mode {mode!r} wrote {destination}"
+
+
+def test_local_signing_default_mode_generates_the_full_source_entitlements(tmp_path):
+    result, destination = _run_entitlement_generation(tmp_path, "1")
+    assert result.returncode == 0, result.stderr
+
+    source_keys = set(
+        plistlib.loads((ROOT / "AgentLens/Resources/OpenBurnBar.entitlements").read_bytes())
+    )
+    generated = plistlib.loads(destination.read_bytes())
+    assert set(generated) == source_keys
+
+    # Xcode's build-setting placeholders are substituted, not shipped verbatim.
+    text = destination.read_text(encoding="utf-8")
+    assert "$(AppIdentifierPrefix)" not in text
+    assert "$(PRODUCT_BUNDLE_IDENTIFIER)" not in text
+    assert generated["keychain-access-groups"] == ["ABCDE12345.com.openburnbar.app"]
+    for entitlement in (
+        "com.apple.developer.icloud-container-identifiers",
+        "com.apple.developer.icloud-services",
+        "com.apple.developer.applesignin",
+    ):
+        assert entitlement in generated
+
+
+def test_local_signing_minimal_mode_is_the_opt_in_reduced_set(tmp_path):
+    result, destination = _run_entitlement_generation(tmp_path, "minimal")
+    assert result.returncode == 0, result.stderr
+
+    generated = plistlib.loads(destination.read_bytes())
+    assert set(generated) == {
+        "com.apple.security.app-sandbox",
+        "com.apple.security.files.user-selected.read-only",
+        "keychain-access-groups",
+    }
+    # And this is exactly why it may not be the default: it drops entitlements
+    # the shipped app declares, which the loss gate then refuses.
+    source_keys = set(
+        plistlib.loads((ROOT / "AgentLens/Resources/OpenBurnBar.entitlements").read_bytes())
+    )
+    assert set(generated) < source_keys
+
+
+def _run_preserve_decision(tmp_path: Path, input_plist: Path, preserve_env):
+    """Run the script's own preserve/generated decision block under bash."""
+    harness = tmp_path / "preserve-decision.sh"
+    harness.write_text(
+        "set -euo pipefail\n"
+        'APP_BUNDLE="$1"\n'
+        'INPUT_ENTITLEMENTS="$2"\n'
+        + _extract_shell_block(PRESERVE_DECISION_START, PRESERVE_DECISION_END)
+        + '\necho "preserve=$preserve_entitlements"\n',
+        encoding="utf-8",
+    )
+    env = dict(os.environ)
+    env.pop("OPENBURNBAR_PRESERVE_SIGNED_ENTITLEMENTS", None)
+    if preserve_env is not None:
+        env["OPENBURNBAR_PRESERVE_SIGNED_ENTITLEMENTS"] = preserve_env
+    return subprocess.run(
+        ["bash", str(harness), "/tmp/OpenBurnBar.app", str(input_plist)],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+
+
+def test_local_signing_preserve_decision_follows_the_flag_and_the_bundle(tmp_path):
+    """The preserve/generated branch, executed rather than grepped."""
+    full = _write_plist(tmp_path / "full.plist", ["keychain-access-groups", "com.apple.developer.applesignin"])
+    no_keychain = _write_plist(tmp_path / "no-keychain.plist", ["com.apple.developer.applesignin"])
+    empty = tmp_path / "empty.plist"
+    empty.write_bytes(b"")
+
+    # Default: the flag is opt-in, so a signed bundle still takes the generated
+    # path — and the pre-sign loss gate is what keeps that honest.
+    unset = _run_preserve_decision(tmp_path, full, None)
+    assert unset.returncode == 0, unset.stderr
+    assert "preserve=false" in unset.stdout
+
+    explicit_off = _run_preserve_decision(tmp_path, full, "0")
+    assert "preserve=false" in explicit_off.stdout
+
+    # The Makefile happy path: flag set, bundle carries entitlements.
+    on = _run_preserve_decision(tmp_path, full, "1")
+    assert on.returncode == 0, on.stderr
+    assert "preserve=true" in on.stdout
+    assert on.stderr == ""
+
+    # Missing keychain-access-groups is preserved anyway, loudly.
+    warned = _run_preserve_decision(tmp_path, no_keychain, "1")
+    assert "preserve=true" in warned.stdout
+    assert "signed without keychain-access-groups" in warned.stderr
+    assert "Keychain Sharing" in warned.stderr
+
+    # Nothing readable to preserve: fall back to the generated set with a warning.
+    unsigned = _run_preserve_decision(tmp_path, empty, "1")
+    assert "preserve=false" in unsigned.stdout
+    assert "carries no readable entitlements" in unsigned.stderr
 
 
 def test_daemon_token_file_arguments_override_inherited_environment():
