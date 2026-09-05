@@ -672,8 +672,6 @@ class _BlindSync:
             "scope": decision.get("scope"),
             "reviewStatus": decision.get("reviewStatus"),
         }
-        if not fact.injection:
-            result["text"] = decision.get("text")
         return result
 
     def _update_remote_row(self, fact: _RemoteFact, memory_id: str) -> dict[str, Any]:
@@ -764,7 +762,11 @@ class _BlindSync:
         # row stays independently durable (mirrors `_commit_fact`).
         if self.conn.in_transaction:
             self._commit()
-        vector = self.provider.embed([fact.body])[0] if self.provider.available else None
+        # A quarantined (injection-labelled) body is excluded from model paths on
+        # arrival exactly as it is locally — and the embedding provider IS a model
+        # path: with the gateway provider `embed()` ships the text off-device.
+        # The row lands vector-less; `reindex` embeds it if a review approves it.
+        vector = self.provider.embed([fact.body])[0] if self.provider.available and not fact.injection else None
         if not self.conn.in_transaction:
             self.conn.execute("BEGIN IMMEDIATE")
         cipher, nonce = self._seal_body(memory_id, fact.project_id, fact.body)
@@ -886,15 +888,14 @@ class _BlindSync:
             "retired": fact.valid_to is not None,
             "embedded": vector is not None,
         }
-        # §5: an injection-labelled row "stays excluded from model paths on
-        # arrival exactly as it is locally" — and locally a quarantined row is
-        # excluded from recall, not fenced and handed over. The row still lands
-        # (quarantined, reviewable), and the decision still says so by id, kind,
-        # scope and label; what it does not do is carry the attacker-authored
-        # body and tags back into the caller's context on the way past.
-        if not fact.injection:
-            decision["text"] = fact.body
-            decision["tags"] = list(fact.tags)
+        # No body, no tags — for ANY remote row, not only a quarantined one. The
+        # inbox is account-wide on purpose (an engine id carries no project), so
+        # a pull invoked from project A merges facts that belong to projects B, C
+        # and the member's personal scope. Fencing a body as untrusted stops
+        # instruction injection; it does not stop cross-project disclosure into
+        # the calling agent's context. The tool's stated purpose is counts and
+        # ids: the decision names the row (id, kind, scope, labels, status) and
+        # recall — which IS project-scoped — is how a body reaches a model.
         return decision
 
     def _resolve_remote_supersede(self, fact: _RemoteFact, memory_id: str) -> bool:

@@ -3122,19 +3122,23 @@ def _memory_sync_inbox_list(project_id: str | None, limit: int) -> dict[str, Any
     return {"status": "ok", "entries": [item for item in entries if isinstance(item, dict)]}
 
 
+_MEMORY_SYNC_DECISION_BODY_FIELDS = ("text", "tags", "entities")
+
+
 def _memory_wrap_sync_decision(decision: dict[str, Any]) -> dict[str, Any]:
-    """One merge decision, with every string another device wrote fenced off."""
-    wrapped = dict(decision)
+    """One merge decision: ids, counts and labels — never another device's body.
+
+    The engine no longer puts `text`/`tags`/`entities` on a decision (the inbox
+    is account-wide, so they could belong to another project); this strips them
+    defensively should any path reintroduce one, and fences the remaining
+    free-text field (`reason`) as untrusted.
+    """
+    wrapped = {key: value for key, value in decision.items() if key not in _MEMORY_SYNC_DECISION_BODY_FIELDS}
     record_id = str(decision.get("memoryID") or decision.get("docID") or "unknown")
-    if isinstance(wrapped.get("text"), str):
-        wrapped["text"] = _memory_wrap_read_string(
-            wrapped["text"], source_tool="burnbar_memory_sync_pull", record_id=f"{record_id}:text"
+    if "reason" in wrapped:
+        wrapped["reason"] = _memory_wrap_auxiliary(
+            wrapped["reason"], source_tool="burnbar_memory_sync_pull", record_id=record_id, field="reason"
         )
-    for field in ("tags", "entities", "reason"):
-        if field in wrapped:
-            wrapped[field] = _memory_wrap_auxiliary(
-                wrapped[field], source_tool="burnbar_memory_sync_pull", record_id=record_id, field=field
-            )
     return wrapped
 
 
