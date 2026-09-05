@@ -51,10 +51,13 @@ struct ProjectMemoryHealthCardModel: Equatable, Sendable {
     let lastAuditHash: String?
     let errorCount: Int
     let warningCount: Int
-    let infoCount: Int
-    let severityCounts: [String: Int]
     let findings: [ProjectMemoryHealthFinding]
     let auditChainOK: Bool
+    /// How many `memory_audit` links the chain check actually walked. The check
+    /// is a bounded TAIL (`ControlPlaneStore.memoryAuditChainWindow`), so
+    /// "Intact" without this number would claim a whole ledger on the strength
+    /// of its last few hundred links.
+    let auditChainCheckedLinks: Int
     let lastPullAge: String
     let markerAge: String
 
@@ -74,18 +77,33 @@ struct ProjectMemoryHealthCardModel: Equatable, Sendable {
     var statRows: [StatRow] {
         var rows: [StatRow] = [
             StatRow(title: "Memories", value: totalMemories.map(String.init) ?? Self.placeholder),
-            StatRow(
-                title: "Audit chain",
-                value: auditChainOK ? "Intact" : "Broken",
-                emphasis: auditChainOK ? .good : .bad
-            ),
+            auditChainRow,
             StatRow(title: "Last pull", value: lastPullAge),
             StatRow(title: "Marker age", value: markerAge)
         ]
         if byKind.isEmpty == false {
             rows.append(StatRow(title: "Kinds", value: "\(byKind.count)"))
         }
+        if byScope.isEmpty == false {
+            rows.append(StatRow(title: "Scopes", value: "\(byScope.count)"))
+        }
+        if let lastAuditHash, lastAuditHash.isEmpty == false {
+            rows.append(StatRow(title: "Last audit", value: String(lastAuditHash.prefix(8))))
+        }
         return rows
+    }
+
+    /// States the window it walked. An empty ledger has no chain, so it says
+    /// that rather than asserting an integrity nobody had anything to check.
+    private var auditChainRow: StatRow {
+        guard auditChainCheckedLinks > 0 else {
+            return StatRow(title: "Audit chain", value: "No events")
+        }
+        return StatRow(
+            title: "Audit chain",
+            value: auditChainOK ? "Intact (last \(auditChainCheckedLinks))" : "Broken",
+            emphasis: auditChainOK ? .good : .bad
+        )
     }
 
     struct StatRow: Equatable, Identifiable, Sendable {
@@ -117,6 +135,7 @@ struct ProjectMemoryHealthCardModel: Equatable, Sendable {
         findings: [ProjectMemoryHealthFinding] = [],
         projectName: String? = nil,
         projectRoot: String? = nil,
+        auditChainCheckedLinks: Int = 0,
         lastPullAge: String = Self.placeholder,
         markerAge: String = Self.placeholder
     ) {
@@ -129,27 +148,24 @@ struct ProjectMemoryHealthCardModel: Equatable, Sendable {
         self.lastAuditHash = analytics?.lastAuditHash
         self.findings = findings
 
+        // Only the two severities `MemoryHealthLocalFindings` can actually emit
+        // are counted. An `info` tally and a per-severity histogram were carried
+        // here with no producer and no row that rendered them.
         var errors = 0
         var warnings = 0
-        var infos = 0
-        var counts: [String: Int] = [:]
         for finding in findings {
-            counts[finding.severity, default: 0] += 1
             switch finding.severity {
             case MemoryHealthLocalFindings.severityError:
                 errors += 1
             case MemoryHealthLocalFindings.severityWarn, "warning":
                 warnings += 1
-            case "info":
-                infos += 1
             default:
                 break
             }
         }
         self.errorCount = errors
         self.warningCount = warnings
-        self.infoCount = infos
-        self.severityCounts = counts
+        self.auditChainCheckedLinks = auditChainCheckedLinks
         // An unreported chain is not a broken one; only a finding that says the
         // chain broke may claim it did.
         self.auditChainOK = findings.contains { $0.code == MemoryHealthLocalFindings.auditChainBroken } == false
@@ -180,6 +196,7 @@ struct ProjectMemoryHealthCardModel: Equatable, Sendable {
             ),
             projectName: projectName,
             projectRoot: projectRoot,
+            auditChainCheckedLinks: snapshot.auditChainLinks.count,
             lastPullAge: MemoryHealthLocalFindings.age(of: snapshot.lastMemoryFactsPullAt, now: now),
             markerAge: MemoryHealthLocalFindings.age(of: snapshot.deviceSyncMarkerRefreshedAt, now: now)
         )

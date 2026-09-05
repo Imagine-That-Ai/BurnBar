@@ -72,10 +72,16 @@ final class ProjectMemoryHealthCardTests: XCTestCase {
             card.statRows.map { [$0.title, $0.value] },
             [
                 ["Memories", "42"],
-                ["Audit chain", "Intact"],
+                // I4: an empty ledger has no chain to walk, so the row says that
+                // rather than asserting integrity nobody checked.
+                ["Audit chain", "No events"],
                 ["Last pull", "—"],
                 ["Marker age", "—"],
-                ["Kinds", "2"]
+                ["Kinds", "2"],
+                // M5: `byScope` and `lastAuditHash` were parsed and then never
+                // shown. Both are contract fields the daemon answered with.
+                ["Scopes", "2"],
+                ["Last audit", "b8f1c0de"]
             ],
             "a sync that has never run has no age, and the card says so"
         )
@@ -112,6 +118,10 @@ final class ProjectMemoryHealthCardTests: XCTestCase {
             ["Memories", "Audit chain", "Last pull", "Marker age"],
             "counters the daemon did not report get no row at all"
         )
+        XCTAssertNil(
+            card.statRows.first { $0.title == "Last audit" },
+            "a nil lastAuditHash is not a row"
+        )
     }
 
     // MARK: - Audit chain
@@ -147,6 +157,37 @@ final class ProjectMemoryHealthCardTests: XCTestCase {
         XCTAssertEqual(auditRow?.emphasis, .bad)
         XCTAssertEqual(card.findings.first?.code, MemoryHealthLocalFindings.auditChainBroken)
         XCTAssertEqual(card.findings.first?.detail.contains("seq 17"), true)
+        // I4: the check is a bounded tail. The bound was stated in code comments
+        // and nowhere the member could see it.
+        XCTAssertEqual(
+            card.findings.first?.detail.contains("most recent 3 links"),
+            true,
+            "the finding scopes itself to what was walked; got \(card.findings.first?.detail ?? "nil")"
+        )
+    }
+
+    /// I4: "Intact" on its own claims a whole ledger on the strength of a
+    /// 500-link tail. The row states how much was walked.
+    func test_an_intact_chain_states_the_window_it_walked() {
+        let intact = (1 ... 4).map { seq in
+            MemoryAuditChainLink(seq: seq, prevHash: seq == 1 ? nil : "h\(seq - 1)", hash: "h\(seq)")
+        }
+        let card = ProjectMemoryHealthCardModel(
+            analytics: Self.analytics,
+            snapshot: emptySnapshot(links: intact),
+            secretScannerAvailable: true
+        )
+
+        XCTAssertTrue(card.auditChainOK)
+        XCTAssertEqual(card.auditChainCheckedLinks, 4)
+        let auditRow = card.statRows.first { $0.title == "Audit chain" }
+        XCTAssertEqual(auditRow?.value, "Intact (last 4)")
+        XCTAssertEqual(auditRow?.emphasis, .good)
+        XCTAssertEqual(
+            ControlPlaneStore.memoryAuditChainWindow,
+            500,
+            "the window the snapshot read is the window the card reports"
+        )
     }
 
     // MARK: - No engine doctor claims
@@ -202,6 +243,11 @@ final class ProjectMemoryHealthCardTests: XCTestCase {
 
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let pulledAt = now.addingTimeInterval(-240)          // 4 minutes ago
+        // I3: DELIBERATELY different from the pull. `lastProcessedRemoteUpdateAt`
+        // is the newest remote fact this Mac has seen, not when it last pulled;
+        // a Mac that pulls every cycle but learns nothing new would otherwise
+        // render "Last pull: 30 d ago".
+        let newestFactAt = now.addingTimeInterval(-30 * 86_400) // 30 days ago
         let markerRefreshedAt = now.addingTimeInterval(-7_200) // 2 hours ago
 
         try await queue.write { db in
@@ -211,7 +257,7 @@ final class ProjectMemoryHealthCardTests: XCTestCase {
                     (accountUid, collectionKind, lastSyncedAt, lastProcessedRemoteUpdateAt, version)
                 VALUES (?, ?, ?, ?, 1)
                 """,
-                arguments: ["uid-1", RemoteSyncCollectionKind.memoryFacts.rawValue, pulledAt, pulledAt]
+                arguments: ["uid-1", RemoteSyncCollectionKind.memoryFacts.rawValue, pulledAt, newestFactAt]
             )
             try db.execute(
                 sql: """
@@ -227,6 +273,12 @@ final class ProjectMemoryHealthCardTests: XCTestCase {
         XCTAssertEqual(
             try XCTUnwrap(snapshot.lastMemoryFactsPullAt).timeIntervalSince1970,
             pulledAt.timeIntervalSince1970,
+            accuracy: 1,
+            "'Last pull' is lastSyncedAt — when we pulled — not the newest remote fact we happened to receive"
+        )
+        XCTAssertNotEqual(
+            try XCTUnwrap(snapshot.lastMemoryFactsPullAt).timeIntervalSince1970,
+            newestFactAt.timeIntervalSince1970,
             accuracy: 1
         )
         XCTAssertEqual(

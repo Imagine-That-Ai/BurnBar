@@ -52,7 +52,10 @@ struct MemoryHealthLocalSnapshot: Equatable, Sendable {
     let auditChainLinks: [MemoryAuditChainLink]
     /// Rows still waiting for a human in the review inbox.
     let pendingReviewCount: Int
-    /// When `memory_facts` was last pulled down for this account.
+    /// When this Mac last completed a `memory_facts` pull — `lastSyncedAt`, not
+    /// `lastProcessedRemoteUpdateAt`. The latter is the newest REMOTE fact time
+    /// this Mac has processed, so a Mac that pulls every cycle and learns nothing
+    /// new would render "Last pull: 30 d ago" while syncing perfectly.
     let lastMemoryFactsPullAt: Date?
     /// When the device-sync consent marker was last rewritten. Nil when device
     /// sync is not consented on this Mac, which is not a fault.
@@ -139,7 +142,7 @@ extension ControlPlaneStore {
                 lastPull = try Date.fetchOne(
                     db,
                     sql: """
-                    SELECT lastProcessedRemoteUpdateAt FROM remote_sync_watermarks
+                    SELECT lastSyncedAt FROM remote_sync_watermarks
                     WHERE accountUid = ? AND collectionKind = ?
                     """,
                     arguments: [accountUid, RemoteSyncCollectionKind.memoryFacts.rawValue]

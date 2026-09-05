@@ -12,7 +12,9 @@ import OpenBurnBarKernel
 /// this type exists to avoid.
 ///
 /// Every code below is measured from something the app actually holds:
-///   * `AUDIT_CHAIN_BROKEN` — walking `memory_audit.prev_hash`.
+///   * `AUDIT_CHAIN_BROKEN` — walking `memory_audit.prev_hash` over the
+///     bounded tail the snapshot read (`ControlPlaneStore.memoryAuditChainWindow`).
+///     The bound is stated to the member, not only in this comment.
 ///   * `SECRET_CORPUS_UNAVAILABLE` — `MemorySecretPIIGate.isAvailable`, the
 ///     fail-closed corpus every memory write depends on.
 ///   * `SYNC_MARKER_STALE` — the device-sync consent marker's own age bound.
@@ -75,7 +77,11 @@ enum MemoryHealthLocalFindings {
             findings.append(ProjectMemoryHealthFinding(
                 code: auditChainBroken,
                 severity: severityError,
-                detail: "The memory audit hash chain breaks at seq \(brokenSeq).",
+                // The scope is part of the claim. This walk is a TAIL — it can
+                // say a break exists, never that none does outside the window.
+                detail: "The memory audit hash chain breaks at seq \(brokenSeq). "
+                    + "This check walks only the most recent \(snapshot.auditChainLinks.count) links, "
+                    + "so an older break would not be detected.",
                 fix: "Export your memories and reset the local store; the ledger cannot be repaired in place."
             ))
         }
