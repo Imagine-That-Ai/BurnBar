@@ -1018,6 +1018,7 @@ enum SettingsManifest {
         SettingsAnchor.refreshInterval,
         SettingsAnchor.indexingToggle,
         SettingsAnchor.indexingMemory,
+        SettingsAnchor.indexingMemoryDeviceSync,
         SettingsAnchor.indexingMemoryCloudModels,
         SettingsAnchor.summariesAuto,
         SettingsAnchor.aiInboxOverview,
