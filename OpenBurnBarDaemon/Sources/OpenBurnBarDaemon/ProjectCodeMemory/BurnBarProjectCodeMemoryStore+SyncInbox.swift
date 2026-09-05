@@ -52,14 +52,20 @@ extension BurnBarProjectCodeMemoryStore {
     /// from the app's side; this closes it from the daemon's, so the boundary
     /// holds even when the app is not running to enforce anything.
     ///
-    /// 20 minutes = 2 × `BehaviorSettings.refreshInterval` (600 s), the cadence
-    /// on which `MemoryCloudSyncDomain.sync()` rewrites the marker while consent
-    /// stands. One skipped tick — a slow cycle, a sleeping Mac catching up — is
-    /// tolerated; two are read as "no app is vouching for this any more" and the
-    /// drain falls closed. It is deliberately NOT a security timeout tuned to an
-    /// attacker: it is the window in which an app that stopped running stops
-    /// being believed.
-    static let deviceSyncConsentMarkerMaxAge: TimeInterval = 2 * 600
+    /// 20 minutes, and it is `BurnBarMemoryDeviceSyncMarker.maxAge` rather than a
+    /// literal because the bound and the app's refresh cadence are ONE contract
+    /// between two processes. It used to be `2 * 600`, pinned to
+    /// `BehaviorSettings.refreshInterval` — but that interval is user-adjustable
+    /// up to 15 minutes and `BackgroundCadenceCoordinator` stretches it 5x while
+    /// the app is inactive, so a normally-backgrounded menu-bar app could go 75
+    /// minutes between refreshes and this bound would expire a consent that was
+    /// never withdrawn. The app now refreshes the marker on its own fixed timer
+    /// (`BurnBarMemoryDeviceSyncMarker.refreshInterval`, 5 minutes) and this is
+    /// four of those: three missed beats tolerated, the fourth read as "no app
+    /// is vouching for this any more". It is deliberately NOT a security timeout
+    /// tuned to an attacker: it is the window in which an app that stopped
+    /// running stops being believed.
+    static let deviceSyncConsentMarkerMaxAge: TimeInterval = BurnBarMemoryDeviceSyncMarker.maxAge
 
     /// The member the app says consents to device sync right now, or nil.
     ///

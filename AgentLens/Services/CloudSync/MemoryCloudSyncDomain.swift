@@ -1,6 +1,7 @@
 import FirebaseFirestore
 import Foundation
 import OpenBurnBarCore
+import OpenBurnBarKernel
 
 // MARK: - Memory cloud-sync domain (PR-E2 scheduling wiring, DEFAULT OFF)
 //
@@ -100,6 +101,12 @@ final class MemoryCloudSyncDomain: CloudSyncDomain, Sendable {
 
     private let state = Locked(CloudSyncDomainState())
     private let pullState = Locked(MemoryCloudPullReport?.none)
+    private let markerRefresher = Locked(Task<Void, Never>?.none)
+
+    /// How often the daemon's consent marker is re-vouched for, INDEPENDENT of
+    /// the app's refresh cadence. See `BurnBarMemoryDeviceSyncMarker.refreshInterval`
+    /// for why it cannot ride on `sync()`.
+    static var markerRefreshInterval: TimeInterval { BurnBarMemoryDeviceSyncMarker.refreshInterval }
 
     var isSyncing: Bool { state.read().isSyncing }
     var lastSyncError: String? { state.read().lastSyncError }
@@ -199,6 +206,79 @@ final class MemoryCloudSyncDomain: CloudSyncDomain, Sendable {
         accountManager.observeAccountIdentityChanges { [weak self] uid in
             guard let self else { return }
             Task { await self.handleAccountIdentityChange(to: uid) }
+        }
+    }
+
+    /// Starts the marker's own timer: every `markerRefreshInterval`, re-read the
+    /// live gate and re-publish (or withdraw) the daemon's consent marker.
+    ///
+    /// The marker used to be written only by `sync()`, i.e. on the app's refresh
+    /// cadence — `BehaviorSettings.refreshInterval`, which defaults to 600 s but
+    /// is user-adjustable to 15 minutes and which `BackgroundCadenceCoordinator`
+    /// stretches 5x while the app is inactive. A menu-bar app is normally
+    /// inactive, so a fully-consenting member could go 75 minutes between
+    /// marker writes while the daemon expired it after 20 — returning an empty
+    /// inbox for most of every cycle, with every switch in the UI saying the
+    /// feature was on. Marker freshness is not the same question as "how often
+    /// should this Mac talk to Firestore", so it no longer shares that answer.
+    ///
+    /// This timer does the gate read and the enforce, and NOTHING else: no
+    /// upload, no pull, no vault-key resolution, no Firestore handle. When the
+    /// gate is closed the enforce withdraws the marker and purges, exactly as a
+    /// tick would.
+    ///
+    /// Idempotent: a second call while the task is alive is a no-op.
+    @MainActor
+    func startConsentMarkerRefresher() {
+        guard markerRefresher.read() == nil else { return }
+        let task = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                await self.refreshConsentMarker()
+                do {
+                    try await Task.sleep(nanoseconds: UInt64(Self.markerRefreshInterval * 1_000_000_000))
+                } catch {
+                    return
+                }
+            }
+        }
+        markerRefresher.write(task)
+    }
+
+    /// Stops the marker timer. The marker itself is left as it is — stopping the
+    /// refresher is not a withdrawal, it is the app going away, and the daemon's
+    /// own age bound (`BurnBarMemoryDeviceSyncMarker.maxAge`) is what closes the
+    /// door then.
+    func stopConsentMarkerRefresher() {
+        markerRefresher.withLock { task in
+            task?.cancel()
+            task = nil
+        }
+    }
+
+    /// One beat of the marker timer, exposed so it is testable without a clock.
+    ///
+    /// Exactly what `sync()` does BEFORE its gate returns — observe the
+    /// withdrawal generation, read the live gate, enforce the scope — and
+    /// nothing that comes after it.
+    @discardableResult
+    func refreshConsentMarker() async -> MemoryDeviceSyncGuardOutcome? {
+        // Generation BEFORE the gate, for the same reason as in `sync()`.
+        let observedGeneration = MemoryDeviceSyncInboxGuard.observeGeneration(store: store)
+        let gate = await gateSnapshot()
+        do {
+            return try await MemoryDeviceSyncInboxGuard.enforce(
+                scope: gate.scope,
+                observedGeneration: observedGeneration,
+                store: store,
+                now: now()
+            )
+        } catch {
+            AppLogger.sync.error(
+                "memory_device_sync_marker_refresh_failed",
+                metadata: ["error_type": String(describing: type(of: error))]
+            )
+            return nil
         }
     }
 

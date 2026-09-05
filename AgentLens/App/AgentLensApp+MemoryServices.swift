@@ -103,6 +103,16 @@ extension OpenBurnBarApp {
         // outlives the app. Registering flips nothing on: the transition handler
         // only ever WITHDRAWS consent and deletes rows.
         cloudSyncDomain.startObservingAccountIdentity()
+        // ...and the daemon's consent marker gets its OWN fixed cadence
+        // (`BurnBarMemoryDeviceSyncMarker.refreshInterval`, 5 min), not the
+        // app's refresh interval: that interval is user-adjustable to 15 minutes
+        // and the background coordinator stretches it 5x while the app is
+        // inactive, which a menu-bar app normally is — so a fully-consenting
+        // member could go 75 minutes without a marker write while the daemon
+        // expired it after 20. Starting this flips nothing on: each beat reads
+        // the same live gate `sync()` reads and publishes only what that gate
+        // grants; a closed gate withdraws instead.
+        cloudSyncDomain.startConsentMarkerRefresher()
 
         return MemoryServices(store: store, service: service, engine: engine, cloudSyncDomain: cloudSyncDomain)
     }

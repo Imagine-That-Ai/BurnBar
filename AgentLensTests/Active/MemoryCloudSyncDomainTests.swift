@@ -918,4 +918,124 @@ final class MemoryCloudSyncDomainTests: XCTestCase {
         XCTAssertTrue(scope.isOpen)
         XCTAssertEqual(scope.uid, "e2-all-open")
     }
+
+    // MARK: - Marker freshness on its own cadence (Codex K)
+
+    private func markerStamp(_ queue: DatabaseQueue) async throws -> Date? {
+        try await queue.read { db in
+            try Date.fetchOne(
+                db,
+                sql: "SELECT lastSyncedAt FROM remote_sync_watermarks WHERE collectionKind = ?",
+                arguments: [BurnBarMemoryDeviceSyncMarker.collectionKind]
+            )
+        }
+    }
+
+    /// The daemon expires a marker no refresh has touched inside
+    /// `BurnBarMemoryDeviceSyncMarker.maxAge`. Riding that on the app's refresh
+    /// cadence made freshness a function of a user-adjustable interval that the
+    /// background coordinator stretches 5x while the app is inactive — up to 75
+    /// minutes between writes against a 20-minute bound, so the daemon returned
+    /// an empty inbox for most of every cycle while every switch said the
+    /// feature was on. The marker now beats on its own timer.
+    func test_theMarkerRefresherRepublishesConsentWithoutRunningASyncCycle() async throws {
+        let uid = "e2-marker-cadence"
+        let (store, queue) = try await makeStoreWithApprovedMemory(uid: uid)
+        let gateway = CloudSyncFirestoreFakeGateway()
+        let settings = makeSettings(optIn: true, fleetEnabled: true, deviceSync: true)
+        let domain = makeDomain(
+            store: store,
+            accountManager: .makeSignedIn(uid: uid),
+            settings: settings,
+            gateway: gateway
+        )
+
+        let refreshed = await domain.refreshConsentMarker()
+        let outcome = try XCTUnwrap(refreshed)
+
+        XCTAssertTrue(outcome.markerPublished)
+        let marker = try await store.fetchMemoryDeviceSyncMarkerUserID()
+        XCTAssertEqual(marker, uid)
+        // ...and it did NOT run the cycle: no upload, no pull, no Firestore read.
+        XCTAssertTrue(gateway.documents(under: "users/\(uid)/memory_facts").isEmpty)
+        XCTAssertEqual(gateway.queryCount(under: "users/\(uid)/memory_facts"), 0)
+        XCTAssertNil(domain.lastSyncDate, "a marker beat is not a sync cycle")
+        XCTAssertNil(domain.lastPullReport)
+    }
+
+    /// The stamp ADVANCES on every beat — presence alone cannot expire, so a
+    /// write-on-change marker would go stale under a member who changed nothing.
+    func test_everyMarkerBeatAdvancesTheStampTheDaemonAgeBounds() async throws {
+        let uid = "e2-marker-beat"
+        let (store, queue) = try await makeStoreWithApprovedMemory(uid: uid)
+        let settings = makeSettings(optIn: true, fleetEnabled: true, deviceSync: true)
+        let clock = Locked(Date(timeIntervalSince1970: 1_800_000_000))
+        let domain = MemoryCloudSyncDomain(
+            store: store,
+            accountManager: FakeAccountManager.makeSignedIn(uid: uid),
+            settingsManager: settings,
+            firestoreGateway: CloudSyncFirestoreFakeGateway(),
+            vaultKeyProvider: TestConversationVaultKeyProvider(),
+            entitlementResolver: FakeDataVaultEntitlementResolver(entitled: true),
+            now: { clock.read() }
+        )
+
+        await domain.refreshConsentMarker()
+        let firstStamp = try await markerStamp(queue)
+        let first = try XCTUnwrap(firstStamp)
+
+        clock.write(first.addingTimeInterval(MemoryCloudSyncDomain.markerRefreshInterval))
+        await domain.refreshConsentMarker()
+        let secondStamp = try await markerStamp(queue)
+        let second = try XCTUnwrap(secondStamp)
+
+        XCTAssertGreaterThan(second, first, "an unchanged consent still has to be re-vouched for")
+    }
+
+    /// A closed gate must not be refreshed into an open one. The beat withdraws
+    /// rather than publishes, and takes the member's pending rows with it.
+    func test_theMarkerRefresherWithdrawsRatherThanPublishesWhenTheGateIsClosed() async throws {
+        let uid = "e2-marker-closed"
+        let (store, queue) = try await makeStoreWithApprovedMemory(uid: uid)
+        let settings = makeSettings(optIn: true, fleetEnabled: true, deviceSync: false)
+        let domain = makeDomain(
+            store: store,
+            accountManager: .makeSignedIn(uid: uid),
+            settings: settings,
+            gateway: CloudSyncFirestoreFakeGateway()
+        )
+        try await store.writeMemoryDeviceSyncMarker(userID: uid)
+        try await store.upsertRemoteMemoryFact(
+            docID: "doc-pending",
+            userID: uid,
+            engineMemoryID: "mem_pending",
+            payloadJSON: "{}",
+            remoteUpdatedAt: Date(timeIntervalSince1970: 1_800_000_000)
+        )
+
+        let refreshed = await domain.refreshConsentMarker()
+        let outcome = try XCTUnwrap(refreshed)
+
+        XCTAssertFalse(outcome.markerPublished)
+        XCTAssertEqual(outcome.purgedConsentWithdrawn, 1)
+        let marker = try await store.fetchMemoryDeviceSyncMarkerUserID()
+        XCTAssertNil(marker)
+        let pending = try await queue.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM agent_memory_inbox WHERE applied_at IS NULL") ?? -1
+        }
+        XCTAssertEqual(pending, 0)
+    }
+
+    /// The two halves of the contract, pinned against each other. The app's
+    /// cadence and the daemon's bound live in one place precisely so a change to
+    /// either cannot silently make the marker expire under a live consent.
+    func test_theMarkerCadenceLeavesRoomForMissedBeatsInsideTheDaemonsBound() {
+        XCTAssertEqual(MemoryCloudSyncDomain.markerRefreshInterval, BurnBarMemoryDeviceSyncMarker.refreshInterval)
+        XCTAssertGreaterThanOrEqual(
+            BurnBarMemoryDeviceSyncMarker.maxAge,
+            3 * MemoryCloudSyncDomain.markerRefreshInterval,
+            "the daemon must tolerate at least two missed beats before it stops believing a live consent"
+        )
+        XCTAssertEqual(BurnBarMemoryDeviceSyncMarker.maxAge, 1200, "20 minutes, unchanged for the daemon")
+    }
 }

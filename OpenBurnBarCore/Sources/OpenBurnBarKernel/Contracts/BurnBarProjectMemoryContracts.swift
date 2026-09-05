@@ -390,6 +390,37 @@ public enum BurnBarMemoryDeviceSyncMarker: Sendable {
     /// sign-out would otherwise authorise drains for ever. See
     /// `BurnBarProjectCodeMemoryStore.deviceSyncConsentMarkerMaxAge`.
     public static let refreshedAtColumn = "lastSyncedAt"
+
+    /// How often the APP rewrites the marker while consent stands.
+    ///
+    /// Deliberately NOT the app's refresh cadence. `BehaviorSettings.refreshInterval`
+    /// defaults to 600 s but the Settings UI permits up to 15 minutes, and
+    /// `BackgroundCadenceCoordinator` stretches it 5x while the app is inactive
+    /// — which a menu-bar app normally is. A marker tied to that cadence could
+    /// therefore go 75 minutes without a refresh while consent was fully
+    /// granted, and the daemon would read a stale marker as "no consent" and
+    /// return an empty inbox for most of every cycle. The feature would look
+    /// broken while every switch said it was on.
+    ///
+    /// So `MemoryCloudSyncDomain` runs the marker on its OWN fixed timer at this
+    /// interval, independent of the refresh cadence and of the background
+    /// coordinator, doing only the gate read + enforce — never an upload or a
+    /// pull. Five minutes: cheap (one main-actor hop and one row write) and well
+    /// inside `maxAge` below even after several missed beats.
+    public static let refreshInterval: TimeInterval = 300
+
+    /// How long the DAEMON honours a marker no refresh has touched.
+    ///
+    /// Four refresh intervals — 20 minutes. Presence alone cannot expire and the
+    /// daemon outlives the app, so a marker left behind by an app that quit
+    /// after a sign-out would otherwise authorise drains for ever. Three missed
+    /// beats are tolerated (a slow cycle, a sleeping Mac catching up); the
+    /// fourth is read as "no app is vouching for this any more" and the drain
+    /// falls closed. Expressed as a multiple of `refreshInterval` on purpose:
+    /// the two numbers are one contract between two processes, and a bound that
+    /// silently stopped being a multiple of the cadence is exactly the bug this
+    /// pairing exists to prevent.
+    public static let maxAge: TimeInterval = 4 * refreshInterval
 }
 
 /// Drain request for memory facts the app's pull lane verified and parked in
