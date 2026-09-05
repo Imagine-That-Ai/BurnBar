@@ -81,6 +81,11 @@ REMOTE_PAYLOAD_SCHEMA_MAX = 2
 # (discriminated by `entryKind`). Its own schema, its own ceiling.
 REMOTE_RECEIPT_ENTRY_KIND = "memory_forget_receipt"
 REMOTE_RECEIPT_SCHEMA_MAX = 1
+# Advisory lineage gap timeout and hold-back queue cap (§5 / P5).
+DEFAULT_LINEAGE_GAP_TIMEOUT_SECONDS = 3600.0
+LINEAGE_HOLD_QUEUE_MAX_SIZE = 100
+DEFAULT_ORPHAN_GRACE_PERIOD_SECONDS = 86400.0 * 7
+DEFAULT_PARKED_SUPERSEDE_RETENTION_DAYS = 30
 # `memories.source_kind` for a row that arrived through the blind-sync merge.
 REMOTE_SOURCE_KIND = "cloud_sync"
 # The shape a local `remember` mints (`"mem_" + secrets.token_hex(16)`). A remote
