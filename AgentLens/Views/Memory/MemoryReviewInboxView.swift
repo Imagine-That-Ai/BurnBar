@@ -11,9 +11,17 @@ import SwiftUI
 /// "Approved" filter.
 struct MemoryReviewInboxView: View {
     let model: MemoryReviewInboxModel
+    /// Loads one memory's history for the row's "History" disclosure. Optional
+    /// so a host with no store handle still renders the inbox; the disclosure
+    /// simply does not appear.
+    let loadTimeline: MemoryTimelineModel.LoadTimeline?
 
-    init(model: MemoryReviewInboxModel) {
+    init(
+        model: MemoryReviewInboxModel,
+        loadTimeline: MemoryTimelineModel.LoadTimeline? = nil
+    ) {
         self.model = model
+        self.loadTimeline = loadTimeline
     }
 
     var body: some View {
@@ -212,6 +220,7 @@ struct MemoryReviewInboxView: View {
                         MemoryReviewRow(
                             item: item,
                             isPending: model.filter == .pending,
+                            loadTimeline: loadTimeline,
                             onApprove: { Task { await model.approve(item.id) } },
                             onReject: { Task { await model.reject(item.id) } },
                             onForget: { Task { await model.forget(item.id) } }
@@ -263,6 +272,7 @@ struct MemoryReviewInboxView: View {
 @MainActor
 struct MemoryReviewInboxHost: View {
     @State private var model: MemoryReviewInboxModel
+    private let loadTimeline: MemoryTimelineModel.LoadTimeline
 
     init(
         store: ControlPlaneStore,
@@ -270,6 +280,11 @@ struct MemoryReviewInboxHost: View {
         sourceFilter: MemoryReviewInboxModel.SourceFilter = .all,
         afterStatusChange: @escaping @MainActor () async -> Void = {}
     ) {
+        // The app's own audit ledger, not the engine's revision bodies — the
+        // record carries `source` so the view can say which it is showing.
+        self.loadTimeline = { memoryID, _ in
+            MemoryTimelineModel.TimelineResult(try await store.memoryTimeline(memoryID: memoryID))
+        }
         self._model = State(initialValue: MemoryReviewInboxModel(
             scope: scope,
             sourceFilter: sourceFilter,
@@ -304,7 +319,7 @@ struct MemoryReviewInboxHost: View {
     }
 
     var body: some View {
-        MemoryReviewInboxView(model: model)
+        MemoryReviewInboxView(model: model, loadTimeline: loadTimeline)
     }
 }
 
@@ -379,12 +394,16 @@ private struct MemoryReviewEmptyState: View {
 struct MemoryReviewRow: View {
     let item: MemoryReviewInboxModel.Item
     let isPending: Bool
+    /// Nil when the host has no history reader; the row then shows no History
+    /// disclosure at all rather than an empty one.
+    var loadTimeline: MemoryTimelineModel.LoadTimeline?
     let onApprove: () -> Void
     let onReject: () -> Void
     let onForget: () -> Void
 
     @State private var confirmingReject = false
     @State private var confirmingForget = false
+    @State private var showingHistory = false
 
     private var confidencePercent: Int {
         Int((item.memory.confidence * 100).rounded())
@@ -417,6 +436,8 @@ struct MemoryReviewRow: View {
                     Spacer(minLength: 0)
                     actions
                 }
+
+                historyDisclosure
             }
             .padding(DesignSystem.Spacing.sm)
         }
@@ -480,6 +501,33 @@ struct MemoryReviewRow: View {
             Capsule(style: .continuous)
                 .strokeBorder(DesignSystem.Colors.border.opacity(0.4), lineWidth: 0.5)
         )
+    }
+
+    /// The row's "History" disclosure: one memory's recorded events, read from
+    /// this Mac's own audit ledger. Collapsed by default so the inbox stays a
+    /// review surface, and built lazily so an unopened row costs no read.
+    @ViewBuilder
+    private var historyDisclosure: some View {
+        if let loadTimeline {
+            DisclosureGroup(isExpanded: $showingHistory) {
+                if showingHistory {
+                    MemoryTimelineView(
+                        model: MemoryTimelineModel(
+                            memoryID: item.id,
+                            loadTimeline: loadTimeline
+                        )
+                    )
+                    .padding(.top, DesignSystem.Spacing.xs)
+                }
+            } label: {
+                Text("History")
+                    .font(DesignSystem.Typography.tiny)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .textCase(.uppercase)
+            }
+            .disclosureGroupStyle(.automatic)
+        }
     }
 
     /// Names what a LOCAL re-scan of this body concluded — never a stored
