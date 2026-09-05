@@ -10,9 +10,13 @@
 # belongs to the active Xcode. When those two disagree, EVERY `swift package`
 # call dies with "this SDK is not supported by the compiler" — and a script that
 # captured the output with `2>/dev/null` reports a bare non-zero exit with no
-# explanation. That is exactly how
-# scripts/debt/check-engine-closure-ui-purity.sh sat red on main for days while
-# the invariant it guards was actually intact.
+# explanation. That is exactly how the Engine-closure UI-purity debt check sat
+# red on main for days while the invariant it guards was actually intact.
+#
+# (That check is named in prose, not by path, on purpose: the domain-core
+# control-plane manifest treats any script path token inside a trusted script as
+# a dependency edge, so writing the path here would drag an unrelated debt check
+# into the trusted-bytes set.)
 #
 # RESOLUTION ORDER (first hit wins)
 #   1. $OPENBURNBAR_SWIFT       explicit override / escape hatch
