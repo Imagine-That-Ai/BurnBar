@@ -39,6 +39,120 @@ final class BurnBarProviderRouterTests: XCTestCase {
         XCTAssertEqual(route.resolvedModelID, "minimax-m2.7-highspeed")
     }
 
+    func testRouterDoesNotRouteLegacyTogetherSecretWithZeroSlots() async throws {
+        let rootURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-provider-router-meta-legacy-secret-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: rootURL) }
+
+        let fileURL = rootURL.appendingPathComponent("provider-config.json")
+        let persisted = BurnBarProviderConfigurationSnapshot(
+            providers: [
+                BurnBarProviderSettings(
+                    providerID: "meta",
+                    isEnabled: true,
+                    baseURL: "https://api.together.xyz/v1",
+                    preferredModelIDs: ["muse-spark-1.3"]
+                )
+            ]
+        )
+        try JSONEncoder().encode(persisted).write(to: fileURL)
+
+        let configStore = BurnBarConfigStore(
+            fileURL: fileURL,
+            catalog: BurnBarCatalogLoader.bundledCatalog,
+            secretStore: BurnBarInMemorySecretStore(),
+            logger: BurnBarDaemonLogger(category: "provider-router-tests")
+        )
+        try await configStore.setSecret("together-legacy-key", for: "meta")
+
+        let loaded = try await configStore.snapshot()
+        XCTAssertEqual(loaded.providerSettings(id: "meta")?.baseURL, "https://api.meta.ai/v1")
+        XCTAssertTrue(loaded.providerSettings(id: "meta")?.credentialSlots.isEmpty ?? false)
+
+        let router = BurnBarProviderRouter(
+            configStore: configStore,
+            logger: BurnBarDaemonLogger(category: "provider-router-tests")
+        )
+        do {
+            let route = try await router.route(modelName: "muse-spark-1.3", preferredProviderID: "meta")
+            XCTFail("Legacy Together secret must not route to Meta Model API, got \(route.baseURL)")
+        } catch let error as BurnBarProviderRouterError {
+            guard case .credentialsUnavailable(let providerID, let reason) = error else {
+                XCTFail("Unexpected error: \(error)")
+                return
+            }
+            XCTAssertEqual(providerID, "meta")
+            XCTAssertTrue(reason.localizedCaseInsensitiveContains("proxy routing"))
+        }
+
+        let afterResolve = try await configStore.snapshot()
+        XCTAssertEqual(afterResolve.providerSettings(id: "meta")?.credentialSlots.first?.authMethodID, "meta-together-key")
+        XCTAssertEqual(afterResolve.providerSettings(id: "meta")?.baseURL, "https://api.meta.ai/v1")
+    }
+
+    func testRouterDoesNotRouteTogetherMetaKeyToRewrittenMetaModelAPI() async throws {
+        let rootURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-provider-router-meta-together-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: rootURL) }
+
+        let fileURL = rootURL.appendingPathComponent("provider-config.json")
+        let persisted = BurnBarProviderConfigurationSnapshot(
+            providers: [
+                BurnBarProviderSettings(
+                    providerID: "meta",
+                    isEnabled: true,
+                    baseURL: "https://api.together.xyz/v1",
+                    preferredModelIDs: ["muse-spark-1.3"],
+                    preferredCredentialSlotID: "together",
+                    credentialSlots: [
+                        BurnBarProviderCredentialSlot(
+                            slotID: "together",
+                            label: "Together",
+                            isEnabled: true,
+                            status: .ready
+                        )
+                    ]
+                )
+            ]
+        )
+        try JSONEncoder().encode(persisted).write(to: fileURL)
+
+        let configStore = BurnBarConfigStore(
+            fileURL: fileURL,
+            catalog: BurnBarCatalogLoader.bundledCatalog,
+            secretStore: BurnBarInMemorySecretStore(),
+            logger: BurnBarDaemonLogger(category: "provider-router-tests")
+        )
+        let loaded = try await configStore.snapshot()
+        XCTAssertEqual(loaded.providerSettings(id: "meta")?.baseURL, "https://api.meta.ai/v1")
+        XCTAssertEqual(loaded.providerSettings(id: "meta")?.credentialSlots.first?.authMethodID, "meta-together-key")
+
+        _ = try await configStore.upsertCredentialSlot(
+            providerID: "meta",
+            slotID: "together",
+            label: "Together",
+            apiKey: "together-legacy-key"
+        )
+
+        let router = BurnBarProviderRouter(
+            configStore: configStore,
+            logger: BurnBarDaemonLogger(category: "provider-router-tests")
+        )
+        do {
+            let route = try await router.route(modelName: "muse-spark-1.3", preferredProviderID: "meta")
+            XCTFail("Together key must not route to Meta Model API, got \(route.baseURL)")
+        } catch let error as BurnBarProviderRouterError {
+            guard case .credentialsUnavailable(let providerID, let reason) = error else {
+                XCTFail("Unexpected error: \(error)")
+                return
+            }
+            XCTAssertEqual(providerID, "meta")
+            XCTAssertTrue(reason.localizedCaseInsensitiveContains("proxy routing"))
+        }
+    }
+
     func testRouterRejectsCredentialSlotWithKnownNonRoutingAuthMethod() async throws {
         let harness = try makeHarness(name: "openai-non-routing-auth-method")
         let nonRoutingCredential = "fixture-openai-admin-credential"

@@ -104,12 +104,31 @@ final class LaunchPermissionQuietnessTests: XCTestCase {
 
     func test_textExpansionDoesNotPromptForAccessibilityOnTheLaunchPath() throws {
         let source = try Self.appSource("Services/TextExpansion/TextExpansionRuntimeController.swift")
-        let reconcile = try XCTUnwrap(Self.body(ofFunctionStartingWith: "private func reconcileEventTap()", in: source))
+        let reconcile = try XCTUnwrap(Self.body(ofFunctionStartingWith: "private func reconcileGlobalKeyMonitor()", in: source))
         XCTAssertFalse(
             reconcile.contains("promptAndOpenSettings"),
             """
-            reconcileEventTap() runs at launch. It must publish needsAccessibilityGrant \
+            reconcileGlobalKeyMonitor() runs at launch. It must publish needsAccessibilityGrant \
             instead of firing the Accessibility prompt and force-opening System Settings.
+            """
+        )
+    }
+
+    func test_textExpansionUsesPassiveMonitorSoSafariCanProtectExtensionClicks() throws {
+        let source = try Self.appSource("Services/TextExpansion/TextExpansionRuntimeController.swift")
+
+        XCTAssertTrue(
+            source.contains("NSEvent.addGlobalMonitorForEvents(matching: .keyDown)"),
+            "Global expansion must observe key-down events without installing an active system event tap."
+        )
+        XCTAssertFalse(
+            source.contains("CGEvent.tapCreate")
+                || source.contains(".cgSessionEventTap")
+                || source.contains("CGEvent.tapEnable"),
+            """
+            Safari rejects extension-enable clicks while an active event tap is installed.
+            Global text expansion must use a passive monitor and replace a matched token after
+            the original key event has passed through.
             """
         )
     }

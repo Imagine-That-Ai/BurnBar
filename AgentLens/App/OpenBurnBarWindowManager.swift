@@ -35,6 +35,8 @@ final class WindowManager: ObservableObject {
     private var hermesSetupWindow: NSWindow?
     private var switcherOnboardingWindow: NSWindow?
     private var startupRecoveryWindow: NSWindow?
+    private var receiptsWindow: NSWindow?
+    private var receiptsWindowLifecycleHandler: DocumentWindowLifecycleDelegate?
     private var dashboardWindowLifecycleHandler: DashboardWindowLifecycleDelegate?
     private var settingsWindowLifecycleHandler: DocumentWindowLifecycleDelegate?
 
@@ -63,6 +65,7 @@ final class WindowManager: ObservableObject {
             hermesSetupWindow,
             switcherOnboardingWindow,
             startupRecoveryWindow,
+            receiptsWindow,
             WindowManager.chatPopOutWindow
         ]
         let hasVisibleDocument = documentWindows.contains { window in
@@ -202,6 +205,7 @@ final class WindowManager: ObservableObject {
             defer: false
         )
         window.title = "Settings"
+        SettingsWindowChrome.applyStandardTitlebar(to: window)
         window.contentMinSize = NSSize(width: 780, height: 560)
         window.contentView = NSHostingView(rootView: contentView)
         window.center()
@@ -524,6 +528,54 @@ final class WindowManager: ObservableObject {
     func closeStartupRecovery() {
         startupRecoveryWindow?.close()
         startupRecoveryWindow = nil
+        demoteToAccessoryIfIdle()
+    }
+
+    // MARK: - Receipts Window
+
+    func openReceiptsWindow(dataStore: DataStore, initialReceiptId: String? = nil) {
+        promoteToRegularActivation()
+
+        if let window = receiptsWindow {
+            window.makeKeyAndOrderFront(nil)
+            return
+        }
+
+        let contentView = ReceiptDrawerView(
+            dataStore: dataStore,
+            initialReceiptId: initialReceiptId,
+            onClose: { [weak self] in
+                self?.closeReceiptsWindow()
+            }
+        )
+        .frame(minWidth: 840, minHeight: 600)
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 920, height: 680),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "OpenBurnBar Receipts"
+        window.backgroundColor = NSColor.windowBackgroundColor
+        window.contentView = NSHostingView(rootView: contentView)
+        window.center()
+        window.makeKeyAndOrderFront(nil)
+        window.isReleasedWhenClosed = false
+
+        let lifecycle = DocumentWindowLifecycleDelegate { [weak self] in
+            self?.receiptsWindow = nil
+            self?.receiptsWindowLifecycleHandler = nil
+            self?.demoteToAccessoryIfIdle()
+        }
+        window.delegate = lifecycle
+        receiptsWindowLifecycleHandler = lifecycle
+        receiptsWindow = window
+    }
+
+    func closeReceiptsWindow() {
+        receiptsWindow?.close()
+        receiptsWindow = nil
         demoteToAccessoryIfIdle()
     }
 

@@ -113,6 +113,7 @@ struct ChatEngineModelMenu: View {
         case .openClaude: return .openClaude
         case .junie: return .junie
         case .fx: return .fx
+        case .muse: return .muse
         case .grok: return .grok
         case .kimi: return .grok
         case .hermes, .openclaw, .piAgent: return nil
@@ -236,6 +237,8 @@ struct ChatEngineModelRows: View {
             // fx has no `--model` flag — the model is fx-configured. The menu
             // shows a single non-interactive default row instead of a dead picker.
             return [ModelMenuRow(id: "fx-default", title: "Default (fx-configured)")]
+        case .muse:
+            return liveCLIRows(for: .muse, defaultTitle: "Default (Muse Code profile)")
         case .grok:
             return liveCLIRows(for: .grok, defaultTitle: "Default (Grok profile)")
         case .kimi:
@@ -287,7 +290,7 @@ struct ChatEngineModelRows: View {
     private var perRowQuotaSuffix: String {
         let backend = controller.chatBackend
         switch backend {
-        case .codex, .claude, .droid, .antigravity, .cursorAgent, .openClaude, .omp, .junie, .grok, .kimi:
+        case .codex, .claude, .droid, .antigravity, .cursorAgent, .openClaude, .omp, .junie, .grok, .kimi, .muse:
             guard let provider = backend.agentProvider,
                   let resolution = ProviderQuotaChip.resolve(
                     provider: provider,
@@ -303,6 +306,8 @@ struct ChatEngineModelRows: View {
         // fx backend does not have one yet. Move it up when it does — an
         // invented percentage beside a model name is worse than no percentage.
         case .hermes, .openclaw, .piAgent, .forge, .fx:
+            return ""
+        @unknown default:
             return ""
         }
     }

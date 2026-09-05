@@ -135,6 +135,7 @@ final class ThreadInboxStore {
             case .junie:    runtime = .junie
             case .omp: runtime = .omp
             case .fx:   runtime = .fx
+            case .muse: runtime = .muse
             }
             return ThreadInboxItem(
                 id: "cli:\(record.id)",

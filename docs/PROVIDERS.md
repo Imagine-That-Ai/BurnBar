@@ -42,7 +42,7 @@
 | **OpenClaude** | `OpenClaudeQuotaAdapter` | `.unavailable` | Install detection / `openclaude` CLI | Spawned Claude Code fork; no usage API or programmatic quota source |
 | **OMP** | `OMPQuotaAdapter` | `.exact` | `omp usage --json --redact` | Oh My Pi local CLI quota reports by provider/account/window |
 | **Prime Agent (Prime Intellect)** | `PrimeAgentParser` (local) | `.exact` | `~/.prime/agent/sessions/*.jsonl` (local jsonl: `message.usage` + `cost`) | Recursive Language Model + Continual Harness sessions; per-turn input/output/cacheRead/cacheWrite + exact USD cost; provider auto-detects underlying model (e.g. `muse-spark-1.2`, `gpt-5.6-luna`) |
-| **Muse (Meta)** | `MuseParser` (local) | `.exact` | `~/.local/share/muse/sessions/**/*.jsonl` (envelope JSONL, `model_completed` usage, `tool_batch` tools, `started` prompts; microsecond `recorded_at`) | Local session tokens + cached/read/write + reasoning + exact USD via catalog (`muse-spark-1.2` standard $1.25/$4.25/$0.15 or contributor $0.10/$0.20/$0.002); auto-detects workspace + subagent sessions |
+| **Muse (Meta)** | `MuseParser` (local) + Meta Model API proxy | `.exact` | `~/.local/share/muse/sessions/**/*.jsonl` (envelope JSONL, `model_completed` usage, `tool_batch` tools, `started` prompts, `retained_frame` wrappers, `run.model.configured`; microsecond `recorded_at`) and `https://api.meta.ai/v1` | Local Muse Code tokens + cached/read/write + reasoning + exact USD via catalog (`muse-spark-1.3` / `1.2` standard $1.25/$4.25/$0.15 or contributor $0.10/$0.20/$0.002; `muse-spark-1.1` standard only, no contributor SKU); proxy routes Spark through Meta Model API, not Together |
 | **Vercel fx** | `FxParser.swift` | `.exact` | `~/.fx/sessions/<sessionId>/` (`session.json`, `usage-v2.json`, `events.jsonl`, `display.json`) | Local session exact token counts and exact USD cost via `usage-v2.json`; transcript and tool lifecycle via `events.jsonl`; chat bridge via `fx ask --json` / `--resume` |
 | **OpenRouter** | Routed via API key | `.exact` | `GET openrouter.ai/v1/activity` | Per-call exact cost in USD (no quota limits) |
 | **Anthropic** | Admin API key | `.estimated` | `GET api.anthropic.com/v1/organizations` | Org-wide messages usage report (~24h lag) |
@@ -106,8 +106,9 @@ without durable source evidence stay `unknown`.
 | `augment` | Augment | `.ide` | Augment | Plugin-only |
 | `junie` | Junie | `.ide` | Junie | Plugin-only |
 | `fx` | fx | `.cli` | fx | CLI-only |
+| `muse` | Muse Code | `.cli` | Muse | CLI-only |
 
-> **Audit-corrected 2026-05-09:** Both = 11 active: `codex`, `claude`, `cursor`, `factory`, `minimax`, `z.ai`, `devin`, `hermes`, `warp`, `opencode`, `ollama` (Windsurf is LEGACY → Devin). Plugin-only (no toggle): `cline`, `kilo`, `roo`, `augment`, `junie`. Toggle eligibility = `visualSurfaces` contains both `cli` and `desktop` in `catalog.json`.
+> **Audit-corrected 2026-05-09:** Both = 11 active: `codex`, `claude`, `cursor`, `factory`, `minimax`, `z.ai`, `devin`, `hermes`, `warp`, `opencode`, `ollama` (Windsurf is LEGACY → Devin). Plugin-only (no toggle): `cline`, `kilo`, `roo`, `augment`, `junie`. CLI-only (no toggle): `fx`, `muse`. Toggle eligibility = `visualSurfaces` contains both `cli` and `desktop` in `catalog.json`.
 
 ---
 
@@ -189,7 +190,7 @@ empty key by default.
 | Hermes | `~/.hermes/sessions/*.jsonl` | File read | Offline telemetry schemas parsing UI steps, duration, and local models |
 | Pi Agent | `~/.pi/sessions/*.jsonl` | File read | Scrapes conversation tokens and environment properties offline |
 | OMP | `omp usage --json --redact` | Local process | Redacted machine-readable usage reports with provider windows and quota buckets |
-| Muse | `~/.local/share/muse/sessions/**/session.jsonl` | File read | Envelope JSONL (`runtime.session` → `model_completed` with `input_tokens`/`output_tokens`/`cached_tokens`/`cache_read_tokens`/`reasoning_tokens`, `tool_batch.effect.started` tools, `started` prompts; `session-index.db` is index-only, not parsed) |
+| Muse | `~/.local/share/muse/sessions/**/session.jsonl` | File read | Envelope JSONL (`runtime.session` → `model_completed` with `input_tokens`/`output_tokens`/`cached_tokens`/`cache_read_tokens`/`reasoning_tokens`, `tool_batch.effect.started` tools, `started` prompts, `run.model.configured` model selection, `retained_frame` wrappers with inner `children[].record_json`; `session-index.db` is index-only, not parsed) |
 | Prime Agent | `~/.prime/agent/sessions/*.jsonl` | File read | Flat JSONL (`type: session` + `type: message` with `message.usage.{input,output,cacheRead,cacheWrite,cost}`) |
 
 ---
@@ -301,8 +302,25 @@ The daemon distinguishes three outcomes:
   today (`codex`, `claude_code`).
 - `handoff`: a Mac-local `0600` markdown package is written and the selected CLI
   receives a short prompt/file pointer (`droid`, `forge`, `antigravity`, `grok`,
-  `cursorAgent`, `opencode`, `gemini`, plus Codex/Claude when native validation
+  `cursorAgent`, `opencode`, `gemini`, `muse`, plus Codex/Claude when native validation
   fails).
+
+### Muse Code notes (verified against 1.0.2 — re-verify on CLI upgrades)
+
+- **Headless form is `muse exec --json`.** `--model` / `--workspace` are
+  exec-level flags; `--disable-write` / `--disable-shell` gate capabilities
+  per spawn. Never pass `--yolo`, `--disable-approval`, `--disable-sandbox`,
+  or `--trust-workspace`. `--json` selects the machine-readable JSONL event
+  log (`MuseExecJSONLParser`): incremental `run.output.delta` segments plus a
+  final `run.terminal.completed` carrying the full text; `muse:` diagnostics
+  stay on stderr. Without `--json`, stdout is human-formatted text with no
+  completion signal — the flag is load-bearing.
+- **The bare `muse-spark` alias is rejected by `exec`** ("model does not exist")
+  even though the interactive TUI accepts it. Always resolve to a full model ID
+  (`muse-spark-1.3` today) before spawning.
+- **Handoff, not native resume.** `muse resume <uuid>` exists but requires a TTY
+  ("Device not configured" headless), so daemon resume stays handoff (visible
+  Terminal) until a PTY-backed resume path is proven.
 - `package_only`: the package is opened/written without claiming provider-native
   continuation.
 

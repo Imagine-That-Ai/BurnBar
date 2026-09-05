@@ -100,4 +100,10 @@ extension UsageStore {
             )
         }
     }
+
+    func resetSyncStatusForAllLocalUsage() async throws {
+        try await dbQueue.write { db in
+            try db.execute(sql: "UPDATE token_usage SET syncedAt = NULL WHERE isRemote = 0")
+        }
+    }
 }

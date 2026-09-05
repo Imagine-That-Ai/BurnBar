@@ -38,12 +38,23 @@ export function recordOrUndefined(value: unknown): Record<string, unknown> | und
   return isRecord(value) ? value : undefined;
 }
 
+export function normalizeProvider(val: unknown): Provider | undefined {
+  if (typeof val !== "string") return undefined;
+  const raw = val.trim();
+  if (PROVIDER_VALUES.has(raw)) return raw as Provider;
+  const lower = raw.toLowerCase().replace(/[\s_]+/g, "-");
+  if (PROVIDER_VALUES.has(lower)) return lower as Provider;
+  if (lower === "claude" || lower === "claudecode" || lower === "claude-code") return "claude-code";
+  if (lower === "gemini" || lower === "antigravity") return "antigravity";
+  return undefined;
+}
+
 function isProvider(value: unknown): value is Provider {
-  return typeof value === "string" && PROVIDER_VALUES.has(value);
+  return typeof value === "string" && (PROVIDER_VALUES.has(value) || normalizeProvider(value) !== undefined);
 }
 
 export function parseProvider(value: unknown): Provider | undefined {
-  return isProvider(value) ? value : undefined;
+  return normalizeProvider(value);
 }
 
 export function stringValue(raw: unknown): string | undefined {
@@ -519,14 +530,14 @@ function assignUsageEventRawTimeFields(doc: UsageEventDoc, raw: Record<string, u
 }
 
 export function parseUsageEventDoc(raw: unknown): UsageEventDoc | undefined {
-  if (!isRecord(raw) || !isProvider(raw.provider)) {
-    return undefined;
-  }
+  if (!isRecord(raw)) return undefined;
+  const provider = normalizeProvider(raw.providerID) || normalizeProvider(raw.provider);
+  if (!provider) return undefined;
   const schemaVersion = typeof raw.schemaVersion === "number" ? raw.schemaVersion : 1;
   const recordedAt = synthesizeRecordedAt(raw);
   if (!recordedAt) return undefined;
   const doc: UsageEventDoc = {
-    provider: raw.provider,
+    provider,
     recordedAt,
     schemaVersion,
   };

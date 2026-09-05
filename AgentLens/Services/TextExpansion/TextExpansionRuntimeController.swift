@@ -1,27 +1,23 @@
 #if canImport(AppKit) && !DISTRIBUTION_MAS
 import AppKit
 import ApplicationServices
-import CoreGraphics
 import Foundation
 import os
 import OpenBurnBarCore
 
-/// Drives global (system-wide) text expansion on macOS via a `CGEvent` session tap.
+/// Drives global (system-wide) text expansion on macOS through a passive key monitor.
 ///
-/// A session-level **active** tap (`.cgSessionEventTap` + `.defaultTap`) is the proven
-/// mechanism for this: it is authorized by the **Accessibility** TCC grant (not Input
-/// Monitoring), it can *swallow* the triggering keystroke so the literal `&&trigger`
-/// never lands in the field, and it survives across apps. A passive `NSEvent` global
-/// monitor cannot swallow events and is less reliable for keyboard capture, so we use a
-/// tap and re-enable it whenever the system disables it.
+/// The monitor observes key-down events after the focused app receives them. When a
+/// complete static trigger is present, the original token is replaced asynchronously
+/// through Accessibility. This deliberately never swallows or rewrites the original
+/// event, which keeps Safari's own extension-permission controls in charge of clicks.
 @MainActor
 final class TextExpansionRuntimeController: ObservableObject {
     private let dataStore: DataStoreCoordinator
     private let settingsManager: SettingsManager
     private let inputController: MacInputController
     private let accessibilityInspector: MacAccessibilityInspector
-    private var eventTap: CFMachPort?
-    private var runLoopSource: CFRunLoopSource?
+    private var globalKeyMonitor: Any?
     private var observers: [NSObjectProtocol] = []
     private var permissionPollTimer: Timer?
     private var lastReconcileLogKey: String?
@@ -37,13 +33,10 @@ final class TextExpansionRuntimeController: ObservableObject {
     /// the behaviour that makes a freshly-updated app feel like malware.
     @Published private(set) var needsAccessibilityGrant = false
 
-    // State touched by the nonisolated CGEvent tap callback (off the main actor),
-    // confined to an OSAllocatedUnfairLock so the controller stays Sendable.
-    //
-    // The callback runs synchronously on the main run loop for every keystroke, and macOS
-    // disables a tap whose callback is slow. So the hot path must NOT call AX/NSWorkspace
-    // APIs (they are cross-process and slow). Instead we cache the policy inputs here and
-    // refresh them off the hot path (app-activation notifications + the poll timer).
+    // State touched by the nonisolated global-monitor callback (off the main actor),
+    // confined to an OSAllocatedUnfairLock so the controller stays Sendable. The hot path
+    // must not call AX/NSWorkspace APIs (they are cross-process and slow), so policy inputs
+    // are cached and refreshed on app activation and the permission poll.
     private struct CallbackState {
         var buffer = ""
         var cachedSnippets: [TextExpansionSnippet] = []
@@ -81,9 +74,9 @@ final class TextExpansionRuntimeController: ObservableObject {
             "accessibilityTrusted": "\(inputController.isAccessibilityTrusted())"
         ])
         installObserversIfNeeded()
-        refreshTapRuntimeSnapshot()
+        refreshGlobalMonitorRuntimeSnapshot()
         bootstrapCachedSnippetsFromSnapshot()
-        reconcileEventTap()
+        reconcileGlobalKeyMonitor()
         startPermissionPollTimerIfNeeded()
         Task { @MainActor [weak self] in
             await self?.refreshCachedSnippets()
@@ -93,7 +86,7 @@ final class TextExpansionRuntimeController: ObservableObject {
     @MainActor
     func stop() {
         stopPermissionPollTimer()
-        stopEventTap()
+        stopGlobalKeyMonitor()
         for observer in observers {
             NotificationCenter.default.removeObserver(observer)
             NSWorkspace.shared.notificationCenter.removeObserver(observer)
@@ -111,7 +104,7 @@ final class TextExpansionRuntimeController: ObservableObject {
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
-                self?.reconcileEventTap()
+                self?.reconcileGlobalKeyMonitor()
                 self?.startPermissionPollTimerIfNeeded()
             }
         })
@@ -121,7 +114,7 @@ final class TextExpansionRuntimeController: ObservableObject {
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
-                self?.reconcileEventTap()
+                self?.reconcileGlobalKeyMonitor()
             }
         })
         // Cache the frontmost app off the hot path: the tap callback must not call
@@ -132,7 +125,7 @@ final class TextExpansionRuntimeController: ObservableObject {
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
-                self?.refreshTapRuntimeSnapshot()
+                self?.refreshGlobalMonitorRuntimeSnapshot()
             }
         })
         observers.append(center.addObserver(
@@ -146,11 +139,11 @@ final class TextExpansionRuntimeController: ObservableObject {
         })
     }
 
-    /// Refresh the cached policy inputs the tap callback reads. Runs off the hot path
+    /// Refresh the cached policy inputs the global monitor reads. Runs off the hot path
     /// (start, app activation, reconcile, poll timer) so the per-keystroke callback never
     /// touches AX or NSWorkspace.
     @MainActor
-    private func refreshTapRuntimeSnapshot() {
+    private func refreshGlobalMonitorRuntimeSnapshot() {
         let frontmost = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
         let enabled = settingsManager.textExpansion.macGlobalExpansionEnabled
         let trusted = inputController.isAccessibilityTrusted()
@@ -175,7 +168,7 @@ final class TextExpansionRuntimeController: ObservableObject {
         guard permissionPollTimer == nil else { return }
         permissionPollTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
-                self?.reconcileEventTap()
+                self?.reconcileGlobalKeyMonitor()
             }
         }
     }
@@ -186,37 +179,37 @@ final class TextExpansionRuntimeController: ObservableObject {
         permissionPollTimer = nil
     }
 
-    // MARK: - Event tap
+    // MARK: - Global key monitor
 
     @MainActor
-    private func reconcileEventTap() {
-        refreshTapRuntimeSnapshot()
+    private func reconcileGlobalKeyMonitor() {
+        refreshGlobalMonitorRuntimeSnapshot()
         let enabled = settingsManager.textExpansion.macGlobalExpansionEnabled
         let trusted = inputController.isAccessibilityTrusted()
-        let logKey = "enabled=\(enabled) trusted=\(trusted) tapExists=\(eventTap != nil)"
+        let logKey = "enabled=\(enabled) trusted=\(trusted) monitorExists=\(globalKeyMonitor != nil)"
         if lastReconcileLogKey != logKey {
             AppLogger.chat.notice("textExpansion.reconcile \(logKey)")
             lastReconcileLogKey = logKey
         }
         guard enabled else {
-            stopEventTap()
+            stopGlobalKeyMonitor()
             return
         }
         guard trusted else {
             // Feature is on but we are not trusted (commonly: a dev rebuild changed the
             // binary's cdhash and macOS pinned the Accessibility grant to the old one).
-            // Tear down any stale tap, guide the user once, and let the poll timer install
-            // the tap automatically the instant trust is (re)granted — no relaunch needed.
-            if eventTap != nil {
-                AppLogger.chat.notice("textExpansion.tapTornDownUntrusted")
+            // Tear down any stale monitor, guide the user once, and let the poll timer
+            // install the monitor automatically the instant trust is (re)granted.
+            if globalKeyMonitor != nil {
+                AppLogger.chat.notice("textExpansion.monitorTornDownUntrusted")
             }
-            stopEventTap()
+            stopGlobalKeyMonitor()
             needsAccessibilityGrant = true
             return
         }
         needsAccessibilityGrant = false
         didPromptForAccessibility = false
-        startEventTapIfNeeded()
+        startGlobalKeyMonitorIfNeeded()
     }
 
     /// Shows the macOS Accessibility prompt and opens System Settings.
@@ -233,63 +226,36 @@ final class TextExpansionRuntimeController: ObservableObject {
     }
 
     @MainActor
-    private func startEventTapIfNeeded() {
+    private func startGlobalKeyMonitorIfNeeded() {
         bootstrapCachedSnippetsFromSnapshot()
-        guard eventTap == nil else { return }
-        let mask = CGEventMask(1 << CGEventType.keyDown.rawValue)
-        let refcon = Unmanaged.passUnretained(self).toOpaque()
-        guard let tap = CGEvent.tapCreate(
-            tap: .cgSessionEventTap,
-            place: .headInsertEventTap,
-            options: .defaultTap,
-            eventsOfInterest: mask,
-            callback: Self.eventTapCallback,
-            userInfo: refcon
-        ) else {
-            AppLogger.chat.error("textExpansion.tapCreateFailed", metadata: [
+        guard globalKeyMonitor == nil else { return }
+        globalKeyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            self?.handleGlobalKeyDown(event)
+        }
+        guard globalKeyMonitor != nil else {
+            AppLogger.chat.error("textExpansion.globalKeyMonitorCreateFailed", metadata: [
                 "accessibilityTrusted": "\(inputController.isAccessibilityTrusted())"
             ])
-            if !inputController.isAccessibilityTrusted() {
-                // Same rule as `reconcileEventTap`: surface it, do not seize the
-                // screen. `startEventTapIfNeeded` runs on the launch path.
-                needsAccessibilityGrant = true
-            }
             return
         }
-        eventTap = tap
-        callbackState.withLockUnchecked { $0.sawFirstEvent = false }
-        let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
-        runLoopSource = source
-        CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
-        CGEvent.tapEnable(tap: tap, enable: true)
-        AppLogger.chat.notice("textExpansion.tapInstalled", metadata: [
+        callbackState.withLockUnchecked {
+            $0.sawFirstEvent = false
+        }
+        AppLogger.chat.notice("textExpansion.globalKeyMonitorInstalled", metadata: [
             "snippetCount": "\(callbackState.withLockUnchecked { $0.cachedSnippets.count })"
         ])
     }
 
     @MainActor
-    private func stopEventTap() {
-        if let eventTap {
-            CGEvent.tapEnable(tap: eventTap, enable: false)
+    private func stopGlobalKeyMonitor() {
+        if let globalKeyMonitor {
+            NSEvent.removeMonitor(globalKeyMonitor)
         }
-        if let runLoopSource {
-            CFRunLoopRemoveSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
-        }
-        eventTap = nil
-        runLoopSource = nil
+        globalKeyMonitor = nil
         callbackState.withLockUnchecked {
             $0.buffer = ""
             $0.sawFirstEvent = false
         }
-    }
-
-    /// The system disables a tap if its callback is too slow or after certain user input.
-    /// When that happens it must be explicitly re-enabled or expansion silently dies.
-    @MainActor
-    private func reEnableTapAfterDisable(reason: String) {
-        guard let eventTap else { return }
-        CGEvent.tapEnable(tap: eventTap, enable: true)
-        AppLogger.chat.notice("textExpansion.tapReenabled", metadata: ["reason": reason])
     }
 
     // MARK: - Snippet cache
@@ -346,27 +312,12 @@ final class TextExpansionRuntimeController: ObservableObject {
         }
     }
 
-    // MARK: - Tap callback
+    // MARK: - Global monitor callback
 
-    nonisolated private static let eventTapCallback: CGEventTapCallBack = { _, type, event, refcon in
-        guard let refcon else { return Unmanaged.passUnretained(event) }
-        let controller = Unmanaged<TextExpansionRuntimeController>.fromOpaque(refcon).takeUnretainedValue()
-        return controller.handleEvent(type: type, event: event)
-    }
-
-    nonisolated private func handleEvent(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
-        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-            let reason = type == .tapDisabledByTimeout ? "timeout" : "userInput"
-            DispatchQueue.main.async { [weak self] in
-                self?.reEnableTapAfterDisable(reason: reason)
-            }
-            return Unmanaged.passUnretained(event)
-        }
-        guard type == .keyDown else { return Unmanaged.passUnretained(event) }
-
-        // One-shot liveness beacon: proves the tap is actually receiving keystrokes under
-        // the current permission grant. If this never fires after typing, the tap is dead.
-        let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
+    nonisolated private func handleGlobalKeyDown(_ event: NSEvent) {
+        // One-shot liveness beacon: proves the monitor is receiving keystrokes under the
+        // current permission grant.
+        let keyCode = event.keyCode
         let isFirst = callbackState.withLockUnchecked { state -> Bool in
             if state.sawFirstEvent { return false }
             state.sawFirstEvent = true
@@ -376,91 +327,96 @@ final class TextExpansionRuntimeController: ObservableObject {
             AppLogger.chat.notice("textExpansion.firstKeyObserved", metadata: ["keyCode": "\(keyCode)"])
         }
 
-        guard Date() >= lockedSuppressEventsUntil() else { return Unmanaged.passUnretained(event) }
+        guard Date() >= lockedSuppressEventsUntil() else { return }
 
-        // Hot path: read only the cached policy snapshot. No AX / NSWorkspace calls here —
-        // those are slow enough that macOS would disable the tap (causing lag + dropped keys).
+        // Hot path: read only the cached policy snapshot. No AX / NSWorkspace calls here.
         let policy = callbackState.withLockUnchecked {
             (own: $0.ownBundleIdentifier, frontmost: $0.frontmostBundleIdentifier,
              enabled: $0.globalEnabled, trusted: $0.accessibilityTrusted)
         }
         guard policy.enabled, policy.trusted else {
             resetBuffer()
-            return Unmanaged.passUnretained(event)
+            return
         }
         if let own = policy.own, own == policy.frontmost {
             resetBuffer()
-            return Unmanaged.passUnretained(event)
+            return
         }
 
-        let flags = event.flags
-        if flags.contains(.maskCommand) || flags.contains(.maskControl) || flags.contains(.maskAlternate) {
+        if !event.modifierFlags.isDisjoint(with: [.command, .control, .option]) {
             resetBuffer()
-            return Unmanaged.passUnretained(event)
+            return
         }
 
         if keyCode == 51 { // Delete/Backspace
             removeLastBufferCharacter()
-            return Unmanaged.passUnretained(event)
+            return
         }
 
-        guard let chars = TextExpansionKeyEventCharacters.characters(fromCGEvent: event), !chars.isEmpty else {
-            return Unmanaged.passUnretained(event)
-        }
-
-        let match = appendAndMatch(chars, bundleIdentifier: policy.frontmost)
-        guard let match, !match.requiresPreview else {
-            return Unmanaged.passUnretained(event)
-        }
-
-        // Only on an actual trigger match (rare) do we pay for the AX secure-field check,
-        // and we do it before swallowing the key — never expand into a secure/password field.
-        let secureSurface = MainActor.assumeIsolated { isFocusedSecureSurface() }
-        if secureSurface {
+        guard let chars = TextExpansionKeyEventCharacters.characters(from: event), !chars.isEmpty else {
             resetBuffer()
-            return Unmanaged.passUnretained(event)
+            return
         }
 
-        // The tap swallows this triggering keystroke, so the field holds the trigger token
-        // minus the just-typed character. Delete exactly what is on screen, then type the
-        // body (re-adding the boundary character the user intended, e.g. the space).
-        let boundary = match.boundary.map(String.init) ?? ""
-        let deleteCount: Int
-        if match.boundary == nil {
-            deleteCount = max(0, match.token.count - chars.count)
-        } else {
-            deleteCount = match.token.count
+        guard let frontmostBundleIdentifier = policy.frontmost else {
+            resetBuffer()
+            return
         }
+        let match = appendAndMatch(chars, bundleIdentifier: frontmostBundleIdentifier)
+        guard let match, !match.requiresPreview else {
+            return
+        }
+
+        // The passive monitor sees the key after the app has received it, so the
+        // replacement plan includes the boundary character when one triggered the match.
+        let plan = TextExpansionGlobalReplacementPlanner.plan(for: match)
+        let expectedTrailingText = match.token + (match.boundary.map(String.init) ?? "")
         setSuppressEvents(for: 1.5)
+        resetBuffer()
         AppLogger.chat.notice("textExpansion.match", metadata: [
             "trigger": match.snippet.trigger,
-            "deleteCount": "\(deleteCount)",
+            "deleteCount": "\(plan.deleteCount)",
             "hasBoundary": "\(match.boundary != nil)"
         ])
         DispatchQueue.main.async { [weak self] in
-            self?.replaceTypedToken(deleteCount: deleteCount, replacement: match.snippet.body + boundary, trigger: match.snippet.trigger)
+            guard let self,
+                  self.canReplaceOnFocusedSurface(expectedBundleIdentifier: frontmostBundleIdentifier) else {
+                return
+            }
+            self.applyGlobalReplacement(
+                deleteCount: plan.deleteCount,
+                expectedTrailingText: expectedTrailingText,
+                replacement: plan.replacement
+            )
         }
-        return nil
     }
 
     @MainActor
-    private func replaceTypedToken(deleteCount: Int, replacement: String, trigger: String) {
+    private func canReplaceOnFocusedSurface(expectedBundleIdentifier: String) -> Bool {
+        guard let snapshot = accessibilityInspector.focusedSnapshot(),
+              snapshot.bundleId?.caseInsensitiveCompare(expectedBundleIdentifier) == .orderedSame else {
+            return false
+        }
+        return accessibilityInspector.denyReason(for: snapshot) == nil
+    }
+
+    @MainActor
+    private func applyGlobalReplacement(
+        deleteCount: Int,
+        expectedTrailingText: String,
+        replacement: String
+    ) {
         do {
             let method = try TextExpansionFocusedTextInserter.replaceTrailingText(
                 deleteCount: deleteCount,
+                expectedTrailingText: expectedTrailingText,
                 replacement: replacement,
                 inputController: inputController
             )
             AppLogger.chat.notice("textExpansion.replaced method=\(method)")
         } catch {
-            AppLogger.chat.silentFailure("textExpansion.globalReplace", error: error, context: ["trigger": trigger])
+            AppLogger.chat.silentFailure("textExpansion.globalReplace", error: error)
         }
-        callbackState.withLockUnchecked { $0.buffer = "" }
-    }
-
-    @MainActor
-    private func isFocusedSecureSurface() -> Bool {
-        accessibilityInspector.denyReason(for: accessibilityInspector.focusedSnapshot()) != nil
     }
 
     // MARK: - Buffer + matching (nonisolated, lock-protected)
@@ -521,10 +477,21 @@ final class TextExpansionRuntimeController: ObservableObject {
 /// synthesizing one keystroke per character is unbearably slow for multi-paragraph snippets).
 /// Falls back to synthetic Delete+type for surfaces that do not expose a mutable AX value.
 private enum TextExpansionFocusedTextInserter {
+    private enum InsertError: Error {
+        case accessibilityNotTrusted
+    }
+
+    private enum AccessibilityReplacementResult {
+        case replaced
+        case unsupported(target: AXUIElement?, validatedCurrentText: Bool)
+        case staleFocusedText
+    }
+
     /// - Returns: the method used (`"ax"` or `"synthetic"`) for diagnostics.
     @discardableResult
     static func replaceTrailingText(
         deleteCount: Int,
+        expectedTrailingText: String,
         replacement: String,
         inputController: MacInputController
     ) throws -> String {
@@ -532,16 +499,62 @@ private enum TextExpansionFocusedTextInserter {
             if !replacement.isEmpty { _ = try inputController.type(text: replacement) }
             return "insert"
         }
-        if replaceViaAccessibility(deleteCount: deleteCount, replacement: replacement) {
-            return "ax"
+
+        guard inputController.isAccessibilityTrusted() else {
+            throw InsertError.accessibilityNotTrusted
         }
-        try replaceViaSyntheticKeys(deleteCount: deleteCount, replacement: replacement, inputController: inputController)
-        return "synthetic"
+
+        switch replaceViaAccessibility(
+            deleteCount: deleteCount,
+            expectedTrailingText: expectedTrailingText,
+            replacement: replacement
+        ) {
+        case .replaced:
+            return "ax"
+        case .staleFocusedText:
+            return "stale"
+        case .unsupported(let target, let validatedCurrentText):
+            // A passive monitor introduces a scheduling gap between the trigger
+            // event and replacement. If AX could not perform an atomic replace,
+            // only retain the synthetic fallback after the current field's text
+            // was read and matched, and while that same focused element remains
+            // active. Never blindly delete from a newly focused or unreadable field.
+            guard validatedCurrentText,
+                  let target,
+                  isStillFocused(target) else { return "stale" }
+            try replaceViaSyntheticKeys(deleteCount: deleteCount, replacement: replacement, inputController: inputController)
+            return "synthetic"
+        }
     }
 
-    private static func replaceViaAccessibility(deleteCount: Int, replacement: String) -> Bool {
-        guard let element = focusedElement(), isTextSurface(element) else { return false }
-        guard let cursor = selectedLocation(in: element), cursor >= deleteCount else { return false }
+    private static func replaceViaAccessibility(
+        deleteCount: Int,
+        expectedTrailingText: String,
+        replacement: String
+    ) -> AccessibilityReplacementResult {
+        guard let element = focusedElement() else {
+            return .unsupported(target: nil, validatedCurrentText: false)
+        }
+        guard isTextSurface(element) else {
+            return .unsupported(target: element, validatedCurrentText: false)
+        }
+        var valueRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(
+            element,
+            kAXValueAttribute as CFString,
+            &valueRef
+        ) == .success, let currentValue = valueRef as? String else {
+            return .unsupported(target: element, validatedCurrentText: false)
+        }
+
+        let selectedCursor = selectedLocation(in: element) ?? currentValue.utf16.count
+        let cursor = min(max(selectedCursor, 0), currentValue.utf16.count)
+        guard cursor >= deleteCount else { return .staleFocusedText }
+        let deleteRange = NSRange(location: cursor - deleteCount, length: deleteCount)
+        guard let range = Range(deleteRange, in: currentValue),
+              currentValue[range] == expectedTrailingText else {
+            return .staleFocusedText
+        }
 
         // Select exactly the trigger text we want to replace, then overwrite just that
         // selection. This is atomic and preserves the rest of the field's content and
@@ -549,13 +562,21 @@ private enum TextExpansionFocusedTextInserter {
         var triggerRange = CFRange(location: cursor - deleteCount, length: deleteCount)
         guard let rangeValue = AXValueCreate(.cfRange, &triggerRange),
               AXUIElementSetAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, rangeValue) == .success else {
-            return false
+            return .unsupported(target: element, validatedCurrentText: true)
         }
-        return AXUIElementSetAttributeValue(
+        let didReplace = AXUIElementSetAttributeValue(
             element,
             kAXSelectedTextAttribute as CFString,
             replacement as CFTypeRef
         ) == .success
+        return didReplace
+            ? .replaced
+            : .unsupported(target: element, validatedCurrentText: true)
+    }
+
+    private static func isStillFocused(_ expected: AXUIElement) -> Bool {
+        guard let current = focusedElement() else { return false }
+        return CFEqual(expected, current)
     }
 
     private static func replaceViaSyntheticKeys(

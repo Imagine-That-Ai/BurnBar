@@ -447,4 +447,150 @@ final class MuseParserTests: XCTestCase {
         XCTAssertTrue(ids.contains("root-123"))
         XCTAssertTrue(ids.contains("sub-uuid-1"))
     }
+
+    // MARK: - Spark 1.3 / Muse Code 1.0.2 envelopes
+
+    func testSpark13ContributorExtractsTokensAndContributorPricing() async throws {
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let content = [
+            metadataEnvelope(model: "muse-spark-1.3-contributor"),
+            modelCompletedEnvelope(input: 10_000, output: 2_000, cached: 1_000, model: "muse-spark-1.3-contributor")
+        ].joined(separator: "\n")
+        _ = try writeSession(dir: dir, content: content)
+        let result = try await MuseParser(logDirectoryOverride: dir.path).parse()
+        let usage = try XCTUnwrap(result.usages.first)
+        XCTAssertEqual(usage.model, "muse-spark-1.3-contributor")
+        XCTAssertEqual(usage.inputTokens, 10_000)
+        XCTAssertEqual(usage.outputTokens, 2_000)
+        XCTAssertEqual(usage.cacheReadTokens, 1_000)
+        // Contributor: 0.10/M in + 0.20/M out + 0.002/M cache = 0.001 + 0.0004 + 0.000002
+        XCTAssertEqual(usage.costUSD, 0.001402, accuracy: 0.000001)
+    }
+
+    func testSpark13StandardUsesHigherPricingThanContributor() async throws {
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let content = [
+            metadataEnvelope(model: "muse-spark-1.3"),
+            modelCompletedEnvelope(input: 10_000, output: 10_000, cached: 0, model: "muse-spark-1.3")
+        ].joined(separator: "\n")
+        _ = try writeSession(dir: dir, content: content)
+        let result = try await MuseParser(logDirectoryOverride: dir.path).parse()
+        let usage = try XCTUnwrap(result.usages.first)
+        XCTAssertEqual(usage.model, "muse-spark-1.3")
+        // Standard 1.25/4.25 → 0.0125 + 0.0425 = 0.055
+        XCTAssertEqual(usage.costUSD, 0.055, accuracy: 0.0001)
+    }
+
+    func testRetainedFrameWrapperStillYieldsModelCompletedUsage() async throws {
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let inner = modelCompletedEnvelope(input: 27778, output: 526, reasoning: 455, model: "muse-spark-1.3-contributor")
+        let wrapped = envelope([
+            "retained_frame": "session_permission_transaction",
+            "frame_schema_version": 1,
+            "outer_log_ordinal": 1,
+            "transaction_id": UUID().uuidString,
+            "children": [
+                [
+                    "child_index": 0,
+                    "record_json": inner
+                ]
+            ]
+        ])
+        _ = try writeSession(dir: dir, content: wrapped)
+        let result = try await MuseParser(logDirectoryOverride: dir.path).parse()
+        let usage = try XCTUnwrap(result.usages.first)
+        XCTAssertEqual(usage.model, "muse-spark-1.3-contributor")
+        XCTAssertEqual(usage.inputTokens, 27778)
+        XCTAssertEqual(usage.outputTokens, 526)
+        XCTAssertEqual(usage.reasoningTokens, 455)
+    }
+
+    func testRetainedFrameWithMetadataAndModelCompletedSiblingsYieldsTokens() async throws {
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let metadata = metadataEnvelope(model: "muse-spark-1.3-contributor")
+        let completed = modelCompletedEnvelope(input: 111, output: 22, reasoning: 3, model: "muse-spark-1.3-contributor")
+        let wrapped = envelope([
+            "retained_frame": "session_permission_transaction",
+            "frame_schema_version": 1,
+            "children": [
+                ["child_index": 0, "record_json": metadata],
+                ["child_index": 1, "record_json": completed]
+            ]
+        ])
+        _ = try writeSession(dir: dir, content: wrapped)
+        let result = try await MuseParser(logDirectoryOverride: dir.path).parse()
+        let usage = try XCTUnwrap(result.usages.first)
+        XCTAssertEqual(usage.model, "muse-spark-1.3-contributor")
+        XCTAssertEqual(usage.inputTokens, 111)
+        XCTAssertEqual(usage.outputTokens, 22)
+        XCTAssertEqual(usage.reasoningTokens, 3)
+    }
+
+    func testRunModelConfiguredSetsModelWhenCompletedOmitsIt() async throws {
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        var completed = modelCompletedEnvelope(input: 100, output: 50, model: "muse-spark-1.3")
+        // Drop the model field to force run.model.configured to win.
+        completed = completed.replacingOccurrences(of: ",\"model\":\"muse-spark-1.3\"", with: "")
+        let configured = envelope([
+            "schema_version": 1,
+            "id": UUID().uuidString,
+            "stream": ["kind": "session", "id": "sess-001"],
+            "sequence": 3,
+            "recorded_at": Int64(Date().timeIntervalSince1970 * 1_000_000),
+            "record_type": "event",
+            "durability": "durable",
+            "payload_type": "run.model.configured",
+            "payload_schema_version": 1,
+            "payload": [
+                "kind": "run_model",
+                "record": [
+                    "provider_id": "meta",
+                    "model_id": "muse-spark-1.3-contributor",
+                    "source": "startup"
+                ]
+            ]
+        ])
+        let content = [configured, completed].joined(separator: "\n")
+        _ = try writeSession(dir: dir, content: content)
+        let result = try await MuseParser(logDirectoryOverride: dir.path).parse()
+        let usage = try XCTUnwrap(result.usages.first)
+        XCTAssertEqual(usage.model, "muse-spark-1.3-contributor")
+        XCTAssertEqual(usage.inputTokens, 100)
+        XCTAssertEqual(usage.outputTokens, 50)
+    }
+
+    func testRealMuseCodeSessionFixtureCountsExactTokens() async throws {
+        let fixtureURL = try XCTUnwrap(
+            Bundle.module.url(forResource: "muse-code-real-session-usage", withExtension: "jsonl"),
+            "real Muse Code usage fixture missing from test bundle"
+        )
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let sessionDir = dir.appendingPathComponent("01a05a23-e1be-7e43-bbe5-df89e49d2a57", isDirectory: true)
+        try FileManager.default.createDirectory(at: sessionDir, withIntermediateDirectories: true)
+        try FileManager.default.copyItem(
+            at: fixtureURL,
+            to: sessionDir.appendingPathComponent("session.jsonl")
+        )
+
+        let result = try await MuseParser(logDirectoryOverride: dir.path).parse()
+        let usage = try XCTUnwrap(result.usages.first)
+        XCTAssertEqual(usage.provider, .muse)
+        XCTAssertEqual(usage.sessionId, "01a05a23-e1be-7e43-bbe5-df89e49d2a57")
+        XCTAssertEqual(usage.model, "muse-spark-1.2-contributor")
+        XCTAssertEqual(usage.projectName, "burnbar-muse-fixture")
+        XCTAssertEqual(usage.inputTokens, 27778)
+        XCTAssertEqual(usage.outputTokens, 526)
+        XCTAssertEqual(usage.reasoningTokens, 455)
+        XCTAssertEqual(usage.cacheReadTokens, 0)
+        // Contributor: 27778/1e6*0.10 + 526/1e6*0.20
+        XCTAssertEqual(usage.costUSD, 0.002883, accuracy: 0.000001)
+        XCTAssertEqual(usage.provenanceMethod, .providerLog)
+        XCTAssertEqual(usage.provenanceConfidence, .exact)
+    }
 }

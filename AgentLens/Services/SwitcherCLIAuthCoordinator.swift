@@ -209,13 +209,15 @@ final class SwitcherCLIAuthCoordinator {
             return false
         case .opencode:
             return false
-        case .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie, .primeAgent, .fx, .hermes, .goose, .windsurf, .openClaude, .openClaw:
+        case .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie, .primeAgent, .fx, .muse, .hermes, .goose, .windsurf, .openClaude, .openClaw:
             if case .authenticated = authInfo.authState {
                 return true
             }
             if case .apiKeyPresent = authInfo.authState {
                 return true
             }
+            return false
+        @unknown default:
             return false
         }
     }
@@ -399,7 +401,7 @@ final class SwitcherCLIAuthCoordinator {
             candidates = [["login"], ["auth", "login"]]
         case .claude:
             candidates = [["auth", "login"], ["login"]]
-        case .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie, .primeAgent, .fx, .hermes, .goose, .windsurf, .openClaude, .openClaw:
+        case .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie, .primeAgent, .fx, .muse, .hermes, .goose, .windsurf, .openClaude, .openClaw:
             candidates = []
         }
 
@@ -436,6 +438,9 @@ final class SwitcherCLIAuthCoordinator {
             return ["JUNIE_HOME"]
         case .fx:
             return ["FX_HOME"]
+        case .muse:
+            // No documented MUSE_* home override; auth is browser-linked.
+            return []
         case .omp:
             return ["OMP_HOME", "OMP_CONFIG_HOME"]
         case .primeAgent:
@@ -598,6 +603,8 @@ final class SwitcherCLIAuthCoordinator {
             installHint = "Reinstall JetBrains Junie (curl -fsSL https://junie.jetbrains.com/install.sh | bash), then retry Add Account."
         case .fx:
             installHint = "Reinstall Vercel fx (curl -fsSL https://fx.sh/install.sh | bash), then retry Add Account."
+        case .muse:
+            installHint = "Reinstall Muse Code (curl -fsSL https://dev.meta.ai/install.sh | bash), then retry Add Account."
         case .omp:
             installHint = "Reinstall OMP, then retry Add Account."
         case .primeAgent:

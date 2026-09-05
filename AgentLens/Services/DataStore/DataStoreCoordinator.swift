@@ -535,6 +535,9 @@ final class DataStoreCoordinator {
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
             await self.refresh()
+            Task.detached(priority: .utility) { [weak self] in
+                _ = try? await self?.backfillReceiptsFromConversations()
+            }
         }
         usagePresentationLoadTask = task
         await task.value

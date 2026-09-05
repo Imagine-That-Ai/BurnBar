@@ -105,6 +105,9 @@ struct DashboardDetailView: View {
                         preferredChatModelKey: chatController.hermesModelName
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                case .receipts:
+                    ReceiptDrawerView(dataStore: dataStore)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 case .memoryReview:
                     // Parallel/legacy detail surface (not on the live `DashboardView`
                     // path, which wires the inbox to the shared `ControlPlaneStore`).

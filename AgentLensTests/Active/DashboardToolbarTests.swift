@@ -1,3 +1,4 @@
+import AppKit
 import OpenBurnBarKernel
 import XCTest
 import SwiftUI
@@ -73,6 +74,27 @@ final class DashboardToolbarTests: XCTestCase {
             .environment(settings)
             .frame(width: 640, height: 420)
             .inspect())
+    }
+
+    func test_systemSidebarChrome_matchesToggleAndTrackingSeparator() {
+        XCTAssertTrue(DashboardSystemSidebarChrome.isSystemToggleIdentifier(.toggleSidebar))
+        XCTAssertTrue(DashboardSystemSidebarChrome.isSystemToggleIdentifier(.sidebarTrackingSeparator))
+        XCTAssertTrue(
+            DashboardSystemSidebarChrome.isSystemToggleIdentifier(
+                NSToolbarItem.Identifier("NSToolbarToggleSidebarItemIdentifier")
+            )
+        )
+        XCTAssertFalse(DashboardSystemSidebarChrome.isSystemToggleIdentifier(.flexibleSpace))
+        XCTAssertFalse(DashboardSystemSidebarChrome.isSystemToggleIdentifier(.print))
+    }
+
+    func test_systemSidebarChrome_matchesShowHideSidebarLabelsOnly() {
+        XCTAssertTrue(DashboardSystemSidebarChrome.isSystemToggleLabel("Show Sidebar"))
+        XCTAssertTrue(DashboardSystemSidebarChrome.isSystemToggleLabel("Hide sidebar"))
+        XCTAssertTrue(DashboardSystemSidebarChrome.isSystemToggleLabel("Toggle Sidebar"))
+        XCTAssertFalse(DashboardSystemSidebarChrome.isSystemToggleLabel("Jump or search"))
+        XCTAssertFalse(DashboardSystemSidebarChrome.isSystemToggleLabel("Home"))
+        XCTAssertFalse(DashboardSystemSidebarChrome.isSystemToggleLabel("Workspace"))
     }
 
     func test_kernelBackdropFramePolicyCapsDashboardAndLeavesGateAt60() {

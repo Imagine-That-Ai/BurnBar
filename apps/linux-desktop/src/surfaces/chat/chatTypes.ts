@@ -25,6 +25,7 @@ export type ChatBackendId =
   | 'cursor-agent'
   | 'junie'
   | 'fx'
+  | 'muse'
   | 'cli';
 
 export type ChatBackendAvailability = 'available' | 'unconfigured' | 'disabled' | 'unknown' | 'unsupported';
@@ -48,7 +49,8 @@ export const CHAT_BACKENDS: readonly ChatBackendDescriptor[] = [
   { id: 'antigravity', label: 'Antigravity', providerIDs: ['antigravity'] },
   { id: 'cursor-agent', label: 'Cursor Agent', providerIDs: ['cursor-agent', 'cursoragent'] },
   { id: 'junie', label: 'Junie', providerIDs: ['junie'] },
-  { id: 'fx', label: 'fx', providerIDs: ['fx', 'vercel-fx', 'vercelfx'] }
+  { id: 'fx', label: 'fx', providerIDs: ['fx', 'vercel-fx', 'vercelfx'] },
+  { id: 'muse', label: 'Muse Code', providerIDs: ['muse', 'muse-code', 'musecode', 'meta-muse', 'metamuse'] }
 ];
 
 const LEGACY_CLI_DESCRIPTOR: ChatBackendDescriptor = { id: 'cli', label: 'CLI', providerIDs: ['cli', 'local-cli'] };
@@ -275,6 +277,8 @@ export function composerPlaceholder(backend: ChatBackendId): string {
       return 'Ask Junie…';
     case 'fx':
       return 'Ask fx…';
+    case 'muse':
+      return 'Ask Muse Code…';
     case 'cli':
       return 'Ask CLI…';
     default:

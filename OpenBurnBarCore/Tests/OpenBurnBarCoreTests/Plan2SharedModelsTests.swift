@@ -29,7 +29,7 @@ final class Plan2SharedModelsTests: XCTestCase {
         XCTAssertEqual(AssistantRuntimeID.fx.rawValue, "fx")
         XCTAssertEqual(
             AssistantRuntimeID.allCases,
-            [.hermes, .pi, .codex, .claude, .openClaw, .openClaude, .omp, .droid, .forge, .antigravity, .grok, .cursorAgent, .junie, .fx]
+            [.hermes, .pi, .codex, .claude, .openClaw, .openClaude, .omp, .droid, .forge, .antigravity, .grok, .cursorAgent, .junie, .fx, .muse]
         )
     }
 

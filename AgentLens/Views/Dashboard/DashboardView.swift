@@ -261,7 +261,7 @@ struct DashboardView: View {
         switch route {
         case .overview, .insights, .charts, .provider, .model:
             return true
-        case .home, .database, .projects, .missions, .sessionLogs, .memoryReview, .inbox, .chat,
+        case .home, .database, .projects, .missions, .sessionLogs, .receipts, .memoryReview, .inbox, .chat,
              .quota, .controlDeck, .fleet, .recap:
             // Recap is a full-width editorial page — its own deck already fills
             // the width, and a provider rail beside it would be a third column
@@ -351,6 +351,7 @@ struct DashboardView: View {
         case .database: route = .database
         case .projects: route = .projects
         case .sessionLogs: route = .sessionLogs
+        case .receipts: route = .receipts
         case .chat: route = .chat
         case .quota: route = .quota
         case .inbox(let itemID):
@@ -451,6 +452,7 @@ struct DashboardView: View {
                 style: FillStyle(antialiased: true)
             )
         }
+        .toolbar(removing: .sidebarToggle)
         // Draw the title strip into the transparent titlebar so back/forward
         // and ⌘K sit beside the traffic lights instead of opening a second
         // empty toolbar row below them.
@@ -947,6 +949,9 @@ struct DashboardView: View {
                         preferredChatModelKey: chatController.hermesModelName
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                case .receipts:
+                    ReceiptDrawerView(dataStore: dataStore)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 case .memoryReview:
                     memoryReviewView
                         .frame(maxWidth: .infinity, maxHeight: .infinity)

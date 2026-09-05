@@ -28,6 +28,7 @@ enum DashboardMainRoute: Hashable {
     case projects
     case missions
     case sessionLogs
+    case receipts
     case memoryReview
     case inbox
     case chat
@@ -70,6 +71,7 @@ enum DashboardMainRoute: Hashable {
         case .projects: return "Projects"
         case .missions: return "Missions"
         case .sessionLogs: return "Session Logs"
+        case .receipts: return "Receipts"
         case .memoryReview: return "Memory"
         case .inbox: return "Inbox"
         case .chat: return "Chat"
@@ -92,6 +94,7 @@ enum DashboardMainRoute: Hashable {
         case .projects: return "folder"
         case .missions: return "flag"
         case .sessionLogs: return "text.bubble"
+        case .receipts: return "doc.text.fill"
         case .memoryReview: return "brain.head.profile"
         case .inbox: return "tray.full"
         case .chat:
@@ -106,6 +109,8 @@ enum DashboardMainRoute: Hashable {
 
     func accent(activeChatBackend: ChatBackendID? = nil) -> Color {
         switch self {
+        case .receipts:
+            return .orange
         case .chat:
             return activeChatBackend == .hermes
                 ? DesignSystem.Colors.hermesAureate
@@ -138,6 +143,7 @@ enum DashboardMainRoute: Hashable {
         case .projects: return "Group by project"
         case .missions: return "Active runs & tasks"
         case .sessionLogs: return "Indexed conversations"
+        case .receipts: return "Itemized run receipts & ledger"
         case .memoryReview: return "Review what OpenBurnBar learned"
         case .home: return "What needs you, and what your agents have left"
         case .inbox: return "What needs you right now"

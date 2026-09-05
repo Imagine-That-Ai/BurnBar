@@ -292,6 +292,13 @@ function backendFromThread(thread: ChatThreadSummary | null, fallback: ChatBacke
     case 'vercel-fx':
     case 'vercelfx':
       return 'fx';
+    case 'muse':
+    case 'muse-code':
+    case 'musecode':
+    case 'muse_code':
+    case 'meta-muse':
+    case 'metamuse':
+      return 'muse';
     case 'cli':
       return 'cli';
     default:
@@ -325,6 +332,8 @@ function modelLabelForThread(_thread: ChatThreadSummary | null, backend: ChatBac
       return 'junie';
     case 'fx':
       return 'fx';
+    case 'muse':
+      return 'muse';
     case 'cli':
       return 'CLI assistant';
     default:

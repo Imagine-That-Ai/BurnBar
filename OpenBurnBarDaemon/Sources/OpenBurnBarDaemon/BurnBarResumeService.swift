@@ -453,6 +453,8 @@ final class BurnBarResumeService: @unchecked Sendable {
             return "junie"
         case "fx", "vercel-fx", "vercelfx":
             return "fx"
+        case "Muse", "Muse Code", "muse", "muse-code", "muse_code", "meta-muse":
+            return "muse"
         default:
             return trimmed.lowercased()
                 .replacingOccurrences(of: #"[^a-z0-9]+"#, with: "_", options: .regularExpression)
@@ -602,6 +604,19 @@ final class BurnBarResumeService: @unchecked Sendable {
                 argv: ["fx", "ask", prompt],
                 cleanupPath: hint.cleanup ? hint.path : nil
             )
+        case "muse":
+            // Muse resume is a handoff (unvalidated-handle rule): the
+            // briefing prompt opens an interactive TUI via
+            // `muse [--workspace PATH] [--model ID] [PROMPT]`.
+            // Headless `muse exec` is TTY-less and is the chat-bridge path,
+            // not resume. Do not insert `exec` here. The TUI accepts the
+            // `muse-spark` alias that `exec` rejects, so leave the model
+            // string as the caller supplied it.
+            var argv = ["muse"]
+            if let workingDirectory = nonBlank(workingDirectory) { argv += ["--workspace", workingDirectory] }
+            if let model = nonBlank(model) { argv += ["--model", model] }
+            argv.append(prompt)
+            return TargetInvocation(argv: argv, cleanupPath: hint.cleanup ? hint.path : nil)
         default:
             return TargetInvocation(
                 argv: ["open", nonBlank(workingDirectory) ?? hint.path],

@@ -22,6 +22,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     case dataPrivacy
     case computerUse
     case pets
+    case receipts
 
     var id: String { rawValue }
 
@@ -44,6 +45,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .dataPrivacy: return "Data & Privacy"
         case .computerUse: return "Computer Use"
         case .pets: return "Pets"
+        case .receipts: return "Receipts"
         }
     }
 
@@ -85,6 +87,8 @@ enum SettingsTab: String, CaseIterable, Identifiable {
             return "Agent Watch, browser driving, Mac input, approvals, and audit chain"
         case .pets:
             return "Desktop companion, pet picker, agent brain, and summon hotkey"
+        case .receipts:
+            return "Session popups, thermal slips, quality reviews, and sounds"
         }
     }
 
@@ -107,6 +111,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .dataPrivacy: return "lock.shield.fill"
         case .computerUse: return "cursorarrow.click.2"
         case .pets: return "pawprint.fill"
+        case .receipts: return "scroll.fill"
         }
     }
 
@@ -143,6 +148,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .dataPrivacy: return DesignSystem.Colors.teal
         case .computerUse: return DesignSystem.Colors.blaze
         case .pets: return DesignSystem.Colors.amber
+        case .receipts: return DesignSystem.Colors.amber
         }
     }
 
@@ -165,7 +171,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .home:            return .home
         case .agents, .modelProxy:
             return .agentsAndModels
-        case .general, .aiInbox:
+        case .general, .receipts, .aiInbox:
             return .lookAndFeel
         case .account, .cloud, .alerts, .notifications, .devicesAndSync:
             return .accountAndSync
@@ -233,7 +239,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .agentsAndModels:
             return [.agents, .modelProxy]
         case .lookAndFeel:
-            return [.general, .aiInbox]
+            return [.general, .receipts, .aiInbox]
         case .accountAndSync:
             return [.account, .cloud, .devicesAndSync, .alerts, .notifications]
         case .system:

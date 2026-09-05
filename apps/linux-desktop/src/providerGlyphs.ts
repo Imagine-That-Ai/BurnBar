@@ -24,6 +24,7 @@ export const PROVIDER_GLYPHS: ProviderGlyph[] = [
   { id: 'goose', label: 'Goose', accent: '#8b5cf6', logo: '/provider-logos/goose.png' },
   { id: 'openclaw', label: 'OpenClaw', accent: '#8b5cf6', logo: '/provider-logos/openclaw.png' },
   { id: 'fx', label: 'fx', accent: '#a1a1aa', logo: '/provider-logos/fx.png' },
+  { id: 'muse', label: 'Muse Code', accent: '#0668e1', logo: '/provider-logos/meta.png' },
 ];
 
 /** Find a glyph by provider id, with graceful fallback */

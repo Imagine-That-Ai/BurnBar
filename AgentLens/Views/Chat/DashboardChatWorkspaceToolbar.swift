@@ -56,6 +56,7 @@ extension ChatBackendID {
         case .cursorAgent: return "00E5FF"
         case .junie: return "48E054"
         case .fx: return "A1A1AA"
+        case .muse: return "0668E1"
         // xAI and Moonshot, not a second copy of Junie's green: three agents
         // sharing one tint is three agents the deck cannot tell apart.
         case .grok: return "1A1A1A"
@@ -102,7 +103,7 @@ extension ChatBackendID {
         case .hermes: return "Agent harness"
         case .piAgent: return "Empathy agent"
         case .openclaw: return "Gateway agent"
-        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp, .junie, .fx:
+        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp, .junie, .fx, .muse:
             return "CLI agent"
         case .grok, .kimi:
             // Hosted API backends (#2362): no CLI invocation, probed like

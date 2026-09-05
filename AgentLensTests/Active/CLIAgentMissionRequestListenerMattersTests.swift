@@ -429,3 +429,40 @@ final class CLIAgentMissionRequestListenerMattersTests: XCTestCase {
         XCTAssertFalse(fileManager.fileExists(atPath: sessionURL.path), "Session directory must be cleaned up on exit.")
     }
 }
+
+final class CLIAgentMissionRuntimePlannerMattersTests: XCTestCase {
+    private func resolve(_ runtime: String) -> CLIAgentMissionBackend {
+        CLIAgentMissionRuntimePlanner.resolve(
+            requestedRuntime: runtime,
+            missionKind: nil,
+            enabledBackends: ChatBackendID.allCases
+        )
+    }
+
+    func testCanonicalMuseTokenResolvesToFirstClassBackend() {
+        let backend = resolve("muse")
+        XCTAssertEqual(backend.chatBackend, .muse)
+        XCTAssertFalse(backend.usesDirectCLI)
+    }
+
+    func testMuseAliasTokensResolveThroughCanonicalID() {
+        // The default arm resolves through the canonical id, so alias tokens
+        // land on the first-class backend instead of a freeform custom one.
+        for alias in ["muse-code", "musecode", "muse_code", "meta-muse", "Muse Code"] {
+            let backend = resolve(alias)
+            XCTAssertEqual(backend.chatBackend, .muse, "alias \(alias) must resolve to .muse")
+            XCTAssertFalse(backend.usesDirectCLI)
+        }
+    }
+
+    func testLegacyAliasTokensStillResolveToFirstClassBackends() {
+        XCTAssertEqual(resolve("jetbrains-junie").chatBackend, .junie)
+        XCTAssertEqual(resolve("vercel-fx").chatBackend, .fx)
+    }
+
+    func testUnknownTokenStillFallsBackToCustomBackend() {
+        let backend = resolve("not-a-runtime")
+        XCTAssertNil(backend.chatBackend)
+        XCTAssertTrue(backend.usesDirectCLI)
+    }
+}

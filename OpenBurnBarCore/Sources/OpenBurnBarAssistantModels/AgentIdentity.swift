@@ -488,6 +488,11 @@ extension AgentIdentity {
             tagline = "Vercel fx via your Mac."
             capabilities = [.fullCLI, .codeExecution, .mcpUI]
             dispatchTransport = .macRelay(runtime: "fx")
+        case .muse:
+            paletteHex = "0668E1"
+            tagline = "Meta Muse Code via your Mac."
+            capabilities = [.fullCLI, .codeExecution, .mcpUI]
+            dispatchTransport = .macRelay(runtime: "muse")
         }
 
         return AgentIdentity(

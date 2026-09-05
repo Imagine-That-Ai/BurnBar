@@ -128,6 +128,11 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
             let collectionRef = context.firestoreGateway.collection("users").document(uid).collection("usage")
             let resolvedVaultKey = try await vaultKeyProvider.keyForWriting(uid: uid, deviceId: deviceId)
 
+            if !UserDefaults.standard.bool(forKey: "OpenBurnBarInitialUsageSyncPushed_v1") {
+                try await context.dataStore.resetSyncStatusForAllLocalUsage()
+                UserDefaults.standard.set(true, forKey: "OpenBurnBarInitialUsageSyncPushed_v1")
+            }
+
             while true {
                 let unsynced = try await context.dataStore.fetchUnsynced()
                 guard !unsynced.isEmpty else { break }

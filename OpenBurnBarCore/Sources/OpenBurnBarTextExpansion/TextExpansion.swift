@@ -190,7 +190,7 @@ public struct TextExpansionResult: Equatable, Sendable {
     public let match: TextExpansionMatch
 }
 
-/// Cached policy inputs for the macOS global CGEvent tap. The tap callback reads
+/// Cached policy inputs for the macOS global keyboard monitor. The monitor callback reads
 /// this snapshot from a lock instead of calling AX APIs or touching @MainActor state.
 public struct TextExpansionGlobalTapPolicy: Sendable, Equatable {
     public var globalExpansionEnabled: Bool

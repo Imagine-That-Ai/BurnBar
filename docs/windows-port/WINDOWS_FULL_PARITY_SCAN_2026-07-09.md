@@ -89,7 +89,7 @@ All 22 present on macOS. Key groups:
 | 8 | SmartHub bridge | `Services/SmartHub/` (~15 files: HTTP server + controller + page) |
 | 9 | mDNS / Bonjour | `CastDiscovery.swift` (`NWBrowser`), `SmartHub/LocalNetworkDiscovery` |
 | 10 | Mercury media | `Services/Media/` (24 files: screen/mic/camera, encoders, VoIP, RFB, file transfer) |
-| 11 | Text Expansion | `TextExpansionRuntimeController.swift` (`CGEventTap`, ~595 LOC) |
+| 11 | Text Expansion | `TextExpansionRuntimeController.swift` (passive `NSEvent` global key monitor) |
 | 12 | Elder Wand | Core preset + settings + daemon fusion orchestrator |
 | 13 | CursorConnector | `Services/CursorConnector/` (~8 files, ~794 LOC main) |
 | 14 | DailyDigest | `DailyDigestManager.swift` + `InsightEngine.swift` |
@@ -143,7 +143,7 @@ These shipping macOS subsystems are **not in the 33-row ledger**. Severity refle
 | **Home Assistant** (webhook, recovery) | ✅ `Services/HomeAssistant/` | ⚠️ portable + `.HomeAssistant.Net`; untracked | **High** |
 | **PixelClock / AWTRIX** (LAN quota display) | ✅ `PixelClockController.swift`, `AWTRIXClient` | ❌ no dedicated port | **High** |
 | **CursorConnector runtime** (BYOK proxy, quota tail) | ✅ `CursorConnectorManager.swift` | ⚠️ portable `App.CursorConnector/`; `.Windows` runtime deferred | **High** |
-| **Text Expansion global hook** (`CGEventTap`) | ✅ `TextExpansionRuntimeController.swift` | ⚠️ portable matcher; **no `WH_KEYBOARD_LL` hook adapter** | **High** |
+| **Text Expansion global hook** (passive global keyboard monitor) | ✅ `TextExpansionRuntimeController.swift` | ⚠️ portable matcher; **no `WH_KEYBOARD_LL` hook adapter** | **High** |
 | **Remote Config kill-switch fleet** (CU, memory, media) | ✅ `SettingsManager` RC polling | ⚠️ CU core kill-switch only; no full RC parity | **High** |
 | **Agent Watch HUD** (CU action publisher) | ✅ `AgentWatchHUDSession.swift` | ⚠️ core watchdog; no Mercury-coupled HUD parity | **High** |
 | **Hermes / Iroh relay host** (phone peer) | ✅ `HermesRelayHostService.swift` | ⚠️ native FFI + cloudsync; live host not certified | **High** |

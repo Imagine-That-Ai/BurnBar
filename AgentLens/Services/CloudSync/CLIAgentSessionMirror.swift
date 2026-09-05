@@ -267,6 +267,7 @@ final class CLIAgentSessionMirror: Sendable {
         case .fx:       return .fx
         case .grok, .kimi:    return .junie
         case .omp: return .omp
+        case .muse: return .muse
         case .hermes, .piAgent: return nil
         }
     }
@@ -371,6 +372,7 @@ final class CLIAgentSessionMirror: Sendable {
         case .omp: return .omp
         case .xAI: return .grok
         case .junie: return .junie
+        case .muse: return .muse
         // AgentProvider spells xAI `.xAI`, mapped above. `.kimi` has no CLIAgentRuntime
         // counterpart, so it falls through to nil rather than being mis-attributed.
         default: return nil
@@ -381,7 +383,7 @@ final class CLIAgentSessionMirror: Sendable {
         switch agent {
         case .codex, .claude:
             return true
-        case .openClaw, .openClaude, .omp, .droid, .forge, .antigravity, .grok, .cursorAgent, .junie, .fx:
+        case .openClaw, .openClaude, .omp, .droid, .forge, .antigravity, .grok, .cursorAgent, .junie, .fx, .muse:
             return false
         }
     }
@@ -431,6 +433,8 @@ final class CLIAgentSessionMirror: Sendable {
         case .junie:
             return nil
         case .fx:
+            return nil
+        case .muse:
             return nil
         }
     }

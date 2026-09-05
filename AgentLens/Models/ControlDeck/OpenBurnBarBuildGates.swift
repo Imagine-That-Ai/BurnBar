@@ -37,8 +37,8 @@ enum OpenBurnBarBuildGates {
         #endif
     }
 
-    /// System-wide text expansion, which installs a CGEvent tap and therefore
-    /// needs Accessibility. In-app expansion is always available.
+    /// System-wide text expansion, which installs a passive global key monitor
+    /// and therefore needs Accessibility. In-app expansion is always available.
     static var globalTextExpansionAvailable: Bool {
         #if DISTRIBUTION_MAS
         return false

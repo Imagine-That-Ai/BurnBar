@@ -19,6 +19,7 @@ struct SettingsView: View {
     @State private var hermesRuntimeLauncher = HermesRuntimeLauncher()
     @State private var piAgentRuntimeAdapter = PiAgentRuntimeAdapter()
     @State private var isShowingDataControlCenter = false
+    @State private var isShowingReceiptDrawer = false
     @State private var actionRegistry: SettingsActionRegistry?
     @State private var copilotController: SettingsCopilotController?
     @State private var cliBridge = CLIBridge()
@@ -47,36 +48,35 @@ struct SettingsView: View {
 
     var body: some View {
         NavigationSplitView {
-            VStack(spacing: 0) {
+            List(selection: $router.selectedTab) {
+                // Home at top
+                NavigationLink(value: SettingsTab.home) {
+                    sidebarRow(for: .home)
+                }
+                .tag(SettingsTab.home)
+                .accessibilityIdentifier(OBBAccessibilityID.settingsRow(SettingsTab.home.rawValue))
+
+                // Grouped sections
+                ForEach(SettingsSection.visibleSections) { section in
+                    Section(section.title) {
+                        ForEach(section.tabs.filter { SettingsTab.visibleTabs.contains($0) }) { tab in
+                            NavigationLink(value: tab) {
+                                sidebarRow(for: tab)
+                            }
+                            .tag(tab)
+                            .accessibilityIdentifier(OBBAccessibilityID.settingsRow(tab.rawValue))
+                        }
+                    }
+                }
+            }
+            .listStyle(.sidebar)
+            .accessibilityIdentifier(OBBAccessibilityID.settingsSidebar)
+            .safeAreaInset(edge: .top, spacing: 0) {
                 commandBar
                     .accessibilityIdentifier(OBBAccessibilityID.settingsCommandBar)
                     .padding(.horizontal, DesignSystem.Spacing.md)
                     .padding(.top, DesignSystem.Spacing.sm)
                     .padding(.bottom, DesignSystem.Spacing.xs)
-
-                List(selection: $router.selectedTab) {
-                    // Home at top
-                    NavigationLink(value: SettingsTab.home) {
-                        sidebarRow(for: .home)
-                    }
-                    .tag(SettingsTab.home)
-                    .accessibilityIdentifier(OBBAccessibilityID.settingsRow(SettingsTab.home.rawValue))
-
-                    // Grouped sections
-                    ForEach(SettingsSection.visibleSections) { section in
-                        Section(section.title) {
-                            ForEach(section.tabs.filter { SettingsTab.visibleTabs.contains($0) }) { tab in
-                                NavigationLink(value: tab) {
-                                    sidebarRow(for: tab)
-                                }
-                                .tag(tab)
-                                .accessibilityIdentifier(OBBAccessibilityID.settingsRow(tab.rawValue))
-                            }
-                        }
-                    }
-                }
-                .listStyle(.sidebar)
-                .accessibilityIdentifier(OBBAccessibilityID.settingsSidebar)
             }
             .navigationTitle("Settings")
             .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 320)
@@ -109,6 +109,7 @@ struct SettingsView: View {
             .id(router.selectedTab)
             .environment(router)
         }
+        .settingsAvoidsOverlayTitlebar()
         .frame(
             minWidth: 820,
             idealWidth: 980,
@@ -122,6 +123,9 @@ struct SettingsView: View {
         .sheet(isPresented: $isShowingDataControlCenter) {
             DataControlCenterView(accountManager: accountManager)
                 .frame(minWidth: 980, minHeight: 680)
+        }
+        .sheet(isPresented: $isShowingReceiptDrawer) {
+            ReceiptDrawerView(dataStore: dataStore, onClose: { isShowingReceiptDrawer = false })
         }
         .onReceive(NotificationCenter.default.publisher(for: FeatureGateRouting.openCloudStoreNotification)) { _ in
             // A feature-gate unlock CTA fired while Settings is already open —
@@ -420,6 +424,13 @@ struct SettingsView: View {
                 runtimeContext: runtimeContext
             )
                 .navigationTitle("General")
+        case .receipts:
+            ReceiptSettingsView(
+                settingsManager: settingsManager,
+                onOpenDrawer: {
+                    isShowingReceiptDrawer = true
+                }
+            )
         case .aiInbox:
             AIInboxSettingsRootView()
                 .navigationTitle("AI Inbox")
@@ -748,22 +759,65 @@ private struct PetCompanionSettingsView: View {
     }
 }
 
+/// Keeps the Settings titlebar in the layout, not over the first rows.
+///
+/// On macOS 26/27, `NavigationSplitView` + `.toolbar` promotes the window to
+/// `fullSizeContentView` so the unified titlebar overlays the sidebar search
+/// and the first `List` section header ("Quick setup" on General). That is the
+/// clip in the screenshot: the top bar cutting the landing.
+@MainActor
+enum SettingsWindowChrome {
+    static func applyStandardTitlebar(to window: NSWindow) {
+        if window.styleMask.contains(.fullSizeContentView) {
+            window.styleMask.remove(.fullSizeContentView)
+        }
+        window.titlebarAppearsTransparent = false
+        window.titlebarSeparatorStyle = .line
+        window.toolbarStyle = .unified
+    }
+}
+
+private struct SettingsAvoidsOverlayTitlebar: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(macOS 26.0, *) {
+            content
+                .toolbarBackground(.visible, for: .windowToolbar)
+                .toolbarBackgroundVisibility(.visible, for: .windowToolbar)
+        } else {
+            content
+                .toolbarBackground(.visible, for: .windowToolbar)
+        }
+    }
+}
+
+extension View {
+    func settingsAvoidsOverlayTitlebar() -> some View {
+        modifier(SettingsAvoidsOverlayTitlebar())
+    }
+}
+
 private struct SettingsWindowReader: NSViewRepresentable {
     @Binding var window: NSWindow?
 
     func makeNSView(context: Context) -> NSView {
         let view = NSView(frame: .zero)
         DispatchQueue.main.async {
-            window = view.window
+            capture(view)
         }
         return view
     }
 
     func updateNSView(_ view: NSView, context: Context) {
         DispatchQueue.main.async {
-            if window !== view.window {
-                window = view.window
-            }
+            capture(view)
+        }
+    }
+
+    private func capture(_ view: NSView) {
+        guard let found = view.window else { return }
+        SettingsWindowChrome.applyStandardTitlebar(to: found)
+        if window !== found {
+            window = found
         }
     }
 }

@@ -166,6 +166,8 @@ struct AssistantModelMerger {
             return ["omp", "ohmypi", "oh-my-pi", "oh my pi"]
         case .fx:
             return ["fx", "vercel-fx", "vercelfx"]
+        case .muse:
+            return ["muse", "muse-code", "musecode", "meta-muse", "metamuse"]
         }
     }
 

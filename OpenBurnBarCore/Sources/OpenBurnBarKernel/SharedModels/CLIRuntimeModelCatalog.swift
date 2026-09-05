@@ -381,6 +381,18 @@ public enum CLIRuntimeModelCatalog {
                 "vercel",
                 "Vercel via fx CLI"
             )
+        case .muse:
+            return option(
+                "",
+                OpenBurnBarModelDisplayName.compose(
+                    modelName: "Muse Spark default",
+                    providerName: "Meta",
+                    providerID: "meta",
+                    reasoningLevel: "CLI default"
+                ),
+                "meta",
+                "Meta via Muse Code CLI"
+            )
         case .droid, .forge, .hermes, .pi, .openClaw, .openClaude, .omp:
             return nil
         }

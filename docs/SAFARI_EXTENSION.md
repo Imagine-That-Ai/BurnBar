@@ -114,6 +114,14 @@ service-worker typecheck above.
 **A site never gets access.** — Safari grants website access per your action; re-run
 **Complete setup** and choose Allow in Safari's sheet.
 
+**Safari says an app or service interfered with clicking.** — Current OpenBurnBar
+builds use a passive text-expansion monitor that does not intercept clicks or key events.
+After updating, quit and relaunch OpenBurnBar before retrying the extension toggle. If
+the warning persists, disable **Text Expansion → Global expansion** temporarily and
+retry; Safari/macOS can also show this warning for unrelated extensions, so a persistent
+warning with global expansion off is a Safari issue rather than proof that OpenBurnBar
+blocked the click.
+
 ## Related
 
 - [`AGENTS.md`](../AGENTS.md) — repository agent contract

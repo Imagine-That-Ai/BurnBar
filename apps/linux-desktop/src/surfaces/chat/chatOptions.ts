@@ -35,6 +35,7 @@ const PROVIDER_IDS_BY_BACKEND: Record<ChatBackendId, readonly string[]> = {
   'cursor-agent': ['cursor-agent', 'cursoragent'],
   junie: ['junie'],
   fx: ['fx', 'vercel-fx', 'vercelfx'],
+  muse: ['muse', 'muse-code', 'musecode', 'meta-muse', 'metamuse'],
   cli: ['cli', 'local-cli']
 };
 

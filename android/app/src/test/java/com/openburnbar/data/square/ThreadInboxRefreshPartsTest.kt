@@ -54,6 +54,9 @@ class ThreadInboxRefreshPartsTest {
                 "fx" to AssistantRuntimeID.FX,
                 "vercel-fx" to AssistantRuntimeID.FX,
                 "vercelfx" to AssistantRuntimeID.FX,
+                "muse" to AssistantRuntimeID.MUSE,
+                "muse-code" to AssistantRuntimeID.MUSE,
+                "meta-muse" to AssistantRuntimeID.MUSE,
             )
 
         for ((runtime, expectedRuntimeID) in aliases) {

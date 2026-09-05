@@ -22,7 +22,7 @@ OpenBurnBar text expansion lets a user save snippets behind `&&name` triggers, t
 | Android Hermes/CLI composers | Yes | No | Current Android composer state |
 | Android IME | Yes | No | None |
 
-LLM rewrite is intentionally scoped to OpenBurnBar-owned thread surfaces. A global keyboard, macOS event tap, iOS keyboard extension, or Android IME cannot reliably read arbitrary third-party app thread context, and silently inventing that context would make the feature misleading. Those surfaces insert static snippets only.
+LLM rewrite is intentionally scoped to OpenBurnBar-owned thread surfaces. A global keyboard monitor, iOS keyboard extension, or Android IME cannot reliably read arbitrary third-party app thread context, and silently inventing that context would make the feature misleading. Those surfaces insert static snippets only.
 
 ## Storage And Sync
 
@@ -37,7 +37,7 @@ Cloud sync uses `users/{uid}/text_snippets/{snippetId}`. Firestore stores `seale
 ## Safety Rules
 
 - Global macOS expansion is off by default and compiles out of MAS builds.
-- macOS global expansion requires Accessibility permission, skips OpenBurnBar itself, skips secure/focused denied surfaces, and resets its buffer on command/control/option and non-printable navigation events. When permission is missing, Settings → Text Expansion routes users to **Privacy & Security → Accessibility** (same pane as Computer Use).
+- macOS global expansion uses a passive `NSEvent` key monitor. It never swallows or rewrites the original event, skips OpenBurnBar itself, skips secure/focused denied surfaces, and replaces a matched token asynchronously only after the original key event has passed through. The replacement validates the expected trailing text before deleting anything, so a focus change or intervening edit is left untouched. Accessibility permission is still required for monitoring and insertion; when it is missing, Settings → Text Expansion routes users to **Privacy & Security → Accessibility** (same pane as Computer Use).
 - LLM snippets produce a preview with Insert/Cancel controls before draft replacement in macOS OpenBurnBar chat.
 - Static snippets can run globally; LLM snippets stay in OpenBurnBar-owned thread contexts.
 - Cloud rules allow owner-scoped read/write/delete only and validate the encrypted document shape.

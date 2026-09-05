@@ -1144,6 +1144,20 @@ struct MenuBarPopoverView: View {
 
                 Spacer(minLength: 0)
 
+                Button {
+                    dismiss()
+                    onOpenDashboard()
+                } label: {
+                    Image(systemName: "doc.text.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        .frame(width: 22, height: 22)
+                        .background(Color.primary.opacity(0.06))
+                        .clipShape(.circle)
+                }
+                .buttonStyle(.plain)
+                .popoverTooltip("Receipts & Run Ledger")
+
                 BurnBarProfileAvatarButton(
                     size: .toolbar,
                     onOpenDashboard: {

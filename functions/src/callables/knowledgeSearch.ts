@@ -195,22 +195,29 @@ export const listKnowledgeChunks = onCall(
         query = query.startAfter(startAfterId);
       }
 
-      const snap = await query.get();
+      let snap = await query.get();
+      if (snap.empty && !sourceKindRaw && !slugHmac) {
+        let convQuery: Query = db.collection(`users/${uid}/conversations`).orderBy("__name__").limit(limit + 1);
+        if (startAfterId) convQuery = convQuery.startAfter(startAfterId);
+        snap = await convQuery.get();
+      }
+
       const hasMore = snap.docs.length > limit;
       const docs = snap.docs.slice(0, limit);
 
       const chunks = docs.map((doc) => {
         const signalEnvelope = doc.get("signalEnvelope");
+        const sealedPayload = doc.get("sealedPayload");
         return {
           vectorId: doc.id,
-          ciphertext: doc.get("sealedCiphertext"),
+          ciphertext: doc.get("sealedCiphertext") ?? sealedPayload,
           sealedMetadata: doc.get("sealedMetadata"),
           ...(signalEnvelope === undefined ? {} : { signalEnvelope }),
-          sourceKind: doc.get("sourceKind") ?? "repo_docs",
-          slugHmac: doc.get("slugHmac"),
-          dedupHash: doc.get("dedupHash"),
-          byteCount: doc.get("byteCount") ?? 0,
-          updatedAtMillis: doc.get("updatedAtMillis") ?? (doc.get("updatedAt")?.toMillis?.() ?? Date.now()),
+          sourceKind: doc.get("sourceKind") ?? (sealedPayload ? "chat_memory" : "repo_docs"),
+          slugHmac: doc.get("slugHmac") ?? doc.get("provider"),
+          dedupHash: doc.get("dedupHash") ?? doc.get("sessionId"),
+          byteCount: doc.get("byteCount") ?? ((doc.get("userWordCount") ?? 0) * 5),
+          updatedAtMillis: doc.get("updatedAtMillis") ?? (doc.get("updatedAt")?.toMillis?.() ?? (doc.get("startTime")?.toMillis?.() ?? Date.now())),
         };
       });
 

@@ -578,6 +578,7 @@ struct AssistantsPopoverChatView: View {
         case .omp: return "Ask OMP…"
         case .junie: return "Ask Junie…"
         case .fx: return "Ask fx…"
+        case .muse: return "Ask Muse Code…"
         case .grok, .kimi: return "Ask Junie…"
         }
     }

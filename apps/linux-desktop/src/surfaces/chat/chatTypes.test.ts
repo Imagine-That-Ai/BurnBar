@@ -67,9 +67,18 @@ describe('chat backend parity contract', () => {
   it('represents every macOS backend and keeps legacy CLI non-selectable', () => {
     expect(CHAT_BACKENDS.map((entry) => entry.id)).toEqual([
       'codex', 'claude', 'hermes', 'pi-agent', 'openclaw', 'openclaude', 'omp',
-      'droid', 'forge', 'antigravity', 'cursor-agent', 'junie', 'fx'
+      'droid', 'forge', 'antigravity', 'cursor-agent', 'junie', 'fx', 'muse'
     ]);
     expect(chatBackendAvailability(fixtureConfigSnapshot(), 'cli', routingCatalog)).toMatchObject({ state: 'unsupported' });
+  });
+
+  it('describes the Muse Code backend with its daemon wire aliases', () => {
+    expect(chatBackendDescriptor('muse')).toMatchObject({
+      id: 'muse',
+      label: 'Muse Code',
+      providerIDs: ['muse', 'muse-code', 'musecode', 'meta-muse', 'metamuse']
+    });
+    expect(composerPlaceholder('muse')).toBe('Ask Muse Code…');
   });
 
   it('reports configured, disabled, and unconfigured routes from daemon config', () => {

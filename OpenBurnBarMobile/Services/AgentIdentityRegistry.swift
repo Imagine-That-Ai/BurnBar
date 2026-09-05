@@ -160,6 +160,11 @@ final class AgentIdentityRegistry {
                 availability = runtimeAvailabilityByID["fx"]
                     ?? runtimeAvailabilityByID["vercel-fx"]
                     ?? existing.availability
+            case .muse:
+                availability = runtimeAvailabilityByID["muse"]
+                    ?? runtimeAvailabilityByID["muse-code"]
+                    ?? runtimeAvailabilityByID["meta-muse"]
+                    ?? existing.availability
             case .none:
                 availability = existing.availability
             }

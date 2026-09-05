@@ -222,7 +222,7 @@ private struct EngineRoomTile: View {
 // Direct: both expansion switches. No extra call is needed —
 // `TextExpansionSettings.macGlobalExpansionEnabled.didSet` posts
 // `.textExpansionMacGlobalExpansionEnabledDidChange` and
-// `TextExpansionRuntimeController` installs or tears down the CGEvent tap, so
+// `TextExpansionRuntimeController` installs or tears down the passive key monitor, so
 // the switch is true the moment it moves.
 //
 // Direct-but-a-request: "Grant Accessibility…". The switch **does not flip** —

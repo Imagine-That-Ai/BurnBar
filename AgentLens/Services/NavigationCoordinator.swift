@@ -42,6 +42,7 @@ final class NavigationCoordinator {
         case database
         case projects
         case sessionLogs
+        case receipts
         case chat
         /// Subscription & quota vault. The pre-limit alert deep-links here — the
         /// product's core loop ends on this screen, so it must be reachable from
@@ -79,6 +80,11 @@ final class NavigationCoordinator {
         chatPanelOpen = true
         pendingNavigation = .chatPanel
     }
+
+    func openReceipts() {
+        setDashboardRoute(.receipts)
+        pendingNavigation = .dashboard
+    }
     
     func clearPendingNavigation() {
         pendingNavigation = nil
@@ -99,6 +105,10 @@ final class NavigationCoordinator {
         case "inbox":
             let itemID = url.pathComponents.first { $0 != "/" }
             setDashboardRoute(.inbox(itemID: itemID))
+            pendingNavigation = .dashboard
+            return true
+        case "receipts":
+            setDashboardRoute(.receipts)
             pendingNavigation = .dashboard
             return true
         case "quota":

@@ -3,14 +3,15 @@ import AppKit
 import CoreGraphics
 
 /// Best-effort printable character extraction for global key monitors.
-/// `charactersIgnoringModifiers` is often empty for punctuation (including `&`),
-/// which breaks `&&` trigger detection unless we fall back to CGEvent/keyCode data.
+/// Use the layout-resolved characters first so shifted punctuation such as `&` is
+/// preserved. Fall back to the modifier-free value, the bridged raw event, and finally
+/// the US-ANSI keycode map when an event does not carry a character payload.
 public enum TextExpansionKeyEventCharacters {
     public static func characters(from event: NSEvent) -> String? {
-        if let chars = event.charactersIgnoringModifiers, !chars.isEmpty {
+        if let chars = event.characters, !chars.isEmpty {
             return chars
         }
-        if let chars = event.characters, !chars.isEmpty {
+        if let chars = event.charactersIgnoringModifiers, !chars.isEmpty {
             return chars
         }
         if let cgEvent = event.cgEvent,

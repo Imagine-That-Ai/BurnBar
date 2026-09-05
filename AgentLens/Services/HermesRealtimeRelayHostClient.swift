@@ -172,7 +172,8 @@ final class HermesRealtimeRelayHostClient: HermesRealtimeRelayHosting {
                      .remoteUnlockInput,
                      .remoteUnlockCredential,
                      .remoteUnlockResult,
-                     .remoteUnlockDenied:
+                     .remoteUnlockDenied,
+                     .signalSessionMessage:
                     // Mercury media and computer-control frames ride the iroh
                     // transport, not WSS. If a peer sends one here it is
                     // either a misrouted frame or an old-format probe; ignore.

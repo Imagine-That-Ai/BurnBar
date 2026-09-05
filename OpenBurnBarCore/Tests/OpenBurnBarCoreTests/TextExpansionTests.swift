@@ -108,6 +108,22 @@ final class TextExpansionTests: XCTestCase {
         XCTAssertEqual(TextExpansionKeyEventCharacters.characters(from: event!), "&")
     }
 
+    func testKeyEventCharactersPrefersLayoutResolvedShiftedSymbol() {
+        let event = NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: [.shift],
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            characters: "&",
+            charactersIgnoringModifiers: "7",
+            isARepeat: false,
+            keyCode: 26
+        )
+        XCTAssertEqual(TextExpansionKeyEventCharacters.characters(from: event!), "&")
+    }
+
     func testUSKeyboardMapResolvesShiftedNumberRowSymbols() {
         // Shift+7 (keyCode 26) must resolve to "&" so the `&&` trigger prefix can build up
         // even when an event carries no unicode payload — the original global-tap bug.

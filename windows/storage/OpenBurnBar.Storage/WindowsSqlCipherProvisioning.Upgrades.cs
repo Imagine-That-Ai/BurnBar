@@ -100,7 +100,79 @@ public sealed partial class WindowsSqlCipherProvisioner
                 WindowsSchemaUpgradeStatement.Always(
                     "CREATE INDEX IF NOT EXISTS token_usage_start_time_idx ON token_usage(startTime)"),
             }),
+
+        // v65_receipts_substrate — peer of
+        // OpenBurnBarDatabase+MigrationV65.swift.
+        new WindowsSchemaUpgradeStep(
+            "v65_receipts_substrate",
+            new[]
+            {
+                WindowsSchemaUpgradeStatement.Always(ReceiptsTableSql),
+                WindowsSchemaUpgradeStatement.Always("CREATE INDEX IF NOT EXISTS receipts_session_idx ON receipts(sessionId)"),
+                WindowsSchemaUpgradeStatement.Always("CREATE INDEX IF NOT EXISTS receipts_timestamp_idx ON receipts(timestamp)"),
+                WindowsSchemaUpgradeStatement.Always("CREATE INDEX IF NOT EXISTS receipts_project_idx ON receipts(projectName)"),
+                WindowsSchemaUpgradeStatement.Always("CREATE INDEX IF NOT EXISTS receipts_provider_idx ON receipts(provider)"),
+                WindowsSchemaUpgradeStatement.Always("CREATE INDEX IF NOT EXISTS receipts_cost_idx ON receipts(totalCostUSD)"),
+                WindowsSchemaUpgradeStatement.Always("CREATE INDEX IF NOT EXISTS receipts_starred_idx ON receipts(isStarred)"),
+                WindowsSchemaUpgradeStatement.Always("CREATE VIRTUAL TABLE IF NOT EXISTS receipts_fts USING fts5(promptSummary, filesTouched, toolsUsed, modelName, projectName, tokenize='porter unicode61')"),
+                WindowsSchemaUpgradeStatement.Always(ReceiptsAiTriggerSql),
+                WindowsSchemaUpgradeStatement.Always(ReceiptsAdTriggerSql),
+                WindowsSchemaUpgradeStatement.Always(ReceiptsAuTriggerSql),
+            }),
     };
+
+    internal const string ReceiptsTableSql =
+        """
+        CREATE TABLE IF NOT EXISTS receipts (
+            id TEXT PRIMARY KEY NOT NULL,
+            sessionId TEXT NOT NULL,
+            projectName TEXT NOT NULL,
+            provider TEXT NOT NULL,
+            modelName TEXT NOT NULL,
+            timestamp DATETIME NOT NULL,
+            durationSeconds REAL NOT NULL DEFAULT 0.0,
+            inputTokens INTEGER NOT NULL DEFAULT 0,
+            outputTokens INTEGER NOT NULL DEFAULT 0,
+            cacheReadTokens INTEGER NOT NULL DEFAULT 0,
+            cacheWriteTokens INTEGER NOT NULL DEFAULT 0,
+            totalCostUSD REAL NOT NULL DEFAULT 0.0,
+            estimatedCacheSavingsUSD REAL NOT NULL DEFAULT 0.0,
+            cacheHitPercentage REAL NOT NULL DEFAULT 0.0,
+            tokensPerSecond REAL NOT NULL DEFAULT 0.0,
+            promptSummary TEXT NOT NULL DEFAULT '',
+            filesTouchedJSON TEXT NOT NULL DEFAULT '[]',
+            toolsUsedJSON TEXT NOT NULL DEFAULT '[]',
+            gitBranch TEXT,
+            gitCommit TEXT,
+            isStarred BOOLEAN NOT NULL DEFAULT 0,
+            contentSignature TEXT NOT NULL,
+            createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """;
+
+    internal const string ReceiptsAiTriggerSql =
+        """
+        CREATE TRIGGER IF NOT EXISTS receipts_ai AFTER INSERT ON receipts BEGIN
+            INSERT INTO receipts_fts(rowid, promptSummary, filesTouched, toolsUsed, modelName, projectName)
+            VALUES (new.rowid, new.promptSummary, new.filesTouchedJSON, new.toolsUsedJSON, new.modelName, new.projectName);
+        END
+        """;
+
+    internal const string ReceiptsAdTriggerSql =
+        """
+        CREATE TRIGGER IF NOT EXISTS receipts_ad AFTER DELETE ON receipts BEGIN
+            DELETE FROM receipts_fts WHERE rowid = old.rowid;
+        END
+        """;
+
+    internal const string ReceiptsAuTriggerSql =
+        """
+        CREATE TRIGGER IF NOT EXISTS receipts_au AFTER UPDATE ON receipts BEGIN
+            DELETE FROM receipts_fts WHERE rowid = old.rowid;
+            INSERT INTO receipts_fts(rowid, promptSummary, filesTouched, toolsUsed, modelName, projectName)
+            VALUES (new.rowid, new.promptSummary, new.filesTouchedJSON, new.toolsUsedJSON, new.modelName, new.projectName);
+        END
+        """;
 
     /// <summary>
     /// The standing-orders table, kept identical to the fresh-install statement in

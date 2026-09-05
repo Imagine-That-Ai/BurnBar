@@ -21,7 +21,7 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { listKnowledgeChunks } from "@/lib/api";
-import { openText, type CloudVaultSealedText } from "@/lib/escrow";
+import { openText, openBlob, type CloudVaultSealedText, type CloudVaultBlobEnvelope } from "@/lib/escrow";
 import { knowledgeChunkAADContext } from "@/lib/recall";
 import { useAuth } from "@/lib/useAuth";
 import { getConsoleVaultCryptoKey, getConsoleVaultKeyBytes } from "@/lib/vaultKeySession";
@@ -132,15 +132,32 @@ export function PensieveMemoryExplorer({
               let isDecrypted = false;
               if (hasVaultKey && user?.uid && chunk.ciphertext) {
                 try {
-                  plaintext = await openText(
-                    chunk.ciphertext as CloudVaultSealedText,
-                    vaultKey!,
-                    {
-                      aadContext: knowledgeChunkAADContext(user.uid, chunk.vectorId),
-                      rawVaultKey: rawVaultKey!,
-                    },
-                  );
-                  isDecrypted = true;
+                  const cipherAny = chunk.ciphertext as any;
+                  if (typeof cipherAny.sealedBoxBase64 === "string") {
+                    const blobBytes = await openBlob(
+                      cipherAny as CloudVaultBlobEnvelope,
+                      vaultKey!,
+                      { rawVaultKey: rawVaultKey!, aad: cipherAny.aad },
+                    );
+                    const decoded = new TextDecoder().decode(blobBytes);
+                    try {
+                      const json = JSON.parse(decoded);
+                      plaintext = json.summary || json.content || json.preview || (Array.isArray(json.messages) ? json.messages.map((m: any) => m.content || m.text).join("\n") : decoded);
+                    } catch {
+                      plaintext = decoded;
+                    }
+                    isDecrypted = true;
+                  } else {
+                    plaintext = await openText(
+                      chunk.ciphertext as CloudVaultSealedText,
+                      vaultKey!,
+                      {
+                        aadContext: knowledgeChunkAADContext(user.uid, chunk.vectorId),
+                        rawVaultKey: rawVaultKey!,
+                      },
+                    );
+                    isDecrypted = true;
+                  }
                 } catch {
                   plaintext = `[Ciphertext sealed to another device vault key]`;
                 }

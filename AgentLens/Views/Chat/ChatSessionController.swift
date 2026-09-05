@@ -133,6 +133,10 @@ final class ChatSessionController {
         didSet { if persistsViewState { UserDefaults.standard.set(chatModelFx, forKey: Self.udChatModelFx) } }
     }
 
+    var chatModelMuse: String = "" {
+        didSet { if persistsViewState { UserDefaults.standard.set(chatModelMuse, forKey: Self.udChatModelMuse) } }
+    }
+
     /// The fx session id returned by the last `fx ask --json` reply. The next
     /// fx send passes it as `--resume <id>` so multi-turn chat continues the
     /// same fx session instead of starting a fresh one. Persisted per the
@@ -328,6 +332,7 @@ final class ChatSessionController {
     static let udChatModelOMP = "chatPanel.model.omp"
     static let udChatModelJunie = "chatPanel.model.junie"
     static let udChatModelFx = "chatPanel.model.fx"
+    static let udChatModelMuse = "chatPanel.model.muse"
 
     /// fx multi-turn session id slot (spec: `udThreadIDFx`).
     static let udThreadIDFx = "chatPanelThreadIDFx"
@@ -458,6 +463,7 @@ final class ChatSessionController {
         chatModelOMP = UserDefaults.standard.string(forKey: Self.udChatModelOMP) ?? ""
         chatModelJunie = UserDefaults.standard.string(forKey: Self.udChatModelJunie) ?? ""
         chatModelFx = UserDefaults.standard.string(forKey: Self.udChatModelFx) ?? ""
+        chatModelMuse = UserDefaults.standard.string(forKey: Self.udChatModelMuse) ?? ""
         fxResumeSessionID = UserDefaults.standard.string(forKey: Self.udThreadIDFx)
         loadPersonaState()
 

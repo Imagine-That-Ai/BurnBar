@@ -38,6 +38,7 @@ export const SWARM_PROVIDER_GLYPH_OPTIONS = [
   { id: 'warp', label: 'Warp' },
   { id: 'cursoragent', label: 'Cursor Agent' },
   { id: 'fx', label: 'fx' },
+  { id: 'muse', label: 'Muse Code' },
 ] as const;
 
 export type SwarmProviderGlyphId = (typeof SWARM_PROVIDER_GLYPH_OPTIONS)[number]['id'];

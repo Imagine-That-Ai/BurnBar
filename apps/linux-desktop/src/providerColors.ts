@@ -28,6 +28,7 @@ const PROVIDER_COLORS: Record<string, string> = {
   goose: '#84CC16',
   openclaw: '#F97316',
   fx: '#A1A1AA',
+  muse: '#0668E1',
 };
 
 const MODEL_PALETTE = [

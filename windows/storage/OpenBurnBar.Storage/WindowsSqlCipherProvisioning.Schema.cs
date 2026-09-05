@@ -436,5 +436,58 @@ public sealed partial class WindowsSqlCipherProvisioner
             exported_at TEXT NOT NULL
         )
         """,
+        // v65_receipts_substrate — mirrors OpenBurnBarDatabase+MigrationV65.swift.
+        """
+        CREATE TABLE IF NOT EXISTS receipts (
+            id TEXT PRIMARY KEY NOT NULL,
+            sessionId TEXT NOT NULL,
+            projectName TEXT NOT NULL,
+            provider TEXT NOT NULL,
+            modelName TEXT NOT NULL,
+            timestamp DATETIME NOT NULL,
+            durationSeconds REAL NOT NULL DEFAULT 0.0,
+            inputTokens INTEGER NOT NULL DEFAULT 0,
+            outputTokens INTEGER NOT NULL DEFAULT 0,
+            cacheReadTokens INTEGER NOT NULL DEFAULT 0,
+            cacheWriteTokens INTEGER NOT NULL DEFAULT 0,
+            totalCostUSD REAL NOT NULL DEFAULT 0.0,
+            estimatedCacheSavingsUSD REAL NOT NULL DEFAULT 0.0,
+            cacheHitPercentage REAL NOT NULL DEFAULT 0.0,
+            tokensPerSecond REAL NOT NULL DEFAULT 0.0,
+            promptSummary TEXT NOT NULL DEFAULT '',
+            filesTouchedJSON TEXT NOT NULL DEFAULT '[]',
+            toolsUsedJSON TEXT NOT NULL DEFAULT '[]',
+            gitBranch TEXT,
+            gitCommit TEXT,
+            isStarred BOOLEAN NOT NULL DEFAULT 0,
+            contentSignature TEXT NOT NULL,
+            createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS receipts_session_idx ON receipts(sessionId)",
+        "CREATE INDEX IF NOT EXISTS receipts_timestamp_idx ON receipts(timestamp)",
+        "CREATE INDEX IF NOT EXISTS receipts_project_idx ON receipts(projectName)",
+        "CREATE INDEX IF NOT EXISTS receipts_provider_idx ON receipts(provider)",
+        "CREATE INDEX IF NOT EXISTS receipts_cost_idx ON receipts(totalCostUSD)",
+        "CREATE INDEX IF NOT EXISTS receipts_starred_idx ON receipts(isStarred)",
+        "CREATE VIRTUAL TABLE IF NOT EXISTS receipts_fts USING fts5(promptSummary, filesTouched, toolsUsed, modelName, projectName, tokenize='porter unicode61')",
+        """
+        CREATE TRIGGER IF NOT EXISTS receipts_ai AFTER INSERT ON receipts BEGIN
+            INSERT INTO receipts_fts(rowid, promptSummary, filesTouched, toolsUsed, modelName, projectName)
+            VALUES (new.rowid, new.promptSummary, new.filesTouchedJSON, new.toolsUsedJSON, new.modelName, new.projectName);
+        END
+        """,
+        """
+        CREATE TRIGGER IF NOT EXISTS receipts_ad AFTER DELETE ON receipts BEGIN
+            DELETE FROM receipts_fts WHERE rowid = old.rowid;
+        END
+        """,
+        """
+        CREATE TRIGGER IF NOT EXISTS receipts_au AFTER UPDATE ON receipts BEGIN
+            DELETE FROM receipts_fts WHERE rowid = old.rowid;
+            INSERT INTO receipts_fts(rowid, promptSummary, filesTouched, toolsUsed, modelName, projectName)
+            VALUES (new.rowid, new.promptSummary, new.filesTouchedJSON, new.toolsUsedJSON, new.modelName, new.projectName);
+        END
+        """,
     };
 }

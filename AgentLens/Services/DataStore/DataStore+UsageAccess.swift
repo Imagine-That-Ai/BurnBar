@@ -110,6 +110,10 @@ extension DataStore {
         try await actor.usageStore.markSynced(ids: ids)
     }
 
+    func resetSyncStatusForAllLocalUsage() async throws {
+        try await actor.usageStore.resetSyncStatusForAllLocalUsage()
+    }
+
     func sessionModelMap() async throws -> [String: String] {
         try await actor.usageStore.sessionModelMap()
     }

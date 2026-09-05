@@ -657,6 +657,7 @@ internal fun toolbarGradientColors(runtime: AssistantRuntimeID): List<Color> = w
     AssistantRuntimeID.CURSOR_AGENT -> listOf(Color(0xFF0F172A), Color(0xFF64748B), Color(0xFFCBD5E1))
     AssistantRuntimeID.JUNIE -> listOf(Color(0xFF48E054), Color(0xFF6FE87F), Color(0xFFB9F5C4))
     AssistantRuntimeID.FX -> listOf(Color(0xFFA1A1AA), Color(0xFFD4D4D8), Color(0xFFE4E4E7))
+    AssistantRuntimeID.MUSE -> listOf(Color(0xFF0668E1), Color(0xFF3B82F6), Color(0xFF93C5FD))
 }
 
 @Composable

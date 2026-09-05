@@ -748,13 +748,13 @@ extension ProviderSetupGuide {
             kinds: [.session],
             defaultKind: .session,
             labelSuggestion: "Muse",
-            dashboardURL: URL(string: "https://www.meta.com/"),
+            dashboardURL: URL(string: "https://dev.meta.ai/"),
             dashboardCTA: "Open Meta Muse",
-            oneLineHint: "Muse sessions under ~/.local/share/muse/sessions.",
+            oneLineHint: "Muse sessions under ~/.local/share/muse/sessions; Spark API at api.meta.ai.",
             instructions: [
                 GuideStep(1, "Install Muse on your Mac", detail: "Use the Meta Muse CLI/app that writes envelope JSONL sessions."),
                 GuideStep(2, "Keep the Mac bridge running", detail: "OpenBurnBar parses ~/.local/share/muse/sessions for tokens and cost.", codeSnippet: "~/.local/share/muse/sessions"),
-                GuideStep(3, "Watch usage in the meter", detail: "Sessions appear with model and exact cost when Muse records it.")
+                GuideStep(3, "Watch usage in the meter", detail: "Spark 1.3 / 1.2 sessions appear with model and exact cost from the log and from Meta Model API.")
             ],
             credentialPlaceholder: "Managed by your paired Mac",
             credentialFooterMarkdown: "Muse auth stays on your Mac. OpenBurnBar only reads local session usage.",

@@ -420,6 +420,34 @@ public enum CLIAuthDiscovery {
                 accountDescription: hasRecordedSessions ? "fx local sessions" : nil
             )
 
+        case .muse:
+            let configDir = normalizedConfigDirectory(
+                configDirectoryOverride,
+                fallback: "\(home)/.config/muse"
+            )
+            // XDG-style layout (verified on Muse Code 1.0.2): auth and
+            // settings live in ~/.config/muse (auth.json, settings.json,
+            // trust.json); envelope session logs live in
+            // ~/.local/share/muse/sessions/YYYY/MM/DD/<id>/session.jsonl.
+            // The config dir is created on first launch even before sign-in
+            // and credentials live outside it (browser-linked device flow),
+            // so only recorded sessions count as usable-login evidence.
+            let sessionsDir = "\(home)/.local/share/muse/sessions"
+            let hasConfig = FileManager.default.fileExists(atPath: configDir)
+            let hasRecordedSessions = directoryContainsAnyEntry(atPath: sessionsDir)
+            let authState: CLIAuthState = {
+                if executablePath == nil { return .notInstalled }
+                if hasRecordedSessions { return .authenticated(lastRefresh: nil) }
+                return .notAuthenticated
+            }()
+            return CLIAuthInfo(
+                cliType: cliType,
+                isInstalled: executablePath != nil,
+                executablePath: executablePath,
+                authState: authState,
+                configDirectory: hasConfig ? configDir : normalizedNonEmpty(configDir),
+                accountDescription: hasRecordedSessions ? "Muse Code local sessions" : nil
+            )
         case .hermes:
             let configDir = normalizedConfigDirectory(
                 configDirectoryOverride,

@@ -125,6 +125,39 @@ struct CLIProcessStreamRunner: Sendable {
         }
     }
 
+    func runMuse(
+        executable: String,
+        prompt: String,
+        model: String,
+        workspaceDirectory: URL? = nil,
+        capabilityGrant: AgentCapabilityGrant? = nil,
+        grantStillActive: (@Sendable () async -> Bool)? = nil,
+        continuation: AsyncThrowingStream<CLIChatStreamEvent, Error>.Continuation
+    ) async {
+        // `museArguments` always emits `--json`, so stdout is the structured
+        // event log `MuseExecJSONLParser` understands — same shape as runFx.
+        var parser = MuseExecJSONLParser()
+        await runProcess(
+            invocation: CLIProcessInvocation(
+                executable: executable,
+                arguments: CLIArgumentBuilder.museArguments(
+                    prompt: prompt,
+                    model: model,
+                    workspaceDirectory: workspaceDirectory,
+                    capabilityGrant: capabilityGrant
+                ),
+                environment: CLIExecutableResolver.agentProcessEnvironment(executablePath: executable),
+                workingDirectory: workspaceDirectory ?? FileManager.default.homeDirectoryForCurrentUser,
+                cliType: .muse
+            ),
+            grantStillActive: grantStillActive,
+            continuation: continuation
+        ) { line in
+            let result = parser.events(fromLine: line)
+            return (result.events, result.error, result.error != nil)
+        }
+    }
+
     func runForge(
         executable: String,
         prompt: String,
@@ -507,6 +540,8 @@ struct CLIProcessStreamRunner: Sendable {
             return .primeAgent
         case .fx:
             return .fx
+        case .muse:
+            return .muse
         case .hermes:
             return .hermes
         case .goose:

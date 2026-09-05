@@ -26,6 +26,7 @@ actor DataStoreActor {
     let backfillCursorStore: BackfillCursorStore
     let providerAccountStore: ProviderAccountStore
     let textExpansionSnippetStore: TextExpansionSnippetStore
+    nonisolated let receiptStore: ReceiptStore
     nonisolated private let didCloseForTermination = OSAllocatedUnfairLock(initialState: false)
 
     init(
@@ -40,6 +41,7 @@ actor DataStoreActor {
         )
         usageStore = UsageStore(dbQueue: databaseQueue)
         conversationStore = ConversationStore(dbQueue: databaseQueue)
+        receiptStore = ReceiptStore(dbQueue: databaseQueue)
         searchIndexStore = SearchIndexStore(dbQueue: databaseQueue)
         artifactStore = ArtifactStore(dbQueue: databaseQueue)
         projectionStore = ProjectionStore(dbQueue: databaseQueue)
