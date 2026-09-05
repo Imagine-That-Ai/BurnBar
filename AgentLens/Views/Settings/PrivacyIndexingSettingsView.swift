@@ -943,7 +943,8 @@ struct PrivacyIndexingSettingsView: View {
         if let store = runtimeContext?.chatMemoryStore {
             MemoryReviewInboxHost(
                 store: store,
-                scope: MemoryScope(appID: "openburnbar")
+                scope: MemoryScope(appID: "openburnbar"),
+                userID: accountManager.userID
             )
             .id(ObjectIdentifier(store))
             .navigationTitle("Memory")

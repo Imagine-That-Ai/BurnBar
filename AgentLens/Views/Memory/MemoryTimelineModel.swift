@@ -103,6 +103,8 @@ final class MemoryTimelineModel {
         let writerDevice: String?
         let source: String
         let revisionBodiesRetained: Bool
+        /// The read hit its cap: older events exist and are not in `revisions`.
+        let truncated: Bool
 
         var isRefused: Bool { status == MemoryTimelineRecord.statusRefused }
         var isNotFound: Bool { status == MemoryTimelineRecord.statusNotFound }
@@ -119,7 +121,8 @@ final class MemoryTimelineModel {
             supersededBy: String? = nil,
             writerDevice: String? = nil,
             source: String = MemoryTimelineSource.appAudit,
-            revisionBodiesRetained: Bool = false
+            revisionBodiesRetained: Bool = false,
+            truncated: Bool = false
         ) {
             self.status = status
             self.memoryID = memoryID
@@ -133,6 +136,7 @@ final class MemoryTimelineModel {
             self.writerDevice = writerDevice
             self.source = source
             self.revisionBodiesRetained = revisionBodiesRetained
+            self.truncated = truncated
         }
 
         /// Adapts the app's own audit-ledger record. The member names already
@@ -161,7 +165,8 @@ final class MemoryTimelineModel {
                 supersededBy: record.supersededBy,
                 writerDevice: record.writerDevice,
                 source: record.source,
-                revisionBodiesRetained: record.revisionBodiesRetained
+                revisionBodiesRetained: record.revisionBodiesRetained,
+                truncated: record.truncated
             )
         }
     }
@@ -180,6 +185,7 @@ final class MemoryTimelineModel {
     private(set) var writerDevice: String?
     private(set) var source: String?
     private(set) var revisionBodiesRetained = false
+    private(set) var truncated = false
     private(set) var isRefused = false
     private(set) var isNotFound = false
     private(set) var code: String?
@@ -215,6 +221,7 @@ final class MemoryTimelineModel {
 
         source = result.source
         revisionBodiesRetained = result.revisionBodiesRetained
+        truncated = result.truncated
 
         guard !result.isRefused else {
             // Belt and braces: a refusal renders nothing, whatever the server sent.
@@ -228,6 +235,7 @@ final class MemoryTimelineModel {
             validTo = nil
             supersededBy = nil
             writerDevice = nil
+            truncated = false
             return
         }
 
@@ -241,5 +249,67 @@ final class MemoryTimelineModel {
         validTo = result.validTo
         supersededBy = result.supersededBy
         writerDevice = result.writerDevice
+    }
+
+    // MARK: - What the member is told about the result itself
+
+    /// Says WHICH history this is, and that its revision contents were never
+    /// retained — for every state that actually got an answer, not just the one
+    /// that got revisions. An empty history and an unknown id are the two states
+    /// most likely to be misread as "the engine says nothing changed", so they
+    /// are exactly the ones that need the line.
+    ///
+    /// Nil while loading and after a failed read: a read that never reached a
+    /// ledger may not name one.
+    var provenanceNote: String? {
+        guard let source, isLoading == false, errorMessage == nil else { return nil }
+        let ledger = source == MemoryTimelineSource.appAudit
+            ? "From this Mac's own memory audit ledger."
+            : "From \(source)."
+        guard revisionBodiesRetained == false else { return ledger }
+        return ledger + " Revision contents are not retained, so what each event changed is not shown."
+    }
+
+    /// Present only on a capped read. The window is the LATEST events, so the
+    /// note says which end was kept.
+    var truncationNote: String? {
+        guard truncated else { return nil }
+        return "Showing the \(revisions.count) most recent events; older ones are not listed."
+    }
+}
+
+// MARK: - Model lifetime
+
+/// Keeps ONE `MemoryTimelineModel` alive per memory id, for a view to hold in
+/// `@State`.
+///
+/// `MemoryTimelineModel` loads its history from `.task`, which fires when the
+/// view appears and never again. Building the model inside a `@ViewBuilder`
+/// therefore throws away a loaded history every time the parent re-evaluates its
+/// body — and the review inbox is `@Observable`, so approving or rejecting ANY
+/// row re-renders every row. The expanded history would then fall into the
+/// `revisions.isEmpty` branch and render "Nothing has happened to this memory
+/// yet." about a memory that demonstrably has history: a false statement,
+/// produced by the one surface built never to make one.
+///
+/// The box is a plain reference type on purpose — nothing here is observed, so
+/// vending a model during a body evaluation cannot itself invalidate the view.
+@MainActor
+final class MemoryTimelineModelBox {
+    private(set) var memoryID: String?
+    private(set) var current: MemoryTimelineModel?
+
+    /// The model for `memoryID`, created once and re-created ONLY when the id
+    /// changes — a different memory is a different subject and gets its own
+    /// history.
+    func model(
+        for memoryID: String,
+        loadTimeline: @escaping MemoryTimelineModel.LoadTimeline
+    ) -> MemoryTimelineModel {
+        if let current, self.memoryID == memoryID { return current }
+        let fresh = MemoryTimelineModel(memoryID: memoryID, loadTimeline: loadTimeline)
+        self.memoryID = memoryID
+        self.current = fresh
+        return fresh
     }
 }

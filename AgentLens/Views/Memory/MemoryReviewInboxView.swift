@@ -278,12 +278,17 @@ struct MemoryReviewInboxHost: View {
         store: ControlPlaneStore,
         scope: MemoryScope,
         sourceFilter: MemoryReviewInboxModel.SourceFilter = .all,
+        /// The signed-in member, for the user-scoped `agent_memory_inbox` read
+        /// behind "Arrived from <device>". Nil simply names no device.
+        userID: String? = nil,
         afterStatusChange: @escaping @MainActor () async -> Void = {}
     ) {
         // The app's own audit ledger, not the engine's revision bodies — the
         // record carries `source` so the view can say which it is showing.
         self.loadTimeline = { memoryID, _ in
-            MemoryTimelineModel.TimelineResult(try await store.memoryTimeline(memoryID: memoryID))
+            MemoryTimelineModel.TimelineResult(
+                try await store.memoryTimeline(memoryID: memoryID, userID: userID)
+            )
         }
         self._model = State(initialValue: MemoryReviewInboxModel(
             scope: scope,
@@ -404,6 +409,12 @@ struct MemoryReviewRow: View {
     @State private var confirmingReject = false
     @State private var confirmingForget = false
     @State private var showingHistory = false
+    /// Holds the row's timeline model across re-renders. The inbox model is
+    /// `@Observable`, so approving any sibling row re-evaluates this body; a
+    /// model built inline would be replaced by a fresh empty one whose `.task`
+    /// never re-fires, and the open history would blank to "Nothing has happened
+    /// to this memory yet."
+    @State private var timelineBox = MemoryTimelineModelBox()
 
     private var confidencePercent: Int {
         Int((item.memory.confidence * 100).rounded())
@@ -512,10 +523,7 @@ struct MemoryReviewRow: View {
             DisclosureGroup(isExpanded: $showingHistory) {
                 if showingHistory {
                     MemoryTimelineView(
-                        model: MemoryTimelineModel(
-                            memoryID: item.id,
-                            loadTimeline: loadTimeline
-                        )
+                        model: timelineBox.model(for: item.id, loadTimeline: loadTimeline)
                     )
                     .padding(.top, DesignSystem.Spacing.xs)
                 }

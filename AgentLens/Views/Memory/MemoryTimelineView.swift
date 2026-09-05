@@ -27,7 +27,18 @@ struct MemoryTimelineView: View {
                 emptyView
             } else {
                 revisionsList
-                provenanceFooter
+            }
+
+            // M4: the provenance line belongs to every state that got an answer.
+            // "Nothing has happened to this memory yet" and "no record of this
+            // memory" are the two readings most likely to be mistaken for the
+            // engine's verdict, and they were the two states that carried no
+            // source at all.
+            if let truncationNote = model.truncationNote {
+                footnote(truncationNote)
+            }
+            if let provenanceNote = model.provenanceNote {
+                footnote(provenanceNote)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -188,20 +199,13 @@ struct MemoryTimelineView: View {
         }
     }
 
-    /// Says what this history is and what it is NOT, so nil revision contents
-    /// are never read as "unchanged".
-    private var provenanceFooter: some View {
-        Text(provenanceText)
+    /// The lines that qualify the result itself — which ledger answered, and
+    /// whether the list is the whole of it. Both are generated on the model so
+    /// they are assertable without a snapshot.
+    private func footnote(_ text: String) -> some View {
+        Text(text)
             .font(DesignSystem.Typography.tiny)
             .foregroundStyle(DesignSystem.Colors.textMuted)
             .fixedSize(horizontal: false, vertical: true)
-    }
-
-    private var provenanceText: String {
-        let ledger = model.source == MemoryTimelineSource.appAudit
-            ? "From this Mac's own memory audit ledger."
-            : "From \(model.source ?? "an unnamed source")."
-        guard model.revisionBodiesRetained == false else { return ledger }
-        return ledger + " Revision contents are not retained, so what each event changed is not shown."
     }
 }

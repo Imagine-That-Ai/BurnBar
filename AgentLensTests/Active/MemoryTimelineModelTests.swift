@@ -187,4 +187,107 @@ final class MemoryTimelineModelTests: XCTestCase {
         XCTAssertFalse(model.isNotFound)
         XCTAssertTrue(model.revisions.isEmpty)
     }
+
+    // MARK: - Model lifetime
+
+    /// Records how many times the loader ran, across an `@escaping` closure.
+    @MainActor
+    private final class LoadRecorder {
+        var memoryIDs: [String] = []
+    }
+
+    /// I1: `MemoryTimelineModel` loads once, from `.task`, which fires on appear
+    /// and never again. Building it inside a `@ViewBuilder` therefore discards a
+    /// loaded history every time the parent re-renders — and the inbox is
+    /// `@Observable`, so approving ANY row re-renders every row. The freshly
+    /// built model would then render "Nothing has happened to this memory yet."
+    /// about a memory that demonstrably has history. The box is what the row
+    /// holds in `@State` so that cannot happen.
+    func test_the_history_box_keeps_one_loaded_model_per_memory_across_re_renders() async {
+        let recorder = LoadRecorder()
+        let loader: MemoryTimelineModel.LoadTimeline = { memoryID, _ in
+            recorder.memoryIDs.append(memoryID)
+            return MemoryTimelineModel.TimelineResult(
+                memoryID: memoryID,
+                revisions: [
+                    MemoryTimelineModel.RevisionItem(
+                        seq: 1,
+                        event: "memory.add",
+                        actor: "app",
+                        ts: "2026-09-05T10:01:00Z"
+                    )
+                ]
+            )
+        }
+
+        let box = MemoryTimelineModelBox()
+        let first = box.model(for: "mem_a", loadTimeline: loader)
+        await first.load()
+        XCTAssertEqual(first.revisions.map(\.seq), [1])
+
+        // The sibling re-render.
+        let again = box.model(for: "mem_a", loadTimeline: loader)
+        XCTAssertIdentical(again, first, "the same memory keeps the same model")
+        XCTAssertEqual(again.revisions.map(\.seq), [1], "the loaded history survives a re-render")
+        XCTAssertEqual(recorder.memoryIDs, ["mem_a"], "a re-render must not re-load, nor blank the history")
+
+        // A different memory is a different subject and gets its own model.
+        let other = box.model(for: "mem_b", loadTimeline: loader)
+        XCTAssertNotIdentical(other, first)
+        XCTAssertEqual(other.memoryID, "mem_b")
+        XCTAssertTrue(other.revisions.isEmpty)
+    }
+
+    // MARK: - Provenance in every rendered state
+
+    /// M4: the "this is an audit ledger, not the engine's revision bodies" line
+    /// was rendered only alongside revisions, so the two states most likely to be
+    /// misread — an empty history and an unknown id — carried no provenance at
+    /// all. Every state that got an answer states where the answer came from.
+    func test_every_answered_state_states_its_provenance() async {
+        let empty = MemoryTimelineModel(memoryID: "mem_empty") { memoryID, _ in
+            MemoryTimelineModel.TimelineResult(memoryID: memoryID)
+        }
+        await empty.load()
+        let emptyNote = empty.provenanceNote
+        XCTAssertNotNil(emptyNote, "an empty history still has a source")
+        XCTAssertEqual(emptyNote?.contains("not retained"), true)
+
+        let missing = MemoryTimelineModel(memoryID: "mem_missing") { memoryID, _ in
+            MemoryTimelineModel.TimelineResult(
+                status: MemoryTimelineRecord.statusNotFound,
+                memoryID: memoryID
+            )
+        }
+        await missing.load()
+        XCTAssertNotNil(missing.provenanceNote)
+
+        // A read that never came back has no source to name.
+        let failed = MemoryTimelineModel(memoryID: "mem_failed") { _, _ in
+            throw MemoryTimelineError.historyUnavailable("no such table: memory_audit")
+        }
+        await failed.load()
+        XCTAssertNil(failed.provenanceNote, "a failed read must not claim a ledger it never reached")
+    }
+
+    // MARK: - Truncation
+
+    /// I2: a capped read must say it was capped. Without it the view renders the
+    /// oldest page of a busy memory as the whole history.
+    func test_a_truncated_result_says_so() async {
+        let model = MemoryTimelineModel(memoryID: "mem_busy") { memoryID, _ in
+            MemoryTimelineModel.TimelineResult(
+                memoryID: memoryID,
+                revisions: [
+                    MemoryTimelineModel.RevisionItem(seq: 9, event: "memory.update", actor: "app", ts: "t9")
+                ],
+                truncated: true
+            )
+        }
+        await model.load()
+
+        XCTAssertTrue(model.truncated)
+        let note = try? XCTUnwrap(model.truncationNote)
+        XCTAssertEqual(note?.contains("older"), true, "the member is told there are older events, got \(note ?? "nil")")
+    }
 }
