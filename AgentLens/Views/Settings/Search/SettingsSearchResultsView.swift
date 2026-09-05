@@ -87,7 +87,7 @@ struct SettingsSearchResultsView: View {
         switch route {
         case .homeRoot, .generalRoot, .aiInboxRoot, .updatesRoot, .daemonRoot, .accountRoot, .cloudRoot,
              .connectionsRoot, .providersRoot, .routingPoolsRoot,
-             .alertsRoot, .notificationsRoot, .devicesAndSyncRoot,
+             .alertsRoot, .notificationsRoot, .devicesAndSyncRoot, .receiptsRoot,
              .switcherRoot, .hermesRoot, .agentsRoot, .textExpansionRoot, .mediaRoot,
              .dataControlCenterRoot,
              .computerUseRoot, .petsRoot:

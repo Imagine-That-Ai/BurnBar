@@ -146,6 +146,9 @@ enum SettingsPageRoute: Hashable, Codable {
     // Devices & Sync
     case devicesAndSyncRoot
 
+    // Receipts
+    case receiptsRoot
+
     // Text Expansion
     case textExpansionRoot
 
@@ -205,6 +208,10 @@ enum SettingsAnchor {
 
     // General → Summaries
     static let summariesAuto = "general.summaries.auto"
+
+    // Receipts
+    static let receiptsOverview = "receipts.overview"
+    static let receiptsQualityReview = "receipts.qualityReview"
 
     // AI Inbox
     static let aiInboxOverview = "aiInbox.overview"

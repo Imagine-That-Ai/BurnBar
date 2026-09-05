@@ -338,7 +338,7 @@ struct SettingsView: View {
              .agentsRoot, .modelProxyRoot,
              .connectionsRoot, .providersRoot, .routingPoolsRoot,
              .switcherRoot, .hermesRoot,
-             .alertsRoot, .notificationsRoot, .devicesAndSyncRoot, .mediaRoot,
+             .alertsRoot, .notificationsRoot, .devicesAndSyncRoot, .receiptsRoot, .mediaRoot,
              .dataControlCenterRoot,
              .textExpansionRoot, .computerUseRoot, .petsRoot:
              // `.aiInboxRoot` is handled above so Indexing can drill into it.
