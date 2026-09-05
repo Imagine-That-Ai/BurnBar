@@ -196,4 +196,55 @@ enum BurnBarMemoryRanking {
         guard let value else { return nil }
         return ThreadSafeISO8601DateFormatter.parse(value)
     }
+
+    // MARK: - Why breakdown (B9)
+
+    /// The ranking report for one fused candidate, in the engine's shape: a
+    /// `matchedBy` lane plus the eight-member `why` breakdown, rounded to four
+    /// decimals exactly as `_read.py` rounds it.
+    ///
+    /// Pure reporting. It reads the same lexical/semantic lists and the same
+    /// salience/recency values the scorer already computed and writes nothing
+    /// back, so a recall's ordering is identical with and without it.
+    static func why(
+        id: String,
+        lexical: [(id: String, score: Double)],
+        semantic: [(id: String, score: Double)],
+        salience: Double,
+        recency: Double,
+        rerankScore: Double? = nil,
+        reranker: String? = nil
+    ) -> (matchedBy: String, why: BurnBarMemoryWhyBreakdown) {
+        let lexicalIndex = lexical.firstIndex { $0.id == id }
+        let semanticIndex = semantic.firstIndex { $0.id == id }
+        let lexicalRank = lexicalIndex.map { $0 + 1 }
+        let semanticRank = semanticIndex.map { $0 + 1 }
+
+        let matchedBy: String
+        switch (lexicalRank, semanticRank) {
+        case (.some, .some): matchedBy = "hybrid"
+        case (.some, .none): matchedBy = "lexical"
+        case (.none, .some): matchedBy = "semantic"
+        case (.none, .none): matchedBy = "browse"
+        }
+
+        return (
+            matchedBy,
+            BurnBarMemoryWhyBreakdown(
+                lexicalRank: lexicalRank,
+                bm25: lexicalIndex.map { rounded(lexical[$0].score) },
+                semanticRank: semanticRank,
+                cosine: semanticIndex.map { rounded(semantic[$0].score) },
+                salience: rounded(salience),
+                recency: rounded(recency),
+                rerankScore: rerankScore,
+                reranker: reranker
+            )
+        )
+    }
+
+    /// Four decimals, matching `round(value, 4)` on the engine side.
+    private static func rounded(_ value: Double) -> Double {
+        (value * 10000).rounded() / 10000
+    }
 }

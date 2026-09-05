@@ -864,3 +864,80 @@ public struct BurnBarProjectCodeExploreResponse: Codable, Hashable, Sendable {
         self.degradation = degradation
     }
 }
+
+// MARK: - Memory ranking "why" breakdown (B9)
+
+/// Why one memory was served, mirroring the engine's breakdown member for member
+/// (`tools/openburnbar-mcp/memory_engine/_read.py`, the `why` dict built beside
+/// each hit). The engine emits `matchedBy` as a SIBLING of `why`, so it lives on
+/// the hit here too rather than inside this struct — same shape, same names, same
+/// four-decimal rounding, so a daemon-served hit and an engine-served hit explain
+/// themselves identically.
+///
+/// This is a report, not an input: nothing here participates in scoring. Adding
+/// or reading it must never change a recall's ordering.
+public struct BurnBarMemoryWhyBreakdown: Codable, Hashable, Sendable {
+    /// 1-based position in the lexical (BM25) candidate list; nil when the query
+    /// never matched lexically.
+    public let lexicalRank: Int?
+    /// The BM25 score at `lexicalRank`, rounded to four decimals. Nil with it.
+    public let bm25: Double?
+    /// 1-based position in the semantic (cosine) candidate list; nil when no
+    /// embedding was available or the memory was not among the neighbours.
+    public let semanticRank: Int?
+    /// The cosine similarity at `semanticRank`, rounded to four decimals.
+    public let cosine: Double?
+    /// The salience multiplier applied after fusion, rounded to four decimals.
+    public let salience: Double
+    /// The recency multiplier applied after fusion, rounded to four decimals.
+    public let recency: Double
+    /// Cross-encoder rerank score, when a reranker ran. The daemon has no
+    /// reranker, so it reports nil — exactly as the engine does with rerank off.
+    public let rerankScore: Double?
+    /// The reranker's name, nil alongside `rerankScore`.
+    public let reranker: String?
+
+    public init(
+        lexicalRank: Int? = nil,
+        bm25: Double? = nil,
+        semanticRank: Int? = nil,
+        cosine: Double? = nil,
+        salience: Double,
+        recency: Double,
+        rerankScore: Double? = nil,
+        reranker: String? = nil
+    ) {
+        self.lexicalRank = lexicalRank
+        self.bm25 = bm25
+        self.semanticRank = semanticRank
+        self.cosine = cosine
+        self.salience = salience
+        self.recency = recency
+        self.rerankScore = rerankScore
+        self.reranker = reranker
+    }
+
+    /// The one line a UI shows under a hit. `matchedBy` is the hit's, not the
+    /// breakdown's, so it is passed in.
+    ///
+    /// e.g. `Matched by hybrid: lexical #1 (bm25 3.14), semantic #2 (cos 0.88), salience 0.95, recency 0.85`
+    public func explanationLine(matchedBy: String) -> String {
+        var parts: [String] = []
+        if let lexicalRank {
+            parts.append("lexical #\(lexicalRank) (bm25 \(Self.twoDecimals(bm25 ?? 0)))")
+        }
+        if let semanticRank {
+            parts.append("semantic #\(semanticRank) (cos \(Self.twoDecimals(cosine ?? 0)))")
+        }
+        parts.append("salience \(Self.twoDecimals(salience))")
+        parts.append("recency \(Self.twoDecimals(recency))")
+        if let rerankScore {
+            parts.append("\(reranker ?? "rerank") \(Self.twoDecimals(rerankScore))")
+        }
+        return "Matched by \(matchedBy): " + parts.joined(separator: ", ")
+    }
+
+    private static func twoDecimals(_ value: Double) -> String {
+        String(format: "%.2f", value)
+    }
+}

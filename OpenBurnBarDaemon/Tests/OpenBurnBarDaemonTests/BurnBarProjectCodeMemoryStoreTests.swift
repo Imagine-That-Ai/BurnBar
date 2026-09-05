@@ -566,6 +566,144 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         XCTAssertEqual(BurnBarMemoryRanking.tokenize("café foo_bar"), ["caf", "foo_bar", "foo", "bar"])
     }
 
+    /// B9: every served hit carries the engine's breakdown, member for member.
+    /// `_read.py` builds exactly `lexicalRank, bm25, semanticRank, cosine,
+    /// salience, recency, rerankScore, reranker` beside a sibling `matchedBy`.
+    func test_daemon_ranking_returns_the_same_why_components_as_the_engine() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "memory-why-test")
+        )
+        let remembered = try store.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: "Always compile Swift code before pushing to main branch.",
+                projectPath: fixture.project.path,
+                kind: "procedure",
+                sourcePath: "docs/superpowers/rules.md"
+            )
+        )
+        _ = try store.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: "Python memory engine maintains under 1500 lines per module.",
+                projectPath: fixture.project.path,
+                kind: "fact"
+            )
+        )
+
+        let recall = try store.recall(
+            BurnBarProjectMemoryRecallRequest(query: "compile Swift code", projectPath: fixture.project.path)
+        )
+        let firstHit = try XCTUnwrap(recall.hits.first)
+        XCTAssertEqual(firstHit.memoryID, remembered.memoryID)
+
+        let why = try XCTUnwrap(firstHit.why, "every ranked hit reports why it was served")
+        let matchedBy = try XCTUnwrap(firstHit.matchedBy)
+
+        // The lexical lane always runs, so it is always reported.
+        XCTAssertEqual(why.lexicalRank, 1)
+        XCTAssertGreaterThan(try XCTUnwrap(why.bm25), 0)
+        XCTAssertGreaterThan(why.salience, 0)
+        XCTAssertGreaterThan(why.recency, 0)
+        // The daemon runs no reranker; the engine reports nil for both with
+        // rerank off, so the daemon does too rather than inventing a value.
+        XCTAssertNil(why.rerankScore)
+        XCTAssertNil(why.reranker)
+
+        // The semantic lane only runs when an embedding provider is available.
+        // Whichever way the environment falls, the lane and the members agree.
+        if why.semanticRank == nil {
+            XCTAssertNil(why.cosine, "no semantic rank means no cosine to report")
+            XCTAssertEqual(matchedBy, "lexical")
+        } else {
+            XCTAssertNotNil(why.cosine)
+            XCTAssertEqual(matchedBy, "hybrid")
+        }
+
+        let explanation = try XCTUnwrap(firstHit.whyExplanation)
+        XCTAssertEqual(
+            String(explanation.prefix("Matched by \(matchedBy): lexical #1 (bm25 ".count)),
+            "Matched by \(matchedBy): lexical #1 (bm25 ",
+            "one explanation line per hit, opening with the lane and the lexical rank"
+        )
+
+        // Four-decimal rounding, matching `round(value, 4)` on the engine side.
+        for value in [why.bm25, why.cosine, why.salience, why.recency].compactMap({ $0 }) {
+            XCTAssertEqual(value, (value * 10000).rounded() / 10000, accuracy: 1e-12)
+        }
+    }
+
+    /// B9 acceptance: the breakdown is a report, not an input. Recall ordering and
+    /// every rank are identical whether or not the caller looks at `why`.
+    func test_reporting_the_why_breakdown_does_not_change_recall_ordering() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "memory-why-ordering-test")
+        )
+        for (index, text) in [
+            "Always compile Swift code before pushing to main branch.",
+            "Swift code review happens before the merge queue.",
+            "Python memory engine maintains under 1500 lines per module.",
+            "The daemon compiles with a Swift 6 toolchain."
+        ].enumerated() {
+            _ = try store.remember(
+                BurnBarProjectMemoryRememberRequest(
+                    text: text,
+                    projectPath: fixture.project.path,
+                    kind: index.isMultiple(of: 2) ? "procedure" : "fact"
+                )
+            )
+        }
+
+        let request = BurnBarProjectMemoryRecallRequest(
+            query: "compile Swift code",
+            projectPath: fixture.project.path
+        )
+        let first = try store.recall(request)
+        let second = try store.recall(request)
+
+        XCTAssertFalse(first.hits.isEmpty)
+        XCTAssertEqual(first.hits.map(\.memoryID), second.hits.map(\.memoryID))
+        XCTAssertEqual(first.hits.map(\.rank), second.hits.map(\.rank))
+        XCTAssertTrue(first.hits.allSatisfy { $0.why != nil }, "every ranked hit reports a breakdown")
+    }
+
+    /// The breakdown formats one line per hit, in the engine's field order.
+    func test_the_why_breakdown_renders_one_explanation_line() {
+        let (matchedBy, why) = BurnBarMemoryRanking.why(
+            id: "mem_unit",
+            lexical: [("other", 9.0), ("mem_unit", 4.25)],
+            semantic: [("mem_unit", 0.91)],
+            salience: 0.85,
+            recency: 0.99
+        )
+
+        XCTAssertEqual(matchedBy, "hybrid")
+        XCTAssertEqual(why.lexicalRank, 2)
+        XCTAssertEqual(why.bm25, 4.25)
+        XCTAssertEqual(why.semanticRank, 1)
+        XCTAssertEqual(why.cosine, 0.91)
+        XCTAssertEqual(
+            why.explanationLine(matchedBy: matchedBy),
+            "Matched by hybrid: lexical #2 (bm25 4.25), semantic #1 (cos 0.91), salience 0.85, recency 0.99"
+        )
+
+        let lexicalOnly = BurnBarMemoryRanking.why(
+            id: "mem_unit",
+            lexical: [("mem_unit", 1.5)],
+            semantic: [],
+            salience: 0.5,
+            recency: 1.0
+        )
+        XCTAssertEqual(lexicalOnly.matchedBy, "lexical")
+        XCTAssertNil(lexicalOnly.why.semanticRank)
+        XCTAssertEqual(
+            lexicalOnly.why.explanationLine(matchedBy: lexicalOnly.matchedBy),
+            "Matched by lexical: lexical #1 (bm25 1.50), salience 0.50, recency 1.00"
+        )
+    }
+
     func testMemoryRecallMatchesSourcePathTokens() throws {
         let fixture = try makeFixture()
         let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "memory-source-path-test"))
