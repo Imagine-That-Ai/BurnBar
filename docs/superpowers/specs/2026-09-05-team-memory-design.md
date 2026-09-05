@@ -10,7 +10,7 @@
 ## 1. Goal and Non-Goals
 
 ### 1.1 Goal
-Extend BurnBar's zero-knowledge memory architecture so that members of a recognized team or organization can contribute and synchronize approved project memories into a shared team space—without granting BurnBar servers, infrastructure, or operators access to the plaintext facts, embeddings, citations, or encryption keys.
+Extend BurnBar's blind (the server holds only ciphertext and opaque ids) memory architecture so that members of a recognized team or organization can contribute and synchronize approved project memories into a shared team space—without granting BurnBar servers, infrastructure, or operators access to the plaintext facts, embeddings, citations, or encryption keys.
 
 ### 1.2 Non-Goals
 - **No client-asserted membership:** Clients cannot grant themselves or other users team membership.
@@ -392,7 +392,7 @@ The following exact text strings are specified for the user interface and must b
 - **Section Title:** `"Team Memory Sharing"`
 - **Sync Toggle Label:** `"Sync memories with team members"`
 - **Explanatory Footnote:**
-  > `"Team memories are protected by zero-knowledge encryption. Only active team members hold the encryption keys. Joining a team grants access to past team memories; leaving rotates encryption keys to protect future memories only."`
+  > `"Team memories are protected by blind (the server holds only ciphertext and opaque ids) encryption. Only active team members hold the encryption keys. Joining a team grants access to past team memories; leaving rotates encryption keys to protect future memories only."`
 
 #### Location 3: Remove Member / Leave Team Confirmation Alert (`TeamMemberRemovalAlert.swift`)
 - **Alert Title:** `"Remove Member from Team?"` (or `"Leave Team?"`)
