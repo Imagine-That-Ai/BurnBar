@@ -1105,6 +1105,7 @@ struct DashboardView: View {
             MemoryReviewInboxHost(
                 store: store,
                 scope: memoryReviewScope,
+                userID: accountManager.userID,
                 afterStatusChange: {
                     await refreshPendingMemoryReviewCount()
                     // Any status change can revoke an already-exported inbox

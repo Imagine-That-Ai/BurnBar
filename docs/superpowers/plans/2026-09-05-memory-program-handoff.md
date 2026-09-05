@@ -827,3 +827,14 @@ P6 → P7 → P8 (Slice 1) → P9 → P10 → P11 (Slice 2) → P12 → P13 → 
 P16 → P17 → P18 → P19 (Slice 4) → P20 → P21 → P22 → P23 (Slice 5) → P24 → P25 → P26 →
 P27 (Slice 6). Slice 6's P24–P26 may run in parallel with Slice 3; P27 may not start
 before P11.
+
+---
+
+# Addendum (2026-09-05, after the app-surfaces build)
+
+## P32 — `daemon.memory.analytics` must resolve project identity read-only · **ROUTE: Grok build**
+
+- **Why:** the RPC handler resolves `projectRoot` through the writing `resolveProjectIdentity` (`BurnBarProjectCodeMemoryStore+ProjectIdentity.swift`), so a read RPC can INSERT `pcm_projects`/`pcm_project_aliases` rows (and a nil root resolves to the daemon's working directory). The app health card avoids it by only ever passing recorded roots; the daemon should not rely on callers for that.
+- **Files:** `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/RPC/BurnBarDaemonServer+RPCMemory.swift` (use `readOnlyProjectIdentity`; refuse `nil`/unknown roots with a typed error instead of synthesising), tests in `BurnBarProjectCodeMemoryStoreTests`.
+- **Tests:** `testAnalyticsForAnUnknownRootWritesNothing`, `testAnalyticsRefusesANilRoot`.
+- **Acceptance:** a `daemon.memory.analytics` call never changes `pcm_projects`; unknown/nil root → error, not a phantom project.
