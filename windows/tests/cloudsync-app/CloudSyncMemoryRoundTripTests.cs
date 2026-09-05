@@ -118,7 +118,7 @@ public sealed class CloudSyncMemoryRoundTripTests
             ValidFrom: validFrom,
             CreatedAt: validFrom,
             UpdatedAt: now,
-            SourceKind: MemorySourceKind.Code,
+            SourceKind: MemorySourceKind.Chat,
             ValidTo: validTo,
             SupersededBy: "mem_superseded_target_002");
 
@@ -164,6 +164,35 @@ public sealed class CloudSyncMemoryRoundTripTests
         Assert.Equal(engineScope, opened.EngineScope);
         Assert.Equal(previousBodyHash, opened.PreviousBodyHash);
         Assert.Equal(writerDevice, opened.WriterDevice);
+    }
+
+    [Fact]
+    public void EncodeFact_RefusesRepositoryKnowledge()
+    {
+        // Repository knowledge never leaves the device on any platform. Windows has no
+        // engine-mirrored kind to relabel it as, so the codec must refuse outright.
+        byte[] vaultKey = CloudVaultCrypto.GenerateVaultKey();
+        var now = DateTimeOffset.Parse("2026-09-05T12:00:00Z", CultureInfo.InvariantCulture);
+        var memory = new Memory(
+            Id: "mem_code_kind_001",
+            Kind: MemoryKind.Fact,
+            Scope: new MemoryScope(UserId: Uid, ProjectId: "proj_burnbar"),
+            Confidence: 0.9,
+            BodyRedacted: "[sealed]",
+            ReviewStatus: MemoryReviewStatus.Approved,
+            Citations: Array.Empty<MemoryCitation>(),
+            ValidFrom: now.AddDays(-1),
+            CreatedAt: now.AddDays(-1),
+            UpdatedAt: now,
+            SourceKind: MemorySourceKind.Code);
+
+        var error = Assert.Throws<ArgumentException>(() => MemoryCloudFactCodec.EncodeFact(
+            memory: memory,
+            body: "internal repository knowledge",
+            uid: Uid,
+            vaultKey: vaultKey,
+            now: now));
+        Assert.Contains("never leaves the device", error.Message);
     }
 
     [Fact]

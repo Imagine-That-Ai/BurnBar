@@ -38,6 +38,18 @@ public static class MemoryCloudFactCodec
         string? previousBodyHash = null,
         string? writerDevice = null)
     {
+        // Parity with the Mac uploader (`cloudSyncCandidateChatMemories`): only chat
+        // memories and engine-mirrored agent memories are sealed into memory_facts.
+        // Windows has no engine-mirrored kind, and repository knowledge (`Code`) never
+        // leaves the device on any platform — refusing here is what keeps that true
+        // rather than relabelling it as something the pull side would merge.
+        if (memory.SourceKind == MemorySourceKind.Code)
+        {
+            throw new ArgumentException(
+                "Repository knowledge (MemorySourceKind.Code) never leaves the device; only chat memories are sealed for memory_facts.",
+                nameof(memory));
+        }
+
         string identity = documentIdentity ?? memory.Id;
         string docId = MemoryFactDocId(identity, vaultKey);
         var aad = new CloudVaultAadContext(uid, "memory_facts", docId, "sealedMemory");
@@ -70,7 +82,7 @@ public static class MemoryCloudFactCodec
             ["schemaVersion"] = CloudSyncValue.Of(1),
             ["kind"] = CloudSyncValue.Of(memory.Kind.RawValue()),
             ["reviewStatus"] = CloudSyncValue.Of(memory.ReviewStatus.RawValue()),
-            ["sourceKind"] = CloudSyncValue.Of(memory.SourceKind == MemorySourceKind.Code ? "agent" : "chat"),
+            ["sourceKind"] = CloudSyncValue.Of("chat"),
             ["sealedMemory"] = BlobEnvelopeToMap(sealedEnvelope),
             ["citationCount"] = CloudSyncValue.Of(Math.Min(memory.Citations.Count, 50)),
             ["validFrom"] = CloudSyncValue.Of(memory.ValidFrom),
