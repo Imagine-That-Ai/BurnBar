@@ -229,6 +229,16 @@ extension OpenBurnBarApp {
                 StartupProfiler.interval("quota_refresh_schedule") {
                     context.quotaService.startAutomaticRefresh(dataStore: context.dataStore)
                 }
+                StartupProfiler.interval("receipts_session_close_monitor_start") {
+                    let monitor = CLISessionCloseMonitor(
+                        dataStore: context.dataStore,
+                        settingsManager: context.settingsManager,
+                        onReceiptPrinted: { [weak appDelegate] receipt in
+                            appDelegate?.showReceiptFlyout(for: receipt)
+                        }
+                    )
+                    context.sessionCloseMonitor = monitor
+                }
                 // Routing decides with the DAEMON's copy of quota state, whose
                 // only writers used to be the Provider Plan wizard's dashboard
                 // and save steps — so slot freshness died the moment the wizard
