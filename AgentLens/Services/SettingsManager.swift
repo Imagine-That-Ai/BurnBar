@@ -105,7 +105,12 @@ final class SettingsManager {
         flushDelayNanoseconds: UInt64 = 100_000_000,
         usageMemoryRemoteConfigSeed: () -> UsageMemoryRemoteConfigSnapshot? = {
             SettingsManager.activeUsageMemoryRemoteConfigSnapshot()
-        }
+        },
+        // No org ceiling ships in Remote Config yet, so this seeds nil and the
+        // org lane stays closed. Wiring it to Firebase's active cached snapshot
+        // is D16's job, and the closed-until-resolved shape above is what makes
+        // that wiring safe to add later.
+        orgMemoryRemoteConfigSeed: () -> OrgMemoryRemoteConfigSnapshot? = { nil }
     ) {
         let coordinator = SettingsPersistenceCoordinator(defaults: defaults, flushDelayNanoseconds: flushDelayNanoseconds)
         self.persistence = coordinator
@@ -141,7 +146,8 @@ final class SettingsManager {
         self.cliAssistant = CLIAssistantSettings(persistence: coordinator)
         self.memory = MemorySettings(
             persistence: coordinator,
-            usageRemoteConfigSeed: usageMemoryRemoteConfigSeed
+            usageRemoteConfigSeed: usageMemoryRemoteConfigSeed,
+            orgMemoryRemoteConfigSeed: orgMemoryRemoteConfigSeed
         )
         if let cachedCloudModels = Self.cachedMemoryCloudModelsRemoteConfigEnabled(), !cachedCloudModels {
             memory.remoteConfigCloudModelsEnabled = false
