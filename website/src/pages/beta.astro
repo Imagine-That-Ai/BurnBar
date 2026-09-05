@@ -1,0 +1,590 @@
+---
+import BaseLayout from "@layouts/BaseLayout.astro";
+---
+
+<BaseLayout
+  title="Claim your free Ultra beta"
+  description="Claim a free BurnBar Ultra beta pass with your launch code. No card, no charge, no auto-renewing trial."
+  noindex
+  transactional
+>
+  <section class="pagehead">
+    <div class="container pagehead__inner">
+      <span class="eyebrow eyebrow--ember">Launch beta</span>
+      <h1 class="pagehead__h">Claim your free BurnBar Ultra pass</h1>
+    </div>
+  </section>
+
+  <section class="claim-container">
+    <div class="container container--narrow">
+      <div class="glass-pane claim-card" aria-live="polite">
+        <!-- State: resolving the existing session -->
+        <div id="state-checking" class="claim-state">
+          <div class="spinner" aria-hidden="true"></div>
+          <p>Checking your session…</p>
+        </div>
+
+        <!-- State: signed out -->
+        <div id="state-signed-out" class="claim-state hidden">
+          <div class="icon-wrap" aria-hidden="true">
+            <svg
+              viewBox="0 0 24 24"
+              width="28"
+              height="28"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M12 3.5 20 7v5.5c0 4.2-3.2 7-8 8.5-4.8-1.5-8-4.3-8-8.5V7z"></path>
+              <path d="m8.5 12 2.5 2.5 4.5-5"></path>
+            </svg>
+          </div>
+          <h2>Sign in to claim</h2>
+          <p>
+            Your pass is attached to a BurnBar account, so we need to know where to put it. Use the
+            same account as the BurnBar app.
+          </p>
+          <button id="btn-signin" class="btn btn--ember"> Sign in with Google </button>
+          <button id="btn-signin-apple" class="btn btn--secondary"> Sign in with Apple </button>
+          <p class="fine">No payment method required.</p>
+        </div>
+
+        <!-- State: signed in, enter/confirm the code -->
+        <div id="state-claim" class="claim-state hidden">
+          <div class="user-badge" id="user-badge">
+            <img id="user-avatar" src="" alt="" class="avatar hidden" />
+            <span id="user-email" class="mono">...</span>
+          </div>
+          <h2>Enter your launch code</h2>
+          <p>The code from the announcement post unlocks BurnBar Ultra on this account.</p>
+
+          <div class="code-input-wrap">
+            <label class="code-label mono" for="code-input">Launch code</label>
+            <input
+              type="text"
+              id="code-input"
+              placeholder="XOPEN-ULTRA"
+              maxlength="32"
+              autocomplete="off"
+              autocapitalize="characters"
+              spellcheck="false"
+              class="mono-input"
+            />
+            <p id="code-hint" class="code-hint hidden" role="alert">Enter the code from the announcement.</p>
+          </div>
+
+          <button id="btn-claim" class="btn btn--ember"> Claim free Ultra </button>
+          <button id="btn-signout" class="btn-text"> Sign out of this account </button>
+        </div>
+
+        <!-- State: submitting -->
+        <div id="state-claiming" class="claim-state hidden">
+          <div class="spinner" aria-hidden="true"></div>
+          <h2>Unlocking Ultra…</h2>
+          <p>Applying your pass to this account.</p>
+        </div>
+
+        <!-- State: granted -->
+        <div id="state-success" class="claim-state hidden">
+          <div class="success-glow" aria-hidden="true"></div>
+          <div class="icon-wrap success" aria-hidden="true">
+            <svg
+              viewBox="0 0 24 24"
+              width="28"
+              height="28"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="m4.5 12.5 5 5 10-11"></path>
+            </svg>
+          </div>
+          <h2 id="success-heading">Ultra unlocked</h2>
+          <p id="success-message">
+            This account now has BurnBar Ultra. You were not charged, and there is nothing to cancel.
+          </p>
+          <div class="next-step-box">
+            <p class="small">
+              Open BurnBar and sign in with this account to see Ultra. Not installed yet?
+              <a href="/download">Download BurnBar</a>.
+            </p>
+          </div>
+        </div>
+
+        <!-- State: error -->
+        <div id="state-error" class="claim-state hidden">
+          <div class="icon-wrap error" aria-hidden="true">
+            <svg
+              viewBox="0 0 24 24"
+              width="28"
+              height="28"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+            >
+              <path d="M6 6l12 12M18 6L6 18"></path>
+            </svg>
+          </div>
+          <h2>Could not claim</h2>
+          <p id="error-message">Something went wrong on our side. Try again in a moment.</p>
+          <button id="btn-retry" class="btn btn--secondary"> Try again </button>
+        </div>
+      </div>
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  .claim-container {
+    padding: 2rem 1rem 6rem;
+    display: flex;
+    justify-content: center;
+  }
+  .container--narrow {
+    max-width: 520px;
+    width: 100%;
+  }
+  .claim-card {
+    padding: 3rem 2rem;
+    text-align: center;
+    border-radius: 16px;
+    min-height: 320px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .claim-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    animation: fadeIn 0.4s ease-out;
+  }
+  .hidden {
+    display: none !important;
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  h2 {
+    font-size: 1.75rem;
+    margin: 1rem 0 0.5rem;
+    font-weight: var(--wght-black);
+    color: var(--text-bright);
+    --opsz: var(--opsz-h3);
+  }
+
+  p {
+    color: var(--text-mute);
+    font-size: 1rem;
+    line-height: 1.6;
+    margin-bottom: 2rem;
+    max-width: 360px;
+  }
+
+  .fine {
+    font-size: 0.82rem;
+    margin: 1.25rem 0 0;
+  }
+
+  .btn {
+    width: 100%;
+    max-width: 320px;
+    padding: 0.875rem 1.5rem;
+    font-weight: var(--wght-bold);
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .btn--secondary {
+    background: var(--ink-surface);
+    border: 1px solid var(--ink-line);
+    color: var(--text-bright);
+    margin-top: 0.75rem;
+  }
+  .btn--secondary:hover {
+    background: var(--ink-surface-2);
+    border-color: var(--ink-line-bright);
+  }
+
+  .btn-text {
+    background: none;
+    border: none;
+    color: var(--text-mute);
+    font-size: 0.875rem;
+    margin-top: 1.5rem;
+    cursor: pointer;
+    text-decoration: underline;
+  }
+  .btn-text:hover {
+    color: var(--text-bright);
+  }
+
+  .spinner {
+    width: 48px;
+    height: 48px;
+    border: 4px solid var(--ink-line);
+    border-top: 4px solid var(--ember-bright);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-bottom: 1.5rem;
+  }
+  @keyframes spin {
+    0% {
+      transform: rotate(0deg);
+    }
+    100% {
+      transform: rotate(360deg);
+    }
+  }
+
+  @keyframes pulse-idle {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.35;
+    }
+  }
+
+  /* Same reasoning as /link: this is a transactional flow with an indefinite
+     wait, so the progress signal stays — but for a vestibular-sensitive
+     visitor it pulses in place instead of rotating, and states cut rather
+     than slide. */
+  @media (prefers-reduced-motion: reduce) {
+    .spinner {
+      animation: pulse-idle 2.4s ease-in-out infinite;
+    }
+    .claim-state {
+      animation: none;
+    }
+  }
+
+  .icon-wrap {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background: var(--ink-surface);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2rem;
+    margin-bottom: 1rem;
+    border: 1px solid var(--ink-line);
+    color: var(--ember-bright);
+  }
+  .icon-wrap.success {
+    background: color-mix(in oklab, var(--status-exact) 10%, transparent);
+    border-color: color-mix(in oklab, var(--status-exact) 30%, var(--ink-line));
+    color: var(--status-exact);
+  }
+  .icon-wrap.error {
+    background: color-mix(in oklab, var(--status-burn) 10%, transparent);
+    border-color: color-mix(in oklab, var(--status-burn) 30%, var(--ink-line));
+    color: var(--status-burn);
+  }
+
+  .user-badge {
+    background: var(--ink-surface);
+    border: 1px solid var(--ink-line);
+    padding: 0.5rem 1rem;
+    border-radius: 99px;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+  }
+  .avatar {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+  }
+
+  .code-input-wrap {
+    margin-bottom: 2rem;
+    width: 100%;
+    max-width: 320px;
+  }
+  .code-label {
+    display: block;
+    text-align: left;
+    margin-bottom: 0.4rem;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--text-mute);
+  }
+  .code-hint {
+    margin: 0.6rem 0 0;
+    font-size: 0.82rem;
+    color: var(--status-burn);
+    text-align: left;
+  }
+  .code-hint.hidden {
+    display: none;
+  }
+  .mono-input {
+    width: 100%;
+    background: var(--ink-surface);
+    border: 2px solid var(--ink-line);
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    color: var(--text-bright);
+    font-family: var(--font-mono);
+    font-size: 1.25rem;
+    letter-spacing: 2px;
+    text-align: center;
+    text-transform: uppercase;
+    transition: border-color 0.2s ease;
+  }
+  .mono-input:focus-visible {
+    outline: 2px solid var(--ember-bright);
+    outline-offset: 2px;
+    border-color: var(--ember-bright);
+  }
+  .mono-input[aria-invalid="true"] {
+    border-color: var(--status-burn);
+  }
+
+  .success-glow {
+    position: absolute;
+    width: 200px;
+    height: 200px;
+    background: radial-gradient(
+      circle,
+      color-mix(in oklab, var(--status-exact) 15%, transparent) 0%,
+      transparent 70%
+    );
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+  }
+
+  .next-step-box {
+    margin-top: 1.5rem;
+    background: color-mix(in oklab, var(--status-exact) 5%, transparent);
+    border: 1px dashed color-mix(in oklab, var(--status-exact) 30%, var(--ink-line));
+    padding: 1rem;
+    border-radius: 8px;
+    width: 100%;
+    max-width: 320px;
+  }
+  .next-step-box p {
+    margin: 0;
+  }
+</style>
+
+<script>
+  import { auth, googleProvider, appleProvider } from "../lib/firebaseClient";
+  import { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
+  import type { User } from "firebase/auth";
+  import {
+    attestedCallable,
+    callableErrorCode,
+    isAppCheckBindingConflictError
+  } from "../lib/attestedCallable";
+
+  const states = {
+    checking: document.getElementById("state-checking"),
+    signedOut: document.getElementById("state-signed-out"),
+    claim: document.getElementById("state-claim"),
+    claiming: document.getElementById("state-claiming"),
+    success: document.getElementById("state-success"),
+    error: document.getElementById("state-error")
+  };
+
+  const btnSignin = document.getElementById("btn-signin");
+  const btnSigninApple = document.getElementById("btn-signin-apple");
+  const btnClaim = document.getElementById("btn-claim");
+  const btnSignout = document.getElementById("btn-signout");
+  const btnRetry = document.getElementById("btn-retry");
+
+  const codeInput = document.getElementById("code-input") as HTMLInputElement;
+  const codeHint = document.getElementById("code-hint");
+  const userEmail = document.getElementById("user-email");
+  const userAvatar = document.getElementById("user-avatar") as HTMLImageElement;
+  const errorMessage = document.getElementById("error-message");
+  const successHeading = document.getElementById("success-heading");
+  const successMessage = document.getElementById("success-message");
+
+  let currentUser: User | null = null;
+  // A ?code= link claims once per page load. Without this latch, an auto-claim
+  // that lands on the error state would re-fire on the next auth callback and
+  // spend the visitor's rate-limit budget in a loop.
+  let autoClaimUsed = false;
+
+  function showState(activeState: keyof typeof states) {
+    Object.keys(states).forEach((key) => {
+      const el = states[key as keyof typeof states];
+      if (el) {
+        if (key === activeState) {
+          el.classList.remove("hidden");
+        } else {
+          el.classList.add("hidden");
+        }
+      }
+    });
+  }
+
+  function getQueryCode(): string {
+    const params = new URLSearchParams(window.location.search);
+    return (params.get("code") || "").trim().toUpperCase();
+  }
+
+  onAuthStateChanged(auth, (user) => {
+    currentUser = user;
+    if (!user) {
+      showState("signedOut");
+      return;
+    }
+
+    if (userEmail) userEmail.textContent = user.email || user.displayName || "Authenticated User";
+    if (userAvatar && user.photoURL) {
+      userAvatar.src = user.photoURL;
+      userAvatar.classList.remove("hidden");
+    }
+
+    const queryCode = getQueryCode();
+    if (queryCode && codeInput) codeInput.value = queryCode;
+    showState("claim");
+
+    // One-click path: arriving from the announcement link with ?code= claims
+    // straight through once the visitor is signed in.
+    if (queryCode && !autoClaimUsed) {
+      autoClaimUsed = true;
+      void claim();
+    }
+  });
+
+  const signIn = async (provider: typeof googleProvider | typeof appleProvider) => {
+    try {
+      showState("checking");
+      await signInWithPopup(auth, provider);
+    } catch (err: unknown) {
+      const errorLike = err as { message?: unknown };
+      if (errorMessage) {
+        errorMessage.textContent =
+          typeof errorLike.message === "string" ? errorLike.message : "Authentication failed.";
+      }
+      showState("error");
+    }
+  };
+  btnSignin?.addEventListener("click", () => signIn(googleProvider));
+  btnSigninApple?.addEventListener("click", () => signIn(appleProvider));
+
+  btnSignout?.addEventListener("click", async () => {
+    try {
+      showState("checking");
+      await signOut(auth);
+    } catch (err) {
+      console.error("Sign out error", err);
+    }
+  });
+
+  async function claim() {
+    // Signed-out visitors never invoke redeemPromoCode.
+    if (!currentUser) {
+      codeHint?.classList.add("hidden");
+      showState("signedOut");
+      return;
+    }
+
+    const code = (codeInput?.value || "").trim();
+    // Mirrors the server's canonicalization bound: fewer than 4 alphanumerics
+    // can never be a real code, so it is rejected before spending a request.
+    if (code.replace(/[^A-Za-z0-9]/g, "").length < 4) {
+      codeHint?.classList.remove("hidden");
+      codeInput?.setAttribute("aria-invalid", "true");
+      codeInput?.focus();
+      showState("claim");
+      return;
+    }
+    codeHint?.classList.add("hidden");
+    codeInput?.removeAttribute("aria-invalid");
+
+    try {
+      showState("claiming");
+      const result = await attestedCallable<{ status?: string }>("redeemPromoCode", { code });
+      // An account that already pays for this tier keeps its subscription, so
+      // saying "unlocked" would be a lie — tell them what actually happened.
+      if (result?.status === "already_entitled") {
+        if (successHeading) successHeading.textContent = "You already have Ultra";
+        if (successMessage) {
+          successMessage.textContent =
+            "This account already has an active Ultra subscription, so your code is untouched and still available to use on another account.";
+        }
+      } else if (result?.status === "already_redeemed") {
+        if (successHeading) successHeading.textContent = "Already claimed";
+        if (successMessage) {
+          successMessage.textContent =
+            "This account already claimed the beta pass. Ultra is active — you were not charged.";
+        }
+      }
+      showState("success");
+    } catch (err: unknown) {
+      console.error("Claim error", err);
+      // Firebase FunctionsError codes arrive prefixed ("functions/not-found");
+      // callableErrorCode normalizes them so one set of branches covers both.
+      const errorCode = callableErrorCode(err);
+      const errorText = String((err as { message?: unknown })?.message || "");
+      const isUnauthenticated =
+        errorCode === "unauthenticated" || errorCode.includes("unauthenticated");
+
+      let friendlyMessage: string;
+      if (errorCode === "not-found" || errorCode === "invalid-argument") {
+        friendlyMessage =
+          "That code isn't valid. Check the code from the announcement and try again.";
+      } else if (errorCode === "resource-exhausted" && /fully claimed/i.test(errorText)) {
+        friendlyMessage = "Every pass in this beta has been claimed. Follow along for the next drop.";
+      } else if (errorCode === "resource-exhausted") {
+        friendlyMessage = "Too many attempts from this account. Wait a few minutes and try again.";
+      } else if (errorCode === "failed-precondition" && /offer/i.test(errorText)) {
+        friendlyMessage = errorText;
+      } else if (isAppCheckBindingConflictError(err)) {
+        friendlyMessage =
+          "Your device attestation could not be verified for this action. Sign in again and retry.";
+      } else if (
+        errorCode === "failed-precondition" &&
+        /nonce|bindAppCheckAttestation|App Check|attestation/i.test(errorText)
+      ) {
+        friendlyMessage =
+          "Your device attestation could not be verified for this action. Sign in again and retry.";
+      } else if (isUnauthenticated) {
+        friendlyMessage = "Your sign-in could not be verified. Sign in again and try once more.";
+      } else {
+        friendlyMessage = errorText || "Something went wrong on our side. Try again in a moment.";
+      }
+      if (errorMessage) errorMessage.textContent = friendlyMessage;
+      showState("error");
+    }
+  }
+
+  btnClaim?.addEventListener("click", () => void claim());
+
+  btnRetry?.addEventListener("click", () => {
+    if (currentUser) {
+      showState("claim");
+    } else {
+      showState("signedOut");
+    }
+  });
+</script>

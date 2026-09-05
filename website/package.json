@@ -1,7 +1,7 @@
 {
   "name": "@openburnbar/website",
   "version": "1.0.0",
-  "description": "OpenBurnBar launch website — burnbar.ai",
+  "description": "OpenBurnBar launch website \u2014 burnbar.ai",
   "private": true,
   "type": "module",
   "scripts": {
@@ -38,6 +38,7 @@
     "test:lazy-assets": "node scripts/test-lazy-background-assets.mjs",
     "test:typography": "node scripts/test-typography.mjs",
     "test:link-attestation": "node scripts/test-link-attestation.mjs",
+    "test:beta-claim": "node scripts/test-beta-claim.mjs",
     "crypto-claims:generate": "node scripts/generate-crypto-claims.mjs",
     "csp:check": "node scripts/update-csp-hashes.mjs --check",
     "csp:update": "node scripts/update-csp-hashes.mjs --write",
@@ -59,7 +60,7 @@
     "links:check": "node scripts/check-links.mjs",
     "size": "size-limit",
     "preverify": "node scripts/require-node.mjs",
-    "verify": "npm run research:test && npm run test:platform && npm run test:router-copy && npm run test:pricing-copy && npm run test:subscribe-flow && npm run test:launch-assets && npm run test:approved-hero-copy && npm run test:orphan-assets && npm run test:crypto-claims && npm run test:cache-headers && npm run test:security-headers && npm run test:download-provenance && npm run test:build-script && npm run test:links && npm run test:research-fallback && npm run check && npm run build && npm run test:firebase-config && npm run test:staging-firebase-config-source && npm run csp:check && npm run links:check && npm run test:trust-copy && npm run test:memory-copy && npm run test:demo-telemetry && npm run test:inline-budget && npm run test:reduced-motion && npm run test:idle-loops && npm run test:lazy-assets && npm run test:typography && npm run test:link-attestation",
+    "verify": "npm run research:test && npm run test:platform && npm run test:router-copy && npm run test:pricing-copy && npm run test:subscribe-flow && npm run test:launch-assets && npm run test:approved-hero-copy && npm run test:orphan-assets && npm run test:crypto-claims && npm run test:cache-headers && npm run test:security-headers && npm run test:download-provenance && npm run test:build-script && npm run test:links && npm run test:research-fallback && npm run check && npm run build && npm run test:firebase-config && npm run test:staging-firebase-config-source && npm run csp:check && npm run links:check && npm run test:trust-copy && npm run test:memory-copy && npm run test:demo-telemetry && npm run test:inline-budget && npm run test:reduced-motion && npm run test:idle-loops && npm run test:lazy-assets && npm run test:typography && npm run test:link-attestation && npm run test:beta-claim",
     "pretest": "node scripts/require-node.mjs",
     "test": "vitest run",
     "pretest:integration": "node scripts/require-node.mjs",
