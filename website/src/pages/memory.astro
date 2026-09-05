@@ -64,6 +64,12 @@ const REPO_DESIGN = `${SITE.github}/blob/main/docs/superpowers/2026-09-02-memory
 const maxKindWeight = Math.max(...MEMORY_KINDS.map((k) => k.weight));
 const pinnedCount = MEASUREMENTS.filter((m) => m.pin !== null).length;
 
+/* Counts the prose quotes. Derived from the arrays that render the adjacent
+   markup, so a tool added to a group re-writes the sentence above it rather
+   than leaving a stale numeral behind. */
+const refusingStages = WRITE_PIPELINE.filter((stage) => stage.role === "gate").length;
+const groupSize = (id: string) => TOOL_ATLAS.filter((t) => t.group === id).length;
+
 /* The capability id → human label map the atlas prints on each tool. */
 const CAP_LABEL = new Map(CAPABILITIES.map((c) => [c.id, c.label]));
 
@@ -114,7 +120,9 @@ const PARTS = [
 
 <BaseLayout
   title="Memory MCP — one memory your agents share, on a machine you own"
-  description={`Thirty-two MCP tools give Claude Code, Cursor, Codex, Claude Desktop and Hermes one durable memory of your work — extracted from the sessions you already run, encrypted on your own disk, and screened so credentials never become memories.`}
+  description={`${MEMORY_TOOL_COUNT} MCP tools give Claude Code, Cursor, Codex, Claude Desktop and Hermes one durable memory of your work — extracted from the sessions you already run, encrypted on your own disk, and screened so credentials never become memories.`}
+  ogImage="/og/memory.png"
+  ogImageAlt="One memory your agents share, on a machine you own — the OpenBurnBar Memory MCP, with the secret gate redacting a credential out of a memory it keeps."
 >
   {/* Announcements for copy actions and checklist progress. */}
   <p class="sr-only" role="status" aria-live="polite" data-copy-live></p>
@@ -134,7 +142,7 @@ const PARTS = [
         the same durable memory of your work — extracted from the sessions you already run, sealed on
         your own disk, and screened so credentials never become memories in the first place. No account.
         No server in the path. It works with the network off. The same server carries
-        {" "}{BURNBAR_TOOL_COUNT} tools in total: it also indexes your repository, searches every session
+        {" "}{TOTAL_TOOL_COUNT} tools in total: it also indexes your repository, searches every session
         you have ever run, and reads what your agents cost.
       </p>
 
@@ -210,11 +218,13 @@ const PARTS = [
         <span class="reg__n mono" aria-hidden="true">01</span>
         <div class="reg__headtext">
           <span class="eyebrow eyebrow--ember">The pipeline</span>
-          <h2 id="pipeline-h">Seven stages between a conversation and a memory.</h2>
+          <h2 id="pipeline-h">
+            {WRITE_PIPELINE.length} stages between a conversation and a memory.
+          </h2>
           <p class="lead">
             Most memory layers are a vector database with a nice name: text goes in, embeddings come
-            out, and whatever was in the text is now in the index. This one refuses things. Two of
-            the seven stages exist only to say no.
+            out, and whatever was in the text is now in the index. This one refuses things.
+            {" "}{refusingStages} of the {WRITE_PIPELINE.length} stages exist only to say no.
           </p>
         </div>
       </header>
@@ -563,15 +573,15 @@ const PARTS = [
           <h2 id="forget-h">Delete means the row is gone.</h2>
           <p class="lead">
             Most systems that promise deletion set a flag and move on, because a tombstone is
-            cheaper than a real delete and nobody checks. <code>burnbar_forget</code> issues five deletes
-            and drops the row. What survives is one audit event made of labels, which is enough to prove
-            the deletion happened and not enough to say what was deleted.
+            cheaper than a real delete and nobody checks. <code>burnbar_forget</code> empties every table
+            the memory touched and drops the row itself. What survives is one audit event made of labels,
+            which is enough to prove the deletion happened and not enough to say what was deleted.
           </p>
         </div>
       </header>
 
       <div class="purge" data-animate-onview>
-        <p class="purge__lab mono">One forget empties five tables</p>
+        <p class="purge__lab mono">One forget empties {FORGET_PURGED.length} tables</p>
         <ul class="purge__list">
           {
             FORGET_PURGED.map((p) => (
@@ -774,8 +784,8 @@ const PARTS = [
           <span class="eyebrow eyebrow--ember">Code intelligence</span>
           <h2 id="code-h">It also reads the repository.</h2>
           <p class="lead">
-            Eleven of the tools have nothing to do with memories. They index your project locally,
-            find a symbol, list its references, walk a call graph, and hand back a token-budgeted
+            {groupSize("code")} of the tools have nothing to do with memories. They index your project
+            locally, find a symbol, list its references, walk a call graph, and hand back a token-budgeted
             pack of the code that matters — without a single byte leaving the machine.
           </p>
         </div>
@@ -833,8 +843,8 @@ const PARTS = [
           </h2>
           <p class="lead">
             Memories are the distilled version. Sometimes you want the session itself — the one from
-            three weeks ago, in the other harness, where you worked this out the first time. Eight
-            tools find it, read it, and put you back in it.
+            three weeks ago, in the other harness, where you worked this out the first time.
+            {" "}{groupSize("sessions")} tools find it, read it, and put you back in it.
           </p>
         </div>
       </header>
@@ -919,7 +929,9 @@ const PARTS = [
             toolset never sees them, and they arrive only with
             {" "}<code>BURNBAR_MCP_TOOLSET=ops</code> or the historical default,
             {" "}<code>all</code>. A build gate reads {" "}<code>server.py</code> and this list and fails
-            if either grows a tool the other does not have.
+            if either grows a tool the other does not have. A chip that carries a condition —
+            {" "}<em>with include_secrets</em>, {" "}<em>with prove_headless</em> — is gated only on that
+            path: the tool's ordinary call needs nothing turned on.
           </p>
         </div>
       </header>
@@ -977,7 +989,10 @@ const PARTS = [
                           <span class="acap acap--open">no capability</span>
                         ) : (
                           t.caps.map((c) => (
-                            <span class="acap acap--gated">{CAP_LABEL.get(c) ?? c}</span>
+                            <span class="acap acap--gated">
+                              {CAP_LABEL.get(c) ?? c}
+                              {t.capsWhen?.[c] && <span class="acap__when">{t.capsWhen[c]}</span>}
+                            </span>
                           ))
                         )}
                       </p>
@@ -1029,7 +1044,7 @@ const PARTS = [
         {" "}<strong>{ORCHESTRATION_TOOL_COUNT}</strong>
         <code>ministry_*</code> /
         {" "}<code>castle_*</code> / <code>bench_*</code> orchestration tools, grouped under their own
-        three headings below because they launch and grade coding agents rather than serve your memory
+        three headings above because they launch and grade coding agents rather than serve your memory
         — not because they were left off the count.
       </p>
     </div>
@@ -1058,8 +1073,9 @@ const PARTS = [
           <p class="lead">
             Every figure below is produced by a script in the repository, over a gold set in the
             repository. {pinnedCount} of {MEASUREMENTS.length} are held in place by a committed assertion
-            — the floor only moves up. The rest need a model on your own machine, so we say so instead
-            of quoting them as if CI watched them.
+            — a floor that only moves up, two ceilings, and a band that names both its edges. Each row
+            says which. The rest need a model on your own machine, so we say so instead of quoting them
+            as if CI watched them.
           </p>
         </div>
       </header>
@@ -1067,7 +1083,7 @@ const PARTS = [
       <ul class="bench">
         {
           MEASUREMENTS.map((m) => (
-            <li class="bench__row" data-pinned={m.pin ? "true" : "false"}>
+            <li class="bench__row" id={`bench-${m.id}`} data-pinned={m.pin ? "true" : "false"}>
               <p class="bench__fig mono">
                 {m.figure}
                 {m.unit && <span class="bench__unit"> {m.unit}</span>}
@@ -1158,7 +1174,7 @@ const PARTS = [
         <span class="reg__n mono" aria-hidden="true">14</span>
         <div class="reg__headtext">
           <span class="eyebrow eyebrow--ember">Setup</span>
-          <h2 id="setup-h">One server. Five clients. Under two minutes.</h2>
+          <h2 id="setup-h">One server. {CLIENTS.length} clients. Under two minutes.</h2>
           <p class="lead">
             The launcher bootstraps itself the first time a client starts it, so the only thing you
             genuinely have to do is point your client at an absolute path. Run the bootstrap by hand
@@ -1220,9 +1236,10 @@ const PARTS = [
                   aria-labelledby={`tab-${c.id}`}
                   class="tabs__panel"
                   data-panel={c.id}
+                  data-panel-index={i}
                   tabindex="0"
-                  hidden={i !== 0}
                 >
+                  <p class="tabs__nojs mono">{c.label}</p>
                   <div class="code" data-code>
                     <div class="code__strip">
                       <span class="code__meta mono">{c.where}</span>
@@ -1586,7 +1603,7 @@ const PARTS = [
   }
 
   .mem-jump__n {
-    color: var(--ember-core);
+    color: var(--ember-text);
     font-size: var(--t-eyebrow);
     --opsz: var(--opsz-caption);
   }
@@ -1802,7 +1819,7 @@ const PARTS = [
     margin: var(--s-1) 0 0;
     font-size: var(--t-eyebrow);
     letter-spacing: var(--tracking-uppercase);
-    color: var(--ember-core);
+    color: var(--ember-text);
     border: 1px solid color-mix(in oklab, var(--core-fire) 45%, var(--ink-line));
     border-radius: var(--r-pill);
     padding: 0.1rem var(--s-2);
@@ -2892,6 +2909,35 @@ const PARTS = [
     gap: var(--s-2);
   }
 
+  /* The five configurations are server-rendered as five visible blocks, each
+     under its own client name — that is the page with the script blocked, and
+     it is the whole point of the section. `mcpSetup.ts` then takes ownership:
+     it hides the panels the tab strip is about to control and stamps
+     [data-tabs-ready]. The rule below holds them hidden from the first paint
+     so the enhanced page never flashes five stacked panels, and it is scoped
+     to `html.js` so a blocked bundle can never leave four snippets
+     unreachable. Same contract the atlas uses one section up. */
+  :global(html:not(.js)) .tabs__list {
+    display: none;
+  }
+
+  :global(html.js) .tabs:not([data-tabs-ready]) [data-panel]:not([data-panel-index="0"]) {
+    display: none;
+  }
+
+  .tabs__nojs {
+    margin: 0;
+    font-size: var(--t-eyebrow);
+    letter-spacing: var(--tracking-uppercase);
+    text-transform: uppercase;
+    color: var(--ember-text);
+    --opsz: var(--opsz-caption);
+  }
+
+  :global(html.js) .tabs__nojs {
+    display: none;
+  }
+
   .tabs__tab {
     font-family: var(--font-mono);
     font-size: var(--t-caption);
@@ -3018,7 +3064,7 @@ const PARTS = [
   }
 
   .check__n {
-    color: var(--ember-core);
+    color: var(--ember-text);
     font-size: var(--t-eyebrow);
     font-weight: var(--wght-regular);
     --opsz: var(--opsz-caption);
@@ -3259,7 +3305,7 @@ const PARTS = [
   }
 
   .mem-jump__partn {
-    color: var(--ember-core);
+    color: var(--ember-text);
   }
 
   /* ---------- a shared device: the honest-limit paragraph ----------
@@ -4085,7 +4131,13 @@ const PARTS = [
     border: 1px solid var(--ink-line-bright);
     border-radius: var(--r-pill);
     padding: 0.1rem var(--s-3);
-    white-space: nowrap;
+    /* A bare capability chip is two words and stays on one line. A chip
+       carrying its condition can be six, which is wider than a 320px column,
+       so the chip wraps inside itself rather than pushing the table sideways.
+       max-width keeps it inside the row at every width. */
+    white-space: normal;
+    flex-wrap: wrap;
+    max-width: 100%;
     --opsz: var(--opsz-caption);
   }
 
@@ -4100,6 +4152,21 @@ const PARTS = [
 
   .acap--gated {
     border-color: color-mix(in oklab, var(--status-estimated) 55%, var(--ink-line));
+  }
+
+  /* The condition that reaches the denial site, when there is one. Set in the
+     same chip rather than beside it, because the capability and the condition
+     are one fact: this tool needs sensitive read *on this argument*. Dimmer
+     than the capability it qualifies, and still --text-mute, which clears AA
+     on the chip ground in both themes. */
+  .acap__when {
+    color: var(--text-mute);
+    font-style: normal;
+  }
+
+  .acap__when::before {
+    content: " · ";
+    color: var(--ink-line-bright);
   }
 
   .acap--gated::before {

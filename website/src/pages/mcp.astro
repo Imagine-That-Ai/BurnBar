@@ -918,10 +918,11 @@ const slo = [
               aria-labelledby={`hosted-tab-${s.id}`}
               class="termmux__panel"
               data-panel={s.id}
+              data-panel-index={i}
               data-code
               tabindex="0"
-              hidden={i !== 0}
             >
+              <p class="termmux__nojs mono">{s.label}</p>
               <div class="termmux__strip">
                 <span class="mono termmux__strip-meta">{s.meta}</span>
                 <button
@@ -974,10 +975,11 @@ const slo = [
               aria-labelledby={`local-tab-${s.id}`}
               class="termmux__panel"
               data-panel={s.id}
+              data-panel-index={i}
               data-code
               tabindex="0"
-              hidden={i !== 0}
             >
+              <p class="termmux__nojs mono">{s.label}</p>
               <div class="termmux__strip">
                 <span class="mono termmux__strip-meta">{s.meta}</span>
                 <button
@@ -1347,7 +1349,10 @@ $ /abs/path/.venv/bin/python /abs/path/server.py`}</code></pre>
     max-width: 82ch;
   }
   .install__memory a {
-    color: var(--ember-bright);
+    /* Caption-sized ember, so it takes the text-safe token rather than the
+       accent: --ember-text is 5.50:1 on paper and 6.95:1 on the dark ground,
+       and it matches the ember /memory itself uses for small labels. */
+    color: var(--ember-text);
     text-decoration: underline;
   }
 
@@ -1900,6 +1905,32 @@ $ /abs/path/.venv/bin/python /abs/path/server.py`}</code></pre>
     padding: var(--s-2);
     background: rgba(0, 0, 0, 0.4);
     border-bottom: 1px solid var(--ink-line);
+  }
+
+  /* Every snippet is server-rendered visible, each under its own target name,
+     so a blocked bundle leaves a readable stack rather than one panel and a
+     dead tab strip. `mcpSetup.ts` hides the rest and stamps [data-tabs-ready];
+     the rule below holds them hidden from the first paint under `html.js` so
+     the enhanced page never flashes the stack. */
+  :global(html:not(.js)) .termmux__tabs {
+    display: none;
+  }
+
+  :global(html.js) .termmux:not([data-tabs-ready]) [data-panel]:not([data-panel-index="0"]) {
+    display: none;
+  }
+
+  .termmux__nojs {
+    margin: 0;
+    padding: var(--s-3) var(--s-4) 0;
+    font-size: var(--t-eyebrow);
+    letter-spacing: var(--tracking-uppercase);
+    text-transform: uppercase;
+    color: var(--ember-text);
+  }
+
+  :global(html.js) .termmux__nojs {
+    display: none;
   }
   .termmux__tab {
     appearance: none;

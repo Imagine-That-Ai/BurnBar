@@ -231,7 +231,8 @@ server registers, not just the `burnbar_*` ones.
 
 | Claim                                                                                                         | Source                                                                                                                 |
 | ------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| "32 MCP tools" (hero, verification step 1)                                                                    | `tools/openburnbar-mcp/server.py` — `MEMORY_TOOLSET`, counted (32 entries), served when `BURNBAR_MCP_TOOLSET=memory`   |
+| **gate** · "32 MCP tools" (hero, meta description, verification step 1) | `tools/openburnbar-mcp/server.py` — `MEMORY_TOOLSET`, counted (32 entries), served when `BURNBAR_MCP_TOOLSET=memory`. The meta description derives it rather than spelling it, because the gate strips tags and would never have seen a hardcoded numeral in an attribute |
+| **gate** · "The same server carries **89** tools in total" (hero, first paragraph) | `server.py` — every `@mcp.tool()` definition: 63 `burnbar_*` + 26 orchestration. Asserted both ways — the total must be printed as the total, and the `burnbar_*` subset must never be printed as "in total". An earlier revision opened on 63 while § 11 of the same page said 89 |
 | Works with Claude Code, Cursor, Codex CLI, Claude Desktop, Hermes                                             | `tools/openburnbar-mcp/README.md` §§ Cursor / Codex CLI / Hermes Agent / Claude Desktop; repo `.mcp.json`              |
 | Store path `~/Library/Application Support/OpenBurnBar/openburnbar-memory.sqlite`                              | `tools/openburnbar-mcp/README.md` § Local memory engine                                                                |
 | Bodies + history bodies AES-256-GCM sealed; key mode 0600; DB and WAL/SHM sidecars 0600                       | `tools/openburnbar-mcp/README.md` § Encrypted at rest                                                                  |
@@ -239,14 +240,14 @@ server registers, not just the `burnbar_*` ones.
 | Seven-stage write pipeline (ingest → extract → gate → injection screen → reconcile → store → recall)          | `docs/superpowers/2026-09-02-memory-mcp-v2-design.md` §4.1; `tools/openburnbar-mcp/memory_engine/`                     |
 | Ingest is idempotent on the input's content hash                                                              | `tools/openburnbar-mcp/README.md` § Automatic collection — **Idempotent**                                              |
 | Secret policies `redact` (default) / `reject` / `retain`; gate covers tags, entities, metadata, `source_path` | `tools/openburnbar-mcp/README.md` § Secrets and PII                                                                    |
-| `retain` is capability-gated, hidden from default recall, never mirrored or exported by default               | `tools/openburnbar-mcp/README.md` § Experimental: retain secrets                                                       |
+| `retain` is capability-gated, hidden from default recall, never mirrored, and never exported by default — the one path that returns the verbatim text is an export asked for by name, with `sensitive_read` granted and `include_secrets` set | `tools/openburnbar-mcp/README.md` § Experimental: retain secrets. The page says "not exported by default", never "never leaves the device" — the stronger phrasing was in an earlier revision and is not what the README supports |
 | Injection sentinels in any field quarantine the row; quarantined rows are excluded from recall                | `tools/openburnbar-mcp/README.md` § Untrusted recall boundary                                                          |
 | Hybrid recall: BM25 + vectors, reciprocal-rank fusion, then salience rerank                                   | `docs/superpowers/2026-09-02-memory-mcp-v2-design.md` §4.2                                                             |
 | `RRF k=60`, lexical weight 0.6, semantic weight 1.0                                                           | `tools/openburnbar-mcp/memory_engine/constants.py` — `RRF_K`, `RRF_LEXICAL_WEIGHT`, `RRF_SEMANTIC_WEIGHT`              |
 | Twelve kinds and their salience weights, verbatim                                                             | `tools/openburnbar-mcp/memory_engine/constants.py` — `KINDS`, `KIND_WEIGHTS`                                           |
 | Personal-scope kinds (`preference`, `profile`, `relationship`) follow you across projects                     | `constants.py` — `PERSONAL_KINDS`; `README.md` § `burnbar_recall`                                                      |
 | 30-day half-life for `event`/`todo`, 365 days otherwise                                                       | `constants.py` — `SHORT_HALF_LIFE_KINDS`, `HALF_LIFE_DAYS_SHORT`, `HALF_LIFE_DAYS_LONG`                                |
-| Access boost capped at 1.5×                                                                                   | `docs/superpowers/2026-09-02-memory-mcp-v2-design.md` §4.2 step 5                                                      |
+| **gate** · Access boost capped at 1.5× | `memory_engine/engine.py` — `compute_salience`'s `min(1.5, …)`, parsed by invariant 3. It lives in the engine rather than in `constants.py`, and until this PR it sat inside a gate-checked-looking block with no gate on it |
 | Duplicates collapse above cosine 0.92 or Jaccard 0.75                                                         | `constants.py` — `DEDUP_COSINE`, `DEDUP_JACCARD`                                                                       |
 | `SessionEnd` hook: prose only, 400 messages / 200,000 chars, 20-second budget, exit 0, nine statuses          | `tools/openburnbar-mcp/README.md` § Automatic collection from Claude Code sessions                                     |
 | "The first session end on a new machine usually memorizes nothing" (stated, not hidden)                       | `tools/openburnbar-mcp/README.md` § Automatic collection — the bootstrap paragraph, verbatim in substance              |
@@ -264,12 +265,12 @@ needs a local model and says so on the page.
 | Extraction precision **1.0**                             | same run                                      | _not pinned_ — labelled as such on the page                                   |
 | **1** invented fact across 7 empty conversations         | same run                                      | `test_eval_extraction.py` — `emptyCaseFacts <= 2`                             |
 | **0** credential leaks into an extracted fact            | same run                                      | `test_eval_extraction.py` — `leaks == 0`                                      |
-| **25 of 25** credential shapes detected raw              | `eval_memory.py --gate`                       | `test_eval_extraction.py::test_gate_matrix_detects_every_raw_shape`           |
+| **gate** · **25 of 25** credential shapes detected raw | `eval_memory.py --gate` | `test_eval_extraction.py::test_gate_matrix_detects_every_raw_shape` — `len(matrix) == 25` **and** every row's `raw` column. The count is pinned as of this PR; it was `>= 12`, which pinned the completeness and left the total free to drift. `test-memory-copy.mjs` parses `_secret_shapes()` and holds the page to the same number from the other side |
 | Four encoded gaps, named individually                    | `eval_memory.py --gate`                       | `tools/openburnbar-mcp/README.md` § Gate coverage — the same four, verbatim   |
 | Hybrid recall@5 **0.90**, MRR **0.678**                  | `eval_memory.py --provider auto`              | _not pinned_ — needs local Ollama `nomic-embed-text`; the page says so        |
 | Rules-only reconciliation agreement **0.42** on 64 cases | `eval_memory.py --judge`                      | `test_eval_extraction.py::test_rules_baseline_on_judge_gold_is_recorded`      |
 | Gold-set sizes: 36 conversations, 64 judge cases         | `tools/openburnbar-mcp/eval/*.json`           | `test_eval_extraction.py` — `cases >= 25`, `len(cases) >= 60`                 |
-| Adversarial gate: 8 caller-controlled placements         | —                                             | `tools/openburnbar-mcp/tests/test_gate_adversarial.py`                        |
+| **gate** · Adversarial gate: 8 caller-controlled placements | — | `tests/test_gate_adversarial.py` — `BODY_CONTEXTS + AUX_CONTEXTS`, parsed by `test-memory-copy.mjs` and compared to `GATE_PLACEMENTS` |
 
 ### The device boundary
 
@@ -285,6 +286,19 @@ The page states the unshipped half explicitly rather than omitting it, in its
 own visually distinct "Not shipped" lane. Do not promote that lane to
 "available" until the pull PR is merged and `docs/PRIVACY.md` describes device
 sync as live.
+
+**A second precedent, named rather than left implicit.** Item 7 of the pricing
+rules above sets one: _"Team plan copy — kept off the page until built."_
+`/memory` takes the other route and ships an explicit "Not shipped" lane. Both
+are legitimate and the difference is the reader's expectation, not our
+comfort: silence is right when nobody is looking for the feature, and a named
+absence is right when the surrounding section would otherwise imply the
+feature exists — a boundary diagram with backup on it invites the question
+"and the way back?", so the page answers it. The rule is the same either way:
+never render an unshipped thing as available, and let the gate hold the line
+(`test-memory-copy.mjs` invariant 7 refuses three overclaim phrasings). When
+in doubt between the two, prefer silence; a named absence needs a lane of its
+own and a gate behind it.
 
 ### Stated limits
 
@@ -307,7 +321,25 @@ now describes every product surface the server has, and
 `website/scripts/test-memory-copy.mjs` fails the build if the page and
 `tools/openburnbar-mcp/server.py` disagree about what exists.
 
-**Everything in this section is gate-enforced unless a row says otherwise.**
+**What the gate watches, and what it does not.** This is the sentence a
+reviewer uses to decide where to spend their attention, so it says the true
+thing rather than the flattering one. `scripts/test-memory-copy.mjs`
+mechanically enforces the tool atlas and the numbers around it: every tool
+`server.py` registers, the capabilities named at its denial sites, the
+condition that reaches a guarded one, its memory-toolset mark, the counts the
+page prints, the capability table, the retrieval constants, each measurement
+inside its own card, and the two gate-coverage figures. It does **not** read
+`_write.py`, `_read.py`'s audit labels, the resume shapes or the code tiers —
+those are traced by hand to the file named beside them and re-read when that
+file changes. Rows in the subsections below say which they are:
+
+- **gate** — a script reads both sides and fails the build if they disagree.
+- **source** — traced by hand to the named file; this ledger is the pin, and
+  a reviewer re-reading that file is the check.
+- **editorial** — our own words, derived from the rows around them and stated
+  deliberately rather than implied.
+
+Unmarked rows in those subsections are **source**.
 
 #### Time and supersession (`/memory#time`)
 
@@ -321,15 +353,15 @@ now describes every product surface the server has, and
 | An expired duplicate is reactivated (`UPDATE`, `reactivated: true`)                                                                   | `README.md` § Structured refusals                                                                   |
 | Re-remembering rejected text returns `NONE` with `PREVIOUSLY_REJECTED`; editing text into another row's text returns `DUPLICATE_BODY` | `README.md` § Structured refusals                                                                   |
 | History carries wrapped before/after bodies plus `decidedBy` (`rules` or `judge:<provider>/<model>`) and a rationale                  | `README.md` § Reconciliation judge; `server.py burnbar_memory_history`                              |
-| 30-day half-life for `event`/`todo`, 365 otherwise, access boost capped at 1.5×                                                       | `memory_engine/constants.py` — gate-checked against the page (invariant 3)                          |
+| **gate** · 30-day half-life for `event`/`todo`, 365 otherwise, access boost capped at 1.5×                                                       | `memory_engine/constants.py` — gate-checked against the page (invariant 3)                          |
 | `expires_at` is validated rather than allowed to become an immortal row; `immutable` rows are never retired                           | `README.md` § Structured refusals; `tests/test_memory_judge.py:83-84`                               |
-| **Stated limit:** supersession needs a cue, so the rules prefer to add — this is the 0.42 on the same page                            | `eval_memory.py --judge`; `README.md` § Reconciliation judge table                                  |
+| **editorial** · **Stated limit:** supersession needs a cue, so the rules prefer to add — this is the 0.42 on the same page                            | `eval_memory.py --judge`; `README.md` § Reconciliation judge table                                  |
 
 #### Forget and deletion (`/memory#forget`)
 
 | Claim                                                                                                                                                 | Source                                                                                                                                         |
 | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| One `burnbar_forget` purges memory, vector, history, relations and vault                                                                              | `memory_engine/_read.py` — `forget()` returns exactly `["memory", "vector", "history", "relations", "vault"]`; `_purge()` issues those deletes |
+| One `burnbar_forget` empties five tables — memory, vector, history, relations, vault | `memory_engine/_read.py` — `forget()` returns exactly `["memory", "vector", "history", "relations", "vault"]`. `_purge()` reaches them with seven `DELETE`s and an `UPDATE`, so the page counts tables and never statements |
 | It also deletes the replay receipt pointing at the memory and clears `superseded_by` on rows behind it                                                | `memory_engine/_read.py` — `_purge()`                                                                                                          |
 | The audit event is label-only: `local hard delete · vault purged · history purged · vectors purged`                                                   | `memory_engine/_read.py` — the `audit_event(... labels=[...])` call, verbatim                                                                  |
 | The daemon mirror is forgotten by the daemon's own content-derived id; a never-mirrored row reports `skipped`                                         | `README.md` § Works without the daemon; `server.py burnbar_forget`                                                                             |
@@ -338,7 +370,7 @@ now describes every product surface the server has, and
 | Supersession, negation, quarantine and confirmed bulk deletion each forget the daemon mirror                                                          | `README.md` § Cross-store lifecycle                                                                                                            |
 | `burnbar_cloud_delete_project_memory` hard-deletes the hosted sealed snapshot and returns a content-free tombstone receipt; local stays authoritative | `README.md` § Local memory engine (cloud paragraph); `server.py` docstring                                                                     |
 | In the app's backup lane, deleting a memory writes a forget receipt carrying only opaque hashes and a coarse reason                                   | `docs/PRIVACY.md:93`                                                                                                                           |
-| **Stated limit:** a forget cannot reach an export you already took, or the transcript the memory came from                                            | Editorial, derived from the above — deliberately stated rather than implied                                                                    |
+| **editorial** · **Stated limit:** a forget cannot reach an export you already took, or the transcript the memory came from                                            | Editorial, derived from the above — deliberately stated rather than implied                                                                    |
 
 #### Review, analytics and audit (`/memory#review`)
 
@@ -349,8 +381,8 @@ now describes every product surface the server has, and
 | `burnbar_memory_analytics` reports counts by kind / scope / sensitivity / review status, embedding coverage, vault entries, policy                                           | `README.md` § Tools; `server.py` docstring                                   |
 | `burnbar_audit_trail` returns the label-only hash chain with chain verification                                                                                              | `README.md` § Tools                                                          |
 | `burnbar_memory_doctor` covers store, encryption, embeddings, policy, audit chain, daemon mirror and code index, and resumes an auxiliary secret sweep via `aux_scan_cursor` | `server.py burnbar_memory_doctor` docstring                                  |
-| AI Inbox items and Founder Plans are readable from the MCP; bodies need `sensitive_read`, listings do not                                                                    | `server.py burnbar_inbox_*` docstrings and their denial sites — gate-checked |
-| **Stated limit:** nothing auto-approves; an unreviewed row stays out of recall                                                                                               | `README.md` § Untrusted recall boundary                                      |
+| **gate** · AI Inbox items and Founder Plans are readable from the MCP; bodies need `sensitive_read`, listings do not                                                                    | `server.py burnbar_inbox_*` docstrings and their denial sites — gate-checked |
+| **editorial** · **Stated limit:** nothing auto-approves; an unreviewed row stays out of recall                                                                                               | `README.md` § Untrusted recall boundary                                      |
 
 #### Code intelligence (`/memory#code`)
 
@@ -360,9 +392,9 @@ now describes every product surface the server has, and
 | Git exclude-standard ignore semantics, blob/commit SHA stamping, manifest-backed delta indexing, Git-fingerprint Project ID v2 with path aliases                                        | `README.md` § Local memory engine, verbatim in substance                                                                                   |
 | Secret-bearing files are rejected before persistence, using the shared Swift/Python scanner corpus                                                                                      | `README.md` § Local memory engine                                                                                                          |
 | Tiers `exact_lsp` / `static_tree_sitter` / `lexical_fallback`; `OPENBURNBAR_CODE_LSP_COMMANDS` enables the exact tier; the Rust helper is built by `setup.sh`, not the memory bootstrap | `README.md` § Local memory engine; § Setup                                                                                                 |
-| Code-index writes are daemon-required, `local_write`-gated and fail-closed with no SQLite fallback                                                                                      | `README.md` § Local memory engine — gate-checked as `local_write` on `burnbar_index_project` / `burnbar_watch_project` / `burnbar_explore` |
+| **gate** · Code-index writes are daemon-required, `local_write`-gated and fail-closed with no SQLite fallback                                                                                      | `README.md` § Local memory engine — gate-checked as `local_write` on `burnbar_index_project` / `burnbar_watch_project` / `burnbar_explore` |
 | Returned source text is wrapped as untrusted content                                                                                                                                    | `README.md` § Local memory engine                                                                                                          |
-| **Stated limit:** `semanticAvailable=false` until a real local embedding provider; call graphs are lexical-tier                                                                         | `README.md` § Local memory engine; `server.py burnbar_search_code` / `burnbar_call_graph` docstrings                                       |
+| **editorial** · **Stated limit:** `semanticAvailable=false` until a real local embedding provider; call graphs are lexical-tier                                                                         | `README.md` § Local memory engine; `server.py burnbar_search_code` / `burnbar_call_graph` docstrings                                       |
 
 #### Sessions across harnesses (`/memory#sessions`)
 
@@ -371,20 +403,20 @@ now describes every product surface the server has, and
 | FTS over titles and transcripts of indexed sessions from every harness; `burnbar_list_providers` names them                                 | `README.md` § Tools; `server.py` docstrings                                 |
 | Local semantic session search returns a structured `unavailable` rather than empty results                                                  | `README.md` § Tools — `burnbar_semantic_search_conversations`               |
 | `burnbar_resume_conversation` returns one of `native` / `ported` / `error`, is print-only by default, and writes a 0600 briefing            | `README.md` § Local memory engine (resume paragraph); `server.py` docstring |
-| `burnbar_spawn_resume` is a deliberate second call, gated on `spawn_process`                                                                | `README.md` § Local memory engine; gate-checked capability                  |
+| **gate** · `burnbar_spawn_resume` is a deliberate second call, gated on `spawn_process`                                                                | `README.md` § Local memory engine; gate-checked capability                  |
 | Hosted encrypted session search derives trapdoors locally, sends only opaque hashes, decrypts on device                                     | `README.md` § Local memory engine (cloud paragraph); `docs/PRIVACY.md:57`   |
-| **Stated limit:** full plaintext, chat rows and ported briefings need `sensitive_read`; a ported resume is a briefing, not a state transfer | gate-checked capability; `README.md` resume paragraph                       |
+| **editorial** · **Stated limit:** full plaintext, chat rows and ported briefings need `sensitive_read`; a ported resume is a briefing, not a state transfer | gate-checked capability; `README.md` resume paragraph                       |
 
 #### The rest of the server (`/memory#server`)
 
 | Claim                                                                                                                                                                                                | Source                                                                      |
 | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| Twelve spend and budget tools — query, status, forecast, audit, and the three write tools                                                                                                            | `README.md` § Tools; gate-checked against the atlas                         |
+| **gate** · Twelve spend and budget tools — query, status, forecast, audit, and the three write tools                                                                                                            | `README.md` § Tools; gate-checked against the atlas                         |
 | The ledger writer is daemon-first over the UNIX socket with a file-locked JSONL fallback; the same idempotency key never double-counts                                                               | `README.md` § Local memory engine (the writer paragraph)                    |
 | Hermes proxy sidecar: stdlib-only, OpenAI-compatible, forwards SSE / tool calls / auth / models verbatim, one ledger row per completed response, `--no-estimate` to skip guessing                    | `README.md` § Hermes proxy sidecar                                          |
 | Castle: a worker counts as landed only when the done marker exists, the runtime parser says no error, and worktree HEAD differs from the recorded base SHA; dashboard green comes from `landsCommit` | `README.md` § Castle multi-runtime fan-out                                  |
-| Project Memory snapshots resolve local-first with a hosted encrypted fallback decrypted on device; uploads are sealed payloads under vault-derived opaque ids                                        | `README.md` § Local memory engine (cloud paragraph); `server.py` docstrings |
-| **26 `ministry_*` / `castle_*` / `bench_*` orchestration tools, listed in the atlas under their own three headings — Ministry, Castle, Bench**                                                       | `server.py` — gate-checked (`ORCHESTRATION_TOOL_COUNT`), same set-equality check as the 63 `burnbar_*` tools |
+| Project Memory snapshots resolve local-first with a hosted encrypted fallback decrypted on device; uploads are sealed payloads under vault-derived opaque ids. The card says **2 local + 2 hosted** because the atlas groups the hosted pair under *Encrypted cloud*, where their capability lives | `README.md` § Local memory engine (cloud paragraph); `server.py` docstrings |
+| **gate** · **26 `ministry_*` / `castle_*` / `bench_*` orchestration tools, listed in the atlas under their own three headings — Ministry, Castle, Bench**                                                       | `server.py` — gate-checked (`ORCHESTRATION_TOOL_COUNT`), same set-equality check as the 63 `burnbar_*` tools |
 
 #### The tool atlas (`/memory#atlas`)
 
@@ -392,7 +424,7 @@ The page's strongest claim is coverage — **"all 89 tools"**, not "all 63
 tools" — so it is the one most tightly gated. An earlier version of this page
 listed 63 `burnbar_*` tools and called that "all", while `server.py` also
 registered 26 `ministry_*` / `castle_*` / `bench_*` tools the atlas never
-mentioned. `scripts/test-memory-copy.mjs` invariants 8 to 14 now make the
+mentioned. `scripts/test-memory-copy.mjs` invariants 8 to 17 now make the
 following true by construction, over every tool the server registers
 regardless of prefix; a build fails otherwise.
 
@@ -400,7 +432,8 @@ regardless of prefix; a build fails otherwise.
 | --------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 89 tools total — 63 `burnbar_*` plus 26 `ministry_*` / `castle_*` / `bench_*` — every one listed, none invented | `server.py` **every** `@mcp.tool()` definition ↔ `TOOL_ATLAS`, **set equality in both directions**, not scoped to a name prefix                          |
 | 32 of the 89 marked as the memory toolset; Castle/Ministry/Bench are never marked as such      | `server.py` `MEMORY_TOOLSET` ↔ each entry's `memory` flag, per tool — `MEMORY_TOOLSET` never names a `ministry_*` / `castle_*` / `bench_*` tool, so this also proves none is mismarked |
-| The capability shown on each tool                                                              | the capabilities named at that tool's `_capability_denial("<tool>", "<cap>")` and `_local_memory_write_authority("<tool>", …)` sites                                            |
+| The capability shown on each tool | the capabilities named at that tool's `_capability_denial("<tool>", "<cap>")` and `_local_memory_write_authority("<tool>", …)` sites |
+| A capability reached only under a condition is published **with** that condition — `burnbar_recall` and `burnbar_memory_get` need sensitive read *with `include_secrets`*; `burnbar_memorize` needs spawn and model extract *when an LLM extractor is named*; four `ministry_*` / `castle_*` tools need spawn *with `prove_headless`* | the denial site's own syntax. A call reached through `if <condition> and (denied := …` or from inside a nested block is guarded and must carry a `capsWhen` note naming the condition; a note without a guarded site fails too. Eight guarded capabilities across seven tools. Without this the atlas read as "the flagship recall tool is behind an off-by-default capability", which is both wrong and worse than the truth |
 | Nine capability switches and the environment variable that enables each                        | `server.py` `LOCAL_MCP_CAPABILITY_ENV` ↔ the page's `CAPABILITIES` table                                                                                                        |
 | Every capability a published tool depends on is explained on the page                          | cross-checked between `TOOL_ATLAS[].caps` and `CAPABILITIES`                                                                                                                    |
 | Every atlas tool actually renders in the built HTML                                             | read out of `dist/memory/index.html`, not out of the source                                                                                                                     |

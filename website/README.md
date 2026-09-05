@@ -71,7 +71,7 @@ Runs:
 3. `npm run build:offline` — production build from committed data
 4. `node scripts/update-csp-hashes.mjs --check` — proves the Firebase marketing CSP has exact hashes for the built inline scripts/styles and no `unsafe-inline`
 5. `node scripts/test-trust-copy.mjs` — scans built trust/privacy output for external network references
-6. `node scripts/test-memory-copy.mjs` — proves `/memory`'s figures still match `tools/openburnbar-mcp/`: the tool count against `MEMORY_TOOLSET`, the twelve kind weights and seven retrieval constants against `memory_engine/constants.py`, the extraction floor against the committed `RECALL_FLOOR`, that every unpinned measurement is labelled unpinned, and that cross-device sync is still published as not shipped
+6. `node scripts/test-memory-copy.mjs` — proves `/memory`'s figures still match `tools/openburnbar-mcp/`: the tool counts against `MEMORY_TOOLSET` and every `@mcp.tool()` definition (set equality, both directions, including the total the hero prints), the twelve kind weights and eight retrieval constants against `memory_engine/constants.py` and `engine.py`, each measurement rendered inside its own bench card, the extraction floor against the committed `RECALL_FLOOR`, the credential-shape and placement counts against `eval_memory.py` and `tests/test_gate_adversarial.py`, every published capability against its denial site — with a conditional gate published as conditional — and that cross-device sync is still published as not shipped
 7. `node scripts/check-links.mjs` — verifies every internal `href` resolves to a built page or a static asset
 
 `npm run verify` is intentionally source-data non-mutating; it rebuilds

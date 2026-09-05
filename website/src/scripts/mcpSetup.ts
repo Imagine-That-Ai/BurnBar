@@ -9,6 +9,7 @@
  *   [data-tabs]           a tablist + its panels
  *     [role="tab"][data-target]      → the tab
  *     [role="tabpanel"][data-panel]  → the panel it controls
+ *                                      ([data-panel-index] marks the first)
  *   [data-code]           a copyable block
  *     pre code                       → the text that gets copied
  *     [data-copy]                    → the button ([data-copy-label] names it)
@@ -25,11 +26,18 @@
  *      past it. The site's previous implementation left every tab tabbable
  *      and had no Home/End, which is a real keyboard cost on an eight-tab
  *      row.
- *   2. Copy announces. A label that flashes "copied" tells a sighted user
- *      what happened and tells a screen-reader user nothing, so the result —
- *      including the failure, which is common on locked-down profiles — goes
- *      through a polite live region.
- *   3. The checklist is progressive. The checkboxes are real inputs that
+ *   2. Tabs are additive, never load-bearing. The server renders every panel
+ *      visible; this module hides the ones the strip is about to own and
+ *      stamps [data-tabs-ready]. A blocked bundle therefore leaves a readable
+ *      stack of every configuration rather than one panel and four snippets
+ *      nobody can reach — the same contract the tool atlas uses.
+ *   3. Copy announces, and survives being clicked twice. A label that flashes
+ *      "copied" tells a sighted user what happened and tells a screen-reader
+ *      user nothing, so the result — including the failure, which is common
+ *      on locked-down profiles — goes through a polite live region. The idle
+ *      label is captured once, at setup, and each flash cancels the restore
+ *      the previous one was waiting on.
+ *   4. The checklist is progressive. The checkboxes are real inputs that
  *      work with this module absent; it only adds persistence and the count.
  *
  * Everything is scoped and null-guarded: a missing node is never allowed to
@@ -60,6 +68,20 @@ function initTabs(): void {
     tabs.forEach((tab) => {
       tab.tabIndex = tab.getAttribute("aria-selected") === "true" ? 0 : -1;
     });
+
+    // The panels are server-rendered visible so that a blocked or failed
+    // bundle leaves every snippet readable instead of stranding four of five
+    // behind a tab strip that cannot respond. Hiding them is this module's
+    // job, done before it can be asked to switch between them. The
+    // [data-tabs-ready] stamp releases the stylesheet's pre-paint rule, which
+    // is what keeps the enhanced page from flashing the whole stack first.
+    const selected = tabs.find((tab) => tab.getAttribute("aria-selected") === "true") ?? tabs[0];
+    const openPanel = selected?.dataset.target;
+    panels.forEach((panel) => {
+      if (panel.dataset.panel === openPanel) panel.removeAttribute("hidden");
+      else panel.setAttribute("hidden", "");
+    });
+    group.dataset.tabsReady = "true";
 
     const select = (tab: HTMLButtonElement, moveFocus: boolean): void => {
       const target = tab.dataset.target;
@@ -95,6 +117,13 @@ function initTabs(): void {
 
 function initCopy(): void {
   document.querySelectorAll<HTMLButtonElement>("[data-copy]").forEach((button) => {
+    // Captured once, at setup — never inside the handler. Reading it at click
+    // time means a second click inside the 1600 ms window "restores" the
+    // flash message, and the button reads "copied" or "select it" for the
+    // rest of the session. Double-clicking a copy button is normal.
+    const idle = (button.textContent ?? "copy").trim();
+    let pending = 0;
+
     button.addEventListener("click", async () => {
       const block = button.closest<HTMLElement>("[data-code]");
       const code = block?.querySelector("pre code");
@@ -103,11 +132,15 @@ function initCopy(): void {
       if (!text) return;
 
       const restore = (message: string, ok: boolean): void => {
-        const original = button.textContent;
+        // One timer per button: the click that starts a new flash cancels the
+        // restore the previous one was waiting on, so the last click wins.
+        if (pending) window.clearTimeout(pending);
         button.textContent = message;
         if (ok) button.setAttribute("data-flash", "true");
-        window.setTimeout(() => {
-          button.textContent = original;
+        else button.removeAttribute("data-flash");
+        pending = window.setTimeout(() => {
+          pending = 0;
+          button.textContent = idle;
           button.removeAttribute("data-flash");
         }, 1600);
       };

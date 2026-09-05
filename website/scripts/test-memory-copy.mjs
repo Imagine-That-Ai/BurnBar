@@ -54,6 +54,24 @@
  *  14. The platform statement names Windows and Linux, and the page never
  *      claims to run on them.
  *
+ * And, since the review round, the three places a number could still be
+ * asserted vacuously or published as something it is not:
+ *
+ *  15. Each measurement's figure is asserted inside its own bench card, not
+ *      anywhere in the page's text. "1.0", "1", "0" and "25" match somewhere
+ *      on any page this long, so invariant 4 was true only for the four
+ *      figures that happen to be distinctive.
+ *  16. The gate-coverage numbers — the credential-shape total and the count
+ *      of caller-controlled placements — are read out of `eval_memory.py`
+ *      and `tests/test_gate_adversarial.py` rather than typed on the page.
+ *  17. A capability whose denial site sits behind a guard is published WITH
+ *      the condition that reaches it. `burnbar_recall` denies `sensitive_read`
+ *      only under `include_secrets`; publishing that as a flat requirement
+ *      tells a reader the flagship read path is behind an off-by-default
+ *      capability, which is both wrong and worse than the truth. Checked in
+ *      both directions: a guarded site must carry a note, and a note must
+ *      correspond to a guarded site.
+ *
  * Each parser asserts its own parse succeeded before comparing, so a change
  * in the shape of `server.py` fails loudly rather than passing vacuously.
  *
@@ -88,6 +106,12 @@ const decodeEntities = (s) =>
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'");
 const text = decodeEntities(html.replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ");
+
+/* `text` strips tags, so attribute content — the meta description, the OG
+ * description, an aria-label — never reaches it. Those carry claims too. */
+const metaDescription = decodeEntities(
+  html.match(/<meta\s+name="description"\s+content="([^"]*)"/i)?.[1] ?? ""
+);
 
 const failures = [];
 const check = (ok, message) => {
@@ -165,15 +189,64 @@ for (const [tsKey, pyKey] of [
   check(py === ts, `${tsKey} is ${ts} on the page but ${pyKey} is ${py} in constants.py`);
 }
 
+/* The salience boost cap is the one FUSION value that lives in the engine
+ * rather than in constants.py. It sat in a gate-checked-looking block without
+ * a gate; this reads it where it is. */
+const engineSrc = readFileSync(join(MCP, "memory_engine", "engine.py"), "utf8");
+const realBoostCap = Number(engineSrc.match(/boost\s*=\s*min\(\s*([0-9.]+)\s*,/)?.[1]);
+assert.ok(
+  Number.isFinite(realBoostCap),
+  "could not read the salience access-boost cap from memory_engine/engine.py"
+);
+const pageBoostCap = tsNumber("accessBoostCap");
+check(
+  realBoostCap === pageBoostCap,
+  `accessBoostCap is ${pageBoostCap} on the page but engine.py caps the boost at ${realBoostCap}`
+);
+check(
+  text.includes(`capped at ${realBoostCap}×`),
+  `the page should say the reinforcement boost is "capped at ${realBoostCap}×"`
+);
+
 /* ── 4 & 5 · every measurement renders, and unpinned ones say so ────────── */
 
 const measurements = [
-  ...dataSrc.matchAll(/id:\s*"([a-z-]+)",\s*\n\s*figure:\s*"([^"]+)"[\s\S]*?pin:\s*(null|")/g)
-].map((m) => ({ id: m[1], figure: m[2], pinned: m[3] !== "null" }));
+  ...dataSrc.matchAll(
+    /id:\s*"([a-z-]+)",\s*\n\s*figure:\s*"([^"]+)"[\s\S]*?label:\s*"((?:[^"\\]|\\.)*)"[\s\S]*?pin:\s*(null|")/g
+  )
+].map((m) => ({ id: m[1], figure: m[2], label: m[3], pinned: m[4] !== "null" }));
 
 check(measurements.length >= 6, `parsed only ${measurements.length} measurements from memory.ts`);
+
+/* Scoped to the card, not to the page. Four of the eight figures are "1.0",
+ * "1", "0" and "25", and every one of those matches somewhere in a page with
+ * a salience table and a coverage count in it, so a page-wide `includes`
+ * check passes even after the card is deleted. Each card carries
+ * id="bench-<id>"; this slices the HTML from that id to the next one and
+ * looks for the figure only in there. */
+const benchSlice = (id) => {
+  const marker = `id="bench-${id}"`;
+  const start = html.indexOf(marker);
+  if (start < 0) return null;
+  const next = html.indexOf('id="bench-', start + marker.length);
+  return html.slice(start, next < 0 ? html.length : next);
+};
 for (const m of measurements) {
-  check(text.includes(m.figure), `measurement "${m.id}" (${m.figure}) is not rendered on /memory`);
+  const card = benchSlice(m.id);
+  check(
+    card !== null,
+    `measurement "${m.id}" has no bench card on /memory — expected id="bench-${m.id}"`
+  );
+  if (card === null) continue;
+  const cardText = decodeEntities(card.replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ");
+  check(
+    cardText.includes(m.figure),
+    `measurement "${m.id}" renders a card but its figure (${m.figure}) is not in it`
+  );
+  check(
+    cardText.includes(m.label),
+    `measurement "${m.id}" renders a card but not its label`
+  );
 }
 const unpinned = measurements.filter((m) => !m.pinned);
 check(unpinned.length > 0, "expected at least one honestly-unpinned measurement");
@@ -250,13 +323,16 @@ assert.ok(atlasStart > -1, "could not find TOOL_ATLAS in src/data/memory.ts");
 const atlasSrc = dataSrc.slice(atlasStart);
 
 const ATLAS_ENTRY =
-  /name:\s*"([a-z][a-z0-9_]*)",\s*group:\s*"([a-z]+)",\s*desc:\s*"((?:[^"\\]|\\.)*)",\s*caps:\s*\[([^\]]*)\],\s*memory:\s*(true|false)/g;
+  /name:\s*"([a-z][a-z0-9_]*)",\s*group:\s*"([a-z]+)",\s*desc:\s*"((?:[^"\\]|\\.)*)",\s*caps:\s*\[([^\]]*)\],\s*(?:capsWhen:\s*\{([^}]*)\},\s*)?memory:\s*(true|false)/g;
 const atlasEntries = [...atlasSrc.matchAll(ATLAS_ENTRY)].map((m) => ({
   name: m[1],
   group: m[2],
   desc: m[3],
   caps: [...m[4].matchAll(/"([a-z_]+)"/g)].map((c) => c[1]).sort(),
-  memory: m[5] === "true"
+  capsWhen: new Map(
+    [...(m[5] ?? "").matchAll(/([a-z_]+)\s*:\s*"((?:[^"\\]|\\.)*)"/g)].map((w) => [w[1], w[2]])
+  ),
+  memory: m[6] === "true"
 }));
 const atlasNames = atlasEntries.map((e) => e.name);
 const atlasSet = new Set(atlasNames);
@@ -303,10 +379,38 @@ for (const entry of atlasEntries) {
 /* ── 10 · declared capability gates match the code that enforces them ─── */
 
 const realCaps = new Map([...registeredSet].map((n) => [n, new Set()]));
+
+/* A denial site is GUARDED when it is only reachable under a condition, and
+ * that changes what the atlas is allowed to say about it. Two shapes carry a
+ * guard in server.py, and both are decidable from the statement itself:
+ *
+ *   inline    `if include_secrets and (denied := _capability_denial(…)):`
+ *   enclosed  the whole statement is indented past the function body, i.e. it
+ *             sits inside an `if prove_headless:` / `if requested_extractor …:`
+ *             block rather than at the top of the tool.
+ *
+ * Anything at body indentation with nothing in front of the call is a flat
+ * requirement. The test is deliberately syntactic: a guard style this has not
+ * seen leaves an entry unannotated and fails invariant 17 loudly, rather than
+ * being quietly guessed at. */
+const BODY_INDENT = 4;
+const guardedCaps = new Map([...registeredSet].map((n) => [n, new Set()]));
 for (const m of serverSrc.matchAll(
   /_capability_denial\(\s*"([a-z][a-z0-9_]*)"\s*,\s*"([a-z_]+)"/g
 )) {
-  realCaps.get(m[1])?.add(m[2]);
+  const tool = m[1];
+  const capability = m[2];
+  realCaps.get(tool)?.add(capability);
+
+  const lineStart = serverSrc.lastIndexOf("\n", m.index) + 1;
+  const lineEnd = serverSrc.indexOf("\n", m.index);
+  const line = serverSrc.slice(lineStart, lineEnd < 0 ? serverSrc.length : lineEnd);
+  const indent = line.length - line.trimStart().length;
+  const before = line.slice(0, line.indexOf("_capability_denial")).trim();
+  // `if <condition> and (denied := ` — a condition stands between the branch
+  // and the call. `if denied := ` and `denied = ` do not.
+  const inlineGuard = /^if\s.+\sand\s\(denied\s*:=\s*$/.test(before);
+  if (indent > BODY_INDENT || inlineGuard) guardedCaps.get(tool)?.add(capability);
 }
 // The three daemon-scoped code writers take their local_write denial through
 // a helper rather than inline, so the helper's call sites count too.
@@ -318,6 +422,11 @@ assert.ok(
   gatedCount > 15,
   `parsed capability gates for only ${gatedCount} tools — the denial-site parser is wrong`
 );
+const guardedTotal = [...guardedCaps.values()].reduce((total, set) => total + set.size, 0);
+assert.ok(
+  guardedTotal >= 5,
+  `parsed only ${guardedTotal} guarded denial sites — the guard parser is wrong, not the page`
+);
 
 for (const entry of atlasEntries) {
   const real = [...(realCaps.get(entry.name) ?? [])].sort();
@@ -326,6 +435,31 @@ for (const entry of atlasEntries) {
     `${entry.name} is published as needing [${entry.caps.join(", ") || "no capability"}] but ` +
       `server.py gates it on [${real.join(", ") || "nothing"}]`
   );
+
+  /* ── 17 · a conditional gate is published as conditional ─────────────── */
+  const guarded = [...(guardedCaps.get(entry.name) ?? [])].sort();
+  const noted = [...entry.capsWhen.keys()].sort();
+  check(
+    guarded.join(",") === noted.join(","),
+    `${entry.name}: server.py reaches [${guarded.join(", ") || "nothing"}] only behind a guard, ` +
+      `but the atlas annotates [${noted.join(", ") || "nothing"}]. Every guarded capability needs a ` +
+      `capsWhen note naming the condition that reaches it, and every capsWhen note needs a guarded ` +
+      `denial site — otherwise the atlas publishes a conditional gate as a flat requirement`
+  );
+  for (const [capability, note] of entry.capsWhen) {
+    check(
+      entry.caps.includes(capability),
+      `${entry.name} annotates "${capability}" with a condition but does not list it in caps`
+    );
+    check(
+      note.trim().length > 3,
+      `${entry.name}'s condition for "${capability}" is not a real note`
+    );
+    check(
+      text.includes(note),
+      `${entry.name}'s condition for "${capability}" ("${note}") never reaches the rendered page`
+    );
+  }
 }
 
 /* ── 11 · the memory-toolset marks match MEMORY_TOOLSET ──────────────── */
@@ -370,6 +504,28 @@ check(
     `is ${declaredBurnbar + declaredOrchestration} but server.py registers ${registeredAll.length} tools total`
 );
 
+/* The hero's own sentence. The atlas heading was fixed in the coverage round
+ * and the first paragraph was not, so the page opened on "63 tools in total"
+ * and refuted itself ten sections later. Both halves are asserted: the total
+ * must be printed as the total, and the burnbar_* subset must never be. */
+check(
+  text.includes(`${registeredAll.length} tools in total`),
+  `the hero should say "${registeredAll.length} tools in total" — every tool server.py registers`
+);
+check(
+  !new RegExp(`\\b${registeredBurnbar.length} tools in total\\b`).test(text),
+  `/memory prints "${registeredBurnbar.length} tools in total", which is the burnbar_* subset — ` +
+    `the server registers ${registeredAll.length}`
+);
+
+/* The tool count also appears in the meta description, which `text` cannot
+ * see because attributes do not survive tag-stripping. */
+check(
+  metaDescription.includes(`${realToolCount} MCP tools`),
+  `the /memory meta description should open on "${realToolCount} MCP tools"; it reads ` +
+    `"${metaDescription.slice(0, 60)}…"`
+);
+
 /* ── 13 · the capability table names the real environment variables ──── */
 
 const capEnvBlock = serverSrc.match(/LOCAL_MCP_CAPABILITY_ENV\s*(?::[^=]*)?=\s*\{([\s\S]*?)\n\}/);
@@ -402,6 +558,70 @@ for (const entry of atlasEntries) {
   }
 }
 
+/* ── 16 · the gate's own coverage numbers ────────────────────────────
+ *
+ * "25 of 25 credential shapes, planted in 8 caller-controlled places" was the
+ * only pair of product numbers on this page with no mechanical link back to
+ * Python — on a page whose gate exists to close exactly that door. Add a 26th
+ * shape to eval_memory.py and the page kept saying 25 with a green build.
+ */
+
+const evalSrc = readFileSync(join(MCP, "eval_memory.py"), "utf8");
+const shapesFn = evalSrc.match(/def _secret_shapes\(\)[\s\S]*?\n    return \{([\s\S]*?)\n    \}/);
+assert.ok(shapesFn, "could not find _secret_shapes() in tools/openburnbar-mcp/eval_memory.py");
+// Keys only: values contain colons of their own ("Authorization: Bearer …"),
+// so this anchors on the dict's own indentation rather than on ": ".
+const realShapes = [...shapesFn[1].matchAll(/^\s{8}"([a-z0-9_]+)":/gm)].map((m) => m[1]);
+assert.ok(
+  realShapes.length > 15 && new Set(realShapes).size === realShapes.length,
+  `parsed ${realShapes.length} secret shapes from eval_memory.py — the parser is wrong, not the page`
+);
+const declaredShapes = Number(dataSrc.match(/GATE_SHAPES\s*=\s*\{\s*\n\s*total:\s*(\d+)/)?.[1] ?? NaN);
+check(
+  declaredShapes === realShapes.length,
+  `GATE_SHAPES.total is ${declaredShapes} but eval_memory.py's SECRET_SHAPES holds ` +
+    `${realShapes.length} shapes`
+);
+// The coverage stat itself, not "25" somewhere in a page this long: both
+// halves of the N/N have to be inside the rendered figure.
+// Tags first: the build stamps a scoped `data-astro-cid-<hash>` on every
+// element, and those hashes contain digits of their own.
+const coverageFig = html.match(/<p class="coverage__fig[^"]*"[^>]*>([\s\S]*?)<\/p>/)?.[1] ?? "";
+const coverageDigits = (coverageFig.replace(/<[^>]+>/g, " ").match(/\d+/g) ?? []).map(Number);
+check(
+  coverageDigits.length === 2 && coverageDigits.every((d) => d === realShapes.length),
+  `the /memory coverage stat should read ${realShapes.length}/${realShapes.length}; it renders ` +
+    `[${coverageDigits.join(", ") || "nothing"}]`
+);
+
+const adversarialSrc = readFileSync(join(MCP, "tests", "test_gate_adversarial.py"), "utf8");
+const contextCount = ["BODY_CONTEXTS", "AUX_CONTEXTS"].reduce((total, name) => {
+  const tuple = adversarialSrc.match(new RegExp(`^${name}\\s*=\\s*\\(([^)]*)\\)`, "m"));
+  assert.ok(tuple, `could not find ${name} in tests/test_gate_adversarial.py`);
+  return total + [...tuple[1].matchAll(/"[a-z_]+"/g)].length;
+}, 0);
+assert.ok(contextCount >= 4, `parsed only ${contextCount} adversarial contexts`);
+const declaredPlacements = (
+  dataSrc.match(/GATE_PLACEMENTS\s*=\s*\[([\s\S]*?)\n\];/)?.[1] ?? ""
+).match(/"[^"]+"/g)?.length;
+check(
+  declaredPlacements === contextCount,
+  `GATE_PLACEMENTS lists ${declaredPlacements} places but test_gate_adversarial.py plants each ` +
+    `shape in ${contextCount} (BODY_CONTEXTS + AUX_CONTEXTS)`
+);
+check(
+  text.includes(`${contextCount} caller-controlled places`),
+  `the page should say the gate suite plants every shape in "${contextCount} caller-controlled places"`
+);
+
+// And the assertion that now pins the count, quoted where the page cites it.
+check(
+  /len\(matrix\)\s*==\s*(\d+)/.test(evalTest) &&
+    Number(evalTest.match(/len\(matrix\)\s*==\s*(\d+)/)[1]) === realShapes.length,
+  `tests/test_eval_extraction.py must pin the shape count at ${realShapes.length} ` +
+    `(assert len(matrix) == ${realShapes.length}) for the page to badge it Pinned`
+);
+
 /* ── 14 · the platform statement stays honest ───────────────────────── */
 
 check(
@@ -430,13 +650,15 @@ if (failures.length) {
 }
 
 console.log(
-  `✓ memory copy: ${realToolCount} memory-toolset tools, ${realWeights.size} kinds and 7 retrieval ` +
-    `constants match tools/openburnbar-mcp/; ${measurements.length} measurements render ` +
-    `(${unpinned.length} honestly labelled unpinned); extraction floor ${floor} matches the committed ` +
-    `assertion; device sync is published as not shipped.\n` +
-    `✓ memory atlas: all ${registeredAll.length} tools listed, none invented ` +
+  `✓ memory copy: ${realToolCount} memory-toolset tools, ${realWeights.size} kinds and 8 retrieval ` +
+    `constants match tools/openburnbar-mcp/; ${measurements.length} measurements render in their own ` +
+    `bench cards (${unpinned.length} honestly labelled unpinned); extraction floor ${floor} matches ` +
+    `the committed assertion; ${realShapes.length} credential shapes across ${contextCount} ` +
+    `placements match the gate suite; device sync is published as not shipped.\n` +
+    `✓ memory atlas: all ${registeredAll.length} tools listed and printed as the total, none invented ` +
     `(${registeredBurnbar.length} burnbar_* + ${registeredOrchestration.length} ` +
     `ministry_*/castle_*/bench_*); ${atlasEntries.filter((e) => e.memory).length} marked ` +
-    `memory-toolset; ${gatedCount} capability-gated tools match their denial sites; ` +
+    `memory-toolset; ${gatedCount} capability-gated tools match their denial sites, ` +
+    `${guardedTotal} of those guarded and annotated with the condition that reaches them; ` +
     `${pageCapEnv.size} capability env vars match server.py; platform claim is honest.`
 );

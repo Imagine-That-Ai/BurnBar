@@ -29,6 +29,27 @@ export const MEMORY_STORE_PATH =
  *  gets with BURNBAR_MCP_TOOLSET=memory. Counted, not guessed. */
 export const MEMORY_TOOL_COUNT = 32;
 
+/* The whole server, for the sections that speak about it rather than about
+   the memory toolset. Parsed out of server.py by the copy gate, so they
+   cannot drift — and declared here, above the first block that quotes one,
+   because a count referenced before it is defined is a blank page. */
+
+/** Every `burnbar_*` tool the server registers — memory, code intelligence,
+ *  sessions, spend and the rest of the product surface. */
+export const BURNBAR_TOOL_COUNT = 63;
+
+/** `ministry_*` + `castle_*` + `bench_*`: agent fan-out and benchmarking
+ *  tooling. Real, registered, and listed in the atlas under their own three
+ *  headings — they orchestrate and grade coding agents rather than serve
+ *  your memory, which is worth a reader knowing, not worth hiding. */
+export const ORCHESTRATION_TOOL_COUNT = 26;
+
+/** Every tool the server registers, full stop — `burnbar_*` and
+ *  orchestration tooling combined. The number the hero and the atlas heading
+ *  print, because "all" and "in total" both have to mean all. Gate-checked
+ *  against every `@mcp.tool()` definition in server.py. */
+export const TOTAL_TOOL_COUNT = BURNBAR_TOOL_COUNT + ORCHESTRATION_TOOL_COUNT;
+
 /* ------------------------------------------------------------------
    1 · The write pipeline. Seven stages, in the order the engine runs
    them. Source: docs/superpowers/2026-09-02-memory-mcp-v2-design.md §4.1
@@ -246,7 +267,7 @@ export const GATE_POLICIES = [
     label: "retain",
     status: "experimental" as const,
     headline: "Vault it, hide it, and never sync it.",
-    body: "Stores the verbatim text in an encrypted vault table, keeps a redacted searchable body in the main store, and hides the memory from default recall. It needs its own capability flag that the operator profile never grants, and reading it back needs sensitive_read plus include_secrets. Retained memories are never mirrored, never exported by default, and never leave the device."
+    body: "Stores the verbatim text in an encrypted vault table, keeps a redacted searchable body in the main store, and hides the memory from default recall. It needs its own capability flag that the operator profile never grants, and reading it back needs sensitive_read plus include_secrets. Retained memories are never mirrored and never exported by default; the one path that returns the verbatim text is an export you ask for by name, with sensitive read granted and include_secrets set."
   }
 ];
 
@@ -340,7 +361,7 @@ export const MEASUREMENTS: Measurement[] = [
     label: "Credential shapes detected in raw form",
     command: "eval_memory.py --gate",
     corpus: "GitHub, AWS, Slack, OpenAI, Anthropic, Stripe, JWT, PEM, Postgres, Twilio, …",
-    pin: "tests/test_eval_extraction.py — every row's raw column must be true",
+    pin: "tests/test_eval_extraction.py — len(matrix) == 25, and every row's raw column must be true",
     caveat: "Four encoding gaps remain and are named on this page rather than rounded away."
   },
   {
@@ -500,7 +521,7 @@ export const CLIENTS: ClientSetup[] = [
       "  }",
       "}"
     ],
-    note: "This is the entry the BurnBar checkout already ships. Copy it into any other project to give that project's sessions the same memory."
+    note: "This mirrors the entry the BurnBar checkout already ships, with the relative command path made absolute so you can copy it into any other project and give that project's sessions the same memory."
   },
   {
     id: "cursor",
@@ -638,7 +659,7 @@ export const VERIFY_STEPS: VerifyStep[] = [
     id: "listed",
     title: "The server is listed",
     how: `Ask your client for its MCP servers — /mcp in Claude Code and Codex, Settings → MCP in Cursor.`,
-    expect: `openburnbar appears and reports ${MEMORY_TOOL_COUNT} tools.`,
+    expect: `openburnbar appears and reports ${MEMORY_TOOL_COUNT} tools — or all ${TOTAL_TOOL_COUNT} if you followed the Hermes block, which runs the full server until you narrow it with BURNBAR_MCP_TOOLSET=memory.`,
     ifNot:
       "The command path is the usual culprit: it must be absolute, and launch-memory.sh must be executable. Run it once in a terminal — it prints its bootstrap to stderr and then waits for JSON-RPC on stdin."
   },
@@ -762,29 +783,7 @@ export const PRO_INVARIANTS = [
    ================================================================== */
 
 /* ------------------------------------------------------------------
-   10 · Tool counts. Parsed out of server.py by the copy gate, so they
-   cannot drift. MEMORY_TOOL_COUNT above is the memory toolset — what a
-   client gets with BURNBAR_MCP_TOOLSET=memory. These are the server.
-------------------------------------------------------------------- */
-
-/** Every `burnbar_*` tool the server registers — memory, code intelligence,
- *  sessions, spend and the rest of the product surface. */
-export const BURNBAR_TOOL_COUNT = 63;
-
-/** `ministry_*` + `castle_*` + `bench_*`: agent fan-out and benchmarking
- *  tooling. Real, registered, and listed in the atlas under their own three
- *  headings — they orchestrate and grade coding agents rather than serve
- *  your memory, which is worth a reader knowing, not worth hiding. */
-export const ORCHESTRATION_TOOL_COUNT = 26;
-
-/** Every tool the server registers, full stop — `burnbar_*` and
- *  orchestration tooling combined. The number the atlas heading prints,
- *  because "all" has to mean all. Gate-checked against every
- *  `@mcp.tool()` definition in server.py. */
-export const TOTAL_TOOL_COUNT = BURNBAR_TOOL_COUNT + ORCHESTRATION_TOOL_COUNT;
-
-/* ------------------------------------------------------------------
-   11 · Capability switches. Source: tools/openburnbar-mcp/README.md
+   10 · Capability switches. Source: tools/openburnbar-mcp/README.md
    (the export block at the top) and server.py LOCAL_MCP_CAPABILITY_ENV.
 ------------------------------------------------------------------- */
 export type Capability = {
@@ -864,7 +863,7 @@ export const CAPABILITIES: Capability[] = [
 ];
 
 /* ------------------------------------------------------------------
-   12 · The tool atlas. Every `burnbar_*` tool, grouped by the surface
+   11 · The tool atlas. Every `burnbar_*` tool, grouped by the surface
    it belongs to, with the capability that gates it.
 
    `caps` is not editorial. It is the set of capabilities named at a
@@ -972,6 +971,12 @@ export type AtlasTool = {
   desc: string;
   /** Capabilities named at a denial site inside this tool. Gate-checked. */
   caps: string[];
+  /** For a capability whose denial site sits behind a guard, the condition
+   *  that reaches it — rendered as a suffix on the chip so the atlas never
+   *  publishes a conditional gate as an unconditional requirement.
+   *  Gate-checked in both directions: a guarded denial site must carry a
+   *  note, and a note must correspond to a guarded denial site. */
+  capsWhen?: Record<string, string>;
   /** In MEMORY_TOOLSET — served with BURNBAR_MCP_TOOLSET=memory. Gate-checked. */
   memory: boolean;
 };
@@ -990,6 +995,10 @@ export const TOOL_ATLAS: AtlasTool[] = [
     group: "memory",
     desc: "Turn a conversation, a block of text, or facts you already extracted into memories — extraction, gate, injection screen, then ADD / UPDATE / NONE / DELETE. Idempotent per input.",
     caps: ["memory_llm_extract", "memory_write", "spawn_process"],
+    capsWhen: {
+      memory_llm_extract: "when an LLM extractor is named",
+      spawn_process: "when an LLM extractor is named"
+    },
     memory: true
   },
   {
@@ -997,6 +1006,7 @@ export const TOOL_ATLAS: AtlasTool[] = [
     group: "memory",
     desc: "Hybrid BM25 and vector recall, fused and reranked by salience, with kind, tag, entity, metadata and date filters. Every body comes back wrapped as untrusted data.",
     caps: ["sensitive_read"],
+    capsWhen: { sensitive_read: "with include_secrets" },
     memory: true
   },
   {
@@ -1018,6 +1028,7 @@ export const TOOL_ATLAS: AtlasTool[] = [
     group: "memory",
     desc: "Read one memory by id, optionally with its wrapped history.",
     caps: ["sensitive_read"],
+    capsWhen: { sensitive_read: "with include_secrets" },
     memory: true
   },
   {
@@ -1477,6 +1488,7 @@ export const TOOL_ATLAS: AtlasTool[] = [
     group: "ministry",
     desc: "Select a model for a Ministry wand by policy; optionally prove it first with a headless landed-commit probe.",
     caps: ["spawn_process"],
+    capsWhen: { spawn_process: "with prove_headless" },
     memory: false
   },
   {
@@ -1484,6 +1496,7 @@ export const TOOL_ATLAS: AtlasTool[] = [
     group: "ministry",
     desc: "Select several models for a wand at once, with optional provider diversity and the same headless proof.",
     caps: ["spawn_process"],
+    capsWhen: { spawn_process: "with prove_headless" },
     memory: false
   },
   {
@@ -1498,6 +1511,7 @@ export const TOOL_ATLAS: AtlasTool[] = [
     group: "ministry",
     desc: "Build a droid exec shell command with namespaced disabled tools and a done marker for the caller to launch.",
     caps: ["spawn_process"],
+    capsWhen: { spawn_process: "with prove_headless" },
     memory: false
   },
   {
@@ -1535,6 +1549,7 @@ export const TOOL_ATLAS: AtlasTool[] = [
     group: "castle",
     desc: "Select Castle (runtime, model) workers for a wand, optionally proving each with a disposable landed-commit probe.",
     caps: ["spawn_process"],
+    capsWhen: { spawn_process: "with prove_headless" },
     memory: false
   },
   {
@@ -1626,7 +1641,7 @@ export const TOOL_ATLAS: AtlasTool[] = [
 ];
 
 /* ------------------------------------------------------------------
-   13 · Time. A memory is not a row you overwrite — it is a statement
+   12 · Time. A memory is not a row you overwrite — it is a statement
    with a beginning and, eventually, an end.
    Source: memory_engine/_write.py (valid_from / valid_to /
    superseded_by / supersedes_json / _reinforce),
@@ -1708,7 +1723,7 @@ export const TIME_LIMIT =
   "Supersession needs a cue. Without one the engine adds rather than overwrites — which is why the rules-only agreement below is 0.42 and not 0.9. You get two memories and a ranking, not a lost fact. That is the trade we chose, and it is the reason the history and the forget path have to be good.";
 
 /* ------------------------------------------------------------------
-   14 · Forget. Source: memory_engine/_read.py forget / forget_all /
+   13 · Forget. Source: memory_engine/_read.py forget / forget_all /
    _purge; server.py burnbar_forget / burnbar_forget_all;
    tools/openburnbar-mcp/README.md § Works without the daemon,
    § Cross-store lifecycle; docs/PRIVACY.md:87-93.
@@ -1754,7 +1769,7 @@ export const FORGET_LIMIT =
   "A forget reaches the engine store, the daemon mirror and — for a Project Memory snapshot — the sealed hosted copy. It cannot reach a JSON export you already took, a transcript on disk that the memory was extracted from, or a copy an agent pasted into a file. Deleting the memory is not deleting the source, and the page would rather say so than let you assume otherwise.";
 
 /* ------------------------------------------------------------------
-   15 · Review, analytics, audit. What oversight actually looks like.
+   14 · Review, analytics, audit. What oversight actually looks like.
    Source: server.py burnbar_memory_review / burnbar_memory_list /
    burnbar_memory_analytics / burnbar_audit_trail /
    burnbar_memory_doctor / burnbar_inbox_*;
@@ -1797,7 +1812,7 @@ export const REVIEW_LIMIT =
   "Nothing auto-approves. A quarantined memory stays out of recall until a human decides, which is the correct default and also means an ignored queue is a queue that never surfaces. burnbar_memory_analytics counts it for you; it will not decide for you.";
 
 /* ------------------------------------------------------------------
-   16 · Code intelligence. Source: tools/openburnbar-mcp/README.md
+   15 · Code intelligence. Source: tools/openburnbar-mcp/README.md
    § Local memory engine (the Project Code Memory paragraphs) and the
    docstrings on the eleven code tools in server.py.
 ------------------------------------------------------------------- */
@@ -1845,7 +1860,7 @@ export const CODE_LIMIT =
   "Semantic code search is off until a real local embedding provider is configured — burnbar_search_code reports semanticAvailable=false rather than returning lexical hits dressed as semantic ones. Call graphs are lexical-tier. References and symbols reach the exact tier only for languages you gave a language server. This is a strong local index, not a compiler.";
 
 /* ------------------------------------------------------------------
-   17 · Sessions across harnesses. Source: server.py
+   16 · Sessions across harnesses. Source: server.py
    burnbar_search_conversations / burnbar_semantic_search_conversations /
    burnbar_list_resumable_conversations / burnbar_resume_conversation /
    burnbar_spawn_resume; README § Local memory engine (the resume
@@ -1874,7 +1889,7 @@ export const SESSION_LIMIT =
   "This reads the index OpenBurnBar builds, so a harness has to be one the app parses. Full session plaintext, in-app chat rows and a ported briefing all need the sensitive-read capability, which is off by default. And a ported resume is a briefing, not a state transfer — the new harness gets a faithful account of the old session, not its internals.";
 
 /* ------------------------------------------------------------------
-   18 · The rest of the server. Honest, at the level the README
+   17 · The rest of the server. Honest, at the level the README
    documents it. Source: tools/openburnbar-mcp/README.md § Tools,
    § Castle multi-runtime fan-out, § Hermes proxy sidecar, § Local
    memory engine (the ledger writer paragraph).
@@ -1917,15 +1932,15 @@ export const SERVER_SURFACES: ServerSurface[] = [
   {
     id: "project",
     label: "Project Memory snapshots",
-    tools: "4 tools",
+    tools: "2 local + 2 hosted",
     body: "The repository briefs the app maintains — sections, freshness, source counts, a content hash — listed and read from any MCP client. A snapshot resolves local first and falls back to the hosted encrypted copy, which is decrypted on this machine.",
-    edge: "Cloud sync and cloud delete are separate capabilities from cloud decrypt, and all three are off by default. Uploads carry sealed payloads under vault-derived opaque document ids; the hosted side never sees a project name.",
+    edge: "The two hosted tools are grouped under Encrypted cloud in the atlas rather than here, because what gates them is the cloud capability set, not the snapshot. Cloud sync and cloud delete are separate capabilities from cloud decrypt, and all three are off by default. Uploads carry sealed payloads under vault-derived opaque document ids; the hosted side never sees a project name.",
     source: "tools/openburnbar-mcp/README.md § Tools; § Local memory engine"
   }
 ];
 
 /* ------------------------------------------------------------------
-   19 · Where this runs. Stated exactly as `main` supports it.
+   18 · Where this runs. Stated exactly as `main` supports it.
    Source: tools/openburnbar-mcp/README.md § Setup, § Support level,
    § Local memory engine.
 ------------------------------------------------------------------- */
@@ -1953,7 +1968,7 @@ export const PLATFORMS = {
 } as const;
 
 /* ------------------------------------------------------------------
-   20 · Packs and answers — the "hand the agent a budget" surface.
+   19 · Packs and answers — the "hand the agent a budget" surface.
    Source: tools/openburnbar-mcp/README.md § Structured refusals
    (the pack budget paragraph) and § Ask my memory.
 ------------------------------------------------------------------- */

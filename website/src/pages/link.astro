@@ -243,15 +243,26 @@ import BaseLayout from "@layouts/BaseLayout.astro";
     }
   }
 
+  @keyframes pulse-idle {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.35;
+    }
+  }
+
   /* This page is a transactional flow with two indefinite waits, so its
      motion is not decorative — but an infinite rotation and a slide-in are
-     exactly what a vestibular-sensitive visitor asked us not to do. Under
-     reduced motion the spinner becomes a static ember-topped ring (still
-     clearly a "working" affordance, since the surrounding copy says so) and
+     exactly what a vestibular-sensitive visitor asked us not to do. Reduced
+     motion asks for less vestibular motion, not for no progress signal, so
+     the spinner keeps saying "working" through a slow opacity pulse — no
+     transform, no travel, nothing that moves across the visual field — while
      state changes cut rather than slide. */
   @media (prefers-reduced-motion: reduce) {
     .spinner {
-      animation: none;
+      animation: pulse-idle 2.4s ease-in-out infinite;
     }
     .link-state {
       animation: none;

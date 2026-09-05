@@ -101,7 +101,7 @@ export function initToolAtlas(): void {
     input.hidden = false;
     let frame = 0;
     input.addEventListener("input", () => {
-      // One repaint per frame: sixty-three rows is cheap, but typing into a
+      // One repaint per frame: eighty-nine rows is cheap, but typing into a
       // search field should never be the thing that costs a frame.
       if (frame) cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => apply(input.value));
@@ -113,6 +113,11 @@ export function initToolAtlas(): void {
         apply("");
       }
     });
+    // A back-navigation or a bfcache restore repopulates a type="search"
+    // field before this module ever sees an `input` event. Without this the
+    // reader lands on a page whose filter box says "cloud delete" over all
+    // eighty-nine rows.
+    if (input.value) apply(input.value);
   }
 
   if (toggleAll) {
