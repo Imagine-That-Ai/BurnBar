@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import re
 import sqlite3
 import sys
 import time
@@ -432,6 +433,55 @@ def verify_audit_chain(conn: sqlite3.Connection) -> dict[str, Any]:
     return {"ok": True, "events": len(rows), "brokenAtSeq": None}
 
 
+# The shape `pcm.project_id_for` and `pcm.project_id_for_fingerprint` mint, and
+# therefore the only shape anything may be adopted under. A `.burnbar/project-id`
+# in a repository is content an attacker who can get a clone onto this machine
+# controls: unvalidated, it reached plaintext `engine_meta` verbatim and reached
+# the calling agent's context as a command to run. Nothing that fails this
+# pattern is a project id, and nothing that fails it is ever stored, echoed or
+# adopted.
+PROJECT_ID_RE = re.compile(r"^proj_[0-9a-f]{32}$")
+
+# A project id is 37 bytes. Reading more than this from a repository file is
+# reading an attacker's payload, so the probe stops well before it.
+PROJECT_DOTFILE_MAX_BYTES = 256
+
+
+def is_project_id(value: str | None) -> bool:
+    return bool(value) and PROJECT_ID_RE.match(str(value)) is not None
+
+
+def read_project_dotfile(root: Path) -> tuple[str | None, str | None]:
+    """`(valid project id, sha256 of what was actually there)` for `.burnbar/project-id`.
+
+    **Reads. Writes nothing, ever.** `resolve_project` runs on every recall,
+    list, stat, timeline and doctor call: a write here left an uncommitted
+    INSERT — and with it a RESERVED lock held for the life of the connection —
+    across every read the engine performs, blocking the daemon and the app from
+    writing the shared store. The dotfile is a *proposal*; only `adopt_project`
+    acts on one, and only with an explicit confirmation.
+
+    The hash is returned so a malformed file can be reported without any of its
+    content being echoed anywhere.
+    """
+    dotfile = root / ".burnbar" / "project-id"
+    try:
+        if not dotfile.is_file():
+            return None, None
+        with dotfile.open("rb") as handle:
+            raw = handle.read(PROJECT_DOTFILE_MAX_BYTES + 1)
+    except OSError:
+        return None, None
+    digest = sha256_hex(raw)
+    if len(raw) > PROJECT_DOTFILE_MAX_BYTES:
+        return None, digest
+    try:
+        candidate = raw.decode("utf-8").strip()
+    except UnicodeDecodeError:
+        return None, digest
+    return (candidate if is_project_id(candidate) else None), digest
+
+
 def map_project(conn: sqlite3.Connection, project_path: str | Path | None, project_id: str) -> None:
     """Write the explicit folder → project mapping `resolve_project` reads first.
 
@@ -452,7 +502,21 @@ def map_project(conn: sqlite3.Connection, project_path: str | Path | None, proje
         "INSERT OR REPLACE INTO engine_meta (key, value) VALUES (?, ?)",
         (f"project_map:{canonical_path}", project_id),
     )
-    if "pcm_project_aliases" in pcm.table_names(conn):
+    tables = pcm.table_names(conn)
+    if "pcm_projects" in tables:
+        # `pcm_project_aliases.project_id` is a foreign key into `pcm_projects`,
+        # and an adopted id is one the daemon-shared store may never have seen.
+        # `INSERT OR IGNORE`, so a project that already has a git identity keeps
+        # it — `pcm.resolve_project_id`'s own guard does the same.
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO pcm_projects
+                (project_id, identity_version, identity_fingerprint, project_name, primary_path, created_at, updated_at)
+            VALUES (?, 2, ?, ?, ?, ?, ?)
+            """,
+            (project_id, f"explicit:{project_id}", root.name, canonical_path, ts, ts),
+        )
+    if "pcm_project_aliases" in tables:
         conn.execute(
             """
             INSERT INTO pcm_project_aliases (id, project_id, alias_path, path_hash, first_seen_at, last_seen_at)
@@ -499,15 +563,24 @@ def adopt_project(
     path_hash = sha256_hex(canonical_path)
 
     target_id = project_id
+    from_dotfile = False
     if not target_id:
-        dotfile = root / ".burnbar" / "project-id"
-        if dotfile.is_file():
-            try:
-                target_id = dotfile.read_text(encoding="utf-8").strip()
-            except OSError:
-                pass
-    if not target_id:
-        raise ValueError("No project ID specified and no .burnbar/project-id dotfile found.")
+        target_id, _digest = read_project_dotfile(root)
+        from_dotfile = target_id is not None
+        if target_id is None:
+            raise ValueError(
+                "No project ID specified, and .burnbar/project-id is absent or is not a project id "
+                "(expected proj_ followed by 32 hex characters)."
+            )
+    # Validated BEFORE anything is written. `target_id` becomes
+    # `projects.project_id`, `pcm_project_aliases.project_id`, two `project_map:*`
+    # keys and the `project_id` of every subsequent write in this folder; when it
+    # came from the dotfile it is content a cloned repository controls.
+    if not is_project_id(target_id):
+        raise ValueError(
+            f"{'.burnbar/project-id' if from_dotfile else 'project_id'} is not a project id: "
+            "expected proj_ followed by 32 hex characters."
+        )
 
     existing_map = conn.execute(
         "SELECT value FROM engine_meta WHERE key = ? OR key = ?",
@@ -533,25 +606,42 @@ def adopt_project(
             "path": canonical_path,
         }
 
+    # Both sides of the trade, because adoption is not additive. `memoriesCount`
+    # is what joins; `detachingCount` is what this folder already holds under
+    # its current identity — those rows are NOT rewritten and NOT aliased, so
+    # after adoption the folder's own history is no longer visible from it.
+    # Silence about that half was a split-brain the member was never shown.
+    detaching_id = current_mapped_id or resolve_project(conn, canonical_path)[0]
     memories_count = 0
+    detaching_count = 0
     if "memories" in pcm.table_names(conn):
         count_row = conn.execute("SELECT COUNT(*) FROM memories WHERE project_id = ?", (target_id,)).fetchone()
         if count_row:
             memories_count = int(count_row[0])
+        if detaching_id != target_id:
+            detach_row = conn.execute("SELECT COUNT(*) FROM memories WHERE project_id = ?", (detaching_id,)).fetchone()
+            if detach_row:
+                detaching_count = int(detach_row[0])
 
     if not confirmed:
         return {
             "status": "confirmation_required",
             "projectID": target_id,
+            "detachingProjectID": detaching_id,
             "path": canonical_path,
             "memoriesCount": memories_count,
+            "detachingCount": detaching_count,
             "message": (
                 f"Adopting project '{target_id}' for path '{canonical_path}' will join "
-                f"{memories_count} existing memories. Explicit confirmation required."
+                f"{memories_count} existing memories, and will detach the {detaching_count} memories this "
+                f"folder holds under '{detaching_id}': they are left where they are, unaliased, and stop "
+                "being visible from here. Explicit confirmation required."
             ),
         }
 
     map_project(conn, root, target_id)
+    # Nothing writes this key any more (see `resolve_project`); the delete stays
+    # so a store stamped by an earlier build does not keep a stale proposal.
     conn.execute(
         "DELETE FROM engine_meta WHERE key = ?",
         (f"pending_project_adoption:{path_hash}",),
@@ -562,8 +652,10 @@ def adopt_project(
         "status": "ok",
         "event": "ADOPTED",
         "projectID": target_id,
+        "detachingProjectID": detaching_id,
         "path": canonical_path,
         "memoriesCount": memories_count,
+        "detachingCount": detaching_count,
     }
 
 
@@ -585,8 +677,16 @@ def resolve_project(conn: sqlite3.Connection, project_path: str | None) -> tuple
         project_id = str(row[0])
         fingerprint = f"explicit:{project_id}"
     elif "pcm_project_aliases" in pcm.table_names(conn):
+        # Only an alias an ADOPTION wrote is an explicit map. `pcm.resolve_project_id`
+        # records an alias row automatically for every folder it ever sees, so
+        # without the `explicit:` fingerprint join, tier 1 of the documented
+        # resolution order would be reachable without anyone having adopted
+        # anything — and an auto-recorded row could masquerade as a member's
+        # confirmed decision.
         alias = conn.execute(
-            "SELECT project_id FROM pcm_project_aliases WHERE path_hash = ? LIMIT 1",
+            "SELECT a.project_id FROM pcm_project_aliases AS a "
+            "JOIN projects AS p ON p.project_id = a.project_id "
+            "WHERE a.path_hash = ? AND p.fingerprint LIKE 'explicit:%' LIMIT 1",
             (path_hash,),
         ).fetchone()
         if alias is not None:
@@ -598,19 +698,10 @@ def resolve_project(conn: sqlite3.Connection, project_path: str | None) -> tuple
         fingerprint = pcm.project_identity_fingerprint(root)
         project_id = pcm.project_id_for_fingerprint(fingerprint, pcm.project_id_for(root))
 
-    # Dotfile security check: never auto-apply .burnbar/project-id
-    dotfile = root / ".burnbar" / "project-id"
-    if dotfile.is_file():
-        try:
-            dotfile_id = dotfile.read_text(encoding="utf-8").strip()
-            if dotfile_id and dotfile_id != project_id:
-                if "engine_meta" in pcm.table_names(conn):
-                    conn.execute(
-                        "INSERT OR REPLACE INTO engine_meta (key, value) VALUES (?, ?)",
-                        (f"pending_project_adoption:{path_hash}", dotfile_id),
-                    )
-        except OSError:
-            pass
+    # `.burnbar/project-id` is never read here at all. Resolution does not
+    # consult it (that is what stops a cloned repo re-scoping memories), and
+    # noting it would be a WRITE on a path every read runs through. The doctor
+    # reads it, validates it, and reports it — see `read_project_dotfile`.
 
     existing = conn.execute(
         "SELECT fingerprint, display_name, primary_path FROM projects WHERE project_id = ?", (project_id,)

@@ -3481,8 +3481,12 @@ def burnbar_project_adopt(project_id: str | None = None, project_path: str | Non
     A `.burnbar/project-id` dotfile *proposes* an identity and is never applied on
     its own, because repository contents must not be able to re-scope a folder's
     memories by being cloned. Without `confirm=True` this call refuses and reports
-    the id and how many memories adopting it would join; with it, the mapping is
-    written. A dotfile naming an id already mapped to this path is a no-op.
+    both sides — `memoriesCount`, the rows adopting would join, and
+    `detachingCount`, the rows this folder holds under its current id, which are
+    left where they are and stop being visible from here. With it, the mapping is
+    written. A dotfile naming an id already mapped to this path is a no-op, and an
+    id that is not `proj_` plus 32 hex characters is refused before anything is
+    written.
 
     Gate: `memory_write`.
     """
@@ -3491,7 +3495,15 @@ def burnbar_project_adopt(project_id: str | None = None, project_path: str | Non
     if denied := _capability_denial("burnbar_project_adopt", "memory_write"):
         return denied
     with _memory_engine() as engine:
-        result = engine.adopt_project(project_path=project_path, project_id=project_id, confirmed=confirm)
+        try:
+            result = engine.adopt_project(project_path=project_path, project_id=project_id, confirmed=confirm)
+        except ValueError as exc:
+            # A malformed id (or a dotfile that is not one) is a refusal, not a
+            # crash — and the message names the shape, never the rejected bytes.
+            return json.dumps(
+                {"status": "refused", "code": "INVALID_PROJECT_ID", "reason": str(exc)},
+                indent=2,
+            )
         return json.dumps(result, indent=2, default=str)
 
 
@@ -5849,7 +5861,11 @@ def _handle_cli_args(argv: list[str]) -> bool:
     args = parser.parse_args(argv[2:])
 
     with _memory_engine() as engine:
-        result = engine.adopt_project(project_path=args.path, project_id=args.project_id, confirmed=args.yes)
+        try:
+            result = engine.adopt_project(project_path=args.path, project_id=args.project_id, confirmed=args.yes)
+        except ValueError as exc:
+            print(f"Could not adopt the project: {exc}", file=sys.stderr)
+            sys.exit(1)
         if result.get("status") == "confirmation_required":
             print(result["message"])
             # Adoption re-scopes a folder's memories, so it is never inferred: a
@@ -5864,7 +5880,11 @@ def _handle_cli_args(argv: list[str]) -> bool:
             if reply not in ("y", "yes"):
                 print("Adoption cancelled.")
                 sys.exit(1)
-            result = engine.adopt_project(project_path=args.path, project_id=args.project_id, confirmed=True)
+            try:
+                result = engine.adopt_project(project_path=args.path, project_id=args.project_id, confirmed=True)
+            except ValueError as exc:
+                print(f"Could not adopt the project: {exc}", file=sys.stderr)
+                sys.exit(1)
 
         if result.get("status") != "ok":
             print(f"Could not adopt the project: {result}", file=sys.stderr)
@@ -5874,7 +5894,9 @@ def _handle_cli_args(argv: list[str]) -> bool:
         else:
             print(
                 f"Adopted project '{result['projectID']}' for path '{result['path']}' "
-                f"({result['memoriesCount']} memories)."
+                f"({result['memoriesCount']} memories joined, "
+                f"{result.get('detachingCount', 0)} left behind under "
+                f"'{result.get('detachingProjectID')}')."
             )
     return True
 

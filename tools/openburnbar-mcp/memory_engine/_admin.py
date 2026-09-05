@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import os
 from datetime import UTC, datetime
+from pathlib import Path
 from collections.abc import Sequence
 from typing import Any
 
@@ -31,7 +32,14 @@ from .constants import (
 )
 from .embeddings import encode_vector
 from .extract import Fact
-from .store import audit_event, default_db_path, project_payload, resolve_project, verify_audit_chain
+from .store import (
+    audit_event,
+    default_db_path,
+    project_payload,
+    read_project_dotfile,
+    resolve_project,
+    verify_audit_chain,
+)
 
 
 # The auxiliary-exposure sweep is a regex pass over short strings, so the cap is
@@ -866,17 +874,46 @@ class _Maintenance:
                     }
                 )
 
-        if "engine_meta" in pcm.table_names(self.conn):
-            unconfirmed = self.conn.execute(
-                "SELECT key, value FROM engine_meta WHERE key LIKE 'pending_project_adoption:%'"
-            ).fetchall()
-            for urow in unconfirmed:
+        if active_project_id and project_extra.get("projectRoot"):
+            # The dotfile is read HERE, not on the read path that resolves a
+            # project — reading it is a report, and reporting is what the doctor
+            # is for. `read_project_dotfile` validates the shape and never
+            # returns unvalidated bytes, so nothing a cloned repository wrote
+            # can reach this payload: the doctor hands its findings to the
+            # calling model unwrapped, and the old `fix` string was
+            # "Run `project adopt <verbatim file contents>`" — a
+            # prompt-injection channel one surface over from the one P8 closes.
+            proposed, digest = read_project_dotfile(Path(str(project_extra["projectRoot"])))
+            if proposed is not None and proposed != active_project_id:
                 findings.append(
                     {
                         "severity": "warn",
                         "code": "UNCONFIRMED_PROJECT_DOTFILE",
-                        "detail": f"Unconfirmed .burnbar/project-id found naming '{urow[1]}'. Run `project adopt` to adopt.",
-                        "fix": f"Run `project adopt {urow[1]}` to confirm adoption.",
+                        "detail": (
+                            "This folder carries a .burnbar/project-id proposing another project. It is a "
+                            "proposal only: nothing resolves through it and nothing is stored until you adopt it."
+                        ),
+                        "proposedProjectID": proposed,
+                        # Named, never interpolated into a command: the fix tells
+                        # the member where to look, and they run it themselves.
+                        "fix": (
+                            "Read .burnbar/project-id in this folder yourself. If you meant it, run "
+                            "`project adopt` there and confirm; if you did not, delete the file."
+                        ),
+                    }
+                )
+            elif proposed is None and digest is not None:
+                findings.append(
+                    {
+                        "severity": "warn",
+                        "code": "MALFORMED_PROJECT_DOTFILE",
+                        # The content is identified by hash. Echoing it is the
+                        # whole defect: it is repository-controlled text.
+                        "detail": (
+                            f"This folder's .burnbar/project-id (sha256 {digest[:12]}) is not a project id. "
+                            "It is ignored entirely."
+                        ),
+                        "fix": "Delete .burnbar/project-id in this folder, or replace it with a real project id.",
                     }
                 )
 

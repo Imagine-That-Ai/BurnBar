@@ -1165,7 +1165,7 @@ export const TOOL_ATLAS: AtlasTool[] = [
   {
     name: "burnbar_project_adopt",
     group: "lifecycle",
-    desc: "Join this folder to an existing project id. A .burnbar/project-id file only proposes one — nothing is applied until you confirm, so cloning a repository can never re-scope its memories.",
+    desc: "Join this folder to an existing project id. A .burnbar/project-id file only proposes one — nothing is applied until you confirm, so cloning a repository can never re-scope its memories. The refusal shows both sides: the memories adopting would join, and the ones this folder keeps under its current id and stops seeing.",
     caps: ["memory_write"],
     memory: true
   },
