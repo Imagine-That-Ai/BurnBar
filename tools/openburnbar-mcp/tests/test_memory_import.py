@@ -382,3 +382,129 @@ def test_an_out_of_range_import_cursor_is_refused(server_env: Path, monkeypatch:
     result = json.loads(server.burnbar_memory_import(json.dumps(payload), project_path=repo, cursor=-3))
     assert result["status"] == "rejected"
     assert result["code"] == "INVALID_CURSOR"
+
+
+def _branched_chatgpt_export() -> dict:
+    """A ChatGPT mapping with a regenerated reply, as the real export writes one.
+
+    `mapping` is a tree; a regenerated reply and an edited prompt create sibling
+    branches, and `current_node` names the leaf of the branch the user kept.
+    """
+    return {
+        "schema": "chatgpt.conversations.v1",
+        "conversations": [
+            {
+                "id": "conv-branched",
+                "title": "Deploy target",
+                "current_node": "node-kept",
+                "mapping": {
+                    "root": {"id": "root", "parent": None, "children": ["node-q"], "message": None},
+                    "node-q": {
+                        "id": "node-q",
+                        "parent": "root",
+                        "children": ["node-abandoned", "node-kept"],
+                        "message": {
+                            "id": "m-q",
+                            "create_time": 1.0,
+                            "author": {"role": "user"},
+                            "content": {"parts": ["Which region does the cluster run in?"]},
+                        },
+                    },
+                    "node-abandoned": {
+                        "id": "node-abandoned",
+                        "parent": "node-q",
+                        "children": [],
+                        "message": {
+                            "id": "m-abandoned",
+                            "create_time": 2.0,
+                            "author": {"role": "assistant"},
+                            "content": {"parts": ["The cluster runs in eu-west-3."]},
+                        },
+                    },
+                    "node-kept": {
+                        "id": "node-kept",
+                        "parent": "node-q",
+                        "children": [],
+                        "message": {
+                            "id": "m-kept",
+                            "create_time": 3.0,
+                            "author": {"role": "assistant"},
+                            "content": {"parts": ["Correction: the cluster runs in us-east-1."]},
+                        },
+                    },
+                },
+            }
+        ],
+    }
+
+
+def test_only_the_active_chatgpt_branch_is_imported(server_env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A superseded reply the user regenerated away is not a memory candidate.
+
+    Flattening `mapping.values()` imported abandoned user edits and superseded
+    assistant replies alongside the conversation the user actually kept, so
+    content the member explicitly rejected became a quarantined candidate that
+    contradicts the content they did keep.
+    """
+    server = _server(server_env, monkeypatch)
+    repo = _repo(server_env)
+    payload = _branched_chatgpt_export()
+
+    result = json.loads(server.burnbar_memory_import(json.dumps(payload), project_path=repo))
+    assert result["status"] == "ok", result
+    assert result["summary"]["totalCandidates"] == 2, result["summary"]
+
+    with server._memory_engine() as engine:
+        bodies = [
+            row["body"]
+            for row in engine.list(project_path=repo, scope="all", review_status="quarantined", page_size=200)[
+                "results"
+            ]
+        ]
+    assert any("us-east-1" in body for body in bodies), bodies
+    assert not any("eu-west-3" in body for body in bodies), bodies
+
+
+def test_a_mapping_without_a_current_node_still_imports_every_message(
+    server_env: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No branch pointer means no branch to choose: the flat read stays the fallback."""
+    server = _server(server_env, monkeypatch)
+    repo = _repo(server_env)
+    payload = _branched_chatgpt_export()
+    payload["conversations"][0].pop("current_node")
+
+    result = json.loads(server.burnbar_memory_import(json.dumps(payload), project_path=repo))
+    assert result["summary"]["totalCandidates"] == 3, result["summary"]
+
+
+def test_every_rejected_import_row_is_counted(server_env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`REJECT: 0` for an import that did reject rows makes the metrics unusable.
+
+    The summary counted only the preliminary secret sweep, so a candidate
+    `_commit_fact` refused for any other reason — a `reject` PII policy, an
+    auxiliary field over its bound — was invisible in the totals.
+    """
+    monkeypatch.setenv(me.PII_POLICY_ENV, "reject")
+    server = _server(server_env, monkeypatch)
+    repo = _repo(server_env)
+    payload = {
+        "schema": "chatgpt.conversations.v1",
+        "conversations": [
+            {
+                "id": "conv-pii",
+                "title": "Contact",
+                "messages": [
+                    {"id": "m1", "role": "user", "text": "Escalations go to alberto@example.com every Friday."},
+                    {"id": "m2", "role": "user", "text": "The cluster runs in us-east-1."},
+                ],
+            }
+        ],
+    }
+
+    result = json.loads(server.burnbar_memory_import(json.dumps(payload), project_path=repo))
+    assert result["status"] == "ok", result
+    events = [decision["event"] for decision in result["decisions"]]
+    assert events.count("REJECT") >= 1, result["decisions"]
+    assert result["summary"]["REJECT"] == events.count("REJECT"), result["summary"]
+    assert result["summary"]["ADD"] == events.count("ADD"), result["summary"]

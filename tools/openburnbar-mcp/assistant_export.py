@@ -9,6 +9,7 @@ Bounded batches respect an export cap and report full summary metrics.
 
 from __future__ import annotations
 
+import collections
 import os
 from dataclasses import dataclass, field
 from collections.abc import Sequence
@@ -91,6 +92,42 @@ def validate_export_schema(schema: str | None) -> dict[str, Any] | None:
     return None
 
 
+def _chatgpt_mapping_nodes(mapping: dict[str, Any], current_node: Any) -> list[dict[str, Any]]:
+    """The conversation the user kept, in order — not every node of the tree.
+
+    A ChatGPT `mapping` is a TREE. Regenerating a reply or editing a prompt adds
+    a sibling branch and leaves the superseded one in the export; `current_node`
+    names the leaf of the branch the user ended on. Flattening `mapping.values()`
+    therefore imported abandoned edits and replies the member explicitly
+    regenerated away, as quarantined candidates that contradict the ones they
+    kept.
+
+    Walking the parent chain from `current_node` is only possible when the export
+    carries one. When it does not — or when it names a node that is not in the
+    mapping, or the chain is a cycle — this falls back to the previous
+    deterministic flat ordering, because there is no branch to choose and
+    dropping the whole conversation would be worse than importing all of it.
+    """
+    chain: list[dict[str, Any]] = []
+    node_id = str(current_node).strip() if current_node else ""
+    seen: set[str] = set()
+    while node_id and node_id in mapping and node_id not in seen:
+        seen.add(node_id)
+        node = mapping[node_id]
+        if not isinstance(node, dict):
+            break
+        chain.append(node)
+        parent = node.get("parent")
+        node_id = str(parent).strip() if parent else ""
+    if chain:
+        chain.reverse()
+        return chain
+    return sorted(
+        (node for node in mapping.values() if isinstance(node, dict)),
+        key=lambda n: ((n.get("message") or {}).get("create_time") or 0.0, str(n.get("id") or "")),
+    )
+
+
 def parse_chatgpt_conversations(conversations: Sequence[dict[str, Any]]) -> list[CandidateMemory]:
     """Extract candidate memories from ChatGPT conversations.json."""
     candidates: list[CandidateMemory] = []
@@ -102,15 +139,7 @@ def parse_chatgpt_conversations(conversations: Sequence[dict[str, Any]]) -> list
 
         mapping = conv.get("mapping")
         if isinstance(mapping, dict):
-            # Sort node keys for deterministic ordering
-            sorted_nodes = sorted(
-                mapping.values(),
-                key=lambda n: (
-                    (n.get("message") or {}).get("create_time") or 0.0 if isinstance(n, dict) else 0.0,
-                    str(n.get("id") if isinstance(n, dict) else ""),
-                ),
-            )
-            for node in sorted_nodes:
+            for node in _chatgpt_mapping_nodes(mapping, conv.get("current_node")):
                 if not isinstance(node, dict):
                     continue
                 msg = node.get("message")
@@ -449,7 +478,17 @@ def import_assistant_export(
     engine._commit()
     engine._invalidate_cache()
 
-    # 8. Return comprehensive summary
+    # 8. Return comprehensive summary.
+    # The event totals are counted off `decisions`, never off the preliminary
+    # counters: `_commit_fact` rejects candidates for reasons the entry sweep
+    # never sees — a `reject` PII policy, untrusted export metadata over the
+    # auxiliary-field bound — and reporting `REJECT: 0` for an import that did
+    # reject rows makes the advertised metrics unusable. In-batch duplicates are
+    # reported as `COLLAPSE` decisions and count toward `NONE`, which is what a
+    # duplicate resolves to.
+    events = collections.Counter(
+        str(decision.get("event") or "") for decision in decisions if isinstance(decision, dict)
+    )
     summary = {
         "imported": quarantined_count,
         "quarantined": quarantined_count,
@@ -466,11 +505,11 @@ def import_assistant_export(
         "nextCursor": next_offset if is_batch_capped else None,
         "remaining": remaining,
         "batchSize": len(bounded_candidates),
-        "ADD": quarantined_count,
-        "UPDATE": 0,
-        "NONE": duplicates_collapsed,
-        "DELETE": 0,
-        "REJECT": secrets_flagged,
+        "ADD": events["ADD"],
+        "UPDATE": events["UPDATE"],
+        "NONE": events["NONE"] + events["COLLAPSE"],
+        "DELETE": events["DELETE"],
+        "REJECT": events["REJECT"],
     }
 
     return {
