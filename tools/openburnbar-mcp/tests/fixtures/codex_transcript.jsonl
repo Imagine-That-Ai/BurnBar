@@ -1,6 +1,9 @@
-{"type":"session_start","timestamp":"2026-09-03T11:00:00Z"}
-{"type":"turn","item":{"role":"user","content":[{"type":"text","text":"We decided to keep the memory store local-only because the daemon owns sync."}]}}
-{"type":"turn","payload":{"item":{"role":"assistant","content":[{"type":"text","text":"Agreed. The memory database remains strictly on-device."}]}}}
-{"type":"turn","item":{"role":"tool","content":"Database path checked."}}
+{"timestamp":"2026-09-03T11:00:00.043Z","ordinal":0,"type":"session_meta","payload":{"session_id":"01a06fb2-7e81-7980-a7eb-b81c36df40b3","cwd":"/tmp/codex_proj","originator":"Codex Desktop","cli_version":"0.153.3"}}
+{"timestamp":"2026-09-03T11:00:00.100Z","ordinal":1,"type":"event_msg","payload":{"type":"task_started"}}
+{"timestamp":"2026-09-03T11:00:00.700Z","ordinal":4,"type":"response_item","payload":{"type":"message","id":"msg_dev","role":"developer","content":[{"type":"input_text","text":"You are Codex, an agent based on GPT-6."}]}}
+{"timestamp":"2026-09-03T11:00:01.757Z","ordinal":5,"type":"response_item","payload":{"type":"message","id":"msg_user_1","role":"user","content":[{"type":"input_text","text":"We decided to keep the memory store local-only because the daemon owns sync."}]}}
+{"timestamp":"2026-09-03T11:00:04.370Z","ordinal":12,"type":"response_item","payload":{"type":"message","id":"msg_asst_1","role":"assistant","content":[{"type":"output_text","text":"Agreed. The memory database remains strictly on-device."}],"phase":"commentary"}}
+{"timestamp":"2026-09-03T11:00:05.000Z","ordinal":13,"type":"response_item","payload":{"type":"custom_tool_call","name":"shell","input":"Database path checked."}}
+{"timestamp":"2026-09-03T11:00:05.100Z","ordinal":14,"type":"event_msg","payload":{"type":"item_completed"}}
 {malformed json line
-{"type":"message","item":{"role":"assistant","text":"Prefer ruff over black for formatting in this repository."}}
+{"type":"turn","payload":{"item":{"role":"assistant","content":[{"type":"text","text":"Prefer ruff over black for formatting in this repository."}]}}}

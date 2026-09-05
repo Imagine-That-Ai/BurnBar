@@ -495,9 +495,13 @@ def test_codex_transcript_maps_fields_and_lands_quarantined_with_provenance(tmp_
             assert row["metadata"].get("source_tool") == "memorize_transcript"
             assert row["metadata"].get("sessionId") == session_id
 
-        # Field mapping assertions: prose extracted, tool and meta events dropped
+        # Field mapping assertions: prose extracted, tool and meta events dropped.
+        # The fixture carries the shape a Codex 0.15x rollout log actually has
+        # (`response_item` -> `payload` -> `message`), so a regression to the
+        # non-current `payload.item` reading fails here as `skipped_empty`.
         assert any("local-only" in b for b in bodies), bodies
-        assert not any("session_start" in b for b in bodies)
+        assert not any("session_meta" in b for b in bodies)
+        assert not any("Codex, an agent" in b for b in bodies), bodies
         assert not any("Database path checked" in b for b in bodies)
     finally:
         engine.close()
@@ -636,3 +640,83 @@ def test_cli_client_flag_runs_collector_and_quarantines(tmp_path):
             assert row["sourceRef"].startswith(f"cursor:{session_id}#")
     finally:
         engine.close()
+
+
+def test_codex_adapter_reads_the_current_response_item_payload_shape(tmp_path):
+    """Codex writes `{"type":"response_item","payload":{"type":"message","role":...}}`.
+
+    The adapter used to look for `payload.item` and fall back to the outer
+    envelope, which carries no role, so every user and assistant turn of a real
+    session was discarded and the collector reported `skipped_empty`. This is the
+    shape a Codex 0.15x rollout log on disk actually has.
+    """
+    from transcript_adapters.codex import load_codex_transcript
+
+    rollout = tmp_path / "rollout-2026-09-05T03-52-43-01a06fb2.jsonl"
+    rollout.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "timestamp": "2026-09-05T03:52:51.043Z",
+                        "ordinal": 0,
+                        "type": "session_meta",
+                        "payload": {"session_id": "01a06fb2", "cwd": "/tmp/p", "cli_version": "0.153.3"},
+                    }
+                ),
+                json.dumps(
+                    {
+                        "timestamp": "2026-09-05T03:52:51.700Z",
+                        "ordinal": 4,
+                        "type": "response_item",
+                        "payload": {
+                            "type": "message",
+                            "id": "msg_dev",
+                            "role": "developer",
+                            "content": [{"type": "input_text", "text": "You are Codex, an agent based on GPT-6."}],
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "timestamp": "2026-09-05T03:52:51.757Z",
+                        "ordinal": 5,
+                        "type": "response_item",
+                        "payload": {
+                            "type": "message",
+                            "id": "msg_user",
+                            "role": "user",
+                            "content": [{"type": "input_text", "text": "Keep the memory store local-only."}],
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "timestamp": "2026-09-05T03:52:54.370Z",
+                        "ordinal": 12,
+                        "type": "response_item",
+                        "payload": {
+                            "type": "message",
+                            "id": "msg_asst",
+                            "role": "assistant",
+                            "content": [{"type": "output_text", "text": "Agreed, it stays on-device."}],
+                            "phase": "commentary",
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "response_item",
+                        "payload": {"type": "custom_tool_call", "name": "shell", "input": "sqlite3 store.db"},
+                    }
+                ),
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    messages = load_codex_transcript(rollout)
+    assert messages == [
+        {"role": "user", "content": "Keep the memory store local-only."},
+        {"role": "assistant", "content": "Agreed, it stays on-device."},
+    ], messages

@@ -26,16 +26,43 @@ def _extract_text(raw: Any) -> str:
     return ""
 
 
-def _extract_codex_message(json_obj: dict[str, Any]) -> tuple[str, str] | None:
-    item = (
-        json_obj.get("item")
-        or (json_obj.get("payload", {}).get("item") if isinstance(json_obj.get("payload"), dict) else None)
-        or (json_obj.get("msg", {}).get("item") if isinstance(json_obj.get("msg"), dict) else None)
-        or json_obj
-    )
-    if not isinstance(item, dict):
-        return None
+def _candidate_records(json_obj: dict[str, Any]) -> list[dict[str, Any]]:
+    """Every dict a Codex rollout line may keep the message on, newest shape first.
 
+    A current rollout record is
+    `{"type": "response_item", "payload": {"type": "message", "role": ..., "content": [...]}}`
+    -- the message sits on `payload` ITSELF, with no `item` wrapper. Reading only
+    `payload.item` and then falling back to the outer envelope (which carries no
+    `role`) discarded every user and assistant turn of a real session, so the
+    advertised collector reported `skipped_empty` on live logs. Older rollouts
+    nested the same fields under `item` / `payload.item` / `msg.item`, so those
+    stay in the list: a member's archived sessions keep working.
+    """
+    candidates: list[dict[str, Any]] = []
+    payload = json_obj.get("payload")
+    msg = json_obj.get("msg")
+    for candidate in (
+        payload,
+        payload.get("item") if isinstance(payload, dict) else None,
+        json_obj.get("item"),
+        msg.get("item") if isinstance(msg, dict) else None,
+        msg,
+        json_obj,
+    ):
+        if isinstance(candidate, dict) and not any(candidate is seen for seen in candidates):
+            candidates.append(candidate)
+    return candidates
+
+
+def _extract_codex_message(json_obj: dict[str, Any]) -> tuple[str, str] | None:
+    for item in _candidate_records(json_obj):
+        found = _message_from_record(item)
+        if found is not None:
+            return found
+    return None
+
+
+def _message_from_record(item: dict[str, Any]) -> tuple[str, str] | None:
     role = str(item.get("role") or "").strip().lower()
     if role not in {"user", "assistant"}:
         return None
