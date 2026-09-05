@@ -2522,6 +2522,158 @@ def test_three_replicas_converge_when_a_lineage_gap_is_delivered_out_of_order(tm
         engine.close()
 
 
+def test_a_lineage_gap_on_a_converged_id_still_times_out_to_LWW(tmp_path: Path) -> None:
+    """P5 / A1(iii): the hold belongs to the row, not to the id it arrived under.
+
+    Two devices learn the same fact independently, so the second id converges
+    into the first and is recorded as an alias. Every later revision of the
+    losing id is then compared against — and held against — the *local* row. A
+    hold filed under the arriving id would never be found again on the read
+    side, the timeout would never elapse, and the document would be parked for
+    ever: an advisory signal turned into an admission gate, which A1(iii)
+    forbids.
+    """
+    engine = _replica(tmp_path, "hold-converged")
+    repo = _repo(tmp_path)
+    project_id = _project_id(engine, repo)
+    local_mid = "mem_1111111111111111111111111111aaaa"
+    remote_mid = "mem_2222222222222222222222222222bbbb"
+    body = "Production runs on Linux."
+
+    engine.merge_remote([_doc("doc-1", local_mid, body, project_id=project_id, updated_at=T1)])
+    converged = engine.merge_remote([_doc("doc-2", remote_mid, body, project_id=project_id, updated_at=T2)])
+    assert converged["reinforced"] == 1
+    assert engine._alias_target(remote_mid) == local_mid
+
+    revision = _doc(
+        "doc-3",
+        remote_mid,
+        "Production runs on Debian 12.",
+        project_id=project_id,
+        updated_at=T3,
+        previous_body_hash=canonical_body_hash("Production runs on Ubuntu Linux."),
+    )
+
+    held = engine.merge_remote([revision], gap_timeout=3600.0)
+    assert held["parked"] == 1
+    # The note is filed against the row the comparison ran against.
+    assert [hold["memoryID"] for hold in engine.lineage_holds()] == [local_mid]
+    assert engine._get_lineage_hold(local_mid) is not None
+
+    resolved = engine.merge_remote([revision], gap_timeout=0.0)
+    assert resolved["applied"] == 1
+    assert resolved["ackDocIDs"] == ["doc-3"]
+    assert engine.lineage_holds() == []
+    assert [gap["memoryID"] for gap in engine.unresolved_gaps()] == [local_mid]
+    assert _rows(engine)[local_mid]["body"] == "Production runs on Debian 12."
+    engine.close()
+
+
+def test_a_zero_gap_timeout_applies_lww_on_the_next_merge(tmp_path: Path) -> None:
+    """P5 / A1(iii): `gap_timeout=0.0` means the hold lapses at the next offer.
+
+    The first offer has nothing to measure against, so it parks; the redelivery
+    the daemon performs on the next drain is what the timeout applies to. This
+    has to hold on a converged id as much as on one that never converged —
+    otherwise a peer that will never send the missing body stalls this replica
+    for good, which is exactly what the timeout exists to prevent.
+    """
+    engine = _replica(tmp_path, "hold-zero-timeout")
+    repo = _repo(tmp_path)
+    project_id = _project_id(engine, repo)
+    local_mid = "mem_3333333333333333333333333333aaaa"
+    remote_mid = "mem_4444444444444444444444444444bbbb"
+    body = "Production runs on Linux."
+
+    engine.merge_remote([_doc("zero-1", local_mid, body, project_id=project_id, updated_at=T1)])
+    engine.merge_remote([_doc("zero-2", remote_mid, body, project_id=project_id, updated_at=T2)])
+
+    revision = _doc(
+        "zero-3",
+        remote_mid,
+        "Production runs on Debian 12.",
+        project_id=project_id,
+        updated_at=T3,
+        previous_body_hash=canonical_body_hash("Production runs on Ubuntu Linux."),
+    )
+
+    first = engine.merge_remote([revision], gap_timeout=0.0)
+    assert first["parked"] == 1
+    second = engine.merge_remote([revision], gap_timeout=0.0)
+    assert second["applied"] == 1
+    assert engine.lineage_holds() == []
+    assert _rows(engine)[local_mid]["body"] == "Production runs on Debian 12."
+
+    # And a third offer of the same document changes nothing.
+    before = _rows(engine)
+    engine.merge_remote([revision], gap_timeout=0.0)
+    assert _rows(engine) == before
+    engine.close()
+
+
+def test_three_delivery_orders_converge_with_lineage_holds(tmp_path: Path) -> None:
+    """§8 / P5: three replicas, the same three documents, three arrival orders.
+
+    The documents are the hard shape: the same body authored under two engine
+    ids (so one converges into the other) and then a revision of the *losing*
+    id whose `previousBodyHash` names a body nobody here ever saw. A replica
+    that receives the revision first materialises it as a plain ADD; one that
+    receives it last resolves it through the alias; one that receives it in the
+    middle holds it until the timeout. All three have to end up believing the
+    same thing — the advisory gap may change *when* a decision lands, never
+    *what* it is.
+    """
+    repo = _repo(tmp_path)
+    seed = _replica(tmp_path, "orders-seed")
+    project_id = _project_id(seed, repo)
+    seed.close()
+
+    mid_a = "mem_5555555555555555555555555555aaaa"
+    mid_b = "mem_6666666666666666666666666666bbbb"
+    shared_body = "Production runs on Linux."
+    revised_body = "Production runs on Debian 12."
+
+    documents = {
+        "a": _doc("ord-a", mid_a, shared_body, project_id=project_id, updated_at=T1),
+        "b": _doc("ord-b", mid_b, shared_body, project_id=project_id, updated_at=T2),
+        "b2": _doc(
+            "ord-b2",
+            mid_b,
+            revised_body,
+            project_id=project_id,
+            updated_at=T3,
+            previous_body_hash=canonical_body_hash("Production runs on Ubuntu Linux."),
+        ),
+    }
+    orders = {
+        "in-order": ["a", "b", "b2"],
+        "gap-last-first": ["b", "b2", "a"],
+        "gap-first": ["b2", "a", "b"],
+    }
+
+    believed: dict[str, list[str]] = {}
+    for name, order in orders.items():
+        engine = _replica(tmp_path, f"orders-{name}")
+        _project_id(engine, repo)
+        for key in order:
+            engine.merge_remote([documents[key]], gap_timeout=0.0)
+        # The daemon re-offers everything it has not been told to acknowledge;
+        # two further drains are what the held document's timeout lapses on.
+        for _ in range(2):
+            engine.merge_remote([documents[key] for key in order], gap_timeout=0.0)
+        rows = _rows(engine)
+        believed[name] = sorted(str(row["body"]) for row in rows.values() if row["validTo"] is None)
+        assert engine.lineage_holds() == [], name
+        # Advisory diagnostics legitimately differ by arrival order: a replica
+        # that saw the gap-bearing revision before any local row performed an
+        # ADD, and an ADD has no lineage to check.
+        assert len(engine.unresolved_gaps()) <= 1, name
+        engine.close()
+
+    assert len(set(map(tuple, believed.values()))) == 1, believed
+    assert believed["in-order"] == [revised_body]
+
+
 def test_project_adopt_without_confirmation_refuses_and_reports_what_it_would_join(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

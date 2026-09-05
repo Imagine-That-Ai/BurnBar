@@ -15,7 +15,7 @@ from collections.abc import Sequence
 from typing import Any
 
 from memory_engine import Fact, canonical_body_hash, normalize_scope, resolve_project
-from memory_engine._sync import _convergence_key
+from memory_engine._util import _convergence_key
 from memory_engine.gate import scan_text
 from memory_engine.store import audit_event
 

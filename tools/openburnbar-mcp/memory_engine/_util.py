@@ -58,6 +58,23 @@ def _json_loads(value: Any, default: Any) -> Any:
         return default
 
 
+def _receipt_payload(raw: Any) -> dict[str, Any] | None:
+    """The parsed payload of an inbox entry, or None when it is not a JSON object."""
+    if not isinstance(raw, dict):
+        return None
+    payload = raw.get("payload")
+    if not isinstance(payload, dict):
+        payload = _json_loads(raw.get("payloadJSON") or raw.get("payload_json"), None)
+    return payload if isinstance(payload, dict) else None
+
+
+def _convergence_key(project_id: str, scope: str, body_hash: str) -> str:
+    """§5's convergence identity `(project_id, scope, body_hash)`, as one
+    point-lookup key. Both the forget receipt and the convergence ledger are
+    keyed by it."""
+    return sha256_hex(f"{project_id}|{scope}|{body_hash}")[:32]
+
+
 def _truthy(value: str | None) -> bool:
     return (value or "").strip().lower() in {"1", "true", "yes", "y", "on"}
 

@@ -16,23 +16,23 @@ from datetime import UTC, datetime
 import time
 from typing import Any, NamedTuple
 
-import project_code_memory as pcm
 
 from . import gate
+from ._ledger import _SyncLedger
 from ._util import (
     _aux_strings,
+    _convergence_key,
     _json_dumps,
     _json_loads,
     _parse_iso,
+    _receipt_payload,
     normalize_kind,
     normalize_tags,
     now_iso,
-    sha256_hex,
     canonical_body_hash,
 )
 from .constants import (
     DEFAULT_LINEAGE_GAP_TIMEOUT_SECONDS,
-    LINEAGE_HOLD_QUEUE_MAX_SIZE,
     MEMORY_SCOPES,
     REMOTE_MEMORY_ID_RE,
     REMOTE_PAYLOAD_SCHEMA_MAX,
@@ -50,16 +50,6 @@ from .store import audit_event
 _ALIAS_CHAIN_MAX_HOPS = 16
 
 
-def _receipt_payload(raw: Any) -> dict[str, Any] | None:
-    """The parsed payload of an inbox entry, or None when it is not a JSON object."""
-    if not isinstance(raw, dict):
-        return None
-    payload = raw.get("payload")
-    if not isinstance(payload, dict):
-        payload = _json_loads(raw.get("payloadJSON") or raw.get("payload_json"), None)
-    return payload if isinstance(payload, dict) else None
-
-
 def _is_receipt_entry(raw: Any) -> bool:
     """A forget receipt parked beside the facts — told apart by `entryKind`.
 
@@ -73,13 +63,6 @@ def _is_receipt_entry(raw: Any) -> bool:
         return True
     payload = _receipt_payload(raw)
     return payload is not None and payload.get("entryKind") == REMOTE_RECEIPT_ENTRY_KIND
-
-
-def _convergence_key(project_id: str, scope: str, body_hash: str) -> str:
-    """§5's convergence identity `(project_id, scope, body_hash)`, as one
-    point-lookup key. Both the forget receipt and the convergence ledger are
-    keyed by it."""
-    return sha256_hex(f"{project_id}|{scope}|{body_hash}")[:32]
 
 
 # Older than any real timestamp: what an unparseable stored `updated_at` compares
@@ -155,42 +138,8 @@ class _SyncMark(NamedTuple):
         return (self.updated_ts, self.memory_id, self.body_hash)
 
 
-class _BlindSync:
+class _BlindSync(_SyncLedger):
     """`MemoryEngine`'s blind-sync merge surface: watermark, screen, converge, LWW."""
-
-    def sync_watermark(self) -> dict[str, dict[str, str]]:
-        """The applied high-water mark of the merge, one entry per member."""
-        rows = self.conn.execute(
-            "SELECT user_id, applied_updated_at, applied_memory_id FROM sync_state ORDER BY user_id"
-        ).fetchall()
-        return {
-            str(row["user_id"]): {
-                "updatedAt": str(row["applied_updated_at"]),
-                "memoryID": str(row["applied_memory_id"]),
-            }
-            for row in rows
-        }
-
-    def transport_watermarks(self) -> dict[str, dict[str, Any]]:
-        """The transport layer's remote watermarks, if remote_sync_watermarks exists."""
-        if "remote_sync_watermarks" not in pcm.table_names(self.conn):
-            return {}
-        rows = self.conn.execute(
-            "SELECT accountUid, collectionKind, lastSyncedAt, lastProcessedRemoteUpdateAt, version "
-            "FROM remote_sync_watermarks WHERE collectionKind = 'memory_facts' ORDER BY accountUid"
-        ).fetchall()
-        return {
-            str(row["accountUid"]): {
-                "accountUid": str(row["accountUid"]),
-                "collectionKind": str(row["collectionKind"]),
-                "lastSyncedAt": str(row["lastSyncedAt"]),
-                "lastProcessedRemoteUpdateAt": str(row["lastProcessedRemoteUpdateAt"])
-                if row["lastProcessedRemoteUpdateAt"]
-                else None,
-                "version": int(row["version"]),
-            }
-            for row in rows
-        }
 
     def _record_forget_receipt(self, memory_id: str) -> None:
         """Persist what a hard forget destroyed, so blind sync cannot undo it.
@@ -421,222 +370,6 @@ class _BlindSync:
         memory_id = str(row["value"])
         exists = self.conn.execute("SELECT 1 FROM memories WHERE id = ?", (memory_id,)).fetchone()
         return memory_id if exists is not None else None
-
-    def _record_lineage_hold(
-        self,
-        fact: _RemoteFact,
-        expected_hash: str,
-        actual_hash: str,
-        now_epoch: float | None = None,
-    ) -> None:
-        """Note that this row's `previousBodyHash` names a body this device never saw.
-
-        The note is a *marker*, never a copy of the document. `memories` seals
-        every body through the keyring; `engine_meta` is plaintext, so nothing
-        that reaches this table may carry the fact's text, tags, entities or any
-        other member content — only ids, hashes and timestamps. The held
-        document itself stays UNACKED in the daemon's inbox and is re-offered on
-        every drain, so the re-evaluation the timeout needs is driven by that
-        redelivery rather than by anything stored here.
-
-        Persisted under `lineage_hold:<memory_id>`, bounded by
-        `LINEAGE_HOLD_QUEUE_MAX_SIZE`: the oldest note is evicted to make room,
-        because a queue that grows without bound is a queue an unreachable peer
-        can use to fill the store.
-        """
-        existing_hold = self._get_lineage_hold(fact.memory_id)
-        if existing_hold is not None and "firstSeenEpoch" in existing_hold:
-            first_seen_epoch = float(existing_hold["firstSeenEpoch"])
-            first_seen_iso = str(existing_hold.get("firstSeen") or now_iso())
-        else:
-            first_seen_epoch = time.time() if now_epoch is None else now_epoch
-            first_seen_iso = now_iso()
-
-        if existing_hold is None:
-            existing = self.conn.execute(
-                "SELECT key, value FROM engine_meta WHERE key LIKE 'lineage_hold:%'"
-            ).fetchall()
-            if len(existing) >= LINEAGE_HOLD_QUEUE_MAX_SIZE:
-                oldest = sorted(
-                    existing,
-                    key=lambda row: float((_json_loads(row["value"], {}) or {}).get("firstSeenEpoch") or 0.0),
-                )[: len(existing) - LINEAGE_HOLD_QUEUE_MAX_SIZE + 1]
-                self.conn.executemany("DELETE FROM engine_meta WHERE key = ?", [(str(row["key"]),) for row in oldest])
-
-        self.conn.execute(
-            "INSERT OR REPLACE INTO engine_meta (key, value) VALUES (?, ?)",
-            (
-                f"lineage_hold:{fact.memory_id}",
-                _json_dumps(
-                    {
-                        "memoryID": fact.memory_id,
-                        "docID": fact.doc_id,
-                        "previousBodyHash": expected_hash,
-                        "expectedHash": expected_hash,
-                        "actualHash": actual_hash,
-                        "firstSeen": first_seen_iso,
-                        "firstSeenEpoch": first_seen_epoch,
-                    }
-                ),
-            ),
-        )
-
-    def _get_lineage_hold(self, memory_id: str) -> dict[str, Any] | None:
-        row = self.conn.execute(
-            "SELECT value FROM engine_meta WHERE key = ?",
-            (f"lineage_hold:{memory_id}",),
-        ).fetchone()
-        if row is None:
-            return None
-        try:
-            return _json_loads(row["value"], None)
-        except (ValueError, TypeError):
-            return None
-
-    def _clear_lineage_hold(self, memory_id: str) -> None:
-        self.conn.execute("DELETE FROM engine_meta WHERE key = ?", (f"lineage_hold:{memory_id}",))
-
-    def lineage_holds(self) -> list[dict[str, Any]]:
-        """Every open lineage hold: ids, hashes and timestamps, never a body."""
-        rows = self.conn.execute("SELECT value FROM engine_meta WHERE key LIKE 'lineage_hold:%'").fetchall()
-        return [hold for hold in (_json_loads(row["value"], None) for row in rows) if isinstance(hold, dict)]
-
-    def _record_unresolved_gap(self, fact: _RemoteFact, expected_hash: str, actual_hash: str | None) -> None:
-        data = {
-            "memoryID": fact.memory_id,
-            "docID": fact.doc_id,
-            "expectedHash": expected_hash,
-            "actualHash": actual_hash,
-            "reportedAt": now_iso(),
-        }
-        self.conn.execute(
-            "INSERT OR REPLACE INTO engine_meta (key, value) VALUES (?, ?)",
-            (f"unresolved_gap:{fact.memory_id}", _json_dumps(data)),
-        )
-        audit_event(
-            self.conn,
-            action="memory.sync_unresolved_gap",
-            project_id=fact.project_id,
-            subject_id=fact.memory_id,
-            labels=[
-                "gap:unresolved",
-                f"expected:{expected_hash[:8]}",
-                f"actual:{(actual_hash or 'none')[:8]}",
-            ],
-            actor=self.config.actor,
-        )
-
-    def unresolved_gaps(self) -> list[dict[str, Any]]:
-        rows = self.conn.execute("SELECT value FROM engine_meta WHERE key LIKE 'unresolved_gap:%'").fetchall()
-        gaps = []
-        for r in rows:
-            val = _json_loads(r["value"], None)
-            if isinstance(val, dict):
-                gaps.append(val)
-        return gaps
-
-    def parked_supersedes(self) -> list[dict[str, Any]]:
-        """Parked supersedes waiting for targets across inbox, engine_meta, and memories."""
-        parked: list[dict[str, Any]] = []
-        tables = pcm.table_names(self.conn)
-        if "agent_memory_inbox" in tables:
-            rows = self.conn.execute(
-                "SELECT doc_id, user_id, engine_memory_id, payload_json, remote_updated_at, received_at "
-                "FROM agent_memory_inbox WHERE applied_at IS NULL"
-            ).fetchall()
-            for r in rows:
-                payload = _receipt_payload(dict(r))
-                if isinstance(payload, dict) and payload.get("supersededBy"):
-                    target = str(payload.get("supersededBy"))
-                    if self._local_memory_id(target) is None:
-                        parked.append(
-                            {
-                                "source": "inbox",
-                                "docID": str(r["doc_id"]),
-                                "memoryID": str(r["engine_memory_id"]),
-                                "targetID": target,
-                                "receivedAt": str(r["received_at"] or r["remote_updated_at"] or ""),
-                            }
-                        )
-        meta_rows = self.conn.execute(
-            "SELECT key, value FROM engine_meta WHERE key LIKE 'parked_supersede:%'"
-        ).fetchall()
-        for mr in meta_rows:
-            val = _json_loads(mr["value"], {})
-            parked.append(
-                {
-                    "source": "engine_meta",
-                    "key": str(mr["key"]),
-                    "targetID": str(val.get("targetID") or val.get("supersededBy") or ""),
-                    "memoryID": str(val.get("memoryID") or str(mr["key"]).split("parked_supersede:", 1)[1]),
-                    "reportedAt": str(val.get("reportedAt") or val.get("ts") or ""),
-                }
-            )
-        mem_rows = self.conn.execute(
-            "SELECT id, superseded_by, updated_at FROM memories WHERE superseded_by IS NOT NULL "
-            "AND superseded_by NOT IN (SELECT id FROM memories)"
-        ).fetchall()
-        for mr in mem_rows:
-            parked.append(
-                {
-                    "source": "memories",
-                    "memoryID": str(mr["id"]),
-                    "targetID": str(mr["superseded_by"]),
-                    "updatedAt": str(mr["updated_at"] or ""),
-                }
-            )
-        return parked
-
-    def receipt_coverage_gaps(self) -> list[dict[str, Any]]:
-        """Gaps where forget receipts or convergence identities are missing."""
-        gaps: list[dict[str, Any]] = []
-        tables = pcm.table_names(self.conn)
-        receipt_rows = self.conn.execute(
-            "SELECT key, value FROM engine_meta WHERE key LIKE 'forget_receipt:%'"
-        ).fetchall()
-        for r in receipt_rows:
-            mid = str(r["key"]).split("forget_receipt:", 1)[1]
-            parsed = _json_loads(r["value"], None)
-            if isinstance(parsed, dict) and parsed.get("bodyHash") and parsed.get("projectID") and parsed.get("scope"):
-                ckey = f"forget_identity:{_convergence_key(str(parsed['projectID']), str(parsed['scope']), str(parsed['bodyHash']))}"
-                has_identity = (
-                    self.conn.execute("SELECT 1 FROM engine_meta WHERE key = ?", (ckey,)).fetchone() is not None
-                )
-                if not has_identity:
-                    gaps.append(
-                        {"type": "missing_identity", "memoryID": mid, "convergenceKey": ckey, "receipt": parsed}
-                    )
-        if "agent_memory_bodies" in tables:
-            blank_rows = self.conn.execute(
-                "SELECT memory_id, engine_memory_id FROM agent_memory_bodies WHERE body = ''"
-            ).fetchall()
-            for brow in blank_rows:
-                emid = str(brow["engine_memory_id"])
-                has_rcpt = (
-                    self.conn.execute("SELECT 1 FROM engine_meta WHERE key = ?", (f"forget_receipt:{emid}",)).fetchone()
-                    is not None
-                )
-                if not has_rcpt:
-                    gaps.append({"type": "missing_receipt", "memoryID": emid})
-        return gaps
-
-    def orphan_memory_bodies(self) -> list[dict[str, Any]]:
-        """Rows in agent_memory_bodies with no owning record in memories or agent_memories."""
-        tables = pcm.table_names(self.conn)
-        if "agent_memory_bodies" not in tables:
-            return []
-        if "agent_memories" in tables:
-            sql = (
-                "SELECT memory_id, project_id, engine_memory_id, body, body_hash, created_at, updated_at "
-                "FROM agent_memory_bodies WHERE engine_memory_id NOT IN (SELECT id FROM memories) "
-                "AND memory_id NOT IN (SELECT id FROM agent_memories)"
-            )
-        else:
-            sql = (
-                "SELECT memory_id, project_id, engine_memory_id, body, body_hash, created_at, updated_at "
-                "FROM agent_memory_bodies WHERE engine_memory_id NOT IN (SELECT id FROM memories)"
-            )
-        return [dict(r) for r in self.conn.execute(sql).fetchall()]
 
     def _screen_remote_row(self, raw: Any) -> tuple[_RemoteFact | None, dict[str, Any]]:
         """Parse and gate one inbox entry before anything about it is believed.
@@ -1192,24 +925,32 @@ class _BlindSync:
             # lands here — and it is deliberately compared against the *remote*
             # mark: a wall-clock stamp left by the merge itself would beat every
             # revision authored before the merge ran, including newer ones.
-            return {
-                "event": "UNCHANGED",
-                "code": "ALREADY_APPLIED" if fact.order_key == applied.order_key else "REMOTE_IS_STALE",
-                "docID": fact.doc_id,
-                "memoryID": memory_id,
-            }
+            return self._converge_stale_duplicate(
+                fact,
+                memory_id,
+                {
+                    "event": "UNCHANGED",
+                    "code": "ALREADY_APPLIED" if fact.order_key == applied.order_key else "REMOTE_IS_STALE",
+                    "docID": fact.doc_id,
+                    "memoryID": memory_id,
+                },
+            )
         local_writer = self._local_writer_mark(row, applied)
         remote_mark = (fact.updated_ts, fact.body_hash)
         if local_writer is not None and remote_mark <= local_writer:
             # A member edited this row on this device after the last merge, and
             # their edit is the later writer. Their own decision outranks an
             # older copy of the memory arriving from somewhere else.
-            return {
-                "event": "UNCHANGED",
-                "code": "ALREADY_APPLIED" if remote_mark == local_writer else "LOCAL_IS_NEWER",
-                "docID": fact.doc_id,
-                "memoryID": memory_id,
-            }
+            return self._converge_stale_duplicate(
+                fact,
+                memory_id,
+                {
+                    "event": "UNCHANGED",
+                    "code": "ALREADY_APPLIED" if remote_mark == local_writer else "LOCAL_IS_NEWER",
+                    "docID": fact.doc_id,
+                    "memoryID": memory_id,
+                },
+            )
         if bool(row["immutable"]):
             return {
                 "event": "UNCHANGED",
@@ -1227,7 +968,7 @@ class _BlindSync:
             if fact.previous_body_hash == current_body_hash:
                 # The sender edited exactly the body this device holds. Fast-forward,
                 # and any earlier gap on this row is answered.
-                self._clear_lineage_hold(memory_id)
+                self._clear_lineage_hold(memory_id, fact.memory_id)
             else:
                 # The sender edited a body this device never saw. Park the row until
                 # the missing revision arrives — but only for as long as the timeout,
@@ -1236,10 +977,12 @@ class _BlindSync:
                 current_epoch = time.time() if now_epoch is None else now_epoch
                 held_time = (current_epoch - float(hold["firstSeenEpoch"])) if hold else 0.0
                 if hold is not None and held_time >= gap_timeout:
-                    self._record_unresolved_gap(fact, fact.previous_body_hash, actual_hash=current_body_hash)
-                    self._clear_lineage_hold(memory_id)
+                    self._record_unresolved_gap(fact, memory_id, fact.previous_body_hash, actual_hash=current_body_hash)
+                    self._clear_lineage_hold(memory_id, fact.memory_id)
                 else:
-                    self._record_lineage_hold(fact, fact.previous_body_hash, current_body_hash, now_epoch=now_epoch)
+                    self._record_lineage_hold(
+                        fact, memory_id, fact.previous_body_hash, current_body_hash, now_epoch=now_epoch
+                    )
                     return {
                         "event": "HOLD",
                         "code": "LINEAGE_GAP",
@@ -1253,7 +996,7 @@ class _BlindSync:
                     }
         else:
             # No lineage advice at all: behave exactly as before the field existed.
-            self._clear_lineage_hold(memory_id)
+            self._clear_lineage_hold(memory_id, fact.memory_id)
 
         clash = self.conn.execute(
             "SELECT id FROM memories WHERE project_id = ? AND scope = ? AND body_hash = ? AND id != ?",
@@ -1276,6 +1019,53 @@ class _BlindSync:
             )
             return self._reinforce_remote(fact, holder)
         return self._write_remote_row(fact, memory_id, existing=row)
+
+    def _converge_stale_duplicate(self, fact: _RemoteFact, memory_id: str, decision: dict[str, Any]) -> dict[str, Any]:
+        """A revision that LOSES last-writer-wins still names an identity.
+
+        `UNIQUE(project_id, scope, body_hash)` means at most one row holds a
+        body, so when a *stale* revision of this row carries a body some OTHER
+        live row is holding, the two rows are one memory: this row has already
+        moved on past that body, and the row still holding it is the older
+        revision, materialised here only because this replica saw the duplicate
+        before it saw the edge that linked them.
+
+        Without this, arrival order decides how many memories a replica
+        believes in. A replica that receives `edit(B), add(A), add(B)` keeps A
+        alive for ever — the linking revision is stale, so it is dropped before
+        the convergence branch further down is ever reached — while a replica
+        that received them in any other order folds them into one. §8 says the
+        order documents arrive in may not change what a device ends up
+        believing, so the fold happens on the losing path too, and the decision
+        itself stays UNCHANGED: nothing of this revision was applied.
+        """
+        if fact.valid_to is not None or fact.superseded_by:
+            return decision
+        loser = self.conn.execute(
+            "SELECT id FROM memories WHERE project_id = ? AND scope = ? AND body_hash = ? "
+            "AND id != ? AND valid_to IS NULL",
+            (fact.project_id, fact.scope, fact.body_hash, memory_id),
+        ).fetchone()
+        if loser is None:
+            return decision
+        holder = self.conn.execute("SELECT 1 FROM memories WHERE id = ? AND valid_to IS NULL", (memory_id,)).fetchone()
+        if holder is None:
+            # This row is itself retired; folding a live row into a dead one
+            # would lose the memory rather than converge it.
+            return decision
+        loser_id = str(loser["id"])
+        self._record_memory_alias(loser_id, memory_id)
+        # `remote_at`: the retirement belongs to the remote revision that proved
+        # the two ids are one, exactly as the live-clash branch below does.
+        if self._retire(
+            loser_id,
+            reason="converged into the memory a later revision had already moved on",
+            replacement=memory_id,
+            remote_at=fact.updated_at,
+        ):
+            self._record_convergence_identity(fact.project_id, fact.scope, fact.body_hash, memory_id)
+            return {**decision, "convergedID": loser_id}
+        return decision
 
     def _write_remote_row(self, fact: _RemoteFact, memory_id: str, *, existing: Any) -> dict[str, Any]:
         """Insert or overwrite one row from a remote revision.

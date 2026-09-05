@@ -22,7 +22,7 @@ if str(MCP_DIR) not in sys.path:
 
 import eval_memory  # noqa: E402
 import memory_engine as me  # noqa: E402
-from memory_engine._sync import _convergence_key  # noqa: E402
+from memory_engine._util import _convergence_key  # noqa: E402
 from test_memory_engine import _load_server, _repo  # noqa: E402
 
 FIXTURE_PATH = MCP_DIR / "tests" / "fixtures" / "assistant_export.json"
