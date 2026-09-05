@@ -354,6 +354,43 @@ enum OpenBurnBarDaemonSocketClient {
         return result.usage
     }
 
+    /// Per-project memory counters from the daemon's own store — which is this
+    /// app's database, indexed by the daemon at
+    /// `OpenBurnBarAppPaths.live(...).databaseURL`.
+    ///
+    /// `daemon.memory.analytics` already exists, already maps to the
+    /// `memory_read` capability, and is already `.full` for the `.app` peer, so
+    /// this is a client method and nothing more: no new RPC id, no new contract,
+    /// no new capability. `projectPath` is resolved to a project identity
+    /// DAEMON-side — the app never guesses one — and nil asks about the daemon's
+    /// own default project.
+    ///
+    /// A refusing or unreachable daemon THROWS. It must never degrade to a
+    /// zeroed response: "we could not ask" and "this project has no memories"
+    /// are different statements, and only one of them is ever observed here.
+    static func memoryAnalytics(
+        projectPath: String?,
+        at socketURL: URL
+    ) throws -> BurnBarProjectMemoryAnalyticsResponse {
+        let envelope: BurnBarRPCResponseEnvelope<BurnBarProjectMemoryAnalyticsResponse> = try send(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .memoryAnalytics,
+                params: BurnBarProjectMemoryAnalyticsRequest(projectPath: projectPath)
+            ),
+            socketURL: socketURL
+        )
+
+        if let error = envelope.error {
+            throw OpenBurnBarDaemonManagerError.rpcError(error.message)
+        }
+
+        guard let result = envelope.result else {
+            throw OpenBurnBarDaemonManagerError.emptyResponse
+        }
+
+        return result
+    }
+
     static func proxyRouteLog(
         at socketURL: URL,
         limit: Int = 50
