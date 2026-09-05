@@ -150,8 +150,20 @@ def build_session_briefing(
 
     full_text = "\n".join(body_lines + fact_lines)
 
-    # Wrapper overhead reservation (~30 tokens for the envelope)
-    wrapper_overhead = 30 if wrap else 0
+    # MEASURED, never reserved at a guess. `wrap_untrusted_snippet`'s sentinel
+    # lines plus the JSON provenance run to roughly 52 tokens for a normal
+    # project ID under this same estimator, before a single line of briefing:
+    # a flat 30 let a pack whose unwrapped content fitted `token_budget - 30`
+    # overrun the caller's requested budget by about 22 tokens, which is exactly
+    # where the bounded-pack contract matters. Wrapping the empty string prices
+    # the real envelope this call will use, project ID included.
+    wrapper_overhead = (
+        estimate_tokens(
+            pcm.wrap_untrusted_snippet("", source_tool="burnbar_session_briefing", record_id=project_id) or ""
+        )
+        if wrap
+        else 0
+    )
     effective_budget = max(0, token_budget - wrapper_overhead)
 
     if estimate_tokens(full_text) <= effective_budget:

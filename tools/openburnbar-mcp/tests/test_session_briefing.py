@@ -186,3 +186,57 @@ def test_burnbar_session_briefing_tool_consent_and_opt_in(tmp_path: Path, monkey
     json.loads(server.burnbar_session_briefing(project_path=repo))
     assert captured["consent"] is False, "the tool hardcoded consent instead of passing its own decision"
     engine.close()
+
+
+def test_the_wrapped_pack_never_exceeds_the_requested_budget(tmp_path: Path) -> None:
+    """The envelope is measured, not guessed at 30 tokens.
+
+    `wrap_untrusted_snippet` costs about 52 tokens for a normal project ID under
+    this same estimator, before any briefing content. Reserving a flat 30 let a
+    pack whose unwrapped content fitted `token_budget - 30` overrun the caller's
+    requested budget by roughly 22 tokens, which breaks the tool's bounded-pack
+    contract exactly where it matters — a tight context.
+    """
+    from session_briefing import estimate_tokens
+
+    engine, repo = _make_fixture_engine(tmp_path)
+    for index in range(12):
+        engine.remember(
+            f"Service number {index} is deployed from its own release branch on a weekly cadence.",
+            project_path=repo,
+            kind="fact",
+        )
+    try:
+        # The headings-only pack is an irreducible floor -- a budget below it
+        # degrades to headings rather than emitting nothing -- so the contract
+        # starts there.
+        floor = estimate_tokens(
+            build_session_briefing(
+                engine,
+                project_path=repo,
+                branch="main",
+                token_budget=0,
+                consent=True,
+                opt_in=True,
+                wrap=True,
+            )
+        )
+        # Sweep the budget: any single value could pass by luck of where a fact
+        # line happens to fall.
+        overruns = []
+        for budget in range(floor, floor + 400, 7):
+            pack = build_session_briefing(
+                engine,
+                project_path=repo,
+                branch="main",
+                token_budget=budget,
+                consent=True,
+                opt_in=True,
+                wrap=True,
+            )
+            assert pack is not None
+            if estimate_tokens(pack) > budget:
+                overruns.append((budget, estimate_tokens(pack)))
+        assert overruns == [], overruns
+    finally:
+        engine.close()
