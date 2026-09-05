@@ -158,6 +158,13 @@ match /team_memory_facts/{teamId}/facts/{docID} {
       && get(/databases/$(database)/documents/team_rosters/$(teamId)/members/$(request.auth.uid)).data.role == "admin";
   }
 
+  // The roster document — not the member document — is the single authority for
+  // which key version the team is currently sealing under. Rules read it live,
+  // so a bump lands on the very next write with no client cooperation.
+  function activeTeamKeyVersion(teamId) {
+    return get(/databases/$(database)/documents/team_rosters/$(teamId)).data.activeKeyVersion;
+  }
+
   function cloudVaultTeamAADContext(teamId, collection, docID, field) {
     return "OpenBurnBar-CloudVault-aad-v2|team:" + teamId + "|" + collection + "|" + docID + "|" + field + "|2|" + field;
   }
@@ -182,15 +189,12 @@ match /team_memory_facts/{teamId}/facts/{docID} {
     ]);
   }
 
-  // READ: Only active team members with an active Data Vault entitlement may read facts
-  allow read: if isTeamMember(teamId)
-    && hasActiveDataVaultEntitlement(request.auth.uid);
-
-  // CREATE / UPDATE: Active team members can publish facts under strict schema constraints
-  allow create, update: if isTeamMember(teamId)
-    && hasActiveDataVaultEntitlement(request.auth.uid)
+  // Every fact write shares this shape check. It is deliberately NOT an
+  // authorisation rule: `allow create` and `allow update` below add the
+  // authorship rules that differ between them.
+  function validTeamMemoryFactWrite(teamId, docID) {
+    return hasActiveDataVaultEntitlement(request.auth.uid)
     && validTeamMemoryFactKeys()
-    && request.resource.data.uid == request.auth.uid
     && request.resource.data.teamId == teamId
     && request.resource.data.docID == docID
     && validMemoryOpaqueId(docID)
@@ -221,7 +225,45 @@ match /team_memory_facts/{teamId}/facts/{docID} {
     && request.resource.data.updatedAt is timestamp
     && request.resource.data.replicatedAt is timestamp
     && request.resource.data.teamKeyVersion is int
-    && request.resource.data.teamKeyVersion >= 1;
+    // The ROSTER's active version, not merely a positive integer. Checking only
+    // `>= 1` let a stale or malicious active client keep publishing under a
+    // departed member's `v1` key after a removal rotated the team to `v2`,
+    // which contradicts the forward-secrecy guarantee in section 6.3. The inner
+    // envelope must name the same version as the outer field, so a document
+    // cannot advertise `v2` while carrying `v1` ciphertext.
+    && request.resource.data.teamKeyVersion == activeTeamKeyVersion(teamId)
+    && request.resource.data.sealedMemory.keyVersion == request.resource.data.teamKeyVersion;
+  }
+
+  // READ: Only ACTIVE team members with an active Data Vault entitlement may
+  // read facts. `isTeamMember` re-reads the live roster on every request, so a
+  // member whose status has moved off `"active"` is cut off at the same instant
+  // for reads as for writes — a cached auth token buys nothing (RED-TEAM-05).
+  allow read: if isTeamMember(teamId)
+    && hasActiveDataVaultEntitlement(request.auth.uid);
+
+  // CREATE: an active member publishes a fact under their OWN uid.
+  allow create: if isTeamMember(teamId)
+    && validTeamMemoryFactWrite(teamId, docID)
+    && request.resource.data.uid == request.auth.uid;
+
+  // UPDATE: only the fact's own contributor, or a team admin.
+  //
+  // A single `allow create, update` rule asserting `request.resource.data.uid ==
+  // request.auth.uid` was not an authorship check at all on an update: any
+  // active member could simply write their own UID into the replacement
+  // document. Every active member holds the team key, so any of them could
+  // produce valid ciphertext and overwrite another member's fact AND its
+  // provenance — while the delete rule immediately below correctly limited
+  // deletion to the contributor or an admin. The author of a stored fact is
+  // immutable: an admin may correct a fact, and does not thereby become its
+  // author.
+  allow update: if isTeamMember(teamId)
+    && validTeamMemoryFactWrite(teamId, docID)
+    && request.resource.data.uid == resource.data.uid
+    && (request.auth.uid == resource.data.uid || isTeamAdmin(teamId))
+    && request.resource.data.teamId == resource.data.teamId
+    && request.resource.data.docID == resource.data.docID;
 
   // DELETE: A member may delete their own contributed facts; team admins may delete any fact
   allow delete: if (isTeamMember(teamId) && request.auth.uid == resource.data.uid)
@@ -244,6 +286,11 @@ The following security test cases must be asserted in rules unit tests:
 | `RED-TEAM-08` | Active member attempts to publish an unapproved fact (`reviewStatus: "quarantined"`) | **DENIED** | `request.resource.data.reviewStatus == "approved"` required. |
 | `RED-TEAM-09` | Active member lacks Data Vault entitlement tier | **DENIED** | `hasActiveDataVaultEntitlement` returns false. |
 | `RED-TEAM-10` | Write specifies mismatched `teamId` between path and body | **DENIED** | `request.resource.data.teamId == teamId` assertion fails. |
+| `RED-TEAM-11` | Active member B updates a fact contributed by member A, writing their own UID into the replacement | **DENIED** | `allow update` requires `request.resource.data.uid == resource.data.uid` and `request.auth.uid == resource.data.uid`; only a team admin may update another member's fact, and even then the stored author is immutable. |
+| `RED-TEAM-12` | Team admin updates member A's fact and rewrites `uid` to their own | **DENIED** | `request.resource.data.uid == resource.data.uid` fails: an admin may correct a fact and does not thereby become its author. |
+| `RED-TEAM-13` | Stale or malicious active client publishes a fact under the departed member's `teamKeyVersion: 1` after the roster rotated to `2` | **DENIED** | `request.resource.data.teamKeyVersion == activeTeamKeyVersion(teamId)` fails against the live roster. |
+| `RED-TEAM-14` | Client sends `teamKeyVersion: 2` with a `sealedMemory.keyVersion: 1` envelope | **DENIED** | `request.resource.data.sealedMemory.keyVersion == request.resource.data.teamKeyVersion` fails. |
+| `RED-TEAM-15` | Removed ex-member with a cached token attempts to `update` a fact they contributed while active | **DENIED** | `isTeamMember(teamId)` re-reads the live roster on read and on write alike; `status != "active"` denies both. |
 
 ---
 
@@ -268,17 +315,30 @@ OpenBurnBar-CloudVault-aad-v2|team:team_eng_core|team_memory_facts|7f9a1c8d0e|se
 2. **Personal-to-Team Splice Prevention:** A ciphertext from a user's personal vault (`users/{uid}/memory_facts`) cannot be re-uploaded directly to team memory without local decryption and re-sealing under the team key. The personal AAD contains `userId`, whereas the team AAD contains `team:teamId`. Any attempt to cross-post raw ciphertext causes AES-GCM tag verification failure.
 
 ### 4.2 Team-Bound Doc-ID Derivation
-The document ID in Firestore must be deterministic for identical facts within a team (to prevent duplicate documents) while remaining completely opaque to the server.
+The document ID in Firestore must be deterministic for identical facts within a team — stable across key rotations, and convergent for a fact two members learn independently — while remaining completely opaque to the server.
 
-The doc-ID is derived using HMAC-SHA256 with the team vault key:
+Two properties of the derivation are therefore load-bearing, and an earlier draft (`"team-memory-fact:\(teamId):\(cloudIdentity ?? memoryID)"` HMAC'd under `teamVaultKey`) had neither:
+
+1. **The identifier key is not the encryption key.** `teamVaultKey` is rotated on every membership change (section 6.2). HMAC'ing the slug under it meant a fact re-uploaded after a rotation landed at a NEW document id, leaving the pre-rotation document behind as a stale duplicate — with the same content, under a key the team no longer uses.
+2. **The pre-image is the fact's convergence identity, not an instance identifier.** `cloudIdentity ?? memoryID` names *this device's row*. Two members who independently learn the same fact mint different memory ids and so produced two documents for one fact, defeating the stated deterministic-ID guarantee exactly where deduplication matters most.
+
+#### The derivation
+A separate, **non-rotating** `teamSlugKey` is generated once at team creation and distributed through the same escrow-envelope mechanism as the vault key (section 6.1). It is an identifier key only: it seals nothing, so retaining it across rotations costs no confidentiality — a departed member who keeps it learns only which document ids exist, which the server already knows, and never a fact's content.
+
 ```swift
-let slugInput = "team-memory-fact:\(teamId):\(cloudIdentity ?? memoryID)"
-let docID = try CloudVaultCrypto.pensieveSlugHmac(slugInput, keyData: teamVaultKey)
+// Convergence identity: what the fact IS, not which row happens to hold it.
+// Mirrors the engine's own `_convergence_key(project, scope, body_hash)`.
+let convergenceIdentity = "\(teamProjectId):\(scope):\(canonicalBodyHash)"
+let slugInput = "team-memory-fact:\(teamId):\(convergenceIdentity)"
+let docID = try CloudVaultCrypto.pensieveSlugHmac(slugInput, keyData: teamSlugKey)
 ```
 
 #### Properties
-- **Collision Resistance Across Teams:** Incorporating `\(teamId)` into the HMAC pre-image ensures that if two distinct teams happen to generate identical memory IDs, their Firestore `docID` values remain completely disjoint.
+- **Stable Across Rotations:** `teamSlugKey` is never rotated, so a rotation re-seals the ciphertext of an existing document in place (`rewrapJobId`) rather than minting a second one.
+- **Convergent Across Clients:** Two members who learn the same fact for the same team-linked project derive the same `docID`, so the second write is an update to one document rather than a duplicate.
+- **Collision Resistance Across Teams:** Incorporating `\(teamId)` into the HMAC pre-image ensures that if two distinct teams happen to generate identical convergence identities, their Firestore `docID` values remain completely disjoint — and the two teams hold different `teamSlugKey`s besides.
 - **Server Blindness:** The server cannot reverse the HMAC or determine which client-side memory or project generated the document ID.
+- **Not a confidentiality boundary:** `teamSlugKey` is retained by design, so it must never be used to seal content. Section 3.3's `validCloudSealedBlob` check binds ciphertext to `teamVaultKey` versions alone.
 
 ---
 
@@ -314,10 +374,24 @@ Once a memory fact is encrypted under the team key and uploaded to `team_memory_
 ### 6.1 Team Key Distribution Hierarchy
 Team keys are distributed using asymmetric P-256 / ECIES key escrow, mirroring the existing `CloudVaultCrypto` pattern without BurnBar servers ever seeing the key:
 1. When a user joins, their device publishes their P-256 escrow public key to `team_rosters/{teamId}/members/{uid}.escrowPublicKey`.
-2. The team administrator (or creating member) generates a random 256-bit symmetric AES key `teamVaultKey_v1`.
+2. The team administrator (or creating member) generates a random 256-bit symmetric AES key `teamVaultKey_v1`, and — once, at team creation — the non-rotating `teamSlugKey` of section 4.2.
 3. The administrator encrypts `teamVaultKey_v1` to each active member's public key, producing individual sealed envelopes.
 4. Envelopes are stored in `/team_key_envelopes/{teamId}/envelopes/{memberUid}_v1`.
 5. Each member downloads their personal envelope and unseals `teamVaultKey_v1` using their device private key.
+
+#### 6.1.1 Joining a team that has already rotated
+Semantic A (section 7.1) promises a joining member read access to the team's historical memories. A team that has rotated from `v1` to `v2` before the new member joins still holds facts sealed under `v1`: handing the newcomer only the current envelope would leave those facts undecryptable while the UI told them otherwise. **The join flow therefore issues envelopes for every RETAINED key version, not only the active one.**
+
+**Who supplies them.** An active **team admin's client**, and only an admin's client — it is the sole party that holds both the retained historical keys (unwrapped from its own envelopes) and the joining member's freshly published `escrowPublicKey`. BurnBar servers never hold any of them. `TeamRosterService` marks the member `status: "pending"` on acceptance and promotes them to `"active"` only after the admin client has acknowledged the backfill, so a member is never active-but-blind. Until an admin client comes online, the join stays pending and the UI says so.
+
+1. The joining member's device publishes its escrow public key (step 1 above).
+2. An active admin client enumerates the team's retained key versions `v1..vN` from `team_rosters/{teamId}.retainedKeyVersions`.
+3. For each retained version it seals that version's key to the joining member's public key and uploads `/team_key_envelopes/{teamId}/envelopes/{joiningUid}_v{n}`.
+4. It then sets the member's roster `status` to `"active"`.
+
+**The alternative, and why it is not the default.** A team may instead re-encrypt its history under the active key, dropping every historical version. That is a strictly stronger position — nothing older than the current key is decryptable at all — but it is a full rewrite of every team document, so it is offered as an explicit admin action (`Re-seal team history`) rather than run on every join. Whichever path a team takes, the invariant is the same and is what Semantic A rests on: **a member is only promoted to `active` once they can decrypt every fact the team retains.**
+
+**A team that retains nothing.** If an admin has re-sealed history and pruned historical versions, `retainedKeyVersions` is `[activeKeyVersion]` and the join issues exactly one envelope. Semantic A's copy is then literally true of a smaller history, which is the honest outcome and must be reflected in the join dialog's copy when a team is configured that way.
 
 ### 6.2 Leave and Revocation Flow
 When Member $M_{departing}$ leaves or is removed from Team $T$:
@@ -367,7 +441,9 @@ We cannot make cryptographic promises that mathematics and distributed systems c
 #### Semantic A: Join-Reads-History
 > **"Joining a team grants read access to all team memories sealed under the team's active keys, including memories contributed by team members before you joined."**
 
-Because team memories are encrypted under shared team keys and stored in a shared collection, an onboarded member who receives the team key is capable of pulling and decrypting all existing historical facts for that team.
+Because team memories are encrypted under shared team keys and stored in a shared collection, an onboarded member who receives the team keys is capable of pulling and decrypting all existing historical facts for that team.
+
+This holds **only because the join flow of section 6.1.1 issues an envelope for every retained key version**, and promotes a member to `active` only once it has. A join that handed over the current key alone would leave every pre-rotation fact sealed to the newcomer while this copy promised the opposite — the promise is what the flow exists to make true, not an assumption about it.
 
 #### Semantic B: Leave-Protects-Future-Only
 > **"Leaving or being removed from a team revokes your server access and rotates the team encryption key for future memories. However, it cannot erase memories or keys that have already been downloaded to your devices."**
@@ -425,7 +501,15 @@ Using the `@firebase/rules-unit-testing` framework:
 - `test_member_cannot_write_plaintext_fields`
 - `test_tampered_team_aad_is_rejected`
 - `test_removed_member_is_denied_immediately`
+- `test_removed_member_is_denied_on_read_and_on_write`
 - `test_client_write_to_team_roster_is_forbidden`
+- `test_member_cannot_update_another_members_fact`
+- `test_admin_can_update_but_cannot_rewrite_the_author_uid`
+- `test_write_under_a_superseded_team_key_version_is_denied`
+- `test_outer_and_sealed_key_versions_must_match`
+- `test_doc_id_is_stable_across_a_key_rotation`
+- `test_two_clients_that_learn_the_same_fact_derive_the_same_doc_id`
+- `test_a_joining_member_receives_an_envelope_for_every_retained_key_version`
 
 ### 8.3 Blindness Proof Verification
 BurnBar operators and servers possess only:
