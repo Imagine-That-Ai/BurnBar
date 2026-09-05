@@ -1,6 +1,7 @@
 import Foundation
 import GRDB
 import OpenBurnBarKernel
+import OpenBurnBarVectorKit
 
 // MARK: - ReceiptStore FTS Extension
 
