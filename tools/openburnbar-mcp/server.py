@@ -2677,6 +2677,11 @@ def burnbar_recall(
     `rerank` (Memory Pro) re-orders the top `rerank_top_k` fusion hits by a
     model's relevance; `None` follows the policy, `False` never calls a model,
     and `trustSignal.rerank` reports `applied`, `off`, or `skipped:<code>`.
+
+    A recall that returns anything appends ONE label-only `memory.recall_serve`
+    row to the audit chain, carrying the served ids and nothing else — that is
+    what `burnbar_memory_timeline` reads to answer "when did this last help".
+    Best-effort: a store another process has locked still returns its results.
     """
     if limited := _local_mcp_rate_limit("burnbar_recall", "memory"):
         return limited
@@ -3492,7 +3497,13 @@ def burnbar_project_adopt(project_id: str | None = None, project_path: str | Non
 
 @mcp.tool()
 def burnbar_audit_trail(project_path: str | None = None, limit: int = 50) -> str:
-    """Return the label-only memory audit hash chain (with chain verification) for a project."""
+    """Return the label-only memory audit hash chain (with chain verification) for a project.
+
+    The trail records what happened *to* memories — add, update, forget,
+    redaction, quarantine, sync — plus one `memory.recall_serve` row per recall
+    that returned results, whose labels name the ids it served. Nothing here
+    carries a body, a tag or a query.
+    """
     if limited := _local_mcp_rate_limit("burnbar_audit_trail", "memory"):
         return limited
     with _memory_engine() as engine:

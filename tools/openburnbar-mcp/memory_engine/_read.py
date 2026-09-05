@@ -273,25 +273,38 @@ class _ReadPath:
             # `memory.recall_serve` is what makes "last helped" answerable
             # (`timeline()`): without it the only evidence a memory was ever used
             # is a write event, which is the wrong question. Label-only, like
-            # every audit row — no body, no tags.
+            # every audit row — no body, no tags, no query.
+            #
+            # **ONE event per recall, not one per hit.** `memory_audit` is
+            # append-only, has no retention sweep anywhere, and is re-hashed end
+            # to end by `verify_audit_chain` on every `audit_trail` and every
+            # `doctor`. A row per hit made that cost O(memories ever served) and
+            # spent twenty of `burnbar_audit_trail`'s fifty-row default window on
+            # a single read, evicting the write events the trail exists to show.
+            # The served ids ride in `labels` instead, bounded by the recall
+            # limit, which is exactly what "last helped" needs.
             #
             # A read that cannot take the write lock still has to return its
             # results: another process holding the store must not turn a recall
             # into an error, so the bookkeeping is best-effort and the answer is
             # not.
             try:
-                for _, memory, _ in top:
-                    audit_event(
-                        self.conn,
-                        action="memory.recall_serve",
-                        project_id=project_id,
-                        subject_id=memory.id,
-                        actor=self.config.actor,
-                    )
+                audit_event(
+                    self.conn,
+                    action="memory.recall_serve",
+                    project_id=project_id,
+                    # The event is about the recall, not about any one memory:
+                    # a per-memory `subject_id` is what a per-hit row was for.
+                    subject_id=None,
+                    labels=[f"served:{memory.id}" for _, memory, _ in top],
+                    actor=self.config.actor,
+                )
                 if reinforce:
                     self._reinforce_recall_ids([memory.id for _, memory, _ in top])
                 self._commit()
-            except sqlite3.OperationalError:
+            except sqlite3.Error:
+                # `OperationalError` alone let a `DatabaseError` (a read-only
+                # store, a full disk) escape from a recall that used to succeed.
                 self.conn.rollback()
 
         output = []
@@ -1274,8 +1287,11 @@ class _ReadPath:
         # Last helped, in order:
         # 1. Latest audit recall-serve event
         # 2. Latest history event
+        # The served ids live in `labels_json` as `served:<id>`, one row per
+        # recall. `memory_audit_action_idx` keeps this off a full table scan.
         audit_row = self.conn.execute(
-            "SELECT ts FROM memory_audit WHERE subject_id = ? AND action = 'memory.recall_serve' ORDER BY seq DESC LIMIT 1",
+            "SELECT ts FROM memory_audit WHERE action = 'memory.recall_serve' "
+            "AND labels_json LIKE '%\"served:' || ? || '\"%' ORDER BY seq DESC LIMIT 1",
             (target_id,),
         ).fetchone()
         if audit_row is not None:

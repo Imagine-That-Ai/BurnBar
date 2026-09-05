@@ -190,6 +190,10 @@ SCHEMA_SQL = """
             prev_hash TEXT,
             hash TEXT NOT NULL
         );
+        -- `timeline()` reads the newest `memory.recall_serve` row to answer
+        -- "last helped". Additive, so no `ENGINE_SCHEMA_VERSION` bump: an index
+        -- is created by `ensure_schema` on every open, old stores included.
+        CREATE INDEX IF NOT EXISTS memory_audit_action_idx ON memory_audit(action, seq DESC);
         CREATE TABLE IF NOT EXISTS sync_state (
             user_id TEXT PRIMARY KEY,
             applied_updated_at TEXT NOT NULL,

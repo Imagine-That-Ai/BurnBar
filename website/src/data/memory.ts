@@ -1012,7 +1012,7 @@ export const TOOL_ATLAS: AtlasTool[] = [
   {
     name: "burnbar_recall",
     group: "memory",
-    desc: "Hybrid BM25 and vector recall, fused and reranked by salience, with kind, tag, entity, metadata and date filters. Every body comes back wrapped as untrusted data.",
+    desc: "Hybrid BM25 and vector recall, fused and reranked by salience, with kind, tag, entity, metadata and date filters. Every body comes back wrapped as untrusted data. A recall that returns results appends one label-only audit row naming the ids it served, which is what the timeline reads for \"last helped\".",
     caps: ["sensitive_read"],
     capsWhen: { sensitive_read: "with include_secrets" },
     memory: true

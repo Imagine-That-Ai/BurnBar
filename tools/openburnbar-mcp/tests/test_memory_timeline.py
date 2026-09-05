@@ -9,6 +9,7 @@ Verifies:
 
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -167,3 +168,93 @@ def test_last_helped_falls_back_to_history_when_no_recall_serve_event_exists(tmp
     assert timeline2["lastHelpedSource"] == "recall_serve"
     assert timeline2["lastHelpedAt"] is not None
     assert timeline2["lastHelpedAt"] >= history_last_helped
+
+
+def _seed_distinct(engine: me.MemoryEngine, repo: str, count: int = 25) -> list[str]:
+    """Bodies that share the query terms but are not near-duplicates of each other."""
+    subjects = [
+        "staging deploy",
+        "release runbook",
+        "rollback drill",
+        "canary window",
+        "migration order",
+    ]
+    ids = []
+    for index in range(count):
+        subject = subjects[index % len(subjects)]
+        stored = engine.remember(
+            f"The {subject} for service number {index} is owned by team {index} and reviewed quarterly.",
+            project_path=repo,
+        )
+        if stored.get("memoryID"):
+            ids.append(str(stored["memoryID"]))
+    return ids
+
+
+def test_a_recall_appends_exactly_one_audit_row(tmp_path: Path) -> None:
+    """I6: recall writes, so what it writes has to be one row, not one per hit.
+
+    `memory.recall_serve` is what makes "last helped" answerable, and the packet
+    sanctions adding it. One row per returned hit does not: a single
+    `recall(limit=20)` then consumes twenty rows of an append-only, never-swept
+    table that `verify_audit_chain` re-hashes end to end on every `audit_trail`
+    and every `doctor`. One event per recall carries the same information — the
+    ids ride in `labels`, bounded by the recall limit — at one twentieth of the
+    cost.
+    """
+    repo = _init_git(tmp_path / "repo")
+    engine = _engine(tmp_path)
+    _seed_distinct(engine, repo)
+
+    before = int(engine.conn.execute("SELECT COUNT(*) FROM memory_audit").fetchone()[0])
+    result = engine.recall("release runbook deploy", project_path=repo, limit=20)
+    served = [str(item["memoryID"]) for item in result["results"]]
+    assert len(served) > 1, "the fixture has to return several hits for this to mean anything"
+    after = int(engine.conn.execute("SELECT COUNT(*) FROM memory_audit").fetchone()[0])
+    assert after - before == 1, f"one recall wrote {after - before} audit rows"
+
+    row = engine.conn.execute(
+        "SELECT subject_id, labels_json, project_id FROM memory_audit "
+        "WHERE action = 'memory.recall_serve' ORDER BY seq DESC LIMIT 1"
+    ).fetchone()
+    # The event is about the recall, not about any one memory.
+    assert row["subject_id"] is None
+    assert str(row["project_id"]) == engine.resolve_project(repo)[0]
+    labels = set(json.loads(row["labels_json"]))
+    assert {f"served:{memory_id}" for memory_id in served} <= labels
+    # Bounded by the recall limit, whatever the store holds.
+    assert len([label for label in labels if label.startswith("served:")]) <= 20
+
+    # And the ids in the labels are still what "last helped" reads.
+    timeline = engine.timeline(served[0], project_path=repo)
+    assert timeline["lastHelpedSource"] == "recall_serve"
+    # A memory the recall did NOT serve is not claimed to have helped.
+    unserved = [
+        str(unrelated["id"])
+        for unrelated in engine.conn.execute("SELECT id FROM memories").fetchall()
+        if str(unrelated["id"]) not in served
+    ]
+    if unserved:
+        assert engine.timeline(unserved[0], project_path=repo)["lastHelpedSource"] == "history"
+    engine.close()
+
+
+def test_the_audit_trail_default_window_still_shows_writes_after_recalls(tmp_path: Path) -> None:
+    """I6: the audit trail is a record of what happened TO memories, not a request log.
+
+    `burnbar_audit_trail`'s default window is 50 rows. At one row per hit, three
+    recalls evicted every `memory.add`, `memory.forget`,
+    `memory.secret_redacted` and `memory.injection_quarantined` event from the
+    default view — the whole thing the tool exists to show.
+    """
+    repo = _init_git(tmp_path / "repo")
+    engine = _engine(tmp_path)
+    _seed_distinct(engine, repo)
+    for _ in range(3):
+        engine.recall("release runbook deploy", project_path=repo, limit=20)
+
+    actions = [str(event["action"]) for event in engine.audit_trail(project_path=repo)["events"]]
+    assert actions.count("memory.recall_serve") == 3
+    writes = [action for action in actions if action != "memory.recall_serve"]
+    assert len(writes) >= 20, actions[:12]
+    engine.close()
