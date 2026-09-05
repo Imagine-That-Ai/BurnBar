@@ -629,30 +629,53 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
 
         // Four-decimal rounding, matching `round(value, 4)` on the engine side.
         for value in [why.bm25, why.cosine, why.salience, why.recency].compactMap({ $0 }) {
-            XCTAssertEqual(value, (value * 10000).rounded() / 10000, accuracy: 1e-12)
+            XCTAssertEqual(value, (value * 10000).rounded(.toNearestOrEven) / 10000, accuracy: 1e-12)
         }
     }
 
-    /// B9 acceptance: the breakdown is a report, not an input. Recall ordering and
-    /// every rank are identical whether or not the caller looks at `why`.
+    /// B9 acceptance: the breakdown is a report, not an input.
+    ///
+    /// The ordering and the scores are pinned as LITERALS against a fixed
+    /// four-memory fixture with the semantic lane disabled, so the ranking is a
+    /// pure function of the corpus and the query: change a BM25 knob, a kind
+    /// weight, a fusion weight or the salience/recency curve and this test fails
+    /// instead of shifting quietly. (Comparing two recalls of the same build
+    /// proves determinism, not invariance — both would move together.)
+    ///
+    /// The independent proof that THIS branch changed no score:
+    /// `git diff org/main -- OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ProjectCodeMemory/BurnBarMemoryRanking.swift`
+    /// is a single pure-append hunk (`@@ -196,4 +196,55 @@`, 51 added lines, 0
+    /// removed, 0 context lines modified), and in `BurnBarProjectCodeMemoryStore.recall`
+    /// the fused-score line
+    /// `scores[entry.key] = entry.value * (0.6 + 0.4 * min(1.0, max(0.0, salience))) * recency`
+    /// is byte-identical to `org/main`; the only insertion inside that `reduce`
+    /// is the `whyByID[…] =` write, which is never read back into `scores` or
+    /// `rankedIDs`.
     func test_reporting_the_why_breakdown_does_not_change_recall_ordering() throws {
         let fixture = try makeFixture()
+        // The semantic lane is disabled on purpose: the OS sentence embedder is
+        // present on some machines and absent on others, and a pinned ordering
+        // has to be a property of the ranker, not of the host.
         let store = try BurnBarProjectCodeMemoryStore(
             databasePath: fixture.database.path,
-            logger: BurnBarDaemonLogger(category: "memory-why-ordering-test")
+            logger: BurnBarDaemonLogger(category: "memory-why-ordering-test"),
+            embeddingProvider: DisabledEmbeddingProvider()
         )
+        var memoryIDs: [String] = []
         for (index, text) in [
             "Always compile Swift code before pushing to main branch.",
             "Swift code review happens before the merge queue.",
             "Python memory engine maintains under 1500 lines per module.",
             "The daemon compiles with a Swift 6 toolchain."
         ].enumerated() {
-            _ = try store.remember(
-                BurnBarProjectMemoryRememberRequest(
-                    text: text,
-                    projectPath: fixture.project.path,
-                    kind: index.isMultiple(of: 2) ? "procedure" : "fact"
-                )
+            memoryIDs.append(
+                try store.remember(
+                    BurnBarProjectMemoryRememberRequest(
+                        text: text,
+                        projectPath: fixture.project.path,
+                        kind: index.isMultiple(of: 2) ? "procedure" : "fact"
+                    )
+                ).memoryID
             )
         }
 
@@ -663,10 +686,31 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         let first = try store.recall(request)
         let second = try store.recall(request)
 
-        XCTAssertFalse(first.hits.isEmpty)
+        // The fixture's ordering, as literals: "Always compile Swift code before
+        // pushing to main branch." (all three query terms) ahead of "The daemon
+        // compiles with a Swift 6 toolchain." and then "Swift code review happens
+        // before the merge queue." — memories 0, 3, 1 in insertion order.
+        // "Python memory engine maintains under 1500 lines per module." shares no
+        // query token and is not served at all.
+        XCTAssertEqual(first.hits.map(\.memoryID), [memoryIDs[0], memoryIDs[3], memoryIDs[1]])
+        XCTAssertEqual(first.hits.map(\.rank), [0, 1, 2])
         XCTAssertEqual(first.hits.map(\.memoryID), second.hits.map(\.memoryID))
         XCTAssertEqual(first.hits.map(\.rank), second.hits.map(\.rank))
-        XCTAssertTrue(first.hits.allSatisfy { $0.why != nil }, "every ranked hit reports a breakdown")
+
+        // Every served hit is lexical-only here, and each reports the score that
+        // put it where it is. These are the ranker's own numbers under the current
+        // BM25 knobs (k1 1.2, b 0.75), kind weights and salience/recency curves:
+        // move any of them and this array moves with it.
+        XCTAssertEqual(first.hits.map(\.matchedBy), ["lexical", "lexical", "lexical"])
+        XCTAssertEqual(first.hits.compactMap { $0.why?.lexicalRank }, [1, 2, 3])
+        XCTAssertEqual(first.hits.compactMap { $0.why?.bm25 }, [1.6614, 1.2311, 1.0673])
+        // `procedure` and `fact` share the 0.85 kind weight, and `remember`
+        // defaults to confidence 1.0 with no accesses yet.
+        XCTAssertEqual(first.hits.compactMap { $0.why?.salience }, [0.85, 0.85, 0.85])
+        // Freshly written, so the 365-day half-life has not moved: 0.5 + 0.5 = 1.0.
+        XCTAssertEqual(first.hits.compactMap { $0.why?.recency }, [1.0, 1.0, 1.0])
+        XCTAssertEqual(first.hits.compactMap { $0.why?.semanticRank }, [])
+        XCTAssertEqual(first.hits.compactMap { $0.why?.cosine }, [])
     }
 
     /// The breakdown formats one line per hit, in the engine's field order.
@@ -702,6 +746,43 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
             lexicalOnly.why.explanationLine(matchedBy: lexicalOnly.matchedBy),
             "Matched by lexical: lexical #1 (bm25 1.50), salience 0.50, recency 1.00"
         )
+
+        // The fourth lane. The store never reaches it — `whyByID` is keyed off
+        // `fusedScores`, whose keys always came from a lane, and the browse
+        // listing reports no breakdown at all — but the engine DOES emit it
+        // (`_read.py`: `"hybrid" if lr and sr else ("lexical" if lr else
+        // ("semantic" if sr else "browse"))`), so the daemon mirrors it rather
+        // than diverging on a case a future browse-with-scores path would hit.
+        let neitherLane = BurnBarMemoryRanking.why(
+            id: "mem_unit",
+            lexical: [("other", 9.0)],
+            semantic: [("another", 0.5)],
+            salience: 0.6,
+            recency: 0.75
+        )
+        XCTAssertEqual(neitherLane.matchedBy, "browse")
+        XCTAssertNil(neitherLane.why.lexicalRank)
+        XCTAssertNil(neitherLane.why.bm25)
+        XCTAssertNil(neitherLane.why.semanticRank)
+        XCTAssertNil(neitherLane.why.cosine)
+        XCTAssertEqual(
+            neitherLane.why.explanationLine(matchedBy: neitherLane.matchedBy),
+            "Matched by browse: salience 0.60, recency 0.75"
+        )
+
+        // The engine rounds with Python's `round`, which is half-to-EVEN. 0.03125
+        // is exact in binary and ×10⁴ is exactly 312.5, so the two rules disagree
+        // here: half-to-even gives 0.0312, half-away-from-zero 0.0313. The daemon
+        // reports the engine's digit.
+        let tie = BurnBarMemoryRanking.why(
+            id: "mem_unit",
+            lexical: [("mem_unit", 0.03125)],
+            semantic: [],
+            salience: 0.03125,
+            recency: 1.0
+        )
+        XCTAssertEqual(tie.why.bm25, 0.0312)
+        XCTAssertEqual(tie.why.salience, 0.0312)
     }
 
     func testMemoryRecallMatchesSourcePathTokens() throws {

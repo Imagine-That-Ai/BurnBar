@@ -206,22 +206,47 @@ enum BurnBarMemoryRanking {
     /// Pure reporting. It reads the same lexical/semantic lists and the same
     /// salience/recency values the scorer already computed and writes nothing
     /// back, so a recall's ordering is identical with and without it.
+    /// Where each candidate sits in each lane, computed ONCE per recall.
+    ///
+    /// Scoring visits every fused candidate, and each lane holds up to `limit`
+    /// (clamped to 100) entries; a linear scan per candidate per lane would be
+    /// quadratic in the recall size for a value that never changes during the
+    /// loop. Built once, read by `why` in constant time.
+    struct LanePositions {
+        /// 1-based rank and the lane's score, keyed by memory id.
+        let lexical: [String: (rank: Int, score: Double)]
+        let semantic: [String: (rank: Int, score: Double)]
+
+        init(lexical: [(id: String, score: Double)], semantic: [(id: String, score: Double)]) {
+            self.lexical = Self.positions(lexical)
+            self.semantic = Self.positions(semantic)
+        }
+
+        /// First occurrence wins, matching the `firstIndex` this replaces (a
+        /// ranked lane never repeats an id, but the rule should not depend on it).
+        private static func positions(_ lane: [(id: String, score: Double)]) -> [String: (rank: Int, score: Double)] {
+            var result: [String: (rank: Int, score: Double)] = [:]
+            result.reserveCapacity(lane.count)
+            for (index, entry) in lane.enumerated() where result[entry.id] == nil {
+                result[entry.id] = (rank: index + 1, score: entry.score)
+            }
+            return result
+        }
+    }
+
     static func why(
         id: String,
-        lexical: [(id: String, score: Double)],
-        semantic: [(id: String, score: Double)],
+        lanes: LanePositions,
         salience: Double,
         recency: Double,
         rerankScore: Double? = nil,
         reranker: String? = nil
     ) -> (matchedBy: String, why: BurnBarMemoryWhyBreakdown) {
-        let lexicalIndex = lexical.firstIndex { $0.id == id }
-        let semanticIndex = semantic.firstIndex { $0.id == id }
-        let lexicalRank = lexicalIndex.map { $0 + 1 }
-        let semanticRank = semanticIndex.map { $0 + 1 }
+        let lexicalPosition = lanes.lexical[id]
+        let semanticPosition = lanes.semantic[id]
 
         let matchedBy: String
-        switch (lexicalRank, semanticRank) {
+        switch (lexicalPosition, semanticPosition) {
         case (.some, .some): matchedBy = "hybrid"
         case (.some, .none): matchedBy = "lexical"
         case (.none, .some): matchedBy = "semantic"
@@ -231,10 +256,10 @@ enum BurnBarMemoryRanking {
         return (
             matchedBy,
             BurnBarMemoryWhyBreakdown(
-                lexicalRank: lexicalRank,
-                bm25: lexicalIndex.map { rounded(lexical[$0].score) },
-                semanticRank: semanticRank,
-                cosine: semanticIndex.map { rounded(semantic[$0].score) },
+                lexicalRank: lexicalPosition?.rank,
+                bm25: lexicalPosition.map { rounded($0.score) },
+                semanticRank: semanticPosition?.rank,
+                cosine: semanticPosition.map { rounded($0.score) },
                 salience: rounded(salience),
                 recency: rounded(recency),
                 rerankScore: rerankScore,
@@ -243,8 +268,35 @@ enum BurnBarMemoryRanking {
         )
     }
 
-    /// Four decimals, matching `round(value, 4)` on the engine side.
+    /// Lane-array convenience for callers that hold a single candidate (the unit
+    /// tests). The recall path builds `LanePositions` once and uses the above.
+    static func why(
+        id: String,
+        lexical: [(id: String, score: Double)],
+        semantic: [(id: String, score: Double)],
+        salience: Double,
+        recency: Double,
+        rerankScore: Double? = nil,
+        reranker: String? = nil
+    ) -> (matchedBy: String, why: BurnBarMemoryWhyBreakdown) {
+        why(
+            id: id,
+            lanes: LanePositions(lexical: lexical, semantic: semantic),
+            salience: salience,
+            recency: recency,
+            rerankScore: rerankScore,
+            reranker: reranker
+        )
+    }
+
+    /// Four decimals, matching `round(value, 4)` on the engine side — including
+    /// its tie rule. Python's `round` is half-to-EVEN (banker's rounding);
+    /// Swift's bare `rounded()` is half-away-from-zero, so an exact `.00005`
+    /// would have printed a different last digit on the two lanes for the same
+    /// score. Only reachable on an exact tie in a binary float and only ever
+    /// displayed, but two implementations of one contract should not disagree
+    /// about a digit.
     private static func rounded(_ value: Double) -> Double {
-        (value * 10000).rounded() / 10000
+        (value * 10000).rounded(.toNearestOrEven) / 10000
     }
 }

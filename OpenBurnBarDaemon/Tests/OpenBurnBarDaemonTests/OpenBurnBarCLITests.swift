@@ -263,6 +263,26 @@ final class BurnBarCLITests: XCTestCase {
         XCTAssertTrue(health.contains("last_vacuumed_at=2026-06-16T00:00:01Z"))
     }
 
+    /// B9 acceptance, the shipping half: `recall` renders exactly ONE explanation
+    /// line under each hit whose breakdown the daemon reported, and none at all
+    /// under a hit that carries no breakdown (an older daemon, or the browse
+    /// listing). The whole rendering is pinned, so a change to the field order,
+    /// the number format or the line count fails here.
+    func testRecallRendersOneExplanationLinePerRankedHit() throws {
+        let runner = BurnBarCLIRunner(client: FakeCLIClient())
+
+        let output = try runner.run(arguments: ["recall", "fixture"])
+
+        XCTAssertEqual(output, """
+        mem_fixture [personal/note] #fixture
+        Use the fixture pipeline.
+
+        mem_ranked [project/decision] #ranked
+        Ship the daemon ranker.
+        Matched by hybrid: lexical #2 (bm25 4.25), semantic #1 (cos 0.91), salience 0.85, recency 0.99
+        """)
+    }
+
     func testResumeCommandParsingAndNativeOutput() throws {
         let runner = BurnBarCLIRunner(client: FakeCLIClient())
         let output = try runner.run(arguments: ["resume", "codex-session", "--as", "Codex", "--model", "gpt-5.1"])
@@ -655,6 +675,8 @@ struct FakeCLIClient: BurnBarCLIClient {
             traceID: "trace-test",
             projectID: "proj_fixture",
             hits: [
+                // A browse-shaped hit: an older daemon, or the quarantined /
+                // forgotten listing, reports no breakdown at all.
                 BurnBarProjectMemoryHit(
                     memoryID: "mem_fixture",
                     projectID: "proj_fixture",
@@ -666,6 +688,28 @@ struct FakeCLIClient: BurnBarCLIClient {
                     sourcePath: nil,
                     snippet: "Use the fixture pipeline.",
                     rank: nil
+                ),
+                // A ranked hit: the daemon ranker reported why it was served.
+                BurnBarProjectMemoryHit(
+                    memoryID: "mem_ranked",
+                    projectID: "proj_fixture",
+                    kind: "decision",
+                    scope: "project",
+                    confidence: 0.9,
+                    bodyRedacted: "Ship the daemon ranker.",
+                    tags: ["ranked"],
+                    sourcePath: nil,
+                    snippet: "Ship the daemon ranker.",
+                    rank: 1,
+                    matchedBy: "hybrid",
+                    why: BurnBarMemoryWhyBreakdown(
+                        lexicalRank: 2,
+                        bm25: 4.25,
+                        semanticRank: 1,
+                        cosine: 0.91,
+                        salience: 0.85,
+                        recency: 0.99
+                    )
                 )
             ]
         )

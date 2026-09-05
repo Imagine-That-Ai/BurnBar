@@ -580,6 +580,7 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
             // B9: the ranking report, built from the values the scorer already
             // has. Reported alongside each hit; never read back into `scores`.
             var whyByID: [String: (matchedBy: String, why: BurnBarMemoryWhyBreakdown)] = [:]
+            let lanes = BurnBarMemoryRanking.LanePositions(lexical: lexical, semantic: semantic)
             let finalScores = fusedScores.reduce(into: [String: Double]()) { scores, entry in
                 guard let candidate = candidatesByID[entry.key] else { return }
                 let state = salienceByID[entry.key] ?? (hitCount: 0, lastReinforcedAt: nil)
@@ -597,8 +598,7 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                 scores[entry.key] = entry.value * (0.6 + 0.4 * min(1.0, max(0.0, salience))) * recency
                 whyByID[entry.key] = BurnBarMemoryRanking.why(
                     id: entry.key,
-                    lexical: lexical,
-                    semantic: semantic,
+                    lanes: lanes,
                     salience: salience,
                     recency: recency
                 )
