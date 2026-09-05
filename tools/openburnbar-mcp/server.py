@@ -2614,7 +2614,7 @@ def burnbar_memory_extract(
     tags: list[str] | str | None = None,
     metadata: dict[str, Any] | str | None = None,
     force: bool = False,
-    review_status: str | None = "quarantined",
+    review_status: str | None = None,
 ) -> str:
     """
     Extract memories from a conversation with a Pro model instead of the local
@@ -2626,11 +2626,15 @@ def burnbar_memory_extract(
     means no extraction. Every row it writes carries `extracted_by` and the model
     id, so a reviewer can see what produced it.
 
-    Rows land `quarantined` by default, like every other capture path — the
-    collectors and the assistant-export importer do the same. This is the path
-    that ships a member's transcript to a cloud model and writes back facts
-    nobody has read; approving them is a separate, deliberate act
-    (`burnbar_memory_review`). Pass `review_status` explicitly to override.
+    Rows land `quarantined`, like every other capture path — the collectors and
+    the assistant-export importer do the same — and there is no argument that
+    lifts it. This is the path that ships a member's transcript to a cloud model
+    and writes back facts nobody has read; approving them is a separate,
+    deliberate act (`burnbar_memory_review`). The model's own `reviewStatus` is
+    discarded for the same reason: a prompt-injected transcript would otherwise
+    grant itself recall and the authority to retire approved memories.
+    `review_status` is still accepted, and may only make the outcome STRICTER
+    (`rejected`); it cannot approve.
 
     Gate: `memory_llm_extract` and `memory_write`, plus cloud consent and a Pro
     entitlement; `spawn_process` as well when the policy can route extraction to
@@ -2656,7 +2660,10 @@ def burnbar_memory_extract(
         tags=tags,
         metadata=metadata,
         force=force,
-        review_status=review_status,
+        # A capture path files rows for review, it never grants approval. The
+        # argument survives so an existing caller is answered rather than
+        # errored, but `approved` is not one of its outcomes.
+        review_status="rejected" if str(review_status or "").strip().lower() == "rejected" else "quarantined",
         fail_closed=True,
     )
 

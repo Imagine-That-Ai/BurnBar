@@ -252,12 +252,13 @@ def memorize(
     elif resolved_client in {"grok-build", "grokbuild"}:
         resolved_client = "grok"
 
-    target_review_status = review_status
-    if target_review_status is None:
-        if resolved_client in {"cursor", "codex", "hermes", "grok"}:
-            target_review_status = "quarantined"
-        else:
-            target_review_status = env.get("OPENBURNBAR_MEMORY_DEFAULT_REVIEW_STATUS")
+    # A collector is a capture path: it files unread, machine-extracted rows for
+    # review, and nothing it is asked for grants approval. `review_status` may
+    # only make the outcome STRICTER (`rejected`); `approved`, a per-client
+    # default, and `OPENBURNBAR_MEMORY_DEFAULT_REVIEW_STATUS` no longer put a row
+    # nobody has read straight into recall.
+    requested = str(review_status or "").strip().lower()
+    target_review_status = "rejected" if requested == "rejected" else "quarantined"
 
     messages: list[dict[str, str]] = []
     # The deadline is armed before the read, not after it: a transcript large or
@@ -417,14 +418,14 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     )
     parser.add_argument(
         "--review-status",
-        choices=["approved", "quarantined", "rejected"],
+        choices=["quarantined", "rejected"],
         default=None,
-        help="initial review status (default: quarantined for new clients, approved for claude_code)",
+        help="initial review status (default: quarantined; a collector cannot approve)",
     )
     parser.add_argument(
         "--quarantine",
         action="store_true",
-        help="force review status to quarantined",
+        help="no-op kept for compatibility: collected rows are always quarantined",
     )
     parser.add_argument("--project", help="project root the memories belong to (default: the working directory)")
     parser.add_argument("--session-id", default="", help="session identifier used in the memory source ref")

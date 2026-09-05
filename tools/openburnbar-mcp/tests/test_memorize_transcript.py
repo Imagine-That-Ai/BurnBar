@@ -720,3 +720,39 @@ def test_codex_adapter_reads_the_current_response_item_payload_shape(tmp_path):
         {"role": "user", "content": "Keep the memory store local-only."},
         {"role": "assistant", "content": "Agreed, it stays on-device."},
     ], messages
+
+
+def test_collector_forces_quarantine_over_an_approved_request(tmp_path):
+    """A capture path files rows for review; it does not grant approval.
+
+    `--review-status approved`, `OPENBURNBAR_MEMORY_DEFAULT_REVIEW_STATUS`, and a
+    `claude_code` client used to land rows straight into recall. Nothing a caller
+    or an extractor asks for lets an unread, machine-authored row skip
+    `burnbar_memory_review`.
+    """
+    env = _isolated_env(tmp_path)
+    env["OPENBURNBAR_MEMORY_DEFAULT_REVIEW_STATUS"] = "approved"
+    project = tmp_path / "forced_proj"
+    project.mkdir()
+
+    result = mt.memorize(
+        transcript_path=FIXTURE_CODEX,
+        project_path=str(project),
+        session_id="forced-sess",
+        reason="clear",
+        client="codex",
+        review_status="approved",
+        env=env,
+    )
+    assert result["status"] == "memorized", result
+    assert [d.get("reviewStatus") for d in result["result"]["decisions"]] != []
+    for decision in result["result"]["decisions"]:
+        assert decision.get("reviewStatus") == "quarantined", decision
+
+    import memory_engine as me
+
+    engine = me.MemoryEngine.open(db_path=env["OPENBURNBAR_MEMORY_DB_PATH"])
+    try:
+        assert engine.list(project_path=str(project), scope="all", review_status="approved")["results"] == []
+    finally:
+        engine.close()

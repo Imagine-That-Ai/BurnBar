@@ -285,7 +285,9 @@ class _WritePath:
                 fact.metadata = merged
             if default_scope and not fact.scope:
                 fact.scope = default_scope
-            if default_review_status and not fact.review_status:
+            # Unconditional, and an extractor's own status is discarded; only
+            # CALLER `facts` keep one. See `Fact.from_mapping` for why.
+            if default_review_status or not facts:
                 fact.review_status = default_review_status
             fact.source_ref = _merged_source_ref(source_ref, fact.source_ref)
             decision = self._commit_fact(
