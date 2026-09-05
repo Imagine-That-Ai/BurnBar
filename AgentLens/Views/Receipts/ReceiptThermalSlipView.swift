@@ -145,6 +145,14 @@ struct ReceiptThermalSlipView: View {
         .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.4 : 0.08), radius: 8, x: 0, y: 4)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Thermal receipt for \(receipt.projectName), total cost \(receipt.formattedCost)")
+        .onChange(of: receipt.id) { _, _ in
+            localReview = receipt.qualityReview
+            isGrading = false
+            hasCopied = false
+        }
+        .onChange(of: receipt.qualityReview) { _, newReview in
+            localReview = newReview
+        }
     }
 
     // MARK: - Subviews

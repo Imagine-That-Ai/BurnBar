@@ -40,6 +40,7 @@ final class AppCommandRouter {
     var openSettings: (() -> Void)?
     var openBugReport: (() -> Void)?
     var openHelpSupport: (() -> Void)?
+    var openReceipts: ((String?) -> Void)?
     var makeMenuBarPopoverContent: ((_ onDismiss: @escaping () -> Void) -> AnyView)? {
         didSet {
             // Reprime menu-bar popover content when the real factory lands and
@@ -72,6 +73,10 @@ final class AppCommandRouter {
             return true
         case "help", "support":
             openHelpSupport?()
+            return true
+        case "receipts", "receipt":
+            let receiptId = url.pathComponents.first { $0 != "/" }
+            openReceipts?(receiptId)
             return true
         // `home` belongs here too: NavigationCoordinator.handleDeepLink implements
         // it, but a host missing from this list never reaches that handler — it

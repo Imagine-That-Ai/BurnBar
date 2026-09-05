@@ -129,22 +129,43 @@ public struct ReceiptFilter: Hashable, Sendable {
 
         for token in tokens {
             let lower = token.lowercased()
-            if lower.hasPrefix("spend:>") || lower.hasPrefix("cost:>") {
-                let valueStr = token.dropFirst(7).replacingOccurrences(of: "$", with: "")
+            if lower.hasPrefix("spend:>=") {
+                let valueStr = token.dropFirst("spend:>=".count).replacingOccurrences(of: "$", with: "")
                 if let val = Double(valueStr) { minSpend = val; continue }
-            } else if lower.hasPrefix("spend:<") || lower.hasPrefix("cost:<") {
-                let valueStr = token.dropFirst(7).replacingOccurrences(of: "$", with: "")
+            } else if lower.hasPrefix("cost:>=") {
+                let valueStr = token.dropFirst("cost:>=".count).replacingOccurrences(of: "$", with: "")
+                if let val = Double(valueStr) { minSpend = val; continue }
+            } else if lower.hasPrefix("spend:>") {
+                let valueStr = token.dropFirst("spend:>".count).replacingOccurrences(of: "$", with: "")
+                if let val = Double(valueStr) { minSpend = val; continue }
+            } else if lower.hasPrefix("cost:>") {
+                let valueStr = token.dropFirst("cost:>".count).replacingOccurrences(of: "$", with: "")
+                if let val = Double(valueStr) { minSpend = val; continue }
+            } else if lower.hasPrefix("spend:<=") {
+                let valueStr = token.dropFirst("spend:<=".count).replacingOccurrences(of: "$", with: "")
                 if let val = Double(valueStr) { maxSpend = val; continue }
+            } else if lower.hasPrefix("cost:<=") {
+                let valueStr = token.dropFirst("cost:<=".count).replacingOccurrences(of: "$", with: "")
+                if let val = Double(valueStr) { maxSpend = val; continue }
+            } else if lower.hasPrefix("spend:<") {
+                let valueStr = token.dropFirst("spend:<".count).replacingOccurrences(of: "$", with: "")
+                if let val = Double(valueStr) { maxSpend = val; continue }
+            } else if lower.hasPrefix("cost:<") {
+                let valueStr = token.dropFirst("cost:<".count).replacingOccurrences(of: "$", with: "")
+                if let val = Double(valueStr) { maxSpend = val; continue }
+            } else if lower.hasPrefix("cache:>=") {
+                let valueStr = token.dropFirst("cache:>=".count).replacingOccurrences(of: "%", with: "")
+                if let val = Double(valueStr) { minCache = val; continue }
             } else if lower.hasPrefix("cache:>") {
-                let valueStr = token.dropFirst(7).replacingOccurrences(of: "%", with: "")
+                let valueStr = token.dropFirst("cache:>".count).replacingOccurrences(of: "%", with: "")
                 if let val = Double(valueStr) { minCache = val; continue }
             } else if lower.hasPrefix("model:") {
-                model = String(token.dropFirst(6))
+                model = String(token.dropFirst("model:".count))
                 continue
             } else if lower.hasPrefix("project:") {
-                project = String(token.dropFirst(8))
+                project = String(token.dropFirst("project:".count))
                 continue
-            } else if lower == "is:starred" || lower == "starred:true" {
+            } else if lower == "is:starred" || lower == "starred:true" || lower == "has:star" {
                 starred = true
                 continue
             }

@@ -770,7 +770,8 @@ struct AgentSigil: View {
             }
             .contentShape(Rectangle())
         }
-        .menuStyle(.borderlessButton)
+        .menuStyle(.button)
+        .buttonStyle(.plain)
         .menuIndicator(.hidden)
         .fixedSize()
         .accessibilityElement(children: .ignore)
@@ -801,7 +802,8 @@ struct AgentSigil: View {
             }
             .contentShape(Rectangle())
         }
-        .menuStyle(.borderlessButton)
+        .menuStyle(.button)
+        .buttonStyle(.plain)
         .menuIndicator(.hidden)
         .fixedSize()
         .accessibilityElement(children: .ignore)
@@ -1187,7 +1189,8 @@ struct AgentGhostRow: View {
                     .strokeBorder(DesignSystem.Colors.border.opacity(0.5), lineWidth: 0.75)
             )
         }
-        .menuStyle(.borderlessButton)
+        .menuStyle(.button)
+        .buttonStyle(.plain)
         .menuIndicator(.hidden)
         .fixedSize()
         .accessibilityLabel("\(hidden.count) more agents")

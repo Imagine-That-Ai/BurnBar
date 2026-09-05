@@ -27,7 +27,7 @@ final class PaneWorkspaceModelTests: XCTestCase {
 
     // MARK: - Helpers
 
-    private func makeController() throws -> ChatSessionController {
+    fileprivate func makeController() throws -> ChatSessionController {
         let dataStore = try makeDiscoveryInMemoryStore()
         return ChatSessionController(
             dataStore: dataStore,
@@ -1098,5 +1098,32 @@ final class AgentSigilLabelTests: XCTestCase {
         XCTAssertEqual(AgentSigil.elapsedText(since: start, now: start.addingTimeInterval(41)), "41s")
         XCTAssertEqual(AgentSigil.elapsedText(since: start, now: start.addingTimeInterval(125)), "2m 5s")
         XCTAssertEqual(AgentSigil.elapsedText(since: start, now: start.addingTimeInterval(-5)), "0s")
+    }
+
+    func test_sigilFittingSize_hermesBackend_isNotStretched() throws {
+        let controller = try makeController()
+        controller.chatBackend = .hermes
+        let sigil = AgentSigil(
+            controller: controller,
+            settingsManager: controller.settingsManager
+        )
+        let host = NSHostingView(rootView: sigil)
+        host.layoutSubtreeIfNeeded()
+        let size = host.fittingSize
+        // Prior to the fix, .menuStyle(.borderlessButton) caused SwiftUIPopupButton to size
+        // to the raw 160x160 NSImage, stretching the fitting width beyond 350pt and height to 160pt.
+        XCTAssertLessThanOrEqual(size.height, 30)
+        XCTAssertLessThan(size.width, 300)
+    }
+
+    func test_providerLogoView_fittingSize_neverExceedsRequestedSize() {
+        for provider in AgentProvider.allCases {
+            let logoView = ProviderLogoView(provider: provider, size: 14)
+            let host = NSHostingView(rootView: logoView)
+            host.layoutSubtreeIfNeeded()
+            let size = host.fittingSize
+            XCTAssertLessThanOrEqual(size.width, 14)
+            XCTAssertLessThanOrEqual(size.height, 14)
+        }
     }
 }

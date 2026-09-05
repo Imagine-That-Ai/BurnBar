@@ -40,6 +40,7 @@ struct ProviderLogoView: View {
                     bundledImage
                         .resizable()
                         .aspectRatio(contentMode: .fit)
+                        .frame(maxWidth: size, maxHeight: size)
                         .padding(needsBackdropTreatment ? size * 0.08 : 0)
                 } else {
                     fallbackView
@@ -67,6 +68,7 @@ struct ProviderLogoView: View {
 
         RoundedRectangle(cornerRadius: size * 0.2237, style: .continuous)
             .fill(fillStyle)
+            .frame(width: size, height: size)
             .overlay(
                 RoundedRectangle(cornerRadius: size * 0.2237, style: .continuous)
                     .stroke(effectiveScheme == .dark ? Color.black.opacity(0.06) : Color.white.opacity(0.12), lineWidth: 0.5)
@@ -86,9 +88,11 @@ struct ProviderLogoView: View {
             Image(systemName: provider.iconName)
                 .font(.system(size: size * 0.6, weight: .semibold))
                 .foregroundStyle(DesignSystem.Colors.primary(for: provider))
+                .frame(width: size, height: size)
         } else {
             Image(systemName: provider.iconName)
                 .font(.system(size: size * 0.6, weight: .semibold))
+                .frame(width: size, height: size)
         }
     }
 }

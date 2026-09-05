@@ -320,6 +320,20 @@ struct BurnBarProfileMenu: View {
             }
 
             menuRowButton(
+                icon: "scroll.fill",
+                title: "Receipts Register",
+                subtitle: "Session receipts & quality audits",
+                color: .orange
+            ) {
+                dismissMenu()
+                if let dataStore = (NSApp.delegate as? AppDelegate)?.dataStore {
+                    WindowManager.shared.openReceiptsWindow(dataStore: dataStore)
+                } else {
+                    routeToSettingsTab(.receipts)
+                }
+            }
+
+            menuRowButton(
                 icon: "lock.shield.fill",
                 title: "Data & Privacy",
                 subtitle: "Vault, exports, and redactions",

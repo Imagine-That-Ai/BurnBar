@@ -56,6 +56,21 @@ final class ReceiptStoreTests: XCTestCase {
         XCTAssertEqual(modifiers.model, "sonnet")
         XCTAssertEqual(modifiers.minCache, 80.0)
         XCTAssertEqual(modifiers.starred, Optional(true))
+
+        // Test cost:> and cost:< prefixes with exact string counts
+        let costQuery = "fix bug cost:>$5.00 cost:<=$20.00 project:AgentLens has:star"
+        let (cleanedCost, costMods) = ReceiptFilter.parseSmartQuery(costQuery)
+        XCTAssertEqual(cleanedCost, "fix bug")
+        XCTAssertEqual(costMods.minSpend, 5.00)
+        XCTAssertEqual(costMods.maxSpend, 20.00)
+        XCTAssertEqual(costMods.project, "AgentLens")
+        XCTAssertEqual(costMods.starred, Optional(true))
+
+        let cacheGteQuery = "benchmark cache:>=90% model:claude-3-7-sonnet"
+        let (cleanedCache, cacheMods) = ReceiptFilter.parseSmartQuery(cacheGteQuery)
+        XCTAssertEqual(cleanedCache, "benchmark")
+        XCTAssertEqual(cacheMods.minCache, 90.0)
+        XCTAssertEqual(cacheMods.model, "claude-3-7-sonnet")
     }
 
     // MARK: - CRUD & Starring

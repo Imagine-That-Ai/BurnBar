@@ -16,6 +16,7 @@ extension OpenBurnBarApp {
             router.openConversationSearch = { openStartupRecoveryWindow() }
             router.openChatPanel = { openStartupRecoveryWindow() }
             router.openSettings = { openStartupRecoveryWindow() }
+            router.openReceipts = { _ in openStartupRecoveryWindow() }
             router.makeMenuBarPopoverContent = { _ in
                 AnyView(EmptyView())
             }
@@ -57,6 +58,9 @@ extension OpenBurnBarApp {
         }
         router.openHelpSupport = {
             windowManager.openHelpSupport()
+        }
+        router.openReceipts = { initialReceiptId in
+            windowManager.openReceiptsWindow(dataStore: context.dataStore, initialReceiptId: initialReceiptId)
         }
         router.makeMenuBarPopoverContent = { onDismiss in
             AnyView(

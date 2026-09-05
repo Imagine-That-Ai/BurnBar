@@ -385,6 +385,7 @@ struct ReceiptDrawerView: View {
                             }
                         }
                     )
+                    .id(receipt.id)
                     .padding(.top, 14)
                     .padding(.bottom, 24)
                 } else {

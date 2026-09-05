@@ -135,6 +135,9 @@ struct DashboardDetailView: View {
                         description: Text("Open Fleet from the main dashboard.")
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                case .receipts:
+                    ReceiptDrawerView(dataStore: dataStore)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 case .controlDeck:
                     // Parallel/legacy detail surface. The Control Deck needs the
                     // daemon manager and the deck model, which this context does

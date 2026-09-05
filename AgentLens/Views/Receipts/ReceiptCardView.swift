@@ -81,6 +81,13 @@ struct ReceiptDetailCardView: View {
         }
         .padding(16)
         .frame(maxWidth: 400)
+        .onChange(of: receipt.id) { _, _ in
+            isStarred = receipt.isStarred
+            showCopiedAlert = false
+        }
+        .onChange(of: receipt.isStarred) { _, newStarred in
+            isStarred = newStarred
+        }
     }
 
     // MARK: - Subviews
