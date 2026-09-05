@@ -105,7 +105,8 @@ final class SettingsManager {
         flushDelayNanoseconds: UInt64 = 100_000_000,
         usageMemoryRemoteConfigSeed: () -> UsageMemoryRemoteConfigSnapshot? = {
             SettingsManager.activeUsageMemoryRemoteConfigSnapshot()
-        }
+        },
+        orgMemoryRemoteConfigSeed: () -> OrgMemoryRemoteConfigSnapshot? = { nil }
     ) {
         let coordinator = SettingsPersistenceCoordinator(defaults: defaults, flushDelayNanoseconds: flushDelayNanoseconds)
         self.persistence = coordinator
@@ -141,7 +142,8 @@ final class SettingsManager {
         self.cliAssistant = CLIAssistantSettings(persistence: coordinator)
         self.memory = MemorySettings(
             persistence: coordinator,
-            usageRemoteConfigSeed: usageMemoryRemoteConfigSeed
+            usageRemoteConfigSeed: usageMemoryRemoteConfigSeed,
+            orgRemoteConfigSeed: orgMemoryRemoteConfigSeed
         )
         if let cachedCloudModels = Self.cachedMemoryCloudModelsRemoteConfigEnabled(), !cachedCloudModels {
             memory.remoteConfigCloudModelsEnabled = false

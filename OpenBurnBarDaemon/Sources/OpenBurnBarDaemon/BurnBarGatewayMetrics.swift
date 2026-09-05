@@ -24,6 +24,8 @@ public enum BurnBarDaemonMetricsCounters {
     private nonisolated(unsafe) static var gatewayListenerBound: Bool?
     // guarded by `lock`
     private nonisolated(unsafe) static var gatewayListenerErrorMessage: String?
+    // guarded by `lock`
+    private nonisolated(unsafe) static var memorySyncMetrics: BurnBarMemorySyncMetrics?
 
     /// Records that the gateway TCP listener reached the `.ready` state.
     public static func recordGatewayListenerReady() {
@@ -57,6 +59,20 @@ public enum BurnBarDaemonMetricsCounters {
         defer { lock.unlock() }
         guard let gatewayListenerBound else { return nil }
         return gatewayListenerBound ? 1 : 0
+    }
+
+    /// Records current memory sync observability metrics.
+    public static func recordMemorySyncMetrics(_ metrics: BurnBarMemorySyncMetrics) {
+        lock.lock()
+        memorySyncMetrics = metrics
+        lock.unlock()
+    }
+
+    /// Returns current memory sync observability metrics, if recorded.
+    public static func currentMemorySyncMetrics() -> BurnBarMemorySyncMetrics? {
+        lock.lock()
+        defer { lock.unlock() }
+        return memorySyncMetrics
     }
 
     public static func recordRPCRequest() {
@@ -115,9 +131,49 @@ public enum BurnBarDaemonMetricsCounters {
         rpcLatencyMsSamples = []
         gatewayListenerBound = nil
         gatewayListenerErrorMessage = nil
+        memorySyncMetrics = nil
         lock.unlock()
     }
     #endif
+}
+
+// MARK: - Memory Sync Observability Metrics (E19 / P24)
+
+/// Process-wide memory sync counters and watermark observability.
+public struct BurnBarMemorySyncMetrics: Codable, Sendable, Equatable {
+    public let lastPullTimestamp: String?
+    public let appliedCount: Int
+    public let rejectedCount: Int
+    public let parkedCount: Int
+    public let skippedCount: Int
+    public let engineWatermarkAgeSeconds: TimeInterval?
+    public let transportWatermarkAgeSeconds: TimeInterval?
+    public let alertThresholdSeconds: TimeInterval
+    public let isAlertTripped: Bool
+    public let skippedFloorNote: String
+
+    public init(
+        lastPullTimestamp: String? = nil,
+        appliedCount: Int = 0,
+        rejectedCount: Int = 0,
+        parkedCount: Int = 0,
+        skippedCount: Int = 0,
+        engineWatermarkAgeSeconds: TimeInterval? = nil,
+        transportWatermarkAgeSeconds: TimeInterval? = nil,
+        alertThresholdSeconds: TimeInterval = BurnBarMemoryDeviceSyncMarker.maxAge
+    ) {
+        self.lastPullTimestamp = lastPullTimestamp
+        self.appliedCount = appliedCount
+        self.rejectedCount = rejectedCount
+        self.parkedCount = parkedCount
+        self.skippedCount = skippedCount
+        self.engineWatermarkAgeSeconds = engineWatermarkAgeSeconds
+        self.transportWatermarkAgeSeconds = transportWatermarkAgeSeconds
+        self.alertThresholdSeconds = alertThresholdSeconds
+        self.isAlertTripped = (engineWatermarkAgeSeconds.map { $0 > alertThresholdSeconds } ?? false) ||
+                              (transportWatermarkAgeSeconds.map { $0 > alertThresholdSeconds } ?? false)
+        self.skippedFloorNote = "Pre-PR-1 chat memories in users/{uid}/memory_facts carry no engine projectID and are skipped on every pull; a permanent non-zero skipped is expected, not a fault."
+    }
 }
 
 /// Loopback metrics snapshot for the HTTP gateway `GET /metrics` stub.
@@ -142,6 +198,8 @@ public struct BurnBarGatewayMetricsSnapshot: Codable, Sendable, Equatable {
     /// attempted to bind. Lets operators see "8317 down but socket up" instead
     /// of a silent failure.
     public let gatewayListenerError: String?
+    /// Process-wide memory sync observability metrics, if recorded.
+    public let memorySync: BurnBarMemorySyncMetrics?
 
     public init(
         generatedAt: Date = Date(),
@@ -152,7 +210,8 @@ public struct BurnBarGatewayMetricsSnapshot: Codable, Sendable, Equatable {
         heartbeatStale: Bool,
         gatewayEnabled: Bool,
         counters: [String: Int] = [:],
-        gatewayListenerError: String? = nil
+        gatewayListenerError: String? = nil,
+        memorySync: BurnBarMemorySyncMetrics? = nil
     ) {
         self.generatedAt = generatedAt
         self.daemonVersion = daemonVersion
@@ -163,6 +222,7 @@ public struct BurnBarGatewayMetricsSnapshot: Codable, Sendable, Equatable {
         self.gatewayEnabled = gatewayEnabled
         self.counters = counters
         self.gatewayListenerError = gatewayListenerError
+        self.memorySync = memorySync
     }
 
     public static let processStartDate = Date()
@@ -173,6 +233,7 @@ public struct BurnBarGatewayMetricsSnapshot: Codable, Sendable, Equatable {
         let heartbeat = BurnBarDaemonHeartbeat.readSnapshot()
         let heartbeatStale = BurnBarDaemonHeartbeat.isStale(snapshot: heartbeat)
         let uptime = max(0, Int(Date().timeIntervalSince(processStartDate)))
+        let syncMetrics = BurnBarDaemonMetricsCounters.currentMemorySyncMetrics()
         var counters = [
             "daemon_heartbeat_present": heartbeat == nil ? 0 : 1,
             "gateway_enabled": gatewayEnabled ? 1 : 0,
@@ -181,13 +242,21 @@ public struct BurnBarGatewayMetricsSnapshot: Codable, Sendable, Equatable {
         if let listenerBound = BurnBarDaemonMetricsCounters.gatewayListenerBoundCounter() {
             counters["gateway_listener_bound"] = listenerBound
         }
+        if let sync = syncMetrics {
+            counters["memory_sync_applied_total"] = sync.appliedCount
+            counters["memory_sync_rejected_total"] = sync.rejectedCount
+            counters["memory_sync_parked_total"] = sync.parkedCount
+            counters["memory_sync_skipped_total"] = sync.skippedCount
+            counters["memory_sync_alert_tripped"] = sync.isAlertTripped ? 1 : 0
+        }
         return BurnBarGatewayMetricsSnapshot(
             uptimeSeconds: uptime,
             heartbeat: heartbeat,
             heartbeatStale: heartbeatStale,
             gatewayEnabled: gatewayEnabled,
             counters: counters,
-            gatewayListenerError: BurnBarDaemonMetricsCounters.gatewayListenerError()
+            gatewayListenerError: BurnBarDaemonMetricsCounters.gatewayListenerError(),
+            memorySync: syncMetrics
         )
     }
 }

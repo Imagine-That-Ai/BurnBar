@@ -92,10 +92,7 @@ export {
   ticketBurnbarAttachmentDownload,
   deleteBurnbarAttachment,
 } from "./callables/burnbarAttachments.js";
-export {
-  publishMissionApprovalCeiling,
-  redeemMissionApprovalAnswer,
-} from "./callables/missionApprovalAnswers.js";
+export { publishMissionApprovalCeiling, redeemMissionApprovalAnswer } from "./callables/missionApprovalAnswers.js";
 export { submitBugReport } from "./callables/bugReporting.js";
 
 export {
@@ -267,3 +264,12 @@ export { backfillPrivacyPlaintext, backfillPrivacyPlaintextScheduled } from "./c
 export { scanLegacyPlaintextArtifacts } from "./callables/sharedArtifactLegacyScan.js";
 
 export { submitDomainCoreShadowSamples } from "./callables/domainCoreShadowEvidence.js";
+
+export {
+  createTeam,
+  inviteTeamMember,
+  acceptTeamInvite,
+  removeTeamMember,
+  rotateTeamKey,
+  TeamRosterService,
+} from "./teamRoster.js";

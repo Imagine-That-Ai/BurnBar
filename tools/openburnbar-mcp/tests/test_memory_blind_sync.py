@@ -1652,3 +1652,53 @@ def test_the_drain_receipt_carries_no_memory_text(server_env: Path, monkeypatch:
     assert "mem_x" not in blob, printed
     assert printed["result"]["applied"] == 1
     assert printed["result"]["decisionCount"] == 1
+
+
+def test_forced_rejections_and_parks_produce_the_right_counts(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    engine = _replica(tmp_path, "obs-counts")
+    project_id = _project_id(engine, repo)
+
+    valid_doc = _doc(
+        "doc-valid",
+        "mem_11111111111111111111111111111111",
+        "Valid fact",
+        project_id=project_id,
+        updated_at=T1,
+    )
+    rejected_doc = _doc(
+        "doc-rejected",
+        "mem_22222222222222222222222222222222",
+        "Too new",
+        project_id=project_id,
+        updated_at=T1,
+        schema_version=99,
+    )
+    parked_doc = _doc(
+        "doc-parked",
+        "mem_33333333333333333333333333333333",
+        "Pending edge",
+        project_id=project_id,
+        updated_at=T1,
+        superseded_by="mem_missing_target",
+    )
+
+    result = engine.merge_remote([valid_doc, rejected_doc, parked_doc])
+    assert result["applied"] == 1
+    assert result["refused"] == 1
+    assert result["parked"] == 1
+
+    obs = engine.sync_observability()
+    assert obs["applied"] == 1
+    assert obs["rejected"] == 1
+    assert obs["parked"] == 1
+    assert obs["lastPullTimestamp"] is not None
+
+
+def test_the_permanent_skipped_floor_is_labelled_as_expected(tmp_path: Path) -> None:
+    engine = _replica(tmp_path, "obs-label")
+    obs = engine.sync_observability()
+    note = obs["skippedFloorNote"]
+    assert "skipped" in note
+    assert "projectID" in note or "projectid" in note.lower()
+    assert "not a fault" in note

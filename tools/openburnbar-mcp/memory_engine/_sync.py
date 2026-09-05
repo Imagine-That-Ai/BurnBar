@@ -158,6 +158,33 @@ class _BlindSync:
             for row in rows
         }
 
+    def sync_observability(self) -> dict[str, Any]:
+        """Observability surface across watermarks and counters (E19 / P24)."""
+        keys = (
+            "sync:last_pull_timestamp",
+            "sync:applied_count",
+            "sync:rejected_count",
+            "sync:parked_count",
+            "sync:skipped_count",
+        )
+        rows = self.conn.execute(
+            "SELECT key, value FROM engine_meta WHERE key IN (?, ?, ?, ?, ?)",
+            keys,
+        ).fetchall()
+        meta = {str(r["key"]): str(r["value"]) for r in rows}
+        return {
+            "lastPullTimestamp": meta.get("sync:last_pull_timestamp"),
+            "applied": int(meta.get("sync:applied_count", "0")),
+            "rejected": int(meta.get("sync:rejected_count", "0")),
+            "parked": int(meta.get("sync:parked_count", "0")),
+            "skipped": int(meta.get("sync:skipped_count", "0")),
+            "skippedFloorNote": (
+                "Pre-PR-1 chat memories in users/{uid}/memory_facts carry no engine projectID "
+                "and are skipped on every pull; a permanent non-zero skipped is expected, not a fault."
+            ),
+            "watermark": self.sync_watermark(),
+        }
+
     def _record_forget_receipt(self, memory_id: str) -> None:
         """Persist what a hard forget destroyed, so blind sync cannot undo it.
 
@@ -597,6 +624,23 @@ class _BlindSync:
                     f"retired:{retired}",
                 ],
                 actor=self.config.actor,
+            )
+        now = now_iso()
+        self.conn.execute(
+            "INSERT OR REPLACE INTO engine_meta (key, value) VALUES (?, ?)",
+            ("sync:last_pull_timestamp", now),
+        )
+        for counter_key, delta in (
+            ("sync:applied_count", applied + reinforced),
+            ("sync:rejected_count", refused),
+            ("sync:parked_count", len(parked)),
+            ("sync:skipped_count", unchanged),
+        ):
+            cur = self.conn.execute("SELECT value FROM engine_meta WHERE key = ?", (counter_key,)).fetchone()
+            val = int(cur["value"]) if cur and str(cur["value"]).isdigit() else 0
+            self.conn.execute(
+                "INSERT OR REPLACE INTO engine_meta (key, value) VALUES (?, ?)",
+                (counter_key, str(val + delta)),
             )
         self._commit()
         self._invalidate_cache()

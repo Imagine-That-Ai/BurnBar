@@ -1051,6 +1051,10 @@ service cloud.firestore {
       return "OpenBurnBar-CloudVault-aad-v2|" + userId + "|" + collection + "|" + docID + "|" + field + "|2|" + field;
     }
 
+    function cloudVaultTeamAADContext(teamId, collection, docID, field) {
+      return "OpenBurnBar-CloudVault-aad-v2|team:" + teamId + "|" + collection + "|" + docID + "|" + field + "|2|" + field;
+    }
+
     function roamingProfileAADContext(userId) {
       return "OpenBurnBar-CloudVault-aad-v2|"
         + userId
@@ -4960,6 +4964,112 @@ service cloud.firestore {
         allow create, update: if sharedArtifactVersionSealedOwnerWrite(workspaceId, teamId, artifactId, revisionId);
         allow delete: if sharedArtifactOwnerRead(workspaceId);
       }
+    }
+
+    // --- Team memory spaces: roster authority and team facts (D16 / P21) ---
+
+    match /team_rosters/{teamId} {
+      function isTeamMember(teamId) {
+        return request.auth != null
+          && exists(/databases/$(database)/documents/team_rosters/$(teamId)/members/$(request.auth.uid))
+          && get(/databases/$(database)/documents/team_rosters/$(teamId)/members/$(request.auth.uid)).data.status == "active";
+      }
+
+      allow read: if isTeamMember(teamId);
+      allow write: if false;
+
+      match /members/{memberUid} {
+        allow read: if request.auth != null
+          && (request.auth.uid == memberUid || isTeamMember(teamId));
+        allow write: if false;
+      }
+
+      match /invites/{inviteId} {
+        allow read, write: if false;
+      }
+    }
+
+    match /team_key_envelopes/{teamId}/envelopes/{envelopeId} {
+      function isTeamMember(teamId) {
+        return request.auth != null
+          && exists(/databases/$(database)/documents/team_rosters/$(teamId)/members/$(request.auth.uid))
+          && get(/databases/$(database)/documents/team_rosters/$(teamId)/members/$(request.auth.uid)).data.status == "active";
+      }
+
+      allow read: if isTeamMember(teamId);
+      allow write: if false;
+    }
+
+    match /team_memory_facts/{teamId}/facts/{docID} {
+      function isTeamMember(teamId) {
+        return request.auth != null
+          && exists(/databases/$(database)/documents/team_rosters/$(teamId)/members/$(request.auth.uid))
+          && get(/databases/$(database)/documents/team_rosters/$(teamId)/members/$(request.auth.uid)).data.status == "active";
+      }
+
+      function isTeamAdmin(teamId) {
+        return isTeamMember(teamId)
+          && get(/databases/$(database)/documents/team_rosters/$(teamId)/members/$(request.auth.uid)).data.role == "admin";
+      }
+
+      function validTeamMemoryFactKeys() {
+        return request.resource.data.keys().hasOnly([
+          "uid",
+          "teamId",
+          "docID",
+          "schemaVersion",
+          "sourceKind",
+          "kind",
+          "reviewStatus",
+          "sealedMemory",
+          "sourceRefHmacs",
+          "citationCount",
+          "validFrom",
+          "updatedAt",
+          "replicatedAt",
+          "teamKeyVersion",
+          "rewrapJobId"
+        ]);
+      }
+
+      allow read: if isTeamMember(teamId)
+        && hasActiveDataVaultEntitlement(request.auth.uid);
+
+      allow create, update: if isTeamMember(teamId)
+        && hasActiveDataVaultEntitlement(request.auth.uid)
+        && validTeamMemoryFactKeys()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.teamId == teamId
+        && request.resource.data.docID == docID
+        && validMemoryOpaqueId(docID)
+        && !("text" in request.resource.data)
+        && !("body" in request.resource.data)
+        && !("citations" in request.resource.data)
+        && !("vector" in request.resource.data)
+        && !("cloakedVector" in request.resource.data)
+        && !("embedding" in request.resource.data)
+        && request.resource.data.schemaVersion is int
+        && request.resource.data.schemaVersion >= 2
+        && request.resource.data.sourceKind in ["chat", "agent"]
+        && request.resource.data.kind in ["fact", "preference", "event", "profile", "relationship", "other", "decision", "architecture", "procedure", "gotcha", "todo"]
+        && request.resource.data.reviewStatus == "approved"
+        && validCloudSealedBlob(
+          request.resource.data.sealedMemory,
+          cloudVaultTeamAADContext(teamId, "team_memory_facts", docID, "sealedMemory")
+        )
+        && request.resource.data.sealedMemory.schemaVersion >= 2
+        && validMemorySourceRefHmacs(request.resource.data.sourceRefHmacs)
+        && request.resource.data.citationCount is int
+        && request.resource.data.citationCount >= 0
+        && request.resource.data.citationCount <= 50
+        && request.resource.data.validFrom is timestamp
+        && request.resource.data.updatedAt is timestamp
+        && request.resource.data.replicatedAt is timestamp
+        && request.resource.data.teamKeyVersion is int
+        && request.resource.data.teamKeyVersion >= 1;
+
+      allow delete: if (isTeamMember(teamId) && request.auth.uid == resource.data.uid)
+        || isTeamAdmin(teamId);
     }
 
     // --- Mercury budget split (ADR 006) ---

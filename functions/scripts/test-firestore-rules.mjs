@@ -6063,6 +6063,295 @@ test("war_wire_grants: owner grants and revokes; pairId must be canonical", asyn
   await assertSucceeds(deleteDoc(doc(ownerDb, path)));
 });
 
+// --- Team Memory & Roster Authority Rules Tests (D16 / P21) ---
+
+function cloudVaultTeamAAD(teamId, collection, docID, field) {
+  return `OpenBurnBar-CloudVault-aad-v2|team:${teamId}|${collection}|${docID}|${field}|2|${field}`;
+}
+
+function sealedTeamBlobAt(teamId, collection, docID, field, overrides = {}) {
+  return sealedBlob({
+    aad: cloudVaultTeamAAD(teamId, collection, docID, field),
+    ...overrides,
+  });
+}
+
+function teamMemoryFactFor(uid, teamId, docID, overrides = {}) {
+  const timestamp = Timestamp.fromDate(new Date("2026-06-04T00:00:00.000Z"));
+  const sourceRefHmac = "a".repeat(64);
+  return {
+    uid,
+    teamId,
+    docID,
+    schemaVersion: 2,
+    sourceKind: "agent",
+    kind: "architecture",
+    reviewStatus: "approved",
+    sealedMemory: sealedTeamBlobAt(teamId, "team_memory_facts", docID, "sealedMemory"),
+    sourceRefHmacs: [sourceRefHmac],
+    citationCount: 1,
+    validFrom: timestamp,
+    updatedAt: timestamp,
+    replicatedAt: timestamp,
+    teamKeyVersion: 1,
+    ...overrides,
+  };
+}
+
+test("test_a_non_member_is_denied_read_and_write", async () => {
+  const teamId = "team-redteam-nonmember";
+  const memberUid = "team-member-active-1";
+  const nonMemberUid = "team-attacker-nonmember";
+  const factId = "1".repeat(64);
+
+  // Seed team and active member via server-side authority
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const fs = context.firestore();
+    await setDoc(doc(fs, `team_rosters/${teamId}`), {
+      teamId,
+      name: "Core Platform",
+      activeKeyVersion: 1,
+      keyRotationRequired: false,
+    });
+    await setDoc(doc(fs, `team_rosters/${teamId}/members/${memberUid}`), {
+      uid: memberUid,
+      teamId,
+      role: "member",
+      status: "active",
+      activeTeamKeyVersion: 1,
+    });
+  });
+
+  await seedBurnBarProMaxEntitlement(memberUid);
+  await seedBurnBarProMaxEntitlement(nonMemberUid);
+
+  const memberDb = authedDb(memberUid);
+  const nonMemberDb = authedDb(nonMemberUid);
+
+  // Active member can write and read
+  await assertSucceeds(
+    setDoc(
+      doc(memberDb, `team_memory_facts/${teamId}/facts/${factId}`),
+      teamMemoryFactFor(memberUid, teamId, factId)
+    )
+  );
+  await assertSucceeds(
+    getDoc(doc(memberDb, `team_memory_facts/${teamId}/facts/${factId}`))
+  );
+
+  // Non-member is DENIED read and write
+  await assertFails(
+    getDoc(doc(nonMemberDb, `team_memory_facts/${teamId}/facts/${factId}`))
+  );
+  await assertFails(
+    getDocs(collection(nonMemberDb, `team_memory_facts/${teamId}/facts`))
+  );
+  const nonMemberFactId = "2".repeat(64);
+  await assertFails(
+    setDoc(
+      doc(nonMemberDb, `team_memory_facts/${teamId}/facts/${nonMemberFactId}`),
+      teamMemoryFactFor(nonMemberUid, teamId, nonMemberFactId)
+    )
+  );
+});
+
+test("test_an_ex_member_is_denied_after_rotation", async () => {
+  const teamId = "team-redteam-rotation";
+  const exMemberUid = "team-ex-member-1";
+  const remainingAdminUid = "team-admin-remaining";
+  const factId = "3".repeat(64);
+
+  // Seed team and members
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const fs = context.firestore();
+    await setDoc(doc(fs, `team_rosters/${teamId}`), {
+      teamId,
+      name: "Security Engineering",
+      activeKeyVersion: 1,
+      keyRotationRequired: false,
+    });
+    await setDoc(doc(fs, `team_rosters/${teamId}/members/${exMemberUid}`), {
+      uid: exMemberUid,
+      teamId,
+      role: "member",
+      status: "active",
+      activeTeamKeyVersion: 1,
+    });
+    await setDoc(doc(fs, `team_rosters/${teamId}/members/${remainingAdminUid}`), {
+      uid: remainingAdminUid,
+      teamId,
+      role: "admin",
+      status: "active",
+      activeTeamKeyVersion: 1,
+    });
+  });
+
+  await seedBurnBarProMaxEntitlement(exMemberUid);
+  await seedBurnBarProMaxEntitlement(remainingAdminUid);
+
+  const exMemberDb = authedDb(exMemberUid);
+
+  // While active, can write fact
+  await assertSucceeds(
+    setDoc(
+      doc(exMemberDb, `team_memory_facts/${teamId}/facts/${factId}`),
+      teamMemoryFactFor(exMemberUid, teamId, factId)
+    )
+  );
+
+  // Ex-member is removed and team key is rotated to v2
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const fs = context.firestore();
+    await updateDoc(doc(fs, `team_rosters/${teamId}/members/${exMemberUid}`), {
+      status: "removed",
+      removedAt: Timestamp.now(),
+    });
+    await updateDoc(doc(fs, `team_rosters/${teamId}`), {
+      activeKeyVersion: 2,
+      keyRotationRequired: false,
+    });
+    await setDoc(doc(fs, `team_key_envelopes/${teamId}/envelopes/${remainingAdminUid}_v2`), {
+      teamId,
+      uid: remainingAdminUid,
+      keyVersion: 2,
+      envelopeCiphertext: "dGVzdC1lbnZlbG9wZQ==",
+    });
+  });
+
+  // Ex-member is now denied read, write, and key envelope fetch
+  await assertFails(
+    getDoc(doc(exMemberDb, `team_memory_facts/${teamId}/facts/${factId}`))
+  );
+  const newFactId = "4".repeat(64);
+  await assertFails(
+    setDoc(
+      doc(exMemberDb, `team_memory_facts/${teamId}/facts/${newFactId}`),
+      teamMemoryFactFor(exMemberUid, teamId, newFactId, { teamKeyVersion: 2 })
+    )
+  );
+  await assertFails(
+    getDoc(doc(exMemberDb, `team_key_envelopes/${teamId}/envelopes/${exMemberUid}_v2`))
+  );
+});
+
+test("test_a_client_cannot_write_the_roster", async () => {
+  const teamId = "team-redteam-roster-lock";
+  const attackerUid = "team-attacker-client";
+  const attackerDb = authedDb(attackerUid);
+
+  // Attacker cannot create a team document
+  await assertFails(
+    setDoc(doc(attackerDb, `team_rosters/${teamId}`), {
+      teamId,
+      name: "Forged Team",
+      activeKeyVersion: 1,
+    })
+  );
+
+  // Attacker cannot add themselves to any roster
+  await assertFails(
+    setDoc(doc(attackerDb, `team_rosters/${teamId}/members/${attackerUid}`), {
+      uid: attackerUid,
+      teamId,
+      role: "admin",
+      status: "active",
+    })
+  );
+
+  // Attacker cannot modify an invite or write an envelope
+  await assertFails(
+    setDoc(doc(attackerDb, `team_rosters/${teamId}/invites/inv-forged`), {
+      token: "inv-forged",
+      teamId,
+      email: "attacker@evil.com",
+      status: "pending",
+    })
+  );
+  await assertFails(
+    setDoc(doc(attackerDb, `team_key_envelopes/${teamId}/envelopes/${attackerUid}_v1`), {
+      teamId,
+      uid: attackerUid,
+      keyVersion: 1,
+      envelopeCiphertext: "ZmFrZQ==",
+    })
+  );
+});
+
+test("test_a_member_of_team_a_cannot_read_team_b", async () => {
+  const teamA = "team-alpha-segregated";
+  const teamB = "team-beta-segregated";
+  const userAUid = "team-member-user-a";
+  const userBUid = "team-member-user-b";
+  const factBId = "5".repeat(64);
+
+  // Seed two distinct teams with respective members
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const fs = context.firestore();
+    await setDoc(doc(fs, `team_rosters/${teamA}`), {
+      teamId: teamA,
+      name: "Team Alpha",
+      activeKeyVersion: 1,
+    });
+    await setDoc(doc(fs, `team_rosters/${teamA}/members/${userAUid}`), {
+      uid: userAUid,
+      teamId: teamA,
+      role: "member",
+      status: "active",
+    });
+
+    await setDoc(doc(fs, `team_rosters/${teamB}`), {
+      teamId: teamB,
+      name: "Team Beta",
+      activeKeyVersion: 1,
+    });
+    await setDoc(doc(fs, `team_rosters/${teamB}/members/${userBUid}`), {
+      uid: userBUid,
+      teamId: teamB,
+      role: "member",
+      status: "active",
+    });
+  });
+
+  await seedBurnBarProMaxEntitlement(userAUid);
+  await seedBurnBarProMaxEntitlement(userBUid);
+
+  const dbA = authedDb(userAUid);
+  const dbB = authedDb(userBUid);
+
+  // User B writes fact into Team B
+  await assertSucceeds(
+    setDoc(
+      doc(dbB, `team_memory_facts/${teamB}/facts/${factBId}`),
+      teamMemoryFactFor(userBUid, teamB, factBId)
+    )
+  );
+
+  // User A (member of Team A) CANNOT read Team B's fact or collection
+  await assertFails(
+    getDoc(doc(dbA, `team_memory_facts/${teamB}/facts/${factBId}`))
+  );
+  await assertFails(
+    getDocs(collection(dbA, `team_memory_facts/${teamB}/facts`))
+  );
+
+  // User A CANNOT write into Team B
+  const intruderFactId = "6".repeat(64);
+  await assertFails(
+    setDoc(
+      doc(dbA, `team_memory_facts/${teamB}/facts/${intruderFactId}`),
+      teamMemoryFactFor(userAUid, teamB, intruderFactId)
+    )
+  );
+
+  // User A CANNOT read Team B's roster
+  await assertFails(
+    getDoc(doc(dbA, `team_rosters/${teamB}`))
+  );
+  await assertFails(
+    getDoc(doc(dbA, `team_rosters/${teamB}/members/${userBUid}`))
+  );
+});
+
 test("rules test environment is isolated", () => {
   assert.ok(testEnv.projectId.startsWith("openburnbar-rules-"));
 });
