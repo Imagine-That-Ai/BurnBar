@@ -41,26 +41,61 @@ def test_the_gate_statement_matches_the_schema(tmp_path):
     assert f"{me.store._ENGINE_META_SQL};" in me.store.SCHEMA_SQL
 
 
-def test_open_refuses_a_store_written_by_a_newer_engine(tmp_path, monkeypatch):
+def test_open_tolerates_a_newer_store_whose_extra_objects_are_additive(tmp_path, monkeypatch, capsys):
+    """A revert must degrade, not brick.
+
+    Refusing every store stamped newer than the running engine is what made
+    rolling an engine bump back destroy the member's whole memory surface: the
+    store failed AT OPEN, so recall, remember and forget all died rather than
+    the one new feature going quiet. A newer schema that only ADDED tables or
+    columns still contains every byte this engine reads, so it opens with a
+    warning — and keeps its own stamp, so the newer engine can take it back.
+    """
     db_path = _new_store(tmp_path, monkeypatch)
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("CREATE TABLE memories_from_the_future (id TEXT PRIMARY KEY, note TEXT NOT NULL)")
+        conn.execute("ALTER TABLE memories ADD COLUMN future_column TEXT")
     _stamp(db_path, "999")
-    with pytest.raises(me.SchemaTooNew) as excinfo:
-        me.MemoryEngine.open(db_path=db_path)
-    assert "999" in str(excinfo.value)
-    assert str(me.ENGINE_SCHEMA_VERSION) in str(excinfo.value)
-    assert _stored_version(db_path) == "999", "a refused store must not be rewritten"
+
+    engine = me.MemoryEngine.open(db_path=db_path)
+    try:
+        assert engine.conn.execute("SELECT COUNT(*) FROM memories").fetchone()[0] == 0
+    finally:
+        engine.close()
+
+    warning = capsys.readouterr().err
+    assert "999" in warning and "additive" in warning, warning
+    assert _stored_version(db_path) == "999", "a tolerated store keeps its newer stamp; this engine never downgrades it"
+    assert "memories_from_the_future" in _tables(db_path), "and the newer engine's objects are left alone"
 
 
-def test_a_refused_store_keeps_the_schema_it_had(tmp_path, monkeypatch):
-    """The version gate runs before the DDL, so refusing a newer store leaves it
-    exactly as found — this engine must not "repair" a schema it cannot read."""
+def test_open_still_refuses_a_newer_store_that_removed_something_this_engine_reads(tmp_path, monkeypatch):
+    """Tolerance is only for additions. A newer schema that dropped a table this
+    engine writes to would fail unpredictably mid-operation; that one is still
+    refused at open, loudly and before a byte is written."""
     db_path = _new_store(tmp_path, monkeypatch)
     with sqlite3.connect(db_path) as conn:
         conn.execute("DROP TABLE memory_vault")
     _stamp(db_path, "999")
-    with pytest.raises(me.SchemaTooNew):
+    with pytest.raises(me.SchemaTooNew) as excinfo:
         me.MemoryEngine.open(db_path=db_path)
+    assert "memory_vault" in str(excinfo.value)
+    assert "999" in str(excinfo.value)
+    assert str(me.ENGINE_SCHEMA_VERSION) in str(excinfo.value)
+    assert _stored_version(db_path) == "999", "a refused store must not be rewritten"
     assert "memory_vault" not in _tables(db_path), "a refused store must not have its schema recreated"
+
+
+def test_a_newer_store_missing_only_a_column_is_refused_too(tmp_path, monkeypatch):
+    """A dropped COLUMN is as fatal as a dropped table and less visible, so the
+    shape check compares columns, not just table names."""
+    db_path = _new_store(tmp_path, monkeypatch)
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("ALTER TABLE memories DROP COLUMN salience")
+    _stamp(db_path, "999")
+    with pytest.raises(me.SchemaTooNew) as excinfo:
+        me.MemoryEngine.open(db_path=db_path)
+    assert "memories.salience" in str(excinfo.value)
 
 
 def test_open_refuses_a_store_whose_version_is_unreadable(tmp_path, monkeypatch):

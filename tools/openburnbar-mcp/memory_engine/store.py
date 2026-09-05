@@ -6,6 +6,7 @@ from __future__ import annotations
 import contextlib
 import os
 import sqlite3
+import sys
 import time
 from collections.abc import Sequence
 from pathlib import Path
@@ -263,17 +264,82 @@ def _apply_migration(conn: sqlite3.Connection, target: int, statements: Sequence
     conn.commit()
 
 
+def _engine_schema_shape() -> dict[str, frozenset[str]]:
+    """What this engine's own `SCHEMA_SQL` declares: table -> column names.
+
+    Built by running the script against a throwaway in-memory database rather
+    than by parsing it, so the answer is exactly what SQLite would make of it.
+    """
+    probe = sqlite3.connect(":memory:")
+    try:
+        probe.executescript(SCHEMA_SQL)
+        for _target, statements in SCHEMA_MIGRATIONS:
+            for statement in statements:
+                with contextlib.suppress(sqlite3.OperationalError):
+                    probe.execute(statement)
+        shape: dict[str, frozenset[str]] = {}
+        for row in probe.execute("SELECT name FROM sqlite_master WHERE type = 'table'").fetchall():
+            table = str(row[0])
+            if table.startswith("sqlite_"):
+                continue
+            shape[table] = frozenset(str(col[1]) for col in probe.execute(f"PRAGMA table_info({table})").fetchall())
+        return shape
+    finally:
+        probe.close()
+
+
+def _newer_store_is_additive_only(conn: sqlite3.Connection) -> list[str]:
+    """Whether a store stamped newer than this engine still contains everything
+    this engine reads. Returns the list of missing objects — empty means the
+    newer schema only ADDED things, which this engine can safely ignore.
+    """
+    present: dict[str, frozenset[str]] = {}
+    for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'").fetchall():
+        table = str(row[0])
+        if table.startswith("sqlite_"):
+            continue
+        present[table] = frozenset(str(col[1]) for col in conn.execute(f"PRAGMA table_info({table})").fetchall())
+    missing: list[str] = []
+    for table, columns in sorted(_engine_schema_shape().items()):
+        if table not in present:
+            missing.append(table)
+            continue
+        for column in sorted(columns - present[table]):
+            missing.append(f"{table}.{column}")
+    return missing
+
+
 def ensure_schema(conn: sqlite3.Connection) -> None:
     # The version gate runs before the schema does. Creating `engine_meta` is a
     # no-op on any store that already has it, so a store written by a newer
-    # engine is refused without this engine having written a byte to it.
+    # engine is inspected without this engine having written a byte to it.
     conn.execute(_ENGINE_META_SQL)
     current = _stored_schema_version(conn)
     if current is not None and current > ENGINE_SCHEMA_VERSION:
-        raise SchemaTooNew(
-            f"memory store schema version {current} is newer than this engine's {ENGINE_SCHEMA_VERSION}; "
-            "upgrade OpenBurnBar or point OPENBURNBAR_MEMORY_DB_PATH at a different store"
+        # A newer engine wrote this store. Refusing outright is what makes a
+        # revert of an engine bump BRICK the store rather than degrade it — the
+        # member's whole memory surface fails at open, which is far worse than
+        # the newer engine's extra objects going unread. So the refusal is
+        # narrowed to the case that actually justifies it: something this engine
+        # NEEDS is gone. A schema that only added tables or columns is one this
+        # engine can still read every byte of, so it warns and continues, and it
+        # deliberately does NOT re-stamp the version down or run the migration
+        # steps — the store keeps its newer stamp and the newer engine can take
+        # it back unharmed.
+        missing = _newer_store_is_additive_only(conn)
+        if missing:
+            raise SchemaTooNew(
+                f"memory store schema version {current} is newer than this engine's {ENGINE_SCHEMA_VERSION} "
+                f"and removed objects this engine reads ({', '.join(missing[:8])}); "
+                "upgrade OpenBurnBar or point OPENBURNBAR_MEMORY_DB_PATH at a different store"
+            )
+        print(
+            f"openburnbar-memory: store schema version {current} is newer than this engine's "
+            f"{ENGINE_SCHEMA_VERSION}; the extra objects are additive and are ignored",
+            file=sys.stderr,
         )
+        conn.commit()
+        return
     if current is None:
         # A fresh store is bootstrapped straight to the current schema: there is
         # no older shape for a migration to move.
