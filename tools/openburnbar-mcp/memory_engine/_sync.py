@@ -39,6 +39,7 @@ from .constants import (
     REMOTE_RECEIPT_ENTRY_KIND,
     REMOTE_RECEIPT_SCHEMA_MAX,
     REMOTE_SOURCE_KIND,
+    REMOTE_PREVIOUS_BODY_HASH_RE,
     REMOTE_WRITER_DEVICE_RE,
 )
 from .embeddings import encode_vector
@@ -114,6 +115,7 @@ class _RemoteFact:
     # is dropped and the decision says so, so a peer sending prose here is
     # visible rather than silently ignored.
     writer_device_rejected: bool = False
+    previous_body_hash_rejected: bool = False
 
     @property
     def order_key(self) -> tuple[datetime, str, str]:
@@ -519,6 +521,16 @@ class _BlindSync(_SyncLedger):
         valid_to = payload.get("validTo")
         previous_body_hash = payload.get("previousBodyHash")
         previous_body_hash = str(previous_body_hash).strip() if previous_body_hash else None
+        # Held to a canonical digest for the same reason `writerDevice` is held
+        # to a device token: the value lands in PLAINTEXT `engine_meta`, whose
+        # boundary is ids, hashes and timestamps. Lineage is advice, so an
+        # invalid value is dropped rather than costing the member the fact.
+        previous_body_hash_rejected = False
+        if previous_body_hash is not None and not REMOTE_PREVIOUS_BODY_HASH_RE.match(previous_body_hash):
+            previous_body_hash = None
+            previous_body_hash_rejected = True
+        elif previous_body_hash is not None:
+            previous_body_hash = previous_body_hash.lower()
         writer_device = payload.get("writerDevice")
         writer_device = str(writer_device).strip() if writer_device else None
         # `writerDevice` is remote text that ends up in PLAINTEXT `meta_json` and
@@ -556,6 +568,7 @@ class _BlindSync(_SyncLedger):
                 gate_labels=sorted(set(decision.labels + aux.labels)),
                 injection=injection,
                 previous_body_hash=previous_body_hash,
+                previous_body_hash_rejected=previous_body_hash_rejected,
                 writer_device=writer_device,
                 writer_device_rejected=writer_device_rejected,
             ),
@@ -823,6 +836,8 @@ class _BlindSync(_SyncLedger):
             # Counted, never echoed: the decision says the field was refused and
             # does not repeat what was in it.
             decision["writerDeviceRejected"] = True
+        if fact.previous_body_hash_rejected:
+            decision["previousBodyHashRejected"] = True
         if decision["event"] not in ("REFUSE", "HOLD"):
             self._record_convergence_identity(
                 fact.project_id, fact.scope, fact.body_hash, str(decision.get("memoryID") or fact.memory_id)

@@ -100,6 +100,14 @@ REMOTE_MEMORY_ID_RE = re.compile(r"^mem_[0-9a-f]{32}$")
 # model by the ungated timeline — so an unbounded one is a prompt-injection and
 # a disclosure channel in the same string.
 REMOTE_WRITER_DEVICE_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,128}$")
+# `payload.previousBodyHash` — lineage ADVICE about a body this device may not
+# hold. It is copied verbatim into the lineage hold's note, and `engine_meta` is
+# PLAINTEXT: ids, hashes and timestamps only. A canonical SHA-256 digest is the
+# only thing that can be lineage advice, so prose or a very large value from a
+# corrupt or hostile peer is dropped (never stored, never echoed) rather than
+# handed one oversized slot per hold. Matched case-insensitively and stored
+# lowercased, because that is the form `canonical_body_hash` compares against.
+REMOTE_PREVIOUS_BODY_HASH_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 SENSITIVITIES = ("none", "pii", "redacted", "secret")
 MEMORY_SCOPES = ("project", "personal")
 
