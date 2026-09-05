@@ -22,9 +22,38 @@ import {
   checkAgentNotificationReplyRateLimit,
   checkKnowledgeSearchRateLimit,
   checkMissionCreateRateLimit,
+  checkPromoRedeemRateLimit,
   checkVoIPCallRateLimit,
   isPublicRateLimitExceeded,
 } from "../callables/publicRateLimit.js";
+
+describe("checkPromoRedeemRateLimit", () => {
+  beforeEach(() => {
+    mocks.store.clear();
+  });
+
+  it("allows a short burst and rejects the 6th redemption attempt for a uid", async () => {
+    for (let i = 0; i < 5; i += 1) {
+      await expect(checkPromoRedeemRateLimit(ALICE_UID)).resolves.toBeUndefined();
+    }
+
+    try {
+      await checkPromoRedeemRateLimit(ALICE_UID);
+      expect.fail("expected promo redeem rate limit to reject");
+    } catch (error) {
+      expect(isPublicRateLimitExceeded(error)).toBe(true);
+      expect(error).toMatchObject({ code: "resource-exhausted" });
+    }
+  });
+
+  it("keys the limit per account so one claimant cannot throttle another", async () => {
+    for (let i = 0; i < 5; i += 1) {
+      await checkPromoRedeemRateLimit(ALICE_UID);
+    }
+    await expect(checkPromoRedeemRateLimit(ALICE_UID)).rejects.toMatchObject({ code: "resource-exhausted" });
+    await expect(checkPromoRedeemRateLimit("uid-second-claimant")).resolves.toBeUndefined();
+  });
+});
 
 describe("checkVoIPCallRateLimit", () => {
   beforeEach(() => {

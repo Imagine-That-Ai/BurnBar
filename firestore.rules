@@ -4987,6 +4987,22 @@ service cloud.firestore {
 
     // --- Public HTTP / approval rate limits (server-only) ---
 
+    // --- Promotional campaigns and codes (server-only) ---
+    // promo_campaigns holds the grant policy (tier, expiry, cap, window) and
+    // promo_codes maps a code digest to its campaign. Both are written by the
+    // operator seed script and read only by the redeemPromoCode callable (Admin
+    // SDK bypasses these rules). Neither has any client access: reading
+    // promo_codes would let anyone enumerate live campaign digests offline —
+    // the codes are short marketing strings, so a digest list is equivalent to
+    // the codes themselves — and reading promo_campaigns would expose remaining
+    // redemption headroom. Direct writes would bypass the callable's
+    // eligibility checks, one-per-uid ledger, and rate limiting, and could mint
+    // a campaign that grants Ultra to anyone.
+    // The per-campaign `redemptions` subcollection is covered by the same
+    // absence: it is the anti-double-grant ledger, and a client that could
+    // delete its own entry could re-redeem without bound.
+    // Deliberately unmatched: an absent rule is Firestore's default deny.
+
     // --- CLI Link Sessions (Deny All - Server Only) ---
 
     // --- Hermes Gateway root indexes (Deny All - Server Only) ---

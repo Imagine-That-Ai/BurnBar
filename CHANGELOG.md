@@ -8,6 +8,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Free Ultra beta claim at `/beta`.** Campaign codes now grant a real paid
+  tier with no payment instrument: a signed-in visitor redeems a code at
+  <https://burnbar.ai/beta> (or one-click via `/beta?code=…`) and receives an
+  ordinary `users/{uid}/entitlements/burnbar_ultra` document — dual-written to
+  the `burnbar_pro_max` mirror like any purchase — with a far-future expiry, no
+  Stripe charge, and no App Store auto-renewing trial. The grant reuses the
+  shipped Ultra SKU, so every existing gate (rules predicates, backend
+  assertions, Wand fan-out cap, Swift/Kotlin catalogs) accepts it unchanged and
+  records provenance in `source: "promo_campaign_grant"` instead. Promo grants
+  and real receipts rank by trust rather than expiry: a purchase always
+  supersedes a promo grant so the subscriber's own cancellation still lands, and
+  a promo grant never overwrites a live subscription (redeeming while subscribed
+  preserves it and does not consume the code). Codes reach Firestore only as
+  SHA-256 digests, so pausing, re-capping, and rotating a live campaign are
+  operator script runs rather than deploys — see
+  [`docs/runbooks/promo-campaigns.md`](docs/runbooks/promo-campaigns.md).
+  Guarded by auth + App Check + a single-use high-risk nonce, a wrong-code
+  lockout, per-uid rate limits, a one-per-uid ledger, and a campaign cap;
+  `promo_campaigns` / `promo_codes` / the redemption ledger are server-only.
 - **app.burnbar.ai is now reachable from every surface.** The member Data &
   Privacy Control Center existed only as a bare URL — nothing linked to it.
   The website's header More menu, mobile nav, footer trust column, and the

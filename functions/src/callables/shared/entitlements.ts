@@ -11,7 +11,7 @@ import type { EntitlementCatalog } from "@openburnbar/entitlements";
 
 const { isActiveEntitlement } = entitlementsPackage;
 import { getConfig } from "../../config.js";
-import { isTimestampWithToMillis, stripUndefinedObject } from "../../guards.js";
+import { stripUndefinedObject } from "../../guards.js";
 import { db } from "../../adminRuntime.js";
 import {
   allowanceDocPath,
@@ -32,8 +32,16 @@ import {
   stripeTopUpReversalState,
   type StripeTopUpDisputeStatus,
 } from "./stripeTopUpReversal.js";
-import { sameEntitlementWriteSource } from "./entitlementWriteSource.js";
+import {
+  paidEntitlementWriteWouldDowngrade,
+  paidEntitlementWriteWouldRewindSourceEvent,
+} from "./entitlementWriteGuards.js";
+import { PROMO_ENTITLEMENT_SOURCE } from "../../promoCampaigns.js";
 import { nowISO, requiredIdentifier } from "./validators.js";
+
+// Re-exported so existing importers (`callables/shared.ts`, the write-ordering
+// tests) keep their single entitlement entry point after the guards moved out.
+export { paidEntitlementWriteWouldDowngrade };
 
 export const BURNBAR_PRO_ENTITLEMENT_ID = "burnbar_pro";
 export const BURNBAR_PRO_MAX_ENTITLEMENT_ID = "burnbar_pro_max";
@@ -204,6 +212,13 @@ export async function writeBurnBarProEntitlement(args: {
   activeOverride?: boolean;
   sourceEventID?: string;
   sourceEventCreatedMillis?: number;
+  /**
+   * Provenance for a promotional campaign grant. Present only when `source` is
+   * {@link PROMO_ENTITLEMENT_SOURCE}; carries no provider receipt, so support
+   * and analytics can tell a campaign grant from a paid subscription without
+   * inferring it from the absence of a subscription id.
+   */
+  promoGrant?: { campaignID: string; redemptionID?: string };
 }): Promise<Record<string, unknown>> {
   const now = nowISO();
   const active = args.activeOverride ?? (Number.isFinite(args.expiresAtMillis) && args.expiresAtMillis > Date.now());
@@ -229,6 +244,9 @@ export async function writeBurnBarProEntitlement(args: {
     environment: args.environment,
     sourceEventID: args.sourceEventID,
     sourceEventCreatedMillis: args.sourceEventCreatedMillis,
+    promoCampaignID: args.promoGrant?.campaignID,
+    promoRedemptionID: args.promoGrant?.redemptionID,
+    promoGrantedAt: args.promoGrant ? now : undefined,
     verificationVersion: 1,
     schemaVersion: 1,
     lastVerifiedAt: now,
@@ -257,6 +275,17 @@ export async function writeBurnBarProEntitlement(args: {
           operatorGrantReason: FieldValue.delete(),
           sourceEntitlementID: FieldValue.delete(),
           sourceProductID: FieldValue.delete(),
+        }),
+    // Same rule for promotional provenance: once a real receipt (or an operator
+    // bridge) owns this document, it must not still advertise the campaign that
+    // previously granted it, or support would read a paid subscriber as a
+    // promo claimant forever.
+    ...(args.source === PROMO_ENTITLEMENT_SOURCE
+      ? {}
+      : {
+          promoCampaignID: FieldValue.delete(),
+          promoRedemptionID: FieldValue.delete(),
+          promoGrantedAt: FieldValue.delete(),
         }),
     externalSubscriptionID: args.externalSubscriptionID ?? FieldValue.delete(),
     externalCustomerID: args.externalCustomerID ?? FieldValue.delete(),
@@ -326,101 +355,6 @@ export async function writeBurnBarProEntitlement(args: {
     await ensureCloudProAllowanceLedger(args.uid, cloudProAllowanceTierForEntitlement(entitlementID, args.productID));
   }
   return written;
-}
-
-export function paidEntitlementWriteWouldDowngrade(
-  existing: Record<string, unknown> | undefined,
-  incoming: {
-    source: string;
-    expiresAtMillis: number;
-    active: boolean;
-    externalSubscriptionID?: string;
-    purchaseTokenHash?: string;
-    nowMillis?: number;
-  },
-): boolean {
-  if (!existing || existing.active !== true) return false;
-  const existingExpiresAtMillis = entitlementExpiresAtMillis(existing);
-  const nowMillis = incoming.nowMillis ?? Date.now();
-  if (!existingExpiresAtMillis || existingExpiresAtMillis <= nowMillis) return false;
-  if (sameEntitlementWriteSource(existing, incoming)) return false;
-  return !incoming.active || incoming.expiresAtMillis < existingExpiresAtMillis;
-}
-
-function entitlementExpiresAtMillis(existing: Record<string, unknown>): number | undefined {
-  const expireAt = existing.expireAt;
-  if (isTimestampWithToMillis(expireAt)) return expireAt.toMillis();
-  const expiresAt = existing.expiresAt;
-  if (typeof expiresAt === "string") {
-    const parsed = Date.parse(expiresAt);
-    return Number.isFinite(parsed) ? parsed : undefined;
-  }
-  return undefined;
-}
-
-function paidEntitlementWriteWouldRewindSourceEvent(
-  existing: Record<string, unknown> | undefined,
-  incoming: {
-    source: string;
-    active: boolean;
-    externalSubscriptionID?: string;
-    purchaseTokenHash?: string;
-    sourceEventID?: string;
-    sourceEventCreatedMillis?: number;
-  },
-): boolean {
-  if (!existing || typeof incoming.sourceEventCreatedMillis !== "number") return false;
-  const existingEventCreatedMillis = existing.sourceEventCreatedMillis;
-  if (typeof existingEventCreatedMillis !== "number") return false;
-  if (!sameEntitlementWriteSource(existing, incoming)) return false;
-  if (existingEventCreatedMillis > incoming.sourceEventCreatedMillis) return true;
-  if (
-    existingEventCreatedMillis !== incoming.sourceEventCreatedMillis ||
-    typeof existing.sourceEventID !== "string" ||
-    typeof incoming.sourceEventID !== "string" ||
-    existing.sourceEventID === incoming.sourceEventID
-  ) {
-    return false;
-  }
-
-  // Stripe's event.created has second granularity, so distinct transitions can
-  // share one timestamp. Resolve that tie by terminal-state dominance:
-  // deletion/cancellation may replace an active write, and an active write may
-  // never resurrect an entitlement whose inactive state is terminal
-  // (cancelled/expired/revoked). Transient billing states (e.g. incomplete,
-  // past_due, on-hold) are legitimately followed by activation in the same
-  // second — incomplete -> active is Stripe's normal first-payment sequence —
-  // so an active write may replace those. Unknown or missing rawStatus is
-  // treated as terminal (fail closed). Same-event redeliveries remain
-  // idempotent through the early return above.
-  if (existing.active === true) return incoming.active;
-  return !(incoming.active && isTransientInactiveEntitlementStatus(existing.rawStatus));
-}
-
-/**
- * Inactive entitlement states that a same-second active write may legitimately
- * supersede: they precede activation in the provider's own lifecycle rather
- * than terminating it. Anything else (canceled, expired, revoked, unknown,
- * missing) is treated as terminal so a stale active replay cannot resurrect a
- * cancelled entitlement.
- */
-function isTransientInactiveEntitlementStatus(rawStatus: unknown): boolean {
-  if (typeof rawStatus !== "string") return false;
-  switch (rawStatus) {
-    // Stripe subscription statuses that are inactive but recoverable.
-    case "incomplete":
-    case "past_due":
-    case "paused":
-    case "unpaid":
-    // Google Play subscription states that are inactive but recoverable.
-    case "SUBSCRIPTION_STATE_ON_HOLD":
-    case "SUBSCRIPTION_STATE_PAUSED":
-    case "SUBSCRIPTION_STATE_PENDING":
-    case "SUBSCRIPTION_STATE_IN_GRACE_PERIOD":
-      return true;
-    default:
-      return false;
-  }
 }
 
 function cloudProAllowanceTierForEntitlement(entitlementID: string, productID: string): BurnBarCloudProEntitlementTier {

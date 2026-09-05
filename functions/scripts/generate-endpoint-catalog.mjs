@@ -54,6 +54,31 @@ const CATALOG_OVERRIDES = {
     ],
     highRiskComputerUse: false,
   },
+  redeemPromoCode: {
+    trigger: "callable",
+    authMethod: "Firebase Auth with callable-level ownership checks",
+    appCheck: "required",
+    tenantSource: "request.auth.uid",
+    // The submitted campaign code is a global shared secret, not a per-user
+    // object id: it resolves to `promo_codes/{digest}` and `promo_campaigns/{id}`,
+    // both tenant-free config. Every write target is derived from
+    // request.auth.uid, so there is no client-supplied path into another
+    // tenant's data and no cross-user object to probe.
+    objectIdsFromClient: [],
+    ownershipCheck: "handler derives uid from request.auth.uid only",
+    handlerModule: "callables/promoRedemption.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "rejects unauthenticated callable access",
+        kind: "auth-only",
+        covers: ["redeemPromoCode"],
+        expectedOutcome: "throws",
+        expectedCode: "unauthenticated",
+      },
+    ],
+    highRiskComputerUse: false,
+  },
   listKnowledgeChunks: {
     trigger: "callable",
     authMethod: "Firebase Auth with callable-level ownership checks",
