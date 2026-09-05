@@ -219,7 +219,7 @@ claim and its evidence ship together. Edit the data file; the page and this
 table follow.
 
 The page covers the **whole local MCP server**, not just its memory engine:
-all 89 tools it registers — the 63 `burnbar_*` memory, code-intelligence,
+all 94 tools it registers — the 68 `burnbar_*` memory, code-intelligence,
 session-search and spend tools, plus the 26 `ministry_*` / `castle_*` /
 `bench_*` agent-launcher and benchmarking tools — the nine capability
 switches that gate them, and the fan-out surfaces alongside the memory
@@ -231,8 +231,8 @@ server registers, not just the `burnbar_*` ones.
 
 | Claim                                                                                                         | Source                                                                                                                 |
 | ------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| **gate** · "32 MCP tools" (hero, meta description, verification step 1) | `tools/openburnbar-mcp/server.py` — `MEMORY_TOOLSET`, counted (32 entries), served when `BURNBAR_MCP_TOOLSET=memory`. The meta description derives it rather than spelling it, because the gate strips tags and would never have seen a hardcoded numeral in an attribute |
-| **gate** · "The same server carries **89** tools in total" (hero, first paragraph) | `server.py` — every `@mcp.tool()` definition: 63 `burnbar_*` + 26 orchestration. Asserted both ways — the total must be printed as the total, and the `burnbar_*` subset must never be printed as "in total". An earlier revision opened on 63 while § 11 of the same page said 89 |
+| **gate** · "37 MCP tools" (hero, meta description, verification step 1) | `tools/openburnbar-mcp/server.py` — `MEMORY_TOOLSET`, counted (37 entries), served when `BURNBAR_MCP_TOOLSET=memory`. The meta description derives it rather than spelling it, because the gate strips tags and would never have seen a hardcoded numeral in an attribute |
+| **gate** · "The same server carries **94** tools in total" (hero, first paragraph) | `server.py` — every `@mcp.tool()` definition: 68 `burnbar_*` + 26 orchestration. Asserted both ways — the total must be printed as the total, and the `burnbar_*` subset must never be printed as "in total". An earlier revision opened on 63 while § 11 of the same page said 89 |
 | Works with Claude Code, Cursor, Codex CLI, Claude Desktop, Hermes                                             | `tools/openburnbar-mcp/README.md` §§ Cursor / Codex CLI / Hermes Agent / Claude Desktop; repo `.mcp.json`              |
 | Store path `~/Library/Application Support/OpenBurnBar/openburnbar-memory.sqlite`                              | `tools/openburnbar-mcp/README.md` § Local memory engine                                                                |
 | Bodies + history bodies AES-256-GCM sealed; key mode 0600; DB and WAL/SHM sidecars 0600                       | `tools/openburnbar-mcp/README.md` § Encrypted at rest                                                                  |
