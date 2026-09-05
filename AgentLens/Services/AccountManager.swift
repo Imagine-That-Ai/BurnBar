@@ -47,6 +47,11 @@ final class AccountManager {
     // MARK: - Private
 
     private var authStateListenerHandle: AuthStateDidChangeListenerHandle?
+    /// Callbacks registered through `observeAccountIdentityChanges(_:)`, fired
+    /// on every uid transition. Retained for the process's lifetime by design —
+    /// the one subscriber is the app-lifetime memory cloud-sync domain, and it
+    /// captures itself weakly.
+    private var accountIdentityObservers: [@MainActor @Sendable (String?) -> Void] = []
     private var currentNonce: String?
     private var firebaseAuthAccessGroup: String?
     /// Retains `AppleSignInPresentationCoordinator` until Sign in with Apple completes.
@@ -187,12 +192,39 @@ final class AccountManager {
     }
 
     private func applyAuthStateSnapshot(_ user: User?) {
+        // Captured BEFORE the assignment: this is the single choke point every
+        // identity change flows through — Firebase's own state listener, the
+        // post-sign-in refresh, and `signOut()` via `refreshAuthStateSnapshot()`
+        // — so comparing here is what makes one observer cover all of them.
+        let previousUID = userID
         currentUser = user
         isSignedIn = user != nil
         isAnonymousUser = user?.isAnonymous ?? true
         userID = user?.uid
         userEmail = user?.email
         userDisplayName = user?.displayName ?? user?.email
+        // Only on an actual transition: the listener also fires on token
+        // refreshes for the SAME member, and re-notifying there would make the
+        // Memory Blind Sync marker thrash (withdrawn, then republished a tick
+        // later) for no state change at all.
+        if previousUID != userID {
+            notifyAccountIdentityChanged()
+        }
+    }
+
+    /// Runs every `observeAccountIdentityChanges(_:)` observer with the current
+    /// uid. Observers are `@MainActor` and this method is too, so they see the
+    /// snapshot that has already been applied above.
+    private func notifyAccountIdentityChanged() {
+        let uid = userID
+        for observer in accountIdentityObservers {
+            observer(uid)
+        }
+    }
+
+    /// See `AccountManaging.observeAccountIdentityChanges(_:)`.
+    func observeAccountIdentityChanges(_ observer: @escaping @MainActor @Sendable (String?) -> Void) {
+        accountIdentityObservers.append(observer)
     }
 
     #if DEBUG
@@ -615,6 +647,15 @@ final class AccountManager {
         lastOAuthToken = nil
         lastOAuthEmail = nil
         lastOAuthDisplayName = nil
+        // `refreshAuthStateSnapshot()` above already notified IF the uid
+        // actually changed. This second, unconditional notification is the
+        // belt-and-braces half of the Memory Blind Sync closure: a sign-out is
+        // the one transition where "nothing may drain" must hold even when this
+        // process's idea of the uid was already nil (a crash-restored session, a
+        // sign-out with Firebase unavailable, a marker left behind by a previous
+        // run). The observers are idempotent purges, so notifying twice costs a
+        // DELETE that matches nothing.
+        notifyAccountIdentityChanged()
     }
 
     // MARK: - Cloud Sync Toggle

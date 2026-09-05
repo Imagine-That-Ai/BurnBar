@@ -24,10 +24,18 @@ import OpenBurnBarKernel
 //      sign-out, a uid change, the sub-toggle closing, the backup opt-in
 //      closing, and an entitlement lapse all purge what may no longer drain,
 //      rather than waiting for a pull that consent has just forbidden.
+//      `enforceAccountTransition` adds the third trigger: Firebase's own
+//      auth-state listener and `AccountManager.signOut()`, so an account change
+//      takes effect at the moment it happens instead of up to one refresh
+//      interval later (600 s by default) — or never, if the app quits first
+//      while the daemon keeps running.
 //   2. **As a predicate the daemon can evaluate.** The same call publishes (or
 //      withdraws) the consent marker `BurnBarMemoryDeviceSyncMarker` describes,
 //      which `syncInboxList` / `syncInboxAck` filter on. The daemon no longer
-//      documents an invariant it cannot check; it enforces one.
+//      documents an invariant it cannot check; it enforces one — and it bounds
+//      the marker's age (`deviceSyncConsentMarkerMaxAge`), so a marker no
+//      consenting sync has refreshed goes stale and stops authorising drains
+//      even if the app never came back to withdraw it.
 //
 // Consent off means BOTH: another member's pending rows go, and so do this
 // member's own. Nothing pending may drain while the switch is off.
@@ -37,8 +45,14 @@ import OpenBurnBarKernel
 struct MemoryDeviceSyncScope: Equatable, Sendable {
     /// The signed-in member, or nil when signed out / Firebase absent.
     let uid: String?
-    /// `SettingsManager.memoryDeviceSyncEnabled` — the sub-toggle AND the backup
-    /// opt-in AND the Data Vault entitlement AND the fleet ceiling.
+    /// The EFFECTIVE pull consent, which is what `MemoryCloudSyncDomain` passes:
+    /// `GateSnapshot.pullConsentGranted` — the four-lever device-sync gate
+    /// (`SettingsManager.memoryDeviceSyncEnabled`: the sub-toggle AND the backup
+    /// opt-in AND the Data Vault entitlement AND the fleet ceiling) ANDed with
+    /// the account levers every sync domain honours (Firebase available, signed
+    /// in, account sync on). Deliberately broader than `memoryDeviceSyncEnabled`
+    /// alone: a member who turned account sync off has not consented to a drain
+    /// either, and this is what the marker publishes to the daemon.
     let consentGranted: Bool
 
     /// Signed out, or consent withdrawn: nothing may drain.
@@ -112,6 +126,68 @@ enum MemoryDeviceSyncInboxGuard {
             purgedOtherAccount: purged,
             purgedConsentWithdrawn: 0,
             markerPublished: true
+        )
+    }
+
+    /// The account-transition entry point: an observed sign-in, sign-out or
+    /// account switch, applied the instant the app sees it rather than on the
+    /// next refresh tick.
+    ///
+    /// `enforce` alone ran only from `MemoryCloudSyncDomain.sync()` (the refresh
+    /// cadence, `BehaviorSettings.refreshInterval`, 600 s by default) and from
+    /// the Settings toggle, so the marker survived a sign-out for up to a full
+    /// tick — and indefinitely if the app quit or crashed before the next one,
+    /// because the daemon outlives the app and kept honouring it. Member B
+    /// running an agent inside that window drained member A's parked rows.
+    ///
+    /// It always **withdraws** the marker: consent is a live claim about who is
+    /// signed in, and a transition invalidates it until the next consenting sync
+    /// re-establishes it. What it purges depends on where the transition went:
+    ///
+    /// * signed out (`uid == nil`) — EVERY unmerged row. Nobody is present to
+    ///   consent to a drain, and the parked plaintext belongs to a session that
+    ///   has ended.
+    /// * signed in / switched — every unmerged row that is not the new member's.
+    ///   Deliberately not "all": a launch that restores a session is also a
+    ///   transition (nil → the member), and purging their own pending rows there
+    ///   would throw away facts on every cold start.
+    ///
+    /// Merged rows survive on both paths, as everywhere else: the engine already
+    /// holds those facts and the retention sweep owns their disposal.
+    @discardableResult
+    static func enforceAccountTransition(
+        to uid: String?,
+        store: ControlPlaneStore
+    ) async throws -> MemoryDeviceSyncGuardOutcome {
+        // Withdrawn FIRST, for the same reason `enforce` withdraws before it
+        // purges: a drain racing the transition must see no consent rather than
+        // a half-emptied inbox.
+        try await store.clearMemoryDeviceSyncMarker()
+        guard let uid, !uid.isEmpty else {
+            let purged = try await store.purgeAllUnappliedRemoteMemoryFacts()
+            if purged > 0 {
+                AppLogger.sync.error(
+                    "memory_device_sync_inbox_purged_on_sign_out",
+                    metadata: ["count": String(purged)]
+                )
+            }
+            return MemoryDeviceSyncGuardOutcome(
+                purgedOtherAccount: 0,
+                purgedConsentWithdrawn: purged,
+                markerPublished: false
+            )
+        }
+        let purged = try await store.purgeUnappliedRemoteMemoryFacts(otherThanUserID: uid)
+        if purged > 0 {
+            AppLogger.sync.error(
+                "memory_device_sync_inbox_purged_on_account_switch",
+                metadata: ["count": String(purged)]
+            )
+        }
+        return MemoryDeviceSyncGuardOutcome(
+            purgedOtherAccount: purged,
+            purgedConsentWithdrawn: 0,
+            markerPublished: false
         )
     }
 }

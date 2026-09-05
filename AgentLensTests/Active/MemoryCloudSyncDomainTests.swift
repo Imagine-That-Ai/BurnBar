@@ -450,6 +450,169 @@ final class MemoryCloudSyncDomainTests: XCTestCase {
         XCTAssertEqual(rows, 0, "the previous member's unmerged rows are gone before any drain could see them")
     }
 
+    // MARK: - Eager purge on auth transitions (re-review Important)
+
+    /// **The sign-out window.** `enforce` ran only from `sync()` (the refresh
+    /// cadence, 600 s by default) and the Settings toggle, so a sign-out left the
+    /// consent marker naming the member who left for up to a full tick — and for
+    /// ever if the app quit before the next one, because the daemon that honours
+    /// the marker outlives the app. This is the same closure applied at the
+    /// moment the identity changes, with no tick to wait for.
+    func test_signOut_purgesEveryPendingRowAndWithdrawsConsent_withoutASyncTick() async throws {
+        let uid = "e2-user-signing-out"
+        let (store, queue) = try await makeStoreWithApprovedMemory(uid: uid)
+        try await store.upsertRemoteMemoryFact(
+            docID: "doc-own-pending",
+            userID: uid,
+            engineMemoryID: "mem_own",
+            payloadJSON: "{}",
+            remoteUpdatedAt: Date(timeIntervalSince1970: 1_800_000_000)
+        )
+        try await store.writeMemoryDeviceSyncMarker(userID: uid)
+
+        // Device sync fully ON: this must purge because the member LEFT, not
+        // because a consent lever happens to be closed.
+        let domain = makeDomain(
+            store: store,
+            accountManager: .makeSignedIn(uid: uid),
+            settings: makeSettings(optIn: true, fleetEnabled: true, deviceSync: true),
+            gateway: CloudSyncFirestoreFakeGateway()
+        )
+
+        await domain.handleAccountIdentityChange(to: nil)
+
+        let pending = try await queue.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM agent_memory_inbox WHERE applied_at IS NULL") ?? -1
+        }
+        XCTAssertEqual(pending, 0, "nobody is signed in to consent to a drain: every pending row goes")
+        let marker = try await store.fetchMemoryDeviceSyncMarkerUserID()
+        XCTAssertNil(marker, "and the marker the daemon reads is withdrawn immediately, not on the next tick")
+    }
+
+    /// A uid change A → B, applied at the transition. A's parked plaintext goes
+    /// and the marker names nobody, so a drain landing before B's next
+    /// consenting sync gets nothing rather than A's memories.
+    func test_accountSwitch_dropsTheFormerMembersRowsAndLeavesNobodyNamed() async throws {
+        let (store, queue) = try await makeStoreWithApprovedMemory(uid: "e2-switch-b")
+        for (doc, owner) in [("doc-a", "e2-switch-a"), ("doc-b", "e2-switch-b")] {
+            try await store.upsertRemoteMemoryFact(
+                docID: doc,
+                userID: owner,
+                engineMemoryID: "mem_\(doc)",
+                payloadJSON: "{}",
+                remoteUpdatedAt: Date(timeIntervalSince1970: 1_800_000_000)
+            )
+        }
+        try await store.writeMemoryDeviceSyncMarker(userID: "e2-switch-a")
+
+        let domain = makeDomain(
+            store: store,
+            accountManager: .makeSignedIn(uid: "e2-switch-b"),
+            settings: makeSettings(optIn: true, fleetEnabled: true, deviceSync: true),
+            gateway: CloudSyncFirestoreFakeGateway()
+        )
+
+        await domain.handleAccountIdentityChange(to: "e2-switch-b")
+
+        let remaining = try await queue.read { db in
+            try String.fetchAll(db, sql: "SELECT doc_id FROM agent_memory_inbox ORDER BY doc_id")
+        }
+        XCTAssertEqual(
+            remaining,
+            ["doc-b"],
+            "A's unmerged rows go; B's own survive — a session restore is a transition too, and must not throw away the member's own pending facts"
+        )
+        let markerAfterSwitch = try await store.fetchMemoryDeviceSyncMarkerUserID()
+        XCTAssertNil(
+            markerAfterSwitch,
+            "consent is re-established by the next consenting sync reading the live gate, not assumed here"
+        )
+    }
+
+    /// The wiring itself: the domain subscribes, and the subscription is what
+    /// actually runs the purge. Without this the two halves above are dead code
+    /// — `enforceAccountTransition` existing is not the same as it being called.
+    func test_theDomainSubscribesToAccountIdentityChangesAndPurgesOnOne() async throws {
+        let uid = "e2-observer-a"
+        let (store, queue) = try await makeStoreWithApprovedMemory(uid: uid)
+        try await store.upsertRemoteMemoryFact(
+            docID: "doc-a",
+            userID: uid,
+            engineMemoryID: "mem_a",
+            payloadJSON: "{}",
+            remoteUpdatedAt: Date(timeIntervalSince1970: 1_800_000_000)
+        )
+        try await store.writeMemoryDeviceSyncMarker(userID: uid)
+
+        let accountManager = FakeAccountManager.makeSignedIn(uid: uid)
+        let domain = makeDomain(
+            store: store,
+            accountManager: accountManager,
+            settings: makeSettings(optIn: true, fleetEnabled: true, deviceSync: true),
+            gateway: CloudSyncFirestoreFakeGateway()
+        )
+        XCTAssertTrue(accountManager.accountIdentityObservers.isEmpty)
+
+        domain.startObservingAccountIdentity()
+        XCTAssertEqual(accountManager.accountIdentityObservers.count, 1, "the domain subscribed")
+
+        accountManager.simulateAccountIdentityChange(to: nil)
+
+        // The observer hands off to a Task; poll rather than sleep a fixed span.
+        var pending = -1
+        for _ in 0..<200 {
+            pending = try await queue.read { db in
+                try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM agent_memory_inbox WHERE applied_at IS NULL") ?? -1
+            }
+            if pending == 0 { break }
+            try await Task.sleep(nanoseconds: 5_000_000)
+        }
+        XCTAssertEqual(pending, 0, "the sign-out the observer saw purged the parked plaintext")
+        let markerAfterObservedSignOut = try await store.fetchMemoryDeviceSyncMarkerUserID()
+        XCTAssertNil(markerAfterObservedSignOut)
+    }
+
+    /// The marker is REFRESHED, not merely written once. The daemon's age bound
+    /// (`deviceSyncConsentMarkerMaxAge`) only works if a consenting cycle
+    /// advances the stamp every tick — a write-on-change marker would go stale
+    /// under a member who never changed anything.
+    func test_everyConsentingSyncRefreshesTheMarkerStamp() async throws {
+        let uid = "e2-marker-refresh"
+        let (store, queue) = try await makeStoreWithApprovedMemory(uid: uid)
+        let early = Date(timeIntervalSince1970: 1_800_000_000)
+        try await store.writeMemoryDeviceSyncMarker(userID: uid, now: early)
+        let firstStamp = try await queue.read { db in
+            try Date.fetchOne(
+                db,
+                sql: "SELECT lastSyncedAt FROM remote_sync_watermarks WHERE collectionKind = ?",
+                arguments: [BurnBarMemoryDeviceSyncMarker.collectionKind]
+            )
+        }
+        XCTAssertEqual(firstStamp, early)
+
+        try await store.writeMemoryDeviceSyncMarker(userID: uid, now: early.addingTimeInterval(600))
+        let secondStamp = try await queue.read { db in
+            try Date.fetchOne(
+                db,
+                sql: "SELECT lastSyncedAt FROM remote_sync_watermarks WHERE collectionKind = ?",
+                arguments: [BurnBarMemoryDeviceSyncMarker.collectionKind]
+            )
+        }
+        XCTAssertEqual(
+            secondStamp,
+            early.addingTimeInterval(600),
+            "the same member, unchanged, still advances the stamp — otherwise the daemon's age bound would expire a live consent"
+        )
+        let markerCount = try await queue.read { db in
+            try Int.fetchOne(
+                db,
+                sql: "SELECT COUNT(*) FROM remote_sync_watermarks WHERE collectionKind = ?",
+                arguments: [BurnBarMemoryDeviceSyncMarker.collectionKind]
+            ) ?? -1
+        }
+        XCTAssertEqual(markerCount, 1, "one marker, ever — two is the ambiguity the daemon reads as no consent")
+    }
+
     // MARK: - Pull observability (final-review Important 7)
 
     /// Stands in for the pull so the one case that cannot be reached from

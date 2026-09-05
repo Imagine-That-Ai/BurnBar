@@ -182,6 +182,49 @@ final class MemoryCloudSyncDomain: CloudSyncDomain, Sendable {
         )
     }
 
+    /// Subscribe to account identity changes so the blind-sync inbox and its
+    /// consent marker are brought in line the MOMENT the member signs in, signs
+    /// out or switches — not on the next refresh tick.
+    ///
+    /// Called once at app wiring (`OpenBurnBarApp.makeMemoryServices`). The
+    /// closure captures `self` weakly; `AccountManager` holds its observers for
+    /// the process's lifetime, and this domain is app-lifetime too, so nothing
+    /// accumulates.
+    @MainActor
+    func startObservingAccountIdentity() {
+        accountManager.observeAccountIdentityChanges { [weak self] uid in
+            guard let self else { return }
+            Task { await self.handleAccountIdentityChange(to: uid) }
+        }
+    }
+
+    /// The "account changed" entry point. Withdraws the consent marker and
+    /// purges the unmerged inbox rows the new identity may not have — see
+    /// `MemoryDeviceSyncInboxGuard.enforceAccountTransition` for which rows go
+    /// on which transition.
+    ///
+    /// Deliberately does NOT republish the marker for the incoming member, even
+    /// when their gate happens to be open: consent is a claim this app makes
+    /// about a live, fully-resolved gate (entitlement included), and the next
+    /// consenting `sync()` is where that gate is read. Failing closed for one
+    /// refresh interval costs a delayed drain; failing open costs another
+    /// member's memories.
+    func handleAccountIdentityChange(to uid: String?) async {
+        do {
+            try await MemoryDeviceSyncInboxGuard.enforceAccountTransition(to: uid, store: store)
+        } catch {
+            // Same posture as the in-`sync()` call: a failure here means the
+            // scope went unenforced on this transition, which is worth a log
+            // rather than a swallow. The daemon's marker age bound is the
+            // backstop that keeps a surviving marker from authorising drains
+            // for ever.
+            AppLogger.sync.error(
+                "memory_device_sync_account_transition_guard_failed",
+                metadata: ["error_type": String(describing: type(of: error))]
+            )
+        }
+    }
+
     /// Replicate approved sealed memory facts (+ forget receipts) for the
     /// signed-in user, when every gate allows. No-op (returns immediately,
     /// untouched state) the instant any lever is off — the dormant default.

@@ -359,12 +359,15 @@ public struct BurnBarProjectMemoryAnalyticsResponse: Codable, Hashable, Sendable
 /// dedicated table would be a new SQLite migration across all eight schema
 /// surfaces for one row.
 ///
-/// **Presence is consent.** Exactly one row exists while the effective
-/// device-sync gate is open, and its `accountUid` is the signed-in member. The
-/// app deletes it the instant any lever closes (sign-out, uid change, the
-/// sub-toggle off, the backup opt-in off, a lapsed entitlement), so the daemon
-/// reads absence as "no consent" and returns nothing. Anything ambiguous — the
-/// table missing, no row, more than one row — is also nothing (fail closed).
+/// **Presence, and freshness, are consent.** Exactly one row exists while the
+/// effective device-sync gate is open, and its `accountUid` is the signed-in
+/// member. The app deletes it the instant any lever closes (sign-out, uid
+/// change, the sub-toggle off, the backup opt-in off, a lapsed entitlement) and
+/// rewrites it on every consenting sync, so the daemon reads absence — or a
+/// `refreshedAtColumn` no sync has advanced inside
+/// `BurnBarProjectCodeMemoryStore.deviceSyncConsentMarkerMaxAge` — as "no
+/// consent" and returns nothing. Anything ambiguous — the table missing, no row,
+/// more than one row, an unreadable stamp — is also nothing (fail closed).
 public enum BurnBarMemoryDeviceSyncMarker: Sendable {
     /// The table the marker row lives in. Created by the app's `v30` migration;
     /// the daemon only ever reads it, and treats its absence as "no consent".
@@ -377,6 +380,16 @@ public enum BurnBarMemoryDeviceSyncMarker: Sendable {
     public static let accountColumn = "accountUid"
     /// The kind column, as the app's migration spells it.
     public static let kindColumn = "collectionKind"
+    /// The column carrying "when did a consenting sync last vouch for this".
+    ///
+    /// The app REWRITES the marker row (delete + insert) on every consenting
+    /// cycle, so this advances on the refresh cadence for as long as consent
+    /// stands and stops the instant it does not. That is what lets the daemon
+    /// age-bound the marker: presence alone cannot expire, and the daemon
+    /// outlives the app, so a marker left behind by an app that quit after a
+    /// sign-out would otherwise authorise drains for ever. See
+    /// `BurnBarProjectCodeMemoryStore.deviceSyncConsentMarkerMaxAge`.
+    public static let refreshedAtColumn = "lastSyncedAt"
 }
 
 /// Drain request for memory facts the app's pull lane verified and parked in

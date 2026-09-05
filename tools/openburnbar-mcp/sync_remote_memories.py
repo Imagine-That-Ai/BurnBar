@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """Drain the Memory Blind Sync inbox into the local engine store.
 
-Runs from the SessionStart hook (`hooks/claude-code-session-start.sh`) or by
-hand. It reuses the server's own `burnbar_memory_sync_pull` wrapper, so the
+Runs from the SessionStart hook (`hooks/claude-code-session-start.sh`), or by
+hand with `--force`. Like the hook, it is OFF unless
+`OPENBURNBAR_MEMORY_SYNC_HOOK` names an enabling value.
+
+It reuses the server's own `burnbar_memory_sync_pull` wrapper, so the
 capability gate, the signed CLI courier, the daemon's consent-marker scope check,
 and §5's merge semantics all behave exactly as they do for the MCP tool — this
 module adds a deadline and a receipt, nothing else.
@@ -30,7 +33,13 @@ from typing import Any
 HOOK_ENV = "OPENBURNBAR_MEMORY_SYNC_HOOK"
 DEFAULT_BUDGET_SECONDS = 20
 DEFAULT_LIMIT = 200
-_DISABLED = {"0", "off", "false", "no", "disabled"}
+# The enabling values `hooks/claude-code-session-start.sh` accepts, verbatim. The
+# module used to test the complement (a `_DISABLED` set), which made an UNSET
+# variable read as enabled — the opposite of the shell hook's `:-off` default and
+# of what the README documents. The two gates now agree: nothing but an explicit
+# enabling value drains, so importing this module and calling `drain()` in an
+# environment that never opted in is a no-op.
+_ENABLED = {"1", "on", "true", "yes", "enabled"}
 
 
 class _Deadline(TimeoutError):
@@ -38,7 +47,13 @@ class _Deadline(TimeoutError):
 
 
 def hook_disabled(env: dict[str, str]) -> bool:
-    return env.get(HOOK_ENV, "").strip().lower() in _DISABLED
+    """True unless `OPENBURNBAR_MEMORY_SYNC_HOOK` names an enabling value.
+
+    Default-off, matching the shell hook's `${OPENBURNBAR_MEMORY_SYNC_HOOK:-off}`.
+    The by-hand path is not gated by this — `drain(force=True)` and the CLI's
+    `--force` run regardless, because a member typing the command IS the opt-in.
+    """
+    return env.get(HOOK_ENV, "").strip().lower() not in _ENABLED
 
 
 def _server_module() -> Any:
@@ -87,15 +102,21 @@ def drain(
     limit: int = DEFAULT_LIMIT,
     budget_seconds: float = DEFAULT_BUDGET_SECONDS,
     env: dict[str, str] | None = None,
+    force: bool = False,
 ) -> dict[str, Any]:
     """Drain the inbox once, reporting every outcome as a status dict.
+
+    Gated OFF unless `OPENBURNBAR_MEMORY_SYNC_HOOK` names an enabling value, or
+    `force` is set — the explicit by-hand path (`--force`), where the member
+    running the command is the opt-in. The app's own consent gate is still the
+    boundary either way: with device sync off the daemon hands over nothing.
 
     The `budget_seconds` deadline is enforced with `signal.setitimer`, so it
     requires POSIX and the main thread; the hook only ever runs it on
     macOS/Linux from the process's main thread.
     """
     env = dict(os.environ if env is None else env)
-    if hook_disabled(env):
+    if not force and hook_disabled(env):
         return {"status": "skipped_disabled"}
 
     def _alarm(_signum: int, _frame: Any) -> None:
@@ -210,6 +231,11 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     )
     parser.add_argument("--project", help="project root the memories belong to (default: the working directory)")
     parser.add_argument(
+        "--force",
+        action="store_true",
+        help=f"drain even when {HOOK_ENV} is unset or off (the by-hand path)",
+    )
+    parser.add_argument(
         "--limit", type=int, default=DEFAULT_LIMIT, help=f"inbox rows per drain (default: {DEFAULT_LIMIT})"
     )
     parser.add_argument(
@@ -238,6 +264,7 @@ def main(argv: list[str] | None = None) -> int:
         project_path=str(project) if project else None,
         limit=args.limit,
         budget_seconds=args.budget_seconds,
+        force=args.force,
     )
     print(json.dumps(_redacted_output(result), default=str))
     return 0

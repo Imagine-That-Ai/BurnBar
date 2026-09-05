@@ -2387,7 +2387,23 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
     /// `userID`. The daemon never creates this table — it belongs to the app's
     /// migrator — so a fixture that wants a consenting member has to supply it,
     /// which is exactly the boundary being tested: no app, no consent, no drain.
-    private func seedDeviceSyncConsentMarker(database: URL, userID: String) throws {
+    /// GRDB's own `Date` binding format, which is what the app's marker write
+    /// puts in `lastSyncedAt`. Spelled out here so the fixture is byte-identical
+    /// to production and the daemon's freshness comparison is tested against the
+    /// string it will actually meet.
+    private func grdbDateLiteral(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        return formatter.string(from: date)
+    }
+
+    private func seedDeviceSyncConsentMarker(
+        database: URL,
+        userID: String,
+        refreshedAt: Date = Date()
+    ) throws {
         try sqliteExecute(
             database: database,
             sql: """
@@ -2399,10 +2415,12 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
                 version INTEGER NOT NULL DEFAULT 1,
                 PRIMARY KEY (accountUid, collectionKind)
             );
+            DELETE FROM remote_sync_watermarks
+            WHERE collectionKind = \(sqlLiteral(BurnBarMemoryDeviceSyncMarker.collectionKind));
             INSERT INTO remote_sync_watermarks
                 (accountUid, collectionKind, lastSyncedAt, lastProcessedRemoteUpdateAt, version)
             VALUES (\(sqlLiteral(userID)), \(sqlLiteral(BurnBarMemoryDeviceSyncMarker.collectionKind)),
-                    '2026-09-04 00:00:00.000', NULL, 1);
+                    \(sqlLiteral(grdbDateLiteral(refreshedAt))), NULL, 1);
             """
         )
     }
@@ -2670,6 +2688,7 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
     func testForgettingAMemoryAlsoDropsItsParkedPlaintextFromTheSyncInbox() throws {
         let fixture = try makeFixture()
         let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
+        try seedDeviceSyncConsentMarker(database: fixture.database, userID: "member-1")
         let engineID = "mem_00112233445566778899aabbccddee01"
         let remembered = try store.remember(
             BurnBarProjectMemoryRememberRequest(
@@ -2713,12 +2732,14 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         let fixture = try makeFixture()
         let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
         try seedDeviceSyncConsentMarker(database: fixture.database, userID: "member-1")
-        let ancient = BurnBarProjectCodeMemoryStore.isoString(
+        // The app's format (`syncInboxTimestamp`), because `received_at` is the
+        // app's column and the cutoff is compared against it as text.
+        let ancient = BurnBarProjectCodeMemoryStore.syncInboxTimestamp(
             Date().addingTimeInterval(-BurnBarProjectCodeMemoryStore.syncInboxUnappliedRetentionSeconds - 3_600)
         )
         // Older than the MERGED window but well inside the unmerged one: an
         // unmerged row is a fact nothing has applied, so it is kept far longer.
-        let middling = BurnBarProjectCodeMemoryStore.isoString(
+        let middling = BurnBarProjectCodeMemoryStore.syncInboxTimestamp(
             Date().addingTimeInterval(-BurnBarProjectCodeMemoryStore.syncInboxRetentionSeconds - 3_600)
         )
         try sqliteExecute(
@@ -2742,6 +2763,241 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
             ),
             ["doc-live", "doc-waiting"],
             "only the row that waited past the unmerged bound is dropped"
+        )
+    }
+
+    /// **The window the eager purges alone could not close.** The daemon
+    /// outlives the app: quit or crash the Mac app after a sign-out and the
+    /// consent marker sits on disk indefinitely with nothing left to withdraw
+    /// it, so a drain an hour later still found a marker naming the member who
+    /// left. Bounding its age makes a marker no consenting sync has refreshed
+    /// stop authorising anything, whether or not the app ever comes back.
+    func testAConsentMarkerNoSyncHasRefreshedGoesStaleAndDrainsNothing() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
+        try sqliteExecute(
+            database: fixture.database,
+            sql: """
+            INSERT INTO agent_memory_inbox
+                (doc_id, user_id, engine_memory_id, payload_json, remote_updated_at, received_at, applied_at)
+            VALUES ('doc-1', 'member-1', 'mem_1', '{"text":"parked"}', '2026-09-04T00:00:01.000Z', '2026-09-04T00:00:09.000Z', NULL);
+            """
+        )
+
+        // Fresh: the app's last consenting cycle was a moment ago.
+        try seedDeviceSyncConsentMarker(database: fixture.database, userID: "member-1")
+        XCTAssertEqual(
+            try store.syncInboxList(BurnBarMemorySyncInboxListRequest()).entries.map(\.docID),
+            ["doc-1"],
+            "a marker a consenting sync just refreshed authorises the drain"
+        )
+
+        // Stale: no sync has vouched for it in longer than the bound. The app is
+        // not running to withdraw it, and that is precisely the case.
+        try seedDeviceSyncConsentMarker(
+            database: fixture.database,
+            userID: "member-1",
+            refreshedAt: Date().addingTimeInterval(-BurnBarProjectCodeMemoryStore.deviceSyncConsentMarkerMaxAge - 60)
+        )
+        XCTAssertTrue(
+            try store.syncInboxList(BurnBarMemorySyncInboxListRequest()).entries.isEmpty,
+            "a stale marker is no consent: the drain hands over nothing"
+        )
+        XCTAssertEqual(
+            try store.syncInboxAck(BurnBarMemorySyncInboxAckRequest(docIDs: ["doc-1"])).acknowledged,
+            0,
+            "and nothing may be acknowledged under a stale marker either"
+        )
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT COUNT(*) FROM agent_memory_inbox WHERE applied_at IS NULL"
+            ),
+            ["1"],
+            "the row is still parked, not silently marked merged"
+        )
+
+        // And the app coming back — one consenting sync rewriting the marker —
+        // restores the drain without any other state changing.
+        try seedDeviceSyncConsentMarker(database: fixture.database, userID: "member-1")
+        XCTAssertEqual(
+            try store.syncInboxList(BurnBarMemorySyncInboxListRequest()).entries.map(\.docID),
+            ["doc-1"],
+            "a sync refreshing the marker makes it current again"
+        )
+    }
+
+    /// The bound is 2× the app's default refresh interval, so exactly one missed
+    /// tick is tolerated. A marker refreshed 15 minutes ago (one interval plus
+    /// slack) still drains; the constant is not accidentally shorter than the
+    /// cadence that maintains it, which would make the feature flap.
+    func testTheMarkerBoundToleratesOneMissedRefreshTick() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
+        XCTAssertEqual(
+            BurnBarProjectCodeMemoryStore.deviceSyncConsentMarkerMaxAge,
+            1_200,
+            "2 × BehaviorSettings.refreshInterval (600 s)"
+        )
+        try sqliteExecute(
+            database: fixture.database,
+            sql: """
+            INSERT INTO agent_memory_inbox
+                (doc_id, user_id, engine_memory_id, payload_json, remote_updated_at, received_at, applied_at)
+            VALUES ('doc-1', 'member-1', 'mem_1', '{}', '2026-09-04T00:00:01.000Z', '2026-09-04T00:00:09.000Z', NULL);
+            """
+        )
+        try seedDeviceSyncConsentMarker(
+            database: fixture.database,
+            userID: "member-1",
+            refreshedAt: Date().addingTimeInterval(-900)
+        )
+        XCTAssertEqual(
+            try store.syncInboxList(BurnBarMemorySyncInboxListRequest()).entries.map(\.docID),
+            ["doc-1"],
+            "one skipped tick is not a withdrawal"
+        )
+    }
+
+    /// A stamp the marker column carries that SQLite cannot read at all is not
+    /// "fresh by default" — `julianday()` answers NULL and the CASE resolves to
+    /// stale. Fail closed on corruption, like every other ambiguous shape.
+    func testAnUnreadableMarkerStampIsTreatedAsStale() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
+        try seedDeviceSyncConsentMarker(database: fixture.database, userID: "member-1")
+        try sqliteExecute(
+            database: fixture.database,
+            sql: """
+            UPDATE remote_sync_watermarks SET lastSyncedAt = 'not-a-timestamp'
+            WHERE collectionKind = \(sqlLiteral(BurnBarMemoryDeviceSyncMarker.collectionKind));
+            INSERT INTO agent_memory_inbox
+                (doc_id, user_id, engine_memory_id, payload_json, remote_updated_at, received_at, applied_at)
+            VALUES ('doc-1', 'member-1', 'mem_1', '{}', '2026-09-04T00:00:01.000Z', '2026-09-04T00:00:09.000Z', NULL);
+            """
+        )
+        XCTAssertTrue(try store.syncInboxList(BurnBarMemorySyncInboxListRequest()).entries.isEmpty)
+    }
+
+    /// The unmerged sweep's cutoff is compared lexicographically against
+    /// `received_at`, which the APP writes with fractional seconds while the
+    /// daemon's general-purpose `isoString` emits bare seconds. `'.'` sorts
+    /// before `'Z'`, so a row up to a second NEWER than the cutoff used to be
+    /// swept as older. This pins the boundary second in both directions.
+    func testTheUnmergedSweepCutoffComparesExactlyAtTheBoundarySecond() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
+        try seedDeviceSyncConsentMarker(database: fixture.database, userID: "member-1")
+        // Pinned, and chosen so the cutoff lands on a whole second: a bare-seconds
+        // cutoff would then truncate to the SAME second as the rows, which is the
+        // only place the two formats actually disagree. With a wall-clock `now`
+        // the sub-second offsets usually straddle a second boundary and the bug
+        // hides — this makes the regression detectable every run.
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let boundary = now.addingTimeInterval(-BurnBarProjectCodeMemoryStore.syncInboxUnappliedRetentionSeconds)
+        // Half a second on either side of the cutoff, written the way the app
+        // writes `received_at`.
+        let justInside = BurnBarProjectCodeMemoryStore.syncInboxTimestamp(boundary.addingTimeInterval(0.5))
+        let justOutside = BurnBarProjectCodeMemoryStore.syncInboxTimestamp(boundary.addingTimeInterval(-0.5))
+        try sqliteExecute(
+            database: fixture.database,
+            sql: """
+            INSERT INTO agent_memory_inbox
+                (doc_id, user_id, engine_memory_id, payload_json, remote_updated_at, received_at, applied_at)
+            VALUES
+                ('doc-keep', 'member-1', 'mem_keep', '{}', '2026-01-01T00:00:00.000Z', \(sqlLiteral(justInside)), NULL),
+                ('doc-sweep', 'member-1', 'mem_sweep', '{}', '2026-01-01T00:00:00.000Z', \(sqlLiteral(justOutside)), NULL);
+            """
+        )
+
+        try store.pruneMergedSyncInboxRows(now: now)
+
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT doc_id FROM agent_memory_inbox ORDER BY doc_id"
+            ),
+            ["doc-keep"],
+            "the sub-second-newer row survives and the sub-second-older one goes: the comparison is exact"
+        )
+    }
+
+    /// The forget delete is scoped like every sibling statement: a forget from
+    /// the consenting member's engine must not reach into another member's
+    /// parked rows that happen to be on the same shared Mac.
+    func testForgettingUnderOneMemberLeavesAnotherMembersParkedRowAlone() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
+        try seedDeviceSyncConsentMarker(database: fixture.database, userID: "member-1")
+        let engineID = "mem_00112233445566778899aabbccddee09"
+        let remembered = try store.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: "Deploys are frozen in December.",
+                projectPath: fixture.project.path,
+                engineMemoryID: engineID
+            )
+        )
+        try sqliteExecute(
+            database: fixture.database,
+            sql: """
+            INSERT INTO agent_memory_inbox
+                (doc_id, user_id, engine_memory_id, payload_json, remote_updated_at, received_at, applied_at)
+            VALUES
+                ('doc-mine', 'member-1', \(sqlLiteral(engineID)), '{"text":"Deploys are frozen in December."}',
+                 '2026-09-04T00:00:01.000Z', '2026-09-04T00:00:09.000Z', NULL),
+                ('doc-theirs', 'member-other', \(sqlLiteral(engineID)), '{"text":"someone else''s parked copy"}',
+                 '2026-09-04T00:00:02.000Z', '2026-09-04T00:00:09.000Z', NULL);
+            """
+        )
+
+        _ = try store.forget(
+            BurnBarProjectMemoryForgetRequest(memoryID: remembered.memoryID, projectPath: fixture.project.path)
+        )
+
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT doc_id FROM agent_memory_inbox ORDER BY doc_id"
+            ),
+            ["doc-theirs"],
+            "the consenting member's parked plaintext is gone; the other account's row is not this forget's to delete"
+        )
+    }
+
+    /// With NO marker the forget still reaches the plaintext. This is the one
+    /// deliberate asymmetry with `syncInboxList` / `syncInboxAck`: reading and
+    /// acknowledging fail closed by handing over nothing, but a DELETE has no
+    /// fail-closed direction — refusing to delete is what leaves a readable copy
+    /// of a memory the member deleted sitting on disk.
+    func testForgettingWithNoConsentMarkerStillClearsTheParkedPlaintext() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
+        let engineID = "mem_00112233445566778899aabbccddee0a"
+        let remembered = try store.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: "The on-call rota rolls over on Mondays.",
+                projectPath: fixture.project.path,
+                engineMemoryID: engineID
+            )
+        )
+        try sqliteExecute(
+            database: fixture.database,
+            sql: """
+            INSERT INTO agent_memory_inbox
+                (doc_id, user_id, engine_memory_id, payload_json, remote_updated_at, received_at, applied_at)
+            VALUES ('doc-forgotten', 'member-1', \(sqlLiteral(engineID)), '{"text":"The on-call rota rolls over on Mondays."}',
+                    '2026-09-04T00:00:01.000Z', '2026-09-04T00:00:09.000Z', NULL);
+            """
+        )
+
+        _ = try store.forget(
+            BurnBarProjectMemoryForgetRequest(memoryID: remembered.memoryID, projectPath: fixture.project.path)
+        )
+
+        XCTAssertEqual(
+            try sqliteStrings(database: fixture.database, sql: "SELECT COUNT(*) FROM agent_memory_inbox"),
+            ["0"],
+            "no marker must not mean the deleted memory's plaintext survives"
         )
     }
 

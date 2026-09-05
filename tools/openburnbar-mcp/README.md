@@ -169,7 +169,10 @@ device did not write, so `OPENBURNBAR_MEMORY_SYNC_HOOK` must be set to `on`
 (`1`, `true`, `yes`, `enabled`) for it to do anything at all; unset, it exits 0
 having done nothing. That is a second switch on top of the app's own consent
 gate, not a replacement for it — with "Sync memories to my other devices" off,
-the daemon hands the engine nothing whatever this hook is set to.
+the daemon hands the engine nothing whatever this hook is set to. The same
+default-off gate applies to `sync_remote_memories.py` run by hand or imported;
+`--force` (or `drain(force=True)`) is the explicit way to drain once without
+setting the variable, because a member typing the command IS the opt-in.
 
 ```json
 {

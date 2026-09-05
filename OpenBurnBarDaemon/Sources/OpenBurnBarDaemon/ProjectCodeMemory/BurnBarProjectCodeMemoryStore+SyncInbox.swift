@@ -23,28 +23,80 @@ extension BurnBarProjectCodeMemoryStore {
     /// merge the member rolls back, can still find the row.
     static let syncInboxRetentionSeconds: TimeInterval = 30 * 24 * 60 * 60
 
+    /// The ONE timestamp format `agent_memory_inbox` is written and compared in.
+    ///
+    /// Both processes write this table — the app parks rows (`received_at`,
+    /// `remote_updated_at`) and the daemon stamps and sweeps them (`applied_at`,
+    /// the retention cutoffs) — and the comparisons are lexicographic on TEXT,
+    /// so the two sides have to agree on the exact string shape or the ordering
+    /// silently stops meaning "chronological".
+    ///
+    /// They did not. The app writes ISO-8601 WITH fractional seconds
+    /// (`ControlPlaneStore.iso8601String`, `.withFractionalSeconds`), while the
+    /// daemon's general-purpose `isoString` emits bare seconds. `'.'` (0x2E)
+    /// sorts before `'Z'` (0x5A), so `2026-09-04T00:00:00.500Z` compared as less
+    /// than the cutoff `2026-09-04T00:00:00Z` — an unmerged row up to a second
+    /// NEWER than the cutoff was swept as if it were older. Matching the app's
+    /// formatter here makes the comparison exact at the boundary second.
+    static func syncInboxTimestamp(_ date: Date) -> String {
+        ThreadSafeISO8601DateFormatter.formatFractional(date)
+    }
+
+    /// How long a consent marker authorises drains before it goes stale.
+    ///
+    /// Presence alone was not enough. The marker is a claim the app makes about
+    /// a live gate, but the daemon **outlives the app**: quit or crash the Mac
+    /// app after a sign-out and the marker persists on disk indefinitely, with
+    /// every subsequent drain still honouring it. The app's eager purges
+    /// (`MemoryDeviceSyncInboxGuard.enforceAccountTransition`) close that door
+    /// from the app's side; this closes it from the daemon's, so the boundary
+    /// holds even when the app is not running to enforce anything.
+    ///
+    /// 20 minutes = 2 × `BehaviorSettings.refreshInterval` (600 s), the cadence
+    /// on which `MemoryCloudSyncDomain.sync()` rewrites the marker while consent
+    /// stands. One skipped tick — a slow cycle, a sleeping Mac catching up — is
+    /// tolerated; two are read as "no app is vouching for this any more" and the
+    /// drain falls closed. It is deliberately NOT a security timeout tuned to an
+    /// attacker: it is the window in which an app that stopped running stops
+    /// being believed.
+    static let deviceSyncConsentMarkerMaxAge: TimeInterval = 2 * 600
+
     /// The member the app says consents to device sync right now, or nil.
     ///
     /// This is the scope predicate the daemon could not previously evaluate. It
     /// holds no Firebase identity, so it reads the app's own marker
     /// (`BurnBarMemoryDeviceSyncMarker`) out of the shared encrypted database:
-    /// one row means "this uid, consenting"; anything else — no row, several
-    /// rows, or the table absent because the app has never migrated this store —
-    /// means no consent, and the drain hands over nothing.
+    /// one FRESH row means "this uid, consenting"; anything else — no row,
+    /// several rows, a row no sync has refreshed inside
+    /// `deviceSyncConsentMarkerMaxAge`, or the table absent because the app has
+    /// never migrated this store — means no consent, and the drain hands over
+    /// nothing.
     ///
-    /// Fail-closed by construction: every path that is not exactly one row with
-    /// a non-empty account returns nil, including a SQL error.
-    func memoryDeviceSyncConsentUserID() -> String? {
+    /// Freshness is evaluated by SQLite's own `julianday()` rather than by
+    /// parsing the stamp here, because the column is written by GRDB (whose
+    /// `Date` binding is `YYYY-MM-DD HH:MM:SS.SSS`) and a daemon-side parser
+    /// would be a second, silently-drifting copy of that format. `julianday()`
+    /// accepts that shape and ISO-8601 alike, and answers NULL for anything it
+    /// cannot read — which the `CASE` below turns into "stale", i.e. closed.
+    ///
+    /// Fail-closed by construction: every path that is not exactly one fresh row
+    /// with a non-empty account returns nil, including a SQL error.
+    func memoryDeviceSyncConsentUserID(now: Date = Date()) -> String? {
+        let freshnessCutoff = Self.syncInboxTimestamp(now.addingTimeInterval(-Self.deviceSyncConsentMarkerMaxAge))
         let rows: [SQLiteRow]
         do {
             rows = try queryRows(
                 """
-                SELECT \(BurnBarMemoryDeviceSyncMarker.accountColumn)
+                SELECT \(BurnBarMemoryDeviceSyncMarker.accountColumn),
+                       CASE
+                           WHEN julianday(\(BurnBarMemoryDeviceSyncMarker.refreshedAtColumn)) >= julianday(?)
+                           THEN 1 ELSE 0
+                       END
                 FROM \(BurnBarMemoryDeviceSyncMarker.tableName)
                 WHERE \(BurnBarMemoryDeviceSyncMarker.kindColumn) = ?
                 LIMIT 2
                 """,
-                [.text(BurnBarMemoryDeviceSyncMarker.collectionKind)]
+                [.text(freshnessCutoff), .text(BurnBarMemoryDeviceSyncMarker.collectionKind)]
             )
         } catch {
             // The table belongs to the app's migrator. On a store the app has
@@ -52,7 +104,10 @@ extension BurnBarProjectCodeMemoryStore {
             // failing the RPC over — it is the absence of consent.
             return nil
         }
+        // Counted BEFORE freshness so an ambiguous table (two markers, one of
+        // them fresh) still reads as no consent rather than picking a winner.
         guard rows.count == 1 else { return nil }
+        guard rows[0].int64(1) == 1 else { return nil }
         let uid = rows[0].string(0)
         return uid.isEmpty ? nil : uid
     }
@@ -133,7 +188,10 @@ extension BurnBarProjectCodeMemoryStore {
         guard !docIDs.isEmpty else {
             return BurnBarMemorySyncInboxAckResponse(traceID: traceID, acknowledged: 0)
         }
-        let now = Self.isoNow()
+        // The app's format, not `isoNow()`'s — see `syncInboxTimestamp`: this
+        // stamp is later compared against a cutoff in the merged-row sweep, and
+        // every other timestamp in this table carries fractional seconds.
+        let now = Self.syncInboxTimestamp(Date())
         let placeholders = Array(repeating: "?", count: docIDs.count).joined(separator: ", ")
         return try databaseSync {
             guard let consentUserID = memoryDeviceSyncConsentUserID() else {
@@ -171,12 +229,15 @@ extension BurnBarProjectCodeMemoryStore {
     /// and unmerged rows that have outlived `syncInboxUnappliedRetentionSeconds`
     /// waiting for an engine that never came.
     func pruneMergedSyncInboxRows(now: Date) throws {
-        let cutoff = Self.isoString(now.addingTimeInterval(-Self.syncInboxRetentionSeconds))
+        // Both cutoffs use the table's one format (`syncInboxTimestamp`), so the
+        // `<` is exact against `applied_at` (written here) and against
+        // `received_at` (written by the app) alike.
+        let cutoff = Self.syncInboxTimestamp(now.addingTimeInterval(-Self.syncInboxRetentionSeconds))
         try execute(
             "DELETE FROM agent_memory_inbox WHERE applied_at IS NOT NULL AND applied_at < ?",
             [.text(cutoff)]
         )
-        let staleCutoff = Self.isoString(now.addingTimeInterval(-Self.syncInboxUnappliedRetentionSeconds))
+        let staleCutoff = Self.syncInboxTimestamp(now.addingTimeInterval(-Self.syncInboxUnappliedRetentionSeconds))
         try execute(
             "DELETE FROM agent_memory_inbox WHERE applied_at IS NULL AND received_at < ?",
             [.text(staleCutoff)]
@@ -192,13 +253,33 @@ extension BurnBarProjectCodeMemoryStore {
     /// Without this, forgetting a memory left a readable copy of its body on
     /// disk — and worse, an unmerged copy would have been merged back in on the
     /// next drain if the engine's own forget receipt had not caught it.
+    ///
+    /// Scoped to the consent marker's member, like every other statement in this
+    /// file: a forget arrives from one member's engine and must not reach into
+    /// another member's parked rows on a shared Mac.
+    ///
+    /// The one deliberate difference from `syncInboxList` / `syncInboxAck` is
+    /// what happens with NO marker. Those two fail closed by handing over
+    /// nothing, because reading and acknowledging are the directions that leak.
+    /// A DELETE has no such direction — refusing to delete is what leaves
+    /// readable plaintext behind — so with no marker the forget still reaches
+    /// every row carrying the id. It costs nothing in scope terms: an engine
+    /// memory id is a random 128-bit label, so a row that carries the id being
+    /// forgotten is a copy of that same memory whoever parked it.
     func deleteSyncInboxRows(engineMemoryIDs: [String]) throws {
         let ids = Array(Set(engineMemoryIDs.filter { !$0.isEmpty })).sorted().prefix(1_000)
         guard !ids.isEmpty else { return }
         let placeholders = Array(repeating: "?", count: ids.count).joined(separator: ", ")
+        guard let consentUserID = memoryDeviceSyncConsentUserID() else {
+            try execute(
+                "DELETE FROM agent_memory_inbox WHERE engine_memory_id IN (\(placeholders))",
+                ids.map { .text($0) }
+            )
+            return
+        }
         try execute(
-            "DELETE FROM agent_memory_inbox WHERE engine_memory_id IN (\(placeholders))",
-            ids.map { .text($0) }
+            "DELETE FROM agent_memory_inbox WHERE user_id = ? AND engine_memory_id IN (\(placeholders))",
+            [.text(consentUserID)] + ids.map { .text($0) }
         )
     }
 }

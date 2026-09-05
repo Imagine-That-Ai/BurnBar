@@ -1318,9 +1318,34 @@ def test_the_drain_hook_is_opt_in_and_silent_until_enabled() -> None:
 
 
 def test_the_drain_module_reports_disabled_without_touching_the_engine(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The module's gate matches the shell hook's `${...:-off}` default.
+
+    It used to test the complement — a `_DISABLED` set — so an UNSET variable
+    read as enabled and any in-process caller (`import sync_remote_memories;
+    drain(...)`) merged content the member had never opted into, while the shell
+    hook beside it stayed silent. Both gates now default off.
+    """
     sync = _sync_module()
     monkeypatch.setattr(sync, "_pull", lambda **_: pytest.fail("a disabled drain must not reach the tool"))
-    assert sync.drain(project_path=None, env={"OPENBURNBAR_MEMORY_SYNC_HOOK": "off"}) == {"status": "skipped_disabled"}
+    for env in (
+        {"OPENBURNBAR_MEMORY_SYNC_HOOK": "off"},
+        {"OPENBURNBAR_MEMORY_SYNC_HOOK": ""},
+        {"OPENBURNBAR_MEMORY_SYNC_HOOK": "maybe"},
+        {},  # unset — the case that used to fall through and drain
+    ):
+        assert sync.drain(project_path=None, env=env) == {"status": "skipped_disabled"}, env
+    # And the shell hook's enabling vocabulary is the module's, exactly.
+    for value in ("1", "on", "true", "yes", "enabled", "ON", " on "):
+        assert not sync.hook_disabled({"OPENBURNBAR_MEMORY_SYNC_HOOK": value}), value
+
+
+def test_the_by_hand_drain_runs_without_the_env_switch(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`--force` is the explicit opt-in for a one-off run: a member typing the
+    command is the consent the env var otherwise stands in for. The app's gate
+    is still the boundary — with device sync off the daemon hands over nothing."""
+    sync = _sync_module()
+    monkeypatch.setattr(sync, "_pull", lambda **_: {"status": "ok", "applied": 1, "reinforced": 0})
+    assert sync.drain(project_path=None, env={}, force=True)["status"] == "drained"
 
 
 def test_the_drain_goes_through_the_same_tool_the_agent_calls(

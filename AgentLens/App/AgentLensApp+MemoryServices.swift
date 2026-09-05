@@ -96,6 +96,13 @@ extension OpenBurnBarApp {
             accountManager: accountManager,
             settingsManager: settingsManager
         )
+        // Memory Blind Sync PR-2: the inbox scope must be re-enforced the moment
+        // the signed-in member changes, not on the next refresh tick (600 s by
+        // default) — otherwise a sign-out leaves the daemon's consent marker
+        // standing over the previous member's parked plaintext, and the daemon
+        // outlives the app. Registering flips nothing on: the transition handler
+        // only ever WITHDRAWS consent and deletes rows.
+        cloudSyncDomain.startObservingAccountIdentity()
 
         return MemoryServices(store: store, service: service, engine: engine, cloudSyncDomain: cloudSyncDomain)
     }
