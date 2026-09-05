@@ -341,8 +341,6 @@ def test_every_extracted_row_carries_extracted_by_and_the_model_id(tmp_path, mon
             assert result["summary"]["ADD"] == 2
             for decision in result["decisions"]:
                 assert decision["extractedBy"] == "openrouter/anthropic/claude-opus-5"
-                assert decision["extractedBy"] == "openrouter/anthropic/claude-opus-5"
-                assert decision["modelId"] == "anthropic/claude-opus-5"
                 assert decision["modelId"] == "anthropic/claude-opus-5"
 
                 row = engine.conn.execute(
@@ -355,8 +353,6 @@ def test_every_extracted_row_carries_extracted_by_and_the_model_id(tmp_path, mon
 
                 item = engine.get(decision["memoryID"])["memory"]
                 assert item["extractedBy"] == "openrouter/anthropic/claude-opus-5"
-                assert item["extractedBy"] == "openrouter/anthropic/claude-opus-5"
-                assert item["modelId"] == "anthropic/claude-opus-5"
                 assert item["modelId"] == "anthropic/claude-opus-5"
 
                 tl = engine.timeline(decision["memoryID"], project_path=project)
@@ -382,3 +378,53 @@ def test_every_extracted_row_carries_extracted_by_and_the_model_id(tmp_path, mon
         assert h_meta.get("model_id") is not None
     finally:
         engine_h.close()
+
+
+def test_pro_extraction_lands_quarantined_by_default(tmp_path, monkeypatch):
+    """I11: quarantine-by-default on every capture path, and most of all on this one.
+
+    Collectors force `quarantined`; the assistant-export importer is
+    quarantine-only. Pro extraction — the one path that ships a member's
+    transcript to a cloud model, and the one whose facts nobody has read — filed
+    its rows `approved` and made them immediately recallable. An explicit
+    `review_status` from the caller still wins; the *default* is the review
+    queue.
+    """
+    facts_payload = {
+        "facts": [
+            {
+                "text": "Deploys run from the release branch.",
+                "kind": "procedure",
+                "confidence": 0.9,
+                "evidence_message_index": 1,
+                "tags": ["deploy"],
+            }
+        ]
+    }
+    from test_memory_engine import _load_server, _repo
+
+    with FakeGateway(lambda p, b: chat_reply(facts_payload)) as gw:
+        monkeypatch.setenv(me.MEMORY_KEY_ENV, __import__("base64").b64encode(b"\x00" * 32).decode())
+        monkeypatch.setenv(me.MODEL_POLICY_JSON_ENV, json.dumps(dict(POLICY, gatewayURL=gw.url)))
+        monkeypatch.setenv("BURNBAR_MCP_TOOLSET", "memory")
+        monkeypatch.setenv("OPENBURNBAR_LOCAL_MCP_ENABLE_MEMORY_LLM_EXTRACT", "1")
+        monkeypatch.setenv("OPENBURNBAR_LOCAL_MCP_ENABLE_MEMORY_WRITE", "1")
+        monkeypatch.setenv("OPENBURNBAR_LOCAL_MCP_ENABLE_SPAWN", "1")
+        monkeypatch.setenv(me.MEMORY_DB_PATH_ENV, str(tmp_path / "extract_quarantine.sqlite"))
+        server = _load_server()
+        monkeypatch.setattr(server, "_signed_cli_path", lambda: None)
+        server._memory_provider_override = me.FakeEmbeddingProvider()
+        repo = _repo(tmp_path)
+
+        result = json.loads(
+            server.burnbar_memory_extract(
+                messages=[{"role": "user", "content": "Deploys run from the release branch."}],
+                project_path=repo,
+            )
+        )
+        assert result.get("summary", {}).get("ADD") == 1, result
+        assert [decision["reviewStatus"] for decision in result["decisions"]] == ["quarantined"]
+
+        # Quarantined means not recallable until a review approves it.
+        recalled = json.loads(server.burnbar_recall(query="release branch", project_path=repo))
+        assert recalled["results"] == []

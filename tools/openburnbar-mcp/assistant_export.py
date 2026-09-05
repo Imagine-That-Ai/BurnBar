@@ -20,6 +20,12 @@ from memory_engine.gate import scan_text
 from memory_engine.store import audit_event
 
 DEFAULT_IMPORT_BATCH_CAP = 10
+# The ceiling a caller may not lift. `batch_cap` exists so an import of
+# unreviewed, model-authored text lands in reviewable chunks; a caller-supplied
+# `10**9` removed the bound the packet asked for. The default stays small on
+# purpose — every row lands quarantined and a human has to read it — and the
+# caller may raise it up to here, never past it.
+MAX_IMPORT_BATCH_CAP = 500
 
 SUPPORTED_ASSISTANT_EXPORT_SCHEMAS: frozenset[str] = frozenset(
     {
@@ -276,6 +282,7 @@ def import_assistant_export(
         if batch_cap is not None
         else int(os.environ.get("OPENBURNBAR_MEMORY_IMPORT_BATCH_CAP", str(DEFAULT_IMPORT_BATCH_CAP)))
     )
+    cap = max(1, min(int(cap), MAX_IMPORT_BATCH_CAP))
     is_batch_capped = len(all_candidates) > cap
     bounded_candidates = all_candidates[:cap]
 
@@ -366,10 +373,24 @@ def import_assistant_export(
             source_hash=f"assistant_import:{ckey}",
             extractor="assistant_export",
         )
-        decision["reviewStatus"] = "quarantined"
+        # What actually landed, read back off the row — not an assumption. The
+        # fact is stamped `quarantined` on the way in, but a NEAR-duplicate takes
+        # `_commit_fact`'s reinforce path and reinforces an existing APPROVED
+        # row; claiming that row is quarantined is a false statement about the
+        # member's own data.
+        landed_id = decision.get("memoryID")
+        landed_status = None
+        if landed_id:
+            landed_row = engine.conn.execute(
+                "SELECT review_status FROM memories WHERE id = ?", (str(landed_id),)
+            ).fetchone()
+            if landed_row is not None:
+                landed_status = str(landed_row["review_status"])
+        if landed_status is not None:
+            decision["reviewStatus"] = landed_status
         decision["convergenceKey"] = ckey
         decisions.append(decision)
-        if decision.get("event") in ("ADD", "UPDATE"):
+        if decision.get("event") in ("ADD", "UPDATE") and decision.get("reviewStatus") == "quarantined":
             quarantined_count += 1
 
     # 7. Audit and commit

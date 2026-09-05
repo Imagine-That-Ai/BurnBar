@@ -2600,7 +2600,7 @@ def burnbar_memory_extract(
     tags: list[str] | str | None = None,
     metadata: dict[str, Any] | str | None = None,
     force: bool = False,
-    review_status: str | None = None,
+    review_status: str | None = "quarantined",
 ) -> str:
     """
     Extract memories from a conversation with a Pro model instead of the local
@@ -2611,6 +2611,12 @@ def burnbar_memory_extract(
     silently degrading to the heuristic: no Pro entitlement, or no cloud consent,
     means no extraction. Every row it writes carries `extracted_by` and the model
     id, so a reviewer can see what produced it.
+
+    Rows land `quarantined` by default, like every other capture path — the
+    collectors and the assistant-export importer do the same. This is the path
+    that ships a member's transcript to a cloud model and writes back facts
+    nobody has read; approving them is a separate, deliberate act
+    (`burnbar_memory_review`). Pass `review_status` explicitly to override.
 
     Gate: `memory_llm_extract` and `memory_write`, plus cloud consent and a Pro
     entitlement; `spawn_process` as well when the policy can route extraction to
@@ -2800,8 +2806,12 @@ def burnbar_session_briefing(
             project_path=project_path,
             branch=branch,
             token_budget=token_budget,
-            consent=True,
-            opt_in=True,
+            # The builder's own gates stay live, and they receive what this tool
+            # actually decided rather than a hardcoded pair of `True`s — which
+            # made `build_session_briefing`'s consent handling unreachable in
+            # production and its test a test of a path nothing takes (M15).
+            consent=_capability_enabled("sensitive_read"),
+            opt_in=session_briefing.is_session_briefing_opted_in(),
             wrap=True,
         )
     if pack is None:
@@ -3020,6 +3030,13 @@ def burnbar_memory_timeline(
     is refused without returning its body or metadata. "Last helped" is the most
     recent recall that served this memory, falling back to its latest write.
 
+    A quarantined or rejected memory reports its revisions with the bodies
+    withheld (`bodiesRedacted`): this tool carries no capability, and undoing a
+    gate decision through it would make the quarantine decorative. Each
+    revision's `meta` is a projection of the keys this tool documents, not the
+    whole stored blob, because a merged revision's metadata is written from a
+    remote payload.
+
     Gate: ungated, like `burnbar_memory_history` — the project scoping above is
     what fences it, not a capability.
     """
@@ -3205,7 +3222,15 @@ def burnbar_memory_import(
     schema: str | None = None,
     batch_cap: int | None = None,
 ) -> str:
-    """Import memories from a `burnbar_memory_export` payload, a ChatGPT/Claude.ai assistant export, or a list of `{text, kind, confidence, tags, ...}` objects; each passes the gate and conflict resolution."""
+    """Import memories from a `burnbar_memory_export` payload, a ChatGPT/Claude.ai assistant export, or a list of `{text, kind, confidence, tags, ...}` objects; each passes the gate and conflict resolution.
+
+    An assistant export lands quarantined, one bounded batch at a time.
+    `batch_cap` may lower that bound but never lift it: it is clamped to
+    `assistant_export.MAX_IMPORT_BATCH_CAP`, and the summary reports the cap
+    actually applied. Each decision's `reviewStatus` is read back off the row
+    that landed, so a near-duplicate that reinforced an approved memory is not
+    reported as a quarantine.
+    """
     if limited := _local_mcp_rate_limit("burnbar_memory_import", "memory"):
         return limited
     if denied := _capability_denial("burnbar_memory_import", "memory_write"):
@@ -5397,13 +5422,22 @@ def burnbar_spawn_resume(
 # ---------------------------------------------------------------------------
 
 
-def _stamp_firing_gate(item: dict[str, Any]) -> dict[str, Any]:
-    """Name the gate that quarantined a review-inbox item, and why.
+def _scan_for_a_firing_gate(item: dict[str, Any]) -> dict[str, Any]:
+    """Re-scan an AI Inbox item and name which gate WOULD fire on it, and why.
 
-    Diagnosis only: `diagnose_firing_gate` re-runs the same scanners on the item
-    the daemon already decided about, so the row says *which* secret shape,
-    injection sentinel or auxiliary field fired. It never revisits the decision
-    (B10). An item the daemon already labelled keeps its own label.
+    **A fresh scan, not a recorded decision.** The AI Inbox is the proactive
+    brief the daemon assembles from git state, agent sessions and GitHub; its
+    items were never gated by anything, so there is no verdict to report. The
+    fields are `scanGate` / `scanReason` for exactly that reason — stamping
+    `verdict: "quarantined"` on an item nothing quarantined asserts a decision
+    no gate ever made, which is the opposite of B10's "name which gate fired".
+
+    An item that already carries a real `gate` from the daemon keeps it, and is
+    not re-scanned.
+
+    Call this BEFORE the untrusted-content wrapper replaces a field: for an item
+    with no `text`, scanning after the wrap reads the envelope's own boilerplate
+    instead of the content it is meant to describe.
     """
     if "gate" in item:
         return item
@@ -5420,9 +5454,8 @@ def _stamp_firing_gate(item: dict[str, Any]) -> dict[str, Any]:
         metadata=item.get("metadata") if isinstance(item.get("metadata"), dict) else {},
         source_ref=item.get("sourceRef") or item.get("source_ref"),
     )
-    item["gate"] = diagnosis["gate"]
-    item["verdict"] = diagnosis["verdict"]
-    item["reason"] = diagnosis["reason"]
+    item["scanGate"] = diagnosis["gate"]
+    item["scanReason"] = diagnosis["reason"]
     return item
 
 
@@ -5467,6 +5500,9 @@ def burnbar_inbox_list(
 
     items = result.get("items") or []
     for item in items:
+        # Scanned first: the wrapper below replaces `title`, and an item with no
+        # `text` would otherwise be scanned through the envelope.
+        _scan_for_a_firing_gate(item)
         # Titles are model-authored prose derived from logs. Wrap them so a
         # downstream agent treats them as data, never as instructions.
         item["title"] = _wrap_untrusted_snippet(
@@ -5474,7 +5510,6 @@ def burnbar_inbox_list(
             source_tool="burnbar_inbox_list",
             record_id=str(item.get("id") or "unknown"),
         )
-        _stamp_firing_gate(item)
     return json.dumps(
         {
             "items": items,
@@ -5518,13 +5553,14 @@ def burnbar_inbox_get(item_id: str) -> str:
     if not item:
         return json.dumps({"item": None, "error": f"no inbox item with id {item_id!r}"}, indent=2)
 
+    # Scanned before anything is wrapped, for the same reason as in the list.
+    _scan_for_a_firing_gate(item)
     summary = item.get("summary") or {}
     summary["title"] = _wrap_untrusted_snippet(summary.get("title"), source_tool="burnbar_inbox_get", record_id=item_id)
     item["summary"] = summary
     item["summaryMarkdown"] = _wrap_untrusted_snippet(
         item.get("summaryMarkdown"), source_tool="burnbar_inbox_get", record_id=item_id
     )
-    _stamp_firing_gate(item)
     return json.dumps(
         {
             "item": item,

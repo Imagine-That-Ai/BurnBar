@@ -163,4 +163,26 @@ def test_burnbar_session_briefing_tool_consent_and_opt_in(tmp_path: Path, monkey
     pack_ok = server.burnbar_session_briefing(project_path=repo)
     assert "OPENBURNBAR_UNTRUSTED_CODE_V1" in pack_ok
     assert "Always use snake_case" in pack_ok
+
+    # 4. The builder's own gates are live, not overridden with a hardcoded
+    #    `consent=True, opt_in=True` (M15). It receives what the tool actually
+    #    decided, and a builder that declines is reported as unavailable rather
+    #    than as an empty briefing a client would read as "nothing to say".
+    captured: dict[str, object] = {}
+
+    def _capture(engine_arg, **kwargs):
+        captured.update(kwargs)
+        return None
+
+    monkeypatch.setattr(server.session_briefing, "build_session_briefing", _capture)
+    res_unavailable = json.loads(server.burnbar_session_briefing(project_path=repo))
+    assert res_unavailable["status"] == "disabled"
+    assert res_unavailable["code"] == "SESSION_BRIEFING_UNAVAILABLE"
+    assert captured["consent"] is True
+    assert captured["opt_in"] is True
+
+    monkeypatch.setenv("OPENBURNBAR_LOCAL_MCP_ENABLE_SENSITIVE_READ", "0")
+    monkeypatch.setattr(server, "_capability_denial", lambda *a, **k: None)
+    json.loads(server.burnbar_session_briefing(project_path=repo))
+    assert captured["consent"] is False, "the tool hardcoded consent instead of passing its own decision"
     engine.close()

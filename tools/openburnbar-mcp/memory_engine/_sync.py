@@ -979,10 +979,9 @@ class _BlindSync(_SyncLedger):
                 if hold is not None and held_time >= gap_timeout:
                     self._record_unresolved_gap(fact, memory_id, fact.previous_body_hash, actual_hash=current_body_hash)
                     self._clear_lineage_hold(memory_id, fact.memory_id)
-                else:
-                    self._record_lineage_hold(
-                        fact, memory_id, fact.previous_body_hash, current_body_hash, now_epoch=now_epoch
-                    )
+                elif self._record_lineage_hold(
+                    fact, memory_id, fact.previous_body_hash, current_body_hash, now_epoch=now_epoch
+                ):
                     return {
                         "event": "HOLD",
                         "code": "LINEAGE_GAP",
@@ -994,6 +993,12 @@ class _BlindSync(_SyncLedger):
                         "memoryID": memory_id,
                         "ack": False,
                     }
+                else:
+                    # The hold queue is full of older notes. Parking a document
+                    # with no note to measure would stall it for ever, so the
+                    # advice is dropped and LWW applies now — the answer the
+                    # timeout reaches anyway — with the gap reported.
+                    self._record_unresolved_gap(fact, memory_id, fact.previous_body_hash, actual_hash=current_body_hash)
         else:
             # No lineage advice at all: behave exactly as before the field existed.
             self._clear_lineage_hold(memory_id, fact.memory_id)
@@ -1166,14 +1171,18 @@ class _BlindSync(_SyncLedger):
                 "INSERT INTO memory_relations (project_id, memory_id, subject, predicate, object, slot_key, confidence) VALUES (?,?,?,?,?,?,?)",
                 (fact.project_id, memory_id, subject, predicate, obj, _slot_key(subject, predicate), fact.confidence),
             )
-        self._history(
-            memory_id,
-            fact.project_id,
-            "merged_remote",
-            None,
-            fact.body,
-            {"remoteMemoryID": fact.memory_id, "updatedAt": fact.updated_at, "event": event},
-        )
+        history_meta: dict[str, Any] = {
+            "remoteMemoryID": fact.memory_id,
+            "updatedAt": fact.updated_at,
+            "event": event,
+        }
+        if fact.writer_device:
+            # B8's whole question — "which device wrote this revision" — is about
+            # revisions written somewhere ELSE, and this is the only path they
+            # arrive by. The field was parsed onto `_RemoteFact` and then dropped.
+            # A device id is not member content, so `meta_json` is where it goes.
+            history_meta["writerDevice"] = fact.writer_device
+        self._history(memory_id, fact.project_id, "merged_remote", None, fact.body, history_meta)
         if fact.injection:
             audit_event(
                 self.conn,

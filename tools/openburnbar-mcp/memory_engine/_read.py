@@ -11,6 +11,7 @@ from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+from ._answer import _parse_rerank_answer, _validate_answer
 from ._util import (
     _aux_strings,
     _clamp,
@@ -31,7 +32,6 @@ from ._util import (
 from .constants import (
     ANSWER_TOKEN_BUDGET_DEFAULT,
     ANSWER_SNIPPET_CHARS,
-    ANSWER_REJECT_SENTINELS,
     ANSWER_REFUSAL,
     ANSWER_PROMPT_VERSION,
     ANSWER_PROMPT_SYSTEM,
@@ -58,6 +58,30 @@ from .text import BM25, _estimate_tokens, _snippet, tokenize
 
 if TYPE_CHECKING:
     from .engine import ActiveMemory
+
+
+# The revision-metadata keys `timeline()` documents and returns. `meta_json` is
+# written from a remote payload on a merged revision, so anything outside this
+# set is a sending device's content, not this tool's contract.
+_TIMELINE_META_KEYS = (
+    "remoteMemoryID",
+    "updatedAt",
+    "event",
+    "writerDevice",
+    "writer_device",
+    "deviceId",
+    "device_id",
+    "extracted_by",
+    "extractedBy",
+    "model_id",
+    "modelId",
+    "reason",
+    "replacement",
+    "canonicalID",
+    "foldedID",
+    "supersededBy",
+    "remoteSupersededBy",
+)
 
 
 class _ReadPath:
@@ -1272,7 +1296,9 @@ class _ReadPath:
         """Project-scoped memory timeline with device attribution and last-helped ordering."""
         project_id, root = resolve_project(self.conn, project_path)
         target_id = self._alias_target(memory_id) or memory_id
-        row = self.conn.execute("SELECT id, project_id, scope FROM memories WHERE id = ?", (target_id,)).fetchone()
+        row = self.conn.execute(
+            "SELECT id, project_id, scope, review_status FROM memories WHERE id = ?", (target_id,)
+        ).fetchone()
         if row is None:
             return {"status": "not_found", "memoryID": memory_id, **project_payload(project_id, root)}
         if str(row["project_id"]) != project_id and str(row["scope"]) != "personal":
@@ -1314,13 +1340,27 @@ class _ReadPath:
             (target_id, max(1, min(int(limit), 500))),
         ).fetchall()
 
+        # This tool carries no capability — project scope is its whole fence —
+        # so it does not undo a gate decision. A row the secret or injection
+        # screen held back is one `recall` excludes by default; handing its
+        # decrypted revisions to a model through the back door would make the
+        # quarantine decorative. What happened and when is still reported.
+        review_status = str(row["review_status"])
+        bodies_redacted = review_status in ("quarantined", "rejected")
+
         revisions = []
         for hrow in history_rows:
             aad = f"{target_id}|{hrow['project_id']}|history"
-            before = (
-                self.keyring.open(hrow["before_cipher"], hrow["before_nonce"], aad) if hrow["before_cipher"] else None
-            )
-            after = self.keyring.open(hrow["after_cipher"], hrow["after_nonce"], aad) if hrow["after_cipher"] else None
+            before = after = None
+            if not bodies_redacted:
+                before = (
+                    self.keyring.open(hrow["before_cipher"], hrow["before_nonce"], aad)
+                    if hrow["before_cipher"]
+                    else None
+                )
+                after = (
+                    self.keyring.open(hrow["after_cipher"], hrow["after_nonce"], aad) if hrow["after_cipher"] else None
+                )
             meta = _json_loads(hrow["meta_json"], {})
             writer_device = (
                 meta.get("writerDevice") or meta.get("writer_device") or meta.get("deviceId") or meta.get("device_id")
@@ -1335,7 +1375,10 @@ class _ReadPath:
                     "ts": str(hrow["ts"]),
                     "before": before,
                     "after": after,
-                    "meta": meta,
+                    # A projection, not the whole column: `meta_json` on a merged
+                    # revision is written from a remote payload, and returning it
+                    # verbatim publishes whatever a sending device put there.
+                    "meta": {key: meta[key] for key in _TIMELINE_META_KEYS if key in meta},
                     "writerDevice": writer_device,
                     "extractedBy": extracted_by,
                     "modelId": model_id,
@@ -1345,6 +1388,8 @@ class _ReadPath:
         payload: dict[str, Any] = {
             "status": "ok",
             "memoryID": target_id,
+            "reviewStatus": review_status,
+            "bodiesRedacted": bodies_redacted,
             "revisions": revisions,
             "lastHelpedAt": last_helped,
             "lastHelpedSource": last_helped_source,
@@ -1418,65 +1463,3 @@ class _ReadPath:
             if len(out) >= max(1, min(int(limit), 1000)):
                 break
         return {"status": "ok", "relations": out, **project_payload(project_id, root)}
-
-
-def _parse_rerank_answer(parsed: Any, listed_ids: set[str]) -> dict[str, float] | None:
-    """`{"results": [{"id", "relevance"}]}` over listed ids only; anything else is out of contract."""
-    rows = parsed.get("results") if isinstance(parsed, dict) else None
-    if not isinstance(rows, list):
-        return None
-    scores: dict[str, float] = {}
-    for row in rows:
-        if not isinstance(row, dict) or str(row.get("id")) not in listed_ids:
-            return None
-        memory_id = str(row["id"])
-        if memory_id in scores:
-            return None  # a duplicate verdict is ambiguous, not a tie
-        try:
-            relevance = float(row.get("relevance"))
-        except (TypeError, ValueError):
-            return None
-        if relevance != relevance:  # NaN
-            return None
-        scores[memory_id] = min(1.0, max(0.0, relevance))
-    if set(scores) != set(listed_ids):
-        return None  # every listed candidate must be scored, or the fusion order stands
-    return scores
-
-
-_CITATION_MARKER = re.compile(r"\[(mem_[0-9a-f]+)\]")
-
-
-def _validate_answer(parsed: Any, listed_ids: set[str]) -> dict[str, Any]:
-    """Apply the answer contract: listed citations only, no sentinels, no tool calls, refusal on no evidence."""
-    answer = str(parsed.get("answer") or "").strip() if isinstance(parsed, dict) else ""
-    # Only inline markers count: a bare `citations` array cannot vouch for
-    # claims the answer text never ties to a memory.
-    mentioned: list[str] = []
-    for candidate in _CITATION_MARKER.findall(answer):
-        if candidate not in mentioned:
-            mentioned.append(candidate)
-    refusal = {"answer": ANSWER_REFUSAL, "citations": [], "groundedness": "refused", "dropped": 0}
-    upper = answer.upper()
-    if any(sentinel in upper for sentinel in ANSWER_REJECT_SENTINELS):
-        return {**refusal, "code": "ANSWER_REJECTED"}
-    if answer.startswith("{"):
-        try:
-            shaped = json.loads(answer)
-        except ValueError:
-            shaped = None
-        if isinstance(shaped, dict) and {"tool_calls", "tool_call", "function_call", "tool_use"} & set(shaped):
-            return {**refusal, "code": "ANSWER_REJECTED"}
-    valid = [memory_id for memory_id in mentioned if memory_id in listed_ids]
-    dropped = len(mentioned) - len(valid)
-    if not valid or not answer:
-        return {**refusal, "dropped": dropped}
-    for unknown in (memory_id for memory_id in mentioned if memory_id not in listed_ids):
-        answer = answer.replace(f"[{unknown}]", "").replace(unknown, "")
-    answer = re.sub(r"[ \t]{2,}", " ", answer).strip()
-    return {
-        "answer": answer,
-        "citations": valid,
-        "groundedness": "grounded" if dropped == 0 else "partial",
-        "dropped": dropped,
-    }

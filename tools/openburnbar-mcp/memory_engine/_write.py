@@ -1428,11 +1428,14 @@ class _WritePath:
                 "foldedID": folded_id,
             }
 
-        self._record_memory_alias(folded_id, resolved_target)
-
         folded_row = self.conn.execute(
             "SELECT rowid, id, project_id, valid_to, metadata_json, tags_json FROM memories WHERE id = ?", (folded_id,)
         ).fetchone()
+        # Written after the lookup, so the alias and the retirement it describes
+        # happen together. A folded id with no local row is still legitimate —
+        # a remote id folding into a local one is exactly that — but the alias
+        # is no longer recorded before this method knows what it is folding.
+        self._record_memory_alias(folded_id, resolved_target)
         if folded_row is not None and folded_row["valid_to"] is None:
             meta = _json_loads(folded_row["metadata_json"], {})
             meta["foldedInto"] = resolved_target
@@ -1471,6 +1474,19 @@ class _WritePath:
                     (_json_dumps(supersedes), resolved_target),
                 )
 
+        # A fold changes which row an id resolves to, for good. Every other
+        # id-lifecycle decision — add, update, forget, sync add, resurrection
+        # refused — leaves a label-only row in the hash chain; this one left
+        # `memory_history` and nothing else, so the record of decisions did not
+        # contain the redirection.
+        audit_event(
+            self.conn,
+            project_id=target_proj,
+            action="memory.fold",
+            subject_id=resolved_target,
+            labels=[f"folded:{folded_id}", f"reason:{reason}", "retired" if folded_row is not None else "alias_only"],
+            actor=self.config.actor,
+        )
         self._commit()
         self._invalidate_cache()
         return {

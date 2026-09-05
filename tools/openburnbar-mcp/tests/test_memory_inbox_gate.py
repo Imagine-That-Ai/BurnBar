@@ -77,17 +77,44 @@ def test_inbox_items_carry_the_firing_gate_and_reason(monkeypatch: pytest.Monkey
     items = payload.get("items", [])
     assert len(items) == 3
 
-    assert items[0]["gate"] == "secret"
-    assert "secret shape detected" in items[0]["reason"]
-    assert items[0]["verdict"] == "quarantined"
+    # The AI Inbox is NOT the memory review inbox: its items were never gated by
+    # anything, so the stamp is a fresh diagnostic scan and says so in its own
+    # field names. Publishing `verdict: "quarantined"` here asserted a decision
+    # no gate ever made (I12).
+    assert items[0]["scanGate"] == "secret"
+    assert "secret shape detected" in items[0]["scanReason"]
 
-    assert items[1]["gate"] == "prompt_injection"
-    assert "injection sentinel detected" in items[1]["reason"]
-    assert items[1]["verdict"] == "quarantined"
+    assert items[1]["scanGate"] == "prompt_injection"
+    assert "injection sentinel detected" in items[1]["scanReason"]
 
-    assert items[2]["gate"] == "auxiliary_field"
-    assert "auxiliary field tags" in items[2]["reason"]
-    assert items[2]["verdict"] == "quarantined"
+    assert items[2]["scanGate"] == "auxiliary_field"
+    assert "auxiliary field tags" in items[2]["scanReason"]
 
-    inbox_reasons = {items[0]["reason"], items[1]["reason"], items[2]["reason"]}
+    for item in items:
+        assert "verdict" not in item, "a re-scan may not publish a verdict no gate reached"
+
+    inbox_reasons = {items[0]["scanReason"], items[1]["scanReason"], items[2]["scanReason"]}
     assert len(inbox_reasons) == 3, f"Expected 3 distinct inbox reasons, got: {inbox_reasons}"
+
+
+def test_the_inbox_scan_reads_the_item_not_the_untrusted_content_wrapper(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """I12: the stamp ran AFTER the title was replaced by its wrapper envelope.
+
+    For an item with no `text`, the scanner therefore read the wrapper's own
+    boilerplate instead of the content it is supposed to describe.
+    """
+    original_title = "The deploy secret key is sk-1234567890abcdef1234567890abcdef"
+    raw_items = [{"id": "inb_title_only", "title": original_title}]
+    monkeypatch.setattr(
+        server.pcm,
+        "call_daemon",
+        lambda method, params, timeout_seconds=5.0: {"items": raw_items, "openCount": 1},
+    )
+    item = json.loads(server.burnbar_inbox_list())["items"][0]
+    assert item["scanGate"] == "secret"
+    assert "secret shape detected" in item["scanReason"]
+    # The title is still wrapped for the reader.
+    assert original_title in str(item["title"])
+    assert str(item["title"]) != original_title

@@ -239,3 +239,87 @@ def test_claude_export_schema_and_messages_imported_quarantined(
         for status, ref in rows:
             assert status == "quarantined"
             assert ref.startswith("claude:claude-conv-101#")
+
+
+def test_a_near_duplicate_import_does_not_report_a_quarantine_that_did_not_happen(
+    server_env: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """I10: the summary is a claim about member data, so it says what actually landed.
+
+    `reviewStatus` was stamped `"quarantined"` on every decision unconditionally,
+    after `_commit_fact` had already returned. The exact-body dedupe above it
+    only catches `body_hash` equality; a NEAR-duplicate takes the reinforce path
+    and reinforces an existing **approved** row — and the response then told the
+    caller that row was quarantined.
+    """
+    server = _server(server_env, monkeypatch)
+    repo = _repo(server_env)
+
+    approved_body = "The deployment pipeline runs the migration step before the smoke tests."
+    with server._memory_engine() as engine:
+        stored = engine.remember(approved_body, project_path=repo, kind="fact")
+        memory_id = str(stored["memoryID"])
+        assert engine.get(memory_id)["memory"]["reviewStatus"] == "approved"
+
+    payload = {
+        "schema": "chatgpt.export.v1",
+        "conversations": [
+            {
+                "id": "conv-near-dup",
+                "title": "Deploys",
+                "create_time": 1756000000,
+                "mapping": {
+                    "m1": {
+                        "message": {
+                            "id": "m1",
+                            "author": {"role": "user"},
+                            "create_time": 1756000001,
+                            "content": {
+                                "content_type": "text",
+                                "parts": [
+                                    "The deployment pipeline runs the migration step before the smoke tests, always."
+                                ],
+                            },
+                        }
+                    }
+                },
+            }
+        ],
+    }
+    result = json.loads(server.burnbar_memory_import(json.dumps(payload), project_path=repo))
+    assert result["status"] == "ok"
+
+    with server._memory_engine() as engine:
+        for decision in result.get("decisions", []):
+            landed = decision.get("memoryID")
+            if not landed:
+                continue
+            row = engine.conn.execute("SELECT review_status FROM memories WHERE id = ?", (landed,)).fetchone()
+            assert row is not None
+            assert decision.get("reviewStatus") == str(row["review_status"]), (
+                f"the importer reported {decision.get('reviewStatus')!r} for a row that is "
+                f"{str(row['review_status'])!r}"
+            )
+        # The approved row it reinforced is still approved.
+        assert engine.get(memory_id)["memory"]["reviewStatus"] == "approved"
+
+
+def test_a_caller_supplied_batch_cap_cannot_remove_the_bound(server_env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """I10/C14: the cap is the bound, so the caller may lower it and never lift it away.
+
+    `burnbar_memory_import(batch_cap=10**9)` removed the very thing the packet
+    asked for — an unbounded import of unreviewed, model-authored text in one
+    call.
+    """
+    import assistant_export
+
+    server = _server(server_env, monkeypatch)
+    repo = _repo(server_env)
+    payload, _ = _expanded_fixture()
+
+    result = json.loads(server.burnbar_memory_import(json.dumps(payload), project_path=repo, batch_cap=10**9))
+    assert result["summary"]["batchCap"] == assistant_export.MAX_IMPORT_BATCH_CAP
+    assert result["summary"]["batchCap"] < 10**9
+    # A cap below the ceiling is still the caller's to choose.
+    result_small = json.loads(server.burnbar_memory_import(json.dumps(payload), project_path=repo, batch_cap=2))
+    assert result_small["summary"]["batchCap"] == 2

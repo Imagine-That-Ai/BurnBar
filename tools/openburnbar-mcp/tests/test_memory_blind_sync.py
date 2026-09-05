@@ -2608,13 +2608,18 @@ def test_a_lineage_hold_never_persists_the_body_it_is_waiting_on(tmp_path: Path)
     engine.close()
 
 
-def test_the_lineage_hold_queue_is_bounded_and_evicts_the_oldest_note(tmp_path: Path) -> None:
-    """P5 / A1(iii): an unreachable peer cannot grow the queue without limit.
+def test_the_lineage_hold_queue_is_bounded_and_a_flood_cannot_evict_an_established_hold(
+    tmp_path: Path,
+) -> None:
+    """P5 / A1(iii): an unreachable peer cannot grow the queue, or empty it.
 
-    Every mismatching revision parks a note. Without a cap, a peer that keeps
-    sending revisions whose predecessors never arrive would fill `engine_meta`
-    one row per memory. The queue holds `LINEAGE_HOLD_QUEUE_MAX_SIZE` notes and
-    drops the oldest to admit a new one.
+    Every mismatching revision parks a note, so the queue is capped at
+    `LINEAGE_HOLD_QUEUE_MAX_SIZE`. Evicting the OLDEST to make room handed a
+    hostile peer the whole queue: a hundred bogus gaps evicted every genuine
+    hold, and each evicted row's next redelivery started its clock again from
+    zero — held for ever by a flood, which is exactly the stall the timeout
+    exists to prevent. The newest note is dropped instead, so a flood churns one
+    slot and an established hold keeps its `firstSeen` and times out normally.
     """
     engine = _replica(tmp_path, "hold-bound")
     repo = _repo(tmp_path)
@@ -2643,9 +2648,37 @@ def test_the_lineage_hold_queue_is_bounded_and_evicts_the_oldest_note(tmp_path: 
     holds = engine.lineage_holds()
     assert len(holds) == cap
     held_ids = {hold["memoryID"] for hold in holds}
-    # The five oldest notes were evicted to make room; the five newest are held.
-    assert held_ids.isdisjoint(ids[:5])
-    assert set(ids[-5:]) <= held_ids
+    # The first `cap` notes — the established ones — all survived; the five that
+    # arrived after the queue was full could not displace them.
+    assert set(ids[:cap]) == held_ids
+    assert held_ids.isdisjoint(ids[cap:])
+    # The five that could not be held had LWW applied at once, and said so.
+    assert {gap["memoryID"] for gap in engine.unresolved_gaps()} == set(ids[cap:])
+    for mid in ids[cap:]:
+        assert str(_rows(engine)[mid]["body"]).endswith("revised.")
+    # The five that could not be held had LWW applied at once, and said so.
+    assert {gap["memoryID"] for gap in engine.unresolved_gaps()} == set(ids[cap:])
+    for mid in ids[cap:]:
+        assert _rows(engine)[mid]["body"].endswith("revised.")
+
+    # And an established hold still resolves on its own timetable.
+    first_hold = engine._get_lineage_hold(ids[0])
+    assert first_hold is not None
+    engine.merge_remote(
+        [
+            _doc(
+                "hold-0",
+                ids[0],
+                "Fact number 0, revised.",
+                project_id=project_id,
+                updated_at=T3,
+                previous_body_hash=missing,
+            )
+        ],
+        gap_timeout=0.0,
+    )
+    assert engine._get_lineage_hold(ids[0]) is None
+    assert ids[0] in {gap["memoryID"] for gap in engine.unresolved_gaps()}
     engine.close()
 
 
@@ -2911,4 +2944,40 @@ def test_project_adopt_without_confirmation_refuses_and_reports_what_it_would_jo
     assert adopted["status"] == "ok"
     assert adopted["event"] == "ADOPTED"
     assert me.resolve_project(engine.conn, str(here))[0] == other_id
+    engine.close()
+
+
+def test_a_fold_records_an_audit_event_like_every_other_id_lifecycle_change(tmp_path: Path) -> None:
+    """M17: `fold()` is an id-lifecycle change, and those are auditable.
+
+    Every other one — add, update, forget, sync add, sync update, resurrection
+    refused — appends a label-only row to the hash chain. `fold()` wrote
+    `memory_history` and nothing else, so a redirection that changes which row
+    an id resolves to left no trace in the record of decisions. It also wrote
+    the alias before it knew whether the folded row existed.
+    """
+    engine = _replica(tmp_path, "fold-audit")
+    repo = _repo(tmp_path)
+
+    canonical = engine.remember("The CI runner is a self-hosted mac mini.", project_path=repo)
+    duplicate = engine.remember("CI runs on a self-hosted mac mini in the office.", project_path=repo)
+    canonical_id = str(canonical["memoryID"])
+    duplicate_id = str(duplicate["memoryID"])
+
+    before = int(engine.conn.execute("SELECT COUNT(*) FROM memory_audit").fetchone()[0])
+    result = engine.fold(duplicate_id, canonical_id)
+    assert result["event"] == "FOLD"
+    after = int(engine.conn.execute("SELECT COUNT(*) FROM memory_audit").fetchone()[0])
+    assert after - before == 1
+
+    row = engine.conn.execute(
+        "SELECT action, subject_id, labels_json FROM memory_audit ORDER BY seq DESC LIMIT 1"
+    ).fetchone()
+    assert str(row["action"]) == "memory.fold"
+    assert str(row["subject_id"]) == canonical_id
+    assert f"folded:{duplicate_id}" in json.loads(row["labels_json"])
+
+    # A repeat fold is a no-op and writes nothing more.
+    engine.fold(duplicate_id, canonical_id)
+    assert int(engine.conn.execute("SELECT COUNT(*) FROM memory_audit").fetchone()[0]) == after
     engine.close()

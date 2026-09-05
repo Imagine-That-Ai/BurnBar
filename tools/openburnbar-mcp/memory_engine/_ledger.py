@@ -71,8 +71,12 @@ class _SyncLedger:
         expected_hash: str,
         actual_hash: str,
         now_epoch: float | None = None,
-    ) -> None:
+    ) -> bool:
         """Note that this row's `previousBodyHash` names a body this device never saw.
+
+        Returns whether the note was admitted. A full queue means the caller must
+        NOT park the document: a parked row with no note is a row whose timeout
+        can never elapse.
 
         **Keyed by the LOCAL row id the comparison ran against**, never by the
         engine id the revision arrived under. The two differ the moment a remote
@@ -93,9 +97,17 @@ class _SyncLedger:
         redelivery rather than by anything stored here.
 
         Persisted under `lineage_hold:<memory_id>`, bounded by
-        `LINEAGE_HOLD_QUEUE_MAX_SIZE`: the oldest note is evicted to make room,
-        because a queue that grows without bound is a queue an unreachable peer
-        can use to fill the store.
+        `LINEAGE_HOLD_QUEUE_MAX_SIZE`, because a queue that grows without bound
+        is a queue an unreachable peer can use to fill the store.
+
+        **A full queue refuses the NEWEST note, it does not evict the oldest.**
+        Dropping the oldest handed a hostile peer the whole queue: a hundred
+        bogus gaps evicted every genuine hold, and an evicted row's next
+        redelivery started its clock again from zero, so a flood could stall a
+        replica for ever — the exact failure the timeout exists to prevent.
+        Refusing the newcomer instead costs it nothing that matters: lineage is
+        advice, so a row that cannot be held simply has LWW applied now, which
+        is the answer the timeout reaches anyway, and the gap is reported.
         """
         existing_hold = self._get_lineage_hold(memory_id)
         if existing_hold is not None and "firstSeenEpoch" in existing_hold:
@@ -106,15 +118,11 @@ class _SyncLedger:
             first_seen_iso = now_iso()
 
         if existing_hold is None:
-            existing = self.conn.execute(
-                "SELECT key, value FROM engine_meta WHERE key LIKE 'lineage_hold:%'"
-            ).fetchall()
-            if len(existing) >= LINEAGE_HOLD_QUEUE_MAX_SIZE:
-                oldest = sorted(
-                    existing,
-                    key=lambda row: float((_json_loads(row["value"], {}) or {}).get("firstSeenEpoch") or 0.0),
-                )[: len(existing) - LINEAGE_HOLD_QUEUE_MAX_SIZE + 1]
-                self.conn.executemany("DELETE FROM engine_meta WHERE key = ?", [(str(row["key"]),) for row in oldest])
+            held = int(
+                self.conn.execute("SELECT COUNT(*) FROM engine_meta WHERE key LIKE 'lineage_hold:%'").fetchone()[0]
+            )
+            if held >= LINEAGE_HOLD_QUEUE_MAX_SIZE:
+                return False
 
         self.conn.execute(
             "INSERT OR REPLACE INTO engine_meta (key, value) VALUES (?, ?)",
@@ -133,6 +141,7 @@ class _SyncLedger:
                 ),
             ),
         )
+        return True
 
     def _get_lineage_hold(self, memory_id: str) -> dict[str, Any] | None:
         row = self.conn.execute(
