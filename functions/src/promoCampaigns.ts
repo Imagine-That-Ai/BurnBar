@@ -24,11 +24,13 @@
 
 import { createHash } from "node:crypto";
 
+import { isRecord, numberField, stringField } from "./guards.js";
+
 /** Server-only collection holding one policy document per campaign. */
-export const PROMO_CAMPAIGNS_COLLECTION = "promo_campaigns";
+const PROMO_CAMPAIGNS_COLLECTION = "promo_campaigns";
 
 /** Server-only collection mapping a code digest to its campaign. */
-export const PROMO_CODES_COLLECTION = "promo_codes";
+const PROMO_CODES_COLLECTION = "promo_codes";
 
 /** Schema version stamped on campaign, code, and redemption documents. */
 export const PROMO_SCHEMA_VERSION = 1;
@@ -96,97 +98,97 @@ export function promoRedemptionDocPath(campaignID: string, uid: string): string 
   return `${promoCampaignDocPath(campaignID)}/redemptions/${uid}`;
 }
 
-/** Policy document stored at `promo_campaigns/{campaignId}`. */
-export interface PromoCampaignDoc {
-  /** Stable campaign id; mirrors the document id. */
-  campaignID: string;
-  /** Operator-facing label, e.g. "X launch — free BurnBar Ultra beta". */
-  label?: string;
-  /** Master switch. A false/missing value disables redemption immediately. */
-  active: boolean;
-  /** Entitlement document id to write, e.g. `burnbar_ultra`. */
-  entitlementID: string;
-  /** Product id stamped on the granted entitlement. */
-  productID: string;
-  /** Epoch millis the granted entitlement expires (far-future for the beta). */
-  grantExpiresAtMillis: number;
-  /** Redemption window open (epoch millis). Optional — defaults to always open. */
-  startsAtMillis?: number;
-  /** Redemption window close (epoch millis). Optional — defaults to never closing. */
-  endsAtMillis?: number;
-  /** Hard ceiling on total redemptions. Optional — defaults to uncapped. */
-  maxRedemptions?: number;
-  /** Redemptions granted so far; incremented in the redemption transaction. */
-  redemptionCount?: number;
-  schemaVersion?: number;
-}
-
-/** Mapping document stored at `promo_codes/{codeDigest}`. */
-export interface PromoCodeDoc {
-  campaignID: string;
-  active: boolean;
-  /** Operator-facing hint (never the code itself), e.g. "rotation 1". */
-  label?: string;
-  schemaVersion?: number;
-}
-
 /**
- * Why a redemption attempt was refused. Kept as a closed union so the callable
- * maps each case to a distinct HttpsError code and the landing page can show
- * copy that tells the visitor what to actually do next.
+ * Why a redemption attempt was refused. A closed union so the callable maps
+ * each case to a distinct HttpsError code and the landing page can show copy
+ * that tells the visitor what to actually do next.
  */
 export type PromoRejectionReason =
-  | "unknown_code"
-  | "code_disabled"
-  | "campaign_missing"
-  | "campaign_inactive"
-  | "campaign_not_started"
-  | "campaign_ended"
-  | "campaign_exhausted";
+  | "unknown_code" | "code_disabled" | "campaign_missing" | "campaign_inactive"
+  | "campaign_not_started" | "campaign_ended" | "campaign_exhausted";
 
-export type PromoEligibility = { ok: true } | { ok: false; reason: PromoRejectionReason };
+/** Either a validated value or the reason the stored document was refused. */
+type PromoResolution<T> = { ok: true; value: T } | { ok: false; reason: PromoRejectionReason };
 
 /**
- * Validates the code mapping document. Split from campaign evaluation so a
- * rotated-out code reports `code_disabled` rather than masquerading as a dead
+ * The validated slice of a campaign policy a redemption acts on.
+ *
+ * Deliberately not the raw Firestore document: the stored shapes
+ * (`promo_campaigns/*`, `promo_codes/*`) stay module-private so no caller can
+ * assert its way past validation, and every field here has been range- and
+ * type-checked by {@link resolvePromoCampaign}.
+ */
+interface PromoGrantPlan {
+  campaignID: string;
+  entitlementID: string;
+  productID: string;
+  grantExpiresAtMillis: number;
+  label?: string;
+}
+
+/**
+ * Validates a `promo_codes/{digest}` document read.
+ *
+ * Takes `unknown` and checks every field, because a Firestore read is untrusted
+ * input like any other: the collection is server-only today, but a type
+ * assertion here would silently trust whatever a future writer (or a restored
+ * backup) put in the document.
+ *
+ * A rotated-out code reports `code_disabled` rather than masquerading as a dead
  * campaign — the operator needs to tell those apart when a visitor reports a
  * code that "stopped working".
  */
-export function evaluatePromoCode(code: PromoCodeDoc | undefined): PromoEligibility {
-  if (!code) return { ok: false, reason: "unknown_code" };
-  if (code.active !== true) return { ok: false, reason: "code_disabled" };
-  if (typeof code.campaignID !== "string" || code.campaignID.length === 0) {
-    return { ok: false, reason: "campaign_missing" };
-  }
-  return { ok: true };
+export function resolvePromoCode(raw: unknown): PromoResolution<{ campaignID: string }> {
+  if (!isRecord(raw)) return { ok: false, reason: "unknown_code" };
+  if (raw.active !== true) return { ok: false, reason: "code_disabled" };
+  const campaignID = stringField(raw, "campaignID");
+  if (!campaignID) return { ok: false, reason: "campaign_missing" };
+  return { ok: true, value: { campaignID } };
 }
 
 /**
- * Validates campaign state at `nowMillis`. The clock is injected rather than
- * read so window and exhaustion rules are testable without faking time.
+ * Validates a `promo_campaigns/{id}` document read and checks it is redeemable
+ * at `nowMillis`. The clock is injected rather than read so the window and
+ * exhaustion rules are testable without faking time.
  *
- * Evaluated again inside the redemption transaction against freshly read data,
- * so a campaign that is disabled or exhausted mid-flight cannot be raced.
+ * Run again inside the redemption transaction against freshly read data, so a
+ * campaign disabled or exhausted mid-flight cannot be raced through.
+ *
+ * A campaign missing any field needed to mint an entitlement is refused rather
+ * than defaulted: guessing a tier or an expiry would grant the wrong thing.
  */
-export function evaluatePromoCampaign(
-  campaign: PromoCampaignDoc | undefined,
+export function resolvePromoCampaign(
+  raw: unknown,
   options: { nowMillis: number },
-): PromoEligibility {
-  if (!campaign) return { ok: false, reason: "campaign_missing" };
-  if (campaign.active !== true) return { ok: false, reason: "campaign_inactive" };
+): PromoResolution<PromoGrantPlan> {
+  if (!isRecord(raw)) return { ok: false, reason: "campaign_missing" };
+  if (raw.active !== true) return { ok: false, reason: "campaign_inactive" };
 
   const { nowMillis } = options;
-  if (typeof campaign.startsAtMillis === "number" && nowMillis < campaign.startsAtMillis) {
+  const startsAtMillis = numberField(raw, "startsAtMillis");
+  if (startsAtMillis !== undefined && nowMillis < startsAtMillis) {
     return { ok: false, reason: "campaign_not_started" };
   }
-  if (typeof campaign.endsAtMillis === "number" && nowMillis >= campaign.endsAtMillis) {
+  const endsAtMillis = numberField(raw, "endsAtMillis");
+  if (endsAtMillis !== undefined && nowMillis >= endsAtMillis) {
     return { ok: false, reason: "campaign_ended" };
   }
-  if (typeof campaign.maxRedemptions === "number") {
-    const redeemed = typeof campaign.redemptionCount === "number" ? campaign.redemptionCount : 0;
-    if (redeemed >= campaign.maxRedemptions) return { ok: false, reason: "campaign_exhausted" };
+  const maxRedemptions = numberField(raw, "maxRedemptions");
+  if (maxRedemptions !== undefined && (numberField(raw, "redemptionCount") ?? 0) >= maxRedemptions) {
+    return { ok: false, reason: "campaign_exhausted" };
   }
-  return { ok: true };
+
+  const campaignID = stringField(raw, "campaignID");
+  const entitlementID = stringField(raw, "entitlementID");
+  const productID = stringField(raw, "productID");
+  const grantExpiresAtMillis = numberField(raw, "grantExpiresAtMillis");
+  if (!campaignID || !entitlementID || !productID || grantExpiresAtMillis === undefined) {
+    return { ok: false, reason: "campaign_missing" };
+  }
+  return {
+    ok: true,
+    value: { campaignID, entitlementID, productID, grantExpiresAtMillis, label: stringField(raw, "label") },
+  };
 }
 
 /**

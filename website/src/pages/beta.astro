@@ -72,7 +72,9 @@ import BaseLayout from "@layouts/BaseLayout.astro";
               spellcheck="false"
               class="mono-input"
             />
-            <p id="code-hint" class="code-hint hidden" role="alert">Enter the code from the announcement.</p>
+            <p id="code-hint" class="code-hint hidden" role="alert">
+              Enter the code from the announcement.
+            </p>
           </div>
 
           <button id="btn-claim" class="btn btn--ember"> Claim free Ultra </button>
@@ -105,7 +107,8 @@ import BaseLayout from "@layouts/BaseLayout.astro";
           </div>
           <h2 id="success-heading">Ultra unlocked</h2>
           <p id="success-message">
-            This account now has BurnBar Ultra. You were not charged, and there is nothing to cancel.
+            This account now has BurnBar Ultra. You were not charged, and there is nothing to
+            cancel.
           </p>
           <div class="next-step-box">
             <p class="small">
@@ -554,7 +557,8 @@ import BaseLayout from "@layouts/BaseLayout.astro";
         friendlyMessage =
           "That code isn't valid. Check the code from the announcement and try again.";
       } else if (errorCode === "resource-exhausted" && /fully claimed/i.test(errorText)) {
-        friendlyMessage = "Every pass in this beta has been claimed. Follow along for the next drop.";
+        friendlyMessage =
+          "Every pass in this beta has been claimed. Follow along for the next drop.";
       } else if (errorCode === "resource-exhausted") {
         friendlyMessage = "Too many attempts from this account. Wait a few minutes and try again.";
       } else if (errorCode === "failed-precondition" && /offer/i.test(errorText)) {

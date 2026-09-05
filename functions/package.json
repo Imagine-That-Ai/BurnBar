@@ -24,7 +24,7 @@
     "test:computer-use-opentimestamps": "npm run build && node scripts/test-computer-use-opentimestamps.mjs",
     "test:computer-use-budget-killswitch": "npm run build && node scripts/test-computer-use-budget-killswitch.mjs",
     "test:cloud-pro-allowance": "npm run build && node scripts/test-cloud-pro-allowance.mjs",
-    "test:promo-redemption": "npm run build && firebase emulators:exec --project openburnbar-promo-test --config ../firebase.json --only firestore \"node --test scripts/test-promo-redemption.mjs\"",
+    "test:promo-redemption": "npm run build && firebase emulators:exec --project openburnbar-rules-test --config ../firebase.json --only firestore \"node --test scripts/test-promo-redemption.mjs\"",
     "test:paid-tier-proof": "node scripts/test-prove-paid-tier-live.mjs",
     "test:hosted-quota-proof": "node --test scripts/test-hosted-quota-proof.mjs",
     "test:tier-cogs": "npm run build && node scripts/test-tier-cogs.mjs",

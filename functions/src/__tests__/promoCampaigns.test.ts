@@ -3,21 +3,20 @@ import { describe, expect, it } from "vitest";
 import { paidEntitlementWriteWouldDowngrade } from "../callables/shared/entitlements.js";
 import {
   canonicalizePromoCode,
-  evaluatePromoCampaign,
-  evaluatePromoCode,
   promoCampaignDocPath,
   promoCodeDigest,
   promoCodeDocPath,
   promoRedemptionDocPath,
   promoRejectionMessage,
   PROMO_ENTITLEMENT_SOURCE,
-  type PromoCampaignDoc,
+  resolvePromoCampaign,
+  resolvePromoCode,
 } from "../promoCampaigns.js";
 
 const NOW = Date.parse("2026-09-05T00:00:00.000Z");
 const FAR_FUTURE = Date.parse("2099-01-01T00:00:00.000Z");
 
-function campaign(overrides: Partial<PromoCampaignDoc> = {}): PromoCampaignDoc {
+function campaign(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     campaignID: "xopen-ultra",
     active: true,
@@ -62,32 +61,48 @@ describe("promo code canonicalization", () => {
   });
 });
 
-describe("promo code eligibility", () => {
+describe("promo code resolution", () => {
   it("accepts an active code mapped to a campaign", () => {
-    expect(evaluatePromoCode({ campaignID: "xopen-ultra", active: true })).toEqual({ ok: true });
+    expect(resolvePromoCode({ campaignID: "xopen-ultra", active: true })).toEqual({
+      ok: true,
+      value: { campaignID: "xopen-ultra" },
+    });
   });
 
   it("distinguishes an unknown code from a rotated-out one", () => {
-    expect(evaluatePromoCode(undefined)).toEqual({ ok: false, reason: "unknown_code" });
-    expect(evaluatePromoCode({ campaignID: "xopen-ultra", active: false })).toEqual({
+    expect(resolvePromoCode(undefined)).toEqual({ ok: false, reason: "unknown_code" });
+    expect(resolvePromoCode({ campaignID: "xopen-ultra", active: false })).toEqual({
       ok: false,
       reason: "code_disabled",
     });
   });
 
-  it("fails closed when the mapping has no campaign", () => {
-    expect(evaluatePromoCode({ campaignID: "", active: true })).toEqual({ ok: false, reason: "campaign_missing" });
+  it("fails closed on a malformed stored document rather than trusting it", () => {
+    // A Firestore read is untrusted input: no assertion may stand in for these checks.
+    expect(resolvePromoCode({ campaignID: "", active: true })).toEqual({ ok: false, reason: "campaign_missing" });
+    expect(resolvePromoCode({ campaignID: 42, active: true })).toEqual({ ok: false, reason: "campaign_missing" });
+    expect(resolvePromoCode({ active: true })).toEqual({ ok: false, reason: "campaign_missing" });
+    expect(resolvePromoCode("not-a-document")).toEqual({ ok: false, reason: "unknown_code" });
+    expect(resolvePromoCode({ campaignID: "x", active: "yes" })).toEqual({ ok: false, reason: "code_disabled" });
   });
 });
 
-describe("promo campaign eligibility", () => {
-  it("accepts an active, in-window, uncapped campaign", () => {
-    expect(evaluatePromoCampaign(campaign(), { nowMillis: NOW })).toEqual({ ok: true });
+describe("promo campaign resolution", () => {
+  const plan = {
+    campaignID: "xopen-ultra",
+    entitlementID: "burnbar_ultra",
+    productID: "com.openburnbar.ultra.annual.v2",
+    grantExpiresAtMillis: FAR_FUTURE,
+    label: undefined,
+  };
+
+  it("accepts an active, in-window, uncapped campaign and returns its validated plan", () => {
+    expect(resolvePromoCampaign(campaign(), { nowMillis: NOW })).toEqual({ ok: true, value: plan });
   });
 
   it("refuses a missing or paused campaign", () => {
-    expect(evaluatePromoCampaign(undefined, { nowMillis: NOW })).toEqual({ ok: false, reason: "campaign_missing" });
-    expect(evaluatePromoCampaign(campaign({ active: false }), { nowMillis: NOW })).toEqual({
+    expect(resolvePromoCampaign(undefined, { nowMillis: NOW })).toEqual({ ok: false, reason: "campaign_missing" });
+    expect(resolvePromoCampaign(campaign({ active: false }), { nowMillis: NOW })).toEqual({
       ok: false,
       reason: "campaign_inactive",
     });
@@ -95,28 +110,61 @@ describe("promo campaign eligibility", () => {
 
   it("enforces the redemption window at both edges", () => {
     const windowed = campaign({ startsAtMillis: NOW, endsAtMillis: NOW + 1000 });
-    expect(evaluatePromoCampaign(windowed, { nowMillis: NOW - 1 })).toEqual({
+    expect(resolvePromoCampaign(windowed, { nowMillis: NOW - 1 })).toEqual({
       ok: false,
       reason: "campaign_not_started",
     });
-    expect(evaluatePromoCampaign(windowed, { nowMillis: NOW })).toEqual({ ok: true });
-    expect(evaluatePromoCampaign(windowed, { nowMillis: NOW + 999 })).toEqual({ ok: true });
+    expect(resolvePromoCampaign(windowed, { nowMillis: NOW }).ok).toBe(true);
+    expect(resolvePromoCampaign(windowed, { nowMillis: NOW + 999 }).ok).toBe(true);
     // End is exclusive: the campaign is closed the instant it ends.
-    expect(evaluatePromoCampaign(windowed, { nowMillis: NOW + 1000 })).toEqual({
+    expect(resolvePromoCampaign(windowed, { nowMillis: NOW + 1000 })).toEqual({
       ok: false,
       reason: "campaign_ended",
     });
   });
 
   it("stops at the redemption cap and treats a missing count as zero", () => {
-    expect(evaluatePromoCampaign(campaign({ maxRedemptions: 2, redemptionCount: 1 }), { nowMillis: NOW })).toEqual({
-      ok: true,
-    });
-    expect(evaluatePromoCampaign(campaign({ maxRedemptions: 2, redemptionCount: 2 }), { nowMillis: NOW })).toEqual({
+    expect(resolvePromoCampaign(campaign({ maxRedemptions: 2, redemptionCount: 1 }), { nowMillis: NOW }).ok).toBe(true);
+    expect(resolvePromoCampaign(campaign({ maxRedemptions: 2, redemptionCount: 2 }), { nowMillis: NOW })).toEqual({
       ok: false,
       reason: "campaign_exhausted",
     });
-    expect(evaluatePromoCampaign(campaign({ maxRedemptions: 2 }), { nowMillis: NOW })).toEqual({ ok: true });
+    expect(resolvePromoCampaign(campaign({ maxRedemptions: 2 }), { nowMillis: NOW }).ok).toBe(true);
+  });
+
+  it("carries the operator label through when present", () => {
+    const resolved = resolvePromoCampaign(campaign({ label: "X launch" }), { nowMillis: NOW });
+    expect(resolved).toEqual({ ok: true, value: { ...plan, label: "X launch" } });
+  });
+
+  it("refuses a campaign missing anything needed to mint an entitlement", () => {
+    // Defaulting a tier or an expiry here would grant the wrong thing, so each
+    // absent or wrongly-typed field must fail closed instead.
+    for (const missing of ["campaignID", "entitlementID", "productID", "grantExpiresAtMillis"]) {
+      const partial = campaign();
+      delete partial[missing];
+      expect(resolvePromoCampaign(partial, { nowMillis: NOW })).toEqual({ ok: false, reason: "campaign_missing" });
+    }
+    expect(resolvePromoCampaign(campaign({ grantExpiresAtMillis: "2099" }), { nowMillis: NOW })).toEqual({
+      ok: false,
+      reason: "campaign_missing",
+    });
+    expect(resolvePromoCampaign(campaign({ entitlementID: 7 }), { nowMillis: NOW })).toEqual({
+      ok: false,
+      reason: "campaign_missing",
+    });
+    expect(resolvePromoCampaign("not-a-document", { nowMillis: NOW })).toEqual({
+      ok: false,
+      reason: "campaign_missing",
+    });
+  });
+
+  it("ignores non-numeric window and cap fields rather than trusting them", () => {
+    // A malformed window must not silently close (or open) the campaign.
+    expect(resolvePromoCampaign(campaign({ startsAtMillis: "soon", endsAtMillis: null }), { nowMillis: NOW }).ok).toBe(
+      true,
+    );
+    expect(resolvePromoCampaign(campaign({ maxRedemptions: "many" }), { nowMillis: NOW }).ok).toBe(true);
   });
 });
 

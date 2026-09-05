@@ -38,8 +38,6 @@ import { getConfig } from "../config.js";
 import { logInfo, onCallProduction } from "../logging.js";
 import {
   canonicalizePromoCode,
-  evaluatePromoCampaign,
-  evaluatePromoCode,
   promoCampaignDocPath,
   promoCodeDigest,
   promoCodeDocPath,
@@ -47,8 +45,8 @@ import {
   promoRejectionMessage,
   PROMO_ENTITLEMENT_SOURCE,
   PROMO_SCHEMA_VERSION,
-  type PromoCampaignDoc,
-  type PromoCodeDoc,
+  resolvePromoCampaign,
+  resolvePromoCode,
   type PromoRejectionReason,
 } from "../promoCampaigns.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
@@ -60,21 +58,20 @@ import {
 import { entitlementExpiryMillis, writeBurnBarProEntitlement } from "./shared/entitlements.js";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 
-/** Outcome reported to the caller. */
-export type PromoRedemptionStatus =
-  /** A promotional entitlement was written for this uid. */
-  | "granted"
-  /** This uid had already redeemed the campaign; the entitlement was re-asserted. */
-  | "already_redeemed"
-  /** A provider-verified entitlement already occupies the target document. */
-  | "already_entitled";
+/**
+ * Outcome reported to the caller:
+ * - `granted` — a promotional entitlement was written for this uid.
+ * - `already_redeemed` — this uid had redeemed before; the grant was re-asserted.
+ * - `already_entitled` — a provider-verified entitlement already holds the doc.
+ */
+type PromoRedemptionStatus = "granted" | "already_redeemed" | "already_entitled";
 
-export interface RedeemPromoCodeResponse {
+/** `expiresAt` is the ISO-8601 expiry of the entitlement now in force. */
+interface RedeemPromoCodeResponse {
   status: PromoRedemptionStatus;
   campaignID: string;
   entitlementID: string;
   productID: string;
-  /** ISO-8601 expiry of the entitlement now in force. */
   expiresAt: string;
   label?: string;
 }
@@ -130,29 +127,21 @@ export async function redeemPromoCodeForUid(uid: string, rawCode: unknown): Prom
     throw new HttpsError("invalid-argument", "Enter the code from the announcement.");
   }
 
-  const codeSnap = await db.doc(promoCodeDocPath(promoCodeDigest(canonicalCode))).get();
-  const codeDoc = codeSnap.data() as PromoCodeDoc | undefined;
-  const codeEligibility = evaluatePromoCode(codeDoc);
-  if (!codeEligibility.ok) {
-    await recordCallableApprovalFailure(uid, "promo_redeem_fail");
-    throw promoRejection(codeEligibility.reason);
-  }
+    const codeSnap = await db.doc(promoCodeDocPath(promoCodeDigest(canonicalCode))).get();
+    const resolvedCode = resolvePromoCode(codeSnap.data());
+    if (!resolvedCode.ok) {
+      await recordCallableApprovalFailure(uid, "promo_redeem_fail");
+      throw promoRejection(resolvedCode.reason);
+    }
 
-  const campaignID = (codeDoc as PromoCodeDoc).campaignID;
-  const campaignRef = db.doc(promoCampaignDocPath(campaignID));
-  const campaign = (await campaignRef.get()).data() as PromoCampaignDoc | undefined;
-  const nowMillis = Date.now();
-  const campaignEligibility = evaluatePromoCampaign(campaign, { nowMillis });
-  if (!campaignEligibility.ok) {
-    throw promoRejection(campaignEligibility.reason);
-  }
+    const { campaignID } = resolvedCode.value;
+    const campaignRef = db.doc(promoCampaignDocPath(campaignID));
+    const nowMillis = Date.now();
+    const resolvedCampaign = resolvePromoCampaign((await campaignRef.get()).data(), { nowMillis });
+    if (!resolvedCampaign.ok) throw promoRejection(resolvedCampaign.reason);
 
-  const { entitlementID, productID, grantExpiresAtMillis, label } = campaign as PromoCampaignDoc;
-  if (!entitlementID || !productID || !Number.isFinite(grantExpiresAtMillis)) {
-    throw new HttpsError("failed-precondition", "This offer is not configured correctly yet.");
-  }
-
-  const entitlementRef = db.doc(`users/${uid}/entitlements/${entitlementID}`);
+    const { entitlementID, productID, grantExpiresAtMillis, label } = resolvedCampaign.value;
+    const entitlementRef = db.doc(`users/${uid}/entitlements/${entitlementID}`);
   const existingEntitlement = (await entitlementRef.get()).data();
   if (heldByVerifiedPurchase(existingEntitlement, nowMillis)) {
     // Never consume a redemption for someone who is already paying for this
@@ -176,12 +165,10 @@ export async function redeemPromoCodeForUid(uid: string, rawCode: unknown): Prom
       transaction.get(campaignRef),
       transaction.get(redemptionRef),
     ]);
-    if (redemptionSnap.exists) return true;
+      if (redemptionSnap.exists) return true;
 
-    const freshEligibility = evaluatePromoCampaign(freshCampaignSnap.data() as PromoCampaignDoc | undefined, {
-      nowMillis: Date.now(),
-    });
-    if (!freshEligibility.ok) throw promoRejection(freshEligibility.reason);
+      const freshCampaign = resolvePromoCampaign(freshCampaignSnap.data(), { nowMillis: Date.now() });
+      if (!freshCampaign.ok) throw promoRejection(freshCampaign.reason);
 
     transaction.set(redemptionRef, {
       uid,

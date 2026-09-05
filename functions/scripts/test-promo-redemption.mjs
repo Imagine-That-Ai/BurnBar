@@ -28,7 +28,7 @@ assert.ok(
   process.env.FIRESTORE_EMULATOR_HOST,
   "FIRESTORE_EMULATOR_HOST must be set; run through `firebase emulators:exec`",
 );
-process.env.GCLOUD_PROJECT ||= "openburnbar-promo-test";
+process.env.GCLOUD_PROJECT ||= "openburnbar-rules-test";
 process.env.GOOGLE_CLOUD_PROJECT ||= process.env.GCLOUD_PROJECT;
 
 const { db } = await import("../lib/adminRuntime.js");

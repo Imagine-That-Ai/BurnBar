@@ -25,6 +25,10 @@ const [beta, campaigns] = await Promise.all([
   read(repoRoot, "config/promo-campaigns.json")
 ]);
 
+// Prettier reflows prose across lines, so copy assertions run against a
+// whitespace-collapsed view. Structural assertions keep using the raw source.
+const betaProse = beta.replace(/\s+/gu, " ");
+
 // --- Claim runs through the attested callable helper ---
 assert.match(
   beta,
@@ -77,7 +81,7 @@ assert.match(beta, /id="btn-signin"/, "signed-out state must offer Google sign-i
 assert.match(beta, /Sign in with Google/, "Google button must be labeled");
 assert.match(beta, /id="btn-signin-apple"/, "signed-out state must offer Apple sign-in");
 assert.match(beta, /Sign in with Apple/, "Apple button must be labeled");
-assert.match(beta, /No payment method required\./, "the claim page must state that no payment method is needed");
+assert.match(betaProse, /No payment method required\./, "the claim page must state that no payment method is needed");
 
 // --- Success copy is honest about which outcome occurred ---
 assert.match(
@@ -86,7 +90,7 @@ assert.match(
   "an existing paid subscriber must be branched separately from a fresh grant"
 );
 assert.match(
-  beta,
+  betaProse,
   /This account already has an active Ultra subscription/,
   "a paying subscriber must not be told their code was applied"
 );
@@ -96,7 +100,7 @@ assert.match(
   "a repeat claim must be branched separately from a fresh grant"
 );
 assert.match(
-  beta,
+  betaProse,
   /You were not charged, and there is nothing to cancel\./,
   "the granted state must say plainly that nothing was charged"
 );
@@ -108,17 +112,17 @@ assert.match(
   "an unusable code must map to the re-enter-code branch"
 );
 assert.match(
-  beta,
+  betaProse,
   /That code isn't valid\. Check the code from the announcement and try again\./,
   "unusable codes must show the curated re-enter copy"
 );
 assert.match(
-  beta,
+  betaProse,
   /Every pass in this beta has been claimed\./,
   "an exhausted campaign must have its own copy, distinct from a rate limit"
 );
 assert.match(
-  beta,
+  betaProse,
   /Too many attempts from this account\./,
   "a rate limit must have its own copy, distinct from an exhausted campaign"
 );
@@ -128,7 +132,7 @@ assert.match(
   "binding-mismatch failures must be recognized via the exported helper"
 );
 assert.match(
-  beta,
+  betaProse,
   /Your device attestation could not be verified for this action\. Sign in again and retry\./,
   "attestation failures must show attestation retry copy"
 );

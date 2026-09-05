@@ -41,7 +41,7 @@ import { nowISO, requiredIdentifier } from "./validators.js";
 
 // Re-exported so existing importers (`callables/shared.ts`, the write-ordering
 // tests) keep their single entitlement entry point after the guards moved out.
-export { paidEntitlementWriteWouldDowngrade, paidEntitlementWriteWouldRewindSourceEvent };
+export { paidEntitlementWriteWouldDowngrade };
 
 export const BURNBAR_PRO_ENTITLEMENT_ID = "burnbar_pro";
 export const BURNBAR_PRO_MAX_ENTITLEMENT_ID = "burnbar_pro_max";
