@@ -366,6 +366,7 @@ class _Maintenance:
         schema: str,
         project_path: str | None = None,
         batch_cap: int | None = None,
+        cursor: int | str | None = None,
     ) -> dict[str, Any]:
         """Import memories from a ChatGPT or Claude.ai assistant export payload."""
         import assistant_export
@@ -376,6 +377,7 @@ class _Maintenance:
             schema=schema,
             project_path=project_path,
             batch_cap=batch_cap,
+            cursor=cursor,
         )
 
     def import_legacy(self, items: Sequence[dict[str, Any]], *, project_path: str | None) -> dict[str, Any]:

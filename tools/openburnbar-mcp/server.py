@@ -3253,6 +3253,7 @@ def burnbar_memory_import(
     project_path: str | None = None,
     schema: str | None = None,
     batch_cap: int | None = None,
+    cursor: int | str | None = None,
 ) -> str:
     """Import memories from a `burnbar_memory_export` payload, a ChatGPT/Claude.ai assistant export, or a list of `{text, kind, confidence, tags, ...}` objects; each passes the gate and conflict resolution.
 
@@ -3262,6 +3263,12 @@ def burnbar_memory_import(
     actually applied. Each decision's `reviewStatus` is read back off the row
     that landed, so a near-duplicate that reinforced an approved memory is not
     reported as a quarantine.
+
+    Batches are resumable: the summary returns `cursor` (where this batch
+    started), `nextCursor` (where the next one starts, `null` when the export is
+    fully consumed) and `remaining`. Pass `nextCursor` back as `cursor` to
+    continue. Without it every call would select the same first `batch_cap`
+    candidates and the tail of an export would never be read at all.
     """
     if limited := _local_mcp_rate_limit("burnbar_memory_import", "memory"):
         return limited
@@ -3294,6 +3301,7 @@ def burnbar_memory_import(
                     schema=detected_str,
                     project_path=project_path,
                     batch_cap=batch_cap,
+                    cursor=cursor,
                 )
                 result["decisions"] = [
                     _memory_wrap_write_decision(decision, source_tool="burnbar_memory_import")

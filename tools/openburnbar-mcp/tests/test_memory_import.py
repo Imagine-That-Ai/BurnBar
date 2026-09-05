@@ -323,3 +323,62 @@ def test_a_caller_supplied_batch_cap_cannot_remove_the_bound(server_env: Path, m
     # A cap below the ceiling is still the caller's to choose.
     result_small = json.loads(server.burnbar_memory_import(json.dumps(payload), project_path=repo, batch_cap=2))
     assert result_small["summary"]["batchCap"] == 2
+
+
+def test_a_capped_import_resumes_from_the_cursor_it_returned(
+    server_env: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Nothing past the cap is silently dropped: the caller gets an offset back.
+
+    Every invocation used to select the same first `cap` candidates, so after the
+    first call the rest merely collapsed as duplicates and the entries past the
+    cap were never considered at all. With the default cap of 10 an ordinary
+    export could not be imported in full without editing the payload by hand.
+    """
+    server = _server(server_env, monkeypatch)
+    repo = _repo(server_env)
+    payload, _ = _expanded_fixture()
+
+    first = json.loads(server.burnbar_memory_import(json.dumps(payload), project_path=repo, batch_cap=10))
+    assert first["status"] == "ok"
+    assert first["summary"]["totalCandidates"] == 15
+    assert first["summary"]["batchCapped"] is True
+    assert first["summary"]["cursor"] == 0
+    assert first["summary"]["nextCursor"] == 10
+    assert first["summary"]["remaining"] == 5
+
+    second = json.loads(
+        server.burnbar_memory_import(
+            json.dumps(payload),
+            project_path=repo,
+            batch_cap=10,
+            cursor=first["summary"]["nextCursor"],
+        )
+    )
+    assert second["status"] == "ok"
+    assert second["summary"]["cursor"] == 10
+    assert second["summary"]["nextCursor"] is None
+    assert second["summary"]["remaining"] == 0
+    assert second["summary"]["batchCapped"] is False
+
+    # The second batch reached candidates the first never saw: the last entry of
+    # the export is in the store, and it is not a collapsed duplicate.
+    with server._memory_engine() as engine:
+        bodies = [
+            row["body"]
+            for row in engine.list(project_path=repo, scope="all", review_status="quarantined", page_size=200)[
+                "results"
+            ]
+        ]
+    assert any("blue-green" in body for body in bodies), bodies
+
+
+def test_an_out_of_range_import_cursor_is_refused(server_env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A cursor the caller made up must not silently import batch one again."""
+    server = _server(server_env, monkeypatch)
+    repo = _repo(server_env)
+    payload, _ = _expanded_fixture()
+
+    result = json.loads(server.burnbar_memory_import(json.dumps(payload), project_path=repo, cursor=-3))
+    assert result["status"] == "rejected"
+    assert result["code"] == "INVALID_CURSOR"

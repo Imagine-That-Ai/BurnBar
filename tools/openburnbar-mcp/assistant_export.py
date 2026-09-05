@@ -257,6 +257,24 @@ def parse_assistant_export(payload: dict[str, Any], schema: str) -> list[Candida
     return parse_chatgpt_conversations(conversations)
 
 
+def _parse_cursor(cursor: int | str | None) -> int | None:
+    """The offset a caller resumes from, or None when the value is not one.
+
+    A made-up cursor must not silently re-import batch one: a caller that
+    mistakes `nextCursor` for a page number would otherwise be told `ok` while
+    the tail of its export stayed unread.
+    """
+    if cursor is None or cursor == "":
+        return 0
+    if isinstance(cursor, bool):
+        return None
+    try:
+        offset = int(cursor)
+    except (TypeError, ValueError):
+        return None
+    return offset if offset >= 0 else None
+
+
 def import_assistant_export(
     engine: Any,
     payload: dict[str, Any],
@@ -264,12 +282,27 @@ def import_assistant_export(
     schema: str,
     project_path: str | None = None,
     batch_cap: int | None = None,
+    cursor: int | str | None = None,
 ) -> dict[str, Any]:
-    """Guarded import of an assistant export payload into the memory engine."""
+    """Guarded import of an assistant export payload into the memory engine.
+
+    `cursor` is the offset into the export's candidate list this batch starts at,
+    and the summary returns `nextCursor` for the batch after it. Without one,
+    every call selected the same first `cap` candidates: the rest collapsed as
+    duplicates and everything past the cap was never considered, so an export
+    larger than the cap (10 by default) could not be imported in full.
+    """
     # 1. Strict schema version gate
     rejection = validate_export_schema(schema)
     if rejection:
         return rejection
+    offset = _parse_cursor(cursor)
+    if offset is None:
+        return {
+            "status": "rejected",
+            "code": "INVALID_CURSOR",
+            "reason": f"cursor must be a non-negative integer offset; got {cursor!r}",
+        }
 
     project_id, root = resolve_project(engine.conn, project_path)
 
@@ -283,8 +316,10 @@ def import_assistant_export(
         else int(os.environ.get("OPENBURNBAR_MEMORY_IMPORT_BATCH_CAP", str(DEFAULT_IMPORT_BATCH_CAP)))
     )
     cap = max(1, min(int(cap), MAX_IMPORT_BATCH_CAP))
-    is_batch_capped = len(all_candidates) > cap
-    bounded_candidates = all_candidates[:cap]
+    bounded_candidates = all_candidates[offset : offset + cap]
+    next_offset = offset + len(bounded_candidates)
+    remaining = max(0, len(all_candidates) - next_offset)
+    is_batch_capped = remaining > 0
 
     decisions: list[dict[str, Any]] = []
     secrets_flagged = 0
@@ -406,6 +441,8 @@ def import_assistant_export(
             f"secrets_flagged:{secrets_flagged}",
             f"duplicates_collapsed:{duplicates_collapsed}",
             f"batch_capped:{str(is_batch_capped).lower()}",
+            f"cursor:{offset}",
+            f"next_cursor:{next_offset if is_batch_capped else 'none'}",
         ],
         actor=engine.config.actor,
     )
@@ -422,6 +459,13 @@ def import_assistant_export(
         "totalCandidates": len(all_candidates),
         "batchCap": cap,
         "batchCapped": is_batch_capped,
+        # Where this batch started, and where the next one does. `nextCursor` is
+        # None exactly when the export is fully consumed, so a caller loops until
+        # it is rather than guessing whether anything was dropped.
+        "cursor": offset,
+        "nextCursor": next_offset if is_batch_capped else None,
+        "remaining": remaining,
+        "batchSize": len(bounded_candidates),
         "ADD": quarantined_count,
         "UPDATE": 0,
         "NONE": duplicates_collapsed,
