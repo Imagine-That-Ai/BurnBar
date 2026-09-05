@@ -12,7 +12,7 @@ import OpenBurnBarCore
 // typealiases. Mac-only behaviors (log directories, file patterns, support
 // levels) live as extensions on the package types further down in this file.
 
-typealias AgentProvider = OpenBurnBarCore.AgentProvider
+public typealias AgentProvider = OpenBurnBarCore.AgentProvider
 typealias TokenUsage = OpenBurnBarCore.TokenUsage
 typealias UsageProvenanceMethod = OpenBurnBarCore.UsageProvenanceMethod
 typealias UsageProvenanceConfidence = OpenBurnBarCore.UsageProvenanceConfidence
