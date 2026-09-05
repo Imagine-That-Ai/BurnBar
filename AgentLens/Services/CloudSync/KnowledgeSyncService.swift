@@ -496,6 +496,25 @@ struct MemoryCloudSyncResult: Equatable, Sendable {
     let skipped: Int
     let forgetReceipts: Int
     let cloudFactsDeleted: Int
+    /// Documents this device declined to write because the cloud already held a
+    /// revision at or after the local one. See the conditional write in
+    /// `syncApprovedMemories`: without it, a device holding an older mirror
+    /// silently overwrote a newer sibling's ciphertext every cycle.
+    let skippedStaleRevision: Int
+
+    init(
+        uploaded: Int,
+        skipped: Int,
+        forgetReceipts: Int,
+        cloudFactsDeleted: Int,
+        skippedStaleRevision: Int = 0
+    ) {
+        self.uploaded = uploaded
+        self.skipped = skipped
+        self.forgetReceipts = forgetReceipts
+        self.cloudFactsDeleted = cloudFactsDeleted
+        self.skippedStaleRevision = skippedStaleRevision
+    }
 }
 
 /// The plaintext a `memory_facts` document seals. Everything the pull half needs
@@ -569,6 +588,7 @@ final class MemoryCloudSyncService: Sendable {
         let receiptCollection = userDocument.collection("memory_forget_receipts")
 
         var uploaded = 0
+        var skippedStaleRevision = 0
         for memory in eligible {
             // Chat memories keep their body in the app's snapshot table; memories the
             // Memory MCP engine mirrored keep theirs in `agent_memory_bodies`, and key
@@ -598,8 +618,37 @@ final class MemoryCloudSyncService: Sendable {
                 projectID: attributes?.projectID,
                 engineScope: attributes?.engineScope
             )
-            try await factCollection.document(encoded.docID).setData(encoded.data, merge: true)
+            // CONDITIONAL, not unconditional. Every cycle re-uploads the whole
+            // eligible set, and `merge: true` with no comparison meant a device
+            // holding an older mirror of a memory overwrote a newer sibling's
+            // ciphertext with its stale payload — before the pull in the same
+            // cycle could ever observe the winning revision. Push-before-pull
+            // ordering does not save it: B's push happens first, so A's newer
+            // revision is already gone by the time B reads.
+            //
+            // The outer `updatedAt` is the same instant the payload seals (the
+            // pull binds the two, `MemoryCloudPullRejection.updatedAtMismatch`),
+            // so comparing it here compares the same value the engine's LWW
+            // would. Equal instants SKIP: two devices at the same instant with
+            // different bodies converge in the engine, and re-writing buys
+            // nothing. A read is also cheaper than the write it usually avoids.
+            let document = factCollection.document(encoded.docID)
+            let existingUpdatedAt = Self.cloudRevisionInstant(try await document.getData())
+            if let existingUpdatedAt, existingUpdatedAt >= memory.updatedAt {
+                skippedStaleRevision += 1
+                continue
+            }
+            try await document.setData(encoded.data, merge: true)
             uploaded += 1
+        }
+        if skippedStaleRevision > 0 {
+            // Once per cycle, not once per document: a device that has been
+            // offline comes back with a whole batch of stale revisions, and the
+            // interesting number is how many, not which.
+            AppLogger.sync.info(
+                "memory_cloud_push_skipped_stale_revisions",
+                metadata: ["count": String(skippedStaleRevision)]
+            )
         }
 
         var forgetReceipts = 0
@@ -662,7 +711,8 @@ final class MemoryCloudSyncService: Sendable {
             uploaded: uploaded,
             skipped: max(0, candidates.count - eligible.count),
             forgetReceipts: forgetReceipts,
-            cloudFactsDeleted: deletedFacts
+            cloudFactsDeleted: deletedFacts,
+            skippedStaleRevision: skippedStaleRevision
         )
     }
 
@@ -810,6 +860,24 @@ final class MemoryCloudSyncService: Sendable {
         )
     }
 
+    /// The `updatedAt` of a `memory_facts` document already in the cloud, or nil
+    /// when there is no document (or it carries no readable instant — which the
+    /// pull would refuse anyway, so treating it as "no revision" lets this
+    /// device replace it).
+    ///
+    /// Firestore hands dates back as `Timestamp`; the in-memory fake keeps the
+    /// `Date` it was written with. Both must resolve, exactly as in
+    /// `MemoryCloudPullService.firestoreDate`.
+    private static func cloudRevisionInstant(_ data: [String: Any]?) -> Date? {
+        guard let value = data?["updatedAt"] else { return nil }
+        if let timestamp = value as? Timestamp { return timestamp.dateValue() }
+        return OpenBurnBarDatabase.parseDateValue(value)
+    }
+
+    /// Forget receipts are deliberately NOT conditional. A receipt is terminal —
+    /// it says "this fact is gone", and there is no later revision it could be
+    /// stale against — so the read would cost one operation per receipt to
+    /// discover that the write is always correct.
     private static func sourceRefHmac(
         threadLogicalID: String,
         messageID: String?,

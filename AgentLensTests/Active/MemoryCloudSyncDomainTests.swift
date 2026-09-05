@@ -1038,4 +1038,97 @@ final class MemoryCloudSyncDomainTests: XCTestCase {
         )
         XCTAssertEqual(BurnBarMemoryDeviceSyncMarker.maxAge, 1200, "20 minutes, unchanged for the daemon")
     }
+
+    // MARK: - The cloud write must not clobber a newer revision (Codex O)
+
+    /// Two Macs, one member. A uploads a newer edit; B still holds the old
+    /// mirrored revision and re-uploads its whole eligible set on the next
+    /// cycle. The write was an unconditional `setData(merge: true)`, so B
+    /// overwrote A's ciphertext with its stale payload — and because the push
+    /// runs BEFORE the pull in the same cycle, B destroyed the winning revision
+    /// before it could ever read it. The engine's last-writer-wins never got to
+    /// see the winner.
+    func test_aStaleLocalRevisionDoesNotOverwriteANewerCloudDocument() async throws {
+        let uid = "e2-lww-stale-push"
+        let (store, _) = try await makeStoreWithApprovedMemory(uid: uid)
+        let vaultKey = Data(repeating: 0x5A, count: 32)
+        let gateway = CloudSyncFirestoreFakeGateway()
+        let docID = try CloudVaultCrypto.pensieveSlugHmac("memory-fact:mem-e2-approved", keyData: vaultKey)
+        let path = "users/\(uid)/memory_facts/\(docID)"
+        // Device A's newer revision, already in the cloud.
+        let deviceANewer = Date(timeIntervalSince1970: 2_000_000_000)
+        gateway.setDocumentData(
+            [
+                "uid": uid,
+                "docID": docID,
+                "updatedAt": deviceANewer,
+                "sealedMemory": "device-a-ciphertext"
+            ],
+            at: path
+        )
+
+        let result = try await MemoryCloudSyncService(store: store, firestoreGateway: gateway)
+            .syncApprovedMemories(uid: uid, vaultKey: vaultKey, now: Date(timeIntervalSince1970: 1_800_001_000))
+
+        XCTAssertEqual(result.uploaded, 0)
+        XCTAssertEqual(result.skippedStaleRevision, 1)
+        let stored = try XCTUnwrap(gateway.documentData(at: path))
+        XCTAssertEqual(
+            stored["sealedMemory"] as? String,
+            "device-a-ciphertext",
+            "the older device must leave the newer revision alone"
+        )
+        XCTAssertEqual(
+            (stored["updatedAt"] as? Date),
+            deviceANewer,
+            "and it must not drag the ordering key backwards either"
+        )
+    }
+
+    /// The other direction, so the fix cannot be "never upload": a local
+    /// revision NEWER than the cloud document still wins.
+    func test_aNewerLocalRevisionStillOverwritesTheCloudDocument() async throws {
+        let uid = "e2-lww-fresh-push"
+        let (store, _) = try await makeStoreWithApprovedMemory(uid: uid)
+        let vaultKey = Data(repeating: 0x5B, count: 32)
+        let gateway = CloudSyncFirestoreFakeGateway()
+        let docID = try CloudVaultCrypto.pensieveSlugHmac("memory-fact:mem-e2-approved", keyData: vaultKey)
+        let path = "users/\(uid)/memory_facts/\(docID)"
+        gateway.setDocumentData(
+            [
+                "uid": uid,
+                "docID": docID,
+                "updatedAt": Date(timeIntervalSince1970: 1_000_000_000),
+                "sealedMemory": "an ancient revision"
+            ],
+            at: path
+        )
+
+        let result = try await MemoryCloudSyncService(store: store, firestoreGateway: gateway)
+            .syncApprovedMemories(uid: uid, vaultKey: vaultKey, now: Date(timeIntervalSince1970: 1_800_001_000))
+
+        XCTAssertEqual(result.uploaded, 1)
+        XCTAssertEqual(result.skippedStaleRevision, 0)
+        let stored = try XCTUnwrap(gateway.documentData(at: path))
+        XCTAssertNotEqual(stored["sealedMemory"] as? String, "an ancient revision")
+    }
+
+    /// A document nobody has written yet is not a stale revision — the first
+    /// upload of a memory must still happen.
+    func test_theFirstUploadOfAMemoryIsNotTreatedAsStale() async throws {
+        let uid = "e2-lww-first-push"
+        let (store, _) = try await makeStoreWithApprovedMemory(uid: uid)
+        let gateway = CloudSyncFirestoreFakeGateway()
+
+        let result = try await MemoryCloudSyncService(store: store, firestoreGateway: gateway)
+            .syncApprovedMemories(
+                uid: uid,
+                vaultKey: Data(repeating: 0x5C, count: 32),
+                now: Date(timeIntervalSince1970: 1_800_001_000)
+            )
+
+        XCTAssertEqual(result.uploaded, 1)
+        XCTAssertEqual(result.skippedStaleRevision, 0)
+        XCTAssertEqual(gateway.documents(under: "users/\(uid)/memory_facts").count, 1)
+    }
 }
