@@ -855,3 +855,11 @@ before P11.
 - **Tests to add:** `testAdoptRefusesWithoutConfirmation`, `testAdoptRekeysEveryDependentRowInOneTransaction`, `testAdoptRecordsAnAliasSoOldIdsStillResolve`, `testAProvisionalFolderThatAdoptsItsGitProjectStopsWarning`; preflight registration pin.
 - **Acceptance:** adoption requires an explicit confirmation on every path; after adoption the folder's memories resolve under the git project's id and the old id still resolves through the alias; no automatic adoption from a dotfile or from fingerprint match.
 - **Do not touch:** the alias-first resolution order; the engine's `burnbar_project_adopt`.
+# Addendum (2026-09-05, after the app-surfaces build)
+
+## P32 — `daemon.memory.analytics` must resolve project identity read-only · **ROUTE: Grok build**
+
+- **Why:** the RPC handler resolves `projectRoot` through the writing `resolveProjectIdentity` (`BurnBarProjectCodeMemoryStore+ProjectIdentity.swift`), so a read RPC can INSERT `pcm_projects`/`pcm_project_aliases` rows (and a nil root resolves to the daemon's working directory). The app health card avoids it by only ever passing recorded roots; the daemon should not rely on callers for that.
+- **Files:** `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/RPC/BurnBarDaemonServer+RPCMemory.swift` (use `readOnlyProjectIdentity`; refuse `nil`/unknown roots with a typed error instead of synthesising), tests in `BurnBarProjectCodeMemoryStoreTests`.
+- **Tests:** `testAnalyticsForAnUnknownRootWritesNothing`, `testAnalyticsRefusesANilRoot`.
+- **Acceptance:** a `daemon.memory.analytics` call never changes `pcm_projects`; unknown/nil root → error, not a phantom project.

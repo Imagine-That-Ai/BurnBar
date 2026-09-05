@@ -161,6 +161,8 @@ struct PrivacyIndexingSettingsView: View {
                         )
                     }
                     .buttonStyle(.plain)
+
+                    memoryHealthSection
                 }
                 .padding(.horizontal, DesignSystem.Spacing.lg)
                 // Deep-link target for the Memory walkthrough's "Show me" and
@@ -911,6 +913,28 @@ struct PrivacyIndexingSettingsView: View {
 
     // MARK: - Helper Views
 
+    /// Per-project memory health, beside the pending-review link because they
+    /// answer the same question from two sides: what is waiting for you, and
+    /// what is wrong. Counters come from the local daemon over the existing
+    /// `daemon.memory.analytics` RPC; every finding is one this Mac measured
+    /// itself, and the card says so.
+    ///
+    /// The host picks its own subject from the projects the daemon has already
+    /// recorded. Settings has no project scope of its own, and passing that
+    /// absence down to the daemon would have it resolve its own working
+    /// directory into a phantom project — see `ProjectMemoryHealthModel`.
+    @ViewBuilder
+    private var memoryHealthSection: some View {
+        if let store = runtimeContext?.chatMemoryStore {
+            ProjectMemoryHealthCardHost(
+                store: store,
+                daemonManager: runtimeContext?.daemonManager,
+                accountUid: accountManager.userID
+            )
+            .settingsAnchor(SettingsAnchor.indexingMemoryHealth)
+        }
+    }
+
     /// Destination for the "Review pending memories" link. Builds the inbox over
     /// the shared `ControlPlaneStore` when the runtime context is wired; otherwise
     /// shows a graceful unavailable state so the link never dead-ends.
@@ -919,7 +943,8 @@ struct PrivacyIndexingSettingsView: View {
         if let store = runtimeContext?.chatMemoryStore {
             MemoryReviewInboxHost(
                 store: store,
-                scope: MemoryScope(appID: "openburnbar")
+                scope: MemoryScope(appID: "openburnbar"),
+                userID: accountManager.userID
             )
             .id(ObjectIdentifier(store))
             .navigationTitle("Memory")
