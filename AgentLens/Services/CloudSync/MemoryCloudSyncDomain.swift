@@ -62,9 +62,36 @@ struct MacCloudDataVaultEntitlementResolver: MemoryDataVaultEntitlementResolving
     }
 }
 
+/// What one cycle's PULL half did, kept so it can be read rather than
+/// recomputed — and so the `cloudsync.completed` outcome is decided by one
+/// named, testable function instead of a literal at the emit site.
+struct MemoryCloudPullReport: Equatable, Sendable {
+    /// The pull never ran, because the device-sync gate was closed.
+    static let skippedOutcome = "skipped"
+    static let successOutcome = "success"
+    static let failureOutcome = "failure"
+
+    /// One of the three constants above.
+    let outcome: String
+    /// The counters, or nil when the pull was skipped or threw.
+    let counters: MemoryCloudPullResult?
+
+    /// The `cloudsync.completed` outcome for a cycle whose PUSH succeeded.
+    ///
+    /// A cycle whose pull failed is **not** a success. Reporting one was worse
+    /// than reporting nothing: a device failing every pull on every cycle
+    /// emitted an unbroken run of `success`, so the single dimension that would
+    /// have shown a convergence feature was dead read perfectly healthy. A
+    /// skipped pull is still a success — nothing was asked of it.
+    static func completedOutcome(pullOutcome: String) -> String {
+        pullOutcome == failureOutcome ? "partial" : "success"
+    }
+}
+
 final class MemoryCloudSyncDomain: CloudSyncDomain, Sendable {
     private let syncService: MemoryCloudSyncService
-    private let pullService: MemoryCloudPullService
+    private let pullService: any MemoryCloudPulling
+    private let store: ControlPlaneStore
     private let accountManager: any AccountManaging
     private let settingsManager: any SettingsManagerProtocol
     private let vaultKeyProvider: any ConversationCloudVaultKeyProviding
@@ -72,10 +99,20 @@ final class MemoryCloudSyncDomain: CloudSyncDomain, Sendable {
     private let now: @Sendable () -> Date
 
     private let state = Locked(CloudSyncDomainState())
+    private let pullState = Locked(MemoryCloudPullReport?.none)
 
     var isSyncing: Bool { state.read().isSyncing }
     var lastSyncError: String? { state.read().lastSyncError }
     var lastSyncDate: Date? { state.read().lastSyncDate }
+
+    /// What the last pull did, or nil while the pull has never run this launch.
+    ///
+    /// The pull is the half of this feature an operator cannot otherwise see:
+    /// the upload's effects are visible in Firestore, but "did anything arrive
+    /// on this Mac, and was any of it refused" was previously answerable from
+    /// nowhere — the counters were computed, returned, and discarded at
+    /// `_ = try await pullService.pullRemoteFacts(...)`.
+    var lastPullReport: MemoryCloudPullReport? { pullState.read() }
 
     init(
         store: ControlPlaneStore,
@@ -84,10 +121,12 @@ final class MemoryCloudSyncDomain: CloudSyncDomain, Sendable {
         firestoreGateway: CloudSyncFirestoreGateway = CloudSyncFirestoreLiveGateway(),
         vaultKeyProvider: any ConversationCloudVaultKeyProviding = MacConversationCloudVaultKeyProvider(),
         entitlementResolver: any MemoryDataVaultEntitlementResolving = MacCloudDataVaultEntitlementResolver(),
+        pullService: (any MemoryCloudPulling)? = nil,
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.syncService = MemoryCloudSyncService(store: store, firestoreGateway: firestoreGateway)
-        self.pullService = MemoryCloudPullService(store: store, firestoreGateway: firestoreGateway)
+        self.pullService = pullService ?? MemoryCloudPullService(store: store, firestoreGateway: firestoreGateway)
+        self.store = store
         self.accountManager = accountManager
         self.settingsManager = settingsManager
         self.vaultKeyProvider = vaultKeyProvider
@@ -112,6 +151,17 @@ final class MemoryCloudSyncDomain: CloudSyncDomain, Sendable {
         let deviceSyncEnabled: Bool
         let deviceId: String
         let uid: String?
+
+        /// Everything that must be true for a remote memory to reach this
+        /// device's engine: the four-lever device-sync gate AND the account
+        /// levers every sync domain honours. This — not `deviceSyncEnabled`
+        /// alone — is what the inbox guard publishes as consent, because a
+        /// member who turned account sync off has not consented to a drain
+        /// either, and the marker is what the daemon enforces against.
+        var pullConsentGranted: Bool {
+            isFirebaseAvailable && isSignedIn && isCloudSyncEnabled
+                && approvedCloudBackupEnabled && deviceSyncEnabled
+        }
     }
 
     @MainActor
@@ -137,6 +187,31 @@ final class MemoryCloudSyncDomain: CloudSyncDomain, Sendable {
     /// untouched state) the instant any lever is off — the dormant default.
     func sync() async {
         let gate = await gateSnapshot()
+
+        // BEFORE any gate can return. This tick is where the app observes every
+        // state transition that must empty the inbox — a sign-out, a uid change,
+        // the sub-toggle or the backup opt-in closing, an entitlement lapse —
+        // and each of those closes the gate, so enforcing after the guard below
+        // would mean the one cycle that most needs to purge is the one that
+        // never does. It also (re)publishes the consent marker the daemon's
+        // drain filters on, so the scope the app owns is a predicate the daemon
+        // can evaluate rather than an invariant it has to trust.
+        do {
+            try await MemoryDeviceSyncInboxGuard.enforce(
+                scope: MemoryDeviceSyncScope(uid: gate.uid, consentGranted: gate.pullConsentGranted),
+                store: store,
+                now: now()
+            )
+        } catch {
+            // A guard failure must not stop the upload half, which needs no
+            // inbox at all — but it does mean the scope is unenforced this
+            // cycle, so it is logged rather than swallowed.
+            AppLogger.sync.error(
+                "memory_device_sync_inbox_guard_failed",
+                metadata: ["error_type": String(describing: type(of: error))]
+            )
+        }
+
         guard gate.isFirebaseAvailable,
               gate.isSignedIn,
               gate.isCloudSyncEnabled,
@@ -165,25 +240,56 @@ final class MemoryCloudSyncDomain: CloudSyncDomain, Sendable {
             // sub-toggle. It is deliberately in a nested do/catch: a pull failure
             // records the error like any other and must never undo, block, or
             // reorder the upload that already succeeded above.
+            var pullOutcome = MemoryCloudPullReport.skippedOutcome
+            var pullResult: MemoryCloudPullResult?
             if gate.deviceSyncEnabled {
                 do {
-                    _ = try await pullService.pullRemoteFacts(
+                    let pulled = try await pullService.pullRemoteFacts(
                         uid: uid,
                         vaultKey: resolvedKey.keyData,
+                        since: nil,
                         now: syncStartedAt
                     )
+                    pullResult = pulled
+                    pullOutcome = MemoryCloudPullReport.successOutcome
+                    // The pull's counters are the only operator signal a
+                    // convergence feature has: without them "is anything
+                    // arriving on this Mac" is unanswerable from the outside.
+                    AppLogger.sync.info(
+                        "memory_cloud_pull_completed",
+                        metadata: [
+                            "applied": String(pulled.applied),
+                            "unchanged": String(pulled.unchanged),
+                            "rejected": String(pulled.rejected),
+                            "skipped": String(pulled.skipped),
+                            "purged_other_account": String(pulled.purgedOtherAccount),
+                            "swept_stale": String(pulled.sweptStale)
+                        ]
+                    )
                 } catch {
+                    pullOutcome = MemoryCloudPullReport.failureOutcome
                     recordSyncError(error)
                 }
             }
+            pullState.write(MemoryCloudPullReport(outcome: pullOutcome, counters: pullResult))
             let durationBucket = AnalyticsBuckets.durationMs(Int(now().timeIntervalSince(syncStartedAt) * 1000))
             let itemCountBucket = AnalyticsBuckets.count(result.uploaded)
+            // A cycle whose pull failed is NOT a success. Reporting one was
+            // worse than reporting nothing: a device that failed every pull
+            // every cycle emitted an unbroken run of `success`, so the one
+            // number that would have shown the feature was dead read healthy.
+            let outcome = MemoryCloudPullReport.completedOutcome(pullOutcome: pullOutcome)
+            let appliedBucket = AnalyticsBuckets.count(pullResult?.applied ?? 0)
+            let rejectedBucket = AnalyticsBuckets.count((pullResult?.rejected ?? 0) + (pullResult?.skipped ?? 0))
             Task { @MainActor in
                 Analytics.shared.track(.cloudsyncCompleted, [
                     "domain": "memory_facts",
-                    "outcome": "success",
+                    "outcome": .string(outcome),
                     "duration_ms_bucket": .string(durationBucket),
-                    "item_count_bucket": .string(itemCountBucket)
+                    "item_count_bucket": .string(itemCountBucket),
+                    "pull_outcome": .string(pullOutcome),
+                    "pull_applied_bucket": .string(appliedBucket),
+                    "pull_rejected_bucket": .string(rejectedBucket)
                 ])
             }
         } catch {

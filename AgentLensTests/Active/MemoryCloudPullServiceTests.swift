@@ -119,6 +119,12 @@ final class MemoryCloudPullServiceTests: XCTestCase {
         tags: [String]? = nil,
         bodyHash: String? = nil,
         storedAtDocID: String? = nil,
+        // §5's convergence identity. Present by default because every document
+        // an up-to-date device publishes for an ENGINE memory carries it, and a
+        // payload without one is refused at verification — the chat-corpus case,
+        // which has its own test rather than being every test's silent default.
+        projectID: String? = "proj_pulltest0000111122223333444455",
+        engineScope: String? = "project",
         mutate: ([String: Any]) -> [String: Any] = { $0 }
     ) throws -> String {
         let memory = Memory(
@@ -144,7 +150,9 @@ final class MemoryCloudPullServiceTests: XCTestCase {
             now: updatedAt,
             documentIdentity: engineID,
             tags: tags,
-            bodyHash: bodyHash
+            bodyHash: bodyHash,
+            projectID: projectID,
+            engineScope: engineScope
         )
         let docID = storedAtDocID ?? encoded.docID
         fixture.gateway.setDocumentData(mutate(encoded.data), at: "\(fixture.factsPath)/\(docID)")
@@ -756,5 +764,161 @@ final class MemoryCloudPullServiceTests: XCTestCase {
         XCTAssertTrue(parked.isEmpty)
         let cursor = try await watermark(fixture)
         XCTAssertNil(cursor)
+    }
+
+    // MARK: - The chat corpus (final-review Important 6)
+
+    /// `users/{uid}/memory_facts` has been accumulating CHAT memories since
+    /// before PR 1, and a chat memory belongs to no engine project — so it can
+    /// never be keyed for §5's `(project_id, scope, body_hash)` convergence, and
+    /// the engine refuses it as terminal on every drain.
+    ///
+    /// Parking it anyway wrote a second plaintext copy of the member's entire
+    /// chat-memory corpus into the inbox, where — on any install whose Memory
+    /// MCP engine never runs, which is most of them — it was never acked and
+    /// nothing swept it. So the pull refuses it at verification instead: it is
+    /// counted, never written, and (unlike a verification failure) the cursor
+    /// moves past it, because a document that can never merge must not stall the
+    /// pull in front of the agent memories that come after it.
+    ///
+    /// Safe because `projectID` is read from the AUTHENTICATED payload: stripping
+    /// it to make a document skippable would break the AEAD.
+    func test_aDocumentWithNoEngineProjectIdentityIsRefusedWithoutParkingAndDoesNotFreezeTheCursor() async throws {
+        let fixture = try makeFixture(uid: "pull-chat-corpus", vaultKeyByte: 61)
+        let chatAt = Self.base
+        let agentAt = Self.base.addingTimeInterval(60)
+        try publishFact(
+            fixture,
+            engineID: "mem_c8a7000000000000000000000000a7c8",
+            body: "A chat memory, which belongs to no engine project.",
+            updatedAt: chatAt,
+            projectID: nil,
+            engineScope: nil
+        )
+        try publishFact(
+            fixture,
+            engineID: "mem_a9b8000000000000000000000000b8a9",
+            body: "An agent memory that comes after it.",
+            updatedAt: agentAt
+        )
+
+        let result = try await fixture.pull.pullRemoteFacts(uid: fixture.uid, vaultKey: fixture.vaultKey)
+
+        XCTAssertEqual(result.applied, 1, "the agent memory still lands")
+        XCTAssertEqual(result.skipped, 1, "the chat memory is counted")
+        XCTAssertEqual(result.rejected, 0, "and it is NOT counted as a verification failure")
+        let landed = try await inboxRows(fixture)
+        XCTAssertEqual(
+            landed.map(\.engineMemoryID),
+            ["mem_a9b8000000000000000000000000b8a9"],
+            "no second plaintext copy of the chat corpus is written"
+        )
+        let cursor = try await watermark(fixture)
+        XCTAssertEqual(
+            cursor,
+            agentAt,
+            "an unmergeable document must not freeze the cursor in front of everything after it"
+        )
+    }
+
+    /// The other half of the merged-row sweep the daemon already runs. An
+    /// unmerged row waits for an engine that may never run, so without a bound
+    /// the inbox is an unbounded plaintext mirror of the member's memories.
+    func test_theSweepDropsUnmergedRowsThatOutlivedTheirRetentionWindow() async throws {
+        let fixture = try makeFixture(uid: "pull-sweep", vaultKeyByte: 62)
+        let now = Self.base
+        let stale = now.addingTimeInterval(-(ControlPlaneStore.unappliedMemoryInboxRetentionSeconds + 3_600))
+        let recent = now.addingTimeInterval(-3_600)
+        try await fixture.store.upsertRemoteMemoryFact(
+            docID: "doc-stale",
+            userID: fixture.uid,
+            engineMemoryID: "mem_stale",
+            payloadJSON: "{}",
+            remoteUpdatedAt: stale,
+            now: stale
+        )
+        try await fixture.store.upsertRemoteMemoryFact(
+            docID: "doc-recent",
+            userID: fixture.uid,
+            engineMemoryID: "mem_recent",
+            payloadJSON: "{}",
+            remoteUpdatedAt: recent,
+            now: recent
+        )
+
+        let result = try await fixture.pull.pullRemoteFacts(uid: fixture.uid, vaultKey: fixture.vaultKey, now: now)
+
+        XCTAssertEqual(result.sweptStale, 1)
+        let remaining = try await fixture.queue.read { db in
+            try String.fetchAll(db, sql: "SELECT doc_id FROM agent_memory_inbox ORDER BY doc_id")
+        }
+        XCTAssertEqual(remaining, ["doc-recent"], "only the row that waited past the bound is dropped")
+    }
+
+    /// "Reset memory" must leave nothing readable behind. The inbox holds an
+    /// opened plaintext copy of every pulled fact, merged or not, and no other
+    /// delete path touched it — so a reset emptied the surface the member can see
+    /// while leaving the copy they cannot.
+    func test_resettingMemoryAlsoClearsThePulledPlaintextInbox() async throws {
+        let fixture = try makeFixture(uid: "pull-reset", vaultKeyByte: 63)
+        try await fixture.store.upsertRemoteMemoryFact(
+            docID: "doc-unmerged",
+            userID: fixture.uid,
+            engineMemoryID: "mem_unmerged",
+            payloadJSON: #"{"text":"a pulled memory"}"#,
+            remoteUpdatedAt: Self.base
+        )
+        try await fixture.queue.write { db in
+            try db.execute(
+                sql: "UPDATE agent_memory_inbox SET applied_at = ? WHERE doc_id = ?",
+                arguments: ["2026-09-01T00:00:00.000Z", "doc-unmerged"]
+            )
+        }
+
+        _ = try await fixture.store.deleteChatMemoryAuthorityRecords(
+            scope: MemoryScope(userID: fixture.uid, appID: "pull-app")
+        )
+
+        let remaining = try await fixture.queue.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM agent_memory_inbox") ?? -1
+        }
+        XCTAssertEqual(remaining, 0, "a reset clears merged rows too — they are still a second copy on disk")
+    }
+
+    // MARK: - First sync (final-review Important 4)
+
+    /// A memory's `updatedAt` is when it was last TOUCHED, not when it stopped
+    /// being true. The inherited 90-day conversation cutoff therefore delivered a
+    /// brand-new device only the memories that happened to have been edited in
+    /// the last three months — which, for a memory store, is a small minority —
+    /// and it did so silently, with no error and no counter to notice it by.
+    func test_aFirstSyncBackfillsMemoriesFarOlderThanTheConversationCutoff() async throws {
+        let fixture = try makeFixture(uid: "pull-backfill", vaultKeyByte: 64)
+        let ancient = Date(timeIntervalSince1970: 1_000_000_000)  // 2001
+        let lastYear = Date(timeIntervalSince1970: (Date().timeIntervalSince1970 - 365 * 24 * 3600).rounded(.down))
+        try publishFact(
+            fixture,
+            engineID: "mem_0a0a000000000000000000000000a0a0",
+            body: "A stable preference learned long ago and never edited since.",
+            updatedAt: ancient
+        )
+        try publishFact(
+            fixture,
+            engineID: "mem_0b0b000000000000000000000000b0b0",
+            body: "A memory last touched a year ago.",
+            updatedAt: lastYear
+        )
+
+        XCTAssertLessThan(
+            RemoteSyncCollectionKind.memoryFacts.firstSyncFloor,
+            ancient,
+            "the first-sync floor reaches back past any plausible memory store"
+        )
+
+        let result = try await fixture.pull.pullRemoteFacts(uid: fixture.uid, vaultKey: fixture.vaultKey)
+
+        XCTAssertEqual(result.applied, 2, "a first sync backfills the whole store, not the last 90 days of it")
+        let parked = try await inboxRows(fixture)
+        XCTAssertEqual(parked.count, 2)
     }
 }

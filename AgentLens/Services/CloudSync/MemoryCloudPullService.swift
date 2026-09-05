@@ -42,12 +42,26 @@ struct MemoryCloudPullResult: Equatable, Sendable {
     /// Unmerged inbox rows belonging to a DIFFERENT account, dropped before this
     /// pull wrote anything. See `purgeUnappliedRemoteMemoryFacts(otherThanUserID:)`.
     let purgedOtherAccount: Int
+    /// Documents that verified but can never merge, so they are counted and
+    /// dropped rather than parked. See `MemoryCloudPullRejection.projectIdentityMissing`.
+    let skipped: Int
+    /// Stale unmerged rows the retention sweep dropped this cycle.
+    let sweptStale: Int
 
-    init(applied: Int, unchanged: Int, rejected: Int, purgedOtherAccount: Int = 0) {
+    init(
+        applied: Int,
+        unchanged: Int,
+        rejected: Int,
+        purgedOtherAccount: Int = 0,
+        skipped: Int = 0,
+        sweptStale: Int = 0
+    ) {
         self.applied = applied
         self.unchanged = unchanged
         self.rejected = rejected
         self.purgedOtherAccount = purgedOtherAccount
+        self.skipped = skipped
+        self.sweptStale = sweptStale
     }
 }
 
@@ -79,9 +93,30 @@ enum MemoryCloudPullRejection: String, Sendable {
     /// The envelope claims a payload schema this build cannot read. Forward
     /// compatibility, not an attack: a newer device sealed it.
     case unsupportedSchema = "unsupported_schema"
+    /// The verified payload carries no engine `projectID`, so the engine can
+    /// never key it for §5's `(project_id, scope, body_hash)` convergence and
+    /// would refuse it as terminal on every drain. Chat memories carry none by
+    /// construction, and `users/{uid}/memory_facts` has been accumulating them
+    /// since before PR 1 — so parking them would write a second plaintext copy
+    /// of the member's WHOLE chat corpus into the inbox and leave it there for
+    /// ever on any install where the engine never runs. This is the one refusal
+    /// that is benign and permanent, so it neither parks nor freezes the cursor.
+    case projectIdentityMissing = "project_identity_missing"
 }
 
-final class MemoryCloudPullService: Sendable {
+/// The pull half, behind a seam.
+///
+/// A seam, not an abstraction for its own sake: the domain runs the push and
+/// then the pull inside one `sync()` call, so "what does a cycle report when the
+/// PULL fails but the push did not" is unreachable from outside without one —
+/// and that case is precisely the one that used to report `outcome: "success"`
+/// on every cycle for ever.
+protocol MemoryCloudPulling: Sendable {
+    @discardableResult
+    func pullRemoteFacts(uid: String, vaultKey: Data, since: Date?, now: Date) async throws -> MemoryCloudPullResult
+}
+
+final class MemoryCloudPullService: MemoryCloudPulling, Sendable {
     /// Exactly the keys `firestore.rules` permits on a `memory_facts` document.
     /// Any other key means the document is not one this client wrote, so it is
     /// refused rather than parsed. Kept in lockstep with `validMemoryFactKeys()`
@@ -175,6 +210,7 @@ final class MemoryCloudPullService: Sendable {
         var applied = 0
         var unchanged = 0
         var rejected = 0
+        var skipped = 0
         // Set by the first rejection. Later documents are still parked — the
         // upsert is idempotent, so parking them early costs nothing — but the
         // cursor stops before the refused document so the next cycle re-reads it.
@@ -206,10 +242,26 @@ final class MemoryCloudPullService: Sendable {
                         // document is ever stored or handed on.
                         rejectionFloor = Self.firestoreDate(data["updatedAt"])
                     }
+                    // The doc id is an opaque per-user HMAC, so logging it is
+                    // safe and it is the only way to tell one document failing
+                    // every cycle from a hundred failing once.
                     AppLogger.sync.error(
                         "memory_cloud_pull_document_rejected",
-                        metadata: ["reason": reason.rawValue]
+                        metadata: ["reason": reason.rawValue, "doc_id": document.documentID]
                     )
+                    continue
+                case .unmergeable(let reason):
+                    skipped += 1
+                    AppLogger.sync.error(
+                        "memory_cloud_pull_document_skipped",
+                        metadata: ["reason": reason.rawValue, "doc_id": document.documentID]
+                    )
+                    // The cursor moves past it — nothing is parked, nothing is
+                    // frozen — so the pull reaches the agent memories that come
+                    // after the member's chat corpus.
+                    if !watermarkFrozen, let stamp = Self.firestoreDate(data["updatedAt"]) {
+                        eligibleStamps.append(stamp)
+                    }
                     continue
                 }
 
@@ -255,11 +307,23 @@ final class MemoryCloudPullService: Sendable {
             }
         }
         try await transaction.commit()
+        // The other half of the merged-row sweep the daemon already runs: an
+        // unmerged row waits for an engine that may never run, so it needs a
+        // bound too. Last, so a row this cycle just parked is never swept by it.
+        let sweptStale = try await store.pruneStaleUnappliedRemoteMemoryFacts(now: now)
+        if sweptStale > 0 {
+            AppLogger.sync.error(
+                "memory_cloud_pull_swept_stale_unmerged_rows",
+                metadata: ["count": String(sweptStale)]
+            )
+        }
         return MemoryCloudPullResult(
             applied: applied,
             unchanged: unchanged,
             rejected: rejected,
-            purgedOtherAccount: purgedOtherAccount
+            purgedOtherAccount: purgedOtherAccount,
+            skipped: skipped,
+            sweptStale: sweptStale
         )
     }
 
@@ -299,7 +363,16 @@ final class MemoryCloudPullService: Sendable {
 
     private enum VerificationOutcome {
         case success(VerifiedFact)
+        /// Refused, and the cursor freezes in front of it: the document might
+        /// verify on a later cycle (a transient key state, a backend that
+        /// stopped tampering), so it must be re-examined rather than skipped.
         case failure(MemoryCloudPullRejection)
+        /// Refused for good, and the cursor moves past it: the document opened
+        /// and its AUTHENTICATED contents say it can never merge. Freezing here
+        /// would stall the whole pull behind the member's own chat corpus for
+        /// ever. Safe because the decision is made on data inside the AEAD — a
+        /// backend cannot strip a field to make a document skippable.
+        case unmergeable(MemoryCloudPullRejection)
     }
 
     /// Pure, side-effect-free admission check. Everything a hostile or corrupted
@@ -388,6 +461,15 @@ final class MemoryCloudPullService: Sendable {
         }
         guard let payloadJSON = String(data: plaintext, encoding: .utf8) else {
             return .failure(.malformedPayload)
+        }
+        // Authenticated, so this is a fact about the document rather than a
+        // field a backend could have removed: a payload with no engine project
+        // id cannot be keyed for convergence and never will be. Refuse it
+        // WITHOUT parking — the engine would only refuse it as terminal on
+        // every drain, and until an agent happened to run the engine the row
+        // would sit in the inbox as a second plaintext copy of a chat memory.
+        guard let projectID = payload.projectID, !projectID.isEmpty else {
+            return .unmergeable(.projectIdentityMissing)
         }
         return .success(VerifiedFact(
             payload: payload,
