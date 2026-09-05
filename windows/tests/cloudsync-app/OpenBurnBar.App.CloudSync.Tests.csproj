@@ -24,6 +24,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Include="Fixtures\**\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <None Include="../../../crates/openburnbar-domain-core/target/debug/libopenburnbar_domain_ffi.dylib"
           Link="libopenburnbar_domain_ffi.dylib"
           CopyToOutputDirectory="PreserveNewest"
