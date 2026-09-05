@@ -1386,6 +1386,341 @@ final class MemoryCloudPullServiceTests: XCTestCase {
         XCTAssertNil(receiptCursor, "a refused receipt keeps the cursor in front of itself")
     }
 
+    // MARK: - Receipt HMAC resolution (Codex follow-up)
+
+    /// Publishes a genuine SOURCE-level receipt with the production encoder.
+    /// Source receipts name a chat source reference, never an engine memory, so
+    /// no vault key can ever map one to an engine id.
+    @discardableResult
+    private func publishSourceForgetReceipt(
+        _ fixture: Fixture,
+        tombstoneID: String,
+        threadLogicalID: String,
+        createdAt: Date,
+        replicatedAt: Date
+    ) throws -> (docID: String, sourceRefHmac: String) {
+        let tombstone = ControlPlaneStore.MemorySourceTombstoneRecord(
+            id: tombstoneID,
+            userID: fixture.uid,
+            threadLogicalID: threadLogicalID,
+            messageID: "msg-1",
+            contentHash: "hash-1",
+            reason: "user_delete",
+            createdAt: createdAt
+        )
+        let encoded = try MemoryCloudSyncService.encodeForgetReceipt(
+            tombstone: tombstone,
+            uid: fixture.uid,
+            vaultKey: fixture.vaultKey,
+            now: replicatedAt
+        )
+        fixture.gateway.setDocumentData(
+            encoded.data,
+            at: "users/\(fixture.uid)/memory_forget_receipts/\(encoded.docID)"
+        )
+        return (encoded.docID, encoded.sourceRefHmac)
+    }
+
+    /// Reads one parked row WHATEVER its `applied_at` — `fetchUnappliedRemoteMemoryFacts`
+    /// hides merged rows, and half of what these tests assert is that a merged
+    /// receipt row comes back.
+    private func parkedRow(
+        _ fixture: Fixture,
+        docID: String
+    ) async throws -> (engineMemoryID: String, appliedAt: String?)? {
+        try await fixture.queue.read { db in
+            try Row.fetchOne(
+                db,
+                sql: "SELECT engine_memory_id, applied_at FROM agent_memory_inbox WHERE doc_id = ?",
+                arguments: [docID]
+            ).map { row in
+                (engineMemoryID: row["engine_memory_id"] as? String ?? "", appliedAt: row["applied_at"] as? String)
+            }
+        }
+    }
+
+    /// (a) A receipt whose HMAC names a fact this device has already parked is
+    /// resolved AT PARK TIME to the plain engine id.
+    ///
+    /// The engine holds no key material: `_apply_remote_receipt` matches
+    /// `^mem_[0-9a-f]{32}$` and acknowledges anything else as
+    /// `RECEIPT_UNRESOLVED`, a terminal no-op. The app is the only party that can
+    /// map `pensieveSlugHmac("memory-id:<id>")` back to `<id>`, so if it parks
+    /// the HMAC the retirement can never be applied by anybody.
+    func test_aReceiptResolvesAgainstAFactThisDeviceAlreadyParked() async throws {
+        let fixture = try makeFixture(uid: "receipt-resolve-inbox", vaultKeyByte: 90)
+        let engineID = "mem_aa11000000000000000000000000bb22"
+        try publishFact(fixture, engineID: engineID, body: "a fact that is later forgotten", updatedAt: Self.base)
+
+        _ = try await fixture.pull.pullRemoteFacts(
+            uid: fixture.uid,
+            vaultKey: fixture.vaultKey,
+            now: Self.base.addingTimeInterval(30)
+        )
+        let parkedFacts = try await inboxRows(fixture)
+        XCTAssertEqual(parkedFacts.count, 1, "the fact is parked before the receipt arrives")
+
+        let receiptDocID = try publishFactForgetReceipt(
+            fixture,
+            tombstoneID: "tomb-resolve-inbox",
+            memoryID: engineID,
+            createdAt: Self.base.addingTimeInterval(60),
+            replicatedAt: Self.base.addingTimeInterval(90)
+        )
+        let result = try await fixture.pull.pullRemoteFacts(
+            uid: fixture.uid,
+            vaultKey: fixture.vaultKey,
+            now: Self.base.addingTimeInterval(120)
+        )
+        XCTAssertEqual(result.receiptsResolved, 1)
+
+        let parked = try await parkedRow(fixture, docID: receiptDocID)
+        XCTAssertEqual(
+            parked?.engineMemoryID,
+            engineID,
+            "the app resolved the HMAC; the engine can only act on a plain engine id"
+        )
+    }
+
+    /// (b) A receipt whose HMAC names a memory MIRRORED locally resolves too —
+    /// `agent_memory_bodies` is the other place this device knows engine ids
+    /// from, and it is the case that actually matters: the row the engine holds.
+    func test_aReceiptResolvesAgainstALocallyMirroredMemoryBody() async throws {
+        let fixture = try makeFixture(uid: "receipt-resolve-body", vaultKeyByte: 91)
+        let engineID = "mem_cc33000000000000000000000000dd44"
+        try await seedMirroredMemory(
+            fixture,
+            id: "mem-local-resolve",
+            engineID: engineID,
+            body: "a mirrored memory another device forgot",
+            now: Self.base
+        )
+
+        let receiptDocID = try publishFactForgetReceipt(
+            fixture,
+            tombstoneID: "tomb-resolve-body",
+            memoryID: engineID,
+            createdAt: Self.base.addingTimeInterval(-60),
+            replicatedAt: Self.base
+        )
+        let result = try await fixture.pull.pullRemoteFacts(
+            uid: fixture.uid,
+            vaultKey: fixture.vaultKey,
+            now: Self.base.addingTimeInterval(60)
+        )
+        XCTAssertEqual(result.receiptsResolved, 1)
+
+        let parked = try await parkedRow(fixture, docID: receiptDocID)
+        XCTAssertEqual(parked?.engineMemoryID, engineID)
+    }
+
+    /// (c) A receipt this device can resolve NOTHING for keeps the opaque HMAC.
+    ///
+    /// Not a fallback for its own sake: parking a guess would name a memory the
+    /// member never forgot, and the engine's `RECEIPT_UNRESOLVED` ack is the
+    /// correct terminal answer for a retirement whose subject this device has
+    /// never held. The mirrored body under a DIFFERENT id is what proves the
+    /// lookup is a real match rather than "take the first id you know".
+    func test_anUnresolvableReceiptKeepsItsOpaqueHmac() async throws {
+        let fixture = try makeFixture(uid: "receipt-unresolved", vaultKeyByte: 92)
+        try await seedMirroredMemory(
+            fixture,
+            id: "mem-local-other",
+            engineID: "mem_ee55000000000000000000000000ff66",
+            body: "an unrelated memory this device does hold",
+            now: Self.base
+        )
+        let strangerID = "mem_11770000000000000000000000002288"
+        let receiptDocID = try publishFactForgetReceipt(
+            fixture,
+            tombstoneID: "tomb-unresolved",
+            memoryID: strangerID,
+            createdAt: Self.base.addingTimeInterval(-60),
+            replicatedAt: Self.base
+        )
+        let result = try await fixture.pull.pullRemoteFacts(
+            uid: fixture.uid,
+            vaultKey: fixture.vaultKey,
+            now: Self.base.addingTimeInterval(60)
+        )
+        XCTAssertEqual(result.receiptsApplied, 1)
+        XCTAssertEqual(result.receiptsResolved, 0, "resolving nothing is reported, not hidden")
+
+        let parked = try await parkedRow(fixture, docID: receiptDocID)
+        XCTAssertEqual(
+            parked?.engineMemoryID,
+            try CloudVaultCrypto.pensieveSlugHmac("memory-id:\(strangerID)", keyData: fixture.vaultKey),
+            "an id this device does not know stays opaque rather than resolving to somebody else's memory"
+        )
+    }
+
+    /// (d) The other ordering. A receipt can arrive BEFORE the fact it retires —
+    /// the fact channel and the receipt channel have independent cursors, and a
+    /// device catching up reads them in whatever order the pages fall. So when
+    /// the fact finally lands, the receipt row parked for it is rewritten to the
+    /// plain id and its `applied_at` cleared, so the daemon lists it again.
+    ///
+    /// Order inside the drain does the rest: the engine applies every receipt in
+    /// a batch before it merges any fact, so the fact is refused as forgotten
+    /// rather than briefly revived.
+    func test_aFactArrivingAfterItsReceiptRewritesTheParkedReceiptRow() async throws {
+        let fixture = try makeFixture(uid: "receipt-late-fact", vaultKeyByte: 93)
+        let engineID = "mem_3399000000000000000000000000441a"
+        let receiptDocID = try publishFactForgetReceipt(
+            fixture,
+            tombstoneID: "tomb-late-fact",
+            memoryID: engineID,
+            createdAt: Self.base.addingTimeInterval(-60),
+            replicatedAt: Self.base
+        )
+        _ = try await fixture.pull.pullRemoteFacts(
+            uid: fixture.uid,
+            vaultKey: fixture.vaultKey,
+            now: Self.base.addingTimeInterval(30)
+        )
+        let hmac = try CloudVaultCrypto.pensieveSlugHmac("memory-id:\(engineID)", keyData: fixture.vaultKey)
+        let opaque = try await parkedRow(fixture, docID: receiptDocID)
+        XCTAssertEqual(
+            opaque?.engineMemoryID,
+            hmac,
+            "nothing local names this id yet, so the receipt parks opaque"
+        )
+        // The engine drained it and acked it as RECEIPT_UNRESOLVED — a terminal
+        // no-op. This is the state the rewrite has to reach back into.
+        try await fixture.queue.write { db in
+            try db.execute(
+                sql: "UPDATE agent_memory_inbox SET applied_at = ? WHERE doc_id = ?",
+                arguments: ["2026-09-04T00:00:00Z", receiptDocID]
+            )
+        }
+
+        try publishFact(
+            fixture,
+            engineID: engineID,
+            body: "the revision the receipt retires",
+            updatedAt: Self.base.addingTimeInterval(120)
+        )
+        let result = try await fixture.pull.pullRemoteFacts(
+            uid: fixture.uid,
+            vaultKey: fixture.vaultKey,
+            now: Self.base.addingTimeInterval(180)
+        )
+        XCTAssertEqual(result.receiptsResolved, 1, "the late fact is what resolved it, and the cycle says so")
+
+        let parked = try await parkedRow(fixture, docID: receiptDocID)
+        XCTAssertEqual(parked?.engineMemoryID, engineID, "the fact taught this device what the receipt names")
+        XCTAssertNil(
+            parked?.appliedAt as Any?,
+            "a rewritten receipt must be listed again or the retirement never applies"
+        )
+        let listed = try await inboxRows(fixture)
+        XCTAssertTrue(
+            listed.contains { $0.docID == receiptDocID },
+            "the daemon's own listing is what has to see it"
+        )
+    }
+
+    /// The receipt channel's own retro-fit. A receipt parked opaque by an earlier
+    /// cycle is rewritten in place once this device learns the memory, even
+    /// though the document itself has not changed by a byte — the upsert is a
+    /// no-op for the payload, but the identity still has to land or the
+    /// retirement is unactionable for ever.
+    func test_anAlreadyParkedOpaqueReceiptIsRewrittenOnceTheMemoryIsKnown() async throws {
+        let fixture = try makeFixture(uid: "receipt-retrofit", vaultKeyByte: 95)
+        let engineID = "mem_7788000000000000000000000000991c"
+        let receiptDocID = try publishFactForgetReceipt(
+            fixture,
+            tombstoneID: "tomb-retrofit",
+            memoryID: engineID,
+            createdAt: Self.base.addingTimeInterval(-60),
+            replicatedAt: Self.base
+        )
+        let first = try await fixture.pull.pullRemoteFacts(
+            uid: fixture.uid,
+            vaultKey: fixture.vaultKey,
+            now: Self.base.addingTimeInterval(30)
+        )
+        XCTAssertEqual(first.receiptsResolved, 0)
+        try await fixture.queue.write { db in
+            try db.execute(
+                sql: "UPDATE agent_memory_inbox SET applied_at = ? WHERE doc_id = ?",
+                arguments: ["2026-09-04T00:00:00Z", receiptDocID]
+            )
+        }
+
+        // The memory reaches this device by some other route than the fact
+        // channel — the engine's own mirror.
+        try await seedMirroredMemory(
+            fixture,
+            id: "mem-local-retrofit",
+            engineID: engineID,
+            body: "the memory the receipt has been waiting for",
+            now: Self.base
+        )
+
+        let second = try await fixture.pull.pullRemoteFacts(
+            uid: fixture.uid,
+            vaultKey: fixture.vaultKey,
+            now: Self.base.addingTimeInterval(60)
+        )
+        XCTAssertEqual(second.receiptsApplied, 0, "the document itself is unchanged")
+        XCTAssertEqual(second.receiptsResolved, 1, "but its identity is not")
+
+        let parked = try await parkedRow(fixture, docID: receiptDocID)
+        XCTAssertEqual(parked?.engineMemoryID, engineID)
+        XCTAssertNil(parked?.appliedAt as Any?, "reopened, or the engine never sees it again")
+
+        // And it settles: a third cycle finds nothing left to resolve, so a
+        // receipt cannot be re-listed for ever.
+        let third = try await fixture.pull.pullRemoteFacts(
+            uid: fixture.uid,
+            vaultKey: fixture.vaultKey,
+            now: Self.base.addingTimeInterval(90)
+        )
+        XCTAssertEqual(third.receiptsResolved, 0)
+    }
+
+    /// (e) A SOURCE-level receipt names a chat source reference, not a memory, so
+    /// no arriving fact may ever rewrite it. Its HMAC is computed over a
+    /// different domain and could only ever collide by accident — the rewrite
+    /// must be keyed on the fact-level identity alone.
+    func test_aSourceLevelReceiptIsNeverRewrittenByAnArrivingFact() async throws {
+        let fixture = try makeFixture(uid: "receipt-source-level", vaultKeyByte: 94)
+        let receipt = try publishSourceForgetReceipt(
+            fixture,
+            tombstoneID: "tomb-source",
+            threadLogicalID: "thread-1",
+            createdAt: Self.base.addingTimeInterval(-60),
+            replicatedAt: Self.base
+        )
+        _ = try await fixture.pull.pullRemoteFacts(
+            uid: fixture.uid,
+            vaultKey: fixture.vaultKey,
+            now: Self.base.addingTimeInterval(30)
+        )
+        let parkedSource = try await parkedRow(fixture, docID: receipt.docID)
+        XCTAssertEqual(parkedSource?.engineMemoryID, receipt.sourceRefHmac)
+
+        try publishFact(
+            fixture,
+            engineID: "mem_5555000000000000000000000000666b",
+            body: "an unrelated fact arriving afterwards",
+            updatedAt: Self.base.addingTimeInterval(120)
+        )
+        _ = try await fixture.pull.pullRemoteFacts(
+            uid: fixture.uid,
+            vaultKey: fixture.vaultKey,
+            now: Self.base.addingTimeInterval(180)
+        )
+
+        let parked = try await parkedRow(fixture, docID: receipt.docID)
+        XCTAssertEqual(
+            parked?.engineMemoryID,
+            receipt.sourceRefHmac,
+            "a source-level receipt is unresolvable by construction and stays exactly as it was parked"
+        )
+    }
+
     /// A receipt whose `receiptID` names a different document, and one whose
     /// `uid` names a different member, are both refused: the receipt and the
     /// slot it sits in have to agree about what it is.

@@ -21,6 +21,17 @@ struct MemoryCloudInboxRecord: Equatable, Sendable {
     let appliedAt: Date?
 }
 
+/// What an inbox upsert actually did, plus what parking it taught the rows
+/// already there.
+struct MemoryCloudInboxUpsertResult: Equatable, Sendable {
+    let outcome: MemoryCloudInboxUpsertOutcome
+    /// Parked forget-receipt rows whose opaque `memoryIdHmac` this fact just
+    /// resolved to a plain engine id. Each had its `applied_at` cleared, so the
+    /// daemon lists it again and the engine — which holds no key material and
+    /// could only ack it as `RECEIPT_UNRESOLVED` before — can finally act on it.
+    let resolvedReceipts: Int
+}
+
 /// What an inbox upsert actually did, so the pull service can report honest
 /// counters instead of claiming work it skipped.
 enum MemoryCloudInboxUpsertOutcome: String, Equatable, Sendable {
@@ -40,6 +51,13 @@ extension ControlPlaneStore {
     /// Idempotence is keyed on `(doc_id, remote_updated_at)` exactly as §5 of the
     /// design requires: an identical or stale revision is dropped, a newer one
     /// replaces the row and resets `applied_at` so the engine re-merges it.
+    ///
+    /// - Parameter resolvingReceiptHmac: for a FACT, `pensieveSlugHmac("memory-id:<engine id>")`
+    ///   under the member's vault key — the value a fact-level forget receipt for
+    ///   this very memory carries. Passing it lets the SAME transaction retro-fit
+    ///   any receipt already parked under that opaque HMAC with the plain engine
+    ///   id, which is the only form the engine can act on. Nil for a receipt
+    ///   upsert, and for any caller that holds no key.
     @discardableResult
     func upsertRemoteMemoryFact(
         docID: String,
@@ -47,40 +65,121 @@ extension ControlPlaneStore {
         engineMemoryID: String,
         payloadJSON: String,
         remoteUpdatedAt: Date,
+        resolvingReceiptHmac: String? = nil,
         now: Date = Date()
-    ) async throws -> MemoryCloudInboxUpsertOutcome {
+    ) async throws -> MemoryCloudInboxUpsertResult {
         let remoteStamp = Self.iso8601String(remoteUpdatedAt)
         let receivedStamp = Self.iso8601String(now)
-        return try await dbQueue.write { db -> MemoryCloudInboxUpsertOutcome in
+        return try await dbQueue.write { db -> MemoryCloudInboxUpsertResult in
             let existing = try String.fetchOne(
                 db,
                 sql: "SELECT remote_updated_at FROM agent_memory_inbox WHERE doc_id = ?",
                 arguments: [docID]
             )
+            let outcome: MemoryCloudInboxUpsertOutcome
             if let existing {
                 // Fixed-width ISO-8601 UTC stamps, so lexicographic order is
                 // chronological order and the comparison needs no date parse.
-                guard existing < remoteStamp else { return .unchanged }
+                if existing < remoteStamp {
+                    try db.execute(
+                        sql: """
+                        UPDATE agent_memory_inbox
+                        SET user_id = ?, engine_memory_id = ?, payload_json = ?,
+                            remote_updated_at = ?, received_at = ?, applied_at = NULL
+                        WHERE doc_id = ?
+                        """,
+                        arguments: [userID, engineMemoryID, payloadJSON, remoteStamp, receivedStamp, docID]
+                    )
+                    outcome = .replaced
+                } else {
+                    outcome = .unchanged
+                }
+            } else {
                 try db.execute(
                     sql: """
-                    UPDATE agent_memory_inbox
-                    SET user_id = ?, engine_memory_id = ?, payload_json = ?,
-                        remote_updated_at = ?, received_at = ?, applied_at = NULL
-                    WHERE doc_id = ?
+                    INSERT INTO agent_memory_inbox
+                        (doc_id, user_id, engine_memory_id, payload_json, remote_updated_at, received_at, applied_at)
+                    VALUES (?, ?, ?, ?, ?, ?, NULL)
                     """,
-                    arguments: [userID, engineMemoryID, payloadJSON, remoteStamp, receivedStamp, docID]
+                    arguments: [docID, userID, engineMemoryID, payloadJSON, remoteStamp, receivedStamp]
                 )
-                return .replaced
+                outcome = .inserted
             }
-            try db.execute(
-                sql: """
-                INSERT INTO agent_memory_inbox
-                    (doc_id, user_id, engine_memory_id, payload_json, remote_updated_at, received_at, applied_at)
-                VALUES (?, ?, ?, ?, ?, ?, NULL)
-                """,
-                arguments: [docID, userID, engineMemoryID, payloadJSON, remoteStamp, receivedStamp]
+            // Deliberately NOT conditioned on `outcome`. A receipt for this
+            // memory can land in the cycle after the fact did, so the run where
+            // the fact reports `unchanged` is exactly the run where a stale
+            // receipt row is waiting to be taught what it names.
+            let resolved = try Self.resolveParkedForgetReceipts(
+                db,
+                userID: userID,
+                engineMemoryID: engineMemoryID,
+                memoryIDHmac: resolvingReceiptHmac
             )
-            return .inserted
+            return MemoryCloudInboxUpsertResult(outcome: outcome, resolvedReceipts: resolved)
+        }
+    }
+
+    /// Rewrites every parked forget receipt that names `memoryIDHmac` to carry
+    /// the plain `engineMemoryID` instead, and reopens it for the engine.
+    ///
+    /// The whole reason this exists: the engine holds NO key material. It cannot
+    /// turn a keyed HMAC into an id, so `_apply_remote_receipt` matches
+    /// `^mem_[0-9a-f]{32}$` and acks anything else as `RECEIPT_UNRESOLVED` — a
+    /// terminal no-op. The app is the only party that can do the mapping, and a
+    /// receipt that arrived before its fact had nothing to map against at park
+    /// time. Clearing `applied_at` is the other half: a receipt the engine
+    /// already acked is never listed again unless something reopens it.
+    ///
+    /// Matching on `engine_memory_id` alone is complete. A receipt is parked with
+    /// `engine_memory_id` = its payload's `memoryIdHmac` (see
+    /// `MemoryCloudPullService.VerifiedReceipt.identityHmac`), so the two are the
+    /// same value for every unresolved row; the only thing that ever makes them
+    /// differ is THIS rewrite, which leaves behind a plain engine id that needs
+    /// no further resolution. A source-level receipt carries a `sourceRefHmac`
+    /// computed over a different domain and can never be named here.
+    private static func resolveParkedForgetReceipts(
+        _ db: Database,
+        userID: String,
+        engineMemoryID: String,
+        memoryIDHmac: String?
+    ) throws -> Int {
+        guard let memoryIDHmac, !memoryIDHmac.isEmpty, memoryIDHmac != engineMemoryID else { return 0 }
+        try db.execute(
+            sql: """
+            UPDATE agent_memory_inbox
+            SET engine_memory_id = ?, applied_at = NULL
+            WHERE user_id = ? AND engine_memory_id = ?
+            """,
+            arguments: [engineMemoryID, userID, memoryIDHmac]
+        )
+        return db.changesCount
+    }
+
+    /// Every engine memory id this device could resolve a forget receipt to.
+    ///
+    /// Two sources, because they answer two different halves of "does this
+    /// device know the memory a receipt names":
+    ///
+    ///   * `agent_memory_inbox` — facts pulled down from the member's own vault,
+    ///     merged or still waiting. A receipt arriving beside a fact this device
+    ///     has parked names something the engine is about to hold.
+    ///   * `agent_memory_bodies` — memories the engine already mirrors here.
+    ///     This is the case that actually retires a row.
+    ///
+    /// Receipt rows live in the inbox too, under an opaque 64-hex HMAC rather
+    /// than an engine id; the caller drops those (`isOpaqueHmac`) rather than
+    /// hashing an HMAC and matching nothing.
+    func fetchResolvableEngineMemoryIDs(userID: String) async throws -> [String] {
+        try await dbQueue.read { db in
+            try String.fetchAll(
+                db,
+                sql: """
+                SELECT DISTINCT engine_memory_id FROM agent_memory_inbox WHERE user_id = ?
+                UNION
+                SELECT engine_memory_id FROM agent_memory_bodies
+                """,
+                arguments: [userID]
+            )
         }
     }
 

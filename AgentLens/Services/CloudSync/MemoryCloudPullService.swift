@@ -61,6 +61,11 @@ struct MemoryCloudPullResult: Equatable, Sendable {
     /// Receipt documents refused by verification. Never parked; the receipt
     /// cursor freezes in front of them.
     let receiptsRejected: Int
+    /// Receipts this cycle parked with — or retro-fitted to carry — the PLAIN
+    /// engine id rather than the opaque HMAC the cloud document names. The
+    /// engine holds no key material, so an unresolved receipt is a terminal
+    /// no-op there; this counts the retirements that can actually be applied.
+    let receiptsResolved: Int
 
     init(
         applied: Int,
@@ -72,7 +77,8 @@ struct MemoryCloudPullResult: Equatable, Sendable {
         rejectedPermanent: Int = 0,
         pagesRead: Int = 1,
         receiptsApplied: Int = 0,
-        receiptsRejected: Int = 0
+        receiptsRejected: Int = 0,
+        receiptsResolved: Int = 0
     ) {
         self.applied = applied
         self.unchanged = unchanged
@@ -84,6 +90,7 @@ struct MemoryCloudPullResult: Equatable, Sendable {
         self.pagesRead = pagesRead
         self.receiptsApplied = receiptsApplied
         self.receiptsRejected = receiptsRejected
+        self.receiptsResolved = receiptsResolved
     }
 }
 
@@ -339,6 +346,10 @@ final class MemoryCloudPullService: MemoryCloudPulling, Sendable {
         var rejected = 0
         var rejectedPermanent = 0
         var skipped = 0
+        // Forget receipts already parked under an opaque HMAC that a fact landing
+        // in THIS cycle taught this device to name. See
+        // `ControlPlaneStore.resolveParkedForgetReceipts`.
+        var receiptsResolved = 0
         // Set by the first refusal that must be re-examined. Later documents are
         // still parked — the upsert is idempotent, so parking them early costs
         // nothing — but the cursor stops before the refused document so the next
@@ -431,15 +442,26 @@ final class MemoryCloudPullService: MemoryCloudPulling, Sendable {
                         continue
                     }
 
-                    let outcome = try await store.upsertRemoteMemoryFact(
+                    // The identity a fact-level forget receipt for THIS memory
+                    // carries. Handing it to the upsert lets the same
+                    // transaction retro-fit a receipt that arrived before its
+                    // fact — the ordering the two independent cursors make
+                    // ordinary — with the plain engine id the engine needs.
+                    let receiptHmac = try CloudVaultCrypto.pensieveSlugHmac(
+                        "memory-id:\(verified.payload.memoryID)",
+                        keyData: vaultKey
+                    )
+                    let result = try await store.upsertRemoteMemoryFact(
                         docID: document.documentID,
                         userID: uid,
                         engineMemoryID: verified.payload.memoryID,
                         payloadJSON: verified.payloadJSON,
                         remoteUpdatedAt: verified.remoteUpdatedAt,
+                        resolvingReceiptHmac: receiptHmac,
                         now: now
                     )
-                    switch outcome {
+                    receiptsResolved += result.resolvedReceipts
+                    switch result.outcome {
                     case .inserted, .replaced:
                         applied += 1
                     case .unchanged:
@@ -501,14 +523,19 @@ final class MemoryCloudPullService: MemoryCloudPulling, Sendable {
         // AFTER the facts: a retirement that arrives in the same cycle as the
         // revision it retires should be parked after it, so a partial drain
         // applies them in that order too. See `pullForgetReceipts`.
-        let receipts = try await pullForgetReceipts(uid: uid, now: now)
+        let receipts = try await pullForgetReceipts(uid: uid, vaultKey: vaultKey, now: now)
         if receipts.applied > 0 || receipts.rejected > 0 {
             AppLogger.sync.info(
                 "memory_cloud_pull_receipts",
                 metadata: [
                     "applied": String(receipts.applied),
                     "unchanged": String(receipts.unchanged),
-                    "rejected": String(receipts.rejected)
+                    "rejected": String(receipts.rejected),
+                    // A receipt this device could not resolve is one the engine
+                    // can only ack as unresolved, so the gap between these two
+                    // is the retirements that will never be applied here.
+                    "resolved": String(receipts.resolved),
+                    "resolved_late": String(receiptsResolved)
                 ]
             )
         }
@@ -532,7 +559,8 @@ final class MemoryCloudPullService: MemoryCloudPulling, Sendable {
             rejectedPermanent: rejectedPermanent,
             pagesRead: pagesRead,
             receiptsApplied: receipts.applied,
-            receiptsRejected: receipts.rejected
+            receiptsRejected: receipts.rejected,
+            receiptsResolved: receiptsResolved + receipts.resolved
         )
     }
 
@@ -931,6 +959,33 @@ extension MemoryCloudPullService {
         value.count == 64 && value.allSatisfy { $0.isHexDigit && !$0.isUppercase }
     }
 
+    /// Inverts `pensieveSlugHmac("memory-id:<engine id>")` for the ids this
+    /// device knows, by hashing every candidate under the member's own vault key.
+    ///
+    /// This is the whole reason the app has to be the one to resolve a receipt.
+    /// The engine that drains the inbox holds NO key material — that is the
+    /// point of blind sync — so it cannot map an opaque HMAC to anything and
+    /// `_apply_remote_receipt` acks an unresolved one as a terminal no-op. The
+    /// app holds the vault key, so it can do the mapping once and park the plain
+    /// id the engine can act on.
+    ///
+    /// Candidates that are themselves opaque HMACs are dropped: those are the
+    /// parked RECEIPT rows sharing the inbox with the facts, and hashing an HMAC
+    /// can only ever match nothing.
+    static func engineMemoryIDsByReceiptHmac(
+        store: ControlPlaneStore,
+        uid: String,
+        vaultKey: Data
+    ) async throws -> [String: String] {
+        var resolution: [String: String] = [:]
+        for engineMemoryID in try await store.fetchResolvableEngineMemoryIDs(userID: uid)
+        where !engineMemoryID.isEmpty && !isOpaqueHmac(engineMemoryID) {
+            let hmac = try CloudVaultCrypto.pensieveSlugHmac("memory-id:\(engineMemoryID)", keyData: vaultKey)
+            resolution[hmac] = engineMemoryID
+        }
+        return resolution
+    }
+
     /// Pages `users/{uid}/memory_forget_receipts` on its own cursor and parks
     /// every receipt that verifies, so a device that already merged a fact
     /// learns it was retired.
@@ -941,7 +996,16 @@ extension MemoryCloudPullService {
     /// is re-reading a small collection each cycle while a malformed receipt
     /// exists; the alternative would let an unauthenticated field skip real
     /// retirements.
-    func pullForgetReceipts(uid: String, now: Date) async throws -> MemoryCloudReceiptPullResult {
+    func pullForgetReceipts(uid: String, vaultKey: Data, now: Date) async throws -> MemoryCloudReceiptPullResult {
+        // Built ONCE per cycle, not per receipt: `pensieveSlugHmac` is keyed and
+        // one-way, so the only way to invert it is to hash every candidate. The
+        // candidate set is every engine id this device knows — thousands at the
+        // very most — and the receipt collection is usually far smaller than it.
+        let resolution = try await Self.engineMemoryIDsByReceiptHmac(
+            store: store,
+            uid: uid,
+            vaultKey: vaultKey
+        )
         let watermark = try await watermarkStore.fetchWatermarkOrDefault(
             accountUid: uid,
             collectionKind: .memoryForgetReceipts
@@ -961,6 +1025,7 @@ extension MemoryCloudPullService {
         var applied = 0
         var unchanged = 0
         var rejected = 0
+        var resolved = 0
         var frozen = false
         var rejectionFloor: Date?
         var eligibleStamps: [Date] = []
@@ -999,19 +1064,36 @@ extension MemoryCloudPullService {
                         )
                         continue
                     case .success(let receipt):
-                        let outcome = try await store.upsertRemoteMemoryFact(
+                        // The whole point of the resolution map: park the PLAIN
+                        // engine id when this device can name it, because the
+                        // engine holds no key and can act on nothing else.
+                        let engineMemoryID = resolution[receipt.identityHmac]
+                        let result = try await store.upsertRemoteMemoryFact(
                             docID: receipt.receiptID,
                             userID: uid,
-                            engineMemoryID: receipt.identityHmac,
+                            engineMemoryID: engineMemoryID ?? receipt.identityHmac,
                             payloadJSON: receipt.payloadJSON,
                             remoteUpdatedAt: receipt.replicatedAt,
+                            // Names THIS row too, for the case an earlier cycle
+                            // parked it opaque and nothing about the document has
+                            // changed since. The payload upsert is then a no-op,
+                            // but the identity this device can NOW resolve still
+                            // has to land — otherwise a receipt that arrived
+                            // before the device knew the memory stays unactionable
+                            // for ever. When nothing resolved, the id and the
+                            // HMAC are the same value and the rewrite is a no-op.
+                            resolvingReceiptHmac: receipt.identityHmac,
                             now: now
                         )
-                        switch outcome {
+                        switch result.outcome {
                         case .inserted, .replaced:
                             applied += 1
+                            if engineMemoryID != nil {
+                                resolved += 1
+                            }
                         case .unchanged:
                             unchanged += 1
+                            resolved += result.resolvedReceipts
                         }
                         if !frozen {
                             eligibleStamps.append(receipt.replicatedAt)
@@ -1045,7 +1127,12 @@ extension MemoryCloudPullService {
             }
         }
         try await transaction.commit()
-        return MemoryCloudReceiptPullResult(applied: applied, unchanged: unchanged, rejected: rejected)
+        return MemoryCloudReceiptPullResult(
+            applied: applied,
+            unchanged: unchanged,
+            rejected: rejected,
+            resolved: resolved
+        )
     }
 }
 
@@ -1054,4 +1141,10 @@ struct MemoryCloudReceiptPullResult: Equatable, Sendable {
     let applied: Int
     let unchanged: Int
     let rejected: Int
+    /// How many receipts this cycle ended up carrying a plain engine id this
+    /// device resolved from their opaque HMAC — parked that way, or rewritten in
+    /// place when an earlier cycle had parked them opaque. The rest are receipts
+    /// for memories this device has never held (or source-level ones), which stay
+    /// opaque and which the engine can only acknowledge as unresolved.
+    let resolved: Int
 }
