@@ -97,14 +97,11 @@ const html = readFileSync(PAGE, "utf8");
 // out exactly the values it needs — no bundler in front of CI.
 const dataSrc = readFileSync(join(ROOT, "src", "data", "memory.ts"), "utf8");
 
-const decodeEntities = (s) =>
-  s
-    .replace(/&#8203;/g, "")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'");
+// One pass over the string. A chain of replaces decodes twice: `&amp;lt;` is
+// literal "&lt;" in the page, but replacing `&amp;` first turns it into an
+// entity the next replace then decodes to "<" (CodeQL: double unescaping).
+const ENTITIES = { amp: "&", lt: "<", gt: ">", quot: '"', "#39": "'", "#8203": "" };
+const decodeEntities = (s) => s.replace(/&(amp|lt|gt|quot|#39|#8203);/g, (_, name) => ENTITIES[name]);
 const text = decodeEntities(html.replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ");
 
 /* `text` strips tags, so attribute content — the meta description, the OG
