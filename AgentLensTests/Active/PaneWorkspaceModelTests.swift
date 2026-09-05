@@ -5,6 +5,17 @@ import OpenBurnBarCore
 import OpenBurnBarComputerUseCore
 @testable import OpenBurnBar
 
+/// Shared controller factory for every agent-deck test in this file: an
+/// in-memory data store and a stubbed search provider, no disk, no network.
+@MainActor
+private func makeAgentDeckTestController() throws -> ChatSessionController {
+    let dataStore = try makeDiscoveryInMemoryStore()
+    return ChatSessionController(
+        dataStore: dataStore,
+        searchService: ControlledChatSessionSearchProvider(responses: [:])
+    )
+}
+
 /// Unit tests for the cmux-style pane-tiling tree (`PaneWorkspaceModel`): split, close
 /// (non-primary reflow + primary re-home), the last-pane invariant, persistence round-trip,
 /// the exactly-one-primary enforcement on restore, and the Codable snapshot.
@@ -28,11 +39,7 @@ final class PaneWorkspaceModelTests: XCTestCase {
     // MARK: - Helpers
 
     private func makeController() throws -> ChatSessionController {
-        let dataStore = try makeDiscoveryInMemoryStore()
-        return ChatSessionController(
-            dataStore: dataStore,
-            searchService: ControlledChatSessionSearchProvider(responses: [:])
-        )
+        try makeAgentDeckTestController()
     }
 
     private func makeWorkspace() throws -> PaneWorkspaceModel {
@@ -1098,5 +1105,122 @@ final class AgentSigilLabelTests: XCTestCase {
         XCTAssertEqual(AgentSigil.elapsedText(since: start, now: start.addingTimeInterval(41)), "41s")
         XCTAssertEqual(AgentSigil.elapsedText(since: start, now: start.addingTimeInterval(125)), "2m 5s")
         XCTAssertEqual(AgentSigil.elapsedText(since: start, now: start.addingTimeInterval(-5)), "0s")
+    }
+
+    // MARK: - Agent deck geometry
+
+    /// Runs `body` with the enabled-agent roster pinned, restoring the value the
+    /// shared settings held before. The deck's geometry is a function of the
+    /// roster, so a geometry test that reads ambient settings measures nothing.
+    ///
+    /// The restore is by assignment, so a previously *absent*
+    /// `enabledChatBackendIDsCSV` key comes back as `""` rather than absent.
+    /// Both decode to an empty roster, so nothing observable changes; the pin is
+    /// process-wide for the duration of the closure, which is safe because
+    /// XCTest runs classes serially.
+    private func withEnabledBackends(
+        _ backends: [ChatBackendID],
+        on settingsManager: SettingsManager,
+        _ body: () -> Void
+    ) {
+        let previous = settingsManager.enabledChatBackendIDsCSV
+        defer { settingsManager.enabledChatBackendIDsCSV = previous }
+        settingsManager.setEnabledChatBackends(backends)
+        body()
+    }
+
+    /// The Sigil is a pill: two segments, 26pt tall, a couple of hundred points
+    /// wide. It only stays that way while its menus lay themselves out in
+    /// SwiftUI. `.menuStyle(.borderlessButton)` instead renders each `Menu`
+    /// through AppKit's popup-button path, whose cell sizes to its widest menu
+    /// item — pushing the chat toolbar's identity pill to 379pt against a label
+    /// that asks for roughly 200. Pin the fitting width so the style cannot
+    /// silently regress.
+    ///
+    /// The 300pt fence is content-shaped: the width is a function of the model
+    /// label, which `modelWidth` clamps at 132. A longer legitimate model string
+    /// measures nearer 270 than 200, so if the Sigil ever grows a segment this
+    /// fence wants re-deriving from the label geometry, not bumping.
+    func test_sigilFittingWidth_isItsLabel_notAPopUpButtonCell() throws {
+        let controller = try makeAgentDeckTestController()
+        controller.chatBackend = .hermes
+        withEnabledBackends([.hermes, .codex], on: controller.settingsManager) {
+            let host = NSHostingView(
+                rootView: AgentSigil(
+                    controller: controller,
+                    settingsManager: controller.settingsManager
+                )
+            )
+            host.layoutSubtreeIfNeeded()
+            let size = host.fittingSize
+
+            // Width is the menu-style fence: it is the axis the popup-button
+            // cell blew out (379pt red, ~200pt green).
+            XCTAssertLessThan(
+                size.width,
+                300,
+                "The Sigil is a pill, not a poster; \(size.width)pt means a segment is not laying out in SwiftUI"
+            )
+            // Height is a *separate* contract and carries no menu-style signal:
+            // `AgentSigil.body` ends in `.frame(height:)`, so this reports 26
+            // under either style. It is here to catch that fixed frame being
+            // dropped, and it claims nothing more than that.
+            XCTAssertEqual(
+                size.height,
+                26,
+                accuracy: 0.5,
+                "The Sigil plate pins itself at 26pt via .frame(height:); \(size.height)pt means that frame is gone"
+            )
+        }
+    }
+
+    /// Same failure mode, same bar: `limit: 0` collapses every ghost into the
+    /// `+N ⌄` overflow chip, which is a `Menu` of its own. The chip draws its
+    /// own capsule at roughly 40pt — anything wider is AppKit's popup-button
+    /// cell measuring instead of the label.
+    func test_ghostOverflowChip_fittingWidth_isItsLabel_notAPopUpButtonCell() throws {
+        let controller = try makeAgentDeckTestController()
+        controller.chatBackend = .hermes
+        withEnabledBackends([.hermes, .codex, .claude], on: controller.settingsManager) {
+            let host = NSHostingView(
+                rootView: AgentGhostRow(
+                    controller: controller,
+                    settingsManager: controller.settingsManager,
+                    limit: 0
+                )
+            )
+            host.layoutSubtreeIfNeeded()
+            let size = host.fittingSize
+
+            XCTAssertLessThan(
+                size.width,
+                80,
+                "The overflow chip is a +N pill; \(size.width)pt means it is not laying out in SwiftUI"
+            )
+            XCTAssertLessThanOrEqual(
+                size.height,
+                30,
+                "The overflow chip sits in a 26pt bar; \(size.height)pt means it is not laying out in SwiftUI"
+            )
+        }
+    }
+
+    /// Every provider logo answers with the size it was asked for, bundled
+    /// asset or SF Symbol fallback — the guarantee `AgentMark` and every
+    /// toolbar chip above it depend on.
+    ///
+    /// Scope, stated honestly: `ProviderLogoView.body` ends in
+    /// `.frame(width: size, height: size)`, so this fence fires only if that
+    /// outer frame is deleted. It cannot see an oversized bitmap *inside* the
+    /// frame — `.clipShape` handles that — and it is not evidence about any
+    /// other view.
+    func test_providerLogoView_fittingSize_neverExceedsRequestedSize() {
+        for provider in AgentProvider.allCases {
+            let host = NSHostingView(rootView: ProviderLogoView(provider: provider, size: 14))
+            host.layoutSubtreeIfNeeded()
+            let size = host.fittingSize
+            XCTAssertLessThanOrEqual(size.width, 14, "\(provider.rawValue) logo is \(size.width)pt wide at size 14")
+            XCTAssertLessThanOrEqual(size.height, 14, "\(provider.rawValue) logo is \(size.height)pt tall at size 14")
+        }
     }
 }

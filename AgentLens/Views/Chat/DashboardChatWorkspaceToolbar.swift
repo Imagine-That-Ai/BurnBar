@@ -770,7 +770,14 @@ struct AgentSigil: View {
             }
             .contentShape(Rectangle())
         }
-        .menuStyle(.borderlessButton)
+        // `.borderlessButton` renders each Menu through AppKit's popup-button
+        // path, whose cell sizes to its *widest menu item* rather than to the
+        // SwiftUI label — which is why this pill blew out to 379pt against a
+        // ~200pt label, and why the blowup scaled with the agent roster and the
+        // model catalog. `.button` + `.plain` keeps the chrome-free look and
+        // puts layout back in SwiftUI's hands. Fenced by `AgentSigilLabelTests`.
+        .menuStyle(.button)
+        .buttonStyle(.plain)
         .menuIndicator(.hidden)
         .fixedSize()
         .accessibilityElement(children: .ignore)
@@ -801,7 +808,10 @@ struct AgentSigil: View {
             }
             .contentShape(Rectangle())
         }
-        .menuStyle(.borderlessButton)
+        // Laid out by SwiftUI, not by an AppKit popup-button cell — see
+        // `agentSegment` above.
+        .menuStyle(.button)
+        .buttonStyle(.plain)
         .menuIndicator(.hidden)
         .fixedSize()
         .accessibilityElement(children: .ignore)
@@ -1187,10 +1197,18 @@ struct AgentGhostRow: View {
                     .strokeBorder(DesignSystem.Colors.border.opacity(0.5), lineWidth: 0.75)
             )
         }
-        .menuStyle(.borderlessButton)
+        // Same rendering path as the Sigil's segments above, so the three chips
+        // in this bar press and highlight identically.
+        .menuStyle(.button)
+        .buttonStyle(.plain)
         .menuIndicator(.hidden)
         .fixedSize()
+        // `.button` presents a pull-down, so pin the exposed role the way the
+        // Sigil's two segments do — otherwise VoiceOver's announcement drifts
+        // from pop-up button to menu button with the style change.
+        .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(hidden.count) more agents")
+        .accessibilityAddTraits(.isButton)
         .popoverTooltip("\(hidden.count) more agents")
     }
 }
