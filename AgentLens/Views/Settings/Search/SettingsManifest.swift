@@ -715,6 +715,27 @@ enum SettingsManifest {
 
         // MARK: Devices & Sync
 
+        // MARK: Receipts
+
+        SettingsItem(
+            id: "receipts.overview",
+            tab: .receipts,
+            pageRoute: .receiptsRoot,
+            anchorID: SettingsAnchor.receiptsOverview,
+            title: "Session Receipts",
+            subtitle: "Menu bar popup, notification banner and printer sound when a CLI session closes",
+            keywords: ["receipt", "receipts", "session", "cli", "close", "flyout", "popup", "notification", "banner", "sound", "thermal", "printer", "drawer"]
+        ),
+        SettingsItem(
+            id: "receipts.qualityReview",
+            tab: .receipts,
+            pageRoute: .receiptsRoot,
+            anchorID: SettingsAnchor.receiptsQualityReview,
+            title: "Receipt Quality Review",
+            subtitle: "Auto-run a quality review on close and pick the review model",
+            keywords: ["receipt", "quality", "review", "audit", "model", "score", "auto", "llm"]
+        ),
+
         SettingsItem(
             id: "devices.cloudSync",
             tab: .devicesAndSync,
@@ -993,6 +1014,8 @@ enum SettingsManifest {
     /// setting that has no scroll target.
     static let visibleAnchorIDs: Set<String> = Set([
         SettingsAnchor.homeOverview,
+        SettingsAnchor.receiptsOverview,
+        SettingsAnchor.receiptsQualityReview,
         SettingsAnchor.modelProxyOverview,
         SettingsAnchor.modelProxyEndpoint,
         SettingsAnchor.modelProxyRouting,

@@ -12,6 +12,7 @@ struct ReceiptSettingsView: View {
             Section {
                 Toggle("Show Menu Bar Popup on CLI Close", isOn: $settingsManager.receiptFlyoutEnabled)
                     .help("Presents a transient mini-flyout below the menu bar icon when an agent finishes")
+                    .settingsAnchor(SettingsAnchor.receiptsOverview)
 
                 Toggle("Send macOS Notification Banner", isOn: $settingsManager.receiptSystemNotificationsEnabled)
                     .help("Sends a native notification banner via UNUserNotificationCenter")
@@ -38,6 +39,7 @@ struct ReceiptSettingsView: View {
 
             Section {
                 Toggle("Auto-Run Quality Review on Close", isOn: $settingsManager.receiptAutoQualityReviewEnabled)
+                    .settingsAnchor(SettingsAnchor.receiptsQualityReview)
                     .help("Automatically evaluates Goal Completion, Rigor, and Efficiency with an A/B/C/D grade")
 
                 Picker("Review Model", selection: $settingsManager.receiptReviewModel) {
