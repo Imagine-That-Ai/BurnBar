@@ -1716,6 +1716,143 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         XCTAssertEqual(identity.projectID, transitionProjectID)
     }
 
+    /// A4: explicit map -> git root -> provisional, in that order, on both the
+    /// read-write and the read-only path.
+    func test_daemon_project_identity_follows_the_same_override_order() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "identity-order-test")
+        )
+        let canonicalPath = fixture.project.resolvingSymlinksInPath().standardizedFileURL.path
+        let pathHash = BurnBarProjectCodeMemoryStore.sha256Hex(canonicalPath)
+
+        // 3rd rung: a folder with no mapping and no git root is provisional — a
+        // path-derived fingerprint, which the engine's doctor flags as such.
+        let provisional = try store.resolveProjectIdentity(root: fixture.project)
+        XCTAssertTrue(
+            provisional.fingerprint.hasPrefix("path:"),
+            "a non-git folder resolves provisionally, not to a stable identity"
+        )
+
+        // 2nd rung: an UNMAPPED folder that is a git root takes the git identity.
+        // (`fixture.project` is now mapped, so the git rung is proved on a sibling.)
+        let gitRoot = try makeGitFolder(in: fixture.root, named: "GitIdentityFixture", origin: "daemon-repo")
+        let gitIdentity = try store.resolveProjectIdentity(root: gitRoot)
+        XCTAssertTrue(gitIdentity.fingerprint.hasPrefix("git:"))
+        XCTAssertNotEqual(gitIdentity.projectID, provisional.projectID)
+
+        // 1st rung: an explicit mapping for the path wins over everything the
+        // folder's contents imply.
+        let explicitID = "proj_explicit_mapped_override_999"
+        let now = BurnBarProjectCodeMemoryStore.isoNow()
+        try sqliteExecute(
+            database: fixture.database,
+            sql: """
+            INSERT INTO pcm_projects
+                (project_id, identity_version, identity_fingerprint, project_name, primary_path, created_at, updated_at)
+            VALUES
+                ('\(explicitID)', 2, 'explicit:\(explicitID)', 'mapped', \(sqlLiteral(canonicalPath)), '\(now)', '\(now)');
+
+            UPDATE pcm_project_aliases SET project_id = '\(explicitID)' WHERE path_hash = '\(pathHash)'
+            """
+        )
+
+        XCTAssertEqual(try store.resolveProjectIdentity(root: fixture.project).projectID, explicitID)
+        XCTAssertEqual(
+            try store.readOnlyProjectIdentity(root: fixture.project).projectID,
+            explicitID,
+            "the read-only path must resolve identically or a recall and a write disagree"
+        )
+    }
+
+    /// A4 red team: repository CONTENTS must never re-scope a folder that is
+    /// already mapped. A hostile (or merely careless) `git remote add` that makes a
+    /// mapped folder's fingerprint collide with another project's leaves the
+    /// mapping alone, so recall in that folder returns none of the victim
+    /// project's rows and no write lands under the victim id.
+    func test_a_folder_matching_another_projects_git_fingerprint_is_not_rescoped() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "identity-redteam-test")
+        )
+
+        // Victim: a git checkout with a memory of its own.
+        let victim = try makeGitFolder(in: fixture.root, named: "VictimProject", origin: "victim")
+        _ = try store.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: "The victim project deploys on Thursday.",
+                projectPath: victim.path,
+                kind: "fact"
+            )
+        )
+        let victimIdentity = try store.readOnlyProjectIdentity(root: victim)
+        XCTAssertTrue(victimIdentity.fingerprint.hasPrefix("git:"))
+
+        // Hostile folder: already mapped provisionally, with its own memory.
+        let hostile = fixture.root.appendingPathComponent("HostileProject", isDirectory: true)
+        try FileManager.default.createDirectory(at: hostile, withIntermediateDirectories: true)
+        _ = try store.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: "The hostile folder has its own unrelated note.",
+                projectPath: hostile.path,
+                kind: "fact"
+            )
+        )
+        let hostileIdentity = try store.readOnlyProjectIdentity(root: hostile)
+        XCTAssertNotEqual(hostileIdentity.projectID, victimIdentity.projectID)
+
+        // The attacker makes the folder's CONTENTS claim the victim's identity.
+        try runGit(["init"], cwd: hostile)
+        try runGit(["remote", "add", "origin", "https://example.com/org/victim.git"], cwd: hostile)
+        XCTAssertEqual(
+            BurnBarProjectCodeMemoryStore.projectIdentityFingerprint(root: hostile),
+            victimIdentity.fingerprint,
+            "precondition: the folders' contents now imply the same identity"
+        )
+
+        // Identity does not move, on either path...
+        XCTAssertEqual(try store.readOnlyProjectIdentity(root: hostile).projectID, hostileIdentity.projectID)
+        XCTAssertEqual(try store.resolveProjectIdentity(root: hostile).projectID, hostileIdentity.projectID)
+        XCTAssertEqual(
+            try store.readOnlyProjectIdentity(root: victim).projectID,
+            victimIdentity.projectID,
+            "the victim keeps its own identity too"
+        )
+
+        // ...recall in the hostile folder returns none of the victim's rows...
+        let recall = try store.recall(
+            BurnBarProjectMemoryRecallRequest(query: "victim project deploys Thursday", projectPath: hostile.path)
+        )
+        XCTAssertTrue(
+            recall.hits.allSatisfy { $0.projectID == hostileIdentity.projectID },
+            "recall in the hostile folder must not serve another project's memories"
+        )
+        XCTAssertFalse(recall.hits.contains { $0.bodyRedacted.contains("deploys on Thursday") })
+
+        // ...and a write from the hostile folder does not land under the victim id.
+        let written = try store.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: "A note written after the fingerprint collision.",
+                projectPath: hostile.path,
+                kind: "fact"
+            )
+        )
+        XCTAssertEqual(written.projectID, hostileIdentity.projectID)
+        XCTAssertNotEqual(written.projectID, victimIdentity.projectID)
+    }
+
+    /// A git work tree whose only stable identity part is its origin remote, so two
+    /// folders built with the same `origin` share a fingerprint exactly.
+    private func makeGitFolder(in root: URL, named name: String, origin: String) throws -> URL {
+        let folder = root.appendingPathComponent(name, isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try runGit(["init"], cwd: folder)
+        try runGit(["remote", "add", "origin", "https://example.com/org/\(origin).git"], cwd: folder)
+        return folder
+    }
+
     func testIndexProjectEvictsOldestFilesFirstUnderBudget() throws {
         let fixture = try makeFixture()
         let sources = fixture.project.appendingPathComponent("Sources")
