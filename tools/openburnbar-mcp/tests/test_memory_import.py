@@ -325,9 +325,7 @@ def test_a_caller_supplied_batch_cap_cannot_remove_the_bound(server_env: Path, m
     assert result_small["summary"]["batchCap"] == 2
 
 
-def test_a_capped_import_resumes_from_the_cursor_it_returned(
-    server_env: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_a_capped_import_resumes_from_the_cursor_it_returned(server_env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Nothing past the cap is silently dropped: the caller gets an offset back.
 
     Every invocation used to select the same first `cap` candidates, so after the
