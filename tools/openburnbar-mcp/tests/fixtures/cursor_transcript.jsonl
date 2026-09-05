@@ -1,0 +1,6 @@
+{"role":"system","content":"You are a coding assistant for OpenBurnBar.","timestamp":"2026-09-03T10:00:00Z"}
+{"role":"user","content":"We decided to route all memory writes through the daemon socket.","timestamp":"2026-09-03T10:00:05Z"}
+{"role":"assistant","content":"Agreed. All memory writes will target the daemon socket directly.","thinking":"Checking daemon socket configuration.","tool_calls":[{"name":"grep_search","args":{"Query":"daemon"}}],"timestamp":"2026-09-03T10:00:10Z"}
+{"role":"tool","type":"TOOL_OUTPUT","content":"Found daemon socket path.","timestamp":"2026-09-03T10:00:15Z"}
+{not json
+{"role":"assistant","content":"Always run the bootstrap script before the tests in this repository.","timestamp":"2026-09-03T10:00:20Z"}

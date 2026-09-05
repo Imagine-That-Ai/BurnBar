@@ -1,0 +1,6 @@
+{"type":"session_start","timestamp":"2026-09-03T11:00:00Z"}
+{"type":"turn","item":{"role":"user","content":[{"type":"text","text":"We decided to keep the memory store local-only because the daemon owns sync."}]}}
+{"type":"turn","payload":{"item":{"role":"assistant","content":[{"type":"text","text":"Agreed. The memory database remains strictly on-device."}]}}}
+{"type":"turn","item":{"role":"tool","content":"Database path checked."}}
+{malformed json line
+{"type":"message","item":{"role":"assistant","text":"Prefer ruff over black for formatting in this repository."}}
