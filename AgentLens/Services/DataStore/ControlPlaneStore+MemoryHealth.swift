@@ -40,6 +40,63 @@ struct MemoryHealthProject: Equatable, Identifiable, Sendable {
     let lastWrittenAt: String
 }
 
+/// The device-sync consent marker as every reader in the tree agrees to read
+/// it: exactly one row, or nothing.
+///
+/// `BurnBarProjectMemoryContracts` states the rule — "Anything ambiguous — the
+/// table missing, no row, **more than one row**, an unreadable stamp — is also
+/// nothing (fail closed)" — and the daemon
+/// (`BurnBarProjectCodeMemoryStore+SyncInbox.memoryDeviceSyncConsentUserID`)
+/// enforces it by counting BEFORE it looks at freshness. This app target has
+/// exactly one implementation of the same rule —
+/// `ControlPlaneStore.memoryDeviceSyncMarkerReading` — and every app reader
+/// goes through it, the drain's own `fetchMemoryDeviceSyncMarkerUserID`
+/// included. A reporting surface that picked the newest of two rows would tell
+/// a member "consent marker: just now" in the exact state the daemon is
+/// refusing to drain, so this type has no way to express a winner: an
+/// ambiguous table reads as `absent`.
+struct MemoryDeviceSyncMarkerReading: Equatable, Sendable {
+    /// The member the single marker row names. Nil whenever the table is
+    /// ambiguous — no row, or more than one — which is what the daemon reads
+    /// as no consent.
+    let accountUid: String?
+
+    /// When that single row was last refreshed. Nil in the same states, so an
+    /// absent reading can never be aged.
+    let refreshedAt: Date?
+
+    /// No consent: no row, or an ambiguous table.
+    static let absent = MemoryDeviceSyncMarkerReading(accountUid: nil, refreshedAt: nil)
+
+    /// Whether this marker names somebody OTHER than `accountUid`.
+    ///
+    /// The marker is unscoped by design — it is the claim about *which* member
+    /// consents — so every surface that reports it as "your" consent has to
+    /// compare. Written once here so the health card and the sync-status row
+    /// cannot drift into disagreeing about whose marker they are looking at:
+    /// on a shared Mac the card would otherwise age (and warn about) another
+    /// member's marker while the row directly beneath it says "Another member".
+    ///
+    /// An absent reading is never a mismatch — it is already the no-consent
+    /// answer. A nil `accountUid` (nobody signed in) is not a mismatch either:
+    /// there is no account to contradict, and the surfaces render a signed-out
+    /// Mac's marker exactly as they did before this comparison existed.
+    func namesAnotherMember(than accountUid: String?) -> Bool {
+        guard let markerAccount = self.accountUid, let accountUid else { return false }
+        return markerAccount != accountUid
+    }
+
+    /// The refresh stamp, but only when the marker is THIS account's consent.
+    ///
+    /// Fails closed on a mismatch: a surface that judges freshness must not
+    /// judge a marker it does not own, and nil is the same value it would see
+    /// for an absent marker — which is already "not consented here, not a
+    /// fault".
+    func refreshedAt(forAccount accountUid: String?) -> Date? {
+        namesAnotherMember(than: accountUid) ? nil : refreshedAt
+    }
+}
+
 /// Everything the health card can measure WITHOUT the engine.
 ///
 /// Deliberately no doctor findings: `burnbar_memory_doctor` runs inside the
@@ -57,12 +114,81 @@ struct MemoryHealthLocalSnapshot: Equatable, Sendable {
     /// this Mac has processed, so a Mac that pulls every cycle and learns nothing
     /// new would render "Last pull: 30 d ago" while syncing perfectly.
     let lastMemoryFactsPullAt: Date?
-    /// When the device-sync consent marker was last rewritten. Nil when device
-    /// sync is not consented on this Mac, which is not a fault.
+    /// When THIS account's device-sync consent marker was last rewritten. Nil
+    /// when device sync is not consented on this Mac — which includes an
+    /// ambiguous marker table (what the daemon reads as no consent too) and a
+    /// marker naming another member of a shared Mac, which is that member's
+    /// consent and not this one's. Not a fault in any of those cases.
     let deviceSyncMarkerRefreshedAt: Date?
 }
 
 extension ControlPlaneStore {
+
+    // MARK: - Shared memory reads
+    //
+    // Every app-side reader of `remote_sync_watermarks` for memory goes through
+    // here: the health card, the sync-status row, and the drain's own consent
+    // check (`fetchMemoryDeviceSyncMarkerUserID`). Written once so a change to
+    // the marker doctrine cannot be applied to one caller and missed on the
+    // others.
+
+    /// `remote_sync_watermarks.lastSyncedAt` for one collection kind, scoped to
+    /// one member.
+    ///
+    /// `lastSyncedAt` and deliberately not `lastProcessedRemoteUpdateAt`: the
+    /// latter is the newest REMOTE instant this Mac has processed, so it ages
+    /// with the member's other devices rather than with this one's syncing, and
+    /// a Mac that pulls every cycle and learns nothing new would render "30 d
+    /// ago" while syncing perfectly.
+    ///
+    /// Nil `accountUid` (nobody signed in) yields nil — absent, not zero.
+    static func memoryRemoteSyncWatermark(
+        _ db: Database,
+        accountUid: String?,
+        kind: RemoteSyncCollectionKind
+    ) throws -> Date? {
+        guard let accountUid else { return nil }
+        return try Date.fetchOne(
+            db,
+            sql: """
+            SELECT lastSyncedAt FROM remote_sync_watermarks
+            WHERE accountUid = ? AND collectionKind = ?
+            """,
+            arguments: [accountUid, kind.rawValue]
+        )
+    }
+
+    /// The device-sync consent marker, read the way the daemon reads it.
+    ///
+    /// `LIMIT 2` and then `count == 1`, counted BEFORE anything looks at the
+    /// stamp, so an ambiguous table (two markers, one of them fresh) reads as
+    /// no consent rather than picking a winner. This is the app target's ONLY
+    /// implementation of that rule — `fetchMemoryDeviceSyncMarkerUserID` reads
+    /// through it — and it mirrors the daemon's separate-target copy in
+    /// `BurnBarProjectCodeMemoryStore.memoryDeviceSyncConsentUserID`.
+    ///
+    /// Read UNSCOPED on purpose: the marker is the app's claim about WHICH
+    /// member consents, so filtering it by an assumed member would beg the
+    /// question it exists to answer. The member it names comes back on the
+    /// reading instead, so a caller that wants to compare can.
+    static func memoryDeviceSyncMarkerReading(_ db: Database) throws -> MemoryDeviceSyncMarkerReading {
+        let rows = try Row.fetchAll(
+            db,
+            sql: """
+            SELECT \(BurnBarMemoryDeviceSyncMarker.accountColumn),
+                   \(BurnBarMemoryDeviceSyncMarker.refreshedAtColumn)
+            FROM \(BurnBarMemoryDeviceSyncMarker.tableName)
+            WHERE \(BurnBarMemoryDeviceSyncMarker.kindColumn) = ?
+            LIMIT 2
+            """,
+            arguments: [BurnBarMemoryDeviceSyncMarker.collectionKind]
+        )
+        guard rows.count == 1, let row = rows.first else { return .absent }
+        return MemoryDeviceSyncMarkerReading(
+            accountUid: row[BurnBarMemoryDeviceSyncMarker.accountColumn],
+            refreshedAt: row[BurnBarMemoryDeviceSyncMarker.refreshedAtColumn]
+        )
+    }
 
     /// How many audit links the health check walks. The chain is global rather
     /// than per-memory, so an unbounded walk would grow without limit; the check
@@ -137,35 +263,22 @@ extension ControlPlaneStore {
                 sql: "SELECT COUNT(*) FROM agent_memories WHERE review_status = 'quarantined'"
             ) ?? 0
 
-            var lastPull: Date?
-            if let accountUid {
-                lastPull = try Date.fetchOne(
-                    db,
-                    sql: """
-                    SELECT lastSyncedAt FROM remote_sync_watermarks
-                    WHERE accountUid = ? AND collectionKind = ?
-                    """,
-                    arguments: [accountUid, RemoteSyncCollectionKind.memoryFacts.rawValue]
-                )
-            }
-
-            let markerRefreshedAt = try Date.fetchOne(
+            let lastPull = try Self.memoryRemoteSyncWatermark(
                 db,
-                sql: """
-                SELECT \(BurnBarMemoryDeviceSyncMarker.refreshedAtColumn)
-                FROM \(BurnBarMemoryDeviceSyncMarker.tableName)
-                WHERE \(BurnBarMemoryDeviceSyncMarker.kindColumn) = ?
-                ORDER BY \(BurnBarMemoryDeviceSyncMarker.refreshedAtColumn) DESC
-                LIMIT 1
-                """,
-                arguments: [BurnBarMemoryDeviceSyncMarker.collectionKind]
+                accountUid: accountUid,
+                kind: .memoryFacts
             )
+            let marker = try Self.memoryDeviceSyncMarkerReading(db)
 
             return MemoryHealthLocalSnapshot(
                 auditChainLinks: links,
                 pendingReviewCount: pending,
                 lastMemoryFactsPullAt: lastPull,
-                deviceSyncMarkerRefreshedAt: markerRefreshedAt
+                // Scoped to the member this snapshot was read for. A marker
+                // naming somebody else is not this account's consent, so the
+                // card must neither age it nor raise SYNC_MARKER_STALE about
+                // it — the same comparison the sync-status row makes.
+                deviceSyncMarkerRefreshedAt: marker.refreshedAt(forAccount: accountUid)
             )
         }
     }

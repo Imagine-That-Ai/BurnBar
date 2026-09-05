@@ -98,6 +98,8 @@ Turning the feature off stops all replication; deleting a memory writes a forget
 
 **Organization memory is not switched on.** OpenBurnBar carries the client half of an organization memory lane — a consent switch and a policy ceiling delivered by Remote Config — and it is closed. It stays closed until an organization policy has actually been delivered to this Mac *and* you opt in — both, in either order: a device that has never received a policy cannot know what its organization permits, so it permits nothing rather than guessing. An absent or denying organization policy has no effect on your own memory, which runs on a separate lane and does not consult that ceiling at all.
 
+**Reading your own sync state.** Privacy & Indexing → Memory → "Memory sync status" shows how long it has been since this Mac pulled a memory, how long since it pulled a deletion, when its device-sync consent marker was last refreshed, and how many pulled memories are still waiting for the memory engine. Every number is read from this Mac's own encrypted database, is shown only to you, and is never uploaded or reported anywhere. Anything this Mac did not actually measure is shown as a dash rather than as a zero.
+
 ### Optional Diagnostics (opt-in only)
 
 If you enable crash reporting or diagnostics, anonymized crash reports may be sent to Sentry. This is disabled by default.

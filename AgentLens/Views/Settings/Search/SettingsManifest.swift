@@ -363,6 +363,16 @@ enum SettingsManifest {
             keywords: ["memory", "health", "audit", "chain", "integrity", "counters", "analytics", "sync", "watermark", "marker", "pending review", "doctor", "diagnostics"],
             helpText: "Counters come from the local daemon; the checks are run on this Mac. Engine doctor findings are not measured here."
         ),
+        SettingsItem(
+            id: "general.indexing.memorySyncStatus",
+            tab: .general,
+            pageRoute: .indexing,
+            anchorID: SettingsAnchor.indexingMemorySyncStatus,
+            title: "Memory Sync Status",
+            subtitle: "Both transport cursors, the device-sync consent marker's age, and what is parked in the inbox",
+            keywords: ["memory", "sync", "status", "watermark", "cursor", "marker", "stale", "inbox", "parked", "forget receipts", "diagnostics", "debug"],
+            helpText: "Read from this Mac's own database and never sent anywhere. Rejected and skipped counts come from the memory engine and are not measured here."
+        ),
 
         // MARK: General → Session summaries
 
@@ -1054,6 +1064,7 @@ enum SettingsManifest {
         SettingsAnchor.indexingMemoryDeviceSync,
         SettingsAnchor.indexingMemoryCloudModels,
         SettingsAnchor.indexingMemoryHealth,
+        SettingsAnchor.indexingMemorySyncStatus,
         SettingsAnchor.summariesAuto,
         SettingsAnchor.aiInboxOverview,
         SettingsAnchor.aiInboxEnable,

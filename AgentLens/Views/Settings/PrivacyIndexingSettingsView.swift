@@ -40,6 +40,10 @@ struct PrivacyIndexingSettingsView: View {
     /// dependency.
     @ObservedObject private var deviceSyncEntitlement = MacCloudEntitlementStore.shared
     @State private var showDeviceSyncUnlockSheet = false
+    /// Collapsed by default: the sync-status row answers "why has nothing
+    /// arrived", which is a question a member only asks when something looks
+    /// wrong. Mirrors the Advanced disclosure in Connections.
+    @State private var isMemorySyncStatusExpanded = false
     private static let deviceSyncGatedFeature = GatedFeature.gatedFeature(.dataVault)
 
     /// Opt-in analytics consent toggle. Reads/writes the shared tri-state consent
@@ -163,6 +167,8 @@ struct PrivacyIndexingSettingsView: View {
                     .buttonStyle(.plain)
 
                     memoryHealthSection
+
+                    memorySyncStatusSection
                 }
                 .padding(.horizontal, DesignSystem.Spacing.lg)
                 // Deep-link target for the Memory walkthrough's "Show me" and
@@ -932,6 +938,42 @@ struct PrivacyIndexingSettingsView: View {
                 accountUid: accountManager.userID
             )
             .settingsAnchor(SettingsAnchor.indexingMemoryHealth)
+        }
+    }
+
+    /// Both transport cursors, the consent marker's age, and the inbox counts.
+    ///
+    /// Behind a disclosure because it is a diagnostic: it is the surface a
+    /// member opens when memories are not arriving, and the numbers only mean
+    /// anything next to the thresholds the row states. Every value is read from
+    /// this Mac's own database — nothing here issues a network call or an RPC.
+    @ViewBuilder
+    private var memorySyncStatusSection: some View {
+        if let store = runtimeContext?.chatMemoryStore {
+            DisclosureGroup(isExpanded: $isMemorySyncStatusExpanded) {
+                MemorySyncDebugRowHost(store: store, accountUid: accountManager.userID)
+                    .padding(.top, DesignSystem.Spacing.sm)
+            } label: {
+                HStack(spacing: DesignSystem.Spacing.sm) {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                    Text("Memory sync status")
+                        .font(DesignSystem.Typography.body)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    Spacer()
+                    Text("Cursors, consent marker, parked inbox")
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                }
+            }
+            .padding(DesignSystem.Spacing.md)
+            .background(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                    .fill(DesignSystem.Colors.surfaceElevated.opacity(0.22))
+            )
+            .settingsAnchor(SettingsAnchor.indexingMemorySyncStatus)
         }
     }
 
