@@ -248,8 +248,9 @@ public struct BurnBarPeerCapabilityProfile: Hashable, Sendable, Codable {
     public static let cliSupport = methodScoped([
         .health,
         // The signed CLI courier the Python MCP uses on signed installs
-        // (`openburnbar-cli search-sql|memory-remember|memory-forget`).
-        // `BurnBarCLISocketClient` implements all three.
+        // (`openburnbar-cli search-sql|memory-remember|memory-forget|
+        // memory-model-policy|memory-sync-inbox-list|memory-sync-inbox-ack`).
+        // `BurnBarCLISocketClient` implements every entry below.
         .searchSQL,
         .memoryRemember,
         .memoryForget,

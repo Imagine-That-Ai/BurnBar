@@ -847,6 +847,14 @@ struct PrivacyIndexingSettingsView: View {
     }
 
     private var deviceSyncSubtitle: String {
+        // The fleet ceiling FIRST. `memoryApprovedCloudBackupEnabled` folds the
+        // Remote Config ceiling into the user opt-in, so a fleet kill switch
+        // used to render as "Turn on 'Back up approved memories' first" while
+        // that toggle visibly read ON — telling the member to do something they
+        // had already done and that would not have helped.
+        if !settingsManager.memoryExtractionRemoteConfigEnabled {
+            return "Temporarily unavailable — memory sync is paused for all OpenBurnBar users. Nothing you can change on this Mac affects it; it comes back on its own."
+        }
         if !settingsManager.memoryApprovedCloudBackupEnabled {
             return "Turn on \"Back up approved memories\" first. Off by default — pulls your approved memories back down from your other signed-in devices too."
         }
@@ -859,8 +867,38 @@ struct PrivacyIndexingSettingsView: View {
     private var deviceSyncBinding: Binding<Bool> {
         Binding(
             get: { settingsManager.memoryDeviceSyncRowEnabled },
-            set: { settingsManager.memoryDeviceSyncOptIn = $0 }
+            set: { isOn in
+                settingsManager.memoryDeviceSyncOptIn = isOn
+                enforceDeviceSyncInboxScope()
+            }
         )
+    }
+
+    /// Applies the member's decision to the inbox at once, rather than on the
+    /// next sync tick. Turning device sync OFF withdraws consent for facts that
+    /// are already parked and not yet merged, so those go now and the daemon's
+    /// consent marker is withdrawn with them — a member who flips the switch off
+    /// and immediately runs an agent must not have a pending drain land anyway.
+    /// `MemoryCloudSyncDomain` enforces the same scope every cycle; this is the
+    /// immediacy the switch itself promises.
+    private func enforceDeviceSyncInboxScope() {
+        guard let store = runtimeContext?.chatMemoryStore else { return }
+        let scope = MemoryDeviceSyncScope(
+            uid: accountManager.currentUID,
+            consentGranted: settingsManager.memoryDeviceSyncEnabled
+        )
+        Task {
+            do {
+                try await MemoryDeviceSyncInboxGuard.enforce(scope: scope, store: store)
+            } catch {
+                // The next sync tick enforces the same scope, so a failure here
+                // delays the purge rather than losing it.
+                AppLogger.sync.error(
+                    "memory_device_sync_toggle_inbox_guard_failed",
+                    metadata: ["error_type": String(describing: type(of: error))]
+                )
+            }
+        }
     }
 
     // MARK: - Helper Views

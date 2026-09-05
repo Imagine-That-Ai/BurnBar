@@ -649,62 +649,6 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
         return BurnBarProjectMemoryRecallResponse(traceID: traceID, projectID: projectID, hits: hits)
     }
 
-    func forget(_ request: BurnBarProjectMemoryForgetRequest) throws -> BurnBarProjectMemoryForgetResponse {
-        let traceID = TraceContextBridge.currentContext().traceID
-        let root = try projectRoot(request.projectPath)
-        let projectID = try resolveProjectIdentity(root: root).projectID
-        let memoryID = request.memoryID.trimmingCharacters(in: .whitespacesAndNewlines)
-        return try databaseSync {
-            let rows = try queryRows(
-                "SELECT id, review_status FROM agent_memories WHERE id = ? AND project_id = ? LIMIT 1",
-                [.text(memoryID), .text(projectID)]
-            )
-            let existed = rows.isEmpty == false
-            try execute("BEGIN IMMEDIATE", [])
-            do {
-                try removeProjectMemorySection(
-                    projectID: projectID,
-                    projectDisplayName: root.lastPathComponent,
-                    memoryID: memoryID,
-                    now: Self.isoNow()
-                )
-                try removeQuarantineMemoryBody(projectID: projectID, memoryID: memoryID)
-                // A mirrored memory's body is content the member deleted, so it goes
-                // now; its engine id stays so the sealed cloud copy is still
-                // addressable when the forget reaches the sync lane.
-                try blankAgentMemoryBody(projectID: projectID, memoryID: memoryID, now: Self.isoNow())
-                // Keep a metadata tombstone so every forget remains visible to the
-                // daemon-owned review/audit feed across reloads and devices. The sealed
-                // body is removed above and the row is excluded from normal recall.
-                try execute(
-                    "UPDATE agent_memories SET body_ref = '', body_redacted = '', review_status = 'forgotten', updated_at = ? WHERE id = ? AND project_id = ?",
-                    [.text(Self.isoNow()), .text(memoryID), .text(projectID)]
-                )
-                try execute("DELETE FROM memory_salience WHERE memory_id = ?", [.text(memoryID)])
-                try execute("DELETE FROM memory_embedding_refs WHERE memory_id = ?", [.text(memoryID)])
-                let auditHash = try auditEvent(
-                    action: "memory.forget",
-                    domain: "memory",
-                    projectID: projectID,
-                    subjectID: memoryID,
-                    labels: ["local body delete", "metadata tombstone", "review_status:forgotten", "snapshot section removed"]
-                )
-                try execute("COMMIT", [])
-                return BurnBarProjectMemoryForgetResponse(
-                    traceID: traceID,
-                    projectID: projectID,
-                    memoryID: memoryID,
-                    localDeleted: existed,
-                    cloudDeletePending: false,
-                    auditHash: auditHash
-                )
-            } catch {
-                try? execute("ROLLBACK", [])
-                throw error
-            }
-        }
-    }
-
     func auditTrail(_ request: BurnBarProjectMemoryAuditTrailRequest) throws -> BurnBarProjectMemoryAuditTrailResponse {
         let traceID = TraceContextBridge.currentContext().traceID
         let root = try projectRoot(request.projectPath)

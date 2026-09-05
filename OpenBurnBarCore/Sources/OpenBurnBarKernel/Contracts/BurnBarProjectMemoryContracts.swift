@@ -341,6 +341,44 @@ public struct BurnBarProjectMemoryAnalyticsResponse: Codable, Hashable, Sendable
 
 // MARK: - Memory Blind Sync inbox (PR-2)
 
+/// Where the app records "which member is signed in, and is device sync
+/// consented right now" so the daemon can ENFORCE the inbox's user scope
+/// instead of documenting it.
+///
+/// The daemon holds no Firebase identity and the Memory MCP engine has no uid,
+/// so before this marker existed the drain could only ever hand over "whatever
+/// is unmerged" and trust the app to have purged foreign rows first. That trust
+/// is established inside a gated path whose consumers are ungated, which is not
+/// a boundary. The marker turns the invariant into a predicate both sides can
+/// evaluate.
+///
+/// It rides on `remote_sync_watermarks` — the control plane's existing
+/// per-account sync-state table, already keyed `(accountUid, collectionKind)`
+/// and already read by this very feature for the pull cursor — under a
+/// collection kind that names no real collection. Reusing it is deliberate: a
+/// dedicated table would be a new SQLite migration across all eight schema
+/// surfaces for one row.
+///
+/// **Presence is consent.** Exactly one row exists while the effective
+/// device-sync gate is open, and its `accountUid` is the signed-in member. The
+/// app deletes it the instant any lever closes (sign-out, uid change, the
+/// sub-toggle off, the backup opt-in off, a lapsed entitlement), so the daemon
+/// reads absence as "no consent" and returns nothing. Anything ambiguous — the
+/// table missing, no row, more than one row — is also nothing (fail closed).
+public enum BurnBarMemoryDeviceSyncMarker: Sendable {
+    /// The table the marker row lives in. Created by the app's `v30` migration;
+    /// the daemon only ever reads it, and treats its absence as "no consent".
+    public static let tableName = "remote_sync_watermarks"
+    /// The `collectionKind` value that makes a row a marker rather than a
+    /// watermark. Deliberately not a `RemoteSyncCollectionKind` case: nothing
+    /// syncs a collection by this name, and the sync code must never iterate it.
+    public static let collectionKind = "memory_facts_device_sync_marker"
+    /// The account column, as the app's migration spells it.
+    public static let accountColumn = "accountUid"
+    /// The kind column, as the app's migration spells it.
+    public static let kindColumn = "collectionKind"
+}
+
 /// Drain request for memory facts the app's pull lane verified and parked in
 /// `agent_memory_inbox`. The engine calls this, merges what it gets under §5 of
 /// the blind-sync design, then acknowledges the doc ids it applied.
@@ -363,12 +401,11 @@ public struct BurnBarMemorySyncInboxListRequest: Codable, Hashable, Sendable {
 /// except across the local unix socket the engine already uses.
 public struct BurnBarMemorySyncInboxEntry: Codable, Hashable, Sendable {
     public let docID: String
-    /// The account the fact was pulled under. The daemon holds no Firebase
-    /// identity, so it cannot check this against a signed-in member — it travels
-    /// so the engine can AUDIT which member a row belongs to, and so a row that
-    /// somehow outlived an account switch is visible rather than anonymous. The
-    /// app is what guarantees only the signed-in member's rows are unmerged
-    /// (`ControlPlaneStore.purgeUnappliedRemoteMemoryFacts(otherThanUserID:)`).
+    /// The account the fact was pulled under. Every entry the drain returns has
+    /// already been filtered to the member named by
+    /// `BurnBarMemoryDeviceSyncMarker` — the daemon holds no Firebase identity,
+    /// so the app publishes that member and the daemon enforces it — and it
+    /// travels so the engine can AUDIT which member a row belongs to.
     public let userID: String
     public let engineMemoryID: String
     public let payloadJSON: String
