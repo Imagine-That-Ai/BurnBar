@@ -114,6 +114,32 @@ Provider counts on the home page and providers page are now computed from
 prose, so the headline numbers can never drift from the data again. Adding or
 removing a row updates every count automatically.
 
+`scripts/test-providers-copy.mjs` runs after `npm run build` and reads the built
+`dist/providers/index.html` alongside the sources. What it holds:
+
+- **gate** · the live-data table is bound to `PROVIDERS_PRIMARY` and the
+  detection-only table to `PROVIDERS_DETECTED` — parsed off the
+  `<ProviderTable rows={…}>` invocation inside each section, and cross-checked
+  against the provider names the built full-variant table actually renders.
+- **gate** · set equality on the confidence vocabulary: the whole `Confidence`
+  union, the page's `confidenceKeys`, the keys of `CONFIDENCE_LABEL` and
+  `CONFIDENCE_BLURB`, and the legend cards in the built page are one set. A
+  fourth state without a legend entry fails; a legend entry with no state fails.
+- **gate** · the routing preamble is grounded in the daemon, not in itself. The
+  status behind "structured 503" is read out of `noEligibleRouteResponse`,
+  `exactModelIdentityUnavailableResponse` and `exactModelFailClosedResponse` in
+  `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarHTTPGatewayServer+RoutePipeline.swift`
+  — all three must agree and all three must be JSON `errorBody` responses. The
+  exact-model promise is held to the ranked-route filter on
+  `canonicalModelID == requiredCanonicalModelID` in the same file and to the
+  `.modelIncompatible` skip in
+  `OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/ProviderAccountTypes.swift`.
+- **gate** · every factual caveat in the `provnotes` section still reaches the
+  built page: the org-admin key requirement and its `sk-ant-admin-` shape, the
+  unofficial Cursor and Factory endpoints, the undocumented Z.ai endpoint,
+  Warp's spoofed `User-Agent`, Gemini's absent quota API, and the self-hosting
+  restriction. Deleting the section fails the build.
+
 | Claim                                                                | Source                                                                                                                                                                                                                                                                                                                                                                  |
 | -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Cursor Agent (CLI) is a distinct provider from the Cursor editor row | `OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/CursorAgentParser.swift:5-15` reads `~/.cursor-agent/sessions/` (transcript/chat_history JSONL + summary.json); registered in `ParserRegistry.swift:15`. Token counts are char-estimates (`TokenExtractionUtility`, lines 195-219) — the site labels the row **estimated**, not exact (verified 2026-07-11) |
@@ -193,6 +219,31 @@ treats Kimi as exact, which matches the running code.
 ---
 
 ## Security model (`/security`)
+
+`scripts/test-security-copy.mjs` runs after `npm run build` and reads the built
+`dist/security/index.html` alongside the implementation files, because a
+security page that only quotes itself proves nothing. What it holds:
+
+- **gate** · the daemon socket mode is computed from the `chmod(…)` call in
+  `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/BurnBarUnixDomainSocket.swift`
+  (the `S_I*` symbols folded into an octal) and the page must print that exact
+  octal. Widen the socket and `0o600` on the page fails.
+- **gate** · the Keychain accessibility class is read out of
+  `AgentLens/Services/DataStore/DatabaseEncryptionService.swift`; every
+  `kSecAttrAccessible` site must agree, and the page must name what they agree
+  on.
+- **gate** · `firestore.rules` still scopes `ownsUserNamespace` to uid equality
+  and still guards the `users/{uid}` matches with it;
+  `provider_account_secret_refs` still has no client `match` block at all,
+  which is what "server-only" means here; and every field name the denylist
+  sentence prints is still rejected by `hasNoPlaintextSecretFields()`.
+- **gate** · `LIBSIGNAL_ROLLOUT_STATUS` is _rendered_ — the built page carries
+  the generated string and the source still interpolates the constant rather
+  than hard-coding its value. An import that no longer reaches the reader fails.
+- **gate** · the gateway-visibility disclosure survives: the seal is opened at
+  the gateway to run the model, so it protects the path and not the prompt from
+  us. That sentence is the page's server-blindness boundary; without it the
+  encrypted-seal paragraph overstates the privacy.
 
 | Claim                                                                                         | Source                                                                                                                                                                                              |
 | --------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
