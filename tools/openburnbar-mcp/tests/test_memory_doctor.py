@@ -531,3 +531,52 @@ def test_no_tool_docstring_names_the_capability_that_does_not_exist() -> None:
     ]
     assert offenders == [], f"docstrings name a capability that does not exist: {offenders}"
     assert "`memory_write`" in (server.burnbar_memory_doctor.__doc__ or "")
+
+
+def test_an_occupied_lineage_hold_queue_is_visible_in_the_doctor_report(tmp_path: Path) -> None:
+    """R2: the hold queue is bounded and its only clearer is the next re-offer of
+    the document that filled it, so a note whose peer went away occupies a slot
+    for good — and `lineage_holds()` was surfaced nowhere. A member whose queue
+    is full sees lineage advice quietly stop working with nothing to look at.
+    Report-only: the doctor names the count and the oldest note, and `apply`
+    still does not touch a slot that only the sync path may release.
+    """
+    repo = str(tmp_path / "repo")
+    _init_git(Path(repo))
+    engine = me.MemoryEngine.open(tmp_path / "doctor_holds.sqlite", provider=me.FakeEmbeddingProvider())
+    _setup_tables(engine)
+
+    clean = engine.doctor(project_path=repo)
+    assert not [item for item in clean["findings"] if item["code"] == "OPEN_LINEAGE_HOLDS"]
+
+    for index, first_seen in (("mem_" + "a" * 32, "2026-08-01T09:00:00Z"), ("mem_" + "b" * 32, "2026-08-02T09:00:00Z")):
+        engine.conn.execute(
+            "INSERT OR REPLACE INTO engine_meta (key, value) VALUES (?, ?)",
+            (
+                f"lineage_hold:{index}",
+                _json_dumps(
+                    {
+                        "memoryID": index,
+                        "docID": "doc-" + index[-4:],
+                        "previousBodyHash": "0" * 64,
+                        "expectedHash": "0" * 64,
+                        "actualHash": None,
+                        "firstSeen": first_seen,
+                        "firstSeenEpoch": 1.0 if first_seen.startswith("2026-08-01") else 2.0,
+                    }
+                ),
+            ),
+        )
+    engine.conn.commit()
+
+    report = engine.doctor(project_path=repo, apply=True)
+    holds = [item for item in report["findings"] if item["code"] == "OPEN_LINEAGE_HOLDS"]
+    assert len(holds) == 1
+    assert holds[0]["severity"] == "warn"
+    assert holds[0]["count"] == 2
+    assert holds[0]["oldestFirstSeen"] == "2026-08-01T09:00:00Z"
+    assert "2" in holds[0]["detail"]
+    # Report-only: `apply` releases nothing, because only the next re-offer of
+    # the document a note describes may release its slot.
+    assert len(engine.lineage_holds()) == 2
+    engine.close()

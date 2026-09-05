@@ -39,6 +39,7 @@ from .constants import (
     REMOTE_RECEIPT_ENTRY_KIND,
     REMOTE_RECEIPT_SCHEMA_MAX,
     REMOTE_SOURCE_KIND,
+    REMOTE_WRITER_DEVICE_RE,
 )
 from .embeddings import encode_vector
 from .extract import Fact, _slot_key, extract_entities, extract_relations
@@ -108,6 +109,11 @@ class _RemoteFact:
     injection: list[str] = field(default_factory=list)
     previous_body_hash: str | None = None
     writer_device: str | None = None
+    # The payload named a device and it was not a token. The fact still lands —
+    # attribution is never worth refusing a member's memory over — but the field
+    # is dropped and the decision says so, so a peer sending prose here is
+    # visible rather than silently ignored.
+    writer_device_rejected: bool = False
 
     @property
     def order_key(self) -> tuple[datetime, str, str]:
@@ -515,6 +521,15 @@ class _BlindSync(_SyncLedger):
         previous_body_hash = str(previous_body_hash).strip() if previous_body_hash else None
         writer_device = payload.get("writerDevice")
         writer_device = str(writer_device).strip() if writer_device else None
+        # `writerDevice` is remote text that ends up in PLAINTEXT `meta_json` and
+        # is reported to the calling model by the ungated timeline. A device id
+        # is an opaque token; anything else — prose, an instruction, five
+        # kilobytes of padding — is dropped here rather than stored. Dropping it
+        # never costs the member the fact: attribution is not the memory.
+        writer_device_rejected = False
+        if writer_device is not None and not REMOTE_WRITER_DEVICE_RE.match(writer_device):
+            writer_device = None
+            writer_device_rejected = True
         return (
             _RemoteFact(
                 doc_id=doc_id,
@@ -542,6 +557,7 @@ class _BlindSync(_SyncLedger):
                 injection=injection,
                 previous_body_hash=previous_body_hash,
                 writer_device=writer_device,
+                writer_device_rejected=writer_device_rejected,
             ),
             {},
         )
@@ -803,6 +819,10 @@ class _BlindSync(_SyncLedger):
         reached it before the duplicate the edit replaced.
         """
         decision = self._decide_remote_fact(fact, now_epoch=now_epoch, gap_timeout=gap_timeout)
+        if fact.writer_device_rejected:
+            # Counted, never echoed: the decision says the field was refused and
+            # does not repeat what was in it.
+            decision["writerDeviceRejected"] = True
         if decision["event"] not in ("REFUSE", "HOLD"):
             self._record_convergence_identity(
                 fact.project_id, fact.scope, fact.body_hash, str(decision.get("memoryID") or fact.memory_id)

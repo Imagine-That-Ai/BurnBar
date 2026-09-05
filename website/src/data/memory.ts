@@ -1063,7 +1063,7 @@ export const TOOL_ATLAS: AtlasTool[] = [
   {
     name: "burnbar_memory_history",
     group: "memory",
-    desc: "Every change to one memory, with before and after bodies wrapped as untrusted retrieved data.",
+    desc: "Every change to one memory, with before and after bodies wrapped as untrusted retrieved data. A quarantined or rejected memory reports its changes with the bodies withheld, exactly as the timeline withholds them.",
     caps: [],
     memory: true
   },
@@ -1745,7 +1745,7 @@ export const TIME_FACTS = [
   },
   {
     label: "Queryable history",
-    body: "burnbar_memory_history returns every change to one memory with the before and after bodies, both wrapped as untrusted data, plus who decided — decidedBy is rules or judge:<provider>/<model> — and a short rationale."
+    body: "burnbar_memory_history returns every change to one memory with the before and after bodies, both wrapped as untrusted data, plus who decided — decidedBy is rules or judge:<provider>/<model> — and a short rationale. A quarantined or rejected memory reports bodiesRedacted and withholds the bodies themselves, on the same terms as burnbar_memory_timeline: neither revision surface is a way around the other."
   },
   {
     label: "Recency, weighted",

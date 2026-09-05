@@ -28,6 +28,7 @@ from .constants import (
     DEFAULT_PARKED_SUPERSEDE_RETENTION_DAYS,
     EMBEDDING_PROVIDER_ENV,
     ENGINE_SCHEMA_VERSION,
+    LINEAGE_HOLD_QUEUE_MAX_SIZE,
     MAX_MEMORIES_PER_PROJECT_SOFT,
 )
 from .embeddings import encode_vector
@@ -829,7 +830,38 @@ class _Maintenance:
                 }
             )
 
-        # 5. Unresolved gaps
+        # 5. Open lineage holds
+        #
+        # The queue is bounded and its only clearer is the next re-offer of the
+        # document that filled a slot, so a note whose peer stopped sending it
+        # sits there for good. Nothing reported it, and a full queue does not
+        # fail loudly: lineage advice simply stops applying and every arriving
+        # revision takes LWW immediately. Report-only — releasing a slot is the
+        # sync path's decision, never the doctor's.
+        holds = self.lineage_holds()
+        if holds:
+            seen = sorted(str(hold.get("firstSeen") or "") for hold in holds if hold.get("firstSeen"))
+            oldest = seen[0] if seen else None
+            findings.append(
+                {
+                    "severity": "warn",
+                    "code": "OPEN_LINEAGE_HOLDS",
+                    "count": len(holds),
+                    "oldestFirstSeen": oldest,
+                    "detail": (
+                        f"{len(holds)} of {LINEAGE_HOLD_QUEUE_MAX_SIZE} lineage hold slot(s) are occupied"
+                        + (f", the oldest held since {oldest}" if oldest else "")
+                        + ". A full queue applies last-writer-wins to every arriving revision at once."
+                    ),
+                    "fix": (
+                        "Pull again: a hold is released when the document it describes is re-offered, or lapses "
+                        "on the gap timeout. A slot that never clears means the peer that filled it stopped "
+                        "sending; there is nothing to repair here and `apply` does not touch it."
+                    ),
+                }
+            )
+
+        # 6. Unresolved gaps
         for gap in self.unresolved_gaps():
             findings.append(
                 {

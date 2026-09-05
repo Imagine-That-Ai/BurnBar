@@ -44,6 +44,7 @@ from .constants import (
     MAX_BODY_CHARS,
     MEMORY_SCOPES,
     REMOTE_MEMORY_ID_RE,
+    REMOTE_WRITER_DEVICE_RE,
     REVIEW_STATUSES,
     RRF_K,
     RRF_LEXICAL_WEIGHT,
@@ -1264,15 +1265,32 @@ class _ReadPath:
         }
 
     def history(self, memory_id: str, limit: int = 100) -> dict[str, Any]:
+        """Every change to one memory, with the bodies of a quarantined or
+        rejected row withheld (`bodiesRedacted`), exactly as `timeline()`
+        withholds them.
+
+        This is the weaker of the two revision surfaces — it carries no
+        capability and, unlike `timeline()`, no project scope either — so
+        leaving it unredacted made the redaction a door rather than a fence: an
+        agent refused a quarantined body by `timeline()` read the same
+        revisions here, on the same id, with the same (zero) capability.
+        """
         rows = self.conn.execute(
             "SELECT * FROM memory_history WHERE memory_id = ? ORDER BY seq DESC LIMIT ?",
             (memory_id, max(1, min(int(limit), 500))),
         ).fetchall()
+        owner = self.conn.execute("SELECT review_status FROM memories WHERE id = ?", (memory_id,)).fetchone()
+        review_status = str(owner["review_status"]) if owner is not None else None
+        bodies_redacted = review_status in ("quarantined", "rejected")
         events = []
         for row in rows:
             aad = f"{memory_id}|{row['project_id']}|history"
-            before = self.keyring.open(row["before_cipher"], row["before_nonce"], aad) if row["before_cipher"] else None
-            after = self.keyring.open(row["after_cipher"], row["after_nonce"], aad) if row["after_cipher"] else None
+            before = after = None
+            if not bodies_redacted:
+                before = (
+                    self.keyring.open(row["before_cipher"], row["before_nonce"], aad) if row["before_cipher"] else None
+                )
+                after = self.keyring.open(row["after_cipher"], row["after_nonce"], aad) if row["after_cipher"] else None
             events.append(
                 {
                     "seq": int(row["seq"]),
@@ -1284,7 +1302,13 @@ class _ReadPath:
                     "meta": _json_loads(row["meta_json"], {}),
                 }
             )
-        return {"status": "ok", "memoryID": memory_id, "events": events}
+        return {
+            "status": "ok",
+            "memoryID": memory_id,
+            "reviewStatus": review_status,
+            "bodiesRedacted": bodies_redacted,
+            "events": events,
+        }
 
     def timeline(
         self,
@@ -1365,6 +1389,14 @@ class _ReadPath:
             writer_device = (
                 meta.get("writerDevice") or meta.get("writer_device") or meta.get("deviceId") or meta.get("device_id")
             )
+            # The top-level hoist is a promoted, DOCUMENTED field, and the tool
+            # wraps `meta` but reads this one straight. Screening bounds every
+            # value merged from here on; a store written before it holds
+            # whatever a peer sent, so only a value that is actually a device
+            # token is promoted. A legacy one that is not stays in `meta`, where
+            # the caller's untrusted wrapper covers it.
+            if not (isinstance(writer_device, str) and REMOTE_WRITER_DEVICE_RE.match(writer_device)):
+                writer_device = None
             extracted_by = meta.get("extracted_by") or meta.get("extractedBy")
             model_id = meta.get("model_id") or meta.get("modelId")
             revisions.append(

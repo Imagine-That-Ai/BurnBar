@@ -92,6 +92,14 @@ REMOTE_SOURCE_KIND = "cloud_sync"
 # `payload.memoryID` becomes the local primary key, so it is held to exactly that
 # shape: anything else is refused for good rather than stored.
 REMOTE_MEMORY_ID_RE = re.compile(r"^mem_[0-9a-f]{32}$")
+# `payload.writerDevice` — the only attribution field a remote payload carries.
+# It is an opaque token naming a device, never prose, so it is held to a bounded
+# character class: a value outside this shape is dropped from the merged
+# revision rather than stored. It has to be, because the field lands in
+# `memory_history.meta_json`, which is PLAINTEXT, and is reported to the calling
+# model by the ungated timeline — so an unbounded one is a prompt-injection and
+# a disclosure channel in the same string.
+REMOTE_WRITER_DEVICE_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,128}$")
 SENSITIVITIES = ("none", "pii", "redacted", "secret")
 MEMORY_SCOPES = ("project", "personal")
 

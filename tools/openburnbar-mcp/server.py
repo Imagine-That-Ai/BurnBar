@@ -1875,6 +1875,20 @@ def _memory_wrap_history(events: list[dict[str, Any]], *, source_tool: str, memo
                 record_id=memory_id,
                 field=f"history[{index}].meta",
             )
+        # The attribution fields the timeline hoists out of `meta` to the top
+        # level. `meta` is wrapped above and these were not, so a value that is
+        # not an opaque token reached the model as a bare string — the same
+        # channel the wrapper exists to close, one field over. `writerDevice` is
+        # bounded at sync screening; `extractedBy` and `modelId` are whatever a
+        # provider wrote, so the shape is checked here for all three.
+        for field in ("writerDevice", "extractedBy", "modelId"):
+            value = wrapped.get(field)
+            if isinstance(value, str) and not me.constants.REMOTE_WRITER_DEVICE_RE.match(value):
+                wrapped[field] = _memory_wrap_read_string(
+                    value,
+                    source_tool=source_tool,
+                    record_id=f"{memory_id}:history[{index}].{field}",
+                )
         wrapped_events.append(wrapped)
     return wrapped_events
 
@@ -3006,7 +3020,16 @@ def burnbar_memory_update(
 
 @mcp.tool()
 def burnbar_memory_history(memory_id: str, limit: int = 100) -> str:
-    """Return change history with before/after bodies wrapped as untrusted retrieved data."""
+    """Return change history with before/after bodies wrapped as untrusted retrieved data.
+
+    A quarantined or rejected memory reports its changes with the bodies
+    withheld (`bodiesRedacted`), exactly as `burnbar_memory_timeline` withholds
+    them. This tool carries no capability and, unlike the timeline, no project
+    scope either, so it is the weaker of the two revision surfaces — leaving it
+    unredacted would have made the gate decision a door rather than a fence.
+
+    Gate: ungated, like `burnbar_memory_timeline`.
+    """
     if limited := _local_mcp_rate_limit("burnbar_memory_history", "memory"):
         return limited
     with _memory_engine() as engine:
@@ -3032,10 +3055,12 @@ def burnbar_memory_timeline(
 
     A quarantined or rejected memory reports its revisions with the bodies
     withheld (`bodiesRedacted`): this tool carries no capability, and undoing a
-    gate decision through it would make the quarantine decorative. Each
-    revision's `meta` is a projection of the keys this tool documents, not the
-    whole stored blob, because a merged revision's metadata is written from a
-    remote payload.
+    gate decision through it would make the quarantine decorative.
+    `burnbar_memory_history` withholds them on the same terms, so neither
+    revision surface is a way around the other. Each revision's `meta` is a
+    projection of the keys this tool documents, not the whole stored blob,
+    because a merged revision's metadata is written from a remote payload, and
+    `writerDevice` is reported only when it is an opaque device token.
 
     Gate: ungated, like `burnbar_memory_history` — the project scoping above is
     what fences it, not a capability.

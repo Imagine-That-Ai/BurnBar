@@ -183,6 +183,32 @@ def _rows(engine: me.MemoryEngine) -> dict[str, dict[str, object]]:
     return out
 
 
+def _sync_snapshot(engine: me.MemoryEngine) -> str:
+    """Everything a redelivery must leave untouched, canonically ordered.
+
+    The active rows are the answer; the aliases are how a later revision finds
+    the row that answers to a folded id; `sync_state` is the mark LWW judges the
+    next arrival against, and its `merged_at` is what an UNCHANGED merge used to
+    restamp. Comparing this string across two drains is what "idempotent" means.
+    """
+    active = sorted(
+        (memory_id, str(row["body"]), str(row["kind"]), str(row["updatedAt"]), str(row["supersededBy"]))
+        for memory_id, row in _rows(engine).items()
+        if row["validTo"] is None
+    )
+    aliases = sorted(
+        (str(row["key"]), str(row["value"]))
+        for row in engine.conn.execute("SELECT key, value FROM engine_meta WHERE key LIKE 'memory_alias:%'")
+    )
+    sync_state = sorted(
+        tuple(str(value) for value in tuple(row))
+        for row in engine.conn.execute(
+            "SELECT user_id, applied_updated_at, applied_memory_id, applied_count, merged_at FROM sync_state"
+        )
+    )
+    return json.dumps({"active": active, "aliases": aliases, "syncState": sync_state}, sort_keys=True)
+
+
 def _active(engine: me.MemoryEngine) -> set[tuple[str, str, str]]:
     """The converged answer: `(id, body, kind)` for every row still valid."""
     return {
@@ -2656,10 +2682,6 @@ def test_the_lineage_hold_queue_is_bounded_and_a_flood_cannot_evict_an_establish
     assert {gap["memoryID"] for gap in engine.unresolved_gaps()} == set(ids[cap:])
     for mid in ids[cap:]:
         assert str(_rows(engine)[mid]["body"]).endswith("revised.")
-    # The five that could not be held had LWW applied at once, and said so.
-    assert {gap["memoryID"] for gap in engine.unresolved_gaps()} == set(ids[cap:])
-    for mid in ids[cap:]:
-        assert _rows(engine)[mid]["body"].endswith("revised.")
 
     # And an established hold still resolves on its own timetable.
     first_hold = engine._get_lineage_hold(ids[0])
@@ -2888,6 +2910,15 @@ def test_three_delivery_orders_converge_with_lineage_holds(tmp_path: Path) -> No
         # two further drains are what the held document's timeout lapses on.
         for _ in range(2):
             engine.merge_remote([documents[key] for key in order], gap_timeout=0.0)
+        # Idempotence is a fixpoint claim, and three orders agreeing after a
+        # fixed number of drains does not make it: it says nothing about drain
+        # n+1. One more redelivery of the whole order has to leave the store
+        # byte-identical — the active rows, the alias graph that decides which
+        # id a later revision lands on, and `sync_state`, whose `merged_at` an
+        # UNCHANGED merge must not restamp.
+        converged = _sync_snapshot(engine)
+        engine.merge_remote([documents[key] for key in order], gap_timeout=0.0)
+        assert _sync_snapshot(engine) == converged, name
         rows = _rows(engine)
         believed[name] = sorted(str(row["body"]) for row in rows.values() if row["validTo"] is None)
         assert engine.lineage_holds() == [], name
