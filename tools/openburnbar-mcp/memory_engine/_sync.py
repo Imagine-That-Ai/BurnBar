@@ -179,12 +179,8 @@ class _BlindSync:
             (f"memory_alias:{foreign_id}", memory_id),
         )
 
-    def _local_memory_id(self, foreign_id: str) -> str | None:
-        """The local row a remote engine id names: itself, or what it folded into."""
-        if not foreign_id:
-            return None
-        if self.conn.execute("SELECT 1 FROM memories WHERE id = ?", (foreign_id,)).fetchone() is not None:
-            return foreign_id
+    def _alias_target(self, foreign_id: str) -> str | None:
+        """The live row `foreign_id` folded into, if the alias still resolves."""
         row = self.conn.execute(
             "SELECT value FROM engine_meta WHERE key = ?", (f"memory_alias:{foreign_id}",)
         ).fetchone()
@@ -193,6 +189,33 @@ class _BlindSync:
         alias = str(row["value"])
         exists = self.conn.execute("SELECT 1 FROM memories WHERE id = ?", (alias,)).fetchone()
         return alias if exists is not None else None
+
+    def _local_memory_id(self, foreign_id: str) -> str | None:
+        """The local row a remote engine id names: itself, or what it folded into.
+
+        **A RETIRED row loses to its own alias.** When two rows converge, the
+        loser is retired *into* the holder and an alias records the redirection —
+        so a later revision of the losing engine id belongs to the holder, on
+        every replica. Consulting the row before the alias sent that revision
+        back to the retired loser and revived it (`_write_remote_row`'s UPDATE
+        writes `valid_to = NULL`), leaving this device with two active rows for
+        one convergence identity while a replica that never materialised the
+        loser had one — a direct §8 divergence, and one only the replicas that
+        happened to see the duplicate would suffer.
+
+        An alias exists only where a foreign id folded into a DIFFERENT row
+        (`_record_memory_alias` ignores self-aliases), so this redirection can
+        never fire for a row that was merely retired by a `validTo` edit. A row
+        that is retired AND aliased is exactly a converged-away loser.
+        """
+        if not foreign_id:
+            return None
+        row = self.conn.execute("SELECT valid_to FROM memories WHERE id = ?", (foreign_id,)).fetchone()
+        if row is not None:
+            if row["valid_to"] is None:
+                return foreign_id
+            return self._alias_target(foreign_id) or foreign_id
+        return self._alias_target(foreign_id)
 
     def _sync_mark(self, memory_id: str) -> _SyncMark | None:
         """The last remote revision this row absorbed, if any.
@@ -500,7 +523,13 @@ class _BlindSync:
                 refused += 1
             else:
                 unchanged += 1
-            if event != "REFUSE":
+            # ONLY a real application moves the member's mark. An `UNCHANGED`
+            # (already applied, remote is stale, immutable local) applied
+            # nothing, and counting it inflated `applied_count` with offers
+            # while rewriting `merged_at` — which is what made §8's
+            # "re-applying an inbox batch is byte-identical" false for
+            # `sync_state`. A pure replay now leaves the table untouched.
+            if event in ("ADD", "UPDATE", "REINFORCE"):
                 self._advance_sync_watermark(fact)
 
         # Second pass. A supersede references an engine id, which is globally
@@ -633,7 +662,7 @@ class _BlindSync:
             stamp_updated_at=False,
         )
         self._record_sync_mark(memory_id, fact)
-        return {
+        result = {
             "event": "REINFORCE",
             "code": "CONVERGED",
             "docID": fact.doc_id,
@@ -641,9 +670,11 @@ class _BlindSync:
             "remoteMemoryID": fact.memory_id,
             "kind": decision.get("kind"),
             "scope": decision.get("scope"),
-            "text": decision.get("text"),
             "reviewStatus": decision.get("reviewStatus"),
         }
+        if not fact.injection:
+            result["text"] = decision.get("text")
+        return result
 
     def _update_remote_row(self, fact: _RemoteFact, memory_id: str) -> dict[str, Any]:
         row = self.conn.execute(
@@ -840,15 +871,13 @@ class _BlindSync:
             ],
             actor=self.config.actor,
         )
-        return {
+        decision: dict[str, Any] = {
             "event": event,
             "docID": fact.doc_id,
             "memoryID": memory_id,
             "remoteMemoryID": fact.memory_id,
             "kind": fact.kind,
             "scope": fact.scope,
-            "text": fact.body,
-            "tags": list(fact.tags),
             "confidence": fact.confidence,
             "sensitivity": fact.sensitivity,
             "reviewStatus": fact.review_status,
@@ -857,6 +886,16 @@ class _BlindSync:
             "retired": fact.valid_to is not None,
             "embedded": vector is not None,
         }
+        # §5: an injection-labelled row "stays excluded from model paths on
+        # arrival exactly as it is locally" — and locally a quarantined row is
+        # excluded from recall, not fenced and handed over. The row still lands
+        # (quarantined, reviewable), and the decision still says so by id, kind,
+        # scope and label; what it does not do is carry the attacker-authored
+        # body and tags back into the caller's context on the way past.
+        if not fact.injection:
+            decision["text"] = fact.body
+            decision["tags"] = list(fact.tags)
+        return decision
 
     def _resolve_remote_supersede(self, fact: _RemoteFact, memory_id: str) -> bool:
         """Land one supersede edge, and rebuild its inverse on this side.
@@ -893,7 +932,12 @@ class _BlindSync:
         return True
 
     def _advance_sync_watermark(self, fact: _RemoteFact) -> None:
-        """Move this member's applied high-water mark forward, never back."""
+        """Move this member's applied high-water mark forward, never back.
+
+        Called only for `ADD` / `UPDATE` / `REINFORCE`, so `applied_count` counts
+        revisions this store actually applied — what its name says — rather than
+        every row that was ever offered to it.
+        """
         row = self.conn.execute(
             "SELECT applied_updated_at, applied_memory_id, applied_count FROM sync_state WHERE user_id = ?",
             (fact.user_id,),

@@ -444,7 +444,6 @@ class _Maintenance:
             **project_payload(project_id, root),
         }
 
-    # ------------------------------------------------------------------
     def _scan_aux_value(self, text: str) -> list[str]:
         """Secret labels in one stored auxiliary string.
 
