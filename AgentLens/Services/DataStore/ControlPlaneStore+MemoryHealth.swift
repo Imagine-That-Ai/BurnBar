@@ -12,6 +12,34 @@ struct MemoryAuditChainLink: Equatable, Sendable {
     let hash: String
 }
 
+/// A project the DAEMON has already recorded in `pcm_projects`.
+///
+/// The health card exists to report on a project, and the only projects that
+/// exist are the ones the daemon's indexer already registered. The app reads
+/// that registry directly — the daemon indexes into the app's own
+/// `openburnbar.sqlite`, so `pcm_projects` is right here — and reads it
+/// READ-ONLY: `daemon.memory.analytics` resolves its `projectPath` through the
+/// WRITING resolver (`BurnBarProjectCodeMemoryStore.resolveProjectIdentity`,
+/// which INSERTs into `pcm_projects` and upserts `pcm_project_aliases`), so
+/// asking about anything the registry does not already hold would MAKE a
+/// project rather than measure one. Passing no path at all is worse: the daemon
+/// falls back to `FileManager.default.currentDirectoryPath`, which its
+/// LaunchAgent pins to its own support directory, and the card would then render
+/// that directory's zero as a measurement of your project.
+struct MemoryHealthProject: Equatable, Identifiable, Sendable {
+    /// `pcm_projects.project_id`.
+    let id: String
+    /// `pcm_projects.project_name`.
+    let name: String
+    /// `pcm_projects.primary_path` — the canonical root the DAEMON itself
+    /// recorded. Handing this exact string back to `daemon.memory.analytics`
+    /// makes its resolver hit the existing fingerprint/alias and register
+    /// nothing new.
+    let recordedRoot: String
+    /// `pcm_projects.updated_at`, the ordering key for "most recently written".
+    let lastWrittenAt: String
+}
+
 /// Everything the health card can measure WITHOUT the engine.
 ///
 /// Deliberately no doctor findings: `burnbar_memory_doctor` runs inside the
@@ -37,6 +65,42 @@ extension ControlPlaneStore {
     /// than per-memory, so an unbounded walk would grow without limit; the check
     /// is honest about being a tail check.
     static let memoryAuditChainWindow = 500
+
+    /// How many recorded projects the card offers to pick between.
+    static let memoryHealthProjectLimit = 25
+
+    /// Lists the projects the daemon has already recorded, most recently written
+    /// first. READ-ONLY by construction: a plain `SELECT` on the shared
+    /// database, never a resolve.
+    ///
+    /// An empty result means the daemon has never indexed a project on this Mac.
+    /// That is not "a project with zero memories" — there is no project — so the
+    /// card says so and issues no RPC at all.
+    func memoryHealthProjects(limit: Int = ControlPlaneStore.memoryHealthProjectLimit) async throws -> [MemoryHealthProject] {
+        let cappedLimit = max(1, min(limit, Self.memoryHealthProjectLimit))
+        return try await dbQueue.read { db -> [MemoryHealthProject] in
+            try Row.fetchAll(
+                db,
+                sql: """
+                SELECT project_id, project_name, primary_path, updated_at
+                FROM pcm_projects
+                ORDER BY updated_at DESC, project_id ASC
+                LIMIT ?
+                """,
+                arguments: [cappedLimit]
+            ).compactMap { row in
+                guard let id: String = row["project_id"],
+                      let root: String = row["primary_path"],
+                      root.isEmpty == false else { return nil }
+                return MemoryHealthProject(
+                    id: id,
+                    name: row["project_name"] ?? id,
+                    recordedRoot: root,
+                    lastWrittenAt: row["updated_at"] ?? ""
+                )
+            }
+        }
+    }
 
     /// Reads every health input the app can produce on its own.
     ///

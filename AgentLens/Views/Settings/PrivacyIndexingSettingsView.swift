@@ -918,14 +918,18 @@ struct PrivacyIndexingSettingsView: View {
     /// what is wrong. Counters come from the local daemon over the existing
     /// `daemon.memory.analytics` RPC; every finding is one this Mac measured
     /// itself, and the card says so.
+    ///
+    /// The host picks its own subject from the projects the daemon has already
+    /// recorded. Settings has no project scope of its own, and passing that
+    /// absence down to the daemon would have it resolve its own working
+    /// directory into a phantom project — see `ProjectMemoryHealthModel`.
     @ViewBuilder
     private var memoryHealthSection: some View {
         if let store = runtimeContext?.chatMemoryStore {
             ProjectMemoryHealthCardHost(
                 store: store,
                 daemonManager: runtimeContext?.daemonManager,
-                accountUid: accountManager.userID,
-                projectRoot: nil
+                accountUid: accountManager.userID
             )
             .settingsAnchor(SettingsAnchor.indexingMemoryHealth)
         }

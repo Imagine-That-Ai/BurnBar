@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 import OpenBurnBarKernel
 import SwiftUI
 
@@ -382,42 +383,221 @@ struct ProjectMemoryHealthCard: View {
     }
 }
 
+// MARK: - Host model
+
+/// Owns one health card's three reads: WHICH project, the daemon's counters for
+/// it, and this Mac's own snapshot.
+///
+/// **Which project, and why that is the hard part.** `daemon.memory.analytics`
+/// takes a `projectPath` and resolves it through
+/// `BurnBarProjectCodeMemoryStore.resolveProjectIdentity` — the WRITING resolver:
+/// it `INSERT OR IGNORE`s into `pcm_projects`, rewrites `updated_at`, and upserts
+/// `pcm_project_aliases`. A nil path is resolved against
+/// `FileManager.default.currentDirectoryPath`, which the daemon's LaunchAgent
+/// pins to its own support directory. So asking with `nil` would (a) register a
+/// phantom project named after the daemon's install directory every time Settings
+/// opened and (b) render that directory's `total: 0` as a measurement of the
+/// member's project. Both are exactly the fabrication this surface exists to
+/// prevent.
+///
+/// So the model never invents a subject. It lists the projects the daemon has
+/// ALREADY recorded (a read-only `SELECT` on the shared database), the member
+/// picks one — defaulting to the most recently written — and the RPC carries that
+/// project's own recorded root, which the daemon's resolver matches to the
+/// existing fingerprint/alias and therefore does not register. With no recorded
+/// project there is no subject at all, and the card says so instead of asking.
+@MainActor @Observable
+final class ProjectMemoryHealthModel {
+
+    typealias LoadProjects = () async throws -> [MemoryHealthProject]
+    typealias LoadSnapshot = () async throws -> MemoryHealthLocalSnapshot
+    /// Takes a NON-OPTIONAL recorded root: the type makes "ask about nothing in
+    /// particular" unrepresentable.
+    typealias FetchAnalytics = (_ recordedRoot: String) async -> BurnBarProjectMemoryAnalyticsResponse?
+
+    /// What the card says when the daemon has never indexed a project here.
+    static let noProjectsNote =
+        "No project memories yet — the daemon has not indexed a project on this Mac, so there is nothing to measure."
+
+    private(set) var projects: [MemoryHealthProject] = []
+    private(set) var selectedProjectID: String?
+    private(set) var card: ProjectMemoryHealthCardModel?
+    private(set) var loadFailure: String?
+    private(set) var isLoading = false
+    private(set) var hasLoaded = false
+
+    /// True only once a load has finished and found nothing. Never true while
+    /// loading, and never true after a failure — "we could not look" is not
+    /// "there is nothing".
+    var hasNoKnownProjects: Bool {
+        hasLoaded && loadFailure == nil && projects.isEmpty
+    }
+
+    var noProjectsNote: String { Self.noProjectsNote }
+
+    var selectedProject: MemoryHealthProject? {
+        projects.first { $0.id == selectedProjectID }
+    }
+
+    private let loadProjects: LoadProjects
+    private let loadSnapshot: LoadSnapshot
+    private let fetchAnalytics: FetchAnalytics
+
+    init(
+        loadProjects: @escaping LoadProjects,
+        loadSnapshot: @escaping LoadSnapshot,
+        fetchAnalytics: @escaping FetchAnalytics
+    ) {
+        self.loadProjects = loadProjects
+        self.loadSnapshot = loadSnapshot
+        self.fetchAnalytics = fetchAnalytics
+    }
+
+    func load() async {
+        guard isLoading == false else { return }
+        isLoading = true
+        defer {
+            isLoading = false
+            hasLoaded = true
+        }
+
+        do {
+            projects = try await loadProjects()
+        } catch {
+            projects = []
+            card = nil
+            loadFailure = error.localizedDescription
+            return
+        }
+
+        // No recorded project: no subject, so no request. The card renders the
+        // note instead of a zero it would have had to invent a project to get.
+        guard let first = projects.first else {
+            selectedProjectID = nil
+            card = nil
+            loadFailure = nil
+            return
+        }
+
+        await refresh(project: first)
+    }
+
+    /// Switches the card to another recorded project, asking about THAT project.
+    func select(_ projectID: String) async {
+        guard let project = projects.first(where: { $0.id == projectID }) else { return }
+        await refresh(project: project)
+    }
+
+    private func refresh(project: MemoryHealthProject) async {
+        selectedProjectID = project.id
+        // The ONLY call site. `project.recordedRoot` came out of `pcm_projects`,
+        // so the daemon's resolver finds it and inserts nothing.
+        let analytics = await fetchAnalytics(project.recordedRoot)
+        do {
+            let snapshot = try await loadSnapshot()
+            card = ProjectMemoryHealthCardModel(
+                analytics: analytics,
+                snapshot: snapshot,
+                projectName: project.name,
+                projectRoot: project.recordedRoot
+            )
+            loadFailure = nil
+        } catch {
+            card = nil
+            loadFailure = error.localizedDescription
+        }
+    }
+}
+
 // MARK: - Host
 
-/// Owns one health card's two reads: the daemon's counters and this Mac's own
-/// snapshot.
+/// Mounts `ProjectMemoryHealthModel` and its picker.
 ///
-/// The two halves fail independently on purpose. A daemon that cannot be reached
-/// leaves the counters absent — the card renders `—`, never `0` — while the
-/// local checks still run. A local read that fails says so instead of drawing a
-/// card whose "nothing is failing" line was never earned.
+/// The model is held in `@State` so a Settings re-render cannot replace a loaded
+/// card with a fresh empty one — and, more importantly, cannot re-issue the
+/// daemon request as a side effect of an unrelated redraw.
 @MainActor
 struct ProjectMemoryHealthCardHost: View {
     let store: ControlPlaneStore
     let daemonManager: OpenBurnBarDaemonManager?
     let accountUid: String?
-    let projectRoot: String?
 
-    @State private var model: ProjectMemoryHealthCardModel?
-    @State private var localCheckFailure: String?
-    @State private var isLoading = true
+    @State private var model: ProjectMemoryHealthModel?
 
     var body: some View {
         Group {
             if let model {
-                ProjectMemoryHealthCard(model: model)
-            } else if let localCheckFailure {
-                unavailable(localCheckFailure)
-            } else if isLoading {
-                HStack(spacing: DesignSystem.Spacing.xs) {
-                    ProgressView().controlSize(.small)
-                    Text("Checking memory health…")
-                        .font(DesignSystem.Typography.tiny)
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
-                }
+                content(model)
+            } else {
+                loadingRow
             }
         }
-        .task { await load() }
+        .task {
+            let model = model ?? makeModel()
+            self.model = model
+            guard model.hasLoaded == false else { return }
+            await model.load()
+        }
+    }
+
+    @ViewBuilder
+    private func content(_ model: ProjectMemoryHealthModel) -> some View {
+        if let card = model.card {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                projectPicker(model)
+                ProjectMemoryHealthCard(model: card)
+            }
+        } else if let failure = model.loadFailure {
+            unavailable(failure)
+        } else if model.hasNoKnownProjects {
+            noProjects(model.noProjectsNote)
+        } else {
+            loadingRow
+        }
+    }
+
+    /// Only shown when there is a choice to make. One recorded project needs no
+    /// picker; the card's own header already names it.
+    @ViewBuilder
+    private func projectPicker(_ model: ProjectMemoryHealthModel) -> some View {
+        if model.projects.count > 1 {
+            Picker(
+                "Project",
+                selection: Binding(
+                    get: { model.selectedProjectID ?? "" },
+                    set: { id in Task { await model.select(id) } }
+                )
+            ) {
+                ForEach(model.projects) { project in
+                    Text(project.name).tag(project.id)
+                }
+            }
+            .pickerStyle(.menu)
+            .labelsHidden()
+            .font(DesignSystem.Typography.tiny)
+        }
+    }
+
+    private var loadingRow: some View {
+        HStack(spacing: DesignSystem.Spacing.xs) {
+            ProgressView().controlSize(.small)
+            Text("Checking memory health…")
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+        }
+    }
+
+    private func noProjects(_ detail: String) -> some View {
+        HStack(alignment: .top, spacing: DesignSystem.Spacing.xs) {
+            Image(systemName: "tray")
+                .font(.system(size: 10))
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+            Text(detail)
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
     }
 
     private func unavailable(_ detail: String) -> some View {
@@ -433,38 +613,30 @@ struct ProjectMemoryHealthCardHost: View {
         }
     }
 
-    private func load() async {
-        isLoading = true
-        defer { isLoading = false }
-
-        let analytics = await fetchAnalytics()
-        do {
-            let snapshot = try await store.memoryHealthLocalSnapshot(accountUid: accountUid)
-            model = ProjectMemoryHealthCardModel(
-                analytics: analytics,
-                snapshot: snapshot,
-                projectRoot: projectRoot
-            )
-            localCheckFailure = nil
-        } catch {
-            model = nil
-            localCheckFailure = error.localizedDescription
-        }
-    }
-
-    /// Nil on any failure — an unreachable or refusing daemon leaves the
-    /// counters unmeasured rather than zeroed.
-    private func fetchAnalytics() async -> BurnBarProjectMemoryAnalyticsResponse? {
-        guard let daemonManager else { return nil }
-        let socketURL = daemonManager.paths.socketURL
-        let projectPath = projectRoot
-        do {
-            return try await daemonManager.daemonRPC {
-                try OpenBurnBarDaemonSocketClient.memoryAnalytics(projectPath: projectPath, at: socketURL)
+    private func makeModel() -> ProjectMemoryHealthModel {
+        let store = store
+        let daemonManager = daemonManager
+        let accountUid = accountUid
+        return ProjectMemoryHealthModel(
+            loadProjects: { try await store.memoryHealthProjects() },
+            loadSnapshot: { try await store.memoryHealthLocalSnapshot(accountUid: accountUid) },
+            fetchAnalytics: { recordedRoot in
+                guard let daemonManager else { return nil }
+                let socketURL = daemonManager.paths.socketURL
+                do {
+                    // Nil on any failure — an unreachable or refusing daemon
+                    // leaves the counters unmeasured rather than zeroed.
+                    return try await daemonManager.daemonRPC {
+                        try OpenBurnBarDaemonSocketClient.memoryAnalytics(
+                            projectPath: recordedRoot,
+                            at: socketURL
+                        )
+                    }
+                } catch {
+                    AppLogger.dataStore.silentFailure("daemon.memory.analytics unavailable", error: error)
+                    return nil
+                }
             }
-        } catch {
-            AppLogger.dataStore.silentFailure("daemon.memory.analytics unavailable", error: error)
-            return nil
-        }
+        )
     }
 }

@@ -280,4 +280,158 @@ final class ProjectMemoryHealthCardTests: XCTestCase {
         XCTAssertTrue(card.byKind.isEmpty)
         XCTAssertTrue(card.byScope.isEmpty)
     }
+
+    // MARK: - The project the card is about
+
+    private func makeMigratedStore() throws -> (DatabaseQueue, ControlPlaneStore) {
+        let queue = try DatabaseQueue()
+        let database = OpenBurnBarDatabase(databaseQueue: queue)
+        try database.runMigrationsSafely()
+        return (queue, ControlPlaneStore(dbQueue: queue))
+    }
+
+    private func insertRecordedProject(
+        _ queue: DatabaseQueue,
+        id: String,
+        name: String,
+        primaryPath: String,
+        updatedAt: String
+    ) async throws {
+        try await queue.write { db in
+            try db.execute(
+                sql: """
+                INSERT INTO pcm_projects
+                    (project_id, identity_version, identity_fingerprint, project_name,
+                     primary_path, created_at, updated_at)
+                VALUES (?, 2, ?, ?, ?, ?, ?)
+                """,
+                arguments: [id, "fp-\(id)", name, primaryPath, updatedAt, updatedAt]
+            )
+        }
+    }
+
+    /// The card lists the projects the DAEMON already recorded, newest write
+    /// first, and reads them without writing anything back.
+    func test_the_card_lists_the_projects_the_daemon_already_recorded() async throws {
+        let (queue, store) = try makeMigratedStore()
+        try await insertRecordedProject(
+            queue,
+            id: "proj_old",
+            name: "Older",
+            primaryPath: "/Users/dewclaw/Projects/Older",
+            updatedAt: "2026-08-01T00:00:00.000Z"
+        )
+        try await insertRecordedProject(
+            queue,
+            id: "proj_new",
+            name: "Newer",
+            primaryPath: "/Users/dewclaw/Projects/Newer",
+            updatedAt: "2026-09-04T00:00:00.000Z"
+        )
+
+        let projects = try await store.memoryHealthProjects()
+
+        XCTAssertEqual(projects.map(\.id), ["proj_new", "proj_old"], "most recently written first")
+        XCTAssertEqual(projects.first?.recordedRoot, "/Users/dewclaw/Projects/Newer")
+        XCTAssertEqual(projects.first?.name, "Newer")
+
+        // Read-only: listing must not touch the project registry the daemon owns.
+        let aliasCount = try await queue.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM pcm_project_aliases") ?? -1
+        }
+        XCTAssertEqual(aliasCount, 0, "listing projects must never register one")
+        let stamps = try await queue.read { db in
+            try String.fetchAll(db, sql: "SELECT updated_at FROM pcm_projects ORDER BY project_id")
+        }
+        XCTAssertEqual(stamps, ["2026-09-04T00:00:00.000Z", "2026-08-01T00:00:00.000Z"])
+    }
+
+    /// C1/C2: with no recorded project there is no subject to ask about, so the
+    /// card asks NOTHING. The old mount passed `projectRoot: nil`, which the
+    /// daemon resolves against its own working directory — registering a phantom
+    /// project row and rendering its zero as a measurement.
+    func test_a_card_with_no_known_projects_issues_no_daemon_request() async {
+        var analyticsCalls: [String] = []
+        let model = ProjectMemoryHealthModel(
+            loadProjects: { [] },
+            loadSnapshot: { MemoryHealthLocalSnapshot(
+                auditChainLinks: [],
+                pendingReviewCount: 0,
+                lastMemoryFactsPullAt: nil,
+                deviceSyncMarkerRefreshedAt: nil
+            ) },
+            fetchAnalytics: { root in
+                analyticsCalls.append(root)
+                return Self.analytics
+            }
+        )
+
+        await model.load()
+
+        XCTAssertTrue(analyticsCalls.isEmpty, "no recorded project means no RPC at all")
+        XCTAssertNil(model.card, "there is no project to draw a card about")
+        XCTAssertTrue(model.hasNoKnownProjects)
+        XCTAssertEqual(model.noProjectsNote, ProjectMemoryHealthModel.noProjectsNote)
+        XCTAssertTrue(model.noProjectsNote.contains("No project memories yet"))
+    }
+
+    /// The analytics request carries the picked project's RECORDED root — the
+    /// path `pcm_projects` already holds — so the daemon's resolver hits the
+    /// existing alias and registers nothing. Never nil, never this process's cwd.
+    func test_the_analytics_request_carries_the_picked_projects_recorded_root() async {
+        let recorded = [
+            MemoryHealthProject(
+                id: "proj_new",
+                name: "Newer",
+                recordedRoot: "/Users/dewclaw/Projects/Newer",
+                lastWrittenAt: "2026-09-04T00:00:00.000Z"
+            ),
+            MemoryHealthProject(
+                id: "proj_old",
+                name: "Older",
+                recordedRoot: "/Users/dewclaw/Projects/Older",
+                lastWrittenAt: "2026-08-01T00:00:00.000Z"
+            )
+        ]
+        var analyticsCalls: [String] = []
+        let model = ProjectMemoryHealthModel(
+            loadProjects: { recorded },
+            loadSnapshot: { MemoryHealthLocalSnapshot(
+                auditChainLinks: [],
+                pendingReviewCount: 0,
+                lastMemoryFactsPullAt: nil,
+                deviceSyncMarkerRefreshedAt: nil
+            ) },
+            fetchAnalytics: { root in
+                analyticsCalls.append(root)
+                return Self.analytics
+            }
+        )
+
+        await model.load()
+
+        XCTAssertEqual(analyticsCalls, ["/Users/dewclaw/Projects/Newer"], "default is the most recently written")
+        XCTAssertEqual(model.selectedProjectID, "proj_new")
+        XCTAssertFalse(model.hasNoKnownProjects)
+        XCTAssertEqual(model.card?.projectRoot, "/Users/dewclaw/Projects/Newer")
+        XCTAssertEqual(model.card?.projectName, "Newer")
+
+        await model.select("proj_old")
+        XCTAssertEqual(
+            analyticsCalls,
+            ["/Users/dewclaw/Projects/Newer", "/Users/dewclaw/Projects/Older"],
+            "picking a project asks about THAT project"
+        )
+        XCTAssertEqual(model.card?.projectRoot, "/Users/dewclaw/Projects/Older")
+
+        let cwd = FileManager.default.currentDirectoryPath
+        for requested in analyticsCalls {
+            XCTAssertFalse(requested.isEmpty)
+            XCTAssertNotEqual(requested, cwd, "a cwd-derived root is a phantom project, not a measurement")
+            XCTAssertTrue(
+                recorded.map(\.recordedRoot).contains(requested),
+                "\(requested) is not a root pcm_projects already records"
+            )
+        }
+    }
 }
