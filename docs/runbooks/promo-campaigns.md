@@ -172,6 +172,38 @@ cannot infer the code shape from which inputs are rejected before lookup.
 
 ---
 
+## Porting the mechanism to another product
+
+Nothing in the redemption path is BurnBar-specific: the target entitlement
+document and SKU are read off the campaign document, so standing up a second
+offer — even on a different tier — is a seeding operation. That property is
+asserted by the "a second campaign grants a different tier with no code change"
+case in `functions/scripts/test-promo-redemption.mjs`, which writes a second
+campaign on a different entitlement doc and SKU and redeems it without touching
+the callable.
+
+**If the other product shares this Firebase project**, there is no port at all:
+add a campaign entry to `config/promo-campaigns.json` naming that product's
+entitlement doc id and SKU, then seed it. No new code, no new callable, no rules
+change.
+
+**If the other product has its own backend**, the port is:
+
+| Bring across | Why |
+|---|---|
+| `functions/src/promoCampaigns.ts` | Pure rules — canonicalization, digest, eligibility, paths. Product-agnostic as written. |
+| `functions/src/callables/promoRedemption.ts` | The callable. Its only product coupling is the entitlement writer it calls. |
+| The two trust-ranking rules in `entitlementWriteGuards.ts` | Without them a real purchase cannot supersede a promo grant, and a promo grant will erase a live subscription. **Do not skip these.** |
+| Rate-limit actions (`promo_redeem_burst` / `_daily` / `_fail`) | Wrong-code lockout and volume bounds. |
+| The server-only rules block + its regression test | Otherwise clients can enumerate code digests or mint a campaign. |
+| `scripts/promo/seed-promo-campaign.mjs` | Operator surface; only the collection paths are shared. |
+| `website/src/pages/beta.astro` + the per-path hosting headers | Claim page. Keep the "already subscribed" branch so paying users are not told a code was applied. |
+
+Wire the callable to whatever that product's equivalent of
+`writeBurnBarProEntitlement` is — the one requirement is that it writes an
+entitlement document that product's own gates already accept, so the grant needs
+no client change.
+
 ## Tests
 
 | Surface | Command |

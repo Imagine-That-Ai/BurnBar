@@ -243,6 +243,52 @@ test("a later real purchase supersedes a promo grant", async () => {
   assert.equal(doc.expireAt.toMillis(), paidExpiry, "expiry must follow the real subscription");
 });
 
+test("a second campaign grants a different tier with no code change", async () => {
+  // The redemption path reads the target tier and SKU off the campaign
+  // document, so standing up another offer is a seeding operation, not a code
+  // change. This is the property a port to another product depends on, so it
+  // is asserted rather than assumed: a second campaign is written directly
+  // (no config entry, no new callable) and must grant its own tier.
+  await resetCampaign();
+  const secondCampaignID = "second-campaign-proof";
+  const secondCode = "SECOND-TIER-PROOF";
+  const secondDigest = promoCodeDigest(canonicalizePromoCode(secondCode));
+  const grantExpiresAtMillis = Date.parse("2099-01-01T00:00:00.000Z");
+
+  await db.doc(`promo_campaigns/${secondCampaignID}`).set({
+    campaignID: secondCampaignID,
+    label: "second tier proof",
+    active: true,
+    // A different entitlement document and a different SKU from the Ultra
+    // campaign above — nothing about the callable is Ultra-specific.
+    entitlementID: PRO_MAX_DOC,
+    productID: "com.openburnbar.proMax.v2.monthly",
+    grantExpiresAtMillis,
+    schemaVersion: 1,
+  });
+  await db.doc(`promo_codes/${secondDigest}`).set({
+    campaignID: secondCampaignID,
+    active: true,
+    schemaVersion: 1,
+  });
+
+  const uid = freshUid("second-campaign");
+  const result = await redeemPromoCodeForUid(uid, secondCode);
+  assert.equal(result.status, "granted");
+  assert.equal(result.entitlementID, PRO_MAX_DOC);
+
+  const doc = await entitlement(uid, PRO_MAX_DOC);
+  assert.equal(doc.active, true);
+  assert.equal(doc.productID, "com.openburnbar.proMax.v2.monthly");
+  assert.equal(doc.source, PROMO_ENTITLEMENT_SOURCE);
+  assert.equal(doc.promoCampaignID, secondCampaignID);
+
+  // Campaigns are independent: the second offer must not touch the Ultra doc
+  // or spend an Ultra redemption.
+  assert.equal(await entitlement(uid, ULTRA_DOC), undefined, "a Cloud Pro campaign must not grant Ultra");
+  assert.equal((await campaign()).redemptionCount, 0, "the Ultra campaign's cap must be untouched");
+});
+
 test("rotating the code retires the old one without touching granted entitlements", async () => {
   await resetCampaign();
   const grantedUid = freshUid("rotate-existing");
