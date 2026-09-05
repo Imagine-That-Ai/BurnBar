@@ -132,6 +132,7 @@ public actor BurnBarHTTPGatewayServer {
     let logger: any BurnBarDaemonLogging
     let rateLimiter: BurnBarRateLimiter?
     let unauthenticatedLoopbackRateLimiter: BurnBarRateLimiter?
+    let memoryEgress: BurnBarMemoryEgressEnforcer?
 
     private let modelCatalogCacheTTL: TimeInterval
     private var modelCatalogCache: LinuxModelCatalogCache?
@@ -151,7 +152,8 @@ public actor BurnBarHTTPGatewayServer {
         modelHealthStore: BurnBarGatewayModelHealthStore = BurnBarGatewayModelHealthStore(),
         modelCatalogCacheTTL: TimeInterval = 0,
         logger: any BurnBarDaemonLogging = BurnBarDaemonLogger(category: "http-gateway"),
-        rateLimiter: BurnBarRateLimiter? = nil
+        rateLimiter: BurnBarRateLimiter? = nil,
+        memoryEgress: BurnBarMemoryEgressEnforcer? = nil
     ) {
         self.configuration = configuration
         self.configStore = configStore
@@ -170,6 +172,7 @@ public actor BurnBarHTTPGatewayServer {
         self.unauthenticatedLoopbackRateLimiter = configuration
             .effectiveUnauthenticatedLoopbackRateLimit
             .map { BurnBarRateLimiter(configuration: $0) }
+        self.memoryEgress = memoryEgress
     }
 
     public func start() throws {
@@ -395,7 +398,28 @@ public actor BurnBarHTTPGatewayServer {
             return .buffered(httpResponse(status: 204, headers: cors, body: Data()))
         }
 
-        if let requiredToken = configuration.authToken?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty {
+        let purpose = GatewayPurpose(header: request.headers[GatewayPurpose.headerName])
+        let staticToken = configuration.authToken?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
+        if let purpose {
+            // Memory Pro: a memory-purpose request may present the static token
+            // or a scoped token for that purpose, and may only hit the two proxy
+            // paths. Everything else is refused before routing.
+            let presented = gatewayAuthToken(from: request.headers)
+            var authorized = false
+            if let presented, let staticToken, constantTimeTokensEqual(presented, staticToken) {
+                authorized = true
+            } else if let presented, let memoryEgress {
+                authorized = await memoryEgress.validateToken(presented, purpose: purpose)
+            }
+            guard authorized, BurnBarMemoryEgressEnforcer.allowedPaths.contains(request.path) else {
+                logger.warning("gateway_request_unauthorized", metadata: ["path": request.path])
+                return .buffered(httpResponse(
+                    status: 401,
+                    headers: ["Content-Type": "application/json"],
+                    body: #"{"error":{"message":"unauthorized"}}"#
+                ))
+            }
+        } else if let requiredToken = staticToken {
             guard let provided = gatewayAuthToken(from: request.headers),
                   constantTimeTokensEqual(provided, requiredToken) else {
                 logger.warning("gateway_request_unauthorized", metadata: ["path": request.path])
@@ -436,13 +460,13 @@ public actor BurnBarHTTPGatewayServer {
         case ("GET", "/v1/models/catalog"):
             response = .buffered(await linuxModelsListResponse(catalog: true))
         case ("POST", "/v1/chat/completions"):
-            response = await handleModelEndpoint(.chatCompletions, request: request, fileDescriptor: fileDescriptor, corsHeaders: cors)
+            response = await handleModelEndpoint(.chatCompletions, request: request, fileDescriptor: fileDescriptor, corsHeaders: cors, purpose: purpose)
         case ("POST", "/v1/embeddings"):
             response = .buffered(jsonResponse(status: 501, message: "embeddings are not available on the Linux gateway yet"))
         case ("POST", "/v1/responses"):
-            response = await handleModelEndpoint(.responses, request: request, fileDescriptor: fileDescriptor, corsHeaders: cors)
+            response = await handleModelEndpoint(.responses, request: request, fileDescriptor: fileDescriptor, corsHeaders: cors, purpose: purpose)
         case ("POST", "/v1/messages"):
-            response = await handleModelEndpoint(.anthropicMessages, request: request, fileDescriptor: fileDescriptor, corsHeaders: cors)
+            response = await handleModelEndpoint(.anthropicMessages, request: request, fileDescriptor: fileDescriptor, corsHeaders: cors, purpose: purpose)
         default:
             response = .buffered(httpResponse(
                 status: 404,
@@ -457,15 +481,17 @@ public actor BurnBarHTTPGatewayServer {
         _ endpoint: LinuxGatewayEndpoint,
         request: LinuxHTTPRequest,
         fileDescriptor: Int32,
-        corsHeaders: [String: String]
+        corsHeaders: [String: String],
+        purpose: GatewayPurpose? = nil
     ) async -> LinuxGatewayResponse {
         let startedAt = Date()
-        let executionSource = UsageExecutionSourceResolver.fromClientMarker(
+        let rawExecutionSource = UsageExecutionSourceResolver.fromClientMarker(
             request.headers["x-openburnbar-client"],
             allowCustom: true
         ) ?? UsageExecutionSourceResolver.fromClientMarker(
             request.headers["user-agent"]
         ) ?? .unknown
+        let executionSource = purpose == nil ? rawExecutionSource : BurnBarMemoryEgressEnforcer.executionSource
         guard !request.body.isEmpty else {
             return .buffered(jsonResponse(status: 400, message: "request body required"))
         }
@@ -507,6 +533,34 @@ public actor BurnBarHTTPGatewayServer {
 
                 for (index, route) in routes.enumerated() {
                     let attemptStartedAt = Date()
+                    if let purpose {
+                        guard let memoryEgress else {
+                            return .buffered(memoryEgressDenialResponse(BurnBarMemoryEgressDenial(
+                                code: "CLOUD_CONSENT_REQUIRED",
+                                message: "Memory egress policy is not configured on this daemon."
+                            )))
+                        }
+                        do {
+                            try await memoryEgress.evaluate(purpose: purpose, providerID: route.providerID)
+                        } catch let denial as BurnBarMemoryEgressDenial {
+                            await memoryEgress.record(
+                                purpose: purpose,
+                                providerID: route.providerID,
+                                modelID: route.resolvedModelID,
+                                requestBytes: request.body.count,
+                                responseBytes: 0,
+                                outcome: "denied",
+                                code: denial.code,
+                                latencyMs: 0
+                            )
+                            return .buffered(memoryEgressDenialResponse(denial))
+                        } catch {
+                            return .buffered(memoryEgressDenialResponse(BurnBarMemoryEgressDenial(
+                                code: "CLOUD_CONSENT_REQUIRED",
+                                message: "Memory egress policy unavailable: \(error.localizedDescription)"
+                            )))
+                        }
+                    }
                     do {
                         if decoded.stream == true,
                            let streamPlan = streamPlan(
@@ -527,6 +581,18 @@ public actor BurnBarHTTPGatewayServer {
                                     fileDescriptor: fileDescriptor,
                                     corsHeaders: corsHeaders
                                 )
+                                if let purpose, let memoryEgress {
+                                    await memoryEgress.record(
+                                        purpose: purpose,
+                                        providerID: route.providerID,
+                                        modelID: route.resolvedModelID,
+                                        requestBytes: request.body.count,
+                                        responseBytes: 0,
+                                        outcome: "allowed",
+                                        code: nil,
+                                        latencyMs: Int(Date().timeIntervalSince(attemptStartedAt) * 1_000)
+                                    )
+                                }
                                 await recordQuotaSignalIfAvailable(
                                     headers: proxyStream.headers,
                                     route: route,
@@ -567,16 +633,59 @@ public actor BurnBarHTTPGatewayServer {
                             } catch is BurnBarProxyStreamingUnsupported {
                                 // Provider can serve the route, just not as SSE.
                                 // Fall through to the buffered proxy below.
+                            } catch {
+                                if let purpose, let memoryEgress {
+                                    await memoryEgress.record(
+                                        purpose: purpose,
+                                        providerID: route.providerID,
+                                        modelID: route.resolvedModelID,
+                                        requestBytes: request.body.count,
+                                        responseBytes: 0,
+                                        outcome: "failed",
+                                        code: Self.memoryEgressFailureCode(error),
+                                        latencyMs: Int(Date().timeIntervalSince(attemptStartedAt) * 1_000)
+                                    )
+                                }
+                                throw error
                             }
                         }
 
-                        let response = try await proxyEndpoint(
-                            body: request.body,
-                            route: route,
-                            endpoint: endpoint,
-                            formatFamily: formatFamily,
-                            variant: resolvedModel.variant
-                        )
+                        let response: BurnBarProviderProxyResponse
+                        do {
+                            response = try await proxyEndpoint(
+                                body: request.body,
+                                route: route,
+                                endpoint: endpoint,
+                                formatFamily: formatFamily,
+                                variant: resolvedModel.variant
+                            )
+                        } catch {
+                            if let purpose, let memoryEgress {
+                                await memoryEgress.record(
+                                    purpose: purpose,
+                                    providerID: route.providerID,
+                                    modelID: route.resolvedModelID,
+                                    requestBytes: request.body.count,
+                                    responseBytes: 0,
+                                    outcome: "failed",
+                                    code: Self.memoryEgressFailureCode(error),
+                                    latencyMs: Int(Date().timeIntervalSince(attemptStartedAt) * 1_000)
+                                )
+                            }
+                            throw error
+                        }
+                        if let purpose, let memoryEgress {
+                            await memoryEgress.record(
+                                purpose: purpose,
+                                providerID: route.providerID,
+                                modelID: route.resolvedModelID,
+                                requestBytes: request.body.count,
+                                responseBytes: response.body.count,
+                                outcome: "allowed",
+                                code: nil,
+                                latencyMs: Int(Date().timeIntervalSince(attemptStartedAt) * 1_000)
+                            )
+                        }
                         await recordQuotaSignalIfAvailable(
                             headers: response.headers,
                             route: route,
@@ -1467,6 +1576,25 @@ public actor BurnBarHTTPGatewayServer {
         return httpResponse(status: 503, headers: headers, body: body)
     }
 
+    /// Memory Pro denials use the OpenAI-style object error shape so the
+    /// Python engine can read a stable `code`.
+    private func memoryEgressDenialResponse(_ denial: BurnBarMemoryEgressDenial) -> Data {
+        let payload: [String: Any] = ["error": ["code": denial.code, "message": denial.message, "type": "memory_egress_denied"]]
+        let body = (try? JSONSerialization.data(withJSONObject: payload)).flatMap { String(data: $0, encoding: .utf8) }
+            ?? #"{"error":{"code":"\#(denial.code)","message":"denied"}}"#
+        return httpResponse(status: 403, headers: ["Content-Type": "application/json"], body: body)
+    }
+
+    /// A short, content-free code for the egress chain when upstream fails.
+    private static func memoryEgressFailureCode(_ error: Error) -> String {
+        switch error as? BurnBarProviderExecutorError {
+        case .upstreamError(let status, _), .upstreamErrorWithHeaders(let status, _, _):
+            return "UPSTREAM_\(status)"
+        default:
+            return "UPSTREAM_ERROR"
+        }
+    }
+
     private func jsonResponse(status: Int, message: String) -> Data {
         httpResponse(status: status, headers: ["Content-Type": "application/json"], body: errorBody(message))
     }
@@ -1785,6 +1913,7 @@ private func statusText(_ status: Int) -> String {
     case 204: return "No Content"
     case 400: return "Bad Request"
     case 401: return "Unauthorized"
+    case 403: return "Forbidden"
     case 413: return "Payload Too Large"
     case 404: return "Not Found"
     case 429: return "Too Many Requests"

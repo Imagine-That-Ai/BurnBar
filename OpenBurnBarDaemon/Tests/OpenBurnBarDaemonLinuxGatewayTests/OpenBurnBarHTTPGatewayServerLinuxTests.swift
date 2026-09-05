@@ -400,6 +400,261 @@ final class OpenBurnBarHTTPGatewayServerLinuxTests: XCTestCase {
             throw error
         }
     }
+    // MARK: - Memory Egress Enforcement (E18b)
+
+    func test_a_request_without_a_purpose_header_is_denied() async throws {
+        let staticToken = "static-gateway-token"
+        let harness = try LinuxGatewayHarness(
+            authToken: staticToken,
+            memoryEgressFactory: { configStore, _, logURL in
+                BurnBarMemoryEgressEnforcer(
+                    configStore: configStore,
+                    membership: FakeMembershipService(active: true, now: Date()),
+                    tokenStore: BurnBarGatewayScopedTokenStore(),
+                    log: BurnBarMemoryEgressLogStore(fileURL: logURL),
+                    spentTodayUSD: { _ in 0 },
+                    now: Date.init
+                )
+            }
+        )
+        addTeardownBlock { await harness.stop() }
+        let upstream = LinuxMockOpenAIStreamServer()
+        try upstream.start()
+        defer { upstream.stop() }
+        try await harness.configureZAIProvider(baseURL: "http://127.0.0.1:\(upstream.port)/v1")
+        try await harness.start()
+
+        let enforcer = try XCTUnwrap(harness.enforcer)
+        let scopedToken = await enforcer.tokenStore.mint(purposes: ["memory-extract"]).token
+        let body = #"{"model":"glm-5-turbo","messages":[{"role":"user","content":"ping"}]}"#
+        let response = try await LinuxHTTPClient.post(
+            port: harness.port,
+            path: "/v1/chat/completions",
+            body: body,
+            headers: ["Authorization": "Bearer \(scopedToken)"]
+        )
+        XCTAssertEqual(response.statusCode, 401, "a scoped token without a purpose header cannot authenticate against staticToken")
+    }
+
+    func test_an_invalid_token_is_denied() async throws {
+        let staticToken = "static-gateway-token"
+        let harness = try LinuxGatewayHarness(
+            authToken: staticToken,
+            memoryEgressFactory: { configStore, _, logURL in
+                BurnBarMemoryEgressEnforcer(
+                    configStore: configStore,
+                    membership: FakeMembershipService(active: true, now: Date()),
+                    tokenStore: BurnBarGatewayScopedTokenStore(),
+                    log: BurnBarMemoryEgressLogStore(fileURL: logURL),
+                    spentTodayUSD: { _ in 0 },
+                    now: Date.init
+                )
+            }
+        )
+        addTeardownBlock { await harness.stop() }
+        let upstream = LinuxMockOpenAIStreamServer()
+        try upstream.start()
+        defer { upstream.stop() }
+        try await harness.configureZAIProvider(baseURL: "http://127.0.0.1:\(upstream.port)/v1")
+        try await harness.start()
+
+        let body = #"{"model":"glm-5-turbo","messages":[{"role":"user","content":"ping"}]}"#
+        let response = try await LinuxHTTPClient.post(
+            port: harness.port,
+            path: "/v1/chat/completions",
+            body: body,
+            headers: [
+                "Authorization": "Bearer invalid-scoped-token",
+                "X-OpenBurnBar-Purpose": "memory-extract"
+            ]
+        )
+        XCTAssertEqual(response.statusCode, 401, "an unminted or invalid token is denied 401")
+    }
+
+    func test_a_denied_egress_records_and_shapes_the_denial_response_like_darwin() async throws {
+        let staticToken = "static-gateway-token"
+        let harness = try LinuxGatewayHarness(
+            authToken: staticToken,
+            memoryEgressFactory: { configStore, _, logURL in
+                BurnBarMemoryEgressEnforcer(
+                    configStore: configStore,
+                    membership: FakeMembershipService(active: false, now: Date()),
+                    tokenStore: BurnBarGatewayScopedTokenStore(),
+                    log: BurnBarMemoryEgressLogStore(fileURL: logURL),
+                    spentTodayUSD: { _ in 0 },
+                    now: Date.init
+                )
+            }
+        )
+        addTeardownBlock { await harness.stop() }
+        let upstream = LinuxMockOpenAIStreamServer()
+        try upstream.start()
+        defer { upstream.stop() }
+        try await harness.configureZAIProvider(baseURL: "http://127.0.0.1:\(upstream.port)/v1")
+        var snapshot = try await harness.configStore.snapshot()
+        snapshot.memoryEgress = BurnBarMemoryEgressPolicy(
+            enabled: true,
+            consentedProviderIDs: ["zai"],
+            requireNoRetention: false,
+            dailyCapUSD: 2
+        )
+        try await harness.configStore.replaceSnapshot(snapshot)
+        try await harness.start()
+
+        let enforcer = try XCTUnwrap(harness.enforcer)
+        let token = await enforcer.tokenStore.mint(purposes: ["memory-judge"]).token
+        let body = #"{"model":"glm-5-turbo","messages":[{"role":"user","content":"ping"}]}"#
+        let response = try await LinuxHTTPClient.post(
+            port: harness.port,
+            path: "/v1/chat/completions",
+            body: body,
+            headers: [
+                "Authorization": "Bearer \(token)",
+                "X-OpenBurnBar-Purpose": "memory-judge"
+            ]
+        )
+
+        XCTAssertEqual(response.statusCode, 403)
+        XCTAssertEqual(response.headers["content-type"], "application/json")
+        XCTAssertTrue(response.rawText.contains("HTTP/1.1 403 Forbidden"), response.rawText)
+        let json = try XCTUnwrap(try? JSONSerialization.jsonObject(with: Data(response.body.utf8)) as? [String: Any])
+        let errorObj = try XCTUnwrap(json["error"] as? [String: Any])
+        XCTAssertEqual(errorObj["code"] as? String, "PRO_REQUIRED")
+        XCTAssertEqual(errorObj["type"] as? String, "memory_egress_denied")
+
+        let entries = try await harness.logEntries()
+        XCTAssertEqual(entries.count, 1)
+        XCTAssertEqual(entries[0].outcome, "denied")
+        XCTAssertEqual(entries[0].code, "PRO_REQUIRED")
+        XCTAssertEqual(entries[0].purpose, "memory-judge")
+        XCTAssertEqual(entries[0].providerID, "zai")
+
+        XCTAssertTrue(upstream.recordedRequests.isEmpty, "upstream provider must not be contacted on policy denial")
+    }
+
+    func test_an_allowed_egress_is_recorded_on_success() async throws {
+        let staticToken = "static-gateway-token"
+        let harness = try LinuxGatewayHarness(
+            authToken: staticToken,
+            memoryEgressFactory: { configStore, _, logURL in
+                BurnBarMemoryEgressEnforcer(
+                    configStore: configStore,
+                    membership: FakeMembershipService(active: true, now: Date()),
+                    tokenStore: BurnBarGatewayScopedTokenStore(),
+                    log: BurnBarMemoryEgressLogStore(fileURL: logURL),
+                    spentTodayUSD: { _ in 0 },
+                    now: Date.init
+                )
+            }
+        )
+        addTeardownBlock { await harness.stop() }
+        let upstream = LinuxMockOpenAIStreamServer()
+        try upstream.start()
+        defer { upstream.stop() }
+        try await harness.configureZAIProvider(baseURL: "http://127.0.0.1:\(upstream.port)/v1")
+        var snapshot = try await harness.configStore.snapshot()
+        snapshot.memoryEgress = BurnBarMemoryEgressPolicy(
+            enabled: true,
+            consentedProviderIDs: ["zai"],
+            requireNoRetention: false,
+            dailyCapUSD: 2
+        )
+        try await harness.configStore.replaceSnapshot(snapshot)
+        try await harness.start()
+
+        let enforcer = try XCTUnwrap(harness.enforcer)
+        let token = await enforcer.tokenStore.mint(purposes: ["memory-extract"]).token
+        let body = #"{"model":"glm-5-turbo","messages":[{"role":"user","content":"extract"}]}"#
+        let response = try await LinuxHTTPClient.post(
+            port: harness.port,
+            path: "/v1/chat/completions",
+            body: body,
+            headers: [
+                "Authorization": "Bearer \(token)",
+                "X-OpenBurnBar-Purpose": "memory-extract"
+            ]
+        )
+
+        XCTAssertEqual(response.statusCode, 200, response.rawText)
+        let entries = try await harness.logEntries()
+        XCTAssertEqual(entries.count, 1)
+        XCTAssertEqual(entries[0].outcome, "allowed")
+        XCTAssertNil(entries[0].code)
+        XCTAssertEqual(entries[0].purpose, "memory-extract")
+        XCTAssertEqual(entries[0].providerID, "zai")
+        XCTAssertGreaterThan(entries[0].responseBytes, 0)
+
+        let usage = try await harness.usageRecorder.recentUsage(limit: 1)
+        let event = try XCTUnwrap(usage.first)
+        XCTAssertEqual(event.executionSourceID, BurnBarMemoryEgressEnforcer.executionSource.id)
+    }
+
+    func test_the_gateway_now_starts_with_memory_egress_configured() async throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("linux-gateway-start-test-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let configStore = BurnBarConfigStore(
+            fileURL: tempDir.appendingPathComponent("config.json"),
+            catalog: BurnBarCatalogLoader.bundledCatalog,
+            secretStore: BurnBarInMemorySecretStore(),
+            logger: BurnBarDaemonLogger(category: "test")
+        )
+        let usageRecorder = BurnBarUsageRecorder(
+            fileURL: tempDir.appendingPathComponent("usage.jsonl"),
+            logger: BurnBarDaemonLogger(category: "test")
+        )
+        let enforcer = BurnBarMemoryEgressEnforcer(
+            configStore: configStore,
+            membership: FakeMembershipService(active: true, now: Date()),
+            tokenStore: BurnBarGatewayScopedTokenStore(),
+            log: BurnBarMemoryEgressLogStore(fileURL: tempDir.appendingPathComponent("egress.jsonl")),
+            spentTodayUSD: { _ in 0 },
+            now: Date.init
+        )
+        let port = try LinuxSocketSupport.reserveLoopbackPort()
+        let server = BurnBarHTTPGatewayServer(
+            configuration: BurnBarGatewayConfiguration(
+                isEnabled: true,
+                host: "127.0.0.1",
+                port: port,
+                authToken: nil,
+                allowUnauthenticatedLoopback: true
+            ),
+            configStore: configStore,
+            usageRecorder: usageRecorder,
+            memoryEgress: enforcer
+        )
+        try await server.start()
+        try await LinuxSocketSupport.waitForListener(port: port)
+        let response = try await LinuxHTTPClient.get(port: port, path: "/health")
+        XCTAssertEqual(response.statusCode, 200)
+        await server.stop()
+    }
+}
+
+private struct FakeMembershipService: BurnBarMembershipServing {
+    let active: Bool
+    let now: Date
+
+    func status() async -> BurnBarMembershipStatusResponse {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return BurnBarMembershipStatusResponse(membership: BurnBarMembershipSnapshot(
+            tier: active ? "pro" : "free",
+            entitlementIds: active ? ["burnbar_pro"] : [],
+            restoreAvailable: true,
+            state: active ? .active : .offline,
+            daemonCacheKey: "entitlements/test",
+            source: "local_cache",
+            updatedAt: formatter.string(from: now)
+        ))
+    }
+
+    func checkoutURL(_ request: BurnBarMembershipCheckoutURLRequest) async throws -> BurnBarMembershipCheckoutURLResponse {
+        throw BurnBarMembershipServiceError.unauthenticated
+    }
 }
 
 private final class LinuxGatewayHarness: @unchecked Sendable {
@@ -408,11 +663,17 @@ private final class LinuxGatewayHarness: @unchecked Sendable {
     let usageRecorder: BurnBarUsageRecorder
     let proxyRouteLogStore: BurnBarProxyRouteLogStore
     let modelHealthStore: BurnBarGatewayModelHealthStore
-    private let configStore: BurnBarConfigStore
-    private let server: BurnBarHTTPGatewayServer
+    let configStore: BurnBarConfigStore
+    let server: BurnBarHTTPGatewayServer
+    let enforcer: BurnBarMemoryEgressEnforcer?
+    let egressLogURL: URL?
     private let tempDirectory: URL
 
-    init(host: String = "127.0.0.1") throws {
+    init(
+        host: String = "127.0.0.1",
+        authToken: String? = nil,
+        memoryEgressFactory: ((BurnBarConfigStore, BurnBarUsageRecorder, URL) -> BurnBarMemoryEgressEnforcer)? = nil
+    ) throws {
         self.host = host
         self.port = try LinuxSocketSupport.reserveLoopbackPort(host: host)
         tempDirectory = FileManager.default.temporaryDirectory
@@ -437,20 +698,30 @@ private final class LinuxGatewayHarness: @unchecked Sendable {
             fileURL: tempDirectory.appendingPathComponent("model-health.json"),
             logger: BurnBarDaemonLogger(category: "linux-gateway-tests")
         )
+        let logURL = tempDirectory.appendingPathComponent("memory-egress-log.jsonl")
+        let enforcerInstance = memoryEgressFactory?(configStore, usageRecorder, logURL)
+        self.enforcer = enforcerInstance
+        self.egressLogURL = enforcerInstance != nil ? logURL : nil
         server = BurnBarHTTPGatewayServer(
             configuration: BurnBarGatewayConfiguration(
                 isEnabled: true,
                 host: host,
                 port: port,
-                authToken: nil,
-                allowUnauthenticatedLoopback: true
+                authToken: authToken,
+                allowUnauthenticatedLoopback: authToken == nil
             ),
             configStore: configStore,
             usageRecorder: usageRecorder,
             proxyRouteLogStore: proxyRouteLogStore,
             modelHealthStore: modelHealthStore,
-            logger: BurnBarDaemonLogger(category: "linux-gateway-tests")
+            logger: BurnBarDaemonLogger(category: "linux-gateway-tests"),
+            memoryEgress: enforcerInstance
         )
+    }
+
+    func logEntries() async throws -> [BurnBarMemoryEgressEntry] {
+        guard let egressLogURL else { return [] }
+        return try await BurnBarMemoryEgressLogStore(fileURL: egressLogURL).entries()
     }
 
     func configureZAIProvider(baseURL: String) async throws {

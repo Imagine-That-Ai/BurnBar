@@ -229,6 +229,7 @@ targets:
         PRODUCT_NAME: OpenBurnBar
         PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.app
         DEVELOPMENT_TEAM: 4Y367DF25B
+        CODE_SIGN_STYLE: Automatic
         CODE_SIGN_ENTITLEMENTS: "$(OPENBURNBAR_HOST_CODE_SIGN_ENTITLEMENTS)"
         INFOPLIST_KEY_CFBundleDisplayName: OpenBurnBar
         INFOPLIST_KEY_CFBundleName: OpenBurnBar

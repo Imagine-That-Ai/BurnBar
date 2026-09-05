@@ -284,14 +284,75 @@ final class MemorySettings {
         hasResolvedUsageRemoteConfig = true
     }
 
+    // MARK: - Org memory Remote Config ceiling (D17 / P23)
+
+    /// User consent for organization memory sync / sharing (default OFF — fail-closed).
+    var orgConsentGranted: Bool = false {
+        didSet {
+            persistence.set(orgConsentGranted, forKey: "orgMemoryConsentGranted")
+            if orgConsentGranted { orgConsentShown = true }
+            propagateOrgGates()
+        }
+    }
+
+    /// Whether the org memory consent prompt has been presented.
+    var orgConsentShown: Bool = false {
+        didSet { persistence.set(orgConsentShown, forKey: "orgMemoryConsentShown") }
+    }
+
+    /// Whether an organization Remote Config snapshot has been resolved.
+    /// Structurally held CLOSED until an RC snapshot is applied (at init from cache, or freshly activated).
+    private(set) var orgCeilingResolved: Bool = false {
+        didSet { propagateOrgGates() }
+    }
+
+    /// The active organization ceiling snapshot, if resolved.
+    private(set) var orgCeilingSnapshot: OrgMemoryRemoteConfigSnapshot? = nil {
+        didSet { propagateOrgGates() }
+    }
+
+    /// Apply an organization Remote Config snapshot and mark the org lane resolved.
+    func applyOrgRemoteConfig(_ snapshot: OrgMemoryRemoteConfigSnapshot) {
+        orgCeilingSnapshot = snapshot
+        orgCeilingResolved = true
+    }
+
+    /// Whether organization memory sync is currently permitted.
+    /// Combines user consent, Remote Config resolution, and the active org ceiling.
+    var isOrgMemorySyncAllowed: Bool {
+        OrgMemoryCeilingGate.isOrgSyncAllowed(
+            orgConsentGranted: orgConsentGranted,
+            remoteConfigResolved: orgCeilingResolved,
+            snapshot: orgCeilingSnapshot
+        )
+    }
+
+    /// Check if a specific memory kind is allowed for org sync under the active org ceiling.
+    func isOrgKindAllowed(_ kind: MemoryKind) -> Bool {
+        OrgMemoryCeilingGate.isKindAllowed(
+            kind: kind,
+            orgConsentGranted: orgConsentGranted,
+            remoteConfigResolved: orgCeilingResolved,
+            snapshot: orgCeilingSnapshot
+        )
+    }
+
+    private func propagateOrgGates() {
+        // Reserved for UI/service propagation hooks
+    }
+
     /// - Parameter usageRemoteConfigSeed: the **active cached** usage Remote Config
     ///   values, read synchronously (no network). Returning `nil` means "no fleet
     ///   channel resolved yet" and leaves both usage lanes CLOSED until
     ///   `applyUsageRemoteConfig` lands. `SettingsManager` supplies Firebase's
     ///   activated cache here so a cached kill is honored before any gate opens.
+    /// - Parameter orgRemoteConfigSeed: the **active cached** organization Remote Config
+    ///   ceiling, read synchronously (no network). Returning `nil` means no org ceiling
+    ///   resolved yet, keeping the org lane CLOSED (fail-closed) until resolved.
     init(
         persistence: SettingsPersistenceCoordinator,
-        usageRemoteConfigSeed: () -> UsageMemoryRemoteConfigSnapshot? = { nil }
+        usageRemoteConfigSeed: () -> UsageMemoryRemoteConfigSnapshot? = { nil },
+        orgRemoteConfigSeed: () -> OrgMemoryRemoteConfigSnapshot? = { nil }
     ) {
         self.persistence = persistence
         if persistence.objectExists(forKey: "memoryAutomaticExtraction") {
@@ -360,7 +421,13 @@ final class MemorySettings {
                 forKey: "usageMemorySourceAgentSessionsEnabled"
             )
         }
-        // Repair granted-implies-shown for BOTH consent pairs before anything
+        if persistence.objectExists(forKey: "orgMemoryConsentShown") {
+            self.orgConsentShown = persistence.bool(forKey: "orgMemoryConsentShown")
+        }
+        if persistence.objectExists(forKey: "orgMemoryConsentGranted") {
+            self.orgConsentGranted = persistence.bool(forKey: "orgMemoryConsentGranted")
+        }
+        // Repair granted-implies-shown for consent pairs before anything
         // reads them (see `normalizeConsentShownInvariants`).
         normalizeConsentShownInvariants()
         // Honor the active cached fleet values before any usage lane can open.
@@ -371,9 +438,15 @@ final class MemorySettings {
                 authorityWritesEnabled: seed.authorityWritesEnabled
             )
         }
+        // Honor the active cached org ceiling before the org lane can open.
+        // With no seed the org lane stays CLOSED until `applyOrgRemoteConfig`.
+        if let orgSeed = orgRemoteConfigSeed() {
+            applyOrgRemoteConfig(orgSeed)
+        }
         propagateExtractionGate()
         propagateUsageGates()
         propagateCloudModelsGate()
+        propagateOrgGates()
     }
 
     /// Restore the "granting consent implies the prompt was shown" invariant that
@@ -403,6 +476,7 @@ final class MemorySettings {
         if consentGranted, !consentShown { consentShown = true }
         if usageMemoryConsentGranted, !usageMemoryConsentShown { usageMemoryConsentShown = true }
         if cloudModelsEnabled, !cloudModelsConsentShown { cloudModelsConsentShown = true }
+        if orgConsentGranted, !orgConsentShown { orgConsentShown = true }
     }
 
     /// Tell the daemon hand-off that the cloud-models policy (or its gate) moved.
@@ -651,3 +725,90 @@ final class MemorySettingsService {
         return status
     }
 }
+
+// MARK: - Organization memory Remote Config snapshot (D17 / P23)
+
+/// Remote Config ceiling snapshot for organization memory policies.
+/// Carried as one snapshot so kind allowlists and sync status resolve together.
+public struct OrgMemoryRemoteConfigSnapshot: Equatable, Sendable {
+    /// Remote Config switch for whether org-level memory sync is enabled for this organization.
+    public var orgSyncEnabled: Bool
+    /// Allowlisted memory kinds permitted for org sync under this ceiling.
+    public var allowedKinds: Set<String>
+
+    public init(
+        orgSyncEnabled: Bool = true,
+        allowedKinds: Set<String> = ["fact", "preference", "event", "profile", "relationship", "other"]
+    ) {
+        self.orgSyncEnabled = orgSyncEnabled
+        self.allowedKinds = allowedKinds
+    }
+}
+
+// MARK: - Organization memory ceiling gate (pure)
+
+/// Pure gate: organization-level memory sync / sharing is enabled ONLY when the user
+/// has affirmative org consent AND the org Remote Config ceiling is resolved AND allows org sync.
+/// An unresolved ceiling structurally holds the org lane CLOSED (fail-closed).
+public enum OrgMemoryCeilingGate {
+    public static func isOrgSyncAllowed(
+        orgConsentGranted: Bool,
+        remoteConfigResolved: Bool,
+        snapshot: OrgMemoryRemoteConfigSnapshot?
+    ) -> Bool {
+        guard orgConsentGranted && remoteConfigResolved, let snapshot = snapshot else {
+            return false
+        }
+        return snapshot.orgSyncEnabled
+    }
+
+    public static func isKindAllowed(
+        kind: String,
+        orgConsentGranted: Bool,
+        remoteConfigResolved: Bool,
+        snapshot: OrgMemoryRemoteConfigSnapshot?
+    ) -> Bool {
+        guard isOrgSyncAllowed(
+            orgConsentGranted: orgConsentGranted,
+            remoteConfigResolved: remoteConfigResolved,
+            snapshot: snapshot
+        ), let snapshot = snapshot else {
+            return false
+        }
+        return snapshot.allowedKinds.contains(kind.lowercased())
+    }
+
+    public static func isKindAllowed(
+        kind: MemoryKind,
+        orgConsentGranted: Bool,
+        remoteConfigResolved: Bool,
+        snapshot: OrgMemoryRemoteConfigSnapshot?
+    ) -> Bool {
+        isKindAllowed(
+            kind: kind.rawValue,
+            orgConsentGranted: orgConsentGranted,
+            remoteConfigResolved: remoteConfigResolved,
+            snapshot: snapshot
+        )
+    }
+}
+
+// MARK: - Member memory lane gate (pure)
+
+/// Member-local memory operates on its own separate lane, never ANDed with the org ceiling.
+/// Local extraction and recall are independent of whether an org ceiling has resolved or even exists.
+public enum MemberMemoryLaneGate {
+    public static func isExtractionAllowed(
+        memberConsentGranted: Bool,
+        automaticExtractionEnabled: Bool
+    ) -> Bool {
+        memberConsentGranted && automaticExtractionEnabled
+    }
+
+    public static func isRecallAllowed(
+        memberConsentGranted: Bool
+    ) -> Bool {
+        memberConsentGranted
+    }
+}
+

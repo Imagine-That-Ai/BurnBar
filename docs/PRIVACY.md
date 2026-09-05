@@ -96,6 +96,14 @@ Turning the feature off stops all replication; deleting a memory writes a forget
 
 **What a hard forget leaves behind, and why.** Deleting a memory destroys its body, its vectors, its history, its relations and its citations. What survives, on this Mac only, is a *receipt*: the memory's id plus a SHA-256 hash of the text you deleted, kept in the memory engine's own metadata. It exists so that syncing cannot undo your decision — your other devices still hold that memory and keep offering it back, and the only way to recognise the thing you deleted, once its text is gone, is to compare hashes of it. Being honest about what that costs: the hash is unsalted, so it is a durable equality oracle. It cannot be turned back into your text, but anyone with local access to this store *and* an exact guess at what the memory said could confirm the guess. It has no expiry today, it never leaves this Mac, and it is never backed up or replicated. Deleting the memory store file itself is what removes it.
 
+### Optional Team Memory Spaces (opt-in, paid organization entitlement)
+
+If your organization has enabled team spaces and you opt in to "Sync memories with team members", approved project memories for team-linked projects are shared with members of that team in `team_memory_facts/{teamId}/facts`. Like personal memory sync, team memory is **end-to-end encrypted**: the memory body is sealed on your device using a shared team vault key and verified with team-bound Additional Authenticated Data (`team:<teamId>`). OpenBurnBar servers hold only ciphertext blobs, opaque HMAC handles, metadata kinds, and timestamps. OpenBurnBar servers never hold, compute, or receive the team vault key or plaintext memory facts.
+
+Team memory has two operational properties that cannot be altered cryptographically:
+1. **Joining a team grants read access to all historical team facts** sealed under the team's active keys, including memories contributed before joining.
+2. **Leaving a team rotates the team encryption key** so the departing member cannot decrypt future memories. However, leaving cannot remotely erase memories or keys already downloaded to a departing member's local devices.
+
 ### Optional Diagnostics (opt-in only)
 
 If you enable crash reporting or diagnostics, anonymized crash reports may be sent to Sentry. This is disabled by default.

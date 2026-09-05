@@ -262,7 +262,7 @@ struct DashboardView: View {
         case .overview, .insights, .charts, .provider, .model:
             return true
         case .home, .database, .projects, .missions, .sessionLogs, .memoryReview, .inbox, .chat,
-             .quota, .controlDeck, .fleet, .recap:
+             .quota, .controlDeck, .fleet, .recap, .receipts:
             // Recap is a full-width editorial page — its own deck already fills
             // the width, and a provider rail beside it would be a third column
             // competing with the cards.
@@ -353,6 +353,7 @@ struct DashboardView: View {
         case .sessionLogs: route = .sessionLogs
         case .chat: route = .chat
         case .quota: route = .quota
+        case .receipts: route = .receipts
         case .inbox(let itemID):
             route = .inbox
             // Carried through so a tapped notification opens the exact item.
@@ -1007,6 +1008,9 @@ struct DashboardView: View {
                         },
                         onOpenOrchestratorChat: openOrchestratorChat
                     )
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                case .receipts:
+                    ReceiptDrawerView(dataStore: dataStore)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 case .provider(let provider):
                     ProviderDashboardView(

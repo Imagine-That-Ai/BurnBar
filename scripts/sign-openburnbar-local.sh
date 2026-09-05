@@ -65,11 +65,52 @@ else:
         "com.apple.security.app-sandbox": False,
         "com.apple.security.files.user-selected.read-only": True,
     }
-    if full_entitlements == "keychain":
+    if full_entitlements != "none":
         entitlements["keychain-access-groups"] = [f"{team_id}.{bundle_id}"]
     with Path(destination).open("wb") as file:
         plistlib.dump(entitlements, file)
 PY
+
+if [[ ! -x "$APP_BUNDLE/Contents/Helpers/OpenBurnBarDaemon" ]]; then
+  for candidate in \
+    "OpenBurnBarDaemon/.build/release/OpenBurnBarDaemon" \
+    "OpenBurnBarDaemon/.build/arm64-apple-macosx/release/OpenBurnBarDaemon" \
+    "OpenBurnBarDaemon/.build/arm64-apple-macosx/debug/OpenBurnBarDaemon" \
+    "OpenBurnBarDaemon/.build/out/Products/Debug/OpenBurnBarDaemon"; do
+    if [[ -x "$candidate" ]]; then
+      mkdir -p "$APP_BUNDLE/Contents/Helpers"
+      cp "$candidate" "$APP_BUNDLE/Contents/Helpers/OpenBurnBarDaemon"
+      break
+    fi
+  done
+fi
+
+if [[ ! -x "$APP_BUNDLE/Contents/Helpers/OpenBurnBarCLI" ]]; then
+  for candidate in \
+    "OpenBurnBarDaemon/.build/release/OpenBurnBarCLI" \
+    "OpenBurnBarDaemon/.build/arm64-apple-macosx/release/OpenBurnBarCLI" \
+    "OpenBurnBarDaemon/.build/arm64-apple-macosx/debug/OpenBurnBarCLI" \
+    "OpenBurnBarDaemon/.build/out/Products/Debug/OpenBurnBarCLI"; do
+    if [[ -x "$candidate" ]]; then
+      mkdir -p "$APP_BUNDLE/Contents/Helpers"
+      cp "$candidate" "$APP_BUNDLE/Contents/Helpers/OpenBurnBarCLI"
+      break
+    fi
+  done
+fi
+
+ensure_helper_rpath() {
+  local helper="$1"
+  [[ -f "$helper" ]] || return 0
+  if otool -L "$helper" 2>/dev/null | grep -q 'SQLCipher.framework'; then
+    if ! otool -l "$helper" 2>/dev/null | grep -q '@executable_path/../Frameworks'; then
+      install_name_tool -add_rpath "@executable_path/../Frameworks" "$helper" 2>/dev/null || true
+    fi
+  fi
+}
+
+ensure_helper_rpath "$APP_BUNDLE/Contents/Helpers/OpenBurnBarDaemon"
+ensure_helper_rpath "$APP_BUNDLE/Contents/Helpers/OpenBurnBarCLI"
 
 sign_path() {
   local path="$1"
@@ -130,12 +171,21 @@ sign_path "$APP_BUNDLE/Contents/Helpers/libOpenBurnBarCore.dylib"
 sign_path "$APP_BUNDLE/Contents/Frameworks/OpenBurnBarCore.framework"
 
 if [[ -d "$APP_BUNDLE/Contents/Frameworks" ]]; then
-  while IFS= read -r -d '' framework; do
-    sign_path "$framework"
-  done < <(find "$APP_BUNDLE/Contents/Frameworks" -maxdepth 1 -type d -name '*.framework' -print0 | sort -z)
+  while IFS= read -r -d '' item; do
+    sign_path "$item"
+  done < <(find "$APP_BUNDLE/Contents/Frameworks" -maxdepth 1 \( -type d -name '*.framework' -o -type f -name '*.dylib' \) -print0 | sort -z)
 fi
 
+preserve_entitlements=false
 if [[ "${OPENBURNBAR_PRESERVE_SIGNED_ENTITLEMENTS:-0}" == "1" ]]; then
+  if codesign -d --entitlements - "$APP_BUNDLE" 2>/dev/null | grep -q 'keychain-access-groups'; then
+    preserve_entitlements=true
+  else
+    echo "WARN: $APP_BUNDLE has no keychain-access-groups entitlement; applying generated entitlements." >&2
+  fi
+fi
+
+if [[ "$preserve_entitlements" == "true" ]]; then
 	  /usr/bin/codesign \
 	    --force \
 	    --sign "$IDENTITY" \

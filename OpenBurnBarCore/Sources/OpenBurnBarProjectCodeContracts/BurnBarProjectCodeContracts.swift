@@ -864,3 +864,65 @@ public struct BurnBarProjectCodeExploreResponse: Codable, Hashable, Sendable {
         self.degradation = degradation
     }
 }
+
+// MARK: - Team Memory Sync Contracts (D16 / P22)
+
+public struct TeamMemoryFactPayload: Codable, Equatable, Sendable {
+    public static let currentSchemaVersion = 2
+
+    public let schemaVersion: Int
+    public let teamID: String
+    public let memoryID: String
+    public let text: String
+    public let kind: String
+    public let scope: String
+    public let confidence: Double?
+    public let citations: [String]
+    public let validFrom: Date
+    public let updatedAt: Date
+    public let validTo: Date?
+    public let supersededBy: String?
+    public let tags: [String]
+    public let bodyHash: String?
+    public let projectID: String?
+    public let authorUID: String
+    public let teamKeyVersion: Int
+
+    public init(
+        schemaVersion: Int = currentSchemaVersion,
+        teamID: String,
+        memoryID: String,
+        text: String,
+        kind: String,
+        scope: String,
+        confidence: Double? = nil,
+        citations: [String] = [],
+        validFrom: Date,
+        updatedAt: Date,
+        validTo: Date? = nil,
+        supersededBy: String? = nil,
+        tags: [String] = [],
+        bodyHash: String? = nil,
+        projectID: String? = nil,
+        authorUID: String,
+        teamKeyVersion: Int = 1
+    ) {
+        self.schemaVersion = schemaVersion
+        self.teamID = teamID
+        self.memoryID = memoryID
+        self.text = text
+        self.kind = kind
+        self.scope = scope
+        self.confidence = confidence
+        self.citations = citations
+        self.validFrom = validFrom
+        self.updatedAt = updatedAt
+        self.validTo = validTo
+        self.supersededBy = supersededBy
+        self.tags = tags
+        self.bodyHash = bodyHash
+        self.projectID = projectID
+        self.authorUID = authorUID
+        self.teamKeyVersion = teamKeyVersion
+    }
+}
