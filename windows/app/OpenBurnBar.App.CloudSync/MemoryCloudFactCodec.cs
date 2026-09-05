@@ -17,6 +17,7 @@ public static class MemoryCloudFactCodec
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        PropertyNameCaseInsensitive = true,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
@@ -28,20 +29,36 @@ public static class MemoryCloudFactCodec
         string body,
         string uid,
         byte[] vaultKey,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        string? documentIdentity = null,
+        IReadOnlyList<string>? tags = null,
+        string? bodyHash = null,
+        string? projectId = null,
+        string? engineScope = null,
+        string? previousBodyHash = null,
+        string? writerDevice = null)
     {
-        string docId = MemoryFactDocId(memory.Id, vaultKey);
+        string identity = documentIdentity ?? memory.Id;
+        string docId = MemoryFactDocId(identity, vaultKey);
         var aad = new CloudVaultAadContext(uid, "memory_facts", docId, "sealedMemory");
         var payload = new MemoryCloudFactPayload(
-            SchemaVersion: 1,
-            MemoryId: memory.Id,
+            SchemaVersion: 2,
+            MemoryId: identity,
             Text: body,
             Kind: memory.Kind.RawValue(),
             Scope: memory.Scope,
             Confidence: memory.Confidence,
             Citations: memory.Citations,
             ValidFrom: memory.ValidFrom,
-            UpdatedAt: memory.UpdatedAt);
+            UpdatedAt: memory.UpdatedAt,
+            ValidTo: memory.ValidTo,
+            SupersededBy: memory.SupersededBy,
+            Tags: tags is { Count: > 0 } ? tags : null,
+            BodyHash: string.IsNullOrEmpty(bodyHash) ? null : bodyHash,
+            ProjectId: string.IsNullOrEmpty(projectId) ? null : projectId,
+            EngineScope: string.IsNullOrEmpty(engineScope) ? null : engineScope,
+            PreviousBodyHash: string.IsNullOrEmpty(previousBodyHash) ? null : previousBodyHash,
+            WriterDevice: string.IsNullOrEmpty(writerDevice) ? null : writerDevice);
 
         byte[] payloadBytes = JsonSerializer.SerializeToUtf8Bytes(payload, JsonOptions);
         CloudVaultBlobEnvelope sealedEnvelope = CloudVaultCrypto.SealBlob(payloadBytes, vaultKey, aadContext: aad);
@@ -53,7 +70,7 @@ public static class MemoryCloudFactCodec
             ["schemaVersion"] = CloudSyncValue.Of(1),
             ["kind"] = CloudSyncValue.Of(memory.Kind.RawValue()),
             ["reviewStatus"] = CloudSyncValue.Of(memory.ReviewStatus.RawValue()),
-            ["sourceKind"] = CloudSyncValue.Of("chat"),
+            ["sourceKind"] = CloudSyncValue.Of(memory.SourceKind == MemorySourceKind.Code ? "agent" : "chat"),
             ["sealedMemory"] = BlobEnvelopeToMap(sealedEnvelope),
             ["citationCount"] = CloudSyncValue.Of(Math.Min(memory.Citations.Count, 50)),
             ["validFrom"] = CloudSyncValue.Of(memory.ValidFrom),
@@ -77,7 +94,10 @@ public static class MemoryCloudFactCodec
             Citations: payload.Citations,
             ValidFrom: payload.ValidFrom,
             CreatedAt: createdAt,
-            UpdatedAt: payload.UpdatedAt);
+            UpdatedAt: payload.UpdatedAt,
+            SourceKind: MemorySourceKind.Chat,
+            ValidTo: payload.ValidTo,
+            SupersededBy: payload.SupersededBy);
     }
 
     public static MemoryCloudFactPayload OpenPayload(
@@ -185,12 +205,20 @@ public static class MemoryCloudFactCodec
 }
 
 public sealed record MemoryCloudFactPayload(
-    int SchemaVersion,
-    string MemoryId,
-    string Text,
-    string Kind,
-    MemoryScope Scope,
-    double Confidence,
-    IReadOnlyList<MemoryCitation> Citations,
-    DateTimeOffset ValidFrom,
-    DateTimeOffset UpdatedAt);
+    [property: JsonPropertyName("schemaVersion")] int SchemaVersion,
+    [property: JsonPropertyName("memoryID")] string MemoryId,
+    [property: JsonPropertyName("text")] string Text,
+    [property: JsonPropertyName("kind")] string Kind,
+    [property: JsonPropertyName("scope")] MemoryScope Scope,
+    [property: JsonPropertyName("confidence")] double Confidence,
+    [property: JsonPropertyName("citations")] IReadOnlyList<MemoryCitation> Citations,
+    [property: JsonPropertyName("validFrom")] DateTimeOffset ValidFrom,
+    [property: JsonPropertyName("updatedAt")] DateTimeOffset UpdatedAt,
+    [property: JsonPropertyName("validTo")] DateTimeOffset? ValidTo = null,
+    [property: JsonPropertyName("supersededBy")] string? SupersededBy = null,
+    [property: JsonPropertyName("tags")] IReadOnlyList<string>? Tags = null,
+    [property: JsonPropertyName("bodyHash")] string? BodyHash = null,
+    [property: JsonPropertyName("projectID")] string? ProjectId = null,
+    [property: JsonPropertyName("engineScope")] string? EngineScope = null,
+    [property: JsonPropertyName("previousBodyHash")] string? PreviousBodyHash = null,
+    [property: JsonPropertyName("writerDevice")] string? WriterDevice = null);
