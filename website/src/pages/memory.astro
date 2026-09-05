@@ -53,6 +53,7 @@ import {
   TIME_FACTS,
   TIME_LIMIT,
   TOOL_ATLAS,
+  TOTAL_TOOL_COUNT,
   VERIFY_STEPS,
   WRITE_PIPELINE
 } from "@data/memory";
@@ -94,7 +95,7 @@ const PARTS = [
       { n: "08", id: "code", label: "Code intelligence" },
       { n: "09", id: "sessions", label: "Sessions" },
       { n: "10", id: "server", label: "Spend & fan-out" },
-      { n: "11", id: "atlas", label: `All ${BURNBAR_TOOL_COUNT} tools` }
+      { n: "11", id: "atlas", label: `All ${TOTAL_TOOL_COUNT} tools` }
     ]
   },
   {
@@ -907,14 +908,18 @@ const PARTS = [
         <span class="reg__n mono" aria-hidden="true">11</span>
         <div class="reg__headtext">
           <span class="eyebrow eyebrow--ember">The atlas</span>
-          <h2 id="atlas-h">All {BURNBAR_TOOL_COUNT} tools, and what each one needs.</h2>
+          <h2 id="atlas-h">All {TOTAL_TOOL_COUNT} tools, and what each one needs.</h2>
           <p class="lead">
             Not a highlights reel. Every tool the server registers, grouped by surface, with the
-            capability that gates it — and <strong>{MEMORY_TOOL_COUNT}</strong> of them marked as the
-            memory toolset, the subset a client gets with
-            {" "}<code>BURNBAR_MCP_TOOLSET=memory</code>. A build gate reads
-            {" "}<code>server.py</code> and this list and fails if either grows a tool the other does
-            not have.
+            capability that gates it. <strong>{BURNBAR_TOOL_COUNT}</strong> serve memory, code and conversations
+            — <strong>{MEMORY_TOOL_COUNT}</strong> of those are the memory toolset, the subset a client
+            gets with {" "}<code>BURNBAR_MCP_TOOLSET=memory</code>. The other
+            {" "}<strong>{ORCHESTRATION_TOOL_COUNT}</strong> — Castle, Ministry, Bench — launch coding-agent
+            workers across runtimes and grade or benchmark what comes back; a client asking for the memory
+            toolset never sees them, and they arrive only with
+            {" "}<code>BURNBAR_MCP_TOOLSET=ops</code> or the historical default,
+            {" "}<code>all</code>. A build gate reads {" "}<code>server.py</code> and this list and fails
+            if either grows a tool the other does not have.
           </p>
         </div>
       </header>
@@ -935,7 +940,7 @@ const PARTS = [
             hidden
           />
           <p class="atlas__nojs mono">
-            {BURNBAR_TOOL_COUNT} tools across {ATLAS_GROUPS.length} surfaces, all listed below.
+            {TOTAL_TOOL_COUNT} tools across {ATLAS_GROUPS.length} surfaces, all listed below.
           </p>
         </div>
         <div class="atlas__actions">
@@ -943,7 +948,7 @@ const PARTS = [
             Collapse all
           </button>
           <p class="atlas__count mono" data-atlas-count aria-hidden="true">
-            {BURNBAR_TOOL_COUNT} tools
+            {TOTAL_TOOL_COUNT} tools
           </p>
         </div>
       </div>
@@ -986,8 +991,7 @@ const PARTS = [
       </div>
 
       <p class="atlas__empty" data-atlas-empty hidden>
-        Nothing matches that. The atlas covers the {BURNBAR_TOOL_COUNT}
-        <code>burnbar_*</code> tools only.
+        Nothing matches that. The atlas covers all {TOTAL_TOOL_COUNT} tools the server registers.
       </p>
 
       <div class="caps">
@@ -1019,10 +1023,14 @@ const PARTS = [
       <p class="reg__foot mono">
         Source · <code>tools/openburnbar-mcp/server.py</code> — every <code>@mcp.tool()</code> and every
         capability denial site · gated by
-        {" "}<code>website/scripts/test-memory-copy.mjs</code>. The atlas covers the
-        {" "}<code>burnbar_*</code> product tools; the {ORCHESTRATION_TOOL_COUNT}
-        {" "}<code>ministry_*</code> / <code>castle_*</code> / <code>bench_*</code> orchestration tools
-        are counted in section 10 and deliberately not listed here.
+        {" "}<code>website/scripts/test-memory-copy.mjs</code>. All {TOTAL_TOOL_COUNT} tools:
+        {" "}<strong>{BURNBAR_TOOL_COUNT}</strong>
+        <code>burnbar_*</code> product tools plus
+        {" "}<strong>{ORCHESTRATION_TOOL_COUNT}</strong>
+        <code>ministry_*</code> /
+        {" "}<code>castle_*</code> / <code>bench_*</code> orchestration tools, grouped under their own
+        three headings below because they launch and grade coding agents rather than serve your memory
+        — not because they were left off the count.
       </p>
     </div>
   </section>

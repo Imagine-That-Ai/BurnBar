@@ -31,18 +31,23 @@
  * And, since the coverage round, the atlas — the page's claim to list every
  * tool the server has, which is exactly the kind of claim that rots quietly:
  *
- *   8. Set equality between the `burnbar_*` tools `server.py` registers with
- *      `@mcp.tool()` and the entries in `TOOL_ATLAS`. Both directions, by
- *      name, so adding one tool while deleting another cannot pass.
+ *   8. Set equality between EVERY tool `server.py` registers with
+ *      `@mcp.tool()` — `burnbar_*` and `ministry_*` / `castle_*` / `bench_*`
+ *      alike — and the entries in `TOOL_ATLAS`. Both directions, by name, so
+ *      adding one tool while deleting another cannot pass, and so a tool
+ *      that isn't `burnbar_*` cannot quietly sit outside the claim.
  *   9. Every atlas entry belongs to a declared group, carries a real
  *      description, and actually reaches the rendered page.
  *  10. Each entry's published capability gates equal the capabilities named
  *      at that tool's `_capability_denial(...)` — or daemon
  *      `_local_memory_write_authority(...)` — sites in `server.py`.
  *  11. Each entry's "memory toolset" mark equals its membership of
- *      `MEMORY_TOOLSET`.
- *  12. `BURNBAR_TOOL_COUNT` and `ORCHESTRATION_TOOL_COUNT` match what
- *      `server.py` registers, and the atlas heading prints the real number.
+ *      `MEMORY_TOOLSET`. Castle/Ministry/Bench tools are never members, so
+ *      this also proves the atlas never mismarks one of them as memory-scoped.
+ *  12. `BURNBAR_TOOL_COUNT` (the `burnbar_*` product tools) and
+ *      `ORCHESTRATION_TOOL_COUNT` (`ministry_*` / `castle_*` / `bench_*`)
+ *      each match what `server.py` registers, and the atlas heading prints
+ *      their real sum — "all" means all 89, not the 63 alone.
  *  13. The capability table's environment variables match
  *      `LOCAL_MCP_CAPABILITY_ENV`, and every capability a published tool
  *      depends on is explained somewhere on the page.
@@ -208,26 +213,34 @@ for (const pattern of OVERCLAIMS) {
 
 /* ── 8 · the atlas is complete, in both directions ───────────────────────
  *
- * The page's headline claim is coverage: "all 63 tools". A marketing page
- * that lists 63 of 63 tools today lists 63 of 71 the moment someone adds a
- * tool to server.py, and nobody notices, because nothing on the website
- * fails when the server grows. This closes that.
+ * The page's headline claim is coverage: "all 89 tools" — not "all 63
+ * burnbar_* tools", all of them, ministry_* / castle_* / bench_* included. A
+ * marketing page that lists 89 of 89 tools today lists 89 of 97 the moment
+ * someone adds a tool to server.py, and nobody notices, because nothing on
+ * the website fails when the server grows. This closes that, over every
+ * `@mcp.tool()` definition regardless of prefix.
  *
  * Set equality, not a count. A count comparison passes if you add one tool
  * and delete another; a set comparison names both.
  */
 
-const registered = [
-  ...serverSrc.matchAll(/@mcp\.tool\(\)\s*(?:async\s+)?def\s+(burnbar_[a-z0-9_]+)/g)
+const registeredAll = [
+  ...serverSrc.matchAll(/@mcp\.tool\(\)\s*(?:async\s+)?def\s+([a-z][a-z0-9_]*)/g)
 ].map((m) => m[1]);
 assert.ok(
-  registered.length > 40,
-  `parsed only ${registered.length} @mcp.tool() burnbar_* definitions — the parser is wrong, not the page`
+  registeredAll.length > 60,
+  `parsed only ${registeredAll.length} @mcp.tool() definitions — the parser is wrong, not the page`
 );
-const registeredSet = new Set(registered);
+const registeredSet = new Set(registeredAll);
 check(
-  registeredSet.size === registered.length,
-  `server.py registers a duplicate burnbar_* tool name (${registered.length} definitions, ${registeredSet.size} unique)`
+  registeredSet.size === registeredAll.length,
+  `server.py registers a duplicate tool name (${registeredAll.length} definitions, ${registeredSet.size} unique)`
+);
+const registeredBurnbar = registeredAll.filter((n) => n.startsWith("burnbar_"));
+const registeredOrchestration = registeredAll.filter((n) => !n.startsWith("burnbar_"));
+assert.ok(
+  registeredBurnbar.length > 40,
+  `parsed only ${registeredBurnbar.length} @mcp.tool() burnbar_* definitions — the parser is wrong, not the page`
 );
 
 /* The atlas block only — so a `name:` in an unrelated exported array cannot
@@ -237,7 +250,7 @@ assert.ok(atlasStart > -1, "could not find TOOL_ATLAS in src/data/memory.ts");
 const atlasSrc = dataSrc.slice(atlasStart);
 
 const ATLAS_ENTRY =
-  /name:\s*"(burnbar_[a-z0-9_]+)",\s*group:\s*"([a-z]+)",\s*desc:\s*"((?:[^"\\]|\\.)*)",\s*caps:\s*\[([^\]]*)\],\s*memory:\s*(true|false)/g;
+  /name:\s*"([a-z][a-z0-9_]*)",\s*group:\s*"([a-z]+)",\s*desc:\s*"((?:[^"\\]|\\.)*)",\s*caps:\s*\[([^\]]*)\],\s*memory:\s*(true|false)/g;
 const atlasEntries = [...atlasSrc.matchAll(ATLAS_ENTRY)].map((m) => ({
   name: m[1],
   group: m[2],
@@ -252,9 +265,9 @@ check(
   `TOOL_ATLAS lists a tool twice (${atlasNames.length} entries, ${atlasSet.size} unique)`
 );
 check(
-  atlasEntries.length === (atlasSrc.match(/\n    name: "burnbar_/g) ?? []).length,
+  atlasEntries.length === (atlasSrc.match(/\n    name: "/g) ?? []).length,
   `the atlas parser matched ${atlasEntries.length} entries but the file has ` +
-    `${(atlasSrc.match(/\n    name: "burnbar_/g) ?? []).length} — an entry's shape changed, so this gate is no longer reading all of them`
+    `${(atlasSrc.match(/\n    name: "/g) ?? []).length} — an entry's shape changed, so this gate is no longer reading all of them`
 );
 
 for (const name of registeredSet) {
@@ -291,13 +304,13 @@ for (const entry of atlasEntries) {
 
 const realCaps = new Map([...registeredSet].map((n) => [n, new Set()]));
 for (const m of serverSrc.matchAll(
-  /_capability_denial\(\s*"(burnbar_[a-z0-9_]+)"\s*,\s*"([a-z_]+)"/g
+  /_capability_denial\(\s*"([a-z][a-z0-9_]*)"\s*,\s*"([a-z_]+)"/g
 )) {
   realCaps.get(m[1])?.add(m[2]);
 }
 // The three daemon-scoped code writers take their local_write denial through
 // a helper rather than inline, so the helper's call sites count too.
-for (const m of serverSrc.matchAll(/_local_memory_write_authority\(\s*"(burnbar_[a-z0-9_]+)"/g)) {
+for (const m of serverSrc.matchAll(/_local_memory_write_authority\(\s*"([a-z][a-z0-9_]*)"/g)) {
   realCaps.get(m[1])?.add("local_write");
 }
 const gatedCount = [...realCaps.values()].filter((s) => s.size > 0).length;
@@ -327,27 +340,34 @@ for (const entry of atlasEntries) {
   );
 }
 
-/* ── 12 · the counts the page prints ────────────────────────────────── */
+/* ── 12 · the counts the page prints — and "all" means all ───────────── */
 
 const declaredBurnbar = Number(dataSrc.match(/BURNBAR_TOOL_COUNT\s*=\s*(\d+)/)?.[1] ?? NaN);
 check(
-  declaredBurnbar === registered.length,
-  `BURNBAR_TOOL_COUNT is ${declaredBurnbar} but server.py registers ${registered.length} burnbar_* tools`
-);
-check(
-  text.includes(`All ${registered.length} tools`),
-  `the atlas heading should read "All ${registered.length} tools"`
+  declaredBurnbar === registeredBurnbar.length,
+  `BURNBAR_TOOL_COUNT is ${declaredBurnbar} but server.py registers ${registeredBurnbar.length} burnbar_* tools`
 );
 
-const orchestration = [
-  ...serverSrc.matchAll(/@mcp\.tool\(\)\s*(?:async\s+)?def\s+([a-z0-9_]+)/g)
-].filter((m) => !m[1].startsWith("burnbar_")).length;
 const declaredOrchestration = Number(
   dataSrc.match(/ORCHESTRATION_TOOL_COUNT\s*=\s*(\d+)/)?.[1] ?? NaN
 );
 check(
-  declaredOrchestration === orchestration,
-  `ORCHESTRATION_TOOL_COUNT is ${declaredOrchestration} but server.py registers ${orchestration} non-burnbar_* tools`
+  declaredOrchestration === registeredOrchestration.length,
+  `ORCHESTRATION_TOOL_COUNT is ${declaredOrchestration} but server.py registers ` +
+    `${registeredOrchestration.length} ministry_*/castle_*/bench_* tools`
+);
+
+// The atlas heading's claim is the total, not the burnbar_* subset alone —
+// "all N tools" has to name every tool the server registers, full stop.
+check(
+  text.includes(`All ${registeredAll.length} tools`),
+  `the atlas heading should read "All ${registeredAll.length} tools" ` +
+    `(${registeredBurnbar.length} burnbar_* + ${registeredOrchestration.length} orchestration)`
+);
+check(
+  declaredBurnbar + declaredOrchestration === registeredAll.length,
+  `BURNBAR_TOOL_COUNT (${declaredBurnbar}) + ORCHESTRATION_TOOL_COUNT (${declaredOrchestration}) ` +
+    `is ${declaredBurnbar + declaredOrchestration} but server.py registers ${registeredAll.length} tools total`
 );
 
 /* ── 13 · the capability table names the real environment variables ──── */
@@ -414,9 +434,9 @@ console.log(
     `constants match tools/openburnbar-mcp/; ${measurements.length} measurements render ` +
     `(${unpinned.length} honestly labelled unpinned); extraction floor ${floor} matches the committed ` +
     `assertion; device sync is published as not shipped.\n` +
-    `✓ memory atlas: all ${registered.length} burnbar_* tools listed, none invented; ` +
-    `${atlasEntries.filter((e) => e.memory).length} marked memory-toolset; ` +
-    `${gatedCount} capability-gated tools match their denial sites; ` +
-    `${orchestration} orchestration tools counted and excluded; ` +
+    `✓ memory atlas: all ${registeredAll.length} tools listed, none invented ` +
+    `(${registeredBurnbar.length} burnbar_* + ${registeredOrchestration.length} ` +
+    `ministry_*/castle_*/bench_*); ${atlasEntries.filter((e) => e.memory).length} marked ` +
+    `memory-toolset; ${gatedCount} capability-gated tools match their denial sites; ` +
     `${pageCapEnv.size} capability env vars match server.py; platform claim is honest.`
 );

@@ -219,10 +219,13 @@ claim and its evidence ship together. Edit the data file; the page and this
 table follow.
 
 The page covers the **whole local MCP server**, not just its memory engine:
-all 63 `burnbar_*` tools, the nine capability switches that gate them, and the
-code-intelligence, session-search, spend and fan-out surfaces alongside the
-memory story. `scripts/test-memory-copy.mjs` reads `server.py` and refuses to
-build a page that has drifted from it in either direction.
+all 89 tools it registers — the 63 `burnbar_*` memory, code-intelligence,
+session-search and spend tools, plus the 26 `ministry_*` / `castle_*` /
+`bench_*` agent-launcher and benchmarking tools — the nine capability
+switches that gate them, and the fan-out surfaces alongside the memory
+story. `scripts/test-memory-copy.mjs` reads `server.py` and refuses to build
+a page that has drifted from it in either direction, across every tool the
+server registers, not just the `burnbar_*` ones.
 
 ### Product mechanics
 
@@ -381,29 +384,34 @@ now describes every product surface the server has, and
 | Hermes proxy sidecar: stdlib-only, OpenAI-compatible, forwards SSE / tool calls / auth / models verbatim, one ledger row per completed response, `--no-estimate` to skip guessing                    | `README.md` § Hermes proxy sidecar                                          |
 | Castle: a worker counts as landed only when the done marker exists, the runtime parser says no error, and worktree HEAD differs from the recorded base SHA; dashboard green comes from `landsCommit` | `README.md` § Castle multi-runtime fan-out                                  |
 | Project Memory snapshots resolve local-first with a hosted encrypted fallback decrypted on device; uploads are sealed payloads under vault-derived opaque ids                                        | `README.md` § Local memory engine (cloud paragraph); `server.py` docstrings |
-| **26 `ministry_*` / `castle_*` / `bench_*` orchestration tools are counted and deliberately excluded from the atlas**                                                                                | `server.py` — gate-checked (`ORCHESTRATION_TOOL_COUNT`)                     |
+| **26 `ministry_*` / `castle_*` / `bench_*` orchestration tools, listed in the atlas under their own three headings — Ministry, Castle, Bench**                                                       | `server.py` — gate-checked (`ORCHESTRATION_TOOL_COUNT`), same set-equality check as the 63 `burnbar_*` tools |
 
 #### The tool atlas (`/memory#atlas`)
 
-The page's strongest claim — "all 63 tools" — is the one most likely to rot,
-so it is the one most tightly gated. `scripts/test-memory-copy.mjs` invariants
-8 to 13 make the following true by construction; a build fails otherwise.
+The page's strongest claim is coverage — **"all 89 tools"**, not "all 63
+tools" — so it is the one most tightly gated. An earlier version of this page
+listed 63 `burnbar_*` tools and called that "all", while `server.py` also
+registered 26 `ministry_*` / `castle_*` / `bench_*` tools the atlas never
+mentioned. `scripts/test-memory-copy.mjs` invariants 8 to 14 now make the
+following true by construction, over every tool the server registers
+regardless of prefix; a build fails otherwise.
 
-| Claim                                                                    | Source and enforcement                                                                                                                                                          |
-| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 63 `burnbar_*` tools, every one listed, none invented                    | `server.py` `@mcp.tool()` definitions ↔ `TOOL_ATLAS`, **set equality in both directions**                                                                                       |
-| 32 of them marked as the memory toolset                                  | `server.py` `MEMORY_TOOLSET` ↔ each entry's `memory` flag, per tool                                                                                                             |
-| The capability shown on each tool                                        | the capabilities named at that tool's `_capability_denial("<tool>", "<cap>")` and `_local_memory_write_authority("<tool>", …)` sites                                            |
-| Nine capability switches and the environment variable that enables each  | `server.py` `LOCAL_MCP_CAPABILITY_ENV` ↔ the page's `CAPABILITIES` table                                                                                                        |
-| Every capability a published tool depends on is explained on the page    | cross-checked between `TOOL_ATLAS[].caps` and `CAPABILITIES`                                                                                                                    |
-| Every atlas tool actually renders in the built HTML                      | read out of `dist/memory/index.html`, not out of the source                                                                                                                     |
-| 26 orchestration tools counted, and the atlas says it does not list them | `server.py` non-`burnbar_*` `@mcp.tool()` count ↔ `ORCHESTRATION_TOOL_COUNT`                                                                                                    |
-| Each tool's one-line description                                         | `tools/openburnbar-mcp/README.md` § Tools row where one exists, the tool's docstring otherwise — _editorial, not gate-enforced beyond "a description exists and is not a stub"_ |
+| Claim                                                                                        | Source and enforcement                                                                                                                                                          |
+| --------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 89 tools total — 63 `burnbar_*` plus 26 `ministry_*` / `castle_*` / `bench_*` — every one listed, none invented | `server.py` **every** `@mcp.tool()` definition ↔ `TOOL_ATLAS`, **set equality in both directions**, not scoped to a name prefix                          |
+| 32 of the 89 marked as the memory toolset; Castle/Ministry/Bench are never marked as such      | `server.py` `MEMORY_TOOLSET` ↔ each entry's `memory` flag, per tool — `MEMORY_TOOLSET` never names a `ministry_*` / `castle_*` / `bench_*` tool, so this also proves none is mismarked |
+| The capability shown on each tool                                                              | the capabilities named at that tool's `_capability_denial("<tool>", "<cap>")` and `_local_memory_write_authority("<tool>", …)` sites                                            |
+| Nine capability switches and the environment variable that enables each                        | `server.py` `LOCAL_MCP_CAPABILITY_ENV` ↔ the page's `CAPABILITIES` table                                                                                                        |
+| Every capability a published tool depends on is explained on the page                          | cross-checked between `TOOL_ATLAS[].caps` and `CAPABILITIES`                                                                                                                    |
+| Every atlas tool actually renders in the built HTML                                             | read out of `dist/memory/index.html`, not out of the source                                                                                                                     |
+| `BURNBAR_TOOL_COUNT` (63) + `ORCHESTRATION_TOOL_COUNT` (26) sum to what `server.py` registers (89), and the atlas heading prints that sum | `server.py` `@mcp.tool()` count, split on the `burnbar_` prefix, ↔ the two constants and their sum                                        |
+| Each tool's one-line description                                                                | `tools/openburnbar-mcp/README.md` § Tools row where one exists, the tool's docstring otherwise — _editorial, not gate-enforced beyond "a description exists and is not a stub"_ |
 
-Negative-tested, six ways, each producing exit 1 with the specific message:
-dropping a tool from the atlas, inventing one, understating a capability,
-mismarking the memory toolset, drifting the count, and naming the wrong
-environment variable.
+Negative-tested, eight ways, each producing exit 1 with the specific message:
+dropping a `burnbar_*` tool from the atlas, dropping a Castle tool from the
+atlas, inventing a `burnbar_*` tool, inventing an orchestration tool,
+understating a capability, mismarking a Castle tool as memory-toolset,
+drifting the count, and naming the wrong environment variable.
 
 #### Platforms (`/memory#setup`)
 

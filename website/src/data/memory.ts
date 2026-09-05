@@ -767,14 +767,21 @@ export const PRO_INVARIANTS = [
    client gets with BURNBAR_MCP_TOOLSET=memory. These are the server.
 ------------------------------------------------------------------- */
 
-/** Every `burnbar_*` tool the server registers. The product surface. */
+/** Every `burnbar_*` tool the server registers — memory, code intelligence,
+ *  sessions, spend and the rest of the product surface. */
 export const BURNBAR_TOOL_COUNT = 63;
 
 /** `ministry_*` + `castle_*` + `bench_*`: agent fan-out and benchmarking
- *  tooling. Real, registered, and deliberately outside the atlas — they
- *  orchestrate coding agents rather than serve your memory. Counted so
- *  the atlas can say what it is not covering. */
+ *  tooling. Real, registered, and listed in the atlas under their own three
+ *  headings — they orchestrate and grade coding agents rather than serve
+ *  your memory, which is worth a reader knowing, not worth hiding. */
 export const ORCHESTRATION_TOOL_COUNT = 26;
+
+/** Every tool the server registers, full stop — `burnbar_*` and
+ *  orchestration tooling combined. The number the atlas heading prints,
+ *  because "all" has to mean all. Gate-checked against every
+ *  `@mcp.tool()` definition in server.py. */
+export const TOTAL_TOOL_COUNT = BURNBAR_TOOL_COUNT + ORCHESTRATION_TOOL_COUNT;
 
 /* ------------------------------------------------------------------
    11 · Capability switches. Source: tools/openburnbar-mcp/README.md
@@ -934,6 +941,27 @@ export const ATLAS_GROUPS: AtlasGroup[] = [
     label: "Plumbing",
     blurb: "One tool that answers which file you are actually talking to.",
     section: "setup"
+  },
+  {
+    id: "ministry",
+    label: "Ministry",
+    blurb:
+      "Wand-policy model selection and droid worker commands, with a landed-commit probe when you ask for proof. Not in the memory toolset.",
+    section: "server"
+  },
+  {
+    id: "castle",
+    label: "Castle",
+    blurb:
+      "Ministry's selector generalized from one model to runtime-stamped (runtime, model) pairs across CLI Houses. Not in the memory toolset.",
+    section: "server"
+  },
+  {
+    id: "bench",
+    label: "Bench",
+    blurb:
+      "Harness and model comparison off recorded stack results — recommendations, frontier, and head-to-head. Not in the memory toolset.",
+    section: "server"
   }
 ];
 
@@ -1406,6 +1434,194 @@ export const TOOL_ATLAS: AtlasTool[] = [
     desc: "Which database file is in play, and how it is readable — directly, through the daemon socket, or not at all. Existence is not health, and this says which.",
     caps: [],
     memory: true
+  },
+
+  /* ── ministry ───────────────────────────────────────────────── */
+  {
+    name: "ministry_list_wands",
+    group: "ministry",
+    desc: "List Headmaster/Pareto wands, or the sanitized local wand store when one exists.",
+    caps: [],
+    memory: false
+  },
+  {
+    name: "ministry_validate_wands",
+    group: "ministry",
+    desc: "Validate the local Ministry wand store and show the sanitized would-be result, without writing anything.",
+    caps: [],
+    memory: false
+  },
+  {
+    name: "ministry_save_wands",
+    group: "ministry",
+    desc: "Persist a sanitized Ministry wand store. Disabled unless local writes are enabled.",
+    caps: ["local_write"],
+    memory: false
+  },
+  {
+    name: "ministry_list_launchable",
+    group: "ministry",
+    desc: "List droid launch candidates from Factory's customModels plus the built-in allowlist.",
+    caps: [],
+    memory: false
+  },
+  {
+    name: "ministry_provider_quota",
+    group: "ministry",
+    desc: "Read authenticated local-gateway model quota state through the co-located Factory token.",
+    caps: [],
+    memory: false
+  },
+  {
+    name: "ministry_select_model_for_wand",
+    group: "ministry",
+    desc: "Select a model for a Ministry wand by policy; optionally prove it first with a headless landed-commit probe.",
+    caps: ["spawn_process"],
+    memory: false
+  },
+  {
+    name: "ministry_select_models_for_wand",
+    group: "ministry",
+    desc: "Select several models for a wand at once, with optional provider diversity and the same headless proof.",
+    caps: ["spawn_process"],
+    memory: false
+  },
+  {
+    name: "ministry_smoke_probe",
+    group: "ministry",
+    desc: "Spawn a disposable droid exec probe and prove whether the model can land a commit.",
+    caps: ["spawn_process"],
+    memory: false
+  },
+  {
+    name: "ministry_build_droid_command",
+    group: "ministry",
+    desc: "Build a droid exec shell command with namespaced disabled tools and a done marker for the caller to launch.",
+    caps: ["spawn_process"],
+    memory: false
+  },
+  {
+    name: "ministry_collect_result",
+    group: "ministry",
+    desc: "Classify a worker's result from its done marker, JSON output, and whether HEAD moved past base.",
+    caps: [],
+    memory: false
+  },
+  {
+    name: "ministry_cleanup_plan",
+    group: "ministry",
+    desc: "Return the cleanup commands for a Ministry worker's worktree, branch and scratch files once its result is captured.",
+    caps: [],
+    memory: false
+  },
+
+  /* ── castle ─────────────────────────────────────────────────── */
+  {
+    name: "castle_list_runtimes",
+    group: "castle",
+    desc: "List Castle runtime Houses with their install and auth preconditions.",
+    caps: [],
+    memory: false
+  },
+  {
+    name: "castle_list_launchable",
+    group: "castle",
+    desc: "List runtime-stamped (runtime, model) launch candidates across the supported CLI Houses.",
+    caps: [],
+    memory: false
+  },
+  {
+    name: "castle_select_models_for_wand",
+    group: "castle",
+    desc: "Select Castle (runtime, model) workers for a wand, optionally proving each with a disposable landed-commit probe.",
+    caps: ["spawn_process"],
+    memory: false
+  },
+  {
+    name: "castle_smoke_probe",
+    group: "castle",
+    desc: "Run a disposable Castle runtime probe and prove whether it lands a scoped commit.",
+    caps: ["spawn_process"],
+    memory: false
+  },
+  {
+    name: "castle_build_command",
+    group: "castle",
+    desc: "Build a wrapped Castle worker command with prompt, result, done, stderr and status sentinels.",
+    caps: [],
+    memory: false
+  },
+  {
+    name: "castle_collect_result",
+    group: "castle",
+    desc: "Classify a Castle worker from its done marker, parsed completion and HEAD-vs-base; writes a Swift-readable status record.",
+    caps: [],
+    memory: false
+  },
+  {
+    name: "castle_status_snapshot",
+    group: "castle",
+    desc: "Read Castle status records from disk for dashboard and debug surfaces.",
+    caps: [],
+    memory: false
+  },
+  {
+    name: "castle_seed_worktree_isolation",
+    group: "castle",
+    desc: "Seed .git/info/exclude with known agent scratch paths before a worker launches into the worktree.",
+    caps: [],
+    memory: false
+  },
+
+  /* ── bench ──────────────────────────────────────────────────── */
+  {
+    name: "bench_status",
+    group: "bench",
+    desc: "Report bench.json freshness, stack and cell counts, and arena vote totals.",
+    caps: [],
+    memory: false
+  },
+  {
+    name: "bench_recommend_stack",
+    group: "bench",
+    desc: "Recommend harness-and-model stacks for an intent under optional cost, time and confidence constraints; low-sample stacks are disclosed and never ranked first.",
+    caps: [],
+    memory: false
+  },
+  {
+    name: "bench_compare_stacks",
+    group: "bench",
+    desc: "Compare two stacks on solution rate, cost and wall time, with confidence-interval overlap.",
+    caps: [],
+    memory: false
+  },
+  {
+    name: "bench_model_profile",
+    group: "bench",
+    desc: "Aggregate every recorded stack result for one model across harnesses.",
+    caps: [],
+    memory: false
+  },
+  {
+    name: "bench_harness_profile",
+    group: "bench",
+    desc: "Aggregate every recorded stack result for one harness across models.",
+    caps: [],
+    memory: false
+  },
+  {
+    name: "bench_frontier",
+    group: "bench",
+    desc: "Return the cost-versus-performance frontier, optionally narrowed by scope.",
+    caps: [],
+    memory: false
+  },
+  {
+    name: "bench_explain",
+    group: "bench",
+    desc: "Explain one harness-and-model stack: its rank, confidence interval, sample-size disclosure, and frontier standing.",
+    caps: [],
+    memory: false
   }
 ];
 
@@ -1693,9 +1909,9 @@ export const SERVER_SURFACES: ServerSurface[] = [
   {
     id: "castle",
     label: "Castle multi-runtime fan-out",
-    tools: `${ORCHESTRATION_TOOL_COUNT} tools, outside the atlas`,
-    body: "The same server carries the tooling that fans work out across coding-agent runtimes and grades the result. A worker counts as landed only when three things agree: the done marker exists, the runtime's own parser says the run did not error, and the worktree HEAD differs from the recorded base SHA.",
-    edge: "That triple is the whole point. A dashboard turning green off a process exit code or a generic completed phase is a dashboard that lies; the status record AgentLens reads carries the commit verdict, not the exit status. These tools orchestrate agents rather than serve your memory, which is why they are counted here and not listed in the atlas.",
+    tools: `${ORCHESTRATION_TOOL_COUNT} tools, in the atlas under their own headings`,
+    body: "The same server carries the tooling that fans work out across coding-agent runtimes and grades the result — Castle across CLI Houses, Ministry for droid workers specifically, Bench for scoring the resulting stacks against each other. A worker counts as landed only when three things agree: the done marker exists, the runtime's own parser says the run did not error, and the worktree HEAD differs from the recorded base SHA.",
+    edge: "That triple is the whole point. A dashboard turning green off a process exit code or a generic completed phase is a dashboard that lies; the status record AgentLens reads carries the commit verdict, not the exit status. These tools orchestrate and grade agents rather than serve your memory, which is why the atlas groups them under Castle, Ministry and Bench instead of folding them into the memory surfaces — not why they are left off it.",
     source: "tools/openburnbar-mcp/README.md § Castle multi-runtime fan-out; docs/THE_CASTLE.md"
   },
   {

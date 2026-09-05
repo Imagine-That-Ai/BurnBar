@@ -1,9 +1,9 @@
 /**
  * toolAtlas.ts — the filter over /memory's tool atlas.
  *
- * The atlas ships as nine native <details> groups, every one of them open,
+ * The atlas ships as twelve native <details> groups, every one of them open,
  * so a reader whose JavaScript is blocked or whose bundle failed still sees
- * all sixty-three tools. Everything this module adds is an enhancement on
+ * all eighty-nine tools. Everything this module adds is an enhancement on
  * top of that: it reveals a filter field, adds a collapse-all control, and
  * hides rows that do not match what you typed.
  *
