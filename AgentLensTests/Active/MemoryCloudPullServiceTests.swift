@@ -921,4 +921,122 @@ final class MemoryCloudPullServiceTests: XCTestCase {
         let parked = try await inboxRows(fixture)
         XCTAssertEqual(parked.count, 2)
     }
+
+    // MARK: - The transport cursor and the rows it accounts for (Codex J)
+
+    /// The watermark says "everything at or below this instant has been dealt
+    /// with", and parking a row is what "dealt with" meant. Purging that row
+    /// without moving the cursor back therefore ERASES a fact: the strictly
+    /// greater-than query never asks for it again, on this device, ever. Turning
+    /// device sync off and on again is the ordinary way a member reaches that
+    /// state.
+    func test_withdrawingConsentRewindsTheTransportCursorSoThePurgedFactsComeBack() async throws {
+        let fixture = try makeFixture(uid: "pull-rewind-consent", vaultKeyByte: 70)
+        try publishFact(
+            fixture,
+            engineID: "mem_7070000000000000000000000000a0a0",
+            body: "first",
+            updatedAt: Self.base
+        )
+        try publishFact(
+            fixture,
+            engineID: "mem_7171000000000000000000000000b0b0",
+            body: "second",
+            updatedAt: Self.base.addingTimeInterval(60)
+        )
+
+        let first = try await fixture.pull.pullRemoteFacts(uid: fixture.uid, vaultKey: fixture.vaultKey)
+        XCTAssertEqual(first.applied, 2)
+        let cursorAfterFirstPull = try await watermark(fixture)
+        XCTAssertNotNil(cursorAfterFirstPull)
+
+        // Consent off: the parked rows go. The cursor that accounted for them
+        // must go with them, in the same transaction.
+        let purged = try await fixture.store.withdrawMemoryDeviceSyncConsent(keepingUnappliedRowsOf: nil)
+        XCTAssertEqual(purged, 2)
+        let cursorAfterWithdrawal = try await watermark(fixture)
+        XCTAssertNil(
+            cursorAfterWithdrawal,
+            "a cursor that still claims the purged rows were handled makes them unreachable for ever"
+        )
+
+        // Consent back on: the same documents are re-fetched and re-parked.
+        let second = try await fixture.pull.pullRemoteFacts(uid: fixture.uid, vaultKey: fixture.vaultKey)
+        XCTAssertEqual(second.applied, 2, "the member gets their memories back, not an empty inbox")
+        let parked = try await inboxRows(fixture)
+        XCTAssertEqual(parked.count, 2)
+    }
+
+    /// The account-switch purge drops the DEPARTED member's unmerged rows, so it
+    /// is the departed member's cursor that stops accounting for anything. Left
+    /// standing, it would silently truncate their first pull if they signed back
+    /// in on this Mac.
+    func test_anAccountSwitchRewindsTheDepartedMembersCursorNotTheArrivingMembers() async throws {
+        let fixture = try makeFixture(uid: "pull-rewind-b", vaultKeyByte: 71)
+        let watermarks = RemoteSyncWatermarkStore(dbQueue: fixture.queue)
+        try await watermarks.advanceWatermark(
+            accountUid: "pull-rewind-a",
+            collectionKind: .memoryFacts,
+            lastProcessedRemoteUpdateAt: Self.base
+        )
+        try await watermarks.advanceWatermark(
+            accountUid: fixture.uid,
+            collectionKind: .memoryFacts,
+            lastProcessedRemoteUpdateAt: Self.base
+        )
+        try await fixture.store.upsertRemoteMemoryFact(
+            docID: "doc-a-open",
+            userID: "pull-rewind-a",
+            engineMemoryID: "mem_a1",
+            payloadJSON: "{}",
+            remoteUpdatedAt: Self.base
+        )
+
+        let purged = try await fixture.store.purgeUnappliedRemoteMemoryFacts(otherThanUserID: fixture.uid)
+        XCTAssertEqual(purged, 1)
+
+        let departedCursor = try await watermarks.fetchWatermark(
+            accountUid: "pull-rewind-a",
+            collectionKind: .memoryFacts
+        )
+        XCTAssertNil(departedCursor, "the member whose rows were dropped must be able to fetch them again")
+        let arrivingCursor = try await watermarks.fetchWatermark(
+            accountUid: fixture.uid,
+            collectionKind: .memoryFacts
+        )
+        XCTAssertNotNil(arrivingCursor, "the signed-in member kept every row they had, so their cursor is still honest")
+    }
+
+    /// The 90-day sweep drops rows an engine never came for. Those rows were
+    /// accounted for by the cursor too, so the cursor rewinds to just below the
+    /// oldest instant it dropped — a bounded re-pull rather than a full one.
+    func test_theStaleUnmergedSweepRewindsTheCursorBelowTheOldestRowItDropped() async throws {
+        let fixture = try makeFixture(uid: "pull-rewind-sweep", vaultKeyByte: 72)
+        let now = Self.base
+        let sweptInstant = now.addingTimeInterval(-(ControlPlaneStore.unappliedMemoryInboxRetentionSeconds + 7_200))
+        try await fixture.store.upsertRemoteMemoryFact(
+            docID: "doc-swept",
+            userID: fixture.uid,
+            engineMemoryID: "mem_swept",
+            payloadJSON: "{}",
+            remoteUpdatedAt: sweptInstant,
+            now: sweptInstant
+        )
+        try await RemoteSyncWatermarkStore(dbQueue: fixture.queue).advanceWatermark(
+            accountUid: fixture.uid,
+            collectionKind: .memoryFacts,
+            lastProcessedRemoteUpdateAt: now
+        )
+
+        let swept = try await fixture.store.pruneStaleUnappliedRemoteMemoryFacts(now: now)
+        XCTAssertEqual(swept, 1)
+
+        let rewoundCursor = try await watermark(fixture)
+        let rewound = try XCTUnwrap(rewoundCursor)
+        XCTAssertLessThan(
+            rewound,
+            sweptInstant,
+            "the cursor sits strictly below the oldest row the sweep dropped, so the next pull re-reads it"
+        )
+    }
 }

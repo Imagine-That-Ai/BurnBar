@@ -106,7 +106,11 @@ extension ControlPlaneStore {
                 sql: "DELETE FROM agent_memory_inbox WHERE user_id <> ? AND applied_at IS NULL",
                 arguments: [userID]
             )
-            return db.changesCount
+            let purged = db.changesCount
+            // Same transaction, same reason: the departed members' cursors
+            // accounted for the rows that just went. See `memoryInboxCursorKinds`.
+            try Self.dropMemoryInboxCursors(db, exceptUserID: userID)
+            return purged
         }
     }
 
@@ -124,7 +128,9 @@ extension ControlPlaneStore {
     func purgeAllUnappliedRemoteMemoryFacts() async throws -> Int {
         try await dbQueue.write { db in
             try db.execute(sql: "DELETE FROM agent_memory_inbox WHERE applied_at IS NULL")
-            return db.changesCount
+            let purged = db.changesCount
+            try Self.dropMemoryInboxCursors(db, exceptUserID: nil)
+            return purged
         }
     }
 
@@ -134,6 +140,14 @@ extension ControlPlaneStore {
     /// second plaintext copy of every fact that came down, so leaving it behind
     /// would leave the member's memories on disk after the surface that shows
     /// them is empty.
+    ///
+    /// The transport cursor is deliberately LEFT ALONE here, unlike every other
+    /// purge on this page. A reset is the member erasing their memories on
+    /// purpose; rewinding the cursor would re-download the very facts they just
+    /// deleted on the next cycle and quietly undo the reset. A consent
+    /// withdrawal or an account switch is the opposite — nothing was erased,
+    /// the member's cloud copy is still authoritative, and the rows must be
+    /// reachable again — which is why those rewind and this does not.
     @discardableResult
     func purgeAllRemoteMemoryFacts() async throws -> Int {
         try await dbQueue.write { db in
@@ -162,11 +176,31 @@ extension ControlPlaneStore {
     ) async throws -> Int {
         let cutoff = Self.iso8601String(now.addingTimeInterval(-retention))
         return try await dbQueue.write { db in
+            // Read the doomed rows' owners and oldest instants BEFORE the delete:
+            // afterwards there is nothing left to rewind the cursor from, and a
+            // cursor left above them would make the sweep a permanent loss
+            // rather than a bounded re-fetch.
+            let doomed = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT user_id, MIN(remote_updated_at) AS oldest
+                FROM agent_memory_inbox
+                WHERE applied_at IS NULL AND received_at < ?
+                GROUP BY user_id
+                """,
+                arguments: [cutoff]
+            )
             try db.execute(
                 sql: "DELETE FROM agent_memory_inbox WHERE applied_at IS NULL AND received_at < ?",
                 arguments: [cutoff]
             )
-            return db.changesCount
+            let swept = db.changesCount
+            for row in doomed {
+                guard let userID = row["user_id"] as? String,
+                      let oldest = OpenBurnBarDatabase.parseDateValue(row["oldest"]) else { continue }
+                try Self.rewindMemoryInboxCursors(db, userID: userID, toJustBefore: oldest)
+            }
+            return swept
         }
     }
 
@@ -176,6 +210,74 @@ extension ControlPlaneStore {
     /// never runs the engine does not accumulate a plaintext mirror of the
     /// member's memories for ever.
     static let unappliedMemoryInboxRetentionSeconds: TimeInterval = 90 * 24 * 60 * 60
+
+    // MARK: - Transport cursors the inbox purges invalidate
+
+    /// The `remote_sync_watermarks` rows that are CURSORS over the inbox — the
+    /// ones whose meaning is "every document at or below this instant has been
+    /// dealt with", where "dealt with" means "parked as an unmerged inbox row".
+    ///
+    /// Purging those rows without moving the cursor back is a silent deletion:
+    /// the pull's filter is strictly `updatedAt > cursor`, so a purged document
+    /// is never requested again on this device, and the member's own cloud copy
+    /// becomes unreachable rather than merely un-merged. Every purge on this
+    /// page therefore moves the cursor in the SAME transaction as the delete.
+    ///
+    /// Named explicitly, and never "everything in the table", because this table
+    /// also carries the device-sync consent MARKER row
+    /// (`BurnBarMemoryDeviceSyncMarker.collectionKind`), which is not a cursor —
+    /// and the watermarks of the conversation-shaped collections, which have
+    /// nothing to do with the inbox.
+    static let memoryInboxCursorKinds: [String] = [RemoteSyncCollectionKind.memoryFacts.rawValue]
+
+    /// Deletes the inbox cursors of every account except `userID` (or of every
+    /// account when it is nil). Deletion rather than a rewind: a re-pull is
+    /// idempotent (`upsertRemoteMemoryFact` is keyed on `(doc_id, remote_updated_at)`)
+    /// and the engine's own last-writer-wins dedupes whatever it already holds,
+    /// so the cheapest correct cursor after an unbounded purge is no cursor.
+    private static func dropMemoryInboxCursors(_ db: Database, exceptUserID userID: String?) throws {
+        let placeholders = Array(repeating: "?", count: memoryInboxCursorKinds.count).joined(separator: ", ")
+        if let userID, !userID.isEmpty {
+            try db.execute(
+                sql: """
+                DELETE FROM \(RemoteSyncWatermarkRecord.databaseTableName)
+                WHERE collectionKind IN (\(placeholders)) AND accountUid <> ?
+                """,
+                arguments: StatementArguments(memoryInboxCursorKinds + [userID])
+            )
+        } else {
+            try db.execute(
+                sql: """
+                DELETE FROM \(RemoteSyncWatermarkRecord.databaseTableName)
+                WHERE collectionKind IN (\(placeholders))
+                """,
+                arguments: StatementArguments(memoryInboxCursorKinds)
+            )
+        }
+    }
+
+    /// Moves `userID`'s inbox cursors to one second BELOW `instant`, but only
+    /// when they currently sit at or above it.
+    ///
+    /// A rewind rather than a deletion here because the sweep drops a bounded,
+    /// known set of rows: rewinding to just under the oldest of them re-reads
+    /// exactly what was lost, where deleting the cursor would re-read the whole
+    /// collection. One second, not zero, because the pull's filter is strictly
+    /// greater-than and the swept document must be INSIDE the next page.
+    private static func rewindMemoryInboxCursors(_ db: Database, userID: String, toJustBefore instant: Date) throws {
+        let rewound = instant.addingTimeInterval(-1)
+        for kind in memoryInboxCursorKinds {
+            try db.execute(
+                sql: """
+                UPDATE \(RemoteSyncWatermarkRecord.databaseTableName)
+                SET lastProcessedRemoteUpdateAt = ?, version = version + 1
+                WHERE accountUid = ? AND collectionKind = ?
+                    AND (lastProcessedRemoteUpdateAt IS NULL OR lastProcessedRemoteUpdateAt > ?)
+                """,
+                arguments: [rewound, userID, kind, rewound]
+            )
+        }
+    }
 
     // MARK: - Device-sync consent marker
 
@@ -219,6 +321,9 @@ extension ControlPlaneStore {
                 try db.execute(sql: "DELETE FROM agent_memory_inbox WHERE applied_at IS NULL")
             }
             let purged = db.changesCount
+            // The cursors that accounted for those rows go in the SAME
+            // transaction. See `memoryInboxCursorKinds`.
+            try Self.dropMemoryInboxCursors(db, exceptUserID: userID?.isEmpty == false ? userID : nil)
             memoryDeviceSyncGeneration.withLock { $0 &+= 1 }
             return purged
         }
@@ -251,6 +356,7 @@ extension ControlPlaneStore {
                 arguments: [userID]
             )
             let purged = db.changesCount
+            try Self.dropMemoryInboxCursors(db, exceptUserID: userID)
             try Self.replaceMemoryDeviceSyncMarker(db, userID: userID, now: now)
             return purged
         }
