@@ -161,6 +161,8 @@ struct PrivacyIndexingSettingsView: View {
                         )
                     }
                     .buttonStyle(.plain)
+
+                    memoryHealthSection
                 }
                 .padding(.horizontal, DesignSystem.Spacing.lg)
                 // Deep-link target for the Memory walkthrough's "Show me" and
@@ -910,6 +912,24 @@ struct PrivacyIndexingSettingsView: View {
     }
 
     // MARK: - Helper Views
+
+    /// Per-project memory health, beside the pending-review link because they
+    /// answer the same question from two sides: what is waiting for you, and
+    /// what is wrong. Counters come from the local daemon over the existing
+    /// `daemon.memory.analytics` RPC; every finding is one this Mac measured
+    /// itself, and the card says so.
+    @ViewBuilder
+    private var memoryHealthSection: some View {
+        if let store = runtimeContext?.chatMemoryStore {
+            ProjectMemoryHealthCardHost(
+                store: store,
+                daemonManager: runtimeContext?.daemonManager,
+                accountUid: accountManager.userID,
+                projectRoot: nil
+            )
+            .settingsAnchor(SettingsAnchor.indexingMemoryHealth)
+        }
+    }
 
     /// Destination for the "Review pending memories" link. Builds the inbox over
     /// the shared `ControlPlaneStore` when the runtime context is wired; otherwise
