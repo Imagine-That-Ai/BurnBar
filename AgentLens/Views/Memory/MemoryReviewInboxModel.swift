@@ -41,6 +41,17 @@ final class MemoryReviewInboxModel {
             bodyLoadState == .loaded &&
                 body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
         }
+
+        /// B10: which gate quarantined this row, as the writer recorded it — never
+        /// re-derived here. A row the app quarantined by lifecycle policy rather
+        /// than by a firing gate has no gate, and the row says nothing rather than
+        /// guessing one.
+        var gate: String? { memory.gate }
+        /// The gate's verdict (`quarantined`, `redacted`, …), as recorded.
+        var verdict: String? { memory.verdict }
+        /// Why that gate fired: which secret shape, which injection sentinel,
+        /// which auxiliary field. Recorded by the gate, rendered verbatim.
+        var reason: String? { memory.reason }
     }
 
     /// Which bucket the inbox is showing.

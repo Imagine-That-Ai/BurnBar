@@ -410,6 +410,10 @@ struct MemoryReviewRow: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
+                if let gate = item.gate {
+                    gateCallout(gate: gate, reason: item.reason)
+                }
+
                 HStack(spacing: DesignSystem.Spacing.sm) {
                     MemoryCitationChipView(citations: item.memory.citations, onJumpToLocal: nil)
                     Spacer(minLength: 0)
@@ -477,6 +481,43 @@ struct MemoryReviewRow: View {
         .overlay(
             Capsule(style: .continuous)
                 .strokeBorder(DesignSystem.Colors.border.opacity(0.4), lineWidth: 0.5)
+        )
+    }
+
+    /// B10: names the gate that quarantined this row and, when the gate recorded
+    /// one, why it fired. Never a guess — a row with no recorded gate shows no
+    /// callout at all.
+    private func gateCallout(gate: String, reason: String?) -> some View {
+        HStack(alignment: .top, spacing: DesignSystem.Spacing.xs) {
+            Image(systemName: "shield.lefthalf.filled")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(DesignSystem.Colors.amber)
+                .padding(.top, 1)
+
+            Text("Gate: \(gate)")
+                .font(DesignSystem.Typography.tiny)
+                .fontWeight(.semibold)
+                .foregroundStyle(DesignSystem.Colors.amber)
+
+            if let reason {
+                Text(reason)
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, DesignSystem.Spacing.sm)
+        .padding(.vertical, DesignSystem.Spacing.xs)
+        .background(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                .fill(DesignSystem.Colors.amber.opacity(0.08))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                .strokeBorder(DesignSystem.Colors.amber.opacity(0.25), lineWidth: 0.5)
         )
     }
 

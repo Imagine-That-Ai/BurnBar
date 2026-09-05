@@ -176,6 +176,16 @@ public struct Memory: Codable, Sendable, Identifiable, Equatable {
     public var supersededBy: MemoryID?
     public var createdAt: Date
     public var updatedAt: Date
+    /// B10: which gate quarantined this record (`secret`, `prompt_injection`,
+    /// `auxiliary_field`, …), recorded by the writer that ran the gate. Nil when
+    /// no gate fired — quarantine is also the default review state, so the
+    /// absence of a gate is information, not a gap to fill in by re-scanning.
+    public var gate: String?
+    /// That gate's verdict, verbatim.
+    public var verdict: String?
+    /// Why the gate fired: which secret shape, which injection sentinel, which
+    /// auxiliary field. Carried for display; never re-derived by a reader.
+    public var reason: String?
 
     public init(
         id: MemoryID,
@@ -190,7 +200,10 @@ public struct Memory: Codable, Sendable, Identifiable, Equatable {
         validTo: Date? = nil,
         supersededBy: MemoryID? = nil,
         createdAt: Date,
-        updatedAt: Date
+        updatedAt: Date,
+        gate: String? = nil,
+        verdict: String? = nil,
+        reason: String? = nil
     ) {
         self.id = id
         self.sourceKind = sourceKind
@@ -205,6 +218,9 @@ public struct Memory: Codable, Sendable, Identifiable, Equatable {
         self.supersededBy = supersededBy
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+        self.gate = gate
+        self.verdict = verdict
+        self.reason = reason
     }
 }
 
