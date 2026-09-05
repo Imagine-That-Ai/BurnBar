@@ -47,6 +47,8 @@ SQLite tools, hosted encrypted cloud-search tools, and 2 ledger tools:
 
 Memories are also collected automatically: the Claude Code `SessionEnd` hook `tools/openburnbar-mcp/hooks/claude-code-session-end.sh` memorizes each session transcript through `burnbar_memorize` (same gate, encryption, and audit; `OPENBURNBAR_MEMORY_SESSION_HOOK=off` disables it). See the README section "Automatic collection from Claude Code sessions".
 
+If this member syncs memories across devices, call `burnbar_memory_sync_pull` ONCE near the start of a session in a synced project, before your first `burnbar_recall`. It merges what their other Macs learned into this store; without it, those memories are parked and invisible to recall here. It is idempotent and returns immediately when nothing is pending, and it is a no-op when device sync is off. The opt-in `SessionStart` hook `tools/openburnbar-mcp/hooks/claude-code-session-start.sh` does the same thing automatically when `OPENBURNBAR_MEMORY_SYNC_HOOK=on`; if you can see that it ran, do not call the tool again.
+
 ## Setup
 
 ```bash

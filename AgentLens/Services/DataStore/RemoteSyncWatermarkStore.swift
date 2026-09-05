@@ -55,6 +55,31 @@ enum RemoteSyncCollectionKind: String, CaseIterable {
     static var allCases: [RemoteSyncCollectionKind] {
         [.usage, .conversations, .chatThreads, .memoryFacts]
     }
+
+    /// How far back a FIRST sync of this collection reaches when no watermark
+    /// exists yet.
+    ///
+    /// The conversation-shaped collections keep the 90-day cutoff
+    /// `CloudSyncService` has always used: a transcript is an event, it belongs
+    /// to the moment it happened, and old ones are not worth a cold backfill.
+    ///
+    /// **Memory facts are not events.** A memory's `updatedAt` is when it was
+    /// last *touched*, not when it stopped being true — a stable preference
+    /// learned two years ago and never edited since is still the memory the
+    /// member most wants on their new Mac. A 90-day floor silently delivered a
+    /// new device only the memories that happened to have been edited recently,
+    /// which is the opposite of the feature's headline promise, and it did so
+    /// without a single error. So the first sync of `memory_facts` reaches back
+    /// past any plausible store, and every later sync is bounded by the durable
+    /// watermark exactly as before.
+    var firstSyncFloor: Date {
+        switch self {
+        case .usage, .conversations, .chatThreads:
+            return Calendar.current.date(byAdding: .day, value: -90, to: Date()) ?? Date()
+        case .memoryFacts:
+            return Date(timeIntervalSince1970: 0)
+        }
+    }
 }
 
 // MARK: - Remote Sync Watermark Store
@@ -95,14 +120,15 @@ final class RemoteSyncWatermarkStore: Sendable {
         }
     }
 
-    /// Fetches the watermark value for a collection, or a default cutoff date if none exists.
-    /// The default is 90 days ago (matches CloudSyncService cutoff).
+    /// Fetches the watermark value for a collection, or that collection's own
+    /// first-sync floor when none exists yet (`RemoteSyncCollectionKind.firstSyncFloor`
+    /// — 90 days for the conversation-shaped collections, the epoch for memory
+    /// facts, which are state rather than events).
     func fetchWatermarkOrDefault(accountUid: String, collectionKind: RemoteSyncCollectionKind) async throws -> Date {
         if let watermark = try await fetchWatermark(accountUid: accountUid, collectionKind: collectionKind) {
             return watermark.lastProcessedRemoteUpdateAt ?? watermark.lastSyncedAt
         }
-        // Default cutoff: 90 days ago
-        return Calendar.current.date(byAdding: .day, value: -90, to: Date()) ?? Date()
+        return collectionKind.firstSyncFloor
     }
 
     // MARK: - Write
