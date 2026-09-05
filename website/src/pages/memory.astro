@@ -14,24 +14,45 @@
 import BaseLayout from "@layouts/BaseLayout.astro";
 import { SITE } from "@data/site";
 import {
+  ATLAS_GROUPS,
   BOOTSTRAP_LINES,
   BOUNDARY,
+  BURNBAR_TOOL_COUNT,
+  CAPABILITIES,
   CHECKOUT,
   CLIENTS,
+  CODE_FACTS,
+  CODE_LIMIT,
+  CODE_TIERS,
   EMBEDDING_LINES,
+  FORGET_LIMIT,
+  FORGET_PURGED,
+  FORGET_STEPS,
   FUSION,
   GATE_PLACEMENTS,
   GATE_POLICIES,
   GATE_SHAPES,
   HOOK_STATUSES,
+  LIFECYCLE_EVENTS,
   LIMITS,
   MEASUREMENTS,
   MEMORY_KINDS,
   MEMORY_STORE_PATH,
   MEMORY_TOOL_COUNT,
+  ORCHESTRATION_TOOL_COUNT,
+  PACKS,
+  PLATFORMS,
   PRO_INVARIANTS,
   PRO_PURPOSES,
+  REVIEW_LIMIT,
+  REVIEW_SURFACES,
+  SERVER_SURFACES,
+  SESSION_FACTS,
   SESSION_HOOK_LINES,
+  SESSION_LIMIT,
+  TIME_FACTS,
+  TIME_LIMIT,
+  TOOL_ATLAS,
   VERIFY_STEPS,
   WRITE_PIPELINE
 } from "@data/memory";
@@ -42,16 +63,51 @@ const REPO_DESIGN = `${SITE.github}/blob/main/docs/superpowers/2026-09-02-memory
 const maxKindWeight = Math.max(...MEMORY_KINDS.map((k) => k.weight));
 const pinnedCount = MEASUREMENTS.filter((m) => m.pin !== null).length;
 
-/* Section register — the numerals in the left margin, and the in-page nav. */
-const SECTIONS = [
-  { n: "01", id: "pipeline", label: "The pipeline" },
-  { n: "02", id: "gate", label: "The gate" },
-  { n: "03", id: "recall", label: "Recall" },
-  { n: "04", id: "collection", label: "Collection" },
-  { n: "05", id: "proof", label: "Proof" },
-  { n: "06", id: "boundary", label: "The boundary" },
-  { n: "07", id: "setup", label: "Setup" },
-  { n: "08", id: "limits", label: "Limits" }
+/* The capability id → human label map the atlas prints on each tool. */
+const CAP_LABEL = new Map(CAPABILITIES.map((c) => [c.id, c.label]));
+
+/* Section register — the numerals in the left margin, and the in-page nav.
+   Fifteen sections is a lot, so the register is bound in three parts: what
+   the memory does, what else the server does, and the evidence you would
+   want before installing either. The parts are the hierarchy; the numerals
+   are the scan rhythm. */
+const PARTS = [
+  {
+    id: "part-one",
+    n: "Part one",
+    label: "The memory",
+    sections: [
+      { n: "01", id: "pipeline", label: "The pipeline" },
+      { n: "02", id: "gate", label: "The gate" },
+      { n: "03", id: "recall", label: "Recall" },
+      { n: "04", id: "time", label: "Time" },
+      { n: "05", id: "forget", label: "Forget" },
+      { n: "06", id: "collection", label: "Collection" },
+      { n: "07", id: "review", label: "Review & audit" }
+    ]
+  },
+  {
+    id: "part-two",
+    n: "Part two",
+    label: "The rest of the server",
+    sections: [
+      { n: "08", id: "code", label: "Code intelligence" },
+      { n: "09", id: "sessions", label: "Sessions" },
+      { n: "10", id: "server", label: "Spend & fan-out" },
+      { n: "11", id: "atlas", label: `All ${BURNBAR_TOOL_COUNT} tools` }
+    ]
+  },
+  {
+    id: "part-three",
+    n: "Part three",
+    label: "The evidence, and the install",
+    sections: [
+      { n: "12", id: "proof", label: "Proof" },
+      { n: "13", id: "boundary", label: "The boundary" },
+      { n: "14", id: "setup", label: "Setup" },
+      { n: "15", id: "limits", label: "Limits" }
+    ]
+  }
 ];
 ---
 
@@ -76,7 +132,9 @@ const SECTIONS = [
         {MEMORY_TOOL_COUNT} MCP tools give Claude&nbsp;Code, Cursor, Codex, Claude&nbsp;Desktop and Hermes
         the same durable memory of your work — extracted from the sessions you already run, sealed on
         your own disk, and screened so credentials never become memories in the first place. No account.
-        No server in the path. It works with the network off.
+        No server in the path. It works with the network off. The same server carries
+        {" "}{BURNBAR_TOOL_COUNT} tools in total: it also indexes your repository, searches every session
+        you have ever run, and reads what your agents cost.
       </p>
 
       {/* The store plate — the local counterpart to the endpoint plate on /mcp. */}
@@ -107,23 +165,42 @@ const SECTIONS = [
       </div>
 
       <nav class="mem-jump" aria-label="On this page">
-        <ol>
-          {
-            SECTIONS.map((s) => (
-              <li>
-                <a href={`#${s.id}`}>
-                  <span class="mem-jump__n mono" aria-hidden="true">
-                    {s.n}
-                  </span>
-                  {s.label}
-                </a>
-              </li>
-            ))
-          }
-        </ol>
+        {
+          PARTS.map((part) => (
+            <div class="mem-jump__part">
+              <p class="mem-jump__lab mono">
+                <span class="mem-jump__partn">{part.n}</span> {part.label}
+              </p>
+              <ol>
+                {part.sections.map((s) => (
+                  <li>
+                    <a href={`#${s.id}`}>
+                      <span class="mem-jump__n mono" aria-hidden="true">
+                        {s.n}
+                      </span>
+                      {s.label}
+                    </a>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          ))
+        }
       </nav>
     </div>
   </section>
+
+  {/* ══════════════════════ PART ONE ══════════════════════ */}
+  <div class="part part--first" id="part-one">
+    <div class="container container--wide part__inner">
+      <span class="part__n mono" aria-hidden="true">Part one</span>
+      <h2 class="part__h">The memory</h2>
+      <p class="part__sub">
+        How a sentence becomes a memory, what refuses it, how it comes back, what happens when it
+        stops being true, and how you delete it for good.
+      </p>
+    </div>
+  </div>
 
   {/* ══════════════════════ 01 · PIPELINE ══════════════════════ */}
   <section class="reg" id="pipeline" aria-labelledby="pipeline-h">
@@ -367,6 +444,27 @@ const SECTIONS = [
         </p>
       </div>
 
+      {/* Packs and answers — the shape recall actually arrives in. */}
+      <div class="packs">
+        <h3 class="packs__h">What the agent receives</h3>
+        <p class="packs__intro">
+          Raw hits are the least useful form of a memory. Three tools hand an agent something it can
+          use directly: a block inside a token budget, the same thing for code, or an answer that
+          has to cite its sources or say it cannot.
+        </p>
+        <ul class="packs__list">
+          {
+            PACKS.map((p) => (
+              <li class="pack">
+                <code class="pack__tool">{p.tool}</code>
+                <h4 class="pack__h">{p.title}</h4>
+                <p class="pack__body">{p.body}</p>
+              </li>
+            ))
+          }
+        </ul>
+      </div>
+
       {/* Pro models — subordinate to recall, because that is where it lands. */}
       <aside class="pro" aria-labelledby="pro-h">
         <div class="pro__head">
@@ -400,11 +498,129 @@ const SECTIONS = [
     </div>
   </section>
 
-  {/* ══════════════════════ 04 · COLLECTION ══════════════════════ */}
-  <section class="reg reg--alt" id="collection" aria-labelledby="collection-h">
+  {/* ══════════════════════ 04 · TIME ══════════════════════ */}
+  <section class="reg reg--alt" id="time" aria-labelledby="time-h">
     <div class="container container--wide">
       <header class="reg__head">
         <span class="reg__n mono" aria-hidden="true">04</span>
+        <div class="reg__headtext">
+          <span class="eyebrow eyebrow--ember">Time</span>
+          <h2 id="time-h">Facts change. Nothing is overwritten in silence.</h2>
+          <p class="lead">
+            A key-value store loses the old answer the moment you write the new one. This one keeps
+            both and marks which is current, because "we used to do it the other way, and here is
+            when that stopped" is often the thing you actually needed.
+          </p>
+        </div>
+      </header>
+
+      <ul class="tfacts">
+        {
+          TIME_FACTS.map((f) => (
+            <li class="tfact">
+              <p class="tfact__lab mono">{f.label}</p>
+              <p class="tfact__body">{f.body}</p>
+            </li>
+          ))
+        }
+      </ul>
+
+      <div class="ledger">
+        <h3 class="ledger__h">What the engine does when you say something again</h3>
+        <ul class="ledger__rows">
+          {
+            LIFECYCLE_EVENTS.map((e) => (
+              <li class="ledger__row">
+                <p class="ledger__trigger">{e.trigger}</p>
+                <p class="ledger__verdict mono">{e.verdict}</p>
+                <p class="ledger__effect">{e.effect}</p>
+              </li>
+            ))
+          }
+        </ul>
+      </div>
+
+      <p class="honest">
+        <span class="honest__lab mono">The limit</span>
+        {TIME_LIMIT}
+      </p>
+
+      <p class="reg__foot mono">
+        Source · <code>memory_engine/_write.py</code> ·
+        <code>tools/openburnbar-mcp/README.md</code> § Structured refusals · § Cross-store lifecycle
+      </p>
+    </div>
+  </section>
+
+  {/* ══════════════════════ 05 · FORGET ══════════════════════ */}
+  <section class="reg" id="forget" aria-labelledby="forget-h">
+    <div class="container container--wide">
+      <header class="reg__head">
+        <span class="reg__n mono" aria-hidden="true">05</span>
+        <div class="reg__headtext">
+          <span class="eyebrow eyebrow--ember">Forget</span>
+          <h2 id="forget-h">Delete means the row is gone.</h2>
+          <p class="lead">
+            Most systems that promise deletion set a flag and move on, because a tombstone is
+            cheaper than a real delete and nobody checks. <code>burnbar_forget</code> issues five deletes
+            and drops the row. What survives is one audit event made of labels, which is enough to prove
+            the deletion happened and not enough to say what was deleted.
+          </p>
+        </div>
+      </header>
+
+      <div class="purge" data-animate-onview>
+        <p class="purge__lab mono">One forget empties five tables</p>
+        <ul class="purge__list">
+          {
+            FORGET_PURGED.map((p) => (
+              <li class="purge__item">
+                <code class="purge__name">{p.id}</code>
+                <span class="purge__note">{p.note}</span>
+              </li>
+            ))
+          }
+        </ul>
+        <p class="purge__foot mono">
+          purged: ["memory", "vector", "history", "relations", "vault"] ·
+          <code>memory_engine/_read.py</code>
+        </p>
+      </div>
+
+      <ol class="fsteps">
+        {
+          FORGET_STEPS.map((s, i) => (
+            <li class="fstep">
+              <span class="fstep__n mono" aria-hidden="true">
+                {String(i + 1).padStart(2, "0")}
+              </span>
+              <div class="fstep__body">
+                <h3 class="fstep__h">{s.title}</h3>
+                <p>{s.body}</p>
+              </div>
+            </li>
+          ))
+        }
+      </ol>
+
+      <p class="honest">
+        <span class="honest__lab mono">The limit</span>
+        {FORGET_LIMIT}
+      </p>
+
+      <p class="reg__foot mono">
+        Source · <code>memory_engine/_read.py</code> — <code>forget</code> / <code>_purge</code> ·
+        <code>tools/openburnbar-mcp/README.md</code> § Cross-store lifecycle ·
+        <code>docs/PRIVACY.md</code>
+      </p>
+    </div>
+  </section>
+
+  {/* ══════════════════════ 06 · COLLECTION ══════════════════════ */}
+  <section class="reg reg--alt" id="collection" aria-labelledby="collection-h">
+    <div class="container container--wide">
+      <header class="reg__head">
+        <span class="reg__n mono" aria-hidden="true">06</span>
         <div class="reg__headtext">
           <span class="eyebrow eyebrow--ember">Collection</span>
           <h2 id="collection-h">It fills itself in.</h2>
@@ -494,11 +710,340 @@ const SECTIONS = [
     </div>
   </section>
 
-  {/* ══════════════════════ 05 · PROOF ══════════════════════ */}
-  <section class="reg" id="proof" aria-labelledby="proof-h">
+  {/* ══════════════════════ 07 · REVIEW ══════════════════════ */}
+  <section class="reg" id="review" aria-labelledby="review-h">
     <div class="container container--wide">
       <header class="reg__head">
-        <span class="reg__n mono" aria-hidden="true">05</span>
+        <span class="reg__n mono" aria-hidden="true">07</span>
+        <div class="reg__headtext">
+          <span class="eyebrow eyebrow--ember">Review &amp; audit</span>
+          <h2 id="review-h">Quarantine is a queue you can actually work.</h2>
+          <p class="lead">
+            Section 02 said suspect text is quarantined rather than trusted. This is what that looks
+            like from the other side: where the held rows are, how a decision is recorded, and the
+            four read-only tools that tell you the state of the store without opening a single body.
+          </p>
+        </div>
+      </header>
+
+      <ul class="rsurfaces">
+        {
+          REVIEW_SURFACES.map((s) => (
+            <li class="rsurface">
+              <code class="rsurface__tool">{s.tool}</code>
+              <h3 class="rsurface__h">{s.title}</h3>
+              <p class="rsurface__body">{s.body}</p>
+            </li>
+          ))
+        }
+      </ul>
+
+      <p class="honest">
+        <span class="honest__lab mono">The limit</span>
+        {REVIEW_LIMIT}
+      </p>
+
+      <p class="reg__foot mono">
+        Source · <code>tools/openburnbar-mcp/server.py</code> ·
+        <code>tools/openburnbar-mcp/README.md</code> § Untrusted recall boundary
+      </p>
+    </div>
+  </section>
+
+  {/* ══════════════════════ PART TWO ══════════════════════ */}
+  <div class="part" id="part-two">
+    <div class="container container--wide part__inner">
+      <span class="part__n mono" aria-hidden="true">Part two</span>
+      <h2 class="part__h">The rest of the server</h2>
+      <p class="part__sub">
+        The memory engine is the reason to install this, and it is not all that is in the box. The
+        same process indexes your repository, searches every session you have ever run, and reads
+        what your agents cost. Sections 08 to 11 are that half, described at the level the README
+        describes it and no further.
+      </p>
+    </div>
+  </div>
+
+  {/* ══════════════════════ 08 · CODE INTELLIGENCE ══════════════════════ */}
+  <section class="reg reg--alt" id="code" aria-labelledby="code-h">
+    <div class="container container--wide">
+      <header class="reg__head">
+        <span class="reg__n mono" aria-hidden="true">08</span>
+        <div class="reg__headtext">
+          <span class="eyebrow eyebrow--ember">Code intelligence</span>
+          <h2 id="code-h">It also reads the repository.</h2>
+          <p class="lead">
+            Eleven of the tools have nothing to do with memories. They index your project locally,
+            find a symbol, list its references, walk a call graph, and hand back a token-budgeted
+            pack of the code that matters — without a single byte leaving the machine.
+          </p>
+        </div>
+      </header>
+
+      <ul class="cfacts">
+        {
+          CODE_FACTS.map((f) => (
+            <li class="cfact">
+              <h3 class="cfact__h">{f.title}</h3>
+              <p>{f.body}</p>
+            </li>
+          ))
+        }
+      </ul>
+
+      <div class="tiers">
+        <h3 class="tiers__h">Every answer names the tier that produced it</h3>
+        <ul class="tiers__list">
+          {
+            CODE_TIERS.map((t) => (
+              <li class="tier" data-status={t.status}>
+                <div class="tier__head">
+                  <code class="tier__name">{t.label}</code>
+                  <span class="tier__badge mono">{t.status}</span>
+                </div>
+                <p class="tier__body">{t.body}</p>
+              </li>
+            ))
+          }
+        </ul>
+      </div>
+
+      <p class="honest">
+        <span class="honest__lab mono">The limit</span>
+        {CODE_LIMIT}
+      </p>
+
+      <p class="reg__foot mono">
+        Source · <code>tools/openburnbar-mcp/README.md</code> § Local memory engine — Project Code Memory
+        · <code>tools/openburnbar-mcp/project_code_memory.py</code>
+      </p>
+    </div>
+  </section>
+
+  {/* ══════════════════════ 09 · SESSIONS ══════════════════════ */}
+  <section class="reg" id="sessions" aria-labelledby="sessions-h">
+    <div class="container container--wide">
+      <header class="reg__head">
+        <span class="reg__n mono" aria-hidden="true">09</span>
+        <div class="reg__headtext">
+          <span class="eyebrow eyebrow--ember">Sessions</span>
+          <h2 id="sessions-h">
+            Every session you have ever run, from whichever client you are in.
+          </h2>
+          <p class="lead">
+            Memories are the distilled version. Sometimes you want the session itself — the one from
+            three weeks ago, in the other harness, where you worked this out the first time. Eight
+            tools find it, read it, and put you back in it.
+          </p>
+        </div>
+      </header>
+
+      <ul class="sfacts">
+        {
+          SESSION_FACTS.map((f) => (
+            <li class="sfact">
+              <h3 class="sfact__h">{f.title}</h3>
+              <p>{f.body}</p>
+            </li>
+          ))
+        }
+      </ul>
+
+      <p class="honest">
+        <span class="honest__lab mono">The limit</span>
+        {SESSION_LIMIT}
+      </p>
+
+      <p class="reg__foot mono">
+        Source · <code>tools/openburnbar-mcp/server.py</code> ·
+        <code>tools/openburnbar-mcp/README.md</code> § Tools · § Local memory engine
+      </p>
+    </div>
+  </section>
+
+  {/* ══════════════════════ 10 · THE REST ══════════════════════ */}
+  <section class="reg reg--alt" id="server" aria-labelledby="server-h">
+    <div class="container container--wide">
+      <header class="reg__head">
+        <span class="reg__n mono" aria-hidden="true">10</span>
+        <div class="reg__headtext">
+          <span class="eyebrow eyebrow--ember">The rest</span>
+          <h2 id="server-h">Spend, snapshots, and the fan-out.</h2>
+          <p class="lead">
+            Four more surfaces, each summarised at exactly the depth the repository documents them.
+            None of them is the reason to install this, and leaving them off the page would have
+            been the easier and less honest choice.
+          </p>
+        </div>
+      </header>
+
+      <ul class="surfaces">
+        {
+          SERVER_SURFACES.map((s) => (
+            <li class="surface" aria-labelledby={`surface-${s.id}`}>
+              <div class="surface__head">
+                <h3 id={`surface-${s.id}`} class="surface__h">
+                  {s.label}
+                </h3>
+                <span class="surface__n mono">{s.tools}</span>
+              </div>
+              <p class="surface__body">{s.body}</p>
+              <p class="surface__edge">
+                <span class="surface__edgelab mono">The edge</span>
+                {s.edge}
+              </p>
+              <p class="surface__src mono">{s.source}</p>
+            </li>
+          ))
+        }
+      </ul>
+    </div>
+  </section>
+
+  {/* ══════════════════════ 11 · THE ATLAS ══════════════════════ */}
+  <section class="reg" id="atlas" aria-labelledby="atlas-h">
+    <div class="container container--wide">
+      <header class="reg__head">
+        <span class="reg__n mono" aria-hidden="true">11</span>
+        <div class="reg__headtext">
+          <span class="eyebrow eyebrow--ember">The atlas</span>
+          <h2 id="atlas-h">All {BURNBAR_TOOL_COUNT} tools, and what each one needs.</h2>
+          <p class="lead">
+            Not a highlights reel. Every tool the server registers, grouped by surface, with the
+            capability that gates it — and <strong>{MEMORY_TOOL_COUNT}</strong> of them marked as the
+            memory toolset, the subset a client gets with
+            {" "}<code>BURNBAR_MCP_TOOLSET=memory</code>. A build gate reads
+            {" "}<code>server.py</code> and this list and fails if either grows a tool the other does
+            not have.
+          </p>
+        </div>
+      </header>
+
+      <div class="atlas__bar">
+        <div class="atlas__field">
+          <label class="atlas__lab mono" for="atlas-q"
+            >Filter by name, description or capability</label
+          >
+          <input
+            class="atlas__input mono"
+            id="atlas-q"
+            type="search"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="forget · budget · symbol · cloud · spawn"
+            data-atlas-input
+            hidden
+          />
+          <p class="atlas__nojs mono">
+            {BURNBAR_TOOL_COUNT} tools across {ATLAS_GROUPS.length} surfaces, all listed below.
+          </p>
+        </div>
+        <div class="atlas__actions">
+          <button class="atlas__btn mono" type="button" data-atlas-toggle-all hidden>
+            Collapse all
+          </button>
+          <p class="atlas__count mono" data-atlas-count aria-hidden="true">
+            {BURNBAR_TOOL_COUNT} tools
+          </p>
+        </div>
+      </div>
+
+      <p class="sr-only" role="status" aria-live="polite" data-atlas-live></p>
+
+      <div class="atlas" data-atlas>
+        {
+          ATLAS_GROUPS.map((g) => {
+            const groupTools = TOOL_ATLAS.filter((t) => t.group === g.id);
+            return (
+              <details class="agrp" data-atlas-group={g.id} open>
+                <summary class="agrp__sum">
+                  <span class="agrp__lab">{g.label}</span>
+                  <span class="agrp__n mono">{groupTools.length}</span>
+                  <span class="agrp__blurb">{g.blurb}</span>
+                </summary>
+                <ul class="agrp__list">
+                  {groupTools.map((t) => (
+                    <li class="atool" data-atlas-tool>
+                      <code class="atool__name">{t.name}</code>
+                      <p class="atool__desc">{t.desc}</p>
+                      <p class="atool__caps">
+                        {t.memory && <span class="acap acap--set">memory toolset</span>}
+                        {t.caps.length === 0 ? (
+                          <span class="acap acap--open">no capability</span>
+                        ) : (
+                          t.caps.map((c) => (
+                            <span class="acap acap--gated">{CAP_LABEL.get(c) ?? c}</span>
+                          ))
+                        )}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            );
+          })
+        }
+      </div>
+
+      <p class="atlas__empty" data-atlas-empty hidden>
+        Nothing matches that. The atlas covers the {BURNBAR_TOOL_COUNT}
+        <code>burnbar_*</code> tools only.
+      </p>
+
+      <div class="caps">
+        <h3 class="caps__h">The capabilities themselves</h3>
+        <p class="caps__intro">
+          Every gate above is one environment variable. The server fails closed: a disabled
+          capability returns a structured refusal naming the variable that would enable it, and
+          writes a prompt-free, token-free line to the local policy audit. Nothing here is a
+          purchase, a login, or a remote flag.
+        </p>
+        <dl class="caps__rows">
+          {
+            CAPABILITIES.map((c) => (
+              <div class="caps__row">
+                <dt>
+                  <span class="caps__label">{c.label}</span>
+                  <code class="caps__env">{c.env}</code>
+                </dt>
+                <dd>
+                  <span class="caps__what">{c.what}</span>
+                  <span class="caps__default">{c.byDefault}</span>
+                </dd>
+              </div>
+            ))
+          }
+        </dl>
+      </div>
+
+      <p class="reg__foot mono">
+        Source · <code>tools/openburnbar-mcp/server.py</code> — every <code>@mcp.tool()</code> and every
+        capability denial site · gated by
+        {" "}<code>website/scripts/test-memory-copy.mjs</code>. The atlas covers the
+        {" "}<code>burnbar_*</code> product tools; the {ORCHESTRATION_TOOL_COUNT}
+        {" "}<code>ministry_*</code> / <code>castle_*</code> / <code>bench_*</code> orchestration tools
+        are counted in section 10 and deliberately not listed here.
+      </p>
+    </div>
+  </section>
+
+  {/* ══════════════════════ PART THREE ══════════════════════ */}
+  <div class="part" id="part-three">
+    <div class="container container--wide part__inner">
+      <span class="part__n mono" aria-hidden="true">Part three</span>
+      <h2 class="part__h">The evidence, and the install</h2>
+      <p class="part__sub">
+        What we measured and what pins it, what crosses the device boundary, how to run it, and
+        every limit we know about — written down before you find them yourself.
+      </p>
+    </div>
+  </div>
+
+  {/* ══════════════════════ 12 · PROOF ══════════════════════ */}
+  <section class="reg reg--alt" id="proof" aria-labelledby="proof-h">
+    <div class="container container--wide">
+      <header class="reg__head">
+        <span class="reg__n mono" aria-hidden="true">12</span>
         <div class="reg__headtext">
           <span class="eyebrow eyebrow--ember">Proof</span>
           <h2 id="proof-h">The numbers, the command, and what stops them sliding.</h2>
@@ -550,11 +1095,11 @@ const SECTIONS = [
     </div>
   </section>
 
-  {/* ══════════════════════ 06 · BOUNDARY ══════════════════════ */}
-  <section class="reg reg--alt" id="boundary" aria-labelledby="boundary-h">
+  {/* ══════════════════════ 13 · BOUNDARY ══════════════════════ */}
+  <section class="reg" id="boundary" aria-labelledby="boundary-h">
     <div class="container container--wide">
       <header class="reg__head">
-        <span class="reg__n mono" aria-hidden="true">06</span>
+        <span class="reg__n mono" aria-hidden="true">13</span>
         <div class="reg__headtext">
           <span class="eyebrow eyebrow--ember">The boundary</span>
           <h2 id="boundary-h">What stays. What leaves. What isn't built yet.</h2>
@@ -598,11 +1143,11 @@ const SECTIONS = [
     </div>
   </section>
 
-  {/* ══════════════════════ 07 · SETUP ══════════════════════ */}
-  <section class="reg" id="setup" aria-labelledby="setup-h">
+  {/* ══════════════════════ 14 · SETUP ══════════════════════ */}
+  <section class="reg reg--alt" id="setup" aria-labelledby="setup-h">
     <div class="container container--wide">
       <header class="reg__head">
-        <span class="reg__n mono" aria-hidden="true">07</span>
+        <span class="reg__n mono" aria-hidden="true">14</span>
         <div class="reg__headtext">
           <span class="eyebrow eyebrow--ember">Setup</span>
           <h2 id="setup-h">One server. Five clients. Under two minutes.</h2>
@@ -760,12 +1305,37 @@ const SECTIONS = [
         </ul>
       </section>
 
+      {/* Where this runs — stated exactly as `main` supports it. */}
+      <section class="plat" aria-labelledby="plat-h">
+        <div class="plat__head">
+          <h3 id="plat-h">Where it runs</h3>
+          <p>
+            Worth knowing before you clone it rather than after. The engine and the platform are two
+            different questions, and this answers both.
+          </p>
+        </div>
+        <ul class="plat__rows">
+          {
+            PLATFORMS.supported.map((p) => (
+              <li class="plat__row" data-status={p.status}>
+                <p class="plat__lab">{p.label}</p>
+                <p class="plat__body">{p.body}</p>
+              </li>
+            ))
+          }
+        </ul>
+        <p class="plat__level">{PLATFORMS.supportLevel}</p>
+        <p class="plat__src mono">{PLATFORMS.source}</p>
+      </section>
+
       <aside class="crossref">
         <h3>Looking for a different channel?</h3>
         <p>
-          This page is the local memory engine — free, no account, your disk. The hosted Remote MCP,
-          the stdio bridge and the Cursor Marketplace plugin are transports for your OpenBurnBar
-          session history and spend, and they live on their own page.
+          This page is the local server — free, no account, your disk. The hosted Remote MCP, the
+          stdio bridge and the Cursor Marketplace plugin are different transports for your
+          OpenBurnBar session history and spend; that page says which endpoint speaks which
+          protocol, which bearer it takes, and which tools each channel exposes. The atlas above is
+          this local server, which is a different and larger set.
         </p>
         <a class="btn btn--ghost" href="/mcp"
           >All four MCP channels <span class="btn-arrow" aria-hidden="true">→</span></a
@@ -774,11 +1344,11 @@ const SECTIONS = [
     </div>
   </section>
 
-  {/* ══════════════════════ 08 · LIMITS ══════════════════════ */}
-  <section class="reg reg--alt" id="limits" aria-labelledby="limits-h">
+  {/* ══════════════════════ 15 · LIMITS ══════════════════════ */}
+  <section class="reg" id="limits" aria-labelledby="limits-h">
     <div class="container container--wide">
       <header class="reg__head">
-        <span class="reg__n mono" aria-hidden="true">08</span>
+        <span class="reg__n mono" aria-hidden="true">15</span>
         <div class="reg__headtext">
           <span class="eyebrow eyebrow--ember">Limits</span>
           <h2 id="limits-h">What it doesn't do.</h2>
@@ -832,8 +1402,10 @@ const SECTIONS = [
 <script>
   import "../scripts/animateOnView.ts";
   import { initMcpSetup } from "../scripts/mcpSetup.ts";
+  import { initToolAtlas } from "../scripts/toolAtlas.ts";
 
   initMcpSetup();
+  initToolAtlas();
 </script>
 
 {/* ══════════════════════ STYLES ══════════════════════ */}
@@ -1082,7 +1654,18 @@ const SECTIONS = [
   :global(:root) .kind__name,
   :global(:root) .statuses code,
   :global(:root) .pro__purposes code,
-  :global(:root) .code__pre code {
+  :global(:root) .code__pre code,
+  /* The coverage round added six more <code> elements used as labels inside
+     their own frame. They belong on this list for the same reason and were
+     verified the same way — in a rendered light theme, not by inspection:
+     without the :global(:root) prefix the light-theme chip's background
+     survived and painted a grey slab behind every tool name in the atlas. */
+  :global(:root) .purge__name,
+  :global(:root) .tier__name,
+  :global(:root) .atool__name,
+  :global(:root) .caps__env,
+  :global(:root) .rsurface__tool,
+  :global(:root) .pack__tool {
     background: none;
     border: 0;
     padding: 0;
@@ -2591,5 +3174,1172 @@ const SECTIONS = [
 
   :global(:root[data-theme="light"]) .pipe__dot {
     background: var(--ink-void);
+  }
+  /* ============================================================
+     COVERAGE ROUND — the register grew from eight sections to
+     fifteen, so it gained the one thing a long bound record has and
+     a long web page usually does not: PARTS. Three ruled dividers,
+     three groups in the index, and the numerals keep running across
+     them. The hierarchy is the parts; the numerals are the rhythm.
+
+     Everything below reuses the page's own devices — ruled rows,
+     margin numerals, ember only where it means something — so the
+     new half reads as the same document rather than an appendix.
+     ============================================================ */
+
+  /* ---------- the part divider ---------- */
+
+  .part {
+    border-top: 1px solid var(--ink-line-bright);
+    background: linear-gradient(180deg, var(--ember-wash), transparent 70%);
+    padding-block: var(--s-7) var(--s-6);
+    scroll-margin-top: 5rem;
+  }
+
+  .part__inner {
+    display: grid;
+    gap: var(--s-3);
+    justify-items: start;
+  }
+
+  .part__n {
+    font-size: var(--t-eyebrow);
+    letter-spacing: var(--tracking-uppercase);
+    text-transform: uppercase;
+    color: var(--ember-bright);
+    --opsz: var(--opsz-caption);
+  }
+
+  .part__h {
+    font-size: var(--t-h2);
+    line-height: var(--leading-snug);
+    letter-spacing: var(--tracking-tight);
+    font-weight: var(--wght-display);
+    --opsz: var(--opsz-h2);
+    color: var(--text-bright);
+    margin: 0;
+    max-width: 18ch;
+  }
+
+  .part__sub {
+    margin: 0;
+    max-width: 64ch;
+    font-size: var(--t-caption);
+    line-height: var(--leading-base);
+    color: var(--text-mute);
+  }
+
+  /* ---------- the index, now in three parts ---------- */
+
+  .mem-jump {
+    display: grid;
+    gap: var(--s-4);
+  }
+
+  .mem-jump__part {
+    display: grid;
+    gap: var(--s-2);
+  }
+
+  .mem-jump__lab {
+    margin: 0;
+    font-size: var(--t-eyebrow);
+    letter-spacing: var(--tracking-uppercase);
+    text-transform: uppercase;
+    color: var(--text-dim);
+    --opsz: var(--opsz-caption);
+  }
+
+  .mem-jump__partn {
+    color: var(--ember-core);
+  }
+
+  /* ---------- a shared device: the honest-limit paragraph ----------
+     Every new section ends on what it does not do. One rule, one ember
+     label, no box — a box would let the eye skip it, which is exactly
+     what a stated limit must not allow. */
+
+  .honest {
+    margin: var(--s-6) 0 0;
+    padding-left: var(--s-4);
+    border-left: 2px solid var(--ember-core);
+    max-width: 78ch;
+    font-size: var(--t-caption);
+    line-height: var(--leading-base);
+    color: var(--text-mute);
+  }
+
+  .honest__lab {
+    display: block;
+    font-size: var(--t-eyebrow);
+    letter-spacing: var(--tracking-uppercase);
+    text-transform: uppercase;
+    color: var(--ember-bright);
+    margin-bottom: var(--s-2);
+    --opsz: var(--opsz-caption);
+  }
+
+  /* ---------- 04 · time ---------- */
+
+  .tfacts {
+    list-style: none;
+    margin: 0 0 var(--s-7);
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(20rem, 100%), 1fr));
+    gap: var(--s-5);
+  }
+
+  .tfact {
+    min-width: 0;
+    padding-top: var(--s-3);
+    border-top: 1px solid var(--ink-line);
+  }
+
+  .tfact__lab {
+    margin: 0 0 var(--s-2);
+    font-size: var(--t-eyebrow);
+    letter-spacing: var(--tracking-uppercase);
+    text-transform: uppercase;
+    color: var(--ember-bright);
+    --opsz: var(--opsz-caption);
+  }
+
+  .tfact__body {
+    margin: 0;
+    font-size: var(--t-caption);
+    line-height: var(--leading-base);
+    color: var(--text-mute);
+  }
+
+  /* The ledger: trigger → verdict → effect, ruled like a bound register.
+     The verdict column is the only ember on the row, because the verdict
+     is the thing you came to read. */
+
+  .ledger {
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-md);
+    background: var(--ink-surface);
+    padding: var(--s-5);
+  }
+
+  .ledger__h {
+    margin: 0 0 var(--s-4);
+    font-size: var(--t-h4, 1.15rem);
+    font-weight: var(--wght-semibold);
+    color: var(--text-bright);
+    --opsz: var(--opsz-lead);
+  }
+
+  .ledger__rows {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+  }
+
+  .ledger__row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 11rem minmax(0, 1.5fr);
+    gap: var(--s-3) var(--s-4);
+    align-items: baseline;
+    padding: var(--s-3) 0;
+    border-top: 1px solid var(--ink-line-soft);
+    min-width: 0;
+  }
+
+  .ledger__row:first-child {
+    border-top: 0;
+    padding-top: 0;
+  }
+
+  .ledger__trigger {
+    margin: 0;
+    font-size: var(--t-caption);
+    color: var(--text-base);
+  }
+
+  .ledger__verdict {
+    margin: 0;
+    font-size: var(--t-eyebrow);
+    letter-spacing: 0.04em;
+    color: var(--ember-bright);
+    --opsz: var(--opsz-caption);
+  }
+
+  .ledger__effect {
+    margin: 0;
+    font-size: var(--t-caption);
+    line-height: var(--leading-base);
+    color: var(--text-dim);
+  }
+
+  @media (max-width: 860px) {
+    .ledger__row {
+      grid-template-columns: minmax(0, 1fr);
+      gap: var(--s-2);
+    }
+  }
+
+  /* ---------- 05 · forget ---------- */
+
+  .purge {
+    border: 1px solid color-mix(in oklab, var(--status-burn) 30%, var(--ink-line));
+    border-radius: var(--r-md);
+    background: linear-gradient(180deg, var(--ember-wash), transparent 70%), var(--ink-surface);
+    padding: var(--s-5);
+    margin-bottom: var(--s-7);
+  }
+
+  .purge__lab {
+    margin: 0 0 var(--s-4);
+    font-size: var(--t-eyebrow);
+    letter-spacing: var(--tracking-uppercase);
+    text-transform: uppercase;
+    color: var(--ember-bright);
+    --opsz: var(--opsz-caption);
+  }
+
+  .purge__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: var(--s-2);
+  }
+
+  .purge__item {
+    display: grid;
+    grid-template-columns: 8rem minmax(0, 1fr);
+    gap: var(--s-3);
+    align-items: baseline;
+    padding-bottom: var(--s-2);
+    border-bottom: 1px solid var(--ink-line-soft);
+    min-width: 0;
+  }
+
+  .purge__name {
+    font-family: var(--font-mono);
+    font-size: var(--t-eyebrow);
+    color: var(--text-bright);
+    /* struck through: the row is what the delete removes */
+    text-decoration: line-through;
+    text-decoration-color: var(--status-burn);
+    text-decoration-thickness: 1px;
+    --opsz: var(--opsz-caption);
+  }
+
+  .purge__note {
+    font-size: var(--t-caption);
+    line-height: var(--leading-base);
+    color: var(--text-mute);
+  }
+
+  .purge__foot {
+    margin: var(--s-4) 0 0;
+    font-size: var(--t-eyebrow);
+    color: var(--text-dim);
+    --opsz: var(--opsz-caption);
+  }
+
+  @media (max-width: 560px) {
+    .purge__item {
+      grid-template-columns: minmax(0, 1fr);
+      gap: var(--s-1);
+    }
+  }
+
+  .fsteps {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: var(--s-5);
+  }
+
+  .fstep {
+    display: grid;
+    grid-template-columns: 3rem minmax(0, 1fr);
+    gap: var(--s-4);
+    align-items: start;
+    min-width: 0;
+  }
+
+  .fstep__n {
+    font-size: var(--t-caption);
+    color: var(--ember-bright);
+    line-height: 1.4;
+    --opsz: var(--opsz-caption);
+  }
+
+  .fstep__body {
+    min-width: 0;
+  }
+
+  .fstep__h {
+    margin: 0 0 var(--s-2);
+    font-size: var(--t-body);
+    font-weight: var(--wght-semibold);
+    color: var(--text-bright);
+    --opsz: var(--opsz-body);
+  }
+
+  .fstep__body p {
+    margin: 0;
+    font-size: var(--t-caption);
+    line-height: var(--leading-base);
+    color: var(--text-mute);
+  }
+
+  @media (max-width: 560px) {
+    .fstep {
+      grid-template-columns: minmax(0, 1fr);
+      gap: var(--s-1);
+    }
+  }
+
+  /* ---------- 07 · review ---------- */
+
+  .rsurfaces {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(22rem, 100%), 1fr));
+    gap: var(--s-5);
+  }
+
+  .rsurface {
+    min-width: 0;
+    padding-top: var(--s-3);
+    border-top: 1px solid var(--ink-line);
+    display: grid;
+    gap: var(--s-2);
+    align-content: start;
+  }
+
+  .rsurface__tool {
+    justify-self: start;
+    font-family: var(--font-mono);
+    font-size: var(--t-eyebrow);
+    color: var(--ember-bright);
+    background: none;
+    border: 0;
+    padding: 0;
+    --opsz: var(--opsz-caption);
+  }
+
+  .rsurface__h {
+    margin: 0;
+    font-size: var(--t-body);
+    font-weight: var(--wght-semibold);
+    color: var(--text-bright);
+    --opsz: var(--opsz-body);
+  }
+
+  .rsurface__body {
+    margin: 0;
+    font-size: var(--t-caption);
+    line-height: var(--leading-base);
+    color: var(--text-mute);
+  }
+
+  /* ---------- 03 · packs (inside recall) ---------- */
+
+  .packs {
+    margin-top: var(--s-7);
+    border-top: 1px solid var(--ink-line);
+    padding-top: var(--s-5);
+  }
+
+  .packs__h {
+    margin: 0 0 var(--s-2);
+    font-size: var(--t-h4, 1.15rem);
+    font-weight: var(--wght-semibold);
+    color: var(--text-bright);
+    --opsz: var(--opsz-lead);
+  }
+
+  .packs__intro {
+    margin: 0 0 var(--s-5);
+    max-width: 70ch;
+    font-size: var(--t-caption);
+    line-height: var(--leading-base);
+    color: var(--text-mute);
+  }
+
+  .packs__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(20rem, 100%), 1fr));
+    gap: var(--s-5);
+  }
+
+  .pack {
+    min-width: 0;
+    display: grid;
+    gap: var(--s-2);
+    align-content: start;
+    padding: var(--s-4);
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-md);
+    background: var(--ink-surface);
+  }
+
+  .pack__tool {
+    justify-self: start;
+    font-family: var(--font-mono);
+    font-size: var(--t-eyebrow);
+    color: var(--ember-bright);
+    background: none;
+    border: 0;
+    padding: 0;
+    overflow-wrap: anywhere;
+    --opsz: var(--opsz-caption);
+  }
+
+  .pack__h {
+    margin: 0;
+    font-size: var(--t-body);
+    font-weight: var(--wght-semibold);
+    color: var(--text-bright);
+    --opsz: var(--opsz-body);
+  }
+
+  .pack__body {
+    margin: 0;
+    font-size: var(--t-caption);
+    line-height: var(--leading-base);
+    color: var(--text-mute);
+  }
+
+  /* ---------- 08 · code intelligence ---------- */
+
+  .cfacts {
+    list-style: none;
+    margin: 0 0 var(--s-7);
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(24rem, 100%), 1fr));
+    gap: var(--s-5);
+  }
+
+  .cfact {
+    min-width: 0;
+    padding-top: var(--s-3);
+    border-top: 1px solid var(--ink-line);
+  }
+
+  .cfact__h {
+    margin: 0 0 var(--s-2);
+    font-size: var(--t-body);
+    font-weight: var(--wght-semibold);
+    color: var(--text-bright);
+    --opsz: var(--opsz-body);
+  }
+
+  .cfact p {
+    margin: 0;
+    font-size: var(--t-caption);
+    line-height: var(--leading-base);
+    color: var(--text-mute);
+  }
+
+  .tiers__h {
+    margin: 0 0 var(--s-4);
+    font-size: var(--t-h4, 1.15rem);
+    font-weight: var(--wght-semibold);
+    color: var(--text-bright);
+    --opsz: var(--opsz-lead);
+  }
+
+  .tiers__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: var(--s-3);
+  }
+
+  /* Three tiers, and the eye should be able to tell at a glance which one
+     you get for free. The left rule carries that: teal for always-on, gold
+     for the one you have to build, mute for the one you have to configure. */
+  .tier {
+    display: grid;
+    gap: var(--s-2);
+    padding: var(--s-4);
+    border: 1px solid var(--ink-line);
+    border-left: 2px solid var(--status-unavailable);
+    border-radius: var(--r-md);
+    background: var(--ink-surface);
+    min-width: 0;
+  }
+
+  .tier[data-status="always"] {
+    border-left-color: var(--status-exact);
+  }
+
+  .tier[data-status="built"] {
+    border-left-color: var(--status-estimated);
+  }
+
+  .tier__head {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-3);
+    align-items: baseline;
+  }
+
+  .tier__name {
+    font-family: var(--font-mono);
+    font-size: var(--t-caption);
+    color: var(--text-bright);
+    background: none;
+    border: 0;
+    padding: 0;
+    --opsz: var(--opsz-caption);
+  }
+
+  /* The status colour lives in the left rule, not in this 12px label:
+     status-exact measured 4.29:1 and status-estimated 3.94:1 as text at this
+     size, both under AA, while a border carries no contrast requirement at
+     all. Moving the signal to the rule keeps the glance and passes. */
+  .tier__badge {
+    font-size: var(--t-eyebrow);
+    letter-spacing: var(--tracking-uppercase);
+    text-transform: uppercase;
+    color: var(--text-mute);
+    --opsz: var(--opsz-caption);
+  }
+
+  .tier__body {
+    margin: 0;
+    font-size: var(--t-caption);
+    line-height: var(--leading-base);
+    color: var(--text-mute);
+  }
+
+  /* ---------- 09 · sessions ---------- */
+
+  .sfacts {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(24rem, 100%), 1fr));
+    gap: var(--s-5);
+  }
+
+  .sfact {
+    min-width: 0;
+    padding-top: var(--s-3);
+    border-top: 1px solid var(--ink-line);
+  }
+
+  .sfact__h {
+    margin: 0 0 var(--s-2);
+    font-size: var(--t-body);
+    font-weight: var(--wght-semibold);
+    color: var(--text-bright);
+    --opsz: var(--opsz-body);
+  }
+
+  .sfact p {
+    margin: 0;
+    font-size: var(--t-caption);
+    line-height: var(--leading-base);
+    color: var(--text-mute);
+  }
+
+  /* ---------- 10 · the rest of the server ---------- */
+
+  .surfaces {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: var(--s-5);
+  }
+
+  .surface {
+    min-width: 0;
+    padding: var(--s-5);
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-md);
+    background: var(--ink-surface);
+    display: grid;
+    gap: var(--s-3);
+  }
+
+  .surface__head {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-3);
+    align-items: baseline;
+    justify-content: space-between;
+  }
+
+  .surface__h {
+    margin: 0;
+    font-size: var(--t-h4, 1.15rem);
+    font-weight: var(--wght-semibold);
+    color: var(--text-bright);
+    --opsz: var(--opsz-lead);
+  }
+
+  /* --ember-core measured 3.75:1 against this panel at 12px, which is below
+     AA for small text. --ember-bright clears it and reads the same at a
+     glance. Measured in a rendered page, both themes — see the contrast
+     sweep in the PR body. The same substitution is made on every 12px ember
+     label this round added. */
+  .surface__n {
+    font-size: var(--t-eyebrow);
+    letter-spacing: var(--tracking-uppercase);
+    text-transform: uppercase;
+    color: var(--ember-bright);
+    --opsz: var(--opsz-caption);
+  }
+
+  .surface__body,
+  .surface__edge {
+    margin: 0;
+    font-size: var(--t-caption);
+    line-height: var(--leading-base);
+    color: var(--text-mute);
+    max-width: 82ch;
+  }
+
+  .surface__edge {
+    color: var(--text-dim);
+    padding-left: var(--s-3);
+    border-left: 1px solid var(--ink-line);
+  }
+
+  .surface__edgelab {
+    display: block;
+    font-size: var(--t-eyebrow);
+    letter-spacing: var(--tracking-uppercase);
+    text-transform: uppercase;
+    color: var(--ember-bright);
+    margin-bottom: var(--s-1);
+    --opsz: var(--opsz-caption);
+  }
+
+  .surface__src {
+    margin: 0;
+    font-size: var(--t-eyebrow);
+    color: var(--text-dim);
+    --opsz: var(--opsz-caption);
+  }
+
+  /* ---------- 11 · the atlas ----------
+     Sixty-three rows would be a wall if they were a wall. They are nine
+     native <details> groups, open on arrival so the page works with the
+     script blocked, with a filter the script adds once it is running.
+     Nothing here is hidden from a reader without JavaScript. */
+
+  .atlas__bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-4);
+    align-items: end;
+    justify-content: space-between;
+    margin-bottom: var(--s-5);
+    padding-bottom: var(--s-4);
+    border-bottom: 1px solid var(--ink-line);
+  }
+
+  .atlas__field {
+    display: grid;
+    gap: var(--s-2);
+    flex: 1 1 22rem;
+    min-width: 0;
+  }
+
+  .atlas__lab {
+    font-size: var(--t-eyebrow);
+    letter-spacing: var(--tracking-uppercase);
+    text-transform: uppercase;
+    color: var(--text-dim);
+    --opsz: var(--opsz-caption);
+  }
+
+  .atlas__input {
+    width: 100%;
+    font-family: var(--font-mono);
+    font-size: var(--t-caption);
+    color: var(--text-bright);
+    background: var(--ink-surface);
+    border: 1px solid var(--ink-line-bright);
+    border-radius: var(--r-sm);
+    padding: var(--s-3);
+    --opsz: var(--opsz-caption);
+  }
+
+  .atlas__input::placeholder {
+    color: var(--text-dim);
+  }
+
+  .atlas__input:focus-visible {
+    outline: 2px solid var(--ember-core);
+    outline-offset: 2px;
+  }
+
+  .atlas__nojs {
+    margin: 0;
+    font-size: var(--t-eyebrow);
+    color: var(--text-dim);
+    --opsz: var(--opsz-caption);
+  }
+
+  /* The script owns both of these: it reveals the input and hides the
+     static line. With the script blocked, the static line is the truth. */
+  :global(html.js) .atlas__nojs {
+    display: none;
+  }
+
+  .atlas__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-3);
+    align-items: center;
+  }
+
+  .atlas__btn {
+    font-size: var(--t-eyebrow);
+    letter-spacing: var(--tracking-uppercase);
+    text-transform: uppercase;
+    color: var(--text-mute);
+    background: none;
+    border: 1px solid var(--ink-line-bright);
+    border-radius: var(--r-pill);
+    padding: var(--s-2) var(--s-4);
+    cursor: pointer;
+    --opsz: var(--opsz-caption);
+  }
+
+  .atlas__btn:hover,
+  .atlas__btn:focus-visible {
+    color: var(--text-bright);
+    border-color: var(--ember-core);
+  }
+
+  .atlas__count {
+    margin: 0;
+    font-size: var(--t-eyebrow);
+    color: var(--ember-bright);
+    --opsz: var(--opsz-caption);
+  }
+
+  .atlas {
+    display: grid;
+    gap: var(--s-3);
+  }
+
+  .agrp {
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-md);
+    background: var(--ink-surface);
+    min-width: 0;
+  }
+
+  .agrp[hidden] {
+    display: none;
+  }
+
+  .agrp__sum {
+    display: grid;
+    grid-template-columns: minmax(0, auto) 2.5rem minmax(0, 1fr);
+    gap: var(--s-3);
+    align-items: baseline;
+    padding: var(--s-4);
+    cursor: pointer;
+    list-style: none;
+  }
+
+  .agrp__sum::-webkit-details-marker {
+    display: none;
+  }
+
+  .agrp__sum:focus-visible {
+    outline: 2px solid var(--ember-core);
+    outline-offset: -2px;
+    border-radius: var(--r-md);
+  }
+
+  .agrp__lab {
+    font-size: var(--t-body);
+    font-weight: var(--wght-semibold);
+    color: var(--text-bright);
+    --opsz: var(--opsz-body);
+  }
+
+  .agrp__n {
+    font-size: var(--t-eyebrow);
+    color: var(--ember-bright);
+    justify-self: start;
+    --opsz: var(--opsz-caption);
+  }
+
+  .agrp__blurb {
+    font-size: var(--t-caption);
+    color: var(--text-dim);
+    line-height: var(--leading-base);
+  }
+
+  @media (max-width: 720px) {
+    .agrp__sum {
+      grid-template-columns: minmax(0, 1fr) 2.5rem;
+      gap: var(--s-2) var(--s-3);
+    }
+
+    .agrp__blurb {
+      grid-column: 1 / -1;
+    }
+  }
+
+  .agrp__list {
+    list-style: none;
+    margin: 0;
+    padding: 0 var(--s-4) var(--s-4);
+    display: grid;
+  }
+
+  .atool {
+    display: grid;
+    grid-template-columns: minmax(0, 20rem) minmax(0, 1fr);
+    gap: var(--s-2) var(--s-4);
+    align-items: baseline;
+    padding: var(--s-3) 0;
+    border-top: 1px solid var(--ink-line-soft);
+    min-width: 0;
+  }
+
+  .atool[hidden] {
+    display: none;
+  }
+
+  .atool__name {
+    font-family: var(--font-mono);
+    font-size: var(--t-eyebrow);
+    color: var(--text-bright);
+    background: none;
+    border: 0;
+    padding: 0;
+    overflow-wrap: anywhere;
+    --opsz: var(--opsz-caption);
+  }
+
+  .atool__desc {
+    margin: 0;
+    font-size: var(--t-caption);
+    line-height: var(--leading-base);
+    color: var(--text-mute);
+  }
+
+  .atool__caps {
+    grid-column: 2;
+    margin: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-2);
+  }
+
+  @media (max-width: 820px) {
+    .atool {
+      grid-template-columns: minmax(0, 1fr);
+      gap: var(--s-2);
+    }
+
+    .atool__caps {
+      grid-column: 1;
+    }
+  }
+
+  /* The atlas prints roughly a hundred of these chips. The site's shared
+     .tag component measures 3.6–4.0:1 at this size — fine as a handful of
+     accents elsewhere on the page, not fine as the label on every row of a
+     reference table, which is the one place a reader has to actually read
+     them. So the atlas has its own chip: the text sits at --text-base and
+     clears AA, and the semantic colour moves to the border, which carries no
+     contrast requirement. Verified in a rendered page in both themes. */
+  .acap {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s-2);
+    font-family: var(--font-mono);
+    font-size: var(--t-eyebrow);
+    letter-spacing: 0.02em;
+    color: var(--text-base);
+    background: var(--ink-surface-2);
+    border: 1px solid var(--ink-line-bright);
+    border-radius: var(--r-pill);
+    padding: 0.1rem var(--s-3);
+    white-space: nowrap;
+    --opsz: var(--opsz-caption);
+  }
+
+  .acap::before {
+    content: "";
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: currentColor;
+    flex: none;
+  }
+
+  .acap--gated {
+    border-color: color-mix(in oklab, var(--status-estimated) 55%, var(--ink-line));
+  }
+
+  .acap--gated::before {
+    background: var(--status-estimated);
+  }
+
+  .acap--open {
+    border-color: color-mix(in oklab, var(--status-exact) 45%, var(--ink-line));
+  }
+
+  .acap--open::before {
+    background: var(--status-exact);
+  }
+
+  .acap--set {
+    border-color: var(--ink-line-bright);
+  }
+
+  .acap--set::before {
+    background: var(--mercury-core);
+  }
+
+  .atlas__empty {
+    margin: var(--s-5) 0 0;
+    font-size: var(--t-caption);
+    color: var(--text-mute);
+  }
+
+  .caps {
+    margin-top: var(--s-7);
+    border-top: 1px solid var(--ink-line);
+    padding-top: var(--s-5);
+  }
+
+  .caps__h {
+    margin: 0 0 var(--s-2);
+    font-size: var(--t-h4, 1.15rem);
+    font-weight: var(--wght-semibold);
+    color: var(--text-bright);
+    --opsz: var(--opsz-lead);
+  }
+
+  .caps__intro {
+    margin: 0 0 var(--s-5);
+    max-width: 74ch;
+    font-size: var(--t-caption);
+    line-height: var(--leading-base);
+    color: var(--text-mute);
+  }
+
+  .caps__rows {
+    margin: 0;
+    display: grid;
+  }
+
+  .caps__row {
+    display: grid;
+    grid-template-columns: minmax(0, 22rem) minmax(0, 1fr);
+    gap: var(--s-2) var(--s-4);
+    padding: var(--s-3) 0;
+    border-top: 1px solid var(--ink-line-soft);
+    min-width: 0;
+  }
+
+  .caps__row dt,
+  .caps__row dd {
+    margin: 0;
+    min-width: 0;
+    display: grid;
+    gap: var(--s-1);
+    align-content: start;
+  }
+
+  .caps__label {
+    font-size: var(--t-caption);
+    font-weight: var(--wght-semibold);
+    color: var(--text-bright);
+  }
+
+  .caps__env {
+    font-family: var(--font-mono);
+    font-size: var(--t-eyebrow);
+    color: var(--ember-bright);
+    background: none;
+    border: 0;
+    padding: 0;
+    overflow-wrap: anywhere;
+    --opsz: var(--opsz-caption);
+  }
+
+  .caps__what {
+    font-size: var(--t-caption);
+    line-height: var(--leading-base);
+    color: var(--text-mute);
+  }
+
+  .caps__default {
+    font-size: var(--t-caption);
+    line-height: var(--leading-base);
+    color: var(--text-dim);
+  }
+
+  @media (max-width: 820px) {
+    .caps__row {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  /* ---------- column counts, said out loud ----------
+     `auto-fit` picks a column count from a track floor, which means it can
+     only express "as many as fit". It cannot express "any count except
+     three", and three is exactly what a four-item grid must never be: at
+     1280px these landed 3 + 1, with a single orphan card under a full row.
+     Measured, not assumed — the same defect the pipeline had in the first
+     pass. So the four-item grids name their counts. ---------- */
+
+  .tfacts,
+  .cfacts,
+  .sfacts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /* The time facts are short labelled paragraphs and take a fourth column
+     comfortably once there is room for one; the code and session facts are
+     full sentences and stay at two. */
+  @media (min-width: 1340px) {
+    .tfacts {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 700px) {
+    .tfacts,
+    .cfacts,
+    .sfacts {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  /* Three packs: three across, or one down. Two-plus-one is the orphan
+     again, one card wide with a gap beside it. */
+  .packs__list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  @media (max-width: 1040px) {
+    .packs__list {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  /* Six review surfaces divide by two and by three but not by four, so the
+     ultrawide case is pinned rather than left to the track floor. */
+  @media (min-width: 1500px) {
+    .rsurfaces {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+
+  /* ---------- 14 · where it runs ---------- */
+
+  .plat {
+    margin-top: var(--s-7);
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-md);
+    background: var(--ink-surface);
+    padding: var(--s-5);
+  }
+
+  .plat__head h3 {
+    margin: 0 0 var(--s-2);
+    font-size: var(--t-h4, 1.15rem);
+    font-weight: var(--wght-semibold);
+    color: var(--text-bright);
+    --opsz: var(--opsz-lead);
+  }
+
+  .plat__head p {
+    margin: 0 0 var(--s-4);
+    max-width: 70ch;
+    font-size: var(--t-caption);
+    line-height: var(--leading-base);
+    color: var(--text-mute);
+  }
+
+  .plat__rows {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: var(--s-3);
+  }
+
+  .plat__row {
+    display: grid;
+    grid-template-columns: minmax(0, 12rem) minmax(0, 1fr);
+    gap: var(--s-2) var(--s-4);
+    padding-left: var(--s-4);
+    border-left: 2px solid var(--status-unavailable);
+    min-width: 0;
+  }
+
+  .plat__row[data-status="supported"] {
+    border-left-color: var(--status-exact);
+  }
+
+  .plat__row[data-status="portable"] {
+    border-left-color: var(--status-estimated);
+  }
+
+  .plat__row[data-status="unsupported"] {
+    border-left-style: dashed;
+  }
+
+  .plat__lab {
+    margin: 0;
+    font-size: var(--t-caption);
+    font-weight: var(--wght-semibold);
+    color: var(--text-bright);
+  }
+
+  .plat__body {
+    margin: 0;
+    font-size: var(--t-caption);
+    line-height: var(--leading-base);
+    color: var(--text-mute);
+  }
+
+  .plat__level {
+    margin: var(--s-5) 0 var(--s-2);
+    padding-top: var(--s-4);
+    border-top: 1px solid var(--ink-line-soft);
+    font-size: var(--t-caption);
+    line-height: var(--leading-base);
+    color: var(--text-dim);
+    max-width: 82ch;
+  }
+
+  .plat__src {
+    margin: 0;
+    font-size: var(--t-eyebrow);
+    color: var(--text-dim);
+    --opsz: var(--opsz-caption);
+  }
+
+  @media (max-width: 620px) {
+    .plat__row {
+      grid-template-columns: minmax(0, 1fr);
+    }
   }
 </style>

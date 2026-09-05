@@ -700,9 +700,15 @@ export const LIMITS: { title: string; body: string; source: string }[] = [
     source: "tools/openburnbar-mcp/README.md § Encrypted at rest"
   },
   {
-    title: "macOS paths by default",
-    body: "The store defaults to the macOS Application Support directory. OPENBURNBAR_MEMORY_DB_PATH moves it, and the engine itself is plain Python 3.11+.",
-    source: "tools/openburnbar-mcp/README.md § Local memory engine"
+    title: "macOS today, and only macOS",
+    body: "The store defaults to the macOS Application Support directory and OPENBURNBAR_MEMORY_DB_PATH moves it; the engine itself is plain Python 3.11 or newer with no native build. That is a description of the code, not a support claim. Windows and Linux are not supported and not tested. There is a Linux port plan in the repository; a plan is not a platform.",
+    source: "tools/openburnbar-mcp/README.md § Setup; § Support level"
+  },
+  {
+    title: "Part of the server assumes the OpenBurnBar app is there",
+    body: "The memory engine owns its own store and needs nothing else — no daemon, no app, no network. The session index, the spend tools, the inbox and Project Memory snapshots read what the macOS app and its daemon produce, and on a signed install that database is SQLCipher-encrypted, so those tools go through the daemon socket or report that they cannot. burnbar_resolve_db_path tells you which of those you are in, because existence is not health.",
+    source:
+      "tools/openburnbar-mcp/README.md § Local memory engine — Works without the daemon; server.py burnbar_resolve_db_path"
   },
   {
     title: "Adjacent tooling, best-effort support",
@@ -745,4 +751,1010 @@ export const PRO_INVARIANTS = [
   "Subscription quota is used only through the official CLIs, behind the existing CLI consent.",
   "Every cloud path degrades to the local behaviour and reports why in the tool's trustSignal.",
   "BurnBar receives nothing: the traffic goes from your Mac to the provider you chose."
+];
+
+/* ==================================================================
+   COVERAGE ROUND — everything below this line exists because the first
+   pass named six of the server's tools and left whole product surfaces
+   unmentioned. Same house rule: every value traces to a file on `main`,
+   and scripts/test-memory-copy.mjs reads BOTH sides and refuses to let
+   them disagree.
+   ================================================================== */
+
+/* ------------------------------------------------------------------
+   10 · Tool counts. Parsed out of server.py by the copy gate, so they
+   cannot drift. MEMORY_TOOL_COUNT above is the memory toolset — what a
+   client gets with BURNBAR_MCP_TOOLSET=memory. These are the server.
+------------------------------------------------------------------- */
+
+/** Every `burnbar_*` tool the server registers. The product surface. */
+export const BURNBAR_TOOL_COUNT = 63;
+
+/** `ministry_*` + `castle_*` + `bench_*`: agent fan-out and benchmarking
+ *  tooling. Real, registered, and deliberately outside the atlas — they
+ *  orchestrate coding agents rather than serve your memory. Counted so
+ *  the atlas can say what it is not covering. */
+export const ORCHESTRATION_TOOL_COUNT = 26;
+
+/* ------------------------------------------------------------------
+   11 · Capability switches. Source: tools/openburnbar-mcp/README.md
+   (the export block at the top) and server.py LOCAL_MCP_CAPABILITY_ENV.
+------------------------------------------------------------------- */
+export type Capability = {
+  id: string;
+  env: string;
+  label: string;
+  what: string;
+  /** Honest default state on a fresh install. */
+  byDefault: string;
+};
+
+export const CAPABILITIES: Capability[] = [
+  {
+    id: "memory_write",
+    env: "OPENBURNBAR_LOCAL_MCP_ENABLE_MEMORY_WRITE",
+    label: "memory write",
+    what: "Create, patch, review, import, re-embed or delete a memory in the engine store.",
+    byDefault:
+      "On under the memory toolset — the one capability that is, because a memory server that cannot write is furniture. Set it to false to force it off."
+  },
+  {
+    id: "sensitive_read",
+    env: "OPENBURNBAR_LOCAL_MCP_ENABLE_SENSITIVE_READ",
+    label: "sensitive read",
+    what: "Full plaintext: a whole conversation, in-app chat rows, an inbox body, a resume briefing, an export, retained secrets.",
+    byDefault: "Off. Enable it for the one shell session that needs it."
+  },
+  {
+    id: "local_write",
+    env: "OPENBURNBAR_LOCAL_MCP_ENABLE_LOCAL_WRITE",
+    label: "local write",
+    what: "Usage-ledger rows, budget rules, and the daemon-scoped code index.",
+    byDefault: "Off. Code-index writes are fail-closed: no daemon, no write, no SQLite fallback."
+  },
+  {
+    id: "cloud_decrypt",
+    env: "OPENBURNBAR_LOCAL_MCP_ENABLE_CLOUD_DECRYPT",
+    label: "cloud decrypt",
+    what: "Hosted encrypted session search, and on-device decryption of the envelopes it returns.",
+    byDefault: "Off, and opt-in twice — it also needs credentials you configure yourself."
+  },
+  {
+    id: "cloud_sync",
+    env: "OPENBURNBAR_LOCAL_MCP_ENABLE_CLOUD_SYNC",
+    label: "cloud sync",
+    what: "Upload or hard-delete a sealed Project Memory snapshot.",
+    byDefault: "Off."
+  },
+  {
+    id: "spawn_process",
+    env: "OPENBURNBAR_LOCAL_MCP_ENABLE_SPAWN",
+    label: "spawn",
+    what: "Launch a detached local process — a resumed session, or the Claude CLI as an extractor.",
+    byDefault: "Off. Nothing here spawns anything until you turn this on."
+  },
+  {
+    id: "memory_llm_read",
+    env: "OPENBURNBAR_LOCAL_MCP_ENABLE_MEMORY_LLM_READ",
+    label: "model read",
+    what: "Let a model answer from your memories, or re-rank recall hits.",
+    byDefault: "Off, and additionally needs Pro and a consented provider."
+  },
+  {
+    id: "memory_llm_extract",
+    env: "OPENBURNBAR_LOCAL_MCP_ENABLE_MEMORY_LLM_EXTRACT",
+    label: "model extract",
+    what: "Let the caller choose a model extractor through the tool argument rather than the operator's environment.",
+    byDefault: "Off. A gated transcript is all a model ever sees either way."
+  },
+  {
+    id: "memory_secret_retain",
+    env: "OPENBURNBAR_LOCAL_MCP_ENABLE_SECRET_RETAIN",
+    label: "secret retain",
+    what: "The experimental vault mode: verbatim secret text in an encrypted side table.",
+    byDefault: "Off, and never granted by the operator profile. You have to mean it."
+  }
+];
+
+/* ------------------------------------------------------------------
+   12 · The tool atlas. Every `burnbar_*` tool, grouped by the surface
+   it belongs to, with the capability that gates it.
+
+   `caps` is not editorial. It is the set of capabilities named at a
+   `_capability_denial("<tool>", "<cap>")` site — or a daemon
+   `_local_memory_write_authority("<tool>", …)` site — inside that tool
+   in tools/openburnbar-mcp/server.py. The copy gate re-parses those
+   sites and fails if this list disagrees, in either direction.
+
+   Descriptions: tools/openburnbar-mcp/README.md § Tools where a row
+   exists, the tool's own docstring otherwise.
+------------------------------------------------------------------- */
+export type AtlasGroup = {
+  id: string;
+  label: string;
+  /** One sentence: what this cluster of tools is for. */
+  blurb: string;
+  /** The section on this page that tells the story, when there is one. */
+  section?: string;
+};
+
+export const ATLAS_GROUPS: AtlasGroup[] = [
+  {
+    id: "memory",
+    label: "Memory",
+    blurb: "Write it, read it, patch it, page through it, take it with you.",
+    section: "pipeline"
+  },
+  {
+    id: "lifecycle",
+    label: "Review, audit and delete",
+    blurb: "The half of a memory system that decides what it is allowed to keep.",
+    section: "forget"
+  },
+  {
+    id: "code",
+    label: "Code intelligence",
+    blurb:
+      "The same server indexes the repository and answers symbol, reference and call-graph questions locally.",
+    section: "code"
+  },
+  {
+    id: "sessions",
+    label: "Sessions across harnesses",
+    blurb:
+      "Search every past session from every client, then resume one in the harness you prefer.",
+    section: "sessions"
+  },
+  {
+    id: "cloud",
+    label: "Encrypted cloud",
+    blurb: "Opt in twice. Opaque hashes go up; decryption happens on your Mac.",
+    section: "boundary"
+  },
+  {
+    id: "project",
+    label: "Project Memory snapshots",
+    blurb: "The repository briefs the app maintains, readable from any client.",
+    section: "server"
+  },
+  {
+    id: "inbox",
+    label: "Inbox and plans",
+    blurb: "The proactive brief, and the commitments you accepted from it.",
+    section: "review"
+  },
+  {
+    id: "spend",
+    label: "Spend guardrails",
+    blurb: "What the run cost, what the budget says, and what the gate did about it.",
+    section: "server"
+  },
+  {
+    id: "plumbing",
+    label: "Plumbing",
+    blurb: "One tool that answers which file you are actually talking to.",
+    section: "setup"
+  }
+];
+
+export type AtlasTool = {
+  name: string;
+  group: string;
+  /** One line. README row where one exists, docstring otherwise. */
+  desc: string;
+  /** Capabilities named at a denial site inside this tool. Gate-checked. */
+  caps: string[];
+  /** In MEMORY_TOOLSET — served with BURNBAR_MCP_TOOLSET=memory. Gate-checked. */
+  memory: boolean;
+};
+
+export const TOOL_ATLAS: AtlasTool[] = [
+  /* ── memory ─────────────────────────────────────────────────── */
+  {
+    name: "burnbar_remember",
+    group: "memory",
+    desc: "Store one durable memory with kind, scope, tags, entities, metadata, supersedes, expiry and an immutable flag. Secrets redacted, PII kept by default.",
+    caps: ["memory_write"],
+    memory: true
+  },
+  {
+    name: "burnbar_memorize",
+    group: "memory",
+    desc: "Turn a conversation, a block of text, or facts you already extracted into memories — extraction, gate, injection screen, then ADD / UPDATE / NONE / DELETE. Idempotent per input.",
+    caps: ["memory_llm_extract", "memory_write", "spawn_process"],
+    memory: true
+  },
+  {
+    name: "burnbar_recall",
+    group: "memory",
+    desc: "Hybrid BM25 and vector recall, fused and reranked by salience, with kind, tag, entity, metadata and date filters. Every body comes back wrapped as untrusted data.",
+    caps: ["sensitive_read"],
+    memory: true
+  },
+  {
+    name: "burnbar_recall_pack",
+    group: "memory",
+    desc: "A token-budgeted, prompt-ready block of the most relevant memories — one line each, pack sentinels neutralised, only what fits gets reinforced.",
+    caps: [],
+    memory: true
+  },
+  {
+    name: "burnbar_memory_ask",
+    group: "memory",
+    desc: "An answer built only from cited memories, or an explicit refusal. Every claim cites a memory id; unknown citations are dropped.",
+    caps: ["memory_llm_read"],
+    memory: true
+  },
+  {
+    name: "burnbar_memory_get",
+    group: "memory",
+    desc: "Read one memory by id, optionally with its wrapped history.",
+    caps: ["sensitive_read"],
+    memory: true
+  },
+  {
+    name: "burnbar_memory_list",
+    group: "memory",
+    desc: "Page through memories with filters and ordering — updated, created, salience or access. Quarantined rows stay hidden unless you ask for them.",
+    caps: [],
+    memory: true
+  },
+  {
+    name: "burnbar_memory_update",
+    group: "memory",
+    desc: "Patch a memory in place. The id stays stable, the change lands in history, and the row is re-embedded.",
+    caps: ["memory_write"],
+    memory: true
+  },
+  {
+    name: "burnbar_memory_history",
+    group: "memory",
+    desc: "Every change to one memory, with before and after bodies wrapped as untrusted retrieved data.",
+    caps: [],
+    memory: true
+  },
+  {
+    name: "burnbar_memory_entities",
+    group: "memory",
+    desc: "The identifiers, paths, names and handles your memories mention, with counts and example ids.",
+    caps: [],
+    memory: true
+  },
+  {
+    name: "burnbar_memory_relations",
+    group: "memory",
+    desc: "Heuristic (subject, predicate, object) relations drawn from active memories, optionally filtered by entity.",
+    caps: [],
+    memory: true
+  },
+  {
+    name: "burnbar_memory_export",
+    group: "memory",
+    desc: "JSON export of your memories. Retained secrets stay behind unless you explicitly ask for them.",
+    caps: ["sensitive_read"],
+    memory: true
+  },
+  {
+    name: "burnbar_memory_import",
+    group: "memory",
+    desc: "Import an export, or a plain list of facts. Every value passes the normal gate again on the way in.",
+    caps: ["memory_write"],
+    memory: true
+  },
+  {
+    name: "burnbar_memory_reindex",
+    group: "memory",
+    desc: "Embed every active memory missing a vector for the current model version, and purge vectors from old versions.",
+    caps: ["memory_write"],
+    memory: true
+  },
+
+  /* ── review, audit and delete ───────────────────────────────── */
+  {
+    name: "burnbar_memory_review",
+    group: "lifecycle",
+    desc: "Approve, quarantine or reject. The row is locked for the decision, and a decision made against a stale read is refused rather than applied.",
+    caps: ["memory_write"],
+    memory: true
+  },
+  {
+    name: "burnbar_forget",
+    group: "lifecycle",
+    desc: "Hard-delete one memory — body, vectors, history, relations and vault — and append a label-only audit event. The daemon copy is forgotten too.",
+    caps: ["memory_write"],
+    memory: true
+  },
+  {
+    name: "burnbar_forget_all",
+    group: "lifecycle",
+    desc: "Bulk delete for a project, in two steps: a preview that returns a selection token, then a confirmation that is refused if the selection moved underneath you.",
+    caps: ["memory_write"],
+    memory: true
+  },
+  {
+    name: "burnbar_audit_trail",
+    group: "lifecycle",
+    desc: "The label-only audit hash chain, with chain verification. Labels and hashes, never bodies.",
+    caps: [],
+    memory: true
+  },
+  {
+    name: "burnbar_memory_analytics",
+    group: "lifecycle",
+    desc: "Counts by kind, scope, sensitivity and review status, plus embedding coverage, vault entries and the active policy.",
+    caps: [],
+    memory: true
+  },
+  {
+    name: "burnbar_memory_doctor",
+    group: "lifecycle",
+    desc: "Health of the store, encryption, embeddings, policy, audit chain, daemon mirror and code index — including a resumable sweep for secrets sitting in auxiliary fields.",
+    caps: [],
+    memory: true
+  },
+
+  /* ── code intelligence ──────────────────────────────────────── */
+  {
+    name: "burnbar_index_project",
+    group: "code",
+    desc: "Index source files into a local-only, project-partitioned code memory. Gitignore-aware, blob-SHA stamped, and it refuses secret-bearing files before they persist.",
+    caps: ["local_write"],
+    memory: false
+  },
+  {
+    name: "burnbar_watch_project",
+    group: "code",
+    desc: "Hand reindexing to the daemon: index once, then poll source and git-ref signatures and re-index transactionally when they move.",
+    caps: ["local_write"],
+    memory: false
+  },
+  {
+    name: "burnbar_index_status",
+    group: "code",
+    desc: "What is indexed for this project, and how much storage it is using.",
+    caps: [],
+    memory: false
+  },
+  {
+    name: "burnbar_search_code",
+    group: "code",
+    desc: "Lexical and path search over the local index. It reports semanticAvailable=false rather than pretending, until a real local embedding provider is configured.",
+    caps: [],
+    memory: true
+  },
+  {
+    name: "burnbar_context_pack",
+    group: "code",
+    desc: "A token-budgeted code context pack built from the local index.",
+    caps: [],
+    memory: true
+  },
+  {
+    name: "burnbar_code_context_pack",
+    group: "code",
+    desc: "The same pack under the name code.* parity clients expect — kept explicit rather than aliased silently.",
+    caps: [],
+    memory: true
+  },
+  {
+    name: "burnbar_get_symbol",
+    group: "code",
+    desc: "Find a symbol, with the tier that answered — exact LSP, static tree-sitter, or lexical fallback — and blob-staleness evidence attached.",
+    caps: [],
+    memory: false
+  },
+  {
+    name: "burnbar_find_references",
+    group: "code",
+    desc: "Where a symbol is used across the project, using an exact language server when one is configured and answering.",
+    caps: [],
+    memory: false
+  },
+  {
+    name: "burnbar_call_graph",
+    group: "code",
+    desc: "Lexical-tier call edges touching one symbol — who calls it, and what it calls.",
+    caps: [],
+    memory: false
+  },
+  {
+    name: "burnbar_diagnostics",
+    group: "code",
+    desc: "Cached diagnostics for a project. A cached-file tier, and it says so rather than implying a live language server.",
+    caps: [],
+    memory: false
+  },
+  {
+    name: "burnbar_explore",
+    group: "code",
+    desc: "Index if needed, search, and return a context pack — the one-call version for an agent that has just opened an unfamiliar repository.",
+    caps: ["local_write"],
+    memory: false
+  },
+
+  /* ── sessions across harnesses ──────────────────────────────── */
+  {
+    name: "burnbar_list_providers",
+    group: "sessions",
+    desc: "Which harnesses have sessions in the index — Codex, Claude Code, and whatever else you run.",
+    caps: [],
+    memory: true
+  },
+  {
+    name: "burnbar_search_conversations",
+    group: "sessions",
+    desc: "Full-text search over session titles and transcripts, the same family of queries the app runs.",
+    caps: [],
+    memory: true
+  },
+  {
+    name: "burnbar_semantic_search_conversations",
+    group: "sessions",
+    desc: "Local deterministic semantic search over indexed session chunks. Returns a structured unavailable rather than empty results when the substrate or a compatible embedding is missing.",
+    caps: ["sensitive_read"],
+    memory: true
+  },
+  {
+    name: "burnbar_get_conversation",
+    group: "sessions",
+    desc: "One session in full, including its text, truncated at a limit you set.",
+    caps: ["sensitive_read"],
+    memory: true
+  },
+  {
+    name: "burnbar_chat_messages",
+    group: "sessions",
+    desc: "The tail of the in-app assistant conversation, role and content.",
+    caps: ["sensitive_read"],
+    memory: false
+  },
+  {
+    name: "burnbar_list_resumable_conversations",
+    group: "sessions",
+    desc: "Recent sessions eligible for resume, with the stable id, the raw provider session id, and whether a native resume is possible at all.",
+    caps: [],
+    memory: true
+  },
+  {
+    name: "burnbar_resume_conversation",
+    group: "sessions",
+    desc: "A native command hint, or a deterministic briefing that ports the session to a different harness. Print-only by default; the briefing file is written mode 0600.",
+    caps: ["sensitive_read"],
+    memory: true
+  },
+  {
+    name: "burnbar_spawn_resume",
+    group: "sessions",
+    desc: "Actually launch that resume as a detached process. Deliberately a second, separate tool call so nothing spawns by accident.",
+    caps: ["spawn_process"],
+    memory: false
+  },
+
+  /* ── encrypted cloud ────────────────────────────────────────── */
+  {
+    name: "burnbar_cloud_semantic_search_conversations",
+    group: "cloud",
+    desc: "Hosted encrypted search over your own session-log index. Query trapdoors are derived on your Mac, only opaque hashes are sent, and snippets are decrypted locally.",
+    caps: ["cloud_decrypt"],
+    memory: false
+  },
+  {
+    name: "burnbar_cloud_get_conversation_body",
+    group: "cloud",
+    desc: "Download and decrypt one hosted session body that search returned.",
+    caps: ["cloud_decrypt"],
+    memory: false
+  },
+  {
+    name: "burnbar_cloud_sync_project_memory",
+    group: "cloud",
+    desc: "Encrypt one Project Memory snapshot and upload it under a vault-derived opaque document id.",
+    caps: ["cloud_sync"],
+    memory: false
+  },
+  {
+    name: "burnbar_cloud_delete_project_memory",
+    group: "cloud",
+    desc: "Hard-delete that hosted sealed snapshot and return the backend's content-free tombstone receipt. Local project memory stays authoritative and untouched.",
+    caps: ["cloud_sync"],
+    memory: false
+  },
+
+  /* ── project memory snapshots ───────────────────────────────── */
+  {
+    name: "burnbar_list_project_memory",
+    group: "project",
+    desc: "Locally cached repository briefs — slug, freshness, section count, hash. Metadata only.",
+    caps: [],
+    memory: true
+  },
+  {
+    name: "burnbar_get_project_memory",
+    group: "project",
+    desc: "One repository brief by slug: local first, hosted as a fallback, decrypted on this machine.",
+    caps: ["cloud_decrypt", "sensitive_read"],
+    memory: true
+  },
+
+  /* ── inbox and plans ────────────────────────────────────────── */
+  {
+    name: "burnbar_inbox_list",
+    group: "inbox",
+    desc: "The proactive brief assembled from recent agent sessions, workspace git state and GitHub. Open items by default; ask for resolved ones to read history.",
+    caps: [],
+    memory: false
+  },
+  {
+    name: "burnbar_inbox_get",
+    group: "inbox",
+    desc: "One inbox item in full: the summary, the evidence behind it, any proposed memories, and the suggested next actions.",
+    caps: ["sensitive_read"],
+    memory: false
+  },
+  {
+    name: "burnbar_inbox_status",
+    group: "inbox",
+    desc: "Whether the background analyst actually ran — tick telemetry, skips, and today's spend against its daily budget.",
+    caps: [],
+    memory: false
+  },
+  {
+    name: "burnbar_inbox_plans_list",
+    group: "inbox",
+    desc: "Founder Plans: the commitments you accepted from inbox suggestions, with lifecycle status and a rolling grade.",
+    caps: [],
+    memory: false
+  },
+  {
+    name: "burnbar_inbox_plans_get",
+    group: "inbox",
+    desc: "One plan in full — steps with status and grades, linked mission and follow-up ids, audit pointers.",
+    caps: ["sensitive_read"],
+    memory: false
+  },
+
+  /* ── spend guardrails ───────────────────────────────────────── */
+  {
+    name: "burnbar_recent_usage",
+    group: "spend",
+    desc: "Recent usage rows: cost, model, provider, session, times.",
+    caps: [],
+    memory: false
+  },
+  {
+    name: "burnbar_project_summary",
+    group: "spend",
+    desc: "Cost and session totals per project over a rolling window, ranked by spend.",
+    caps: [],
+    memory: false
+  },
+  {
+    name: "burnbar_query_spend",
+    group: "spend",
+    desc: "Ranked spend by credential, project, model, provider or day, over a day, a week, a month, or all time.",
+    caps: [],
+    memory: false
+  },
+  {
+    name: "burnbar_budget_status",
+    group: "spend",
+    desc: "Every active budget rule with its current spend, projected period end, and remaining headroom.",
+    caps: [],
+    memory: false
+  },
+  {
+    name: "burnbar_spend_forecast",
+    group: "spend",
+    desc: "A linear projection over the next horizon from the trailing seven-day average. Reported as an average and a projection, not a prophecy.",
+    caps: [],
+    memory: false
+  },
+  {
+    name: "burnbar_budget_audit",
+    group: "spend",
+    desc: "What the gate actually did: warnings, blocks, overrides and rule mutations.",
+    caps: [],
+    memory: false
+  },
+  {
+    name: "burnbar_org_spend",
+    group: "spend",
+    desc: "Cross-seat rollup for an organisation, read from the local copy of the usage table each seat already syncs.",
+    caps: [],
+    memory: false
+  },
+  {
+    name: "burnbar_set_budget_limit",
+    group: "spend",
+    desc: "Create or update a budget rule, scoped to a credential, a project, everything, or an organisation.",
+    caps: ["local_write"],
+    memory: false
+  },
+  {
+    name: "burnbar_pause_budget_gate",
+    group: "spend",
+    desc: "Pause one rule until a timestamp you name. The gate short-circuits to paused for matching requests until then.",
+    caps: ["local_write"],
+    memory: false
+  },
+  {
+    name: "burnbar_resume_budget_gate",
+    group: "spend",
+    desc: "Cancel a pause and put the rule back into enforcement immediately.",
+    caps: ["local_write"],
+    memory: false
+  },
+  {
+    name: "burnbar_record_hermes_usage",
+    group: "spend",
+    desc: "Append one usage row to the ledger so a run through your own gateway shows up in the app. Idempotent: the same key never double-counts.",
+    caps: ["local_write"],
+    memory: false
+  },
+  {
+    name: "burnbar_resolve_usage_ledger_path",
+    group: "spend",
+    desc: "Which ledger file the writer will use. For when the row went somewhere you did not expect.",
+    caps: [],
+    memory: false
+  },
+
+  /* ── plumbing ───────────────────────────────────────────────── */
+  {
+    name: "burnbar_resolve_db_path",
+    group: "plumbing",
+    desc: "Which database file is in play, and how it is readable — directly, through the daemon socket, or not at all. Existence is not health, and this says which.",
+    caps: [],
+    memory: true
+  }
+];
+
+/* ------------------------------------------------------------------
+   13 · Time. A memory is not a row you overwrite — it is a statement
+   with a beginning and, eventually, an end.
+   Source: memory_engine/_write.py (valid_from / valid_to /
+   superseded_by / supersedes_json / _reinforce),
+   tools/openburnbar-mcp/README.md § Structured refusals,
+   § Cross-store lifecycle.
+------------------------------------------------------------------- */
+export type LifecycleEvent = {
+  /** What you did. */
+  trigger: string;
+  /** The engine's decision word, as returned. */
+  verdict: string;
+  /** What actually happens to the rows. */
+  effect: string;
+};
+
+export const LIFECYCLE_EVENTS: LifecycleEvent[] = [
+  {
+    trigger: "You state the same fact again.",
+    verdict: "NONE",
+    effect:
+      "The existing memory is reinforced — access count up, salience up, a reinforcement row in its history. No second copy, and the history records that you said it twice."
+  },
+  {
+    trigger: "The value changes. Same subject, new answer.",
+    verdict: "UPDATE",
+    effect:
+      "The old row gets a valid_to and a superseded_by pointing at the new one. It stops surfacing in recall and stays readable in history for as long as you keep it."
+  },
+  {
+    trigger: "You say it is no longer true.",
+    verdict: "DELETE",
+    effect:
+      "The fact is retired and nothing new is stored. A negation is not a memory, and storing one would put the false statement back into recall."
+  },
+  {
+    trigger: "You revert: A, then B, then A again.",
+    verdict: "UPDATE",
+    effect:
+      "The original row comes back under its original id rather than becoming a third memory. The id an agent cited last month still resolves."
+  },
+  {
+    trigger: "An expired memory turns out to be true again.",
+    verdict: "UPDATE · reactivated",
+    effect: "The expired row is reactivated rather than duplicated, and says so in the response."
+  },
+  {
+    trigger: "You re-state something you rejected in review.",
+    verdict: "NONE · PREVIOUSLY_REJECTED",
+    effect:
+      "Refused with the reason, not silently re-added. Re-approve it deliberately if you changed your mind."
+  },
+  {
+    trigger: "You edit a memory's text into another memory's text.",
+    verdict: "DUPLICATE_BODY",
+    effect: "Refused. Two active rows with identical bodies is a bug, not a state."
+  }
+];
+
+export const TIME_FACTS = [
+  {
+    label: "valid_from · valid_to",
+    body: "Every memory records when it started being true. A retired one records when it stopped, and which memory replaced it. Nothing is overwritten in place — the row that was right last quarter is still there, marked as no longer current."
+  },
+  {
+    label: "Queryable history",
+    body: "burnbar_memory_history returns every change to one memory with the before and after bodies, both wrapped as untrusted data, plus who decided — decidedBy is rules or judge:<provider>/<model> — and a short rationale."
+  },
+  {
+    label: "Recency, weighted",
+    body: `An event or a todo halves in salience every ${FUSION.halfLifeShortDays} days; everything else takes ${FUSION.halfLifeLongDays}. Memories you actually use get a reinforcement boost, capped at ${FUSION.accessBoostCap}× so a popular memory cannot bury a precise one.`
+  },
+  {
+    label: "Expiry, and immutability",
+    body: "A memory can carry an expires_at, and an invalid one is rejected rather than quietly becoming immortal. A memory can also be marked immutable, and then no reconciliation — rules or model — is allowed to retire it."
+  }
+];
+
+export const TIME_LIMIT =
+  "Supersession needs a cue. Without one the engine adds rather than overwrites — which is why the rules-only agreement below is 0.42 and not 0.9. You get two memories and a ranking, not a lost fact. That is the trade we chose, and it is the reason the history and the forget path have to be good.";
+
+/* ------------------------------------------------------------------
+   14 · Forget. Source: memory_engine/_read.py forget / forget_all /
+   _purge; server.py burnbar_forget / burnbar_forget_all;
+   tools/openburnbar-mcp/README.md § Works without the daemon,
+   § Cross-store lifecycle; docs/PRIVACY.md:87-93.
+------------------------------------------------------------------- */
+
+/** The five tables one burnbar_forget empties, as the tool reports them. */
+export const FORGET_PURGED = [
+  { id: "memory", note: "the encrypted body and every column of the row itself" },
+  { id: "vector", note: "the embedding, for every model version it was ever embedded under" },
+  { id: "history", note: "every before/after revision, which also held encrypted bodies" },
+  { id: "relations", note: "the extracted subject-predicate-object edges that pointed at it" },
+  { id: "vault", note: "the encrypted secret entry, if this memory ever retained one" }
+];
+
+export const FORGET_STEPS: { title: string; body: string }[] = [
+  {
+    title: "It is a delete, not a flag",
+    body: "burnbar_forget issues five DELETEs and drops the row, in one transaction. It also deletes the replay receipt that pointed at the memory — a receipt claiming a memory still exists after you deleted it is a lie the engine will not tell — and clears the superseded_by pointer on any row that was waiting behind it."
+  },
+  {
+    title: "The audit event carries labels, never text",
+    body: "One event is appended to the hash chain: local hard delete · vault purged · history purged · vectors purged. It proves the deletion happened. It cannot reconstruct what was deleted, because there is nothing in it to reconstruct from."
+  },
+  {
+    title: "The daemon copy goes too",
+    body: "A mirrored memory is forgotten by the daemon's own content-derived id, through the signed courier. A memory that was never mirrored reports skipped rather than sending an id the daemon never had. If the daemon is unreachable, a metadata-only tombstone keeps the id and the original project path so the forget can be retried, and it clears only once the daemon confirms the row is gone."
+  },
+  {
+    title: "Bulk delete asks twice, and can refuse",
+    body: "burnbar_forget_all runs a preview first: it returns how many rows match and a selection token. The confirmation needs both the literal string DELETE and that token, and is refused with SELECTION_CHANGED if the matching rows moved in between. You cannot delete a set you did not see."
+  },
+  {
+    title: "The lifecycle forgets too",
+    body: "Supersession, a negation, a quarantine decision and a confirmed bulk delete each forget the corresponding daemon mirror. A failed daemon delete keeps only the id tombstone and stays retryable after the local row is already gone."
+  },
+  {
+    title: "The hosted copy has its own delete",
+    body: "burnbar_cloud_delete_project_memory hard-deletes one sealed Project Memory snapshot from cloud storage by its vault-derived opaque id, and returns the backend's content-free tombstone receipt. Local project memory stays authoritative and unchanged. In the app's encrypted backup lane, deleting a memory writes a forget receipt that carries only opaque hashes and a coarse reason."
+  }
+];
+
+export const FORGET_LIMIT =
+  "A forget reaches the engine store, the daemon mirror and — for a Project Memory snapshot — the sealed hosted copy. It cannot reach a JSON export you already took, a transcript on disk that the memory was extracted from, or a copy an agent pasted into a file. Deleting the memory is not deleting the source, and the page would rather say so than let you assume otherwise.";
+
+/* ------------------------------------------------------------------
+   15 · Review, analytics, audit. What oversight actually looks like.
+   Source: server.py burnbar_memory_review / burnbar_memory_list /
+   burnbar_memory_analytics / burnbar_audit_trail /
+   burnbar_memory_doctor / burnbar_inbox_*;
+   tools/openburnbar-mcp/README.md § Untrusted recall boundary.
+------------------------------------------------------------------- */
+export const REVIEW_SURFACES: { tool: string; title: string; body: string }[] = [
+  {
+    tool: "burnbar_memory_list",
+    title: "The quarantine queue is just a filter",
+    body: 'Pass review_status="quarantined" and you get the rows the injection screen held back, with every free-form value wrapped as untrusted data — including the metadata keys, because a key can carry an instruction as easily as a value. There is no separate inbox to learn: it is the same paging tool with one argument.'
+  },
+  {
+    tool: "burnbar_memory_review",
+    title: "Deciding is locked and versioned",
+    body: "Approve, quarantine or reject. The row is locked for the duration of the decision, and if you pass the updatedAt you read, a memory that changed underneath you refuses the decision instead of applying it to something you did not look at."
+  },
+  {
+    tool: "burnbar_memory_analytics",
+    title: "The shape of what you have",
+    body: "Counts by kind, scope, sensitivity and review status; how many rows have a vector for the current model version; how many vault entries exist; and the secret and PII policy actually in force. This is the tool that tells you the store drifted before recall does."
+  },
+  {
+    tool: "burnbar_audit_trail",
+    title: "A hash chain you can verify",
+    body: "Every write, review and delete appended one label-only event. This returns the chain with its verification result. Labels and hashes — a tamper check that is not itself a second copy of your memories."
+  },
+  {
+    tool: "burnbar_memory_doctor",
+    title: "Health, plus a sweep for what slipped through",
+    body: "Store, encryption, embeddings, policy, audit chain, daemon mirror and code index in one call — and a resumable scan of auxiliary fields for secret shapes, so a credential that landed in a tag before the gate covered tags is something you can find rather than something you assume never happened."
+  },
+  {
+    tool: "burnbar_inbox_list · burnbar_inbox_plans_list",
+    title: "And the brief the app writes for you",
+    body: "If you run the OpenBurnBar app, its proactive brief and the Founder Plans you accepted from it are readable from the same server: the item, its evidence, the memories it proposes, and what it suggests you do. Bodies need the sensitive-read capability; the listing does not."
+  }
+];
+
+export const REVIEW_LIMIT =
+  "Nothing auto-approves. A quarantined memory stays out of recall until a human decides, which is the correct default and also means an ignored queue is a queue that never surfaces. burnbar_memory_analytics counts it for you; it will not decide for you.";
+
+/* ------------------------------------------------------------------
+   16 · Code intelligence. Source: tools/openburnbar-mcp/README.md
+   § Local memory engine (the Project Code Memory paragraphs) and the
+   docstrings on the eleven code tools in server.py.
+------------------------------------------------------------------- */
+export const CODE_TIERS = [
+  {
+    id: "exact_lsp",
+    label: "exact_lsp",
+    status: "opt-in" as const,
+    body: "A real language server answers. Configure OPENBURNBAR_CODE_LSP_COMMANDS with a map of language to command — pyright-langserver, sourcekit-lsp — and symbol and reference lookups use it when it answers for the current buffer."
+  },
+  {
+    id: "static_tree_sitter",
+    label: "static_tree_sitter",
+    status: "built" as const,
+    body: "A Rust helper parses Swift, TypeScript/TSX and Python into a static tier. It is built by ./setup.sh, not by the memory-only bootstrap, so a memory-first install starts one tier down."
+  },
+  {
+    id: "lexical_fallback",
+    label: "lexical_fallback",
+    status: "always" as const,
+    body: "Code-aware lexical matching over the index. Always available, always labelled as itself. Every answer names the tier that produced it, so you never have to guess whether you are reading a compiler's opinion or a regular expression's."
+  }
+];
+
+export const CODE_FACTS: { title: string; body: string }[] = [
+  {
+    title: "It indexes your repository, locally, and refuses files with secrets in them",
+    body: "burnbar_index_project walks the project with Git's own exclude-standard ignore semantics when it is a worktree, stamps each file with its blob and commit SHA, and runs the same Swift/Python secret-scanner corpus the memory gate uses — a file that carries a credential is rejected before it is persisted, not redacted afterwards."
+  },
+  {
+    title: "Re-indexing is a delta, and moving the checkout does not orphan it",
+    body: "A manifest tracks what is unchanged and what is gone, so a second index is cheap. Project identity is a Git fingerprint with path aliases, so a repository you moved or re-cloned keeps its index rather than starting again."
+  },
+  {
+    title: "Writes are fail-closed and daemon-owned",
+    body: "burnbar_index_project, burnbar_watch_project and burnbar_explore need the daemon socket and the local-write capability. If the daemon is not there they refuse — there is deliberately no direct-SQLite fallback for a write path that owns a shared index."
+  },
+  {
+    title: "Ask a question, get a budgeted pack",
+    body: "burnbar_explore indexes if it has to, searches, and returns a token-budgeted context pack in one call. burnbar_context_pack and burnbar_code_context_pack build the same pack when you already know what you want. Returned source text is wrapped as untrusted content, exactly like a memory body."
+  }
+];
+
+export const CODE_LIMIT =
+  "Semantic code search is off until a real local embedding provider is configured — burnbar_search_code reports semanticAvailable=false rather than returning lexical hits dressed as semantic ones. Call graphs are lexical-tier. References and symbols reach the exact tier only for languages you gave a language server. This is a strong local index, not a compiler.";
+
+/* ------------------------------------------------------------------
+   17 · Sessions across harnesses. Source: server.py
+   burnbar_search_conversations / burnbar_semantic_search_conversations /
+   burnbar_list_resumable_conversations / burnbar_resume_conversation /
+   burnbar_spawn_resume; README § Local memory engine (the resume
+   paragraph) and § Tools.
+------------------------------------------------------------------- */
+export const SESSION_FACTS: { title: string; body: string }[] = [
+  {
+    title: "One index, every harness",
+    body: "burnbar_search_conversations runs full-text search over the titles and transcripts of the sessions OpenBurnBar has indexed — Codex, Claude Code, and whatever else you run — from whichever client you happen to be in. burnbar_list_providers tells you which harnesses are actually in there."
+  },
+  {
+    title: "Semantic search that admits when it cannot",
+    body: 'burnbar_semantic_search_conversations searches indexed session chunks deterministically and locally. When the semantic tables or a compatible embedding version are missing it returns a structured unavailable — a named condition you can act on, not an empty result set you would read as "no matches".'
+  },
+  {
+    title: "Resume it in a different harness",
+    body: "burnbar_list_resumable_conversations marks which sessions the source provider can resume natively. burnbar_resume_conversation returns one of three stable shapes: a native command hint, a deterministic cross-harness briefing that ports the session somewhere else, or a structured error. The briefing file is written mode 0600."
+  },
+  {
+    title: "Nothing launches itself",
+    body: "burnbar_resume_conversation is print-only by default and keeps plaintext on the device. Actually starting the process is burnbar_spawn_resume — a separate tool, gated by the spawn capability, which is off unless you turn it on. An agent has to decide to spawn, out loud, in a second call."
+  }
+];
+
+export const SESSION_LIMIT =
+  "This reads the index OpenBurnBar builds, so a harness has to be one the app parses. Full session plaintext, in-app chat rows and a ported briefing all need the sensitive-read capability, which is off by default. And a ported resume is a briefing, not a state transfer — the new harness gets a faithful account of the old session, not its internals.";
+
+/* ------------------------------------------------------------------
+   18 · The rest of the server. Honest, at the level the README
+   documents it. Source: tools/openburnbar-mcp/README.md § Tools,
+   § Castle multi-runtime fan-out, § Hermes proxy sidecar, § Local
+   memory engine (the ledger writer paragraph).
+------------------------------------------------------------------- */
+export type ServerSurface = {
+  id: string;
+  label: string;
+  tools: string;
+  body: string;
+  /** The honest edge on this surface. */
+  edge: string;
+  source: string;
+};
+
+export const SERVER_SURFACES: ServerSurface[] = [
+  {
+    id: "spend",
+    label: "Spend and budget guardrails",
+    tools: "12 tools",
+    body: "Ranked spend by credential, project, model, provider or day. Every active budget rule with its current burn, projected period end and remaining headroom. A linear forecast from the trailing seven-day average. The audit of what the gate actually did — warnings, blocks, overrides, rule changes. And the three write tools that set a limit, pause a gate until a timestamp, or put it back into enforcement.",
+    edge: "The writer is daemon-first: it sends the row through the daemon's RPC so the idempotency cache stays consistent, and falls back to a file-locked append when the daemon is offline. Either way the same idempotency key never double-counts. Enforcement itself is the daemon's job, not the MCP's.",
+    source: "tools/openburnbar-mcp/README.md § Tools; § Local memory engine"
+  },
+  {
+    id: "hermes",
+    label: "The Hermes proxy sidecar",
+    tools: "hermes_proxy.py",
+    body: "A stdlib-only, OpenAI-compatible proxy that sits in front of your own gateway and writes a usage row for every completed response. SSE streams, tool calls, auth and model listings are forwarded verbatim; point your client at the proxy instead of the gateway and the spend shows up in OpenBurnBar without changing anything else.",
+    edge: "When the upstream response carries no usage block, the default is to record a low-confidence estimate rather than nothing, and to label it as one. Pass --no-estimate if you would rather have a gap than a guess.",
+    source: "tools/openburnbar-mcp/README.md § Hermes proxy sidecar"
+  },
+  {
+    id: "castle",
+    label: "Castle multi-runtime fan-out",
+    tools: `${ORCHESTRATION_TOOL_COUNT} tools, outside the atlas`,
+    body: "The same server carries the tooling that fans work out across coding-agent runtimes and grades the result. A worker counts as landed only when three things agree: the done marker exists, the runtime's own parser says the run did not error, and the worktree HEAD differs from the recorded base SHA.",
+    edge: "That triple is the whole point. A dashboard turning green off a process exit code or a generic completed phase is a dashboard that lies; the status record AgentLens reads carries the commit verdict, not the exit status. These tools orchestrate agents rather than serve your memory, which is why they are counted here and not listed in the atlas.",
+    source: "tools/openburnbar-mcp/README.md § Castle multi-runtime fan-out; docs/THE_CASTLE.md"
+  },
+  {
+    id: "project",
+    label: "Project Memory snapshots",
+    tools: "4 tools",
+    body: "The repository briefs the app maintains — sections, freshness, source counts, a content hash — listed and read from any MCP client. A snapshot resolves local first and falls back to the hosted encrypted copy, which is decrypted on this machine.",
+    edge: "Cloud sync and cloud delete are separate capabilities from cloud decrypt, and all three are off by default. Uploads carry sealed payloads under vault-derived opaque document ids; the hosted side never sees a project name.",
+    source: "tools/openburnbar-mcp/README.md § Tools; § Local memory engine"
+  }
+];
+
+/* ------------------------------------------------------------------
+   19 · Where this runs. Stated exactly as `main` supports it.
+   Source: tools/openburnbar-mcp/README.md § Setup, § Support level,
+   § Local memory engine.
+------------------------------------------------------------------- */
+export const PLATFORMS = {
+  supported: [
+    {
+      label: "macOS",
+      status: "supported" as const,
+      body: "The whole surface. The store defaults to the macOS Application Support directory, the daemon mirror and the signed couriers are macOS, and the Pro model path reads its policy through a Keychain-backed gateway on this machine."
+    },
+    {
+      label: "The engine itself",
+      status: "portable" as const,
+      body: "Plain Python — 3.11 or newer, 3.12 preferred — with no Rust toolchain and no Cargo for the memory-only bootstrap. OPENBURNBAR_MEMORY_DB_PATH moves the store anywhere you like. Nothing in the engine is macOS-specific, and that is a description of the code, not a support claim."
+    },
+    {
+      label: "Windows and Linux",
+      status: "unsupported" as const,
+      body: "Not supported, not tested, not claimed. There is a Linux port plan in the repository; a plan is not a platform, and we would rather you found that out here than after an install."
+    }
+  ],
+  supportLevel:
+    "OpenBurnBar treats the local MCP as adjacent tooling: public, useful for local developer workflows, not required to build or run the macOS app, daemon, CLI or editor extension — and best-effort supported compared with those core surfaces.",
+  source: "tools/openburnbar-mcp/README.md § Setup; § Support level"
+} as const;
+
+/* ------------------------------------------------------------------
+   20 · Packs and answers — the "hand the agent a budget" surface.
+   Source: tools/openburnbar-mcp/README.md § Structured refusals
+   (the pack budget paragraph) and § Ask my memory.
+------------------------------------------------------------------- */
+export const PACKS = [
+  {
+    tool: "burnbar_recall_pack",
+    title: "A block, not a result set",
+    body: "The most relevant memories, serialized into one prompt-ready block inside a token budget you set. The budget covers the whole envelope, each memory stays on one line, pack sentinels inside a body are neutralised so a memory cannot forge the wrapper, and only the memories that actually fit are reinforced. The floor is 192 tokens: the envelope plus one truncated line."
+  },
+  {
+    tool: "burnbar_context_pack · burnbar_code_context_pack",
+    title: "The same idea for code",
+    body: "A budgeted pack of the most relevant code from the local index, with the source text wrapped as untrusted content."
+  },
+  {
+    tool: "burnbar_memory_ask",
+    title: "An answer, with citations or a refusal",
+    body: "Up to twelve approved memories — never injection-labelled ones — are listed to a model as numbered untrusted data. What comes back is an answer plus citations, each naming a memory id, and a groundedness verdict: grounded when every citation is one of the listed memories, partial when unknown ones were dropped, refused when nothing valid was left. An answer carrying wrapper sentinels or a tool call is rejected outright and replaced by the refusal. An empty pack refuses without calling a model at all."
+  }
 ];
