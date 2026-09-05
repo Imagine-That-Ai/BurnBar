@@ -418,4 +418,34 @@ final class MemoryReviewInboxModelTests: XCTestCase {
 
         XCTAssertEqual(model.pending.first?.gateState, .scannerUnavailable)
     }
+
+    // MARK: - M1: an unavailable scanner outranks an empty body
+
+    /// The whitespace short-circuit ran BEFORE the gate, so a row whose body was
+    /// blank reported "no gate fired" even when the fail-closed corpus had not
+    /// loaded — the one path where `scannerUnavailable` could be wrong. The
+    /// availability probe now comes first: it is the gate's own output, so
+    /// asking costs one call either way.
+    func test_an_unavailable_scanner_outranks_an_empty_body() {
+        let unavailable = MemoryGateFinding(
+            id: MemorySecretPIIGate.corpusUnavailableFindingID,
+            label: MemorySecretPIIGate.corpusUnavailableLabel,
+            kind: .secret
+        )
+
+        XCTAssertEqual(
+            MemoryReviewGateScan.scan("   \n  ") { _ in .reject(findings: [unavailable]) },
+            .scannerUnavailable,
+            "a blank body was not re-checked either when the corpus is missing"
+        )
+        XCTAssertEqual(
+            MemoryReviewGateScan.scan("") { _ in .reject(findings: [unavailable]) },
+            .scannerUnavailable
+        )
+        // With a live scanner, a blank body is still simply nothing to flag.
+        XCTAssertEqual(
+            MemoryReviewGateScan.scan("   \n  ") { _ in .allow },
+            .noGateFired
+        )
+    }
 }

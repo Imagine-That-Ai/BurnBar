@@ -53,18 +53,24 @@ enum MemoryReviewGateScan {
     /// the part worth testing, and an unavailable corpus is process-wide state a
     /// test cannot toggle.
     static func scan(_ body: String, evaluate: (String) -> MemoryGateVerdict) -> GateState {
-        guard body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
-            return .noGateFired
-        }
-
+        // The availability probe comes FIRST, before the empty-body
+        // short-circuit. `MemorySecretPIIGate` checks its corpus before it looks
+        // at the text, so a blank body still reports the fail-closed synthetic
+        // finding — and a whitespace short-circuit ahead of it would render such
+        // a row as "no gate fired", the one path on which `scannerUnavailable`
+        // could be wrong. A row nothing scanned says nothing was scanned.
         let findings = evaluate(body).findings
-        guard findings.isEmpty == false else { return .noGateFired }
 
         // Fail-closed corpus: the gate rejects EVERYTHING with this one
         // synthetic finding, so a row that carries it was never really scanned.
         if findings.contains(where: { $0.id == MemorySecretPIIGate.corpusUnavailableFindingID }) {
             return .scannerUnavailable
         }
+
+        guard body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
+            return .noGateFired
+        }
+        guard findings.isEmpty == false else { return .noGateFired }
 
         let secrets = findings.filter { $0.kind == .secret }
         if secrets.isEmpty == false {
