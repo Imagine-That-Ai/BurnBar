@@ -157,7 +157,28 @@
   --status-exact: #3cd6c0; /* teal — healthy / exact */
   --status-estimated: var(--core-amber); /* gold — estimated / in-review */
   --status-unavailable: var(--text-dim); /* muted — no data */
-  --status-burn: var(--core-red); /* red — burning hot */
+  /* NOT --core-red: #ee1803 measures 4.13:1 as chip text on --chip-ground-ember,
+     which is below WCAG AA for the 12.8px mono the .tag chip renders at. This is
+     the same red, lifted 22% toward white — 5.39:1 on ember, 5.70:1 on neutral.
+     --core-red stays untouched for borders, glows and large display type. */
+  --status-burn: #f4553a; /* red — burning hot */
+
+  /* ---------- chip ground (see globals.css `.tag`) ----------
+     A chip's contrast used to depend on which card it landed on: the same
+     #0c7c69 measured 4.54:1 on the page ground and 4.00:1 two cards deep,
+     because .tag painted a TRANSLUCENT --ink-surface over whatever was
+     behind it. These two tokens pin the ground to one opaque value per
+     theme, so a chip's contrast is a property of the token pair and nothing
+     else — which is what scripts/test-chip-contrast.mjs is able to check.
+
+     Each is the flattened value of the surface it replaces, so the chip
+     still looks like the inset pill it always was:
+       --chip-ground       = --ink-surface over --ink-void
+       --chip-ground-ember = --ember-wash  over --ink-void
+     test-chip-contrast.mjs recomputes both composites and fails if a token
+     here drifts from its derivation. */
+  --chip-ground: #0e0e11;
+  --chip-ground-ember: #221108;
 
   /* ---------- trust register (encryption tiers) ----------
      Hues mirror trust.generated.ts (pensieve design tokens) so the public
@@ -252,16 +273,24 @@
   --ink-surface: rgba(22, 19, 14, 0.04);
   --ink-surface-2: rgba(22, 19, 14, 0.07);
 
-  /* status — AA on paper */
-  --status-exact: #0c7c69;
-  --status-estimated: #9a6b00;
+  /* status — AA on paper.
+     Measured as chip text (12.8px mono) on --chip-ground / --chip-ground-ember,
+     not on the bare page. The previous #0c7c69 / #9a6b00 pair cleared 4.5:1 on
+     --ink-void alone but fell to 4.29 / 3.94 on the chip ground and to 4.00 /
+     3.66 on the darkest card a chip lands on. Both are the same hue, ~14% darker. */
+  --status-exact: #0a6b5a; /* was #0c7c69 — 4.29:1 → 5.40:1 */
+  --status-estimated: #7e5700; /* was #9a6b00 — 3.94:1 → 5.42:1 */
   --status-unavailable: var(--text-dim);
   --status-burn: #b3261c;
+
+  /* chip ground — opaque, see the dark-theme block for why */
+  --chip-ground: #edebe5;
+  --chip-ground-ember: #f2e7dc;
 
   /* trust register — same tiers, darkened for AA on paper */
   --tier-server: #8a5f00;
   --tier-zero: #5a6374;
-  --tier-e2e: #0c7c69;
+  --tier-e2e: #0a6b5a; /* kept identical to --status-exact */
   --seal-ember-wash: rgba(200, 83, 10, 0.07);
 
   color-scheme: light;
