@@ -72,7 +72,7 @@ struct ReceiptAccomplishmentSynthesizer: Sendable {
 
         // 3. Generate accomplishments: Try LLM first if available, else deterministic
         if let llmClient, let settings, let apiKey, !apiKey.isEmpty {
-            if let llmAccomplishments = await synthesizeWithLLM(
+            if let llmAccomplishments = await extractAccomplishmentsWithLLM(
                 context: context,
                 gitStats: gitStats,
                 llmClient: llmClient,
@@ -278,6 +278,7 @@ struct ReceiptAccomplishmentSynthesizer: Sendable {
 
     private func extractAccomplishmentsWithLLM(
         context: SynthesisContext,
+        gitStats: ReceiptGitStats?,
         llmClient: SummaryLLMClient,
         settings: SummarySettingsSnapshot,
         apiKey: String
@@ -294,6 +295,10 @@ struct ReceiptAccomplishmentSynthesizer: Sendable {
         - Tools used: \(context.toolsUsed.prefix(15).joined(separator: ", "))
         - Prompt / Goal: \(context.promptSummary)
         """
+
+        if let git = gitStats {
+            prompt += "\n- Git deliverables: \(git.summary)"
+        }
 
         if let lastMsg = context.lastAssistantMessage, !lastMsg.isEmpty {
             let truncated = String(lastMsg.prefix(800))
