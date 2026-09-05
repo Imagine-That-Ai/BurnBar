@@ -14,6 +14,7 @@ Optional env:
 
 from __future__ import annotations
 
+import argparse
 import json
 import base64
 import hashlib
@@ -69,6 +70,7 @@ import project_code_memory as pcm  # noqa: E402
 import memory_engine as me  # noqa: E402
 import ministry as ministry_core  # noqa: E402
 import castle as castle_core  # noqa: E402
+import session_briefing  # noqa: E402
 
 mcp = FastMCP("openburnbar-local")
 
@@ -1873,6 +1875,20 @@ def _memory_wrap_history(events: list[dict[str, Any]], *, source_tool: str, memo
                 record_id=memory_id,
                 field=f"history[{index}].meta",
             )
+        # The attribution fields the timeline hoists out of `meta` to the top
+        # level. `meta` is wrapped above and these were not, so a value that is
+        # not an opaque token reached the model as a bare string — the same
+        # channel the wrapper exists to close, one field over. `writerDevice` is
+        # bounded at sync screening; `extractedBy` and `modelId` are whatever a
+        # provider wrote, so the shape is checked here for all three.
+        for field in ("writerDevice", "extractedBy", "modelId"):
+            value = wrapped.get(field)
+            if isinstance(value, str) and not me.constants.REMOTE_WRITER_DEVICE_RE.match(value):
+                wrapped[field] = _memory_wrap_read_string(
+                    value,
+                    source_tool=source_tool,
+                    record_id=f"{memory_id}:history[{index}].{field}",
+                )
         wrapped_events.append(wrapped)
     return wrapped_events
 
@@ -2468,6 +2484,8 @@ def burnbar_memorize(
     tags: list[str] | str | None = None,
     metadata: dict[str, Any] | str | None = None,
     force: bool = False,
+    review_status: str | None = None,
+    fail_closed: bool = False,
 ) -> str:
     """
     Collect durable memories from a conversation, a block of text, or a list of
@@ -2505,6 +2523,26 @@ def burnbar_memorize(
         if requested_extractor.startswith("pro") and _pro_extractor_may_spawn(requested_extractor):
             if denied := _capability_denial("burnbar_memorize", "spawn_process"):
                 return denied
+    if requested_extractor.startswith("pro") and fail_closed:
+        policy = me.load_policy()
+        if policy is None or not policy.enabled:
+            return json.dumps(
+                {
+                    "status": "unavailable",
+                    "code": "CLOUD_CONSENT_REQUIRED",
+                    "reason": "cloud models for memory are turned off or daemon unavailable",
+                },
+                indent=2,
+            )
+        if not policy.pro_active:
+            return json.dumps(
+                {
+                    "status": "unavailable",
+                    "code": "PRO_REQUIRED",
+                    "reason": "BurnBar Pro is not active on this Mac",
+                },
+                indent=2,
+            )
     try:
         if isinstance(messages, str):
             stripped = messages.strip()
@@ -2541,6 +2579,8 @@ def burnbar_memorize(
             default_tags=_normalize_tags(tags),
             metadata=parsed_metadata if isinstance(parsed_metadata, dict) else None,
             force=force,
+            default_review_status=review_status,
+            fail_closed=fail_closed,
         )
         for decision in result.get("decisions", []):
             retire_ids = _memory_mirror_retire_ids(decision)
@@ -2561,6 +2601,71 @@ def burnbar_memorize(
         if isinstance(decision, dict)
     ]
     return json.dumps(result, indent=2, default=str)
+
+
+@mcp.tool()
+def burnbar_memory_extract(
+    messages: list[dict[str, Any]] | str | None = None,
+    text: str | None = None,
+    project_path: str | None = None,
+    provider: str | None = None,
+    max_facts: int = 8,
+    scope: str | None = None,
+    tags: list[str] | str | None = None,
+    metadata: dict[str, Any] | str | None = None,
+    force: bool = False,
+    review_status: str | None = None,
+) -> str:
+    """
+    Extract memories from a conversation with a Pro model instead of the local
+    heuristic, on demand.
+
+    Routed through the member's own quota and keys via the #2501 model policy, so
+    BurnBar never sees the transcript or the key. Refuses fail-closed rather than
+    silently degrading to the heuristic: no Pro entitlement, or no cloud consent,
+    means no extraction. Every row it writes carries `extracted_by` and the model
+    id, so a reviewer can see what produced it.
+
+    Rows land `quarantined`, like every other capture path — the collectors and
+    the assistant-export importer do the same — and there is no argument that
+    lifts it. This is the path that ships a member's transcript to a cloud model
+    and writes back facts nobody has read; approving them is a separate,
+    deliberate act (`burnbar_memory_review`). The model's own `reviewStatus` is
+    discarded for the same reason: a prompt-injected transcript would otherwise
+    grant itself recall and the authority to retire approved memories.
+    `review_status` is still accepted, and may only make the outcome STRICTER
+    (`rejected`); it cannot approve.
+
+    Gate: `memory_llm_extract` and `memory_write`, plus cloud consent and a Pro
+    entitlement; `spawn_process` as well when the policy can route extraction to
+    a local CLI.
+    """
+    extractor = f"pro:{provider}" if provider else "pro"
+    # Named here as well as inside `burnbar_memorize`, so a refusal names the tool
+    # the caller actually invoked instead of the one it delegates to.
+    if denied := _capability_denial("burnbar_memory_extract", "memory_llm_extract"):
+        return denied
+    if _pro_extractor_may_spawn(extractor):
+        if denied := _capability_denial("burnbar_memory_extract", "spawn_process"):
+            return denied
+    if denied := _capability_denial("burnbar_memory_extract", "memory_write"):
+        return denied
+    return burnbar_memorize(
+        messages=messages,
+        text=text,
+        project_path=project_path,
+        extractor=extractor,
+        max_facts=max_facts,
+        scope=scope,
+        tags=tags,
+        metadata=metadata,
+        force=force,
+        # A capture path files rows for review, it never grants approval. The
+        # argument survives so an existing caller is answered rather than
+        # errored, but `approved` is not one of its outcomes.
+        review_status="rejected" if str(review_status or "").strip().lower() == "rejected" else "quarantined",
+        fail_closed=True,
+    )
 
 
 @mcp.tool()
@@ -2599,6 +2704,11 @@ def burnbar_recall(
     `rerank` (Memory Pro) re-orders the top `rerank_top_k` fusion hits by a
     model's relevance; `None` follows the policy, `False` never calls a model,
     and `trustSignal.rerank` reports `applied`, `off`, or `skipped:<code>`.
+
+    A recall that returns anything appends ONE label-only `memory.recall_serve`
+    row to the audit chain, carrying the served ids and nothing else — that is
+    what `burnbar_memory_timeline` reads to answer "when did this last help".
+    Best-effort: a store another process has locked still returns its results.
     """
     if limited := _local_mcp_rate_limit("burnbar_recall", "memory"):
         return limited
@@ -2676,6 +2786,68 @@ def burnbar_recall_pack(
         )
         result["legacyMigration"] = migration
     return json.dumps(result, indent=2, default=str)
+
+
+@mcp.tool()
+def burnbar_session_briefing(
+    project_path: str | None = None,
+    branch: str | None = None,
+    token_budget: int = 1200,
+) -> str:
+    """Build a token-budgeted session-start briefing for the active repo and branch.
+
+    Off unless the member turns it on: set `OPENBURNBAR_SESSION_BRIEFING=1`. The
+    pack is bounded by `token_budget` and degrades to headings rather than
+    truncating a fact mid-sentence, and it comes back wrapped as untrusted
+    retrieved data like every other recall.
+
+    Gate: `sensitive_read` — a briefing carries prior transcript context, so it
+    needs explicit plaintext-read consent on top of the opt-in.
+    """
+    if limited := _local_mcp_rate_limit("burnbar_session_briefing", "memory"):
+        return limited
+    if not session_briefing.is_session_briefing_opted_in():
+        return json.dumps(
+            {
+                "status": "disabled",
+                "code": "SESSION_BRIEFING_OPT_IN_REQUIRED",
+                "reason": "Session briefings are opt-in. Set OPENBURNBAR_SESSION_BRIEFING=1 to enable.",
+            },
+            indent=2,
+        )
+    if denied := _capability_denial(
+        "burnbar_session_briefing",
+        "sensitive_read",
+        "Session briefings include prior transcript context and require explicit plaintext-read consent.",
+    ):
+        return denied
+    with _memory_engine() as engine:
+        pack = session_briefing.build_session_briefing(
+            engine,
+            project_path=project_path,
+            branch=branch,
+            token_budget=token_budget,
+            # The builder's own gates stay live, and they receive what this tool
+            # actually decided rather than a hardcoded pair of `True`s — which
+            # made `build_session_briefing`'s consent handling unreachable in
+            # production and its test a test of a path nothing takes (M15).
+            consent=_capability_enabled("sensitive_read"),
+            opt_in=session_briefing.is_session_briefing_opted_in(),
+            wrap=True,
+        )
+    if pack is None:
+        # Both gates are checked above, so a None here means the builder itself
+        # declined. Say so rather than returning an empty string a client would
+        # read as an empty briefing.
+        return json.dumps(
+            {
+                "status": "disabled",
+                "code": "SESSION_BRIEFING_UNAVAILABLE",
+                "reason": "the briefing builder produced nothing for this project",
+            },
+            indent=2,
+        )
+    return pack
 
 
 @mcp.tool()
@@ -2855,7 +3027,16 @@ def burnbar_memory_update(
 
 @mcp.tool()
 def burnbar_memory_history(memory_id: str, limit: int = 100) -> str:
-    """Return change history with before/after bodies wrapped as untrusted retrieved data."""
+    """Return change history with before/after bodies wrapped as untrusted retrieved data.
+
+    A quarantined or rejected memory reports its changes with the bodies
+    withheld (`bodiesRedacted`), exactly as `burnbar_memory_timeline` withholds
+    them. This tool carries no capability and, unlike the timeline, no project
+    scope either, so it is the weaker of the two revision surfaces — leaving it
+    unredacted would have made the gate decision a door rather than a fence.
+
+    Gate: ungated, like `burnbar_memory_timeline`.
+    """
     if limited := _local_mcp_rate_limit("burnbar_memory_history", "memory"):
         return limited
     with _memory_engine() as engine:
@@ -2863,6 +3044,43 @@ def burnbar_memory_history(memory_id: str, limit: int = 100) -> str:
     result["events"] = _memory_wrap_history(
         result.get("events", []), source_tool="burnbar_memory_history", memory_id=memory_id
     )
+    result["trustSignal"] = {"untrustedContentWrapped": True}
+    return json.dumps(result, indent=2, default=str)
+
+
+@mcp.tool()
+def burnbar_memory_timeline(
+    memory_id: str,
+    project_path: str | None = None,
+    limit: int = 100,
+) -> str:
+    """Read one memory's revision history: what changed, on which device, and when it last helped.
+
+    Scoped by project in its own right — a memory id belonging to another project
+    is refused without returning its body or metadata. "Last helped" is the most
+    recent recall that served this memory, falling back to its latest write.
+
+    A quarantined or rejected memory reports its revisions with the bodies
+    withheld (`bodiesRedacted`): this tool carries no capability, and undoing a
+    gate decision through it would make the quarantine decorative.
+    `burnbar_memory_history` withholds them on the same terms, so neither
+    revision surface is a way around the other. Each revision's `meta` is a
+    projection of the keys this tool documents, not the whole stored blob,
+    because a merged revision's metadata is written from a remote payload, and
+    `writerDevice` is reported only when it is an opaque device token.
+
+    Gate: ungated, like `burnbar_memory_history` — the project scoping above is
+    what fences it, not a capability.
+    """
+    if limited := _local_mcp_rate_limit("burnbar_memory_timeline", "memory"):
+        return limited
+    with _memory_engine() as engine:
+        result = engine.timeline(memory_id, project_path=project_path, limit=limit)
+    if result.get("revisions"):
+        result["revisions"] = _memory_wrap_history(
+            result.get("revisions", []), source_tool="burnbar_memory_timeline", memory_id=memory_id
+        )
+        result["events"] = result["revisions"]
     result["trustSignal"] = {"untrustedContentWrapped": True}
     return json.dumps(result, indent=2, default=str)
 
@@ -3030,8 +3248,28 @@ def burnbar_memory_export(
 
 
 @mcp.tool()
-def burnbar_memory_import(memories: list[dict[str, Any]] | str, project_path: str | None = None) -> str:
-    """Import memories from a `burnbar_memory_export` payload or a list of `{text, kind, confidence, tags, ...}` objects; each passes the gate and conflict resolution."""
+def burnbar_memory_import(
+    memories: list[dict[str, Any]] | dict[str, Any] | str,
+    project_path: str | None = None,
+    schema: str | None = None,
+    batch_cap: int | None = None,
+    cursor: int | str | None = None,
+) -> str:
+    """Import memories from a `burnbar_memory_export` payload, a ChatGPT/Claude.ai assistant export, or a list of `{text, kind, confidence, tags, ...}` objects; each passes the gate and conflict resolution.
+
+    An assistant export lands quarantined, one bounded batch at a time.
+    `batch_cap` may lower that bound but never lift it: it is clamped to
+    `assistant_export.MAX_IMPORT_BATCH_CAP`, and the summary reports the cap
+    actually applied. Each decision's `reviewStatus` is read back off the row
+    that landed, so a near-duplicate that reinforced an approved memory is not
+    reported as a quarantine.
+
+    Batches are resumable: the summary returns `cursor` (where this batch
+    started), `nextCursor` (where the next one starts, `null` when the export is
+    fully consumed) and `remaining`. Pass `nextCursor` back as `cursor` to
+    continue. Without it every call would select the same first `batch_cap`
+    candidates and the tail of an export would never be read at all.
+    """
     if limited := _local_mcp_rate_limit("burnbar_memory_import", "memory"):
         return limited
     if denied := _capability_denial("burnbar_memory_import", "memory_write"):
@@ -3040,6 +3278,69 @@ def burnbar_memory_import(memories: list[dict[str, Any]] | str, project_path: st
         payload = _memory_json_arg(memories, None, argument="memories")
     except _InvalidJSONArgument as exc:
         return _invalid_json_payload(exc)
+
+    import assistant_export
+
+    detected_schema = schema
+    if isinstance(payload, dict):
+        detected_schema = schema or payload.get("schema") or payload.get("schema_version") or payload.get("version")
+
+    # If an assistant export schema or payload structure is indicated
+    if detected_schema or (
+        isinstance(payload, dict) and assistant_export.is_assistant_export(payload, detected_schema)
+    ):
+        detected_str = str(detected_schema).strip() if detected_schema else ""
+        if detected_str == "openburnbar.memory_export.v1":
+            pass
+        elif detected_str in assistant_export.SUPPORTED_ASSISTANT_EXPORT_SCHEMAS:
+            if not isinstance(payload, dict):
+                payload = {"schema": detected_str, "conversations": payload}
+            with _memory_engine() as engine:
+                result = engine.import_assistant_export(
+                    payload,
+                    schema=detected_str,
+                    project_path=project_path,
+                    batch_cap=batch_cap,
+                    cursor=cursor,
+                )
+                result["decisions"] = [
+                    _memory_wrap_write_decision(decision, source_tool="burnbar_memory_import")
+                    for decision in result.get("decisions", [])
+                    if isinstance(decision, dict)
+                ]
+            return json.dumps(result, indent=2, default=str)
+        else:
+            return json.dumps(
+                {
+                    "status": "rejected",
+                    "code": "UNKNOWN_SCHEMA_VERSION",
+                    "reason": (
+                        f"unknown or unsupported export schema version '{detected_str}'; "
+                        f"supported versions: openburnbar.memory_export.v1, "
+                        f"{', '.join(sorted(assistant_export.SUPPORTED_ASSISTANT_EXPORT_SCHEMAS))}"
+                    ),
+                },
+                indent=2,
+            )
+
+    if (
+        isinstance(payload, list)
+        and payload
+        and isinstance(payload[0], dict)
+        and ("mapping" in payload[0] or "chat_messages" in payload[0])
+    ):
+        return json.dumps(
+            {
+                "status": "rejected",
+                "code": "UNKNOWN_SCHEMA_VERSION",
+                "reason": (
+                    "missing export schema version; assistant exports require an explicit "
+                    f"supported schema version (supported: {', '.join(sorted(assistant_export.SUPPORTED_ASSISTANT_EXPORT_SCHEMAS))})"
+                ),
+            },
+            indent=2,
+        )
+
     if isinstance(payload, dict):
         if payload.get("schema") == "openburnbar.memory_export.v1" and payload.get("allProjects") is True:
             return json.dumps(
@@ -3238,8 +3539,48 @@ def burnbar_memory_reindex(project_path: str | None = None, all_projects: bool =
 
 
 @mcp.tool()
+def burnbar_project_adopt(project_id: str | None = None, project_path: str | None = None, confirm: bool = False) -> str:
+    """
+    Join this folder to an existing project id — only when the member says so.
+
+    A `.burnbar/project-id` dotfile *proposes* an identity and is never applied on
+    its own, because repository contents must not be able to re-scope a folder's
+    memories by being cloned. Without `confirm=True` this call refuses and reports
+    both sides — `memoriesCount`, the rows adopting would join, and
+    `detachingCount`, the rows this folder holds under its current id, which are
+    left where they are and stop being visible from here. With it, the mapping is
+    written. A dotfile naming an id already mapped to this path is a no-op, and an
+    id that is not `proj_` plus 32 hex characters is refused before anything is
+    written.
+
+    Gate: `memory_write`.
+    """
+    if limited := _local_mcp_rate_limit("burnbar_project_adopt", "memory"):
+        return limited
+    if denied := _capability_denial("burnbar_project_adopt", "memory_write"):
+        return denied
+    with _memory_engine() as engine:
+        try:
+            result = engine.adopt_project(project_path=project_path, project_id=project_id, confirmed=confirm)
+        except ValueError as exc:
+            # A malformed id (or a dotfile that is not one) is a refusal, not a
+            # crash — and the message names the shape, never the rejected bytes.
+            return json.dumps(
+                {"status": "refused", "code": "INVALID_PROJECT_ID", "reason": str(exc)},
+                indent=2,
+            )
+        return json.dumps(result, indent=2, default=str)
+
+
+@mcp.tool()
 def burnbar_audit_trail(project_path: str | None = None, limit: int = 50) -> str:
-    """Return the label-only memory audit hash chain (with chain verification) for a project."""
+    """Return the label-only memory audit hash chain (with chain verification) for a project.
+
+    The trail records what happened *to* memories — add, update, forget,
+    redaction, quarantine, sync — plus one `memory.recall_serve` row per recall
+    that returned results, whose labels name the ids it served. Nothing here
+    carries a body, a tag or a query.
+    """
     if limited := _local_mcp_rate_limit("burnbar_audit_trail", "memory"):
         return limited
     with _memory_engine() as engine:
@@ -3511,19 +3852,39 @@ def _code_index_doctor(project_path: str | None) -> dict[str, Any]:
 
 
 @mcp.tool()
-def burnbar_memory_doctor(project_path: str | None = None, aux_scan_cursor: int | None = None) -> str:
+def burnbar_memory_doctor(
+    project_path: str | None = None,
+    aux_scan_cursor: int | None = None,
+    apply: bool = False,
+) -> str:
     """Health of the local memory engine (store, encryption, embeddings, policy, audit chain, daemon mirror) and the Project Code Memory index.
 
     `aux_scan_cursor` resumes the auxiliary secret sweep past the rows a previous
     call already covered: when that sweep is truncated it reports
     `memoryEngine.auxScan.nextCursor`, and passing it back scans the next page.
     A store larger than the scan cap is covered by walking the cursor to None.
+
+    Report-first: without `apply` this call only reads. `apply=True` prunes
+    exactly two things — orphan memory bodies past the grace period that no
+    receipt, staged upload or live daemon row references, and parked supersedes
+    past the retention window whose age it can actually prove. It never edits a
+    watermark, never writes the app-owned `agent_memory_inbox`, and never
+    deletes a finding; everything else it reports stays for a human.
+
+    Gate: the report is ungated, like `burnbar_memory_history`. `apply=True`
+    deletes rows and requires `memory_write`. Rate-limited under the code family.
     """
     if limited := _local_mcp_rate_limit("burnbar_memory_doctor", "code"):
         return limited
+    # The report is a read; `apply` is a delete, and is gated exactly like every
+    # other mutating tool on this surface. The default profile is `read_only`,
+    # so without this an agent granted nothing at all could prune store rows by
+    # passing one boolean.
+    if apply and (denied := _capability_denial("burnbar_memory_doctor", "memory_write")):
+        return denied
     try:
         with _memory_engine() as engine:
-            memory = engine.doctor(project_path=project_path, aux_scan_cursor=aux_scan_cursor)
+            memory = engine.doctor(project_path=project_path, aux_scan_cursor=aux_scan_cursor, apply=apply)
             memory["legacyMigration"] = _migrate_legacy_memories(engine, project_path)
     except Exception as exc:  # noqa: BLE001 — surfaced as a finding
         memory = {
@@ -5101,6 +5462,43 @@ def burnbar_spawn_resume(
 # ---------------------------------------------------------------------------
 
 
+def _scan_for_a_firing_gate(item: dict[str, Any]) -> dict[str, Any]:
+    """Re-scan an AI Inbox item and name which gate WOULD fire on it, and why.
+
+    **A fresh scan, not a recorded decision.** The AI Inbox is the proactive
+    brief the daemon assembles from git state, agent sessions and GitHub; its
+    items were never gated by anything, so there is no verdict to report. The
+    fields are `scanGate` / `scanReason` for exactly that reason — stamping
+    `verdict: "quarantined"` on an item nothing quarantined asserts a decision
+    no gate ever made, which is the opposite of B10's "name which gate fired".
+
+    An item that already carries a real `gate` from the daemon keeps it, and is
+    not re-scanned.
+
+    Call this BEFORE the untrusted-content wrapper replaces a field: for an item
+    with no `text`, scanning after the wrap reads the envelope's own boilerplate
+    instead of the content it is meant to describe.
+    """
+    if "gate" in item:
+        return item
+    diagnosis = me.gate.diagnose_firing_gate(
+        str(
+            item.get("text")
+            or item.get("summaryMarkdown")
+            or (item.get("summary") or {}).get("title")
+            or item.get("title")
+            or ""
+        ),
+        tags=list(item.get("tags") or []),
+        entities=list(item.get("entities") or []),
+        metadata=item.get("metadata") if isinstance(item.get("metadata"), dict) else {},
+        source_ref=item.get("sourceRef") or item.get("source_ref"),
+    )
+    item["scanGate"] = diagnosis["gate"]
+    item["scanReason"] = diagnosis["reason"]
+    return item
+
+
 @mcp.tool()
 def burnbar_inbox_list(
     states: list[str] | None = None,
@@ -5142,6 +5540,9 @@ def burnbar_inbox_list(
 
     items = result.get("items") or []
     for item in items:
+        # Scanned first: the wrapper below replaces `title`, and an item with no
+        # `text` would otherwise be scanned through the envelope.
+        _scan_for_a_firing_gate(item)
         # Titles are model-authored prose derived from logs. Wrap them so a
         # downstream agent treats them as data, never as instructions.
         item["title"] = _wrap_untrusted_snippet(
@@ -5192,6 +5593,8 @@ def burnbar_inbox_get(item_id: str) -> str:
     if not item:
         return json.dumps({"item": None, "error": f"no inbox item with id {item_id!r}"}, indent=2)
 
+    # Scanned before anything is wrapped, for the same reason as in the list.
+    _scan_for_a_firing_gate(item)
     summary = item.get("summary") or {}
     summary["title"] = _wrap_untrusted_snippet(summary.get("title"), source_tool="burnbar_inbox_get", record_id=item_id)
     item["summary"] = summary
@@ -5456,6 +5859,7 @@ MEMORY_TOOLSET: frozenset[str] = frozenset(
         "burnbar_get_conversation",
         "burnbar_remember",
         "burnbar_memorize",
+        "burnbar_memory_extract",
         "burnbar_recall",
         "burnbar_recall_pack",
         "burnbar_memory_ask",
@@ -5465,6 +5869,7 @@ MEMORY_TOOLSET: frozenset[str] = frozenset(
         "burnbar_memory_list",
         "burnbar_memory_update",
         "burnbar_memory_history",
+        "burnbar_memory_timeline",
         "burnbar_memory_review",
         "burnbar_memory_entities",
         "burnbar_memory_relations",
@@ -5473,6 +5878,7 @@ MEMORY_TOOLSET: frozenset[str] = frozenset(
         "burnbar_memory_reindex",
         "burnbar_memory_sync_pull",
         "burnbar_memory_doctor",
+        "burnbar_project_adopt",
         "burnbar_audit_trail",
         "burnbar_memory_analytics",
         "burnbar_search_code",
@@ -5482,6 +5888,7 @@ MEMORY_TOOLSET: frozenset[str] = frozenset(
         "burnbar_get_project_memory",
         "burnbar_list_resumable_conversations",
         "burnbar_resume_conversation",
+        "burnbar_session_briefing",
     }
 )
 
@@ -5511,7 +5918,68 @@ def _apply_toolset_filter(server: Any, toolset_raw: str | None) -> str:
     return requested
 
 
+def _handle_cli_args(argv: list[str]) -> bool:
+    """Run `project adopt` from the command line, or report that this is not a CLI call.
+
+    The only subcommand the server takes. Everything else falls through to the
+    stdio MCP loop, so an unrecognised argv never swallows a normal launch.
+    """
+    if argv[:2] != ["project", "adopt"]:
+        return False
+
+    parser = argparse.ArgumentParser(
+        prog="openburnbar-mcp project adopt",
+        description="Join a folder to an explicit project id, after showing what adopting it would join.",
+    )
+    parser.add_argument("project_id", nargs="?", default=None, help="the project id to adopt")
+    parser.add_argument("--path", default=None, help="the project path (defaults to the working directory)")
+    parser.add_argument("-y", "--yes", action="store_true", help="adopt without the interactive confirmation")
+    args = parser.parse_args(argv[2:])
+
+    with _memory_engine() as engine:
+        try:
+            result = engine.adopt_project(project_path=args.path, project_id=args.project_id, confirmed=args.yes)
+        except ValueError as exc:
+            print(f"Could not adopt the project: {exc}", file=sys.stderr)
+            sys.exit(1)
+        if result.get("status") == "confirmation_required":
+            print(result["message"])
+            # Adoption re-scopes a folder's memories, so it is never inferred: a
+            # pipe or a hook gets a refusal and an exit code, not a default yes.
+            if not sys.stdin.isatty():
+                print("Re-run with --yes to adopt.", file=sys.stderr)
+                sys.exit(1)
+            try:
+                reply = input("Adopt this project id? [y/N]: ").strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                reply = ""
+            if reply not in ("y", "yes"):
+                print("Adoption cancelled.")
+                sys.exit(1)
+            try:
+                result = engine.adopt_project(project_path=args.path, project_id=args.project_id, confirmed=True)
+            except ValueError as exc:
+                print(f"Could not adopt the project: {exc}", file=sys.stderr)
+                sys.exit(1)
+
+        if result.get("status") != "ok":
+            print(f"Could not adopt the project: {result}", file=sys.stderr)
+            sys.exit(1)
+        if result.get("reason") == "already_mapped":
+            print(f"Path '{result['path']}' is already mapped to project '{result['projectID']}'.")
+        else:
+            print(
+                f"Adopted project '{result['projectID']}' for path '{result['path']}' "
+                f"({result['memoriesCount']} memories joined, "
+                f"{result.get('detachingCount', 0)} left behind under "
+                f"'{result.get('detachingProjectID')}')."
+            )
+    return True
+
+
 def main() -> None:
+    if len(sys.argv) > 1 and _handle_cli_args(sys.argv[1:]):
+        return
     _apply_toolset_filter(mcp, os.environ.get("BURNBAR_MCP_TOOLSET"))
     mcp.run()
 

@@ -5,8 +5,12 @@ Only methods live here; construction and shared state stay in `engine.py`."""
 from __future__ import annotations
 
 import os
+from datetime import UTC, datetime
+from pathlib import Path
 from collections.abc import Sequence
 from typing import Any
+
+import project_code_memory as pcm
 
 from . import gate
 from ._util import (
@@ -14,18 +18,29 @@ from ._util import (
     _ingest_decision,
     _json_dumps,
     _json_loads,
+    _parse_iso,
     now_iso,
     sha256_hex,
 )
 from .constants import (
     DEFAULT_EMBEDDING_MODEL,
+    DEFAULT_ORPHAN_GRACE_PERIOD_SECONDS,
+    DEFAULT_PARKED_SUPERSEDE_RETENTION_DAYS,
     EMBEDDING_PROVIDER_ENV,
     ENGINE_SCHEMA_VERSION,
+    LINEAGE_HOLD_QUEUE_MAX_SIZE,
     MAX_MEMORIES_PER_PROJECT_SOFT,
 )
 from .embeddings import encode_vector
 from .extract import Fact
-from .store import audit_event, default_db_path, project_payload, resolve_project, verify_audit_chain
+from .store import (
+    audit_event,
+    default_db_path,
+    project_payload,
+    read_project_dotfile,
+    resolve_project,
+    verify_audit_chain,
+)
 
 
 # The auxiliary-exposure sweep is a regex pass over short strings, so the cap is
@@ -344,6 +359,27 @@ class _Maintenance:
             **project_payload(project_id, root),
         }
 
+    def import_assistant_export(
+        self,
+        payload: dict[str, Any],
+        *,
+        schema: str,
+        project_path: str | None = None,
+        batch_cap: int | None = None,
+        cursor: int | str | None = None,
+    ) -> dict[str, Any]:
+        """Import memories from a ChatGPT or Claude.ai assistant export payload."""
+        import assistant_export
+
+        return assistant_export.import_assistant_export(
+            self,
+            payload,
+            schema=schema,
+            project_path=project_path,
+            batch_cap=batch_cap,
+            cursor=cursor,
+        )
+
     def import_legacy(self, items: Sequence[dict[str, Any]], *, project_path: str | None) -> dict[str, Any]:
         """Import rows from the daemon-owned `agent_memories` store exactly once.
 
@@ -533,7 +569,15 @@ class _Maintenance:
                     exposures.append({"id": str(row["id"]), "surface": surface, "revision": revision, "labels": labels})
         return {"exposures": exposures, "scan": scan}
 
-    def doctor(self, *, project_path: str | None = None, aux_scan_cursor: int | None = None) -> dict[str, Any]:
+    def doctor(
+        self,
+        *,
+        project_path: str | None = None,
+        aux_scan_cursor: int | None = None,
+        apply: bool = False,
+        grace_period_seconds: float = DEFAULT_ORPHAN_GRACE_PERIOD_SECONDS,
+        parked_retention_days: int = DEFAULT_PARKED_SUPERSEDE_RETENTION_DAYS,
+    ) -> dict[str, Any]:
         db_path = self.db_path or default_db_path()
         # Resolved first: the auxiliary-exposure scan below is per project, so it
         # has to know which one before the findings are assembled.
@@ -545,6 +589,92 @@ class _Maintenance:
                 project_extra = dict(project_payload(active_project_id, root))
             except ValueError as exc:
                 project_extra = {"projectError": str(exc)}
+
+        pruned_orphans = 0
+        pruned_supersedes = 0
+
+        if apply:
+            # A7's `--apply` bound, deliberately narrow: prune aged orphan bodies
+            # and aged parked supersedes, and *nothing else*. It never heals a
+            # ledger, never deletes a finding, and never writes the app-owned
+            # `remote_sync_watermarks` table — a watermark the doctor rewound
+            # would silently re-drain or skip a member's inbox, and a finding the
+            # doctor deleted is a report that lies on its next run. Everything
+            # this pass will not repair stays in `findings` for a human.
+            now_dt = datetime.now(UTC)
+
+            for orphan in self.orphan_memory_bodies():
+                mid = str(orphan["memory_id"])
+                emid = str(orphan["engine_memory_id"])
+                ts = _parse_iso(orphan.get("updated_at") or orphan.get("created_at"))
+                # No usable timestamp means no way to prove the row cleared the
+                # grace period, so it is reported rather than deleted.
+                if ts is None or (now_dt - ts).total_seconds() <= grace_period_seconds:
+                    continue
+                # Referenced by a forget receipt: the receipt is the evidence that
+                # refuses a replay, and the body it names is not ours to drop.
+                if (
+                    self.conn.execute(
+                        "SELECT 1 FROM engine_meta "
+                        "WHERE key = ? OR key = ? OR (key LIKE 'forget_receipt:%' AND value LIKE ?) LIMIT 1",
+                        (f"forget_receipt:{emid}", f"forget_receipt:{mid}", f"%{emid}%"),
+                    ).fetchone()
+                    is not None
+                ):
+                    continue
+                # Referenced by an upload this device staged and has not yet sent.
+                if (
+                    self.conn.execute(
+                        "SELECT 1 FROM engine_meta "
+                        "WHERE (key LIKE 'staged_upload:%' OR key LIKE 'pending_upload:%' OR key LIKE 'in_flight_upload:%') "
+                        "AND (key LIKE ? OR key LIKE ? OR value LIKE ? OR value LIKE ?) LIMIT 1",
+                        (f"%{emid}%", f"%{mid}%", f"%{emid}%", f"%{mid}%"),
+                    ).fetchone()
+                    is not None
+                ):
+                    continue
+                # Referenced by a live row in the daemon's own store.
+                if "agent_memories" in pcm.table_names(self.conn) and (
+                    self.conn.execute(
+                        "SELECT 1 FROM agent_memories WHERE id = ? AND (review_status = 'approved' OR valid_to IS NULL)",
+                        (mid,),
+                    ).fetchone()
+                    is not None
+                ):
+                    continue
+                self.conn.execute("DELETE FROM agent_memory_bodies WHERE memory_id = ?", (mid,))
+                pruned_orphans += 1
+
+            retention_seconds = parked_retention_days * 86400.0
+            for parked in self.parked_supersedes():
+                ts = _parse_iso(parked.get("receivedAt") or parked.get("reportedAt") or parked.get("updatedAt"))
+                # Same rule as the orphan loop above, and for the same reason: no
+                # usable timestamp means no way to prove the row cleared the
+                # retention window, so it is reported rather than deleted.
+                # `parked_supersedes()` builds these as `str(x or y or "")`, and
+                # `_parse_iso("")` is None — falling through here pruned rows at
+                # ZERO age under the default 30-day window.
+                if ts is None or (now_dt - ts).total_seconds() <= retention_seconds:
+                    continue
+                source = parked.get("source")
+                if source == "engine_meta" and parked.get("key"):
+                    self.conn.execute("DELETE FROM engine_meta WHERE key = ?", (parked["key"],))
+                elif source == "memories" and parked.get("memoryID"):
+                    self.conn.execute("UPDATE memories SET superseded_by = NULL WHERE id = ?", (parked["memoryID"],))
+                else:
+                    # `source == "inbox"` lands here deliberately. `agent_memory_inbox`
+                    # is the daemon's transport table: an unapplied document is one
+                    # the engine has not acknowledged — a lineage-held revision sits
+                    # exactly like this by design — and deleting it loses the memory
+                    # permanently and silently, the same class of harm as rewinding
+                    # `remote_sync_watermarks`. The doctor reports it; the daemon
+                    # drains it.
+                    continue
+                pruned_supersedes += 1
+
+            if pruned_orphans or pruned_supersedes:
+                self._commit()
+
         aux = self.aux_secret_exposure(active_project_id, after_rowid=aux_scan_cursor or 0)
         exposures, aux_scan = aux["exposures"], aux["scan"]
         undecryptable = 0
@@ -632,6 +762,201 @@ class _Maintenance:
                     "detail": f"hash chain breaks at seq {chain['brokenAtSeq']}",
                 }
             )
+
+        # Sync-ledger pass (A7)
+        epoch_dt = datetime.min.replace(tzinfo=UTC)
+
+        # 1. Watermark sanity across both ledgers
+        trans_wm = self.transport_watermarks()
+        for acct, wm in trans_wm.items():
+            s_row = self.conn.execute("SELECT applied_updated_at FROM sync_state WHERE user_id = ?", (acct,)).fetchone()
+            # ONLY the processed cursor. `lastSyncedAt` is set to the current
+            # instant when the app creates this row on opt-in, with
+            # `lastProcessedRemoteUpdateAt` NULL: that row is the consent marker,
+            # not evidence a remote fact was ever processed. Falling back to it
+            # reported a stranded transport on every healthy device whose
+            # `sync_state` was simply empty because no remote fact had arrived.
+            t_iso = wm.get("lastProcessedRemoteUpdateAt")
+            t_ts = _parse_iso(t_iso) if t_iso else None
+            is_stranded = False
+            if s_row is None:
+                if t_ts is not None and t_ts > epoch_dt:
+                    is_stranded = True
+            else:
+                e_ts = _parse_iso(s_row["applied_updated_at"])
+                if t_ts is not None and (e_ts is None or t_ts > e_ts):
+                    is_stranded = True
+            if is_stranded:
+                findings.append(
+                    {
+                        "severity": "warn",
+                        "code": "STRANDED_TRANSPORT_WATERMARK",
+                        "detail": (
+                            f"Transport watermark ({t_iso}) for user '{acct}' is ahead of engine applied watermark "
+                            f"({s_row['applied_updated_at'] if s_row else 'none'})."
+                        ),
+                    }
+                )
+
+        # 2. Orphan agent_memory_bodies
+        orphan_rows = self.orphan_memory_bodies()
+        if orphan_rows:
+            findings.append(
+                {
+                    "severity": "warn",
+                    "code": "ORPHAN_MEMORY_BODIES",
+                    "detail": f"{len(orphan_rows)} orphan row(s) in agent_memory_bodies with no owning record in memories.",
+                    "fix": "Run doctor with apply=True to prune eligible aged orphans.",
+                }
+            )
+
+        # 3. Parked supersedes
+        parked_list = self.parked_supersedes()
+        if parked_list:
+            findings.append(
+                {
+                    "severity": "warn",
+                    "code": "PARKED_SUPERSEDES",
+                    "detail": f"{len(parked_list)} parked supersede(s) waiting for target memories.",
+                    "fix": (
+                        "Wait for the target memories to sync. `apply=True` prunes only the engine's own "
+                        "notes past the retention window, and only where their age can be proved; an "
+                        "unapplied inbox document belongs to the daemon and is never deleted from here."
+                    ),
+                }
+            )
+
+        # 4. Receipt coverage
+        rcpt_gaps = self.receipt_coverage_gaps()
+        if rcpt_gaps:
+            findings.append(
+                {
+                    "severity": "warn",
+                    "code": "RECEIPT_COVERAGE_GAP",
+                    "detail": f"{len(rcpt_gaps)} receipt coverage gap(s) found (missing convergence identity or forget receipt).",
+                    "fix": "Re-run the pull; a gap that persists means a receipt or its identity was never written and needs a forget replay.",
+                }
+            )
+
+        # 5. Open lineage holds
+        #
+        # The queue is bounded and its only clearer is the next re-offer of the
+        # document that filled a slot, so a note whose peer stopped sending it
+        # sits there for good. Nothing reported it, and a full queue does not
+        # fail loudly: lineage advice simply stops applying and every arriving
+        # revision takes LWW immediately. Report-only — releasing a slot is the
+        # sync path's decision, never the doctor's.
+        holds = self.lineage_holds()
+        if holds:
+            seen = sorted(str(hold.get("firstSeen") or "") for hold in holds if hold.get("firstSeen"))
+            oldest = seen[0] if seen else None
+            findings.append(
+                {
+                    "severity": "warn",
+                    "code": "OPEN_LINEAGE_HOLDS",
+                    "count": len(holds),
+                    "oldestFirstSeen": oldest,
+                    "detail": (
+                        f"{len(holds)} of {LINEAGE_HOLD_QUEUE_MAX_SIZE} lineage hold slot(s) are occupied"
+                        + (f", the oldest held since {oldest}" if oldest else "")
+                        + ". A full queue applies last-writer-wins to every arriving revision at once."
+                    ),
+                    "fix": (
+                        "Pull again: a hold is released when the document it describes is re-offered, or lapses "
+                        "on the gap timeout. A slot that never clears means the peer that filled it stopped "
+                        "sending; there is nothing to repair here and `apply` does not touch it."
+                    ),
+                }
+            )
+
+        # 6. Unresolved gaps
+        for gap in self.unresolved_gaps():
+            findings.append(
+                {
+                    "severity": "warn",
+                    "code": "UNRESOLVED_GAP",
+                    "detail": (
+                        f"Memory {gap.get('memoryID')} timed out waiting for predecessor hash "
+                        f"{str(gap.get('expectedHash', ''))[:8]}; applied via LWW."
+                    ),
+                }
+            )
+        if active_project_id:
+            proj_row = self.conn.execute(
+                "SELECT fingerprint FROM projects WHERE project_id = ?", (active_project_id,)
+            ).fetchone()
+            if proj_row and str(proj_row[0] or "").startswith("path:"):
+                findings.append(
+                    {
+                        "severity": "warn",
+                        "code": "PROVISIONAL_PROJECT_IDENTITY",
+                        "detail": (
+                            f"Project '{active_project_id}' uses provisional path-hashed identity; "
+                            "initialize git or adopt an explicit project ID via `project adopt <id>`."
+                        ),
+                        "fix": "Run `git init` or adopt an explicit project ID via `project adopt <id>`.",
+                    }
+                )
+        else:
+            provisional_rows = self.conn.execute(
+                "SELECT project_id FROM projects WHERE fingerprint LIKE 'path:%'"
+            ).fetchall()
+            for prow in provisional_rows:
+                findings.append(
+                    {
+                        "severity": "warn",
+                        "code": "PROVISIONAL_PROJECT_IDENTITY",
+                        "detail": (
+                            f"Project '{prow[0]}' uses provisional path-hashed identity; "
+                            "initialize git or adopt an explicit project ID via `project adopt <id>`."
+                        ),
+                        "fix": "Run `git init` or adopt an explicit project ID via `project adopt <id>`.",
+                    }
+                )
+
+        if active_project_id and project_extra.get("projectRoot"):
+            # The dotfile is read HERE, not on the read path that resolves a
+            # project — reading it is a report, and reporting is what the doctor
+            # is for. `read_project_dotfile` validates the shape and never
+            # returns unvalidated bytes, so nothing a cloned repository wrote
+            # can reach this payload: the doctor hands its findings to the
+            # calling model unwrapped, and the old `fix` string was
+            # "Run `project adopt <verbatim file contents>`" — a
+            # prompt-injection channel one surface over from the one P8 closes.
+            proposed, digest = read_project_dotfile(Path(str(project_extra["projectRoot"])))
+            if proposed is not None and proposed != active_project_id:
+                findings.append(
+                    {
+                        "severity": "warn",
+                        "code": "UNCONFIRMED_PROJECT_DOTFILE",
+                        "detail": (
+                            "This folder carries a .burnbar/project-id proposing another project. It is a "
+                            "proposal only: nothing resolves through it and nothing is stored until you adopt it."
+                        ),
+                        "proposedProjectID": proposed,
+                        # Named, never interpolated into a command: the fix tells
+                        # the member where to look, and they run it themselves.
+                        "fix": (
+                            "Read .burnbar/project-id in this folder yourself. If you meant it, run "
+                            "`project adopt` there and confirm; if you did not, delete the file."
+                        ),
+                    }
+                )
+            elif proposed is None and digest is not None:
+                findings.append(
+                    {
+                        "severity": "warn",
+                        "code": "MALFORMED_PROJECT_DOTFILE",
+                        # The content is identified by hash. Echoing it is the
+                        # whole defect: it is repository-controlled text.
+                        "detail": (
+                            f"This folder's .burnbar/project-id (sha256 {digest[:12]}) is not a project id. "
+                            "It is ignored entirely."
+                        ),
+                        "fix": "Delete .burnbar/project-id in this folder, or replace it with a real project id.",
+                    }
+                )
+
         payload: dict[str, Any] = {
             "status": "ok" if not any(item["severity"] == "error" for item in findings) else "degraded",
             "engine": {
@@ -660,5 +985,11 @@ class _Maintenance:
             "auxSecretExposure": exposures,
             "findings": findings,
         }
+        if apply:
+            payload["apply"] = {
+                "applied": True,
+                "prunedOrphans": pruned_orphans,
+                "prunedSupersedes": pruned_supersedes,
+            }
         payload.update(project_extra)
         return payload

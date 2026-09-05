@@ -6,10 +6,12 @@ from __future__ import annotations
 
 import json
 import re
+import sqlite3
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+from ._answer import _parse_rerank_answer, _validate_answer
 from ._util import (
     _aux_strings,
     _clamp,
@@ -25,11 +27,11 @@ from ._util import (
     now_iso,
     raw_tags,
     sha256_hex,
+    canonical_body_hash,
 )
 from .constants import (
     ANSWER_TOKEN_BUDGET_DEFAULT,
     ANSWER_SNIPPET_CHARS,
-    ANSWER_REJECT_SENTINELS,
     ANSWER_REFUSAL,
     ANSWER_PROMPT_VERSION,
     ANSWER_PROMPT_SYSTEM,
@@ -41,6 +43,8 @@ from .constants import (
     KINDS,
     MAX_BODY_CHARS,
     MEMORY_SCOPES,
+    REMOTE_MEMORY_ID_RE,
+    REMOTE_WRITER_DEVICE_RE,
     REVIEW_STATUSES,
     RRF_K,
     RRF_LEXICAL_WEIGHT,
@@ -57,14 +61,39 @@ if TYPE_CHECKING:
     from .engine import ActiveMemory
 
 
+# The revision-metadata keys `timeline()` documents and returns. `meta_json` is
+# written from a remote payload on a merged revision, so anything outside this
+# set is a sending device's content, not this tool's contract.
+_TIMELINE_META_KEYS = (
+    "remoteMemoryID",
+    "updatedAt",
+    "event",
+    "writerDevice",
+    "writer_device",
+    "deviceId",
+    "device_id",
+    "extracted_by",
+    "extractedBy",
+    "model_id",
+    "modelId",
+    "reason",
+    "replacement",
+    "canonicalID",
+    "foldedID",
+    "supersededBy",
+    "remoteSupersededBy",
+)
+
+
 class _ReadPath:
     """`MemoryEngine`'s read path and per-memory CRUD."""
 
     def recall(
         self,
-        query: str,
+        query: str = "",
         *,
         project_path: str | None,
+        memory_id: str | None = None,
         limit: int = 20,
         scope: str = "all",
         kinds: Sequence[str] | None = None,
@@ -85,8 +114,16 @@ class _ReadPath:
         rerank: bool | None = None,
         rerank_top_k: int = RERANK_TOP_K_DEFAULT,
     ) -> dict[str, Any]:
+        target_memory_id = self._alias_target(memory_id) or memory_id if memory_id else None
         project_id, root = resolve_project(self.conn, project_path)
         if filters:
+            # A filter naming a folded id means the row it folded into, exactly as
+            # `get` and `forget` read it.
+            filter_id = filters.get("memoryID")
+            if isinstance(filter_id, str):
+                resolved = self._alias_target(filter_id)
+                if resolved:
+                    filters = {**filters, "memoryID": resolved}
             invalid_filter = _invalid_filter_reason(filters)
             if invalid_filter:
                 return {
@@ -141,6 +178,8 @@ class _ReadPath:
         scope_norm = (scope or "all").strip().lower()
 
         def allowed(memory: ActiveMemory) -> bool:
+            if target_memory_id and memory.id != target_memory_id:
+                return False
             if not include_cross_project and memory.project_id != project_id and memory.scope != "personal":
                 return False
             if scope_norm != "all" and memory.scope != scope_norm:
@@ -206,6 +245,20 @@ class _ReadPath:
                 semantic_rank[memory_id] = index + 1
                 semantic_score[memory_id] = score
 
+        # A query that *is* a memory id the store folded away asks for one row by
+        # name, not for a ranking. Answer it by name. The shape check keeps this
+        # out of the way of every real query: prose never matches
+        # `REMOTE_MEMORY_ID_RE`, so no ordinary recall pays for the lookup and no
+        # weight in the fusion below changes for one.
+        alias_query_target = (
+            self._alias_target(query_text) if query_text and REMOTE_MEMORY_ID_RE.match(query_text) else None
+        )
+        if alias_query_target and any(memory.id == alias_query_target for memory in eligible):
+            lexical_rank[alias_query_target] = 1
+            lexical_score[alias_query_target] = 100.0
+            semantic_rank[alias_query_target] = 1
+            semantic_score[alias_query_target] = 1.0
+
         results: list[tuple[float, ActiveMemory, dict[str, Any]]] = []
         for memory in eligible:
             lr, sr = lexical_rank.get(memory.id), semantic_rank.get(memory.id)
@@ -241,8 +294,43 @@ class _ReadPath:
             results, rerank_status = self._rerank(query_text, results, rerank_top_k)
         top = results[:lim]
 
-        if reinforce and top:
-            self._reinforce_recall_ids([memory.id for _, memory, _ in top])
+        if top:
+            # `memory.recall_serve` is what makes "last helped" answerable
+            # (`timeline()`): without it the only evidence a memory was ever used
+            # is a write event, which is the wrong question. Label-only, like
+            # every audit row — no body, no tags, no query.
+            #
+            # **ONE event per recall, not one per hit.** `memory_audit` is
+            # append-only, has no retention sweep anywhere, and is re-hashed end
+            # to end by `verify_audit_chain` on every `audit_trail` and every
+            # `doctor`. A row per hit made that cost O(memories ever served) and
+            # spent twenty of `burnbar_audit_trail`'s fifty-row default window on
+            # a single read, evicting the write events the trail exists to show.
+            # The served ids ride in `labels` instead, bounded by the recall
+            # limit, which is exactly what "last helped" needs.
+            #
+            # A read that cannot take the write lock still has to return its
+            # results: another process holding the store must not turn a recall
+            # into an error, so the bookkeeping is best-effort and the answer is
+            # not.
+            try:
+                audit_event(
+                    self.conn,
+                    action="memory.recall_serve",
+                    project_id=project_id,
+                    # The event is about the recall, not about any one memory:
+                    # a per-memory `subject_id` is what a per-hit row was for.
+                    subject_id=None,
+                    labels=[f"served:{memory.id}" for _, memory, _ in top],
+                    actor=self.config.actor,
+                )
+                if reinforce:
+                    self._reinforce_recall_ids([memory.id for _, memory, _ in top])
+                self._commit()
+            except sqlite3.Error:
+                # `OperationalError` alone let a `DatabaseError` (a read-only
+                # store, a full disk) escape from a recall that used to succeed.
+                self.conn.rollback()
 
         output = []
         for score, memory, extra in top:
@@ -554,20 +642,23 @@ class _ReadPath:
     # ----- CRUD ---------------------------------------------------------
 
     def get(self, memory_id: str, *, include_secrets: bool = False, include_history: bool = False) -> dict[str, Any]:
-        row = self._get_row(memory_id)
+        target_id = self._alias_target(memory_id) or memory_id
+        row = self._get_row(target_id)
         if row is None:
             return {"status": "not_found", "memoryID": memory_id}
         memory = self._row_to_memory(row, with_vector=False)
         if memory is None:
             return {"status": "unavailable", "code": "UNDECRYPTABLE", "memoryID": memory_id, "keyID": row["key_id"]}
         payload = {"status": "ok", "memory": memory.public()}
+        if target_id != memory_id:
+            payload["aliasedFrom"] = memory_id
         if memory.sensitivity == "secret":
             payload["memory"]["secretText"] = (
                 self._open_vault(memory.id, memory.project_id) if include_secrets else None
             )
             payload["memory"]["secretAvailable"] = True
         if include_history:
-            payload["history"] = self.history(memory_id)["events"]
+            payload["history"] = self.history(target_id)["events"]
         return payload
 
     def list(
@@ -821,7 +912,7 @@ class _ReadPath:
             sensitivity = gate.sensitivity
             labels = sorted(set(labels + gate.labels))
             changes["body"] = True
-        body_hash = sha256_hex(body_after.lower())
+        body_hash = canonical_body_hash(body_after)
         updated_vector = None
         if changes.get("body") and self.provider.available:
             updated_vector = self.provider.embed([body_after])[0]
@@ -1042,18 +1133,25 @@ class _ReadPath:
         return {"status": "ok", "memoryID": memory_id, "reviewStatus": normalized}
 
     def forget(self, memory_id: str, *, project_path: str | None = None) -> dict[str, Any]:
+        target_id = self._alias_target(memory_id) or memory_id
         row = self.conn.execute(
-            "SELECT rowid, id, project_id, immutable FROM memories WHERE id = ?", (memory_id,)
+            "SELECT rowid, id, project_id, immutable FROM memories WHERE id = ?", (target_id,)
         ).fetchone()
         if row is None:
             return {"status": "not_found", "memoryID": memory_id}
         project_id = str(row["project_id"])
-        self._purge(memory_id, int(row["rowid"]), preserve_daemon_mirror=True)
+        canonical_id = str(row["id"])
+        self._purge(canonical_id, int(row["rowid"]), preserve_daemon_mirror=True)
+        if target_id != memory_id:
+            folded_row = self.conn.execute("SELECT rowid FROM memories WHERE id = ?", (memory_id,)).fetchone()
+            if folded_row is not None:
+                self._purge(memory_id, int(folded_row["rowid"]), preserve_daemon_mirror=True)
+            self.conn.execute("DELETE FROM engine_meta WHERE key = ?", (f"memory_alias:{memory_id}",))
         audit_event(
             self.conn,
             action="memory.forget",
             project_id=project_id,
-            subject_id=memory_id,
+            subject_id=canonical_id,
             labels=["local hard delete", "vault purged", "history purged", "vectors purged"],
             actor=self.config.actor,
         )
@@ -1061,7 +1159,7 @@ class _ReadPath:
         self._invalidate_cache()
         return {
             "status": "ok",
-            "memoryID": memory_id,
+            "memoryID": canonical_id,
             "projectID": project_id,
             "purged": ["memory", "vector", "history", "relations", "vault"],
         }
@@ -1167,15 +1265,32 @@ class _ReadPath:
         }
 
     def history(self, memory_id: str, limit: int = 100) -> dict[str, Any]:
+        """Every change to one memory, with the bodies of a quarantined or
+        rejected row withheld (`bodiesRedacted`), exactly as `timeline()`
+        withholds them.
+
+        This is the weaker of the two revision surfaces — it carries no
+        capability and, unlike `timeline()`, no project scope either — so
+        leaving it unredacted made the redaction a door rather than a fence: an
+        agent refused a quarantined body by `timeline()` read the same
+        revisions here, on the same id, with the same (zero) capability.
+        """
         rows = self.conn.execute(
             "SELECT * FROM memory_history WHERE memory_id = ? ORDER BY seq DESC LIMIT ?",
             (memory_id, max(1, min(int(limit), 500))),
         ).fetchall()
+        owner = self.conn.execute("SELECT review_status FROM memories WHERE id = ?", (memory_id,)).fetchone()
+        review_status = str(owner["review_status"]) if owner is not None else None
+        bodies_redacted = review_status in ("quarantined", "rejected")
         events = []
         for row in rows:
             aad = f"{memory_id}|{row['project_id']}|history"
-            before = self.keyring.open(row["before_cipher"], row["before_nonce"], aad) if row["before_cipher"] else None
-            after = self.keyring.open(row["after_cipher"], row["after_nonce"], aad) if row["after_cipher"] else None
+            before = after = None
+            if not bodies_redacted:
+                before = (
+                    self.keyring.open(row["before_cipher"], row["before_nonce"], aad) if row["before_cipher"] else None
+                )
+                after = self.keyring.open(row["after_cipher"], row["after_nonce"], aad) if row["after_cipher"] else None
             events.append(
                 {
                     "seq": int(row["seq"]),
@@ -1187,7 +1302,137 @@ class _ReadPath:
                     "meta": _json_loads(row["meta_json"], {}),
                 }
             )
-        return {"status": "ok", "memoryID": memory_id, "events": events}
+        return {
+            "status": "ok",
+            "memoryID": memory_id,
+            "reviewStatus": review_status,
+            "bodiesRedacted": bodies_redacted,
+            "events": events,
+        }
+
+    def timeline(
+        self,
+        memory_id: str,
+        *,
+        project_path: str | None = None,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        """Project-scoped memory timeline with device attribution and last-helped ordering."""
+        project_id, root = resolve_project(self.conn, project_path)
+        target_id = self._alias_target(memory_id) or memory_id
+        row = self.conn.execute(
+            "SELECT id, project_id, scope, review_status FROM memories WHERE id = ?", (target_id,)
+        ).fetchone()
+        if row is None:
+            return {"status": "not_found", "memoryID": memory_id, **project_payload(project_id, root)}
+        if str(row["project_id"]) != project_id and str(row["scope"]) != "personal":
+            # B8: project-scoped read API refuses a foreign memory ID without returning body or meta.
+            return {
+                "status": "refused",
+                "code": "FOREIGN_PROJECT",
+                "memoryID": memory_id,
+                **project_payload(project_id, root),
+            }
+
+        # Last helped, in order:
+        # 1. Latest audit recall-serve event
+        # 2. Latest history event
+        # The served ids live in `labels_json` as `served:<id>`, one row per
+        # recall. `memory_audit_action_idx` keeps this off a full table scan.
+        audit_row = self.conn.execute(
+            "SELECT ts FROM memory_audit WHERE action = 'memory.recall_serve' "
+            "AND labels_json LIKE '%\"served:' || ? || '\"%' ORDER BY seq DESC LIMIT 1",
+            (target_id,),
+        ).fetchone()
+        if audit_row is not None:
+            last_helped = str(audit_row["ts"])
+            last_helped_source = "recall_serve"
+        else:
+            hist_row = self.conn.execute(
+                "SELECT ts FROM memory_history WHERE memory_id = ? ORDER BY seq DESC LIMIT 1",
+                (target_id,),
+            ).fetchone()
+            if hist_row is not None:
+                last_helped = str(hist_row["ts"])
+                last_helped_source = "history"
+            else:
+                last_helped = None
+                last_helped_source = None
+
+        # The NEWEST `limit` rows, reversed so the window stays chronological.
+        # Keeping the oldest dropped the latest state changes for good: this
+        # surface has no cursor and clamps `limit` to 500.
+        history_rows = self.conn.execute(
+            "SELECT * FROM memory_history WHERE memory_id = ? ORDER BY seq DESC LIMIT ?",
+            (target_id, max(1, min(int(limit), 500))),
+        ).fetchall()[::-1]
+
+        # This tool carries no capability — project scope is its whole fence —
+        # so it does not undo a gate decision. A row the secret or injection
+        # screen held back is one `recall` excludes by default; handing its
+        # decrypted revisions to a model through the back door would make the
+        # quarantine decorative. What happened and when is still reported.
+        review_status = str(row["review_status"])
+        bodies_redacted = review_status in ("quarantined", "rejected")
+
+        revisions = []
+        for hrow in history_rows:
+            aad = f"{target_id}|{hrow['project_id']}|history"
+            before = after = None
+            if not bodies_redacted:
+                before = (
+                    self.keyring.open(hrow["before_cipher"], hrow["before_nonce"], aad)
+                    if hrow["before_cipher"]
+                    else None
+                )
+                after = (
+                    self.keyring.open(hrow["after_cipher"], hrow["after_nonce"], aad) if hrow["after_cipher"] else None
+                )
+            meta = _json_loads(hrow["meta_json"], {})
+            writer_device = (
+                meta.get("writerDevice") or meta.get("writer_device") or meta.get("deviceId") or meta.get("device_id")
+            )
+            # The top-level hoist is a promoted, DOCUMENTED field, and the tool
+            # wraps `meta` but reads this one straight. Screening bounds every
+            # value merged from here on; a store written before it holds
+            # whatever a peer sent, so only a value that is actually a device
+            # token is promoted. A legacy one that is not stays in `meta`, where
+            # the caller's untrusted wrapper covers it.
+            if not (isinstance(writer_device, str) and REMOTE_WRITER_DEVICE_RE.match(writer_device)):
+                writer_device = None
+            extracted_by = meta.get("extracted_by") or meta.get("extractedBy")
+            model_id = meta.get("model_id") or meta.get("modelId")
+            revisions.append(
+                {
+                    "seq": int(hrow["seq"]),
+                    "event": str(hrow["event"]),
+                    "actor": str(hrow["actor"]),
+                    "ts": str(hrow["ts"]),
+                    "before": before,
+                    "after": after,
+                    # A projection, not the whole column: `meta_json` on a merged
+                    # revision is written from a remote payload, and returning it
+                    # verbatim publishes whatever a sending device put there.
+                    "meta": {key: meta[key] for key in _TIMELINE_META_KEYS if key in meta},
+                    "writerDevice": writer_device,
+                    "extractedBy": extracted_by,
+                    "modelId": model_id,
+                }
+            )
+
+        payload: dict[str, Any] = {
+            "status": "ok",
+            "memoryID": target_id,
+            "reviewStatus": review_status,
+            "bodiesRedacted": bodies_redacted,
+            "revisions": revisions,
+            "lastHelpedAt": last_helped,
+            "lastHelpedSource": last_helped_source,
+            **project_payload(project_id, root),
+        }
+        if target_id != memory_id:
+            payload["aliasedFrom"] = memory_id
+        return payload
 
     def entities(
         self, *, project_path: str | None, limit: int = 100, include_cross_project: bool = False
@@ -1253,65 +1498,3 @@ class _ReadPath:
             if len(out) >= max(1, min(int(limit), 1000)):
                 break
         return {"status": "ok", "relations": out, **project_payload(project_id, root)}
-
-
-def _parse_rerank_answer(parsed: Any, listed_ids: set[str]) -> dict[str, float] | None:
-    """`{"results": [{"id", "relevance"}]}` over listed ids only; anything else is out of contract."""
-    rows = parsed.get("results") if isinstance(parsed, dict) else None
-    if not isinstance(rows, list):
-        return None
-    scores: dict[str, float] = {}
-    for row in rows:
-        if not isinstance(row, dict) or str(row.get("id")) not in listed_ids:
-            return None
-        memory_id = str(row["id"])
-        if memory_id in scores:
-            return None  # a duplicate verdict is ambiguous, not a tie
-        try:
-            relevance = float(row.get("relevance"))
-        except (TypeError, ValueError):
-            return None
-        if relevance != relevance:  # NaN
-            return None
-        scores[memory_id] = min(1.0, max(0.0, relevance))
-    if set(scores) != set(listed_ids):
-        return None  # every listed candidate must be scored, or the fusion order stands
-    return scores
-
-
-_CITATION_MARKER = re.compile(r"\[(mem_[0-9a-f]+)\]")
-
-
-def _validate_answer(parsed: Any, listed_ids: set[str]) -> dict[str, Any]:
-    """Apply the answer contract: listed citations only, no sentinels, no tool calls, refusal on no evidence."""
-    answer = str(parsed.get("answer") or "").strip() if isinstance(parsed, dict) else ""
-    # Only inline markers count: a bare `citations` array cannot vouch for
-    # claims the answer text never ties to a memory.
-    mentioned: list[str] = []
-    for candidate in _CITATION_MARKER.findall(answer):
-        if candidate not in mentioned:
-            mentioned.append(candidate)
-    refusal = {"answer": ANSWER_REFUSAL, "citations": [], "groundedness": "refused", "dropped": 0}
-    upper = answer.upper()
-    if any(sentinel in upper for sentinel in ANSWER_REJECT_SENTINELS):
-        return {**refusal, "code": "ANSWER_REJECTED"}
-    if answer.startswith("{"):
-        try:
-            shaped = json.loads(answer)
-        except ValueError:
-            shaped = None
-        if isinstance(shaped, dict) and {"tool_calls", "tool_call", "function_call", "tool_use"} & set(shaped):
-            return {**refusal, "code": "ANSWER_REJECTED"}
-    valid = [memory_id for memory_id in mentioned if memory_id in listed_ids]
-    dropped = len(mentioned) - len(valid)
-    if not valid or not answer:
-        return {**refusal, "dropped": dropped}
-    for unknown in (memory_id for memory_id in mentioned if memory_id not in listed_ids):
-        answer = answer.replace(f"[{unknown}]", "").replace(unknown, "")
-    answer = re.sub(r"[ \t]{2,}", " ", answer).strip()
-    return {
-        "answer": answer,
-        "citations": valid,
-        "groundedness": "grounded" if dropped == 0 else "partial",
-        "dropped": dropped,
-    }

@@ -13,40 +13,43 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+import time
 from typing import Any, NamedTuple
 
+
 from . import gate
+from ._ledger import _SyncLedger
 from ._util import (
     _aux_strings,
+    _convergence_key,
     _json_dumps,
     _json_loads,
     _parse_iso,
+    _receipt_payload,
     normalize_kind,
     normalize_tags,
     now_iso,
-    sha256_hex,
+    canonical_body_hash,
 )
 from .constants import (
+    DEFAULT_LINEAGE_GAP_TIMEOUT_SECONDS,
     MEMORY_SCOPES,
     REMOTE_MEMORY_ID_RE,
     REMOTE_PAYLOAD_SCHEMA_MAX,
     REMOTE_RECEIPT_ENTRY_KIND,
     REMOTE_RECEIPT_SCHEMA_MAX,
     REMOTE_SOURCE_KIND,
+    REMOTE_PREVIOUS_BODY_HASH_RE,
+    REMOTE_WRITER_DEVICE_RE,
 )
 from .embeddings import encode_vector
 from .extract import Fact, _slot_key, extract_entities, extract_relations
 from .store import audit_event
 
 
-def _receipt_payload(raw: Any) -> dict[str, Any] | None:
-    """The parsed payload of an inbox entry, or None when it is not a JSON object."""
-    if not isinstance(raw, dict):
-        return None
-    payload = raw.get("payload")
-    if not isinstance(payload, dict):
-        payload = _json_loads(raw.get("payloadJSON"), None)
-    return payload if isinstance(payload, dict) else None
+# An alias or supersede chain this long is a cycle or a corruption, not a history.
+# Bounded so a read can never hang on one.
+_ALIAS_CHAIN_MAX_HOPS = 16
 
 
 def _is_receipt_entry(raw: Any) -> bool:
@@ -62,13 +65,6 @@ def _is_receipt_entry(raw: Any) -> bool:
         return True
     payload = _receipt_payload(raw)
     return payload is not None and payload.get("entryKind") == REMOTE_RECEIPT_ENTRY_KIND
-
-
-def _convergence_key(project_id: str, scope: str, body_hash: str) -> str:
-    """§5's convergence identity `(project_id, scope, body_hash)`, as one
-    point-lookup key. Both the forget receipt and the convergence ledger are
-    keyed by it."""
-    return sha256_hex(f"{project_id}|{scope}|{body_hash}")[:32]
 
 
 # Older than any real timestamp: what an unparseable stored `updated_at` compares
@@ -112,6 +108,14 @@ class _RemoteFact:
     entities: list[str] = field(default_factory=list)
     gate_labels: list[str] = field(default_factory=list)
     injection: list[str] = field(default_factory=list)
+    previous_body_hash: str | None = None
+    writer_device: str | None = None
+    # The payload named a device and it was not a token. The fact still lands —
+    # attribution is never worth refusing a member's memory over — but the field
+    # is dropped and the decision says so, so a peer sending prose here is
+    # visible rather than silently ignored.
+    writer_device_rejected: bool = False
+    previous_body_hash_rejected: bool = False
 
     @property
     def order_key(self) -> tuple[datetime, str, str]:
@@ -142,21 +146,8 @@ class _SyncMark(NamedTuple):
         return (self.updated_ts, self.memory_id, self.body_hash)
 
 
-class _BlindSync:
+class _BlindSync(_SyncLedger):
     """`MemoryEngine`'s blind-sync merge surface: watermark, screen, converge, LWW."""
-
-    def sync_watermark(self) -> dict[str, dict[str, str]]:
-        """The applied high-water mark of the merge, one entry per member."""
-        rows = self.conn.execute(
-            "SELECT user_id, applied_updated_at, applied_memory_id FROM sync_state ORDER BY user_id"
-        ).fetchall()
-        return {
-            str(row["user_id"]): {
-                "updatedAt": str(row["applied_updated_at"]),
-                "memoryID": str(row["applied_memory_id"]),
-            }
-            for row in rows
-        }
 
     def _record_forget_receipt(self, memory_id: str) -> None:
         """Persist what a hard forget destroyed, so blind sync cannot undo it.
@@ -207,15 +198,68 @@ class _BlindSync:
         )
 
     def _alias_target(self, foreign_id: str) -> str | None:
-        """The live row `foreign_id` folded into, if the alias still resolves."""
+        """The live row `foreign_id` folded into, if the alias still resolves.
+
+        Two devices answer this from different evidence, and both have to agree.
+        The device that did the folding holds a `memory_alias:<id>` note; a device
+        that only received the rows has no note, but the folded row itself arrived
+        carrying `foldedInto` in its metadata and `folded` in its tags, and its
+        `superseded_by` points at the holder. So: follow the note if there is one,
+        otherwise read the fold off the row, and in both cases walk the supersede
+        chain to whatever is live *now* — a folded row's holder may itself have
+        been superseded since.
+        """
+        if not foreign_id:
+            return None
         row = self.conn.execute(
             "SELECT value FROM engine_meta WHERE key = ?", (f"memory_alias:{foreign_id}",)
         ).fetchone()
-        if row is None:
+        if row is not None:
+            # Aliases chain when a holder is itself folded away. Bounded, because a
+            # loop here would hang every read that resolves an id.
+            alias = str(row["value"])
+            visited = {foreign_id}
+            while alias not in visited and len(visited) < _ALIAS_CHAIN_MAX_HOPS:
+                visited.add(alias)
+                next_row = self.conn.execute(
+                    "SELECT value FROM engine_meta WHERE key = ?", (f"memory_alias:{alias}",)
+                ).fetchone()
+                if next_row is None:
+                    break
+                alias = str(next_row["value"])
+            target = self.conn.execute("SELECT valid_to FROM memories WHERE id = ?", (alias,)).fetchone()
+            if target is None:
+                return None
+            return alias if target["valid_to"] is None else self._resolve_supersede_chain(alias)
+
+        folded = self.conn.execute(
+            "SELECT valid_to, superseded_by, metadata_json, tags_json FROM memories WHERE id = ?", (foreign_id,)
+        ).fetchone()
+        if folded is None or folded["valid_to"] is None or not folded["superseded_by"]:
             return None
-        alias = str(row["value"])
-        exists = self.conn.execute("SELECT 1 FROM memories WHERE id = ?", (alias,)).fetchone()
-        return alias if exists is not None else None
+        metadata = _json_loads(folded["metadata_json"], {}) or {}
+        tags = _json_loads(folded["tags_json"], []) or []
+        # `fold()` stamps both; a row retired for any other reason stamps neither,
+        # and must not be treated as an alias.
+        if metadata.get("foldedInto") or "folded" in tags:
+            return self._resolve_supersede_chain(str(folded["superseded_by"]))
+        return None
+
+    def _resolve_supersede_chain(self, start_id: str) -> str | None:
+        """Walk `superseded_by` from `start_id` to the row that is still live."""
+        current = start_id
+        visited: set[str] = set()
+        while current not in visited and len(visited) < _ALIAS_CHAIN_MAX_HOPS:
+            visited.add(current)
+            row = self.conn.execute("SELECT valid_to, superseded_by FROM memories WHERE id = ?", (current,)).fetchone()
+            if row is None:
+                return None
+            if row["valid_to"] is None:
+                return current
+            if not row["superseded_by"]:
+                return None
+            current = str(row["superseded_by"])
+        return None
 
     def _local_memory_id(self, foreign_id: str) -> str | None:
         """The local row a remote engine id names: itself, or what it folded into.
@@ -475,6 +519,29 @@ class _BlindSync:
         if aux_injection:
             injection = sorted(set(injection + [f"aux:{label}" for label in aux_injection]))
         valid_to = payload.get("validTo")
+        previous_body_hash = payload.get("previousBodyHash")
+        previous_body_hash = str(previous_body_hash).strip() if previous_body_hash else None
+        # Held to a canonical digest for the same reason `writerDevice` is held
+        # to a device token: the value lands in PLAINTEXT `engine_meta`, whose
+        # boundary is ids, hashes and timestamps. Lineage is advice, so an
+        # invalid value is dropped rather than costing the member the fact.
+        previous_body_hash_rejected = False
+        if previous_body_hash is not None and not REMOTE_PREVIOUS_BODY_HASH_RE.match(previous_body_hash):
+            previous_body_hash = None
+            previous_body_hash_rejected = True
+        elif previous_body_hash is not None:
+            previous_body_hash = previous_body_hash.lower()
+        writer_device = payload.get("writerDevice")
+        writer_device = str(writer_device).strip() if writer_device else None
+        # `writerDevice` is remote text that ends up in PLAINTEXT `meta_json` and
+        # is reported to the calling model by the ungated timeline. A device id
+        # is an opaque token; anything else — prose, an instruction, five
+        # kilobytes of padding — is dropped here rather than stored. Dropping it
+        # never costs the member the fact: attribution is not the memory.
+        writer_device_rejected = False
+        if writer_device is not None and not REMOTE_WRITER_DEVICE_RE.match(writer_device):
+            writer_device = None
+            writer_device_rejected = True
         return (
             _RemoteFact(
                 doc_id=doc_id,
@@ -487,7 +554,7 @@ class _BlindSync:
                 # Recomputed here from the gated body with the engine's own
                 # hashing. The payload's `bodyHash` is the sender's advice about
                 # its own store and is deliberately never trusted as the key.
-                body_hash=sha256_hex(body.lower()),
+                body_hash=canonical_body_hash(body),
                 confidence=fact.confidence,
                 valid_from=_canonical_iso(payload.get("validFrom")) or updated_at,
                 valid_to=_canonical_iso(valid_to) if valid_to else None,
@@ -500,11 +567,21 @@ class _BlindSync:
                 entities=entities,
                 gate_labels=sorted(set(decision.labels + aux.labels)),
                 injection=injection,
+                previous_body_hash=previous_body_hash,
+                previous_body_hash_rejected=previous_body_hash_rejected,
+                writer_device=writer_device,
+                writer_device_rejected=writer_device_rejected,
             ),
             {},
         )
 
-    def merge_remote(self, rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    def merge_remote(
+        self,
+        rows: Sequence[dict[str, Any]],
+        *,
+        gap_timeout: float = DEFAULT_LINEAGE_GAP_TIMEOUT_SECONDS,
+        now_epoch: float | None = None,
+    ) -> dict[str, Any]:
         """Fold the opened remote rows the daemon parked for this device into the
         local store, applying §5 of the blind-sync design.
 
@@ -551,7 +628,7 @@ class _BlindSync:
 
         merged: list[tuple[_RemoteFact, dict[str, Any]]] = []
         for fact in screened:
-            decision = self._merge_remote_fact(fact)
+            decision = self._merge_remote_fact(fact, now_epoch=now_epoch, gap_timeout=gap_timeout)
             merged.append((fact, decision))
             event = decision["event"]
             if event in ("ADD", "UPDATE"):
@@ -560,6 +637,10 @@ class _BlindSync:
                 reinforced += 1
             elif event == "REFUSE":
                 refused += 1
+            elif event == "HOLD":
+                # Counted by neither: the row is not applied and not refused. It
+                # stays unacknowledged, so `parked` below is what reports it.
+                pass
             else:
                 unchanged += 1
             # ONLY a real application moves the member's mark. An `UNCHANGED`
@@ -571,13 +652,20 @@ class _BlindSync:
             if event in ("ADD", "UPDATE", "REINFORCE"):
                 self._advance_sync_watermark(fact)
 
+        # A held row is re-evaluated the next time the daemon offers it, not from
+        # anything this engine kept: the hold note carries no document, and the
+        # document it describes stays UNACKED in the inbox precisely so the next
+        # drain hands it back. See `_record_lineage_hold`.
+        #
         # Second pass. A supersede references an engine id, which is globally
         # unique, so a chain resolves on any device — but only once its target
         # has arrived. Every edge the batch itself supplied lands here; one whose
         # target is still missing leaves its document unacknowledged.
         for fact, decision in merged:
             resolved = True
-            if fact.superseded_by and decision["event"] != "REFUSE":
+            if decision.get("event") == "HOLD" or decision.get("ack") is False:
+                resolved = False
+            elif fact.superseded_by and decision["event"] != "REFUSE":
                 resolved = self._resolve_remote_supersede(fact, str(decision.get("memoryID") or fact.memory_id))
                 decision["supersedeResolved"] = resolved
             (ack if resolved else parked).append(fact.doc_id)
@@ -729,7 +817,13 @@ class _BlindSync:
             "RECEIPT", "RECEIPT_RECORDED", "no local row to retire; the receipt is recorded so a replay is refused"
         )
 
-    def _merge_remote_fact(self, fact: _RemoteFact) -> dict[str, Any]:
+    def _merge_remote_fact(
+        self,
+        fact: _RemoteFact,
+        *,
+        now_epoch: float | None = None,
+        gap_timeout: float = DEFAULT_LINEAGE_GAP_TIMEOUT_SECONDS,
+    ) -> dict[str, Any]:
         """Land one screened remote row, and record what it keyed to.
 
         The ledger write is deliberately outside the decision: a revision that
@@ -737,14 +831,26 @@ class _BlindSync:
         belongs to, and that is exactly the case a replica needs when the edit
         reached it before the duplicate the edit replaced.
         """
-        decision = self._decide_remote_fact(fact)
-        if decision["event"] != "REFUSE":
+        decision = self._decide_remote_fact(fact, now_epoch=now_epoch, gap_timeout=gap_timeout)
+        if fact.writer_device_rejected:
+            # Counted, never echoed: the decision says the field was refused and
+            # does not repeat what was in it.
+            decision["writerDeviceRejected"] = True
+        if fact.previous_body_hash_rejected:
+            decision["previousBodyHashRejected"] = True
+        if decision["event"] not in ("REFUSE", "HOLD"):
             self._record_convergence_identity(
                 fact.project_id, fact.scope, fact.body_hash, str(decision.get("memoryID") or fact.memory_id)
             )
         return decision
 
-    def _decide_remote_fact(self, fact: _RemoteFact) -> dict[str, Any]:
+    def _decide_remote_fact(
+        self,
+        fact: _RemoteFact,
+        *,
+        now_epoch: float | None = None,
+        gap_timeout: float = DEFAULT_LINEAGE_GAP_TIMEOUT_SECONDS,
+    ) -> dict[str, Any]:
         """Never resurrect, converge, then LWW."""
         local_id = self._local_memory_id(fact.memory_id)
         # `UNIQUE(project_id, scope, body_hash)` spans retired rows, so there is
@@ -762,7 +868,7 @@ class _BlindSync:
             remembered = self._converged_local_id(fact)
             if remembered is not None:
                 self._record_memory_alias(fact.memory_id, remembered)
-                return self._update_remote_row(fact, remembered)
+                return self._update_remote_row(fact, remembered, now_epoch=now_epoch, gap_timeout=gap_timeout)
             # Nothing local answers to this row at all. Only now does a forget receipt
             # mean anything: a member who said this again on this device brought
             # the memory back themselves, and that decision outranks the receipt.
@@ -792,7 +898,7 @@ class _BlindSync:
                 # into a reinforcement of the row that already holds the identity,
                 # exactly as a local duplicate does today (§5).
                 return self._reinforce_remote(fact, local_id)
-        return self._update_remote_row(fact, str(local_id))
+        return self._update_remote_row(fact, str(local_id), now_epoch=now_epoch, gap_timeout=gap_timeout)
 
     def _reinforce_remote(self, fact: _RemoteFact, memory_id: str) -> dict[str, Any]:
         """Fold a remote duplicate into the row that already holds its identity.
@@ -826,7 +932,14 @@ class _BlindSync:
         }
         return result
 
-    def _update_remote_row(self, fact: _RemoteFact, memory_id: str) -> dict[str, Any]:
+    def _update_remote_row(
+        self,
+        fact: _RemoteFact,
+        memory_id: str,
+        *,
+        now_epoch: float | None = None,
+        gap_timeout: float = DEFAULT_LINEAGE_GAP_TIMEOUT_SECONDS,
+    ) -> dict[str, Any]:
         row = self.conn.execute(
             "SELECT rowid, project_id, body_hash, updated_at, immutable FROM memories WHERE id = ?", (memory_id,)
         ).fetchone()
@@ -847,24 +960,32 @@ class _BlindSync:
             # lands here — and it is deliberately compared against the *remote*
             # mark: a wall-clock stamp left by the merge itself would beat every
             # revision authored before the merge ran, including newer ones.
-            return {
-                "event": "UNCHANGED",
-                "code": "ALREADY_APPLIED" if fact.order_key == applied.order_key else "REMOTE_IS_STALE",
-                "docID": fact.doc_id,
-                "memoryID": memory_id,
-            }
+            return self._converge_stale_duplicate(
+                fact,
+                memory_id,
+                {
+                    "event": "UNCHANGED",
+                    "code": "ALREADY_APPLIED" if fact.order_key == applied.order_key else "REMOTE_IS_STALE",
+                    "docID": fact.doc_id,
+                    "memoryID": memory_id,
+                },
+            )
         local_writer = self._local_writer_mark(row, applied)
         remote_mark = (fact.updated_ts, fact.body_hash)
         if local_writer is not None and remote_mark <= local_writer:
             # A member edited this row on this device after the last merge, and
             # their edit is the later writer. Their own decision outranks an
             # older copy of the memory arriving from somewhere else.
-            return {
-                "event": "UNCHANGED",
-                "code": "ALREADY_APPLIED" if remote_mark == local_writer else "LOCAL_IS_NEWER",
-                "docID": fact.doc_id,
-                "memoryID": memory_id,
-            }
+            return self._converge_stale_duplicate(
+                fact,
+                memory_id,
+                {
+                    "event": "UNCHANGED",
+                    "code": "ALREADY_APPLIED" if remote_mark == local_writer else "LOCAL_IS_NEWER",
+                    "docID": fact.doc_id,
+                    "memoryID": memory_id,
+                },
+            )
         if bool(row["immutable"]):
             return {
                 "event": "UNCHANGED",
@@ -873,6 +994,50 @@ class _BlindSync:
                 "docID": fact.doc_id,
                 "memoryID": memory_id,
             }
+
+        current_body_hash = str(row["body_hash"])
+        # `previousBodyHash` is *advice*, never an admission gate: a row is never
+        # refused for lacking it, and a gap only ever delays a decision that LWW
+        # will make anyway. §5 / A1(iii).
+        if fact.previous_body_hash is not None:
+            if fact.previous_body_hash == current_body_hash:
+                # The sender edited exactly the body this device holds. Fast-forward,
+                # and any earlier gap on this row is answered.
+                self._clear_lineage_hold(memory_id, fact.memory_id)
+            else:
+                # The sender edited a body this device never saw. Park the row until
+                # the missing revision arrives — but only for as long as the timeout,
+                # so a peer that will never send it cannot stall this replica.
+                hold = self._get_lineage_hold(memory_id)
+                current_epoch = time.time() if now_epoch is None else now_epoch
+                held_time = (current_epoch - float(hold["firstSeenEpoch"])) if hold else 0.0
+                if hold is not None and held_time >= gap_timeout:
+                    self._record_unresolved_gap(fact, memory_id, fact.previous_body_hash, actual_hash=current_body_hash)
+                    self._clear_lineage_hold(memory_id, fact.memory_id)
+                elif self._record_lineage_hold(
+                    fact, memory_id, fact.previous_body_hash, current_body_hash, now_epoch=now_epoch
+                ):
+                    return {
+                        "event": "HOLD",
+                        "code": "LINEAGE_GAP",
+                        "reason": (
+                            f"previousBodyHash {fact.previous_body_hash[:8]} does not match local {current_body_hash[:8]}"
+                            + (f" (held for {held_time:.1f}s)" if hold else "")
+                        ),
+                        "docID": fact.doc_id,
+                        "memoryID": memory_id,
+                        "ack": False,
+                    }
+                else:
+                    # The hold queue is full of older notes. Parking a document
+                    # with no note to measure would stall it for ever, so the
+                    # advice is dropped and LWW applies now — the answer the
+                    # timeout reaches anyway — with the gap reported.
+                    self._record_unresolved_gap(fact, memory_id, fact.previous_body_hash, actual_hash=current_body_hash)
+        else:
+            # No lineage advice at all: behave exactly as before the field existed.
+            self._clear_lineage_hold(memory_id, fact.memory_id)
+
         clash = self.conn.execute(
             "SELECT id FROM memories WHERE project_id = ? AND scope = ? AND body_hash = ? AND id != ?",
             (fact.project_id, fact.scope, fact.body_hash, memory_id),
@@ -894,6 +1059,53 @@ class _BlindSync:
             )
             return self._reinforce_remote(fact, holder)
         return self._write_remote_row(fact, memory_id, existing=row)
+
+    def _converge_stale_duplicate(self, fact: _RemoteFact, memory_id: str, decision: dict[str, Any]) -> dict[str, Any]:
+        """A revision that LOSES last-writer-wins still names an identity.
+
+        `UNIQUE(project_id, scope, body_hash)` means at most one row holds a
+        body, so when a *stale* revision of this row carries a body some OTHER
+        live row is holding, the two rows are one memory: this row has already
+        moved on past that body, and the row still holding it is the older
+        revision, materialised here only because this replica saw the duplicate
+        before it saw the edge that linked them.
+
+        Without this, arrival order decides how many memories a replica
+        believes in. A replica that receives `edit(B), add(A), add(B)` keeps A
+        alive for ever — the linking revision is stale, so it is dropped before
+        the convergence branch further down is ever reached — while a replica
+        that received them in any other order folds them into one. §8 says the
+        order documents arrive in may not change what a device ends up
+        believing, so the fold happens on the losing path too, and the decision
+        itself stays UNCHANGED: nothing of this revision was applied.
+        """
+        if fact.valid_to is not None or fact.superseded_by:
+            return decision
+        loser = self.conn.execute(
+            "SELECT id FROM memories WHERE project_id = ? AND scope = ? AND body_hash = ? "
+            "AND id != ? AND valid_to IS NULL",
+            (fact.project_id, fact.scope, fact.body_hash, memory_id),
+        ).fetchone()
+        if loser is None:
+            return decision
+        holder = self.conn.execute("SELECT 1 FROM memories WHERE id = ? AND valid_to IS NULL", (memory_id,)).fetchone()
+        if holder is None:
+            # This row is itself retired; folding a live row into a dead one
+            # would lose the memory rather than converge it.
+            return decision
+        loser_id = str(loser["id"])
+        self._record_memory_alias(loser_id, memory_id)
+        # `remote_at`: the retirement belongs to the remote revision that proved
+        # the two ids are one, exactly as the live-clash branch below does.
+        if self._retire(
+            loser_id,
+            reason="converged into the memory a later revision had already moved on",
+            replacement=memory_id,
+            remote_at=fact.updated_at,
+        ):
+            self._record_convergence_identity(fact.project_id, fact.scope, fact.body_hash, memory_id)
+            return {**decision, "convergedID": loser_id}
+        return decision
 
     def _write_remote_row(self, fact: _RemoteFact, memory_id: str, *, existing: Any) -> dict[str, Any]:
         """Insert or overwrite one row from a remote revision.
@@ -994,14 +1206,18 @@ class _BlindSync:
                 "INSERT INTO memory_relations (project_id, memory_id, subject, predicate, object, slot_key, confidence) VALUES (?,?,?,?,?,?,?)",
                 (fact.project_id, memory_id, subject, predicate, obj, _slot_key(subject, predicate), fact.confidence),
             )
-        self._history(
-            memory_id,
-            fact.project_id,
-            "merged_remote",
-            None,
-            fact.body,
-            {"remoteMemoryID": fact.memory_id, "updatedAt": fact.updated_at, "event": event},
-        )
+        history_meta: dict[str, Any] = {
+            "remoteMemoryID": fact.memory_id,
+            "updatedAt": fact.updated_at,
+            "event": event,
+        }
+        if fact.writer_device:
+            # B8's whole question — "which device wrote this revision" — is about
+            # revisions written somewhere ELSE, and this is the only path they
+            # arrive by. The field was parsed onto `_RemoteFact` and then dropped.
+            # A device id is not member content, so `meta_json` is where it goes.
+            history_meta["writerDevice"] = fact.writer_device
+        self._history(memory_id, fact.project_id, "merged_remote", None, fact.body, history_meta)
         if fact.injection:
             audit_event(
                 self.conn,

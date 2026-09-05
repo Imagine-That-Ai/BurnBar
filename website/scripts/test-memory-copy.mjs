@@ -101,7 +101,8 @@ const dataSrc = readFileSync(join(ROOT, "src", "data", "memory.ts"), "utf8");
 // literal "&lt;" in the page, but replacing `&amp;` first turns it into an
 // entity the next replace then decodes to "<" (CodeQL: double unescaping).
 const ENTITIES = { amp: "&", lt: "<", gt: ">", quot: '"', "#39": "'", "#8203": "" };
-const decodeEntities = (s) => s.replace(/&(amp|lt|gt|quot|#39|#8203);/g, (_, name) => ENTITIES[name]);
+const decodeEntities = (s) =>
+  s.replace(/&(amp|lt|gt|quot|#39|#8203);/g, (_, name) => ENTITIES[name]);
 const text = decodeEntities(html.replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ");
 
 /* `text` strips tags, so attribute content — the meta description, the OG
@@ -155,20 +156,21 @@ check(
 );
 for (const [kind, weight] of realWeights) {
   const onPage = pageKinds.get(kind);
-  check(onPage !== undefined, `kind "${kind}" is in constants.py but missing from src/data/memory.ts`);
+  check(
+    onPage !== undefined,
+    `kind "${kind}" is in constants.py but missing from src/data/memory.ts`
+  );
   check(
     onPage === undefined || onPage === weight,
     `kind "${kind}" is weighted ${weight} in constants.py but ${onPage} on the page`
   );
-  check(
-    text.includes(kind),
-    `kind "${kind}" never reaches the rendered page`
-  );
+  check(text.includes(kind), `kind "${kind}" never reaches the rendered page`);
 }
 
 /* ── 3 · retrieval constants ────────────────────────────────────────────── */
 
-const pyNumber = (name) => Number(constantsSrc.match(new RegExp(`^${name}\\s*=\\s*([0-9.]+)`, "m"))?.[1]);
+const pyNumber = (name) =>
+  Number(constantsSrc.match(new RegExp(`^${name}\\s*=\\s*([0-9.]+)`, "m"))?.[1]);
 const tsNumber = (name) => Number(dataSrc.match(new RegExp(`${name}:\\s*([0-9.]+)`))?.[1]);
 
 for (const [tsKey, pyKey] of [
@@ -240,10 +242,7 @@ for (const m of measurements) {
     cardText.includes(m.figure),
     `measurement "${m.id}" renders a card but its figure (${m.figure}) is not in it`
   );
-  check(
-    cardText.includes(m.label),
-    `measurement "${m.id}" renders a card but not its label`
-  );
+  check(cardText.includes(m.label), `measurement "${m.id}" renders a card but not its label`);
 }
 const unpinned = measurements.filter((m) => !m.pinned);
 check(unpinned.length > 0, "expected at least one honestly-unpinned measurement");
@@ -280,7 +279,6 @@ for (const pattern of OVERCLAIMS) {
   check(!pattern.test(text), `/memory appears to advertise unshipped device sync: ${pattern}`);
 }
 
-
 /* ── 8 · the atlas is complete, in both directions ───────────────────────
  *
  * The page's headline claim is coverage: "all 89 tools" — not "all 63
@@ -314,33 +312,122 @@ assert.ok(
 );
 
 /* The atlas block only — so a `name:` in an unrelated exported array cannot
- * be mistaken for a tool entry. */
+ * be mistaken for a tool entry.
+ *
+ * Parsed STRUCTURALLY, by matching the array's brackets and evaluating the
+ * literal, rather than with one regex per entry across a fixed line shape. A
+ * single-line regex reads the file's FORMATTING, not its data: `prettier`
+ * reflowing one `desc` onto single quotes (because that description itself
+ * contains a double quote) silently dropped `burnbar_recall` from the parse and
+ * the gate then reported it as missing from a page that lists it. The bracket
+ * scan skips strings and comments so a `[`, `]` or `//` inside a description
+ * cannot end the block early. */
+function sliceBalanced(src, from) {
+  /* After the `=`, so the `[]` of the `AtlasTool[]` type annotation is not
+   * mistaken for the array itself. */
+  const assign = src.indexOf("=", from);
+  assert.ok(assign > -1, "TOOL_ATLAS has no initialiser");
+  const open = src.indexOf("[", assign);
+  assert.ok(open > -1, "TOOL_ATLAS is not an array literal");
+  let depth = 0;
+  let quote = null;
+  let comment = null; // "line" | "block"
+  for (let i = open; i < src.length; i += 1) {
+    const ch = src[i];
+    const next = src[i + 1];
+    if (comment === "line") {
+      if (ch === "\n") comment = null;
+      continue;
+    }
+    if (comment === "block") {
+      if (ch === "*" && next === "/") {
+        comment = null;
+        i += 1;
+      }
+      continue;
+    }
+    if (quote) {
+      if (ch === "\\") i += 1;
+      else if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === "/" && next === "/") {
+      comment = "line";
+      i += 1;
+      continue;
+    }
+    if (ch === "/" && next === "*") {
+      comment = "block";
+      i += 1;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === "`") {
+      quote = ch;
+      continue;
+    }
+    if (ch === "[" || ch === "{") depth += 1;
+    else if (ch === "]" || ch === "}") {
+      depth -= 1;
+      if (depth === 0) return src.slice(open, i + 1);
+    }
+  }
+  assert.fail("TOOL_ATLAS array literal is unterminated");
+}
+
 const atlasStart = dataSrc.indexOf("export const TOOL_ATLAS");
 assert.ok(atlasStart > -1, "could not find TOOL_ATLAS in src/data/memory.ts");
 const atlasSrc = dataSrc.slice(atlasStart);
+const atlasLiteral = sliceBalanced(dataSrc, atlasStart);
 
-const ATLAS_ENTRY =
-  /name:\s*"([a-z][a-z0-9_]*)",\s*group:\s*"([a-z]+)",\s*desc:\s*"((?:[^"\\]|\\.)*)",\s*caps:\s*\[([^\]]*)\],\s*(?:capsWhen:\s*\{([^}]*)\},\s*)?memory:\s*(true|false)/g;
-const atlasEntries = [...atlasSrc.matchAll(ATLAS_ENTRY)].map((m) => ({
-  name: m[1],
-  group: m[2],
-  desc: m[3],
-  caps: [...m[4].matchAll(/"([a-z_]+)"/g)].map((c) => c[1]).sort(),
-  capsWhen: new Map(
-    [...(m[5] ?? "").matchAll(/([a-z_]+)\s*:\s*"((?:[^"\\]|\\.)*)"/g)].map((w) => [w[1], w[2]])
-  ),
-  memory: m[6] === "true"
-}));
+let atlasRaw;
+try {
+  // The literal is plain data — strings, arrays, booleans and one nested
+  // object — so evaluating it is reading it. A TypeScript annotation or any
+  // other non-data syntax inside an entry throws here, loudly, instead of
+  // being skipped the way an unmatched regex was.
+  atlasRaw = new Function(`"use strict"; return ${atlasLiteral};`)();
+} catch (err) {
+  assert.fail(`TOOL_ATLAS is not a plain data literal the gate can read: ${err.message}`);
+}
+assert.ok(
+  Array.isArray(atlasRaw) && atlasRaw.length > 60,
+  "TOOL_ATLAS did not parse as an array of entries"
+);
+
+const atlasEntries = atlasRaw.map((entry, index) => {
+  assert.ok(
+    entry && typeof entry.name === "string" && typeof entry.group === "string",
+    `TOOL_ATLAS entry ${index} has no name/group — the atlas shape changed`
+  );
+  assert.ok(
+    typeof entry.desc === "string" &&
+      Array.isArray(entry.caps) &&
+      typeof entry.memory === "boolean",
+    `${entry.name} is missing desc / caps / memory — the atlas shape changed`
+  );
+  return {
+    name: entry.name,
+    group: entry.group,
+    desc: entry.desc,
+    caps: [...entry.caps].sort(),
+    capsWhen: new Map(Object.entries(entry.capsWhen ?? {})),
+    memory: entry.memory
+  };
+});
 const atlasNames = atlasEntries.map((e) => e.name);
 const atlasSet = new Set(atlasNames);
 check(
   atlasSet.size === atlasNames.length,
   `TOOL_ATLAS lists a tool twice (${atlasNames.length} entries, ${atlasSet.size} unique)`
 );
+/* The parse still has to reach every entry the file writes. `name:` is always
+ * a bare identifier-shaped string, so prettier keeps it on its own line and
+ * cannot reflow this count out from under the check. */
+const writtenEntryCount = (atlasSrc.match(/^ {4}name: "/gm) ?? []).length;
 check(
-  atlasEntries.length === (atlasSrc.match(/\n    name: "/g) ?? []).length,
+  atlasEntries.length === writtenEntryCount,
   `the atlas parser matched ${atlasEntries.length} entries but the file has ` +
-    `${(atlasSrc.match(/\n    name: "/g) ?? []).length} — an entry's shape changed, so this gate is no longer reading all of them`
+    `${writtenEntryCount} — an entry's shape changed, so this gate is no longer reading all of them`
 );
 
 for (const name of registeredSet) {
@@ -461,7 +548,9 @@ for (const entry of atlasEntries) {
 
 /* ── 11 · the memory-toolset marks match MEMORY_TOOLSET ──────────────── */
 
-const toolsetSet = new Set([...toolsetBlock[1].matchAll(/"(burnbar_[a-z0-9_]+)"/g)].map((m) => m[1]));
+const toolsetSet = new Set(
+  [...toolsetBlock[1].matchAll(/"(burnbar_[a-z0-9_]+)"/g)].map((m) => m[1])
+);
 for (const entry of atlasEntries) {
   check(
     entry.memory === toolsetSet.has(entry.name),
@@ -573,7 +662,9 @@ assert.ok(
   realShapes.length > 15 && new Set(realShapes).size === realShapes.length,
   `parsed ${realShapes.length} secret shapes from eval_memory.py — the parser is wrong, not the page`
 );
-const declaredShapes = Number(dataSrc.match(/GATE_SHAPES\s*=\s*\{\s*\n\s*total:\s*(\d+)/)?.[1] ?? NaN);
+const declaredShapes = Number(
+  dataSrc.match(/GATE_SHAPES\s*=\s*\{\s*\n\s*total:\s*(\d+)/)?.[1] ?? NaN
+);
 check(
   declaredShapes === realShapes.length,
   `GATE_SHAPES.total is ${declaredShapes} but eval_memory.py's SECRET_SHAPES holds ` +

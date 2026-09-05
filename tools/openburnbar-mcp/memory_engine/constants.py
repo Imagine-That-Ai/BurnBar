@@ -81,12 +81,33 @@ REMOTE_PAYLOAD_SCHEMA_MAX = 2
 # (discriminated by `entryKind`). Its own schema, its own ceiling.
 REMOTE_RECEIPT_ENTRY_KIND = "memory_forget_receipt"
 REMOTE_RECEIPT_SCHEMA_MAX = 1
+# Advisory lineage gap timeout and hold-back queue cap (§5 / P5).
+DEFAULT_LINEAGE_GAP_TIMEOUT_SECONDS = 3600.0
+LINEAGE_HOLD_QUEUE_MAX_SIZE = 100
+DEFAULT_ORPHAN_GRACE_PERIOD_SECONDS = 86400.0 * 7
+DEFAULT_PARKED_SUPERSEDE_RETENTION_DAYS = 30
 # `memories.source_kind` for a row that arrived through the blind-sync merge.
 REMOTE_SOURCE_KIND = "cloud_sync"
 # The shape a local `remember` mints (`"mem_" + secrets.token_hex(16)`). A remote
 # `payload.memoryID` becomes the local primary key, so it is held to exactly that
 # shape: anything else is refused for good rather than stored.
 REMOTE_MEMORY_ID_RE = re.compile(r"^mem_[0-9a-f]{32}$")
+# `payload.writerDevice` — the only attribution field a remote payload carries.
+# It is an opaque token naming a device, never prose, so it is held to a bounded
+# character class: a value outside this shape is dropped from the merged
+# revision rather than stored. It has to be, because the field lands in
+# `memory_history.meta_json`, which is PLAINTEXT, and is reported to the calling
+# model by the ungated timeline — so an unbounded one is a prompt-injection and
+# a disclosure channel in the same string.
+REMOTE_WRITER_DEVICE_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,128}$")
+# `payload.previousBodyHash` — lineage ADVICE about a body this device may not
+# hold. It is copied verbatim into the lineage hold's note, and `engine_meta` is
+# PLAINTEXT: ids, hashes and timestamps only. A canonical SHA-256 digest is the
+# only thing that can be lineage advice, so prose or a very large value from a
+# corrupt or hostile peer is dropped (never stored, never echoed) rather than
+# handed one oversized slot per hold. Matched case-insensitively and stored
+# lowercased, because that is the form `canonical_body_hash` compares against.
+REMOTE_PREVIOUS_BODY_HASH_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 SENSITIVITIES = ("none", "pii", "redacted", "secret")
 MEMORY_SCOPES = ("project", "personal")
 

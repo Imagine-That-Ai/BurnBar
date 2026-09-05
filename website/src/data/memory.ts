@@ -27,7 +27,7 @@ export const MEMORY_STORE_PATH =
 
 /** MEMORY_TOOLSET in tools/openburnbar-mcp/server.py — the tools a client
  *  gets with BURNBAR_MCP_TOOLSET=memory. Counted, not guessed. */
-export const MEMORY_TOOL_COUNT = 32;
+export const MEMORY_TOOL_COUNT = 37;
 
 /* The whole server, for the sections that speak about it rather than about
    the memory toolset. Parsed out of server.py by the copy gate, so they
@@ -36,7 +36,7 @@ export const MEMORY_TOOL_COUNT = 32;
 
 /** Every `burnbar_*` tool the server registers — memory, code intelligence,
  *  sessions, spend and the rest of the product surface. */
-export const BURNBAR_TOOL_COUNT = 63;
+export const BURNBAR_TOOL_COUNT = 68;
 
 /** `ministry_*` + `castle_*` + `bench_*`: agent fan-out and benchmarking
  *  tooling. Real, registered, and listed in the atlas under their own three
@@ -1002,9 +1002,17 @@ export const TOOL_ATLAS: AtlasTool[] = [
     memory: true
   },
   {
+    name: "burnbar_memory_extract",
+    group: "memory",
+    desc: "The same extraction as burnbar_memorize, run by a Pro model on your own quota and keys instead of the local heuristic. Refuses rather than quietly falling back, and stamps every row with what extracted it.",
+    caps: ["memory_llm_extract", "memory_write", "spawn_process"],
+    capsWhen: { spawn_process: "when the model policy can route to a local CLI" },
+    memory: true
+  },
+  {
     name: "burnbar_recall",
     group: "memory",
-    desc: "Hybrid BM25 and vector recall, fused and reranked by salience, with kind, tag, entity, metadata and date filters. Every body comes back wrapped as untrusted data.",
+    desc: 'Hybrid BM25 and vector recall, fused and reranked by salience, with kind, tag, entity, metadata and date filters. Every body comes back wrapped as untrusted data. A recall that returns results appends one label-only audit row naming the ids it served, which is what the timeline reads for "last helped".',
     caps: ["sensitive_read"],
     capsWhen: { sensitive_read: "with include_secrets" },
     memory: true
@@ -1014,6 +1022,13 @@ export const TOOL_ATLAS: AtlasTool[] = [
     group: "memory",
     desc: "A token-budgeted, prompt-ready block of the most relevant memories — one line each, pack sentinels neutralised, only what fits gets reinforced.",
     caps: [],
+    memory: true
+  },
+  {
+    name: "burnbar_session_briefing",
+    group: "memory",
+    desc: "An opt-in, token-budgeted briefing for the repo and branch you are starting in. Off unless you turn it on, and it drops whole facts rather than truncating one.",
+    caps: ["sensitive_read"],
     memory: true
   },
   {
@@ -1048,7 +1063,14 @@ export const TOOL_ATLAS: AtlasTool[] = [
   {
     name: "burnbar_memory_history",
     group: "memory",
-    desc: "Every change to one memory, with before and after bodies wrapped as untrusted retrieved data.",
+    desc: "Every change to one memory, with before and after bodies wrapped as untrusted retrieved data. A quarantined or rejected memory reports its changes with the bodies withheld, exactly as the timeline withholds them.",
+    caps: [],
+    memory: true
+  },
+  {
+    name: "burnbar_memory_timeline",
+    group: "memory",
+    desc: "One memory's revisions in order, with the device that wrote each one and when the memory last helped a recall. Project-scoped: a foreign id is refused, body and all.",
     caps: [],
     memory: true
   },
@@ -1127,8 +1149,24 @@ export const TOOL_ATLAS: AtlasTool[] = [
   {
     name: "burnbar_memory_doctor",
     group: "lifecycle",
-    desc: "Health of the store, encryption, embeddings, policy, audit chain, daemon mirror and code index — including a resumable sweep for secrets sitting in auxiliary fields.",
-    caps: [],
+    desc: "Health of the store, encryption, embeddings, policy, audit chain, daemon mirror and code index — including a resumable sweep for secrets sitting in auxiliary fields. Report-only unless you pass apply, which prunes aged orphan bodies and aged parked supersedes and nothing else.",
+    caps: ["memory_write"],
+    capsWhen: { memory_write: "with apply" },
+    memory: true
+  },
+
+  {
+    name: "burnbar_memory_sync_pull",
+    group: "lifecycle",
+    desc: "Drain the daemon's inbox of memories your other devices sealed, merge them under last-writer-wins, and acknowledge what landed. Rows whose references have not arrived stay parked for the next pull.",
+    caps: ["memory_write"],
+    memory: true
+  },
+  {
+    name: "burnbar_project_adopt",
+    group: "lifecycle",
+    desc: "Join this folder to an existing project id. A .burnbar/project-id file only proposes one — nothing is applied until you confirm, so cloning a repository can never re-scope its memories. The refusal shows both sides: the memories adopting would join, and the ones this folder keeps under its current id and stops seeing.",
+    caps: ["memory_write"],
     memory: true
   },
 
@@ -1707,7 +1745,7 @@ export const TIME_FACTS = [
   },
   {
     label: "Queryable history",
-    body: "burnbar_memory_history returns every change to one memory with the before and after bodies, both wrapped as untrusted data, plus who decided — decidedBy is rules or judge:<provider>/<model> — and a short rationale."
+    body: "burnbar_memory_history returns every change to one memory with the before and after bodies, both wrapped as untrusted data, plus who decided — decidedBy is rules or judge:<provider>/<model> — and a short rationale. A quarantined or rejected memory reports bodiesRedacted and withholds the bodies themselves, on the same terms as burnbar_memory_timeline: neither revision surface is a way around the other."
   },
   {
     label: "Recency, weighted",
