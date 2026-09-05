@@ -19,6 +19,7 @@ struct SettingsView: View {
     @State private var hermesRuntimeLauncher = HermesRuntimeLauncher()
     @State private var piAgentRuntimeAdapter = PiAgentRuntimeAdapter()
     @State private var isShowingDataControlCenter = false
+    @State private var isShowingReceiptDrawer = false
     @State private var actionRegistry: SettingsActionRegistry?
     @State private var copilotController: SettingsCopilotController?
     @State private var cliBridge = CLIBridge()
@@ -122,6 +123,9 @@ struct SettingsView: View {
         .sheet(isPresented: $isShowingDataControlCenter) {
             DataControlCenterView(accountManager: accountManager)
                 .frame(minWidth: 980, minHeight: 680)
+        }
+        .sheet(isPresented: $isShowingReceiptDrawer) {
+            ReceiptDrawerView(dataStore: dataStore, onClose: { isShowingReceiptDrawer = false })
         }
         .onReceive(NotificationCenter.default.publisher(for: FeatureGateRouting.openCloudStoreNotification)) { _ in
             // A feature-gate unlock CTA fired while Settings is already open —
@@ -420,6 +424,13 @@ struct SettingsView: View {
                 runtimeContext: runtimeContext
             )
                 .navigationTitle("General")
+        case .receipts:
+            ReceiptSettingsView(
+                settingsManager: settingsManager,
+                onOpenDrawer: {
+                    isShowingReceiptDrawer = true
+                }
+            )
         case .aiInbox:
             AIInboxSettingsRootView()
                 .navigationTitle("AI Inbox")
