@@ -585,3 +585,42 @@ def test_a_quarantined_memory_does_not_hand_its_body_to_the_history_either(tmp_p
     assert "PINEAPPLE" not in json.dumps(history, default=str)
     assert "deploy key" not in json.dumps(history, default=str)
     engine.close()
+
+
+def test_a_limited_timeline_returns_the_newest_revisions(tmp_path: Path) -> None:
+    """A truncated timeline keeps the LATEST state changes, not the oldest.
+
+    The ascending query kept the first `limit` rows, so once a memory had more
+    revisions than the limit the newest ones were silently omitted. The surface
+    exposes no offset or cursor and clamps the limit to 500, so recent revisions
+    eventually became permanently unreachable — while `lastHelpedAt` on the same
+    response is computed from the latest history row, which the caller could
+    therefore never see.
+    """
+    repo = _init_git(tmp_path / "repo")
+    engine = _engine(tmp_path)
+    created = engine.remember("Retention starts at 30 days.", project_path=repo)
+    mem_id = created["memoryID"]
+    proj_id, _ = engine.resolve_project(repo)
+
+    for step in range(1, 6):
+        engine._history(
+            mem_id,
+            proj_id,
+            "updated",
+            f"Retention starts at {step * 30} days.",
+            f"Retention starts at {(step + 1) * 30} days.",
+            {"reason": f"step {step}"},
+        )
+
+    full = engine.timeline(mem_id, project_path=repo)["revisions"]
+    assert len(full) == 6, full
+
+    limited = engine.timeline(mem_id, project_path=repo, limit=2)["revisions"]
+    assert len(limited) == 2
+    # Still chronological within the window ...
+    assert [r["seq"] for r in limited] == sorted(r["seq"] for r in limited)
+    # ... but it is the tail of the history, not the head.
+    assert [r["seq"] for r in limited] == [r["seq"] for r in full[-2:]], (limited, full)
+    assert limited[-1]["after"] == "Retention starts at 180 days."
+    engine.close()

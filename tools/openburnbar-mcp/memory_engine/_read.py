@@ -1359,10 +1359,13 @@ class _ReadPath:
                 last_helped = None
                 last_helped_source = None
 
+        # The NEWEST `limit` rows, reversed so the window stays chronological.
+        # Keeping the oldest dropped the latest state changes for good: this
+        # surface has no cursor and clamps `limit` to 500.
         history_rows = self.conn.execute(
-            "SELECT * FROM memory_history WHERE memory_id = ? ORDER BY seq ASC LIMIT ?",
+            "SELECT * FROM memory_history WHERE memory_id = ? ORDER BY seq DESC LIMIT ?",
             (target_id, max(1, min(int(limit), 500))),
-        ).fetchall()
+        ).fetchall()[::-1]
 
         # This tool carries no capability — project scope is its whole fence —
         # so it does not undo a gate decision. A row the secret or injection
