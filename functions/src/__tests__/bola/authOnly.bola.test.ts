@@ -36,6 +36,7 @@ export const AUTH_ONLY_CALLABLES = [
   "searchKnowledge",
   "listKnowledgeChunks",
   "submitBugReport",
+  "redeemPromoCode",
   "exportUserData",
   "deleteUserCloudData",
   "revokeAllAccess",

@@ -256,6 +256,7 @@ export {
 } from "./appstore/index.js";
 
 export { startCliLink, pollCliLink, completeCliLink } from "./callables/cliLink.js";
+export { redeemPromoCode } from "./callables/promoRedemption.js";
 export { getProfileAvatarDownloadUrl } from "./callables/profileAvatar.js";
 
 // Privacy-leak remediation: idempotent backfill that strips legacy plaintext

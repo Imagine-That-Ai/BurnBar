@@ -35,7 +35,8 @@ type PublicHttpEndpointName =
 type CallableApprovalRateLimitAction =
   | "cli_link_approve_fail"
   | "hermes_gateway_approve_fail"
-  | "mission_approval_fail";
+  | "mission_approval_fail"
+  | "promo_redeem_fail";
 
 type HermesGatewayBearerRateLimitAction =
   | "hermes_gateway_message_send"
@@ -84,6 +85,11 @@ const APPROVAL_LIMITS: Record<CallableApprovalRateLimitAction, { windowSeconds: 
   cli_link_approve_fail: { windowSeconds: 900, maxAttempts: 10 },
   hermes_gateway_approve_fail: { windowSeconds: 900, maxAttempts: 10 },
   mission_approval_fail: { windowSeconds: 900, maxAttempts: 10 },
+  // Campaign-code redemption: a wrong code is a guess at a shared secret that
+  // grants a paid tier, so failures lock out far tighter than the successful
+  // redemption limits below. 5 misses per 15 minutes leaves room for a typo
+  // and a paste mistake while making enumeration hopeless.
+  promo_redeem_fail: { windowSeconds: 900, maxAttempts: 5 },
 };
 
 const HERMES_GATEWAY_BEARER_LIMITS: Record<
@@ -109,7 +115,9 @@ type CallableRateLimitAction =
   | "agent_notification_reply_burst"
   | "agent_notification_reply_daily"
   | "mission_create_burst"
-  | "mission_create_hourly";
+  | "mission_create_hourly"
+  | "promo_redeem_burst"
+  | "promo_redeem_daily";
 
 const CALLABLE_RATE_LIMITS: Record<CallableRateLimitAction, { windowSeconds: number; maxAttempts: number }> = {
   // VoIP call trigger: each call fans out APNs + FCM pushes. 20 burst/min,
@@ -130,6 +138,11 @@ const CALLABLE_RATE_LIMITS: Record<CallableRateLimitAction, { windowSeconds: num
   // is the only remaining flood valve.
   mission_create_burst: { windowSeconds: 60, maxAttempts: 10 },
   mission_create_hourly: { windowSeconds: 3600, maxAttempts: 60 },
+  // Promo redemption: a legitimate claim succeeds on the first or second try,
+  // and the repeat path only re-asserts an existing grant. These bound total
+  // call volume (including successes, which the failure lockout never sees).
+  promo_redeem_burst: { windowSeconds: 60, maxAttempts: 5 },
+  promo_redeem_daily: { windowSeconds: 86_400, maxAttempts: 30 },
 };
 
 // Owner-funded hosted Intelligence Brief (OpenRouter). The Pro paywall gates
@@ -532,6 +545,15 @@ export async function checkAgentNotificationReplyRateLimit(uid: string): Promise
  */
 export async function checkMissionCreateRateLimit(uid: string): Promise<void> {
   await incrementCallableRateLimitsAtomically(uid, ["mission_create_burst", "mission_create_hourly"]);
+}
+
+/**
+ * Per-user rate limit for `redeemPromoCode`. Bounds total redemption traffic
+ * from one account; wrong-code attempts are additionally locked out via
+ * `promo_redeem_fail`. Throws `resource-exhausted` when either bound is hit.
+ */
+export async function checkPromoRedeemRateLimit(uid: string): Promise<void> {
+  await incrementCallableRateLimitsAtomically(uid, ["promo_redeem_burst", "promo_redeem_daily"]);
 }
 
 export async function checkHermesGatewayBearerRateLimit(
