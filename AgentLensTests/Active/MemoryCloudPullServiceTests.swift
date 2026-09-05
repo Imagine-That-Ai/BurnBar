@@ -359,11 +359,19 @@ final class MemoryCloudPullServiceTests: XCTestCase {
         }
 
         let result = try await fixture.pull.pullRemoteFacts(uid: fixture.uid, vaultKey: fixture.vaultKey)
-        XCTAssertEqual(result, MemoryCloudPullResult(applied: 0, unchanged: 0, rejected: 1))
+        XCTAssertEqual(
+            result,
+            MemoryCloudPullResult(applied: 0, unchanged: 0, rejected: 1, rejectedPermanent: 1)
+        )
         let parked = try await inboxRows(fixture)
-        XCTAssertTrue(parked.isEmpty)
+        XCTAssertTrue(parked.isEmpty, "nothing from a refused document is ever stored")
+        // A key set the rules forbid can only become admissible by a rewrite, and
+        // a rewrite is a new revision — so this refusal is PERMANENT and the
+        // cursor moves past it rather than pinning every later page behind it for
+        // ever. Safe only because the instant came from the sealed payload: the
+        // envelope opened and its `updatedAt` matched the outer one.
         let cursor = try await watermark(fixture)
-        XCTAssertNil(cursor)
+        XCTAssertEqual(try XCTUnwrap(cursor), Self.base)
     }
 
     /// The document id is `pensieveSlugHmac("memory-fact:<engine id>")`. A
@@ -439,11 +447,17 @@ final class MemoryCloudPullServiceTests: XCTestCase {
         fixture.gateway.setDocumentData(data, at: "\(fixture.factsPath)/\(slotDocID)")
 
         let result = try await fixture.pull.pullRemoteFacts(uid: fixture.uid, vaultKey: fixture.vaultKey)
-        XCTAssertEqual(result, MemoryCloudPullResult(applied: 0, unchanged: 0, rejected: 1))
+        XCTAssertEqual(
+            result,
+            MemoryCloudPullResult(applied: 0, unchanged: 0, rejected: 1, rejectedPermanent: 1)
+        )
         let parked = try await inboxRows(fixture)
         XCTAssertTrue(parked.isEmpty)
+        // Both halves of the disagreement are authenticated — the doc id through
+        // the AAD, the sealed id through the AEAD — so this pair can never agree
+        // and the refusal is permanent. The cursor moves past it.
         let cursor = try await watermark(fixture)
-        XCTAssertNil(cursor)
+        XCTAssertEqual(try XCTUnwrap(cursor), Self.base)
     }
 
     // MARK: - Idempotence and the watermark
@@ -476,9 +490,13 @@ final class MemoryCloudPullServiceTests: XCTestCase {
         let afterSecond = try await inboxRows(fixture)
         XCTAssertEqual(afterSecond, afterFirst, "re-applying a batch must not touch a single row")
 
-        // And with the durable watermark driving, the second cycle reads nothing.
+        // And with the durable watermark driving, the next cycle re-reads exactly
+        // the skew window below the cursor (`clockSkewRescanWindow`) and applies
+        // nothing: every document comes back `unchanged`, which is what makes the
+        // re-scan free. These two documents are seconds apart, so both fall
+        // inside the window.
         let third = try await fixture.pull.pullRemoteFacts(uid: fixture.uid, vaultKey: fixture.vaultKey)
-        XCTAssertEqual(third, MemoryCloudPullResult(applied: 0, unchanged: 0, rejected: 0))
+        XCTAssertEqual(third, MemoryCloudPullResult(applied: 0, unchanged: 2, rejected: 0))
     }
 
     /// A strictly newer revision replaces the parked row and clears `applied_at`
@@ -522,6 +540,10 @@ final class MemoryCloudPullServiceTests: XCTestCase {
         let third = Self.base.addingTimeInterval(120)
 
         try publishFact(fixture, engineID: "mem_dddd000000000000000000000000dddd", body: "good one", updatedAt: first)
+        // A TRANSIENT refusal: the envelope does not open, which is the state a
+        // rotation in flight or a wrapper this device has not fetched produces.
+        // The cursor must stop in front of it, because a later cycle may well
+        // open it.
         try publishFact(
             fixture,
             engineID: "mem_eeee000000000000000000000000eeee",
@@ -529,7 +551,7 @@ final class MemoryCloudPullServiceTests: XCTestCase {
             updatedAt: second
         ) { data in
             var mutated = data
-            mutated["text"] = "smuggled plaintext"
+            mutated["sealedMemory"] = ["v": 1, "ct": "not a real envelope"]
             return mutated
         }
         try publishFact(fixture, engineID: "mem_ffff000000000000000000000000ffff", body: "good two", updatedAt: third)
@@ -544,10 +566,10 @@ final class MemoryCloudPullServiceTests: XCTestCase {
             "the cursor stops before the refused document, not after the last applied one"
         )
 
-        // Next cycle re-reads the refused document (and its successor, which is
-        // an idempotent no-op) instead of skipping it for ever.
+        // Next cycle re-reads the refused document (and its neighbours, which are
+        // idempotent no-ops) instead of skipping it for ever.
         let retry = try await fixture.pull.pullRemoteFacts(uid: fixture.uid, vaultKey: fixture.vaultKey)
-        XCTAssertEqual(retry, MemoryCloudPullResult(applied: 0, unchanged: 1, rejected: 1))
+        XCTAssertEqual(retry, MemoryCloudPullResult(applied: 0, unchanged: 2, rejected: 1))
     }
 
     /// `updatedAt` is not unique, and a REFUSED document can share its instant
@@ -568,6 +590,9 @@ final class MemoryCloudPullServiceTests: XCTestCase {
             body: "accepted twin",
             updatedAt: shared
         )
+        // Transient again — a permanent refusal is allowed to move the cursor, so
+        // the property under test here (an accepted twin must not lift the cursor
+        // onto a refused twin's instant) needs one that freezes.
         try publishFact(
             fixture,
             engineID: refusedEngineID,
@@ -575,7 +600,7 @@ final class MemoryCloudPullServiceTests: XCTestCase {
             updatedAt: shared
         ) { data in
             var mutated = data
-            mutated["text"] = "smuggled plaintext"
+            mutated["sealedMemory"] = ["v": 1, "ct": "not a real envelope"]
             return mutated
         }
 
@@ -595,7 +620,7 @@ final class MemoryCloudPullServiceTests: XCTestCase {
         try publishFact(fixture, engineID: refusedEngineID, body: "refused twin", updatedAt: shared)
 
         let retry = try await fixture.pull.pullRemoteFacts(uid: fixture.uid, vaultKey: fixture.vaultKey)
-        XCTAssertEqual(retry, MemoryCloudPullResult(applied: 1, unchanged: 1, rejected: 0))
+        XCTAssertEqual(retry, MemoryCloudPullResult(applied: 1, unchanged: 2, rejected: 0))
         let parked = try await inboxRows(fixture)
         XCTAssertEqual(parked.count, 3, "no document is lost to a tie with a refusal")
         let curedCursor = try await watermark(fixture)
@@ -674,10 +699,13 @@ final class MemoryCloudPullServiceTests: XCTestCase {
     }
 
     /// `updatedAt` is not unique — a batch of memories extracted from one message
-    /// shares an instant — so a full page can cut such a group in half. The cursor
-    /// must stop BEFORE that instant, or the strictly-greater-than filter would
-    /// skip the rest of the group for ever and lose a member's memory.
-    func test_aFullPageStopsTheCursorBeforeAnUpdatedAtItMayHaveCutInHalf() async throws {
+    /// shares an instant — so a full page can cut such a group in half. The old
+    /// cursor was the instant alone, so it could only either advance past the
+    /// half it never read (losing it for ever, because the filter is strictly
+    /// `>`) or sit on it (re-reading the same page for ever). Neither is
+    /// pagination. The cycle now pages on the composite `(updatedAt, documentID)`
+    /// cursor until the collection is exhausted, so the group is consumed whole.
+    func test_aTieGroupLargerThanAPageIsConsumedAcrossPagesInOneCycle() async throws {
         let fixture = try makeFixture(uid: "pull-ties", vaultKeyByte: 53)
         let paged = MemoryCloudPullService(
             store: fixture.store,
@@ -690,23 +718,189 @@ final class MemoryCloudPullServiceTests: XCTestCase {
         try publishFact(fixture, engineID: "mem_2b2b000000000000000000000000b2b2", body: "tied one", updatedAt: shared)
         try publishFact(fixture, engineID: "mem_3c3c000000000000000000000000c3c3", body: "tied two", updatedAt: shared)
 
-        // Page one is full and its last row shares an instant with a row that did
-        // not fit, so the cursor stops at the instant below it.
-        let page1 = try await paged.pullRemoteFacts(uid: fixture.uid, vaultKey: fixture.vaultKey)
-        XCTAssertEqual(page1, MemoryCloudPullResult(applied: 2, unchanged: 0, rejected: 0))
-        let cursorAfterPage1 = try await watermark(fixture)
-        XCTAssertEqual(try XCTUnwrap(cursorAfterPage1), first)
+        let cycle = try await paged.pullRemoteFacts(uid: fixture.uid, vaultKey: fixture.vaultKey)
 
-        // Page two re-reads the whole tie group; the row that was cut off lands.
-        let page2 = try await paged.pullRemoteFacts(uid: fixture.uid, vaultKey: fixture.vaultKey)
-        XCTAssertEqual(page2, MemoryCloudPullResult(applied: 1, unchanged: 1, rejected: 0))
+        XCTAssertEqual(cycle.applied, 3, "no document is lost at the page boundary")
+        XCTAssertEqual(cycle.pagesRead, 2, "the second page is read in the SAME cycle, not the next one")
         let parked = try await inboxRows(fixture)
-        XCTAssertEqual(parked.count, 3, "no document is lost at the page boundary")
+        XCTAssertEqual(parked.count, 3)
         let cursor = try await watermark(fixture)
-        XCTAssertEqual(try XCTUnwrap(cursor), shared)
+        XCTAssertEqual(
+            try XCTUnwrap(cursor),
+            shared,
+            "the whole tie group was consumed, so the cursor may sit on its instant"
+        )
+    }
 
-        let page3 = try await paged.pullRemoteFacts(uid: fixture.uid, vaultKey: fixture.vaultKey)
-        XCTAssertEqual(page3, MemoryCloudPullResult(applied: 0, unchanged: 0, rejected: 0))
+    /// The pathological shape the old cursor could not express at all: a tie
+    /// group that fills a whole page by itself, with more of it behind. Advancing
+    /// skipped the rest for ever; not advancing re-read the same page for ever.
+    func test_aTieGroupThatFillsAWholePageIsStillFullyConsumed() async throws {
+        let fixture = try makeFixture(uid: "pull-tie-whole-page", vaultKeyByte: 55)
+        let paged = MemoryCloudPullService(
+            store: fixture.store,
+            firestoreGateway: fixture.gateway,
+            pageLimit: 2
+        )
+        let shared = Self.base
+        for suffix in ["a1a1", "b2b2", "c3c3", "d4d4", "e5e5"] {
+            try publishFact(
+                fixture,
+                engineID: "mem_\(suffix)00000000000000000000000000",
+                body: "tied \(suffix)",
+                updatedAt: shared
+            )
+        }
+
+        let cycle = try await paged.pullRemoteFacts(uid: fixture.uid, vaultKey: fixture.vaultKey)
+
+        XCTAssertEqual(cycle.applied, 5, "every tied document lands, not just the first page of them")
+        XCTAssertEqual(cycle.pagesRead, 3)
+        let parked = try await inboxRows(fixture)
+        XCTAssertEqual(parked.count, 5)
+    }
+
+    /// A PERMANENT refusal in the first page used to freeze the cursor below
+    /// itself on every cycle for ever, so the same page was fetched again and
+    /// again and every later page stayed unreachable. It must not hold up the
+    /// documents behind it.
+    func test_aPermanentRefusalInThePreviousPageDoesNotBlockTheOnesBehindIt() async throws {
+        let fixture = try makeFixture(uid: "pull-terminal-page", vaultKeyByte: 65)
+        let paged = MemoryCloudPullService(
+            store: fixture.store,
+            firestoreGateway: fixture.gateway,
+            pageLimit: 2
+        )
+        let refused = Self.base
+        let good = Self.base.addingTimeInterval(60)
+        let later = Self.base.addingTimeInterval(120)
+        try publishFact(
+            fixture,
+            engineID: "mem_a5a5000000000000000000000000a5a5",
+            body: "forbidden key set",
+            updatedAt: refused
+        ) { data in
+            var mutated = data
+            mutated["text"] = "a plaintext field the rules forbid"
+            return mutated
+        }
+        try publishFact(fixture, engineID: "mem_b6b6000000000000000000000000b6b6", body: "good one", updatedAt: good)
+        try publishFact(fixture, engineID: "mem_c7c7000000000000000000000000c7c7", body: "good two", updatedAt: later)
+
+        let cycle = try await paged.pullRemoteFacts(uid: fixture.uid, vaultKey: fixture.vaultKey)
+
+        XCTAssertEqual(cycle.applied, 2)
+        XCTAssertEqual(cycle.rejected, 1)
+        XCTAssertEqual(cycle.rejectedPermanent, 1)
+        XCTAssertEqual(cycle.pagesRead, 2)
+        let cursor = try await watermark(fixture)
+        XCTAssertEqual(
+            try XCTUnwrap(cursor),
+            later,
+            "the cursor reached the end of the collection despite the refusal in page one"
+        )
+    }
+
+    /// The other half of that ruling: a TRANSIENT refusal still freezes, so a
+    /// document that might open on a later cycle is never skipped — but the pages
+    /// behind it are still read and parked within this cycle.
+    func test_aTransientRefusalStillFreezesTheCursorButNotThePages() async throws {
+        let fixture = try makeFixture(uid: "pull-transient-page", vaultKeyByte: 66)
+        let paged = MemoryCloudPullService(
+            store: fixture.store,
+            firestoreGateway: fixture.gateway,
+            pageLimit: 2
+        )
+        let refused = Self.base
+        let good = Self.base.addingTimeInterval(60)
+        let later = Self.base.addingTimeInterval(120)
+        try publishFact(
+            fixture,
+            engineID: "mem_d8d8000000000000000000000000d8d8",
+            body: "a key state this device is not in yet",
+            updatedAt: refused
+        ) { data in
+            var mutated = data
+            mutated["sealedMemory"] = ["v": 1, "ct": "not a real envelope"]
+            return mutated
+        }
+        try publishFact(fixture, engineID: "mem_e9e9000000000000000000000000e9e9", body: "good one", updatedAt: good)
+        try publishFact(fixture, engineID: "mem_fafa000000000000000000000000fafa", body: "good two", updatedAt: later)
+
+        let cycle = try await paged.pullRemoteFacts(uid: fixture.uid, vaultKey: fixture.vaultKey)
+
+        XCTAssertEqual(cycle.applied, 2, "the pages behind a frozen cursor are still parked")
+        XCTAssertEqual(cycle.rejected, 1)
+        XCTAssertEqual(cycle.rejectedPermanent, 0)
+        let cursor = try await watermark(fixture)
+        XCTAssertNil(cursor, "a refusal that might cure keeps the cursor in front of itself")
+    }
+
+    // MARK: - Device clock skew (Codex F, mitigation)
+
+    /// `updatedAt` is authored by whichever device wrote the document, so one
+    /// upload from a Mac whose clock runs fast drags this collection-wide cursor
+    /// past writes that have not happened yet. A correctly-timed device then
+    /// publishes a document BELOW the cursor, and a strictly-greater filter never
+    /// asks for it again — not even after every clock agrees. Each cycle
+    /// therefore re-scans a bounded window below the cursor.
+    func test_aDocumentPublishedBelowTheCursorInsideTheSkewWindowIsStillFetched() async throws {
+        let fixture = try makeFixture(uid: "pull-skew", vaultKeyByte: 67)
+        let clockForward = Self.base
+        try publishFact(
+            fixture,
+            engineID: "mem_5151000000000000000000000000a1a1",
+            body: "written by a Mac whose clock runs fast",
+            updatedAt: clockForward
+        )
+        let first = try await fixture.pull.pullRemoteFacts(uid: fixture.uid, vaultKey: fixture.vaultKey)
+        XCTAssertEqual(first.applied, 1)
+        let cursorAfterFirst = try await watermark(fixture)
+        XCTAssertEqual(try XCTUnwrap(cursorAfterFirst), clockForward)
+
+        // A correctly-timed device writes five minutes "before" the cursor.
+        try publishFact(
+            fixture,
+            engineID: "mem_5252000000000000000000000000b2b2",
+            body: "written afterwards by a Mac whose clock is right",
+            updatedAt: clockForward.addingTimeInterval(-300)
+        )
+
+        let second = try await fixture.pull.pullRemoteFacts(uid: fixture.uid, vaultKey: fixture.vaultKey)
+
+        XCTAssertEqual(second.applied, 1, "the document below the cursor is fetched, not lost")
+        let parked = try await inboxRows(fixture)
+        XCTAssertEqual(parked.count, 2)
+        XCTAssertLessThan(
+            MemoryCloudPullService.clockSkewRescanWindow,
+            3_600,
+            "the window is a bounded mitigation, not a licence to re-read the collection"
+        )
+    }
+
+    /// And the bound is real: a document further below the cursor than the window
+    /// is still lost, which is why the principled fix (a server-authored
+    /// ingestion timestamp) is recorded as follow-up rather than claimed here.
+    func test_aDocumentBelowTheSkewWindowIsStillMissedAndThatIsDocumented() async throws {
+        let fixture = try makeFixture(uid: "pull-skew-bound", vaultKeyByte: 68)
+        let clockForward = Self.base
+        try publishFact(
+            fixture,
+            engineID: "mem_5353000000000000000000000000c3c3",
+            body: "clock-forward",
+            updatedAt: clockForward
+        )
+        _ = try await fixture.pull.pullRemoteFacts(uid: fixture.uid, vaultKey: fixture.vaultKey)
+
+        try publishFact(
+            fixture,
+            engineID: "mem_5454000000000000000000000000d4d4",
+            body: "far below the window",
+            updatedAt: clockForward.addingTimeInterval(-(MemoryCloudPullService.clockSkewRescanWindow + 600))
+        )
+
+        let second = try await fixture.pull.pullRemoteFacts(uid: fixture.uid, vaultKey: fixture.vaultKey)
+        XCTAssertEqual(second.applied, 0, "documented limitation, pinned so the follow-up has a failing case to fix")
     }
 
     /// A page that is not full cut nothing, so the cursor may move all the way to
@@ -733,7 +927,7 @@ final class MemoryCloudPullServiceTests: XCTestCase {
             updatedAt: Self.base
         ) { data in
             var mutated = data
-            mutated["body"] = "plaintext body the rules forbid"
+            mutated["sealedMemory"] = ["v": 1, "ct": "not a real envelope"]
             return mutated
         }
 
