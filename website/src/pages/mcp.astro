@@ -1707,7 +1707,9 @@ $ /abs/path/.venv/bin/python /abs/path/server.py`}</code></pre>
   .dossier__grid {
     display: grid;
     gap: var(--s-4);
-    grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
+    /* min() so the 20rem track floor yields below a 320px viewport instead of
+       forcing a 320px tile into a 280px column and overflowing <main>. */
+    grid-template-columns: repeat(auto-fill, minmax(min(20rem, 100%), 1fr));
   }
 
   .tooltile {
