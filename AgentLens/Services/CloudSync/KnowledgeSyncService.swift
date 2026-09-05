@@ -568,7 +568,13 @@ struct MemoryCloudFactPayload: Codable {
 
     /// Optional lineage advice: the body_hash of the revision this update replaces.
     let previousBodyHash: String?
-    /// The device identifier of the writer for attribution / lineage tracking.
+    /// The writing device, for lineage attribution on the receiving side.
+    ///
+    /// This is the account's INSTALLATION-scoped device id (`AccountManager
+    /// .deviceId`, the same value every other CloudSync writer stamps) — never a
+    /// hardware UUID, serial or MAC address. A hardware identifier would link
+    /// the same Mac across two accounts through documents neither account can
+    /// read, which is exactly the correlation blind sync exists to prevent.
     let writerDevice: String?
 
     init(
@@ -623,7 +629,17 @@ final class MemoryCloudSyncService: Sendable {
     }
 
     @discardableResult
-    func syncApprovedMemories(uid: String, vaultKey: Data, now: Date = Date()) async throws -> MemoryCloudSyncResult {
+    /// - Parameter writerDevice: the id of the device sealing these payloads,
+    ///   for lineage attribution on the receiving side. It rides INSIDE the
+    ///   ciphertext and is never logged, never put on the outer document and
+    ///   never read back by the pull path. Nil when the caller has no device
+    ///   identity to name (the direct-invocation tests).
+    func syncApprovedMemories(
+        uid: String,
+        vaultKey: Data,
+        now: Date = Date(),
+        writerDevice: String? = nil
+    ) async throws -> MemoryCloudSyncResult {
         let candidates = try await store.cloudSyncCandidateChatMemories(userID: uid)
         let eligible = try await store.cloudSyncEligibleChatMemories(userID: uid)
         let userDocument = firestoreGateway.collection("users").document(uid)
@@ -659,7 +675,15 @@ final class MemoryCloudSyncService: Sendable {
                 tags: attributes?.tags,
                 bodyHash: attributes?.bodyHash,
                 projectID: attributes?.projectID,
-                engineScope: attributes?.engineScope
+                engineScope: attributes?.engineScope,
+                // `previousBodyHash` is deliberately absent from this call.
+                // The engine mirror this row came from records the CURRENT
+                // body hash (`memoryCloudFactAttributes`) and exposes no
+                // predecessor, so the Mac writer has nothing truthful to put
+                // here; sending the current hash would claim a lineage link
+                // that is not one. It stays nil until the engine exposes the
+                // predecessor hash — see the PR body's follow-up note.
+                writerDevice: writerDevice
             )
             // CONDITIONAL, not unconditional. Every cycle re-uploads the whole
             // eligible set, and `merge: true` with no comparison meant a device
