@@ -565,6 +565,49 @@ struct MemoryCloudFactPayload: Codable {
     /// The ENGINE's scope (`project` | `personal`, from `agent_memories.scope`),
     /// the other half of the convergence key. Nil for a chat memory.
     let engineScope: String?
+
+    /// Optional lineage advice: the body_hash of the revision this update replaces.
+    let previousBodyHash: String?
+    /// The device identifier of the writer for attribution / lineage tracking.
+    let writerDevice: String?
+
+    init(
+        schemaVersion: Int,
+        memoryID: MemoryID,
+        text: String,
+        kind: MemoryKind,
+        scope: MemoryScope,
+        confidence: Double,
+        citations: [MemoryCitation],
+        validFrom: Date,
+        updatedAt: Date,
+        validTo: Date? = nil,
+        supersededBy: MemoryID? = nil,
+        tags: [String]? = nil,
+        bodyHash: String? = nil,
+        projectID: String? = nil,
+        engineScope: String? = nil,
+        previousBodyHash: String? = nil,
+        writerDevice: String? = nil
+    ) {
+        self.schemaVersion = schemaVersion
+        self.memoryID = memoryID
+        self.text = text
+        self.kind = kind
+        self.scope = scope
+        self.confidence = confidence
+        self.citations = citations
+        self.validFrom = validFrom
+        self.updatedAt = updatedAt
+        self.validTo = validTo
+        self.supersededBy = supersededBy
+        self.tags = tags
+        self.bodyHash = bodyHash
+        self.projectID = projectID
+        self.engineScope = engineScope
+        self.previousBodyHash = previousBodyHash
+        self.writerDevice = writerDevice
+    }
 }
 
 final class MemoryCloudSyncService: Sendable {
@@ -722,6 +765,7 @@ final class MemoryCloudSyncService: Sendable {
     ///   memory resolves to one document on every device.
     /// - Parameters tags/bodyHash/projectID/engineScope: the mirrored row's
     ///   convergence metadata (§5). Absent for a chat memory, which has none of it.
+    /// - Parameters previousBodyHash/writerDevice: optional lineage metadata at v2.
     static func encodeMemoryFact(
         memory: Memory,
         body: String,
@@ -732,7 +776,9 @@ final class MemoryCloudSyncService: Sendable {
         tags: [String]? = nil,
         bodyHash: String? = nil,
         projectID: String? = nil,
-        engineScope: String? = nil
+        engineScope: String? = nil,
+        previousBodyHash: String? = nil,
+        writerDevice: String? = nil
     ) throws -> (docID: String, data: [String: Any]) {
         let identity = documentIdentity ?? memory.id
         let docID = try CloudVaultCrypto.pensieveSlugHmac("memory-fact:\(identity)", keyData: vaultKey)
@@ -753,7 +799,9 @@ final class MemoryCloudSyncService: Sendable {
             tags: tags?.isEmpty == true ? nil : tags,
             bodyHash: bodyHash?.isEmpty == true ? nil : bodyHash,
             projectID: projectID?.isEmpty == true ? nil : projectID,
-            engineScope: engineScope?.isEmpty == true ? nil : engineScope
+            engineScope: engineScope?.isEmpty == true ? nil : engineScope,
+            previousBodyHash: previousBodyHash?.isEmpty == true ? nil : previousBodyHash,
+            writerDevice: writerDevice?.isEmpty == true ? nil : writerDevice
         )
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
