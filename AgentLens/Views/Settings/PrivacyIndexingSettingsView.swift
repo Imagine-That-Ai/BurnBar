@@ -885,10 +885,12 @@ struct PrivacyIndexingSettingsView: View {
         guard let store = runtimeContext?.chatMemoryStore else { return }
         // Generation BEFORE scope — see `MemoryDeviceSyncInboxGuard.observeGeneration`.
         let observedGeneration = MemoryDeviceSyncInboxGuard.observeGeneration(store: store)
-        let scope = MemoryDeviceSyncScope(
-            uid: accountManager.currentUID,
-            consentGranted: settingsManager.memoryDeviceSyncEnabled
-        )
+        // The SAME computation `MemoryCloudSyncDomain.gateSnapshot()` uses, by
+        // construction. Built here from `memoryDeviceSyncEnabled` alone, this
+        // path published a fresh daemon consent marker for a member whose
+        // ACCOUNT-wide cloud sync was off — pending remote facts could then
+        // drain into the engine until the next refresh tick withdrew it.
+        let scope = MemoryDeviceSyncScope.current(account: accountManager, settings: settingsManager)
         Task {
             do {
                 try await MemoryDeviceSyncInboxGuard.enforce(

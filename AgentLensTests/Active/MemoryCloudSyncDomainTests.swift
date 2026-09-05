@@ -857,4 +857,65 @@ final class MemoryCloudSyncDomainTests: XCTestCase {
         XCTAssertEqual(report.outcome, MemoryCloudPullReport.skippedOutcome)
         XCTAssertNil(domain.lastSyncError)
     }
+
+    // MARK: - One consent computation (Codex L)
+
+    /// The Settings toggle and the sync tick must mean the same thing by
+    /// "consent". They did not: the toggle handler built its scope from the
+    /// MEMORY levers alone, so a member whose ACCOUNT-wide cloud sync was off
+    /// could flip the memory sub-toggle on and have the app publish a fresh
+    /// daemon consent marker — pending remote facts draining into the engine
+    /// until the next tick withdrew it. An account-level opt-out a sub-toggle
+    /// can override for a refresh interval is not an opt-out.
+    func test_accountWideCloudSyncOffClosesTheScopeEvenWithEveryMemoryLeverOn() async throws {
+        let uid = "e2-account-sync-off"
+        let (store, queue) = try await makeStoreWithApprovedMemory(uid: uid)
+        let settings = makeSettings(optIn: true, fleetEnabled: true, deviceSync: true, entitlementSatisfied: true)
+        let account = FakeAccountManager.makeSignedIn(uid: uid)
+        account.isCloudSyncEnabled = false
+
+        // Every MEMORY lever is open — this is exactly the state the toggle
+        // handler used to read as consent.
+        XCTAssertTrue(settings.memoryApprovedCloudBackupEnabled)
+        XCTAssertTrue(settings.memoryDeviceSyncEnabled)
+
+        let scope = MemoryDeviceSyncScope.current(account: account, settings: settings)
+        XCTAssertFalse(scope.consentGranted, "account-wide cloud sync off is a withdrawal of pull consent too")
+        XCTAssertFalse(scope.isOpen)
+
+        // And enforcing it does what a closed scope must: no marker for the
+        // daemon, and the member's OWN pending rows go — nothing may drain.
+        try await store.writeMemoryDeviceSyncMarker(userID: uid)
+        try await store.upsertRemoteMemoryFact(
+            docID: "doc-own-pending",
+            userID: uid,
+            engineMemoryID: "mem_own",
+            payloadJSON: "{}",
+            remoteUpdatedAt: Date(timeIntervalSince1970: 1_800_000_000)
+        )
+        let outcome = try await MemoryDeviceSyncInboxGuard.enforce(
+            scope: scope,
+            observedGeneration: MemoryDeviceSyncInboxGuard.observeGeneration(store: store),
+            store: store
+        )
+        XCTAssertFalse(outcome.markerPublished)
+        XCTAssertEqual(outcome.purgedConsentWithdrawn, 1)
+        let marker = try await store.fetchMemoryDeviceSyncMarkerUserID()
+        XCTAssertNil(marker, "the daemon must not be told a member consents when their account opted out")
+        let pending = try await queue.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM agent_memory_inbox WHERE applied_at IS NULL") ?? -1
+        }
+        XCTAssertEqual(pending, 0)
+    }
+
+    /// The positive half of the same helper: with the account levers open it
+    /// grants consent and names the signed-in member, so the fix cannot be
+    /// "always closed".
+    func test_theSharedScopeHelperGrantsConsentWhenEveryLeverIsOpen() async throws {
+        let settings = makeSettings(optIn: true, fleetEnabled: true, deviceSync: true, entitlementSatisfied: true)
+        let account = FakeAccountManager.makeSignedIn(uid: "e2-all-open")
+        let scope = MemoryDeviceSyncScope.current(account: account, settings: settings)
+        XCTAssertTrue(scope.isOpen)
+        XCTAssertEqual(scope.uid, "e2-all-open")
+    }
 }

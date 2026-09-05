@@ -152,16 +152,19 @@ final class MemoryCloudSyncDomain: CloudSyncDomain, Sendable {
         let deviceId: String
         let uid: String?
 
+        /// The scope this cycle enforces, computed by `MemoryDeviceSyncScope.current`
+        /// — the same function the Settings toggle handler calls, so the two
+        /// paths cannot disagree about what consent means (they did: the toggle
+        /// omitted the account levers).
+        let scope: MemoryDeviceSyncScope
+
         /// Everything that must be true for a remote memory to reach this
         /// device's engine: the four-lever device-sync gate AND the account
         /// levers every sync domain honours. This — not `deviceSyncEnabled`
         /// alone — is what the inbox guard publishes as consent, because a
         /// member who turned account sync off has not consented to a drain
         /// either, and the marker is what the daemon enforces against.
-        var pullConsentGranted: Bool {
-            isFirebaseAvailable && isSignedIn && isCloudSyncEnabled
-                && approvedCloudBackupEnabled && deviceSyncEnabled
-        }
+        var pullConsentGranted: Bool { scope.consentGranted }
     }
 
     @MainActor
@@ -178,7 +181,8 @@ final class MemoryCloudSyncDomain: CloudSyncDomain, Sendable {
             approvedCloudBackupEnabled: settingsManager.memoryApprovedCloudBackupEnabled,
             deviceSyncEnabled: settingsManager.memoryDeviceSyncEnabled,
             deviceId: accountManager.deviceId,
-            uid: accountManager.currentUID
+            uid: accountManager.currentUID,
+            scope: MemoryDeviceSyncScope.current(account: accountManager, settings: settingsManager)
         )
     }
 
@@ -245,7 +249,7 @@ final class MemoryCloudSyncDomain: CloudSyncDomain, Sendable {
         // can evaluate rather than an invariant it has to trust.
         do {
             try await MemoryDeviceSyncInboxGuard.enforce(
-                scope: MemoryDeviceSyncScope(uid: gate.uid, consentGranted: gate.pullConsentGranted),
+                scope: gate.scope,
                 observedGeneration: observedGeneration,
                 store: store,
                 now: now()

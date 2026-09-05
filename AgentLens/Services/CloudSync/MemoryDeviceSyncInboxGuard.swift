@@ -78,6 +78,47 @@ struct MemoryDeviceSyncScope: Equatable, Sendable {
     }
 }
 
+extension MemoryDeviceSyncScope {
+    /// The ONE computation of "may a remote memory reach this device's engine
+    /// right now", for every caller that has to answer it.
+    ///
+    /// There are two: `MemoryCloudSyncDomain.gateSnapshot()` (the refresh tick,
+    /// which is also what publishes the daemon's marker) and the Settings
+    /// toggle handler (which must apply the member's decision immediately
+    /// rather than up to a refresh interval later). They disagreed. The toggle
+    /// built its scope from `settingsManager.memoryDeviceSyncEnabled` alone —
+    /// the four MEMORY levers — while the gate ANDed the ACCOUNT levers on top,
+    /// so a member with account-wide cloud sync turned off could flip the memory
+    /// sub-toggle on and have this app publish a fresh consent marker to the
+    /// daemon, draining pending remote facts into the engine until the next tick
+    /// withdrew it again. An account-level opt-out that a sub-toggle can
+    /// override for ten minutes is not an opt-out.
+    ///
+    /// Both callers now go through here, so the predicate cannot drift again:
+    /// the account levers every sync domain honours (Firebase present, signed
+    /// in, account sync on), ANDed with the memory levers
+    /// (`SettingsManager.memoryApprovedCloudBackupEnabled` — the backup opt-in
+    /// under the Remote Config fleet ceiling — and `memoryDeviceSyncEnabled` —
+    /// the sub-toggle under the live Data Vault entitlement).
+    ///
+    /// Main-actor because every lever it reads is: this is one hop, and the
+    /// snapshot it returns is what crosses to the off-actor work.
+    @MainActor
+    static func current(
+        account: any AccountManaging,
+        settings: any SettingsManagerProtocol
+    ) -> MemoryDeviceSyncScope {
+        MemoryDeviceSyncScope(
+            uid: account.currentUID,
+            consentGranted: account.isFirebaseAvailable
+                && account.isSignedIn
+                && account.isCloudSyncEnabled
+                && settings.memoryApprovedCloudBackupEnabled
+                && settings.memoryDeviceSyncEnabled
+        )
+    }
+}
+
 /// What one enforcement pass did, so a caller can log an account switch or a
 /// consent revocation instead of having it happen silently.
 struct MemoryDeviceSyncGuardOutcome: Equatable, Sendable {
