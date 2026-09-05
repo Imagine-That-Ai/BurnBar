@@ -34,7 +34,8 @@ final class ControlPlaneStoreMemoryTimelineTests: XCTestCase {
         action: String,
         ts: String,
         actor: String = "app",
-        labels: [String] = []
+        labels: [String] = [],
+        domain: String = "memory"
     ) async throws {
         let labelsJSON = String(
             data: try JSONSerialization.data(withJSONObject: labels.sorted(), options: [.sortedKeys]),
@@ -45,9 +46,9 @@ final class ControlPlaneStoreMemoryTimelineTests: XCTestCase {
                 sql: """
                 INSERT INTO memory_audit
                     (seq, ts, actor, action, domain, project_id, subject_id, labels_json, prev_hash, hash)
-                VALUES (?, ?, ?, ?, 'memory', 'proj_fixture', ?, ?, NULL, ?)
+                VALUES (?, ?, ?, ?, ?, 'proj_fixture', ?, ?, NULL, ?)
                 """,
-                arguments: [seq, ts, actor, action, subjectID, labelsJSON, "hash-\(seq)"]
+                arguments: [seq, ts, actor, action, domain, subjectID, labelsJSON, "hash-\(seq)"]
             )
         }
     }
@@ -226,12 +227,178 @@ final class ControlPlaneStoreMemoryTimelineTests: XCTestCase {
             )
         }
 
-        let record = try await store.memoryTimeline(memoryID: "mem_synced")
+        let record = try await store.memoryTimeline(memoryID: "mem_synced", userID: "user-1")
         XCTAssertEqual(record.writerDevice, "studio-ultra")
 
         // A memory that never came down from another device names none.
         try await insertAuthorityRow(queue, id: "mem_local")
-        let local = try await store.memoryTimeline(memoryID: "mem_local")
+        let local = try await store.memoryTimeline(memoryID: "mem_local", userID: "user-1")
         XCTAssertNil(local.writerDevice)
+    }
+
+    // MARK: - Truncation
+
+    /// I2: a capped read used to return the OLDEST page and then call its last
+    /// row "last recorded". On a memory with more events than the cap, the header
+    /// rendered a stale timestamp as the latest one and nothing said the list was
+    /// cut. The cap now takes the tail, and the record says it is a tail.
+    func test_a_capped_read_keeps_the_latest_events_and_says_it_was_capped() async throws {
+        let (queue, store) = try makeStore()
+        try await insertAuthorityRow(queue, id: "mem_busy")
+        for seq in 1 ... 6 {
+            try await insertAuditEvent(
+                queue,
+                seq: seq,
+                subjectID: "mem_busy",
+                action: "memory.update",
+                ts: "2026-09-0\(seq)T00:00:00.000Z"
+            )
+        }
+
+        let capped = try await store.memoryTimeline(memoryID: "mem_busy", limit: 3)
+        XCTAssertEqual(capped.revisions.map(\.seq), [4, 5, 6], "a cap keeps the LATEST events, not the first page")
+        XCTAssertEqual(
+            capped.lastHelpedAt,
+            "2026-09-06T00:00:00.000Z",
+            "'last recorded' must be the last event, not the last row of an oldest-first page"
+        )
+        XCTAssertTrue(capped.truncated, "the member is told older events exist")
+
+        let whole = try await store.memoryTimeline(memoryID: "mem_busy", limit: 50)
+        XCTAssertEqual(whole.revisions.map(\.seq), [1, 2, 3, 4, 5, 6])
+        XCTAssertFalse(whole.truncated, "a complete history is not a truncated one")
+
+        // Exactly at the cap is still complete.
+        let exact = try await store.memoryTimeline(memoryID: "mem_busy", limit: 6)
+        XCTAssertEqual(exact.revisions.count, 6)
+        XCTAssertFalse(exact.truncated)
+    }
+
+    // MARK: - Domain scoping
+
+    /// I5: `memory_audit` is a multi-namespace ledger. The daemon writes
+    /// `domain = 'code'` rows into the same table with a completely different
+    /// `subject_id` namespace (artifact ids, and filesystem paths for
+    /// `code.index`). A memory's history must contain only memory events.
+    func test_a_code_domain_event_is_not_rendered_as_memory_history() async throws {
+        let (queue, store) = try makeStore()
+        try await insertAuthorityRow(queue, id: "mem_scoped")
+        try await insertAuditEvent(
+            queue,
+            seq: 1,
+            subjectID: "mem_scoped",
+            action: "memory.add",
+            ts: "2026-09-01T00:00:00.000Z"
+        )
+        try await insertAuditEvent(
+            queue,
+            seq: 2,
+            subjectID: "mem_scoped",
+            action: "code.remember",
+            ts: "2026-09-02T00:00:00.000Z",
+            domain: "code"
+        )
+
+        let record = try await store.memoryTimeline(memoryID: "mem_scoped")
+
+        XCTAssertEqual(record.revisions.map(\.event), ["memory.add"], "a foreign namespace never joins a memory's history")
+        XCTAssertEqual(record.revisions.first?.meta["domain"], "memory")
+        XCTAssertEqual(record.lastHelpedAt, "2026-09-01T00:00:00.000Z")
+    }
+
+    // MARK: - Cross-member scoping
+
+    /// M2: `agent_memory_inbox` is user-scoped and the join was not. On a Mac
+    /// where two accounts have signed in, another member's inbox row could name
+    /// the device. The read now says whose inbox it is reading, and reads none
+    /// when nobody is signed in.
+    func test_the_inbound_device_is_read_only_from_the_signed_in_members_inbox() async throws {
+        let (queue, store) = try makeStore()
+        try await insertAuthorityRow(queue, id: "mem_shared")
+        try await insertAuditEvent(
+            queue,
+            seq: 1,
+            subjectID: "mem_shared",
+            action: "memory.merge",
+            ts: "2026-09-01T00:00:00.000Z"
+        )
+        try await queue.write { db in
+            try db.execute(
+                sql: """
+                INSERT INTO agent_memory_bodies
+                    (memory_id, project_id, engine_memory_id, body, body_hash, created_at, updated_at)
+                VALUES ('mem_shared', 'proj_fixture', 'eng_shared', 'body', 'hash', ?, ?)
+                """,
+                arguments: ["2026-09-01T00:00:00.000Z", "2026-09-01T00:00:00.000Z"]
+            )
+            try db.execute(
+                sql: """
+                INSERT INTO agent_memory_inbox
+                    (doc_id, user_id, engine_memory_id, payload_json, remote_updated_at, received_at, applied_at)
+                VALUES ('doc-other', 'user-other', 'eng_shared', ?, ?, ?, NULL)
+                """,
+                arguments: [
+                    #"{"memoryID":"eng_shared","writerDevice":"someone-elses-mac"}"#,
+                    "2026-09-02T00:00:00.000Z",
+                    "2026-09-02T00:01:00.000Z"
+                ]
+            )
+        }
+
+        let mine = try await store.memoryTimeline(memoryID: "mem_shared", userID: "user-1")
+        XCTAssertNil(mine.writerDevice, "another member's inbox row is not my provenance")
+        XCTAssertEqual(mine.status, MemoryTimelineRecord.statusOK)
+
+        let anonymous = try await store.memoryTimeline(memoryID: "mem_shared", userID: nil)
+        XCTAssertNil(anonymous.writerDevice, "with nobody signed in there is no inbox to read")
+
+        let theirs = try await store.memoryTimeline(memoryID: "mem_shared", userID: "user-other")
+        XCTAssertEqual(theirs.writerDevice, "someone-elses-mac", "their own row is still theirs to see")
+    }
+
+    // MARK: - Payload bound
+
+    /// M3: `payload_json` was deserialized whole, unbounded. It is written by
+    /// the app's own verified pull lane, so this is a robustness bound rather
+    /// than an attack surface — and exceeding it degrades to "no device named",
+    /// never to a failed timeline.
+    func test_an_oversized_inbox_payload_is_skipped_rather_than_parsed() async throws {
+        let (queue, store) = try makeStore()
+        try await insertAuthorityRow(queue, id: "mem_fat")
+        try await insertAuditEvent(
+            queue,
+            seq: 1,
+            subjectID: "mem_fat",
+            action: "memory.merge",
+            ts: "2026-09-01T00:00:00.000Z"
+        )
+        let padding = String(repeating: "p", count: ControlPlaneStore.memoryTimelinePayloadByteLimit + 1)
+        try await queue.write { db in
+            try db.execute(
+                sql: """
+                INSERT INTO agent_memory_bodies
+                    (memory_id, project_id, engine_memory_id, body, body_hash, created_at, updated_at)
+                VALUES ('mem_fat', 'proj_fixture', 'eng_fat', 'body', 'hash', ?, ?)
+                """,
+                arguments: ["2026-09-01T00:00:00.000Z", "2026-09-01T00:00:00.000Z"]
+            )
+            try db.execute(
+                sql: """
+                INSERT INTO agent_memory_inbox
+                    (doc_id, user_id, engine_memory_id, payload_json, remote_updated_at, received_at, applied_at)
+                VALUES ('doc-fat', 'user-1', 'eng_fat', ?, ?, ?, NULL)
+                """,
+                arguments: [
+                    #"{"writerDevice":"studio-ultra","padding":"\#(padding)"}"#,
+                    "2026-09-02T00:00:00.000Z",
+                    "2026-09-02T00:01:00.000Z"
+                ]
+            )
+        }
+
+        let record = try await store.memoryTimeline(memoryID: "mem_fat", userID: "user-1")
+        XCTAssertEqual(record.status, MemoryTimelineRecord.statusOK, "an oversized payload never fails the timeline")
+        XCTAssertEqual(record.revisions.count, 1)
+        XCTAssertNil(record.writerDevice, "past the bound the payload is not parsed at all")
     }
 }

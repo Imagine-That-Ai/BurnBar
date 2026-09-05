@@ -92,6 +92,11 @@ struct MemoryTimelineRecord: Equatable, Sendable {
     /// ALWAYS false: this ledger does not retain revision contents, and the view
     /// says so rather than letting empty `before`/`after` read as "unchanged".
     let revisionBodiesRetained: Bool
+    /// True when the read hit its cap and older events exist that are NOT in
+    /// `revisions`. The window is a TAIL — the latest events — so `lastHelpedAt`
+    /// is genuinely the last one; without this flag the view would still present
+    /// a partial history as the whole history.
+    let truncated: Bool
 
     init(
         status: String,
@@ -105,7 +110,8 @@ struct MemoryTimelineRecord: Equatable, Sendable {
         supersededBy: String? = nil,
         writerDevice: String? = nil,
         source: String = MemoryTimelineSource.appAudit,
-        revisionBodiesRetained: Bool = false
+        revisionBodiesRetained: Bool = false,
+        truncated: Bool = false
     ) {
         self.status = status
         self.code = code
@@ -119,6 +125,7 @@ struct MemoryTimelineRecord: Equatable, Sendable {
         self.writerDevice = writerDevice
         self.source = source
         self.revisionBodiesRetained = revisionBodiesRetained
+        self.truncated = truncated
     }
 }
 
@@ -141,11 +148,28 @@ enum MemoryTimelineError: LocalizedError, Equatable {
 
 extension ControlPlaneStore {
 
+    /// The `memory_audit` namespace a MEMORY's history lives in. The ledger is
+    /// shared: the daemon writes `domain = "code"` rows into the same table.
+    static let memoryAuditDomain = "memory"
+
+    /// How many events one timeline read returns unless asked for fewer.
+    static let memoryTimelineDefaultLimit = 500
+
+    /// The hard cap on a timeline read, whatever the caller asks for.
+    static let memoryTimelineMaxLimit = 500
+
+    /// The largest `agent_memory_inbox.payload_json` this read will deserialize.
+    /// The rows are written by the app's own verified pull lane, so this is a
+    /// robustness bound rather than an attack surface — and exceeding it costs
+    /// only the arrival device, never the timeline.
+    static let memoryTimelinePayloadByteLimit = 256 * 1024
+
     /// Reads one memory's timeline out of the app's shared audit ledger.
     ///
     /// Sources, in the order they are read:
-    ///   * `memory_audit WHERE subject_id = ? ORDER BY seq ASC LIMIT ?` — the
-    ///     ordered events, hash-chained by the writer.
+    ///   * `memory_audit WHERE subject_id = ? AND domain = 'memory'`, newest
+    ///     first and then reversed — the ordered events, hash-chained by the
+    ///     writer, capped to the LATEST `limit` of them.
     ///   * `agent_memories` — the lineage (`valid_from`, `valid_to`,
     ///     `superseded_by`) and the proof the id is known at all.
     ///   * `agent_memory_inbox.payload_json`, joined through
@@ -156,21 +180,35 @@ extension ControlPlaneStore {
     /// `MemoryTimelineError.historyUnavailable` rather than an empty timeline.
     /// An id no table knows is `not_found`, which is not the same as an `ok`
     /// read with no events.
-    func memoryTimeline(memoryID: MemoryID, limit: Int = 500) async throws -> MemoryTimelineRecord {
-        let cappedLimit = max(1, min(limit, 500))
+    func memoryTimeline(
+        memoryID: MemoryID,
+        userID: String? = nil,
+        limit: Int = ControlPlaneStore.memoryTimelineDefaultLimit
+    ) async throws -> MemoryTimelineRecord {
+        let cappedLimit = max(1, min(limit, Self.memoryTimelineMaxLimit))
         do {
             return try await dbQueue.read { db -> MemoryTimelineRecord in
-                let auditRows = try Row.fetchAll(
+                // DESC + reverse, not ASC: a capped read must keep the LATEST
+                // events, or `revisions.last` is the last row of the OLDEST page
+                // and the header renders a stale timestamp as "last recorded".
+                // One extra row is fetched purely to detect the cap.
+                // `domain = 'memory'` is not decoration: `memory_audit` is a
+                // multi-namespace ledger and the daemon writes `domain = 'code'`
+                // rows into it with a different `subject_id` namespace
+                // (artifact ids, and filesystem paths for `code.index`).
+                let pagedRows = try Row.fetchAll(
                     db,
                     sql: """
                     SELECT seq, ts, actor, action, domain, project_id, labels_json
                     FROM memory_audit
-                    WHERE subject_id = ?
-                    ORDER BY seq ASC
+                    WHERE subject_id = ? AND domain = ?
+                    ORDER BY seq DESC
                     LIMIT ?
                     """,
-                    arguments: [memoryID, cappedLimit]
+                    arguments: [memoryID, Self.memoryAuditDomain, cappedLimit + 1]
                 )
+                let truncated = pagedRows.count > cappedLimit
+                let auditRows = Array(pagedRows.prefix(cappedLimit).reversed())
 
                 let lineage = try Row.fetchOne(
                     db,
@@ -190,19 +228,27 @@ extension ControlPlaneStore {
                     )
                 }
 
-                let inboundPayload = try String.fetchOne(
-                    db,
-                    sql: """
-                    SELECT inbox.payload_json
-                    FROM agent_memory_inbox AS inbox
-                    JOIN agent_memory_bodies AS bodies
-                        ON bodies.engine_memory_id = inbox.engine_memory_id
-                    WHERE bodies.memory_id = ?
-                    ORDER BY inbox.remote_updated_at DESC
-                    LIMIT 1
-                    """,
-                    arguments: [memoryID]
-                )
+                // `agent_memory_inbox` is user-scoped, so this join must be
+                // too: on a Mac where two accounts have signed in, an unscoped
+                // read could name a device out of another member's inbox row.
+                // With nobody signed in there is no inbox to read, and the
+                // memory simply names no arrival device.
+                var inboundPayload: String?
+                if let userID {
+                    inboundPayload = try String.fetchOne(
+                        db,
+                        sql: """
+                        SELECT inbox.payload_json
+                        FROM agent_memory_inbox AS inbox
+                        JOIN agent_memory_bodies AS bodies
+                            ON bodies.engine_memory_id = inbox.engine_memory_id
+                        WHERE bodies.memory_id = ? AND inbox.user_id = ?
+                        ORDER BY inbox.remote_updated_at DESC
+                        LIMIT 1
+                        """,
+                        arguments: [memoryID, userID]
+                    )
+                }
 
                 let validFrom: String? = lineage?["valid_from"]
                 let validTo: String? = lineage?["valid_to"]
@@ -223,7 +269,8 @@ extension ControlPlaneStore {
                     validFrom: validFrom,
                     validTo: validTo,
                     supersededBy: supersededBy,
-                    writerDevice: inboundPayload.flatMap(Self.writerDevice(inPayloadJSON:))
+                    writerDevice: inboundPayload.flatMap(Self.writerDevice(inPayloadJSON:)),
+                    truncated: truncated
                 )
             }
         } catch {
@@ -269,6 +316,17 @@ extension ControlPlaneStore {
     /// Pulls the writing device out of a parked cloud payload, accepting each
     /// spelling the engine's own meta lookup accepts.
     private static func writerDevice(inPayloadJSON json: String) -> String? {
+        guard json.utf8.count <= memoryTimelinePayloadByteLimit else {
+            AppLogger.dataStore.silentFailure(
+                "agent_memory_inbox payload_json past the timeline parse bound",
+                error: MemoryTimelineError.historyUnavailable("inbox payload past the parse bound"),
+                context: [
+                    "bound": String(memoryTimelinePayloadByteLimit),
+                    "bytes": String(json.utf8.count)
+                ]
+            )
+            return nil
+        }
         guard let data = json.data(using: .utf8) else { return nil }
         let object: Any
         do {
