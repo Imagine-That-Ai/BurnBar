@@ -770,8 +770,14 @@ class _Maintenance:
         trans_wm = self.transport_watermarks()
         for acct, wm in trans_wm.items():
             s_row = self.conn.execute("SELECT applied_updated_at FROM sync_state WHERE user_id = ?", (acct,)).fetchone()
-            t_iso = wm.get("lastProcessedRemoteUpdateAt") or wm.get("lastSyncedAt")
-            t_ts = _parse_iso(t_iso)
+            # ONLY the processed cursor. `lastSyncedAt` is set to the current
+            # instant when the app creates this row on opt-in, with
+            # `lastProcessedRemoteUpdateAt` NULL: that row is the consent marker,
+            # not evidence a remote fact was ever processed. Falling back to it
+            # reported a stranded transport on every healthy device whose
+            # `sync_state` was simply empty because no remote fact had arrived.
+            t_iso = wm.get("lastProcessedRemoteUpdateAt")
+            t_ts = _parse_iso(t_iso) if t_iso else None
             is_stranded = False
             if s_row is None:
                 if t_ts is not None and t_ts > epoch_dt:

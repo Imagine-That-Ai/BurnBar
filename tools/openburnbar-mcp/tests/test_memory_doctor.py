@@ -580,3 +580,39 @@ def test_an_occupied_lineage_hold_queue_is_visible_in_the_doctor_report(tmp_path
     # the document a note describes may release its slot.
     assert len(engine.lineage_holds()) == 2
     engine.close()
+
+
+def test_a_consent_watermark_with_no_processed_cursor_is_not_stranded(tmp_path: Path) -> None:
+    """A freshly opted-in device is healthy, and the doctor must say so.
+
+    The app creates the `memory_facts` watermark row on opt-in with a current
+    `lastSyncedAt` and `lastProcessedRemoteUpdateAt = NULL`. That row is the
+    consent marker, not evidence that any remote fact was processed. Falling back
+    to `lastSyncedAt` reported `STRANDED_TRANSPORT_WATERMARK` on every healthy
+    device that had simply never received a remote fact.
+    """
+    repo = str(tmp_path / "repo")
+    _init_git(Path(repo))
+    engine = me.MemoryEngine.open(tmp_path / "doctor_consent.sqlite", provider=me.FakeEmbeddingProvider())
+    me.resolve_project(engine.conn, repo)
+    _setup_tables(engine)
+    engine.conn.execute(
+        """
+        INSERT INTO remote_sync_watermarks (accountUid, collectionKind, lastSyncedAt, lastProcessedRemoteUpdateAt, version)
+        VALUES ('user_consent', 'memory_facts', '2026-08-10T10:00:00Z', NULL, 1)
+        """
+    )
+    engine.conn.commit()
+
+    codes = [finding["code"] for finding in engine.doctor(project_path=repo)["findings"]]
+    assert "STRANDED_TRANSPORT_WATERMARK" not in codes, codes
+
+    # A real processed cursor ahead of the engine's applied watermark still is.
+    engine.conn.execute(
+        "UPDATE remote_sync_watermarks SET lastProcessedRemoteUpdateAt = '2026-08-11T10:00:00Z' "
+        "WHERE accountUid = 'user_consent'"
+    )
+    engine.conn.commit()
+    codes = [finding["code"] for finding in engine.doctor(project_path=repo)["findings"]]
+    assert "STRANDED_TRANSPORT_WATERMARK" in codes, codes
+    engine.close()
