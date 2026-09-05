@@ -883,13 +883,19 @@ struct PrivacyIndexingSettingsView: View {
     /// immediacy the switch itself promises.
     private func enforceDeviceSyncInboxScope() {
         guard let store = runtimeContext?.chatMemoryStore else { return }
+        // Generation BEFORE scope — see `MemoryDeviceSyncInboxGuard.observeGeneration`.
+        let observedGeneration = MemoryDeviceSyncInboxGuard.observeGeneration(store: store)
         let scope = MemoryDeviceSyncScope(
             uid: accountManager.currentUID,
             consentGranted: settingsManager.memoryDeviceSyncEnabled
         )
         Task {
             do {
-                try await MemoryDeviceSyncInboxGuard.enforce(scope: scope, store: store)
+                try await MemoryDeviceSyncInboxGuard.enforce(
+                    scope: scope,
+                    observedGeneration: observedGeneration,
+                    store: store
+                )
             } catch {
                 // The next sync tick enforces the same scope, so a failure here
                 // delays the purge rather than losing it.

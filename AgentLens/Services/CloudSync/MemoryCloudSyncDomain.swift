@@ -229,6 +229,10 @@ final class MemoryCloudSyncDomain: CloudSyncDomain, Sendable {
     /// signed-in user, when every gate allows. No-op (returns immediately,
     /// untouched state) the instant any lever is off — the dormant default.
     func sync() async {
+        // Generation BEFORE the gate: a withdrawal (sign-out, switch, toggle off)
+        // that lands after this read and before the publish below refuses the
+        // publish. Read the other way round it could slip between the two.
+        let observedGeneration = MemoryDeviceSyncInboxGuard.observeGeneration(store: store)
         let gate = await gateSnapshot()
 
         // BEFORE any gate can return. This tick is where the app observes every
@@ -242,6 +246,7 @@ final class MemoryCloudSyncDomain: CloudSyncDomain, Sendable {
         do {
             try await MemoryDeviceSyncInboxGuard.enforce(
                 scope: MemoryDeviceSyncScope(uid: gate.uid, consentGranted: gate.pullConsentGranted),
+                observedGeneration: observedGeneration,
                 store: store,
                 now: now()
             )

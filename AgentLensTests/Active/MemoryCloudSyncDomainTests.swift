@@ -613,6 +613,145 @@ final class MemoryCloudSyncDomainTests: XCTestCase {
         XCTAssertEqual(markerCount, 1, "one marker, ever — two is the ambiguity the daemon reads as no consent")
     }
 
+    // MARK: - Withdrawal generation (sign-out closure re-review: the enforce/transition race)
+
+    private func park(_ docID: String, owner: String, in store: ControlPlaneStore) async throws {
+        try await store.upsertRemoteMemoryFact(
+            docID: docID,
+            userID: owner,
+            engineMemoryID: "mem_\(docID)",
+            payloadJSON: "{}",
+            remoteUpdatedAt: Date(timeIntervalSince1970: 1_800_000_000)
+        )
+    }
+
+    private func pendingDocIDs(_ queue: DatabaseQueue) async throws -> [String] {
+        try await queue.read { db in
+            try String.fetchAll(db, sql: "SELECT doc_id FROM agent_memory_inbox WHERE applied_at IS NULL ORDER BY doc_id")
+        }
+    }
+
+    /// The interleaving the re-review named. A sync tick reads the generation
+    /// and captures "member A, consenting", then suspends; A signs out (marker
+    /// withdrawn, rows purged); the stale tick resumes. Before the generation
+    /// check it republished A's marker — the daemon would have honoured A's
+    /// consent for up to a whole refresh interval after A left.
+    func test_aTickThatObservedTheDepartedMemberCannotRepublishTheirConsent() async throws {
+        let uid = "e2-stale-a"
+        let (store, queue) = try await makeStoreWithApprovedMemory(uid: uid)
+        try await park("doc-a", owner: uid, in: store)
+        try await store.writeMemoryDeviceSyncMarker(userID: uid)
+
+        // The tick, up to its first await: generation first, then the scope.
+        let observed = MemoryDeviceSyncInboxGuard.observeGeneration(store: store)
+        let staleScope = MemoryDeviceSyncScope(uid: uid, consentGranted: true)
+        // A signs out while the tick is suspended.
+        try await MemoryDeviceSyncInboxGuard.enforceAccountTransition(to: nil, store: store)
+
+        let outcome = try await MemoryDeviceSyncInboxGuard.enforce(
+            scope: staleScope,
+            observedGeneration: observed,
+            store: store
+        )
+
+        XCTAssertTrue(outcome.staleObservation, "the publish was refused, not applied")
+        XCTAssertFalse(outcome.markerPublished)
+        let marker = try await store.fetchMemoryDeviceSyncMarkerUserID()
+        XCTAssertNil(marker, "the departed member's consent stays withdrawn")
+        let pending = try await pendingDocIDs(queue)
+        XCTAssertEqual(pending, [], "and their purged plaintext stays purged")
+    }
+
+    /// The other arm of the same race: after A → B, B's next sync parks B's
+    /// rows; a stale A-tick's "purge everything that is not A's" must not eat
+    /// them.
+    func test_aStaleTickCannotPurgeTheNewMembersFreshlyPulledRows() async throws {
+        let (store, queue) = try await makeStoreWithApprovedMemory(uid: "e2-stale-b")
+        try await park("doc-a", owner: "e2-stale-a", in: store)
+        try await store.writeMemoryDeviceSyncMarker(userID: "e2-stale-a")
+
+        let observed = MemoryDeviceSyncInboxGuard.observeGeneration(store: store)
+        let staleScope = MemoryDeviceSyncScope(uid: "e2-stale-a", consentGranted: true)
+        try await MemoryDeviceSyncInboxGuard.enforceAccountTransition(to: "e2-stale-b", store: store)
+        // B's pull lands a row before the stale tick resumes.
+        try await park("doc-b", owner: "e2-stale-b", in: store)
+
+        let outcome = try await MemoryDeviceSyncInboxGuard.enforce(
+            scope: staleScope,
+            observedGeneration: observed,
+            store: store
+        )
+
+        XCTAssertTrue(outcome.staleObservation)
+        let pending = try await pendingDocIDs(queue)
+        XCTAssertEqual(pending, ["doc-b"], "B's freshly-pulled row survives the stale A-tick")
+        let marker = try await store.fetchMemoryDeviceSyncMarkerUserID()
+        XCTAssertNil(marker, "nobody is named until B's own consenting tick reads the live gate")
+    }
+
+    /// The check must not be always-false: a tick that read the generation
+    /// AFTER the transition publishes the new member normally.
+    func test_aFreshObservationAfterTheTransitionPublishesTheNewMember() async throws {
+        let (store, queue) = try await makeStoreWithApprovedMemory(uid: "e2-fresh-b")
+        try await park("doc-a", owner: "e2-fresh-a", in: store)
+        try await park("doc-b", owner: "e2-fresh-b", in: store)
+        try await MemoryDeviceSyncInboxGuard.enforceAccountTransition(to: "e2-fresh-b", store: store)
+
+        let observed = MemoryDeviceSyncInboxGuard.observeGeneration(store: store)
+        let outcome = try await MemoryDeviceSyncInboxGuard.enforce(
+            scope: MemoryDeviceSyncScope(uid: "e2-fresh-b", consentGranted: true),
+            observedGeneration: observed,
+            store: store
+        )
+
+        XCTAssertFalse(outcome.staleObservation)
+        XCTAssertTrue(outcome.markerPublished)
+        let marker = try await store.fetchMemoryDeviceSyncMarkerUserID()
+        XCTAssertEqual(marker, "e2-fresh-b")
+        let pending = try await pendingDocIDs(queue)
+        XCTAssertEqual(pending, ["doc-b"])
+    }
+
+    /// The Settings toggle is a withdrawal too. Turning device sync OFF between
+    /// a tick's gate read and its publish must win: the closed pass advances
+    /// the generation, so the stale open pass is refused rather than
+    /// republishing consent the member just withdrew.
+    func test_turningTheToggleOffInvalidatesATickThatObservedItOn() async throws {
+        let uid = "e2-toggle-race"
+        let (store, queue) = try await makeStoreWithApprovedMemory(uid: uid)
+        try await park("doc-own", owner: uid, in: store)
+        try await store.writeMemoryDeviceSyncMarker(userID: uid)
+
+        let observedByTick = MemoryDeviceSyncInboxGuard.observeGeneration(store: store)
+        let tickScope = MemoryDeviceSyncScope(uid: uid, consentGranted: true)
+
+        // The toggle flips off and enforces immediately. Withdrawals are never
+        // conditional, so its own generation read is irrelevant to the outcome.
+        let toggleOutcome = try await MemoryDeviceSyncInboxGuard.enforce(
+            scope: MemoryDeviceSyncScope(uid: uid, consentGranted: false),
+            observedGeneration: MemoryDeviceSyncInboxGuard.observeGeneration(store: store),
+            store: store
+        )
+        XCTAssertEqual(toggleOutcome.purgedConsentWithdrawn, 1)
+        XCTAssertEqual(
+            MemoryDeviceSyncInboxGuard.observeGeneration(store: store),
+            observedByTick + 1,
+            "a closing pass is a withdrawal and advances the generation"
+        )
+
+        let tickOutcome = try await MemoryDeviceSyncInboxGuard.enforce(
+            scope: tickScope,
+            observedGeneration: observedByTick,
+            store: store
+        )
+
+        XCTAssertTrue(tickOutcome.staleObservation)
+        let marker = try await store.fetchMemoryDeviceSyncMarkerUserID()
+        XCTAssertNil(marker, "consent the member withdrew is not republished by a tick that predates the withdrawal")
+        let pending = try await pendingDocIDs(queue)
+        XCTAssertEqual(pending, [])
+    }
+
     // MARK: - Pull observability (final-review Important 7)
 
     /// Stands in for the pull so the one case that cannot be reached from

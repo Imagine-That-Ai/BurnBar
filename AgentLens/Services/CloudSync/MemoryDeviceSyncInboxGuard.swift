@@ -37,6 +37,19 @@ import OpenBurnBarKernel
 //      consenting sync has refreshed goes stale and stops authorising drains
 //      even if the app never came back to withdraw it.
 //
+//   3. **Race-free against itself.** Three entry points reach this file — the
+//      sync tick, the Settings toggle, the auth-state listener — and none of
+//      them holds a lock across its awaits (`RefreshOrchestrator` is an actor,
+//      and actors are reentrant across `await`). So a tick that captured
+//      "member A, consenting" could resume AFTER A signed out and republish A's
+//      marker, or purge B's freshly-pulled rows as "foreign". Every withdrawal
+//      therefore advances a per-store generation inside its own transaction,
+//      every publish reads that generation BEFORE it captures its scope, and
+//      the publish is a single transaction that commits only if the generation
+//      is unchanged (`ControlPlaneStore.publishMemoryDeviceSyncConsent`). A
+//      stale observation changes nothing and the next tick re-reads the live
+//      gate. Withdrawals are never conditional: closing is always safe.
+//
 // Consent off means BOTH: another member's pending rows go, and so do this
 // member's own. Nothing pending may drain while the switch is off.
 
@@ -75,33 +88,68 @@ struct MemoryDeviceSyncGuardOutcome: Equatable, Sendable {
     /// Whether the marker now names a consenting member (true) or is absent
     /// (false, which the daemon reads as "nothing may drain").
     let markerPublished: Bool
+    /// True when an OPEN scope was refused because a withdrawal (sign-out,
+    /// account switch, toggle off) landed between the caller reading the
+    /// generation and this pass reaching the database. Nothing was changed;
+    /// the next tick enforces the live gate.
+    let staleObservation: Bool
+
+    init(
+        purgedOtherAccount: Int,
+        purgedConsentWithdrawn: Int,
+        markerPublished: Bool,
+        staleObservation: Bool = false
+    ) {
+        self.purgedOtherAccount = purgedOtherAccount
+        self.purgedConsentWithdrawn = purgedConsentWithdrawn
+        self.markerPublished = markerPublished
+        self.staleObservation = staleObservation
+    }
 
     static let noop = MemoryDeviceSyncGuardOutcome(
         purgedOtherAccount: 0,
         purgedConsentWithdrawn: 0,
         markerPublished: false
     )
+
+    static let stale = MemoryDeviceSyncGuardOutcome(
+        purgedOtherAccount: 0,
+        purgedConsentWithdrawn: 0,
+        markerPublished: false,
+        staleObservation: true
+    )
 }
 
 enum MemoryDeviceSyncInboxGuard {
+    /// The withdrawal generation a caller must read BEFORE it reads the scope
+    /// it is going to enforce — `accountManager.currentUID`, the gate — and
+    /// then pass to `enforce`. Read after the scope, it could not witness a
+    /// withdrawal that landed between the two reads, and the publish it guards
+    /// would go through over a departed member. It costs one lock acquisition.
+    static func observeGeneration(store: ControlPlaneStore) -> UInt64 {
+        store.currentMemoryDeviceSyncGeneration()
+    }
+
     /// Bring the inbox and the consent marker in line with `scope`.
     ///
     /// Idempotent and cheap to call on every cycle: the purges are `DELETE`s
     /// that usually match nothing, and the marker write is one row.
     ///
-    /// Ordering matters. The marker is withdrawn BEFORE the purge when consent
-    /// closes (so a drain racing the transition sees no consent rather than a
-    /// half-emptied inbox) and published AFTER the purge when it opens (so a
-    /// drain racing that transition never sees a marker over foreign rows).
+    /// Each branch is ONE transaction. Closing withdraws the marker and purges
+    /// together (so a drain racing the transition sees no consent rather than
+    /// a half-emptied inbox) and advances the generation. Opening purges the
+    /// foreign rows and lands the marker together (so a drain never sees a
+    /// marker over foreign rows) — and only if `observedGeneration` is still
+    /// current, otherwise it is refused as stale and nothing changes.
     @discardableResult
     static func enforce(
         scope: MemoryDeviceSyncScope,
+        observedGeneration: UInt64,
         store: ControlPlaneStore,
         now: Date = Date()
     ) async throws -> MemoryDeviceSyncGuardOutcome {
         guard scope.isOpen, let uid = scope.uid else {
-            try await store.clearMemoryDeviceSyncMarker()
-            let purged = try await store.purgeAllUnappliedRemoteMemoryFacts()
+            let purged = try await store.withdrawMemoryDeviceSyncConsent(keepingUnappliedRowsOf: nil)
             if purged > 0 {
                 AppLogger.sync.error(
                     "memory_device_sync_inbox_purged_on_consent_withdrawn",
@@ -114,14 +162,24 @@ enum MemoryDeviceSyncInboxGuard {
                 markerPublished: false
             )
         }
-        let purged = try await store.purgeUnappliedRemoteMemoryFacts(otherThanUserID: uid)
+        guard let purged = try await store.publishMemoryDeviceSyncConsent(
+            userID: uid,
+            observedGeneration: observedGeneration,
+            now: now
+        ) else {
+            // A withdrawal landed after this scope was read. Not an error: the
+            // closing side already did the right thing, and the next tick
+            // reads the live gate. Logged so an account-switch investigation
+            // can see the refused publish.
+            AppLogger.sync.info("memory_device_sync_inbox_guard_stale_observation")
+            return .stale
+        }
         if purged > 0 {
             AppLogger.sync.error(
                 "memory_device_sync_inbox_purged_other_account",
                 metadata: ["count": String(purged)]
             )
         }
-        try await store.writeMemoryDeviceSyncMarker(userID: uid, now: now)
         return MemoryDeviceSyncGuardOutcome(
             purgedOtherAccount: purged,
             purgedConsentWithdrawn: 0,
@@ -159,12 +217,12 @@ enum MemoryDeviceSyncInboxGuard {
         to uid: String?,
         store: ControlPlaneStore
     ) async throws -> MemoryDeviceSyncGuardOutcome {
-        // Withdrawn FIRST, for the same reason `enforce` withdraws before it
-        // purges: a drain racing the transition must see no consent rather than
-        // a half-emptied inbox.
-        try await store.clearMemoryDeviceSyncMarker()
+        // Marker and rows go in ONE transaction, and the generation advances
+        // with them: a drain racing the transition sees no consent rather than
+        // a half-emptied inbox, and a tick that captured the departed member
+        // before this ran cannot republish them afterwards.
         guard let uid, !uid.isEmpty else {
-            let purged = try await store.purgeAllUnappliedRemoteMemoryFacts()
+            let purged = try await store.withdrawMemoryDeviceSyncConsent(keepingUnappliedRowsOf: nil)
             if purged > 0 {
                 AppLogger.sync.error(
                     "memory_device_sync_inbox_purged_on_sign_out",
@@ -177,7 +235,7 @@ enum MemoryDeviceSyncInboxGuard {
                 markerPublished: false
             )
         }
-        let purged = try await store.purgeUnappliedRemoteMemoryFacts(otherThanUserID: uid)
+        let purged = try await store.withdrawMemoryDeviceSyncConsent(keepingUnappliedRowsOf: uid)
         if purged > 0 {
             AppLogger.sync.error(
                 "memory_device_sync_inbox_purged_on_account_switch",

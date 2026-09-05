@@ -181,40 +181,114 @@ extension ControlPlaneStore {
 
     /// Publishes "this member, right now, consents to device sync" for the
     /// daemon to enforce against. See `BurnBarMemoryDeviceSyncMarker`.
+    ///
+    /// UNCONDITIONAL — for seeding and tests. Production publishes go through
+    /// `publishMemoryDeviceSyncConsent`, which refuses to land a marker whose
+    /// scope was observed before a withdrawal.
     func writeMemoryDeviceSyncMarker(userID: String, now: Date = Date()) async throws {
         try await dbQueue.write { db in
-            // One marker, ever: the previous member's row goes before this one
-            // lands, so "more than one row" can only ever mean a corrupt store —
-            // which the daemon reads as no consent.
-            try db.execute(
-                sql: """
-                DELETE FROM \(BurnBarMemoryDeviceSyncMarker.tableName)
-                WHERE \(BurnBarMemoryDeviceSyncMarker.kindColumn) = ?
-                """,
-                arguments: [BurnBarMemoryDeviceSyncMarker.collectionKind]
-            )
-            try db.execute(
-                sql: """
-                INSERT INTO \(BurnBarMemoryDeviceSyncMarker.tableName)
-                    (accountUid, collectionKind, lastSyncedAt, lastProcessedRemoteUpdateAt, version)
-                VALUES (?, ?, ?, NULL, 1)
-                """,
-                arguments: [userID, BurnBarMemoryDeviceSyncMarker.collectionKind, now]
-            )
+            try Self.replaceMemoryDeviceSyncMarker(db, userID: userID, now: now)
         }
+    }
+
+    /// The withdrawal count a caller must read BEFORE capturing the scope it
+    /// will hand to `publishMemoryDeviceSyncConsent`. See
+    /// `memoryDeviceSyncGeneration`.
+    func currentMemoryDeviceSyncGeneration() -> UInt64 {
+        memoryDeviceSyncGeneration.withLock { $0 }
+    }
+
+    /// Withdraws consent and purges, atomically: the marker goes, the unmerged
+    /// rows go (every one when `userID` is nil — nobody is present to consent;
+    /// every one that is not the named member's otherwise), and the withdrawal
+    /// generation advances — all in ONE transaction, so no publish can
+    /// interleave between the marker leaving and the rows leaving, and any
+    /// publish whose scope predates this call is refused afterwards.
+    ///
+    /// Returns the number of unmerged rows purged.
+    @discardableResult
+    func withdrawMemoryDeviceSyncConsent(keepingUnappliedRowsOf userID: String?) async throws -> Int {
+        try await dbQueue.write { [memoryDeviceSyncGeneration] db in
+            try Self.deleteMemoryDeviceSyncMarker(db)
+            if let userID, !userID.isEmpty {
+                try db.execute(
+                    sql: "DELETE FROM agent_memory_inbox WHERE user_id <> ? AND applied_at IS NULL",
+                    arguments: [userID]
+                )
+            } else {
+                try db.execute(sql: "DELETE FROM agent_memory_inbox WHERE applied_at IS NULL")
+            }
+            let purged = db.changesCount
+            memoryDeviceSyncGeneration.withLock { $0 &+= 1 }
+            return purged
+        }
+    }
+
+    /// Publishes consent for `userID`, atomically and conditionally: purges the
+    /// unmerged rows that are not theirs and lands the marker in ONE
+    /// transaction — but only if no withdrawal has happened since the caller
+    /// read `observedGeneration`. Otherwise it changes nothing and returns nil.
+    ///
+    /// Why the condition: `MemoryCloudSyncDomain.sync()` captures its gate (who
+    /// is signed in, what they consented to) and then awaits. A sign-out, an
+    /// account switch, or the Settings toggle closing can complete inside that
+    /// await, and without the check the resumed tick would republish the
+    /// departed member's marker — or purge the new member's freshly-pulled
+    /// rows — for up to a whole refresh interval. The check runs on the
+    /// database writer, serialised with the withdrawal that bumps the
+    /// generation, so Swift actor reentrancy cannot slip between them.
+    ///
+    /// Returns the number of foreign unmerged rows purged, or nil when refused.
+    func publishMemoryDeviceSyncConsent(
+        userID: String,
+        observedGeneration: UInt64,
+        now: Date = Date()
+    ) async throws -> Int? {
+        try await dbQueue.write { [memoryDeviceSyncGeneration] db -> Int? in
+            guard memoryDeviceSyncGeneration.withLock({ $0 }) == observedGeneration else { return nil }
+            try db.execute(
+                sql: "DELETE FROM agent_memory_inbox WHERE user_id <> ? AND applied_at IS NULL",
+                arguments: [userID]
+            )
+            let purged = db.changesCount
+            try Self.replaceMemoryDeviceSyncMarker(db, userID: userID, now: now)
+            return purged
+        }
+    }
+
+    private static func deleteMemoryDeviceSyncMarker(_ db: Database) throws {
+        try db.execute(
+            sql: """
+            DELETE FROM \(BurnBarMemoryDeviceSyncMarker.tableName)
+            WHERE \(BurnBarMemoryDeviceSyncMarker.kindColumn) = ?
+            """,
+            arguments: [BurnBarMemoryDeviceSyncMarker.collectionKind]
+        )
+    }
+
+    private static func replaceMemoryDeviceSyncMarker(_ db: Database, userID: String, now: Date) throws {
+        // One marker, ever: the previous member's row goes before this one
+        // lands, so "more than one row" can only ever mean a corrupt store —
+        // which the daemon reads as no consent.
+        try deleteMemoryDeviceSyncMarker(db)
+        try db.execute(
+            sql: """
+            INSERT INTO \(BurnBarMemoryDeviceSyncMarker.tableName)
+                (accountUid, collectionKind, lastSyncedAt, lastProcessedRemoteUpdateAt, version)
+            VALUES (?, ?, ?, NULL, 1)
+            """,
+            arguments: [userID, BurnBarMemoryDeviceSyncMarker.collectionKind, now]
+        )
     }
 
     /// Withdraws consent for the drain. Absence is what the daemon reads as
     /// "nothing may drain", so this is the revocation itself, not a hint.
+    /// Every clear is a withdrawal, so it advances the generation too: a
+    /// publish whose scope was read before this call must not land afterwards.
     func clearMemoryDeviceSyncMarker() async throws {
-        try await dbQueue.write { db in
-            try db.execute(
-                sql: """
-                DELETE FROM \(BurnBarMemoryDeviceSyncMarker.tableName)
-                WHERE \(BurnBarMemoryDeviceSyncMarker.kindColumn) = ?
-                """,
-                arguments: [BurnBarMemoryDeviceSyncMarker.collectionKind]
-            )
+        try await dbQueue.write { [memoryDeviceSyncGeneration] db in
+            try Self.deleteMemoryDeviceSyncMarker(db)
+            memoryDeviceSyncGeneration.withLock { $0 &+= 1 }
         }
     }
 
