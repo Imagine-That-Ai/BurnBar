@@ -566,6 +566,225 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         XCTAssertEqual(BurnBarMemoryRanking.tokenize("café foo_bar"), ["caf", "foo_bar", "foo", "bar"])
     }
 
+    /// B9: every served hit carries the engine's breakdown, member for member.
+    /// `_read.py` builds exactly `lexicalRank, bm25, semanticRank, cosine,
+    /// salience, recency, rerankScore, reranker` beside a sibling `matchedBy`.
+    func test_daemon_ranking_returns_the_same_why_components_as_the_engine() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "memory-why-test")
+        )
+        let remembered = try store.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: "Always compile Swift code before pushing to main branch.",
+                projectPath: fixture.project.path,
+                kind: "procedure",
+                sourcePath: "docs/superpowers/rules.md"
+            )
+        )
+        _ = try store.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: "Python memory engine maintains under 1500 lines per module.",
+                projectPath: fixture.project.path,
+                kind: "fact"
+            )
+        )
+
+        let recall = try store.recall(
+            BurnBarProjectMemoryRecallRequest(query: "compile Swift code", projectPath: fixture.project.path)
+        )
+        let firstHit = try XCTUnwrap(recall.hits.first)
+        XCTAssertEqual(firstHit.memoryID, remembered.memoryID)
+
+        let why = try XCTUnwrap(firstHit.why, "every ranked hit reports why it was served")
+        let matchedBy = try XCTUnwrap(firstHit.matchedBy)
+
+        // The lexical lane always runs, so it is always reported.
+        XCTAssertEqual(why.lexicalRank, 1)
+        XCTAssertGreaterThan(try XCTUnwrap(why.bm25), 0)
+        XCTAssertGreaterThan(why.salience, 0)
+        XCTAssertGreaterThan(why.recency, 0)
+        // The daemon runs no reranker; the engine reports nil for both with
+        // rerank off, so the daemon does too rather than inventing a value.
+        XCTAssertNil(why.rerankScore)
+        XCTAssertNil(why.reranker)
+
+        // The semantic lane only runs when an embedding provider is available.
+        // Whichever way the environment falls, the lane and the members agree.
+        if why.semanticRank == nil {
+            XCTAssertNil(why.cosine, "no semantic rank means no cosine to report")
+            XCTAssertEqual(matchedBy, "lexical")
+        } else {
+            XCTAssertNotNil(why.cosine)
+            XCTAssertEqual(matchedBy, "hybrid")
+        }
+
+        let explanation = try XCTUnwrap(firstHit.whyExplanation)
+        XCTAssertEqual(
+            String(explanation.prefix("Matched by \(matchedBy): lexical #1 (bm25 ".count)),
+            "Matched by \(matchedBy): lexical #1 (bm25 ",
+            "one explanation line per hit, opening with the lane and the lexical rank"
+        )
+
+        // Four-decimal rounding, matching `round(value, 4)` on the engine side.
+        for value in [why.bm25, why.cosine, why.salience, why.recency].compactMap({ $0 }) {
+            XCTAssertEqual(value, (value * 10000).rounded(.toNearestOrEven) / 10000, accuracy: 1e-12)
+        }
+    }
+
+    /// B9 acceptance: the breakdown is a report, not an input.
+    ///
+    /// The ordering and the scores are pinned as LITERALS against a fixed
+    /// four-memory fixture with the semantic lane disabled, so the ranking is a
+    /// pure function of the corpus and the query: change a BM25 knob, a kind
+    /// weight, a fusion weight or the salience/recency curve and this test fails
+    /// instead of shifting quietly. (Comparing two recalls of the same build
+    /// proves determinism, not invariance — both would move together.)
+    ///
+    /// The independent proof that THIS branch changed no score:
+    /// `git diff org/main -- OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ProjectCodeMemory/BurnBarMemoryRanking.swift`
+    /// is a single pure-append hunk (`@@ -196,4 +196,55 @@`, 51 added lines, 0
+    /// removed, 0 context lines modified), and in `BurnBarProjectCodeMemoryStore.recall`
+    /// the fused-score line
+    /// `scores[entry.key] = entry.value * (0.6 + 0.4 * min(1.0, max(0.0, salience))) * recency`
+    /// is byte-identical to `org/main`; the only insertion inside that `reduce`
+    /// is the `whyByID[…] =` write, which is never read back into `scores` or
+    /// `rankedIDs`.
+    func test_reporting_the_why_breakdown_does_not_change_recall_ordering() throws {
+        let fixture = try makeFixture()
+        // The semantic lane is disabled on purpose: the OS sentence embedder is
+        // present on some machines and absent on others, and a pinned ordering
+        // has to be a property of the ranker, not of the host.
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "memory-why-ordering-test"),
+            embeddingProvider: DisabledEmbeddingProvider()
+        )
+        var memoryIDs: [String] = []
+        for (index, text) in [
+            "Always compile Swift code before pushing to main branch.",
+            "Swift code review happens before the merge queue.",
+            "Python memory engine maintains under 1500 lines per module.",
+            "The daemon compiles with a Swift 6 toolchain."
+        ].enumerated() {
+            memoryIDs.append(
+                try store.remember(
+                    BurnBarProjectMemoryRememberRequest(
+                        text: text,
+                        projectPath: fixture.project.path,
+                        kind: index.isMultiple(of: 2) ? "procedure" : "fact"
+                    )
+                ).memoryID
+            )
+        }
+
+        let request = BurnBarProjectMemoryRecallRequest(
+            query: "compile Swift code",
+            projectPath: fixture.project.path
+        )
+        let first = try store.recall(request)
+        let second = try store.recall(request)
+
+        // The fixture's ordering, as literals: "Always compile Swift code before
+        // pushing to main branch." (all three query terms) ahead of "The daemon
+        // compiles with a Swift 6 toolchain." and then "Swift code review happens
+        // before the merge queue." — memories 0, 3, 1 in insertion order.
+        // "Python memory engine maintains under 1500 lines per module." shares no
+        // query token and is not served at all.
+        XCTAssertEqual(first.hits.map(\.memoryID), [memoryIDs[0], memoryIDs[3], memoryIDs[1]])
+        XCTAssertEqual(first.hits.map(\.rank), [0, 1, 2])
+        XCTAssertEqual(first.hits.map(\.memoryID), second.hits.map(\.memoryID))
+        XCTAssertEqual(first.hits.map(\.rank), second.hits.map(\.rank))
+
+        // Every served hit is lexical-only here, and each reports the score that
+        // put it where it is. These are the ranker's own numbers under the current
+        // BM25 knobs (k1 1.2, b 0.75), kind weights and salience/recency curves:
+        // move any of them and this array moves with it.
+        XCTAssertEqual(first.hits.map(\.matchedBy), ["lexical", "lexical", "lexical"])
+        XCTAssertEqual(first.hits.compactMap { $0.why?.lexicalRank }, [1, 2, 3])
+        XCTAssertEqual(first.hits.compactMap { $0.why?.bm25 }, [1.6614, 1.2311, 1.0673])
+        // `procedure` and `fact` share the 0.85 kind weight, and `remember`
+        // defaults to confidence 1.0 with no accesses yet.
+        XCTAssertEqual(first.hits.compactMap { $0.why?.salience }, [0.85, 0.85, 0.85])
+        // Freshly written, so the 365-day half-life has not moved: 0.5 + 0.5 = 1.0.
+        XCTAssertEqual(first.hits.compactMap { $0.why?.recency }, [1.0, 1.0, 1.0])
+        XCTAssertEqual(first.hits.compactMap { $0.why?.semanticRank }, [])
+        XCTAssertEqual(first.hits.compactMap { $0.why?.cosine }, [])
+    }
+
+    /// The breakdown formats one line per hit, in the engine's field order.
+    func test_the_why_breakdown_renders_one_explanation_line() {
+        let (matchedBy, why) = BurnBarMemoryRanking.why(
+            id: "mem_unit",
+            lexical: [("other", 9.0), ("mem_unit", 4.25)],
+            semantic: [("mem_unit", 0.91)],
+            salience: 0.85,
+            recency: 0.99
+        )
+
+        XCTAssertEqual(matchedBy, "hybrid")
+        XCTAssertEqual(why.lexicalRank, 2)
+        XCTAssertEqual(why.bm25, 4.25)
+        XCTAssertEqual(why.semanticRank, 1)
+        XCTAssertEqual(why.cosine, 0.91)
+        XCTAssertEqual(
+            why.explanationLine(matchedBy: matchedBy),
+            "Matched by hybrid: lexical #2 (bm25 4.25), semantic #1 (cos 0.91), salience 0.85, recency 0.99"
+        )
+
+        let lexicalOnly = BurnBarMemoryRanking.why(
+            id: "mem_unit",
+            lexical: [("mem_unit", 1.5)],
+            semantic: [],
+            salience: 0.5,
+            recency: 1.0
+        )
+        XCTAssertEqual(lexicalOnly.matchedBy, "lexical")
+        XCTAssertNil(lexicalOnly.why.semanticRank)
+        XCTAssertEqual(
+            lexicalOnly.why.explanationLine(matchedBy: lexicalOnly.matchedBy),
+            "Matched by lexical: lexical #1 (bm25 1.50), salience 0.50, recency 1.00"
+        )
+
+        // The fourth lane. The store never reaches it — `whyByID` is keyed off
+        // `fusedScores`, whose keys always came from a lane, and the browse
+        // listing reports no breakdown at all — but the engine DOES emit it
+        // (`_read.py`: `"hybrid" if lr and sr else ("lexical" if lr else
+        // ("semantic" if sr else "browse"))`), so the daemon mirrors it rather
+        // than diverging on a case a future browse-with-scores path would hit.
+        let neitherLane = BurnBarMemoryRanking.why(
+            id: "mem_unit",
+            lexical: [("other", 9.0)],
+            semantic: [("another", 0.5)],
+            salience: 0.6,
+            recency: 0.75
+        )
+        XCTAssertEqual(neitherLane.matchedBy, "browse")
+        XCTAssertNil(neitherLane.why.lexicalRank)
+        XCTAssertNil(neitherLane.why.bm25)
+        XCTAssertNil(neitherLane.why.semanticRank)
+        XCTAssertNil(neitherLane.why.cosine)
+        XCTAssertEqual(
+            neitherLane.why.explanationLine(matchedBy: neitherLane.matchedBy),
+            "Matched by browse: salience 0.60, recency 0.75"
+        )
+
+        // The engine rounds with Python's `round`, which is half-to-EVEN. 0.03125
+        // is exact in binary and ×10⁴ is exactly 312.5, so the two rules disagree
+        // here: half-to-even gives 0.0312, half-away-from-zero 0.0313. The daemon
+        // reports the engine's digit.
+        let tie = BurnBarMemoryRanking.why(
+            id: "mem_unit",
+            lexical: [("mem_unit", 0.03125)],
+            semantic: [],
+            salience: 0.03125,
+            recency: 1.0
+        )
+        XCTAssertEqual(tie.why.bm25, 0.0312)
+        XCTAssertEqual(tie.why.salience, 0.0312)
+    }
+
     func testMemoryRecallMatchesSourcePathTokens() throws {
         let fixture = try makeFixture()
         let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "memory-source-path-test"))
@@ -1714,6 +1933,341 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         let identity = try store.resolveProjectIdentity(root: fixture.project)
 
         XCTAssertEqual(identity.projectID, transitionProjectID)
+    }
+
+    /// A4 / engine parity: confirmed adoption -> git fingerprint -> provisional
+    /// path-derived mapping, in that order, on both the read-write and the
+    /// read-only path. The engine walks the same three rungs in
+    /// `memory_engine/store.py: resolve_project`.
+    func test_daemon_project_identity_follows_the_same_override_order() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "identity-order-test")
+        )
+
+        // 3rd rung: a folder with no mapping and no git root is provisional — a
+        // path-derived fingerprint, which the engine's doctor flags as such.
+        let provisional = try store.resolveProjectIdentity(root: fixture.project)
+        XCTAssertTrue(
+            provisional.fingerprint.hasPrefix("path:"),
+            "a non-git folder resolves provisionally, not to a stable identity"
+        )
+
+        // 2nd rung: a git root takes the git identity.
+        let gitRoot = try makeGitFolder(in: fixture.root, named: "GitIdentityFixture", origin: "daemon-repo")
+        let gitIdentity = try store.resolveProjectIdentity(root: gitRoot)
+        XCTAssertTrue(gitIdentity.fingerprint.hasPrefix("git:"))
+        XCTAssertNotEqual(gitIdentity.projectID, provisional.projectID)
+
+        // 1st rung: a CONFIRMED adoption for the path wins over everything the
+        // folder's contents imply.
+        let explicitID = "proj_explicit_mapped_override_999"
+        try adoptProject(database: fixture.database, path: fixture.project, projectID: explicitID)
+
+        XCTAssertEqual(try store.resolveProjectIdentity(root: fixture.project).projectID, explicitID)
+        XCTAssertEqual(
+            try store.readOnlyProjectIdentity(root: fixture.project).projectID,
+            explicitID,
+            "the read-only path must resolve identically or a recall and a write disagree"
+        )
+    }
+
+    /// (a) Rung 1 beats rung 2: a folder whose CONTENTS carry a git fingerprint
+    /// another project already owns still resolves to the project it was adopted
+    /// into, and the adoption marker survives being resolved.
+    func test_a_confirmed_adoption_alias_outranks_a_differing_git_fingerprint() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "identity-adoption-test")
+        )
+
+        // A repository this device already knows, by its git fingerprint.
+        let twin = try makeGitFolder(in: fixture.root, named: "AdoptionTwin", origin: "shared-origin")
+        let twinIdentity = try store.resolveProjectIdentity(root: twin)
+        XCTAssertTrue(twinIdentity.fingerprint.hasPrefix("git:"))
+
+        // A second checkout of the same repository — byte-identical fingerprint —
+        // that the member has adopted into a different project.
+        let adopted = try makeGitFolder(in: fixture.root, named: "AdoptedCheckout", origin: "shared-origin")
+        XCTAssertEqual(
+            BurnBarProjectCodeMemoryStore.projectIdentityFingerprint(root: adopted),
+            twinIdentity.fingerprint,
+            "precondition: both folders' contents imply the same identity"
+        )
+        let adoptedID = "proj_00000000000000000000000000adopt"
+        try adoptProject(database: fixture.database, path: adopted, projectID: adoptedID)
+
+        let resolved = try store.resolveProjectIdentity(root: adopted)
+        XCTAssertEqual(resolved.projectID, adoptedID)
+        XCTAssertNotEqual(resolved.projectID, twinIdentity.projectID)
+        XCTAssertEqual(
+            try store.readOnlyProjectIdentity(root: adopted).projectID,
+            adoptedID,
+            "the read-only path must agree with the read-write path"
+        )
+
+        // Resolving must not overwrite the adoption marker with the folder's own
+        // git fingerprint, or the very next resolve would forget the adoption and
+        // hand the folder to the twin's project.
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT identity_fingerprint FROM pcm_projects WHERE project_id = \(sqlLiteral(adoptedID))"
+            ).first,
+            "explicit:\(adoptedID)"
+        )
+        XCTAssertEqual(try store.resolveProjectIdentity(root: adopted).projectID, adoptedID)
+
+        // The twin keeps its own identity; nothing stole its fingerprint.
+        XCTAssertEqual(try store.readOnlyProjectIdentity(root: twin).projectID, twinIdentity.projectID)
+    }
+
+    /// (b) Rung 2 beats rung 3, which is the bug this test exists for: a directory
+    /// that was visited once (and so carries an automatic, PROVISIONAL alias) and
+    /// is LATER reused for a checkout of a repository this device already knows
+    /// must resolve to that repository's project. Following the alias instead
+    /// would serve and write repository A's memories inside repository B — and
+    /// the engine, resolving the same folder, would pick B.
+    func test_a_provisional_path_alias_loses_to_a_known_git_fingerprint() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "identity-reuse-test")
+        )
+
+        // Repository B, known to this device from another checkout.
+        let checkout = try makeGitFolder(in: fixture.root, named: "ReusedCheckout", origin: "reused-repo")
+        let checkoutIdentity = try store.resolveProjectIdentity(root: checkout)
+        XCTAssertTrue(checkoutIdentity.fingerprint.hasPrefix("git:"))
+
+        // A directory used for something else first: provisional id A, with a
+        // memory of its own and therefore an automatic alias row.
+        let folder = fixture.root.appendingPathComponent("ReusedDirectory", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        _ = try store.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: "A note that predates the repository in this directory.",
+                projectPath: folder.path,
+                kind: "fact"
+            )
+        )
+        let provisionalIdentity = try store.readOnlyProjectIdentity(root: folder)
+        XCTAssertTrue(provisionalIdentity.fingerprint.hasPrefix("path:"))
+        XCTAssertNotEqual(provisionalIdentity.projectID, checkoutIdentity.projectID)
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: """
+                SELECT project_id FROM pcm_project_aliases
+                WHERE path_hash = \(sqlLiteral(provisionalIdentity.pathHash))
+                """
+            ).first,
+            provisionalIdentity.projectID,
+            "precondition: the directory carries an automatic alias, not an adoption"
+        )
+
+        // The directory is now a checkout of repository B.
+        try runGit(["init"], cwd: folder)
+        try runGit(["remote", "add", "origin", "https://example.com/org/reused-repo.git"], cwd: folder)
+        XCTAssertEqual(
+            BurnBarProjectCodeMemoryStore.projectIdentityFingerprint(root: folder),
+            checkoutIdentity.fingerprint,
+            "precondition: the directory's contents now imply repository B's identity"
+        )
+
+        // The fingerprint wins on both paths — the provisional alias does not.
+        XCTAssertEqual(try store.resolveProjectIdentity(root: folder).projectID, checkoutIdentity.projectID)
+        XCTAssertEqual(
+            try store.readOnlyProjectIdentity(root: folder).projectID,
+            checkoutIdentity.projectID,
+            "the read-only path must agree with the read-write path"
+        )
+
+        // ...and the directory's earlier, unrelated memory does not come along.
+        let recall = try store.recall(
+            BurnBarProjectMemoryRecallRequest(query: "note that predates the repository", projectPath: folder.path)
+        )
+        XCTAssertTrue(
+            recall.hits.allSatisfy { $0.projectID == checkoutIdentity.projectID },
+            "recall in the reused directory must serve only repository B's memories"
+        )
+
+        // The move is reported once per process, with opaque ids and no path.
+        let split = BurnBarProjectIdentitySplit(
+            provisionalProjectID: provisionalIdentity.projectID,
+            gitProjectID: checkoutIdentity.projectID
+        )
+        XCTAssertEqual(
+            BurnBarProjectIdentityDiagnostics.observedSplits().filter { $0 == split }.count,
+            1,
+            "the superseded provisional mapping is observed exactly once"
+        )
+        XCTAssertEqual(try store.resolveProjectIdentity(root: folder).projectID, checkoutIdentity.projectID)
+        XCTAssertEqual(BurnBarProjectIdentityDiagnostics.observedSplits().filter { $0 == split }.count, 1)
+        XCTAssertFalse(BurnBarProjectIdentityDiagnostics.noteSplit(split))
+        XCTAssertEqual(
+            split.logMetadata,
+            ["project_id": provisionalIdentity.projectID, "git_project_id": checkoutIdentity.projectID]
+        )
+        XCTAssertTrue(split.logMetadata.values.allSatisfy { $0.contains("/") == false })
+
+        // A folder whose mapping already agrees with its fingerprint is not a
+        // split, and neither is an adoption that outranked one.
+        let before = BurnBarProjectIdentityDiagnostics.observedSplits().count
+        _ = try store.resolveProjectIdentity(root: checkout)
+        XCTAssertEqual(BurnBarProjectIdentityDiagnostics.observedSplits().count, before)
+    }
+
+    /// (c) Unchanged behaviour: a folder nobody has mapped, whose git fingerprint
+    /// no project owns, gets the id derived from that fingerprint — the same id
+    /// the engine's `project_id_for_fingerprint` mints.
+    func test_an_unmapped_folder_with_an_unknown_fingerprint_gets_a_fresh_id() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "identity-fresh-test")
+        )
+        let fresh = try makeGitFolder(in: fixture.root, named: "FreshCheckout", origin: "fresh-repo")
+        let fingerprint = BurnBarProjectCodeMemoryStore.projectIdentityFingerprint(root: fresh)
+        XCTAssertTrue(fingerprint.hasPrefix("git:"))
+        let expected = BurnBarProjectCodeMemoryStore.projectID(
+            forFingerprint: fingerprint,
+            fallbackProjectID: BurnBarProjectCodeMemoryStore.legacyProjectID(for: fresh)
+        )
+
+        let readOnly = try store.readOnlyProjectIdentity(root: fresh)
+        let resolved = try store.resolveProjectIdentity(root: fresh)
+
+        XCTAssertEqual(resolved.projectID, expected)
+        XCTAssertEqual(
+            readOnly.projectID,
+            resolved.projectID,
+            "the read-only path must agree with the read-write path before anything is written"
+        )
+        XCTAssertEqual(resolved.fingerprint, fingerprint)
+    }
+
+    /// A4 red team: repository CONTENTS must never re-scope a folder the member
+    /// ADOPTED. A hostile (or merely careless) `git remote add` that makes an
+    /// adopted folder's fingerprint collide with another project's leaves the
+    /// adoption alone, so recall in that folder returns none of the victim
+    /// project's rows and no write lands under the victim id.
+    func test_an_adopted_folder_matching_another_projects_git_fingerprint_is_not_rescoped() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "identity-redteam-test")
+        )
+
+        // Victim: a git checkout with a memory of its own.
+        let victim = try makeGitFolder(in: fixture.root, named: "VictimProject", origin: "victim")
+        _ = try store.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: "The victim project deploys on Thursday.",
+                projectPath: victim.path,
+                kind: "fact"
+            )
+        )
+        let victimIdentity = try store.readOnlyProjectIdentity(root: victim)
+        XCTAssertTrue(victimIdentity.fingerprint.hasPrefix("git:"))
+
+        // Hostile folder: adopted into a project of its own, with its own memory.
+        let hostile = fixture.root.appendingPathComponent("HostileProject", isDirectory: true)
+        try FileManager.default.createDirectory(at: hostile, withIntermediateDirectories: true)
+        let hostileID = "proj_000000000000000000000000hostile"
+        try adoptProject(database: fixture.database, path: hostile, projectID: hostileID)
+        _ = try store.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: "The hostile folder has its own unrelated note.",
+                projectPath: hostile.path,
+                kind: "fact"
+            )
+        )
+        XCTAssertEqual(try store.readOnlyProjectIdentity(root: hostile).projectID, hostileID)
+        XCTAssertNotEqual(hostileID, victimIdentity.projectID)
+
+        // The attacker makes the folder's CONTENTS claim the victim's identity.
+        try runGit(["init"], cwd: hostile)
+        try runGit(["remote", "add", "origin", "https://example.com/org/victim.git"], cwd: hostile)
+        XCTAssertEqual(
+            BurnBarProjectCodeMemoryStore.projectIdentityFingerprint(root: hostile),
+            victimIdentity.fingerprint,
+            "precondition: the folders' contents now imply the same identity"
+        )
+
+        // Identity does not move, on either path...
+        XCTAssertEqual(try store.readOnlyProjectIdentity(root: hostile).projectID, hostileID)
+        XCTAssertEqual(try store.resolveProjectIdentity(root: hostile).projectID, hostileID)
+        XCTAssertEqual(
+            try store.readOnlyProjectIdentity(root: victim).projectID,
+            victimIdentity.projectID,
+            "the victim keeps its own identity too"
+        )
+
+        // ...recall in the hostile folder returns none of the victim's rows...
+        let recall = try store.recall(
+            BurnBarProjectMemoryRecallRequest(query: "victim project deploys Thursday", projectPath: hostile.path)
+        )
+        XCTAssertTrue(
+            recall.hits.allSatisfy { $0.projectID == hostileID },
+            "recall in the hostile folder must not serve another project's memories"
+        )
+        XCTAssertFalse(recall.hits.contains { $0.bodyRedacted.contains("deploys on Thursday") })
+
+        // ...and a write from the hostile folder does not land under the victim id.
+        let written = try store.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: "A note written after the fingerprint collision.",
+                projectPath: hostile.path,
+                kind: "fact"
+            )
+        )
+        XCTAssertEqual(written.projectID, hostileID)
+        XCTAssertNotEqual(written.projectID, victimIdentity.projectID)
+    }
+
+    /// The engine's `map_project` (`memory_engine/store.py`) is what a confirmed
+    /// `project adopt` runs: it stamps `explicit:<project id>` as the project's
+    /// identity fingerprint and points the folder's alias row at that project.
+    /// The daemon has no adopt RPC yet (follow-up packet P31), so a test writes
+    /// the same two rows the engine's adoption writes.
+    private func adoptProject(database: URL, path: URL, projectID: String) throws {
+        let canonicalPath = path.resolvingSymlinksInPath().standardizedFileURL.path
+        let pathHash = BurnBarProjectCodeMemoryStore.sha256Hex(canonicalPath)
+        let aliasID = "alias_" + String(BurnBarProjectCodeMemoryStore.sha256Hex(pathHash).prefix(32))
+        let now = BurnBarProjectCodeMemoryStore.isoNow()
+        try sqliteExecute(
+            database: database,
+            sql: """
+            INSERT OR IGNORE INTO pcm_projects
+                (project_id, identity_version, identity_fingerprint, project_name, primary_path, created_at, updated_at)
+            VALUES
+                (\(sqlLiteral(projectID)), 2, \(sqlLiteral("explicit:\(projectID)")), \
+            \(sqlLiteral(path.lastPathComponent)), \(sqlLiteral(canonicalPath)), '\(now)', '\(now)');
+
+            INSERT INTO pcm_project_aliases
+                (id, project_id, alias_path, path_hash, first_seen_at, last_seen_at)
+            VALUES
+                (\(sqlLiteral(aliasID)), \(sqlLiteral(projectID)), \(sqlLiteral(canonicalPath)), \
+            \(sqlLiteral(pathHash)), '\(now)', '\(now)')
+            ON CONFLICT(path_hash) DO UPDATE SET
+                project_id = excluded.project_id,
+                alias_path = excluded.alias_path,
+                last_seen_at = excluded.last_seen_at
+            """
+        )
+    }
+
+    /// A git work tree whose only stable identity part is its origin remote, so two
+    /// folders built with the same `origin` share a fingerprint exactly.
+    private func makeGitFolder(in root: URL, named name: String, origin: String) throws -> URL {
+        let folder = root.appendingPathComponent(name, isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try runGit(["init"], cwd: folder)
+        try runGit(["remote", "add", "origin", "https://example.com/org/\(origin).git"], cwd: folder)
+        return folder
     }
 
     func testIndexProjectEvictsOldestFilesFirstUnderBudget() throws {

@@ -1318,7 +1318,14 @@ public struct BurnBarCLIRunner {
         }
         return response.hits.map { hit in
             let tags = hit.tags.isEmpty ? "" : " #\(hit.tags.joined(separator: " #"))"
-            return "\(hit.memoryID) [\(hit.scope)/\(hit.kind)]\(tags)\n\(hit.snippet)"
+            var lines = ["\(hit.memoryID) [\(hit.scope)/\(hit.kind)]\(tags)", hit.snippet]
+            // B9: one explanation line per ranked hit, and none for a hit the
+            // daemon reported no breakdown for (an older daemon, or the browse
+            // listing). This is the shipping consumer of `whyExplanation`.
+            if let explanation = hit.whyExplanation {
+                lines.append(explanation)
+            }
+            return lines.joined(separator: "\n")
         }.joined(separator: "\n\n")
     }
 

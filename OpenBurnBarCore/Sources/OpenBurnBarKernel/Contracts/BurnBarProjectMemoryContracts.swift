@@ -121,6 +121,17 @@ public struct BurnBarProjectMemoryHit: Codable, Hashable, Sendable {
     public let snippet: String
     public let rank: Double?
     public let reviewStatus: MemoryReviewStatus
+    /// B9: which lane matched — `hybrid` / `lexical` / `semantic` / `browse`. A
+    /// sibling of `why`, exactly where the engine puts it.
+    public let matchedBy: String?
+    /// B9: the ranking report for this hit. Reported, never scored on.
+    public let why: BurnBarMemoryWhyBreakdown?
+
+    /// The one explanation line a UI renders under the hit, or nil when the
+    /// server did not report a breakdown (older daemon, or a browse listing).
+    public var whyExplanation: String? {
+        why?.explanationLine(matchedBy: matchedBy ?? "browse")
+    }
 
     public init(
         memoryID: String,
@@ -133,7 +144,9 @@ public struct BurnBarProjectMemoryHit: Codable, Hashable, Sendable {
         sourcePath: String?,
         snippet: String,
         rank: Double?,
-        reviewStatus: MemoryReviewStatus = .approved
+        reviewStatus: MemoryReviewStatus = .approved,
+        matchedBy: String? = nil,
+        why: BurnBarMemoryWhyBreakdown? = nil
     ) {
         self.memoryID = memoryID
         self.projectID = projectID
@@ -146,10 +159,13 @@ public struct BurnBarProjectMemoryHit: Codable, Hashable, Sendable {
         self.snippet = snippet
         self.rank = rank
         self.reviewStatus = reviewStatus
+        self.matchedBy = matchedBy
+        self.why = why
     }
 
     private enum CodingKeys: String, CodingKey {
         case memoryID, projectID, kind, scope, confidence, bodyRedacted, tags, sourcePath, snippet, rank, reviewStatus
+        case matchedBy, why
     }
 
     public init(from decoder: Decoder) throws {
@@ -165,6 +181,8 @@ public struct BurnBarProjectMemoryHit: Codable, Hashable, Sendable {
         self.snippet = try values.decode(String.self, forKey: .snippet)
         self.rank = try values.decodeIfPresent(Double.self, forKey: .rank)
         self.reviewStatus = try values.decodeIfPresent(MemoryReviewStatus.self, forKey: .reviewStatus) ?? .approved
+        self.matchedBy = try values.decodeIfPresent(String.self, forKey: .matchedBy)
+        self.why = try values.decodeIfPresent(BurnBarMemoryWhyBreakdown.self, forKey: .why)
     }
 }
 
