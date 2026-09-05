@@ -428,22 +428,199 @@ def verify_audit_chain(conn: sqlite3.Connection) -> dict[str, Any]:
     return {"ok": True, "events": len(rows), "brokenAtSeq": None}
 
 
-def resolve_project(conn: sqlite3.Connection, project_path: str | None) -> tuple[str, Path]:
+def map_project(conn: sqlite3.Connection, project_path: str | Path | None, project_id: str) -> None:
+    """Write the explicit folder → project mapping `resolve_project` reads first.
+
+    Internal to `adopt_project`, and deliberately not re-exported: mapping a
+    folder re-scopes every memory written there, so the only way to reach it is
+    through the confirmation `adopt_project` requires (A4).
+    """
+    # `pcm.project_root` already expands and resolves; this is the canonical form.
     root = pcm.project_root(project_path)
-    fingerprint = pcm.project_identity_fingerprint(root)
-    project_id = pcm.project_id_for_fingerprint(fingerprint, pcm.project_id_for(root))
-    # Read paths (recall, list, stats) resolve the project too. Only write when
-    # something changed, so a read never opens a write transaction that would
-    # hold the store's lock against another process until the connection closes.
+    canonical_path = str(root)
+    path_hash = sha256_hex(canonical_path)
+    ts = now_iso()
+    conn.execute(
+        "INSERT OR REPLACE INTO engine_meta (key, value) VALUES (?, ?)",
+        (f"project_map:{path_hash}", project_id),
+    )
+    conn.execute(
+        "INSERT OR REPLACE INTO engine_meta (key, value) VALUES (?, ?)",
+        (f"project_map:{canonical_path}", project_id),
+    )
+    if "pcm_project_aliases" in pcm.table_names(conn):
+        conn.execute(
+            """
+            INSERT INTO pcm_project_aliases (id, project_id, alias_path, path_hash, first_seen_at, last_seen_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(path_hash) DO UPDATE SET
+                project_id = excluded.project_id,
+                alias_path = excluded.alias_path,
+                last_seen_at = excluded.last_seen_at
+            """,
+            ("alias_" + sha256_hex(path_hash)[:32], project_id, canonical_path, path_hash, ts, ts),
+        )
+    conn.execute(
+        """
+        INSERT INTO projects (project_id, fingerprint, display_name, primary_path, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(project_id) DO UPDATE SET
+            fingerprint = excluded.fingerprint,
+            display_name = excluded.display_name,
+            primary_path = excluded.primary_path,
+            updated_at = excluded.updated_at
+        """,
+        (project_id, f"explicit:{project_id}", root.name, canonical_path, ts, ts),
+    )
+    conn.commit()
+
+
+def adopt_project(
+    conn: sqlite3.Connection,
+    project_path: str | Path | None = None,
+    project_id: str | None = None,
+    *,
+    confirmed: bool = False,
+) -> dict[str, Any]:
+    """Adopt a project ID for a folder path.
+
+    A dotfile naming an ID this device does not already map requires confirmation;
+    `project adopt <id>` prints the ID and the memories it would join and requires
+    an explicit confirmation. A dotfile naming an ID already mapped to that path
+    is a no-op.
+    """
+    # `pcm.project_root` already expands and resolves; this is the canonical form.
+    root = pcm.project_root(project_path)
+    canonical_path = str(root)
+    path_hash = sha256_hex(canonical_path)
+
+    target_id = project_id
+    if not target_id:
+        dotfile = root / ".burnbar" / "project-id"
+        if dotfile.is_file():
+            try:
+                target_id = dotfile.read_text(encoding="utf-8").strip()
+            except OSError:
+                pass
+    if not target_id:
+        raise ValueError("No project ID specified and no .burnbar/project-id dotfile found.")
+
+    existing_map = conn.execute(
+        "SELECT value FROM engine_meta WHERE key = ? OR key = ?",
+        (f"project_map:{path_hash}", f"project_map:{canonical_path}"),
+    ).fetchone()
+    current_mapped_id: str | None = None
+    if existing_map is not None:
+        current_mapped_id = str(existing_map[0])
+    elif "pcm_project_aliases" in pcm.table_names(conn):
+        alias = conn.execute(
+            "SELECT project_id FROM pcm_project_aliases WHERE path_hash = ? LIMIT 1",
+            (path_hash,),
+        ).fetchone()
+        if alias is not None:
+            current_mapped_id = str(alias[0])
+
+    if current_mapped_id == target_id:
+        return {
+            "status": "ok",
+            "event": "NONE",
+            "reason": "already_mapped",
+            "projectID": target_id,
+            "path": canonical_path,
+        }
+
+    memories_count = 0
+    if "memories" in pcm.table_names(conn):
+        count_row = conn.execute("SELECT COUNT(*) FROM memories WHERE project_id = ?", (target_id,)).fetchone()
+        if count_row:
+            memories_count = int(count_row[0])
+
+    if not confirmed:
+        return {
+            "status": "confirmation_required",
+            "projectID": target_id,
+            "path": canonical_path,
+            "memoriesCount": memories_count,
+            "message": (
+                f"Adopting project '{target_id}' for path '{canonical_path}' will join "
+                f"{memories_count} existing memories. Explicit confirmation required."
+            ),
+        }
+
+    map_project(conn, root, target_id)
+    conn.execute(
+        "DELETE FROM engine_meta WHERE key = ?",
+        (f"pending_project_adoption:{path_hash}",),
+    )
+    conn.commit()
+
+    return {
+        "status": "ok",
+        "event": "ADOPTED",
+        "projectID": target_id,
+        "path": canonical_path,
+        "memoriesCount": memories_count,
+    }
+
+
+def resolve_project(conn: sqlite3.Connection, project_path: str | None) -> tuple[str, Path]:
+    # `pcm.project_root` already expands and resolves; this is the canonical form.
+    root = pcm.project_root(project_path)
+    canonical_path = str(root)
+    path_hash = sha256_hex(canonical_path)
+
+    project_id: str | None = None
+    fingerprint: str | None = None
+
+    # 1. Explicit map
+    row = conn.execute(
+        "SELECT value FROM engine_meta WHERE key = ? OR key = ?",
+        (f"project_map:{path_hash}", f"project_map:{canonical_path}"),
+    ).fetchone()
+    if row is not None:
+        project_id = str(row[0])
+        fingerprint = f"explicit:{project_id}"
+    elif "pcm_project_aliases" in pcm.table_names(conn):
+        alias = conn.execute(
+            "SELECT project_id FROM pcm_project_aliases WHERE path_hash = ? LIMIT 1",
+            (path_hash,),
+        ).fetchone()
+        if alias is not None:
+            project_id = str(alias[0])
+            fingerprint = f"explicit:{project_id}"
+
+    # 2. Git root or 3. Provisional hashed path
+    if project_id is None:
+        fingerprint = pcm.project_identity_fingerprint(root)
+        project_id = pcm.project_id_for_fingerprint(fingerprint, pcm.project_id_for(root))
+
+    # Dotfile security check: never auto-apply .burnbar/project-id
+    dotfile = root / ".burnbar" / "project-id"
+    if dotfile.is_file():
+        try:
+            dotfile_id = dotfile.read_text(encoding="utf-8").strip()
+            if dotfile_id and dotfile_id != project_id:
+                if "engine_meta" in pcm.table_names(conn):
+                    conn.execute(
+                        "INSERT OR REPLACE INTO engine_meta (key, value) VALUES (?, ?)",
+                        (f"pending_project_adoption:{path_hash}", dotfile_id),
+                    )
+        except OSError:
+            pass
+
     existing = conn.execute(
         "SELECT fingerprint, display_name, primary_path FROM projects WHERE project_id = ?", (project_id,)
     ).fetchone()
+    # Read paths (recall, list, stats) resolve the project too. Only write when
+    # something changed, so a read never opens a write transaction that would
+    # hold the store's lock against another process until the connection closes.
     if existing is not None and (str(existing[0]), str(existing[1]), str(existing[2])) == (
         fingerprint,
         root.name,
-        str(root),
+        canonical_path,
     ):
         return project_id, root
+
     ts = now_iso()
     conn.execute(
         """
@@ -455,7 +632,7 @@ def resolve_project(conn: sqlite3.Connection, project_path: str | None) -> tuple
             primary_path = excluded.primary_path,
             updated_at = excluded.updated_at
         """,
-        (project_id, fingerprint, root.name, str(root), ts, ts),
+        (project_id, fingerprint, root.name, canonical_path, ts, ts),
     )
     conn.commit()
     return project_id, root

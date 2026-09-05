@@ -295,8 +295,8 @@ def _entropy_labels(text: str) -> list[str]:
     return labels
 
 
-def project_root(project_path: str | None = None) -> Path:
-    raw = (project_path or os.environ.get("OPENBURNBAR_ACTIVE_PROJECT_PATH") or os.getcwd()).strip()
+def project_root(project_path: str | Path | None = None) -> Path:
+    raw = str(project_path or os.environ.get("OPENBURNBAR_ACTIVE_PROJECT_PATH") or os.getcwd()).strip()
     root = Path(raw).expanduser().resolve()
     if not root.is_dir():
         raise ValueError(f"project_path must point to an existing directory: {root}")
@@ -374,43 +374,54 @@ def resolve_project_id(conn: sqlite3.Connection, root: Path) -> str:
     preferred_project_id = project_id_for_fingerprint(fingerprint, legacy_project_id)
     ts = now_iso()
 
-    existing = conn.execute(
-        "SELECT project_id FROM pcm_projects WHERE identity_fingerprint = ? LIMIT 1",
-        (fingerprint,),
-    ).fetchone()
     alias = conn.execute(
         "SELECT project_id FROM pcm_project_aliases WHERE path_hash = ? LIMIT 1",
         (path_hash,),
     ).fetchone()
-    if existing:
-        project_id = str(existing[0])
-    elif alias:
+    existing = conn.execute(
+        "SELECT project_id FROM pcm_projects WHERE identity_fingerprint = ? LIMIT 1",
+        (fingerprint,),
+    ).fetchone()
+    if alias:
         project_id = str(alias[0])
+    elif existing:
+        project_id = str(existing[0])
     elif has_project_rows(conn, legacy_project_id):
         project_id = legacy_project_id
     else:
         project_id = preferred_project_id
 
-    conn.execute(
-        """
-        INSERT OR IGNORE INTO pcm_projects
-            (project_id, identity_version, identity_fingerprint, project_name, primary_path, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        """,
-        (project_id, 2, fingerprint, resolved.name, canonical_path, ts, ts),
-    )
-    conn.execute(
-        """
-        UPDATE pcm_projects
-        SET identity_version = 2,
-            identity_fingerprint = ?,
-            project_name = ?,
-            primary_path = ?,
-            updated_at = ?
-        WHERE project_id = ?
-        """,
-        (fingerprint, resolved.name, canonical_path, ts, project_id),
-    )
+    can_update_fingerprint = existing is None or str(existing[0]) == project_id
+    if can_update_fingerprint:
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO pcm_projects
+                (project_id, identity_version, identity_fingerprint, project_name, primary_path, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (project_id, 2, fingerprint, resolved.name, canonical_path, ts, ts),
+        )
+        conn.execute(
+            """
+            UPDATE pcm_projects
+            SET identity_version = 2,
+                identity_fingerprint = ?,
+                project_name = ?,
+                primary_path = ?,
+                updated_at = ?
+            WHERE project_id = ?
+            """,
+            (fingerprint, resolved.name, canonical_path, ts, project_id),
+        )
+    else:
+        conn.execute(
+            """
+            UPDATE pcm_projects
+            SET updated_at = ?
+            WHERE project_id = ?
+            """,
+            (ts, project_id),
+        )
     conn.execute(
         """
         INSERT INTO pcm_project_aliases
