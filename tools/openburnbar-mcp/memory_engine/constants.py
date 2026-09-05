@@ -77,6 +77,10 @@ REVIEW_STATUSES = ("approved", "quarantined", "rejected")
 # The highest `MemoryCloudFactPayload` schema this engine understands. A document
 # sealed by a newer device is parked, never half-merged.
 REMOTE_PAYLOAD_SCHEMA_MAX = 2
+# The forget-receipt entry the app parks beside facts in `agent_memory_inbox`
+# (discriminated by `entryKind`). Its own schema, its own ceiling.
+REMOTE_RECEIPT_ENTRY_KIND = "memory_forget_receipt"
+REMOTE_RECEIPT_SCHEMA_MAX = 1
 # `memories.source_kind` for a row that arrived through the blind-sync merge.
 REMOTE_SOURCE_KIND = "cloud_sync"
 # The shape a local `remember` mints (`"mem_" + secrets.token_hex(16)`). A remote

@@ -646,6 +646,148 @@ def test_no_remote_decision_carries_a_body_or_tags(tmp_path: Path) -> None:
     engine.close()
 
 
+def _receipt(
+    doc_id: str,
+    engine_memory_id: str,
+    *,
+    replicated_at: str,
+    reason: str = "user_delete",
+    source_level: bool = False,
+    schema_version: int = 1,
+) -> dict[str, object]:
+    """The forget-receipt inbox entry the app parks beside facts (receipt-entry-shape.md)."""
+    payload: dict[str, object] = {
+        "entryKind": "memory_forget_receipt",
+        "schemaVersion": schema_version,
+        "receiptID": doc_id,
+        "reason": reason,
+        "createdAt": replicated_at,
+        "replicatedAt": replicated_at,
+    }
+    if source_level:
+        payload["sourceRefHmac"] = "ab" * 32
+    else:
+        payload["memoryIdHmac"] = "cd" * 32
+        payload["sourceRefHmacs"] = []
+    return {
+        "docID": doc_id,
+        "userID": "user-1",
+        "engineMemoryID": engine_memory_id,
+        "payloadJSON": json.dumps(payload),
+        "remoteUpdatedAt": replicated_at,
+        "entryKind": "memory_forget_receipt",
+    }
+
+
+def test_a_remote_forget_receipt_purges_the_merged_row_and_refuses_its_replay(tmp_path: Path) -> None:
+    """Codex P1 (A): retirement never reached a device that had already merged the
+    fact. A receipt drained through the inbox is the same hard forget a local
+    `forget` is — the row goes, the receipt is recorded, and a late replay of the
+    body under that id is refused rather than revived."""
+    repo = _repo(tmp_path)
+    engine = _replica(tmp_path, "receipt-merged")
+    project_id = _project_id(engine, repo)
+    mid = "mem_a1a1111122223333444455556666777f"
+    engine.merge_remote([_doc("doc-a", mid, "Envoy fronts the public API.", project_id=project_id, updated_at=T1)])
+    assert mid in _rows(engine)
+
+    result = engine.merge_remote([_receipt("rcpt-a", mid, replicated_at=T2)])
+    assert result["receipts"] == 1 and result["retired"] == 1
+    assert result["decisions"][0]["code"] == "REMOTE_FORGOTTEN"
+    assert result["ackDocIDs"] == ["rcpt-a"]
+    assert mid not in _rows(engine)
+
+    replay = engine.merge_remote(
+        [_doc("doc-a", mid, "Envoy fronts the public API.", project_id=project_id, updated_at=T1)]
+    )
+    assert replay["decisions"][0]["code"] == "LOCALLY_FORGOTTEN"
+    assert mid not in _rows(engine)
+    engine.close()
+
+
+def test_a_receipt_that_arrives_before_its_fact_still_wins(tmp_path: Path) -> None:
+    """Receipt check precedes everything: a fact landing after the receipt that
+    forgets it is refused, and in the same batch the receipt is applied first."""
+    repo = _repo(tmp_path)
+    engine = _replica(tmp_path, "receipt-first")
+    project_id = _project_id(engine, repo)
+    mid = "mem_b1b1111122223333444455556666777f"
+    first = engine.merge_remote([_receipt("rcpt-b", mid, replicated_at=T1)])
+    assert first["decisions"][0]["code"] == "RECEIPT_RECORDED"
+    assert first["retired"] == 0 and first["ackDocIDs"] == ["rcpt-b"]
+
+    late = engine.merge_remote([_doc("doc-b", mid, "Late arrival.", project_id=project_id, updated_at=T2)])
+    assert late["decisions"][0]["code"] == "LOCALLY_FORGOTTEN"
+
+    # Same drain, fact listed BEFORE the receipt: the receipt is still applied first.
+    mid2 = "mem_b2b2111122223333444455556666777f"
+    both = engine.merge_remote(
+        [
+            _doc("doc-b2", mid2, "Also late.", project_id=project_id, updated_at=T2),
+            _receipt("rcpt-b2", mid2, replicated_at=T3),
+        ]
+    )
+    codes = {decision["docID"]: decision["code"] for decision in both["decisions"]}
+    assert codes == {"rcpt-b2": "RECEIPT_RECORDED", "doc-b2": "LOCALLY_FORGOTTEN"}
+    assert mid2 not in _rows(engine)
+    engine.close()
+
+
+def test_a_receipt_for_a_folded_foreign_id_retires_the_row_it_folded_into(tmp_path: Path) -> None:
+    """The member forgot THAT memory on another device, whichever engine id that
+    device knew it by. A receipt naming an alias resolves to its holder."""
+    repo = _repo(tmp_path)
+    engine = _replica(tmp_path, "receipt-alias")
+    project_id = _project_id(engine, repo)
+    body = "The build cache lives on the NVMe volume."
+    holder = "mem_c1c1111122223333444455556666777f"
+    folded = "mem_c2c2111122223333444455556666777f"
+    engine.merge_remote([_doc("doc-c1", holder, body, project_id=project_id, updated_at=T1)])
+    engine.merge_remote([_doc("doc-c2", folded, body, project_id=project_id, updated_at=T2)])
+    assert holder in _rows(engine) and folded not in _rows(engine)
+
+    result = engine.merge_remote([_receipt("rcpt-c", folded, replicated_at=T3)])
+    assert result["decisions"][0]["code"] == "REMOTE_FORGOTTEN"
+    assert result["decisions"][0]["purgedMemoryIDs"] == [holder]
+    assert holder not in _rows(engine)
+    engine.close()
+
+
+def test_receipts_the_engine_cannot_act_on_are_acknowledged_not_reoffered(tmp_path: Path) -> None:
+    """Source-level receipts (no engine row can match), unresolved HMACs, and a
+    second delivery of an applied receipt all end the document — acked, no error,
+    nothing purged. Only a receipt sealed by a newer app parks."""
+    repo = _repo(tmp_path)
+    engine = _replica(tmp_path, "receipt-noop")
+    project_id = _project_id(engine, repo)
+    mid = "mem_d1d1111122223333444455556666777f"
+    engine.merge_remote([_doc("doc-d", mid, "Kept.", project_id=project_id, updated_at=T1)])
+
+    result = engine.merge_remote(
+        [
+            _receipt("rcpt-src", "ab" * 32, replicated_at=T2, source_level=True),
+            _receipt("rcpt-unresolved", "ef" * 32, replicated_at=T2),
+            _receipt("rcpt-new", mid, replicated_at=T2, schema_version=99),
+        ]
+    )
+    codes = {decision["docID"]: decision["code"] for decision in result["decisions"]}
+    assert codes == {
+        "rcpt-src": "SOURCE_RECEIPT_NOOP",
+        "rcpt-unresolved": "RECEIPT_UNRESOLVED",
+        "rcpt-new": "RECEIPT_TOO_NEW",
+    }
+    assert sorted(result["ackDocIDs"]) == ["rcpt-src", "rcpt-unresolved"]
+    assert result["parkedDocIDs"] == ["rcpt-new"]
+    assert mid in _rows(engine), "nothing acted on a row the receipts did not name"
+
+    applied = engine.merge_remote([_receipt("rcpt-d", mid, replicated_at=T3)])
+    assert applied["decisions"][0]["code"] == "REMOTE_FORGOTTEN"
+    again = engine.merge_remote([_receipt("rcpt-d", mid, replicated_at=T3)])
+    assert again["decisions"][0]["code"] == "RECEIPT_ALREADY_APPLIED"
+    assert again["ackDocIDs"] == ["rcpt-d"] and again["retired"] == 0
+    engine.close()
+
+
 def test_a_quarantined_remote_duplicate_returns_no_body_either(tmp_path: Path) -> None:
     """The reinforcement path returns the row's stored body, so it needs the same
     guard as the write path: an injection-labelled duplicate folding into an

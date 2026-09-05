@@ -30,11 +30,38 @@ from .constants import (
     MEMORY_SCOPES,
     REMOTE_MEMORY_ID_RE,
     REMOTE_PAYLOAD_SCHEMA_MAX,
+    REMOTE_RECEIPT_ENTRY_KIND,
+    REMOTE_RECEIPT_SCHEMA_MAX,
     REMOTE_SOURCE_KIND,
 )
 from .embeddings import encode_vector
 from .extract import Fact, _slot_key, extract_entities, extract_relations
 from .store import audit_event
+
+
+def _receipt_payload(raw: Any) -> dict[str, Any] | None:
+    """The parsed payload of an inbox entry, or None when it is not a JSON object."""
+    if not isinstance(raw, dict):
+        return None
+    payload = raw.get("payload")
+    if not isinstance(payload, dict):
+        payload = _json_loads(raw.get("payloadJSON"), None)
+    return payload if isinstance(payload, dict) else None
+
+
+def _is_receipt_entry(raw: Any) -> bool:
+    """A forget receipt parked beside the facts — told apart by `entryKind`.
+
+    The daemon lifts the discriminator out of the payload onto the entry; the
+    payload's own copy is authoritative. A missing `entryKind` is a fact, never
+    an error.
+    """
+    if not isinstance(raw, dict):
+        return False
+    if raw.get("entryKind") == REMOTE_RECEIPT_ENTRY_KIND:
+        return True
+    payload = _receipt_payload(raw)
+    return payload is not None and payload.get("entryKind") == REMOTE_RECEIPT_ENTRY_KIND
 
 
 def _convergence_key(project_id: str, scope: str, body_hash: str) -> str:
@@ -498,8 +525,20 @@ class _BlindSync:
         decisions: list[dict[str, Any]] = []
         ack: list[str] = []
         parked: list[str] = []
-        applied = reinforced = unchanged = refused = 0
+        applied = reinforced = unchanged = refused = receipts = retired = 0
         for raw in rows:
+            if _is_receipt_entry(raw):
+                # Receipts land BEFORE any fact in the batch is merged: a retire
+                # must win regardless of arrival order, and a fact that arrives
+                # in the same drain as the receipt that forgets it is refused
+                # by `_decide_remote_fact`'s receipt check, not revived.
+                decision = self._apply_remote_receipt(raw)
+                receipts += 1
+                if decision["event"] == "RETIRE":
+                    retired += 1
+                (ack if decision.pop("ack") else parked).append(str(decision.get("docID") or ""))
+                decisions.append(decision)
+                continue
             fact, stopped = self._screen_remote_row(raw)
             if fact is None:
                 terminal = bool(stopped.pop("ack"))
@@ -544,7 +583,7 @@ class _BlindSync:
             (ack if resolved else parked).append(fact.doc_id)
             decisions.append(decision)
 
-        if applied or reinforced or refused:
+        if applied or reinforced or refused or retired:
             audit_event(
                 self.conn,
                 action="memory.sync_merge",
@@ -555,6 +594,7 @@ class _BlindSync:
                     f"reinforced:{reinforced}",
                     f"refused:{refused}",
                     f"parked:{len(parked)}",
+                    f"retired:{retired}",
                 ],
                 actor=self.config.actor,
             )
@@ -571,11 +611,123 @@ class _BlindSync:
             "parked": len(parked),
             "refused": refused,
             "unchanged": unchanged,
+            # Forget receipts drained alongside the facts, and how many local rows
+            # they retired (a receipt for a row this device never held records
+            # the receipt and retires nothing).
+            "receipts": receipts,
+            "retired": retired,
             "ackDocIDs": [doc_id for doc_id in ack if doc_id],
             "parkedDocIDs": [doc_id for doc_id in parked if doc_id],
             "watermark": self.sync_watermark(),
             "decisions": decisions,
         }
+
+    def _apply_remote_receipt(self, raw: Any) -> dict[str, Any]:
+        """Apply one forget receipt another device replicated.
+
+        The receipt names the engine memory id the app resolved for it (the app
+        holds the vault key and maps the receipt's keyed HMAC to an id it knows;
+        this engine holds no key material and cannot). Applying it here is the
+        same hard forget a local `forget` performs — purge the row, record the
+        receipt keyed by id and by convergence identity — so a replay of the body
+        under this id, or under a foreign id that folded into it, is refused by
+        `_decide_remote_fact` exactly as a locally forgotten memory is.
+
+        Always acknowledged, and idempotent: the app re-parks a receipt whenever
+        its `replicatedAt` moves and the clock-skew re-scan can offer it again.
+        A receipt this engine cannot act on (source-level, unresolved, malformed)
+        is acknowledged too — nothing about it can become actionable later.
+        """
+        entry = raw if isinstance(raw, dict) else {}
+        doc_id = str(entry.get("docID") or "")
+        memory_id = str(entry.get("engineMemoryID") or "").strip()
+
+        def done(event: str, code: str, reason: str, *, ack: bool = True, **extra: Any) -> dict[str, Any]:
+            decision = {
+                "event": event,
+                "code": code,
+                "reason": reason,
+                "docID": doc_id,
+                "memoryID": memory_id or None,
+                "entryKind": REMOTE_RECEIPT_ENTRY_KIND,
+                "ack": ack,
+            }
+            decision.update(extra)
+            return decision
+
+        payload = _receipt_payload(entry)
+        if payload is None:
+            return done("REFUSE", "MALFORMED_RECEIPT", "the receipt payload is not a JSON object")
+        try:
+            schema_version = int(payload.get("schemaVersion") or 0)
+        except (TypeError, ValueError):
+            schema_version = 0
+        if schema_version > REMOTE_RECEIPT_SCHEMA_MAX:
+            return done(
+                "PARK",
+                "RECEIPT_TOO_NEW",
+                f"receipt schema {schema_version} is newer than this engine's {REMOTE_RECEIPT_SCHEMA_MAX}",
+                ack=False,
+            )
+        reason = str(payload.get("reason") or "unknown")
+        if not payload.get("memoryIdHmac"):
+            # A source-level receipt names a chat source reference. The engine
+            # holds no source refs, so there is nothing here for it to forget.
+            return done("UNCHANGED", "SOURCE_RECEIPT_NOOP", "a source-level receipt names nothing this engine holds")
+        if not REMOTE_MEMORY_ID_RE.match(memory_id):
+            # The app could not map the receipt's HMAC to an engine id it knows.
+            # No row on this device can match it either, now or later.
+            return done("REFUSE", "RECEIPT_UNRESOLVED", "the receipt names no engine memory id this device knows")
+
+        receipt_key = f"forget_receipt:{memory_id}"
+        already = self.conn.execute("SELECT 1 FROM engine_meta WHERE key = ?", (receipt_key,)).fetchone() is not None
+        # The receipt's own id, and the local row a foreign id folded into: the
+        # member forgot THAT memory, whichever engine id their other device knew
+        # it by. A retired-and-aliased loser resolves to its holder here.
+        targets = [memory_id]
+        canonical = self._local_memory_id(memory_id)
+        if canonical and canonical != memory_id:
+            targets.append(canonical)
+        purged: list[str] = []
+        project_id: str | None = None
+        for target in targets:
+            row = self.conn.execute("SELECT rowid, project_id FROM memories WHERE id = ?", (target,)).fetchone()
+            if row is None:
+                continue
+            project_id = project_id or str(row["project_id"])
+            if not self.conn.in_transaction:
+                self.conn.execute("BEGIN IMMEDIATE")
+            self._purge(target, int(row["rowid"]), preserve_daemon_mirror=True)
+            purged.append(target)
+        if not self.conn.in_transaction:
+            self.conn.execute("BEGIN IMMEDIATE")
+        # `_purge` records the receipt for rows it removed; a receipt for a row
+        # this device never held is recorded by id alone so a later arrival under
+        # that id is refused. OR IGNORE keeps a richer local receipt intact.
+        self.conn.execute(
+            "INSERT OR IGNORE INTO engine_meta (key, value) VALUES (?, ?)",
+            (receipt_key, _json_dumps({"remote": True, "reason": reason, "receiptID": doc_id, "ts": now_iso()})),
+        )
+        if purged:
+            audit_event(
+                self.conn,
+                action="memory.sync_retire_applied",
+                project_id=project_id,
+                subject_id=memory_id,
+                labels=[f"reason:{reason}", f"purged:{len(purged)}", "remote_receipt"],
+                actor=self.config.actor,
+            )
+            return done(
+                "RETIRE",
+                "REMOTE_FORGOTTEN",
+                "another device forgot this memory; its row is purged here and the receipt recorded",
+                purgedMemoryIDs=purged,
+            )
+        if already:
+            return done("UNCHANGED", "RECEIPT_ALREADY_APPLIED", "this receipt was already applied on this device")
+        return done(
+            "RECEIPT", "RECEIPT_RECORDED", "no local row to retire; the receipt is recorded so a replay is refused"
+        )
 
     def _merge_remote_fact(self, fact: _RemoteFact) -> dict[str, Any]:
         """Land one screened remote row, and record what it keyed to.
