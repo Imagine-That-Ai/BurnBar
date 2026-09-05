@@ -1935,16 +1935,16 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         XCTAssertEqual(identity.projectID, transitionProjectID)
     }
 
-    /// A4: explicit map -> git root -> provisional, in that order, on both the
-    /// read-write and the read-only path.
+    /// A4 / engine parity: confirmed adoption -> git fingerprint -> provisional
+    /// path-derived mapping, in that order, on both the read-write and the
+    /// read-only path. The engine walks the same three rungs in
+    /// `memory_engine/store.py: resolve_project`.
     func test_daemon_project_identity_follows_the_same_override_order() throws {
         let fixture = try makeFixture()
         let store = try BurnBarProjectCodeMemoryStore(
             databasePath: fixture.database.path,
             logger: BurnBarDaemonLogger(category: "identity-order-test")
         )
-        let canonicalPath = fixture.project.resolvingSymlinksInPath().standardizedFileURL.path
-        let pathHash = BurnBarProjectCodeMemoryStore.sha256Hex(canonicalPath)
 
         // 3rd rung: a folder with no mapping and no git root is provisional — a
         // path-derived fingerprint, which the engine's doctor flags as such.
@@ -1954,28 +1954,16 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
             "a non-git folder resolves provisionally, not to a stable identity"
         )
 
-        // 2nd rung: an UNMAPPED folder that is a git root takes the git identity.
-        // (`fixture.project` is now mapped, so the git rung is proved on a sibling.)
+        // 2nd rung: a git root takes the git identity.
         let gitRoot = try makeGitFolder(in: fixture.root, named: "GitIdentityFixture", origin: "daemon-repo")
         let gitIdentity = try store.resolveProjectIdentity(root: gitRoot)
         XCTAssertTrue(gitIdentity.fingerprint.hasPrefix("git:"))
         XCTAssertNotEqual(gitIdentity.projectID, provisional.projectID)
 
-        // 1st rung: an explicit mapping for the path wins over everything the
+        // 1st rung: a CONFIRMED adoption for the path wins over everything the
         // folder's contents imply.
         let explicitID = "proj_explicit_mapped_override_999"
-        let now = BurnBarProjectCodeMemoryStore.isoNow()
-        try sqliteExecute(
-            database: fixture.database,
-            sql: """
-            INSERT INTO pcm_projects
-                (project_id, identity_version, identity_fingerprint, project_name, primary_path, created_at, updated_at)
-            VALUES
-                ('\(explicitID)', 2, 'explicit:\(explicitID)', 'mapped', \(sqlLiteral(canonicalPath)), '\(now)', '\(now)');
-
-            UPDATE pcm_project_aliases SET project_id = '\(explicitID)' WHERE path_hash = '\(pathHash)'
-            """
-        )
+        try adoptProject(database: fixture.database, path: fixture.project, projectID: explicitID)
 
         XCTAssertEqual(try store.resolveProjectIdentity(root: fixture.project).projectID, explicitID)
         XCTAssertEqual(
@@ -1985,12 +1973,188 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         )
     }
 
-    /// A4 red team: repository CONTENTS must never re-scope a folder that is
-    /// already mapped. A hostile (or merely careless) `git remote add` that makes a
-    /// mapped folder's fingerprint collide with another project's leaves the
-    /// mapping alone, so recall in that folder returns none of the victim
+    /// (a) Rung 1 beats rung 2: a folder whose CONTENTS carry a git fingerprint
+    /// another project already owns still resolves to the project it was adopted
+    /// into, and the adoption marker survives being resolved.
+    func test_a_confirmed_adoption_alias_outranks_a_differing_git_fingerprint() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "identity-adoption-test")
+        )
+
+        // A repository this device already knows, by its git fingerprint.
+        let twin = try makeGitFolder(in: fixture.root, named: "AdoptionTwin", origin: "shared-origin")
+        let twinIdentity = try store.resolveProjectIdentity(root: twin)
+        XCTAssertTrue(twinIdentity.fingerprint.hasPrefix("git:"))
+
+        // A second checkout of the same repository — byte-identical fingerprint —
+        // that the member has adopted into a different project.
+        let adopted = try makeGitFolder(in: fixture.root, named: "AdoptedCheckout", origin: "shared-origin")
+        XCTAssertEqual(
+            BurnBarProjectCodeMemoryStore.projectIdentityFingerprint(root: adopted),
+            twinIdentity.fingerprint,
+            "precondition: both folders' contents imply the same identity"
+        )
+        let adoptedID = "proj_00000000000000000000000000adopt"
+        try adoptProject(database: fixture.database, path: adopted, projectID: adoptedID)
+
+        let resolved = try store.resolveProjectIdentity(root: adopted)
+        XCTAssertEqual(resolved.projectID, adoptedID)
+        XCTAssertNotEqual(resolved.projectID, twinIdentity.projectID)
+        XCTAssertEqual(
+            try store.readOnlyProjectIdentity(root: adopted).projectID,
+            adoptedID,
+            "the read-only path must agree with the read-write path"
+        )
+
+        // Resolving must not overwrite the adoption marker with the folder's own
+        // git fingerprint, or the very next resolve would forget the adoption and
+        // hand the folder to the twin's project.
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT identity_fingerprint FROM pcm_projects WHERE project_id = \(sqlLiteral(adoptedID))"
+            ).first,
+            "explicit:\(adoptedID)"
+        )
+        XCTAssertEqual(try store.resolveProjectIdentity(root: adopted).projectID, adoptedID)
+
+        // The twin keeps its own identity; nothing stole its fingerprint.
+        XCTAssertEqual(try store.readOnlyProjectIdentity(root: twin).projectID, twinIdentity.projectID)
+    }
+
+    /// (b) Rung 2 beats rung 3, which is the bug this test exists for: a directory
+    /// that was visited once (and so carries an automatic, PROVISIONAL alias) and
+    /// is LATER reused for a checkout of a repository this device already knows
+    /// must resolve to that repository's project. Following the alias instead
+    /// would serve and write repository A's memories inside repository B — and
+    /// the engine, resolving the same folder, would pick B.
+    func test_a_provisional_path_alias_loses_to_a_known_git_fingerprint() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "identity-reuse-test")
+        )
+
+        // Repository B, known to this device from another checkout.
+        let checkout = try makeGitFolder(in: fixture.root, named: "ReusedCheckout", origin: "reused-repo")
+        let checkoutIdentity = try store.resolveProjectIdentity(root: checkout)
+        XCTAssertTrue(checkoutIdentity.fingerprint.hasPrefix("git:"))
+
+        // A directory used for something else first: provisional id A, with a
+        // memory of its own and therefore an automatic alias row.
+        let folder = fixture.root.appendingPathComponent("ReusedDirectory", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        _ = try store.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: "A note that predates the repository in this directory.",
+                projectPath: folder.path,
+                kind: "fact"
+            )
+        )
+        let provisionalIdentity = try store.readOnlyProjectIdentity(root: folder)
+        XCTAssertTrue(provisionalIdentity.fingerprint.hasPrefix("path:"))
+        XCTAssertNotEqual(provisionalIdentity.projectID, checkoutIdentity.projectID)
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: """
+                SELECT project_id FROM pcm_project_aliases
+                WHERE path_hash = \(sqlLiteral(provisionalIdentity.pathHash))
+                """
+            ).first,
+            provisionalIdentity.projectID,
+            "precondition: the directory carries an automatic alias, not an adoption"
+        )
+
+        // The directory is now a checkout of repository B.
+        try runGit(["init"], cwd: folder)
+        try runGit(["remote", "add", "origin", "https://example.com/org/reused-repo.git"], cwd: folder)
+        XCTAssertEqual(
+            BurnBarProjectCodeMemoryStore.projectIdentityFingerprint(root: folder),
+            checkoutIdentity.fingerprint,
+            "precondition: the directory's contents now imply repository B's identity"
+        )
+
+        // The fingerprint wins on both paths — the provisional alias does not.
+        XCTAssertEqual(try store.resolveProjectIdentity(root: folder).projectID, checkoutIdentity.projectID)
+        XCTAssertEqual(
+            try store.readOnlyProjectIdentity(root: folder).projectID,
+            checkoutIdentity.projectID,
+            "the read-only path must agree with the read-write path"
+        )
+
+        // ...and the directory's earlier, unrelated memory does not come along.
+        let recall = try store.recall(
+            BurnBarProjectMemoryRecallRequest(query: "note that predates the repository", projectPath: folder.path)
+        )
+        XCTAssertTrue(
+            recall.hits.allSatisfy { $0.projectID == checkoutIdentity.projectID },
+            "recall in the reused directory must serve only repository B's memories"
+        )
+
+        // The move is reported once per process, with opaque ids and no path.
+        let split = BurnBarProjectIdentitySplit(
+            provisionalProjectID: provisionalIdentity.projectID,
+            gitProjectID: checkoutIdentity.projectID
+        )
+        XCTAssertEqual(
+            BurnBarProjectIdentityDiagnostics.observedSplits().filter { $0 == split }.count,
+            1,
+            "the superseded provisional mapping is observed exactly once"
+        )
+        XCTAssertEqual(try store.resolveProjectIdentity(root: folder).projectID, checkoutIdentity.projectID)
+        XCTAssertEqual(BurnBarProjectIdentityDiagnostics.observedSplits().filter { $0 == split }.count, 1)
+        XCTAssertFalse(BurnBarProjectIdentityDiagnostics.noteSplit(split))
+        XCTAssertEqual(
+            split.logMetadata,
+            ["project_id": provisionalIdentity.projectID, "git_project_id": checkoutIdentity.projectID]
+        )
+        XCTAssertTrue(split.logMetadata.values.allSatisfy { $0.contains("/") == false })
+
+        // A folder whose mapping already agrees with its fingerprint is not a
+        // split, and neither is an adoption that outranked one.
+        let before = BurnBarProjectIdentityDiagnostics.observedSplits().count
+        _ = try store.resolveProjectIdentity(root: checkout)
+        XCTAssertEqual(BurnBarProjectIdentityDiagnostics.observedSplits().count, before)
+    }
+
+    /// (c) Unchanged behaviour: a folder nobody has mapped, whose git fingerprint
+    /// no project owns, gets the id derived from that fingerprint — the same id
+    /// the engine's `project_id_for_fingerprint` mints.
+    func test_an_unmapped_folder_with_an_unknown_fingerprint_gets_a_fresh_id() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "identity-fresh-test")
+        )
+        let fresh = try makeGitFolder(in: fixture.root, named: "FreshCheckout", origin: "fresh-repo")
+        let fingerprint = BurnBarProjectCodeMemoryStore.projectIdentityFingerprint(root: fresh)
+        XCTAssertTrue(fingerprint.hasPrefix("git:"))
+        let expected = BurnBarProjectCodeMemoryStore.projectID(
+            forFingerprint: fingerprint,
+            fallbackProjectID: BurnBarProjectCodeMemoryStore.legacyProjectID(for: fresh)
+        )
+
+        let readOnly = try store.readOnlyProjectIdentity(root: fresh)
+        let resolved = try store.resolveProjectIdentity(root: fresh)
+
+        XCTAssertEqual(resolved.projectID, expected)
+        XCTAssertEqual(
+            readOnly.projectID,
+            resolved.projectID,
+            "the read-only path must agree with the read-write path before anything is written"
+        )
+        XCTAssertEqual(resolved.fingerprint, fingerprint)
+    }
+
+    /// A4 red team: repository CONTENTS must never re-scope a folder the member
+    /// ADOPTED. A hostile (or merely careless) `git remote add` that makes an
+    /// adopted folder's fingerprint collide with another project's leaves the
+    /// adoption alone, so recall in that folder returns none of the victim
     /// project's rows and no write lands under the victim id.
-    func test_a_folder_matching_another_projects_git_fingerprint_is_not_rescoped() throws {
+    func test_an_adopted_folder_matching_another_projects_git_fingerprint_is_not_rescoped() throws {
         let fixture = try makeFixture()
         let store = try BurnBarProjectCodeMemoryStore(
             databasePath: fixture.database.path,
@@ -2009,9 +2173,11 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         let victimIdentity = try store.readOnlyProjectIdentity(root: victim)
         XCTAssertTrue(victimIdentity.fingerprint.hasPrefix("git:"))
 
-        // Hostile folder: already mapped provisionally, with its own memory.
+        // Hostile folder: adopted into a project of its own, with its own memory.
         let hostile = fixture.root.appendingPathComponent("HostileProject", isDirectory: true)
         try FileManager.default.createDirectory(at: hostile, withIntermediateDirectories: true)
+        let hostileID = "proj_000000000000000000000000hostile"
+        try adoptProject(database: fixture.database, path: hostile, projectID: hostileID)
         _ = try store.remember(
             BurnBarProjectMemoryRememberRequest(
                 text: "The hostile folder has its own unrelated note.",
@@ -2019,8 +2185,8 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
                 kind: "fact"
             )
         )
-        let hostileIdentity = try store.readOnlyProjectIdentity(root: hostile)
-        XCTAssertNotEqual(hostileIdentity.projectID, victimIdentity.projectID)
+        XCTAssertEqual(try store.readOnlyProjectIdentity(root: hostile).projectID, hostileID)
+        XCTAssertNotEqual(hostileID, victimIdentity.projectID)
 
         // The attacker makes the folder's CONTENTS claim the victim's identity.
         try runGit(["init"], cwd: hostile)
@@ -2032,8 +2198,8 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         )
 
         // Identity does not move, on either path...
-        XCTAssertEqual(try store.readOnlyProjectIdentity(root: hostile).projectID, hostileIdentity.projectID)
-        XCTAssertEqual(try store.resolveProjectIdentity(root: hostile).projectID, hostileIdentity.projectID)
+        XCTAssertEqual(try store.readOnlyProjectIdentity(root: hostile).projectID, hostileID)
+        XCTAssertEqual(try store.resolveProjectIdentity(root: hostile).projectID, hostileID)
         XCTAssertEqual(
             try store.readOnlyProjectIdentity(root: victim).projectID,
             victimIdentity.projectID,
@@ -2045,7 +2211,7 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
             BurnBarProjectMemoryRecallRequest(query: "victim project deploys Thursday", projectPath: hostile.path)
         )
         XCTAssertTrue(
-            recall.hits.allSatisfy { $0.projectID == hostileIdentity.projectID },
+            recall.hits.allSatisfy { $0.projectID == hostileID },
             "recall in the hostile folder must not serve another project's memories"
         )
         XCTAssertFalse(recall.hits.contains { $0.bodyRedacted.contains("deploys on Thursday") })
@@ -2058,75 +2224,40 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
                 kind: "fact"
             )
         )
-        XCTAssertEqual(written.projectID, hostileIdentity.projectID)
+        XCTAssertEqual(written.projectID, hostileID)
         XCTAssertNotEqual(written.projectID, victimIdentity.projectID)
     }
 
-    /// A4 follow-up (P31 owns the remedy): alias-first is the security fix, and it
-    /// has a cost — a folder mapped provisionally BEFORE it became a git checkout
-    /// can no longer join the project its repository belongs to. That is silent
-    /// today, so the daemon at least says so once per process, with the two opaque
-    /// project ids and never a path.
-    func test_a_provisional_folder_whose_git_root_names_another_project_is_diagnosed() throws {
-        let fixture = try makeFixture()
-        let store = try BurnBarProjectCodeMemoryStore(
-            databasePath: fixture.database.path,
-            logger: BurnBarDaemonLogger(category: "identity-split-test")
+    /// The engine's `map_project` (`memory_engine/store.py`) is what a confirmed
+    /// `project adopt` runs: it stamps `explicit:<project id>` as the project's
+    /// identity fingerprint and points the folder's alias row at that project.
+    /// The daemon has no adopt RPC yet (follow-up packet P31), so a test writes
+    /// the same two rows the engine's adoption writes.
+    private func adoptProject(database: URL, path: URL, projectID: String) throws {
+        let canonicalPath = path.resolvingSymlinksInPath().standardizedFileURL.path
+        let pathHash = BurnBarProjectCodeMemoryStore.sha256Hex(canonicalPath)
+        let aliasID = "alias_" + String(BurnBarProjectCodeMemoryStore.sha256Hex(pathHash).prefix(32))
+        let now = BurnBarProjectCodeMemoryStore.isoNow()
+        try sqliteExecute(
+            database: database,
+            sql: """
+            INSERT OR IGNORE INTO pcm_projects
+                (project_id, identity_version, identity_fingerprint, project_name, primary_path, created_at, updated_at)
+            VALUES
+                (\(sqlLiteral(projectID)), 2, \(sqlLiteral("explicit:\(projectID)")), \
+            \(sqlLiteral(path.lastPathComponent)), \(sqlLiteral(canonicalPath)), '\(now)', '\(now)');
+
+            INSERT INTO pcm_project_aliases
+                (id, project_id, alias_path, path_hash, first_seen_at, last_seen_at)
+            VALUES
+                (\(sqlLiteral(aliasID)), \(sqlLiteral(projectID)), \(sqlLiteral(canonicalPath)), \
+            \(sqlLiteral(pathHash)), '\(now)', '\(now)')
+            ON CONFLICT(path_hash) DO UPDATE SET
+                project_id = excluded.project_id,
+                alias_path = excluded.alias_path,
+                last_seen_at = excluded.last_seen_at
+            """
         )
-
-        // The repository, mapped by its git fingerprint.
-        let checkout = try makeGitFolder(in: fixture.root, named: "SplitCheckout", origin: "split-repo")
-        let checkoutIdentity = try store.resolveProjectIdentity(root: checkout)
-        XCTAssertTrue(checkoutIdentity.fingerprint.hasPrefix("git:"))
-
-        // A folder someone remembered something in BEFORE `git init`: provisional.
-        let folder = fixture.root.appendingPathComponent("SplitProvisional", isDirectory: true)
-        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        let provisionalIdentity = try store.resolveProjectIdentity(root: folder)
-        XCTAssertTrue(provisionalIdentity.fingerprint.hasPrefix("path:"))
-        XCTAssertNotEqual(provisionalIdentity.projectID, checkoutIdentity.projectID)
-
-        // They then clone/init the repo in place. Alias-first keeps the folder on
-        // its provisional id (that is the fix) — and the split is now recorded.
-        try runGit(["init"], cwd: folder)
-        try runGit(["remote", "add", "origin", "https://example.com/org/split-repo.git"], cwd: folder)
-        XCTAssertEqual(
-            BurnBarProjectCodeMemoryStore.projectIdentityFingerprint(root: folder),
-            checkoutIdentity.fingerprint,
-            "precondition: the folder's contents now imply the checkout's identity"
-        )
-
-        XCTAssertEqual(try store.resolveProjectIdentity(root: folder).projectID, provisionalIdentity.projectID)
-
-        let split = BurnBarProjectIdentitySplit(
-            provisionalProjectID: provisionalIdentity.projectID,
-            gitProjectID: checkoutIdentity.projectID
-        )
-        XCTAssertEqual(
-            BurnBarProjectIdentityDiagnostics.observedSplits().filter { $0 == split }.count,
-            1,
-            "the split is observed exactly once"
-        )
-        // Once per process: the second resolve of the same folder records nothing
-        // new, and the guard itself refuses a repeat.
-        XCTAssertEqual(try store.resolveProjectIdentity(root: folder).projectID, provisionalIdentity.projectID)
-        XCTAssertEqual(BurnBarProjectIdentityDiagnostics.observedSplits().filter { $0 == split }.count, 1)
-        XCTAssertFalse(BurnBarProjectIdentityDiagnostics.noteSplit(split))
-
-        // Ids only. A project id is `proj_<hex>`; a path would leak the member's
-        // folder layout into a log line.
-        XCTAssertEqual(
-            split.logMetadata,
-            ["project_id": provisionalIdentity.projectID, "git_project_id": checkoutIdentity.projectID]
-        )
-        XCTAssertTrue(split.logMetadata.values.allSatisfy { $0.contains("/") == false })
-
-        // A folder whose recorded mapping is NOT provisional is not a split: the
-        // red-team case (an explicit map colliding with a git fingerprint) is a
-        // refusal working as designed, not a stranded folder.
-        let before = BurnBarProjectIdentityDiagnostics.observedSplits().count
-        _ = try store.resolveProjectIdentity(root: checkout)
-        XCTAssertEqual(BurnBarProjectIdentityDiagnostics.observedSplits().count, before)
     }
 
     /// A git work tree whose only stable identity part is its origin remote, so two

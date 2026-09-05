@@ -1,12 +1,16 @@
 import Foundation
 
-/// One observation of the cost of A4's alias-first rule: a folder whose recorded
-/// mapping is PROVISIONAL (path-derived) is opened with a git root whose
-/// fingerprint belongs to a different project. Alias-first is deliberate — it is
-/// the security fix, and repository contents must never re-scope a folder — but
-/// this particular sequence (remember something in a folder, then `git init` /
-/// clone the repo into it) leaves the folder permanently outside the project its
-/// repository belongs to, and there is no daemon-side adopt yet.
+/// One folder whose PROVISIONAL (path-derived) mapping was superseded by the git
+/// fingerprint of the repository it now contains.
+///
+/// This is the reused-directory sequence: someone remembers something in a plain
+/// folder, then clones a repository into it that this device already knows from
+/// another checkout. The resolution order (A4, and the engine's) puts the git
+/// fingerprint above a merely-visited alias, so the folder joins the repository's
+/// project — which is correct, and is also the moment the memories written under
+/// the folder's old provisional id stop being reachable from here. Nothing is
+/// deleted; they are simply no longer in scope. A confirmed `project adopt`
+/// (follow-up packet P31) is the way to choose the other answer on purpose.
 ///
 /// Opaque project ids only. A path here would put the member's folder layout in
 /// a log line, which is exactly what the identity fingerprint exists to avoid.
@@ -51,52 +55,171 @@ enum BurnBarProjectIdentityDiagnostics {
 }
 
 extension BurnBarProjectCodeMemoryStore {
+    /// The prefix the engine's `map_project` stamps on an ADOPTED project's
+    /// identity fingerprint (`memory_engine/store.py`). It is the daemon's only
+    /// evidence that a folder → project mapping is a member's confirmed decision
+    /// rather than a row the resolver wrote for itself.
+    static let explicitIdentityFingerprintPrefix = "explicit:"
+
+    /// What one folder's rows say about which project it belongs to, before any
+    /// of it is written back. Both `resolveProjectIdentity` and
+    /// `readOnlyProjectIdentity` decide from this one value, so a recall and a
+    /// write can never disagree about which project a folder is.
+    struct ProjectIdentityResolution {
+        /// The id the folder resolves to.
+        let projectID: String
+        /// The fingerprint to record for `projectID`: the folder's observed
+        /// fingerprint normally, `explicit:<projectID>` when a confirmed adoption
+        /// decided the answer — the engine writes exactly this, and stamping the
+        /// observed fingerprint instead would erase the adoption marker on the
+        /// very next resolve.
+        let fingerprint: String
+        /// The project that already owns `fingerprint`, if any.
+        let fingerprintOwner: String?
+        /// A provisional (path-derived) alias for this folder that the resolution
+        /// did NOT follow, i.e. the id whose memories just left this folder's
+        /// scope. `nil` whenever the alias agrees with `projectID`.
+        let supersededProvisionalProjectID: String?
+    }
+
+    /// A4 / engine-parity resolution order, in one place:
+    ///
+    ///   1. a CONFIRMED adoption for this folder — an alias row whose project
+    ///      carries the engine's `explicit:` identity fingerprint;
+    ///   2. the git-root fingerprint, when some project already owns it;
+    ///   3. the folder's own provisional (path-derived) mapping — the alias the
+    ///      resolver recorded automatically, then the legacy id shapes, then the
+    ///      freshly derived id.
+    ///
+    /// The order matters in both directions. An alias alone must NOT outrank the
+    /// fingerprint: the resolver records an alias for every folder it ever sees,
+    /// so a directory that was once used for something else and now holds a
+    /// checkout of a repository this device knows would keep the old project's id
+    /// and serve the old project's memories — while the engine, resolving the same
+    /// folder, would pick the repository's. And an adoption must outrank the
+    /// fingerprint, because that is the member saying which project this folder
+    /// is, and repository contents may not overrule it.
+    ///
+    /// Must be called inside `databaseSync`.
+    func projectIdentityResolution(
+        canonicalRoot: URL,
+        pathHash: String,
+        fingerprint: String
+    ) throws -> ProjectIdentityResolution {
+        let legacyProjectID = Self.legacyProjectID(for: canonicalRoot)
+        let longLegacyProjectID = Self.longLegacyProjectID(for: canonicalRoot)
+        let preferredProjectID = Self.projectID(forFingerprint: fingerprint, fallbackProjectID: legacyProjectID)
+
+        let fingerprintOwner = try queryRows(
+            "SELECT project_id FROM pcm_projects WHERE identity_fingerprint = ? LIMIT 1",
+            [.text(fingerprint)]
+        ).first?.string(0)
+
+        // One row, two questions: which project is this folder mapped to, and is
+        // that mapping a confirmed adoption or one the resolver wrote for itself.
+        // LEFT JOIN because an alias may point at a project this store has no
+        // `pcm_projects` row for (the engine adopts ids the daemon has never seen).
+        let aliasRow = try queryRows(
+            """
+            SELECT alias.project_id, project.identity_fingerprint
+            FROM pcm_project_aliases AS alias
+            LEFT JOIN pcm_projects AS project ON project.project_id = alias.project_id
+            WHERE alias.path_hash = ?
+            LIMIT 1
+            """,
+            [.text(pathHash)]
+        ).first
+        let aliasProjectID = aliasRow?.optionalString(0)
+        let aliasIsConfirmedAdoption = aliasRow?
+            .optionalString(1)?
+            .hasPrefix(Self.explicitIdentityFingerprintPrefix) == true
+
+        let projectID: String
+        if let aliasProjectID, aliasIsConfirmedAdoption {
+            projectID = aliasProjectID
+        } else if let fingerprintOwner {
+            projectID = fingerprintOwner
+        } else if let aliasProjectID {
+            projectID = aliasProjectID
+        } else if try hasProjectRows(projectID: legacyProjectID) {
+            projectID = legacyProjectID
+        } else if try hasProjectRows(projectID: longLegacyProjectID) {
+            projectID = longLegacyProjectID
+        } else {
+            projectID = preferredProjectID
+        }
+
+        let recordedFingerprint = aliasIsConfirmedAdoption
+            ? Self.explicitIdentityFingerprintPrefix + projectID
+            : fingerprint
+        let effectiveOwner: String?
+        if recordedFingerprint == fingerprint {
+            effectiveOwner = fingerprintOwner
+        } else {
+            effectiveOwner = try queryRows(
+                "SELECT project_id FROM pcm_projects WHERE identity_fingerprint = ? LIMIT 1",
+                [.text(recordedFingerprint)]
+            ).first?.string(0)
+        }
+
+        // Only a PROVISIONAL alias that lost is worth reporting. An adoption that
+        // won took precedence by design, and an alias that agrees with the answer
+        // superseded nothing.
+        let superseded: String? = {
+            guard aliasIsConfirmedAdoption == false,
+                  let aliasProjectID,
+                  aliasProjectID != projectID,
+                  fingerprint.hasPrefix("git:"),
+                  fingerprintOwner == projectID else { return nil }
+            return aliasProjectID
+        }()
+
+        return ProjectIdentityResolution(
+            projectID: projectID,
+            fingerprint: recordedFingerprint,
+            fingerprintOwner: effectiveOwner,
+            supersededProvisionalProjectID: superseded
+        )
+    }
+
     func resolveProjectIdentity(root: URL) throws -> ProjectIdentity {
         let canonicalRoot = root.resolvingSymlinksInPath().standardizedFileURL
         let canonicalPath = canonicalRoot.path
         let pathHash = Self.sha256Hex(canonicalPath)
-        let legacyProjectID = Self.legacyProjectID(for: canonicalRoot)
-        let longLegacyProjectID = Self.longLegacyProjectID(for: canonicalRoot)
         let fingerprint = Self.projectIdentityFingerprint(root: canonicalRoot)
-        let preferredProjectID = Self.projectID(forFingerprint: fingerprint, fallbackProjectID: legacyProjectID)
         let now = Self.isoNow()
 
         return try databaseSync {
-            let existingForFingerprint = try queryRows(
-                "SELECT project_id FROM pcm_projects WHERE identity_fingerprint = ? LIMIT 1",
-                [.text(fingerprint)]
-            ).first?.string(0)
-            let existingForAlias = try queryRows(
-                "SELECT project_id FROM pcm_project_aliases WHERE path_hash = ? LIMIT 1",
-                [.text(pathHash)]
-            ).first?.string(0)
+            let resolution = try projectIdentityResolution(
+                canonicalRoot: canonicalRoot,
+                pathHash: pathHash,
+                fingerprint: fingerprint
+            )
+            let projectID = resolution.projectID
 
-            // A4 resolution order: this folder's own recorded mapping (the daemon's
-            // explicit map) outranks the identity its CONTENTS imply. A folder that
-            // already resolved once keeps that project id even if a later `git init`
-            // + `git remote add` makes its fingerprint match somebody else's project;
-            // repository contents must never silently re-scope a folder's memories.
-            // Only an unmapped folder falls through to the git-root fingerprint, then
-            // to the legacy ids, then to a provisional path-derived id.
-            let projectID: String
-            if let existingForAlias {
-                projectID = existingForAlias
-            } else if let existingForFingerprint {
-                projectID = existingForFingerprint
-            } else if try hasProjectRows(projectID: legacyProjectID) {
-                projectID = legacyProjectID
-            } else if try hasProjectRows(projectID: longLegacyProjectID) {
-                projectID = longLegacyProjectID
-            } else {
-                projectID = preferredProjectID
+            // The reused-directory diagnostic. The fingerprint winning over a
+            // provisional alias is the correct answer and the engine's, but it is
+            // also the moment the folder's earlier memories leave its scope, and
+            // that was silent. Once per process, opaque ids only; the remedy — a
+            // confirmed `project adopt` — is follow-up packet P31.
+            if let superseded = resolution.supersededProvisionalProjectID {
+                let split = BurnBarProjectIdentitySplit(
+                    provisionalProjectID: superseded,
+                    gitProjectID: projectID
+                )
+                if BurnBarProjectIdentityDiagnostics.noteSplit(split) {
+                    logger.warning("project_identity_provisional_split", metadata: split.logMetadata)
+                }
             }
 
             // `pcm_projects.identity_fingerprint` is UNIQUE, so the fingerprint may
             // only be stamped onto a project that either already owns it or where no
-            // project owns it yet. When another project holds it (an alias-mapped
-            // folder whose contents now imply that project) only the timestamp moves;
-            // the two projects stay separate rather than one stealing the other's key.
-            let canUpdateFingerprint = (existingForFingerprint == nil || existingForFingerprint == projectID)
+            // project owns it yet. The order above makes the collision case
+            // unreachable (whoever owns the fingerprint IS the resolved project,
+            // unless an adoption decided it — and an adoption records
+            // `explicit:<its own id>`), so this is a guard, not a branch the daemon
+            // is expected to take.
+            let canUpdateFingerprint = (resolution.fingerprintOwner == nil || resolution.fingerprintOwner == projectID)
             if canUpdateFingerprint {
                 try execute(
                     """
@@ -104,7 +227,7 @@ extension BurnBarProjectCodeMemoryStore {
                         (project_id, identity_version, identity_fingerprint, project_name, primary_path, created_at, updated_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?)
                     """,
-                    [.text(projectID), .int(2), .text(fingerprint), .text(canonicalRoot.lastPathComponent), .text(canonicalPath), .text(now), .text(now)]
+                    [.text(projectID), .int(2), .text(resolution.fingerprint), .text(canonicalRoot.lastPathComponent), .text(canonicalPath), .text(now), .text(now)]
                 )
                 try execute(
                     """
@@ -116,7 +239,7 @@ extension BurnBarProjectCodeMemoryStore {
                         updated_at = ?
                     WHERE project_id = ?
                     """,
-                    [.text(fingerprint), .text(canonicalRoot.lastPathComponent), .text(canonicalPath), .text(now), .text(projectID)]
+                    [.text(resolution.fingerprint), .text(canonicalRoot.lastPathComponent), .text(canonicalPath), .text(now), .text(projectID)]
                 )
             } else {
                 // `project_name` and `primary_path` freeze with the fingerprint,
@@ -132,28 +255,6 @@ extension BurnBarProjectCodeMemoryStore {
                     """,
                     [.text(now), .text(projectID)]
                 )
-                // A4 follow-up diagnostic. This branch covers two shapes: an
-                // explicitly mapped folder whose contents collide with another
-                // project (the red-team case — the refusal working as designed),
-                // and a PROVISIONAL folder that has since become a checkout of a
-                // repository this daemon already knows. Only the second is a
-                // stranded folder, and only it is worth a line. The remedy — a
-                // confirmed `project adopt` — is follow-up packet P31.
-                let recordedFingerprint = try queryRows(
-                    "SELECT identity_fingerprint FROM pcm_projects WHERE project_id = ? LIMIT 1",
-                    [.text(projectID)]
-                ).first?.string(0)
-                if recordedFingerprint?.hasPrefix("path:") == true,
-                   fingerprint.hasPrefix("git:"),
-                   let gitProjectID = existingForFingerprint {
-                    let split = BurnBarProjectIdentitySplit(
-                        provisionalProjectID: projectID,
-                        gitProjectID: gitProjectID
-                    )
-                    if BurnBarProjectIdentityDiagnostics.noteSplit(split) {
-                        logger.warning("project_identity_provisional_split", metadata: split.logMetadata)
-                    }
-                }
             }
             let aliasID = "alias_" + String(Self.sha256Hex(pathHash).prefix(32))
             try execute(
@@ -176,7 +277,7 @@ extension BurnBarProjectCodeMemoryStore {
                 projectID: projectID,
                 canonicalPath: canonicalPath,
                 pathHash: pathHash,
-                fingerprint: fingerprint
+                fingerprint: resolution.fingerprint
             )
         }
     }
@@ -185,42 +286,22 @@ extension BurnBarProjectCodeMemoryStore {
         let canonicalRoot = root.resolvingSymlinksInPath().standardizedFileURL
         let canonicalPath = canonicalRoot.path
         let pathHash = Self.sha256Hex(canonicalPath)
-        let legacyProjectID = Self.legacyProjectID(for: canonicalRoot)
-        let longLegacyProjectID = Self.longLegacyProjectID(for: canonicalRoot)
         let fingerprint = Self.projectIdentityFingerprint(root: canonicalRoot)
-        let preferredProjectID = Self.projectID(forFingerprint: fingerprint, fallbackProjectID: legacyProjectID)
 
         return try databaseSync {
-            let existingForFingerprint = try queryRows(
-                "SELECT project_id FROM pcm_projects WHERE identity_fingerprint = ? LIMIT 1",
-                [.text(fingerprint)]
-            ).first?.string(0)
-            let existingForAlias = try queryRows(
-                "SELECT project_id FROM pcm_project_aliases WHERE path_hash = ? LIMIT 1",
-                [.text(pathHash)]
-            ).first?.string(0)
-
-            // Same A4 resolution order as `resolveProjectIdentity`, read-only: the
-            // folder's recorded mapping first, then the git-root fingerprint, then
-            // the legacy ids, then a provisional path-derived id.
-            let projectID: String
-            if let existingForAlias {
-                projectID = existingForAlias
-            } else if let existingForFingerprint {
-                projectID = existingForFingerprint
-            } else if try hasProjectRows(projectID: legacyProjectID) {
-                projectID = legacyProjectID
-            } else if try hasProjectRows(projectID: longLegacyProjectID) {
-                projectID = longLegacyProjectID
-            } else {
-                projectID = preferredProjectID
-            }
-
-            return ProjectIdentity(
-                projectID: projectID,
-                canonicalPath: canonicalPath,
+            // The same decision as `resolveProjectIdentity`, from the same code:
+            // this path writes nothing, and it must not diverge, or a recall and a
+            // write disagree about which project a folder is.
+            let resolution = try projectIdentityResolution(
+                canonicalRoot: canonicalRoot,
                 pathHash: pathHash,
                 fingerprint: fingerprint
+            )
+            return ProjectIdentity(
+                projectID: resolution.projectID,
+                canonicalPath: canonicalPath,
+                pathHash: pathHash,
+                fingerprint: resolution.fingerprint
             )
         }
     }
