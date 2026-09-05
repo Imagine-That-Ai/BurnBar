@@ -57,6 +57,35 @@ final class SettingsManager {
     let elderWand: ElderWandSettings
     let visualCapture: VisualCapturePreferences
     let activation: ActivationSettings
+    let receipts: ReceiptSettings
+
+    // MARK: - Receipts (forwarded so views bind `$settingsManager.receipt…` and
+    // services read `settingsManager.receipt…`, like every other store here)
+
+    var receiptFlyoutEnabled: Bool {
+        get { receipts.receiptFlyoutEnabled }
+        set { receipts.receiptFlyoutEnabled = newValue }
+    }
+
+    var receiptSystemNotificationsEnabled: Bool {
+        get { receipts.receiptSystemNotificationsEnabled }
+        set { receipts.receiptSystemNotificationsEnabled = newValue }
+    }
+
+    var receiptAutoQualityReviewEnabled: Bool {
+        get { receipts.receiptAutoQualityReviewEnabled }
+        set { receipts.receiptAutoQualityReviewEnabled = newValue }
+    }
+
+    var receiptSoundEnabled: Bool {
+        get { receipts.receiptSoundEnabled }
+        set { receipts.receiptSoundEnabled = newValue }
+    }
+
+    var receiptReviewModel: String {
+        get { receipts.receiptReviewModel }
+        set { receipts.receiptReviewModel = newValue }
+    }
     private var computerUseRemoteConfigTask: Task<Void, Never>?
     private(set) var hasResolvedComputerUseRemoteConfig = false
 
@@ -126,6 +155,7 @@ final class SettingsManager {
         self.elderWand = ElderWandSettings(persistence: coordinator)
         self.visualCapture = VisualCapturePreferences(persistence: coordinator)
         self.activation = ActivationSettings(persistence: coordinator)
+        self.receipts = ReceiptSettings(persistence: coordinator)
 
         // Register periodic flush on app background
         NotificationCenter.default.addObserver(
