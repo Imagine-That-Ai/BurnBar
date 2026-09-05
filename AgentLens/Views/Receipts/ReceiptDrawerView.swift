@@ -385,6 +385,10 @@ struct ReceiptDrawerView: View {
                             }
                         }
                     )
+                    // No `.id(receipt.id)` here on purpose: it would rebuild the
+                    // subtree on every selection, making the card's and the slip's
+                    // `onChange(of: receipt.id)` resets unreachable *and* throwing
+                    // away the lens the user picked. The resets are the mechanism.
                     .padding(.top, 14)
                     .padding(.bottom, 24)
                 } else {

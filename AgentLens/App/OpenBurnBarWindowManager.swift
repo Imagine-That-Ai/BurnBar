@@ -536,6 +536,17 @@ final class WindowManager: ObservableObject {
         promoteToRegularActivation()
 
         if let window = receiptsWindow {
+            if let initialReceiptId {
+                let contentView = ReceiptDrawerView(
+                    dataStore: dataStore,
+                    initialReceiptId: initialReceiptId,
+                    onClose: { [weak self] in
+                        self?.closeReceiptsWindow()
+                    }
+                )
+                .frame(minWidth: 840, minHeight: 600)
+                window.contentView = NSHostingView(rootView: contentView)
+            }
             window.makeKeyAndOrderFront(nil)
             return
         }

@@ -3,6 +3,42 @@ import Foundation
 import OpenBurnBarKernel
 import SwiftUI
 
+// MARK: - Slip Inspector State
+
+/// The slip inspector's local state, lifted out of `ReceiptDetailCardView` so the
+/// rule about what survives a receipt switch is a value type a test can exercise
+/// without mounting a view.
+///
+/// `ReceiptDetailCardView` is deliberately rendered *without* `.id(receipt.id)`:
+/// one view instance sees successive receipts, and `receiptChanged(to:)` is what
+/// keeps per-receipt state from leaking between slips. The lens is the one thing
+/// that is not reset — it is a viewing mode the user chose, not a property of the
+/// receipt, and snapping it back to Thermal on every click in the stack list is a
+/// regression, not stale-state hygiene.
+struct ReceiptInspectorState: Equatable {
+    static let defaultCopiedAlertText = "Copied to Clipboard"
+
+    var selectedLens: ReceiptLens
+    var isStarred: Bool
+    var showCopiedAlert: Bool
+    var copiedAlertText: String
+
+    init(receipt: ReceiptRecord, lens: ReceiptLens = .thermal) {
+        self.selectedLens = lens
+        self.isStarred = receipt.isStarred
+        self.showCopiedAlert = false
+        self.copiedAlertText = Self.defaultCopiedAlertText
+    }
+
+    /// Re-seed the per-receipt state for a newly selected receipt. `selectedLens`
+    /// survives on purpose; see the type comment.
+    mutating func receiptChanged(to receipt: ReceiptRecord) {
+        isStarred = receipt.isStarred
+        showCopiedAlert = false
+        copiedAlertText = Self.defaultCopiedAlertText
+    }
+}
+
 // MARK: - Receipt Detail Card View
 
 struct ReceiptDetailCardView: View {
@@ -10,10 +46,7 @@ struct ReceiptDetailCardView: View {
     var onToggleStar: ((Bool) -> Void)?
     var onUpdateReview: ((ReceiptQualityReview) -> Void)?
 
-    @State private var selectedLens: ReceiptLens = .thermal
-    @State private var isStarred: Bool
-    @State private var showCopiedAlert = false
-    @State private var copiedAlertText = "Copied to Clipboard"
+    @State private var state: ReceiptInspectorState
 
     init(
         receipt: ReceiptRecord,
@@ -22,8 +55,7 @@ struct ReceiptDetailCardView: View {
         onUpdateReview: ((ReceiptQualityReview) -> Void)? = nil
     ) {
         self.receipt = receipt
-        self._selectedLens = State(initialValue: initialLens)
-        self._isStarred = State(initialValue: receipt.isStarred)
+        self._state = State(initialValue: ReceiptInspectorState(receipt: receipt, lens: initialLens))
         self.onToggleStar = onToggleStar
         self.onUpdateReview = onUpdateReview
     }
@@ -35,7 +67,7 @@ struct ReceiptDetailCardView: View {
 
             // Lens Content with smooth transition
             ZStack {
-                switch selectedLens {
+                switch state.selectedLens {
                 case .thermal:
                     ReceiptThermalSlipView(
                         receipt: receipt,
@@ -60,14 +92,14 @@ struct ReceiptDetailCardView: View {
                         ))
                 }
             }
-            .animation(.spring(response: 0.35, dampingFraction: 0.8), value: selectedLens)
+            .animation(.spring(response: 0.35, dampingFraction: 0.8), value: state.selectedLens)
 
             // Copied Toast Overlay if triggered
-            if showCopiedAlert {
+            if state.showCopiedAlert {
                 HStack(spacing: 6) {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundStyle(.green)
-                    Text(copiedAlertText)
+                    Text(state.copiedAlertText)
                         .font(.caption)
                         .fontWeight(.medium)
                 }
@@ -81,6 +113,12 @@ struct ReceiptDetailCardView: View {
         }
         .padding(16)
         .frame(maxWidth: 400)
+        .onChange(of: receipt.id) { _, _ in
+            state.receiptChanged(to: receipt)
+        }
+        .onChange(of: receipt.isStarred) { _, newStarred in
+            state.isStarred = newStarred
+        }
     }
 
     // MARK: - Subviews
@@ -88,7 +126,7 @@ struct ReceiptDetailCardView: View {
     private var topToolbar: some View {
         HStack(spacing: 8) {
             // Lens Picker
-            Picker("Lens", selection: $selectedLens) {
+            Picker("Lens", selection: $state.selectedLens) {
                 ForEach(ReceiptLens.allCases) { lens in
                     Label(lens.title, systemImage: lens.iconName)
                         .tag(lens)
@@ -99,15 +137,15 @@ struct ReceiptDetailCardView: View {
 
             // Star / Bookmark Button
             Button {
-                isStarred.toggle()
-                onToggleStar?(isStarred)
+                state.isStarred.toggle()
+                onToggleStar?(state.isStarred)
             } label: {
-                Image(systemName: isStarred ? "star.fill" : "star")
-                    .foregroundStyle(isStarred ? .yellow : .secondary)
+                Image(systemName: state.isStarred ? "star.fill" : "star")
+                    .foregroundStyle(state.isStarred ? .yellow : .secondary)
             }
             .buttonStyle(.plain)
             .padding(4)
-            .accessibilityLabel(isStarred ? "Starred receipt" : "Unstarred receipt")
+            .accessibilityLabel(state.isStarred ? "Starred receipt" : "Unstarred receipt")
 
             // Share / Export Menu
             Menu {
@@ -164,16 +202,16 @@ struct ReceiptDetailCardView: View {
     }
 
     private func toggleStar() {
-        isStarred.toggle()
-        onToggleStar?(isStarred)
+        state.isStarred.toggle()
+        onToggleStar?(state.isStarred)
     }
 
     private func triggerCopiedToast(_ message: String) {
-        copiedAlertText = message
-        withAnimation { showCopiedAlert = true }
+        state.copiedAlertText = message
+        withAnimation { state.showCopiedAlert = true }
         Task {
             try? await Task.sleep(nanoseconds: 2_000_000_000)
-            withAnimation { showCopiedAlert = false }
+            withAnimation { state.showCopiedAlert = false }
         }
     }
 }
