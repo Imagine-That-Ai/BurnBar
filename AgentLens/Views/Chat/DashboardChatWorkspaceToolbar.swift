@@ -102,12 +102,19 @@ extension ChatBackendID {
         case .hermes: return "Agent harness"
         case .piAgent: return "Empathy agent"
         case .openclaw: return "Gateway agent"
-        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp, .junie, .fx:
+        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp, .junie, .fx,
+             .grok, .kimi:
+            // grok and kimi belong here, not in a "Cloud agent" arm of their own.
+            // #2362 introduced them as ACP backends whose launch paths are local
+            // processes — `grok agent stdio` and `kimi acp`
+            // (`CLIArgumentBuilder.grokACPArguments` / `.kimiACPArguments`) — and
+            // `requiresCLIAssistantConsent` is true for both, which is this app's
+            // own definition of "spawns a CLI on this machine". The mobile twin
+            // this copy is borrowed from ships `case .grok: return "CLI agent"`.
+            // The earlier "Cloud agent" wording came from #2384, a compile-error
+            // fix that had to make this switch exhaustive; it read #2362 as
+            // hosted-API and no shipped copy or test ever agreed with it.
             return "CLI agent"
-        case .grok, .kimi:
-            // Hosted API backends (#2362): no CLI invocation, probed like
-            // gateway agents once an execution path exists.
-            return "Cloud agent"
         }
     }
 
